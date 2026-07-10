@@ -1,66 +1,48 @@
-"""V2 Canonical test fixture helpers.
-These replace legacy Admin(username=...) and SystemAdmin(username=...) constructors
-with properly hashed credential fields.
+"""V2 canonical test fixture helpers.
+
+Tests create identity through the production service layer.
+No Admin objects, no bridge patterns.
 """
-from app.utils.auth_username import build_hashed_username_fields
 
-def make_admin(username: str, totp_secret: str, **kwargs):
-    """Create a properly hashed Admin fixture (V2 canonical form)."""
-    from app.models import Admin, User, UserRole
-    from app.extensions import db
-    from app.utils.encryption import encrypt_totp
-    salt, username_hash, username_lookup_hash = build_hashed_username_fields(username)
-    
-    # Allow kwargs to override defaults (useful for tests that provide their own salt/hashes)
-    params = {
-        "username_hash": username_hash,
-        "username_lookup_hash": username_lookup_hash,
-        "salt": salt,
-        "totp_secret": totp_secret,
-        "public_id": username,
-    }
-    params.update(kwargs)
-    admin = Admin(**params)
-    canonical_user = db.session.query(User).filter_by(username_lookup_hash=username_lookup_hash).first()
-    if canonical_user is None:
-        canonical_user = User(
-            username_hash=username_hash,
-            username_lookup_hash=username_lookup_hash,
-            user_role=UserRole.TEACHER,
-            totp_secret_encrypted=encrypt_totp(totp_secret),
-            has_completed_setup=True,
-        )
-        db.session.add(canonical_user)
-        db.session.flush()
-    admin.user_id = canonical_user.id
-    return admin
+from app.services.classroom_setup import create_teacher as _svc_create_teacher
+from app.extensions import db
+from app.models import User, UserRole
 
-def make_sysadmin(username: str, totp_secret: str, **kwargs):
-    """Create a properly hashed SystemAdmin fixture (V2 canonical form)."""
-    from app.models import SystemAdmin
-    from app.models import User, UserRole
-    from app.extensions import db
-    from app.utils.encryption import encrypt_totp
-    salt, username_hash, username_lookup_hash = build_hashed_username_fields(username)
-    
-    params = {
-        "username_hash": username_hash,
-        "username_lookup_hash": username_lookup_hash,
-        "salt": salt,
-        "totp_secret": totp_secret
-    }
-    params.update(kwargs)
-    sysadmin = SystemAdmin(**params)
-    canonical_user = db.session.query(User).filter_by(username_lookup_hash=username_lookup_hash).first()
-    if canonical_user is None:
-        canonical_user = User(
-            username_hash=username_hash,
-            username_lookup_hash=username_lookup_hash,
-            user_role=UserRole.SYSADMIN,
-            totp_secret_encrypted=encrypt_totp(totp_secret),
-            has_completed_setup=True,
-        )
-        db.session.add(canonical_user)
-        db.session.flush()
-    sysadmin.user_id = canonical_user.id
+
+def make_teacher(username: str, totp_secret: str | None = None) -> User:
+    """Create a canonical V2 teacher (User with role=TEACHER).
+
+    Delegates to app/services/classroom_setup.create_teacher().
+    Flushes but does NOT commit — caller owns the transaction.
+    """
+    return _svc_create_teacher(username, totp_secret=totp_secret)
+
+
+def make_sysadmin(username: str, totp_secret: str | None = None) -> User:
+    """Create a canonical V2 sysadmin (User with role=SYSADMIN).
+
+    Flushes but does NOT commit.
+    """
+    from app.utils.auth_username import build_hashed_username_fields
+    from app.utils.encryption import normalize_totp_for_storage
+
+    _salt, u_hash, u_lookup = build_hashed_username_fields(username)
+    sysadmin = User(
+        user_role=UserRole.SYSADMIN,
+        username_hash=u_hash,
+        username_lookup_hash=u_lookup,
+        has_completed_setup=True,
+        totp_secret_encrypted=normalize_totp_for_storage(totp_secret) if totp_secret else None,
+    )
+    db.session.add(sysadmin)
+    db.session.flush()
     return sysadmin
+
+
+# ---------------------------------------------------------------------------
+# Backward-compat shim — tests importing make_admin get make_teacher.
+# Remove once all call sites are migrated.
+# ---------------------------------------------------------------------------
+def make_admin(username: str, totp_secret: str | None = None, **_ignored) -> User:
+    """Deprecated: use make_teacher(). Returns canonical User (role=TEACHER)."""
+    return make_teacher(username, totp_secret=totp_secret)

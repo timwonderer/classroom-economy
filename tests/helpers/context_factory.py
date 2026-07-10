@@ -1,45 +1,42 @@
-"""canonicalContextFactory — canonical v2 test fixture builder.
+"""canonicalContextFactory — thin wrapper around production classroom_setup service.
 
-Builds the full v2 identity chain: User → Seat → IdentityProfile.
-Seat ownership stays canonical; compatibility helpers resolve through Seat.
+Tests use the same production path as routes. If the service changes, tests
+automatically get the updated behavior.
 
 Usage:
     ctx = canonicalContextFactory(db).build()
-    # ctx.teacher_user    — User instance (v2 canonical principal)
-    # ctx.class_id        — UUID string
-    # ctx.join_code       — public alias
-    # ctx.economy         — ClassEconomy instance
-    # ctx.teacher_seat    — teacher Seat (user_id → teacher_user)
-    # ctx.teacher_profile — teacher IdentityProfile
+    ctx = canonicalContextFactory(db, join_code="MATH-01").with_students(3).build()
+
+    ctx.teacher_user    — User instance (role=TEACHER)
+    ctx.economy         — ClassEconomy instance
+    ctx.class_id        — UUID string
+    ctx.join_code       — public alias
+    ctx.teacher_seat    — teacher Seat
 
     student = ctx.add_student("Alice", "Anderson")
-    # student.user        — User instance
-    # student.seat        — Seat instance
-    # student.profile     — IdentityProfile instance
+    student.user        — User instance
+    student.seat        — Seat instance
+    student.profile     — IdentityProfile instance
+    student.login(client)
 
-    # Or bulk:
-    ctx = canonicalContextFactory(db).with_students(3).build()
-    ctx.students[0].seat  # first student's seat
-
-    # Login helpers (set correct session keys for current auth):
     ctx.login_teacher(client)
-    ctx.students[0].login(client)
+    ctx.commit()
 """
 
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import List, Optional
+from typing import List
 
 
 @dataclass
 class StudentContext:
-    """A student fully wired into a class context (v2 canonical)."""
-    user: object       # User model instance (v2 principal)
-    seat: object       # Seat model instance
-    profile: object    # IdentityProfile model instance
+    """A student fully wired into a class context."""
+    user: object
+    seat: object
+    profile: object
     join_code: str = ""
     class_id: str = ""
+
     @property
     def seat_id(self):
         return self.seat.id
@@ -49,7 +46,6 @@ class StudentContext:
         return self.user.id
 
     def login(self, client):
-        """Log this student into the test client session."""
         with client.session_transaction() as sess:
             from tests.helpers.canonical_session import set_canonical_context
             set_canonical_context(
@@ -64,13 +60,13 @@ class StudentContext:
 
 @dataclass
 class ClassroomContext:
-    """Fully wired v2 class context with all invariants satisfied."""
+    """Fully wired v2 class context — all invariants satisfied."""
     db: object
-    teacher_user: object     # User instance (v2 canonical principal)
-    economy: object          # ClassEconomy instance
-    teacher_seat: object     # Seat instance (user_id → teacher_user)
-    teacher_profile: object  # IdentityProfile instance
+    teacher_user: object
+    economy: object
+    teacher_seat: object
     students: List[StudentContext] = field(default_factory=list)
+
     @property
     def class_id(self):
         return self.economy.class_id
@@ -79,52 +75,15 @@ class ClassroomContext:
     def join_code(self):
         return self.economy.join_code
 
-    @property
-    def teacher_id(self):
-        return None
-
-    def add_student(self, first_name="Test", last_name="Student", **kwargs):
-        """Add a student to this class with full v2 wiring.
-
-        Returns a StudentContext with .user, .seat, .profile attributes.
-        """
-        from app.models import User, Seat, IdentityProfile, UserRole
-        from app.utils.auth_username import build_hashed_username_fields
-
-        idx = len(self.students) + 1
-        username = kwargs.pop("username", f"student_{self.join_code}_{idx}")
-
-        # 1. User (v2 canonical principal)
-        u_salt, u_hash, u_lookup = build_hashed_username_fields(username)
-        user = User(
-            user_role=UserRole.STUDENT,
-            username_hash=u_hash,
-            username_lookup_hash=u_lookup,
-        )
-        self.db.session.add(user)
-        self.db.session.flush()
-
-        # 2. Seat
-        seat = Seat(
-            user_id=user.id,
-            class_id=self.class_id,
-            role="student",
-            claimed_at=datetime.now(timezone.utc),
-        )
-        self.db.session.add(seat)
-        self.db.session.flush()
-
-        # 3. IdentityProfile
-        profile = IdentityProfile(
-            seat_id=seat.id,
-            class_id=self.class_id,
-            profile_type="student",
+    def add_student(self, first_name="Test", last_name="Student", **kwargs) -> StudentContext:
+        """Add a student via the canonical production service."""
+        from app.services.classroom_setup import create_student
+        user, seat, profile = create_student(
+            self.class_id,
             first_name=first_name,
             last_name=last_name,
+            **kwargs,
         )
-        self.db.session.add(profile)
-        self.db.session.flush()
-
         sc = StudentContext(
             user=user,
             seat=seat,
@@ -136,7 +95,6 @@ class ClassroomContext:
         return sc
 
     def login_teacher(self, client):
-        """Log the teacher into the test client session for this class."""
         with client.session_transaction() as sess:
             from tests.helpers.canonical_session import set_canonical_context
             set_canonical_context(
@@ -149,110 +107,70 @@ class ClassroomContext:
             )
 
     def commit(self):
-        """Commit the current session."""
         from app.feats.base import FEATBypass
         with FEATBypass():
             self.db.session.commit()
 
 
 class ClassroomContextFactory:
-    """Builder for ClassroomContext.
+    """Builder that calls production services to create a classroom context.
 
-    Usage:
-        ctx = ClassroomContextFactory(db).build()
-        ctx = ClassroomContextFactory(db).with_students(3).build()
+    All DB operations go through app/services/classroom_setup.py — the same
+    path production routes use. Tests and routes stay in sync automatically.
     """
 
     def __init__(self, db, *, join_code=None, class_id=None,
-                 teacher_display_name=None):
+                 display_name=None, section=None, teacher_username=None):
         self._db = db
         self._join_code = join_code
         self._class_id = class_id
-        self._teacher_display_name = teacher_display_name
+        self._display_name = display_name
+        self._section = section
+        self._teacher_username = teacher_username
         self._student_count = 0
         self._student_specs = []  # list of (first_name, last_name, kwargs)
 
     def with_students(self, count=1):
-        """Add N students with default names."""
         self._student_count = count
         return self
 
     def with_student(self, first_name="Test", last_name="Student", **kwargs):
-        """Add a specifically-named student."""
         self._student_specs.append((first_name, last_name, kwargs))
         return self
 
     def build(self) -> ClassroomContext:
-        """Build the full context, flush to DB (but don't commit)."""
-        from app.models import (
-            Admin, User, ClassEconomy, Seat, IdentityProfile, UserRole,
-        )
-        from app.utils.auth_username import build_hashed_username_fields
+        from app.services.classroom_setup import create_teacher, create_class
 
-        uname = f"teacher_{uuid.uuid4().hex[:8]}"
-
-        # 1. User (v2 canonical principal for teacher)
-        u_salt, u_hash, u_lookup = build_hashed_username_fields(uname)
-        teacher_user = User(
-            user_role=UserRole.TEACHER,
-            username_hash=u_hash,
-            username_lookup_hash=u_lookup,
-        )
-        self._db.session.add(teacher_user)
-        self._db.session.flush()
-
-        # 2. ClassEconomy
-        class_id = self._class_id or str(uuid.uuid4())
+        username = self._teacher_username or f"teacher_{uuid.uuid4().hex[:8]}"
         join_code = self._join_code or f"CTX-{uuid.uuid4().hex[:6].upper()}"
 
-        economy = ClassEconomy(
-            class_id=class_id,
+        teacher_user = create_teacher(username)
+
+        economy = create_class(
+            teacher_user.id,
             join_code=join_code,
-            user_id=teacher_user.id,
-            created_by_user_id=teacher_user.id,
-            display_name=f"Test Class {join_code}",
+            display_name=self._display_name or f"Test Class {join_code}",
+            section=self._section,
         )
-        self._db.session.add(economy)
-        self._db.session.flush()
 
-        # 3. Teacher Seat (user_id → User)
-        teacher_seat = Seat(
+        # Teacher seat is created inside create_class; retrieve it.
+        from app.models import Seat
+        teacher_seat = self._db.session.query(Seat).filter_by(
             user_id=teacher_user.id,
-            class_id=class_id,
+            class_id=economy.class_id,
             role="teacher",
-        )
-        self._db.session.add(teacher_seat)
-        self._db.session.flush()
-
-        # 4. Teacher IdentityProfile
-        display = self._teacher_display_name or "Test Teacher"
-        parts = display.split(" ", 1)
-        t_first = parts[0]
-        t_last = parts[1] if len(parts) > 1 else ""
-
-        teacher_profile = IdentityProfile(
-            seat_id=teacher_seat.id,
-            class_id=class_id,
-            profile_type="teacher",
-            first_name=t_first,
-            last_name=t_last,
-        )
-        self._db.session.add(teacher_profile)
-        self._db.session.flush()
+        ).first()
 
         ctx = ClassroomContext(
             db=self._db,
             teacher_user=teacher_user,
             economy=economy,
             teacher_seat=teacher_seat,
-            teacher_profile=teacher_profile,
         )
 
-        # 5. Named students
         for first, last, kwargs in self._student_specs:
             ctx.add_student(first, last, **kwargs)
 
-        # 6. Default-named students
         _default_names = [
             ("Alice", "A"), ("Bob", "B"), ("Charlie", "C"), ("Diana", "D"),
             ("Eve", "E"), ("Frank", "F"), ("Grace", "G"), ("Henry", "H"),
@@ -260,12 +178,11 @@ class ClassroomContextFactory:
         ]
         for i in range(self._student_count):
             fn, ln = _default_names[i % len(_default_names)]
-            if i >= len(_default_names):
-                fn = f"{fn}{i // len(_default_names) + 1}"
             ctx.add_student(fn, ln)
 
         self._db.session.flush()
         return ctx
 
 
+# Backward-compat alias used by conftest.py fixtures
 canonicalContextFactory = ClassroomContextFactory
