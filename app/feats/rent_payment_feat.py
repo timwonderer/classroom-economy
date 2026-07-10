@@ -5,7 +5,8 @@ from decimal import Decimal
 
 from app.extensions import db
 from app.models import ClassEconomy, _quantize_currency
-from app.services import access_policy_service, identity_service, ledger_service, obligations_service, store_service
+from app.services import access_policy_service, ledger_service, obligations_service, store_service
+from app.services.entitlement_service import reconcile_rent_hall_pass_top_off
 from app.utils.time import utc_now
 
 
@@ -125,7 +126,7 @@ def execute_rent_payment(
     newly_fully_paid = total_paid_so_far < total_due and (total_paid_so_far + payment_amount >= total_due)
     if newly_fully_paid:
         target_rent_passes = store_service.get_rent_hall_pass_grant_total_from_version(active_version)
-        passes_awarded, _, _ = identity_service.reconcile_rent_hall_pass_top_off(
+        passes_awarded, _, _ = reconcile_rent_hall_pass_top_off(
             seat=seat,
             target_rent_passes=target_rent_passes,
         )

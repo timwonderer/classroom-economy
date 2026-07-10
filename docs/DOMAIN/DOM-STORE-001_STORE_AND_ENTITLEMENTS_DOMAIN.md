@@ -2,7 +2,7 @@
 
 | Reference Number | Version | Effective Date | Supersedes | Authority Level |
 |------------------|---------|----------------|------------|-----------------|
-| DOM-STORE-001 | 2.0 | 2026-06-26 | 1.2 | Normative |
+| DOM-STORE-001 | 2.1 | 2026-07-09 | 2.0 | Normative |
 
 ## I. Purpose
 
@@ -22,14 +22,33 @@ and redemption events.
 
 Tier 1 — Constitutional. This document defines structural enforcement mechanisms and domain-specific constraints that operationalize Foundational invariants. It is subordinate to `INV-CORE-000` and `INV-CORE-001`.
 
-## IV. Dependencies
+## IV. Canonical Business Authority
+
+The Store and Entitlement domain is the sole business authority responsible
+for entitlement lifecycle, entitlement balance evaluation, store purchases,
+and redemption processing.
+
+Consumers SHALL NOT:
+
+- derive entitlement balances independently;
+- mutate entitlement state outside this domain;
+- directly modify entitlement persistence; or
+- reconstruct entitlement lifecycle from storage details.
+
+Consumers SHALL instead invoke the canonical business operations exposed by
+this domain.
+
+Business authority SHALL remain centralized so that entitlement semantics are
+defined exactly once and consumed consistently throughout the application.
+
+## V. Dependencies
 
 - `INV-CORE-000_CORE_INVARIANTS.md`
 - `DOM-CORE-000_DOMAIN_FOUNDATION.md`
 - `DOM-CORE-002_CANONICAL_SCHEMA_DEFINITION.md`
 - `docs/INVARIANT/ARCHITECTURE/INV-ARC-009_DOMAIN_AUTHORITY_FOR_STATE.md`
 
-## V. Schema Authority Declaration
+## VI. Schema Authority Declaration
 
 This domain is the sole schema and mutation authority over:
 
@@ -43,7 +62,7 @@ These match the canonical table list in `DOM-CORE-002`.
 Legacy tables `student_items`, `store_item_blocks`, and `redemption_audit_logs` are
 superseded by the tables above and are not part of the canonical store authority model.
 
-## VI. Owned Tables
+## VII. Owned Tables
 
 ### 1. `store_items`
 
@@ -66,7 +85,7 @@ References the ledger transaction that funded the purchase (read-only cross-doma
 Append-only redemption history. Each row records a redemption action (request,
 approval, rejection) against a purchase, with cached display context.
 
-## VII. Schema Contract
+## VIII. Schema Contract
 
 All tables use `seat_id + class_id` as the canonical scope. No legacy compatibility
 columns (`student_id`, `teacher_id`, `join_code`) are part of the v2 contract.
@@ -173,7 +192,7 @@ Rules:
 - `seat_display_name` and `class_display_label` are cached at write time so the
   record remains interpretable even if identity or class records change.
 
-## VIII. Constraints
+## IX. Constraints
 
 - Store does not create or mutate ledger truth directly.
 - Purchase and redemption history must be preserved once committed.
@@ -184,7 +203,7 @@ Rules:
   `period`, `section`) as scoping or grouping keys. Visibility is expressed per seat
   via `store_item_visibility`.
 
-## IX. Derived / Cross-Domain Rules
+## X. Derived / Cross-Domain Rules
 
 - **Purchases are orchestrated through FEAT**: Store owns store-purchased entitlement
   state, Ledger owns money state. All purchase mutations flow through
@@ -192,13 +211,36 @@ Rules:
 - **Entitlement Sovereignty**: Obligations owns **obligation-linked** entitlements
   (e.g., rent-linked hall passes via `entitlement_events`). Store owns
   **store-purchased** items via `store_purchases`. The two streams are separate.
+- **Canonical Entitlement Operations**: All entitlement lifecycle mutations
+  (grant, consume, revoke, adjust, and balance evaluation) SHALL be performed
+  exclusively through the canonical entitlement operations owned by this
+  domain. FEATs, routes, jobs, migrations, and tests SHALL consume these
+  operations rather than directly manipulating entitlement persistence.
 - **Rent-linked store items**: Some store items may be aliases of rent items. The
   Obligations domain owns the underlying `assessment_events` row; Store owns the
   `store_items` definition used for display/visibility in the catalog.
 - `ledger_tx_id` on `store_purchases` is a read-only cross-domain reference to
   Ledger. It does not transfer ledger write authority.
 
-## X. Amendment
+## XI. Canonical Business Surface
+
+The long-term implementation goal of this domain is to expose a canonical
+business surface representing entitlement operations rather than persistence
+details.
+
+Representative operations include:
+
+- `grant_entitlement(...)`
+- `consume_entitlement(...)`
+- `revoke_entitlement(...)`
+- `adjust_entitlement(...)`
+- `get_entitlement_balance(...)`
+
+The exact implementation may evolve, but the architectural principle remains
+constant: business consumers interact with canonical domain operations, not
+direct table mutations or derived persistence logic.
+
+## XII. Amendment
 
 Revisions to this document must:
 1. Increment the version number.

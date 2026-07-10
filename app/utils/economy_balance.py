@@ -303,7 +303,7 @@ class EconomyBalanceChecker:
         """
         warnings = []
 
-        if not rent_settings or not rent_settings.is_enabled:
+        if not rent_settings:
             return warnings
 
         from app.models import _quantize_currency
@@ -1135,7 +1135,7 @@ class EconomyBalanceChecker:
 
         # Calculate weekly rent
         weekly_rent = 0
-        if rent_settings and rent_settings.is_enabled:
+        if rent_settings:
             rent_amount = float(rent_settings.rent_amount)
             weekly_rent = float(self._normalize_to_weekly(
                 rent_amount,

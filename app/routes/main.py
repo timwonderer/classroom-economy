@@ -237,23 +237,10 @@ def verify_hall_pass(teacher_public_token):
 
     _GENERIC_UNAVAILABLE = "Verification page not available."
 
-    # Look up teacher by token and resolve to canonical User
-    teacher = Admin.query.filter_by(hall_pass_verify_token=teacher_public_token).first()
-
-    if not teacher:
-        return render_template(
-            'hall_pass_verify.html',
-            unavailable=True,
-            message=_GENERIC_UNAVAILABLE
-        ), 404
-
-    # Resolve Admin → User via username_lookup_hash
+    # Look up teacher directly via canonical User token
     from app.models import User, UserRole
-    teacher_user = (
-        User.query
-        .filter(User.username_lookup_hash == teacher.username_lookup_hash, User.user_role == UserRole.TEACHER)
-        .first()
-    )
+    teacher_user = User.query.filter_by(hall_pass_verify_token=teacher_public_token).first()
+
     if not teacher_user:
         return render_template(
             'hall_pass_verify.html',
@@ -345,8 +332,8 @@ def verify_hall_pass(teacher_public_token):
         seat = entry.seat
         if not seat or not seat.identity_profile:
             continue
-        stored_norm = _normalize_first_name(seat.display_first_name)
-        stored_last_name = _normalize_last_name(seat.display_last_initial)
+        stored_norm = _normalize_first_name((seat.identity_profile.first_name if seat.identity_profile else ""))
+        stored_last_name = _normalize_last_name(seat.identity_profile.last_name if seat.identity_profile else "")
         if stored_norm == first_name_norm and stored_last_name == last_name_norm:
             matched.append(entry)
         if len(matched) >= 2:
@@ -381,7 +368,7 @@ def verify_hall_pass(teacher_public_token):
 
         result = {
             'outcome': 'match',
-            'student_display': student.full_name,
+            'student_display': (entry.seat.identity_profile.full_name if entry.seat and entry.seat.identity_profile else ""),
             'class_label': class_label,
             'destination': entry.reason,
             'time_out': time_out_str,

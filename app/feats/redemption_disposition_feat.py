@@ -70,7 +70,7 @@ def _write_event(*, purchase: StorePurchase, actor_user_id: int, action: str, no
         action=action_map[action],
         source=RedemptionEventSource.LIVE,
         initiated_by_user_id=actor_user_id,
-        seat_display_name=purchase.seat.display_first_name if purchase.seat else "Unknown Seat",
+        seat_display_name=(purchase.seat.identity_profile.full_name if purchase.seat and purchase.seat.identity_profile else "Unknown Seat"),
         class_display_label=label,
         notes=notes if notes else None,
         timestamp=utc_now(),

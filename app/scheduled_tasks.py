@@ -210,7 +210,7 @@ def run_rent_cycle_for_class(class_id: str, execution_time):
 
     settings = (
         RentSettings.query
-        .filter_by(class_id=class_id, is_enabled=True)
+        .filter_by(class_id=class_id)
         .order_by(RentSettings.updated_at.desc())
         .first()
     )
@@ -298,7 +298,7 @@ def run_rent_cycle_scheduler(execution_time=None):
     class_ids = [
         class_id for (class_id,) in
         RentSettings.query.filter(
-            RentSettings.is_enabled.is_(True),
+            
             RentSettings.class_id.is_not(None),
         ).with_entities(RentSettings.class_id).distinct().all()
     ]

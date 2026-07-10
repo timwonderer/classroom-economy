@@ -34,6 +34,7 @@ DEFAULT_PUBLIC_ENDPOINTS = {
     "main.district",
     "main.offline",
     "main.service_worker",
+    "main.verify_hall_pass",
     "api.tips",
 }
 

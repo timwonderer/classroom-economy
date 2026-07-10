@@ -340,9 +340,8 @@ def _get_effective_rent_settings(class_id: str | None):
     return (
         RentSettings.query.filter_by(
             class_id=class_id,
-            is_enabled=True,
         )
-        .order_by(RentSettings.block.isnot(None).desc(), RentSettings.id.desc())
+        .order_by(RentSettings.id.desc())
         .first()
     )
 

@@ -74,6 +74,7 @@ from app.feats.redemption_disposition_feat import (
     execute_redemption_rejection,
 )
 from app.services import store_service
+from app.services.entitlement_service import get_hall_pass_balance, grant_hall_passes
 from app.utils.economy_policy import resolve_class_scope, resolve_feature_class, resolve_feature_class_for_class
 from app.utils.join_code import get_display_join_code
 from app.utils.overdraft import charge_overdraft_fee_if_needed
@@ -505,7 +506,7 @@ def purchase_item():
     has_privilege_link = False
     has_per_use_link = False
 
-    if rent_settings and rent_settings.is_enabled:
+    if rent_settings:
         coverage_due_date = _calculate_rent_coverage_due_date(rent_settings, now)
         if coverage_due_date:
             has_paid_rent = _is_student_coverage_period_paid(
@@ -545,7 +546,7 @@ def purchase_item():
             "message": "This item is already included in your rent for this period."
         }), 400
 
-    if rent_settings and rent_settings.is_enabled and rent_settings.prevent_purchase_when_late:
+    if rent_settings and rent_settings.prevent_purchase_when_late:
         # Check if student is late on rent
         coverage_due_date = _calculate_rent_coverage_due_date(rent_settings, now)
 
@@ -705,7 +706,7 @@ def purchase_item():
         if rent_item:
             if rent_item.rent_item_type == 'privilege':
                 rent_setting = db.session.get(RentSettings, rent_item.rent_setting_id)
-                if rent_setting and rent_setting.is_enabled:
+                if rent_setting:
                     now = utc_now()
                     if rent_setting.first_rent_due_date:
                         current_due, next_due = _calculate_due_dates(rent_setting, now)
@@ -789,9 +790,8 @@ def use_item():
 
     # Special handling for hall_pass items in inventory (bundle or standalone)
     if student_item.store_item.item_type == 'hall_pass':
-        # Grant balance immediately
         qty = student_item.quantity or 1
-        student.hall_passes = (student.hall_passes or 0) + qty
+        grant_hall_passes(student, qty, trigger_id=f"inventory_redeem_{student_item.id}")
         student_item.status = 'redeemed'
         db.session.flush()
         return jsonify({"status": "success", "message": f"Added {qty} hall pass(es) to your balance!"})
@@ -1063,8 +1063,7 @@ def _check_simultaneous_pass_limit(log_entry):
     """Validate destination settings and simultaneous pass limits."""
     from app.models import ClassEconomy
     economy = ClassEconomy.query.filter_by(class_id=log_entry.class_id).first()
-    teacher_id = economy.teacher_id if economy else None
-    if not teacher_id:
+    if not economy:
         return None
 
     settings = _get_or_create_hall_pass_settings(log_entry.class_id)
@@ -1995,7 +1994,7 @@ def handle_tap():
                 if hall_pass_reconciled:
                     db.session.flush()
 
-            if should_require_pass and student.hall_passes <= 0:
+            if should_require_pass and get_hall_pass_balance(student.id, student.class_id) <= 0:
                 return jsonify({"error": "Insufficient hall passes."}), 400
 
             hall_pass_log = feat_request_hall_pass(
@@ -2166,7 +2165,7 @@ def get_tap_entries(student_id):
 
     return jsonify({
         'student_id': student_id,
-        'student_name': student.full_name,
+        'student_name': (student.identity_profile.full_name if student.identity_profile else str(student.id)),
         'periods': period_data
     })
 

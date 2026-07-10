@@ -6,7 +6,7 @@ Implements the analytics dashboard per analytics-specification.md.
 Key Principles:
 - System health metrics always visible (5-second readability)
 - Visual alerts only (no automatic notifications)
-- Individual student data only in drill-down views
+- No Drilldown. Period. All analytics should be displayed as aggregates.
 - All metrics CWI-relative
 - Trends over snapshots
 """
@@ -124,7 +124,7 @@ def _get_rent_settings_for_class_id(class_id: str):
         RentSettings.query.filter(
             RentSettings.class_id == class_id,
         )
-        .order_by(desc(RentSettings.block.isnot(None)))
+        
         .first()
     )
 

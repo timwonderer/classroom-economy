@@ -116,6 +116,7 @@ It establishes authentication identity and serves as the canonical reference for
 - Application principal
 - Session ownership
 - Account lifecycle
+- Credential Management
 
 #### Canonical Identifier
 

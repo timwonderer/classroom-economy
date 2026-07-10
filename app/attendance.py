@@ -196,7 +196,6 @@ def get_batch_attendance_events(seat_ids, min_anchor, allowed_class_ids):
         key = (session.seat_id, session.class_id)
         grouped.setdefault(key, []).append(
             SimpleNamespace(
-                student_id=session.student_id,
                 seat_id=session.seat_id,
                 class_id=session.class_id,
                 status="active",
@@ -207,7 +206,6 @@ def get_batch_attendance_events(seat_ids, min_anchor, allowed_class_ids):
         if end_time and (not min_anchor_utc or end_time > min_anchor_utc):
             grouped[key].append(
                 SimpleNamespace(
-                    student_id=session.student_id,
                     seat_id=session.seat_id,
                     class_id=session.class_id,
                     status="inactive",

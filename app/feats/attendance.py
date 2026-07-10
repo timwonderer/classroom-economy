@@ -15,9 +15,9 @@ from app.models import (
     HallPassSettings,
     Seat,
     SeatAttendanceState,
-    EntitlementEvent,
     AttendanceReasonCode,
 )
+from app.services.entitlement_service import consume_hall_pass, get_hall_pass_balance
 from app.payroll import get_daily_limit_seconds
 from app.utils.economy_policy import resolve_feature_class_for_class
 from app.utils.time import ensure_utc, get_class_now, get_class_today_range, normalize_for_db, utc_now
@@ -282,32 +282,21 @@ def approve_hall_pass(*, log_entry: HallPassLog, now_utc=None) -> HallPassMutati
     if log_entry.status != "pending":
         raise ValueError("Pass is not pending.")
 
-    student = log_entry.student
     should_deduct = (log_entry.reason or "").lower() not in HALL_PASS_FREE_REASONS
-    if should_deduct and student.hall_passes <= 0:
-        raise ValueError("Student has no hall passes left.")
+    if should_deduct:
+        balance = get_hall_pass_balance(log_entry.seat_id, log_entry.class_id)
+        if balance <= 0:
+            raise ValueError("Student has no hall passes left.")
 
     log_entry.status = "approved"
     log_entry.decision_time = now
 
     if should_deduct:
-        student.hall_passes -= 1
-        rent_balance = db.session.query(
-            sa.func.sum(EntitlementEvent.quantity_delta)
-        ).filter_by(
-            seat_id=log_entry.seat_id,
-            class_id=log_entry.class_id,
-        ).scalar() or 0
-        if rent_balance > 0:
-            consume_event = EntitlementEvent(
-                seat_id=log_entry.seat_id,
-                class_id=log_entry.class_id,
-                quantity_delta=-1,
-                event_type="CONSUME",
-                trigger_id=f"hall_pass_approve_{log_entry.id}",
-                occurred_at=now,
-            )
-            db.session.add(consume_event)
+        consume_hall_pass(
+            log_entry.seat_id,
+            log_entry.class_id,
+            trigger_id=f"hall_pass_approve_{log_entry.id}",
+        )
 
     db.session.flush()
     return HallPassMutationResult(message="Pass approved.")
@@ -809,11 +798,12 @@ def save_hall_pass_setup_config(
 
 
 def rotate_teacher_hall_pass_verify_token(*, teacher_id: int) -> str:
-    """Rotate and persist a teacher hall-pass verification token."""
-    teacher = db.session.get(Admin, teacher_id)
-    if not teacher:
+    """Rotate and persist a teacher hall-pass verification token on canonical User."""
+    from app.models import User
+    teacher_user = db.session.get(User, teacher_id)
+    if not teacher_user:
         raise LookupError("Teacher not found.")
 
-    teacher.hall_pass_verify_token = Admin.generate_verify_token()
+    teacher_user.hall_pass_verify_token = User.generate_verify_token()
     db.session.flush()
-    return teacher.hall_pass_verify_token
+    return teacher_user.hall_pass_verify_token

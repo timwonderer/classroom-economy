@@ -4,7 +4,8 @@ from dataclasses import dataclass
 from decimal import Decimal
 
 from app.extensions import db
-from app.services import identity_service, ledger_service, store_service
+from app.services import ledger_service, store_service
+from app.services.entitlement_service import grant_hall_passes
 from app.services.context_resolver import CanonicalContext
 from app.utils.time import utc_now
 
@@ -135,7 +136,7 @@ def execute_store_purchase(
     created_purchase_ids: list[int] = []
 
     if item.item_type == 'hall_pass':
-        hall_pass_balance = identity_service.add_hall_passes(seat, quantity)
+        hall_pass_balance = grant_hall_passes(seat, quantity, trigger_id=f"store_purchase_{seat.id}_{purchase_tx.id}")
     else:
         created_purchase_ids = store_service.record_standard_purchase_items(
             seat=seat,

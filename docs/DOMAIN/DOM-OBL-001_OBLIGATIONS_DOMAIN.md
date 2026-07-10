@@ -2,7 +2,7 @@
 
 | Reference Number | Version | Effective Date | Supersedes | Authority Level |
 |------------------|---------|----------------|------------|-----------------|
-| DOM-OBL-001 | 2.2 | 2026-05-21 | 2.1 | Constitutional |
+| DOM-OBL-001 | 2.3 | 2026-07-09 | 2.2 | Constitutional |
 
 ---
 
@@ -28,14 +28,30 @@ This domain does not own:
 
 Tier 1 — Constitutional. This document defines structural enforcement mechanisms and domain-specific constraints that operationalize Foundational invariants. It is subordinate to `INV-CORE-000` and `INV-CORE-001`.
 
-## IV. Dependencies
+## IV. Canonical Business Authority
+
+The Obligations domain is the sole business authority responsible for recurring seat-scoped obligations, obligation satisfaction, entitlement lifecycle for obligation-linked entitlements, and operational boundary legality.
+
+Consumers SHALL NOT:
+
+- derive obligation status independently;
+- derive entitlement balances independently;
+- mutate obligation or entitlement persistence directly;
+- reconstruct obligation lifecycle outside this domain; or
+- reinterpret obligation legality using alternate business logic.
+
+Consumers SHALL instead invoke the canonical business operations owned by this domain.
+
+Business authority SHALL remain centralized so that obligation semantics are defined exactly once and consumed consistently throughout the application.
+
+## V. Dependencies
 
 - `INV-CORE-000_CORE_INVARIANTS.md`
 - `DOM-CORE-000_DOMAIN_FOUNDATION.md`
 - `DOM-CLASS-001_CLASS_CONFIGURATION_DOMAIN.md` (Policy Source)
 - `DOM-ECON-003_ECONOMIC_POLICY_AND_TRANSITION.md` (Operational boundary activation protocol)
 
-## V. Schema Authority Declaration
+## VI. Schema Authority Declaration
 
 This domain is the sole schema and mutation authority over:
 
@@ -52,7 +68,7 @@ separate final-schema tables.
 
 **Policy Ownership:** Class Configuration owns the obligation policy (rates, schedules). Obligations shall execute the policy into runtime events.
 
-## VI. State Classification
+## VII. State Classification
 
 | State | Classification | Rationale |
 | :--- | :--- | :--- |
@@ -64,10 +80,10 @@ separate final-schema tables.
 | **Seat Obligation Status** | Derived State | Intersection of Assessment, Satisfaction, and Reversal events. |
 | **Due Date (`due_at`)** | Authoritative Event State | Snapshotted at assessment time from policy + calendar logic. |
 
-## VII. Invariants
+## VIII. Invariants
 
 - **INV-OBL-001: Seat-Scoped Isolation**. All obligation state shall be anchored to a `seat_id`. Economic reality is class-bound; debt shall not follow a student across classes.
-- **INV-OBL-002: Event-Only Entitlements**. Entitlement grants MUST NOT be stored as authoritative scalar state (e.g., no "balances"); they are strictly derived views of active grants calculated from the `entitlement_events` stream.
+- **INV-OBL-002: Event-Only Entitlements**. The append-only `entitlement_events` stream is the sole authoritative representation of entitlement state. Entitlement grants and balances MUST NOT exist as independently mutable authoritative scalar state (e.g., stored balances or counters). All entitlement balances and active grants SHALL be derived exclusively from the canonical event stream.
 - **INV-OBL-003: Consumption Idempotency**. Entitlement consumption triggers MUST be idempotent. A duplicate `trigger_id` shall never result in multiple decrements.
 - **INV-OBL-004: Assessment Idempotency**. A policy-period assessment MUST be idempotent. A duplicate trigger for the same `(seat_id, policy_id, period_key)` shall never create multiple assessments.
 - **INV-OBL-005: Reversal Primacy**. A reversed assessment shall be treated as non-existent for all downstream interpretations (delinquency, reporting), overriding any prior satisfaction events. **Reversal wins.**
@@ -77,7 +93,7 @@ separate final-schema tables.
 - **INV-OBL-009: Policy Snapshotting**. Assessments MUST snapshot `amount` and `due_at`. Mid-cycle policy changes shall not retroactively affect existing debt.
 - **INV-OBL-010: Local Time Sovereignty**. All due dates and triggers shall be calculated using the `ClassTimeZone`.
 
-## VIII. Schema Contract
+## IX. Schema Contract
 
 ### 1. `assessment_events`
 
@@ -130,14 +146,15 @@ Append-only stream of obligation-linked perks (e.g., hall pass quota).
 - `type` (Enum: `GRANT`, `CONSUMPTION`, `REVOCATION`)
 - `occurred_at` (Timestamp)
 
-## IX. Derived / Cross-Domain Rules
+## X. Derived / Cross-Domain Rules
 
 - **Status Hierarchy**: Status is derived as: `REVERSED` > `WAIVED` > `PAID` > `OVERDUE` (if `now > due_at`) > `DUE`.
 - **Entitlement Sovereignty**: Obligations owns **obligation-linked** entitlements (e.g., rent-linked hall passes). Store owns **store-purchased** items.
+- **Canonical Business Operations**: Granting, consuming, revoking, adjusting, and evaluating obligation-linked entitlements SHALL occur exclusively through the canonical business operations owned by this domain. FEATs, routes, jobs, migrations, and tests SHALL consume these operations rather than manipulating persistence or deriving business state independently.
 - **Consumption Flow**: Attendance emits `ConsumptionIntent`. Obligations validates against the active grant and records the `CONSUMPTION` event.
 - **Ledger Coordination**: All assessment and satisfaction events shall emit `PostingRequests` to Ledger via FEAT. Obligations does not own ledger rows.
 
-## X. Operational Boundary Authority
+## XI. Operational Boundary Authority
 
 Obligations is the sole lawful authority for determining:
 
@@ -154,7 +171,26 @@ This authority is referenced by `DOM-ECON-003` and `FEAT-ECON-001` as "Rent doma
 
 No other domain, FEAT, OPS job, GET handler, or request-time path may determine rent cycle or insurance renewal legality.
 
-## XI. Amendment
+## XII. Canonical Business Surface
+
+The long-term implementation goal of this domain is to expose a canonical business surface rather than persistence-oriented behavior.
+
+Representative operations include:
+
+- `assess_obligation(...)`
+- `satisfy_obligation(...)`
+- `reverse_obligation(...)`
+- `grant_entitlement(...)`
+- `consume_entitlement(...)`
+- `revoke_entitlement(...)`
+- `get_obligation_status(...)`
+- `get_entitlement_balance(...)`
+
+`get_entitlement_balance(...)` SHALL derive the current entitlement balance exclusively from the canonical `entitlement_events` stream. The returned balance is a derived business view and SHALL NOT be persisted or treated as authoritative state.
+
+The exact implementation may evolve, but business consumers SHALL interact with canonical domain operations rather than directly manipulating tables or reconstructing derived business state.
+
+## XIII. Amendment
 
 Revisions to this document must:
 1. Increment the version number.
