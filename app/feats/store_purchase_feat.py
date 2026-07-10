@@ -21,7 +21,7 @@ class StorePurchaseResult:
     success_message: str = ""
 
 
-@requires_feat_context("FEAT-STOR-001-RENT-PERK")
+@requires_feat_context("FEAT-STOR-004")
 def execute_rent_perk_purchase(
     *,
     ctx: CanonicalContext,

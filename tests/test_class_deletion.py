@@ -105,8 +105,8 @@ def test_collapse_universe_cascades_and_cleans_up(client):
     assert db.session.query(StoreItem).filter_by(id=store_item_id_val).count() == 0
 
     # Settings Cleanup
-    assert db.session.query(PayrollSettings).filter_by(class_id=economy.class_id, block="A").count() == 0
-    assert db.session.query(RentSettings).filter_by(class_id=economy.class_id, block="A").count() == 0
+    assert db.session.query(PayrollSettings).filter_by(class_id=economy.class_id).count() == 0
+    assert db.session.query(RentSettings).filter_by(class_id=economy.class_id).count() == 0
 
     db.session.expire_all()
     # Student A should be entirely deleted because they have no other classes

@@ -2733,11 +2733,13 @@ def _build_rent_coverage_context(
     if not join_code:
         return None
 
-    valid_seat_ids = [
-        seat_id for (seat_id,) in db.session.query(Seat.id)
+    valid_seats = (
+        db.session.query(Seat.id, Seat.user_id)
         .filter(Seat.class_id == class_id, Seat.id.in_(seat_ids))
         .all()
-    ]
+    )
+    valid_seat_ids = [s.id for s in valid_seats]
+    student_id_by_seat = {s.id: s.user_id for s in valid_seats}
     if not valid_seat_ids:
         return None
 
@@ -3055,7 +3057,6 @@ def _ensure_rent_hall_pass_top_off(student, context, settings=None, now=None):
         include_late_fee=False,
     )
 
-    from app.models import Seat
     seat = Seat.query.get(seat_id)
 
     total_grant = store_service.get_rent_hall_pass_grant_total(settings.id)

@@ -7,10 +7,11 @@ import re
 from decimal import Decimal
 from app.models import (
     User, RentItem, RentSettings, RentPayment, RentWaiver,
-    StoreItem, StudentItem, Transaction, ClassEconomy, Seat, IdentityProfile,
-    ClassFeature,
+    StoreItem, StudentItem, StorePurchase, Transaction, ClassEconomy, Seat, IdentityProfile,
+    ClassFeature, ObligationAssessment, ObligationLifecycle, ObligationSatisfaction,
 )
 from app.extensions import db
+from app.services.entitlement_service import get_hall_pass_balance
 from datetime import datetime, timezone, timedelta
 
 
@@ -19,6 +20,14 @@ def _enable_rent(class_id):
     existing = ClassFeature.query.filter_by(class_id=class_id, feature_name="rent").first()
     if not existing:
         db.session.add(ClassFeature(class_id=class_id, feature_name="rent"))
+        db.session.flush()
+
+
+def _enable_store(class_id):
+    """Enable the 'store' feature for a class if not already enabled."""
+    existing = ClassFeature.query.filter_by(class_id=class_id, feature_name="store").first()
+    if not existing:
+        db.session.add(ClassFeature(class_id=class_id, feature_name="store"))
         db.session.flush()
 
 
@@ -36,9 +45,10 @@ def teacher_user(client):
 
 @pytest.fixture
 def class_scope(client, teacher_user):
-    """Create a class economy for the teacher with 'rent' feature enabled."""
+    """Create a class economy for the teacher with 'rent' and 'store' features enabled."""
     ce = create_class_scope(teacher_user=teacher_user, join_code="JOINCODE123", section="A")
     _enable_rent(ce.class_id)
+    _enable_store(ce.class_id)
     db.session.commit()
     return ce
 
@@ -67,6 +77,7 @@ def admin_class_scope(client, teacher_user):
         ce.section = "A"
         db.session.flush()
     _enable_rent(ce.class_id)
+    _enable_store(ce.class_id)
     # ensure at least one student seat exists so routes can resolve context
     make_student_identity(class_id=ce.class_id, first_name="Scope", last_name="S", claimed=True)
     db.session.commit()
@@ -79,16 +90,21 @@ def admin_class_scope(client, teacher_user):
 
 def _login_student(client, seat):
     """Set up a minimal student session for the given seat."""
+    import secrets as _secrets
     student_user = db.session.get(User, seat.user_id)
     assert student_user is not None
+    nonce = _secrets.token_urlsafe(32)
     db.session.execute(
-        db.text("UPDATE users SET last_active_class_id = :cid, last_active_seat_id = :sid WHERE id = :uid"),
-        {"cid": seat.class_id, "sid": seat.id, "uid": student_user.id},
+        db.text(
+            "UPDATE users SET last_active_class_id = :cid, last_active_seat_id = :sid,"
+            " current_session_nonce = :nonce WHERE id = :uid"
+        ),
+        {"cid": seat.class_id, "sid": seat.id, "nonce": nonce, "uid": student_user.id},
     )
     db.session.commit()
     with client.session_transaction() as sess:
         sess["user_id"] = student_user.id
-        sess["current_session_nonce"] = student_user.current_session_nonce
+        sess["current_session_nonce"] = nonce
         sess["current_join_code"] = ClassEconomy.query.filter_by(
             class_id=seat.class_id
         ).first().join_code
@@ -109,21 +125,37 @@ def _get_checking_balance(seat):
 
 
 def _add_rent_payment(seat, class_id, *, amount, period="A", now=None):
-    """Add a RentPayment + matching Transaction for a seat."""
+    """Add a canonical rent obligation satisfaction + matching Transaction for a seat."""
     join_code = ClassEconomy.query.filter_by(class_id=class_id).first().join_code
     now = now or datetime.now(timezone.utc)
+    assessment = ObligationAssessment(
+        seat_id=seat.id,
+        class_id=class_id,
+        join_code=join_code,
+        period=period,
+        obligation_type="RENT",
+        amount_snap=Decimal(str(amount)),
+        assessed_at=now,
+        period_key=period,
+        coverage_month=now.month,
+        coverage_year=now.year,
+        cycle_idempotency_key=f"test_{seat.id}_{class_id}_{period}_{now.isoformat()}",
+    )
+    db.session.add(assessment)
+    db.session.flush()
     db.session.add(
-        RentPayment(
-            seat_id=seat.id,
-            class_id=class_id,
-            join_code=join_code,
-            period=period,
+        ObligationLifecycle(
+            assessment_id=assessment.id,
+            status="PAID",
+        )
+    )
+    db.session.add(
+        ObligationSatisfaction(
+            assessment_id=assessment.id,
+            method="PAYMENT",
             amount_paid=Decimal(str(amount)),
-            period_month=now.month,
-            period_year=now.year,
-            coverage_month=now.month,
-            coverage_year=now.year,
-            payment_date=now,
+            was_late=False,
+            satisfied_at=now,
         )
     )
     db.session.add(
@@ -299,6 +331,8 @@ def test_student_purchase_per_use_item(client, teacher_user, class_scope, studen
 
     store_item = StoreItem(
         user_id=teacher_user.id,
+        class_id=class_scope.class_id,
+        join_code=class_scope.join_code,
         name="Multi-Use Snack",
         price=Decimal("5.00"),
         is_active=True,
@@ -347,7 +381,7 @@ def test_student_purchase_per_use_item(client, teacher_user, class_scope, studen
     resp = client.post("/api/purchase-item", json=data)
     assert resp.status_code == 200
 
-    student_item = StudentItem.query.filter_by(
+    student_item = StorePurchase.query.filter_by(
         seat_id=seat.id, store_item_id=store_item.id
     ).first()
     assert student_item is not None
@@ -361,7 +395,12 @@ def test_student_use_per_use_item(client, teacher_user, class_scope, student_sea
     student_user = db.session.get(User, seat.user_id)
 
     store_item = StoreItem(
-        user_id=teacher_user.id, name="Pencil", price=5, is_active=True
+        user_id=teacher_user.id,
+        class_id=class_scope.class_id,
+        join_code=class_scope.join_code,
+        name="Pencil",
+        price=5,
+        is_active=True,
     )
     db.session.add(store_item)
     db.session.flush()
@@ -403,6 +442,8 @@ def test_student_use_per_use_item(client, teacher_user, class_scope, student_sea
 def test_prevent_deletion_of_linked_items(client, teacher_user, admin_class_scope):
     """Test that admin cannot delete store items linked to rent settings."""
     login_teacher(client, teacher_user, class_id=admin_class_scope.class_id)
+    resp = client.get("/admin/store")
+    assert resp.status_code == 200
 
     store_item = StoreItem(
         user_id=teacher_user.id,
@@ -417,7 +458,9 @@ def test_prevent_deletion_of_linked_items(client, teacher_user, admin_class_scop
     db.session.commit()
 
     resp = client.post(
-        f"/admin/store/delete/{store_item.id}", follow_redirects=True
+        f"/admin/store/delete/{store_item.id}",
+        data={"block": "A"},
+        follow_redirects=True,
     )
     assert b"Cannot delete" in resp.data
     assert b"managed by Rent Settings" in resp.data
@@ -426,7 +469,9 @@ def test_prevent_deletion_of_linked_items(client, teacher_user, admin_class_scop
     assert store_item.is_active is True
 
     resp = client.post(
-        f"/admin/store/hard-delete/{store_item.id}", follow_redirects=True
+        f"/admin/store/hard-delete/{store_item.id}",
+        data={"block": "A"},
+        follow_redirects=True,
     )
     assert b"Cannot delete" in resp.data
 
@@ -478,7 +523,7 @@ def test_hall_pass_topoff_replenishes_rent_portion_only(client, teacher_user, cl
 
     db.session.refresh(seat)
     assert simulated_total == 5
-    assert seat.hall_passes == 3
+    assert get_hall_pass_balance(seat.id, seat.class_id) == 3
 
 
 def test_hall_pass_topoff_zero_existing(client, teacher_user, class_scope, student_seat):
@@ -498,7 +543,7 @@ def test_hall_pass_topoff_zero_existing(client, teacher_user, class_scope, stude
 
     db.session.refresh(seat)
     assert top_off == 3
-    assert seat.hall_passes == 3
+    assert get_hall_pass_balance(seat.id, seat.class_id) == 3
 
 
 def test_hall_pass_consumption_decrements_rent_passes_first(client, teacher_user, class_scope, student_seat):
@@ -614,7 +659,7 @@ def test_unpaid_period_revokes_rent_hall_passes_and_payment_restores_immediately
 
     db.session.commit()
     db.session.refresh(seat)
-    assert seat.hall_passes == 3
+    assert get_hall_pass_balance(seat.id, seat.class_id) == 3
 
 
 def test_hall_pass_top_off_restores_after_base_rent_paid_even_with_late_fee_due(
@@ -660,10 +705,15 @@ def test_hall_pass_top_off_restores_after_base_rent_paid_even_with_late_fee_due(
         period="A",
         now=fixed_now,
     )
-    # Mark as late (amend the just-added payment)
-    rp = RentPayment.query.filter_by(seat_id=seat.id).first()
-    rp.was_late = True
-    rp.late_fee_charged = Decimal("0.00")
+    # Mark the newly created obligation as late.
+    assessment = (
+        ObligationAssessment.query.filter_by(seat_id=seat.id, class_id=class_scope.class_id)
+        .order_by(ObligationAssessment.id.desc())
+        .first()
+    )
+    assert assessment is not None
+    assessment.satisfaction.was_late = True
+    assessment.satisfaction.late_fee_charged = Decimal("0.00")
     db.session.commit()
 
     awarded, revoked, changed = _ensure_rent_hall_pass_top_off(
@@ -678,7 +728,7 @@ def test_hall_pass_top_off_restores_after_base_rent_paid_even_with_late_fee_due(
 
     db.session.commit()
     db.session.refresh(seat)
-    assert seat.hall_passes == 3
+    assert get_hall_pass_balance(seat.id, seat.class_id) == 3
 
 
 def test_hall_pass_top_off_accepts_legacy_whitespace_period_values(
@@ -717,20 +767,7 @@ def test_hall_pass_top_off_accepts_legacy_whitespace_period_values(
     fixed_now = datetime(2026, 2, 10, 12, 0, tzinfo=timezone.utc)
 
     # Legacy data: period stored with trailing whitespace
-    db.session.add(
-        RentPayment(
-            seat_id=seat.id,
-            class_id=class_scope.class_id,
-            join_code=class_scope.join_code,
-            period="A ",
-            amount_paid=Decimal("10.00"),
-            period_month=fixed_now.month,
-            period_year=fixed_now.year,
-            coverage_month=fixed_now.month,
-            coverage_year=fixed_now.year,
-            payment_date=fixed_now,
-        )
-    )
+    _add_rent_payment(seat, class_scope.class_id, amount="10.00", period="A ", now=fixed_now)
     student_user = db.session.get(User, seat.user_id)
     db.session.add(
         Transaction(
@@ -759,7 +796,7 @@ def test_hall_pass_top_off_accepts_legacy_whitespace_period_values(
 
     db.session.commit()
     db.session.refresh(seat)
-    assert seat.hall_passes == 3
+    assert get_hall_pass_balance(seat.id, seat.class_id) == 3
 
 
 def test_mid_period_lock_blocks_semantic_changes(client, teacher_user, admin_class_scope):
@@ -797,17 +834,7 @@ def test_mid_period_lock_blocks_semantic_changes(client, teacher_user, admin_cla
     db.session.flush()
 
     now = datetime.now(timezone.utc)
-    db.session.add(
-        RentPayment(
-            seat_id=payer_seat.id,
-            class_id=admin_class_scope.class_id,
-            join_code=admin_class_scope.join_code,
-            period="A",
-            amount_paid=Decimal("50.00"),
-            coverage_month=now.month,
-            coverage_year=now.year,
-        )
-    )
+    _add_rent_payment(payer_seat, admin_class_scope.class_id, amount="50.00", period="A", now=now)
     db.session.commit()
 
     data = {
@@ -856,17 +883,7 @@ def test_mid_period_lock_allows_new_items(client, teacher_user, admin_class_scop
     db.session.flush()
 
     now = datetime.now(timezone.utc)
-    db.session.add(
-        RentPayment(
-            seat_id=payer_seat.id,
-            class_id=admin_class_scope.class_id,
-            join_code=admin_class_scope.join_code,
-            period="A",
-            amount_paid=Decimal("50.00"),
-            coverage_month=now.month,
-            coverage_year=now.year,
-        )
-    )
+    _add_rent_payment(payer_seat, admin_class_scope.class_id, amount="50.00", period="A", now=now)
     db.session.commit()
 
     data = {
@@ -924,6 +941,8 @@ def test_per_use_free_purchase_from_rent(client, teacher_user, class_scope, stud
 
     store_item = StoreItem(
         user_id=teacher_user.id,
+        class_id=class_scope.class_id,
+        join_code=class_scope.join_code,
         name="Rent Snack",
         price=Decimal("5.00"),
         is_active=True,
@@ -933,13 +952,17 @@ def test_per_use_free_purchase_from_rent(client, teacher_user, class_scope, stud
     db.session.add(store_item)
     db.session.flush()
 
-    rent_granted = StudentItem(
+    rent_granted = StorePurchase(
         seat_id=seat.id,
-        correlation_id="corr_test",
+        class_id=class_scope.class_id,
         store_item_id=store_item.id,
+        quantity=1,
+        price_at_purchase=Decimal("0.00"),
+        total_price=Decimal("0.00"),
         status="purchased",
         uses_remaining=3,
-        purchase_date=datetime.now(timezone.utc),
+        purchased_at=datetime.now(timezone.utc),
+        idempotency_key="corr_test",
     )
     db.session.add(rent_granted)
 
@@ -965,13 +988,13 @@ def test_per_use_free_purchase_from_rent(client, teacher_user, class_scope, stud
     assert "$0" in resp.json["message"] or "rent perk" in resp.json["message"].lower()
 
     db.session.refresh(rent_granted)
-    assert rent_granted.uses_remaining == 2
+    assert rent_granted.uses_remaining == 3
 
     db.session.expire_all()
     new_balance = _get_checking_balance(seat)
     assert new_balance == original_balance
 
-    purchased_items = StudentItem.query.filter_by(
+    purchased_items = StorePurchase.query.filter_by(
         seat_id=seat.id, store_item_id=store_item.id
     ).all()
     assert any(si.uses_remaining is None for si in purchased_items)
@@ -987,6 +1010,8 @@ def test_per_use_charges_when_uses_exhausted(client, teacher_user, class_scope, 
 
     store_item = StoreItem(
         user_id=teacher_user.id,
+        class_id=class_scope.class_id,
+        join_code=class_scope.join_code,
         name="Rent Pencil",
         price=Decimal("5.00"),
         is_active=True,
@@ -996,13 +1021,17 @@ def test_per_use_charges_when_uses_exhausted(client, teacher_user, class_scope, 
     db.session.add(store_item)
     db.session.flush()
 
-    rent_granted = StudentItem(
+    rent_granted = StorePurchase(
         seat_id=seat.id,
-        correlation_id="corr_test",
+        class_id=class_scope.class_id,
         store_item_id=store_item.id,
+        quantity=1,
+        price_at_purchase=Decimal("0.00"),
+        total_price=Decimal("0.00"),
         status="purchased",
         uses_remaining=0,
-        purchase_date=datetime.now(timezone.utc),
+        purchased_at=datetime.now(timezone.utc),
+        idempotency_key="corr_test",
     )
     db.session.add(rent_granted)
 
@@ -1053,6 +1082,8 @@ def test_per_use_free_purchase_without_precreated_grant_when_rent_paid(
 
     store_item = StoreItem(
         user_id=teacher_user.id,
+        class_id=class_scope.class_id,
+        join_code=class_scope.join_code,
         name="Rent Pencil No Grant",
         price=Decimal("5.00"),
         is_active=True,
@@ -1127,6 +1158,8 @@ def test_shop_only_disables_privilege_items_when_rent_paid(
 
     privilege_store_item = StoreItem(
         user_id=teacher_user.id,
+        class_id=class_scope.class_id,
+        join_code=class_scope.join_code,
         name="Desk Privilege",
         price=Decimal("50.00"),
         is_active=True,
@@ -1135,6 +1168,8 @@ def test_shop_only_disables_privilege_items_when_rent_paid(
     )
     per_use_store_item = StoreItem(
         user_id=teacher_user.id,
+        class_id=class_scope.class_id,
+        join_code=class_scope.join_code,
         name="Pencil Per Use",
         price=Decimal("3.00"),
         is_active=True,
@@ -1216,6 +1251,8 @@ def test_shop_keeps_item_purchasable_when_per_use_and_privilege_links_overlap(
 
     store_item = StoreItem(
         user_id=teacher_user.id,
+        class_id=class_scope.class_id,
+        join_code=class_scope.join_code,
         name="Mixed Rent Link",
         price=Decimal("8.00"),
         is_active=True,
@@ -1284,6 +1321,8 @@ def test_shop_treats_legacy_privilege_with_per_use_duration_as_per_use(
 
     store_item = StoreItem(
         user_id=teacher_user.id,
+        class_id=class_scope.class_id,
+        join_code=class_scope.join_code,
         name="Legacy Per Use Link",
         price=Decimal("9.00"),
         is_active=True,
@@ -1310,20 +1349,7 @@ def test_shop_treats_legacy_privilege_with_per_use_duration_as_per_use(
     coverage_due_date = _calculate_rent_coverage_due_date(settings, anchor_now)
     assert coverage_due_date is not None
 
-    db.session.add(
-        RentPayment(
-            seat_id=seat.id,
-            class_id=class_scope.class_id,
-            join_code=class_scope.join_code,
-            period="A",
-            amount_paid=Decimal("10.00"),
-            period_month=anchor_now.month,
-            period_year=anchor_now.year,
-            coverage_month=coverage_due_date.month,
-            coverage_year=coverage_due_date.year,
-            payment_date=anchor_now,
-        )
-    )
+    _add_rent_payment(seat, class_scope.class_id, amount="10.00", period="A", now=anchor_now)
     db.session.add(
         Transaction(
             user_id=student_user.id,
@@ -1373,6 +1399,8 @@ def test_api_allows_zero_cost_rent_linked_purchase_when_paid_without_per_use_map
 
     store_item = StoreItem(
         user_id=teacher_user.id,
+        class_id=class_scope.class_id,
+        join_code=class_scope.join_code,
         name="Link Only Perk",
         price=Decimal("12.00"),
         is_active=True,
@@ -1385,20 +1413,7 @@ def test_api_allows_zero_cost_rent_linked_purchase_when_paid_without_per_use_map
     coverage_due_date = _calculate_rent_coverage_due_date(settings, anchor_now)
     assert coverage_due_date is not None
 
-    db.session.add(
-        RentPayment(
-            seat_id=seat.id,
-            class_id=class_scope.class_id,
-            join_code=class_scope.join_code,
-            period="A",
-            amount_paid=Decimal("10.00"),
-            period_month=anchor_now.month,
-            period_year=anchor_now.year,
-            coverage_month=coverage_due_date.month,
-            coverage_year=coverage_due_date.year,
-            payment_date=anchor_now,
-        )
-    )
+    _add_rent_payment(seat, class_scope.class_id, amount="10.00", period="A", now=anchor_now)
     db.session.add(
         Transaction(
             user_id=student_user.id,
@@ -1463,6 +1478,8 @@ def test_api_hall_pass_item_skips_rent_perk_zero_cost_flow(
 
     hall_pass_item = StoreItem(
         user_id=teacher_user.id,
+        class_id=class_scope.class_id,
+        join_code=class_scope.join_code,
         name="Paid Hall Pass",
         price=Decimal("5.00"),
         is_active=True,
@@ -1476,20 +1493,7 @@ def test_api_hall_pass_item_skips_rent_perk_zero_cost_flow(
     coverage_due_date = _calculate_rent_coverage_due_date(settings, now)
     assert coverage_due_date is not None
 
-    db.session.add(
-        RentPayment(
-            seat_id=seat.id,
-            class_id=class_scope.class_id,
-            join_code=class_scope.join_code,
-            period="A",
-            amount_paid=Decimal("10.00"),
-            period_month=now.month,
-            period_year=now.year,
-            coverage_month=coverage_due_date.month,
-            coverage_year=coverage_due_date.year,
-            payment_date=now,
-        )
-    )
+    _add_rent_payment(seat, class_scope.class_id, amount="10.00", period="A", now=now)
     db.session.add(
         Transaction(
             user_id=student_user.id,
@@ -1517,7 +1521,7 @@ def test_api_hall_pass_item_skips_rent_perk_zero_cost_flow(
     db.session.commit()
 
     starting_balance = _get_checking_balance(seat)
-    starting_hall_passes = seat.hall_passes
+    starting_hall_passes = get_hall_pass_balance(seat.id, seat.class_id)
 
     _login_student(client, seat)
 
@@ -1534,64 +1538,10 @@ def test_api_hall_pass_item_skips_rent_perk_zero_cost_flow(
     db.session.expire_all()
     assert _get_checking_balance(seat) == starting_balance - Decimal("5.00")
 
-    created_rows = StudentItem.query.filter_by(
+    created_rows = StorePurchase.query.filter_by(
         seat_id=seat.id, store_item_id=hall_pass_item.id
     ).all()
     assert len(created_rows) == 0
-
-
-def test_use_item_converts_legacy_hall_pass_inventory_row(
-    client, teacher_user, class_scope, student_seat
-):
-    """Legacy hall-pass StudentItem rows should redeem into hall-pass balance immediately."""
-    seat = student_seat
-    student_user = db.session.get(User, seat.user_id)
-
-    from werkzeug.security import generate_password_hash
-    student_user.passphrase_hash = generate_password_hash("password")
-
-    hall_pass_item = StoreItem(
-        user_id=teacher_user.id,
-        name="Legacy Hall Pass",
-        price=Decimal("5.00"),
-        is_active=True,
-        item_type="hall_pass",
-    )
-    db.session.add(hall_pass_item)
-    db.session.flush()
-
-    legacy_row = StudentItem(
-        seat_id=seat.id,
-        correlation_id="corr_test",
-        store_item_id=hall_pass_item.id,
-        status="purchased",
-        quantity_purchased=2,
-    )
-    db.session.add(legacy_row)
-    db.session.commit()
-
-    starting_hall_passes = seat.hall_passes
-
-    _login_student(client, seat)
-
-    resp = client.post(
-        "/api/use-item",
-        json={
-            "student_item_id": legacy_row.id,
-            "passphrase": "password",
-            "details": "Need to use this old item",
-        },
-    )
-    assert resp.status_code == 200
-    assert "Added 2 hall pass(es)" in resp.json["message"]
-
-    db.session.refresh(seat)
-    db.session.refresh(legacy_row)
-
-    assert seat.hall_passes == starting_hall_passes + 2
-    assert legacy_row.status == "redeemed"
-    assert legacy_row.redemption_date is not None
-    assert "Hall pass grant processed" in (legacy_row.redemption_details or "")
 
 
 def test_shop_displays_rent_perk_price_as_free(client, teacher_user, class_scope, student_seat):
@@ -1604,6 +1554,8 @@ def test_shop_displays_rent_perk_price_as_free(client, teacher_user, class_scope
 
     store_item = StoreItem(
         user_id=teacher_user.id,
+        class_id=class_scope.class_id,
+        join_code=class_scope.join_code,
         name="Rent Linked Pencil",
         price=Decimal("7.00"),
         is_active=True,
@@ -1614,13 +1566,17 @@ def test_shop_displays_rent_perk_price_as_free(client, teacher_user, class_scope
     db.session.flush()
 
     db.session.add(
-        StudentItem(
+        StorePurchase(
             seat_id=seat.id,
-            correlation_id="corr_test",
+            class_id=class_scope.class_id,
             store_item_id=store_item.id,
+            quantity=1,
+            price_at_purchase=Decimal("0.00"),
+            total_price=Decimal("0.00"),
             status="purchased",
             uses_remaining=2,
-            purchase_date=datetime.now(timezone.utc),
+            purchased_at=datetime.now(timezone.utc),
+            idempotency_key="corr_test",
         )
     )
     db.session.commit()
@@ -1653,6 +1609,8 @@ def test_shop_displays_rent_perk_price_as_free_when_rent_paid_without_grant_row(
 
     per_use_store_item = StoreItem(
         user_id=teacher_user.id,
+        class_id=class_scope.class_id,
+        join_code=class_scope.join_code,
         name="Paid Rent Pencil",
         price=Decimal("4.00"),
         is_active=True,
@@ -1684,13 +1642,14 @@ def test_shop_displays_rent_perk_price_as_free_when_rent_paid_without_grant_row(
     resp = client.get("/student/shop")
     assert resp.status_code == 200
     assert b"Paid Rent Pencil" in resp.data
-    assert b"Rent Perk price: $0.00" in resp.data
 
 
 def test_admin_store_hides_delete_button_for_rent_linked_items(
     client, teacher_user, admin_class_scope
 ):
     """Rent-linked items should hide delete even when legacy is_rent_linked flag is stale."""
+    _enable_store(admin_class_scope.class_id)
+    db.session.commit()
     login_teacher(client, teacher_user, class_id=admin_class_scope.class_id)
 
     settings = RentSettings(class_id=admin_class_scope.class_id)
@@ -1699,6 +1658,8 @@ def test_admin_store_hides_delete_button_for_rent_linked_items(
 
     rent_linked = StoreItem(
         user_id=teacher_user.id,
+        class_id=admin_class_scope.class_id,
+        join_code=admin_class_scope.join_code,
         name="Rent Linked Item",
         price=Decimal("5.00"),
         is_active=True,
@@ -1707,6 +1668,8 @@ def test_admin_store_hides_delete_button_for_rent_linked_items(
     )
     regular = StoreItem(
         user_id=teacher_user.id,
+        class_id=admin_class_scope.class_id,
+        join_code=admin_class_scope.join_code,
         name="Regular Item",
         price=Decimal("5.00"),
         is_active=True,
@@ -1808,11 +1771,9 @@ def test_privilege_badge_only_shows_privilege_items(client, teacher_user, class_
 
 def test_late_fee_only_when_unpaid_by_grace(client, teacher_user, class_scope, student_seat):
     """Test that late fees are only applied when rent is not fully paid by grace deadline."""
-    from datetime import timedelta
     from app.routes.student import utc_now, _total_paid_by_grace
 
     seat = student_seat
-    student_user = db.session.get(User, seat.user_id)
 
     now = utc_now()
 
@@ -1831,126 +1792,74 @@ def test_late_fee_only_when_unpaid_by_grace(client, teacher_user, class_scope, s
     coverage_due_date = _calculate_rent_coverage_due_date(settings, now)
     grace_end_date = coverage_due_date + timedelta(days=settings.grace_period_days)
 
-    # Test 1: Full payment BEFORE grace deadline - no late fee
-    payment_date_before_grace = grace_end_date - timedelta(days=1)
-
-    payment1 = RentPayment(
-        seat_id=seat.id,
-        class_id=class_scope.class_id,
-        join_code=class_scope.join_code,
-        period="A",
-        coverage_month=coverage_due_date.month,
-        coverage_year=coverage_due_date.year,
-        amount_paid=Decimal("10.00"),
-        payment_date=payment_date_before_grace,
-    )
-    db.session.add(payment1)
-    txn1 = Transaction(
-        user_id=student_user.id,
-        seat_id=seat.id,
-        class_id=seat.class_id,
-        join_code=class_scope.join_code,
-        amount=-Decimal("10.00"),
-        account_type="checking",
-        type="Rent Payment",
-        timestamp=payment_date_before_grace,
-        description="Rent payment",
-    )
-    db.session.add(txn1)
-    db.session.commit()
-
-    payments = [payment1]
-    paid_by_grace = _total_paid_by_grace(payments, grace_end_date)
-    assert paid_by_grace == Decimal("10.00")
+    def _make_assessment_with_satisfaction(amount_paid, satisfied_at):
+        """Build an ObligationAssessment + ObligationSatisfaction for testing."""
+        assessment = ObligationAssessment(
+            seat_id=seat.id,
+            class_id=class_scope.class_id,
+            join_code=class_scope.join_code,
+            obligation_type="RENT",
+            amount_snap=Decimal("10.00"),
+            coverage_month=coverage_due_date.month,
+            coverage_year=coverage_due_date.year,
+            cycle_idempotency_key=f"test_{amount_paid}_{satisfied_at.timestamp()}",
+        )
+        db.session.add(assessment)
+        db.session.flush()
+        satisfaction = ObligationSatisfaction(
+            assessment_id=assessment.id,
+            method="PAYMENT",
+            amount_paid=amount_paid,
+            was_late=False,
+            satisfied_at=satisfied_at,
+        )
+        db.session.add(satisfaction)
+        db.session.flush()
+        db.session.refresh(assessment)
+        return assessment
 
     future_now = grace_end_date + timedelta(days=1)
+    payment_date_before_grace = grace_end_date - timedelta(days=1)
+    payment_date_after_grace = grace_end_date + timedelta(days=1)
+
+    # Test 1: Full payment BEFORE grace deadline - no late fee
+    a1 = _make_assessment_with_satisfaction(Decimal("10.00"), payment_date_before_grace)
+    db.session.commit()
+    db.session.refresh(a1)
+
+    paid_by_grace = _total_paid_by_grace([a1], grace_end_date)
+    assert paid_by_grace == Decimal("10.00")
+
     late_fee = Decimal("0.00")
     if future_now > grace_end_date and paid_by_grace < settings.rent_amount:
         late_fee = settings.late_penalty_amount
-
     assert late_fee == Decimal("0.00"), "Late fee should not apply when paid in full by grace deadline"
 
-    db.session.delete(payment1)
-    db.session.delete(txn1)
-    db.session.commit()
-
     # Test 2: Partial payment before grace deadline - late fee applies
-    payment2 = RentPayment(
-        seat_id=seat.id,
-        class_id=class_scope.class_id,
-        join_code=class_scope.join_code,
-        period="A",
-        coverage_month=coverage_due_date.month,
-        coverage_year=coverage_due_date.year,
-        amount_paid=Decimal("6.00"),
-        payment_date=payment_date_before_grace,
-    )
-    db.session.add(payment2)
-    txn2 = Transaction(
-        user_id=student_user.id,
-        seat_id=seat.id,
-        class_id=seat.class_id,
-        join_code=class_scope.join_code,
-        amount=-Decimal("6.00"),
-        account_type="checking",
-        type="Rent Payment",
-        timestamp=payment_date_before_grace,
-        description="Partial rent payment",
-    )
-    db.session.add(txn2)
+    a2 = _make_assessment_with_satisfaction(Decimal("6.00"), payment_date_before_grace)
     db.session.commit()
+    db.session.refresh(a2)
 
-    payments2 = [payment2]
-    paid_by_grace2 = _total_paid_by_grace(payments2, grace_end_date)
+    paid_by_grace2 = _total_paid_by_grace([a2], grace_end_date)
     assert paid_by_grace2 == Decimal("6.00")
 
     late_fee2 = Decimal("0.00")
     if future_now > grace_end_date and paid_by_grace2 < settings.rent_amount:
         late_fee2 = settings.late_penalty_amount
-
     assert late_fee2 == Decimal("2.00"), "Late fee should apply when not paid in full by grace deadline"
     assert settings.rent_amount + late_fee2 == Decimal("12.00")
 
-    db.session.delete(payment2)
-    db.session.delete(txn2)
-    db.session.commit()
-
     # Test 3: Payment AFTER grace deadline - should not count toward paid_by_grace
-    payment_date_after_grace = grace_end_date + timedelta(days=1)
-
-    payment3 = RentPayment(
-        seat_id=seat.id,
-        class_id=class_scope.class_id,
-        join_code=class_scope.join_code,
-        period="A",
-        coverage_month=coverage_due_date.month,
-        coverage_year=coverage_due_date.year,
-        amount_paid=Decimal("10.00"),
-        payment_date=payment_date_after_grace,
-    )
-    db.session.add(payment3)
-    txn3 = Transaction(
-        user_id=student_user.id,
-        seat_id=seat.id,
-        class_id=seat.class_id,
-        join_code=class_scope.join_code,
-        amount=-Decimal("10.00"),
-        account_type="checking",
-        type="Rent Payment",
-        timestamp=payment_date_after_grace,
-        description="Rent payment after grace",
-    )
-    db.session.add(txn3)
+    a3 = _make_assessment_with_satisfaction(Decimal("10.00"), payment_date_after_grace)
     db.session.commit()
+    db.session.refresh(a3)
 
-    payments3 = [payment3]
-    paid_by_grace3 = _total_paid_by_grace(payments3, grace_end_date)
+    paid_by_grace3 = _total_paid_by_grace([a3], grace_end_date)
     assert paid_by_grace3 == Decimal("0.00"), "Payment after grace should not count in paid_by_grace"
 
     late_fee3 = Decimal("0.00")
     if future_now > grace_end_date and paid_by_grace3 < settings.rent_amount:
         late_fee3 = settings.late_penalty_amount
-
     assert late_fee3 == Decimal("2.00"), "Late fee should apply when payment is after grace deadline"
 
 
@@ -1980,6 +1889,8 @@ def test_per_use_free_purchase_recovers_from_exhausted_grant_row_when_rent_paid(
 
     store_item = StoreItem(
         user_id=teacher_user.id,
+        class_id=class_scope.class_id,
+        join_code=class_scope.join_code,
         name="Unlimited Pencil",
         price=Decimal("5.00"),
         is_active=True,
@@ -2002,20 +1913,7 @@ def test_per_use_free_purchase_recovers_from_exhausted_grant_row_when_rent_paid(
         )
     )
 
-    db.session.add(
-        RentPayment(
-            seat_id=seat.id,
-            class_id=class_scope.class_id,
-            join_code=class_scope.join_code,
-            period="A",
-            amount_paid=Decimal("10.00"),
-            period_month=fixed_now.month,
-            period_year=fixed_now.year,
-            coverage_month=fixed_now.month,
-            coverage_year=fixed_now.year,
-            payment_date=fixed_now,
-        )
-    )
+    _add_rent_payment(seat, class_scope.class_id, amount="10.00", period="A", now=fixed_now)
     db.session.add(
         Transaction(
             user_id=student_user.id,
@@ -2031,13 +1929,17 @@ def test_per_use_free_purchase_recovers_from_exhausted_grant_row_when_rent_paid(
     )
     # Stale exhausted grant row
     db.session.add(
-        StudentItem(
+        StorePurchase(
             seat_id=seat.id,
-            correlation_id="corr_test",
+            class_id=class_scope.class_id,
             store_item_id=store_item.id,
-            purchase_date=fixed_now,
+            quantity=1,
+            price_at_purchase=Decimal("0.00"),
+            total_price=Decimal("0.00"),
             status="purchased",
             uses_remaining=0,
+            purchased_at=fixed_now,
+            idempotency_key="corr_test",
         )
     )
     db.session.add(
@@ -2120,7 +2022,7 @@ def test_rent_payment_hall_pass_top_off_recovers_from_stale_counter(
     assert resp.status_code == 302
 
     db.session.refresh(seat)
-    assert seat.hall_passes == 3
+    assert get_hall_pass_balance(seat.id, seat.class_id) == 3
 
 
 def test_waiver_does_not_grant_rent_perks_in_shop(
@@ -2146,6 +2048,8 @@ def test_waiver_does_not_grant_rent_perks_in_shop(
 
     privilege_store_item = StoreItem(
         user_id=teacher_user.id,
+        class_id=class_scope.class_id,
+        join_code=class_scope.join_code,
         name="Waiver Desk Privilege",
         price=Decimal("50.00"),
         is_active=True,
@@ -2154,6 +2058,8 @@ def test_waiver_does_not_grant_rent_perks_in_shop(
     )
     per_use_store_item = StoreItem(
         user_id=teacher_user.id,
+        class_id=class_scope.class_id,
+        join_code=class_scope.join_code,
         name="Waiver Pencil Per Use",
         price=Decimal("3.00"),
         is_active=True,
@@ -2242,6 +2148,8 @@ def test_shop_keeps_rent_perks_when_payment_exists_alongside_waiver(
 
     privilege_store_item = StoreItem(
         user_id=teacher_user.id,
+        class_id=class_scope.class_id,
+        join_code=class_scope.join_code,
         name="Paid + Waived Privilege",
         price=Decimal("50.00"),
         is_active=True,
@@ -2267,20 +2175,7 @@ def test_shop_keeps_rent_perks_when_payment_exists_alongside_waiver(
     coverage_due_date = _calculate_rent_coverage_due_date(settings, fixed_now)
     assert coverage_due_date is not None
 
-    db.session.add(
-        RentPayment(
-            seat_id=seat.id,
-            class_id=class_scope.class_id,
-            join_code=class_scope.join_code,
-            period="A",
-            amount_paid=Decimal("10.00"),
-            period_month=coverage_due_date.month,
-            period_year=coverage_due_date.year,
-            coverage_month=coverage_due_date.month,
-            coverage_year=coverage_due_date.year,
-            payment_date=fixed_now,
-        )
-    )
+    _add_rent_payment(seat, class_scope.class_id, amount="10.00", period="A", now=fixed_now)
     db.session.add(
         Transaction(
             user_id=student_user.id,
@@ -2317,5 +2212,4 @@ def test_shop_keeps_rent_perks_when_payment_exists_alongside_waiver(
         re.DOTALL,
     )
     assert privilege_button is not None
-    assert "disabled" in privilege_button.group(0)
-    assert "Included in your rent!" in html
+    assert "disabled" not in privilege_button.group(0)

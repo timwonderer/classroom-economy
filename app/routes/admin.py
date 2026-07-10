@@ -3097,14 +3097,6 @@ def login():
                 except (TypeError, ValueError):
                     totp_valid = False
                 if totp_valid:
-                    admin = Admin.query.filter_by(username_lookup_hash=user.username_lookup_hash).first()
-                    if not admin:
-                        current_app.logger.error(
-                            "Admin login failed: canonical admin user_id=%s has no matching admin record",
-                            user.id,
-                        )
-                        flash("Invalid credentials or TOTP code.", "error")
-                        return redirect(url_for("admin.login", next=request.args.get("next")))
                     session["user_id"] = user.id
                     nonce = secrets.token_urlsafe(32)
                     session["current_session_nonce"] = nonce
@@ -3112,10 +3104,7 @@ def login():
                     session["login_time"] = utc_now().isoformat()
                     session["last_activity"] = utc_now().isoformat()
                     session["admin_auth_username"] = username
-                    set_admin_display_name_cache(teacher_user_id=admin.id, display_name=admin.get_display_name())
-                    if _admin_requires_username_migration(admin):
-                        session["force_admin_username_migration"] = True
-                        return redirect(url_for("admin.username_migration"))
+                    set_admin_display_name_cache(teacher_user_id=user.id, display_name=user.get_display_username())
                     flash("Admin login successful.")
                     next_url = request.args.get("next")
                     class_options = _get_validated_teacher_class_options(user.id)
@@ -6157,7 +6146,7 @@ def _sync_rent_items_to_store(rent_settings, user_id, block):
                 # Rent items should be 'delayed' (redeemable) to allow use tracking
                 # especially for multi-use items or privileges valid for a period
                 store_item = StoreItem(
-                    teacher_id=user_id,
+                    user_id=user_id,
                     join_code=join_code,
                     class_id=class_id,
                     name=rent_item.name,
@@ -6717,8 +6706,12 @@ def rent_settings():
             period_delta = _get_rent_period_delta(block_settings)
             first_due = ensure_utc(block_settings.first_rent_due_date) if block_settings.first_rent_due_date else None
             class_students = [
-                seat for seat in seats
-                if seat.class_id == class_id and seat.is_rent_enabled
+                seat for seat in Seat.query.filter(
+                    Seat.class_id == class_id,
+                    Seat.claimed_at.isnot(None),
+                    Seat.role == 'student',
+                ).all()
+                if seat.is_rent_enabled
             ]
             class_students.sort(key=lambda seat: ((seat.identity_profile.first_name if seat.identity_profile else "").lower(), seat.id))
             class_seat_ids = [seat.id for seat in class_students]
