@@ -530,7 +530,7 @@ def create_app():
         """
         Set PostgreSQL Row-Level Security tenant context for the current request.
 
-        This sets the app.current_teacher_id session variable that RLS policies use
+        This sets the app.current_user_id session variable that RLS policies use
         to filter database queries.
         """
         # Skip for static files, health checks, and public routes
@@ -540,9 +540,9 @@ def create_app():
             return None
 
         # Set tenant context for both admin and student requests.
-        user_id = None
+        user_id = session.get("user_id")
         try:
-            from app.auth import get_current_seat, get_current_class_id, get_current_user
+            from app.auth import get_current_seat, get_current_class_id
             from app.models import ClassEconomy
 
             # Canonical path for student-scoped requests: class_id -> owning user.
@@ -552,14 +552,9 @@ def create_app():
                 class_row = ClassEconomy.query.filter_by(class_id=current_class_id).first()
                 if class_row and class_row.user_id:
                     user_id = class_row.user_id
-
-            # Canonical user currently has no teacher-role mapping here.
-            # Keep this lookup centralized in the request-context setup.
-            if user_id is None:
-                _ = get_current_user()
         except Exception:
             # Keep request resilient.
-            user_id = None
+            return None
 
         if user_id:
             try:
@@ -570,8 +565,8 @@ def create_app():
                 # This is automatically reset after each request
                 if db.engine.dialect.name != 'sqlite':
                     db.session.execute(
-                        text("SET LOCAL app.current_teacher_id = :teacher_id"),
-                        {"teacher_id": user_id}
+                        text("SET LOCAL app.current_user_id = :user_id"),
+                        {"user_id": user_id}
                     )
                     app.logger.debug(f"RLS context set for user_id={user_id}")
             except Exception as e:
@@ -726,17 +721,17 @@ def create_app():
             current_seat = current_seat_ctx
 
             # Build list of available classes with teacher names.
-            teacher_ids = sorted({row.user_id for row in class_rows_by_class_id.values() if row.user_id})
+            user_ids = sorted({row.user_id for row in class_rows_by_class_id.values() if row.user_id})
             teacher_name_cache = get_teacher_display_name_cache()
-            missing_ids = [tid for tid in teacher_ids if str(tid) not in teacher_name_cache]
+            missing_ids = [uid for uid in user_ids if str(uid) not in teacher_name_cache]
             if missing_ids:
-                cache_updates = {str(tid): "Teacher" for tid in missing_ids}
+                cache_updates = {str(uid): "Teacher" for uid in missing_ids}
                 upsert_teacher_display_name_cache(cache_updates)
                 teacher_name_cache.update(cache_updates)
 
             # Build current class context from cache.
             current_class_row = class_rows_by_class_id.get(current_seat.class_id)
-            current_owner_user_id = getattr(current_class_row, 'user_id', None)
+            current_user_id = getattr(current_class_row, 'user_id', None)
             current_class_label = (
                 current_class_row.display_name
                 if current_class_row and current_class_row.display_name
@@ -747,9 +742,9 @@ def create_app():
                 'class_id': getattr(current_class_row, 'class_id', None),
                 'class_identifier': current_class_label,
                 'class_timezone': getattr(current_class_row, 'class_timezone', None),
-                'teacher_name': teacher_name_cache.get(str(current_owner_user_id), 'Unknown') if current_owner_user_id else 'Unknown',
-                'teacher_id': current_owner_user_id,
-                'block': current_seat.block,
+                'teacher_name': teacher_name_cache.get(str(current_user_id), 'Unknown') if current_user_id else 'Unknown',
+                'user_id': current_user_id,
+                'block': current_seat.class_economy.section if current_seat.class_economy else None,
                 'block_display': current_class_label,
                 'is_current': True,
             }]
@@ -758,9 +753,9 @@ def create_app():
                 'class_id': getattr(current_class_row, 'class_id', None),
                 'class_identifier': current_class_label,
                 'class_timezone': getattr(current_class_row, 'class_timezone', None),
-                'teacher_name': teacher_name_cache.get(str(current_owner_user_id), 'Unknown') if current_owner_user_id else 'Unknown',
-                'teacher_id': current_owner_user_id,
-                'block': current_seat.block,
+                'teacher_name': teacher_name_cache.get(str(current_user_id), 'Unknown') if current_user_id else 'Unknown',
+                'user_id': current_user_id,
+                'block': current_seat.class_economy.section if current_seat.class_economy else None,
                 'block_display': current_class_label,
                 'student_full_name': current_seat.identity_profile.full_name if current_seat.identity_profile else "",
             }
@@ -819,7 +814,7 @@ def create_app():
 
             user = get_current_user()
             if user:
-                cached_name = get_admin_display_name_cache(teacher_user_id=user.id)
+                cached_name = get_admin_display_name_cache(user_id=user.id)
                 if cached_name:
                     return {'current_admin': None, 'current_admin_display_name': cached_name}
             return {'current_admin': None, 'current_admin_display_name': None}

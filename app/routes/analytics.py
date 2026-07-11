@@ -41,11 +41,11 @@ def _anchor_window_end(now_utc: datetime) -> datetime:
     anchor_start_utc, _ = day_bounds_utc(timestamp_utc=now_utc)
     return anchor_start_utc
 
-def get_teacher_class_options(teacher_id: int):
-    if not teacher_id:
+def get_teacher_class_options(user_id: int):
+    if not user_id:
         return []
 
-    classes = ClassEconomy.query.filter_by(user_id=teacher_id).order_by(ClassEconomy.display_name).all()
+    classes = ClassEconomy.query.filter_by(user_id=user_id).order_by(ClassEconomy.display_name).all()
 
     options = []
     for c in classes:
@@ -59,9 +59,9 @@ def get_teacher_class_options(teacher_id: int):
     return options
 
 
-def resolve_current_class_context(teacher_id: int):
+def resolve_current_class_context(user_id: int):
     """Resolve class context using class_id as authority; join_code is derived alias."""
-    available_classes = get_teacher_class_options(teacher_id)
+    available_classes = get_teacher_class_options(user_id)
     by_class_id = {
         (item.get('class_id') or ''): item
         for item in available_classes
@@ -82,8 +82,8 @@ def resolve_current_class_context(teacher_id: int):
     return selected, available_classes
 
 
-def get_block_for_join_code(join_code: str):
-    class_row = ClassEconomy.query.filter_by(join_code=join_code).first()
+def get_block_for_class_id(class_id: str):
+    class_row = db.session.get(ClassEconomy, class_id)
     if class_row and class_row.display_name:
         return class_row.display_name.strip().upper()
     return None
@@ -103,12 +103,7 @@ def _get_payroll_settings_for_class_id(class_id: str):
     )
 
 
-def get_pay_cycle_days(class_id: str | None = None, join_code: str | None = None) -> int:
-    if not class_id and join_code:
-        class_row = ClassEconomy.query.with_entities(ClassEconomy.class_id).filter_by(
-            join_code=join_code,
-        ).first()
-        class_id = class_row[0] if class_row and class_row[0] else None
+def get_pay_cycle_days(class_id: str | None = None) -> int:
     payroll_settings = _get_payroll_settings_for_class_id(class_id) if class_id else None
     if payroll_settings and payroll_settings.payroll_frequency_days:
         return payroll_settings.payroll_frequency_days
@@ -129,12 +124,7 @@ def _get_rent_settings_for_class_id(class_id: str):
     )
 
 
-def get_rent_cycle_days(class_id: str | None = None, join_code: str | None = None) -> int:
-    if not class_id and join_code:
-        class_row = ClassEconomy.query.with_entities(ClassEconomy.class_id).filter_by(
-            join_code=join_code,
-        ).first()
-        class_id = class_row[0] if class_row and class_row[0] else None
+def get_rent_cycle_days(class_id: str | None = None) -> int:
     rent_settings = _get_rent_settings_for_class_id(class_id) if class_id else None
     if not rent_settings:
         return 30
@@ -218,7 +208,7 @@ def dashboard():
     try:
         from app.services.context_resolver import resolve_canonical_context, ContextResolutionError
         context = resolve_canonical_context()
-        teacher_id = context.user_id
+        user_id = context.user_id
         class_id = context.class_id
         
         # Resolve the active class directly from canonical class authority.
@@ -226,7 +216,7 @@ def dashboard():
         if not class_row:
             raise ContextResolutionError("Class not found")
         join_code = class_row.join_code
-        selected_class, available_classes = resolve_current_class_context(teacher_id)
+        selected_class, available_classes = resolve_current_class_context(user_id)
         if not selected_class:
             raise ContextResolutionError("No class context available")
     except Exception as e:
@@ -511,8 +501,8 @@ def student_drill_down(student_id):
     - Must be contextualized with CWI expectations
     - Must explain why the metric matters
     """
-    teacher_id = g.canonical_context.user_id
-    selected_class, available_classes = resolve_current_class_context(teacher_id)
+    user_id = g.canonical_context.user_id
+    selected_class, available_classes = resolve_current_class_context(user_id)
     if not selected_class:
         flash('You need to set up class periods before viewing analytics.', 'warning')
         return redirect(url_for('admin.students'))

@@ -51,14 +51,14 @@ def get_all_block_statuses(student, *, class_id: str, payroll_anchor_by_class_id
         Seat.role == 'student',
         Seat.claimed_at.isnot(None),
     ).all()
-    student_blocks = [seat.block.strip() for seat in claimed_seats if seat.block]
+    student_blocks = [seat.class_economy.section.strip() for seat in claimed_seats if seat.class_economy and seat.class_economy.section]
 
     period_states = {}
     payroll_anchor_by_class_id = payroll_anchor_by_class_id or {}
 
     for block_original in student_blocks:
         blk = block_original.upper()
-        seat = next((row for row in claimed_seats if (row.block or "").strip().upper() == blk), None)
+        seat = next((row for row in claimed_seats if row.class_economy and (row.class_economy.section or "").strip().upper() == blk), None)
         if not seat:
             continue
         seat_id = seat.id

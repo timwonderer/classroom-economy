@@ -30,7 +30,6 @@ def _login_admin(client, admin: User, secret: str):
     )
     with client.session_transaction() as sess:
         sess.setdefault("is_admin", True)
-        sess.setdefault("admin_id", admin.id)
         sess["last_activity"] = datetime.now(timezone.utc).isoformat()
     return response
 

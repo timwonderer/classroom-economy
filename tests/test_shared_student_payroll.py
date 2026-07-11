@@ -27,7 +27,7 @@ def test_shared_student_diff_teacher_diff_period(client):
     student = make_student_identity(class_id=class_1.class_id, first_name="ScenarioA", last_name="S", claimed=True)
     db.session.flush()
     # Add student to class_2 manually
-    seat_2_row = Seat(user_id=student.user_id, class_id=class_2.class_id, block="P2", block_identifier="P2", role="student", claimed_at=datetime.now(timezone.utc))
+    seat_2_row = Seat(user_id=student.user_id, class_id=class_2.class_id, role="student", claimed_at=datetime.now(timezone.utc))
     db.session.add(seat_2_row)
     db.session.flush()
     db.session.add(IdentityProfile(seat_id=seat_2_row.id, profile_type='student_claimed', first_name="ScenarioA", last_name="S", class_id=class_2.class_id))
@@ -83,7 +83,7 @@ def test_same_teacher_same_block_diff_context(client):
 
     student = make_student_identity(class_id=class_1.class_id, first_name="ScenarioB", last_name="S", claimed=True)
     db.session.flush()
-    seat_2_row = Seat(user_id=student.user_id, class_id=class_2.class_id, block="P1", block_identifier="P1", role="student", claimed_at=datetime.now(timezone.utc))
+    seat_2_row = Seat(user_id=student.user_id, class_id=class_2.class_id, role="student", claimed_at=datetime.now(timezone.utc))
     db.session.add(seat_2_row)
     db.session.flush()
     db.session.add(IdentityProfile(seat_id=seat_2_row.id, profile_type='student_claimed', first_name="ScenarioB", last_name="S", class_id=class_2.class_id))
@@ -129,7 +129,7 @@ def test_balance_separation_by_join_code(client):
 
     student = make_student_identity(class_id=class_1.class_id, first_name="BalanceTest", last_name="B", claimed=True)
     db.session.flush()
-    seat_2_row = Seat(user_id=student.user_id, class_id=class_2.class_id, block="P1", block_identifier="P1", role="student", claimed_at=datetime.now(timezone.utc))
+    seat_2_row = Seat(user_id=student.user_id, class_id=class_2.class_id, role="student", claimed_at=datetime.now(timezone.utc))
     db.session.add(seat_2_row)
     db.session.flush()
     db.session.add(IdentityProfile(seat_id=seat_2_row.id, profile_type='student_claimed', first_name="BalanceTest", last_name="B", class_id=class_2.class_id))

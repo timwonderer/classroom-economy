@@ -48,7 +48,7 @@ class AdminInviteCodeView:
 
 def _tables() -> tuple[sa.Table, sa.Table, sa.Table]:
     onboarding = db.metadata.tables["teacher_onboarding"]
-    credentials = db.metadata.tables["teacher_credentials"]
+    credentials = db.metadata.tables["passkey_credentials"]
     invites = db.metadata.tables["teacher_invite_codes"]
     return onboarding, credentials, invites
 
@@ -212,7 +212,7 @@ def admin_has_passkeys(user_id: int) -> bool:
 def create_admin_credential(user_id: int, authenticator_name: str, credential_id: str | None = None) -> AdminCredentialView:
     _onboarding, credentials, _invites = _tables()
     if user_id is None:
-        raise RuntimeError("Cannot create passkey credential without canonical admin user")
+        raise RuntimeError("Cannot create passkey credential without canonical user")
     insert_stmt = (
         sa.insert(credentials)
         .values(

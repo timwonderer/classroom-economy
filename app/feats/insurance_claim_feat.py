@@ -92,7 +92,7 @@ def execute_insurance_claim_resolution(
             idempotency_key=insurance_reimbursement_key(claim.id),
             seat_id=claim.seat_id,
             class_id=scope.class_id,
-            teacher_id=processed_by_user_id,  # ledger API still uses teacher_id; DOM-LED canonicalization pending
+            user_id=processed_by_user_id,
             amount=approved_amount,
             account_type="checking",
             type="insurance_reimbursement",

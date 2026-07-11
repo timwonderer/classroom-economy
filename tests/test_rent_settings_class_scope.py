@@ -10,8 +10,7 @@ from tests.helpers.v2_fixtures import make_admin
 def _login_canonical_admin(client, admin: User, *, class_id: str, join_code: str) -> None:
     teacher_seat = Seat.query.filter_by(class_id=class_id, role="teacher").first()
     with client.session_transaction() as sess:
-        sess["is_admin"] = True
-        sess["admin_id"] = admin.id
+        sess["user_id"] = admin.id
         set_canonical_context(
             sess,
             user_id=admin.id,

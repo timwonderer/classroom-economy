@@ -30,10 +30,10 @@ def admin_user():
     return admin
 
 
-def _create_policy(admin_id):
+def _create_policy(user_id):
     policy = InsurancePolicy(
         policy_code="POLICY-001",
-        teacher_id=admin_id,
+        teacher_id=user_id,
         title="Test Coverage",
         description="",
         premium=10.0,

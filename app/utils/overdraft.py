@@ -108,15 +108,15 @@ def charge_overdraft_fee_if_needed(seat, banking_settings, *, force=False, idemp
 
         from app.models import ClassEconomy
         class_economy = ClassEconomy.query.filter_by(class_id=seat.class_id).first()
-        teacher_id = class_economy.user_id if class_economy else None
-        if not teacher_id:
+        user_id = class_economy.user_id if class_economy else None
+        if not user_id:
             return False, Decimal('0.00')
 
         overdraft_fee_tx, created = create_pending_transaction_idempotent(
             idempotency_key=idempotency_key,
             seat_id=seat.id,
             class_id=seat.class_id,
-            teacher_id=teacher_id,
+            user_id=user_id,
             amount=-fee_amount,
             account_type='checking',
             type='overdraft_fee',

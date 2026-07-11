@@ -6,10 +6,9 @@ from app.extensions import db
 from app.models import User, UserRole, ClassEconomy, IdentityProfile, Issue, IssueCategory, Seat, Transaction, TransactionStatus
 
 
-def _login_admin(client, admin_id):
+def _login_admin(client, user_id):
     with client.session_transaction() as sess:
-        sess["admin_id"] = admin_id
-        sess["is_admin"] = True
+        sess["user_id"] = user_id
         sess["last_activity"] = datetime.now(timezone.utc).isoformat()
 
 

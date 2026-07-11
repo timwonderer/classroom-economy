@@ -48,6 +48,7 @@ import pytest
 import sqlalchemy as sa
 from sqlalchemy import event, text
 from sqlalchemy.exc import IntegrityError
+from flask_migrate import upgrade
 from app import app as flask_app, db
 from flask import current_app
 from app.extensions import limiter
@@ -83,12 +84,12 @@ def _rebuild_database_state():
             conn.execute(text("SET search_path TO public"))
             conn.commit()
 
-            # Create all tables/types through the same connection.
-            db.Model.metadata.create_all(bind=conn)
-            conn.commit()
-
         # Ensure subsequent tests get fresh pooled connections.
         db.engine.dispose()
+
+        # Apply the migration chain so the test schema follows the same path
+        # as the dev database instead of being created directly from ORM metadata.
+        upgrade()
     else:
         # SQLite or other
         db.drop_all()

@@ -44,18 +44,17 @@ def _make_admin(suffix):
     return admin
 
 
-def _make_teacher_block(admin_id, block, join_code):
-    admin = db.session.get(User, admin_id)
+def _make_teacher_block(user_id, block, join_code):
+    admin = db.session.get(User, user_id)
     assert admin is not None
-    economy = ClassEconomy(join_code=join_code, user_id=admin_id)
+    economy = ClassEconomy(join_code=join_code, user_id=user_id)
     db.session.add(economy)
     db.session.flush()
     seat = Seat(
         class_id=economy.class_id,
         block=block,
-        block_identifier=block,
         role="teacher",
-        user_id=admin_id,
+        user_id=user_id,
     )
     db.session.add(seat)
     db.session.flush()
@@ -94,7 +93,6 @@ def _make_student(suffix, block="A"):
         user_id=student_user.id,
         role="student",
         block=block,
-        block_identifier=block,
         claimed_at=datetime.now(timezone.utc),
     )
     db.session.add(seat)

@@ -10,11 +10,10 @@ from app.auth import (
 )
 from app.hash_utils import get_random_salt, hash_username, hash_username_lookup
 from app.models import (
-    AdminCredential,
     ClassEconomy,
     IdentityProfile,
     Seat,
-    SystemAdminCredential,
+    PasskeyCredential,
     User,
     UserRole,
 )
@@ -129,31 +128,36 @@ def test_student_login_verifies_user_pin_and_resolves_shadow_through_claimed_sea
         display_name="Canonical",
         class_timezone="UTC",
     )
-    profile = IdentityProfile(profile_type="student", first_name="Canonical", last_name="S")
-    db.session.add_all([class_row, profile])
+    db.session.add(class_row)
     db.session.flush()
 
     username = "canonical_student"
-    student = make_student_identity(class_id=class_row.class_id, first_name="Canonical", last_name="S")
-    user = User(
+    student_user = User(
         user_role=UserRole.STUDENT,
         username_hash=hash_username_lookup(username),
         username_lookup_hash=hash_username_lookup(username),
         pin_hash=generate_password_hash("2468"),
-        has_completed_setup=True,
         last_active_class_id=class_row.class_id,
     )
-    db.session.add(user)
+    db.session.add(student_user)
     db.session.flush()
     seat = Seat(
-        user_id=user.id,
+        user_id=student_user.id,
         class_id=class_row.class_id,
         role="student",
         claimed_at=utc_now(),
     )
     db.session.add(seat)
     db.session.flush()
-    profile.seat_id = seat.id
+    profile = IdentityProfile(
+        seat_id=seat.id,
+        class_id=class_row.class_id,
+        profile_type="student",
+        first_name="Canonical",
+        last_name="S",
+    )
+    db.session.add(profile)
+    db.session.flush()
     db.session.commit()
 
     response = client.post(
@@ -164,7 +168,7 @@ def test_student_login_verifies_user_pin_and_resolves_shadow_through_claimed_sea
 
     assert response.status_code == 302
     with client.session_transaction() as auth_session:
-        assert auth_session["user_id"] == user.id
+        assert auth_session["user_id"] == student_user.id
 
 
 
@@ -180,18 +184,15 @@ def test_student_login_missing_last_active_class_shows_selector(client, monkeypa
         display_name="Selector",
         class_timezone="UTC",
     )
-    profile = IdentityProfile(profile_type="student", first_name="Select", last_name="A")
-    db.session.add_all([class_row, profile])
+    db.session.add(class_row)
     db.session.flush()
 
     username = "selector_student"
-    student = make_student_identity(class_id=class_row.class_id, first_name="Select", last_name="A")
     user = User(
         user_role=UserRole.STUDENT,
         username_hash=hash_username_lookup(username),
         username_lookup_hash=hash_username_lookup(username),
         pin_hash=generate_password_hash("2468"),
-        has_completed_setup=True,
         last_active_class_id=None,
     )
     db.session.add(user)
@@ -204,7 +205,14 @@ def test_student_login_missing_last_active_class_shows_selector(client, monkeypa
     )
     db.session.add(seat)
     db.session.flush()
-    profile.seat_id = seat.id
+    profile = IdentityProfile(
+        seat_id=seat.id,
+        class_id=class_row.class_id,
+        profile_type="student",
+        first_name="Select",
+        last_name="A",
+    )
+    db.session.add(profile)
     db.session.commit()
 
     monkeypatch.setattr(
@@ -229,18 +237,15 @@ def test_student_login_no_valid_class_seats_hard_fails(client, monkeypatch):
         display_name="HardFail",
         class_timezone="UTC",
     )
-    profile = IdentityProfile(profile_type="student", first_name="Hard", last_name="F")
-    db.session.add_all([class_row, profile])
+    db.session.add(class_row)
     db.session.flush()
 
     username = "hardfail_student"
-    student = make_student_identity(class_id=class_row.class_id, first_name="Hard", last_name="F")
     user = User(
         user_role=UserRole.STUDENT,
         username_hash=hash_username_lookup(username),
         username_lookup_hash=hash_username_lookup(username),
         pin_hash=generate_password_hash("2468"),
-        has_completed_setup=True,
         last_active_class_id=None,
     )
     db.session.add(user)
@@ -253,7 +258,14 @@ def test_student_login_no_valid_class_seats_hard_fails(client, monkeypatch):
     )
     db.session.add(seat)
     db.session.flush()
-    profile.seat_id = seat.id
+    profile = IdentityProfile(
+        seat_id=seat.id,
+        class_id=class_row.class_id,
+        profile_type="student",
+        first_name="Hard",
+        last_name="F",
+    )
+    db.session.add(profile)
     db.session.commit()
 
     monkeypatch.setattr("app.routes.student._get_identity_bound_seat_options", lambda _user_id: [])
@@ -287,8 +299,7 @@ def test_admin_passkey_register_uses_canonical_user_external_id(client, monkeypa
     db.session.commit()
 
     with client.session_transaction() as auth_session:
-        auth_session["is_admin"] = True
-        auth_session["admin_id"] = admin.id
+        auth_session["user_id"] = admin.id
         auth_session["user_id"] = user.id
         auth_session["last_activity"] = utc_now().isoformat()
         auth_session["admin_auth_username"] = "passkey_teacher"
@@ -328,7 +339,7 @@ def test_admin_passkey_finish_sets_canonical_user_session(client, monkeypatch):
     db.session.flush()
     teacher_seat = Seat(user_id=user.id, class_id=class_row.class_id, role="teacher")
     db.session.add(teacher_seat)
-    db.session.add(AdminCredential(user_id=user.id, authenticator_name="Key"))
+    db.session.add(PasskeyCredential(user_id=user.id, authenticator_name="Key"))
     db.session.commit()
 
     monkeypatch.setattr(
@@ -350,7 +361,7 @@ def test_system_admin_passkey_finish_sets_canonical_user_session(client, monkeyp
     teacher_seat = Seat(user_id=user.id, class_id=class_row.class_id, role="teacher")
     db.session.add(teacher_seat)
     user.current_session_nonce = "nonce"
-    db.session.add(SystemAdminCredential(user_id=user.id, authenticator_name="Key"))
+    db.session.add(PasskeyCredential(user_id=user.id, authenticator_name="Key"))
     db.session.commit()
 
     monkeypatch.setattr(

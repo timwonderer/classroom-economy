@@ -17,7 +17,7 @@ def enforce_daily_limits_job():
     Runs hourly to ensure limits are enforced even if students close their browser.
     """
     # Import here to avoid circular imports
-    from app.models import AttendanceSession, SeatAttendanceState, AttendanceReasonCode
+    from app.models import AttendanceSession, SeatAttendanceState, AttendanceReasonCode, Seat, ClassEconomy
     from app.feats.attendance import enforce_daily_limits as feat_enforce_daily_limits
     from app.extensions import db
 
@@ -107,10 +107,11 @@ def database_maintenance_job():
         # Subquery: active (class_id, block) pairs that exist in canonical Seat records
         active_class_blocks_subq = (
             db.session.query(
-                Seat.class_id.label("class_id"),
-                Seat.block.label("block"),
+                ClassEconomy.class_id.label("class_id"),
+                ClassEconomy.section.label("block"),
             )
-            .filter(Seat.block.isnot(None), Seat.class_id.isnot(None))
+            .filter(ClassEconomy.section.isnot(None), ClassEconomy.class_id.isnot(None))
+            .join(Seat, Seat.class_id == ClassEconomy.class_id)
             .distinct()
             .subquery()
         )

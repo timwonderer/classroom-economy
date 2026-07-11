@@ -261,19 +261,19 @@ def calculate_seconds_in_memory(events, anchor):
     return int(total_seconds)
 
 @feat_shell("FEAT-ATTN-001")
-def batch_auto_tapout_students(admin_id):
+def batch_auto_tapout_students(user_id):
     """
-    Optimized version of auto-tapout that processes all students for an admin in batch.
+    Optimized version of auto-tapout that processes all students for an owner user in batch.
     Returns the count of students tapped out.
     """
     from app.models import AttendanceReasonCode, SeatAttendanceState, PayrollSettings, Seat, ClassEconomy, IdentityProfile
     from app.extensions import db
 
-    # 1. Get all students for this admin via canonical class seats
+    # 1. Get all students for this owner user via canonical class seats
     student_ids = [
         row[0] for row in db.session.query(Seat.user_id)
         .join(ClassEconomy, ClassEconomy.class_id == Seat.class_id)
-        .filter(ClassEconomy.user_id == admin_id, Seat.user_id.isnot(None))
+        .filter(ClassEconomy.user_id == user_id, Seat.user_id.isnot(None))
         .distinct()
         .all()
     ]
@@ -281,9 +281,9 @@ def batch_auto_tapout_students(admin_id):
     if not student_ids:
         return 0
 
-    # 1b. SECURITY: Fetch only class scopes owned by this admin.
+    # 1b. SECURITY: Fetch only class scopes owned by this owner user.
     admin_class_rows = db.session.query(ClassEconomy.class_id, ClassEconomy.join_code).filter(
-        ClassEconomy.user_id == admin_id,
+        ClassEconomy.user_id == user_id,
         ClassEconomy.class_id.isnot(None),
     ).distinct().all()
     admin_class_ids = [row.class_id for row in admin_class_rows if row.class_id]
@@ -325,7 +325,7 @@ def batch_auto_tapout_students(admin_id):
     # Lookup by canonical actor scope for fast iteration
     seats_by_student_period = {}
     for seat in claimed_seats:
-        blk = (seat.block or "").strip().upper()
+        blk = (seat.class_economy.section if seat.class_economy else "").strip().upper()
         if not blk:
             continue
         seats_by_student_period.setdefault(seat.user_id, {}).setdefault(blk, []).append(seat)

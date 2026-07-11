@@ -67,7 +67,7 @@ def _build_student_detail_public_url(client, teacher_user: User, student_user: U
     nav = serializer.dumps({
         "actor_public_id": str(seat.public_id),
         "class_id": str(seat.class_id) if seat.class_id else None,
-        "admin_id": int(teacher_user.id),
+        "user_id": int(teacher_user.id),
     })
     return f"/admin/students/{seat.public_id}?nav={nav}"
 
@@ -173,7 +173,7 @@ def test_student_detail_recovers_from_stale_class_context(client):
     nav = serializer.dumps({
         "actor_public_id": str(seat_a.public_id),
         "class_id": str(class_a.class_id),
-        "admin_id": int(teacher.id),
+        "user_id": int(teacher.id),
     })
     detail_url = f"/admin/students/{seat_a.public_id}?nav={nav}"
     response = client.get(detail_url, follow_redirects=True)
@@ -317,7 +317,7 @@ def test_student_detail_public_id_is_seat_scoped_for_shared_student(client):
     forged_nav = serializer.dumps({
         "seat_public_id": str(seat_b.public_id),
         "class_id": str(seat_b.class_id),
-        "admin_id": int(teacher_a.id),
+        "user_id": int(teacher_a.id),
     })
     cross_class_response = client.get(
         f"/admin/students/{seat_b.public_id}?nav={forged_nav}",

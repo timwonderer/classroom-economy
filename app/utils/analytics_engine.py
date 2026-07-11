@@ -71,26 +71,20 @@ class AnalyticsEngine:
     - Bias toward actionable interpretation
     """
     
-    def __init__(self, class_id: str, join_code: str = None):
+    def __init__(self, class_id: str):
         """
         Initialize analytics engine for a specific class economy.
 
         Args:
             class_id: The canonical class identifier (UUID).
-                      Legacy callers may pass teacher_id here with join_code —
-                      if join_code is provided, class_id is resolved from it.
-            join_code: Deprecated — if provided, resolves class_id from join_code
         """
-        from app.models import ClassEconomy
-        if join_code is not None:
-            class_row = ClassEconomy.query.filter_by(join_code=join_code).first()
-        else:
-            class_row = db.session.get(ClassEconomy, class_id)
+        class_row = db.session.get(ClassEconomy, class_id)
         if not class_row:
-            raise ValueError(f"Invalid class lookup: class_id={class_id}, join_code={join_code}")
+            raise ValueError(f"Invalid class lookup: class_id={class_id}")
 
         self.class_id = class_row.class_id
         self.teacher_id = class_row.user_id
+        self.user_id = class_row.user_id
         self.join_code = class_row.join_code
         self.policy_mode = get_active_policy_mode_for_class(self.class_id)
         self.policy_profile = get_policy_profile(self.policy_mode)
@@ -305,10 +299,10 @@ class AnalyticsEngine:
         
         if cwi <= 0:
             logging.warning(
-                "Invalid CWI (%s) for teacher_id=%s, class_id=%s. "
+                "Invalid CWI (%s) for user_id=%s, class_id=%s. "
                 "Check PayrollSettings configuration.",
                 cwi,
-                self.teacher_id,
+                self.user_id,
                 self.class_id,
             )
             return 0.0
@@ -556,7 +550,7 @@ class AnalyticsEngine:
         
         # Create snapshot
         snapshot = AnalyticsSnapshot(
-            teacher_id=self.teacher_id,
+            teacher_id=self.user_id,
             class_id=self.class_id,
             join_code=self.join_code,
             window_type=window_type,
@@ -707,7 +701,7 @@ class AnalyticsEngine:
         avg_balance = total_balance / len(students) if students else 0.0
 
         return AnalyticsSnapshot(
-            teacher_id=self.teacher_id,
+            teacher_id=self.user_id,
             class_id=self.class_id,
             join_code=self.join_code,
             window_type=window_type,

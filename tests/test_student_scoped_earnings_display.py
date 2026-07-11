@@ -39,7 +39,7 @@ def _build_multi_class_student():
     db.session.flush()
     # Add student to class_b as well
     from app.models import IdentityProfile
-    seat_b_extra = Seat(user_id=student.user_id, class_id=class_b.class_id, block="B", block_identifier="B", role="student", claimed_at=datetime.now(timezone.utc))
+    seat_b_extra = Seat(user_id=student.user_id, class_id=class_b.class_id, role="student", claimed_at=datetime.now(timezone.utc))
     db.session.add(seat_b_extra)
     db.session.flush()
     db.session.add(IdentityProfile(seat_id=seat_b_extra.id, profile_type="student_claimed", first_name="Scope", last_name="T", class_id=class_b.class_id))

@@ -22,8 +22,8 @@ def test_user_can_hold_seats_in_multiple_classes(client):
     class_a = _create_class(teacher.id, "JOIN_A")
     class_b = _create_class(teacher.id, "JOIN_B")
 
-    db.session.add(Seat(user_id=user.id, class_id=class_a.class_id, block="A"))
-    db.session.add(Seat(user_id=user.id, class_id=class_b.class_id, block="B"))
+    db.session.add(Seat(user_id=user.id, class_id=class_a.class_id))
+    db.session.add(Seat(user_id=user.id, class_id=class_b.class_id))
     db.session.commit()
 
     seats = Seat.query.filter_by(user_id=user.id).order_by(Seat.class_id.asc()).all()
@@ -39,10 +39,10 @@ def test_user_cannot_have_duplicate_seat_for_same_class(client):
     db.session.flush()
     class_x = _create_class(teacher.id, "JOIN_X")
 
-    db.session.add(Seat(user_id=user.id, class_id=class_x.class_id, block="X"))
+    db.session.add(Seat(user_id=user.id, class_id=class_x.class_id))
     db.session.commit()
 
-    db.session.add(Seat(user_id=user.id, class_id=class_x.class_id, block="X"))
+    db.session.add(Seat(user_id=user.id, class_id=class_x.class_id))
     with pytest.raises(IntegrityError):
         db.session.commit()
     db.session.rollback()
@@ -56,8 +56,8 @@ def test_different_users_can_share_same_class(client):
     db.session.flush()
     shared_class = _create_class(teacher.id, "JOIN_SHARED")
 
-    db.session.add(Seat(user_id=user1.id, class_id=shared_class.class_id, block="A"))
-    db.session.add(Seat(user_id=user2.id, class_id=shared_class.class_id, block="A"))
+    db.session.add(Seat(user_id=user1.id, class_id=shared_class.class_id))
+    db.session.add(Seat(user_id=user2.id, class_id=shared_class.class_id))
     db.session.commit()
 
     shared = Seat.query.filter_by(class_id=shared_class.class_id).all()

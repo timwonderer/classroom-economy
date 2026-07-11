@@ -17,12 +17,12 @@ def teacher_with_classes(client):
     
     # Create two classes (blocks)
     # TODO: block_a needs class_id set from the ClassEconomy for join_code JOIN_A
-    block_a = Seat(block="BlockA", block_identifier="BlockA", role="student")
+    block_a = Seat(role="student")
     db.session.add(block_a)
     db.session.flush()
     db.session.add(IdentityProfile(seat_id=block_a.id, profile_type='student_unclaimed', first_name="P", last_name="P"))
     # TODO: block_b needs class_id set from the ClassEconomy for join_code JOIN_B
-    block_b = Seat(block="BlockB", block_identifier="BlockB", role="student")
+    block_b = Seat(role="student")
     db.session.add(block_b)
     db.session.flush()
     db.session.add(IdentityProfile(seat_id=block_b.id, profile_type='student_unclaimed', first_name="P", last_name="P"))
@@ -38,7 +38,6 @@ def test_rent_items_apply_to_all(client, teacher_with_classes):
     
     # Log in as teacher
     with client.session_transaction() as sess:
-        sess['admin_id'] = teacher_with_classes.id
         sess['is_admin'] = True
         from datetime import datetime, timezone
         sess['last_activity'] = datetime.now(timezone.utc).isoformat()

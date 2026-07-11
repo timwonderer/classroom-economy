@@ -12,7 +12,6 @@ def _login_canonical_admin(client, admin: User, *, class_id: str, join_code: str
     assert teacher_seat is not None
     with client.session_transaction() as sess:
         sess["is_admin"] = True
-        sess["admin_id"] = admin.id
         set_canonical_context(
             sess,
             user_id=admin.id,

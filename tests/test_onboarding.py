@@ -22,8 +22,7 @@ def login_admin(client, username='admin'):
 
     # Simulate login by setting session
     with client.session_transaction() as sess:
-        sess['is_admin'] = True
-        sess['admin_id'] = admin.id
+        sess['user_id'] = admin.id
         sess['user_id'] = admin.id
         sess['current_session_nonce'] = nonce
         sess['last_activity'] = datetime.now(timezone.utc).isoformat()

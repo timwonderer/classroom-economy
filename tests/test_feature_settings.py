@@ -100,13 +100,13 @@ class TestClassFeatures:
             'class_id': economy_a.class_id,
             'enabled': True,
             'feature_name': 'hall_pass',
-            'join_code': 'JOIN_A',
+            'join_code': economy_a.join_code,
         }
         assert scope_b == {
             'class_id': economy_b.class_id,
             'enabled': False,
             'feature_name': 'hall_pass',
-            'join_code': 'JOIN_B',
+            'join_code': economy_b.join_code,
         }
 
     def test_get_class_feature_settings_for_class_reads_from_class_features(self, client, test_admin):
@@ -129,20 +129,20 @@ class TestClassFeatures:
         assert resolve_feature_class_for_class('missing-class', 'hall_pass') is None
         assert get_class_feature_settings_for_class('missing-class') is None
 
-    def test_admin_feature_join_code_options_do_not_depend_on_teacher_block(self, client, test_admin):
-        """Enabled class options should come from class scope, not TeacherBlock discovery."""
+    def test_admin_feature_join_code_options_do_not_depend_on_teacher_section(self, client, test_admin):
+        """Enabled class options should come from class scope, not seat-local metadata."""
         economy_a = _create_class_scope(test_admin, block='A', join_code='JOIN_A')
         economy_b = _create_class_scope(test_admin, block='B', join_code='JOIN_B')
         db.session.add(ClassFeature(class_id=economy_a.class_id, feature_name='hall_pass'))
         Seat.query.filter_by(class_id=economy_a.class_id).delete(synchronize_session=False)
         db.session.commit()
 
-        options = get_admin_feature_join_code_options('hall_pass', admin_id=test_admin.id)
+        options = get_admin_feature_join_code_options('hall_pass', canonical_context=SimpleNamespace(user_id=test_admin.id))
 
         assert options == [{
             'join_code': economy_a.join_code,
             'class_id': economy_a.class_id,
-            'block': '',
+            'block': 'A',
             'label': economy_a.display_name,
         }]
 
@@ -154,12 +154,13 @@ class TestClassFeatures:
         db.session.commit()
 
         with app.test_request_context('/admin/insurance'):
-            session['admin_id'] = test_admin.id
-            assert is_admin_feature_enabled(
-                'insurance',
-                admin_id=test_admin.id,
-                join_code=economy.join_code,
-            ) is True
+            canonical_context = SimpleNamespace(
+                user_id=test_admin.id,
+                class_id=economy.class_id,
+                seat_id=None,
+                actor_role="teacher",
+            )
+            assert is_admin_feature_enabled(canonical_context, 'insurance') is True
 
     def test_admin_feature_gate_prefers_active_class_id(self, client, test_admin):
         """An explicit active class must not be overridden by another class's join code."""
@@ -168,15 +169,8 @@ class TestClassFeatures:
         db.session.add(ClassFeature(class_id=economy_a.class_id, feature_name='insurance'))
         db.session.commit()
 
-        teacher_seat = Seat(
-            class_id=economy_b.class_id,
-            user_id=test_admin.id,
-            role='teacher',
-            block='B',
-            block_identifier='B',
-        )
-        db.session.add(teacher_seat)
-        db.session.flush()
+        teacher_seat = Seat.query.filter_by(class_id=economy_b.class_id, role='teacher').first()
+        assert teacher_seat is not None
 
         with app.test_request_context('/admin/insurance'):
             g.canonical_context = SimpleNamespace(
@@ -193,12 +187,7 @@ class TestClassFeatures:
                 role="teacher",
                 join_code=economy_b.join_code,
             )
-            session['admin_id'] = test_admin.id
-            assert is_admin_feature_enabled(
-                'insurance',
-                admin_id=test_admin.id,
-                join_code=economy_a.join_code,
-            ) is False
+            assert is_admin_feature_enabled(g.canonical_context, 'insurance') is False
 
 
 class TestTeacherOnboarding:
@@ -407,8 +396,8 @@ class TestTeacherDeletionCascade:
             db.session.add(ClassEconomy(class_id='TEST456', join_code='TEST456', user_id=teacher_id, created_by_user_id=teacher_id, display_name='Class TEST456'))
         db.session.commit()
 
-        block1 = Seat(class_id='TEST123', block='A', block_identifier='A', role='student')
-        block2 = Seat(class_id='TEST456', block='B', block_identifier='B', role='student')
+        block1 = Seat(class_id='TEST123', role='student')
+        block2 = Seat(class_id='TEST456', role='student')
         db.session.add(block1)
         db.session.add(block2)
         db.session.commit()

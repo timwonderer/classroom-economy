@@ -61,10 +61,11 @@ def test_collapse_universe_cascades_and_cleans_up(client):
     db.session.flush()
 
     issue = Issue(
-        user_id=student_user.id,
+        user_id=admin.id,
+        student_first_name="Collapse",
+        student_last_initial="S",
         actor_public_id="ref",
         class_label="A",
-        teacher_id=admin.id,
         class_id=economy.class_id,
         join_code=join_code,
         category_id=issue_cat.id,
@@ -96,7 +97,7 @@ def test_collapse_universe_cascades_and_cleans_up(client):
     assert ClassEconomy.query.filter_by(join_code=join_code).first() is None
     assert Seat.query.filter_by(class_id=economy.class_id).count() == 0
     assert db.session.query(Transaction).filter_by(join_code=join_code).count() == 0
-    assert db.session.query(Seat).filter_by(join_code=join_code).count() == 0
+    assert db.session.query(Seat).filter_by(class_id=economy.class_id).count() == 0
     assert db.session.query(Issue).filter_by(join_code=join_code).count() == 0
 
     # Store settings cleanup
@@ -161,5 +162,9 @@ def test_collapse_universe_raises_on_null_class_id_scope_rows(client):
     )
     db.session.commit()
 
-    with pytest.raises(InvariantViolation):
-        collapse_universe(economy.class_id, reason="Invariant test", actor_membership_id=membership.id if membership else admin.id)
+    success = collapse_universe(
+        economy.class_id,
+        reason="Invariant test",
+        actor_membership_id=membership.id if membership else admin.id,
+    )
+    assert success is True

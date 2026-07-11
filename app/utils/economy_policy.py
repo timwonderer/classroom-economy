@@ -415,70 +415,35 @@ def get_transaction_tier_defaults(
     }
 
 
-def _resolve_join_code_for_block(user_id: int, block: Optional[str]) -> Optional[str]:
-    if not has_app_context() or not block:
-        return None
-
-    from app.models import ClassEconomy
-
-    row = (
-        ClassEconomy.query.with_entities(ClassEconomy.join_code)
-        .filter(
-            ClassEconomy.user_id == user_id,
-            ClassEconomy.section == block,
-            ClassEconomy.join_code.isnot(None),
-        )
-        .first()
-    )
-    return row[0] if row and row[0] else None
-
-
 def resolve_class_scope(
     user_id: int,
     *,
-    block: Optional[str] = None,
-    join_code: Optional[str] = None,
+    class_id: Optional[str] = None,
 ) -> Optional[dict[str, str]]:
     if not has_app_context() or not user_id:
         return None
 
     from app.models import ClassEconomy
 
-    normalized_block = block.strip().upper() if block else None
-    normalized_join_code = (join_code or "").strip().upper() or None
-
-    if normalized_block and not normalized_join_code:
-        normalized_join_code = _resolve_join_code_for_block(user_id, normalized_block)
-    if normalized_join_code and not normalized_block:
-        block_row = (
-            ClassEconomy.query.with_entities(ClassEconomy.section)
-            .filter(
-                ClassEconomy.user_id == user_id,
-                ClassEconomy.join_code == normalized_join_code,
-                ClassEconomy.section.isnot(None),
-            )
-            .first()
-        )
-        normalized_block = block_row[0].strip().upper() if block_row and block_row[0] else None
-
-    if not normalized_join_code or not normalized_block:
+    normalized_class_id = class_id.strip() if class_id else None
+    if not normalized_class_id:
         return None
 
     class_row = (
-        ClassEconomy.query.with_entities(ClassEconomy.class_id)
+        ClassEconomy.query.with_entities(ClassEconomy.class_id, ClassEconomy.join_code, ClassEconomy.section)
         .filter(
-            ClassEconomy.join_code == normalized_join_code,
             ClassEconomy.user_id == user_id,
+            ClassEconomy.class_id == normalized_class_id,
         )
         .first()
     )
-    if not class_row or not class_row[0]:
+    if not class_row:
         return None
 
     return {
-        "join_code": normalized_join_code,
-        "class_id": class_row[0],
-        "block": normalized_block,
+        "class_id": class_row.class_id,
+        "join_code": class_row.join_code,
+        "block": class_row.section,
     }
 
 
@@ -486,13 +451,12 @@ def resolve_feature_class(
     user_id: int,
     feature_name: str,
     *,
-    block: Optional[str] = None,
-    join_code: Optional[str] = None,
+    class_id: Optional[str] = None,
 ) -> Optional[dict[str, Any]]:
     if feature_name not in FEATURE_FLAGS:
         raise ValueError(f"Unknown feature flag: {feature_name}")
 
-    scope = resolve_class_scope(user_id, block=block, join_code=join_code)
+    scope = resolve_class_scope(user_id, class_id=class_id)
     if not scope:
         return None
 
@@ -510,15 +474,14 @@ def resolve_feature_class(
 def get_class_feature_settings(
     user_id: int,
     *,
-    block: Optional[str] = None,
-    join_code: Optional[str] = None,
+    class_id: Optional[str] = None,
 ) -> Optional[dict[str, Any]]:
     if not has_app_context():
         return None
 
     from app.models import ClassFeature
 
-    scope = resolve_class_scope(user_id, block=block, join_code=join_code)
+    scope = resolve_class_scope(user_id, class_id=class_id)
     if not scope:
         return None
     return {
@@ -549,14 +512,13 @@ def replace_enabled_class_features(class_id: str, enabled_features: set[str]) ->
 
 def get_feature_settings_row(
     user_id: int,
-    block: Optional[str] = None,
-    join_code: Optional[str] = None,
+    class_id: Optional[str] = None,
     create: bool = False,
 ):
     if not has_app_context():
         return None
 
-    scope = resolve_class_scope(user_id, block=block, join_code=join_code)
+    scope = resolve_class_scope(user_id, class_id=class_id)
     if not scope:
         return None
     return get_feature_settings_row_for_class(
@@ -592,11 +554,15 @@ def get_feature_settings_row_for_class(
     return row
 
 
-def get_active_policy_mode(user_id: int, block: Optional[str] = None, join_code: Optional[str] = None) -> str:
+def get_active_policy_mode(
+    user_id: int,
+    *,
+    class_id: Optional[str] = None,
+) -> str:
     if not has_app_context():
         return POLICY_MODE_DEFAULT
 
-    row = get_feature_settings_row(user_id, block=block, join_code=join_code, create=False)
+    row = get_feature_settings_row(user_id, class_id=class_id, create=False)
     if not row:
         return POLICY_MODE_DEFAULT
     return normalize_policy_mode(getattr(row, "economy_policy_mode", POLICY_MODE_DEFAULT))
@@ -624,11 +590,14 @@ def resolve_feature_class_for_class(
     if not has_app_context() or not class_id:
         return None
 
-    from app.models import ClassEconomy, ClassFeature
+    from app.extensions import db
+    from app.models import ClassFeature
+    from app.models import ClassEconomy
 
-    class_row = ClassEconomy.query.with_entities(ClassEconomy.join_code).filter_by(class_id=class_id).first()
+    class_row = db.session.get(ClassEconomy, class_id)
     if not class_row:
         return None
+
     enabled = feature_name in ClassFeature.enabled_names_for_class(class_id)
     return {
         "class_id": class_id,

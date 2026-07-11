@@ -20,10 +20,10 @@ from tests.helpers.admin_context import login_admin
 from tests.helpers.class_scope import create_class_scope
 
 
-def _create_policy(admin_id: int, *, title: str = "Snapshot Coverage", max_claim_amount=Decimal("75.00")):
+def _create_policy(user_id: int, *, title: str = "Snapshot Coverage", max_claim_amount=Decimal("75.00")):
     policy = InsurancePolicy(
-        policy_code=f"POL-{title[:3].upper()}-{admin_id}",
-        teacher_id=admin_id,
+        policy_code=f"POL-{title[:3].upper()}-{user_id}",
+        teacher_id=user_id,
         title=title,
         description="Base policy",
         premium=Decimal("10.00"),

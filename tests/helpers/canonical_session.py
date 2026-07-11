@@ -20,8 +20,6 @@ def set_canonical_context(
     sess["last_activity"] = datetime.now(timezone.utc).isoformat()
     if join_code is not None:
         sess["current_join_code"] = join_code
-    if role == "teacher":
-        sess["is_admin"] = True
 
     user = db.session.get(User, user_id)
     if user is not None:

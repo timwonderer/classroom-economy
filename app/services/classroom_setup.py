@@ -6,7 +6,7 @@ separate test-only fixture assembly.
 
 Canonical creation order for a class:
   1. user_id (Teacher User, pre-existing) + generated class_id (UUID) → ClassEconomy
-     join_code is a user-facing alias that resolves to class_id.
+     join_code is a user-facing alias bound at creation time; it is not a runtime authority.
      display_name / section are display metadata only, never identity anchors.
   2. Seat (seat_id generated, user_id + class_id bound, role='teacher')
   3. User.last_active_class_id = class_id, User.last_active_seat_id = seat_id
@@ -50,7 +50,7 @@ def create_teacher(username: str, *, totp_secret: str | None = None) -> User:
 # ---------------------------------------------------------------------------
 
 def create_class(
-    teacher_user_id: int,
+    user_id: int,
     *,
     join_code: str,
     display_name: str | None = None,
@@ -71,8 +71,8 @@ def create_class(
     economy = ClassEconomy(
         class_id=class_id,
         join_code=join_code,
-        user_id=teacher_user_id,
-        created_by_user_id=teacher_user_id,
+        user_id=user_id,
+        created_by_user_id=user_id,
         display_name=display_name,
         section=section,
         class_timezone=class_timezone,
@@ -81,14 +81,14 @@ def create_class(
     db.session.flush()
 
     teacher_seat = Seat(
-        user_id=teacher_user_id,
+        user_id=user_id,
         class_id=class_id,
         role="teacher",
     )
     db.session.add(teacher_seat)
     db.session.flush()
 
-    teacher = db.session.get(User, teacher_user_id)
+    teacher = db.session.get(User, user_id)
     teacher.last_active_class_id = class_id
     teacher.last_active_seat_id = teacher_seat.id
     db.session.flush()

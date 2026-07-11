@@ -83,7 +83,7 @@ def test_resolve_actor_context_admin_session(app):
     )
     db.session.add(teacher_seat)
     db.session.flush()
-    admin_id = admin.id
+    owner_user_id = admin.id
     user_id = user.id
     teacher_seat_id = teacher_seat.id
     teacher_public_id = teacher_seat.public_id

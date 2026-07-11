@@ -46,7 +46,7 @@ def execute_insurance_purchase(
     premium_tx = ledger_service.create_pending_transaction(
         seat_id=seat.id,
         class_id=class_id,
-        teacher_id=user_id,  # ledger API still uses teacher_id; DOM-LED canonicalization pending
+        user_id=user_id,
         amount=-policy.premium,
         account_type="checking",
         type="insurance_premium",
@@ -59,7 +59,7 @@ def execute_insurance_purchase(
         ledger_service.create_transfer_pair(
             seat_id=seat.id,
             class_id=class_id,
-            teacher_id=user_id,  # ledger API still uses teacher_id; DOM-LED canonicalization pending
+            user_id=user_id,
             amount=overdraft_shortfall,
             from_account="savings",
             to_account="checking",

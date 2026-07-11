@@ -43,7 +43,6 @@ def student_in_class(client, teacher_admin):
         class_id=class_economy.class_id,
         join_code='AUDIT123',
         block='A',
-        block_identifier='A',
         role="student",
         claimed_at=datetime.now(timezone.utc),
     )
@@ -70,10 +69,9 @@ def _login_student(client, student_id):
             )
 
 
-def _login_admin(client, admin_id):
+def _login_admin(client, user_id):
     with client.session_transaction() as sess:
-        sess['admin_id'] = admin_id
-        sess['is_admin'] = True
+        sess['user_id'] = user_id
         class_row = ClassEconomy.query.filter_by(join_code='AUDIT123').first()
         if class_row is not None:
             sess['current_class_id'] = class_row.class_id

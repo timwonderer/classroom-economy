@@ -56,7 +56,7 @@ def _login_admin(client, teacher_id, *, join_code=None, class_id=None):
     login_teacher(client, teacher, class_id=resolved_class_id, join_code=join_code)
 
 
-def _create_teacher_seat(admin_id, block='A', join_code='JOINPOLA', class_id=None):
+def _create_teacher_seat(user_id, block='A', join_code='JOINPOLA', class_id=None):
     identity = IdentityProfile(profile_type='student', first_name='Policy', last_name='S')
     db.session.add(identity)
     db.session.flush()
@@ -95,8 +95,6 @@ def _create_admin_with_block(block='A', join_code='JOINPOLA'):
     )
     rent_settings = RentSettings(
         class_id=economy.class_id,
-        block=block,
-        is_enabled=True,
         rent_amount=Decimal('500.00'),
         frequency_type='monthly',
     )
@@ -105,22 +103,22 @@ def _create_admin_with_block(block='A', join_code='JOINPOLA'):
     return admin, payroll_settings, rent_settings, economy
 
 
-def _create_insurance_policy(admin_id, title, premium, block='A', join_code=None):
-    join_code = join_code or f"JOIN{block}{admin_id}"
-    class_row = ClassEconomy.query.filter_by(join_code=join_code, user_id=admin_id).first()
+def _create_insurance_policy(user_id, title, premium, block='A', join_code=None):
+    join_code = join_code or f"JOIN{block}{user_id}"
+    class_row = ClassEconomy.query.filter_by(join_code=join_code, user_id=user_id).first()
     if not class_row:
         db.session.add(ClassEconomy(
             join_code=join_code,
-            user_id=admin_id,
+            user_id=user_id,
             display_name=f'Period {block}',
         ))
         db.session.flush()
-        class_row = ClassEconomy.query.filter_by(join_code=join_code, user_id=admin_id).first()
+        class_row = ClassEconomy.query.filter_by(join_code=join_code, user_id=user_id).first()
     policy = InsurancePolicy(
-        teacher_id=admin_id,
+        teacher_id=user_id,
         join_code=join_code,
         class_id=class_row.class_id if class_row else None,
-        policy_code=f"{title[:3].upper()}{admin_id}",
+        policy_code=f"{title[:3].upper()}{user_id}",
         title=title,
         premium=Decimal(str(premium)),
         charge_frequency='monthly',

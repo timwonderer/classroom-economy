@@ -79,7 +79,7 @@ def test_timezone_sync_with_student_session(client):
         class_id=class_row.class_id,
         role="student",
         block="A",
-        block_identifier="A",
+        
         claimed_at=datetime.now(timezone.utc),
     )
     db.session.add(student_seat)

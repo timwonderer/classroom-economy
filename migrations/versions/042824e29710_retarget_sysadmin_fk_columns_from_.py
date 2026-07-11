@@ -28,6 +28,15 @@ def column_exists(table_name, column_name):
     except Exception:
         return False
 
+def table_exists(table_name):
+    """Check if a table exists."""
+    conn = op.get_bind()
+    inspector = sa.inspect(conn)
+    try:
+        return table_name in inspector.get_table_names()
+    except Exception:
+        return False
+
 def foreign_key_exists(table_name, fk_name):
     """Check if a foreign key exists on a table."""
     conn = op.get_bind()
@@ -114,7 +123,7 @@ def upgrade():
             print(f"  ✅ Created FK {new_fk_name} → users.id")
 
     # 2. Drop system_admin_credentials.sysadmin_id column (user_id already exists)
-    if column_exists('system_admin_credentials', 'sysadmin_id'):
+    if table_exists('system_admin_credentials') and column_exists('system_admin_credentials', 'sysadmin_id'):
         if foreign_key_exists('system_admin_credentials', 'system_admin_credentials_sysadmin_id_fkey'):
             op.drop_constraint('system_admin_credentials_sysadmin_id_fkey',
                                'system_admin_credentials', type_='foreignkey')
@@ -123,21 +132,23 @@ def upgrade():
         print("  ✅ Dropped column system_admin_credentials.sysadmin_id")
 
     # 3. Make system_admin_credentials.user_id NOT NULL (was nullable)
-    op.alter_column('system_admin_credentials', 'user_id',
-                    existing_type=sa.Integer(),
-                    nullable=False)
-    print("  ✅ Set system_admin_credentials.user_id NOT NULL")
+    if table_exists('system_admin_credentials') and column_exists('system_admin_credentials', 'user_id'):
+        op.alter_column('system_admin_credentials', 'user_id',
+                        existing_type=sa.Integer(),
+                        nullable=False)
+        print("  ✅ Set system_admin_credentials.user_id NOT NULL")
 
 
 def downgrade():
     conn = op.get_bind()
 
     # 1. Restore system_admin_credentials.sysadmin_id
-    op.alter_column('system_admin_credentials', 'user_id',
-                    existing_type=sa.Integer(),
-                    nullable=True)
+    if table_exists('system_admin_credentials') and column_exists('system_admin_credentials', 'user_id'):
+        op.alter_column('system_admin_credentials', 'user_id',
+                        existing_type=sa.Integer(),
+                        nullable=True)
 
-    if not column_exists('system_admin_credentials', 'sysadmin_id'):
+    if table_exists('system_admin_credentials') and not column_exists('system_admin_credentials', 'sysadmin_id'):
         op.add_column('system_admin_credentials',
                       sa.Column('sysadmin_id', sa.Integer(), nullable=True))
 

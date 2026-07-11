@@ -47,8 +47,6 @@ def _assert_class_scope_integrity(class_id: str, join_code: str) -> None:
         if count:
             violations.append(f"{label}={count}")
 
-    pass
-
     if violations:
         _raise_invariant_violation(
             f"class_id NULL rows detected for class_id={class_id} join_code={join_code}: {', '.join(violations)}"
@@ -92,11 +90,11 @@ def collapse_universe(class_id: str, reason: str, actor_membership_id: Optional[
         )
 
         # 1. Identify affected seats and student-scoped rows for this class
-        teacher_id = economy.teacher_id
+        user_id = economy.user_id
         affected_seat_blocks = [
-            b for (b,) in db.session.query(Seat.block).filter(
-                Seat.class_id == class_id,
-                Seat.block.isnot(None),
+            b for (b,) in db.session.query(ClassEconomy.section).filter(
+                ClassEconomy.class_id == class_id,
+                ClassEconomy.section.isnot(None),
             ).distinct().all()
         ]
         affected_student_ids_seat = [
@@ -115,7 +113,6 @@ def collapse_universe(class_id: str, reason: str, actor_membership_id: Optional[
         AnalyticsSnapshot.query.filter_by(class_id=class_id).delete(synchronize_session=False)
         AnalyticsEvent.query.filter_by(class_id=class_id).delete(synchronize_session=False)
         Announcement.query.filter_by(class_id=class_id).delete(synchronize_session=False)
-        pass
 
         # 3. Insurance & Issue Data
         issue_ids_sel = select(Issue.id).filter_by(class_id=class_id)
@@ -172,20 +169,20 @@ def collapse_universe(class_id: str, reason: str, actor_membership_id: Optional[
                     logger.info(f"Seat erasure rule triggered for student_id={s_id}")
 
         # 8. Post-collapse: Settings cleanup
-        # If no remaining seat exists for that block name in the current teacher's other classes, delete insurance policy blocks.
+        # If no remaining seat exists for that section name in the current owner's other classes, delete insurance policy sections.
         if affected_seat_blocks:
             for block_name in affected_seat_blocks:
                 remaining = (
                     db.session.query(Seat.id)
                     .join(ClassEconomy, ClassEconomy.class_id == Seat.class_id)
                     .filter(
-                        Seat.block == block_name,
-                        ClassEconomy.user_id == teacher_id,
+                        ClassEconomy.section == block_name,
+                        ClassEconomy.user_id == user_id,
                     )
                     .count()
                 )
                 if remaining == 0:
-                    logger.info(f"Settings Cleanup Rule triggered for block={block_name}, teacher={teacher_id}")
+                    logger.info(f"Settings Cleanup Rule triggered for section={block_name}, user_id={user_id}")
                     InsurancePolicyBlock.query.filter_by(block=block_name).delete(synchronize_session=False)
 
         db.session.flush()  # FEAT-AUTHORIZED-SHELL

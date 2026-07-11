@@ -35,8 +35,7 @@ def test_set_timezone_admin(client, admin_user):
 
     # Login as admin
     with client.session_transaction() as sess:
-        sess['is_admin'] = True
-        sess['admin_id'] = admin_user.id
+        sess['user_id'] = admin_user.id
         sess['last_activity'] = datetime.now(timezone.utc).isoformat()
 
     # Test timezone sync
@@ -87,8 +86,7 @@ def test_set_timezone_invalid(client, admin_user):
 
     # Login as admin
     with client.session_transaction() as sess:
-        sess['is_admin'] = True
-        sess['admin_id'] = admin_user.id
+        sess['user_id'] = admin_user.id
         sess['last_activity'] = datetime.now(timezone.utc).isoformat()
 
     response = client.post('/api/set-timezone', json={'timezone': 'Mars/Crater'})

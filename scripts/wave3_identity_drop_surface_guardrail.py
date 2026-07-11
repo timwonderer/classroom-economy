@@ -30,7 +30,6 @@ LEGACY_IDENTITY_SYMBOLS = (
     "StudentBlock",
     "RecoveryRequest",
     "StudentRecoveryCode",
-    "AdminCredential",
     "TeacherOnboarding",
     "AdminInviteCode",
 )

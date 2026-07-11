@@ -34,7 +34,7 @@ def teacher_block(test_teacher):
         db.session.add(economy)
         db.session.flush()
 
-    block = Seat(class_id=economy.class_id, user_id=test_teacher.id, block='A', block_identifier='A', role="teacher")
+    block = Seat(class_id=economy.class_id, user_id=test_teacher.id, role="teacher")
     db.session.add(block)
     db.session.flush()
 

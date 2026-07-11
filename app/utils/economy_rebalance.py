@@ -346,7 +346,7 @@ def _get_effective_rent_settings(class_id: str | None):
     )
 
 
-def _apply_change_list(teacher_id, settings_row, changes, activation_mode, *, reference_time=None):
+def _apply_change_list(user_id, settings_row, changes, activation_mode, *, reference_time=None):
     reference_time = ensure_utc(reference_time) if reference_time else utc_now()
     applied_labels = []
     applied_changes: list[dict[str, Any]] = []
@@ -373,15 +373,15 @@ def _apply_change_list(teacher_id, settings_row, changes, activation_mode, *, re
 
     if applied_labels:
         settings_row.economy_last_rebalanced_at = reference_time
-        settings_row.economy_last_rebalanced_by = teacher_id
+        settings_row.economy_last_rebalanced_by = user_id
 
     return applied_labels, applied_changes
 
 
-def apply_rebalance_changes(teacher_id, settings_row, change_plan, activation_mode, *, reference_time=None):
+def apply_rebalance_changes(user_id, settings_row, change_plan, activation_mode, *, reference_time=None):
     reference_time = ensure_utc(reference_time) if reference_time else utc_now()
     applied_labels, applied_changes = _apply_change_list(
-        teacher_id,
+        user_id,
         settings_row,
         change_plan,
         activation_mode,
@@ -392,7 +392,7 @@ def apply_rebalance_changes(teacher_id, settings_row, change_plan, activation_mo
             settings_row,
             applied_changes,
             activation_mode=activation_mode,
-            created_by=teacher_id,
+            created_by=user_id,
             status=POLICY_TRANSITION_STATUS_APPLIED,
             reference_time=reference_time,
             applied_at=reference_time,
@@ -400,11 +400,11 @@ def apply_rebalance_changes(teacher_id, settings_row, change_plan, activation_mo
     return applied_labels
 
 
-def activate_due_rebalances(teacher_id, *, class_id=None, reference_time=None, renewal_policy_id=None):
+def activate_due_rebalances(user_id, *, class_id=None, reference_time=None, renewal_policy_id=None):
     reference_time = ensure_utc(reference_time) if reference_time else utc_now()
     class_ids_subq = (
         db.session.query(ClassEconomy.class_id)
-        .filter(ClassEconomy.user_id == teacher_id)
+        .filter(ClassEconomy.user_id == user_id)
         .subquery()
     )
     pending_rows_query = FeatureSettings.query.filter(FeatureSettings.class_id.in_(sa.select(class_ids_subq)))
@@ -445,7 +445,7 @@ def activate_due_rebalances(teacher_id, *, class_id=None, reference_time=None, r
                     continue
 
                 applied_now, applied_changes = _apply_change_list(
-                    teacher_id,
+                    user_id,
                     settings_row,
                     [change],
                     activation_mode,
@@ -486,7 +486,7 @@ def activate_due_rebalances(teacher_id, *, class_id=None, reference_time=None, r
 
 
 def queue_scheduled_policy_transitions(
-    teacher_id: int,
+    user_id: int,
     settings_row,
     scheduled_changes: list[dict[str, Any]],
     *,
@@ -498,7 +498,7 @@ def queue_scheduled_policy_transitions(
         settings_row,
         scheduled_changes,
         activation_mode=activation_mode,
-        created_by=teacher_id,
+        created_by=user_id,
         status=POLICY_TRANSITION_STATUS_PENDING,
         reference_time=reference_time,
     )

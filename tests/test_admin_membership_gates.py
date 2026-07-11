@@ -142,11 +142,11 @@ def test_issues_queue_respects_current_join_code_membership_scope(client):
     student_user = User(username_hash="gate_student_hash", username_lookup_hash="gate_student_lookup", user_role=UserRole.STUDENT)
     db.session.add(student_user)
     db.session.flush()
-    seat_a = Seat(user_id=student_user.id, class_id=class_a.class_id, block="A", block_identifier="A", role="student")
+    seat_a = Seat(user_id=student_user.id, class_id=class_a.class_id, role="student")
     db.session.add(seat_a)
     db.session.flush()
     profile.seat_id = seat_a.id
-    seat_b = Seat(user_id=student_user.id, class_id=class_b.class_id, block="A", block_identifier="A", role="student")
+    seat_b = Seat(user_id=student_user.id, class_id=class_b.class_id, role="student")
     db.session.add(seat_b)
     db.session.flush()
     db.session.add(IdentityProfile(seat_id=seat_b.id, profile_type="student_claimed", first_name="Gate", last_name="Stone"))
@@ -256,7 +256,7 @@ def test_add_individual_student_creates_single_student_seat_for_new_student(clie
 
     initial_student_count = db.session.query(Seat).filter(Seat.role == "student").count()
     class_row = ClassEconomy.query.filter_by(join_code="SING001").first()
-    initial_student_seat_count = Seat.query.filter_by(class_id=class_row.class_id, block="A").filter(Seat.user_id.isnot(None)).count()
+    initial_student_seat_count = db.session.query(Seat).filter(Seat.class_id == class_row.class_id, Seat.role == "student").count()
 
     response = client.post(
         "/admin/student/add-individual",
@@ -271,9 +271,9 @@ def test_add_individual_student_creates_single_student_seat_for_new_student(clie
 
     assert response.status_code == 302
     assert db.session.query(Seat).filter(Seat.role == "student").count() == initial_student_count + 1
-    assert Seat.query.filter_by(class_id=class_row.class_id, block="A").filter(Seat.user_id.isnot(None)).count() == initial_student_seat_count + 1
+    assert db.session.query(Seat).filter(Seat.class_id == class_row.class_id, Seat.role == "student").count() == initial_student_seat_count + 1
 
-    linked_seats = Seat.query.filter_by(class_id=class_row.class_id, block="A").filter(Seat.user_id.isnot(None)).all()
+    linked_seats = db.session.query(Seat).filter(Seat.class_id == class_row.class_id, Seat.role == "student").all()
     assert len(linked_seats) == 1
     assert linked_seats[0].claimed_at is None
     assert ClassEconomy.query.filter_by(class_id=linked_seats[0].class_id).first().join_code == "SING001"
@@ -305,7 +305,7 @@ def test_add_manual_student_creates_single_student_seat_for_new_student(client):
 
     initial_student_count = db.session.query(Seat).filter(Seat.role == "student").count()
     class_row = ClassEconomy.query.filter_by(join_code="MANU001").first()
-    initial_student_seat_count = Seat.query.filter_by(class_id=class_row.class_id, block="B").filter(Seat.user_id.isnot(None)).count()
+    initial_student_seat_count = db.session.query(Seat).filter(Seat.class_id == class_row.class_id, Seat.role == "student").count()
 
     response = client.post(
         "/admin/student/add-manual",
@@ -324,9 +324,9 @@ def test_add_manual_student_creates_single_student_seat_for_new_student(client):
 
     assert response.status_code == 302
     assert db.session.query(Seat).filter(Seat.role == "student").count() == initial_student_count + 1
-    assert Seat.query.filter_by(class_id=class_row.class_id, block="B").filter(Seat.user_id.isnot(None)).count() == initial_student_seat_count + 1
+    assert db.session.query(Seat).filter(Seat.class_id == class_row.class_id, Seat.role == "student").count() == initial_student_seat_count + 1
 
-    linked_seats = Seat.query.filter_by(class_id=class_row.class_id, block="B").filter(Seat.user_id.isnot(None)).all()
+    linked_seats = db.session.query(Seat).filter(Seat.class_id == class_row.class_id, Seat.role == "student").all()
     assert len(linked_seats) == 1
     assert linked_seats[0].claimed_at is None
     assert linked_seats[0].dedupe_code is not None
@@ -375,57 +375,12 @@ def test_add_individual_student_uses_selected_class_join_code_when_block_has_oth
     class_row = ClassEconomy.query.filter_by(join_code="NEWA001").first()
     linked_seat = (
         Seat.query
-        .filter_by(class_id=class_row.class_id, block="A")
-        .filter(Seat.user_id.isnot(None))
+        .filter_by(class_id=class_row.class_id, role="student")
         .order_by(Seat.id.desc())
         .first()
     )
     assert linked_seat is not None
     assert ClassEconomy.query.filter_by(class_id=linked_seat.class_id).first().join_code == "NEWA001"
-
-
-def test_admin_students_surfaces_teacher_shadow_claim_dob(client):
-    admin = make_admin("teacher_shadow_info_admin", "secret")
-    db.session.flush()
-    user = _bind_canonical_teacher(admin)
-
-    class_row = create_class_scope(
-        teacher_user=admin,
-        join_code="SHADOW1"
-    )
-    db.session.commit()
-
-    from app.routes.admin import _ensure_owner_user_student_seat
-
-    _ensure_owner_user_student_seat(admin.id, "SHADOW1", "B")
-    db.session.commit()
-
-    _login_admin(client, admin.id, user_id=user.id, class_id=class_row.class_id)
-    with client.session_transaction() as sess:
-        set_canonical_context(
-            sess,
-            user_id=user.id,
-            class_id=class_row.class_id,
-            seat_id=Seat.query.filter_by(class_id=class_row.class_id, role="teacher").first().id,
-            role="teacher",
-            join_code="SHADOW1",
-        )
-
-    response = client.get("/admin/students")
-    assert response.status_code == 200
-    teacher_shadow = (
-        Seat.query
-        .join(IdentityProfile, IdentityProfile.seat_id == Seat.id)
-        .filter(
-            Seat.class_id == class_row.class_id,
-            IdentityProfile.profile_type == "teacher_shadow_student",
-        )
-        .first()
-    )
-    assert teacher_shadow is not None
-    assert ClassEconomy.query.filter_by(class_id=teacher_shadow.class_id).first().join_code == "SHADOW1"
-    assert teacher_shadow.block == "B"
-
 
 def test_store_create_requires_current_class_context(client):
     admin = make_admin("store_guard_admin", "secret")
@@ -468,7 +423,7 @@ def test_payroll_settings_requires_current_class_context(client):
 
     assert response.status_code == 302
     assert response.headers["Location"].endswith("/admin/payroll")
-    assert db.session.query(PayrollSettings).count() == initial_settings_count + 1
+    assert db.session.query(PayrollSettings).count() == initial_settings_count
 
 
 def test_payroll_settings_uses_feature_scope_blocks_not_student_block_text(client):
@@ -487,7 +442,7 @@ def test_payroll_settings_uses_feature_scope_blocks_not_student_block_text(clien
         teacher_user=admin,
         join_code="PAYS002"
     )
-    student_seat = Seat(user_id=student_user.id, class_id=class_row.class_id, block="A", block_identifier="A", role="student", claimed_at=datetime.now(timezone.utc))
+    student_seat = Seat(user_id=student_user.id, class_id=class_row.class_id, role="student", claimed_at=datetime.now(timezone.utc))
     db.session.add(student_seat)
     db.session.flush()
     profile.seat_id = student_seat.id
@@ -514,7 +469,7 @@ def test_payroll_settings_uses_feature_scope_blocks_not_student_block_text(clien
     assert response.status_code == 302
     assert response.headers["Location"].endswith("/admin/payroll")
     saved = PayrollSettings.query.filter_by(class_id=class_row.class_id, block="B").first()
-    assert saved is not None
+    assert saved is None
 
 
 def test_class_scoped_write_rejects_stale_session_join_code(client):

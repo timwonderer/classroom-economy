@@ -32,7 +32,6 @@ def _setup_scoped_student(with_seat: bool = True):
                 class_id=cls.class_id,
                 join_code=cls.join_code,
                 role="student",
-                block_identifier="A",
                 block="A",
             )
             db.session.add(seat)

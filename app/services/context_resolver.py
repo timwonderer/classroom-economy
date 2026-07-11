@@ -46,7 +46,7 @@ class CanonicalContext:
     actor_role: str
 
     def __getattr__(self, name):
-        forbidden_attrs = {"join_code", "teacher_id", "block", "section", "student_id", "admin_id"}
+        forbidden_attrs = {"join_code", "teacher_id", "block", "section", "student_id"}
         if name in forbidden_attrs:
             raise AttributeError(f"Strict context invariant violation: cannot access {name}")
         raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
@@ -62,7 +62,7 @@ class BoundaryContext:
             raise AttributeError(
                 "BoundaryContext has no class scope — resolve class selection first"
             )
-        forbidden = {"join_code", "teacher_id", "block", "section", "student_id", "admin_id"}
+        forbidden = {"join_code", "teacher_id", "block", "section", "student_id"}
         if name in forbidden:
             raise AttributeError(f"Strict context invariant violation: cannot access {name}")
         raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")

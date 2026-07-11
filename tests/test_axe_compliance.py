@@ -271,7 +271,6 @@ def teacher_page(app, client, axe_live_server, browser, axe_script):
     # Set session on test client
     with client.session_transaction() as sess:
         sess["is_admin"] = True
-        sess["admin_id"] = user_id
         sess["user_id"] = user_id
         sess["current_join_code"] = join_code
         sess["current_class_id"] = str(class_id)
@@ -323,7 +322,6 @@ def student_page(app, client, axe_live_server, browser, axe_script):
             user_id=user.id,
             class_id=class_row.class_id,
             block="A",
-            block_identifier="A",
             role="student",
             claimed_at=datetime.now(timezone.utc),
         )

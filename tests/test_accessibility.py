@@ -294,7 +294,6 @@ def auth_teacher_context(app, client):
             role="teacher",
             join_code=join_code,
         )
-        sess['admin_id'] = teacher_id
         sess['is_system_admin'] = False
 
     return {

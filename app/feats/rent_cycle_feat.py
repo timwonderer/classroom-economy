@@ -39,15 +39,15 @@ def execute_scheduled_rent_charge(
     cycle_end = cycle_start + timedelta(days=cycle_length_days)
     cycle_start_class = to_class_time(cycle_start, class_id)
 
-    owner_user_id = seat.class_economy.user_id if getattr(seat, "class_economy", None) else None
+    user_id = seat.class_economy.user_id if getattr(seat, "class_economy", None) else None
     amount = Decimal(str(active_version.rent_amount or Decimal("0.00")))
-    period = (seat.block_identifier or seat.block or "A").strip().upper()
+    period = (seat.class_economy.section if getattr(seat, "class_economy", None) else "A").strip().upper()
 
     transaction, _created = ledger_service.create_pending_transaction_idempotent(
         idempotency_key=idempotency_key,
         seat_id=seat.id,
         class_id=class_id,
-        teacher_id=owner_user_id,  # ledger API still uses teacher_id; DOM-LED canonicalization pending
+        user_id=user_id,
         amount=-amount,
         account_type="checking",
         type="Rent Payment",

@@ -148,7 +148,7 @@ def calculate_payroll_breakdown(class_id, seat_ids, last_payroll_time):
 
     # --- 3. In-Memory Calculation ---
     for seat in seats:
-        block_upper = (seat.block or "").upper()
+        block_upper = (seat.class_economy.section if seat.class_economy else "").upper()
         
         rate_per_second = pay_rates.get(
             (class_id, block_upper),

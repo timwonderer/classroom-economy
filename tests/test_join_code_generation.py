@@ -24,8 +24,6 @@ def _create_admin(username: str) -> tuple[str]:
 def _login_admin(client, admin: User):
     """Helper to log in an admin via session."""
     with client.session_transaction() as sess:
-        sess['is_admin'] = True
-        sess['admin_id'] = admin.id
         sess['user_id'] = admin.id
         sess['last_activity'] = datetime.now(timezone.utc).isoformat()
 

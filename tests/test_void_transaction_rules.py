@@ -8,13 +8,10 @@ from app.extensions import db
 from app.models import Seat, IdentityProfile, User, UserRole, InsurancePolicy, RentPayment, StoreItem, InsuranceEnrollment, StorePurchase, Transaction, ClassEconomy
 
 
-def _login_admin(client, admin_id):
+def _login_admin(client, user_id):
     with client.session_transaction() as sess:
-        sess['user_id'] = admin_id
+        sess['user_id'] = user_id
         sess['current_session_nonce'] = 'testnonce'
-    with client.session_transaction() as sess:
-        sess['admin_id'] = admin_id
-        sess['is_admin'] = True
 
 
 def _login_student(client, student_user, join_code):

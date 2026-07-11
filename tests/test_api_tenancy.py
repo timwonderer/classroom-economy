@@ -56,7 +56,7 @@ def _create_student(first_name: str, primary_teacher: User = None, linked_teache
         user_id=student_user.id,
         role="student",
         block="A",
-        block_identifier="A",
+        
         claimed_at=datetime.now(timezone.utc),
     )
     db.session.add(seat)
@@ -80,8 +80,7 @@ def _login_admin(client, admin: User, secret: str, join_code: str = None):
         )
         resolved_join_code = class_row.join_code if class_row else None
     with client.session_transaction() as sess:
-        sess["is_admin"] = True
-        sess["admin_id"] = admin.id
+        sess["user_id"] = admin.id
         sess["current_session_nonce"] = admin.current_session_nonce
         if resolved_join_code:
             class_row = ClassEconomy.query.filter_by(join_code=resolved_join_code, user_id=teacher_user_id).first()
@@ -145,7 +144,7 @@ def _get_or_create_student_seat(student: Seat, class_id: str, join_code: str):
         user_id=user.id,
         class_id=class_id,
         role="student",
-        block_identifier="A",
+        
         block="A",
         claimed_at=datetime.now(timezone.utc),
     )
@@ -523,7 +522,7 @@ def test_student_seat_context_rejects_unclaimed_seat(client):
         user_id=unclaimed_user.id,
         class_id=class_row.class_id,
         role="student",
-        block_identifier="A",
+        
         block="A",
         claimed_at=None,
     )

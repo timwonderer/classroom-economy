@@ -58,7 +58,6 @@ def test_teacher_navigation_integrity(client, integrity_tester):
             seat_id=_tb_seat.id,
             role="teacher",
         )
-        sess['admin_id'] = admin.id
 
     # Begin traversal
     integrity_tester.traverse("/admin/")

@@ -52,7 +52,7 @@ def execute_admin_adjustments(*, adjustments: list[dict], banking_settings=None)
         ledger_service.create_pending_transaction(
             seat_id=seat.id,
             class_id=class_id,
-            teacher_id=user_id,
+            user_id=user_id,
             amount=amount,
             account_type=account_type,
             type=adjustment["type"],
@@ -64,7 +64,7 @@ def execute_admin_adjustments(*, adjustments: list[dict], banking_settings=None)
             ledger_service.create_transfer_pair(
                 seat_id=seat.id,
                 class_id=class_id,
-                teacher_id=user_id,
+                user_id=user_id,
                 amount=shortfall,
                 from_account="savings",
                 to_account="checking",

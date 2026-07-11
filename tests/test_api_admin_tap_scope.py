@@ -50,7 +50,6 @@ def _setup_shared_student_with_split_membership():
         user_id=student_user.id,
         class_id=class_b.class_id,
         role="student",
-        block_identifier="A",
         block="A",
         claimed_at=datetime.now(timezone.utc),
     )

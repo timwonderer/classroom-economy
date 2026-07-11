@@ -44,7 +44,7 @@ class TapGuardResult:
 
 @dataclass
 class HallPassRequestGuardResult(TapGuardResult):
-    teacher_id: int | None = None
+    user_id: int | None = None
     should_require_pass: bool = False
 
 
@@ -413,8 +413,8 @@ def checkin_hall_pass(*, student, log_entry: HallPassLog, now_utc=None) -> HallP
 
 def _check_simultaneous_pass_limit(*, log_entry: HallPassLog):
     economy = ClassEconomy.query.filter_by(class_id=log_entry.class_id).first()
-    teacher_id = economy.user_id if economy else None
-    if not teacher_id:
+    user_id = economy.user_id if economy else None
+    if not user_id:
         return None
 
     settings = _get_or_create_hall_pass_settings(class_id=log_entry.class_id)
@@ -506,7 +506,7 @@ def check_hall_pass_request_policy(
             message="Unable to resolve class context.",
             status_code=400,
         )
-    teacher_id = economy.user_id
+    user_id = economy.user_id
 
     feature_scope = resolve_feature_class_for_class(class_id, "hall_pass")
     if feature_scope and not feature_scope["enabled"]:
@@ -514,7 +514,7 @@ def check_hall_pass_request_policy(
             allowed=False,
             message="Hall pass is currently disabled for this class.",
             status_code=403,
-            teacher_id=teacher_id,
+            user_id=user_id,
         )
 
     settings = _get_or_create_hall_pass_settings(class_id=class_id)
@@ -523,7 +523,7 @@ def check_hall_pass_request_policy(
             allowed=False,
             message="Hall pass settings are not available for this class.",
             status_code=400,
-            teacher_id=teacher_id,
+            user_id=user_id,
         )
 
     pass_types = settings.get_pass_types()
@@ -540,7 +540,7 @@ def check_hall_pass_request_policy(
                 allowed=False,
                 message="Queue system is currently disabled.",
                 status_code=403,
-                teacher_id=teacher_id,
+                user_id=user_id,
             )
 
     if pass_type_config and pass_type_config.get("queue_limit") is not None:
@@ -565,13 +565,13 @@ def check_hall_pass_request_policy(
                 allowed=False,
                 message=f"{reason} queue is full ({total_in_queue}/{queue_limit}). Please wait for someone to return.",
                 status_code=403,
-                teacher_id=teacher_id,
+                user_id=user_id,
             )
 
     should_require_pass = reason.lower() not in HALL_PASS_FREE_REASONS
     return HallPassRequestGuardResult(
         allowed=True,
-        teacher_id=teacher_id,
+        user_id=user_id,
         should_require_pass=should_require_pass,
     )
 
@@ -749,7 +749,7 @@ def admin_tap_in(
 
 def update_hall_pass_queue_settings(
     *,
-    teacher_id: int,
+    user_id: int,
     class_id: str,
     queue_enabled=None,
     queue_limit=None,
@@ -779,7 +779,7 @@ def update_hall_pass_queue_settings(
 
 def save_hall_pass_setup_config(
     *,
-    teacher_id: int,
+    user_id: int,
     class_id: str,
     hall_pass_enabled: bool,
     pass_types: list[dict],
@@ -797,12 +797,12 @@ def save_hall_pass_setup_config(
     return settings
 
 
-def rotate_teacher_hall_pass_verify_token(*, teacher_id: int) -> str:
+def rotate_teacher_hall_pass_verify_token(*, user_id: int) -> str:
     """Rotate and persist a teacher hall-pass verification token on canonical User."""
     from app.models import User
-    teacher_user = db.session.get(User, teacher_id)
+    teacher_user = db.session.get(User, user_id)
     if not teacher_user:
-        raise LookupError("Teacher not found.")
+        raise LookupError("User not found.")
 
     teacher_user.hall_pass_verify_token = User.generate_verify_token()
     db.session.flush()

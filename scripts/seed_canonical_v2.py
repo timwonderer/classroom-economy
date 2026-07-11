@@ -121,7 +121,6 @@ def seed():
             economy = ClassEconomy(
                 class_id=str(uuid.uuid4()),
                 join_code="GOLDEN-V2",
-                join_code_token="GOLDEN-V2",
                 display_name="Canonical V2 Simulation",
                 section="Period 1",
                 user_id=user_happy_teacher.id,

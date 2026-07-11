@@ -171,7 +171,7 @@ def hard_delete_student_if_orphaned(student_id):
     return True
 
 
-def remove_student_from_teacher_scope(seat_id, teacher_id):
+def remove_student_from_teacher_scope(seat_id, user_id):
     """
     Remove a student's seat from a specific teacher's roster and hard-delete if orphaned.
     """
@@ -182,7 +182,7 @@ def remove_student_from_teacher_scope(seat_id, teacher_id):
         return False
 
     student_user_id = seat.user_id
-    teacher_class_ids = db.session.query(ClassEconomy.class_id).filter_by(user_id=teacher_id).subquery()
+    teacher_class_ids = db.session.query(ClassEconomy.class_id).filter_by(user_id=user_id).subquery()
     Seat.query.filter(
         Seat.id == seat_id,
         Seat.class_id.in_(teacher_class_ids),

@@ -20,7 +20,6 @@ def _make_student() -> Seat:
     seat = Seat(
         user_id=student_user.id,
         block="A",
-        block_identifier="A",
         role="student",
         claimed_at=utc_now() - timedelta(days=45),
         has_received_rent_exemption=True,

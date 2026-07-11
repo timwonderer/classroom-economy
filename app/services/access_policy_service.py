@@ -39,9 +39,11 @@ def assert_can_purchase_item(*, scope: Scope, user_id: int, class_id: str) -> No
 
 def assert_can_pay_rent(*, seat_id: int, class_id: str, user_id: int) -> None:
     """Pure access decision for student rent-payment workflows inside a class scope."""
-    # Note: If this is called from student.py, the seat_id and class_id come from session context.
-    # We trust the session context if it was resolved correctly by scope_factory.
-    pass
+    if not seat_id or not class_id or not user_id:
+        raise AccessPolicyDenied(
+            reason_code="invalid_context",
+            message="Rent payment requires canonical seat, class, and user context.",
+        )
 
 
 def assert_can_process_claim(*, scope: Scope, enrollment, claim) -> None:

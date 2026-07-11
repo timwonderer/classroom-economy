@@ -143,7 +143,7 @@ def _seed_redemption_scenario(*, username: str, join_code: str, item_price: Deci
         # Snapshot all IDs BEFORE commit; SQLAlchemy expires attributes on commit
         # and we don't want to re-read them through a closed transaction.
         snapshot = {
-            "admin_id": admin.id,
+            "owner_user_id": admin.id,
             "user_id": user.id,
             "student_id": student.id,
             "class_id": economy.class_id,
@@ -157,9 +157,8 @@ def _seed_redemption_scenario(*, username: str, join_code: str, item_price: Deci
         return snapshot
 
 
-def _login_canonical_admin(client, *, admin_id: int, user_id: int):
+def _login_canonical_admin(client, *, user_id: int):
     with client.session_transaction() as sess:
-        sess["admin_id"] = admin_id
         sess["user_id"] = user_id
         sess["is_admin"] = True
         sess["last_activity"] = datetime.now(timezone.utc).isoformat()
@@ -178,7 +177,7 @@ def test_approve_redemption_succeeds_under_feat_enforcement(client):
         join_code="ENF001",
         item_price=Decimal("10.00"),
     )
-    _login_canonical_admin(client, admin_id=ids["admin_id"], user_id=ids["user_id"])
+    _login_canonical_admin(client, user_id=ids["owner_user_id"])
 
     resp = client.post(
         "/api/approve-redemption",
@@ -194,7 +193,7 @@ def test_approve_redemption_succeeds_under_feat_enforcement(client):
         action=RedemptionAuditAction.APPROVED,
     ).all()
     assert len(audit_rows) == 1
-    assert audit_rows[0].teacher_id == ids["admin_id"]
+    assert audit_rows[0].teacher_id == ids["owner_user_id"]
     assert audit_rows[0].class_id == ids["class_id"]
 
     # Item state advanced
@@ -217,7 +216,7 @@ def test_reject_redemption_succeeds_and_creates_refund_under_enforcement(client)
         join_code="ENF002",
         item_price=Decimal("15.00"),
     )
-    _login_canonical_admin(client, admin_id=ids["admin_id"], user_id=ids["user_id"])
+    _login_canonical_admin(client, user_id=ids["owner_user_id"])
 
     resp = client.post(
         "/api/reject-redemption",
@@ -272,7 +271,7 @@ def test_approve_rejects_non_processing_item_with_409(client):
         si.status = "completed"
         db.session.commit()
 
-    _login_canonical_admin(client, admin_id=ids["admin_id"], user_id=ids["user_id"])
+    _login_canonical_admin(client, user_id=ids["owner_user_id"])
     resp = client.post(
         "/api/approve-redemption",
         json={"student_item_id": ids["student_item_id"]},
@@ -292,7 +291,7 @@ def test_approve_redemption_missing_student_item_id_returns_400(client):
         join_code="ENF004",
         item_price=Decimal("1.00"),
     )
-    _login_canonical_admin(client, admin_id=ids["admin_id"], user_id=ids["user_id"])
+    _login_canonical_admin(client, user_id=ids["owner_user_id"])
 
     resp = client.post("/api/approve-redemption", json={})
     assert resp.status_code == 400
@@ -328,7 +327,7 @@ def test_approve_redemption_rejects_intruder_admin_with_403(client):
         intruder_user_id = intruder_user.id
         db.session.commit()
 
-    _login_canonical_admin(client, admin_id=intruder_admin_id, user_id=intruder_user_id)
+    _login_canonical_admin(client, user_id=intruder_user_id)
 
     resp = client.post(
         "/api/approve-redemption",

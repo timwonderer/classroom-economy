@@ -72,7 +72,7 @@ def _create_student(teacher, first_name, join_code, block='A'):
         user_id=student_user.id,
         class_id=class_row.class_id,
         block=block,
-        block_identifier=block,
+        
         role="student",
         claimed_at=datetime.now(timezone.utc),
     )

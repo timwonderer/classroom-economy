@@ -7,7 +7,7 @@ reference without changing runtime behavior.
 import uuid
 
 import sqlalchemy as sa
-from sqlalchemy.orm import declarative_base
+from sqlalchemy.orm import declarative_base, synonym
 
 Base = declarative_base()
 
@@ -76,8 +76,8 @@ class Seat(Base, TimestampMixin):
 class Class_(Base, TimestampMixin):
     __tablename__ = "classes"
     class_id = sa.Column(sa.String(36), primary_key=True)
-    join_code_token = sa.Column(sa.String(20), unique=True, nullable=True, index=True)
     section = sa.Column(sa.String(50), nullable=True)
+    block = synonym("section")
     display_name = sa.Column(sa.String(100), nullable=True)
 
 

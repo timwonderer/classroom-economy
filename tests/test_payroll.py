@@ -76,9 +76,9 @@ def test_calculate_payroll(client):
     assert payroll_summary[seat.id] == expected_payroll
 
     # Test case with no attendance
-    # NOTE: student2 intentionally has no StudentTeacher link and no TeacherBlock
-    # to verify proper skipping behavior in calculate_payroll. Students without
-    # these associations should be skipped during payroll processing.
+    # NOTE: student2 intentionally has no canonical class seat in the second
+    # class so we can verify proper skipping behavior in calculate_payroll.
+    # Students without a resolved class seat should be skipped.
     # student2 has no attendance - payroll for empty seat_ids returns empty
     # (no student2 needed)
 
@@ -118,7 +118,7 @@ def test_calculate_payroll_ignores_other_class_manual_payment_anchor(client):
     db.session.flush()
     # Manually add seat for class_b
     from app.models import IdentityProfile as _IP
-    seat_b_row = Seat(user_id=student.user_id, class_id=class_b.class_id, block="B", block_identifier="B", role="student", claimed_at=datetime.now(timezone.utc))
+    seat_b_row = Seat(user_id=student.user_id, class_id=class_b.class_id, role="student", claimed_at=datetime.now(timezone.utc))
     db.session.add(seat_b_row)
     db.session.flush()
     db.session.add(_IP(seat_id=seat_b_row.id, profile_type='student_claimed', first_name="Multi", last_name="S", class_id=class_b.class_id))

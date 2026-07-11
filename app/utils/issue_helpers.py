@@ -109,7 +109,7 @@ def create_context_snapshot(actor, class_id, related_transaction_id=None, relate
 
 
 @feat_shell("FEAT-SUP-001")
-def create_issue(actor, teacher_id, class_id, category_id, explanation, expected_outcome=None,
+def create_issue(actor, user_id, class_id, category_id, explanation, expected_outcome=None,
                  related_transaction_id=None, related_record_type=None, related_record_id=None,
                  include_recent_error=True):
     """
@@ -117,7 +117,7 @@ def create_issue(actor, teacher_id, class_id, category_id, explanation, expected
 
     Args:
         actor: Seat or legacy student-like instance with an identity_profile->seat path
-        teacher_id: Teacher's admin ID
+        user_id: Canonical owner user ID
         class_id: Canonical class ID (UUID)
         category_id: IssueCategory ID
         explanation: Student's explanation of the issue
@@ -159,7 +159,7 @@ def create_issue(actor, teacher_id, class_id, category_id, explanation, expected
     issue = Issue(
         seat_id=canonical_seat.id,
         actor_public_id=actor_public_id,
-        teacher_id=teacher_id,
+        teacher_id=user_id,
         class_id=class_id,
         join_code=join_code,
         class_label=class_label,

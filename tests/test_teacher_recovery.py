@@ -80,7 +80,6 @@ def test_setup_recovery_flow(client, app):
     # Login as teacher
     with client.session_transaction() as sess:
         sess['is_admin'] = True
-        sess['admin_id'] = teacher.id
         sess['user_id'] = teacher._canonical_user_id_for_test
         sess['last_activity'] = datetime.now(timezone.utc).isoformat()
 

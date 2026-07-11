@@ -31,7 +31,6 @@ def make_sysadmin(username: str, totp_secret: str | None = None) -> User:
         user_role=UserRole.SYSADMIN,
         username_hash=u_hash,
         username_lookup_hash=u_lookup,
-        has_completed_setup=True,
         totp_secret_encrypted=normalize_totp_for_storage(totp_secret) if totp_secret else None,
     )
     db.session.add(sysadmin)

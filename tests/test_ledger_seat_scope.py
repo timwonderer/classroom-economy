@@ -16,7 +16,7 @@ def _student(first_name: str = "Seat", last_initial: str = "S", block: str = "A"
     )
     db.session.add(user)
     db.session.flush()
-    seat = Seat(user_id=user.id, block=block, block_identifier=block, role="student")
+    seat = Seat(user_id=user.id, role="student")
     db.session.add(seat)
     db.session.flush()
     db.session.add(IdentityProfile(seat_id=seat.id, profile_type="student", first_name=first_name, last_name=last_initial))

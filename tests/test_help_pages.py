@@ -11,8 +11,7 @@ def test_admin_help_page(client):
 
     # Login as admin with all required session keys
     with client.session_transaction() as sess:
-        sess["admin_id"] = admin.id
-        sess["is_admin"] = True
+        sess["user_id"] = admin.id
         sess["is_system_admin"] = False
         sess["last_activity"] = datetime.now(timezone.utc).isoformat()
 

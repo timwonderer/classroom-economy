@@ -1,7 +1,7 @@
 """
 System Admin routes for Classroom Token Hub.
 
-High-level system administration including teacher management, invite codes,
+High-level system administration including admin management, invite codes,
 system logs, error monitoring, and debug/testing tools.
 """
 
@@ -27,7 +27,7 @@ import pyotp
 from app.extensions import db, limiter
 from app.feats.base import feat_shell
 from app.models import (
-    Seat, SystemAdmin, SystemAdminCredential, Admin, ErrorLog,
+    Seat, SystemAdmin, Admin, ErrorLog, PasskeyCredential,
     Transaction, TransactionStatus, TapEvent, HallPassLog, RentPayment,
     InsuranceClaim, UserReport,
     FeatureSettings, RentSettings, BankingSettings,
@@ -70,30 +70,30 @@ from app.services.recovery_service import delete_recovery_rows_for_user
 sysadmin_bp = Blueprint('sysadmin', __name__, url_prefix='/sysadmin')
 
 # Constants
-INACTIVITY_THRESHOLD_DAYS = 180  # Number of days of inactivity before highlighting inactive teachers
+INACTIVITY_THRESHOLD_DAYS = 180  # Number of days of inactivity before highlighting inactive admins
 
 
-def _resolve_teacher_user(admin: Admin) -> User | None:
+def _resolve_admin_user(admin: Admin) -> User | None:
     """Resolve the canonical admin user."""
     if not admin or not admin.username_lookup_hash:
         return None
     return User.query.filter_by(username_lookup_hash=admin.username_lookup_hash).first()
 
 
-def _teacher_student_counts(teacher_user_ids: list[int]) -> tuple[dict[int, int], dict[int, dict[str, int]]]:
-    """Aggregate claimed student seats per teacher user."""
-    if not teacher_user_ids:
+def _user_student_counts(user_ids: list[int]) -> tuple[dict[int, int], dict[int, dict[str, int]]]:
+    """Aggregate claimed student seats per admin user."""
+    if not user_ids:
         return {}, {}
 
-    teacher_students = (
+    user_students = (
         db.session.query(
-            ClassEconomy.user_id.label("teacher_user_id"),
+            ClassEconomy.user_id.label("user_id"),
             Seat.id.label("seat_id"),
-            Seat.block.label("block"),
+            ClassEconomy.section.label("block"),
         )
         .join(Seat, Seat.class_id == ClassEconomy.class_id)
         .filter(
-            ClassEconomy.user_id.in_(teacher_user_ids),
+            ClassEconomy.user_id.in_(user_ids),
             Seat.role == "student",
             Seat.user_id.isnot(None),
             Seat.claimed_at.isnot(None),
@@ -103,26 +103,26 @@ def _teacher_student_counts(teacher_user_ids: list[int]) -> tuple[dict[int, int]
 
     count_rows = (
         db.session.query(
-            teacher_students.c.teacher_user_id,
-            db.func.count(teacher_students.c.seat_id).label("count"),
+            user_students.c.user_id,
+            db.func.count(user_students.c.seat_id).label("count"),
         )
-        .group_by(teacher_students.c.teacher_user_id)
+        .group_by(user_students.c.user_id)
         .all()
     )
-    total_counts = {row.teacher_user_id: row.count for row in count_rows}
+    total_counts = {row.user_id: row.count for row in count_rows}
 
     period_rows = (
         db.session.query(
-            teacher_students.c.teacher_user_id,
-            teacher_students.c.block,
-            db.func.count(teacher_students.c.seat_id).label("count"),
+            user_students.c.user_id,
+            user_students.c.block,
+            db.func.count(user_students.c.seat_id).label("count"),
         )
-        .group_by(teacher_students.c.teacher_user_id, teacher_students.c.block)
+        .group_by(user_students.c.user_id, user_students.c.block)
         .all()
     )
     periods: dict[int, dict[str, int]] = {}
-    for teacher_user_id, block, count in period_rows:
-        periods.setdefault(teacher_user_id, {})[block] = count
+    for user_id, block, count in period_rows:
+        periods.setdefault(user_id, {})[block] = count
     return total_counts, periods
 
 
@@ -358,8 +358,7 @@ def passkey_register_finish():
         authenticator_name = data.get('authenticatorName', 'Unnamed Passkey')
 
         # Save credential metadata (credential_id is optional, stored on passwordless.dev)
-        credential = SystemAdminCredential(
-            sysadmin_id=sysadmin.id,
+        credential = PasskeyCredential(
             user_id=user.id,
             credential_id=None,  # Not needed - stored on passwordless.dev servers
             authenticator_name=authenticator_name
@@ -399,7 +398,7 @@ def passkey_auth_start():
             return jsonify({"error": "Invalid credentials"}), 401
 
         # Check if user has passkeys
-        has_passkeys = SystemAdminCredential.query.filter_by(user_id=user.id).first() is not None
+        has_passkeys = PasskeyCredential.query.filter_by(user_id=user.id).first() is not None
         if not has_passkeys:
             return jsonify({"error": "Invalid credentials"}), 401
 
@@ -453,7 +452,7 @@ def passkey_auth_finish():
         # Credentials are stored without credential_id (managed by passwordless.dev),
         # so update last_used for all credentials belonging to this sysadmin.
         now = utc_now()
-        SystemAdminCredential.query.filter_by(user_id=user.id).update(
+        PasskeyCredential.query.filter_by(user_id=user.id).update(
             {'last_used': now},
             synchronize_session=False,
         )
@@ -496,7 +495,7 @@ def passkey_list():
         user = get_current_user()
         if not user:
             return jsonify({"error": "Canonical system admin identity is missing"}), 409
-        credentials = SystemAdminCredential.query.filter_by(user_id=user.id).order_by(SystemAdminCredential.created_at.desc()).all()
+        credentials = PasskeyCredential.query.filter_by(user_id=user.id).order_by(PasskeyCredential.created_at.desc()).all()
 
         return jsonify([{
             "id": cred.id,
@@ -519,7 +518,7 @@ def passkey_delete(credential_id):
         user = get_current_user()
         if not user:
             return jsonify({"error": "Canonical system admin identity is missing"}), 409
-        credential = SystemAdminCredential.query.filter_by(id=credential_id, user_id=user.id).first()
+        credential = PasskeyCredential.query.filter_by(id=credential_id, user_id=user.id).first()
 
         if not credential:
             return jsonify({"error": "Passkey not found"}), 404
@@ -545,9 +544,9 @@ def passkey_settings():
     if not user or ctx.actor_role != 'sysadmin':
         abort(404)
     credentials = (
-        SystemAdminCredential.query
+        PasskeyCredential.query
         .filter_by(user_id=user.id)
-        .order_by(SystemAdminCredential.created_at.desc())
+        .order_by(PasskeyCredential.created_at.desc())
         .all()
     )
 
@@ -563,10 +562,10 @@ def passkey_settings():
 def dashboard():
     """
     System admin dashboard with unified statistics and quick actions.
-    Shows teacher count, student count, active invites, recent teachers, and recent errors.
+    Shows admin count, student count, active invites, recent admins, and recent errors.
     """
     # Gather statistics
-    total_teachers = Admin.query.count()
+    total_admins = Admin.query.count()
     total_students = Seat.query.filter(Seat.role == 'student').count()
     active_invites = count_active_admin_invite_codes()
     system_admin_count = SystemAdmin.query.count()
@@ -585,8 +584,8 @@ def dashboard():
     ).count()
     open_tickets = new_reports_count + open_issues_count
 
-    # Recent teachers (last 5)
-    recent_teachers = Admin.query.order_by(Admin.created_at.desc()).limit(5).all()
+    # Recent admins (last 5)
+    recent_admins = Admin.query.order_by(Admin.created_at.desc()).limit(5).all()
 
     # Recent errors (last 5)
     recent_errors = ErrorLog.query.order_by(ErrorLog.timestamp.desc()).limit(5).all()
@@ -600,12 +599,12 @@ def dashboard():
 
     return render_template(
         "system_admin_dashboard.html",
-        total_teachers=total_teachers,
+        total_admins=total_admins,
         total_students=total_students,
         active_invites=active_invites,
         system_admin_count=system_admin_count,
         open_tickets=open_tickets,
-        recent_teachers=recent_teachers,
+        recent_admins=recent_admins,
         recent_errors=recent_errors,
         system_admins=system_admins
     )
@@ -910,13 +909,13 @@ def manage_admins():
     )
 
 
-@sysadmin_bp.route('/admins/<int:admin_id>/reset-totp', methods=['POST'])
+@sysadmin_bp.route('/admins/<int:user_id>/reset-totp', methods=['POST'])
 @system_admin_required
-def reset_admin_totp(admin_id):
+def reset_admin_totp(user_id):
     """
     Reset TOTP for an admin account.
     """
-    admin = db.get_or_404(Admin, admin_id)
+    admin = db.get_or_404(Admin, user_id)
 
     try:
         # Generate new secret
@@ -951,31 +950,31 @@ def reset_admin_totp(admin_id):
         })
     except Exception as e:
         db.session.rollback()
-        current_app.logger.error(f"Error resetting TOTP for admin {admin_id}: {str(e)}")
+        current_app.logger.error(f"Error resetting TOTP for user {user_id}: {str(e)}")
         return jsonify({
             "status": "error",
             "message": "An internal error occurred while resetting the TOTP secret."
         }), 500
 
 
-@sysadmin_bp.route('/admins/<int:admin_id>/delete', methods=['POST'])
+@sysadmin_bp.route('/admins/<int:user_id>/delete', methods=['POST'])
 @system_admin_required
 @feat_shell("FEAT-OPS-001")
-def delete_admin(admin_id):
+def delete_admin(user_id):
     """
-    Delete an admin account and all students created under that owner user.
+    Delete an admin account and all students created under that teacher user.
     This is a permanent action that cascades to all student data.
     """
-    admin = db.get_or_404(Admin, admin_id)
+    admin = db.get_or_404(Admin, user_id)
 
     try:
-        owner_user = _resolve_teacher_user(admin)
+        admin_user = _resolve_admin_user(admin)
         deleted_student_count = 0
         deleted_class_count = 0
-        if owner_user:
+        if admin_user:
             class_ids = [
                 class_id for (class_id,) in db.session.query(ClassEconomy.class_id)
-                .filter(ClassEconomy.user_id == owner_user.id)
+                .filter(ClassEconomy.user_id == admin_user.id)
                 .all()
             ]
             deleted_class_count = len(class_ids)
@@ -986,12 +985,12 @@ def delete_admin(admin_id):
 
             from app.utils.deletion import collapse_universe
             for cid in class_ids:
-                collapse_universe(cid, reason="Owner-user account deletion", actor_membership_id=None)
+                collapse_universe(cid, reason="Teacher account deletion", actor_membership_id=None)
 
-            delete_recovery_rows_for_user(owner_user.id)
-            delete_admin_credentials_for_user(owner_user.id)
-            delete_admin_onboarding_for_user(owner_user.id)
-            db.session.delete(owner_user)
+            delete_recovery_rows_for_user(admin_user.id)
+            delete_admin_credentials_for_user(admin_user.id)
+            delete_admin_onboarding_for_user(admin_user.id)
+            db.session.delete(admin_user)
 
         admin_username = admin.get_sysadmin_display_name()
         db.session.delete(admin)
@@ -1004,7 +1003,7 @@ def delete_admin(admin_id):
 
     except Exception as e:
         db.session.rollback()
-        current_app.logger.exception(f"Error deleting admin {admin_id}")
+        current_app.logger.exception(f"Error deleting admin {user_id}")
         flash(f"Error deleting admin: {str(e)}", "error")
 
     return redirect(url_for('sysadmin.manage_admins'))
@@ -1047,37 +1046,37 @@ def manage_teachers():
         else:
             active_invites.append(invite)
 
-    # Build rich teacher data (from teacher_overview logic)
-    all_teachers = Admin.query.order_by(db.func.coalesce(Admin.public_id, ''), Admin.id.asc()).all()
+    # Build rich admin data (from overview logic)
+    all_admins = Admin.query.order_by(db.func.coalesce(Admin.public_id, ''), Admin.id.asc()).all()
     inactivity_threshold = utc_now() - timedelta(days=INACTIVITY_THRESHOLD_DAYS)
 
-    owner_user_ids_by_admin_id = {
-        teacher.id: resolved.id
-        for teacher in all_teachers
-        if (resolved := _resolve_teacher_user(teacher)) is not None
+    user_ids_by_admin_id = {
+        admin.id: resolved.id
+        for admin in all_admins
+        if (resolved := _resolve_admin_user(admin)) is not None
     }
-    teacher_student_counts, teacher_periods = _teacher_student_counts(list(owner_user_ids_by_admin_id.values()))
-    teacher_pending_requests = {}
+    user_student_counts, user_periods = _user_student_counts(list(user_ids_by_admin_id.values()))
+    admin_pending_requests = {}
 
-    teachers = []
-    for teacher in all_teachers:
-        owner_user_id = owner_user_ids_by_admin_id.get(teacher.id)
-        total_students = teacher_student_counts.get(owner_user_id, 0) if owner_user_id else 0
-        periods = teacher_periods.get(owner_user_id, {}) if owner_user_id else {}
-        pending_requests = teacher_pending_requests.get(teacher.id, [])
+    admins = []
+    for admin in all_admins:
+        user_id = user_ids_by_admin_id.get(admin.id)
+        total_students = user_student_counts.get(user_id, 0) if user_id else 0
+        periods = user_periods.get(user_id, {}) if user_id else {}
+        pending_requests = admin_pending_requests.get(admin.id, [])
 
         is_inactive = False
-        if teacher.last_login:
-            last_login = teacher.last_login
+        if admin.last_login:
+            last_login = admin.last_login
             last_login = ensure_utc(last_login)
             is_inactive = last_login < inactivity_threshold
         else:
             is_inactive = True
 
-        teachers.append({
-            'id': teacher.id,
-            'username': teacher.get_sysadmin_display_name(),
-            'last_login': teacher.last_login,
+        admins.append({
+            'id': admin.id,
+            'username': admin.get_sysadmin_display_name(),
+            'last_login': admin.last_login,
             'is_inactive': is_inactive,
             'total_students': total_students,
             'periods': periods,
@@ -1091,7 +1090,7 @@ def manage_teachers():
         active_invites=active_invites,
         expired_invites=expired_invites,
         used_invites=used_invites,
-        teachers=teachers,
+        teachers=admins,
         inactivity_threshold_days=INACTIVITY_THRESHOLD_DAYS,
     )
 
@@ -1116,59 +1115,59 @@ def void_invite_code(code_id):
 @system_admin_required
 def teacher_overview():
     """
-    Privacy-compliant teacher overview showing only aggregated student counts.
+    Privacy-compliant admin overview showing only aggregated student counts.
 
     System admins can view:
-    - Teacher public ID/display name
-    - Total student count per teacher
+    - Admin public ID/display name
+    - Total student count per admin
     - Student counts by period/block
     - Last login date
-    - Teacher public IDs/display names and aggregate roster state only
+    - Admin public IDs/display names and aggregate roster state only
 
     System admins CANNOT view:
     - Individual student names
     - Individual student details
     """
-    teachers = Admin.query.order_by(db.func.coalesce(Admin.public_id, ''), Admin.id.asc()).all()
+    admins = Admin.query.order_by(db.func.coalesce(Admin.public_id, ''), Admin.id.asc()).all()
     
     # Define inactivity threshold (6 months)
     inactivity_threshold = utc_now() - timedelta(days=INACTIVITY_THRESHOLD_DAYS)
 
-    owner_user_ids_by_admin_id = {
-        teacher.id: resolved.id
-        for teacher in teachers
-        if (resolved := _resolve_teacher_user(teacher)) is not None
+    user_ids_by_admin_id = {
+        admin.id: resolved.id
+        for admin in admins
+        if (resolved := _resolve_admin_user(admin)) is not None
     }
-    teacher_student_counts, teacher_periods = _teacher_student_counts(list(owner_user_ids_by_admin_id.values()))
+    user_student_counts, user_periods = _user_student_counts(list(user_ids_by_admin_id.values()))
 
-    teacher_pending_requests = {}
+    admin_pending_requests = {}
 
-    # Now build the teacher_data list using the batched data
-    teacher_data = []
-    for teacher in teachers:
+    # Now build the admin_data list using the batched data
+    admin_data = []
+    for admin in admins:
         # Get data from batched queries
-        owner_user_id = owner_user_ids_by_admin_id.get(teacher.id)
-        total_students = teacher_student_counts.get(owner_user_id, 0) if owner_user_id else 0
-        periods = teacher_periods.get(owner_user_id, {}) if owner_user_id else {}
-        pending_requests = teacher_pending_requests.get(teacher.id, [])
+        user_id = user_ids_by_admin_id.get(admin.id)
+        total_students = user_student_counts.get(user_id, 0) if user_id else 0
+        periods = user_periods.get(user_id, {}) if user_id else {}
+        pending_requests = admin_pending_requests.get(admin.id, [])
 
-        # Check if teacher is inactive
+        # Check if admin is inactive
         is_inactive = False
-        if teacher.last_login:
+        if admin.last_login:
             # Ensure last_login is timezone-aware
-            last_login = teacher.last_login
+            last_login = admin.last_login
             last_login = ensure_utc(last_login)
             is_inactive = last_login < inactivity_threshold
         else:
             # Never logged in - consider inactive
             is_inactive = True
 
-        teacher_data.append({
-            'id': teacher.id,
-            'username': teacher.get_sysadmin_display_name(),
+        admin_data.append({
+            'id': admin.id,
+            'username': admin.get_sysadmin_display_name(),
             'total_students': total_students,
             'periods': periods,
-            'last_login': teacher.last_login,
+            'last_login': admin.last_login,
             'is_inactive': is_inactive,
             'pending_requests': pending_requests,
             'can_delete_account': False,
@@ -1176,23 +1175,23 @@ def teacher_overview():
 
     return render_template(
         "system_admin_teacher_overview.html",
-        teachers=teacher_data,
+        teachers=admin_data,
         current_page="teacher_overview",
         inactivity_threshold_days=INACTIVITY_THRESHOLD_DAYS
     )
 
 
-@sysadmin_bp.route('/delete-period/<int:admin_id>/<string:period>', methods=['POST'])
+@sysadmin_bp.route('/delete-period/<int:user_id>/<string:period>', methods=['POST'])
 @system_admin_required
-def delete_period(admin_id, period):
-    flash("Teacher deletions are self-managed. System admins cannot delete classes.", "error")
+def delete_period(user_id, period):
+    flash("Admin deletions are self-managed. System admins cannot delete classes.", "error")
     return redirect(url_for('sysadmin.manage_teachers'))
 
 
-@sysadmin_bp.route('/manage-teachers/delete/<int:admin_id>', methods=['POST'])
+@sysadmin_bp.route('/manage-teachers/delete/<int:user_id>', methods=['POST'])
 @system_admin_required
-def delete_teacher(admin_id):
-    flash("Teacher deletions are self-managed. System admins cannot delete teacher accounts.", "error")
+def delete_teacher(user_id):
+    flash("Admin deletions are self-managed. System admins cannot delete admin accounts.", "error")
     return redirect(url_for('sysadmin.manage_teachers'))
 
 
@@ -1209,13 +1208,13 @@ def _resolve_report_id_from_ref(report_ref: str) -> int | None:
 @system_admin_required
 def support_tickets():
     """
-    Unified support ticket dashboard combining teacher issues and escalated student issues.
-    Tab 1: Teacher Issues (teacher-submitted support tickets)
+    Unified support ticket dashboard combining admin issues and escalated student issues.
+    Tab 1: Admin Issues (admin-submitted support tickets)
     Tab 2: Escalated Issues (student-escalated issues awaiting developer review)
     """
     active_tab = request.args.get('tab', 'reports')
 
-    # ── Teacher Issues (Tab 1) ──
+    # ── Admin Issues (Tab 1) ──
     status_filter = request.args.get('status', 'all')
     report_type_filter = request.args.get('type', 'all')
     report_query = UserReport.query.filter(UserReport.user_type == 'teacher')
@@ -1255,7 +1254,7 @@ def support_tickets():
         'sysadmin_support_tickets.html',
         current_page='support_tickets',
         active_tab=active_tab,
-        # Teacher issues
+        # Admin issues
         reports=reports,
         status_filter=status_filter,
         report_type_filter=report_type_filter,
@@ -1277,7 +1276,7 @@ def support_tickets():
 @sysadmin_bp.route('/user-reports')
 @system_admin_required
 def user_reports():
-    """View teacher-submitted support issues with filtering."""
+    """View admin-submitted support issues with filtering."""
     # Get filter parameters
     status_filter = request.args.get('status', 'all')
     report_type_filter = request.args.get('type', 'all')
@@ -1309,7 +1308,7 @@ def user_reports():
     return render_template(
         'sysadmin_user_reports.html',
         current_page='user_reports',
-        page_title='Teacher Issues',
+        page_title='Admin Issues',
         reports=reports,
         new_count=new_count,
         reviewed_count=reviewed_count,
@@ -1323,7 +1322,7 @@ def user_reports():
 @sysadmin_bp.route('/user-reports/<report_ref>')
 @system_admin_required
 def view_user_report(report_ref):
-    """View details of a specific teacher issue report."""
+    """View details of a specific admin issue report."""
     report_id = _resolve_report_id_from_ref(report_ref)
     if report_id is None:
         raise NotFound("Report not found")
@@ -1637,14 +1636,14 @@ def announcements():
         Announcement.system_admin_id != None
     ).order_by(Announcement.created_at.desc()).all()
 
-    # Get list of owner admins for display
+    # Get list of teachers for display
     admins_dict = {admin.id: admin for admin in Admin.query.all()}
 
     # Attach audience info to each announcement
     for announcement in announcements_list:
         if announcement.audience_type == 'teacher_all_classes' and announcement.target_teacher_id:
-            owner_admin = admins_dict.get(announcement.target_teacher_id)
-            announcement.audience_display = f"All classes of {owner_admin.get_sysadmin_display_name() if owner_admin else 'Unknown Admin'}"
+            teacher_admin = admins_dict.get(announcement.target_teacher_id)
+            announcement.audience_display = f"All classes of {teacher_admin.get_sysadmin_display_name() if teacher_admin else 'Unknown Admin'}"
         else:
             announcement.audience_display = announcement.get_audience_label()
 
@@ -1666,16 +1665,16 @@ def announcement_create():
 
     form = SystemAdminAnnouncementForm()
 
-    # Populate owner-admin choices
-    owner_admins = Admin.query.order_by(db.func.coalesce(Admin.public_id, ''), Admin.id.asc()).all()
+    # Populate teacher choices
+    teacher_admins = Admin.query.order_by(db.func.coalesce(Admin.public_id, ''), Admin.id.asc()).all()
     form.target_teacher.choices = [('', '-- Select Admin --')] + [
-        (owner_admin.id, owner_admin.get_sysadmin_display_name())
-        for owner_admin in owner_admins
+        (teacher_admin.id, teacher_admin.get_sysadmin_display_name())
+        for teacher_admin in teacher_admins
     ]
 
     if form.validate_on_submit():
         try:
-            # Validate target_teacher requirement
+            # Validate target admin requirement
             if form.audience_type.data == 'teacher_all_classes':
                 if not form.target_teacher.data:
                     flash('Please select a target admin for "All Classes of Specific Admin" audience.', 'danger')
@@ -1723,16 +1722,16 @@ def announcement_edit(announcement_id):
 
     form = SystemAdminAnnouncementForm(obj=announcement)
 
-    # Populate owner-admin choices
-    owner_admins = Admin.query.order_by(db.func.coalesce(Admin.public_id, ''), Admin.id.asc()).all()
+    # Populate teacher choices
+    teacher_admins = Admin.query.order_by(db.func.coalesce(Admin.public_id, ''), Admin.id.asc()).all()
     form.target_teacher.choices = [('', '-- Select Admin --')] + [
-        (owner_admin.id, owner_admin.get_sysadmin_display_name())
-        for owner_admin in owner_admins
+        (teacher_admin.id, teacher_admin.get_sysadmin_display_name())
+        for teacher_admin in teacher_admins
     ]
 
     if form.validate_on_submit():
         try:
-            # Validate target_teacher requirement
+            # Validate target admin requirement
             if form.audience_type.data == 'teacher_all_classes':
                 if not form.target_teacher.data:
                     flash('Please select a target admin for "All Classes of Specific Admin" audience.', 'danger')
@@ -1823,7 +1822,7 @@ def announcement_toggle(announcement_id):
 @system_admin_required
 def escalated_issues():
     """
-    System admin view of all escalated issues from owner admins.
+    System admin view of all escalated issues from teacher users.
     Shows issues that have been escalated for developer/sysadmin review.
     """
     # Get all escalated issues.
@@ -1907,7 +1906,7 @@ def start_review_escalated_issue(issue_ref):
 @feat_shell("FEAT-OPS-001")
 @system_admin_required
 def resolve_escalated_issue(issue_ref):
-    """Mark technical fix complete, optionally issue bug bounty, then return to owner-admin final review."""
+    """Mark technical fix complete, optionally issue bug bounty, then return to teacher-admin final review."""
     issue_id = _resolve_issue_id_from_ref(issue_ref)
     if issue_id is None:
         raise NotFound("Issue not found")
@@ -1954,11 +1953,11 @@ def resolve_escalated_issue(issue_ref):
 
         if reward_amount_value is not None:
             # Bug rewards must be anchored to the class universe where the bug was found.
-            issue_owner_user_id = issue.teacher_id
+            user_id = issue.teacher_id
             reward_transaction = ledger_service.create_pending_transaction(
                 seat_id=issue.seat_id,
                 class_id=issue.class_id,
-                teacher_id=issue_owner_user_id,
+                user_id=user_id,
                 amount=reward_amount_value,
                 account_type='checking',
                 description=f"Bug Reward (Issue #{issue.id})",
@@ -2001,7 +2000,7 @@ def resolve_escalated_issue(issue_ref):
                 "success",
             )
         else:
-            flash("Technical fix recorded. Ticket returned to teacher for final review.", "success")
+            flash("Technical fix recorded. Ticket returned to the teacher for final review.", "success")
 
     except Exception as e:
         db.session.rollback()

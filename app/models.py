@@ -17,7 +17,7 @@ import sqlalchemy as sa
 from sqlalchemy import func
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.hybrid import hybrid_property
-from sqlalchemy.orm import Session, validates
+from sqlalchemy.orm import Session, validates, synonym
 from sqlalchemy import event
 from app.extensions import db
 from app.hash_utils import get_random_salt, hash_hmac, hash_username, hash_username_lookup
@@ -348,15 +348,12 @@ class Seat(db.Model):
     role = db.Column(db.String(20), nullable=False, default='student')
 
     # Canonical seat-local metadata for the identity overhaul target.
-    block_identifier = db.Column(db.String(10), nullable=True)
     roster_fingerprint = db.Column(db.String(128), nullable=True, index=True)
     dedupe_code = db.Column(db.String(8), nullable=True)
     claim_first_name_hash = db.Column(db.String(128), nullable=True, index=True)
     claim_last_name_hash = db.Column(db.String(128), nullable=True, index=True)
     claimed_at = db.Column(db.DateTime(timezone=True), nullable=True)
     has_received_rent_exemption = db.Column(db.Boolean, nullable=False, default=False)
-
-    block = db.Column(db.String(10), nullable=True)
 
     created_at = db.Column(db.DateTime(timezone=True), default=utc_now, nullable=False)
     updated_at = db.Column(db.DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False)
@@ -368,6 +365,11 @@ class Seat(db.Model):
         foreign_keys='IdentityProfile.seat_id',
         cascade='all, delete-orphan',
         passive_deletes=True,
+    )
+    class_economy = db.relationship(
+        'ClassEconomy',
+        foreign_keys=[class_id],
+        backref=db.backref('seats', lazy='dynamic', passive_deletes=True),
     )
 
     __table_args__ = (
@@ -389,17 +391,6 @@ class Seat(db.Model):
         return not self.has_received_rent_exemption
 
 
-@event.listens_for(Seat, "before_insert")
-@event.listens_for(Seat, "before_update")
-def _sync_seat_scope(mapper, connection, target):
-    """Keep block fields aligned."""
-    if getattr(target, "block_identifier", None) is None and getattr(target, "block", None):
-        target.block_identifier = target.block
-    if getattr(target, "block", None) is None and getattr(target, "block_identifier", None):
-        target.block = target.block_identifier
-
-
-
 class AdminInviteCode(db.Model):
     # Replaced in v2 by open teacher signup (Turnstile-gated form → TOTP → passkey → done)
     __tablename__ = 'teacher_invite_codes'
@@ -418,8 +409,8 @@ class ClassEconomy(db.Model):
 
     class_id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     join_code = db.Column(db.String(20), unique=True, nullable=False, index=True)
-    join_code_token = db.Column(db.String(20), unique=True, nullable=True, index=True)
     section = db.Column(db.String(50), nullable=True)
+    block = synonym("section")
     user_id = db.Column(
         db.Integer,
         db.ForeignKey('users.id', ondelete='CASCADE'),
@@ -532,29 +523,22 @@ class SystemAdmin(db.Model):
         return f"sysadmin_{self.id}"
 
 
-class SystemAdminCredential(db.Model):
-    """
-    Passkey credentials for system admin authentication.
-    Stores metadata for passkeys registered via passwordless.dev.
-    """
-    __tablename__ = 'system_admin_credentials'
+class PasskeyCredential(db.Model):
+    """Unified passkey credential metadata owned by users."""
+
+    __tablename__ = 'passkey_credentials'
 
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'), nullable=False, index=True)
-
-    # Credential metadata
-    credential_id = db.Column(db.Text, unique=False, nullable=True, index=False)  # Optional: not needed for passwordless.dev SaaS
-    authenticator_name = db.Column(db.String(100))  # User-friendly name
-
-    # Timestamps (UTC)
+    credential_id = db.Column(db.Text, unique=False, nullable=True, index=False)
+    authenticator_name = db.Column(db.String(100))
     created_at = db.Column(db.DateTime(timezone=True), default=utc_now, nullable=False)
     last_used = db.Column(db.DateTime(timezone=True))
 
-    # Relationships
-    user = db.relationship('User', backref=db.backref('system_admin_credentials', lazy='dynamic', cascade='all, delete-orphan'))
+    user = db.relationship('User', backref=db.backref('passkey_credentials', lazy='dynamic', cascade='all, delete-orphan'))
 
     def __repr__(self):
-        return f'<SystemAdminCredential {self.authenticator_name or "Unnamed"} for User {self.user_id}>'
+        return f'<PasskeyCredential {self.authenticator_name or "Unnamed"} for User {self.user_id}>'
 
 
 class Transaction(db.Model):
@@ -2336,31 +2320,6 @@ class Admin(db.Model):
             )
             .count()
         )
-
-
-class AdminCredential(db.Model):
-    """
-    Passkey credentials for teacher authentication.
-    Stores metadata for passkeys registered via passwordless.dev.
-    """
-    __tablename__ = 'teacher_credentials'
-
-    id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'), nullable=False, index=True)
-
-    # Credential metadata
-    credential_id = db.Column(db.Text, unique=False, nullable=True, index=False)  # Optional: not needed for passwordless.dev SaaS
-    authenticator_name = db.Column(db.String(100))  # User-friendly name
-
-    # Timestamps (UTC)
-    created_at = db.Column(db.DateTime(timezone=True), default=utc_now, nullable=False)
-    last_used = db.Column(db.DateTime(timezone=True))
-
-    # Relationships
-    user = db.relationship('User', backref=db.backref('credentials', lazy='dynamic', cascade='all, delete-orphan'))
-
-    def __repr__(self):
-        return f'<AdminCredential {self.authenticator_name or "Unnamed"} for User {self.user_id}>'
 
 
 # ---- Account Recovery Models ----

@@ -26,10 +26,9 @@ def _login_student(client, student_id, join_code):
             )
 
 
-def _login_admin(client, admin_id):
+def _login_admin(client, user_id):
     with client.session_transaction() as sess:
-        sess['admin_id'] = admin_id
-        sess['is_admin'] = True
+        sess['user_id'] = user_id
 
 
 def _create_student(teacher, first_name, join_code, block='A'):
@@ -475,7 +474,7 @@ def test_whole_class_goal_with_duplicate_seats_shows_correct_roster(client):
     db.session.add(student_a1_user)
     db.session.flush()
     # TODO: _tb_seat needs class_id set from the ClassEconomy for join_code JOINDUP
-    _tb_seat = Seat(user_id=student_a1_user.id, block='A', block_identifier='A', role="student", claimed_at=datetime.now(timezone.utc))
+    _tb_seat = Seat(user_id=student_a1_user.id, role="student", claimed_at=datetime.now(timezone.utc))
     db.session.add(_tb_seat)
     db.session.flush()
     db.session.add(IdentityProfile(seat_id=_tb_seat.id, profile_type='student_claimed', first_name='Laura', last_name='S'))

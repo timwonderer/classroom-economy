@@ -255,7 +255,7 @@ def test_multi_tenancy_scoping(client, setup_analytics_test):
         is_active=True
     )
     db.session.add(payroll2)
-    _tb_seat = Seat(class_id=class_row2.class_id, block=block2, block_identifier=block2, role="student")
+    _tb_seat = Seat(class_id=class_row2.class_id, role="student")
     db.session.add(_tb_seat)
     db.session.flush()
     db.session.add(IdentityProfile(seat_id=_tb_seat.id, profile_type='student_unclaimed', first_name="Seat", last_name="B"))
@@ -335,7 +335,7 @@ def test_analytics_pay_cycle_prefers_join_code_scoped_settings(client, setup_ana
     admin, join_code, block, students, payroll = setup_analytics_test
 
     # Existing class_id scoped block row from fixture should remain authoritative.
-    assert get_pay_cycle_days(join_code=join_code) == 7
+    assert get_pay_cycle_days(class_id=payroll.class_id) == 7
 
 
 def test_analytics_pay_cycle_ignores_teacher_global_for_unscoped_join_code(client, setup_analytics_test):
@@ -350,7 +350,7 @@ def test_analytics_pay_cycle_ignores_teacher_global_for_unscoped_join_code(clien
     db.session.commit()
 
     # V2: Should return 7 default because no class-scoped setting exists
-    assert get_pay_cycle_days(join_code=join_code2) == 7
+    assert get_pay_cycle_days(class_id=class_row2.class_id) == 7
 
 
 def test_analytics_rent_cycle_ignores_teacher_global_for_unscoped_join_code(client, setup_analytics_test):
@@ -365,7 +365,7 @@ def test_analytics_rent_cycle_ignores_teacher_global_for_unscoped_join_code(clie
     db.session.commit()
 
     # V2: Should return 30 default because no class-scoped setting exists
-    assert get_rent_cycle_days(join_code=join_code2) == 30
+    assert get_rent_cycle_days(class_id=class_row2.class_id) == 30
 
 
 def test_analytics_policy_mode_resolves_by_class_id(client, setup_analytics_test):

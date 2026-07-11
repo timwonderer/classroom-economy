@@ -20,7 +20,7 @@
         <p class="lead text-muted">{% if audience == 'user' %}Help and Support Center{% else %}Technical Documentation{%
             endif %}</p>
 
-        {% if not session.get('student_id') and not session.get('admin_id') %}
+        {% if not session.get('student_id') and not session.get('user_id') %}
         <!-- Audience Toggle -->
         <div class="d-flex justify-content-center mt-3 mb-4">
             <div class="btn-group" role="group" aria-label="Documentation Audience Toggle">

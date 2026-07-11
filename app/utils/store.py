@@ -68,7 +68,7 @@ from app.feats.base import feat_shell
 
 
 @feat_shell("FEAT-STOR-003")
-def process_expired_collective_goals(teacher_id, correlation_id=None, idempotency_key=None):
+def process_expired_collective_goals(user_id, correlation_id=None, idempotency_key=None):
     """Expire collective goals and refund pending canonical purchases."""
     now = utc_now()
     pending_exists = db.session.query(StorePurchase.id).filter(
@@ -78,7 +78,7 @@ def process_expired_collective_goals(teacher_id, correlation_id=None, idempotenc
     ).exists()
 
     expired_items = StoreItem.query.filter(
-        StoreItem.user_id == teacher_id,
+        StoreItem.user_id == user_id,
         StoreItem.item_type == 'collective',
         StoreItem.is_active == True,
         StoreItem.collective_goal_expires_at.isnot(None),

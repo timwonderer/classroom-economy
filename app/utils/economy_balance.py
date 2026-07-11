@@ -151,7 +151,7 @@ class EconomyBalanceChecker:
         if resolved_mode_source is None and class_id:
             resolved_mode_source = get_active_policy_mode_for_class(class_id)
         if resolved_mode_source is None:
-            resolved_mode_source = get_active_policy_mode(user_id, block)
+            resolved_mode_source = get_active_policy_mode(user_id, class_id=class_id)
         resolved_mode = normalize_policy_mode(resolved_mode_source)
         self.policy_mode = resolved_mode
         self.policy_profile = get_policy_profile(resolved_mode)

@@ -7,9 +7,9 @@ from app.extensions import db
 from app.models import User, UserRole, ClassEconomy, Transaction, TransactionStatus, StoreItem, StudentItem, IssueCategory, Issue, Seat, ClassFeature, IdentityProfile
 from tests.helpers.canonical_session import set_canonical_context
 
-def _login_admin(client, admin_id):
+def _login_admin(client, user_id):
     with client.session_transaction() as sess:
-        sess["user_id"] = admin_id
+        sess["user_id"] = user_id
         sess["last_activity"] = datetime.now(timezone.utc).isoformat()
 
 def _login_student(client, student_user_id, class_id, seat_id):
@@ -146,7 +146,7 @@ def test_file_claim_scoped_to_class(client):
 
     student_seat_a = make_student_identity(class_id=class_a.class_id, first_name="Claimer", last_name="S", claimed=True)
     db.session.flush()
-    seat_b = Seat(user_id=student_seat_a.user_id, class_id=class_b.class_id, block="B", block_identifier="B", role="student", claimed_at=datetime.now(timezone.utc))
+    seat_b = Seat(user_id=student_seat_a.user_id, class_id=class_b.class_id, role="student", claimed_at=datetime.now(timezone.utc))
     db.session.add(seat_b)
     db.session.flush()
     db.session.add(IdentityProfile(seat_id=seat_b.id, profile_type='student_claimed', first_name="Claimer", last_name="S", class_id=class_b.class_id))

@@ -7,7 +7,8 @@ from decimal import Decimal
 from tests.helpers.v2_fixtures import make_admin, make_sysadmin
 from app import db
 from app.hash_utils import get_random_salt, hash_username
-from app.models import User, UserRole, ClassEconomy, IdentityProfile, RentPayment, RentSettings, RentWaiver, Seat, Transaction
+from app.models import User, UserRole, ClassEconomy, IdentityProfile, RentPayment, RentSettings, Seat, Transaction
+from app.services.obligations_service import record_rent_waiver
 from app.routes.student import (
     RENT_PAYMENT_MATCH_TOLERANCE_SECONDS,
     _get_locked_rent_amount_for_join_code_cycle,
@@ -38,12 +39,10 @@ def _is_student_coverage_period_paid_wrapper(settings, student_id, block, join_c
 
 
 
-def _login_admin(client, admin_id, join_code):
+def _login_admin(client, user_id, join_code):
     with client.session_transaction() as sess:
-        sess['is_admin'] = True
-        sess['admin_id'] = admin_id
+        sess['user_id'] = user_id
         sess['current_join_code'] = join_code
-        sess['is_system_admin'] = False
         sess['last_activity'] = datetime.now(timezone.utc).isoformat()
 
 
@@ -63,17 +62,12 @@ def _make_admin_with_block(join_code="LOCKA1", block="A", suffix="rv"):
     class_id = db.session.query(ClassEconomy.class_id).filter_by(join_code=join_code).scalar()
     seat = Seat(
         class_id=class_id,
-        join_code=join_code,
-        block=block,
-        block_identifier=block,
         role="teacher",
     )
     db.session.add(seat)
     db.session.flush()
     identity.seat_id = seat.id
-    settings = RentSettings(join_code=join_code,
-        block=block,
-        is_enabled=True,
+    settings = RentSettings(class_id=class_id,
         rent_amount=Decimal("100.00"),
         frequency_type="monthly",
         grace_period_days=3,
@@ -98,7 +92,7 @@ def _make_student(suffix="s", join_code=None):
     return make_student_identity(class_id=class_id, first_name="Test", last_name="R")
 
 
-def _add_payment(student, admin_id, join_code, amount_paid, late_fee, payment_date, coverage_due_date):
+def _add_payment(student, user_id, join_code, amount_paid, late_fee, payment_date, coverage_due_date):
     payment = RentPayment(
         user_id=student.user_id,
         period="A",
@@ -154,14 +148,14 @@ def test_waiver_marks_coverage_period_as_paid(client):
     admin, settings = _make_admin_with_block("WAIV1", suffix="waiver")
     student = _make_student("waived", join_code="WAIV1")
     coverage = datetime(2026, 3, 1, tzinfo=timezone.utc)
-    db.session.add(RentWaiver(
-        user_id=student.user_id,
-        join_code="WAIV1",
+    record_rent_waiver(
+        seat_id=student.id,
+        class_id=settings.class_id,
         waiver_start_date=coverage - timedelta(days=1),
         waiver_end_date=coverage + timedelta(days=5),
         periods_count=1,
-        created_by_teacher_id=admin.id,
-    ))
+        created_by_user_id=admin.id,
+    )
     db.session.commit()
 
     assert _has_active_rent_waiver(student.id, "WAIV1", coverage) is True

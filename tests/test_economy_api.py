@@ -17,6 +17,7 @@ from app import db
 from app.models import ClassEconomy, EconomySnapshot, PayrollSettings, Seat, IdentityProfile, User, UserRole
 from app.utils.economy_balance import EconomyBalanceChecker, WarningLevel
 from app.routes import admin as admin_routes
+from tests.helpers.canonical_session import set_canonical_context
 from tests.helpers.class_scope import create_class_scope
 
 
@@ -43,7 +44,6 @@ def admin_with_payroll(client):
     # Create payroll settings with specific expected_weekly_hours
     payroll_settings = PayrollSettings(
         class_id=class_scope.class_id,
-        block="A",
         pay_rate=0.25,  # $0.25/min = $15/hour
         expected_weekly_hours=8.0,  # Custom value, not 5.0
         payroll_frequency_days=14,
@@ -70,8 +70,6 @@ def logged_in_admin_client(client, admin_with_payroll):
         db.session.add(user)
         db.session.commit()
     with client.session_transaction() as sess:
-        sess['is_admin'] = True
-        sess['admin_id'] = admin.id
         sess['user_id'] = user.id
         sess['current_session_nonce'] = secrets.token_urlsafe(32)
         user.current_session_nonce = sess['current_session_nonce']
@@ -92,12 +90,12 @@ def _attach_join_code(admin, block='A', token='JOIN-A'):
         db.session.add(economy)
         db.session.flush()
 
-    _tb_seat = Seat(block=block, block_identifier=block, class_id=economy.class_id, role="student")
+    _tb_seat = Seat(class_id=economy.class_id, role="student")
     db.session.add(_tb_seat)
     db.session.flush()
     db.session.add(IdentityProfile(seat_id=_tb_seat.id, profile_type='student_unclaimed', first_name='Test', last_name='Anderson'))
 
-    payroll_settings = PayrollSettings.query.filter_by(class_id=economy.class_id, block=block).first()
+    payroll_settings = PayrollSettings.query.filter_by(class_id=economy.class_id).first()
     if payroll_settings:
         payroll_settings.join_code = token
 
@@ -168,7 +166,7 @@ def test_analyze_endpoint_uses_payroll_settings_hours(logged_in_admin_client, ad
     response = client.post(
         '/admin/api/economy/analyze',
         json={
-            'block': 'A'
+            'class_id': payroll_settings.class_id
             # Note: NOT sending expected_weekly_hours
         }
     )
@@ -200,7 +198,7 @@ def test_analyze_endpoint_override_hours(logged_in_admin_client, admin_with_payr
     response = client.post(
         '/admin/api/economy/analyze',
         json={
-            'block': 'A',
+            'class_id': payroll_settings.class_id,
             'expected_weekly_hours': 10.0  # Override value
         }
     )
@@ -227,7 +225,7 @@ def test_analyze_endpoint_null_override_uses_payroll(logged_in_admin_client, adm
     response = client.post(
         '/admin/api/economy/analyze',
         json={
-            'block': 'A',
+            'class_id': payroll_settings.class_id,
             'expected_weekly_hours': None
         }
     )
@@ -244,16 +242,14 @@ def test_analyze_endpoint_null_override_uses_payroll(logged_in_admin_client, adm
 def test_analyze_endpoint_reuses_frozen_weekly_snapshot(logged_in_admin_client, admin_with_payroll):
     admin, _payroll_settings = admin_with_payroll
     client = logged_in_admin_client
-    _attach_join_code(admin, block='A', token='JOIN-CACHE-A')
-
-    response_one = client.post('/admin/api/economy/analyze', json={'block': 'A'})
+    response_one = client.post('/admin/api/economy/analyze', json={'class_id': _payroll_settings.class_id})
     assert response_one.status_code == 200
     data_one = response_one.get_json()
     assert data_one['analysis_schedule']['frozen'] is True
     assert data_one['snapshot_cached'] is False
     assert EconomySnapshot.query.count() == 1
 
-    response_two = client.post('/admin/api/economy/analyze', json={'block': 'A'})
+    response_two = client.post('/admin/api/economy/analyze', json={'class_id': _payroll_settings.class_id})
     assert response_two.status_code == 200
     data_two = response_two.get_json()
     assert data_two['analysis_schedule']['frozen'] is True
@@ -266,15 +262,13 @@ def test_analyze_endpoint_reuses_frozen_weekly_snapshot(logged_in_admin_client, 
 def test_analyze_endpoint_override_bypasses_frozen_snapshot(logged_in_admin_client, admin_with_payroll):
     admin, _payroll_settings = admin_with_payroll
     client = logged_in_admin_client
-    _attach_join_code(admin, block='A', token='JOIN-CACHE-B')
-
-    initial_response = client.post('/admin/api/economy/analyze', json={'block': 'A'})
+    initial_response = client.post('/admin/api/economy/analyze', json={'class_id': _payroll_settings.class_id})
     assert initial_response.status_code == 200
     assert EconomySnapshot.query.count() == 1
 
     preview_response = client.post(
         '/admin/api/economy/analyze',
-        json={'block': 'A', 'expected_weekly_hours': 10.0},
+        json={'class_id': _payroll_settings.class_id, 'expected_weekly_hours': 10.0},
     )
     assert preview_response.status_code == 200
     preview_data = preview_response.get_json()
@@ -287,9 +281,7 @@ def test_analyze_endpoint_override_bypasses_frozen_snapshot(logged_in_admin_clie
 def test_analyze_endpoint_recomputes_after_payroll_change(logged_in_admin_client, admin_with_payroll):
     admin, payroll_settings = admin_with_payroll
     client = logged_in_admin_client
-    _attach_join_code(admin, block='A', token='JOIN-CACHE-C')
-
-    initial_response = client.post('/admin/api/economy/analyze', json={'block': 'A'})
+    initial_response = client.post('/admin/api/economy/analyze', json={'class_id': payroll_settings.class_id})
     assert initial_response.status_code == 200
     initial_data = initial_response.get_json()
     assert initial_data['snapshot_cached'] is False
@@ -298,7 +290,7 @@ def test_analyze_endpoint_recomputes_after_payroll_change(logged_in_admin_client
     payroll_settings.expected_weekly_hours = 9.5
     db.session.commit()
 
-    refreshed_response = client.post('/admin/api/economy/analyze', json={'block': 'A'})
+    refreshed_response = client.post('/admin/api/economy/analyze', json={'class_id': payroll_settings.class_id})
     assert refreshed_response.status_code == 200
     refreshed_data = refreshed_response.get_json()
     assert refreshed_data['snapshot_cached'] is False
@@ -373,7 +365,6 @@ def test_different_expected_hours_per_block(client):
 
     payroll_a = PayrollSettings(
         class_id=class_a.class_id,
-        block="A",
         pay_rate=0.25,
         expected_weekly_hours=5.0,  # Block A: 5 hours
         payroll_frequency_days=14,
@@ -383,7 +374,6 @@ def test_different_expected_hours_per_block(client):
 
     payroll_b = PayrollSettings(
         class_id=class_b.class_id,
-        block="B",
         pay_rate=0.25,
         expected_weekly_hours=10.0,  # Block B: 10 hours
         payroll_frequency_days=14,
@@ -396,20 +386,28 @@ def test_different_expected_hours_per_block(client):
     db.session.commit()
 
     # Login as admin
+    teacher_seat_a = Seat.query.filter_by(class_id=class_a.class_id, role="teacher").first()
+    teacher_seat_b = Seat.query.filter_by(class_id=class_b.class_id, role="teacher").first()
     with client.session_transaction() as sess:
-        sess['is_admin'] = True
-        sess['admin_id'] = admin.id
-        sess['user_id'] = teacher_user.id
+        sess['user_id'] = admin.id
         sess['current_session_nonce'] = secrets.token_urlsafe(32)
-        teacher_user.current_session_nonce = sess['current_session_nonce']
+        admin.current_session_nonce = sess['current_session_nonce']
         db.session.commit()
         sess['is_system_admin'] = False
         sess['last_activity'] = datetime.now(timezone.utc).isoformat()
+        set_canonical_context(
+            sess,
+            user_id=admin.id,
+            class_id=class_a.class_id,
+            seat_id=teacher_seat_a.id,
+            role="teacher",
+            join_code=class_a.join_code,
+        )
 
     # Test Block A
     response_a = client.post(
         '/admin/api/economy/analyze',
-        json={'block': 'A'}
+        json={'class_id': class_a.class_id}
     )
     assert response_a.status_code == 200
     data_a = response_a.get_json()
@@ -417,9 +415,18 @@ def test_different_expected_hours_per_block(client):
     assert abs(data_a['cwi'] - (0.25 * 5.0 * 60)) < 0.01  # 75.0
 
     # Test Block B
+    with client.session_transaction() as sess:
+        set_canonical_context(
+            sess,
+            user_id=admin.id,
+            class_id=class_b.class_id,
+            seat_id=teacher_seat_b.id,
+            role="teacher",
+            join_code=class_b.join_code,
+        )
     response_b = client.post(
         '/admin/api/economy/analyze',
-        json={'block': 'B'}
+        json={'class_id': class_b.class_id}
     )
     assert response_b.status_code == 200
     data_b = response_b.get_json()
@@ -913,8 +920,6 @@ def test_analyze_endpoint_error_does_not_leak_exception_details(client):
     db.session.commit()
 
     with client.session_transaction() as sess:
-        sess['is_admin'] = True
-        sess['admin_id'] = admin.id
         sess['user_id'] = user.id
         sess['current_session_nonce'] = secrets.token_urlsafe(32)
         user.current_session_nonce = sess['current_session_nonce']
@@ -925,7 +930,7 @@ def test_analyze_endpoint_error_does_not_leak_exception_details(client):
     # Test error handling - request with no payroll settings should return generic message
     response_no_settings = client.post(
         '/admin/api/economy/analyze',
-        json={'block': 'NonExistentBlock'}
+        json={'class_id': class_scope.class_id}
     )
     
     # Should return 400 with generic message (not leaking internal details)
@@ -965,7 +970,7 @@ def test_analyze_block_ignores_teacher_global_payroll_settings(client):
     )
     db.session.flush()
 
-    _tb_seat = Seat(class_id=class_scope.class_id, block="A", block_identifier="A", role="student")
+    _tb_seat = Seat(class_id=class_scope.class_id, role="student")
     db.session.add(_tb_seat)
     db.session.flush()
 
@@ -973,8 +978,6 @@ def test_analyze_block_ignores_teacher_global_payroll_settings(client):
     db.session.commit()
 
     with client.session_transaction() as sess:
-        sess['is_admin'] = True
-        sess['admin_id'] = admin.id
         sess['user_id'] = user.id
         sess['current_session_nonce'] = secrets.token_urlsafe(32)
         user.current_session_nonce = sess['current_session_nonce']
@@ -982,7 +985,7 @@ def test_analyze_block_ignores_teacher_global_payroll_settings(client):
         sess['is_system_admin'] = False
         sess['last_activity'] = datetime.now(timezone.utc).isoformat()
 
-    response = client.post('/admin/api/economy/analyze', json={'block': 'A'})
+    response = client.post('/admin/api/economy/analyze', json={'class_id': class_scope.class_id})
     assert response.status_code == 400
     data = response.get_json()
     assert data['status'] == 'error'
@@ -1007,13 +1010,12 @@ def test_validate_block_ignores_teacher_global_payroll_settings(client):
 
     class_scope = create_class_scope(
         teacher_user=admin,
-        block="A",
         display_name="Scope V",
-        teacher_user_id=user.id,
+        section="A",
     )
     db.session.flush()
 
-    _tb_seat = Seat(class_id=class_scope.class_id, block="A", block_identifier="A", role="student")
+    _tb_seat = Seat(class_id=class_scope.class_id, role="student")
     db.session.add(_tb_seat)
     db.session.flush()
 
@@ -1021,8 +1023,6 @@ def test_validate_block_ignores_teacher_global_payroll_settings(client):
     db.session.commit()
 
     with client.session_transaction() as sess:
-        sess['is_admin'] = True
-        sess['admin_id'] = admin.id
         sess['user_id'] = user.id
         sess['current_session_nonce'] = secrets.token_urlsafe(32)
         user.current_session_nonce = sess['current_session_nonce']
@@ -1030,7 +1030,7 @@ def test_validate_block_ignores_teacher_global_payroll_settings(client):
         sess['is_system_admin'] = False
         sess['last_activity'] = datetime.now(timezone.utc).isoformat()
 
-    response = client.post('/admin/api/economy/validate/rent', json={'block': 'A', 'value': 50.0})
+    response = client.post('/admin/api/economy/validate/rent', json={'class_id': class_scope.class_id, 'value': 50.0})
     assert response.status_code == 200
     data = response.get_json()
     assert data['status'] == 'warning'
@@ -1053,7 +1053,7 @@ def test_analyze_block_prefers_join_code_scoped_payroll_settings(client):
         teacher_user=admin,
         display_name="A",
     )
-    _tb_seat = Seat(class_id=class_scope.class_id, block="A", block_identifier="A", role="student")
+    _tb_seat = Seat(class_id=class_scope.class_id, role="student")
     db.session.add(_tb_seat)
     db.session.flush()
     db.session.add(IdentityProfile(seat_id=_tb_seat.id, profile_type='student_unclaimed', first_name="Scoped", last_name="Jones"))
@@ -1070,16 +1070,23 @@ def test_analyze_block_prefers_join_code_scoped_payroll_settings(client):
     db.session.commit()
 
     with client.session_transaction() as sess:
-        sess['is_admin'] = True
-        sess['admin_id'] = admin.id
-        sess['user_id'] = teacher_user.id
+        sess['user_id'] = admin.id
         sess['current_session_nonce'] = secrets.token_urlsafe(32)
-        teacher_user.current_session_nonce = sess['current_session_nonce']
+        admin.current_session_nonce = sess['current_session_nonce']
         db.session.commit()
         sess['is_system_admin'] = False
         sess['last_activity'] = datetime.now(timezone.utc).isoformat()
+        teacher_seat = Seat.query.filter_by(class_id=class_scope.class_id, role="teacher").first()
+        set_canonical_context(
+            sess,
+            user_id=admin.id,
+            class_id=class_scope.class_id,
+            seat_id=teacher_seat.id,
+            role="teacher",
+            join_code=class_scope.join_code,
+        )
 
-    response = client.post('/admin/api/economy/analyze', json={'block': 'A'})
+    response = client.post('/admin/api/economy/analyze', json={'class_id': class_scope.class_id})
     assert response.status_code == 200
     data = response.get_json()
     assert data['status'] == 'success'

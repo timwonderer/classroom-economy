@@ -342,8 +342,8 @@ def test_dashboard_access_policy_fail_closed_invalid_join_code(client):
         block="B",
         display_name="B",
     )
-    seat_a = Seat(user_id=student_user.id, class_id=class_a.class_id, block="A", role="student", claimed_at=datetime.now(timezone.utc))
-    seat_b = Seat(user_id=student_user.id, class_id=class_b.class_id, block="B", role="student", claimed_at=datetime.now(timezone.utc))
+    seat_a = Seat(user_id=student_user.id, class_id=class_a.class_id, role="student", claimed_at=datetime.now(timezone.utc))
+    seat_b = Seat(user_id=student_user.id, class_id=class_b.class_id, role="student", claimed_at=datetime.now(timezone.utc))
     db.session.add_all([seat_a, seat_b])
     db.session.flush()
     profile_scope.seat_id = seat_a.id

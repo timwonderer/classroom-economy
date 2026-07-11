@@ -23,7 +23,7 @@
                             <span class="material-symbols-outlined icon-align">arrow_back</span>
                             Back to Dashboard
                         </a>
-                        {% elif session.get('is_admin') and session.get('admin_id') %}
+                        {% elif session.get('user_id') and not session.get('student_id') and not session.get('is_system_admin') %}
                         <a href="{{ url_for('admin.dashboard') }}" class="btn btn-sm btn-primary w-100">
                             <span class="material-symbols-outlined icon-align">arrow_back</span>
                             Back to Dashboard
@@ -39,7 +39,7 @@
                     <!-- Docs Home (always show) -->
                     <div class="mb-3">
                         <a href="{{ url_for('docs.index') }}"
-                            class="btn btn-sm {% if session.get('student_id') or session.get('is_admin') or session.get('is_system_admin') %}btn-outline-secondary{% else %}btn-primary{% endif %} w-100">
+                        class="btn btn-sm {% if session.get('student_id') or session.get('user_id') or session.get('is_system_admin') %}btn-outline-secondary{% else %}btn-primary{% endif %} w-100">
                             <span class="material-symbols-outlined icon-align">home</span>
                             Docs Home
                         </a>
@@ -56,7 +56,7 @@
                         </div>
                     </form>
 
-                    {% if not session.get('student_id') and not session.get('admin_id') %}
+                    {% if not session.get('student_id') and not session.get('user_id') %}
                     <!-- Audience Toggle -->
                     <div class="mb-4">
                         <div class="btn-group w-100" role="group">

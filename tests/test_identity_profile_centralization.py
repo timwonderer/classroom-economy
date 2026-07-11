@@ -50,7 +50,7 @@ def test_seat_reads_name_from_identity_profile(client):
     class_row = create_class_scope(teacher_user=teacher, join_code="IDPROF03")
     db.session.commit()
 
-    seat = Seat(class_id=class_row.class_id, block="A", block_identifier="A", role="student")
+    seat = Seat(class_id=class_row.class_id, role="student")
     db.session.add(seat)
     db.session.flush()
 

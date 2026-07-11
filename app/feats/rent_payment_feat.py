@@ -73,7 +73,7 @@ def execute_rent_payment(
     transaction = ledger_service.create_pending_transaction(
         seat_id=seat.id,
         class_id=class_id,
-        teacher_id=user_id,  # ledger API still uses teacher_id; DOM-LED canonicalization pending
+        user_id=user_id,
         amount=-payment_amount,
         account_type='checking',
         type='Rent Payment',
@@ -107,7 +107,7 @@ def execute_rent_payment(
         ledger_service.create_transfer_pair(
             seat_id=seat.id,
             class_id=class_id,
-            teacher_id=user_id,
+            user_id=user_id,
             amount=overdraft_shortfall,
             from_account='savings',
             to_account='checking',
