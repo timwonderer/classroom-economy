@@ -107,9 +107,7 @@ class ClassroomContext:
             )
 
     def commit(self):
-        from app.feats.base import FEATBypass
-        with FEATBypass():
-            self.db.session.commit()
+        self.db.session.commit()
 
 
 class ClassroomContextFactory:

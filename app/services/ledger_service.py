@@ -360,7 +360,7 @@ def _apply_monthly_savings_interest(seat, *, annual_rate=Decimal("0.045")):
     return create_pending_transaction(
         seat_id=seat.id,
         class_id=seat.class_id,
-        user_id=seat.class_economy.user_id,
+        user_id=seat.user_id,
         amount=interest,
         account_type="savings",
         type="Interest",

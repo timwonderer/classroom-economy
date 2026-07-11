@@ -171,7 +171,6 @@ def admin_required(f):
             ContextMismatch,
             ContextForbidden,
             ContextInvariantViolation,
-            CanonicalContext,
             BoundaryContext
         )
 
@@ -180,13 +179,6 @@ def admin_required(f):
         except (ContextNotEstablished, ContextMismatch, ContextForbidden, ContextInvariantViolation):
             flash("Admin session is invalid. Please log in again.")
             return redirect(url_for('admin.login'))
-
-        if ctx is None:
-            # Boundary contexts can still be established without a class.
-            user_id = session.get("user_id")
-            if not user_id:
-                return redirect(url_for('admin.login'))
-            ctx = BoundaryContext(user_id=int(user_id), actor_role="teacher")
 
         if ctx.actor_role != 'teacher':
             flash("Admin session is invalid. Please log in again.")

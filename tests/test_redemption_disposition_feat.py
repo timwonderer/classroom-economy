@@ -17,84 +17,50 @@ from decimal import Decimal
 import pytest
 
 from app.extensions import db
-from app.feats.base import FEATBypass
+from app.feats.base import FEATContext
 from app.models import (
-    ClassEconomy,
-    IdentityProfile,
-    RedemptionAuditAction,
-    RedemptionAuditLog,
-    Seat,
+    RedemptionEvent,
+    RedemptionEventAction,
     StoreItem,
-    StudentItem,
+    StorePurchase,
     Transaction,
     TransactionStatus,
-    User,
-    UserRole,
 )
-from app.utils.auth_username import build_hashed_username_fields
-from tests.helpers.v2_fixtures import make_admin
+from tests.helpers.v2_fixtures import make_teacher
+from app.services.classroom_setup import create_class, create_student
 
 
 def _seed_redemption_scenario(*, username: str, join_code: str, item_price: Decimal):
     """
     Seed a realistic redemption scenario: one teacher (with canonical User),
-    one student, one seat, one store item, and one StudentItem in 'processing'
+    one student, one seat, one store item, and one StorePurchase in 'processing'
     state with a matching purchase transaction.
 
-    All seeding occurs inside FEATBypass — this is fixture construction, not
-    a business path under test.
+    All seeding occurs inside FEATContext so the same production mutation
+    path is used as the routes under test.
 
     Returns a dict of primary-key IDs (not detached ORM objects) so callers
     can rehydrate after a route call.
     """
-    with FEATBypass():
-        admin = make_admin(username, "secret")
-        salt, uh, ulh = build_hashed_username_fields(username)
-        user = User(
-            username_hash=uh,
-            username_lookup_hash=ulh,
-            password_hash="x",
-            user_role=UserRole.TEACHER,
-            totp_secret_encrypted="x",
-        )
-        db.session.add_all([admin, user])
-        db.session.flush()
-        admin.id = user.id
-
-        profile = IdentityProfile(profile_type="student", first_name="X", last_name="S")
-        db.session.add(profile)
-        db.session.flush()
-        student_user = User(
-            username_hash="redemption_student_hash",
-            username_lookup_hash="redemption_student_lookup",
-            password_hash="x",
-            user_role=UserRole.STUDENT,
-        )
-        db.session.add(student_user)
-        db.session.flush()
-
-        economy = ClassEconomy(
+    with FEATContext("FEAT-STOR-006", idempotency_key=f"redemption-seed:{username}"):
+        teacher = make_teacher(username)
+        economy = create_class(
+            teacher.id,
             join_code=join_code,
-            user_id=admin.id,
-            status="active",
+            display_name=f"Redemption {username}",
+            section="A",
         )
-        db.session.add(economy)
-        db.session.flush()
-        seat = Seat(
-            user_id=student_user.id,
-            class_id=economy.class_id,
-            join_code=join_code,
-            block="A",
-            role="student",
+        student_user, student_seat, _profile = create_student(
+            economy.class_id,
+            first_name="X",
+            last_name="S",
+            claimed=True,
         )
-        db.session.add(seat)
-        db.session.flush()
-        profile.seat_id = seat.id
 
         item = StoreItem(
             name="Prize",
             price=item_price,
-            user_id=admin.id,
+            user_id=teacher.id,
             class_id=economy.class_id,
             is_active=True,
         )
@@ -103,7 +69,7 @@ def _seed_redemption_scenario(*, username: str, join_code: str, item_price: Deci
 
         # Original purchase transaction (the money that left the student's account)
         purchase_tx = Transaction(
-            seat_id=seat.id,
+            seat_id=student_seat.id,
             class_id=economy.class_id,
             amount=-item_price,
             account_type="checking",
@@ -117,8 +83,9 @@ def _seed_redemption_scenario(*, username: str, join_code: str, item_price: Deci
 
         # Redemption transaction (the held-pending entry created by /use-item)
         redemption_tx = Transaction(
-            seat_id=seat.id,
-            class_id=economy.class_id,amount=Decimal("0.00"),
+            seat_id=student_seat.id,
+            class_id=economy.class_id,
+            amount=Decimal("0.00"),
             account_type="checking",
             type="redemption",
             status=TransactionStatus.PENDING,
@@ -128,39 +95,52 @@ def _seed_redemption_scenario(*, username: str, join_code: str, item_price: Deci
         db.session.add(redemption_tx)
         db.session.flush()
 
-        si = StudentItem(
-            correlation_id=f"c-{username}",
-            user_id=student_user.id,
-            seat_id=seat.id,
+        purchase = StorePurchase(
+            seat_id=student_seat.id,
             class_id=economy.class_id,
             store_item_id=item.id,
+            quantity=1,
+            price_at_purchase=item_price,
+            total_price=item_price,
             status="processing",
-            join_code=join_code,
         )
-        db.session.add(si)
+        db.session.add(purchase)
         db.session.flush()
 
         # Snapshot all IDs BEFORE commit; SQLAlchemy expires attributes on commit
         # and we don't want to re-read them through a closed transaction.
         snapshot = {
-            "owner_user_id": admin.id,
-            "user_id": user.id,
-            "student_id": student.id,
+            "owner_user_id": teacher.id,
+            "user_id": teacher.id,
+            "student_id": student_user.id,
             "class_id": economy.class_id,
-            "seat_id": seat.id,
+            "seat_id": student_seat.id,
+            "student_seat_id": student_seat.id,
             "item_id": item.id,
-            "student_item_id": si.id,
+            "student_item_id": purchase.id,
             "purchase_tx_id": purchase_tx.id,
             "redemption_tx_id": redemption_tx.id,
         }
-        db.session.commit()
+        assert db.session.get(StorePurchase, purchase.id).status == "processing"
         return snapshot
 
 
 def _login_canonical_admin(client, *, user_id: int):
+    from app.models import User
+
+    user = db.session.get(User, user_id)
+    nonce = f"nonce-{user_id}"
+    if user is not None:
+        with FEATContext("FEAT-STOR-006", idempotency_key=f"redemption:login:{user_id}"):
+            user.current_session_nonce = nonce
+            db.session.flush()
     with client.session_transaction() as sess:
         sess["user_id"] = user_id
         sess["is_admin"] = True
+        sess["current_session_nonce"] = nonce
+        if user is not None:
+            sess["current_class_id"] = user.last_active_class_id
+            sess["current_seat_id"] = user.last_active_seat_id
         sess["last_activity"] = datetime.now(timezone.utc).isoformat()
 
 
@@ -187,17 +167,17 @@ def test_approve_redemption_succeeds_under_feat_enforcement(client):
     assert resp.status_code == 200, f"expected 200 under enforcement, got {resp.status_code}: {resp.data!r}"
     assert resp.json["status"] == "success"
 
-    # Audit row persisted
-    audit_rows = RedemptionAuditLog.query.filter_by(
-        student_item_id=ids["student_item_id"],
-        action=RedemptionAuditAction.APPROVED,
+    # Canonical redemption event persisted
+    event_rows = RedemptionEvent.query.filter_by(
+        purchase_id=ids["student_item_id"],
+        action=RedemptionEventAction.APPROVED,
     ).all()
-    assert len(audit_rows) == 1
-    assert audit_rows[0].teacher_id == ids["owner_user_id"]
-    assert audit_rows[0].class_id == ids["class_id"]
+    assert len(event_rows) == 1
+    assert event_rows[0].initiated_by_user_id == ids["owner_user_id"]
+    assert event_rows[0].class_id == ids["class_id"]
 
     # Item state advanced
-    refetched_item = db.session.get(StudentItem, ids["student_item_id"])
+    refetched_item = db.session.get(StorePurchase, ids["student_item_id"])
     assert refetched_item.status == "completed"
 
     # Redemption transaction description rewritten
@@ -227,14 +207,14 @@ def test_reject_redemption_succeeds_and_creates_refund_under_enforcement(client)
     assert resp.json["status"] == "success"
 
     # Audit row persisted
-    audit_rows = RedemptionAuditLog.query.filter_by(
-        student_item_id=ids["student_item_id"],
-        action=RedemptionAuditAction.REJECTED,
+    event_rows = RedemptionEvent.query.filter_by(
+        purchase_id=ids["student_item_id"],
+        action=RedemptionEventAction.REJECTED,
     ).all()
-    assert len(audit_rows) == 1
+    assert len(event_rows) == 1
 
     # Item is in terminal rejected state
-    refetched_item = db.session.get(StudentItem, ids["student_item_id"])
+    refetched_item = db.session.get(StorePurchase, ids["student_item_id"])
     assert refetched_item.status == "rejected"
     assert refetched_item.redemption_details and "Status: rejected" in refetched_item.redemption_details
 
@@ -266,10 +246,9 @@ def test_approve_rejects_non_processing_item_with_409(client):
     )
 
     # Advance item to a terminal state before the route call
-    with FEATBypass():
-        si = db.session.get(StudentItem, ids["student_item_id"])
-        si.status = "completed"
-        db.session.commit()
+    with FEATContext("FEAT-STOR-006", idempotency_key="redemption:advance_item"):
+        purchase = db.session.get(StorePurchase, ids["student_item_id"])
+        purchase.status = "completed"
 
     _login_canonical_admin(client, user_id=ids["owner_user_id"])
     resp = client.post(
@@ -308,24 +287,10 @@ def test_approve_redemption_rejects_intruder_admin_with_403(client):
     )
 
     # Build a separate canonical admin who has NO membership in owner's class
-    with FEATBypass():
-        intruder_admin = make_admin("intruder_isolation")
-        salt, uh, ulh = build_hashed_username_fields("intruder_isolation")
-        intruder_user = User(
-            username_hash=uh,
-            username_lookup_hash=ulh,
-            password_hash="x",
-            user_role=UserRole.TEACHER,
-            totp_secret_encrypted="x",
-        )
-        db.session.add_all([intruder_admin, intruder_user])
+    with FEATContext("FEAT-STOR-006", idempotency_key="redemption:intruder"):
+        intruder_user = make_teacher("intruder_isolation")
         db.session.flush()
-        intruder_admin.id = intruder_user.id
-        db.session.flush()
-        # Snapshot IDs before commit (post-commit attribute access requires a live tx).
-        intruder_admin_id = intruder_admin.id
         intruder_user_id = intruder_user.id
-        db.session.commit()
 
     _login_canonical_admin(client, user_id=intruder_user_id)
 
@@ -336,6 +301,6 @@ def test_approve_redemption_rejects_intruder_admin_with_403(client):
     assert resp.status_code == 403
 
     # And state was NOT mutated
-    refetched = db.session.get(StudentItem, owner["student_item_id"])
+    refetched = db.session.get(StorePurchase, owner["student_item_id"])
     assert refetched.status == "processing"
-    assert RedemptionAuditLog.query.filter_by(student_item_id=owner["student_item_id"]).count() == 0
+    assert RedemptionEvent.query.filter_by(purchase_id=owner["student_item_id"]).count() == 0

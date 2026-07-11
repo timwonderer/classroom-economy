@@ -181,58 +181,23 @@ def client_with_fk(client):
         event.remove(db.engine, "connect", _set_sqlite_pragma)
 
 
-@pytest.fixture(autouse=True)
-def _auto_bypass_feat(request, app):
-    """
-    Temporarily bypass FEAT enforcement for all tests, 
-    so legacy code and fixtures can create Transactions/StudentItems.
-    Tests that specifically test FEAT should be named with test_feat_enforcement
-    or use a marker.
-    """
-    # Skip bypass for tests that explicitly test enforcement logic
-    if "enforce_feat" in request.keywords or \
-       "test_feat_enforcement" in request.node.name or \
-       "test_feat_enforcement" in str(request.fspath):
-        yield
-        return
-        
-    from app.feats.base import FEATBypass
-    with FEATBypass():
-        yield
-
-
 @pytest.fixture
 def test_student():
-    from app.hash_utils import hash_username, get_random_salt
-    from app.feats.base import FEATBypass
-    from app.models import User, UserRole
-    from app.utils.auth_username import build_hashed_username_fields
-    salt = get_random_salt()
-    _, username_hash, username_lookup_hash = build_hashed_username_fields("test_student")
-    user = User(
-        user_role=UserRole.STUDENT,
-        username_hash=username_hash,
-        username_lookup_hash=username_lookup_hash,
-    )
-    db.session.add(user)
-    db.session.flush()
-    profile = IdentityProfile(
-        profile_type='student',
-        first_name='Test',
-        last_name='Student',
-    )
-    db.session.add(profile)
-    db.session.flush()
-    seat = Seat(
-        user_id=user.id,
-        class_id=None,
-        role="student",
-    )
-    db.session.add(seat)
-    db.session.flush()
-    profile.seat_id = seat.id
-    with FEATBypass():
-        db.session.commit()
+    from app.feats.base import FEATContext
+    from app.services.classroom_setup import create_teacher, create_class, create_student
+    with FEATContext("FEAT-IDEN-001", idempotency_key="test_student:seed"):
+        teacher = create_teacher("test_student_teacher")
+        class_row = create_class(
+            teacher.id,
+            join_code="TEST_STUDENT_CLASS",
+            display_name="Test Student Class",
+            section="A",
+        )
+        _user, seat, _profile = create_student(
+            class_row.class_id,
+            first_name="Test",
+            last_name="Student",
+        )
     return seat
 
 
@@ -276,12 +241,11 @@ def classroom_with_students():
             ctx.students[0].login(client)
     """
     from tests.helpers.context_factory import canonicalContextFactory
-    from app.feats.base import FEATBypass
+    from app.feats.base import FEATContext
 
     def _factory(n=1, **kwargs):
-        ctx = canonicalContextFactory(db, **kwargs).with_students(n).build()
-        with FEATBypass():
-            db.session.commit()
+        with FEATContext("FEAT-IDEN-001", idempotency_key=f"classroom_with_students:{n}"):
+            ctx = canonicalContextFactory(db, **kwargs).with_students(n).build()
         return ctx
 
     return _factory

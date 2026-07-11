@@ -369,7 +369,7 @@ def audit_protected(
             protected_fields={f: getattr(row, f, None) for f in fields},
             class_id=getattr(row, "class_id", None),
             seat_id=getattr(row, "seat_id", None),
-            teacher_id=getattr(row, "teacher_id", None),
+            user_id=getattr(row, "user_id", None),
             actor_type=actor_type,
             actor_id_hash=actor_id_hash,
         )

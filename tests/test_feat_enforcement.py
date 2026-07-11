@@ -39,11 +39,11 @@ def test_commit_succeeds_inside_feat_context(app):
     db.session.add(teacher)
     # Need a FEAT context just to flush the teacher
     from app.feats.base import FEATContext
-    with FEATContext("FEAT-SETUP"):
+    with FEATContext("FEAT-TEST-001"):
         db.session.flush()
     class_row = ClassEconomy(user_id=teacher.id, join_code="FEAT-TEST-CLS")
     db.session.add(class_row)
-    with FEATContext("FEAT-SETUP2"):
+    with FEATContext("FEAT-TEST-002"):
         db.session.flush()
 
     @requires_feat_context("FEAT-TEST-001")
@@ -88,29 +88,3 @@ def test_direct_commit_inside_feat_context_is_blocked(app):
     with pytest.raises(FEATContextError) as excinfo:
         illegal_commit()
     assert "MANDATORY FEAT ATOMICITY VIOLATION (COMMIT)" in str(excinfo.value)
-
-def test_feat_bypass_fails_in_production(app, monkeypatch):
-    """
-    CONFIRM: FEATBypass is strictly prohibited in production.
-    """
-    from app.feats.base import FEATBypass
-    monkeypatch.setenv("FLASK_ENV", "production")
-    
-    with pytest.raises(FEATContextError) as excinfo:
-        with FEATBypass():
-            pass
-    
-    assert "strictly prohibited in PRODUCTION" in str(excinfo.value)
-
-def test_feat_bypass_logs_warning(app, caplog):
-    """
-    CONFIRM: FEATBypass emits a warning log.
-    """
-    from app.feats.base import FEATBypass
-    import logging
-    
-    with caplog.at_level(logging.WARNING):
-        with FEATBypass():
-            pass
-    
-    assert "FEAT-INTEGRITY-WARNING" in caplog.text
