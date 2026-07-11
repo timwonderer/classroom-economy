@@ -2,7 +2,7 @@
 
 | Reference Number | Version | Effective Date | Supersedes | Authority Level |
 |------------------|---------|----------------|------------|-----------------|
-| DOM-STORE-001 | 2.1 | 2026-07-09 | 2.0 | Normative |
+| DOM-STORE-001 | 2.2 | 2026-07-10 | 2.1 | Normative |
 
 ## I. Purpose
 
@@ -87,8 +87,9 @@ approval, rejection) against a purchase, with cached display context.
 
 ## VIII. Schema Contract
 
-All tables use `seat_id + class_id` as the canonical scope. No legacy compatibility
-columns (`student_id`, `teacher_id`, `join_code`) are part of the v2 contract.
+All tables use `seat_id + class_id` as the canonical scope. Legacy compatibility
+columns such as `student_id`, `teacher_id`, and `join_code` may exist only as
+migration residue or display aliases, not as the v2 contract.
 
 ### 1. `store_items`
 

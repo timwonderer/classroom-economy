@@ -2,7 +2,7 @@
 
 | Reference Number | Version | Effective Date | Supersedes | Authority Level |
 |------------------|---------|----------------|------------|-----------------|
-| DOM-CORE-002     | 1.2     | 2026-06-05     | 1.1        | Constitutional |
+| DOM-CORE-002     | 1.4     | 2026-07-10     | 1.3        | Constitutional |
 
 ---
 
@@ -158,7 +158,7 @@ identity. No separate `system_admins`, `admin_credentials`, or
 `system_admin_credentials` table may define identity authority.
 
 **Compatibility bridge rule:** During the v1-to-v2 runtime cutover, implementation
-tables such as `teacher_credentials` and `system_admin_credentials` SHALL be unified as one table `passkey_credential` that carry `user_id` ownership. Any found instances that uses the legacy table must be fixed in place before moving on.
+tables such as `teacher_credentials` and `system_admin_credentials` SHALL be unified as one table `passkey_credentials` keyed by `user_id`. Any found instances that use the legacy split tables must be fixed in place before moving on.
 
 ---
 
@@ -299,7 +299,7 @@ The following do not exist in the V2 schema:
 3. Cross-domain mutation through direct table access
 4. Business meaning encoded in the Ledger domain
 5. Duplicate authority paths for the same concept
-6. Internal scoping via `join_code`
+6. Internal scoping via `class_id` only; `join_code` is ingress-only alias metadata
 
 ---
 

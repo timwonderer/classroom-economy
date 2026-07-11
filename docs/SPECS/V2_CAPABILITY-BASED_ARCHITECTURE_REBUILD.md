@@ -1,6 +1,6 @@
 # Classroom Economy Capability Architecture Audit
 
-> **Terminology Note:** This spec was written during the v1→v2 transition. Where it references `join_code` as "the boundary," read `class_id` (UUID) as the canonical internal boundary with `join_code` as its public alias. Where it references `student_id` as activity key, the v2 target is `seat_id`. References to `teacher_id` scoping are documented v1 antipatterns.
+> **Terminology Note:** This audit is historical only. Where it references `join_code` as "the boundary," read `class_id` (UUID) as the canonical internal boundary with `join_code` as its public alias. Where it references `student_id` as activity key, the v2 target is `seat_id`. References to `teacher_id` scoping are documented v1 antipatterns, not current authority.
 
 ## Executive summary
 
@@ -8,7 +8,7 @@ This report audits the **`timwonderer/classroom-economy`** repository on branch 
 
 > **Archive Note:** This audit reflects a pre-extraction state and is kept as a historical record of the authority work that has since landed.
 
-**Core finding:** the repo is **partway** to the `INV-CORE-001` model (“capability checks at request time under a strict authority hierarchy”), but the current implementation still has systemic violations of the invariant, especially:
+**Core finding:** at the time of this audit, the repo was **partway** to the `INV-CORE-001` model (“capability checks at request time under a strict authority hierarchy”), but the implementation had systemic violations of the invariant, especially:
 
 - **Write-on-read / implicit side effects**: several **GET** endpoints trigger DB writes and commits (e.g., student dashboard commits hall-pass reconciliation and interest posts; student shop lazily expires collective goals and refunds on GET).  
 - **Cross-scope (`class_id`) leakage**: some “capability decisions” (funds checks, interest base, collective goal expiration) use **`teacher_id`** (v1 antipattern — v2 target: `class_id`) or **unscoped balances** (`Student.checking_balance`, `Student.savings_balance`) rather than `class_id`-scoped calculations—violating the repository’s own “`class_id` is the canonical class boundary” invariant (`join_code` is its public alias).  
@@ -16,7 +16,7 @@ This report audits the **`timwonderer/classroom-economy`** repository on branch 
 - **Domain boundaries are porous**: “Rent” routes create and mutate “Store” grants (per-use StudentItem perks) and “Hall pass” counters directly; admin rent settings sync rent items into store items directly.
 
 **High-impact refactor priorities (smallest safe steps first):**
-1. **Ban unscoped balances in v2**: remove/guard `Student.checking_balance` and `Student.savings_balance` from being used in request handlers; update store purchase + interest posting to **require `class_id`** (with `join_code` as public alias). (High correctness impact; medium code churn.)  
+1. **Ban unscoped balances in v2**: remove/guard `Student.checking_balance` and `Student.savings_balance` from being used in request handlers; update store purchase + interest posting to **require `class_id`** (with `join_code` as public alias). (High correctness impact; medium code churn.)
 2. **Eliminate writes in GET**: move “lazy expiration,” “interest posting,” “auto tap-out,” and “rent hall-pass reconciliation” out of GET flows into (a) explicit POST commands or (b) scheduled/queued jobs.  
 3. Introduce a thin **ARC capability engine** (`compose_checks`) + **canonical capability results** and refactor one subsystem end-to-end (recommend **Store purchase**) as the exemplar.
 4. Add CI guardrails: tests that fail if GET handlers call commit/flush, and contract tests enforcing “first-fail” capability composition.

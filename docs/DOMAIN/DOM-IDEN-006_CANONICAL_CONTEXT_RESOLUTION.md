@@ -2,7 +2,7 @@
 
 | Reference Number | Version | Effective Date | Supersedes | Authority Level |
 |------------------|---------|----------------|------------|-----------------|
-| DOM-IDEN-006 | 1.0     | 2026-06-28 | - | Constitutional |
+| DOM-IDEN-006 | 1.3     | 2026-07-10 | 1.2 | Constitutional |
 
 ## I. Purpose
 This document defines the **Canonical Context Resolution** within Classroom Token Hub. It governs how the system determines the active class context for a given user, ensuring that all actions are performed within the correct classroom boundaries. It also defines how missing or malformed context is handled.
@@ -31,12 +31,12 @@ Canonical Context Resolution is prohibited from owning any table.
 
 ## VII. Canonical Context Object
 
-A `canonicalContext` object is the sole runtime authority for authenticated class-scoped execution.
+A `canonicalContext` object is the sole runtime authority for authenticated class-scoped execution. Downstream code MUST either receive a valid `canonicalContext` object or fail closed immediately.
 
 A valid `canonicalContext` object MUST contain:
 
 - `user_id`: the authenticated `users.id` principal.
-- `class_id`: the active `class_economies.id` universe.
+- `class_id`: the active `classes.class_id` universe.
 - `seat_id`: the active `seats.id` actor within the active class universe.
 - `actor_role`: the resolved authority role for the selected seat in the selected class.
 
@@ -95,7 +95,7 @@ The system SHALL NOT:
 
 All class-scoped business logic SHALL consume `canonicalContext` as an explicit input.
 
-Helpers, services, and policy checks that require class-scoped authority SHALL accept `canonicalContext` or the specific fields derived from it. They SHALL NOT call the canonical context resolver themselves.
+Helpers, services, and policy checks that require class-scoped authority SHALL accept `canonicalContext` or the specific fields derived from it. They SHALL NOT call the canonical context resolver themselves, and they SHALL NOT resolve class scope from globals after the authenticated request boundary.
 
 A function below the request boundary that needs class context MUST receive one of the following from its caller:
 

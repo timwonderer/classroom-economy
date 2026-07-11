@@ -2,7 +2,7 @@
 
 | Reference Number | Version | Effective Date | Supersedes | Authority Level |
 |------------------|---------|----------------|------------|-----------------|
-| DOM-CORE-000      | 1.1     | 2026-04-18     | 1.0        | Constitutional            |
+| DOM-CORE-000      | 1.2     | 2026-07-10     | 1.1        | Constitutional            |
 
 ## I. Purpose
 To define the structural boundaries, mutation authority rules, and schema ownership model of independent business domains within the system.
@@ -33,8 +33,8 @@ Every runtime table must have exactly one owning domain.
 - Cross-domain references do not create shared ownership.
 - A global schema document may summarize or index tables, but it may not become an alternate source of truth.
 
-### 4. The `join_code` Anchor
-Regardless of the domain, every class-scoped operation, claim, entitlement, attendance event, or configuration row MUST be anchored to the correct `join_code` or a class identity derived from that scope.
+### 4. The `class_id` Anchor
+Regardless of the domain, every class-scoped operation, claim, entitlement, attendance event, or configuration row MUST be anchored to the correct `class_id`. `join_code` is ingress-only alias metadata and MUST NOT be used as internal scope authority.
 
 ### 5. Shared Ledger, Single Owner
 The runtime uses a unified ledger, but that does not imply shared write authority. All ledger rows are owned by the Ledger domain. Other domains may require money effects only through FEAT or `ledger_service`.

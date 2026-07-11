@@ -1,6 +1,6 @@
 # V2 Class ID Invariant Backlog
 
-> **Terminology Note:** This spec was written during the v1→v2 transition. Legacy model references (`Admin`, `StudentTeacher`, `TeacherBlock`, `get_admin_student_query`) describe v1 shadows that are migration targets. The v2 canonical identity model uses `User` (global principal) + `Seat` (class-local binding) with `class_id` as the class boundary.
+> **Terminology Note:** This spec was written during the v1→v2 transition. Legacy model references (`Admin`, `StudentTeacher`, `TeacherBlock`, `get_admin_student_query`) describe v1 shadows that are migration targets and should be read as transition evidence only. The v2 canonical identity model uses `User` (global principal) + `Seat` (class-local binding) with `class_id` as the class boundary.
 
 **Status:** Deferred / backburner  
 **Priority:** Post-launch hardening  
@@ -34,7 +34,7 @@ That is not the v2 model.
 - Remove compatibility-only `ClassEconomy.status` semantics and any writes that imply class lifecycle state.
 - Eliminate any membership code that models class participation as `active` / `inactive` / `archived` instead of existence.
 - Replace cleanup and lifecycle logic that keys off labels or teacher-wide label groupings instead of surviving class associations.
-- Revisit settings models and cleanup rules that still act like `teacher_id + block` is a durable ownership boundary (v1 pattern — v2 uses `class_id` as the canonical ownership boundary via `ClassEconomy`).
+- Revisit settings models and cleanup rules that still act like `teacher_id + block` is a durable ownership boundary; v2 uses `class_id` as the canonical ownership boundary via `ClassEconomy`.
 - Move period/block metadata onto `classes.section` and remove remaining identity-adjacent
   `block` fields or mirrors from seat and roster surfaces once compatibility paths are retired.
 - Remove stale tests that still construct impossible class worlds through deprecated lifecycle fields.
@@ -43,8 +43,8 @@ That is not the v2 model.
 ## Current Guardrail
 
 - Teacher/admin write flows now fail at the request boundary unless the session carries a valid canonical class context.
-- For current runtime behavior, admin writes are session-authoritative on `current_join_code` (legacy — v2 target: resolve to `class_id` as the canonical internal boundary); request-level scope alone is not sufficient.
-- Test fixtures for admin writes must establish canonical class scope explicitly instead of relying on teacher-only or block-only setup.
+- For current runtime behavior, admin writes resolve from `current_join_code` as a public alias; request-level scope alone is not sufficient and canonical resolution must land on `class_id`.
+- Test fixtures for admin writes must establish canonical class scope explicitly instead of relying on teacher-scoped or block-scoped setup.
 - Class-scoped participant URLs expose UUID-encoded `seats.public_id`, not legacy numeric student IDs or role-specific public IDs. Resolution must match the signed navigation context and active `current_class_id`; it must not fall back to another seat when the participant exists in another class.
 
 ## Explicit Non-Goals For Current Launch Work

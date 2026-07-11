@@ -2,7 +2,7 @@
 
 | Reference Number | Version | Effective Date | Supersedes | Authority Level |
 |------------------|---------|----------------|------------|-----------------|
-| DOM-SUP-001 | 1.1 | 2026-06-02 | 1.0 | Normative |
+| DOM-SUP-001 | 1.2 | 2026-07-10 | 1.1 | Normative |
 
 ## I. Purpose
 
@@ -117,7 +117,7 @@ Key fields:
 - `id`
 - `seat_id` — FK to seats (the student seat that filed the issue)
 - `class_id` — FK to `classes`
-- `sysadmin_id` — nullable; FK to `system_admins`; set if issue is escalated
+- `escalated_by_user_id` — nullable FK to `users`; set if issue is escalated
 - `category_id` — FK to issue_categories
 - `join_code` — class isolation anchor; every issue belongs to exactly one class
 - `status` — `OPEN` | `TEACHER_REVIEW` | `ESCALATED_TO_DEV` | `DEV_RESOLVED` | `TEACHER_FINAL_REVIEW` | `CLOSED`
@@ -262,16 +262,16 @@ Key fields:
 - `admin_notes`
 - `reviewed_at`
 - `reward_amount` / `reward_sent_at`
-- Internal FK (hidden from sysadmin): `student_id` — for reverse-routing a reward; never
-  surfaced in sysadmin views
+- Internal FK (hidden from sysadmin): `actor_public_id` — UUID-encoded `seats.public_id`
+  used for reverse-routing a reward; never surfaced in sysadmin views
 
 Rules:
 
 - `anonymous_code` and `user_type` are the only actor identifiers surfaced in sysadmin
-  views. `student_id` is for internal reward routing only and must not appear in any
-  sysadmin display.
-- Sysadmin reward delivery uses `student_id` to route the reward through FEAT → Ledger;
-  that cross-domain effect does not transfer ledger ownership.
+  views. `actor_public_id` is for internal reward routing only and must not appear in
+  any sysadmin display.
+- Sysadmin reward delivery uses `actor_public_id` to route the reward through FEAT →
+  Ledger; that cross-domain effect does not transfer ledger ownership.
 - Report submission content (`title`, `description`, `steps_to_reproduce`,
   `expected_behavior`) is immutable after creation.
 
@@ -319,8 +319,8 @@ Rules:
   the resulting transaction row.
 - Sysadmin-accessible actor references use UUID-encoded `seats.public_id`, carried as
   `actor_public_id` where a support-specific column name is needed.
-- Sysadmins must not be exposed to raw `student_id` or `teacher_id` values via the
-  support system. All sysadmin-accessible actor references must use UUID-encoded
+- Sysadmins must not be exposed to raw `seat_id` or `user_id` values via the support
+  system. All sysadmin-accessible actor references must use UUID-encoded
   `seats.public_id`.
 
 ## VIII. Issue Status Machine

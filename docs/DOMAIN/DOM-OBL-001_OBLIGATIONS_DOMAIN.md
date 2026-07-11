@@ -2,7 +2,7 @@
 
 | Reference Number | Version | Effective Date | Supersedes | Authority Level |
 |------------------|---------|----------------|------------|-----------------|
-| DOM-OBL-001 | 2.3 | 2026-07-09 | 2.2 | Constitutional |
+| DOM-OBL-001 | 2.4 | 2026-07-10 | 2.3 | Constitutional |
 
 ---
 
@@ -14,7 +14,7 @@ This document defines the Obligations domain as the absolute sovereign of recurr
 
 This domain governs the runtime execution and lifecycle of **seat-scoped obligations**, **satisfaction events**, and **entitlement event streams**.
 
-**Obligations operates on seat-scoped economic actors, not global identities.** All runtime state is anchored to `seat_id`. Debts and perks are class-bound; they shall not follow a `student_id` across different class universes.
+**Obligations operates on seat-scoped economic actors, not global identities.** All runtime state is anchored to `seat_id`. Debts and perks are class-bound; they shall not follow a seat or user across different class universes.
 
 **Obligations is the sole authority over rent cycle legality and insurance renewal legality.** When a lawful rent cycle boundary or insurance renewal boundary occurs, Obligations determines whether the boundary is valid. Obligations MAY request policy transition activation at a lawful boundary, but MUST NOT mutate policy lineage directly. Policy lineage remains owned by `DOM-CLASS-001` and governed by `DOM-ECON-003`.
 

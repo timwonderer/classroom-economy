@@ -3,7 +3,7 @@
 
 | Reference Number | Version | Effective Date | Supersedes | Authority Level |
 |------------------|---------|----------------|------------|-----------------|
-| DOM-IDEN-007 | 1.0 | 2026-07-01 | None | Constitutional |
+| DOM-IDEN-007 | 1.1 | 2026-07-10 | 1.0 | Constitutional |
 
 ---
 
@@ -355,7 +355,7 @@ This ensures display metadata remains centralized while operational identity con
 
 ### Constitutionally Extinct Identifiers
 
-The following identifiers are constitutionally extinct.
+The following identifiers are constitutionally extinct runtime forms.
 
 They SHALL NOT appear in:
 
@@ -366,7 +366,9 @@ They SHALL NOT appear in:
 - APIs
 - Queries
 - Tests
-- Documentation
+
+Historical or migration discussion may reference them only as deprecated residue,
+not as canonical identity forms.
 
 ```text
 teacher_id

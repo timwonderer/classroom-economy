@@ -1,7 +1,7 @@
 # V2 Canonical Auth Runtime Cutover
 
 **Status:** Implemented (Wave 3C.12-H)
-**Effective Date:** 2026-06-08
+**Effective Date:** 2026-07-10
 
 ## Purpose
 
@@ -41,13 +41,11 @@ principal-based `ClassMembership` rows are not authoritative identity sources.
 - recovery capability
 - passkey capability
 
-Passkey metadata may remain in credential tables while compatibility residue exists:
+Passkey capability is owned by `users` and stored in the unified
+`passkey_credentials` table keyed by `user_id`.
 
-- `teacher_credentials.user_id`
-- `system_admin_credentials.user_id`
-
-Those rows are credential metadata only. Legacy `teacher_id` and `sysadmin_id` values
-on those rows are compatibility-only metadata.
+Legacy `teacher_credentials` and `system_admin_credentials` rows are migration
+residue only and do not define authority.
 
 Passwordless external IDs must use:
 
@@ -62,15 +60,8 @@ principals and must fail closed.
 
 The session anchor is `session["user_id"]`.
 
-Compatibility session keys may still exist:
-
-- `session["admin_id"]`
-- `session["student_id"]`
-- `session["sysadmin_id"]`
-
-These keys may only be populated after resolving the canonical `User` and loading the
-compatibility rows owned by that user. They are not authentication authority and must
-not be accepted as substitutes for `user_id`.
+Compatibility session keys may still exist in historical fixtures, but they are not
+authentication authority and must not be accepted as substitutes for `user_id`.
 
 Class-scoped behavior must resolve:
 

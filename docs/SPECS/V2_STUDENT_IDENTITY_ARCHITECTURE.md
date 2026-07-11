@@ -105,7 +105,7 @@ Purpose: define an isolated classroom economy universe.
 Typical fields:
 
 - `class_id`
-- `join_code_token`
+- `join_code`
 - `section`
 - `display_name`
 - `created_at`
@@ -137,7 +137,6 @@ Typical fields:
 - `user_id`
 - `teacher_notes_encrypted`
 - `role`
-- `block_identifier`
 - `roster_fingerprint`
 - claim first-name/last-name lookup hashes
 - `dedupe_code`
@@ -153,7 +152,7 @@ Rules:
 - `user_id` is nullable until the seat is claimed.
 - If the seat exists, the participant exists in that class universe.
 - Class-section metadata belongs on `classes.section`, not on `seats`.
-  Any remaining seat-level block or section labels are compatibility mirrors only.
+- Any remaining seat-level `block` or `section` labels are compatibility mirrors only and do not define identity, scoping, or authority.
 - `seats.public_id` is the public identifier for class-scoped participant navigation.
 - `seats.public_id` is the canonical deidentified public actor identifier for both teacher and
   student seats when the actor is being referenced inside a class-scoped context.

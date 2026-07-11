@@ -2,7 +2,7 @@
 
 | Reference Number | Version | Effective Date | Supersedes | Authority Level |
 |------------------|---------|----------------|------------|-----------------|
-| DOM-IDEN-001 | 2.0 | 2026-06-29 | 1.5 | Constitutional |
+| DOM-IDEN-001 | 2.2 | 2026-07-10 | 2.1 | Constitutional |
 
 ---
 
@@ -71,24 +71,24 @@ A `User` is the authenticated principal that owns authentication credentials, ac
 A `Class` defines an isolated classroom universe. Every runtime actor, policy, obligation, ledger event, attendance event, and store interaction SHALL occur within exactly one `Class`.
 
 ### `Seat`
-A `seat` is the canonical runtime actor within a defined `class`. It represents the entity that can engage in the classroom economy within the `class`. A `seat` represents a single member within the `class` that's bound to exactly one authenticated `User`.
+A `Seat` is the canonical runtime actor within a defined `Class`. It represents the entity that can engage in the classroom economy within the `Class`. A `Seat` represents a single member within the `Class` that is bound to exactly one authenticated `User`.
 
 ### `IdentityProfile`
-An `IdentityProfile` represents the human-facing display data associated with a `seat` within a `class`. Its primary function is ease of use and user experience. `IdentityProfile` SHALL NOT participate in authentication, authorization, ownership determination, canonical context construction, or business logic.
+An `IdentityProfile` represents the human-facing display data associated with a `Seat` within a `Class`. Its primary function is ease of use and user experience. `IdentityProfile` SHALL NOT participate in authentication, authorization, ownership determination, canonical context construction, or business logic.
 
 Collectively, these four objects constitute the canonical identity model of Classroom Token Hub. No other object, legacy table, or compatibility bridge may originate identity or classroom participation.
 
 
 ## VI. Participation Model
-Participation is represented exclusively through Seats. `Users` authenticate the human entity while `Seats` act within the defined economy of `Classes`. 
+Participation is represented exclusively through `Seats`. `Users` authenticate the human entity while `Seats` act within the defined economy of `Classes`.
 
 - `Classes` define the universe in which `Seats` act.
-- A `User` may participate in multiple `classes` through multiple `Seats`.
+- A `User` may participate in multiple `Classes` through multiple `Seats`.
 - A `User` may own **at most one `Seat` per `Class`**.
 - A `Seat` belongs to exactly one `Class`.
 
 ### Participation Existence Law
-1. A `User` SHALL exist only while participating in at least one `class`.
+1. A `User` SHALL exist only while participating in at least one `Class`.
 2. Participation is established by binding a `User` to a `Seat`.
 3. If a `User` no longer owns any `Seats`, the corresponding `users` row SHALL be removed.
 4. This rule applies equally to teachers and students.

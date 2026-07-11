@@ -1,10 +1,11 @@
 # Wave 3 Identity Domain — Risk & Dependency Analysis
 
-> **Terminology Note:** This spec was written during the v1→v2 transition. Legacy model references (`Admin`, `StudentTeacher`, `TeacherBlock`, `get_admin_student_query`) describe v1 shadows that are migration targets. The v2 canonical identity model uses `User` (global principal) + `Seat` (class-local binding) with `class_id` as the class boundary.
+> **Terminology Note:** This analysis is historical only. Legacy model references (`Admin`, `StudentTeacher`, `TeacherBlock`, `get_admin_student_query`) describe v1 shadows that were migration targets. The v2 canonical identity model uses `User` (global principal) + `Seat` (class-local binding) with `class_id` as the class boundary.
 
 > [!IMPORTANT]
 > This is a pre-cutover risk analysis. It is still useful for dependency maps and
-> legacy-removal risk, but it is no longer the current runtime auth contract.
+> legacy-removal risk, but it is not the current runtime auth contract and must
+> not be used as a live authority source.
 > Canonical credential verification, session `user_id`, and passkey ownership are
 > now active. Use `docs/SPECS/V2_CANONICAL_AUTH_RUNTIME_CUTOVER.md`
 > for current bridge behavior.
@@ -23,7 +24,7 @@ This document analyzes the three sub-operations of Wave 3:
 
 ### 1.1 FK Cascade Map
 
-The `class_economies.class_id` column is the FK target for **30+ columns across 25+ ORM models**. Every one of these must have its FK constraint dropped and re-created pointing to `classes.class_id`.
+The legacy `class_economies.class_id` column is the FK source for **30+ columns across 25+ ORM models**. Every one of these must have its FK constraint dropped and re-created pointing to `classes.class_id`.
 
 | Model (tablename) | Column | FK Declaration | ondelete |
 |---|---|---|---|
@@ -129,15 +130,15 @@ All route decorators and helper functions currently depend on **v1 session keys*
 
 | Session Key | Set By | Read By | Count |
 |---|---|---|---|
-| `student_id` | `routes/student.py` login | `auth.login_required`, `routes/student.py`, `routes/api.py`, `routes/docs.py`, `routes/main.py` | **50+ reads** |
-| `admin_id` | `routes/admin.py` login | `auth.admin_required`, `routes/admin.py` | **20+ reads** |
+| `student_id` | `routes/student.py` login | `auth.login_required`, `routes/student.py`, `routes/api.py`, `routes/docs.py`, `routes/main.py` | **50+ reads** (historical) |
+| `admin_id` | `routes/admin.py` login | `auth.admin_required`, `routes/admin.py` | **20+ reads** (historical) |
 | `is_admin` | `routes/admin.py` login | `auth.admin_required`, `auth.is_viewing_as_student()`, `routes/` broadly | **15+ reads** |
 | `is_system_admin` | `routes/system_admin.py` | `auth.system_admin_required` | **10+ reads** |
 | `current_seat_id` | canonical student context | Student routes (newer code) | ~5 reads |
 | `current_class_id` | canonical student context | Student routes (newer code) | ~5 reads |
 
 > [!IMPORTANT]
-> The `student_id` key is the **primary gating key** for the `login_required` decorator (L120 of `auth.py`). Changing this to `seat_id` or removing it breaks every student-facing route simultaneously.
+> At the time of this analysis, the `student_id` key was the **primary gating key** for the `login_required` decorator (L120 of `auth.py`). Changing this to `seat_id` or removing it would have broken every student-facing route simultaneously.
 
 ### 2.3 Model Import Dependencies
 
@@ -219,7 +220,7 @@ Historical note: the legacy helper has since been removed from `app/`. This sect
 | `recovery_requests` | `RecoveryRequest` | None |
 | `student_recovery_codes` | `StudentRecoveryCode` | None |
 | `teacher_onboarding` | `TeacherOnboarding` | None |
-| `teacher_credentials` | `AdminCredential` | None |
+| `passkey_credentials` | `PasskeyCredential` | `user_id` |
 | `admin_credentials` | (if exists) | None |
 
 ### 3.2 FK Dependency Depth for `teachers` Table
@@ -245,7 +246,7 @@ hall_pass_settings.teacher_id      → teachers.id
 store_items.teacher_id             → teachers.id
 student_items.created_by_teacher_id → teachers.id
 recovery_requests.teacher_id       → teachers.id
-teacher_credentials.teacher_id     → teachers.id (CASCADE)
+passkey_credentials.user_id        → users.id (CASCADE)
 payroll_rewards.teacher_id         → teachers.id
 payroll_fines.teacher_id           → teachers.id
 payroll_cache.teacher_id           → teachers.id (CASCADE)

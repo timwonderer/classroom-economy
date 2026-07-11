@@ -2,7 +2,7 @@
 
 | Reference Number | Version | Effective Date | Supersedes | Authority Level |
 |------------------|---------|----------------|------------|-----------------|
-| DOM-IDEN-002 | 2.1 | 2026-07-10 | 2.0 | Constitutional |
+| DOM-IDEN-002 | 2.3 | 2026-07-10 | 2.2 | Constitutional |
 
 ---
 
@@ -60,15 +60,11 @@ Tier 1 — Constitutional. This document defines structural enforcement mechanis
 
 ### Owned Tables
 
-This document does not own any tables exclusively but rather defines how student identity is handled within Classroom Token Hub. 
+This document does not own any tables exclusively but rather defines how student identity is handled within Classroom Token Hub.
 
 ### Schema Contract
 
-
-
-Student-specific fields on `users`: `pin_hash`, `passphrase_hash`, `reset_code`, `reset_code_generated_at`, and `reset_code_expires_at`. 
-
-
+Student-specific fields on `users`: `pin_hash`, `passphrase_hash`, `reset_code`, `reset_code_generated_at`, and `reset_code_expires_at`.
 
 Student-specific fields on `seats`: `roster_fingerprint`, `dedupe_code`, claim first-name/last-name lookup hashes, `claimed_at`.
 
@@ -90,7 +86,7 @@ Economic and activity records reference `seat_id` for actor identity per INV-ARC
 Student identity follows the universal three-layer model defined by DOM-IDEN-001:
 
 - **`User`**: authentication principal — owns credentials, recovery, and global security state
-- **`Seat`**: class-local actor — the canonical participant record inside a class
+- **`Seat`**: class-local actor - the canonical participant record inside a class
 - **`Class`**: economic universe boundary
 
 Economic activity is always tied to `seat_id`, never directly to `user_id`.
@@ -340,9 +336,9 @@ The student recovery system SHALL NOT:
 ## XI. Forbidden Patterns
 
 - Separate `students` table as identity authority (legacy migration artifact)
-- Domain tables keyed primarily by `student_id`
+- Domain tables keyed primarily by `seat_id` and `class_id`
 - Separate roster-stage and claim-stage participant tables that duplicate `seat`
-- Business tables using `join_code` as their internal foreign key
+- Business tables using `join_code` as an internal foreign key after class resolution
 - DOB or DOB-derived fields for any purpose
 - Merging or inferring identity across class boundaries during claim
 

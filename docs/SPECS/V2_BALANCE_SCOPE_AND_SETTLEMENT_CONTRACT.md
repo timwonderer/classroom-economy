@@ -1,6 +1,6 @@
 # V2 Balance Scope and Settlement Contract
 
-> **Terminology Note:** This spec was written during the v1→v2 transition. Where it references `student_id` as activity key, the v2 canonical target is `seat_id`. Where it references `join_code` as the class boundary, read `class_id` (UUID) as the canonical internal boundary with `join_code` as its public alias.
+> **Terminology Note:** This spec defines the v2 runtime contract. Balance reads and settlement are scoped by `class_id + seat_id`; `join_code` is only the public ingress alias.
 
 ## Purpose
 
@@ -54,11 +54,10 @@ No frontend computation is authoritative.
 
 ### 3. Settlement now resolves canonical class context
 
-`settle_balances(student_id, join_code)` (v1 shadow -- v2 target: `seat_id, class_id`) currently:
+`settle_balances_for_seat(class_id, seat_id)` currently:
 
-- resolves seat IDs for `(student_id, join_code)` (v1 shadow -- v2 target: `seat_id, class_id`)
-- resolves canonical `class_id` from seat first, class row fallback second
-- rejects execution if canonical `class_id` cannot be resolved
+- resolves canonical scope from `(class_id, seat_id)`
+- rejects execution if canonical scope cannot be resolved
 - performs cache and transaction selection with `class_id` scope
 
 ### 4. FEAT transaction boundary ownership is preserved
@@ -71,16 +70,16 @@ Settlement sweep entrypoint:
 
 ## Known Transitional Risks Against v2 Rules
 
-### Risk A: Settlement interface still keyed by `student_id + join_code`
+### Risk A: Settlement interface must remain keyed by `class_id + seat_id`
 
 Current API shape:
 
-- `settle_balances(student_id, join_code)` (v1 shadow -- v2 target: `seat_id, class_id`)
+- `settle_balances_for_seat(class_id, seat_id)`
 
-v2 target:
+Canonical key:
 
-- canonical key should be `class_id + seat_id` account context
-- `student_id` must be replaced by `seat_id` as the activity anchor in all settlement interfaces
+- `class_id + seat_id`
+- `seat_id` is the activity anchor in all settlement interfaces
 
 Impact:
 
@@ -91,12 +90,12 @@ Priority:
 
 - High
 
-### Risk B: Mixed legacy fields still present in settlement/cache models
+### Risk B: Mixed legacy fields must be isolated from settlement/cache models
 
 Runtime still carries:
 
-- `student_id` (v2 target: `seat_id`)
-- `join_code` (v2 target: `class_id`)
+- `student_id` (legacy compatibility residue)
+- `join_code` (public alias only)
 
 on cache/transaction pathways, despite class/seat canonicalization.
 
@@ -104,7 +103,7 @@ Impact:
 
 - dual-authority drift risk
 - maintenance overhead and inconsistent query patterns
-- `student_id`-keyed interfaces must migrate to `seat_id` before v2 authority is fully canonical
+- `student_id`-keyed interfaces must not be used in v2 settlement paths
 
 Priority:
 
@@ -125,9 +124,9 @@ Priority:
 
 ## Required v2-Conformant Direction
 
-1. Make settlement context APIs canonical:
+1. Keep settlement context APIs canonical:
    - `settle_balances_for_seat(class_id, seat_id)`
-2. Remove join-code keyed settlement and cache lookup paths after migration gate.
+2. Do not introduce join-code keyed settlement and cache lookup paths.
 3. Keep reads pure:
    - no settlement invocation from balance reads.
 4. Keep FEAT ownership strict:

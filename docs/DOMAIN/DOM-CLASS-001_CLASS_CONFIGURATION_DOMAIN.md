@@ -2,7 +2,7 @@
 
 | Reference Number | Version | Effective Date | Supersedes | Authority Level |
 |------------------|---------|----------------|------------|-----------------|
-| DOM-CLASS-001 | 2.1 | 2026-06-13 | 2.0 | Constitutional |
+| DOM-CLASS-001 | 2.3 | 2026-07-10 | 2.2 | Constitutional |
 
 ## III. Authority Level
 
@@ -18,10 +18,10 @@ Tier 1 — Constitutional. This document defines structural enforcement mechanis
 
 - The canonical metadata field for a class-period label is `section`.
 - `section` represents labels such as `2`, `Block A`, or `Period 1`.
+- `block` is legacy display terminology for the class-period label and should only appear as historical or compatibility language.
 - `display_name` represents the human-facing class title such as `Honors Chemistry`.
 - Teacher-facing display should prefer `display_name` + `section`.
-- Legacy `block` naming is transitional and MUST NOT be treated as the long-term
-  class-section field name.
+- Class-period metadata lives on the class record, not on seats.
 
 ## V. Schema Authority Declaration
 
@@ -355,7 +355,7 @@ The following fields in `feature_settings` are retired by the policy transition 
 - Economic governance consumes `policy_versions` and `policy_transitions` as constitutional policy lineage.
 - Operational domains consume active projected configuration state from settings tables.
 - FEAT orchestrates lawful activation and projection updates but does not own policy truth.
-- Class identity (`classes.class_id`, `classes.join_code_token`) is owned by Identity.
+- Class identity (`classes.class_id`, `classes.join_code`) is owned by Identity.
   This domain reads `class_id` as a FK but does not own the class record.
 
 ## X. Amendment

@@ -2,7 +2,7 @@
 
 | Reference Number | Version | Effective Date | Supersedes | Authority Level |
 |------------------|---------|----------------|------------|-----------------|
-| DOM-IDEN-003 | 2.0 | 2026-06-29 | 1.2 | Constitutional |
+| DOM-IDEN-003 | 2.3 | 2026-07-10 | 2.2 | Constitutional |
 
 ---
 
@@ -14,7 +14,7 @@ This document is subordinate to **DOM-IDEN-001** (Canonical Identity Model) and 
 
 > [!IMPORTANT]
 >
-> This document defines the canonical v2 identity model. It does not preserve v1 data model constraints. Legacy tables (`admins`/`teachers`, `teacher_blocks`, `student_teachers`, `class_memberships`) are migration artifacts and SHALL NOT be treated as identity authority.
+> This document defines the canonical v2 identity model. Legacy tables (`admins`/`teachers`, `teacher_blocks`, `student_teachers`, `class_memberships`) are migration artifacts and SHALL NOT be treated as identity authority.
 
 ---
 
@@ -28,7 +28,7 @@ This document governs:
 - Teacher session semantics
 - Teacher account recovery (self-serve, student-assisted)
 - Passkey credential metadata
-- Teacher class provisioning identity
+- Teacher class provisioning identity through `class_id` and `seat_id`
 
 This document does **not** govern:
 
@@ -71,9 +71,9 @@ Key fields: `id`, `user_id` (FK to `users` where `user_role = 'teacher'`), `stat
 
 Key fields: `id`, `recovery_request_id` (FK, CASCADE), `seat_id` (FK to `seats` where `role = 'student'`), `code_hash` (NULL until student generates their code), `verified_at`, `notified_at`, `dismissed`.
 
-**`teacher_credentials`**
+**`passkey_credentials`**
 
-Teacher passkey credential metadata. Owned by `users.id` (per INV-ARC-019 §XI). Sysadmin credential metadata (`system_admin_credentials`) is not governed by this document.
+Teacher passkey credential metadata. Owned by `users.id` (per INV-ARC-019 §XI). This unified table is the canonical passkey store for teacher and sysadmin principals.
 
 ### Schema Contract
 
@@ -83,7 +83,7 @@ Teacher-specific fields on `users`: `totp_secret_encrypted`.
 
 - `recovery_requests`: At most one `status = 'pending'` row per user at any time. `expires_at` is a hard TTL (5 days). Rows past `expires_at` are inert regardless of status. `partial_codes` and `resume_new_username` must be cleared when `status` transitions to `verified` or `expired`.
 - `student_recovery_codes`: One row per selected student seat per recovery request. `code_hash` is `HMAC(6-digit-code, b'')`. Plaintext code is never stored. `code_hash` is set to NULL and `verified_at` is cleared on any failed submission (all-or-nothing invalidation per §IX invariant 6). Rows become inert when the parent `recovery_request.expires_at` passes.
-- `teacher_credentials`: Passwordless external IDs use `user_<User.id>`. Legacy external IDs such as `admin_<id>` are invalid v2 principals. Legacy `teacher_id` columns are compatibility-only metadata. Passkey metadata does not authorize class access, seat access, recovery, or economic actions.
+- `passkey_credentials`: Passwordless external IDs use `user_<User.id>`. Legacy external IDs such as `admin_<id>` are invalid v2 principals. Passkey metadata does not authorize class access, seat access, recovery, or economic actions.
 
 ### Derived / Cross-Domain Rules
 
@@ -111,7 +111,7 @@ Teacher-specific fields:
 
 > [!IMPORTANT]
 >
-> Teacher users may optionally enable passkey for authentication. Passkey-related metadata is stored on a unified `passkey_metadata` table with the following fields: `id`, `user_id` (FK to `users.id`), `credential_id`, `authenticator_name`, `created_at`, `last_used`. Actual field requirements should consult Bitwarden Passwordless SDK requirements.
+> Teacher users may optionally enable passkey for authentication. Passkey-related metadata is stored on the unified `passkey_credentials` table with the following fields: `id`, `user_id` (FK to `users.id`), `credential_id`, `authenticator_name`, `created_at`, `last_used`. Actual field requirements should consult Bitwarden Passwordless SDK requirements.
 
 Student-specific fields (`pin_hash`, `passphrase_hash`, `money_action_cooldown_until`) SHALL be `NULL` for teacher rows.
 
@@ -359,7 +359,7 @@ For student credential structure, see DOM-IDEN-002.
 - Treating `join_code` as backend authority boundary
 - Implicitly deriving active scope from unrelated session residue
 - Writing class-scoped state when no teacher seat is resolved
-- Using `teacher_id` alone to scope student data
+- Using legacy `teacher_id` alone to scope student data instead of resolved `class_id` and `seat_id`
 
 ---
 

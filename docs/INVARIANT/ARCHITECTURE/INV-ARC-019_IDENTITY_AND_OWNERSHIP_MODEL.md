@@ -2,7 +2,7 @@
 
 | Reference Number | Version | Effective Date | Supersedes | Authority Level |
 |------------------|---------|----------------|------------|-----------------|
-| INV-ARC-019      | 1.0     | 2026-06-08     | None | Constitutional |
+| INV-ARC-019      | 1.2     | 2026-07-10     | 1.1 | Constitutional |
 
 ---
 
@@ -71,7 +71,7 @@ No identifier answers more than its assigned question.
 - class-local claim verification artifacts
 - display identity
 
-Passkey metadata is handled by a unified `passkey_credential` table for both teacher and sysadmin, but the owning
+Passkey metadata is stored in the unified `passkey_credentials` table for both teacher and sysadmin, and the owning
 principal is always `users.id`.
 
 ## VII. Operational Actor
@@ -156,7 +156,7 @@ The following are invalid v2 residue, not supported identity alternatives:
 - `Student.opaque_reference`
 - separate TLCP actor identity families
 
-`Student.internal_reference` is separate internal-locator residue. The canonical internal reference MAY be a combination of `users_id`, `class_id`, or `seats_id`
+`Student.internal_reference` is separate internal-locator residue. The canonical internal reference MAY be a combination of `users.id`, `class_id`, or `seats.id`
 
 Named cleanup debt:
 
@@ -196,7 +196,7 @@ Every capability design must answer two questions explicitly:
 Settled ownership:
 
 - Student recovery capability is owned and executed by `users` 
-- passkey capability is owned by `users` and executed by `passkey_credentials` (jointly used by teacher and sysadmin). Ownership is keyed by users_id
+- passkey capability is owned by `users` and stored in `passkey_credentials` (jointly used by teacher and sysadmin). Ownership is keyed by `users.id`
 - roster claim verification is owned by `seats`
 
 Ownership of `hall_pass_verify_token` SHALL be owned by `users` where `user_role = teacher`. The `hall_pass_verify_token` is a form of capability token that authorize the holder to access hall pass verification feature.

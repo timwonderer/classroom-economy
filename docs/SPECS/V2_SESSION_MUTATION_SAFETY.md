@@ -44,14 +44,13 @@ Rules:
 The Flask session may carry:
 
 - `user_id` — canonical authenticated principal
-- `admin_id`, `student_id`, or `sysadmin_id` — route compatibility shadows
 - `current_class_id` / `current_join_code` — active class context mirrors
 - `current_seat_id` — class-local actor context where available
 
 Only `user_id` authenticates the principal. Role-specific IDs may be used to load
-existing templates or route helpers, but they must be resolved from the canonical
-user and must not drive credential verification, recovery authority, class scope, or
-money-affecting authorization.
+existing templates or route helpers only during transitional compatibility work, but
+they must be resolved from the canonical user and must not drive credential
+verification, recovery authority, class scope, or money-affecting authorization.
 
 Credential verification must read from `users`:
 
