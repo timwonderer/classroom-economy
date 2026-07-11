@@ -4,6 +4,7 @@ import pytest
 
 from tests.helpers.v2_fixtures import make_teacher as make_admin
 from app.extensions import db
+from app.feats.base import FEATContext
 from app.models import (
     ClassEconomy,
     IdentityProfile,
@@ -69,11 +70,12 @@ def test_delete_join_code_requires_membership_even_if_teacherblock_exists(client
 
 
 def test_delete_join_code_requires_confirmation(client):
-    admin = make_admin("confirm_admin", "secret")
-    db.session.flush()
-    class_row = create_class_scope(
-        teacher_user=admin, join_code="CONF001")
-    db.session.commit()
+    with FEATContext("FEAT-IDEN-001", idempotency_key="admin-membership:confirm-admin"):
+        admin = make_admin("confirm_admin", "secret")
+        db.session.flush()
+        class_row = create_class_scope(
+            teacher_user=admin, join_code="CONF001")
+        db.session.commit()
 
     _login_admin(client, admin, class_id=class_row.class_id)
     with client.session_transaction() as sess:
@@ -102,62 +104,63 @@ def test_delete_join_code_requires_confirmation(client):
 
 
 def test_issues_queue_respects_current_join_code_membership_scope(client):
-    admin = make_admin("issues_gate_admin", "secret")
-    db.session.flush()
+    with FEATContext("FEAT-IDEN-001", idempotency_key="admin-membership:issues-gate-admin"):
+        admin = make_admin("issues_gate_admin", "secret")
+        db.session.flush()
 
-    class_a = create_class_scope(
-        teacher_user=admin, join_code="ISSGA1")
-    class_b = create_class_scope(
-        teacher_user=admin, join_code="ISSGB1")
-    profile = IdentityProfile(profile_type="student", first_name="Gate", last_name="Stone")
-    db.session.add(profile)
-    student_user = User(username_hash="gate_student_hash", username_lookup_hash="gate_student_lookup", user_role=UserRole.STUDENT)
-    db.session.add(student_user)
-    db.session.flush()
-    seat_a = Seat(user_id=student_user.id, class_id=class_a.class_id, role="student")
-    db.session.add(seat_a)
-    db.session.flush()
-    profile.seat_id = seat_a.id
-    seat_b = Seat(user_id=student_user.id, class_id=class_b.class_id, role="student")
-    db.session.add(seat_b)
-    db.session.flush()
-    db.session.add(IdentityProfile(seat_id=seat_b.id, profile_type="student_claimed", first_name="Gate", last_name="Stone"))
+        class_a = create_class_scope(
+            teacher_user=admin, join_code="ISSGA1")
+        class_b = create_class_scope(
+            teacher_user=admin, join_code="ISSGB1")
+        profile = IdentityProfile(profile_type="student", first_name="Gate", last_name="Stone")
+        db.session.add(profile)
+        student_user = User(username_hash="gate_student_hash", username_lookup_hash="gate_student_lookup", user_role=UserRole.STUDENT)
+        db.session.add(student_user)
+        db.session.flush()
+        seat_a = Seat(user_id=student_user.id, class_id=class_a.class_id, role="student")
+        db.session.add(seat_a)
+        db.session.flush()
+        profile.seat_id = seat_a.id
+        seat_b = Seat(user_id=student_user.id, class_id=class_b.class_id, role="student")
+        db.session.add(seat_b)
+        db.session.flush()
+        db.session.add(IdentityProfile(seat_id=seat_b.id, profile_type="student_claimed", first_name="Gate", last_name="Stone"))
 
-    category = IssueCategory(
-        name=f"Issue Gate Category {datetime.now(timezone.utc).isoformat()}",
-        category_type="transaction",
-        is_active=True,
-    )
-    db.session.add(category)
-    db.session.flush()
+        category = IssueCategory(
+            name=f"Issue Gate Category {datetime.now(timezone.utc).isoformat()}",
+            category_type="transaction",
+            is_active=True,
+        )
+        db.session.add(category)
+        db.session.flush()
 
-    db.session.add_all([
-        Issue(
-            student_first_name="Gate",
-            student_last_initial="S",
-            user_id=student_user.id,
-            actor_public_id="seat-public-issue-gate-a",
-            class_id=class_a.class_id,
-            seat_id=seat_a.id,
-            join_code="ISSGA1",
-            category_id=category.id,
-            issue_type="transaction",
-            student_explanation="Issue for class A",
-        ),
-        Issue(
-            student_first_name="Gate",
-            student_last_initial="S",
-            user_id=student_user.id,
-            actor_public_id="seat-public-issue-gate-b",
-            class_id=class_b.class_id,
-            seat_id=seat_b.id,
-            join_code="ISSGB1",
-            category_id=category.id,
-            issue_type="transaction",
-            student_explanation="Issue for class B",
-        ),
-    ])
-    db.session.commit()
+        db.session.add_all([
+            Issue(
+                student_first_name="Gate",
+                student_last_initial="S",
+                user_id=student_user.id,
+                actor_public_id="seat-public-issue-gate-a",
+                class_id=class_a.class_id,
+                seat_id=seat_a.id,
+                join_code="ISSGA1",
+                category_id=category.id,
+                issue_type="transaction",
+                student_explanation="Issue for class A",
+            ),
+            Issue(
+                student_first_name="Gate",
+                student_last_initial="S",
+                user_id=student_user.id,
+                actor_public_id="seat-public-issue-gate-b",
+                class_id=class_b.class_id,
+                seat_id=seat_b.id,
+                join_code="ISSGB1",
+                category_id=category.id,
+                issue_type="transaction",
+                student_explanation="Issue for class B",
+            ),
+        ])
+        db.session.commit()
 
     _login_admin(client, admin, class_id=class_a.class_id)
     with client.session_transaction() as sess:
@@ -177,12 +180,13 @@ def test_issues_queue_respects_current_join_code_membership_scope(client):
 
 
 def test_add_individual_student_requires_current_class_context(client):
-    admin = make_admin("student_guard_admin", "secret")
-    db.session.flush()
+    with FEATContext("FEAT-IDEN-001", idempotency_key="admin-membership:student-guard"):
+        admin = make_admin("student_guard_admin", "secret")
+        db.session.flush()
 
-    create_class_scope(
-        teacher_user=admin, join_code="STUG001")
-    db.session.commit()
+        create_class_scope(
+            teacher_user=admin, join_code="STUG001")
+        db.session.commit()
 
     class_row = ClassEconomy.query.filter_by(join_code="STUG001").first()
     teacher_seat = Seat.query.filter_by(class_id=class_row.class_id, role="teacher").first()
@@ -207,14 +211,15 @@ def test_add_individual_student_requires_current_class_context(client):
 
 
 def test_add_individual_student_creates_single_student_seat_for_new_student(client):
-    admin = make_admin("student_single_tb_admin", "secret")
-    db.session.flush()
+    with FEATContext("FEAT-IDEN-001", idempotency_key="admin-membership:student-single-individual"):
+        admin = make_admin("student_single_tb_admin", "secret")
+        db.session.flush()
 
-    create_class_scope(
-        teacher_user=admin,
-        join_code="SING001"
-    )
-    db.session.commit()
+        create_class_scope(
+            teacher_user=admin,
+            join_code="SING001"
+        )
+        db.session.commit()
 
     class_row_sing = ClassEconomy.query.filter_by(join_code="SING001").first()
     teacher_seat_sing = Seat.query.filter_by(class_id=class_row_sing.class_id, role="teacher").first()
@@ -257,14 +262,15 @@ def test_add_individual_student_creates_single_student_seat_for_new_student(clie
 
 
 def test_add_manual_student_creates_single_student_seat_for_new_student(client):
-    admin = make_admin("manual_single_tb_admin", "secret")
-    db.session.flush()
+    with FEATContext("FEAT-IDEN-001", idempotency_key="admin-membership:student-single-manual"):
+        admin = make_admin("manual_single_tb_admin", "secret")
+        db.session.flush()
 
-    create_class_scope(
-        teacher_user=admin,
-        join_code="MANU001"
-    )
-    db.session.commit()
+        create_class_scope(
+            teacher_user=admin,
+            join_code="MANU001"
+        )
+        db.session.commit()
 
     class_row_manu = ClassEconomy.query.filter_by(join_code="MANU001").first()
     teacher_seat_manu = Seat.query.filter_by(class_id=class_row_manu.class_id, role="teacher").first()
@@ -310,18 +316,19 @@ def test_add_manual_student_creates_single_student_seat_for_new_student(client):
 
 
 def test_add_individual_student_uses_selected_class_join_code_when_block_has_other_scope(client):
-    admin = make_admin("student_scope_admin", "secret")
-    db.session.flush()
+    with FEATContext("FEAT-IDEN-001", idempotency_key="admin-membership:student-scope"):
+        admin = make_admin("student_scope_admin", "secret")
+        db.session.flush()
 
-    create_class_scope(
-        teacher_user=admin,
-        join_code="OLDA001"
-    )
-    create_class_scope(
-        teacher_user=admin,
-        join_code="NEWA001"
-    )
-    db.session.commit()
+        create_class_scope(
+            teacher_user=admin,
+            join_code="OLDA001"
+        )
+        create_class_scope(
+            teacher_user=admin,
+            join_code="NEWA001"
+        )
+        db.session.commit()
 
     class_row_new = ClassEconomy.query.filter_by(join_code="NEWA001").first()
     teacher_seat_new = Seat.query.filter_by(class_id=class_row_new.class_id, role="teacher").first()
@@ -361,12 +368,13 @@ def test_add_individual_student_uses_selected_class_join_code_when_block_has_oth
     assert ClassEconomy.query.filter_by(class_id=linked_seat.class_id).first().join_code == "NEWA001"
 
 def test_store_create_requires_current_class_context(client):
-    admin = make_admin("store_guard_admin", "secret")
-    db.session.flush()
+    with FEATContext("FEAT-IDEN-001", idempotency_key="admin-membership:store-guard"):
+        admin = make_admin("store_guard_admin", "secret")
+        db.session.flush()
 
-    create_class_scope(
-        teacher_user=admin, join_code="STOG001")
-    db.session.commit()
+        create_class_scope(
+            teacher_user=admin, join_code="STOG001")
+        db.session.commit()
 
     class_row = ClassEconomy.query.filter_by(join_code="STOG001").first()
     teacher_seat = Seat.query.filter_by(class_id=class_row.class_id, role="teacher").first()
@@ -385,12 +393,13 @@ def test_store_create_requires_current_class_context(client):
 
 
 def test_payroll_settings_requires_current_class_context(client):
-    admin = make_admin("payroll_guard_admin", "secret")
-    db.session.flush()
+    with FEATContext("FEAT-IDEN-001", idempotency_key="admin-membership:payroll-guard"):
+        admin = make_admin("payroll_guard_admin", "secret")
+        db.session.flush()
 
-    create_class_scope(
-        teacher_user=admin, join_code="PAYG001")
-    db.session.commit()
+        create_class_scope(
+            teacher_user=admin, join_code="PAYG001")
+        db.session.commit()
 
     class_row = ClassEconomy.query.filter_by(join_code="PAYG001").first()
     teacher_seat = Seat.query.filter_by(class_id=class_row.class_id, role="teacher").first()
@@ -455,12 +464,13 @@ def test_payroll_settings_uses_feature_scope_blocks_not_student_block_text(clien
 
 
 def test_class_scoped_write_rejects_stale_session_join_code(client):
-    admin = make_admin("stale_guard_admin", "secret")
-    db.session.flush()
+    with FEATContext("FEAT-IDEN-001", idempotency_key="admin-membership:stale-guard"):
+        admin = make_admin("stale_guard_admin", "secret")
+        db.session.flush()
 
-    create_class_scope(
-        teacher_user=admin, join_code="LIVE001")
-    db.session.commit()
+        create_class_scope(
+            teacher_user=admin, join_code="LIVE001")
+        db.session.commit()
 
     class_row = ClassEconomy.query.filter_by(join_code="LIVE001").first()
     teacher_seat = Seat.query.filter_by(class_id=class_row.class_id, role="teacher").first()
@@ -487,14 +497,15 @@ def test_class_scoped_write_rejects_stale_session_join_code(client):
 
 
 def test_store_query_scope_does_not_implicitly_switch_session_context(client):
-    admin = make_admin("query_scope_admin", "secret")
-    db.session.flush()
+    with FEATContext("FEAT-IDEN-001", idempotency_key="admin-membership:query-scope"):
+        admin = make_admin("query_scope_admin", "secret")
+        db.session.flush()
 
-    create_class_scope(
-        teacher_user=admin, join_code="STOREA1")
-    create_class_scope(
-        teacher_user=admin, join_code="STOREB2")
-    db.session.commit()
+        create_class_scope(
+            teacher_user=admin, join_code="STOREA1")
+        create_class_scope(
+            teacher_user=admin, join_code="STOREB2")
+        db.session.commit()
 
     class_row = ClassEconomy.query.filter_by(join_code="STOREA1").first()
     teacher_seat = Seat.query.filter_by(class_id=class_row.class_id, role="teacher").first()
