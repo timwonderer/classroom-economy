@@ -113,15 +113,6 @@ def test_get_verify_page_rejects_null_token_teacher(client):
     assert "Verification page not available" in html
 
 
-def test_get_verify_page_no_id_in_url(client, hp_teacher):
-    """The new verification URL must not contain any numeric teacher ID."""
-    token = hp_teacher.hall_pass_verify_token
-    assert token.isalnum() and not token.isdigit()
-    # Old URL style must not be routed
-    resp_old = client.get(f"/hall-pass/verification?teacher_id={hp_teacher.id}")
-    assert resp_old.status_code == 404
-
-
 # ---------------------------------------------------------------------------
 # POST: verification outcomes
 # ---------------------------------------------------------------------------

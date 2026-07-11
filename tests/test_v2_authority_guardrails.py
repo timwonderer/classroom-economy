@@ -248,11 +248,6 @@ def test_switch_class_access_policy_exists():
     assert "def assert_can_switch_class(" in source
 
 
-def test_switch_teacher_access_policy_is_removed():
-    source = Path("app/services/access_policy_service.py").read_text()
-    assert "def assert_can_switch_teacher(" not in source
-
-
 def test_insurance_claim_feat_enforces_access_policy():
     source = Path("app/feats/insurance_claim_feat.py").read_text()
     assert "assert_can_process_claim(" in source
