@@ -19,11 +19,7 @@ def create_teacher(username="teacher1"):
 # Helper to create student
 def create_student(teacher, username="student1", block="A"):
     join_code = f"JOIN{teacher.id}{block}"
-    class_row = ClassEconomy.query.filter_by(join_code=join_code).first()
-    if not class_row:
-        class_row = ClassEconomy(join_code=join_code, user_id=teacher.id)
-        db.session.add(class_row)
-        db.session.flush()
+    class_row = create_class_scope(teacher_user=teacher, join_code=join_code)
 
     student = make_student_identity(
         class_id=class_row.class_id,
