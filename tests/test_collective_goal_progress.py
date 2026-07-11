@@ -15,15 +15,16 @@ from tests.helpers.canonical_session import set_canonical_context
 def _login_student(client, student_id, join_code):
     with client.session_transaction() as sess:
         seat = Seat.query.filter_by(user_id=student_id).order_by(Seat.id.asc()).first()
-        if seat:
-            set_canonical_context(
-                sess,
-                user_id=student_id,
-                class_id=seat.class_id,
-                seat_id=seat.id,
-                role="student",
-                join_code=join_code,
-            )
+        if seat is None:
+            raise ValueError("collective goal progress tests require an explicit canonical seat")
+        set_canonical_context(
+            sess,
+            user_id=student_id,
+            class_id=seat.class_id,
+            seat_id=seat.id,
+            role="student",
+            join_code=join_code,
+        )
 
 
 def _login_admin(client, user_id):
