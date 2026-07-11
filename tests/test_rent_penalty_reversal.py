@@ -86,9 +86,7 @@ def _make_student(suffix="s", join_code=None):
         if class_row:
             class_id = class_row.class_id
     if class_id is None:
-        # fallback: pick any class
-        class_row = ClassEconomy.query.first()
-        class_id = class_row.class_id if class_row else None
+        raise ValueError("join_code is required to resolve the canonical class scope")
     return make_student_identity(class_id=class_id, first_name="Test", last_name="R")
 
 
