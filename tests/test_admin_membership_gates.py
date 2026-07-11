@@ -21,16 +21,9 @@ from tests.helpers.admin_context import login_teacher
 
 
 def _login_admin(client, admin: User, *, class_id: str | None = None, seat_id: int | None = None):
-    resolved_class_id = class_id
-    resolved_seat_id = seat_id
-    if resolved_class_id is None:
-        owned_classes = ClassEconomy.query.filter_by(user_id=admin.id).order_by(ClassEconomy.class_id.asc()).all()
-        if len(owned_classes) == 1:
-            resolved_class_id = owned_classes[0].class_id
-            teacher_seat = Seat.query.filter_by(class_id=resolved_class_id, role="teacher", user_id=admin.id).first()
-            if teacher_seat is not None:
-                resolved_seat_id = teacher_seat.id
-    login_teacher(client, admin, class_id=resolved_class_id, seat_id=resolved_seat_id)
+    if class_id is None:
+        raise ValueError("admin membership gate tests require an explicit canonical class scope")
+    login_teacher(client, admin, class_id=class_id, seat_id=seat_id)
 
 
 def test_set_current_class_requires_membership_even_if_teacherblock_exists(client):
@@ -191,7 +184,10 @@ def test_add_individual_student_requires_current_class_context(client):
         teacher_user=admin, join_code="STUG001")
     db.session.commit()
 
-    _login_admin(client, admin)
+    class_row = ClassEconomy.query.filter_by(join_code="STUG001").first()
+    teacher_seat = Seat.query.filter_by(class_id=class_row.class_id, role="teacher").first()
+    assert teacher_seat is not None
+    _login_admin(client, admin, class_id=class_row.class_id, seat_id=teacher_seat.id)
 
     initial_student_count = db.session.query(Seat).filter(Seat.role == "student").count()
     response = client.post(
@@ -220,9 +216,10 @@ def test_add_individual_student_creates_single_student_seat_for_new_student(clie
     )
     db.session.commit()
 
-    _login_admin(client, admin.id)
     class_row_sing = ClassEconomy.query.filter_by(join_code="SING001").first()
     teacher_seat_sing = Seat.query.filter_by(class_id=class_row_sing.class_id, role="teacher").first()
+    assert teacher_seat_sing is not None
+    _login_admin(client, admin, class_id=class_row_sing.class_id, seat_id=teacher_seat_sing.id)
     with client.session_transaction() as sess:
         set_canonical_context(
             sess,
@@ -269,9 +266,10 @@ def test_add_manual_student_creates_single_student_seat_for_new_student(client):
     )
     db.session.commit()
 
-    _login_admin(client, admin.id)
     class_row_manu = ClassEconomy.query.filter_by(join_code="MANU001").first()
     teacher_seat_manu = Seat.query.filter_by(class_id=class_row_manu.class_id, role="teacher").first()
+    assert teacher_seat_manu is not None
+    _login_admin(client, admin, class_id=class_row_manu.class_id, seat_id=teacher_seat_manu.id)
     with client.session_transaction() as sess:
         set_canonical_context(
             sess,
@@ -325,9 +323,10 @@ def test_add_individual_student_uses_selected_class_join_code_when_block_has_oth
     )
     db.session.commit()
 
-    _login_admin(client, admin.id)
     class_row_new = ClassEconomy.query.filter_by(join_code="NEWA001").first()
     teacher_seat_new = Seat.query.filter_by(class_id=class_row_new.class_id, role="teacher").first()
+    assert teacher_seat_new is not None
+    _login_admin(client, admin, class_id=class_row_new.class_id, seat_id=teacher_seat_new.id)
     with client.session_transaction() as sess:
         set_canonical_context(
             sess,
@@ -369,7 +368,10 @@ def test_store_create_requires_current_class_context(client):
         teacher_user=admin, join_code="STOG001")
     db.session.commit()
 
-    _login_admin(client, admin.id)
+    class_row = ClassEconomy.query.filter_by(join_code="STOG001").first()
+    teacher_seat = Seat.query.filter_by(class_id=class_row.class_id, role="teacher").first()
+    assert teacher_seat is not None
+    _login_admin(client, admin, class_id=class_row.class_id, seat_id=teacher_seat.id)
 
     initial_store_item_count = db.session.query(StoreItem).count()
     response = client.post(
@@ -390,7 +392,10 @@ def test_payroll_settings_requires_current_class_context(client):
         teacher_user=admin, join_code="PAYG001")
     db.session.commit()
 
-    _login_admin(client, admin)
+    class_row = ClassEconomy.query.filter_by(join_code="PAYG001").first()
+    teacher_seat = Seat.query.filter_by(class_id=class_row.class_id, role="teacher").first()
+    assert teacher_seat is not None
+    _login_admin(client, admin, class_id=class_row.class_id, seat_id=teacher_seat.id)
 
     initial_settings_count = db.session.query(PayrollSettings).count()
     response = client.post(
@@ -457,7 +462,10 @@ def test_class_scoped_write_rejects_stale_session_join_code(client):
         teacher_user=admin, join_code="LIVE001")
     db.session.commit()
 
-    _login_admin(client, admin.id)
+    class_row = ClassEconomy.query.filter_by(join_code="LIVE001").first()
+    teacher_seat = Seat.query.filter_by(class_id=class_row.class_id, role="teacher").first()
+    assert teacher_seat is not None
+    _login_admin(client, admin, class_id=class_row.class_id, seat_id=teacher_seat.id)
     with client.session_transaction() as sess:
         sess["current_join_code"] = "STALE999"
 
@@ -488,7 +496,10 @@ def test_store_query_scope_does_not_implicitly_switch_session_context(client):
         teacher_user=admin, join_code="STOREB2")
     db.session.commit()
 
-    _login_admin(client, admin.id)
+    class_row = ClassEconomy.query.filter_by(join_code="STOREA1").first()
+    teacher_seat = Seat.query.filter_by(class_id=class_row.class_id, role="teacher").first()
+    assert teacher_seat is not None
+    _login_admin(client, admin, class_id=class_row.class_id, seat_id=teacher_seat.id)
     with client.session_transaction() as sess:
         sess["current_join_code"] = "STOREA1"
 
