@@ -50,9 +50,7 @@ def _login_admin(client, teacher_id, *, join_code=None, class_id=None):
         if row:
             resolved_class_id = row.class_id
     if not resolved_class_id:
-        row = ClassEconomy.query.filter_by(user_id=teacher_id).first()
-        if row:
-            resolved_class_id = row.class_id
+        raise ValueError("economy-policy tests require an explicit canonical class scope")
     login_teacher(client, teacher, class_id=resolved_class_id, join_code=join_code)
 
 
@@ -296,7 +294,7 @@ def test_convert_weekly_amount_to_frequency_supports_custom_schedules(client):
 def test_edit_insurance_policy_renders_shared_recommendation_text(client):
     admin, _, _, economy = _create_admin_with_block()
     policy = _create_insurance_policy(admin.id, 'Coverage', Decimal('40.00'), block='A', join_code='JOINPOLA')
-    _login_admin(client, admin.id)
+    _login_admin(client, admin.id, class_id=economy.class_id)
 
     response = client.get(f'/admin/insurance/edit/{policy.id}')
 
@@ -308,7 +306,7 @@ def test_edit_insurance_policy_renders_shared_recommendation_text(client):
 
 def test_update_economy_policy_creates_block_scoped_settings(client):
     admin, _, _, economy = _create_admin_with_block()
-    _login_admin(client, admin.id)
+    _login_admin(client, admin.id, class_id=economy.class_id)
 
     response = client.post('/admin/economy-policy', data={
         'policy_mode': 'comfortable',
@@ -357,7 +355,7 @@ def test_rent_warnings_report_single_monthly_conversion(client):
 
 def test_immediate_rebalance_updates_rent_setting(client):
     admin, payroll_settings, rent_settings, economy = _create_admin_with_block()
-    _login_admin(client, admin.id)
+    _login_admin(client, admin.id, class_id=economy.class_id)
     db.session.add(FeatureSettings(class_id=economy.class_id, economy_policy_mode='tight'))
     db.session.commit()
 
@@ -452,7 +450,7 @@ def test_join_code_cycle_locks_rent_rate_after_first_payment(client):
 
 def test_invalid_activation_mode_is_rejected(client):
     admin, _, rent_settings, economy = _create_admin_with_block()
-    _login_admin(client, admin.id)
+    _login_admin(client, admin.id, class_id=economy.class_id)
     db.session.add(FeatureSettings(class_id=economy.class_id, economy_policy_mode='tight'))
     db.session.commit()
 
@@ -472,7 +470,7 @@ def test_rebalance_ignores_cross_teacher_selected_ids(client):
     admin_b, _, _, economy = _create_admin_with_block('B', 'JOINPOLB')
     policy_a = _create_insurance_policy(admin_a.id, 'Teacher A Policy', '20.00', block='A')
     policy_b = _create_insurance_policy(admin_b.id, 'Teacher B Policy', '99.00', block='B')
-    _login_admin(client, admin_a.id)
+    _login_admin(client, admin_a.id, class_id=economy_a.class_id)
     db.session.add(FeatureSettings(class_id=economy_a.class_id, economy_policy_mode='tight'))
     db.session.commit()
 
@@ -492,7 +490,7 @@ def test_rebalance_ignores_cross_teacher_selected_ids(client):
 
 def test_run_payroll_applies_scheduled_rebalance(client):
     admin, _, rent_settings, economy = _create_admin_with_block()
-    _login_admin(client, admin.id)
+    _login_admin(client, admin.id, class_id=economy.class_id)
 
     db.session.add(FeatureSettings(
         class_id=economy.class_id,
@@ -522,7 +520,7 @@ def test_run_payroll_applies_scheduled_rebalance(client):
 
 def test_next_renewal_rebalance_schedules_rent_for_next_cycle(client):
     admin, _, rent_settings, economy = _create_admin_with_block()
-    _login_admin(client, admin.id)
+    _login_admin(client, admin.id, class_id=economy.class_id)
     db.session.add(FeatureSettings(class_id=economy.class_id, economy_policy_mode='tight'))
     db.session.commit()
 
