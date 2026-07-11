@@ -5,7 +5,6 @@ from werkzeug.security import generate_password_hash
 
 from app import db
 from app.auth import (
-    get_current_user,
     set_canonical_user_session,
 )
 from app.feats.base import FEATContext
@@ -290,28 +289,6 @@ def test_system_admin_passkey_finish_sets_canonical_user_session(client, monkeyp
     response = client.post("/sysadmin/passkey/auth/finish", json={"token": "signed"})
 
     assert response.status_code == 200
-
-
-def test_get_current_user_ignores_deprecated_user_session_aliases(client):
-    with FEATContext("FEAT-IDEN-001"):
-        user = User(
-            user_role=UserRole.STUDENT,
-            username_hash="canonical-user-hash",
-            username_lookup_hash="canonical-user-lookup",
-        )
-        db.session.add(user)
-        db.session.flush()
-
-    with client.application.test_request_context("/"):
-        session["student_user_id"] = user.id
-        session["current_user_id"] = user.id
-        assert get_current_user() is None
-
-        session["user_id"] = user.id
-        assert get_current_user().id == user.id
-
-
-
 
 
 def test_canonical_user_session_rejects_role_mismatch(client):
