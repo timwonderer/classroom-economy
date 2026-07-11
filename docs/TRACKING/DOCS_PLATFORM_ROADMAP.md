@@ -44,7 +44,7 @@ The `codex/v2.0` branch is now the default branch. The v2 documentation reorgani
 
 ### Acceptance Criteria
 - [ ] All four core guides rewritten for v2
-- [ ] Terminology consistent with v2 domain specs (no v1-only concepts like teacher_id scoping)
+- [ ] Terminology consistent with v2 domain specs (authority language only from the canonical identity model)
 - [ ] Guides placed in canonical location (may be Docusaurus source, see Phase 3)
 
 ---

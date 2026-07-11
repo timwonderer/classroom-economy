@@ -27,8 +27,8 @@ Target state:
 | Services | 8 (`access_policy`, `attendance`, `balance`, `identity`, `ledger`, `obligations`, `store`, `tlcp`) |
 | Blueprints | 8 (`admin` 514K lines, `student` 178K, `api` 120K, `system_admin` 78K, `docs` 30K, `analytics` 19K, `main` 14K, `recovery` 8.6K) |
 | Target canonical tables | 44 across 9 domains (DOM-CORE-002) |
-| Auth | `User` is active for teacher/sysadmin TOTP, student PIN/passphrase, passkey ownership, and session `user_id`; runtime `session.get('admin_id'/'student_id'/'sysadmin_id')` reads are gone from `app/`, but `Admin`/`Student`/`SystemAdmin` model and test residue still exists |
-| `Seat` | Active class-local actor anchor; remaining `student_id` bridges are compatibility only |
+| Auth | `User` is active for teacher/sysadmin TOTP, student PIN/passphrase, passkey ownership via `passkey_credentials.user_id`, and session `user_id`; runtime `session.get('admin_id'/'student_id'/'sysadmin_id')` reads are gone from `app/`, while `Admin`/`Student`/`SystemAdmin` model and test residue remains historical |
+| `Seat` | Current class-local actor anchor; remaining `student_id` bridges are compatibility only |
 | `Class` | `classes.class_id` is the canonical class boundary; `join_code` is a public alias |
 
 ### Validation Checkpoint
@@ -88,12 +88,12 @@ This file is the single active tracker for v2 migration execution. All prior tra
 
 ### Consolidated Open TODO Backlog
 
-#### Active execution waves
+#### Execution waves
 - [x] Complete Wave 3 identity migration sequence through remaining scoped domains (strict exit criteria below; no legacy fallback permitted)
 - [x] Complete Wave 4 class-configuration canonicalization and drop legacy settings columns
 - [x] Complete Wave 5 ledger table migration and FEAT hook reassignment
 - [x] Complete Wave 6 attendance table migration (`tap_events` lineage removed; canonical reads/writes and legacy table drop landed)
-- [~] Complete Wave 7 obligations schema migration while preserving already-landed prepay/temporal behavior and finish the remaining legacy-identity residue cleanup in tests and model backfills
+- [~] Complete Wave 7 obligations schema migration while preserving already-landed prepay/temporal behavior and finish the remaining legacy-identity residue cleanup in tests, model backfills, and passkey table normalization
 - [ ] Deferred follow-up from commit 2 cutover: finish rent post-payment linkage cleanup so hall-pass reconciliation no longer depends on legacy seat/student assumptions or display-only block metadata. The remaining rent persistence smoke failure is out of scope for this PR and will be merged as a known follow-up.
 - [ ] Complete Wave 8 store schema migration and remove remaining teacher-scoped enforcement remnants
 - [ ] Complete Wave 9 operations + interpretation canonical migration
@@ -437,7 +437,7 @@ Operational note:
 
 6. **Migration `0002_identity_domain.py`:**
    - Renames `class_economies` → `classes` (with FK updates)
-   - Drops: `teachers`, `students`, `student_teachers`, `student_blocks`, `teacher_blocks`, `class_memberships`, `recovery_requests`, `student_recovery_codes`, `teacher_onboarding`, `teacher_credentials`, `admin_credentials`
+   - Drops: `teachers`, `students`, `student_teachers`, `student_blocks`, `teacher_blocks`, `class_memberships`, `recovery_requests`, `student_recovery_codes`, `teacher_onboarding`, `passkey_credentials`
 
 7. **`tests/domain/test_identity.py`:**
    - Student login → Seat claim → session context (`seat_id`, `class_id` set)
@@ -480,7 +480,7 @@ Operational note:
 - Added nullable `identity_profiles.seat_id` as the one-to-one display identity
   binding and completed lifecycle fields for `user_invite_tokens` and
   `user_recovery_tokens`.
-- Added `classes.section` and the transitional `classes.join_code_token` alias.
+- Added `classes.section` and kept `classes.join_code` as the public class alias.
 - This is an additive foundation only. It does not infer `User`, `Seat`, or
   `IdentityProfile` bindings from deprecated `Student`, `Admin`, `TeacherBlock`,
   `ClassMembership`, or `classes.teacher_id` authority.
@@ -535,7 +535,7 @@ Focused validation:
 - `get_current_user()` now accepts only canonical `user_id` plus an owned seat
   resolution path. `student_user_id` and `current_user_id` are no longer active
   user-session aliases.
-- Legacy `admin_id`, `student_id`, and `sysadmin_id` remain route compatibility
+- Legacy `admin_id`, `student_id`, and `sysadmin_id` are retained only as route-compatibility history
   shadows.
 
 ### Status Update (2026-06-04): Canonical Credential Verification Cutover
@@ -550,36 +550,36 @@ Focused validation:
   TOTP reset, and student recovery now synchronize or invalidate canonical
   credential fields.
 - Student transfer and recovery passphrase checks now read `User.passphrase_hash`.
-- Remaining auth work is removal of `admin_id`, `student_id`, and `sysadmin_id`
+- Cleanup note: documentation/fixture residue for `admin_id`, `student_id`, and `sysadmin_id`
   route-session compatibility shadows.
 
 ### Status Update (2026-06-04): Canonical Passkey Ownership Cutover
 
 - Added migration `c8f1e2d3a4b5_add_canonical_passkey_credential_owners.py`.
-- `teacher_credentials` and `system_admin_credentials` now carry canonical
-  `user_id` ownership with `users.id` foreign keys.
-- Existing passkey metadata is backfilled from legacy teacher/sysadmin shadows
-  to the canonical `User`; unmapped credential rows fail the migration.
+- Existing passkey metadata was unified into `passkey_credentials` with canonical
+  `user_id` ownership and `users.id` foreign keys.
+- Legacy teacher/sysadmin passkey shadows were backfilled into the canonical
+  `User`; unmapped credential rows fail the migration.
 - Passwordless registration now creates external users as `user_<User.id>`.
 - Passwordless authentication finish now accepts only `user_<User.id>`, resolves
   the canonical `User`, then resolves the legacy route shadow.
 - Legacy `admin_<id>` and `sysadmin_<id>` Passwordless principals are rejected.
-- Remaining auth work is to remove `admin_id`, `student_id`, and `sysadmin_id`
-  route-session compatibility shadows and move route resolvers fully to
-  `User`/`Seat`.
+- Historical note: the remaining references to `admin_id`, `student_id`, and `sysadmin_id`
+  route-session compatibility shadows were the last cleanup items before the route
+  resolvers fully moved to `User`/`Seat`.
 
 ### Status Update (2026-06-05): Canonical Resolver Gate Cutover
 
 - `get_current_admin()`, `get_current_system_admin()`, and
   `get_logged_in_student()` are historical bridge helpers in the migration log;
   canonical route identity now comes directly from `resolve_canonical_context()`.
-- Legacy `admin_id`, `sysadmin_id`, and `student_id` session values are still
+- Legacy `admin_id`, `sysadmin_id`, and `student_id` session values are retained only in historical notes and compatibility fixtures
   written for route compatibility, but they no longer establish identity when
   `session["user_id"]` is missing.
 - Resolver mismatch between canonical user and legacy route shadow fails closed.
 - Focused fixtures now seed canonical users and set `session["user_id"]` when
   simulating authenticated teacher/sysadmin/student sessions.
-- Remaining work is broad route cleanup: remove direct `session["admin_id"]`,
+- Historical cleanup focus: remove direct `session["admin_id"]`,
   `session["student_id"]`, and `session["sysadmin_id"]` consumers in favor of
   resolver-owned context and `User + Seat + Class` scope.
 
@@ -1762,7 +1762,7 @@ Focused validation:
   - `flask db upgrade` → pass
   - `flask db current --verbose` → `3c7d9e1f2a43 (head)`
 
-### Status Update (2026-06-05): Wave 4 Closure — Active Class-Config Tables Fully Class-Scoped
+### Status Update (2026-06-05): Wave 4 Closure — Current Class-Config Tables Fully Class-Scoped
 
 - Added final schema hardening for `banking_settings`:
   - `migrations/versions/4b1e8f2c6d90_make_banking_settings_class_id_not_null.py`
@@ -2576,7 +2576,7 @@ grep -r "\.student_id" app/routes/            # 0 results (outside identity_serv
 | FEAT constitution | `docs/FEATURE-EXECUTION/FEAT-CORE-000_FEATURE_EXECUTION_CONSTITUTIONAL_DIRECTIVE.md` |
 | Core invariants | `docs/INVARIANT/CORE/INV-CORE-000_CORE_INVARIANTS.md` |
 | Archived tracker history | `docs/archive/v1-development/tracking/` |
-| Active build specs | `docs/SPECS/` |
+| Current build specs | `docs/SPECS/` |
 | Migration template | `migrations/migration_template.py.mako` |
 | Migration linter | `scripts/lint_migrations.py` |
 | Current models | `app/models.py` (3261+ lines) |

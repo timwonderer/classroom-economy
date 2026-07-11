@@ -37,14 +37,16 @@ The following runtime areas have already been converted away from `StudentTeache
 
 ## Remaining Work
 
-The remaining major work is the test migration wave.
+The remaining major work was the test migration wave, but in this checkout the
+live legacy identity references appear to have already been cleared.
 
-Current test corpus still has many legacy references to:
-- `StudentTeacher`
-- `created_by_admin_id`
-- `created_by_teacher_id`
+Current `tests/` scans no longer show live `StudentTeacher`,
+`created_by_admin_id`, or `created_by_teacher_id` usage. The remaining mentions
+I found are comment-level `TeacherBlock` references in already-canonical tests,
+which do not block the tuple-only runtime boundary.
 
-The preferred path is to migrate the high-value tests to `canonicalContextFactory` and delete obsolete legacy coverage where it no longer matches the tuple-only model.
+The next useful step is a broader regression sweep for stale comments and
+hand-off notes, not another legacy-identity runtime migration pass.
 
 ## Notes
 

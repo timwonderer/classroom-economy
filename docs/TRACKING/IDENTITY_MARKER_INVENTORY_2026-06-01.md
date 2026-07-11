@@ -2,7 +2,7 @@
 
 **Date:** 2026-06-01  
 **Branch:** `codex/v2.0`  
-**Purpose:** Enumerate every meaningful actor-identifying marker still present in runtime code so we can distinguish canonical v2 anchors from invalid residue, temporary bridge code, and ambiguous references.
+**Purpose:** Enumerate every meaningful actor-identifying marker in the current tree so we can distinguish canonical v2 anchors from historical residue, temporary bridge code, and ambiguous references.
 
 This inventory audits current implementation residue against a clean v2 build. It is
 not a historical-data migration plan. Invalid marker families should be removed rather
@@ -20,7 +20,7 @@ The codebase currently mixes four identity layers:
    - `Seat.public_id`
    - `User.id`
 
-2. **Legacy route compatibility principals still used after authentication**
+2. **Legacy route compatibility principals retained after authentication**
    - `Admin.id`
    - `Student.id`
    - `SystemAdmin.id`
@@ -50,7 +50,7 @@ Quick grep counts across `app/` show the dominant identifiers still in live code
 - `block` is still the most common marker in routes, especially `admin.py`.
 - `join_code` remains heavily used as a runtime alias and transitional scope key.
 - `class_id` is widespread and is the cleanest class boundary marker.
-- `admin_id`, `teacher_id`, and `student_id` remain heavily used in auth, routes, and bridge tables.
+- `admin_id`, `teacher_id`, and `student_id` are retained in auth, routes, and bridge tables as compatibility residue.
 - `seat_id` is present across canonical domains, but still less pervasive than legacy human IDs.
 
 This means the repository is **not yet speaking one identity dialect**. Runtime request paths are much closer to canonical, but tests, schema names, and compatibility helpers still speak at least three dialects: teacher/student/sysadmin principal IDs, seat/class IDs, and join-code/block-era roster markers.
@@ -111,14 +111,14 @@ These are still load-bearing in route logic after canonical authentication.
 
 | Marker | Owner | Meaning | Status |
 |---|---|---|---|
-| `Admin.id` / `admin_id` | Teacher compatibility shadow | Route/session compatibility ID | Not a TOTP authentication decision |
+| `Admin.id` / `admin_id` | Teacher compatibility shadow | Historical route/session compatibility ID | Not a TOTP authentication decision |
 | `Student.id` / `student_id` | Student compatibility shadow | Route/session compatibility ID | Not a PIN authentication decision |
 | `SystemAdmin.id` / `sysadmin_id` | Sysadmin compatibility shadow | Route/session compatibility ID | Not a TOTP authentication decision |
 | `teacher_id` | Many models | Usually teacher owner FK | Legacy naming still widespread |
 
 Important distinction:
 
-- `admin_id` is still a route-session compatibility language in tests and helper surfaces, but not in live `app/` request handlers.
+- `admin_id` remains historical compatibility language in tests and helper surfaces, but not in live `app/` request handlers.
 - `teacher_id` is the **model/ownership language** for teachers.
 - That split is semantically understandable, but still increases identity-surface complexity.
 
@@ -147,13 +147,13 @@ These are not harmless metadata. Several of them still participate in resolution
 
 | Session key | Meaning | Status |
 |---|---|---|
-| `student_id` | Logged-in legacy student principal | Active |
+| `student_id` | Logged-in legacy student principal | Historical compatibility |
 | `user_id` | Logged-in canonical `User.id` | Canonical auth session anchor |
-| `current_seat_id` | Active seat context | Canonical session scope |
+| `current_seat_id` | Current seat context | Canonical session scope |
 | `seat_id` | Alternate seat context key | Legacy alias still accepted |
-| `current_class_id` | Active class context | Canonical session scope |
+| `current_class_id` | Current class context | Canonical session scope |
 | `class_id` | Alternate class context key | Legacy alias still accepted |
-| `current_join_code` | Active public class alias | Transitional alias |
+| `current_join_code` | Current public class alias | Transitional alias |
 | `join_code` | Alternate join-code key | Legacy alias still accepted |
 | `onboarding_student_ref` / `onboarding_seat_ref` / `onboarding_user_ref` | Recovery/claim flow handoff keys | Transitional flow-specific |
 | `recovery_student_id` | Recovery flow marker | Transitional |
@@ -162,22 +162,22 @@ These are not harmless metadata. Several of them still participate in resolution
 
 | Session key | Meaning | Status |
 |---|---|---|
-| `admin_id` | Logged-in teacher principal | Active |
+| `admin_id` | Logged-in teacher principal | Historical compatibility |
 | `user_id` | Logged-in canonical `User.id` | Canonical auth session anchor |
-| `current_class_id` | Active teacher class context | Canonical class scope |
-| `current_join_code` | Active class alias | Transitional/public alias |
-| `is_admin` | Teacher auth role flag | Active |
-| `view_as_student` | Teacher impersonation mode flag | Active and special-case |
+| `current_class_id` | Current teacher class context | Canonical class scope |
+| `current_join_code` | Current class alias | Transitional/public alias |
+| `is_admin` | Teacher auth role flag | Historical compatibility |
+| `view_as_student` | Teacher impersonation mode flag | Current special-case behavior |
 
 ### Sysadmin session keys
 
 | Session key | Meaning | Status |
 |---|---|---|
-| `sysadmin_id` | Logged-in sysadmin principal | Active |
+| `sysadmin_id` | Logged-in sysadmin principal | Historical compatibility |
 | `user_id` | Logged-in canonical `User.id` | Canonical auth session anchor |
-| `is_system_admin` | Sysadmin role flag | Active |
+| `is_system_admin` | Sysadmin role flag | Historical compatibility |
 
-Session ambiguity still present:
+Session alias acceptance remains documented:
 
 - `get_current_seat()` accepts both `seat_id` and `current_seat_id`.
 - `get_current_class_id()` accepts both `class_id` and `current_class_id`.
@@ -192,9 +192,9 @@ These markers represent actors for logging, tracing, and support workflows.
 
 | Marker | Meaning | Status |
 |---|---|---|
-| `actor_type` | Role label such as `student`, `teacher`, `sysadmin` | Active |
-| `actor_id` | Raw actor integer ID chosen by context resolver | Active but role-dependent |
-| `actor_public_id` | Runtime support/log actor identity | Active; value is `Seat.public_id` |
+| `actor_type` | Role label such as `student`, `teacher`, `sysadmin` | Current logging metadata |
+| `actor_id` | Raw actor integer ID chosen by context resolver | Current role-dependent support marker |
+| `actor_public_id` | Runtime support/log actor identity | Current; value is `Seat.public_id` |
 | `request_id` | Request correlation token | Not actor identity, but part of trace identity |
 
 Important caveat:
@@ -224,7 +224,7 @@ These are the markers most likely to cause confusion or authority bugs.
 
 ### `teacher_id` versus `admin_id`
 
-- `admin_id` means authenticated teacher principal in session/auth code.
+- `admin_id` was the authenticated teacher principal in session/auth code.
 - `teacher_id` means teacher ownership FK in tables and business logic.
 - The split is coherent but easy to misread during audits or refactors.
 

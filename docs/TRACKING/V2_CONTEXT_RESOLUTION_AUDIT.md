@@ -268,7 +268,7 @@ Grepped all `.py` files under `app/` and `wsgi.py` for every pattern: `session.g
 
 ### Conclusion
 
-**Current tree summary:** runtime extinct identity reads are gone from `app/` request handlers, but legacy identity residue still exists in tests, model names, and compatibility helpers. Re-run the audit before claiming any further reduction in the residue surface.
+**Current tree summary:** runtime extinct identity reads are gone from `app/` request handlers, while legacy identity references remain only in tests, model names, and compatibility helpers. Re-run the audit before claiming any further reduction in the residue surface.
 
 ---
 

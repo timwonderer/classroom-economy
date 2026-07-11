@@ -569,7 +569,7 @@ Wave 3 was re-scoped during execution from the full structural auth migration (a
 |---|---|
 | `User` activated as primary auth principal | ❌ NOT DONE — admin login resolves `Admin` model (via canonical teacher user); student login authenticates via `Student` model and then resolves the associated `User`/`Seat` through the onboarding flow; the bridge is fail-closed (returns `None` → session cleared → login rejected if no valid seat is found) |
 | `0002_identity_domain.py` migration (drop legacy auth tables) | ❌ DOES NOT EXIST |
-| Legacy tables dropped: `teachers`, `students`, `student_teachers`, `student_blocks`, `teacher_blocks`, `class_memberships`, `recovery_requests`, `student_recovery_codes`, `teacher_onboarding`, `teacher_credentials` | ❌ ALL STILL IN SCHEMA AND STILL USED |
+| Legacy tables dropped: `teachers`, `students`, `student_teachers`, `student_blocks`, `teacher_blocks`, `class_memberships`, `recovery_requests`, `student_recovery_codes`, `teacher_onboarding`, `passkey_credentials` | ❌ ALL STILL IN SCHEMA AND STILL USED |
 | `tests/domain/test_identity.py` | ❌ DOES NOT EXIST |
 
 ### 3C: Remaining Routing Compliance Issues (Not Fully Closed)
@@ -901,7 +901,7 @@ legacy reads remain
 `rent_waivers`, `rent_items`, `insurance_policies`, `insurance_policy_blocks` (Wave 7)  
 
 **Legacy auth tables (deferred Wave 3 structural drops):**  
-`teachers`, `students`, `teacher_blocks`, `student_teachers`, `student_blocks`, `recovery_requests`, `student_recovery_codes`, `teacher_credentials`, `teacher_onboarding`, `teacher_invite_codes`
+`teachers`, `students`, `teacher_blocks`, `student_teachers`, `student_blocks`, `recovery_requests`, `student_recovery_codes`, `passkey_credentials`, `teacher_onboarding`, `teacher_invite_codes`
 
 **Legacy observability tables (targeted for drop in Wave 9):**  
 `analytics_alerts`, `analytics_snapshots`, `analytics_events`, `actor_request_trace`, `error_logs`, `error_events`, `user_reports`

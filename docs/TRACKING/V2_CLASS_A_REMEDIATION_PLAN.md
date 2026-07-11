@@ -30,7 +30,7 @@ class BoundaryContext:
             raise AttributeError(
                 "BoundaryContext has no class scope — resolve class selection first"
             )
-        forbidden = {"join_code", "teacher_id", "block", "section", "student_id", "admin_id"}
+        forbidden = {"join_code", "teacher_id", "block", "section", "student_id"}
         if name in forbidden:
             raise AttributeError(f"Strict context invariant violation: cannot access {name}")
         raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
@@ -42,7 +42,7 @@ Add `require_class=True` parameter to `resolve_canonical_context()`:
 
 **Tests:**
 - `BoundaryContext.class_id` raises `AttributeError` with "no class scope"
-- `BoundaryContext.admin_id` raises `AttributeError` with "invariant violation"
+- `BoundaryContext.user_id` remains the only principal reference on the boundary context
 - `resolve_canonical_context(require_class=False)` returns `BoundaryContext` for teacher with no `last_active_class_id`
 - `resolve_canonical_context(require_class=False)` returns `BoundaryContext` for sysadmin
 - `resolve_canonical_context(require_class=False)` returns `CanonicalContext` for teacher with valid class+seat
@@ -110,7 +110,7 @@ session["last_activity"] = utc_now().isoformat()
 
 Same change for passkey login (lines 12714–12719).
 
-**Tests:** Integration test: admin login → `session` contains only `user_id`, `current_session_nonce`, `last_activity`, `login_time`. No `admin_id` or `is_admin` key present.
+**Tests:** Integration test: teacher login → `session` contains only `user_id`, `current_session_nonce`, `last_activity`, `login_time`. No `admin_id` or `is_admin` key present.
 
 ---
 
