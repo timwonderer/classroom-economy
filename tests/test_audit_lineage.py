@@ -215,7 +215,7 @@ def test_verify_chain_detects_deleted_event(app):
 
 # ---------------------------------------------------------------------------
 # Test: emit_audit_event outside FEAT context raises AuditContextError
-# Opt out of the autouse FEATBypass fixture using the enforce_feat marker.
+# This test intentionally runs without a FEAT context to verify fail-closed behavior.
 # ---------------------------------------------------------------------------
 
 @pytest.mark.enforce_feat
