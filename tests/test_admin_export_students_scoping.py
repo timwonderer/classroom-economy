@@ -8,7 +8,6 @@ from app.models import IdentityProfile, Seat, Transaction, User, UserRole
 from app.services.ledger_service import get_available_balances
 from app.routes.admin import _sanitize_roster_text
 from tests.helpers.class_scope import create_class_scope, make_student_identity
-from tests.helpers.canonical_session import set_canonical_context
 from tests.helpers.admin_context import login_teacher
 
 
