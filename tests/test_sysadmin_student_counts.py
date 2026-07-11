@@ -35,12 +35,8 @@ def _create_admin(username: str):
 def _create_student_in_class(first_name: str, teacher, join_code_suffix: str):
     """Create a class and student for testing."""
     join_code = f"SYS{join_code_suffix}"
-    existing = db.session.query(db.session.query(User).filter_by(id=teacher.id).exists()).scalar()
     from app.models import ClassEconomy
-    class_row = ClassEconomy.query.filter_by(join_code=join_code).first()
-    if class_row is None:
-        class_row = create_class_scope(teacher_user=teacher, join_code=join_code)
-        db.session.flush()
+    class_row = create_class_scope(teacher_user=teacher, join_code=join_code)
     student = make_student_identity(class_id=class_row.class_id, first_name=first_name, last_name="X")
     db.session.flush()
     return student
