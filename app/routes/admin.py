@@ -10831,23 +10831,24 @@ def help_support():
         scoped_description = f"{metadata_header}\n\n{description}"
 
         try:
-            report = UserReport(
-                anonymous_code=anonymous_code,
-                user_type='teacher',
-                class_id=selected_class_id,
-                join_code=selected_join_code,
-                report_type=category_to_report_type[issue_category],
-                title=title,
-                description=scoped_description,
-                expected_behavior=expected_behavior if expected_behavior else None,
-                page_url=page_url if page_url else None,
-                ip_address=get_real_ip(),
-                user_agent=request.headers.get('User-Agent'),
-                status='new'
-            )
+            with FEATContext("FEAT-SUP-001", idempotency_key=f"admin_help_support:{user_id}:{selected_class_id}:{title}"):
+                report = UserReport(
+                    anonymous_code=anonymous_code,
+                    user_type='teacher',
+                    class_id=selected_class_id,
+                    join_code=selected_join_code,
+                    report_type=category_to_report_type[issue_category],
+                    title=title,
+                    description=scoped_description,
+                    expected_behavior=expected_behavior if expected_behavior else None,
+                    page_url=page_url if page_url else None,
+                    ip_address=get_real_ip(),
+                    user_agent=request.headers.get('User-Agent'),
+                    status='new'
+                )
 
-            db.session.add(report)
-            db.session.flush()
+                db.session.add(report)
+                db.session.flush()
 
             flash("Your support ticket has been submitted directly to system administration.", "success")
             return redirect(url_for('admin.help_support'))

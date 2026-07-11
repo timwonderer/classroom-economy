@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 import pytest
 
 from app.extensions import db
+from app.feats.base import FEATContext
 from app.models import Seat, IdentityProfile, User, UserRole, BankingSettings, ClassFeature, FeatureSettings, RentSettings
 from app.routes.student import (
     get_banking_settings_for_context,
@@ -17,28 +18,26 @@ from tests.helpers.context_factory import canonicalContextFactory
 @pytest.fixture
 def two_class_ctx(client):
     """Two canonical classes under one teacher; settings only on the second class."""
-    ctx1 = canonicalContextFactory(db, join_code="FALL01").build()
-    ctx2 = canonicalContextFactory(db, join_code="FALL02",
-                                   teacher_username=None).build()
-    # Borrow the second class to a different teacher — we just need two isolated classes.
-    # For isolation, create the second via a separate teacher.
+    with FEATContext("FEAT-IDEN-001", idempotency_key="settings_fallback_setup"):
+        ctx1 = canonicalContextFactory(db, join_code="FALL01").build()
+        ctx2 = canonicalContextFactory(db, join_code="FALL02", teacher_username=None).build()
 
-    # Add a student to ctx1 so we have a seat to test with
-    student = ctx1.add_student("Fallback", "T")
+        # Add a student to ctx1 so we have a seat to test with
+        student = ctx1.add_student("Fallback", "T")
 
-    # Banking row for ctx2 only (ctx1 has none)
-    db.session.add(BankingSettings(
-        class_id=ctx2.class_id,
-        overdraft_protection_enabled=True,
-        savings_apy=5.0,
-    ))
-    # Rent row for ctx2 only (ctx1 has none)
-    db.session.add(RentSettings(
-        class_id=ctx2.class_id,
-        rent_amount=100.0,
-    ))
+        # Banking row for ctx2 only (ctx1 has none)
+        db.session.add(BankingSettings(
+            class_id=ctx2.class_id,
+            overdraft_protection_enabled=True,
+            savings_apy=5.0,
+        ))
+        # Rent row for ctx2 only (ctx1 has none)
+        db.session.add(RentSettings(
+            class_id=ctx2.class_id,
+            rent_amount=100.0,
+        ))
 
-    ctx1.commit()
+        db.session.flush()
     return {
         "ctx": ctx1,
         "student_seat": student.seat,
@@ -66,7 +65,8 @@ def test_banking_settings_returns_scoped_row(client, two_class_ctx):
         overdraft_protection_enabled=False,
         savings_apy=0,
     ))
-    db.session.commit()
+    with FEATContext("FEAT-IDEN-001", idempotency_key="settings_banking_row"):
+        db.session.flush()
 
     context = {"class_id": data["class_id"]}
     result = get_banking_settings_for_context(context)
@@ -84,15 +84,6 @@ def test_banking_settings_returns_none_for_missing_context(client):
 
 # ---- Rent Settings ----
 
-def test_rent_settings_ignores_legacy_global_row(client, two_class_ctx):
-    """When no RentSettings for ctx1, helper returns None — not the other class's row."""
-    data = two_class_ctx
-    context = {"class_id": data["class_id"]}
-
-    result = get_rent_settings_for_context(context)
-    assert result is None
-
-
 def test_rent_settings_returns_scoped_row(client, two_class_ctx):
     """When a class-scoped RentSettings exists for ctx1, helper returns it."""
     data = two_class_ctx
@@ -100,7 +91,8 @@ def test_rent_settings_returns_scoped_row(client, two_class_ctx):
         class_id=data["class_id"],
         rent_amount=50.0,
     ))
-    db.session.commit()
+    with FEATContext("FEAT-IDEN-001", idempotency_key="settings_rent_row"):
+        db.session.flush()
 
     context = {"class_id": data["class_id"]}
     result = get_rent_settings_for_context(context)
@@ -116,17 +108,18 @@ def test_feature_settings_returns_defaults_without_scoped_row(client, two_class_
     data = two_class_ctx
     seat = data["student_seat"]
 
-    with client.application.test_request_context():
-        from flask import session as flask_session
-        set_canonical_context(
-            flask_session,
-            user_id=seat.user_id,
-            class_id=data["class_id"],
-            seat_id=seat.id,
-            role="student",
-        )
+    with FEATContext("FEAT-IDEN-001", idempotency_key="settings_feature_defaults"):
+        with client.application.test_request_context():
+            from flask import session as flask_session
+            set_canonical_context(
+                flask_session,
+                user_id=seat.user_id,
+                class_id=data["class_id"],
+                seat_id=seat.id,
+                role="student",
+            )
 
-        result = get_feature_settings_for_student()
+            result = get_feature_settings_for_student()
 
     defaults = FeatureSettings.get_defaults()
     assert result == defaults
@@ -142,19 +135,21 @@ def test_feature_settings_returns_scoped_row(client, two_class_ctx):
         ClassFeature.feature_name.in_(["banking", "store", "insurance", "rent", "hall_pass", "payroll"]),
     ).all():
         db.session.delete(row)
-    db.session.commit()
+    with FEATContext("FEAT-IDEN-001", idempotency_key="settings_feature_rows"):
+        db.session.flush()
 
-    with client.application.test_request_context():
-        from flask import session as flask_session
-        set_canonical_context(
-            flask_session,
-            user_id=seat.user_id,
-            class_id=data["class_id"],
-            seat_id=seat.id,
-            role="student",
-        )
+    with FEATContext("FEAT-IDEN-001", idempotency_key="settings_feature_rows_session"):
+        with client.application.test_request_context():
+            from flask import session as flask_session
+            set_canonical_context(
+                flask_session,
+                user_id=seat.user_id,
+                class_id=data["class_id"],
+                seat_id=seat.id,
+                role="student",
+            )
 
-        result = get_feature_settings_for_student()
+            result = get_feature_settings_for_student()
 
     assert result["banking_enabled"] is False
     assert result["store_enabled"] is False

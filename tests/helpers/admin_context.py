@@ -5,6 +5,7 @@ context_resolver. No Admin objects.
 """
 import secrets
 from app.extensions import db
+from app.feats.base import FEATContext
 from app.models import ClassEconomy, Seat, User
 
 
@@ -40,25 +41,26 @@ def login_teacher(
 
     nonce = secrets.token_urlsafe(32)
 
-    with client.session_transaction() as sess:
-        sess["user_id"] = teacher_user.id
-        sess["current_session_nonce"] = nonce
-        sess["last_activity"] = __import__('datetime').datetime.now(
-            __import__('datetime').timezone.utc
-        ).isoformat()
+    with FEATContext("FEAT-IDEN-001", idempotency_key=f"login_teacher:{teacher_user.id}:{nonce}"):
+        with client.session_transaction() as sess:
+            sess["user_id"] = teacher_user.id
+            sess["current_session_nonce"] = nonce
+            sess["last_activity"] = __import__('datetime').datetime.now(
+                __import__('datetime').timezone.utc
+            ).isoformat()
 
-        if resolved_class_id and resolved_seat_id:
-            sess["current_class_id"] = resolved_class_id
-            sess["current_seat_id"] = resolved_seat_id
-            if join_code:
-                sess["current_join_code"] = join_code
+            if resolved_class_id and resolved_seat_id:
+                sess["current_class_id"] = resolved_class_id
+                sess["current_seat_id"] = resolved_seat_id
+                if join_code:
+                    sess["current_join_code"] = join_code
 
-    teacher_user.current_session_nonce = nonce
-    if resolved_class_id:
-        teacher_user.last_active_class_id = resolved_class_id
-    if resolved_seat_id:
-        teacher_user.last_active_seat_id = resolved_seat_id
-    db.session.flush()
+        teacher_user.current_session_nonce = nonce
+        if resolved_class_id:
+            teacher_user.last_active_class_id = resolved_class_id
+        if resolved_seat_id:
+            teacher_user.last_active_seat_id = resolved_seat_id
+        db.session.flush()
 
 
 # Keep old name as alias for migration convenience

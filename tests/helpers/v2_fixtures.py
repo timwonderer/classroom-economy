@@ -5,6 +5,7 @@ No Admin objects, no bridge patterns.
 """
 
 from app.services.classroom_setup import create_teacher as _svc_create_teacher
+from app.feats.base import FEATContext
 from app.extensions import db
 from app.models import User, UserRole
 
@@ -15,7 +16,8 @@ def make_teacher(username: str, totp_secret: str | None = None) -> User:
     Delegates to app/services/classroom_setup.create_teacher().
     Flushes but does NOT commit — caller owns the transaction.
     """
-    return _svc_create_teacher(username, totp_secret=totp_secret)
+    with FEATContext("FEAT-IDEN-001", idempotency_key=f"make_teacher:{username}"):
+        return _svc_create_teacher(username, totp_secret=totp_secret)
 
 
 def make_sysadmin(username: str, totp_secret: str | None = None) -> User:
@@ -33,8 +35,9 @@ def make_sysadmin(username: str, totp_secret: str | None = None) -> User:
         username_lookup_hash=u_lookup,
         totp_secret_encrypted=normalize_totp_for_storage(totp_secret) if totp_secret else None,
     )
-    db.session.add(sysadmin)
-    db.session.flush()
+    with FEATContext("FEAT-IDEN-001", idempotency_key=f"make_sysadmin:{username}"):
+        db.session.add(sysadmin)
+        db.session.flush()
     return sysadmin
 
 

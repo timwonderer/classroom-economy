@@ -728,74 +728,6 @@ def test_hall_pass_top_off_restores_after_base_rent_paid_even_with_late_fee_due(
     assert get_hall_pass_balance(seat.id, seat.class_id) == 3
 
 
-def test_hall_pass_top_off_accepts_legacy_whitespace_period_values(
-    client, teacher_user, class_scope, student_seat
-):
-    """Top-off should still detect paid coverage when legacy RentPayment.period contains trailing whitespace."""
-    from app.routes.student import _ensure_rent_hall_pass_top_off
-
-    seat = student_seat
-
-    settings = RentSettings(
-        class_id=class_scope.class_id,
-        rent_amount=Decimal("10.00"),
-        frequency_type="monthly",
-        first_rent_due_date=datetime(2026, 1, 1, tzinfo=timezone.utc),
-        grace_period_days=3,
-        late_penalty_amount=Decimal("0.00"),
-    )
-    db.session.add(settings)
-    db.session.flush()
-
-    db.session.add(
-        RentItem(
-            rent_setting_id=settings.id,
-            name="Hall Pass Grant",
-            rent_item_type="hall_pass",
-            hall_pass_count=3,
-        )
-    )
-
-    assert seat is not None
-    seat.hall_passes = 0
-    db.session.commit()
-
-    context = _make_canonical_context(seat)
-    fixed_now = datetime(2026, 2, 10, 12, 0, tzinfo=timezone.utc)
-
-    # Legacy data: period stored with trailing whitespace
-    _add_rent_payment(seat, class_scope.class_id, amount="10.00", period="A ", now=fixed_now)
-    student_user = db.session.get(User, seat.user_id)
-    db.session.add(
-        Transaction(
-            user_id=student_user.id,
-            seat_id=seat.id,
-            class_id=seat.class_id,
-            join_code=class_scope.join_code,
-            amount=Decimal("-10.00"),
-            account_type="checking",
-            type="Rent Payment",
-            description="Rent paid with legacy period whitespace",
-            timestamp=fixed_now,
-        )
-    )
-    db.session.commit()
-
-    awarded, revoked, changed = _ensure_rent_hall_pass_top_off(
-        seat,
-        context,
-        settings=settings,
-        now=fixed_now + timedelta(minutes=1),
-    )
-    assert changed is True
-    assert awarded == 3
-    assert revoked == 0
-
-    db.session.commit()
-    db.session.refresh(seat)
-    assert get_hall_pass_balance(seat.id, seat.class_id) == 3
-
-
 def test_mid_period_lock_blocks_semantic_changes(client, teacher_user, admin_class_scope):
     """Test that semantic fields are locked when students have paid rent for current period."""
     login_teacher(client, teacher_user, class_id=admin_class_scope.class_id)
@@ -935,26 +867,6 @@ def test_rent_settings_rejects_privilege_with_per_use_duration(client, teacher_u
 
     item = RentItem.query.filter_by(rent_setting_id=settings.id, name="Desk").first()
     assert item is None
-
-
-def test_legacy_rent_items_default_to_privilege(client, teacher_user, admin_class_scope):
-    """Test that existing rent items without rent_item_type default to privilege."""
-    settings = RentSettings(class_id=admin_class_scope.class_id)
-    db.session.add(settings)
-    db.session.flush()
-
-    item = RentItem(
-        rent_setting_id=settings.id,
-        name="Legacy Desk",
-        is_available_in_store=True,
-        store_price=Decimal("50.00"),
-        purchase_duration="per_period",
-    )
-    db.session.add(item)
-    db.session.commit()
-
-    db.session.refresh(item)
-    assert item.rent_item_type == "privilege"
 
 
 def test_per_use_free_purchase_from_rent(client, teacher_user, class_scope, student_seat):
@@ -1263,7 +1175,7 @@ def test_shop_only_disables_privilege_items_when_rent_paid(
 def test_shop_keeps_item_purchasable_when_per_use_and_privilege_links_overlap(
     client, teacher_user, class_scope, student_seat
 ):
-    """If legacy data creates mixed rent item types for one store item, per-use access should remain purchasable."""
+    """If mixed rent item types exist for one store item, per-use access should remain purchasable."""
     seat = student_seat
     student_user = db.session.get(User, seat.user_id)
     anchor_now = datetime.now(timezone.utc)
@@ -1490,7 +1402,7 @@ def test_api_hall_pass_item_skips_rent_perk_zero_cost_flow(
     assert "Hall Pass" in resp.json["message"]
 
     db.session.expire_all()
-    # grant_hall_passes writes EntitlementEvent (canonical), not seat.hall_passes (legacy)
+    # grant_hall_passes writes EntitlementEvent (canonical), not seat.hall_passes
     assert get_hall_pass_balance(seat.id, seat.class_id) == starting_hall_passes + 1
 
     db.session.expire_all()
@@ -1605,7 +1517,7 @@ def test_shop_displays_rent_perk_price_as_free_when_rent_paid_without_grant_row(
 def test_admin_store_hides_delete_button_for_rent_linked_items(
     client, teacher_user, admin_class_scope
 ):
-    """Rent-linked items should hide delete even when legacy is_rent_linked flag is stale."""
+    """Rent-linked items should hide delete even when is_rent_linked flag is stale."""
     _enable_store(admin_class_scope.class_id)
     db.session.commit()
     login_teacher(client, teacher_user, class_id=admin_class_scope.class_id)

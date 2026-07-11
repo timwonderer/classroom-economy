@@ -8,6 +8,7 @@ No Admin objects, no legacy bridge patterns.
 """
 
 from app.extensions import db
+from app.feats.base import FEATContext
 from app.models import ClassEconomy, Seat, User
 
 
@@ -39,22 +40,23 @@ def create_class_scope(
     resolved_join_code = join_code or f"CLS{uuid4().hex[:8].upper()}"
 
     existing = ClassEconomy.query.filter_by(join_code=resolved_join_code).first()
-    if existing:
-        class_row = existing
-    else:
-        class_row = create_class(
-            teacher_user.id,
-            join_code=resolved_join_code,
-            display_name=display_name,
-            section=section,
-        )
+    with FEATContext("FEAT-IDEN-001", idempotency_key=f"create_class_scope:{resolved_join_code}"):
+        if existing:
+            class_row = existing
+        else:
+            class_row = create_class(
+                teacher_user.id,
+                join_code=resolved_join_code,
+                display_name=display_name,
+                section=section,
+            )
 
-    if student_first_name and student_last_name:
-        create_student(
-            class_row.class_id,
-            first_name=student_first_name,
-            last_name=student_last_name,
-        )
+        if student_first_name and student_last_name:
+            create_student(
+                class_row.class_id,
+                first_name=student_first_name,
+                last_name=student_last_name,
+            )
 
     return class_row
 
@@ -74,12 +76,13 @@ def make_student_identity(
     Returns the Seat so callers can do seat.id, seat.user_id, etc.
     """
     from app.services.classroom_setup import create_student
-    _user, seat, _profile = create_student(
-        class_id,
-        first_name=first_name,
-        last_name=last_name,
-        claimed=claimed,
-        username=username,
-        pin=pin,
-    )
+    with FEATContext("FEAT-IDEN-001", idempotency_key=f"make_student_identity:{class_id}:{username or first_name}:{last_name}"):
+        _user, seat, _profile = create_student(
+            class_id,
+            first_name=first_name,
+            last_name=last_name,
+            claimed=claimed,
+            username=username,
+            pin=pin,
+        )
     return seat

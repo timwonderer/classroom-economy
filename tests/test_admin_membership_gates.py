@@ -20,19 +20,7 @@ from tests.helpers.canonical_session import set_canonical_context
 from tests.helpers.admin_context import login_teacher
 
 
-def _bind_canonical_teacher(admin):
-    """No-op shim: admin is already a User in V2."""
-    return admin
-
-
-def _login_admin(client, admin_or_id, *, user_id: int | None = None, class_id: str | None = None, seat_id: int | None = None):
-    # admin_or_id may be a User object or int (legacy)
-    if isinstance(admin_or_id, int):
-        admin = db.session.get(User, admin_or_id)
-    else:
-        admin = admin_or_id
-    if admin is None:
-        return
+def _login_admin(client, admin: User, *, class_id: str | None = None, seat_id: int | None = None):
     resolved_class_id = class_id
     resolved_seat_id = seat_id
     if resolved_class_id is None:
@@ -59,10 +47,7 @@ def test_set_current_class_requires_membership_even_if_teacherblock_exists(clien
     )
     db.session.commit()
 
-    user_a = _bind_canonical_teacher(admin_a)
-    db.session.commit()
-
-    _login_admin(client, admin_a.id, user_id=user_a.id, class_id=owned_class.class_id, seat_id=Seat.query.filter_by(class_id=owned_class.class_id, role="teacher").first().id)
+    _login_admin(client, admin_a, class_id=owned_class.class_id, seat_id=Seat.query.filter_by(class_id=owned_class.class_id, role="teacher").first().id)
     class_row = ClassEconomy.query.filter_by(join_code="GATE001").first()
     response = client.post("/admin/current-class", json={"class_id": class_row.class_id})
     assert response.status_code == 403
@@ -84,10 +69,7 @@ def test_delete_join_code_requires_membership_even_if_teacherblock_exists(client
     )
     db.session.commit()
 
-    user_a = _bind_canonical_teacher(admin_a)
-    db.session.commit()
-
-    _login_admin(client, admin_a.id, user_id=user_a.id, class_id=owned_class.class_id, seat_id=Seat.query.filter_by(class_id=owned_class.class_id, role="teacher").first().id)
+    _login_admin(client, admin_a, class_id=owned_class.class_id, seat_id=Seat.query.filter_by(class_id=owned_class.class_id, role="teacher").first().id)
     response = client.post("/admin/join-code/delete", json={"join_code": "DELG001"})
     assert response.status_code == 403
     assert ClassEconomy.query.filter_by(join_code="DELG001").first() is not None
@@ -96,17 +78,15 @@ def test_delete_join_code_requires_membership_even_if_teacherblock_exists(client
 def test_delete_join_code_requires_confirmation(client):
     admin = make_admin("confirm_admin", "secret")
     db.session.flush()
-    user = _bind_canonical_teacher(admin)
-
     class_row = create_class_scope(
         teacher_user=admin, join_code="CONF001")
     db.session.commit()
 
-    _login_admin(client, admin.id, user_id=user.id, class_id=class_row.class_id)
+    _login_admin(client, admin, class_id=class_row.class_id)
     with client.session_transaction() as sess:
         set_canonical_context(
             sess,
-            user_id=user.id,
+            user_id=admin.id,
             class_id=class_row.class_id,
             seat_id=Seat.query.filter_by(class_id=class_row.class_id, role="teacher").first().id,
             role="teacher",
@@ -131,7 +111,6 @@ def test_delete_join_code_requires_confirmation(client):
 def test_issues_queue_respects_current_join_code_membership_scope(client):
     admin = make_admin("issues_gate_admin", "secret")
     db.session.flush()
-    user = _bind_canonical_teacher(admin)
 
     class_a = create_class_scope(
         teacher_user=admin, join_code="ISSGA1")
@@ -187,11 +166,11 @@ def test_issues_queue_respects_current_join_code_membership_scope(client):
     ])
     db.session.commit()
 
-    _login_admin(client, admin.id, user_id=user.id, class_id=class_a.class_id)
+    _login_admin(client, admin, class_id=class_a.class_id)
     with client.session_transaction() as sess:
         set_canonical_context(
             sess,
-            user_id=user.id,
+            user_id=admin.id,
             class_id=class_a.class_id,
             seat_id=Seat.query.filter_by(class_id=class_a.class_id, role="teacher").first().id,
             role="teacher",
@@ -212,7 +191,7 @@ def test_add_individual_student_requires_current_class_context(client):
         teacher_user=admin, join_code="STUG001")
     db.session.commit()
 
-    _login_admin(client, admin.id)
+    _login_admin(client, admin)
 
     initial_student_count = db.session.query(Seat).filter(Seat.role == "student").count()
     response = client.post(
@@ -406,13 +385,12 @@ def test_store_create_requires_current_class_context(client):
 def test_payroll_settings_requires_current_class_context(client):
     admin = make_admin("payroll_guard_admin", "secret")
     db.session.flush()
-    user = _bind_canonical_teacher(admin)
 
     create_class_scope(
         teacher_user=admin, join_code="PAYG001")
     db.session.commit()
 
-    _login_admin(client, admin.id, user_id=user.id)
+    _login_admin(client, admin)
 
     initial_settings_count = db.session.query(PayrollSettings).count()
     response = client.post(
@@ -429,7 +407,6 @@ def test_payroll_settings_requires_current_class_context(client):
 def test_payroll_settings_uses_feature_scope_blocks_not_student_block_text(client):
     admin = make_admin("payroll_scope_admin", "secret")
     db.session.flush()
-    user = _bind_canonical_teacher(admin)
 
     profile = IdentityProfile(profile_type="student", first_name="Scope", last_name="S")
     db.session.add(profile)
@@ -450,7 +427,7 @@ def test_payroll_settings_uses_feature_scope_blocks_not_student_block_text(clien
 
     teacher_seat = Seat.query.filter_by(class_id=class_row.class_id, role="teacher").first()
     assert teacher_seat is not None
-    _login_admin(client, admin.id, user_id=user.id, class_id=class_row.class_id, seat_id=teacher_seat.id)
+    _login_admin(client, admin, class_id=class_row.class_id, seat_id=teacher_seat.id)
     with client.session_transaction() as sess:
         sess["current_join_code"] = class_row.join_code
 
@@ -522,7 +499,6 @@ def test_store_query_scope_does_not_implicitly_switch_session_context(client):
 def test_class_scoped_post_rejects_request_join_code_mismatch(client):
     admin = make_admin("mismatch_guard_admin", "secret")
     db.session.flush()
-    user = _bind_canonical_teacher(admin)
 
     class_a = create_class_scope(
         teacher_user=admin, join_code="PAYA01")
@@ -532,7 +508,7 @@ def test_class_scoped_post_rejects_request_join_code_mismatch(client):
 
     teacher_seat = Seat.query.filter_by(class_id=class_a.class_id, role="teacher").first()
     assert teacher_seat is not None
-    _login_admin(client, admin.id, user_id=user.id, class_id=class_a.class_id, seat_id=teacher_seat.id)
+    _login_admin(client, admin, class_id=class_a.class_id, seat_id=teacher_seat.id)
     with client.session_transaction() as sess:
         sess["current_join_code"] = "PAYA01"
 

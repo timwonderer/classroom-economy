@@ -27,6 +27,8 @@ import uuid
 from dataclasses import dataclass, field
 from typing import List
 
+from app.feats.base import FEATContext
+
 
 @dataclass
 class StudentContext:
@@ -95,19 +97,21 @@ class ClassroomContext:
         return sc
 
     def login_teacher(self, client):
-        with client.session_transaction() as sess:
-            from tests.helpers.canonical_session import set_canonical_context
-            set_canonical_context(
-                sess,
-                user_id=self.teacher_user.id,
-                class_id=self.class_id,
-                seat_id=self.teacher_seat.id,
-                role="teacher",
-                join_code=self.join_code,
-            )
+        with FEATContext("FEAT-IDEN-001", idempotency_key=f"classroom_context_login:{self.teacher_user.id}:{self.class_id}"):
+            with client.session_transaction() as sess:
+                from tests.helpers.canonical_session import set_canonical_context
+                set_canonical_context(
+                    sess,
+                    user_id=self.teacher_user.id,
+                    class_id=self.class_id,
+                    seat_id=self.teacher_seat.id,
+                    role="teacher",
+                    join_code=self.join_code,
+                )
 
     def commit(self):
-        self.db.session.commit()
+        with FEATContext("FEAT-IDEN-001", idempotency_key=f"classroom_context_commit:{self.class_id}"):
+            self.db.session.commit()
 
 
 class ClassroomContextFactory:
@@ -142,44 +146,45 @@ class ClassroomContextFactory:
         username = self._teacher_username or f"teacher_{uuid.uuid4().hex[:8]}"
         join_code = self._join_code or f"CTX-{uuid.uuid4().hex[:6].upper()}"
 
-        teacher_user = create_teacher(username)
+        with FEATContext("FEAT-IDEN-001", idempotency_key=f"classroom_context_build:{join_code}"):
+            teacher_user = create_teacher(username)
 
-        economy = create_class(
-            teacher_user.id,
-            join_code=join_code,
-            display_name=self._display_name or f"Test Class {join_code}",
-            section=self._section,
-        )
+            economy = create_class(
+                teacher_user.id,
+                join_code=join_code,
+                display_name=self._display_name or f"Test Class {join_code}",
+                section=self._section,
+            )
 
-        # Teacher seat is created inside create_class; retrieve it.
-        from app.models import Seat
-        teacher_seat = self._db.session.query(Seat).filter_by(
-            user_id=teacher_user.id,
-            class_id=economy.class_id,
-            role="teacher",
-        ).first()
+            # Teacher seat is created inside create_class; retrieve it.
+            from app.models import Seat
+            teacher_seat = self._db.session.query(Seat).filter_by(
+                user_id=teacher_user.id,
+                class_id=economy.class_id,
+                role="teacher",
+            ).first()
 
-        ctx = ClassroomContext(
-            db=self._db,
-            teacher_user=teacher_user,
-            economy=economy,
-            teacher_seat=teacher_seat,
-        )
+            ctx = ClassroomContext(
+                db=self._db,
+                teacher_user=teacher_user,
+                economy=economy,
+                teacher_seat=teacher_seat,
+            )
 
-        for first, last, kwargs in self._student_specs:
-            ctx.add_student(first, last, **kwargs)
+            for first, last, kwargs in self._student_specs:
+                ctx.add_student(first, last, **kwargs)
 
-        _default_names = [
-            ("Alice", "A"), ("Bob", "B"), ("Charlie", "C"), ("Diana", "D"),
-            ("Eve", "E"), ("Frank", "F"), ("Grace", "G"), ("Henry", "H"),
-            ("Iris", "I"), ("Jack", "J"),
-        ]
-        for i in range(self._student_count):
-            fn, ln = _default_names[i % len(_default_names)]
-            ctx.add_student(fn, ln)
+            _default_names = [
+                ("Alice", "A"), ("Bob", "B"), ("Charlie", "C"), ("Diana", "D"),
+                ("Eve", "E"), ("Frank", "F"), ("Grace", "G"), ("Henry", "H"),
+                ("Iris", "I"), ("Jack", "J"),
+            ]
+            for i in range(self._student_count):
+                fn, ln = _default_names[i % len(_default_names)]
+                ctx.add_student(fn, ln)
 
-        self._db.session.flush()
-        return ctx
+            self._db.session.flush()
+            return ctx
 
 
 # Backward-compat alias used by conftest.py fixtures

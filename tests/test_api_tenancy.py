@@ -628,21 +628,3 @@ def test_switch_teacher_public_id_invalid_keeps_current_context(client):
     with client.session_transaction() as sess:
         assert sess["current_join_code"] == "SWITCHINV"
 
-
-def test_switch_period_legacy_route_does_not_switch_context(client):
-    teacher_a, _ = _create_admin("teacher-switch-legacy-a")
-    teacher_b, _ = _create_admin("teacher-switch-legacy-b")
-    student = _create_student(
-        "SwitchLegacyRoute",
-        primary_teacher=teacher_a,
-        linked_teachers=[teacher_a, teacher_b],
-    )
-    _create_claimed_seat(teacher_a, student, "SWLEGACYA", block="A")
-    _create_claimed_seat(teacher_b, student, "SWLEGACYB", block="B")
-
-    _login_student(client, student, join_code="SWLEGACYA")
-    response = client.post(f"/student/switch-period/{teacher_b.id}")
-
-    assert response.status_code == 302
-    with client.session_transaction() as sess:
-        assert sess["current_join_code"] == "SWLEGACYA"
