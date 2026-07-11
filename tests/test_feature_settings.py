@@ -252,7 +252,7 @@ class TestTeacherOnboarding:
         # Initially needs onboarding
         assert onboarding.needs_onboarding is True
 
-        # After completion, no longer needs it
+        # After completion, onboarding should be marked complete
         onboarding.complete_onboarding()
         db.session.commit()
         assert onboarding.needs_onboarding is False
