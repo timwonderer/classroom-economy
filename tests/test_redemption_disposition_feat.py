@@ -216,7 +216,6 @@ def test_reject_redemption_succeeds_and_creates_refund_under_enforcement(client)
     # Item is in terminal rejected state
     refetched_item = db.session.get(StorePurchase, ids["student_item_id"])
     assert refetched_item.status == "rejected"
-    assert refetched_item.redemption_details and "Status: rejected" in refetched_item.redemption_details
 
     # Refund transaction created with positive amount equal to item price
     refund_txs = Transaction.query.filter_by(

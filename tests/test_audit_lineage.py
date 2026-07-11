@@ -16,6 +16,7 @@ import pyotp
 import pytest
 
 from app.extensions import db
+from app.feats.base import FEATContext
 
 
 # ---------------------------------------------------------------------------
@@ -74,14 +75,14 @@ def test_emit_audit_event_creates_chain_entry(app):
         class_id = _make_class_id()
         scope = f"class:{class_id}"
 
-        # FEATBypass is already active via autouse fixture
-        event = emit_audit_event(
-            table_name="ledger_transaction",
-            row_pk="999",
-            operation="INSERT",
-            protected_fields={"amount": "10.00", "type": "payroll"},
-            class_id=class_id,
-        )
+        with FEATContext("FEAT-TEST-AUDIT"):
+            event = emit_audit_event(
+                table_name="ledger_transaction",
+                row_pk="999",
+                operation="INSERT",
+                protected_fields={"amount": "10.00", "type": "payroll"},
+                class_id=class_id,
+            )
         db.session.commit()
 
         ae = AuditEvent.query.filter_by(id=event.id).first()

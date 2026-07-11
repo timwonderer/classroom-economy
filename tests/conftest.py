@@ -97,8 +97,6 @@ def _rebuild_database_state():
 
     db.session.remove()
 
-
-
 @pytest.fixture
 def app(request):
     """Provide the Flask app instance for tests."""

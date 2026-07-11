@@ -4,6 +4,7 @@ from app.models import User, UserRole, ClassEconomy
 from app.feats.base import FEATContextError, requires_feat_context, is_feat_active
 from tests.helpers.class_scope import make_student_identity
 
+@pytest.mark.enforce_feat
 def test_commit_fails_outside_feat_context(app):
     """
     CONFIRM: No mutation until a FEAT context is established.
@@ -18,6 +19,7 @@ def test_commit_fails_outside_feat_context(app):
     assert "MANDATORY FEAT CONSTITUTIONAL VIOLATION (COMMIT)" in str(excinfo.value)
     db.session.rollback()
 
+@pytest.mark.enforce_feat
 def test_flush_fails_outside_feat_context(app):
     """
     CONFIRM: No SQL emission (flush) until a FEAT context is established.
@@ -31,6 +33,7 @@ def test_flush_fails_outside_feat_context(app):
     assert "MANDATORY FEAT CONSTITUTIONAL VIOLATION (FLUSH)" in str(excinfo.value)
     db.session.rollback()
 
+@pytest.mark.enforce_feat
 def test_commit_succeeds_inside_feat_context(app):
     """
     CONFIRM: Mutations are permitted in FEAT context without direct commit.
@@ -56,6 +59,7 @@ def test_commit_succeeds_inside_feat_context(app):
     assert stu.id is not None
     assert is_feat_active() is False # Should be cleared after exit
 
+@pytest.mark.enforce_feat
 def test_nested_feat_context(app):
     """
     CONFIRM: Nested FEATs are tracked correctly without direct commit calls.
@@ -77,6 +81,7 @@ def test_nested_feat_context(app):
     assert is_feat_active() is False
 
 
+@pytest.mark.enforce_feat
 def test_direct_commit_inside_feat_context_is_blocked(app):
     """
     CONFIRM: Only FEAT orchestrator boundary can commit.
