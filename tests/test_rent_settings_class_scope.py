@@ -2,6 +2,7 @@ from datetime import datetime, timezone
 
 from app.extensions import db
 from app.models import ClassFeature, RentSettings, Seat, User, UserRole
+from app.feats.base import FEATContext
 from tests.helpers.class_scope import create_class_scope
 from tests.helpers.canonical_session import set_canonical_context
 from tests.helpers.v2_fixtures import make_admin
@@ -27,13 +28,15 @@ def test_rent_settings_update_persists_class_scoped_row(client):
     class_row = create_class_scope(
         teacher_user=admin,
     )
-    db.session.add(ClassFeature(class_id=class_row.class_id, feature_name="rent"))
-    db.session.commit()
+    with FEATContext("FEAT-ADMN-001", idempotency_key=f"rent_scope_seed:{class_row.class_id}"):
+        db.session.add(ClassFeature(class_id=class_row.class_id, feature_name="rent"))
+        db.session.flush()
 
     _login_canonical_admin(
         client,
         admin,
         class_id=class_row.class_id,
+        join_code=class_row.join_code,
     )
 
     response = client.post(

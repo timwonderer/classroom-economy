@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 import secrets
 from decimal import Decimal
-from tests.helpers.v2_fixtures import make_admin, make_sysadmin
+from tests.helpers.v2_fixtures import make_sysadmin, seed_canonical_admin
 from app.extensions import db
 from app.models import (
     User,
@@ -21,8 +21,7 @@ from tests.helpers.class_scope import create_class_scope, make_student_identity
 
 
 def test_sysadmin_resolve_issue_issues_bug_reward_transaction(client):
-    teacher = make_admin("teacher_issue_reward")
-    db.session.flush()
+    teacher = seed_canonical_admin("teacher_issue_reward").user
 
     sysadmin = make_sysadmin("sysadmin_issue_reward")
     category = IssueCategory(

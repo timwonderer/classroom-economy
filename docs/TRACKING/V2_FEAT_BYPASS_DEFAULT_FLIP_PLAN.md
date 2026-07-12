@@ -185,6 +185,14 @@ explicit fixture helpers."
 - At least three example tests demonstrating "uses Phase-2 fixtures,
   needs no autouse bypass."
 
+**Progress update (2026-07-12):**
+- `tests/helpers/v2_fixtures.py` now includes the shared canonical seed
+  helpers (`seed_canonical_admin`, `seed_class_with_seat`,
+  `seed_store_item`, `seed_purchase`).
+- Representative tests have been migrated onto the shared helpers:
+  `tests/test_canonical_auth_session.py` and
+  `tests/test_sysadmin_issue_rewards.py`.
+
 **Constraint:** Phase 2 is additive. Existing tests continue to inherit the
 conftest autouse bypass. The migration of legacy tests onto these helpers
 happens during Phase 4 triage.

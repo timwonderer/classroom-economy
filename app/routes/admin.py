@@ -6114,11 +6114,13 @@ def rent_settings():
     """Configure rent settings."""
     user_id = g.canonical_context.user_id
     feature_options = get_admin_feature_join_code_options('rent', canonical_context=g.canonical_context)
-    selected_scope = require_admin_feature_scope(
-        'rent',
-        canonical_context=g.canonical_context,
-        requested_block=request.values.get('settings_block'),
+    current_class_id = getattr(g.canonical_context, "class_id", None)
+    selected_scope = next(
+        (option for option in feature_options if option.get("class_id") == current_class_id),
+        None,
     )
+    if not selected_scope:
+        abort(404)
     class_id = selected_scope['class_id']
     payroll_settings = PayrollSettings.query.filter_by(
         class_id=class_id,
@@ -6173,7 +6175,6 @@ def rent_settings():
             f"feat:rent:settings-update:{selected_scope['class_id']}:{payload_hash}"
         )
 
-        db.session.rollback()
         with FEATContext("FEAT-ADMN-001", idempotency_key=idempotency_key):
             for block in blocks_to_update:
                 # block IS a class_id; query directly — no label-based lookup (INV-ARC-014)

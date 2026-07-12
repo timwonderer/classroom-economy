@@ -18,7 +18,7 @@ from app.models import (
     UserRole,
 )
 from app.utils.time import utc_now
-from tests.helpers.v2_fixtures import make_admin, make_sysadmin
+from tests.helpers.v2_fixtures import make_admin, make_sysadmin, seed_canonical_admin, seed_class_with_seat
 from tests.helpers.class_scope import make_student_identity
 from tests.helpers.canonical_session import set_canonical_context
 
@@ -214,13 +214,15 @@ def test_admin_passkey_register_uses_canonical_user_external_id(client, monkeypa
     monkeypatch.setattr("app.routes.admin.get_public_api_key", lambda: "public-key")
 
     with FEATContext("FEAT-IDEN-001"):
-        admin = make_admin("passkey_teacher", pyotp.random_base32())
+        admin = seed_canonical_admin("passkey_teacher", pyotp.random_base32()).user
+        class_seed = seed_class_with_seat(
+            teacher=admin,
+            join_code="PASSKEY1",
+            display_name="Passkey",
+        )
         user = db.session.get(User, admin.id)
-        class_row = ClassEconomy(user_id=user.id, join_code="PASSKEY1", display_name="Passkey", class_timezone="UTC")
-        db.session.add(class_row)
-        db.session.flush()
-        teacher_seat = Seat(user_id=user.id, class_id=class_row.class_id, role="teacher")
-        db.session.add(teacher_seat)
+        class_row = class_seed.class_row
+        teacher_seat = Seat.query.filter_by(class_id=class_row.class_id, role="teacher").first()
         user.current_session_nonce = "nonce"
         db.session.flush()
 
@@ -248,13 +250,15 @@ def test_admin_passkey_register_uses_canonical_user_external_id(client, monkeypa
 
 def test_admin_passkey_finish_sets_canonical_user_session(client, monkeypatch):
     with FEATContext("FEAT-IDEN-001"):
-        admin = make_admin("passkey_finish_teacher", pyotp.random_base32())
+        admin = seed_canonical_admin("passkey_finish_teacher", pyotp.random_base32()).user
+        class_seed = seed_class_with_seat(
+            teacher=admin,
+            join_code="PASSKEY2",
+            display_name="Passkey2",
+        )
         user = db.session.get(User, admin.id)
-        class_row = ClassEconomy(user_id=user.id, join_code="PASSKEY2", display_name="Passkey2", class_timezone="UTC")
-        db.session.add(class_row)
-        db.session.flush()
-        teacher_seat = Seat(user_id=user.id, class_id=class_row.class_id, role="teacher")
-        db.session.add(teacher_seat)
+        class_row = class_seed.class_row
+        teacher_seat = Seat.query.filter_by(class_id=class_row.class_id, role="teacher").first()
         db.session.add(PasskeyCredential(user_id=user.id, authenticator_name="Key"))
         db.session.flush()
 
