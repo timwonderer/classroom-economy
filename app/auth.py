@@ -117,7 +117,7 @@ def login_required(f):
         except (ContextNotEstablished, ContextMismatch, ContextForbidden):
             if request.path.startswith('/api/'):
                 return jsonify({"status": "error", "error": "User not logged in or session expired"}), 401
-            return redirect(url_for('student.login'))
+            return redirect(url_for('student.login', next=request.path))
         except ContextInvariantViolation:
             if request.path.startswith('/api/'):
                 return jsonify({"status": "error", "error": "Please select a class to continue."}), 403
@@ -126,7 +126,7 @@ def login_required(f):
         if not ctx or getattr(ctx, "actor_role", None) != "student":
             if request.path.startswith('/api/'):
                 return jsonify({"status": "error", "error": "User not logged in or session expired"}), 401
-            return redirect(url_for('student.login'))
+            return redirect(url_for('student.login', next=request.path))
 
         g.canonical_context = ctx
         session['last_activity'] = utc_now().isoformat()

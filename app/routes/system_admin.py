@@ -31,7 +31,7 @@ from app.models import (
     Transaction, TransactionStatus, TapEvent, HallPassLog, RentPayment,
     InsuranceClaim, UserReport,
     FeatureSettings, RentSettings, BankingSettings,
-    HallPassSettings, SavedAdjustment, ClassEconomy, User,
+    HallPassSettings, SavedAdjustment, ClassEconomy, User, UserRole,
     PayrollSettings, StoreItem, Announcement, Issue, IssueStatusHistory, IssueResolutionAction
 )
 from app.auth import (
@@ -78,6 +78,18 @@ def _resolve_admin_user(admin: Admin) -> User | None:
     if not admin or not admin.username_lookup_hash:
         return None
     return User.query.filter_by(username_lookup_hash=admin.username_lookup_hash).first()
+
+
+def _resolve_legacy_admin(user: User) -> Admin | None:
+    """Resolve the legacy Admin bridge row for a canonical teacher User, if one exists.
+
+    Teachers created purely through the v2 canonical path (no legacy signup dual-write)
+    have no Admin row — that is expected, not an error. Callers must treat the result
+    as optional.
+    """
+    if not user or not user.username_lookup_hash:
+        return None
+    return Admin.query.filter_by(username_lookup_hash=user.username_lookup_hash).first()
 
 
 def _user_student_counts(user_ids: list[int]) -> tuple[dict[int, int], dict[int, dict[str, int]]]:
@@ -221,6 +233,7 @@ def auth_check():
 
 @sysadmin_bp.route('/login', methods=['GET', 'POST'])
 @limiter.limit("10 per minute", methods=["POST"])
+@feat_shell("FEAT-OPS-001")
 def login():
     """System admin login with TOTP authentication."""
     session.pop("user_id", None)
@@ -565,7 +578,7 @@ def dashboard():
     Shows admin count, student count, active invites, recent admins, and recent errors.
     """
     # Gather statistics
-    total_admins = Admin.query.count()
+    total_admins = User.query.filter_by(user_role=UserRole.TEACHER).count()
     total_students = Seat.query.filter(Seat.role == 'student').count()
     active_invites = count_active_admin_invite_codes()
     system_admin_count = SystemAdmin.query.count()
@@ -584,8 +597,13 @@ def dashboard():
     ).count()
     open_tickets = new_reports_count + open_issues_count
 
-    # Recent admins (last 5)
-    recent_admins = Admin.query.order_by(Admin.created_at.desc()).limit(5).all()
+    # Recent admins (last 5) — canonical teacher Users, not the legacy Admin bridge table.
+    recent_admins = (
+        User.query.filter_by(user_role=UserRole.TEACHER)
+        .order_by(User.created_at.desc())
+        .limit(5)
+        .all()
+    )
 
     # Recent errors (last 5)
     recent_errors = ErrorLog.query.order_by(ErrorLog.timestamp.desc()).limit(5).all()
@@ -885,22 +903,24 @@ def test_error_503():
 def manage_admins():
     """
     Admin account management.
+
+    Lists canonical teacher Users (role=TEACHER) — the authoritative identity
+    per INV-IDEN-001. Legacy Admin bridge rows, where present, contribute no
+    display data here; reset/delete actions resolve them separately.
     """
-    # Get all admins with linked student counts.
-    admins = Admin.query.order_by(db.func.coalesce(Admin.public_id, ''), Admin.id.asc()).all()
-    admin_data = []
+    teachers = User.query.filter_by(user_role=UserRole.TEACHER).order_by(User.id.asc()).all()
+    user_student_counts, _ = _user_student_counts([teacher.id for teacher in teachers])
 
-    for admin in admins:
-        # Count linked students associated with the account.
-        student_count = admin.get_student_count()
-
-        admin_data.append({
-            'id': admin.id,
-            'username': admin.get_sysadmin_display_name(),
-            'student_count': student_count,
-            'created_at': admin.created_at,
-            'last_login': admin.last_login
-        })
+    admin_data = [
+        {
+            'id': teacher.id,
+            'username': f"user_{teacher.id}",
+            'student_count': user_student_counts.get(teacher.id, 0),
+            'created_at': teacher.created_at,
+            'last_login': None,
+        }
+        for teacher in teachers
+    ]
 
     return render_template(
         'system_admin_manage_admins.html',
@@ -911,18 +931,20 @@ def manage_admins():
 
 @sysadmin_bp.route('/admins/<int:user_id>/reset-totp', methods=['POST'])
 @system_admin_required
+@feat_shell("FEAT-OPS-001")
 def reset_admin_totp(user_id):
     """
-    Reset TOTP for an admin account.
+    Reset TOTP for a teacher account.
+
+    user_id is the canonical User.id (matches what manage_admins() renders).
+    Admin.totp_secret is not synced — it is unused for authentication
+    (admin.py login checks only User.totp_secret_encrypted).
     """
-    admin = db.get_or_404(Admin, user_id)
+    user = db.get_or_404(User, user_id)
 
     try:
-        # Generate new secret
+        display_name = user.get_display_username()
         new_secret = pyotp.random_base32()
-        user = User.query.filter_by(username_lookup_hash=admin.username_lookup_hash).first()
-        if not user:
-            return jsonify({"status": "error", "message": "Canonical admin identity is missing."}), 409
         encrypted_totp_secret = encrypt_totp(new_secret)
         user.totp_secret_encrypted = encrypted_totp_secret
         db.session.flush()
@@ -930,7 +952,7 @@ def reset_admin_totp(user_id):
 
         # Generate QR code
         totp_uri = pyotp.totp.TOTP(new_secret).provisioning_uri(
-            name=admin.get_sysadmin_display_name(),
+            name=display_name,
             issuer_name="Classroom Economy Admin"
         )
 
@@ -942,11 +964,11 @@ def reset_admin_totp(user_id):
 
         return jsonify({
             "status": "success",
-            "message": f"TOTP secret reset for {admin.get_sysadmin_display_name()}",
+            "message": f"TOTP secret reset for {display_name}",
             "totp_secret": stored_secret,
             "totp_secret_plain": new_secret,
             "qr_code": qr_b64,
-            "username": admin.get_sysadmin_display_name()
+            "username": display_name
         })
     except Exception as e:
         db.session.rollback()
@@ -962,38 +984,41 @@ def reset_admin_totp(user_id):
 @feat_shell("FEAT-OPS-001")
 def delete_admin(user_id):
     """
-    Delete an admin account and all students created under that teacher user.
+    Delete a teacher account and all students created under that teacher.
     This is a permanent action that cascades to all student data.
+
+    user_id is the canonical User.id (matches what manage_admins() renders).
+    A legacy Admin bridge row, if present (bridge-period dual-write signups),
+    is also removed for consistency but its absence is not an error.
     """
-    admin = db.get_or_404(Admin, user_id)
+    admin_user = db.get_or_404(User, user_id)
 
     try:
-        admin_user = _resolve_admin_user(admin)
-        deleted_student_count = 0
-        deleted_class_count = 0
-        if admin_user:
-            class_ids = [
-                class_id for (class_id,) in db.session.query(ClassEconomy.class_id)
-                .filter(ClassEconomy.user_id == admin_user.id)
-                .all()
-            ]
-            deleted_class_count = len(class_ids)
-            deleted_student_count = db.session.query(Seat.id).filter(
-                Seat.class_id.in_(class_ids),
-                Seat.role == "student",
-            ).count() if class_ids else 0
+        admin_username = admin_user.get_display_username()
+        class_ids = [
+            class_id for (class_id,) in db.session.query(ClassEconomy.class_id)
+            .filter(ClassEconomy.user_id == admin_user.id)
+            .all()
+        ]
+        deleted_class_count = len(class_ids)
+        deleted_student_count = db.session.query(Seat.id).filter(
+            Seat.class_id.in_(class_ids),
+            Seat.role == "student",
+        ).count() if class_ids else 0
 
-            from app.utils.deletion import collapse_universe
-            for cid in class_ids:
-                collapse_universe(cid, reason="Teacher account deletion", actor_membership_id=None)
+        from app.utils.deletion import collapse_universe
+        for cid in class_ids:
+            collapse_universe(cid, reason="Teacher account deletion", actor_membership_id=None)
 
-            delete_recovery_rows_for_user(admin_user.id)
-            delete_admin_credentials_for_user(admin_user.id)
-            delete_admin_onboarding_for_user(admin_user.id)
-            db.session.delete(admin_user)
+        delete_recovery_rows_for_user(admin_user.id)
+        delete_admin_credentials_for_user(admin_user.id)
+        delete_admin_onboarding_for_user(admin_user.id)
 
-        admin_username = admin.get_sysadmin_display_name()
-        db.session.delete(admin)
+        legacy_admin = _resolve_legacy_admin(admin_user)
+        if legacy_admin:
+            db.session.delete(legacy_admin)
+
+        db.session.delete(admin_user)
         db.session.flush()
 
         flash(

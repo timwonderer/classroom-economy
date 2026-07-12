@@ -2053,10 +2053,6 @@ class Issue(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
 
-    # Seat display cache and actor reference
-    student_first_name = db.Column(db.String(100), nullable=False)  # Cached for display
-    student_last_initial = db.Column(db.String(1), nullable=False)
-
     # Public actor identifier for sysadmin investigations
     actor_public_id = db.Column(db.String(64), nullable=False, index=True)
 
@@ -2174,7 +2170,7 @@ class Issue(db.Model):
         return canonical_status in [self.STATUS_ESCALATED_TO_DEV, self.STATUS_DEV_RESOLVED, self.STATUS_CLOSED]
 
     def __repr__(self):
-        return f'<Issue #{self.id} ({self.status}) - Student {self.student_first_name} {self.student_last_initial}.>'
+        return f'<Issue #{self.id} ({self.status}) - seat_id={self.seat_id}>'
 
 
 class TicketCorrelationPack(db.Model):

@@ -2944,6 +2944,7 @@ def give_bonus_all():
 
 @admin_bp.route('/login', methods=['GET', 'POST'])
 @limiter.limit("10 per minute")
+@feat_shell("FEAT-ADMN-001")
 def login():
     """Admin login with TOTP authentication."""
     session.pop("user_id", None)
