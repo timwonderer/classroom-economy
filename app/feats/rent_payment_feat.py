@@ -7,6 +7,7 @@ from app.extensions import db
 from app.models import ClassEconomy, _quantize_currency
 from app.services import access_policy_service, ledger_service, obligations_service, store_service
 from app.services.entitlement_service import reconcile_rent_hall_pass_top_off
+from app.feats.ledger_resolution_feat import build_intended_ledger_plan, resolve_intended_ledger_plan, apply_resolved_ledger_plan
 from app.utils.time import utc_now
 
 
@@ -103,22 +104,29 @@ def execute_rent_payment(
     )
     db.session.flush()
 
-    if banking_settings and banking_settings.overdraft_protection_enabled and overdraft_shortfall > 0:
-        ledger_service.create_transfer_pair(
-            seat_id=seat.id,
-            class_id=class_id,
-            user_id=user_id,
-            amount=overdraft_shortfall,
-            from_account='savings',
-            to_account='checking',
-            withdraw_description='Overdraft protection transfer to checking',
-            deposit_description='Overdraft protection transfer from savings',
-        )
-        db.session.flush()
-
-    ledger_service.apply_overdraft_fee_if_needed(
-        seat,
-        banking_settings,
+    intended_plan = build_intended_ledger_plan(
+        seat_id=seat.id,
+        class_id=class_id,
+        user_id=user_id,
+        debit_amount=payment_amount,
+        description=payment_description,
+        source_account="checking",
+        target_account="rent",
+    )
+    resolved_plan = resolve_intended_ledger_plan(
+        plan=intended_plan,
+        banking_settings=banking_settings,
+        idempotency_key=f"rent_payment:{seat.id}:{class_id}:{period}:{coverage_year}-{coverage_month}:{payment_amount}:resolve",
+        force_overdraft_fee=False,
+        allow_recovery_transfer=True,
+    )
+    apply_resolved_ledger_plan(
+        resolved_plan=resolved_plan,
+        banking_settings=banking_settings,
+        idempotency_key=(
+            f"rent_payment:{seat.id}:{class_id}:{period}:"
+            f"{coverage_year}-{coverage_month}:{payment_amount}"
+        ),
     )
 
     passes_awarded = 0

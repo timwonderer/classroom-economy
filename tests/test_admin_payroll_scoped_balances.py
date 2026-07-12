@@ -3,6 +3,7 @@ from decimal import Decimal
 
 from tests.helpers.v2_fixtures import make_admin
 from app.extensions import db
+from app.feats.base import FEATContext
 from app.models import Seat, IdentityProfile, Transaction, TransactionStatus, User, UserRole
 from tests.helpers.class_scope import create_class_scope
 from tests.helpers.canonical_session import set_canonical_context
@@ -26,22 +27,22 @@ def test_admin_payroll_displays_scoped_balances_only(client):
     teacher_b = make_admin("payroll_scope_b")
     db.session.flush()
 
-    student_user = User(user_role=UserRole.STUDENT, username_hash="payroll_scope_student_hash", username_lookup_hash="payroll_scope_student_lookup")
-    db.session.add(student_user)
-    db.session.flush()
-
     class_a = create_class_scope(teacher_user=teacher_a, join_code="PAYA01", display_name="A")
     class_b = create_class_scope(teacher_user=teacher_b, join_code="PAYB01", display_name="A")
     db.session.flush()
-    seat_a = Seat(user_id=student_user.id, class_id=class_a.class_id, role="student", claimed_at=datetime.now(timezone.utc))
-    seat_b = Seat(user_id=student_user.id, class_id=class_b.class_id, role="student", claimed_at=datetime.now(timezone.utc))
-    db.session.add_all([seat_a, seat_b])
-    db.session.flush()
-    db.session.add(IdentityProfile(seat_id=seat_a.id, profile_type="student", first_name="Pay", last_name="S"))
-    db.session.add(IdentityProfile(seat_id=seat_b.id, profile_type="student_claimed", first_name="Pay", last_name="S"))
+    with FEATContext("FEAT-IDEN-001", idempotency_key="admin_payroll_scoped_balances:student_seed"):
+        student_user = User(user_role=UserRole.STUDENT, username_hash="payroll_scope_student_hash", username_lookup_hash="payroll_scope_student_lookup")
+        db.session.add(student_user)
+        db.session.flush()
+        seat_a = Seat(user_id=student_user.id, class_id=class_a.class_id, role="student", claimed_at=datetime.now(timezone.utc))
+        seat_b = Seat(user_id=student_user.id, class_id=class_b.class_id, role="student", claimed_at=datetime.now(timezone.utc))
+        db.session.add_all([seat_a, seat_b])
+        db.session.flush()
+        db.session.add(IdentityProfile(seat_id=seat_a.id, profile_type="student", first_name="Pay", last_name="S"))
+        db.session.add(IdentityProfile(seat_id=seat_b.id, profile_type="student_claimed", first_name="Pay", last_name="S"))
+        db.session.flush()
     assert seat_a is not None and seat_b is not None
 
-    from app.feats.base import FEATContext
     with FEATContext("FEAT-ADMN-001"):
         db.session.add_all([
             Transaction(

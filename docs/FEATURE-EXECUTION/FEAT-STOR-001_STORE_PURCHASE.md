@@ -36,16 +36,17 @@ This FEAT orchestrates the exchange of currency for digital entitlements (items,
     * **Action**: If `allowed: false`, abort with `OBLIGATION_BLOCK`.
 3. **Financial Guard**:
     * Calculate `total_cost_cents`.
-    * Call `DOM-LED.check_balance_sufficiency(seat_id, total_cost_cents)`.
+    * Construct an intended ledger plan for the purchase.
+    * Call `FEAT-LED-000` to resolve the plan against `DOM-LED` and `DOM-CLASS`.
     * **Logic**:
-        * If `allowed: true`: Proceed.
-        * If `allowed: false` AND `metadata.overdraft_available == true`: Mark for `SAVINGS_TRANSFER`.
-        * Else: Abort with `INSUFFICIENT_FUNDS`.
+        * If `outcome: ACCEPT`: Proceed with the resolved plan unchanged.
+        * If `outcome: TRANSFORM`: Proceed with the resolved plan's augmented posting shape.
+        * If `outcome: DENY`: Abort with `INSUFFICIENT_FUNDS`.
 
 ### 2. Mutation Phase (Atomic Transaction)
 1. **Financial Execution**:
-    * **Core Purchase**: Call `FEAT-LED-001` with `transaction_type: PURCHASE`.
-    * **Overdraft Transfer** (If marked): Call `FEAT-LED-001` with `transaction_type: OVERDRAFT_RECOVERY`.
+    * **Core Purchase**: Call `FEAT-LED-001` with the resolved purchase ledger plan.
+    * **Overdraft Transfer** (If present in the resolved plan): Call `FEAT-LED-001` with the resolved recovery plan.
 2. **Entitlement Delivery**:
     * Call `DOM-STORE` to create an authoritative `Entitlement`.
     * **Entitlement Typing (MANDATORY)**: MUST specify `EntitlementType` Enum:

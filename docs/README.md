@@ -67,6 +67,7 @@ All documents are classified into one of three tiers. See [SOP-DOC-000 Section V
 - **[Authority Model](INVARIANT/CORE/INV-CORE-001_CAPABILITY_BASED_ARCHITECTURE_AND_AUTHORITY_MODEL.md)** — Canonical capability-based authority hierarchy
 - **[Domain Authority Summary](DOMAIN/DOM-CORE-001_DOMAIN_AUTHORITY_SUMMARY.md)** — Per-domain authority overview
 - **[FEAT Constitutional Directive](FEATURE-EXECUTION/FEAT-CORE-000_FEATURE_EXECUTION_CONSTITUTIONAL_DIRECTIVE.md)** — FEAT execution rules
+- **[Canonical Monetary Resolution](FEATURE-EXECUTION/FEAT-LED-000_CANONICAL_MONETARY_RESOLUTION_WORKFLOW.md)** — intended plan / resolved plan workflow before posting
 - **[Canonical Schema Definition](DOMAIN/DOM-CORE-002_CANONICAL_SCHEMA_DEFINITION.md)** — Runtime schema, table ownership, and structural constraints
 - **[Class Scope Normalization](MAP/MAP-CLASS-002_CLASS_SCOPE_NORMALIZATION_TARGET.md)** — Long-term class_id scoping model
 - **[Documentation Standard](STANDARD_OPERATING_PROCEDURES/SOP-DOC-000_DOCUMENTATION_STANDARD.md)** — Tier classification, taxonomy, naming, authoring rules

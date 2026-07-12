@@ -53,7 +53,7 @@ from app.utils.turnstile import verify_turnstile_token
 from app.utils.ip_handler import get_real_ip
 from app.utils.claim_credentials import compute_primary_claim_hash, match_claim_hash
 from app.utils.name_utils import hash_last_name_parts
-from app.utils.overdraft import charge_overdraft_fee_if_needed, evaluate_overdraft_allowance
+from app.feats.ledger_resolution_feat import build_intended_ledger_plan, resolve_intended_ledger_plan, apply_resolved_ledger_plan
 from app.utils.help_content import HELP_ARTICLES
 from app.utils.economy_policy import (
     get_class_feature_settings,
@@ -69,7 +69,6 @@ from app.access import (
 )
 from app.services.attendance_service import get_all_block_statuses
 from app.services.ledger_service import (
-    apply_overdraft_fee_if_needed as apply_ledger_overdraft_fee,
     apply_monthly_savings_interest as post_monthly_savings_interest,
     get_available_balances,
 )
@@ -1334,16 +1333,31 @@ def transfer():
             return redirect(url_for("student.transfer"))
 
         if from_account == 'checking' and amount > checking_balance:
-            fee_charged, fee_amount = _charge_overdraft_fee_if_needed(
-                student,
-                banking_settings,
+            intended_plan = build_intended_ledger_plan(
+                seat_id=seat_id,
                 class_id=class_id,
-                force=True
+                user_id=student.user_id,
+                debit_amount=amount,
+                description=f"Transfer to {to_account}",
+                source_account=from_account,
+                target_account=to_account,
+            )
+            resolved_plan = resolve_intended_ledger_plan(
+                plan=intended_plan,
+                banking_settings=banking_settings,
+                idempotency_key=f"student-transfer:{seat_id}:{class_id}:{amount}:{from_account}:{to_account}:resolve",
+                force_overdraft_fee=True,
+                allow_recovery_transfer=False,
+            )
+            apply_resolved_ledger_plan(
+                resolved_plan=resolved_plan,
+                banking_settings=banking_settings,
+                idempotency_key=f"student-transfer:{seat_id}:{class_id}:{amount}:{from_account}:{to_account}",
             )
 
             message = "Insufficient checking funds."
-            if fee_charged:
-                message += f" Overdraft fee of ${fee_amount:.2f} charged."
+            if resolved_plan.overdraft_fee_amount > 0:
+                message += f" Overdraft fee of ${resolved_plan.overdraft_fee_amount:.2f} charged."
             if is_json:
                 return jsonify(status="error", message=message), 400
             flash(message, "transfer_error")
@@ -1672,39 +1686,32 @@ def purchase_insurance(policy_id):
     # CRITICAL FIX v2: Check sufficient funds using canonical seat/class scoped balance
     checking_balance, savings_balance = calculate_scoped_balances(context.seat_id, context.class_id)
     banking_settings = get_banking_settings_for_context(context)
-    overdraft_shortfall = Decimal('0.00')
-
-    allowed, shortfall, _, _ = evaluate_overdraft_allowance(
-        student,
-        policy.premium,
-        banking_settings,
-        # user_id is resolved from class context.
-        join_code=join_code
+    intended_plan = build_intended_ledger_plan(
+        seat_id=seat.id,
+        class_id=class_id,
+        user_id=context.user_id,
+        debit_amount=policy.premium,
+        description=f"Insurance premium: {policy.title}",
+        source_account="checking",
+        target_account="insurance",
     )
-    if not allowed:
-        fee_charged, fee_amount = _charge_overdraft_fee_if_needed(
-            student,
-            banking_settings,
-            # user_id is resolved from class context.
-            join_code=join_code,
-            force=True
-        )
-
+    resolved_plan = resolve_intended_ledger_plan(
+        plan=intended_plan,
+        banking_settings=banking_settings,
+        idempotency_key=f"insurance:{seat.id}:{class_id}:{policy.id}:resolve",
+        force_overdraft_fee=False,
+        allow_recovery_transfer=True,
+    )
+    overdraft_shortfall = resolved_plan.recovery_transfer_amount if resolved_plan.recovery_transfer_amount > 0 else Decimal('0.00')
+    if resolved_plan.outcome == "DENY":
         if banking_settings and banking_settings.overdraft_protection_enabled:
             message = (f"Insufficient funds in both checking and savings. You need "
                        f"${policy.premium:.2f} but have ${checking_balance + savings_balance:.2f}.")
         else:
             message = (f"Insufficient funds. You need ${policy.premium:.2f} but only "
                        f"have ${checking_balance:.2f}.")
-
-        if fee_charged:
-            message += f" Overdraft fee of ${fee_amount:.2f} charged."
-
         flash(message, "danger")
         return redirect(url_for('student.student_insurance'))
-
-    if shortfall > 0:
-        overdraft_shortfall = shortfall
 
     execute_insurance_purchase(
         seat=seat,
@@ -1849,8 +1856,8 @@ def file_claim(policy_id):
         effective_time_limit_days = int(claim_time_limit_days) if claim_time_limit_days is not None else None
         tx_query = (
             Transaction.query
-            .filter(Transaction.seat_id == scope['seat_id'])
-            .filter(Transaction.class_id == scope['class_id'])
+            .filter(Transaction.seat_id == scope.seat_id)
+            .filter(Transaction.class_id == scope.class_id)
             .filter(Transaction.is_void == False)
             .filter(Transaction.status == TransactionStatus.POSTED)
             .filter(Transaction.amount < Decimal('0'))
@@ -2287,30 +2294,6 @@ def shop():
 
 
 # -------------------- RENT --------------------
-
-def _charge_overdraft_fee_if_needed(student, banking_settings, class_id=None, force=False):
-    """
-    Check if student's checking balance is negative and charge overdraft fee if enabled.
-    Returns (fee_charged, fee_amount) tuple.
-
-    Args:
-        force: Charge fee even if balance is non-negative (declined transaction).
-    """
-    if not class_id:
-        return False, Decimal('0.00')
-
-    seat_id = student.identity_profile.seat_id if student and student.identity_profile else None
-    if not seat_id:
-        return False, Decimal('0.00')
-
-    from app.models import Seat
-    seat = db.session.get(Seat, seat_id)
-
-    return apply_ledger_overdraft_fee(
-        seat,
-        banking_settings,
-        force=force
-    )
 
 
 def _get_rent_timezone(settings):
@@ -3254,6 +3237,7 @@ def rent_pay(period):
     if not seat:
         flash("No seat assigned in this class.", "error")
         return redirect(url_for('student.dashboard'))
+    student = _get_canonical_student_from_context()
 
     settings = get_rent_settings_for_context(context)
 
@@ -3416,48 +3400,40 @@ def rent_pay(period):
     from app.models import Seat
     seat = db.session.get(Seat, seat_id)
 
-    # Check if student has enough funds for this payment using shared utility
-    overdraft_shortfall = Decimal('0.00')
-    allowed, shortfall, _, _ = evaluate_overdraft_allowance(
-        seat,
-        payment_amount,
-        banking_settings,
+    intended_plan = build_intended_ledger_plan(
+        seat_id=seat_id,
+        class_id=class_id,
+        user_id=student.user_id,
+        debit_amount=payment_amount,
+        description=f"Rent for Period {period}",
+        source_account="checking",
+        target_account="rent",
     )
-    if banking_settings is None:
-        allowed = True
-        shortfall = Decimal('0.00')
+    resolved_plan = resolve_intended_ledger_plan(
+        plan=intended_plan,
+        banking_settings=banking_settings,
+        idempotency_key=f"rent_payment:{seat.id}:{class_id}:{period}:{coverage_year}-{coverage_month}:{payment_amount}:resolve",
+        force_overdraft_fee=False,
+        allow_recovery_transfer=True,
+    )
     current_app.logger.info(
-        "rent_pay overdraft gate: allowed=%s shortfall=%s banking_enabled=%s payment_amount=%s checking=%s savings=%s",
-        allowed,
-        shortfall,
+        "rent_pay overdraft gate: outcome=%s shortfall=%s banking_enabled=%s payment_amount=%s",
+        resolved_plan.outcome,
+        resolved_plan.shortfall,
         getattr(banking_settings, "overdraft_protection_enabled", None) if banking_settings else None,
         payment_amount,
-        checking_balance,
-        savings_balance,
     )
-    if not allowed:
-        fee_charged, fee_amount = _charge_overdraft_fee_if_needed(
-            student,
-            banking_settings,
-            class_id=class_id,
-            force=True,
-        )
-
+    if resolved_plan.outcome == "DENY":
         if banking_settings and banking_settings.overdraft_protection_enabled:
             message = (f"Insufficient funds in both checking and savings. You need "
                        f"${payment_amount:.2f} but have ${checking_balance + savings_balance:.2f}.")
         else:
             message = (f"Insufficient funds. You need ${payment_amount:.2f} but only "
                        f"have ${checking_balance:.2f}.")
-
-        if fee_charged:
-            message += f" Overdraft fee of ${fee_amount:.2f} charged."
-
         flash(message, "error")
         return redirect(url_for('student.rent'))
 
-    if shortfall > 0:
-        overdraft_shortfall = shortfall
+    overdraft_shortfall = resolved_plan.recovery_transfer_amount if resolved_plan.recovery_transfer_amount > 0 else Decimal('0.00')
 
     current_app.logger.info(
         "rent_pay before execute: seat_id=%s class_id=%s period=%s amount=%s",

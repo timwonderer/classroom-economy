@@ -67,6 +67,7 @@ from app.routes.student import (
 )
 from app.services.context_resolver import resolve_canonical_context, ContextResolutionError
 from app.feats.store_purchase_feat import execute_rent_perk_purchase, execute_store_purchase
+from app.feats.ledger_resolution_feat import build_intended_ledger_plan, resolve_intended_ledger_plan, apply_resolved_ledger_plan
 from app.services.store_service import get_active_rent_grant, get_purchase_count
 from app.feats.redemption_disposition_feat import (
     RedemptionDispositionError,
@@ -77,7 +78,6 @@ from app.services import store_service
 from app.services.entitlement_service import get_hall_pass_balance, grant_hall_passes
 from app.utils.economy_policy import resolve_class_scope, resolve_feature_class, resolve_feature_class_for_class
 from app.utils.join_code import get_display_join_code
-from app.utils.overdraft import charge_overdraft_fee_if_needed
 from app.utils.transaction_idempotency import (
     MAX_IDEMPOTENCY_KEY_LENGTH,
     get_idempotent_transaction,
@@ -99,7 +99,6 @@ from app.utils.time import (
 # Import external modules
 from app.services.attendance_service import calculate_unpaid_attendance_seconds, get_all_block_statuses
 from app.services.ledger_service import (
-    apply_overdraft_fee_if_needed as apply_ledger_overdraft_fee,
     create_pending_transaction,
     create_pending_transaction_idempotent,
     get_available_balances,
@@ -389,28 +388,6 @@ def get_tips(user_type):
 
 
 # -------------------- STORE API --------------------
-
-def _charge_overdraft_fee_if_needed(student, banking_settings, user_id, join_code, force=False):
-    """
-    Check if student's checking balance is negative and charge overdraft fee if enabled.
-    Returns (fee_charged, fee_amount) tuple.
-
-    Args:
-        student: seat-scoped identity object
-        banking_settings: BankingSettings object
-        user_id: Canonical user ID for multi-tenancy isolation
-        join_code: Join code for multi-tenancy isolation
-        force: Charge fee even if balance is non-negative (declined transaction).
-    """
-    return apply_ledger_overdraft_fee(
-        student,
-        banking_settings,
-        user_id=user_id,
-        join_code=join_code,
-        force=force
-    )
-
-
 @api_bp.route('/purchase-item', methods=['POST'])
 @login_required
 @feat_shell("FEAT-STOR-002")
@@ -653,31 +630,40 @@ def purchase_item():
 
     # Check if student has sufficient funds
     if checking_balance < total_price:
-        shortfall = total_price - checking_balance
-        # Check if overdraft protection is enabled (savings can cover the difference)
-        if (banking_settings and banking_settings.overdraft_protection_enabled and
-                savings_balance >= shortfall):
-            # Allow transaction - overdraft protection will transfer from savings
-            pass
+        intended_plan = build_intended_ledger_plan(
+            seat_id=seat.id,
+            class_id=class_id,
+            user_id=seat.user_id,
+            debit_amount=total_price,
+            description=f"Purchase: {item.name}",
+            source_account="checking",
+            target_account="store",
+        )
+        resolved_plan = resolve_intended_ledger_plan(
+            plan=intended_plan,
+            banking_settings=banking_settings,
+            idempotency_key=purchase_idempotency_key or f"purchase-item:{seat.id}:{class_id}:{item_id}:resolve",
+            force_overdraft_fee=True,
+            allow_recovery_transfer=True,
+        )
+        apply_resolved_ledger_plan(
+            resolved_plan=resolved_plan,
+            banking_settings=banking_settings,
+            idempotency_key=purchase_idempotency_key or f"purchase-item:{seat.id}:{class_id}:{item_id}:force-overdraft",
+        )
+
+        if banking_settings and banking_settings.overdraft_protection_enabled:
+            message = (f"Insufficient funds in both checking and savings. You need "
+                       f"${total_price:.2f} total but have "
+                       f"${checking_balance + savings_balance:.2f}.")
         else:
-            fee_charged, fee_amount = apply_ledger_overdraft_fee(
-                seat,
-                banking_settings,
-                force=True
-            )
+            message = (f"Insufficient funds. You need ${total_price:.2f} but have "
+                       f"${checking_balance:.2f}.")
 
-            if banking_settings and banking_settings.overdraft_protection_enabled:
-                message = (f"Insufficient funds in both checking and savings. You need "
-                           f"${total_price:.2f} total but have "
-                           f"${checking_balance + savings_balance:.2f}.")
-            else:
-                message = (f"Insufficient funds. You need ${total_price:.2f} but have "
-                           f"${checking_balance:.2f}.")
+        if resolved_plan.overdraft_fee_amount > 0:
+            message += f" Overdraft fee of ${resolved_plan.overdraft_fee_amount:.2f} charged."
 
-            if fee_charged:
-                message += f" Overdraft fee of ${fee_amount:.2f} charged."
-
-            return jsonify({"status": "error", "message": message}), 400
+        return jsonify({"status": "error", "message": message}), 400
 
     if item.inventory is not None and item.inventory < quantity:
         return jsonify({"status": "error", "message": f"Insufficient stock. Only {item.inventory} available."}), 400
@@ -1810,7 +1796,7 @@ def attendance_history():
 
         for row in seat_rows:
             student_name = " ".join(part for part in [row.first_name, row.last_name] if part).strip() or "Unknown"
-            student_section = section_by_seat_id.get(row.id) or row.block or "Unknown"
+            student_section = section_by_seat_id.get(row.id) or row.section or "Unknown"
             seats[row.id] = {"name": student_name, "block": student_section}
 
         # Get class labels for sections

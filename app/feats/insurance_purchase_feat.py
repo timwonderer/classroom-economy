@@ -6,6 +6,7 @@ from datetime import timedelta
 
 from app.extensions import db
 from app.services import ledger_service, obligations_service
+from app.feats.ledger_resolution_feat import build_intended_ledger_plan, resolve_intended_ledger_plan, apply_resolved_ledger_plan
 from app.utils.time import utc_now
 from app.utils.insurance_eligibility import compute_coverage_start_utc_from_purchase
 
@@ -56,17 +57,28 @@ def execute_insurance_purchase(
 
     overdraft_transfer_applied = False
     if banking_settings and banking_settings.overdraft_protection_enabled and overdraft_shortfall > 0:
-        ledger_service.create_transfer_pair(
+        intended_plan = build_intended_ledger_plan(
             seat_id=seat.id,
             class_id=class_id,
             user_id=user_id,
-            amount=overdraft_shortfall,
-            from_account="savings",
-            to_account="checking",
-            withdraw_description="Overdraft protection transfer to checking",
-            deposit_description="Overdraft protection transfer from savings",
+            debit_amount=policy.premium,
+            description=f"Insurance premium: {policy.title}",
+            source_account="checking",
+            target_account="insurance",
         )
-        overdraft_transfer_applied = True
+        resolved_plan = resolve_intended_ledger_plan(
+            plan=intended_plan,
+            banking_settings=banking_settings,
+            idempotency_key=f"insurance:{seat.id}:{class_id}:{policy.id}:resolve",
+            force_overdraft_fee=False,
+            allow_recovery_transfer=True,
+        )
+        apply_resolved_ledger_plan(
+            resolved_plan=resolved_plan,
+            banking_settings=banking_settings,
+            idempotency_key=f"insurance:{seat.id}:{class_id}:{policy.id}:overdraft",
+        )
+        overdraft_transfer_applied = resolved_plan.recovery_transfer_amount > 0
 
     return InsurancePurchaseResult(
         enrollment_id=enrollment.id,

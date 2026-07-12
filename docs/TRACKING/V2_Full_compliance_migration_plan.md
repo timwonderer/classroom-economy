@@ -23,7 +23,7 @@ Target state:
 | Models | 54+ classes; 44 dual-scoped, 5 pure v1, ~5 pure v2 |
 | Migration files | Single head `0007`; canonical obligations assessment/lifecycle schema is installed |
 | Test files | Schema Change Gate critical/regression failures repaired in `5563a150`; full-suite baseline requires refresh |
-| Feats | 19 registered FEAT codes in canonical registry |
+| Feats | 20 registered FEAT codes in canonical registry |
 | Services | 8 (`access_policy`, `attendance`, `balance`, `identity`, `ledger`, `obligations`, `store`, `tlcp`) |
 | Blueprints | 8 (`admin` 514K lines, `student` 178K, `api` 120K, `system_admin` 78K, `docs` 30K, `analytics` 19K, `main` 14K, `recovery` 8.6K) |
 | Target canonical tables | 44 across 9 domains (DOM-CORE-002) |
@@ -33,13 +33,14 @@ Target state:
 
 ### Validation Checkpoint
 
-**Last validated:** 2026-07-06T00:00:00Z
+**Last validated:** 2026-07-12T00:00:00Z
 
 - Tracker reconciliation refreshed against the current `codex/v2.0` state after the latest remote merge.
 - Runtime extinct-identity session reads are no longer present in `app/`; the remaining legacy identity surface is concentrated in tests, compatibility models, and non-session FK naming.
 - Waves 3-6 remain the last fully evidenced landed cluster in the active tracker.
 - Wave 7 schema contract is installed; insurance-claim filing and resolution emit canonical `assessment_events` + `obligation_lifecycle` state under a clean-cutover model, while legacy-read cutover and table drops remain open.
 - Wave 7 rent-waiver actor cutover is landed: `ObligationReversal` uses seat-scoped actor attribution and rent-waiver add/remove paths no longer emit legacy `AnalyticsEvent` compatibility rows.
+- FEAT-LED-000 canonical monetary resolution is now active in store, rent, insurance, and admin monetary flows; the old `app/utils/overdraft.py` path has been removed and the remaining work is broader FEAT adoption / doc cleanup around the new contract.
 - Session note 2026-07-06: continued the system-admin identity cleanup slice by reducing teacher-shaped naming in announcements and escalated-issue resolution. Validation stayed clean with `venv/bin/python -m py_compile app/routes/system_admin.py` and `venv/bin/flask --app wsgi routes >/dev/null && echo OK`.
 - Waves 8-12 remain open and continue to require per-wave verification gates before they can be marked complete.
 - No tracker entry was promoted to complete status without direct evidence in the current pass.
@@ -99,6 +100,7 @@ This file is the single active tracker for v2 migration execution. All prior tra
 - [ ] Complete Wave 9 operations + interpretation canonical migration
 - [ ] Complete Wave 10 support domain canonical migration
 - [ ] Integrate `DOM-ECON-000_ECONOMY_GOVERNANCE_FOUNDATION.md` into Waves 4-9 implementation scope (policy config, ledger/solvency math, timezone-safe recurring execution, and aggregate analytics) without creating a parallel migration track
+- [~] FEAT-LED-000 canonical monetary resolution rollout — intended-plan / resolved-plan orchestration is live for monetary workflows; remaining work is widening FEAT adoption to the rest of the v2 surfaces and retiring stale overdraft/ledger wording in docs and tests.
 
 #### Post-launch hardening and readiness
 - [ ] Wave 11 backup/restore rehearsal evidence

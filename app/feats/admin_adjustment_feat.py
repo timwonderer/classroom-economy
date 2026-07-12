@@ -5,7 +5,7 @@ from decimal import Decimal
 
 from app.extensions import db
 from app.services import ledger_service
-from app.utils.overdraft import evaluate_overdraft_allowance
+from app.feats.ledger_resolution_feat import build_intended_ledger_plan, resolve_intended_ledger_plan, apply_resolved_ledger_plan
 
 
 @dataclass
@@ -33,21 +33,32 @@ def execute_admin_adjustments(*, adjustments: list[dict], banking_settings=None)
 
         shortfall = Decimal("0.00")
         if account_type == "checking" and amount < 0:
-            allowed, shortfall, _, _ = evaluate_overdraft_allowance(
-                seat,
-                abs(amount),
-                banking_settings,
+            intended_plan = build_intended_ledger_plan(
+                seat_id=seat.id,
+                class_id=class_id,
+                user_id=user_id,
+                debit_amount=abs(amount),
+                description=adjustment["description"],
+                source_account="checking",
+                target_account="admin_adjustment",
             )
-            if not allowed:
-                fee_charged, _ = ledger_service.apply_overdraft_fee_if_needed(
-                    seat,
-                    banking_settings,
-                    force=True,
-                )
-                if fee_charged:
-                    fee_count += 1
+            resolved_plan = resolve_intended_ledger_plan(
+                plan=intended_plan,
+                banking_settings=banking_settings,
+                idempotency_key=f"admin-adjustment:{seat.id}:{class_id}:{amount}:resolve",
+                force_overdraft_fee=True,
+                allow_recovery_transfer=True,
+            )
+            if resolved_plan.outcome == "DENY":
                 declined_count += 1
                 continue
+            if resolved_plan.overdraft_fee_amount > 0:
+                fee_count += 1
+            apply_resolved_ledger_plan(
+                resolved_plan=resolved_plan,
+                banking_settings=banking_settings,
+                idempotency_key=f"admin-adjustment:{seat.id}:{class_id}:{amount}:fee",
+            )
 
         ledger_service.create_pending_transaction(
             seat_id=seat.id,
@@ -59,18 +70,6 @@ def execute_admin_adjustments(*, adjustments: list[dict], banking_settings=None)
             description=adjustment["description"],
         )
         applied_count += 1
-
-        if account_type == "checking" and amount < 0 and shortfall > 0:
-            ledger_service.create_transfer_pair(
-                seat_id=seat.id,
-                class_id=class_id,
-                user_id=user_id,
-                amount=shortfall,
-                from_account="savings",
-                to_account="checking",
-                withdraw_description="Overdraft protection transfer to checking",
-                deposit_description="Overdraft protection transfer from savings",
-            )
 
     db.session.flush()
 

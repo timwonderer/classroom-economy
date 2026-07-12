@@ -105,7 +105,7 @@ def _clear_cross_transaction_refs(tx_ids):
     )
 
 
-def _delete_student_scoped_rows(student_id, store_purchase_ids, issue_ids, insurance_ids, tx_ids, seat_ids):
+def _delete_student_scoped_rows(student_id, store_purchase_ids, issue_ids, insurance_ids, tx_ids, seat_ids, seat_ids_for_student=None):
     """Delete records that are scoped directly to the student being removed."""
     if store_purchase_ids:
         RedemptionEvent.query.filter(
@@ -119,14 +119,15 @@ def _delete_student_scoped_rows(student_id, store_purchase_ids, issue_ids, insur
             IssueStatusHistory.issue_id.in_(issue_ids)
         ).delete(synchronize_session=False)
 
-    seat_ids_for_student = [
-        row[0]
-        for row in (
-            db.session.query(Seat.id)
-            .filter(Seat.user_id == student_id)
-            .all()
-        )
-    ]
+    if seat_ids_for_student is None:
+        seat_ids_for_student = [
+            row[0]
+            for row in (
+                db.session.query(Seat.id)
+                .filter(Seat.user_id == student_id)
+                .all()
+            )
+        ]
     insurance_claim_filters = [InsuranceClaim.seat_id.in_(seat_ids_for_student)] if seat_ids_for_student else []
     if insurance_ids:
         insurance_claim_filters.append(InsuranceClaim.enrollment_id.in_(insurance_ids))
@@ -182,6 +183,7 @@ def remove_student_from_teacher_scope(seat_id, user_id):
         return False
 
     student_user_id = seat.user_id
+    store_purchase_ids, issue_ids, insurance_ids, tx_ids, seat_ids = _collect_related_ids(student_user_id)
     teacher_class_ids = db.session.query(ClassEconomy.class_id).filter_by(user_id=user_id).subquery()
     Seat.query.filter(
         Seat.id == seat_id,
@@ -193,4 +195,19 @@ def remove_student_from_teacher_scope(seat_id, user_id):
         },
         synchronize_session=False,
     )
-    return hard_delete_student_if_orphaned(student_user_id)
+    remaining_links = db.session.query(Seat.id).filter(Seat.user_id == student_user_id).all()
+    if remaining_links:
+        return False
+
+    _clear_cross_transaction_refs(tx_ids)
+    _delete_student_scoped_rows(
+        student_user_id,
+        store_purchase_ids,
+        issue_ids,
+        insurance_ids,
+        tx_ids,
+        seat_ids,
+        seat_ids_for_student=seat_ids,
+    )
+    Seat.query.filter(Seat.user_id == student_user_id).delete(synchronize_session=False)
+    return True

@@ -36,6 +36,10 @@ A FEAT:
 * **MAY** call approved Core FEATs
 * **MUST NOT** be bypassed by routes, jobs, or scripts
 
+Monetary FEATs that move funds MUST first construct an intended ledger plan,
+resolve it through `FEAT-LED-000`, and only then delegate posting to
+`FEAT-LED-001`.
+
 ---
 
 ## III. Core Execution Requirements
@@ -149,6 +153,7 @@ No domain may:
 Certain FEATs are designated as Core Orchestrators:
 * `FEAT-PAY-POST`
 * `FEAT-IDEN-LOGIN` (context restoration only)
+* `FEAT-LED-000` (canonical monetary resolution; upstream of posting)
 
 Core FEATs:
 * **MAY** be called by other FEATs

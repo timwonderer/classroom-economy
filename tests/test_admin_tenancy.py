@@ -3,6 +3,7 @@ from datetime import datetime, timezone, timedelta
 from itsdangerous import URLSafeTimedSerializer
 
 from app import db
+from app.feats.base import FEATContext
 from app.models import (
     Transaction, AttendanceSession,
     PayrollSettings, Seat, ClassEconomy, SeatAttendanceState,
@@ -27,8 +28,18 @@ def _create_student_in_class(class_row: ClassEconomy, first_name: str) -> tuple:
     return seat, student_user
 
 
-def _create_class_for_teacher(teacher: User, join_code: str, display_name: str = "A") -> ClassEconomy:
-    class_row = create_class_scope(teacher_user=teacher, join_code=join_code, display_name=display_name)
+def _create_class_for_teacher(
+    teacher: User,
+    join_code: str,
+    display_name: str = "A",
+    section: str | None = None,
+) -> ClassEconomy:
+    class_row = create_class_scope(
+        teacher_user=teacher,
+        join_code=join_code,
+        display_name=display_name,
+        section=section,
+    )
     db.session.flush()
     return class_row
 
@@ -162,7 +173,9 @@ def test_student_detail_recovers_from_stale_class_context(client):
     _login_admin(client, teacher)
 
     # Point session to class B (stale context for student A)
-    teacher.last_active_class_id = class_b.class_id
+    with FEATContext("FEAT-IDEN-001", idempotency_key="admin_tenancy:stale_class_context"):
+        teacher.last_active_class_id = class_b.class_id
+        db.session.flush()
     db.session.commit()
 
     serializer = URLSafeTimedSerializer(
@@ -186,29 +199,31 @@ def test_enforce_daily_limits_ignores_other_join_code_activity(client):
     _, _ = _create_student_in_class(class_a, "SharedLimit")
     shared_seat_b, _ = _create_student_in_class(class_b, "SharedLimitB")
 
-    db.session.add_all([
-        PayrollSettings(
-            class_id=class_a.class_id,
-            block="A",
-            is_active=True,
-            settings_mode="simple",
-            daily_limit_hours=0.001,
-            pay_rate=0.25,
-            payroll_frequency_days=14,
-        ),
-        AttendanceSession(
-            seat_id=shared_seat_b.id,
-            class_id=class_b.class_id,
-            started_at=datetime.now(timezone.utc) - timedelta(hours=2),
-            start_reason="Start work",
-        ),
-        SeatAttendanceState(
-            seat_id=shared_seat_b.id,
-            class_id=class_b.class_id,
-            is_active=True,
-            last_event_at=datetime.now(timezone.utc) - timedelta(hours=2),
-        ),
-    ])
+    with FEATContext("FEAT-ADMN-001", idempotency_key="admin_tenancy:daily_limit_seed"):
+        db.session.add_all([
+            PayrollSettings(
+                class_id=class_a.class_id,
+                block="A",
+                is_active=True,
+                settings_mode="simple",
+                daily_limit_hours=0.001,
+                pay_rate=0.25,
+                payroll_frequency_days=14,
+            ),
+            AttendanceSession(
+                seat_id=shared_seat_b.id,
+                class_id=class_b.class_id,
+                started_at=datetime.now(timezone.utc) - timedelta(hours=2),
+                start_reason="Start work",
+            ),
+            SeatAttendanceState(
+                seat_id=shared_seat_b.id,
+                class_id=class_b.class_id,
+                is_active=True,
+                last_event_at=datetime.now(timezone.utc) - timedelta(hours=2),
+            ),
+        ])
+        db.session.flush()
     db.session.commit()
 
     _login_admin(client, teacher_a)
@@ -223,32 +238,34 @@ def test_enforce_daily_limits_ignores_other_join_code_activity(client):
 
 def test_enforce_daily_limits_taps_out_when_limit_reached_in_scope(client):
     teacher = _create_teacher("teacher-a")
-    class_scope = _create_class_for_teacher(teacher, "JOINA")
+    class_scope = _create_class_for_teacher(teacher, "JOINA", section="A")
     seat, _ = _create_student_in_class(class_scope, "AliceLimit")
 
-    db.session.add_all([
-        PayrollSettings(
-            class_id=class_scope.class_id,
-            block="A",
-            is_active=True,
-            settings_mode="simple",
-            daily_limit_hours=0.001,
-            pay_rate=0.25,
-            payroll_frequency_days=14,
-        ),
-        AttendanceSession(
-            seat_id=seat.id,
-            class_id=class_scope.class_id,
-            started_at=datetime.now(timezone.utc) - timedelta(hours=2),
-            start_reason="Start work",
-        ),
-        SeatAttendanceState(
-            seat_id=seat.id,
-            class_id=class_scope.class_id,
-            is_active=True,
-            last_event_at=datetime.now(timezone.utc) - timedelta(hours=2),
-        ),
-    ])
+    with FEATContext("FEAT-ADMN-001", idempotency_key="admin_tenancy:limit_seed"):
+        db.session.add_all([
+            PayrollSettings(
+                class_id=class_scope.class_id,
+                block="A",
+                is_active=True,
+                settings_mode="simple",
+                daily_limit_hours=0.001,
+                pay_rate=0.25,
+                payroll_frequency_days=14,
+            ),
+            AttendanceSession(
+                seat_id=seat.id,
+                class_id=class_scope.class_id,
+                started_at=datetime.now(timezone.utc) - timedelta(hours=2),
+                start_reason="Start work",
+            ),
+            SeatAttendanceState(
+                seat_id=seat.id,
+                class_id=class_scope.class_id,
+                is_active=True,
+                last_event_at=datetime.now(timezone.utc) - timedelta(hours=2),
+            ),
+        ])
+        db.session.flush()
     db.session.commit()
 
     _login_admin(client, teacher)

@@ -148,7 +148,7 @@ def calculate_payroll_breakdown(class_id, seat_ids, last_payroll_time):
 
     # --- 3. In-Memory Calculation ---
     for seat in seats:
-        block_upper = (seat.class_economy.section if seat.class_economy else "").upper()
+        block_upper = (seat.class_economy.section if seat.class_economy and seat.class_economy.section else "").upper()
         
         rate_per_second = pay_rates.get(
             (class_id, block_upper),
@@ -159,7 +159,8 @@ def calculate_payroll_breakdown(class_id, seat_ids, last_payroll_time):
         if payroll_anchor is None:
             payroll_anchor = normalized_global_last_payroll
 
-        events = events_map.get((seat.id, block_upper, class_id), [])
+        # Attendance events are grouped by canonical seat/class scope only.
+        events = events_map.get((seat.id, class_id), [])
         total_seconds = calculate_seconds_in_memory(events, payroll_anchor)
 
         if total_seconds > 0:

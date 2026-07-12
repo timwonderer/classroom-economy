@@ -266,8 +266,9 @@ Key fields:
 Rules:
 
 - One record per class.
-- Interest computation and overdraft fee application live in FEAT/Ledger;
-  this table provides the configuration inputs only.
+- Interest computation and monetary resolution live in FEAT/Ledger;
+  `FEAT-LED-000` resolves intended ledger plans and `FEAT-LED-001` posts the
+  resolved plan. This table provides the configuration inputs only.
 
 ### 9. `policy_versions`
 

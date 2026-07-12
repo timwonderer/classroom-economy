@@ -92,6 +92,7 @@ class InvariantViolation(Exception):
 # Canonical FEAT Registry
 FEAT_REGISTRY = {
     "FEAT-BYPASS-LEGACY": {"domain": "Test", "blast_radius": "LOW", "desc": "Legacy fixture bypass"},
+    "FEAT-LED-000": {"domain": "Ledger", "blast_radius": "HIGH", "desc": "Canonical Monetary Resolution"},
     "FEAT-LED-001": {"domain": "Ledger", "blast_radius": "HIGH", "desc": "Overdraft Fee Application"},
     "FEAT-LED-002": {"domain": "Ledger", "blast_radius": "HIGH", "desc": "Void Transaction"},
     "FEAT-LED-003": {"domain": "Ledger", "blast_radius": "HIGH", "desc": "Settlement Sweep"},
@@ -409,6 +410,36 @@ def feat_shell(feat_name: str):
         def decorated_function(*args, **kwargs):
             correlation_id = kwargs.get("correlation_id")
             idempotency_key = kwargs.get("idempotency_key")
+            if not idempotency_key:
+                try:
+                    from flask import g, request
+                except Exception:
+                    g = None
+                    request = None
+                if feat_name == "FEAT-STOR-002" and request is not None:
+                    payload = request.get_json(silent=True) or {}
+                    class_id = getattr(getattr(g, "canonical_context", None), "class_id", None) or "NOCLASS"
+                    seat_id = getattr(getattr(g, "canonical_context", None), "seat_id", None) or "NOSEAT"
+                    item_id = payload.get("item_id") or "NOITEM"
+                    client_purchase_id = str(payload.get("client_purchase_id") or "").strip() or "NOPURCHASEID"
+                    idempotency_key = f"feat:store:purchase:{class_id}:{seat_id}:{item_id}:{client_purchase_id}"
+                elif feat_name == "FEAT-LED-004" and g is not None:
+                    class_id = getattr(getattr(g, "canonical_context", None), "class_id", None) or "NOCLASS"
+                    idempotency_key = f"feat:ledger:payroll:{class_id}"
+                elif feat_name == "FEAT-LED-001":
+                    import inspect
+                    try:
+                        bound = inspect.signature(f).bind_partial(*args, **kwargs)
+                        seat_id = bound.arguments.get("seat_id") or getattr(bound.arguments.get("seat"), "id", None) or "NOSEAT"
+                        class_id = bound.arguments.get("class_id") or getattr(bound.arguments.get("seat"), "class_id", None) or "NOCLASS"
+                        amount = bound.arguments.get("amount") or "NOAMOUNT"
+                        idempotency_key = f"feat:ledger:{f.__name__}:{class_id}:{seat_id}:{amount}"
+                    except Exception:
+                        idempotency_key = f"feat:ledger:{f.__name__}:NOCLASS:NOSEAT"
+                elif feat_name == "FEAT-ADMN-001" and request is not None:
+                    class_id = getattr(getattr(g, "canonical_context", None), "class_id", None) or "NOCLASS"
+                    seat_id = getattr(getattr(g, "canonical_context", None), "seat_id", None) or "NOSEAT"
+                    idempotency_key = f"feat:admin:{request.method.lower()}:{request.path}:{class_id}:{seat_id}"
             
             logger.warning(
                 f"FEAT-SHELL-DIRTY: Executing legacy logic in shell {feat_name}. "

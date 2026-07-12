@@ -7,6 +7,7 @@ from app.extensions import db
 from app.services import ledger_service, store_service
 from app.services.entitlement_service import grant_hall_passes
 from app.services.context_resolver import CanonicalContext
+from app.feats.ledger_resolution_feat import build_intended_ledger_plan, resolve_intended_ledger_plan, apply_resolved_ledger_plan
 from app.utils.time import utc_now
 
 
@@ -150,25 +151,30 @@ def execute_store_purchase(
             idempotency_key=purchase_idempotency_key,
         )
 
-    checking_balance, savings_balance = ledger_service.get_available_balances(seat.id, class_id)
-    if banking_settings and banking_settings.overdraft_protection_enabled and checking_balance < 0:
-        shortfall = abs(checking_balance)
-        if savings_balance >= shortfall:
-            ledger_service.create_transfer_pair(
-                seat_id=seat.id,
-                class_id=class_id,
-                amount=shortfall,
-                from_account='savings',
-                to_account='checking',
-                withdraw_description='Overdraft protection transfer to checking',
-                deposit_description='Overdraft protection transfer from savings',
-            )
-            db.session.flush()
-
-    ledger_service.apply_overdraft_fee_if_needed(
-        seat,
-        banking_settings,
-        idempotency_key=f"{purchase_idempotency_key}:overdraft" if purchase_idempotency_key else None
+    intended_plan = build_intended_ledger_plan(
+        seat_id=seat.id,
+        class_id=class_id,
+        user_id=getattr(seat, "user_id", None),
+        debit_amount=total_price,
+        description=purchase_description,
+        source_account="checking",
+        target_account="store",
+    )
+    resolved_plan = resolve_intended_ledger_plan(
+        plan=intended_plan,
+        banking_settings=banking_settings,
+        idempotency_key=purchase_idempotency_key or f"feat:store:purchase:{seat.id}:{class_id}:{item.id}:resolve",
+        force_overdraft_fee=False,
+        allow_recovery_transfer=True,
+    )
+    apply_resolved_ledger_plan(
+        resolved_plan=resolved_plan,
+        banking_settings=banking_settings,
+        idempotency_key=(
+            f"{purchase_idempotency_key}:overdraft"
+            if purchase_idempotency_key
+            else f"feat:store:purchase:{seat.id}:{class_id}:{item.id}:overdraft"
+        ),
     )
 
     if item.item_type == 'collective':

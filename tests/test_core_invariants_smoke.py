@@ -12,9 +12,11 @@ from app.models import (
     Transaction, TransactionStatus, ClassEconomy, User, UserRole,
 )
 from app.services import ledger_service, obligations_service
+from app.feats.base import FEATContext
 from tests.helpers.admin_context import login_teacher
 from tests.helpers.class_scope import create_class_scope, make_student_identity
 from tests.helpers.canonical_session import set_canonical_context
+from app.feats.base import FEATContext
 
 
 pytestmark = pytest.mark.critical
@@ -24,14 +26,15 @@ def _create_teacher(username: str) -> User:
     return make_teacher(username)
 
 
-def _create_class(teacher: User, join_code: str) -> ClassEconomy:
-    class_row = create_class_scope(teacher_user=teacher, join_code=join_code)
-    db.session.flush()
-    # Ensure ClassFeatures exist
-    for feature_name in ClassFeature.feature_names():
-        if not ClassFeature.query.filter_by(class_id=class_row.class_id, feature_name=feature_name).first():
-            db.session.add(ClassFeature(class_id=class_row.class_id, feature_name=feature_name))
-    db.session.flush()
+def _create_class(teacher: User, join_code: str, *, section: str | None = None) -> ClassEconomy:
+    class_row = create_class_scope(teacher_user=teacher, join_code=join_code, section=section)
+    with FEATContext("FEAT-IDEN-001", idempotency_key=f"core_invariants:create_class_features:{join_code}"):
+        with db.session.no_autoflush:
+            # Ensure ClassFeatures exist without triggering an autoflush of pending rows.
+            for feature_name in ClassFeature.feature_names():
+                if not ClassFeature.query.filter_by(class_id=class_row.class_id, feature_name=feature_name).first():
+                    db.session.add(ClassFeature(class_id=class_row.class_id, feature_name=feature_name))
+        db.session.flush()
     return class_row
 
 
@@ -73,7 +76,9 @@ def test_tenant_isolation_attendance_history(client):
         started_at=datetime.now(timezone.utc),
         class_id=economy_b.class_id,
     )
-    db.session.add_all([tap_a, tap_b])
+    with FEATContext("FEAT-ATTN-001", idempotency_key="core_invariants:attendance_history_seed"):
+        db.session.add_all([tap_a, tap_b])
+        db.session.flush()
     db.session.commit()
 
     _login_teacher(client, teacher_a, economy_a)
@@ -88,42 +93,44 @@ def test_tenant_isolation_attendance_history(client):
 
 def test_payroll_run_creates_payroll_transaction(client):
     teacher = _create_teacher("payroll-admin")
-    economy = _create_class(teacher, "JOIN-PAY")
+    economy = _create_class(teacher, "JOIN-PAY", section="A")
     seat = _create_student(economy.class_id, "Payroll")
     db.session.commit()
 
     now = datetime.now(timezone.utc)
-    db.session.add(
-        AttendanceSession(
-            seat_id=seat.id,
-            class_id=economy.class_id,
-            started_at=now - timedelta(minutes=60),
-            ended_at=now - timedelta(minutes=30),
-            duration_seconds=1800,
-        )
-    )
     from app.models import PayrollSettings
-    db.session.add(
-        PayrollSettings(
-            class_id=economy.class_id,
-            block="A",
-            pay_rate=Decimal("1.00"),
-            is_active=True,
+    with FEATContext("FEAT-LED-004", idempotency_key="core_invariants:payroll_seed"):
+        db.session.add(
+            AttendanceSession(
+                seat_id=seat.id,
+                class_id=economy.class_id,
+                started_at=now - timedelta(minutes=60),
+                ended_at=now - timedelta(minutes=30),
+                duration_seconds=1800,
+            )
         )
-    )
-    db.session.add(
-        Transaction(
-            seat_id=seat.id,
-            user_id=seat.user_id,
-            class_id=economy.class_id,
-            amount=Decimal("1.00"),
-            account_type="checking",
-            status=TransactionStatus.POSTED,
-            type="payroll",
-            description="Anchor payroll",
-            timestamp=now - timedelta(days=1),
+        db.session.add(
+            PayrollSettings(
+                class_id=economy.class_id,
+                block="A",
+                pay_rate=Decimal("1.00"),
+                is_active=True,
+            )
         )
-    )
+        db.session.add(
+            Transaction(
+                seat_id=seat.id,
+                user_id=seat.user_id,
+                class_id=economy.class_id,
+                amount=Decimal("1.00"),
+                account_type="checking",
+                status=TransactionStatus.POSTED,
+                type="payroll",
+                description="Anchor payroll",
+                timestamp=now - timedelta(days=1),
+            )
+        )
+        db.session.flush()
     db.session.commit()
 
     payroll_query = Transaction.query.filter(
@@ -174,47 +181,47 @@ def test_insurance_approval_creates_reimbursement_transaction(client):
         waiting_period_days=0,
         is_active=True,
     )
-    db.session.add(policy)
-    db.session.flush()
+    with FEATContext("FEAT-OBL-001", idempotency_key="core_invariants:insurance_seed"):
+        db.session.add(policy)
+        db.session.flush()
 
-    enrollment = InsuranceEnrollment(
-        seat_id=seat.id,
-        class_id=economy.class_id,
-        policy_id=policy.id,
-        status="active",
-        purchase_date=datetime.now(timezone.utc) - timedelta(days=2),
-        coverage_start_date=datetime.now(timezone.utc) - timedelta(days=30),
-        payment_current=True,
-    )
-    enrollment.freeze_policy_snapshot(policy)
-    db.session.add(enrollment)
-    db.session.flush()
+        enrollment = InsuranceEnrollment(
+            seat_id=seat.id,
+            class_id=economy.class_id,
+            policy_id=policy.id,
+            status="active",
+            purchase_date=datetime.now(timezone.utc) - timedelta(days=2),
+            coverage_start_date=datetime.now(timezone.utc) - timedelta(days=30),
+            payment_current=True,
+        )
+        enrollment.freeze_policy_snapshot(policy)
+        db.session.add(enrollment)
+        db.session.flush()
 
-    purchase_tx = Transaction(
-        seat_id=seat.id,
-        user_id=seat.user_id,
-        class_id=economy.class_id,
-        amount=Decimal("-30.00"),
-        account_type="checking",
-        status=TransactionStatus.POSTED,
-        type="expense",
-        description="Broken classroom item",
-    )
-    db.session.add(purchase_tx)
-    db.session.flush()
-
-    claim = obligations_service.record_insurance_claim(
-        enrollment_id=enrollment.id,
-        policy_id=policy.id,
-        seat_id=seat.id,
-        class_id=economy.class_id,
-        incident_date=purchase_tx.timestamp,
-        description="Reimburse",
-        claim_amount=Decimal("30.00"),
-        claim_item=None,
-        comments=None,
-        transaction_id=purchase_tx.id,
-    )
+        purchase_tx = Transaction(
+            seat_id=seat.id,
+            user_id=seat.user_id,
+            class_id=economy.class_id,
+            amount=Decimal("-30.00"),
+            account_type="checking",
+            status=TransactionStatus.POSTED,
+            type="expense",
+            description="Broken classroom item",
+        )
+        db.session.add(purchase_tx)
+        db.session.flush()
+        claim = obligations_service.record_insurance_claim(
+            enrollment_id=enrollment.id,
+            policy_id=policy.id,
+            seat_id=seat.id,
+            class_id=economy.class_id,
+            incident_date=purchase_tx.timestamp,
+            description="Reimburse",
+            claim_amount=Decimal("30.00"),
+            claim_item=None,
+            comments=None,
+            transaction_id=purchase_tx.id,
+        )
     db.session.commit()
 
     login_teacher(client, teacher, join_code="JOIN-INS")
@@ -254,19 +261,21 @@ def test_store_purchase_deducts_balance_and_records_transaction(client):
         is_active=True,
         item_type="delayed",
     )
-    db.session.add(item)
-    db.session.add(
-        Transaction(
-            seat_id=seat.id,
-            user_id=seat.user_id,
-            class_id=economy.class_id,
-            amount=Decimal("25.00"),
-            account_type="checking",
-            status=TransactionStatus.POSTED,
-            type="Deposit",
-            description="Seed funds",
+    with FEATContext("FEAT-STOR-001", idempotency_key="core_invariants:store_seed"):
+        db.session.add(item)
+        db.session.add(
+            Transaction(
+                seat_id=seat.id,
+                user_id=seat.user_id,
+                class_id=economy.class_id,
+                amount=Decimal("25.00"),
+                account_type="checking",
+                status=TransactionStatus.POSTED,
+                type="Deposit",
+                description="Seed funds",
+            )
         )
-    )
+        db.session.flush()
     db.session.commit()
 
     starting_balance = Seat.query.get(seat.id).user.get_checking_balance(
@@ -320,30 +329,32 @@ def test_transfer_pairs_are_zero_sum_within_class_scope(client):
     withdraw_tx, deposit_tx = ledger_service.create_transfer_pair(
         seat_id=seat.id,
         class_id=economy_xfer.class_id,
-        teacher_id=teacher.id,
+        user_id=teacher.id,
         amount=Decimal("12.34"),
         from_account="checking",
         to_account="savings",
         withdraw_description="Transfer to savings",
         deposit_description="Transfer from checking",
     )
-    ledger_service.create_transfer_pair(
-        seat_id=other_seat.id,
-        class_id=economy_other.class_id,
-        teacher_id=teacher.id,
-        amount=Decimal("7.89"),
-        from_account="checking",
-        to_account="savings",
-        withdraw_description="Transfer to savings",
-        deposit_description="Transfer from checking",
-    )
+    with FEATContext("FEAT-LED-001", idempotency_key="core_invariants:transfer_pair_other"):
+        ledger_service.create_transfer_pair(
+            seat_id=other_seat.id,
+            class_id=economy_other.class_id,
+            user_id=teacher.id,
+            amount=Decimal("7.89"),
+            from_account="checking",
+            to_account="savings",
+            withdraw_description="Transfer to savings",
+            deposit_description="Transfer from checking",
+        )
+        db.session.flush()
     db.session.commit()
 
     join_xfer_total = (
         db.session.query(db.func.sum(Transaction.amount))
         .filter(
-            Transaction.teacher_id == teacher.id,
-            Transaction.join_code == "JOIN-XFER",
+            Transaction.user_id == teacher.id,
+            Transaction.class_id == economy_xfer.class_id,
             Transaction.type.in_(["Withdrawal", "Deposit"]),
         )
         .scalar()
@@ -352,8 +363,8 @@ def test_transfer_pairs_are_zero_sum_within_class_scope(client):
     join_other_total = (
         db.session.query(db.func.sum(Transaction.amount))
         .filter(
-            Transaction.teacher_id == teacher.id,
-            Transaction.join_code == "JOIN-OTHER",
+            Transaction.user_id == teacher.id,
+            Transaction.class_id == economy_other.class_id,
             Transaction.type.in_(["Withdrawal", "Deposit"]),
         )
         .scalar()
@@ -389,19 +400,21 @@ def test_store_purchase_bulk_discount_uses_quantized_total_for_funds_check(clien
         bulk_discount_quantity=1,
         bulk_discount_percentage=10,
     )
-    db.session.add(item)
-    db.session.add(
-        Transaction(
-            seat_id=seat.id,
-            user_id=seat.user_id,
-            class_id=economy.class_id,
-            amount=Decimal("0.04"),
-            account_type="checking",
-            status=TransactionStatus.POSTED,
-            type="Deposit",
-            description="Seed funds",
+    with FEATContext("FEAT-STOR-001", idempotency_key="core_invariants:discount_seed"):
+        db.session.add(item)
+        db.session.add(
+            Transaction(
+                seat_id=seat.id,
+                user_id=seat.user_id,
+                class_id=economy.class_id,
+                amount=Decimal("0.04"),
+                account_type="checking",
+                status=TransactionStatus.POSTED,
+                type="Deposit",
+                description="Seed funds",
+            )
         )
-    )
+        db.session.flush()
     db.session.commit()
 
     _login_student(client, seat, "JOIN-DISC")
@@ -456,30 +469,30 @@ def test_rent_payment_creates_rent_obligation_record(client):
     assert economy is not None
     settings = RentSettings(
         class_id=economy.class_id,
-        block="A",
-        is_enabled=True,
         rent_amount=Decimal("10.00"),
         frequency_type="monthly",
         due_day_of_month=1,
         grace_period_days=0,
         late_penalty_amount=Decimal("0.00"),
     )
-    db.session.add(settings)
-    db.session.flush()
-    settings.active_version = settings.create_policy_version()
-    assert seat is not None and seat.class_id is not None
-    db.session.add(
-        Transaction(
-            seat_id=seat.id,
-            user_id=seat.user_id,
-            class_id=economy.class_id,
-            amount=Decimal("40.00"),
-            account_type="checking",
-            status=TransactionStatus.POSTED,
-            type="Deposit",
-            description="Seed funds",
+    with FEATContext("FEAT-OBL-001", idempotency_key="core_invariants:rent_seed"):
+        db.session.add(settings)
+        db.session.flush()
+        settings.active_version = settings.create_policy_version()
+        assert seat is not None and seat.class_id is not None
+        db.session.add(
+            Transaction(
+                seat_id=seat.id,
+                user_id=seat.user_id,
+                class_id=economy.class_id,
+                amount=Decimal("40.00"),
+                account_type="checking",
+                status=TransactionStatus.POSTED,
+                type="Deposit",
+                description="Seed funds",
+            )
         )
-    )
+        db.session.flush()
     db.session.commit()
 
     _login_student(client, seat, "JOIN-RENT")

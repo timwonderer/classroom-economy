@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+import secrets
 from decimal import Decimal
 from tests.helpers.v2_fixtures import make_admin, make_sysadmin
 from app.extensions import db
@@ -15,7 +16,8 @@ from app.models import (
     TransactionStatus,
 )
 from app.utils.opaque_refs import make_opaque_ref
-from tests.helpers.class_scope import make_student_identity
+from app.feats.base import FEATContext
+from tests.helpers.class_scope import create_class_scope, make_student_identity
 
 
 def test_sysadmin_resolve_issue_issues_bug_reward_transaction(client):
@@ -28,40 +30,47 @@ def test_sysadmin_resolve_issue_issues_bug_reward_transaction(client):
         category_type="general",
         is_active=True,
     )
-    economy = ClassEconomy(join_code="JOINBUG123", user_id=teacher.id, status="active")
+    economy = create_class_scope(teacher_user=teacher, join_code="JOINBUG123", section="A")
     student = make_student_identity(
+        class_id=economy.class_id,
         first_name="Bug",
         last_name="R",
-        block="A",
-        join_code=economy.join_code,
-        class_id=economy.class_id,
+        claimed=True,
     )
-    db.session.add_all([sysadmin, student, category, economy])
-    db.session.flush()
+    with FEATContext("FEAT-IDEN-001", idempotency_key="sysadmin_issue_reward:category"):
+        db.session.add(category)
+        db.session.flush()
     # Auto-injected Canonical User
     seat = student
-
-    issue = Issue(
-        user_id=student.user_id,
-        actor_public_id=seat.public_id,
-        teacher_id=teacher.id,
-        join_code="JOINBUG123",
-        class_id=economy.class_id,
-        seat_id=seat.id,
-        class_label="Block A",
-        category_id=category.id,
-        issue_type="general",
-        student_explanation="Found a reproducible bug in the app.",
-        student_expected_outcome="Expected behavior should work.",
-        status=Issue.STATUS_ESCALATED_TO_DEV,
-        eligible_for_reward=True,
-    )
-    db.session.add(issue)
+    with FEATContext("FEAT-TEST-001", idempotency_key="sysadmin_issue_reward:issue"):
+        issue = Issue(
+            user_id=student.user_id,
+            actor_public_id=seat.public_id,
+            join_code="JOINBUG123",
+            class_id=economy.class_id,
+            seat_id=seat.id,
+            class_label="Block A",
+            category_id=category.id,
+            issue_type="general",
+            student_explanation="Found a reproducible bug in the app.",
+            student_expected_outcome="Expected behavior should work.",
+            status=Issue.STATUS_ESCALATED_TO_DEV,
+            eligible_for_reward=True,
+        )
+        db.session.add(issue)
+        db.session.flush()
     db.session.commit()
+
+    nonce = secrets.token_urlsafe(32)
+    with FEATContext("FEAT-IDEN-001", idempotency_key="sysadmin_issue_reward:session"):
+        sysadmin.current_session_nonce = nonce
+        db.session.flush()
 
     with client.session_transaction() as sess:
         sess["is_system_admin"] = True
         sess["sysadmin_id"] = sysadmin.id
+        sess["user_id"] = sysadmin.id
+        sess["current_session_nonce"] = nonce
         sess["last_activity"] = datetime.now(timezone.utc).isoformat()
 
     issue_ref = make_opaque_ref("issue", issue.id)
@@ -84,7 +93,7 @@ def test_sysadmin_resolve_issue_issues_bug_reward_transaction(client):
 
     reward_tx = Transaction.query.filter(
         Transaction.seat_id == seat.id,
-        Transaction.teacher_id == teacher.id,
+        Transaction.user_id == student.user_id,
         Transaction.join_code == "JOINBUG123",
         Transaction.type == "bug_reward",
     ).first()

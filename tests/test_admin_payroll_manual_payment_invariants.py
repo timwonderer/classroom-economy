@@ -1,5 +1,6 @@
 import pytest
 from app.feats.base import InvariantViolation
+from app.feats.base import FEATContext
 from app.extensions import db
 from tests.helpers.v2_fixtures import make_admin
 from tests.helpers.class_scope import create_class_scope
@@ -121,11 +122,13 @@ def test_payroll_scope_student_seat_insufficient_authority(client):
     class_scope = create_class_scope(
         teacher_user=teacher, join_code="STUDSEAT1", display_name="Class A")
 
-    student_seat = Seat(
-        class_id=class_scope.class_id,
-        role='student',
-    )
-    db.session.add(student_seat)
+    with FEATContext("FEAT-IDEN-001", idempotency_key="admin_payroll_manual_payment:student_seed"):
+        student_seat = Seat(
+            class_id=class_scope.class_id,
+            role='student',
+        )
+        db.session.add(student_seat)
+        db.session.flush()
     db.session.commit()
 
     from app.routes.admin import _require_payroll_feature_scope_from_request

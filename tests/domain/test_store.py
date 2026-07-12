@@ -14,6 +14,7 @@ from unittest.mock import MagicMock
 import pytest
 from sqlalchemy import UniqueConstraint
 
+from app.feats.base import FEATContext
 from app.models import (
     RedemptionEvent,
     RedemptionEventAction,
@@ -155,43 +156,46 @@ def store_test_setup(app):
     from app.utils.auth_username import build_hashed_username_fields
 
     with app.app_context():
-        uname = f"store_teacher_{uuid.uuid4().hex[:8]}"
-        _, username_hash, username_lookup_hash = build_hashed_username_fields(uname)
-        user = User(
-            user_role=UserRole.TEACHER,
-            username_hash=username_hash,
-            username_lookup_hash=username_lookup_hash,
-        )
-        db.session.add(user)
-        db.session.flush()
+        with FEATContext("FEAT-IDEN-001", idempotency_key=f"store_test_setup:{uuid.uuid4().hex}"):
+            uname = f"store_teacher_{uuid.uuid4().hex[:8]}"
+            _, username_hash, username_lookup_hash = build_hashed_username_fields(uname)
+            user = User(
+                user_role=UserRole.TEACHER,
+                username_hash=username_hash,
+                username_lookup_hash=username_lookup_hash,
+            )
+            db.session.add(user)
+            db.session.flush()
 
-        class_id = str(uuid.uuid4())
-        join_code = uuid.uuid4().hex[:8].upper()
-        economy = ClassEconomy(
-            class_id=class_id,
-            join_code=join_code,
-            user_id=user.id,
-            display_name="Test Class",
-        )
-        db.session.add(economy)
-        db.session.flush()
+            class_id = str(uuid.uuid4())
+            join_code = uuid.uuid4().hex[:8].upper()
+            economy = ClassEconomy(
+                class_id=class_id,
+                join_code=join_code,
+                user_id=user.id,
+                display_name="Test Class",
+            )
+            db.session.add(economy)
+            db.session.flush()
 
-        seat = Seat(
-            class_id=class_id,
-            user_id=user.id,
-        )
-        db.session.add(seat)
-        db.session.flush()
+            seat = Seat(
+                class_id=class_id,
+                user_id=user.id,
+            )
+            db.session.add(seat)
+            db.session.flush()
 
-        item = StoreItem(
-            user_id=user.id,
-            class_id=class_id,
-            name="Test Reward",
-            price=Decimal("10.00"),
-            item_type="delayed",
-            is_active=True,
-        )
-        db.session.add(item)
+            item = StoreItem(
+                user_id=user.id,
+                class_id=class_id,
+                name="Test Reward",
+                price=Decimal("10.00"),
+                item_type="delayed",
+                is_active=True,
+            )
+            db.session.add(item)
+            db.session.flush()
+
         db.session.commit()
 
         yield {
@@ -215,25 +219,26 @@ class TestStorePurchaseBehavior:
             seat = db.session.merge(ctx["seat"])
             item = db.session.merge(ctx["item"])
 
-            purchase_ids = record_standard_purchase_items(
-                seat=seat,
-                item=item,
-                quantity=1,
-                purchase_tx_id=None,
-                total_price=Decimal("10.00"),
-                expiry_date=None,
-                purchase_status="purchased",
-                uses_remaining=None,
-            )
+            with FEATContext("FEAT-STOR-002", idempotency_key="store_test:purchase_record"):
+                purchase_ids = record_standard_purchase_items(
+                    seat=seat,
+                    item=item,
+                    quantity=1,
+                    purchase_tx_id=None,
+                    total_price=Decimal("10.00"),
+                    expiry_date=None,
+                    purchase_status="purchased",
+                    uses_remaining=None,
+                )
 
-            assert len(purchase_ids) == 1
-            purchase = db.session.get(StorePurchase, purchase_ids[0])
-            assert purchase is not None
-            assert purchase.seat_id == seat.id
-            assert purchase.class_id == ctx["class_id"]
-            assert purchase.store_item_id == item.id
-            assert purchase.price_at_purchase == Decimal("10.00")
-            assert purchase.status == "purchased"
+                assert len(purchase_ids) == 1
+                purchase = db.session.get(StorePurchase, purchase_ids[0])
+                assert purchase is not None
+                assert purchase.seat_id == seat.id
+                assert purchase.class_id == ctx["class_id"]
+                assert purchase.store_item_id == item.id
+                assert purchase.price_at_purchase == Decimal("10.00")
+                assert purchase.status == "purchased"
 
     def test_idempotency_key_prevents_duplicate(self, app, store_test_setup):
         """Duplicate idempotency_key is rejected by unique constraint."""
@@ -246,20 +251,7 @@ class TestStorePurchaseBehavior:
             seat = db.session.merge(ctx["seat"])
             item = db.session.merge(ctx["item"])
 
-            record_standard_purchase_items(
-                seat=seat,
-                item=item,
-                quantity=1,
-                purchase_tx_id=None,
-                total_price=Decimal("10.00"),
-                expiry_date=None,
-                purchase_status="purchased",
-                uses_remaining=None,
-                idempotency_key="test-idem-key-001",
-            )
-            db.session.commit()
-
-            with pytest.raises(IntegrityError):
+            with FEATContext("FEAT-STOR-002", idempotency_key="store_test:idempotency_first"):
                 record_standard_purchase_items(
                     seat=seat,
                     item=item,
@@ -271,7 +263,21 @@ class TestStorePurchaseBehavior:
                     uses_remaining=None,
                     idempotency_key="test-idem-key-001",
                 )
-                db.session.flush()
+
+            with FEATContext("FEAT-STOR-002", idempotency_key="store_test:idempotency_second"):
+                with pytest.raises(IntegrityError):
+                    record_standard_purchase_items(
+                        seat=seat,
+                        item=item,
+                        quantity=1,
+                        purchase_tx_id=None,
+                        total_price=Decimal("10.00"),
+                        expiry_date=None,
+                        purchase_status="purchased",
+                        uses_remaining=None,
+                        idempotency_key="test-idem-key-001",
+                    )
+                    db.session.flush()
 
 
 class TestStoreVisibilityBehavior:
@@ -284,7 +290,8 @@ class TestStoreVisibilityBehavior:
             ctx = store_test_setup
             item = db.session.merge(ctx["item"])
             seat = db.session.merge(ctx["seat"])
-            assert is_item_visible_to_seat(item.id, seat.id) is True
+            with FEATContext("FEAT-STOR-001", idempotency_key="store_test:visibility_default"):
+                assert is_item_visible_to_seat(item.id, seat.id) is True
 
     def test_visibility_restricts_to_granted_seats(self, app, store_test_setup):
         """Visibility grants restrict to specific seats only."""
@@ -297,22 +304,23 @@ class TestStoreVisibilityBehavior:
             item = db.session.merge(ctx["item"])
             seat = db.session.merge(ctx["seat"])
 
-            from app.models import User, UserRole
-            from app.utils.auth_username import build_hashed_username_fields
-            uname2 = f"other_{uuid.uuid4().hex[:8]}"
-            _, h2, lh2 = build_hashed_username_fields(uname2)
-            other_user = User(user_role=UserRole.STUDENT, username_hash=h2, username_lookup_hash=lh2)
-            db.session.add(other_user)
-            db.session.flush()
-            other_seat = Seat(class_id=ctx["class_id"], user_id=other_user.id)
-            db.session.add(other_seat)
-            db.session.flush()
+            with FEATContext("FEAT-STOR-001", idempotency_key="store_test:visibility_grant"):
+                from app.models import User, UserRole
+                from app.utils.auth_username import build_hashed_username_fields
+                uname2 = f"other_{uuid.uuid4().hex[:8]}"
+                _, h2, lh2 = build_hashed_username_fields(uname2)
+                other_user = User(user_role=UserRole.STUDENT, username_hash=h2, username_lookup_hash=lh2)
+                db.session.add(other_user)
+                db.session.flush()
+                other_seat = Seat(class_id=ctx["class_id"], user_id=other_user.id)
+                db.session.add(other_seat)
+                db.session.flush()
 
-            set_item_visibility(item.id, [seat.id])
-            db.session.flush()
+                set_item_visibility(item.id, [seat.id])
+                db.session.flush()
 
-            assert is_item_visible_to_seat(item.id, seat.id) is True
-            assert is_item_visible_to_seat(item.id, other_seat.id) is False
+                assert is_item_visible_to_seat(item.id, seat.id) is True
+                assert is_item_visible_to_seat(item.id, other_seat.id) is False
 
 
 class TestRedemptionEventBehavior:
@@ -325,30 +333,31 @@ class TestRedemptionEventBehavior:
             seat = db.session.merge(ctx["seat"])
             item = db.session.merge(ctx["item"])
 
-            purchase = StorePurchase(
-                seat_id=seat.id,
-                class_id=ctx["class_id"],
-                store_item_id=item.id,
-                quantity=1,
-                price_at_purchase=Decimal("10.00"),
-                total_price=Decimal("10.00"),
-                status="processing",
-            )
-            db.session.add(purchase)
-            db.session.flush()
+            with FEATContext("FEAT-STOR-006", idempotency_key="store_test:redemption_event"):
+                purchase = StorePurchase(
+                    seat_id=seat.id,
+                    class_id=ctx["class_id"],
+                    store_item_id=item.id,
+                    quantity=1,
+                    price_at_purchase=Decimal("10.00"),
+                    total_price=Decimal("10.00"),
+                    status="processing",
+                )
+                db.session.add(purchase)
+                db.session.flush()
 
-            event = RedemptionEvent(
-                purchase_id=purchase.id,
-                seat_id=seat.id,
-                class_id=ctx["class_id"],
-                action=RedemptionEventAction.APPROVED,
-                source=RedemptionEventSource.LIVE,
-                initiated_by_user_id=ctx["teacher_id"],
-                seat_display_name="Test Student",
-                class_display_label="Test Class",
-            )
-            db.session.add(event)
-            db.session.commit()
+                event = RedemptionEvent(
+                    purchase_id=purchase.id,
+                    seat_id=seat.id,
+                    class_id=ctx["class_id"],
+                    action=RedemptionEventAction.APPROVED,
+                    source=RedemptionEventSource.LIVE,
+                    initiated_by_user_id=ctx["teacher_id"],
+                    seat_display_name="Test Student",
+                    class_display_label="Test Class",
+                )
+                db.session.add(event)
+                db.session.flush()
 
             saved = db.session.get(RedemptionEvent, event.id)
             assert saved is not None

@@ -10,6 +10,11 @@
 
 This is a **Core Orchestrator** (aliased as `FEAT-MONEY-POST`). It is the singular, authoritative mechanism for all monetary movement within the system. Every financial event—payroll, purchases, fines, transfers—MUST eventually invoke this FEAT to commit to the ledger.
 
+`FEAT-LED-001` posts only a resolved ledger plan. It does not decide whether
+an intended ledger plan is valid, whether it must be transformed, or whether
+policy authorizes a recovery transfer or fee. That resolution boundary belongs
+to `FEAT-LED-000`.
+
 ---
 
 ## II. Execution Context
@@ -36,8 +41,8 @@ This is a **Core Orchestrator** (aliased as `FEAT-MONEY-POST`). It is the singul
     * **Success**: If found, return the existing transaction record immediately (SUCCESS).
 2. **Account Validation**: Verify that `from_account` and `to_account` are valid and accessible within the `class_id` scope.
 3. **Limit Validation**:
-    * If `from_account` is a seat-held account: Check if the current balance is sufficient for the `amount`.
-    * **Note**: This FEAT **DOES NOT** implicitly charge overdraft fees. It simply validates if the transaction is mathematically possible under current policy.
+    * If `from_account` is a seat-held account: Check if the resolved plan is still mathematically postable.
+    * **Note**: This FEAT **DOES NOT** decide overdraft recovery, fee insertion, or other policy transformations. It simply posts the resolved plan it receives.
 
 ### 2. Mutation Phase (Atomic Transaction)
 1. **Ledger Entry**:
@@ -54,6 +59,7 @@ This is a **Core Orchestrator** (aliased as `FEAT-MONEY-POST`). It is the singul
 
 1. **Non-Negativity**: Unless the `transaction_type` is explicitly marked as "Negative-Allowed" (e.g., `SYSTEM_ADJUSTMENT`), a transaction MUST NOT result in a negative balance for a seat-held checking account during this FEAT's execution.
 2. **Atomic Totals**: Transaction creation and snapshot updates MUST happen in the same database transaction.
+3. **Resolved Plan Input**: The caller MUST provide a plan that has already been resolved by `FEAT-LED-000`.
 
 ---
 

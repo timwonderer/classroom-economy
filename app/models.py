@@ -390,6 +390,18 @@ class Seat(db.Model):
     def is_rent_enabled(self):
         return not self.has_received_rent_exemption
 
+    @property
+    def block(self):
+        """Compatibility view for legacy block-based admin rendering."""
+        if self.class_economy is None:
+            return None
+        return self.class_economy.section
+
+    @block.setter
+    def block(self, value):
+        if self.class_economy is not None:
+            self.class_economy.section = value
+
 
 class AdminInviteCode(db.Model):
     # Replaced in v2 by open teacher signup (Turnstile-gated form → TOTP → passkey → done)

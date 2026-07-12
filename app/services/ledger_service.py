@@ -231,6 +231,7 @@ def compensate_posted_transaction(
     return reversal_tx
 
 
+@feat_shell("FEAT-LED-001")
 def create_transfer_pair(
     *,
     seat_id: int,
@@ -285,15 +286,32 @@ def _apply_overdraft_fee_if_needed(
     idempotency_key: str | None = None,
 ):
     """Ledger-owned overdraft-fee command wrapper."""
-    from app.utils.overdraft import charge_overdraft_fee_if_needed
+    from app.feats.ledger_resolution_feat import (
+        apply_resolved_ledger_plan,
+        build_intended_ledger_plan,
+        resolve_intended_ledger_plan,
+    )
 
-    fee_charged, fee_amount = charge_overdraft_fee_if_needed(
-        seat,
-        banking_settings,
-        force=force,
+    intended_plan = build_intended_ledger_plan(
+        seat_id=seat.id,
+        class_id=seat.class_id,
+        user_id=seat.user_id,
+        debit_amount=Decimal("0.00"),
+        description="Overdraft fee",
+    )
+    resolved_plan = resolve_intended_ledger_plan(
+        plan=intended_plan,
+        banking_settings=banking_settings,
+        idempotency_key=idempotency_key,
+        force_overdraft_fee=force,
+        allow_recovery_transfer=False,
+    )
+    result = apply_resolved_ledger_plan(
+        resolved_plan=resolved_plan,
+        banking_settings=banking_settings,
         idempotency_key=idempotency_key,
     )
-    return fee_charged, fee_amount
+    return result.get("accepted", False), resolved_plan.overdraft_fee_amount
 
 
 @feat_shell("FEAT-LED-001")

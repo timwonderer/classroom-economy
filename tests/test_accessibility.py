@@ -158,6 +158,7 @@ def test_docs_page_accessibility(client):
 # Authenticated Accessibility Tests
 # ==============================================================================
 from datetime import datetime, timezone
+from app.feats.base import FEATContext
 from tests.helpers.canonical_session import set_canonical_context
 from app.extensions import db
 from app.models import ClassEconomy, Seat, IdentityProfile, RentSettings, User, TeacherOnboarding
@@ -172,57 +173,42 @@ from werkzeug.security import generate_password_hash
 def auth_student_context(app, client):
     """Sets up a V2 student and class context, and logs them in."""
     with app.app_context():
-        teacher = make_admin("access_teacher_s")
-        db.session.flush()
+        with FEATContext("FEAT-IDEN-001", idempotency_key="accessibility:student_context"):
+            teacher = make_admin("access_teacher_s")
+            db.session.flush()
 
-        join_code = "ACCESST1"
-        class_row = create_class_scope(
-            teacher=teacher,
-            join_code=join_code,
-            block="A",
-            display_name="A Period",
-        )
-        student_user = User(
-            username_hash="access_student_hash",
-            username_lookup_hash="access_student_lookup",
-            password_hash=generate_password_hash("secret"),
-            pin_hash=generate_password_hash("1234"),
-            user_role="student",
-            has_completed_setup=True,
-            last_active_class_id=class_row.class_id,
-        )
-        db.session.add(student_user)
-        db.session.flush()
+            join_code = "ACCESST1"
+            class_row = create_class_scope(
+                teacher_user=teacher,
+                join_code=join_code,
+                section="A",
+                display_name="A Period",
+            )
+            seat = make_student_identity(
+                class_id=class_row.class_id,
+                first_name="Accessibility",
+                last_name="S",
+                claimed=True,
+            )
+            student_user = seat.user
+            assert student_user is not None
+            student_user.last_active_seat_id = seat.id
+            student_user.last_active_class_id = class_row.class_id
+            student_user.current_session_nonce = "accessibility-nonce"
+            db.session.flush()
 
-        seat = make_student_identity(
-            class_id=class_row.class_id,
-            user_id=student_user.id,
-            block="A",
-            claimed=True,
-            first_name="Accessibility",
-            last_name="S",
-        )
-        student_user.last_active_seat_id = seat.id
-        student_user.current_session_nonce = "accessibility-nonce"
-        db.session.flush()
-        
-        rent_settings = RentSettings(
-            class_id=class_row.class_id,
-            block="A",
-            is_enabled=True,
-        )
-        db.session.add(rent_settings)
-        from app.models import ClassFeature
-        for feat in ClassFeature.feature_names():
-            exists = ClassFeature.query.filter_by(class_id=class_row.class_id, feature_name=feat).first()
-            if not exists:
-                db.session.add(ClassFeature(class_id=class_row.class_id, feature_name=feat))
-        db.session.commit()
+            from app.models import ClassFeature
+            for feat in ClassFeature.feature_names():
+                exists = ClassFeature.query.filter_by(class_id=class_row.class_id, feature_name=feat).first()
+                if not exists:
+                    db.session.add(ClassFeature(class_id=class_row.class_id, feature_name=feat))
+            db.session.add(RentSettings(class_id=class_row.class_id))
+            db.session.flush()
 
-        student_id = student_user.id
-        class_id = class_row.class_id
-        user_id = student_user.id
-        seat_id = seat.id
+            student_id = student_user.id
+            class_id = class_row.class_id
+            user_id = student_user.id
+            seat_id = seat.id
 
     # Log in student
     with client.session_transaction() as sess:
@@ -247,35 +233,36 @@ def auth_student_context(app, client):
 def auth_teacher_context(app, client):
     """Sets up a V2 teacher and logs them in."""
     with app.app_context():
-        teacher = make_admin("access_teacher_t")
-        db.session.flush()
+        with FEATContext("FEAT-IDEN-001", idempotency_key="accessibility:teacher_context"):
+            teacher = make_admin("access_teacher_t")
+            db.session.flush()
 
-        class_row = create_class_scope(
-            teacher=teacher,
-            block="A",
-            display_name="A Period",
-        )
+            class_row = create_class_scope(
+                teacher_user=teacher,
+                section="A",
+                display_name="A Period",
+            )
 
-        # Mark onboarding as completed for this teacher
-        onboarding = TeacherOnboarding(
-            user_id=teacher.id,
-            is_completed=True,
-            completed_at=datetime.now(timezone.utc)
-        )
-        db.session.add(onboarding)
-        db.session.flush()
+            # Mark onboarding as completed for this teacher
+            onboarding = TeacherOnboarding(
+                user_id=teacher.id,
+                is_completed=True,
+                completed_at=datetime.now(timezone.utc)
+            )
+            db.session.add(onboarding)
+            db.session.flush()
 
-        teacher.has_completed_setup = True
-        teacher.last_active_class_id = class_row.class_id
-        from app.models import ClassFeature
-        for feat in ClassFeature.feature_names():
-            exists = ClassFeature.query.filter_by(class_id=class_row.class_id, feature_name=feat).first()
-            if not exists:
-                db.session.add(ClassFeature(class_id=class_row.class_id, feature_name=feat))
-        db.session.commit()
+            teacher.last_active_class_id = class_row.class_id
+            from app.models import ClassFeature
+            for feat in ClassFeature.feature_names():
+                exists = ClassFeature.query.filter_by(class_id=class_row.class_id, feature_name=feat).first()
+                if not exists:
+                    db.session.add(ClassFeature(class_id=class_row.class_id, feature_name=feat))
+            db.session.flush()
 
         teacher_id = teacher.id
         class_id = class_row.class_id
+        join_code = class_row.join_code
         user_id = teacher.id
 
     # Log in teacher

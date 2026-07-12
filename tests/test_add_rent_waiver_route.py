@@ -2,6 +2,7 @@ from datetime import datetime, timezone
 from decimal import Decimal
 
 from tests.helpers.v2_fixtures import make_admin, make_sysadmin
+from app.feats.base import FEATContext
 from app import db
 from app.hash_utils import hash_username, get_random_salt
 from app.services import obligations_service
@@ -47,58 +48,60 @@ def _make_admin(suffix):
 def _make_teacher_block(user_id, block, join_code):
     admin = db.session.get(User, user_id)
     assert admin is not None
-    economy = ClassEconomy(join_code=join_code, user_id=user_id)
-    db.session.add(economy)
-    db.session.flush()
-    seat = Seat(
-        class_id=economy.class_id,
-        block=block,
-        role="teacher",
-        user_id=user_id,
-    )
-    db.session.add(seat)
-    db.session.flush()
-    db.session.add(IdentityProfile(seat_id=seat.id, profile_type="teacher_primary", first_name="Teacher", last_name="T"))
-    db.session.flush()
-    return seat
+    with FEATContext("FEAT-IDEN-001", idempotency_key=f"add_rent_waiver:teacher_block:{user_id}:{block}:{join_code}"):
+        economy = ClassEconomy(join_code=join_code, user_id=user_id)
+        db.session.add(economy)
+        db.session.flush()
+        seat = Seat(
+            class_id=economy.class_id,
+            block=block,
+            role="teacher",
+            user_id=user_id,
+        )
+        db.session.add(seat)
+        db.session.flush()
+        db.session.add(IdentityProfile(seat_id=seat.id, profile_type="teacher_primary", first_name="Teacher", last_name="T"))
+        db.session.flush()
+        return seat
 
 
 def _make_rent_settings(block, first_due, class_id=None, frequency_type="weekly"):
-    settings = RentSettings(
-        class_id=class_id,
-        rent_amount=Decimal("50.00"),
-        frequency_type=frequency_type,
-        grace_period_days=3,
-        late_penalty_amount=Decimal("5.00"),
-        late_penalty_type="once",
-        first_rent_due_date=first_due,
-    )
-    db.session.add(settings)
-    db.session.flush()
-    return settings
+    with FEATContext("FEAT-ADMN-001", idempotency_key=f"add_rent_waiver:rent_settings:{class_id}:{block}:{first_due.isoformat()}"):
+        settings = RentSettings(
+            class_id=class_id,
+            rent_amount=Decimal("50.00"),
+            frequency_type=frequency_type,
+            grace_period_days=3,
+            late_penalty_amount=Decimal("5.00"),
+            late_penalty_type="once",
+            first_rent_due_date=first_due,
+        )
+        db.session.add(settings)
+        db.session.flush()
+        return settings
 
 
 def _make_student(suffix, block="A"):
-    student_user = User(
-        user_role=UserRole.STUDENT,
-        username_hash=f"student_arw_{suffix}_hash",
-        username_lookup_hash=f"student_arw_{suffix}_lookup",
-    )
-    db.session.add(student_user)
-    db.session.flush()
-    profile = IdentityProfile(profile_type="student", first_name="Test", last_name="W")
-    db.session.add(profile)
-    db.session.flush()
-    seat = Seat(
-        user_id=student_user.id,
-        role="student",
-        block=block,
-        claimed_at=datetime.now(timezone.utc),
-    )
-    db.session.add(seat)
-    db.session.flush()
-    profile.seat_id = seat.id
-    return StudentSeed(student_user, seat)
+    with FEATContext("FEAT-IDEN-001", idempotency_key=f"add_rent_waiver:student:{suffix}:{block}"):
+        student_user = User(
+            user_role=UserRole.STUDENT,
+            username_hash=f"student_arw_{suffix}_hash",
+            username_lookup_hash=f"student_arw_{suffix}_lookup",
+        )
+        db.session.add(student_user)
+        db.session.flush()
+        seat = Seat(
+            user_id=student_user.id,
+            role="student",
+            block=block,
+            claimed_at=datetime.now(timezone.utc),
+        )
+        db.session.add(seat)
+        db.session.flush()
+        profile = IdentityProfile(seat_id=seat.id, profile_type="student", first_name="Test", last_name="W")
+        db.session.add(profile)
+        db.session.flush()
+        return StudentSeed(student_user, seat)
 
 
 def _link_student(student, admin):
@@ -381,21 +384,22 @@ def test_remove_rent_waiver_logs_analytics_event(client, app):
         _make_rent_settings("A", first_due, class_id=tb.class_id)
         student = _make_student("rem1_s")
         _link_student(student, admin)
-        seat = make_student_identity(
-            class_id=tb.class_id,
-            first_name="Test",
-            last_name="W",
-        )
-        waiver = obligations_service.record_rent_waiver(
-            seat_id=seat.id,
-            class_id=tb.class_id,
-            waiver_start_date=datetime(2026, 3, 1, tzinfo=timezone.utc),
-            waiver_end_date=datetime(2026, 3, 1, tzinfo=timezone.utc),
-            periods_count=1,
-            created_by_seat_id=tb.id,
-        )
+        with FEATContext("FEAT-OBL-001", idempotency_key="add_rent_waiver:remove_logs_analytics"):
+            seat = make_student_identity(
+                class_id=tb.class_id,
+                first_name="Test",
+                last_name="W",
+            )
+            waiver = obligations_service.record_rent_waiver(
+                seat_id=seat.id,
+                class_id=tb.class_id,
+                waiver_start_date=datetime(2026, 3, 1, tzinfo=timezone.utc),
+                waiver_end_date=datetime(2026, 3, 1, tzinfo=timezone.utc),
+                periods_count=1,
+                created_by_seat_id=tb.id,
+            )
+            db.session.flush()
         waiver_id = waiver.id
-        db.session.commit()
 
         _login_admin(client, admin, join_code)
 

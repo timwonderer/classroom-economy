@@ -16,13 +16,15 @@ from decimal import Decimal
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from app.models import (
-    Transaction, RentSettings, RentPayment, BankingSettings, Seat, User, UserRole, _quantize_currency
+    Transaction, RentSettings, RentPayment, BankingSettings, Seat, User, UserRole, ClassFeature, _quantize_currency
 )
 from app.extensions import db
 from tests.helpers.class_scope import create_class_scope
 from app.hash_utils import hash_username_lookup
 from tests.helpers.canonical_session import set_canonical_context
 from tests.helpers.class_scope import make_student_identity
+from app.feats.base import FEATContext
+from app.routes.student import _get_total_earnings_for_seat
 
 
 class TestDecimalTypeErrors:
@@ -38,26 +40,23 @@ class TestDecimalTypeErrors:
         TypeError when rent_settings.rent_amount (Decimal) is added to late_fee (float 0.0).
         """
         # Create teacher
-        teacher = make_admin('teacher_rent_decimal')
-        db.session.flush()
-        # Build the canonical v2 class fixture; it returns the class_id we scope against.
-        class_scope = create_class_scope(
-            teacher=teacher,
-            block='A',
-            display_name='A',
-        )
+        with FEATContext("FEAT-IDEN-001", idempotency_key="decimal_precision:rent_dashboard"):
+            teacher = make_admin('teacher_rent_decimal')
+            db.session.flush()
+            class_scope = create_class_scope(
+                teacher_user=teacher,
+                section='A',
+                display_name='A',
+            )
 
-        # Create rent settings
-        rent_settings = RentSettings(
-            class_id=class_scope.class_id,
-            block='A',
-            is_enabled=True,
-            rent_amount=Decimal('50.00'),
-            late_penalty_amount=Decimal('10.00'),
-            grace_period_days=3
-        )
-        db.session.add(rent_settings)
-        db.session.commit()
+            rent_settings = RentSettings(
+                class_id=class_scope.class_id,
+                rent_amount=Decimal('50.00'),
+                late_penalty_amount=Decimal('10.00'),
+                grace_period_days=3,
+            )
+            db.session.add(rent_settings)
+            db.session.flush()
 
         # Test calculation when rent is not active (should use Decimal('0.00') not 0.0)
         rent_is_active = False
@@ -93,29 +92,22 @@ class TestDecimalTypeErrors:
         decimal.InvalidOperation when comparing Decimal to integer 0 in certain contexts.
         """
         # Create teacher
-        teacher = make_admin('teacher_earnings_decimal')
-        db.session.flush()
+        with FEATContext("FEAT-IDEN-001", idempotency_key="decimal_precision:get_total_earnings"):
+            teacher = make_admin('teacher_earnings_decimal')
+            db.session.flush()
+            class_scope = create_class_scope(
+                teacher_user=teacher,
+                section='A',
+                display_name='A',
+            )
+            student = make_student_identity(
+                class_id=class_scope.class_id,
+                first_name='Earnings',
+                last_name='T',
+            )
+            seat = student
+            assert seat is not None
 
-        # Create student
-        student = make_student_identity(
-            first_name='Earnings',
-            last_name='T',
-            block='A',
-        )
-
-        join_code = 'EARNINGS_TEST'
-        class_scope = create_class_scope(
-            teacher=teacher,
-            student=student,
-            block='A',
-            display_name='A',
-        )
-
-        seat = Seat.query.filter_by(class_id=class_scope.class_id, role="student").first()
-        assert seat is not None
-
-        # Add various transaction types to test edge cases
-        from app.feats.base import FEATContext
         with FEATContext("FEAT-ADMN-001"):
             transactions = [
                 # Positive earning - should count
@@ -177,7 +169,7 @@ class TestDecimalTypeErrors:
         db.session.commit()
 
         # This should not raise decimal.InvalidOperation
-        total_earnings = student.get_total_earnings(class_id=class_scope.class_id)
+        total_earnings = _get_total_earnings_for_seat(seat.id, class_id=class_scope.class_id)
 
         # Should only count positive, non-transfer transactions
         # 100.00 + 75.50 = 175.50
@@ -226,25 +218,21 @@ class TestDecimalTypeErrors:
         at student.py line 1107
         """
         # Create teacher
-        teacher = make_admin('teacher_regression')
-        db.session.flush()
-        # Build the canonical v2 class fixture; it returns the class_id we scope against.
-        class_scope = create_class_scope(
-            teacher=teacher,
-            block='A',
-            display_name='A',
-        )
-
-        # Create rent settings (rent_amount is Decimal from db)
-        rent_settings = RentSettings(
-            class_id=class_scope.class_id,
-            block='A',
-            is_enabled=False,  # Not active - triggers the 0.0 case
-            rent_amount=Decimal('50.00'),
-            late_penalty_amount=Decimal('10.00')
-        )
-        db.session.add(rent_settings)
-        db.session.commit()
+        with FEATContext("FEAT-IDEN-001", idempotency_key="decimal_precision:rent_calc_regression"):
+            teacher = make_admin('teacher_regression')
+            db.session.flush()
+            class_scope = create_class_scope(
+                teacher_user=teacher,
+                section='A',
+                display_name='A',
+            )
+            rent_settings = RentSettings(
+                class_id=class_scope.class_id,
+                rent_amount=Decimal('50.00'),
+                late_penalty_amount=Decimal('10.00'),
+            )
+            db.session.add(rent_settings)
+            db.session.flush()
 
         # Simulate the exact calculation from the bug
         rent_is_active = False
@@ -282,63 +270,53 @@ class TestDecimalTypeErrors:
         from unittest.mock import patch
         
         # Create teacher
-        teacher = make_admin('teacher_interest_test')
-        db.session.flush()
-
-        join_code = 'INTEREST_TEST'
-
-        # Build the canonical v2 class fixture; the transaction should key off class_id/seat_id.
-        student = make_student_identity(
-            first_name='Interest',
-            last_name='T',
-            block='A',
-        )
-
-        class_scope = create_class_scope(
-            teacher=teacher,
-            student=student,
-            block='A',
-            display_name='Interest Test Class',
-        )
-
-        seat = Seat.query.filter_by(class_id=class_scope.class_id, role='student').first()
-        assert seat is not None
-
-        # Add a savings deposit from 31+ days ago (eligible for interest)
-        past_date = datetime.now(timezone.utc) - timedelta(days=35)
-        from app.feats.base import FEATContext
-        with FEATContext("FEAT-ADMN-001"):
-            deposit = Transaction(
-                seat_id=seat.id,
-                user_id=student.user_id,
-                class_id=class_scope.class_id,
-                amount=Decimal('100.00'),
-                account_type='savings',
-                type='Deposit',
-                description='Initial savings',
-                timestamp=past_date,
-                date_funds_available=past_date
-            )
-            db.session.add(deposit)
+        with FEATContext("FEAT-IDEN-001", idempotency_key="decimal_precision:interest"):
+            teacher = make_admin('teacher_interest_test')
             db.session.flush()
-        db.session.flush()
+            class_scope = create_class_scope(
+                teacher_user=teacher,
+                section='A',
+                display_name='Interest Test Class',
+            )
+            seat = make_student_identity(
+                class_id=class_scope.class_id,
+                first_name='Interest',
+                last_name='T',
+            )
+            assert seat is not None
 
-        # Create banking settings with compound interest (daily frequency - most likely to trigger bug)
-        banking_settings = BankingSettings(
-            class_id=class_scope.class_id,
-            block='A',
-            savings_apy=4.5,  # 4.5% APY
-            interest_calculation_type='compound',
-            compound_frequency='daily'
-        )
-        db.session.add(banking_settings)
-        db.session.commit()
+            past_date = datetime.now(timezone.utc) - timedelta(days=35)
+            with FEATContext("FEAT-ADMN-001"):
+                deposit = Transaction(
+                    seat_id=seat.id,
+                    user_id=seat.user_id,
+                    class_id=class_scope.class_id,
+                    amount=Decimal('100.00'),
+                    account_type='savings',
+                    type='Deposit',
+                    description='Initial savings',
+                    timestamp=past_date,
+                    date_funds_available=past_date,
+                )
+                db.session.add(deposit)
+                db.session.flush()
 
-        # Mock context to return our test data
-        # This should NOT raise TypeError
-        with patch('app.routes.student.resolve_canonical_context', return_value=SimpleNamespace(class_id=class_scope.class_id)):
+            banking_settings = BankingSettings(
+                class_id=class_scope.class_id,
+                savings_apy=4.5,
+                interest_calculation_type='compound',
+                compound_frequency='daily',
+            )
+            db.session.add(banking_settings)
+            db.session.flush()
+
+        # Mock context to return our test data.
+        with FEATContext("FEAT-LED-001", idempotency_key="decimal_precision:interest_run"), patch(
+            'app.routes.student.resolve_canonical_context',
+            return_value=SimpleNamespace(class_id=class_scope.class_id),
+        ), patch('app.routes.student.get_current_seat', return_value=seat):
             try:
-                apply_savings_interest(student)
+                apply_savings_interest(seat)
                 success = True
             except TypeError as e:
                 success = False
@@ -353,8 +331,8 @@ class TestDecimalTypeErrors:
             Transaction.account_type == 'savings',
         ).first()
         
-        # Interest should have been calculated (may or may not be > 0 depending on settings)
-        assert interest_tx is not None or student.get_savings_balance(class_id=class_scope.class_id, seat_id=seat.id) == Decimal('100.00')
+        # Interest should have been calculated for the seeded savings deposit.
+        assert interest_tx is not None
 
     def test_file_claim_period_cap_no_prior_payouts_no_type_error(self, client, app):
         """
@@ -378,67 +356,52 @@ class TestDecimalTypeErrors:
         db.session.flush()
 
         # Create student
-        student = make_student_identity(
-            first_name='ClaimCap',
-            last_name='T',
-            block='A',
-        )
+        with FEATContext("FEAT-IDEN-001", idempotency_key="decimal_precision:claim_cap"):
+            class_scope = create_class_scope(
+                teacher_user=teacher,
+                section='A',
+                display_name='A',
+            )
+            db.session.add(ClassFeature(class_id=class_scope.class_id, feature_name='insurance'))
+            db.session.flush()
+            seat = make_student_identity(
+                class_id=class_scope.class_id,
+                first_name='ClaimCap',
+                last_name='T',
+            )
 
-        # Create policy with max_payout_per_period set (triggers the Decimal path)
-        policy = InsurancePolicy(
-            policy_code='CAP-POLICY-001',
-            teacher_id=teacher.id,
-            title='Cap Test Policy',
-            description='',
-            premium=Decimal('5.00'),
-            claim_type='legacy_monetary',
-            is_monetary=True,
-            is_active=True,
-            waiting_period_days=0,
-            claim_time_limit_days=30,
-            max_payout_per_period=Decimal('100.00'),
-        )
-        db.session.add(policy)
-        db.session.flush()
+            policy = InsurancePolicy(
+                policy_code='CAP-POLICY-001',
+                teacher_id=teacher.id,
+                title='Cap Test Policy',
+                description='',
+                premium=Decimal('5.00'),
+                claim_type='legacy_monetary',
+                is_monetary=True,
+                is_active=True,
+                waiting_period_days=0,
+                claim_time_limit_days=30,
+                max_payout_per_period=Decimal('100.00'),
+            )
+            db.session.add(policy)
+            db.session.flush()
 
-        class_scope = create_class_scope(
-            teacher=teacher,
-            student=student,
-            block='A',
-            display_name='A',
-        )
-        db.session.flush()
-
-        seat = Seat.query.filter_by(user_id=student.user_id, class_id=class_scope.class_id).first()
-        assert seat is not None
-        user = User(
-            username_hash=hash_username_lookup(f"claim-cap-{student.id}"),
-            username_lookup_hash=hash_username_lookup(f"claim-cap-{student.id}"),
-            user_role=UserRole.STUDENT,
-            password_hash='pw',
-        )
-        db.session.add(user)
-        db.session.flush()
-        seat.user_id = user.id
-        db.session.flush()
-
-        # Enroll student (active, payment current, coverage started)
-        enrollment = InsuranceEnrollment(
-            seat_id=seat.id,
-            class_id=seat.class_id,
-            policy_id=policy.id,
-            status='active',
-            coverage_start_date=datetime.now(timezone.utc) - timedelta(days=5),
-            payment_current=True,
-        )
-        db.session.add(enrollment)
-        db.session.commit()
+            enrollment = InsuranceEnrollment(
+                seat_id=seat.id,
+                class_id=seat.class_id,
+                policy_id=policy.id,
+                status='active',
+                coverage_start_date=datetime.now(timezone.utc) - timedelta(days=5),
+                payment_current=True,
+            )
+            db.session.add(enrollment)
+            db.session.flush()
 
         # Log in as student
         with client.session_transaction() as sess:
             set_canonical_context(
                 sess,
-                user_id=user.id,
+                user_id=seat.user_id,
                 class_id=class_scope.class_id,
                 seat_id=seat.id,
                 role="student",
@@ -446,9 +409,10 @@ class TestDecimalTypeErrors:
 
         # GET the file_claim route — must not raise TypeError
         # (no prior InsuranceClaim rows exist, so scalar() returns None)
-        response = client.get(
-            f'/student/insurance/claim/{policy.id}',
-        )
+        with FEATContext("FEAT-OBL-001", idempotency_key="decimal_precision:file_claim"):
+            response = client.get(
+                f'/student/insurance/claim/{policy.id}',
+            )
 
         assert response.status_code == 200, (
             f"Expected 200 but got {response.status_code}; "

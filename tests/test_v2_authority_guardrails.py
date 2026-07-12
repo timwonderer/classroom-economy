@@ -155,6 +155,8 @@ def test_dead_route_mutations_are_feat_owned():
     assert_feat_context_in_func(admin_source, "def process_claim(", "FEAT-ADMN-001")
     assert_decorator(admin_source, "def resolve_issue(", "@feat_shell(\"FEAT-ADMN-001\")")
     assert_decorator(admin_source, "def passkey_auth_finish(", "@feat_shell(\"FEAT-ADMN-001\")")
+    assert_decorator(admin_source, "def rent_settings(", "@feat_shell(\"FEAT-ADMN-001\")")
+    assert_decorator(admin_source, "def process_claim(", "@feat_shell(\"FEAT-ADMN-001\")")
     assert_decorator(system_admin_source, "def resolve_escalated_issue(", "@feat_shell(\"FEAT-OPS-001\")")
     assert_decorator(system_admin_source, "def passkey_auth_finish(", "@feat_shell(\"FEAT-OPS-001\")")
 

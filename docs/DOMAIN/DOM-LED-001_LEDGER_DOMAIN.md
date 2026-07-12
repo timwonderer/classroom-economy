@@ -19,7 +19,7 @@ This domain governs the lifecycle of **money movement**, **transactional event l
 This domain does not own:
 - **Economic Context**: Owned by the domain requesting the transaction (e.g., Obligations, Attendance).
 - **Class Scoping**: Ledger does not own `join_code`. Isolation is inherited via the `seat_id`.
-- **Solvency Policy**: Ledger does not decide if an overdraft is allowed; it only reports the balance.
+- **Solvency Policy**: Ledger does not decide if an overdraft is allowed; it only reports the balance. FEAT-LED-000 resolves intended ledger plans into resolved ledger plans when policy or recovery transforms are required before posting.
 
 ## III. Authority Level
 

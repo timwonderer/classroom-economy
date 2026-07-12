@@ -10,6 +10,7 @@ No Admin objects, no legacy bridge patterns.
 from app.extensions import db
 from app.feats.base import FEATContext
 from app.models import ClassEconomy, Seat, User
+from werkzeug.security import generate_password_hash
 
 
 def create_class_scope(
@@ -38,9 +39,8 @@ def create_class_scope(
     from uuid import uuid4
 
     resolved_join_code = join_code or f"CLS{uuid4().hex[:8].upper()}"
-
-    existing = ClassEconomy.query.filter_by(join_code=resolved_join_code).first()
     with FEATContext("FEAT-IDEN-001", idempotency_key=f"create_class_scope:{resolved_join_code}"):
+        existing = ClassEconomy.query.filter_by(join_code=resolved_join_code).first()
         if existing:
             class_row = existing
         else:
@@ -63,12 +63,14 @@ def create_class_scope(
 
 def make_student_identity(
     *,
-    class_id: str,
+    class_id: str | None = None,
     first_name: str = "Student",
     last_name: str = "Test",
     claimed: bool = True,
     username: str | None = None,
     pin: str | None = None,
+    block: str | None = None,
+    join_code: str | None = None,
 ) -> Seat:
     """Create a canonical student identity (User → Seat → IdentityProfile).
 
@@ -76,13 +78,34 @@ def make_student_identity(
     Returns the Seat so callers can do seat.id, seat.user_id, etc.
     """
     from app.services.classroom_setup import create_student
-    with FEATContext("FEAT-IDEN-001", idempotency_key=f"make_student_identity:{class_id}:{username or first_name}:{last_name}"):
+    from app.models import ClassEconomy
+
+    resolved_class_id = class_id
+    with FEATContext(
+        "FEAT-IDEN-001",
+        idempotency_key=f"make_student_identity:{resolved_class_id}:{username or first_name}:{last_name}",
+    ):
+        if resolved_class_id is None:
+            if not join_code:
+                raise TypeError("make_student_identity() requires class_id or join_code")
+            class_row = ClassEconomy.query.filter_by(join_code=join_code).first()
+            if not class_row:
+                raise LookupError(f"No class found for join_code={join_code!r}")
+            resolved_class_id = class_row.class_id
+
         _user, seat, _profile = create_student(
-            class_id,
+            resolved_class_id,
             first_name=first_name,
             last_name=last_name,
             claimed=claimed,
             username=username,
             pin=pin,
         )
+        if seat.user and not seat.user.passphrase_hash:
+            seat.user.passphrase_hash = generate_password_hash("password")
+        if block:
+            # Preserve older helper call sites that supplied block metadata.
+            # The canonical model derives scope from class_id; this field is display-only.
+            seat.block = block
+            db.session.flush()
     return seat

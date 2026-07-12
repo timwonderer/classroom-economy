@@ -20,6 +20,7 @@ from app.utils.time import utc_now, ensure_utc
 from decimal import Decimal, InvalidOperation
 
 from flask import Blueprint, render_template, redirect, url_for, flash, request, session, current_app, jsonify, Response, abort
+from flask import g
 from sqlalchemy import delete, or_, case
 from werkzeug.exceptions import BadRequest, Unauthorized, Forbidden, NotFound, ServiceUnavailable
 import pyotp
@@ -1977,8 +1978,8 @@ def resolve_escalated_issue(issue_ref):
         issue.eligible_for_reward = eligible_for_reward
 
         if reward_amount_value is not None:
-            # Bug rewards must be anchored to the class universe where the bug was found.
-            user_id = issue.teacher_id
+            # Bug rewards must be anchored to the canonical owner of the issue's class.
+            user_id = issue.user_id
             reward_transaction = ledger_service.create_pending_transaction(
                 seat_id=issue.seat_id,
                 class_id=issue.class_id,

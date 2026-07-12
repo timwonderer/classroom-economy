@@ -55,9 +55,10 @@ from werkzeug.exceptions import HTTPException, NotFound
 
 from app.extensions import db, limiter
 from app.feats.base import feat_shell, FEATContext, InvariantViolation
+from app.access.scope import Scope
 from app.access import AccessScopeDenied, resolve_scope
 from app.models import (
-    Admin, ClassEconomy, Transaction, TransactionStatus, TapEvent, AttendanceSession, StoreItem, StorePurchase,
+    Admin, ClassEconomy, Transaction, TransactionStatus, TapEvent, AttendanceSession, StoreItem, StorePurchase, StudentItem,
     InsurancePolicy, InsurancePolicyBlock, RentItem, RentPayment, RentSettings, StoreItemBlock,
     InsuranceEnrollment, InsuranceClaim, HallPassLog, HallPassSettings, PayrollSettings, SavedAdjustment,
     BankingSettings,
@@ -119,7 +120,6 @@ from app.utils.turnstile import verify_turnstile_token
 from app.utils.name_utils import hash_last_name_parts, verify_last_name_parts
 from app.utils.help_content import HELP_ARTICLES
 from app.utils.encryption import encrypt_totp, decrypt_totp
-from app.utils.overdraft import charge_overdraft_fee_if_needed, evaluate_overdraft_allowance
 from app.utils.passwordless_client import (
     create_register_token,
     verify_signin_token,
@@ -1042,15 +1042,8 @@ def _require_payroll_feature_scope_from_request(
     # 4. Resolve available blocks from Seat (class-scoped)
     requested_block = (request.values.get('cwi_block') or request.values.get('block') or '').strip().upper()
 
-    blocks = (
-        db.session.query(ClassEconomy.section)
-        .join(ClassEconomy, ClassEconomy.class_id == Seat.class_id)
-        .filter(Seat.class_id == resolved_class_id, ClassEconomy.section.isnot(None))
-        .distinct()
-        .order_by(ClassEconomy.section.asc())
-        .all()
-    )
-    available_blocks = [r[0] for r in blocks if r[0]]
+    class_row = ClassEconomy.query.filter_by(class_id=resolved_class_id).first()
+    available_blocks = [class_row.section] if class_row and class_row.section else []
 
     if requested_block:
         if requested_block not in available_blocks:
@@ -1065,9 +1058,8 @@ def _require_payroll_feature_scope_from_request(
     # 5. Verify feature is enabled
     enabled = "payroll" in ClassFeature.enabled_names_for_class(resolved_class_id)
 
-    _class_row = ClassEconomy.query.filter_by(class_id=resolved_class_id).first()
     return {
-        'join_code': _class_row.join_code if _class_row else None,
+        'join_code': class_row.join_code if class_row else None,
         'class_id': resolved_class_id,
         'block': resolved_block,
         'teacher_seat': canonical_seat,
@@ -1141,7 +1133,6 @@ def _hard_delete_class_scope(class_id, canonical_context):
     invalid_scope_rows = []
     scoped_models = (
         ("ledger_transaction", Transaction),
-        ("tap_events", TapEvent),
         ("hall_pass_logs", HallPassLog),
         ("student_items", StorePurchase),
         ("analytics_events", AnalyticsEvent),
@@ -1159,9 +1150,16 @@ def _hard_delete_class_scope(class_id, canonical_context):
         count = db.session.query(model).filter(
             join_code_column == join_code,
             class_id_column.is_(None),
-        ).count()
+            ).count()
         if count:
             invalid_scope_rows.append(f"{label}={count}")
+    if sa.inspect(db.engine).has_table("tap_events"):
+        count = db.session.query(TapEvent).filter(
+            TapEvent.join_code == join_code,
+            TapEvent.class_id.is_(None),
+        ).count()
+        if count:
+            invalid_scope_rows.append(f"tap_events={count}")
     if invalid_scope_rows:
         message = (
             f"class_id NULL rows detected for class_id={class_id} join_code={join_code}: "
@@ -1209,7 +1207,8 @@ def _hard_delete_class_scope(class_id, canonical_context):
         RedemptionEvent.purchase_id.in_(sa.select(store_purchase_ids_subq))
     ).delete(synchronize_session=False)
     StorePurchase.query.filter(StorePurchase.class_id == class_id).delete(synchronize_session=False)
-    TapEvent.query.filter(TapEvent.class_id == class_id).delete(synchronize_session=False)
+    if sa.inspect(db.engine).has_table("tap_events"):
+        TapEvent.query.filter(TapEvent.class_id == class_id).delete(synchronize_session=False)
     HallPassLog.query.filter(HallPassLog.class_id == class_id).delete(synchronize_session=False)
     RentPayment.query.filter(RentPayment.class_id == class_id).delete(synchronize_session=False)
     SeatAttendanceState.query.filter(SeatAttendanceState.class_id == class_id).delete(synchronize_session=False)
@@ -1263,11 +1262,19 @@ def _hard_delete_class_scope(class_id, canonical_context):
             .filter(StorePurchase.store_item_id.in_(sa.select(deletable_store_item_ids)))
             .subquery()
         )
+        class_item_student_item_ids = (
+            db.session.query(StudentItem.id)
+            .filter(StudentItem.store_item_id.in_(sa.select(deletable_store_item_ids)))
+            .subquery()
+        )
         RedemptionEvent.query.filter(
             RedemptionEvent.purchase_id.in_(sa.select(class_item_purchase_ids))
         ).delete(synchronize_session=False)
         StorePurchase.query.filter(
             StorePurchase.store_item_id.in_(sa.select(deletable_store_item_ids))
+        ).delete(synchronize_session=False)
+        StudentItem.query.filter(
+            StudentItem.store_item_id.in_(sa.select(deletable_store_item_ids))
         ).delete(synchronize_session=False)
         StoreItem.query.filter(
             StoreItem.id.in_(sa.select(deletable_store_item_ids))
@@ -2803,14 +2810,17 @@ def dashboard():
     )
 
     # Recent attendance logs (limited to 5 for display)
-    raw_logs = (
-        db.session.query(TapEvent, Seat)
-        .join(Seat, TapEvent.seat_id == Seat.id)
-        .filter(Seat.class_id.in_(teacher_class_ids))
-        .order_by(TapEvent.timestamp.desc())
-        .limit(5)
-        .all()
-    )
+    if sa.inspect(db.engine).has_table("tap_events"):
+        raw_logs = (
+            db.session.query(TapEvent, Seat)
+            .join(Seat, TapEvent.seat_id == Seat.id)
+            .filter(Seat.class_id.in_(teacher_class_ids))
+            .order_by(TapEvent.timestamp.desc())
+            .limit(5)
+            .all()
+        )
+    else:
+        raw_logs = []
     recent_logs = []
     for log, seat in raw_logs:
         recent_logs.append({
@@ -4148,7 +4158,11 @@ def students():
             .join(IdentityProfile, IdentityProfile.seat_id == Seat.id)
             .filter(Seat.id.in_(active_seat_ids))
             .all(),
-            key=lambda seat: (((seat.class_economy.section if seat.class_economy else "").lower()), (seat.identity_profile.first_name if seat.identity_profile else "").lower(), seat.id),
+            key=lambda seat: (
+                ((seat.class_economy.section if seat.class_economy and seat.class_economy.section else "").lower()),
+                (seat.identity_profile.first_name if seat.identity_profile else "").lower(),
+                seat.id,
+            ),
         )
         if active_seat_ids else []
     )
@@ -4415,7 +4429,7 @@ def student_detail_public(actor_public_id):
     )
 
     transactions_query = Transaction.query.filter(tx_scope)
-    latest_tap_event_query = TapEvent.query.filter(tap_scope)
+    latest_tap_event_query = TapEvent.query.filter(tap_scope) if sa.inspect(db.engine).has_table("tap_events") else None
 
     transactions = transactions_query.order_by(Transaction.timestamp.desc()).all()
     store_purchases = (
@@ -4427,8 +4441,11 @@ def student_detail_public(actor_public_id):
     if class_id:
         store_purchases = store_purchases.filter(StorePurchase.class_id == class_id)
     store_purchases = store_purchases.order_by(StorePurchase.purchased_at.desc()).all()
-    # Fetch most recent TapEvent for this student
-    latest_tap_event = latest_tap_event_query.order_by(TapEvent.timestamp.desc()).first()
+    # Fetch most recent TapEvent for this student when the legacy table is present.
+    latest_tap_event = (
+        latest_tap_event_query.order_by(TapEvent.timestamp.desc()).first()
+        if latest_tap_event_query is not None else None
+    )
 
     scoped_seat = (
         Seat.query
@@ -4437,6 +4454,9 @@ def student_detail_public(actor_public_id):
         .first()
         if class_id else None
     )
+
+    if not sa.inspect(db.engine).has_table("tap_events"):
+        student.__dict__["tap_events"] = []
 
     # Get the active insurance enrollment scoped to the current class and seat.
     active_insurance = (
@@ -5650,10 +5670,27 @@ def store_management():
         except ValueError:
             flash("Invalid audit action filter.", "warning")
 
-    live_query = RedemptionAuditLog.query.filter(
-        RedemptionAuditLog.user_id == user_id,
-        RedemptionAuditLog.source == RedemptionAuditSource.LIVE,
-        RedemptionAuditLog.class_id == selected_scope['class_id'],
+    live_query = (
+        db.session.query(
+            RedemptionAuditLog.id.label("id"),
+            RedemptionAuditLog.student_item_id.label("student_item_id"),
+            RedemptionAuditLog.class_display_label.label("class_display_label"),
+            RedemptionAuditLog.action.label("action"),
+            RedemptionAuditLog.notes.label("notes"),
+            RedemptionAuditLog.user_id.label("user_id"),
+            RedemptionAuditLog.class_id.label("class_id"),
+            RedemptionAuditLog.seat_id.label("seat_id"),
+            RedemptionAuditLog.join_code.label("join_code"),
+            RedemptionAuditLog.timestamp.label("timestamp"),
+            RedemptionAuditLog.source.label("source"),
+            Seat,
+        )
+        .outerjoin(Seat, RedemptionAuditLog.seat_id == Seat.id)
+        .filter(
+            RedemptionAuditLog.user_id == user_id,
+            RedemptionAuditLog.source == RedemptionAuditSource.LIVE,
+            RedemptionAuditLog.class_id == selected_scope['class_id'],
+        )
     )
     if audit_class:
         live_query = live_query.filter(RedemptionAuditLog.class_display_label == audit_class)
@@ -5680,7 +5717,9 @@ def store_management():
         audit_student_lower = audit_student.lower()
         live_rows = [
             row for row in live_rows
-            if audit_student_lower in row.resolved_student_display_name.lower()
+            if audit_student_lower in (
+                (row.Seat.identity_profile.full_name if row.Seat and row.Seat.identity_profile else "Unknown")
+            ).lower()
         ]
     live_keys = {
         (row.id, row.action.value if hasattr(row.action, 'value') else row.action)
@@ -5690,7 +5729,7 @@ def store_management():
 
     live_serialized = [{
         'student_item_id': row.student_item_id,
-        'student_display_name': row.resolved_student_display_name,
+        'student_display_name': row.Seat.identity_profile.full_name if row.Seat and row.Seat.identity_profile else "Unknown",
         'class_display_label': row.class_display_label,
         'action': row.action.value if hasattr(row.action, 'value') else row.action,
         'notes': row.notes,
@@ -6069,6 +6108,7 @@ def _calculate_base_rent_amount(rent_settings: RentSettings, current_year: int, 
 
 
 @admin_bp.route('/rent-settings', methods=['GET', 'POST'])
+@feat_shell("FEAT-ADMN-001")
 @admin_required
 def rent_settings():
     """Configure rent settings."""
@@ -7146,7 +7186,7 @@ def insurance_management():
 
     insurance_recommendation = _build_insurance_recommendation_context(
         g.canonical_context,
-        block=settings_block,
+        class_id=selected_class_id,
         charge_frequency=form.charge_frequency.data or 'monthly',
     )
 
@@ -7436,6 +7476,7 @@ def view_student_policy(enrollment_id):
 
 
 @admin_bp.route('/insurance/claim/<int:claim_id>', methods=['GET', 'POST'])
+@feat_shell("FEAT-ADMN-001")
 @admin_required
 def process_claim(claim_id):
     """Process insurance claim with auto-deposit for monetary claims."""
@@ -7603,6 +7644,7 @@ def process_claim(claim_id):
     if request.method == 'POST' and form.validate_on_submit():
         old_status = claim.status
         new_status = form.status.data
+        scope = g.canonical_context
 
         is_monetary_claim = claim_type != 'non_monetary'
         requires_payout = is_monetary_claim and new_status in ('approved', 'paid') and old_status not in ('approved', 'paid')
@@ -7642,12 +7684,21 @@ def process_claim(claim_id):
             flash("Claim has been rejected.", "warning")
 
         try:
+            claim_scope = Scope(
+                class_id=ctx.class_id,
+                join_code=enrollment.join_code,
+                actor_id=ctx.user_id,
+                role="teacher",
+                user_id=ctx.user_id,
+                block=getattr(getattr(enrollment, "seat", None), "class_economy", None).section if getattr(getattr(enrollment, "seat", None), "class_economy", None) else None,
+                seat_id=ctx.seat_id,
+            )
             with FEATContext(
                 "FEAT-ADMN-001",
                 idempotency_key=f"feat:claim-resolution:{claim.id}:{new_status}",
             ):
                 execute_insurance_claim_resolution(
-                    scope=scope,
+                    scope=claim_scope,
                     claim=claim,
                     enrollment=enrollment,
                     new_status=new_status,
@@ -8279,7 +8330,7 @@ def _run_payroll():
         # Get last payroll for the selected class only.
         last_payroll_tx = Transaction.query.filter_by(
             type="payroll",
-            teacher_id=user_id,
+            user_id=user_id,
             join_code=selected_join_code,
         ).order_by(Transaction.timestamp.desc()).first()
         last_payroll_time = last_payroll_tx.timestamp if last_payroll_tx else None
@@ -8543,7 +8594,7 @@ def payroll():
         seat_join_code = join_code_by_class_id.get(seat_row.class_id)
         if not seat_join_code or seat_join_code not in my_join_codes:
             continue
-        seat_block = (seat_row.class_economy.section if seat_row and seat_row.class_economy else "").strip().upper()
+        seat_block = ((seat_row.class_economy.section if seat_row and seat_row.class_economy and seat_row.class_economy.section else "")).strip().upper()
         seat_ids_by_join_code[seat_join_code].add(seat_row.id)
         seat_id_by_student_block_class.setdefault(
             (seat_row.user_id, seat_block, seat_row.class_id),
