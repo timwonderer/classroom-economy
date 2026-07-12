@@ -55,3 +55,4 @@ tests/scratch_test.py
 patch.py
 fix_*.py
 debug_*.py
+pytest_result/
