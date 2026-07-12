@@ -23,7 +23,6 @@ def _login_student(client, student_id, join_code):
             class_id=seat.class_id,
             seat_id=seat.id,
             role="student",
-            join_code=join_code,
         )
 
 
@@ -35,7 +34,6 @@ def _login_admin(client, user_id):
 def _create_student(teacher, first_name, join_code, block='A'):
     class_row = create_class_scope(
         teacher_user=teacher,
-        join_code=join_code,
         display_name=block,
     )
     student = make_student_identity(class_id=class_row.class_id, first_name=first_name, last_name='S')

@@ -185,7 +185,6 @@ class TestClassFeatures:
                 class_id=economy_b.class_id,
                 seat_id=teacher_seat.id,
                 role="teacher",
-                join_code=economy_b.join_code,
             )
             assert is_admin_feature_enabled(g.canonical_context, 'insurance') is False
 
@@ -285,7 +284,6 @@ class TestFeatureSettingsRoutes:
         """Test that feature settings page is accessible when logged in."""
         economy = create_class_scope(
         teacher_user=test_admin,
-            join_code="FEATSET1",
             display_name="Feature Settings",
         )
         db.session.commit()
@@ -312,7 +310,6 @@ class TestOnboardingRoutes:
 
         economy = create_class_scope(
         teacher_user=test_admin,
-            join_code="ONBRD01",
             display_name="Onboarding",
         )
         db.session.commit()

@@ -65,7 +65,6 @@ def _create_student(teacher, first_name, join_code, block='A'):
     db.session.flush()
     class_row = create_class_scope(
         teacher_user=teacher,
-        join_code=join_code,
         display_name=block,
     )
     seat = Seat(
@@ -84,7 +83,6 @@ def _create_student(teacher, first_name, join_code, block='A'):
         seat_id=seat.id,
         user_id=student_user.id,
         class_id=class_row.class_id,
-        join_code=join_code,
         amount=Decimal('100.00'),
         account_type='checking',
         type='deposit',

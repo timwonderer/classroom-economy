@@ -18,7 +18,6 @@ def _login_admin(client, *, user_id: int, class_id: str, join_code: str):
             class_id=class_id,
             seat_id=teacher_seat.id,
             role="teacher",
-            join_code=join_code,
         )
 
 

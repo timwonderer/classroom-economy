@@ -99,7 +99,6 @@ def test_rent_items_display_before_due_date(client, setup_rent_with_items):
             class_id=data['student'].class_id,
             seat_id=data['student'].id,
             role="student",
-            join_code=data['join_code'],
         )
 
     response = client.get('/student/rent')
@@ -128,7 +127,6 @@ def test_rent_items_display_after_due_date(client, setup_rent_with_items):
             class_id=data['student'].class_id,
             seat_id=data['student'].id,
             role="student",
-            join_code=data['join_code'],
         )
 
     response = client.get('/student/rent')
@@ -172,7 +170,6 @@ def test_overdue_rent_payment_uses_coverage_month_in_transaction_description(cli
             class_id=data['student'].class_id,
             seat_id=data['student'].id,
             role="student",
-            join_code=data['join_code'],
         )
 
     response = client.post('/student/rent/pay/A', follow_redirects=False)
@@ -210,7 +207,6 @@ def test_overdue_current_period_does_not_show_future_due_countdown(client, setup
             class_id=data['student'].class_id,
             seat_id=data['student'].id,
             role="student",
-            join_code=data['join_code'],
         )
 
     response = client.get('/student/rent')
@@ -236,7 +232,6 @@ def test_days_until_due_calculation(client, setup_rent_with_items):
             class_id=data['student'].class_id,
             seat_id=data['student'].id,
             role="student",
-            join_code=data['join_code'],
         )
 
     response = client.get('/student/rent')
@@ -266,7 +261,6 @@ def test_status_text_more_than_7_days(client, setup_rent_with_items):
             class_id=data['student'].class_id,
             seat_id=data['student'].id,
             role="student",
-            join_code=data['join_code'],
         )
 
     response = client.get('/student/rent')
@@ -293,7 +287,6 @@ def test_status_text_between_3_and_7_days(client, setup_rent_with_items):
             class_id=data['student'].class_id,
             seat_id=data['student'].id,
             role="student",
-            join_code=data['join_code'],
         )
 
     response = client.get('/student/rent')
@@ -319,7 +312,6 @@ def test_status_text_within_2_days(client, setup_rent_with_items):
             class_id=data['student'].class_id,
             seat_id=data['student'].id,
             role="student",
-            join_code=data['join_code'],
         )
 
     response = client.get('/student/rent')
@@ -347,7 +339,6 @@ def test_status_text_past_due(client, setup_rent_with_items):
             class_id=data['student'].class_id,
             seat_id=data['student'].id,
             role="student",
-            join_code=data['join_code'],
         )
 
     response = client.get('/student/rent')
@@ -372,7 +363,6 @@ def test_status_text_due_today(client, setup_rent_with_items):
             class_id=data['student'].class_id,
             seat_id=data['student'].id,
             role="student",
-            join_code=data['join_code'],
         )
 
     response = client.get('/student/rent')
@@ -401,7 +391,6 @@ def test_status_text_no_rent_yet(client, setup_rent_with_items):
             class_id=data['student'].class_id,
             seat_id=data['student'].id,
             role="student",
-            join_code=data['join_code'],
         )
 
     response = client.get('/student/rent')
@@ -422,7 +411,6 @@ def test_rent_items_show_store_availability(client, setup_rent_with_items):
             class_id=data['student'].class_id,
             seat_id=data['student'].id,
             role="student",
-            join_code=data['join_code'],
         )
 
     response = client.get('/student/rent')
@@ -452,7 +440,6 @@ def test_incremental_rent_form_shows_even_when_full_balance_is_short(client, set
             class_id=data['student'].class_id,
             seat_id=data['student'].id,
             role="student",
-            join_code=data['join_code'],
         )
 
     response = client.get('/student/rent')

@@ -401,7 +401,6 @@ def test_different_expected_hours_per_block(client):
             class_id=class_a.class_id,
             seat_id=teacher_seat_a.id,
             role="teacher",
-            join_code=class_a.join_code,
         )
 
     # Test Block A
@@ -422,7 +421,6 @@ def test_different_expected_hours_per_block(client):
             class_id=class_b.class_id,
             seat_id=teacher_seat_b.id,
             role="teacher",
-            join_code=class_b.join_code,
         )
     response_b = client.post(
         '/admin/api/economy/analyze',
@@ -1083,7 +1081,6 @@ def test_analyze_block_prefers_join_code_scoped_payroll_settings(client):
             class_id=class_scope.class_id,
             seat_id=teacher_seat.id,
             role="teacher",
-            join_code=class_scope.join_code,
         )
 
     response = client.post('/admin/api/economy/analyze', json={'class_id': class_scope.class_id})

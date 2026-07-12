@@ -356,7 +356,6 @@ def student_page(app, client, axe_live_server, browser, axe_script):
             class_id=str(class_id),
             seat_id=seat_id or 0,
             role="student",
-            join_code=join_code,
         )
         sess["last_activity"] = sess["login_time"]
 

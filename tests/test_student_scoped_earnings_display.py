@@ -21,7 +21,6 @@ def _login_student(client, student_id, join_code):
                     class_id=student_seat.class_id,
                     seat_id=student_seat.id,
                     role="student",
-                    join_code=join_code,
                 )
 
 

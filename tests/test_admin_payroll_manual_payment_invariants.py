@@ -59,7 +59,6 @@ def test_payroll_scope_seat_not_found_raises_invariant(client):
 
     class_scope = create_class_scope(
         teacher_user=teacher,
-        join_code="INVALID1",
         display_name="Invalid Seat Class",
     )
     db.session.commit()

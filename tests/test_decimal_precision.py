@@ -374,7 +374,6 @@ class TestDecimalPrecision:
                 class_id=economy.class_id,
                 seat_id=seat.id,
                 role="student",
-                join_code=join_code,
             )
             sess['login_time'] = datetime.now(timezone.utc).isoformat()
             sess['last_activity'] = datetime.now(timezone.utc).isoformat()
@@ -389,7 +388,6 @@ class TestDecimalPrecision:
 
         rent_payment = RentPayment.query.filter_by(
             user_id=student_user_id,
-            join_code=join_code,
         ).order_by(RentPayment.id.desc()).first()
         assert rent_payment is not None
         assert rent_payment.late_fee_charged == Decimal('0.00')

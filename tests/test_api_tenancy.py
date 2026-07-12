@@ -87,7 +87,6 @@ def _login_admin(client, admin: User, join_code: str):
             class_id=class_row.class_id,
             seat_id=teacher_seat.id,
             role="teacher",
-            join_code=join_code,
         )
         sess["last_activity"] = datetime.now(timezone.utc).isoformat()
 
@@ -154,7 +153,6 @@ def _create_class_scope(teacher: User, student: Seat, join_code: str):
     if not ClassEconomy.query.filter_by(join_code=join_code, user_id=teacher.id).first():
         create_class_scope(
             teacher_user=teacher,
-            join_code=join_code,
         )
         db.session.flush()
     else:
@@ -178,7 +176,6 @@ def _login_student(client, student: Seat, join_code: str | None = None):
                             class_id=class_row.class_id,
                             seat_id=seat.id,
                             role="student",
-                            join_code=join_code,
                         )
                     if user:
                         user.last_active_class_id = class_row.class_id
@@ -487,7 +484,6 @@ def test_hall_pass_available_types_rejects_out_of_scope_join_code(client):
     _login_student(client, student, join_code="HALLS1")
     teacher_user_id = _get_teacher_user_id(teacher)
     other_scope = ClassEconomy(
-        join_code="OTHER999",
         user_id=teacher_user_id,
         status="active",
     )
@@ -534,7 +530,6 @@ def test_student_seat_context_rejects_unclaimed_seat(client):
             class_id=class_row.class_id,
             seat_id=unclaimed.id,
             role="student",
-            join_code="UNCL1",
         )
 
     response = client.get("/student/payroll", follow_redirects=False)
@@ -572,7 +567,6 @@ def test_student_seat_context_rejects_cross_user_seat_id(client):
             class_id=bob_class.class_id,
             seat_id=bob_seat.id,
             role="student",
-            join_code="SEATB1",
         )
 
         assert get_current_student_seat() is None

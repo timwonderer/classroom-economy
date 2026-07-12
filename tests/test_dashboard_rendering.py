@@ -51,7 +51,6 @@ def test_student_dashboard_rendering(client):
             class_id=seat.class_id,
             seat_id=seat.id,
             role="student",
-            join_code="RENDER1",
         )
 
     response = client.get('/student/dashboard')

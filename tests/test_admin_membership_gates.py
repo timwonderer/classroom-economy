@@ -85,7 +85,6 @@ def test_delete_join_code_requires_confirmation(client):
             class_id=class_row.class_id,
             seat_id=Seat.query.filter_by(class_id=class_row.class_id, role="teacher").first().id,
             role="teacher",
-            join_code="CONF001",
         )
 
     # 1. Missing confirmation -> 400
@@ -142,7 +141,6 @@ def test_issues_queue_respects_current_join_code_membership_scope(client):
                 actor_public_id="seat-public-issue-gate-a",
                 class_id=class_a.class_id,
                 seat_id=seat_a.id,
-                join_code="ISSGA1",
                 category_id=category.id,
                 issue_type="transaction",
                 student_explanation="Issue for class A",
@@ -154,7 +152,6 @@ def test_issues_queue_respects_current_join_code_membership_scope(client):
                 actor_public_id="seat-public-issue-gate-b",
                 class_id=class_b.class_id,
                 seat_id=seat_b.id,
-                join_code="ISSGB1",
                 category_id=category.id,
                 issue_type="transaction",
                 student_explanation="Issue for class B",
@@ -170,7 +167,6 @@ def test_issues_queue_respects_current_join_code_membership_scope(client):
             class_id=class_a.class_id,
             seat_id=Seat.query.filter_by(class_id=class_a.class_id, role="teacher").first().id,
             role="teacher",
-            join_code="ISSGA1",
         )
 
     response = client.get("/admin/issues")
@@ -232,7 +228,6 @@ def test_add_individual_student_creates_single_student_seat_for_new_student(clie
             class_id=class_row_sing.class_id,
             seat_id=teacher_seat_sing.id,
             role="teacher",
-            join_code="SING001",
         )
 
     initial_student_count = db.session.query(Seat).filter(Seat.role == "student").count()
@@ -268,7 +263,6 @@ def test_add_manual_student_creates_single_student_seat_for_new_student(client):
 
         create_class_scope(
             teacher_user=admin,
-            join_code="MANU001"
         )
         db.session.commit()
 
@@ -283,7 +277,6 @@ def test_add_manual_student_creates_single_student_seat_for_new_student(client):
             class_id=class_row_manu.class_id,
             seat_id=teacher_seat_manu.id,
             role="teacher",
-            join_code="MANU001",
         )
 
     initial_student_count = db.session.query(Seat).filter(Seat.role == "student").count()
@@ -341,7 +334,6 @@ def test_add_individual_student_uses_selected_class_join_code_when_block_has_oth
             class_id=class_row_new.class_id,
             seat_id=teacher_seat_new.id,
             role="teacher",
-            join_code="NEWA001",
         )
 
     response = client.post(

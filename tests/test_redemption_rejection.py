@@ -65,7 +65,6 @@ def test_reject_redemption_refunds_student(client, teacher_admin, student_in_cla
             class_id=seat.class_id,
             seat_id=seat.id,
             role="student",
-            join_code='REJECT123',
         )
 
     purchase_resp = client.post('/api/purchase-item', json={
@@ -126,7 +125,6 @@ def test_reject_redemption_refunds_single_unit_from_multi_quantity_purchase(clie
     item = StoreItem(
         user_id=teacher_admin.id,
         class_id=_class_id_for('REJECT123'),
-        join_code='REJECT123',
         name='Bulk Item',
         price=Decimal('10.00'),
         item_type='delayed',
@@ -152,7 +150,6 @@ def test_reject_redemption_refunds_single_unit_from_multi_quantity_purchase(clie
             class_id=seat.class_id,
             seat_id=seat.id,
             role="student",
-            join_code='REJECT123',
         )
 
     purchase_resp = client.post('/api/purchase-item', json={

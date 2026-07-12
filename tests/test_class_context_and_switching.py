@@ -4,8 +4,10 @@ import pytest
 from flask import session
 
 from app.extensions import db
+from app.feats.base import FEATContext
 from app.models import ClassEconomy, Seat, User, UserRole
-from tests.helpers.class_scope import make_student_identity
+from tests.helpers.v2_fixtures import make_admin
+from tests.helpers.class_scope import create_class_scope, make_student_identity
 from tests.helpers.canonical_session import set_canonical_context
 
 
@@ -19,28 +21,26 @@ def _get_inject_class_context_processor(client):
 
 @pytest.fixture
 def setup_multi_class_student(client):
-    teacher1 = User(user_role=UserRole.TEACHER, username_hash="teacher1_hash", username_lookup_hash="teacher1_lookup")
-    teacher2 = User(user_role=UserRole.TEACHER, username_hash="teacher2_hash", username_lookup_hash="teacher2_lookup")
-    teacher3 = User(user_role=UserRole.TEACHER, username_hash="teacher3_hash", username_lookup_hash="teacher3_lookup")
-    db.session.add_all([teacher1, teacher2, teacher3])
+    teacher1 = make_admin("teacher1_mcs", "t1secret")
+    teacher2 = make_admin("teacher2_mcs", "t2secret")
+    teacher3 = make_admin("teacher3_mcs", "t3secret")
     db.session.flush()
 
-    class_1a = ClassEconomy(join_code="TEACHER1A", user_id=teacher1.id, display_name="Class 1A")
-    class_2b = ClassEconomy(join_code="TEACHER2B", user_id=teacher2.id, display_name="Class 2B")
-    class_3c = ClassEconomy(join_code="TEACHER3C", user_id=teacher3.id, display_name="Class 3C")
-    class_unclaimed = ClassEconomy(join_code="UNCLAIMEDZ", user_id=teacher1.id, display_name="Unclaimed Z")
-    db.session.add_all([class_1a, class_2b, class_3c, class_unclaimed])
-    db.session.flush()
+    class_1a = create_class_scope(teacher_user=teacher1, join_code="TEACHER1A", display_name="Class 1A", section="A")
+    class_2b = create_class_scope(teacher_user=teacher2, join_code="TEACHER2B", display_name="Class 2B", section="B")
+    class_3c = create_class_scope(teacher_user=teacher3, join_code="TEACHER3C", display_name="Class 3C", section="C")
+    class_unclaimed = create_class_scope(teacher_user=teacher1, join_code="UNCLAIMEDZ", display_name="Unclaimed Z")
 
-    # Create canonical student in class_1a; then manually add seats for other classes
     student = make_student_identity(class_id=class_1a.class_id, first_name="MultiClass", last_name="S", claimed=True)
-    db.session.flush()
 
     seat1 = Seat.query.filter_by(user_id=student.user_id, class_id=class_1a.class_id, role="student").first()
-    seat2 = Seat(user_id=student.user_id, class_id=class_2b.class_id, role="student", claimed_at=datetime.now(timezone.utc))
-    seat3 = Seat(user_id=student.user_id, class_id=class_3c.class_id, role="student", claimed_at=datetime.now(timezone.utc))
-    db.session.add_all([seat2, seat3])
-    db.session.flush()
+
+    with FEATContext("FEAT-IDEN-001", idempotency_key="setup_multi_class_student:extra_seats"):
+        seat2 = Seat(user_id=student.user_id, class_id=class_2b.class_id, role="student", claimed_at=datetime.now(timezone.utc))
+        seat3 = Seat(user_id=student.user_id, class_id=class_3c.class_id, role="student", claimed_at=datetime.now(timezone.utc))
+        db.session.add_all([seat2, seat3])
+        db.session.flush()
+
     db.session.commit()
 
     return {
@@ -57,17 +57,11 @@ def setup_multi_class_student(client):
 
 @pytest.fixture
 def setup_single_class_student(client):
-    teacher = User(user_role=UserRole.TEACHER, username_hash="single_teacher_hash", username_lookup_hash="single_teacher_lookup")
-    db.session.add(teacher)
+    teacher = make_admin("single_teacher_mcs", "single_secret")
     db.session.flush()
 
-    class_single = ClassEconomy(join_code="SINGLED", user_id=teacher.id, display_name="Single D")
-    db.session.add(class_single)
-    db.session.flush()
-
+    class_single = create_class_scope(teacher_user=teacher, join_code="SINGLED", display_name="Single D")
     student = make_student_identity(class_id=class_single.class_id, first_name="SingleClass", last_name="X", claimed=True)
-    db.session.flush()
-
     seat = Seat.query.filter_by(user_id=student.user_id, class_id=class_single.class_id, role="student").first()
     db.session.commit()
 
@@ -92,7 +86,6 @@ def test_inject_class_context_no_claimed_seats(client, setup_multi_class_student
             class_id=setup_multi_class_student["classes"]["TEACHER2B"].class_id,
             seat_id=setup_multi_class_student["seats"][1].id,
             role="student",
-            join_code="TEACHER2B",
         )
         ctx_processor = _get_inject_class_context_processor(client)
         context = ctx_processor()
@@ -110,7 +103,6 @@ def test_inject_class_context_requires_explicit_selection(client, setup_multi_cl
             class_id=setup_multi_class_student["classes"]["TEACHER1A"].class_id,
             seat_id=setup_multi_class_student["seats"][0].id,
             role="student",
-            join_code="TEACHER1A",
         )
         ctx_processor = _get_inject_class_context_processor(client)
         context = ctx_processor()
@@ -128,7 +120,6 @@ def test_inject_class_context_uses_session_join_code(client, setup_multi_class_s
             class_id=class_row.class_id,
             seat_id=setup_multi_class_student["seats"][1].id,
             role="student",
-            join_code="TEACHER2B",
         )
         ctx_processor = _get_inject_class_context_processor(client)
         context = ctx_processor()
@@ -147,7 +138,6 @@ def test_inject_class_context_available_classes_list(client, setup_multi_class_s
             class_id=class_row.class_id,
             seat_id=setup_multi_class_student["seats"][1].id,
             role="student",
-            join_code="TEACHER2B",
         )
         ctx_processor = _get_inject_class_context_processor(client)
         context = ctx_processor()
@@ -168,7 +158,6 @@ def test_inject_class_context_handles_missing_teacher(client, setup_single_class
             class_id=setup_single_class_student["seat"].class_id,
             seat_id=setup_single_class_student["seat"].id,
             role="student",
-            join_code="SINGLED",
         )
         ctx_processor = _get_inject_class_context_processor(client)
         context = ctx_processor()
@@ -200,7 +189,6 @@ def test_switch_class_success(client, setup_multi_class_student):
             class_id=setup_multi_class_student["classes"]["TEACHER1A"].class_id,
             seat_id=setup_multi_class_student["seats"][0].id,
             role="student",
-            join_code="TEACHER1A",
     )
 
     target_class_id = setup_multi_class_student["classes"]["TEACHER2B"].class_id
@@ -241,7 +229,6 @@ def test_switch_class_unauthorized(client, setup_multi_class_student):
             class_id=setup_multi_class_student["classes"]["TEACHER1A"].class_id,
             seat_id=setup_multi_class_student["seats"][0].id,
             role="student",
-            join_code="TEACHER1A",
         )
     response = client.post("/student/switch-class/invalid-class-id")
     assert response.status_code == 403
@@ -263,7 +250,6 @@ def test_switch_class_nonexistent_join_code(client, setup_multi_class_student):
             class_id=setup_multi_class_student["classes"]["TEACHER1A"].class_id,
             seat_id=setup_multi_class_student["seats"][0].id,
             role="student",
-            join_code="TEACHER1A",
         )
     response = client.post("/student/switch-class/not-a-real-class")
     assert response.status_code == 403
@@ -271,9 +257,10 @@ def test_switch_class_nonexistent_join_code(client, setup_multi_class_student):
 
 def test_switch_class_unclaimed_seat(client, setup_multi_class_student):
     student = setup_multi_class_student["student"]
-    unclaimed_seat = Seat(user_id=student.user_id, class_id=setup_multi_class_student["classes"]["UNCLAIMEDZ"].class_id, role="student")
-    db.session.add(unclaimed_seat)
-    db.session.commit()
+    with FEATContext("FEAT-IDEN-001", idempotency_key="test_switch_class_unclaimed_seat"):
+        unclaimed_seat = Seat(user_id=student.user_id, class_id=setup_multi_class_student["classes"]["UNCLAIMEDZ"].class_id, role="student")
+        db.session.add(unclaimed_seat)
+        db.session.flush()
     with client.session_transaction() as sess:
         set_canonical_context(
             sess,
@@ -281,7 +268,6 @@ def test_switch_class_unclaimed_seat(client, setup_multi_class_student):
             class_id=setup_multi_class_student["classes"]["TEACHER1A"].class_id,
             seat_id=setup_multi_class_student["seats"][0].id,
             role="student",
-            join_code="TEACHER1A",
         )
     response = client.post(f"/student/switch-class/{setup_multi_class_student['classes']['UNCLAIMEDZ'].class_id}")
     assert response.status_code == 403
@@ -296,7 +282,6 @@ def test_switch_class_proper_response_structure(client, setup_multi_class_studen
             class_id=setup_multi_class_student["classes"]["TEACHER1A"].class_id,
             seat_id=setup_multi_class_student["seats"][0].id,
             role="student",
-            join_code="TEACHER1A",
         )
     response = client.post(f"/student/switch-class/{setup_multi_class_student['classes']['TEACHER3C'].class_id}")
     assert response.status_code == 200
@@ -315,7 +300,6 @@ def test_switch_class_between_all_classes(client, setup_multi_class_student):
             class_id=setup_multi_class_student["classes"]["TEACHER1A"].class_id,
             seat_id=setup_multi_class_student["seats"][0].id,
             role="student",
-            join_code="TEACHER1A",
         )
 
     for join_code, block in [("TEACHER1A", "A"), ("TEACHER2B", "B"), ("TEACHER3C", "C"), ("TEACHER1A", "A")]:

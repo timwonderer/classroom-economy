@@ -23,7 +23,6 @@ def _login_teacher(client, *, teacher, class_row: ClassEconomy) -> None:
             class_id=class_row.class_id,
             seat_id=teacher_seat.id if teacher_seat else teacher.id,
             role="teacher",
-            join_code=class_row.join_code,
         )
 
 
@@ -51,7 +50,6 @@ def test_hall_pass_history_scoped_to_class(client):
     pass_a = HallPassLog(
         seat_id=seat_a.id,
         class_id=class_a.class_id,
-        join_code=class_a.join_code,
         reason="Bathroom",
         status="returned",
         period="Period1",
@@ -64,7 +62,6 @@ def test_hall_pass_history_scoped_to_class(client):
     pass_b = HallPassLog(
         seat_id=seat_b.id,
         class_id=class_b.class_id,
-        join_code=class_b.join_code,
         reason="Office",
         status="returned",
         period="Period2",

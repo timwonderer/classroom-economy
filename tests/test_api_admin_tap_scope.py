@@ -23,7 +23,6 @@ def _login_admin(client, user: User, join_code: str):
                     class_id=economy.class_id,
                     seat_id=teacher_seat.id,
                     role="teacher",
-                    join_code=join_code,
                 )
         elif join_code:
             sess["current_join_code"] = join_code
@@ -82,7 +81,6 @@ def test_get_tap_entries_requires_student_in_current_join_code(client):
             class_id=class_a.class_id,
             seat_id=teacher_a_seat.id,
             role="teacher",
-            join_code=class_a.join_code,
         )
     denied = client.get(f"/api/admin/tap-entries/{seat.id}")
     assert denied.status_code == 404
@@ -94,7 +92,6 @@ def test_get_tap_entries_requires_student_in_current_join_code(client):
             class_id=class_b.class_id,
             seat_id=teacher_b_seat.id,
             role="teacher",
-            join_code=class_b.join_code,
         )
     allowed = client.get(f"/api/admin/tap-entries/{seat.id}")
     assert allowed.status_code == 200
@@ -118,7 +115,6 @@ def test_delete_tap_entry_rejects_cross_join_code_context(client):
             class_id=class_a.class_id,
             seat_id=teacher_a_seat.id,
             role="teacher",
-            join_code=class_a.join_code,
         )
     denied = client.delete(f"/api/admin/tap-entries/{event.id}")
     assert denied.status_code == 404
@@ -132,7 +128,6 @@ def test_delete_tap_entry_rejects_cross_join_code_context(client):
             class_id=class_b.class_id,
             seat_id=teacher_b_seat.id,
             role="teacher",
-            join_code=class_b.join_code,
         )
     allowed = client.delete(f"/api/admin/tap-entries/{event.id}")
     assert allowed.status_code == 200

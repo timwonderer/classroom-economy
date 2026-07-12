@@ -234,7 +234,6 @@ def auth_student_context(app, client):
             class_id=class_id,
             seat_id=seat_id,
             role="student",
-            join_code=join_code,
         )
         
     return {
@@ -251,10 +250,8 @@ def auth_teacher_context(app, client):
         teacher = make_admin("access_teacher_t")
         db.session.flush()
 
-        join_code = "ACCESST2"
         class_row = create_class_scope(
             teacher=teacher,
-            join_code=join_code,
             block="A",
             display_name="A Period",
         )
@@ -292,7 +289,6 @@ def auth_teacher_context(app, client):
             class_id=class_id,
             seat_id=teacher_seat.id,
             role="teacher",
-            join_code=join_code,
         )
         sess['is_system_admin'] = False
 

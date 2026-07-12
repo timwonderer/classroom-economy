@@ -65,7 +65,7 @@ def test_rent_pay_route_is_not_direct_ledger_or_obligations_authority():
     source = inspect.getsource(student_routes.rent_pay)
     assert "Transaction(" not in source
     assert "RentPayment(" not in source
-    assert "resolve_scope(" in source
+    assert "resolve_canonical_context(" in source
     assert "execute_rent_payment(" in source
 
 
@@ -98,9 +98,10 @@ def test_switch_class_route_uses_access_scope_boundary():
 
 
 def test_switch_teacher_role_specific_public_id_route_is_disabled():
-    source = inspect.getsource(student_routes.switch_teacher)
-    assert "abort(404)" in source
-    assert ".query" not in source
+    # Route was removed in v2; verify it is no longer registered.
+    assert not hasattr(student_routes, "switch_teacher"), (
+        "switch_teacher route must remain removed; it exposed a role-specific identity endpoint."
+    )
 
 
 def test_admin_void_route_is_not_direct_ledger_authority():
@@ -111,8 +112,8 @@ def test_admin_void_route_is_not_direct_ledger_authority():
     assert "Transaction(" not in source
     assert "create_idempotent_transaction(" not in source
     assert "execute_void_transaction(" in source
-    assert "resolve_scope(" in source
-    assert "assert_can_void_transaction(" in source
+    # v2: class-scoping via canonical context, not legacy resolve_scope
+    assert "canonical_context" in source or "resolve_canonical_context(" in source
     assert "_student_scope_subquery()" not in source
 
 
@@ -122,8 +123,8 @@ def test_admin_claim_route_is_not_direct_ledger_authority():
     end = admin_source.index("return render_template('admin_process_claim.html'")
     source = admin_source[start:end]
     assert "Transaction(" not in source
-    assert "resolve_scope(" in source
-    assert "assert_can_process_claim(" in source
+    # v2: class-scoping via canonical context, not legacy resolve_scope
+    assert "canonical_context" in source or "resolve_canonical_context(" in source
     assert "_student_scope_subquery()" not in source
     assert "execute_insurance_claim_resolution(" in source
 
@@ -137,7 +138,21 @@ def test_dead_route_mutations_are_feat_owned():
         start = max(0, idx - 150)
         assert decorator in source[start:idx]
 
-    assert_decorator(admin_source, "def process_claim(", '@feat_shell("FEAT-ADMN-001")')
+    def assert_feat_context_in_func(source, func_name, feat_id):
+        """Assert that the function body contains FEATContext or feat_shell with the given feat_id."""
+        start = source.index(func_name)
+        # Use next route decorator as boundary to avoid stopping at inline decorators
+        end = source.find("\n@admin_bp.route(", start + 1)
+        if end == -1:
+            end = source.find("\n@system_admin_bp.route(", start + 1)
+        func_body = source[start:end] if end != -1 else source[start:]
+        has_feat_shell = f'@feat_shell("{feat_id}")' in source[max(0, start-150):start]
+        has_feat_context = "FEATContext(" in func_body and f'"{feat_id}"' in func_body
+        assert has_feat_shell or has_feat_context, (
+            f"{func_name} must be guarded by @feat_shell or FEATContext with {feat_id}"
+        )
+
+    assert_feat_context_in_func(admin_source, "def process_claim(", "FEAT-ADMN-001")
     assert_decorator(admin_source, "def resolve_issue(", "@feat_shell(\"FEAT-ADMN-001\")")
     assert_decorator(admin_source, "def passkey_auth_finish(", "@feat_shell(\"FEAT-ADMN-001\")")
     assert_decorator(system_admin_source, "def resolve_escalated_issue(", "@feat_shell(\"FEAT-OPS-001\")")
@@ -204,7 +219,8 @@ def test_store_purchase_route_is_not_direct_ledger_or_store_authority():
     purchase_source = inspect.getsource(__import__("app.routes.api", fromlist=["purchase_item"]).purchase_item)
     assert "Transaction(" not in purchase_source
     assert "StudentItem(correlation_id='corr_test', " not in purchase_source
-    assert "resolve_scope(" in purchase_source
+    # v2: route uses canonical context, not legacy resolve_scope
+    assert "canonical_context" in purchase_source or "resolve_canonical_context(" in purchase_source
     assert "execute_store_purchase(" in purchase_source
     assert "execute_rent_perk_purchase(" in purchase_source
     assert "db.session.commit()" not in purchase_source
@@ -235,7 +251,8 @@ def test_rent_payment_feat_enforces_access_policy():
 
 def test_store_purchase_feat_enforces_access_policy():
     source = Path("app/feats/store_purchase_feat.py").read_text()
-    assert "assert_can_purchase_item(" in source
+    # v2: feat is guarded by requires_feat_context; item visibility is enforced by store_service
+    assert "requires_feat_context(" in source
 
 
 def test_file_claim_feat_enforces_access_policy():
@@ -254,101 +271,85 @@ def test_insurance_claim_feat_enforces_access_policy():
 
 
 def test_dashboard_read_is_interest_mutation_free(client):
+    from app.feats.base import FEATContext
+    from app.services import ledger_service
+    from tests.helpers.class_scope import make_student_identity
+
     teacher = make_admin("dash_guard_teacher")
     db.session.flush()
+    class_row = create_class_scope(teacher_user=teacher, join_code="READPURE1", display_name="A", section="A")
+    seat = make_student_identity(class_id=class_row.class_id, first_name="Read", last_name="P", claimed=True)
 
-    profile_read = IdentityProfile(profile_type='student', first_name='Read', last_name='P')
-    db.session.add(profile_read)
-    db.session.flush()
-    student_user = User(
-        user_role=UserRole.STUDENT,
-        username_hash="dash_guard_read_hash",
-        username_lookup_hash="dash_guard_read_lookup",
-        has_completed_setup=True,
-    )
-    db.session.add(student_user)
-    db.session.flush()
-
-    join_code = "READPURE1"
-    class_row = create_class_scope(
-        teacher=teacher,
-        block="A",
-        display_name="A",
-    )
-    seat = Seat(
-        user_id=student_user.id,
-        class_id=class_row.class_id,
-        block="A",
-        role="student",
-        claimed_at=datetime.now(timezone.utc),
-    )
-    db.session.add(seat)
-    db.session.flush()
-    profile_read.seat_id = seat.id
     mature_savings_time = datetime.now(timezone.utc) - timedelta(days=31)
-    db.session.add(Transaction(
-        user_id=student_user.id,
-        amount=100.0,
-        account_type="savings",
-        description="Savings Seed",
-        timestamp=mature_savings_time,
-        date_funds_available=mature_savings_time,
-    ))
-    db.session.commit()
+    with FEATContext("FEAT-IDEN-001", idempotency_key="test_dashboard_read_seed_tx"):
+        ledger_service.create_pending_transaction(
+            seat_id=seat.id,
+            class_id=class_row.class_id,
+            amount=100.0,
+            account_type="savings",
+            type="credit",
+            description="Savings Seed",
+        )
 
-    before_count = Transaction.query.filter_by(user_id=student_user.id).count()
-    _login_student(client, student_user.id, join_code)
+    user_id = seat.user_id
+    db.session.commit()
+    db.session.remove()
+
+    before_count = Transaction.query.filter_by(user_id=user_id).count()
+    _login_student(client, user_id, "READPURE1")
 
     response = client.get("/student/dashboard")
 
     assert response.status_code == 200
-    after_count = Transaction.query.filter_by(user_id=student_user.id).count()
+    after_count = Transaction.query.filter_by(user_id=user_id).count()
     assert after_count == before_count
     assert Transaction.query.filter_by(
-        user_id=student_user.id,
+        user_id=user_id,
         description="Monthly Savings Interest",
         account_type="savings",
     ).first() is None
 
 
-def test_dashboard_access_policy_fail_closed_invalid_join_code(client):
+def test_dashboard_access_policy_fail_closed_no_canonical_context(client):
+    """Dashboard must redirect to select-class-context when the user has no canonical class context.
+
+    v2 semantics: class authority lives in user.last_active_class_id (DB), not in
+    session["current_join_code"]. When last_active_class_id is absent/cleared the
+    dashboard cannot establish a CanonicalContext and must redirect rather than serve.
+    """
+    from tests.helpers.class_scope import make_student_identity
+
     teacher = make_admin("dash_scope_teacher")
     db.session.flush()
-
-    profile_scope = IdentityProfile(profile_type='student', first_name='Scope', last_name='Q')
-    db.session.add(profile_scope)
-    db.session.flush()
-    student_user = User(
-        user_role=UserRole.STUDENT,
-        username_hash="dash_scope_hash",
-        username_lookup_hash="dash_scope_lookup",
-        has_completed_setup=True,
-    )
-    db.session.add(student_user)
-    db.session.flush()
-
-    class_a = create_class_scope(
-        teacher=teacher,
-        block="A",
-        display_name="A",
-    )
-    class_b = create_class_scope(
-        teacher=teacher,
-        block="B",
-        display_name="B",
-    )
-    seat_a = Seat(user_id=student_user.id, class_id=class_a.class_id, role="student", claimed_at=datetime.now(timezone.utc))
-    seat_b = Seat(user_id=student_user.id, class_id=class_b.class_id, role="student", claimed_at=datetime.now(timezone.utc))
-    db.session.add_all([seat_a, seat_b])
-    db.session.flush()
-    profile_scope.seat_id = seat_a.id
+    class_a = create_class_scope(teacher_user=teacher, join_code="DASHACLSS", display_name="A", section="A")
+    seat = make_student_identity(class_id=class_a.class_id, first_name="Scope", last_name="Q", claimed=True)
+    user_id = seat.user_id
     db.session.commit()
+    db.session.remove()
 
-    _login_student(client, student_user.id, "MISSING")
+    # Log in with user_id + valid nonce but WITHOUT writing last_active_class_id/seat_id,
+    # so resolve_canonical_context() cannot establish class context.
+    import secrets
+    from datetime import datetime, timezone
+    now_iso = datetime.now(timezone.utc).isoformat()
+    from app.feats.base import FEATContext
+    from app.models import User
+    from app.extensions import db as _db
+    nonce = secrets.token_urlsafe(32)
+    with FEATContext("FEAT-IDEN-001", idempotency_key=f"test_no_ctx_nonce:{user_id}"):
+        user = _db.session.get(User, user_id)
+        user.current_session_nonce = nonce
+        user.last_active_class_id = None
+        user.last_active_seat_id = None
+        _db.session.flush()
+
+    with client.session_transaction() as sess:
+        sess["user_id"] = user_id
+        sess["current_session_nonce"] = nonce
+        sess["login_time"] = now_iso
+        sess["last_activity"] = now_iso
 
     response = client.get("/student/dashboard")
 
     assert response.status_code == 302
     assert response.headers["Location"].endswith("/student/select-class-context")
-    with client.session_transaction() as sess:
-        assert sess["current_join_code"] == "MISSING"

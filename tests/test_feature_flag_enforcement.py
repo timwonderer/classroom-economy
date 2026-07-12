@@ -24,7 +24,6 @@ def _login_student(client, data, *, transfer_token=None):
             class_id=data['class_id'],
             seat_id=data['seat_id'],
             role="student",
-            join_code=data['join_code'],
         )
         sess['current_period'] = data.get('period', 'A')
         if transfer_token:
@@ -37,7 +36,6 @@ def setup_student_with_disabled_banking(client):
     teacher = make_admin("teacher1")
     db.session.flush()
 
-    join_code = "MATH1B"
     economy = create_class_scope(teacher_user=teacher, join_code=join_code, display_name='Math Period 1B')
     db.session.flush()
 
@@ -48,7 +46,6 @@ def setup_student_with_disabled_banking(client):
     user.passphrase_hash = generate_password_hash('password')
 
     db.session.add(Transaction(
-        join_code=join_code,
         class_id=economy.class_id,
         seat_id=student_seat.id,
         amount=100.0,
@@ -77,7 +74,6 @@ def setup_student_with_enabled_banking(client):
     teacher = make_admin("teacher_enabled_banking")
     db.session.flush()
 
-    join_code = "MATH1A"
     economy = create_class_scope(teacher_user=teacher, join_code=join_code, display_name='Math Period 1A')
     db.session.flush()
 
@@ -88,7 +84,6 @@ def setup_student_with_enabled_banking(client):
     user.passphrase_hash = generate_password_hash('carol_pass')
 
     db.session.add(Transaction(
-        join_code=join_code,
         class_id=economy.class_id,
         seat_id=student_seat.id,
         amount=100.0,
@@ -143,7 +138,6 @@ def test_payroll_allowed_when_payroll_enabled(client, setup_student_with_enabled
 def _create_admin_feature_scope(teacher, *, join_code, block, feature_name, enabled):
     economy = create_class_scope(
         teacher_user=teacher,
-        join_code=join_code,
         display_name=f'{feature_name.title()} Period {block}',
     )
     db.session.flush()
@@ -250,7 +244,6 @@ def test_student_rent_rejects_disabled_feature_scope(client):
     teacher = make_admin("teacher_rent_disabled")
     db.session.flush()
 
-    join_code = "RENT03"
     economy = create_class_scope(teacher_user=teacher, join_code=join_code, display_name='Rent Period 3')
     db.session.flush()
 

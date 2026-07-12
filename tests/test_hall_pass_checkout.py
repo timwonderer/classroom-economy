@@ -24,7 +24,6 @@ def _login_student(client, *, seat: Seat) -> None:
             class_id=seat.class_id,
             seat_id=seat.id,
             role="student",
-            join_code=class_row.join_code if class_row else None,
         )
 
 
@@ -37,7 +36,6 @@ def _login_teacher(client, *, teacher, class_row: ClassEconomy) -> None:
             class_id=class_row.class_id,
             seat_id=teacher_seat.id if teacher_seat else teacher.id,
             role="teacher",
-            join_code=class_row.join_code,
         )
 
 
@@ -69,7 +67,6 @@ def hp_ctx(client):
     hall_pass = HallPassLog(
         seat_id=student_seat.id,
         class_id=class_row.class_id,
-        join_code=class_row.join_code,
         reason="Bathroom",
         status="approved",
         period="Period1",
@@ -236,7 +233,6 @@ def test_checkout_blocked_by_simultaneous_limit(client, hp_ctx):
         other_pass = HallPassLog(
             seat_id=other_seat.id,
             class_id=class_row.class_id,
-            join_code=class_row.join_code,
             reason="Bathroom",
             status="left",
             period="Period1",

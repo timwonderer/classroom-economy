@@ -1175,7 +1175,7 @@ def dashboard():
         spending_this_month=float(round(spending_this_month, 2)),
         announcements=announcements,
         current_join_code=join_code,
-        scoped_total_earnings=_get_total_earnings_for_seat(student.id, class_id=context.class_id),
+        scoped_total_earnings=_get_total_earnings_for_seat(student.id, class_id=class_id),
     )
 
 

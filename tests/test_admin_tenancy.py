@@ -129,7 +129,6 @@ def test_shared_student_accessible_to_multiple_teachers(client):
             class_id=class_b.class_id,
             seat_id=teacher_b_seat.id,
             role="teacher",
-            join_code=class_b.join_code,
         )
 
     list_response = client.get("/admin/students")
@@ -154,7 +153,6 @@ def test_student_detail_recovers_from_stale_class_context(client):
                 type="bonus",
                 account_type="checking",
                 description="Scoped tx",
-                join_code=class_a.join_code,
                 class_id=class_a.class_id,
             ),
         )

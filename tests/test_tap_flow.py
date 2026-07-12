@@ -70,7 +70,6 @@ def test_dynamic_blocks_and_tap_flow(client):
             class_id=class_a.class_id,
             seat_id=seat.id,
             role="student",
-            join_code="JOIN-A",
         )
 
     j = client.post('/api/tap', json={'period': 'A', 'action': 'tap_in', 'pin': '0000'})
@@ -103,7 +102,6 @@ def test_invalid_period_and_action(client):
             class_id=class_row.class_id,
             seat_id=seat.id,
             role="student",
-            join_code="JOIN-T2",
         )
 
     resp = client.post('/api/tap', json={'period': 'Z', 'action': 'tap_in', 'pin': '0000'})
@@ -132,7 +130,6 @@ def test_server_state_json(client):
             class_id=class_row.class_id,
             seat_id=seat.id,
             role="student",
-            join_code="JOIN-SS",
         )
 
     client.post('/api/tap', json={'period': 'A', 'action': 'tap_in', 'pin': '0000'})

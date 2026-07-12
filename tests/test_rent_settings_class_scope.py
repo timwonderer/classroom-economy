@@ -17,7 +17,6 @@ def _login_canonical_admin(client, admin: User, *, class_id: str, join_code: str
             class_id=class_id,
             seat_id=teacher_seat.id if teacher_seat else admin.id,
             role="teacher",
-            join_code=join_code,
         )
 
 
@@ -27,7 +26,6 @@ def test_rent_settings_update_persists_class_scoped_row(client):
 
     class_row = create_class_scope(
         teacher_user=admin,
-        join_code="RENT001",
     )
     db.session.add(ClassFeature(class_id=class_row.class_id, feature_name="rent"))
     db.session.commit()
@@ -36,7 +34,6 @@ def test_rent_settings_update_persists_class_scoped_row(client):
         client,
         admin,
         class_id=class_row.class_id,
-        join_code=class_row.join_code,
     )
 
     response = client.post(
