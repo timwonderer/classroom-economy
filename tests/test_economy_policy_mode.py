@@ -9,6 +9,8 @@ from app.models import (
     FeatureSettings,
     IdentityProfile,
     InsurancePolicy,
+    ObligationAssessment,
+    ObligationSatisfaction,
     PolicyTransition,
     PolicyVersion,
     PayrollSettings,
@@ -52,26 +54,22 @@ def _login_admin(client, teacher_id, *, class_id=None):
 
 
 def _create_teacher_seat(user_id, block='A', join_code='JOINPOLA', class_id=None):
-    identity = IdentityProfile(profile_type='student', first_name='Policy', last_name='S')
-    db.session.add(identity)
-    db.session.flush()
-
     db.session.add(Seat(
         class_id=class_id,
-        join_code=join_code,
         role="teacher",
         block=block,
     ))
     db.session.flush()
 
 
-def _create_admin_with_block(block='A', join_code='JOINPOLA'):
+def _create_admin_with_block(block='A', join_code=None):
     from tests.helpers.class_scope import create_class_scope
-    teacher = seed_canonical_admin(f"policyadmin_{block.lower()}_{join_code.lower()}").user
+    resolved_join_code = join_code or f"JOINPOL{block}"
+    teacher = seed_canonical_admin(f"policyadmin_{block.lower()}_{resolved_join_code.lower()}").user
     with FEATContext("FEAT-IDEN-001", idempotency_key=f"economy-policy:create-admin:{block}:{join_code}:{teacher.id}"):
         economy = create_class_scope(
             teacher_user=teacher,
-            join_code=join_code,
+            join_code=resolved_join_code,
             display_name=f'Period {block}',
             section=block,
         )
@@ -80,7 +78,6 @@ def _create_admin_with_block(block='A', join_code='JOINPOLA'):
 
         payroll_settings = PayrollSettings(
             class_id=economy.class_id,
-            block=block,
             pay_rate=Decimal('0.25'),
             expected_weekly_hours=5.0,
             payroll_frequency_days=14,
@@ -97,37 +94,31 @@ def _create_admin_with_block(block='A', join_code='JOINPOLA'):
     return admin, payroll_settings, rent_settings, economy
 
 
-def _create_insurance_policy(user_id, title, premium, block='A', join_code=None):
-    join_code = join_code or f"JOIN{block}{user_id}"
+def _create_insurance_policy(user_id, title, premium, *, economy, join_code=None):
+    resolved_join_code = join_code or economy.join_code
     teacher = db.session.get(User, user_id)
     if teacher is None:
         raise ValueError("economy-policy tests require an existing teacher user")
-    class_row = create_class_scope(
-        teacher_user=teacher,
-        join_code=join_code,
-        display_name=f'Period {block}',
-        section=block,
-    )
-    policy = InsurancePolicy(
-        teacher_id=user_id,
-        join_code=join_code,
-        class_id=class_row.class_id,
-        policy_code=f"{title[:3].upper()}{user_id}",
-        title=title,
-        premium=Decimal(str(premium)),
-        charge_frequency='monthly',
-        waiting_period_days=7,
-        max_claim_amount=Decimal('100.00'),
-        max_payout_per_period=Decimal('200.00'),
-        claim_type='legacy_monetary',
-        is_monetary=True,
-        settings_mode='advanced',
-        is_active=True,
-    )
-    db.session.add(policy)
-    db.session.flush()
-    policy.set_blocks([block])
-    db.session.commit()
+    with FEATContext("FEAT-IDEN-001", idempotency_key=f"economy-policy:create-insurance:{economy.class_id}:{user_id}:{title}"):
+        policy = InsurancePolicy(
+            teacher_id=user_id,
+            join_code=resolved_join_code,
+            class_id=economy.class_id,
+            policy_code=f"{title[:3].upper()}{user_id}",
+            title=title,
+            premium=Decimal(str(premium)),
+            charge_frequency='monthly',
+            waiting_period_days=7,
+            max_claim_amount=Decimal('100.00'),
+            max_payout_per_period=Decimal('200.00'),
+            claim_type='legacy_monetary',
+            is_monetary=True,
+            settings_mode='advanced',
+            is_active=True,
+        )
+        db.session.add(policy)
+        db.session.flush()
+        policy.set_blocks([economy.section] if economy.section else [])
     return policy
 
 
@@ -141,55 +132,56 @@ def _create_pending_policy_transition(
     created_at=None,
 ):
     created_at = created_at or datetime.now(timezone.utc)
-    latest_version = (
-        PolicyVersion.query.filter_by(class_id=class_id, domain=domain)
-        .order_by(PolicyVersion.version_number.desc(), PolicyVersion.id.desc())
-        .first()
-    )
-    next_version_number = (latest_version.version_number if latest_version else 0) + 1
+    with FEATContext("FEAT-IDEN-001", idempotency_key=f"economy-policy:create-transition:{class_id}:{domain}:{activation_mode}:{created_by}"):
+        latest_version = (
+            PolicyVersion.query.filter_by(class_id=class_id, domain=domain)
+            .order_by(PolicyVersion.version_number.desc(), PolicyVersion.id.desc())
+            .first()
+        )
+        next_version_number = (latest_version.version_number if latest_version else 0) + 1
 
-    source_payload = {
-        'type': change_payload.get('type'),
-        'new_value': str(change_payload.get('current_value') or change_payload.get('new_value')),
-    }
-    if change_payload.get('policy_id') is not None:
-        source_payload['policy_id'] = change_payload['policy_id']
+        source_payload = {
+            'type': change_payload.get('type'),
+            'new_value': str(change_payload.get('current_value') or change_payload.get('new_value')),
+        }
+        if change_payload.get('policy_id') is not None:
+            source_payload['policy_id'] = change_payload['policy_id']
 
-    source_version = PolicyVersion(
-        class_id=class_id,
-        domain=domain,
-        version_number=next_version_number,
-        policy_payload_json=json.dumps(source_payload),
-        is_active=True,
-        created_at=created_at,
-        activated_at=created_at,
-    )
-    db.session.add(source_version)
-    db.session.flush()
+        source_version = PolicyVersion(
+            class_id=class_id,
+            domain=domain,
+            version_number=next_version_number,
+            policy_payload_json=json.dumps(source_payload),
+            is_active=True,
+            created_at=created_at,
+            activated_at=created_at,
+        )
+        db.session.add(source_version)
+        db.session.flush()
 
-    target_version = PolicyVersion(
-        class_id=class_id,
-        domain=domain,
-        version_number=next_version_number + 1,
-        policy_payload_json=json.dumps(change_payload),
-        is_active=False,
-        created_at=created_at,
-    )
-    db.session.add(target_version)
-    db.session.flush()
+        target_version = PolicyVersion(
+            class_id=class_id,
+            domain=domain,
+            version_number=next_version_number + 1,
+            policy_payload_json=json.dumps(change_payload),
+            is_active=False,
+            created_at=created_at,
+        )
+        db.session.add(target_version)
+        db.session.flush()
 
-    transition = PolicyTransition(
-        class_id=class_id,
-        domain=domain,
-        source_policy_version_id=source_version.id,
-        target_policy_version_id=target_version.id,
-        activation_mode=activation_mode,
-        status='pending',
-        created_at=created_at,
-        created_by=created_by,
-    )
-    db.session.add(transition)
-    db.session.flush()
+        transition = PolicyTransition(
+            class_id=class_id,
+            domain=domain,
+            source_policy_version_id=source_version.id,
+            target_policy_version_id=target_version.id,
+            activation_mode=activation_mode,
+            status='pending',
+            created_at=created_at,
+            created_by=created_by,
+        )
+        db.session.add(transition)
+        db.session.flush()
     return transition
 
 
@@ -290,7 +282,7 @@ def test_convert_weekly_amount_to_frequency_supports_custom_schedules(client):
 
 def test_edit_insurance_policy_renders_shared_recommendation_text(client):
     admin, _, _, economy = _create_admin_with_block()
-    policy = _create_insurance_policy(admin.id, 'Coverage', Decimal('40.00'), block='A', join_code='JOINPOLA')
+    policy = _create_insurance_policy(admin.id, 'Coverage', Decimal('40.00'), economy=economy)
     _login_admin(client, admin.id, class_id=economy.class_id)
 
     response = client.get(f'/admin/insurance/edit/{policy.id}')
@@ -321,11 +313,11 @@ def test_update_economy_policy_creates_block_scoped_settings(client):
 def test_get_feature_settings_row_for_class_requires_explicit_class_scope(client):
     admin, _, _, economy = _create_admin_with_block()
     read_row = get_feature_settings_row_for_class(economy.class_id, create=False)
-    created_row = get_feature_settings_row_for_class(
-        economy.class_id,
-        create=True,
-    )
-    db.session.commit()
+    with FEATContext("FEAT-IDEN-001", idempotency_key=f"economy-policy:create-feature-settings:{economy.class_id}"):
+        created_row = get_feature_settings_row_for_class(
+            economy.class_id,
+            create=True,
+        )
 
     assert read_row is None
     assert created_row is not None
@@ -338,8 +330,6 @@ def test_rent_warnings_report_single_monthly_conversion(client):
     cwi = checker.calculate_cwi(payroll_settings).cwi
     high_rent = RentSettings(
         class_id=economy.class_id,
-        block='A',
-        is_enabled=True,
         rent_amount=Decimal('600.00'),
         frequency_type='monthly',
     )
@@ -353,8 +343,8 @@ def test_rent_warnings_report_single_monthly_conversion(client):
 def test_immediate_rebalance_updates_rent_setting(client):
     admin, payroll_settings, rent_settings, economy = _create_admin_with_block()
     _login_admin(client, admin.id, class_id=economy.class_id)
-    db.session.add(FeatureSettings(class_id=economy.class_id, economy_policy_mode='tight'))
-    db.session.commit()
+    with FEATContext("FEAT-IDEN-001", idempotency_key=f"economy-policy:set-tight:{economy.class_id}:immediate"):
+        db.session.add(FeatureSettings(class_id=economy.class_id, economy_policy_mode='tight'))
 
     checker = EconomyBalanceChecker(admin.id, 'A', class_id=economy.class_id, policy_mode='tight')
     expected_rent = Decimal(str(checker.analyze_economy(payroll_settings).recommendations['rent']['recommended']))
@@ -369,7 +359,6 @@ def test_immediate_rebalance_updates_rent_setting(client):
     assert response.status_code == 302
     scoped_rent = RentSettings.query.filter_by(
         class_id=economy.class_id,
-        block='A',
     ).first()
     assert scoped_rent is not None
     assert scoped_rent.rent_amount == expected_rent
@@ -386,70 +375,101 @@ def test_rebalanced_rent_amount_does_not_backdate_current_coverage_due(client):
         payment_date=datetime(2026, 3, 10, 8, 0, tzinfo=timezone.utc),
     )
 
-    assert _is_coverage_period_paid(
-        rent_settings,
-        [prior_cycle_payment],
-        coverage_due_date,
-        include_late_fee=False,
-    )
+    with FEATContext("FEAT-IDEN-001", idempotency_key=f"economy-policy:coverage-paid:{economy.class_id}"):
+        assessment = ObligationAssessment(
+            seat_id=make_student_identity(class_id=economy.class_id, first_name="Coverage", last_name="S").id,
+            class_id=economy.class_id,
+            join_code=economy.join_code,
+            obligation_type="RENT",
+            amount_snap=Decimal("500.00"),
+            coverage_month=coverage_due_date.month,
+            coverage_year=coverage_due_date.year,
+            cycle_idempotency_key=f"coverage:{economy.class_id}:2026-03",
+        )
+        db.session.add(assessment)
+        db.session.flush()
+        db.session.add(ObligationSatisfaction(
+            assessment_id=assessment.id,
+            method="PAYMENT",
+            amount_paid=Decimal("500.00"),
+            late_fee_charged=Decimal("0.00"),
+            satisfied_at=datetime(2026, 3, 10, 8, 0, tzinfo=timezone.utc),
+        ))
+        db.session.flush()
+
+        assert _is_coverage_period_paid(
+            rent_settings,
+            [assessment],
+            coverage_due_date,
+            include_late_fee=False,
+        )
 
 
 def test_class_scope_cycle_locks_rent_rate_after_first_payment(client):
     admin, _, rent_settings, economy = _create_admin_with_block()
     join_code = "LOCKA1"
-    lock_class = ClassEconomy(
-        join_code=join_code,
-        user_id=admin.id,
-        display_name='Period A Lock',
-    )
-    db.session.add(lock_class)
-    db.session.flush()
-    coverage_due_date = datetime(2026, 3, 1, 0, 0, tzinfo=timezone.utc)
+    with FEATContext("FEAT-IDEN-001", idempotency_key=f"economy-policy:lock-cycle:{economy.class_id}"):
+        lock_class = ClassEconomy(
+            join_code=join_code,
+            user_id=admin.id,
+            display_name='Period A Lock',
+        )
+        db.session.add(lock_class)
+        db.session.flush()
+        coverage_due_date = datetime(2026, 3, 1, 0, 0, tzinfo=timezone.utc)
 
-    seat = make_student_identity(first_name="Rate", last_name="L", class_id=lock_class.class_id)
+        seat = make_student_identity(first_name="Rate", last_name="L", class_id=lock_class.class_id)
 
-    payment_date = datetime(2026, 3, 5, 8, 0, tzinfo=timezone.utc)
-    db.session.add(RentPayment(
-        user_id=seat.user_id,
-        seat_id=seat.id,
-        class_id=lock_class.class_id,
-        period="A",
-        join_code=join_code,
-        amount_paid=Decimal("500.00"),
-        late_fee_charged=Decimal("0.00"),
-        payment_date=payment_date,
-        coverage_month=coverage_due_date.month,
-        coverage_year=coverage_due_date.year,
-    ))
-    db.session.add(Transaction(
-        seat_id=seat.id,
-        user_id=payer_user.id,class_id=lock_class.class_id,
-        join_code=join_code,
-        type="Rent Payment",
-        amount=Decimal("-500.00"),
-        timestamp=payment_date,
-        description="Rent payment",
-    ))
-    db.session.commit()
+        payment_date = datetime(2026, 3, 5, 8, 0, tzinfo=timezone.utc)
+        assessment = ObligationAssessment(
+            seat_id=seat.id,
+            class_id=lock_class.class_id,
+            join_code=join_code,
+            obligation_type="RENT",
+            amount_snap=Decimal("500.00"),
+            coverage_month=coverage_due_date.month,
+            coverage_year=coverage_due_date.year,
+            cycle_idempotency_key=f"lock-cycle:{lock_class.class_id}:2026-03",
+        )
+        db.session.add(assessment)
+        db.session.flush()
+        db.session.add(ObligationSatisfaction(
+            assessment_id=assessment.id,
+            method="PAYMENT",
+            amount_paid=Decimal("500.00"),
+            late_fee_charged=Decimal("0.00"),
+            satisfied_at=payment_date,
+        ))
+        db.session.add(Transaction(
+            seat_id=seat.id,
+            user_id=seat.user_id,
+            class_id=lock_class.class_id,
+            join_code=join_code,
+            type="Rent Payment",
+            amount=Decimal("-500.00"),
+            timestamp=payment_date,
+            description="Rent payment",
+        ))
 
-    rent_settings.rent_amount = Decimal("620.00")
-    rent_settings.updated_at = datetime(2026, 3, 19, 12, 0, tzinfo=timezone.utc)
+        rent_settings.rent_amount = Decimal("620.00")
+        rent_settings.updated_at = datetime(2026, 3, 19, 12, 0, tzinfo=timezone.utc)
 
-    effective_amount = _get_effective_rent_amount_for_coverage_period(
-        rent_settings,
-        payments=[],
-        coverage_due_date=coverage_due_date,
-        join_code=join_code,
-    )
+    with FEATContext("FEAT-IDEN-001", idempotency_key=f"economy-policy:lock-cycle-check:{economy.class_id}"):
+        effective_amount = _get_effective_rent_amount_for_coverage_period(
+            rent_settings,
+            assessments=[assessment],
+            coverage_due_date=coverage_due_date,
+            class_id=lock_class.class_id,
+        )
 
-    assert effective_amount == Decimal("500.00")
+        assert effective_amount == Decimal("500.00")
 
 
 def test_invalid_activation_mode_is_rejected(client):
     admin, _, rent_settings, economy = _create_admin_with_block()
     _login_admin(client, admin.id, class_id=economy.class_id)
-    db.session.add(FeatureSettings(class_id=economy.class_id, economy_policy_mode='tight'))
-    db.session.commit()
+    with FEATContext("FEAT-IDEN-001", idempotency_key=f"economy-policy:set-tight:{economy.class_id}:invalid-mode"):
+        db.session.add(FeatureSettings(class_id=economy.class_id, economy_policy_mode='tight'))
 
     response = client.post('/admin/economy-policy/rebalance', data={
         'block': 'A',
@@ -465,11 +485,11 @@ def test_invalid_activation_mode_is_rejected(client):
 def test_rebalance_ignores_cross_teacher_selected_ids(client):
     admin_a, _, _, economy_a = _create_admin_with_block('A', 'JOINPOLA')
     admin_b, _, _, economy = _create_admin_with_block('B', 'JOINPOLB')
-    policy_a = _create_insurance_policy(admin_a.id, 'Teacher A Policy', '20.00', block='A')
-    policy_b = _create_insurance_policy(admin_b.id, 'Teacher B Policy', '99.00', block='B')
+    policy_a = _create_insurance_policy(admin_a.id, 'Teacher A Policy', '20.00', economy=economy_a)
+    policy_b = _create_insurance_policy(admin_b.id, 'Teacher B Policy', '99.00', economy=economy)
     _login_admin(client, admin_a.id, class_id=economy_a.class_id)
-    db.session.add(FeatureSettings(class_id=economy_a.class_id, economy_policy_mode='tight'))
-    db.session.commit()
+    with FEATContext("FEAT-IDEN-001", idempotency_key=f"economy-policy:set-tight:{economy_a.class_id}:cross-teacher"):
+        db.session.add(FeatureSettings(class_id=economy_a.class_id, economy_policy_mode='tight'))
 
     response = client.post('/admin/economy-policy/rebalance', data={
         'block': 'A',
@@ -488,25 +508,24 @@ def test_rebalance_ignores_cross_teacher_selected_ids(client):
 def test_run_payroll_applies_scheduled_rebalance(client):
     admin, _, rent_settings, economy = _create_admin_with_block()
     _login_admin(client, admin.id, class_id=economy.class_id)
-
-    db.session.add(FeatureSettings(
-        class_id=economy.class_id,
-        economy_policy_mode='tight',
-    ))
-    _create_pending_policy_transition(
-        class_id=economy.class_id,
-        domain='rent',
-        change_payload={
-            'type': 'rent',
-            'block': 'A',
-            'join_code': 'JOINPOLA',
-            'current_value': '500.00',
-            'new_value': '610.00',
-        },
-        created_by=admin.id,
-        activation_mode='next_payroll',
-    )
-    db.session.commit()
+    with FEATContext("FEAT-IDEN-001", idempotency_key=f"economy-policy:set-tight:{economy.class_id}:run-payroll"):
+        db.session.add(FeatureSettings(
+            class_id=economy.class_id,
+            economy_policy_mode='tight',
+        ))
+        _create_pending_policy_transition(
+            class_id=economy.class_id,
+            domain='rent',
+            change_payload={
+                'type': 'rent',
+                'block': 'A',
+                'join_code': 'JOINPOLA',
+                'current_value': '500.00',
+                'new_value': '610.00',
+            },
+            created_by=admin.id,
+            activation_mode='next_payroll',
+        )
 
     response = client.post('/admin/run_payroll', data={'block': 'A'})
 
@@ -518,8 +537,8 @@ def test_run_payroll_applies_scheduled_rebalance(client):
 def test_next_renewal_rebalance_schedules_rent_for_next_cycle(client):
     admin, _, rent_settings, economy = _create_admin_with_block()
     _login_admin(client, admin.id, class_id=economy.class_id)
-    db.session.add(FeatureSettings(class_id=economy.class_id, economy_policy_mode='tight'))
-    db.session.commit()
+    with FEATContext("FEAT-IDEN-001", idempotency_key=f"economy-policy:set-tight:{economy.class_id}:next-renewal"):
+        db.session.add(FeatureSettings(class_id=economy.class_id, economy_policy_mode='tight'))
 
     response = client.post('/admin/economy-policy/rebalance', data={
         'block': 'A',
@@ -547,162 +566,164 @@ def test_next_renewal_rebalance_schedules_rent_for_next_cycle(client):
 
 def test_activate_due_rebalances_applies_past_due_rent_change(client):
     admin, _, rent_settings, economy = _create_admin_with_block()
-    db.session.add(FeatureSettings(
-        class_id=economy.class_id,
-        economy_policy_mode='tight',
-    ))
-    _create_pending_policy_transition(
-        class_id=economy.class_id,
-        domain='rent',
-        change_payload={
-            'type': 'rent',
-            'block': 'A',
-            'join_code': 'JOINPOLA',
-            'current_value': '500.00',
-            'new_value': '610.00',
-            'effective_at': '2026-03-01T00:00:00+00:00',
-        },
-        created_by=admin.id,
-        activation_mode=REBALANCE_ACTIVATION_NEXT_RENEWAL,
-        created_at=datetime(2026, 3, 1, tzinfo=timezone.utc),
-    )
-    db.session.commit()
+    with FEATContext("FEAT-IDEN-001", idempotency_key=f"economy-policy:set-tight:{economy.class_id}:past-due"):
+        db.session.add(FeatureSettings(
+            class_id=economy.class_id,
+            economy_policy_mode='tight',
+        ))
+        _create_pending_policy_transition(
+            class_id=economy.class_id,
+            domain='rent',
+            change_payload={
+                'type': 'rent',
+                'block': 'A',
+                'join_code': 'JOINPOLA',
+                'current_value': '500.00',
+                'new_value': '610.00',
+                'effective_at': '2026-03-01T00:00:00+00:00',
+            },
+            created_by=admin.id,
+            activation_mode=REBALANCE_ACTIVATION_NEXT_RENEWAL,
+            created_at=datetime(2026, 3, 1, tzinfo=timezone.utc),
+        )
 
-    activated, labels = activate_due_rebalances(
-        admin.id,
-        reference_time=datetime(2026, 4, 1, tzinfo=timezone.utc),
-    )
-    db.session.commit()
-
-    db.session.refresh(rent_settings)
-    assert activated == 1
-    assert labels == ['Rent']
-    assert rent_settings.rent_amount == Decimal('610.00')
+    with FEATContext("FEAT-IDEN-001", idempotency_key=f"economy-policy:activate-due:{economy.class_id}:past-due"):
+        activated, labels = activate_due_rebalances(
+            admin.id,
+            reference_time=datetime(2026, 4, 1, tzinfo=timezone.utc),
+        )
+        db.session.refresh(rent_settings)
+        assert activated == 1
+        assert labels == ['Rent']
+        assert rent_settings.rent_amount == Decimal('610.00')
 
 
 def test_activate_due_rebalances_explicit_class_scope_applies_due_transition(client):
     admin, _, rent_settings, economy = _create_admin_with_block()
-    db.session.add(FeatureSettings(
-        class_id=economy.class_id,
-        economy_policy_mode='tight',
-    ))
-    _create_pending_policy_transition(
-        class_id=economy.class_id,
-        domain='rent',
-        change_payload={
-            'type': 'rent',
-            'block': 'A',
-            'join_code': 'JOINPOLA',
-            'current_value': '500.00',
-            'new_value': '615.00',
-            'effective_at': '2026-03-01T00:00:00+00:00',
-        },
-        created_by=admin.id,
-        activation_mode=REBALANCE_ACTIVATION_NEXT_RENEWAL,
-        created_at=datetime(2026, 3, 1, tzinfo=timezone.utc),
-    )
-    db.session.commit()
+    with FEATContext("FEAT-IDEN-001", idempotency_key=f"economy-policy:set-tight:{economy.class_id}:explicit-scope"):
+        db.session.add(FeatureSettings(
+            class_id=economy.class_id,
+            economy_policy_mode='tight',
+        ))
+        _create_pending_policy_transition(
+            class_id=economy.class_id,
+            domain='rent',
+            change_payload={
+                'type': 'rent',
+                'block': 'A',
+                'join_code': 'JOINPOLA',
+                'current_value': '500.00',
+                'new_value': '615.00',
+                'effective_at': '2026-03-01T00:00:00+00:00',
+            },
+            created_by=admin.id,
+            activation_mode=REBALANCE_ACTIVATION_NEXT_RENEWAL,
+            created_at=datetime(2026, 3, 1, tzinfo=timezone.utc),
+        )
 
-    activated, labels = activate_due_rebalances(
-        admin.id,
-        class_id=economy.class_id,
-        reference_time=datetime(2026, 4, 1, tzinfo=timezone.utc),
-    )
-    db.session.commit()
-
-    db.session.refresh(rent_settings)
-    assert activated == 1
-    assert labels == ['Rent']
-    assert rent_settings.rent_amount == Decimal('615.00')
+    with FEATContext("FEAT-IDEN-001", idempotency_key=f"economy-policy:activate-due:{economy.class_id}:explicit"):
+        activated, labels = activate_due_rebalances(
+            admin.id,
+            class_id=economy.class_id,
+            reference_time=datetime(2026, 4, 1, tzinfo=timezone.utc),
+        )
+        db.session.refresh(rent_settings)
+        assert activated == 1
+        assert labels == ['Rent']
+        assert rent_settings.rent_amount == Decimal('615.00')
 
 
 def test_activate_due_rebalances_keeps_rent_mutation_in_settings_row_class(client):
     admin, _, rent_settings_a, economy_a = _create_admin_with_block('A', 'JOINPOLA')
 
-    economy_b = ClassEconomy(
-        join_code='JOINPOLB',
-        user_id=admin.id,
-        display_name='Period B',
-    )
-    db.session.add(economy_b)
-    db.session.flush()
-    _create_teacher_seat(admin.id, block='B', join_code='JOINPOLB', class_id=economy_b.class_id)
+    with FEATContext("FEAT-IDEN-001", idempotency_key=f"economy-policy:create-cross-class:{economy_a.class_id}"):
+        economy_b = ClassEconomy(
+            join_code='JOINPOLB',
+            user_id=admin.id,
+            display_name='Period B',
+        )
+        db.session.add(economy_b)
+        db.session.flush()
+        db.session.add(Seat(
+            class_id=economy_b.class_id,
+            role="teacher",
+        ))
 
-    rent_settings_b = RentSettings(
-        class_id=economy_b.class_id,
-        block='B',
-        is_enabled=True,
-        rent_amount=Decimal('700.00'),
-        frequency_type='monthly',
-    )
-    db.session.add(FeatureSettings(
-        class_id=economy_a.class_id,
-        economy_policy_mode='tight',
-    ))
-    _create_pending_policy_transition(
-        class_id=economy_a.class_id,
-        domain='rent',
-        change_payload={
-            'type': 'rent',
-            # Malicious/mismatched payload scope should not redirect class mutation.
-            'block': 'B',
-            'join_code': 'JOINPOLB',
-            'current_value': '500.00',
-            'new_value': '610.00',
-        },
-        created_by=admin.id,
-        activation_mode='next_payroll',
-    )
-    db.session.add(rent_settings_b)
-    db.session.commit()
+        rent_settings_b = RentSettings(
+            class_id=economy_b.class_id,
+            rent_amount=Decimal('700.00'),
+            frequency_type='monthly',
+        )
+        db.session.add(FeatureSettings(
+            class_id=economy_a.class_id,
+            economy_policy_mode='tight',
+        ))
+        _create_pending_policy_transition(
+            class_id=economy_a.class_id,
+            domain='rent',
+            change_payload={
+                'type': 'rent',
+                # Malicious/mismatched payload scope should not redirect class mutation.
+                'block': 'B',
+                'join_code': 'JOINPOLB',
+                'current_value': '500.00',
+                'new_value': '610.00',
+            },
+            created_by=admin.id,
+            activation_mode='next_payroll',
+        )
+        db.session.add(rent_settings_b)
 
-    activated, labels = activate_due_rebalances(
-        admin.id,
-        reference_time=datetime(2026, 4, 1, tzinfo=timezone.utc),
-    )
-    db.session.commit()
-
-    db.session.refresh(rent_settings_a)
-    db.session.refresh(rent_settings_b)
-    assert activated == 1
-    assert labels == ['Rent']
-    assert rent_settings_a.rent_amount == Decimal('610.00')
-    assert rent_settings_b.rent_amount == Decimal('700.00')
+    with FEATContext("FEAT-IDEN-001", idempotency_key=f"economy-policy:activate-due:{economy_a.class_id}:cross-class"):
+        activated, labels = activate_due_rebalances(
+            admin.id,
+            reference_time=datetime(2026, 4, 1, tzinfo=timezone.utc),
+        )
+        db.session.refresh(rent_settings_a)
+        db.session.refresh(rent_settings_b)
+        assert activated == 1
+        assert labels == ['Rent']
+        assert rent_settings_a.rent_amount == Decimal('610.00')
+        assert rent_settings_b.rent_amount == Decimal('700.00')
 
 
 def test_activate_due_rebalances_does_not_mutate_cross_class_insurance_policy(client):
     admin, _, _, economy_a = _create_admin_with_block('A', 'JOINPOLA')
-    policy_b = _create_insurance_policy(admin.id, 'Cross Class Policy', '99.00', block='B', join_code='JOINPOLB')
-
-    db.session.add(FeatureSettings(
-        class_id=economy_a.class_id,
-        economy_policy_mode='tight',
-    ))
-    _create_pending_policy_transition(
-        class_id=economy_a.class_id,
-        domain='insurance',
-        change_payload={
-            'type': 'insurance',
-            # Policy from another class for the same teacher.
-            'policy_id': policy_b.id,
-            'current_value': '99.00',
-            'new_value': '130.00',
-        },
-        created_by=admin.id,
-        activation_mode='next_payroll',
+    economy_b = create_class_scope(
+        teacher_user=db.session.get(User, admin.id),
+        join_code='JOINPOLB',
+        display_name='Period B',
+        section='B',
     )
-    db.session.commit()
+    policy_b = _create_insurance_policy(admin.id, 'Cross Class Policy', '99.00', economy=economy_b, join_code='JOINPOLB')
+    with FEATContext("FEAT-IDEN-001", idempotency_key=f"economy-policy:set-tight:{economy_a.class_id}:insurance"):
+        db.session.add(FeatureSettings(
+            class_id=economy_a.class_id,
+            economy_policy_mode='tight',
+        ))
+        _create_pending_policy_transition(
+            class_id=economy_a.class_id,
+            domain='insurance',
+            change_payload={
+                'type': 'insurance',
+                # Policy from another class for the same teacher.
+                'policy_id': policy_b.id,
+                'current_value': '99.00',
+                'new_value': '130.00',
+            },
+            created_by=admin.id,
+            activation_mode='next_payroll',
+        )
 
-    activated, labels = activate_due_rebalances(
-        admin.id,
-        reference_time=datetime(2026, 4, 1, tzinfo=timezone.utc),
-    )
-    db.session.commit()
-
-    db.session.refresh(policy_b)
-    assert activated == 0
-    assert labels == []
-    assert policy_b.premium == Decimal('99.00')
+    with FEATContext("FEAT-IDEN-001", idempotency_key=f"economy-policy:activate-due:{economy_a.class_id}:insurance"):
+        activated, labels = activate_due_rebalances(
+            admin.id,
+            reference_time=datetime(2026, 4, 1, tzinfo=timezone.utc),
+        )
+        db.session.refresh(policy_b)
+        assert activated == 0
+        assert labels == []
+        assert policy_b.premium == Decimal('99.00')
 
 
 def test_prepare_scheduled_rebalance_changes_sets_rent_effective_at(client):
@@ -726,69 +747,68 @@ def test_prepare_scheduled_rebalance_changes_sets_rent_effective_at(client):
 
 def test_activate_due_rebalances_applies_pending_policy_transition_without_legacy_payload(client):
     admin, _, rent_settings, economy = _create_admin_with_block()
-    settings_row = FeatureSettings.query.filter_by(class_id=economy.class_id).first()
-    if settings_row is None:
-        settings_row = FeatureSettings(
+    with FEATContext("FEAT-IDEN-001", idempotency_key=f"economy-policy:legacy-payload:{economy.class_id}"):
+        settings_row = FeatureSettings.query.filter_by(class_id=economy.class_id).first()
+        if settings_row is None:
+            settings_row = FeatureSettings(
+                class_id=economy.class_id,
+                economy_policy_mode='default',
+            )
+            db.session.add(settings_row)
+            db.session.flush()
+
+        source_version = PolicyVersion(
             class_id=economy.class_id,
-            economy_policy_mode='default',
+            domain='rent',
+            version_number=1,
+            policy_payload_json=json.dumps({'type': 'rent', 'new_value': '500.00'}),
+            is_active=True,
+            created_at=datetime(2026, 3, 1, tzinfo=timezone.utc),
+            activated_at=datetime(2026, 3, 1, tzinfo=timezone.utc),
         )
-        db.session.add(settings_row)
+        db.session.add(source_version)
         db.session.flush()
 
-    source_version = PolicyVersion(
-        class_id=economy.class_id,
-        domain='rent',
-        version_number=1,
-        policy_payload_json=json.dumps({'type': 'rent', 'new_value': '500.00'}),
-        is_active=True,
-        created_at=datetime(2026, 3, 1, tzinfo=timezone.utc),
-        activated_at=datetime(2026, 3, 1, tzinfo=timezone.utc),
-    )
-    db.session.add(source_version)
-    db.session.flush()
+        target_version = PolicyVersion(
+            class_id=economy.class_id,
+            domain='rent',
+            version_number=2,
+            policy_payload_json=json.dumps({
+                'type': 'rent',
+                'new_value': '650.00',
+                'effective_at': '2026-03-15T00:00:00+00:00',
+            }),
+            is_active=False,
+            created_at=datetime(2026, 3, 10, tzinfo=timezone.utc),
+        )
+        db.session.add(target_version)
+        db.session.flush()
 
-    target_version = PolicyVersion(
-        class_id=economy.class_id,
-        domain='rent',
-        version_number=2,
-        policy_payload_json=json.dumps({
-            'type': 'rent',
-            'new_value': '650.00',
-            'effective_at': '2026-03-15T00:00:00+00:00',
-        }),
-        is_active=False,
-        created_at=datetime(2026, 3, 10, tzinfo=timezone.utc),
-    )
-    db.session.add(target_version)
-    db.session.flush()
+        transition = PolicyTransition(
+            class_id=economy.class_id,
+            domain='rent',
+            source_policy_version_id=source_version.id,
+            target_policy_version_id=target_version.id,
+            activation_mode=REBALANCE_ACTIVATION_NEXT_RENEWAL,
+            status='pending',
+            created_at=datetime(2026, 3, 10, tzinfo=timezone.utc),
+            created_by=admin.id,
+        )
+        db.session.add(transition)
 
-    transition = PolicyTransition(
-        class_id=economy.class_id,
-        domain='rent',
-        source_policy_version_id=source_version.id,
-        target_policy_version_id=target_version.id,
-        activation_mode=REBALANCE_ACTIVATION_NEXT_RENEWAL,
-        status='pending',
-        created_at=datetime(2026, 3, 10, tzinfo=timezone.utc),
-        created_by=admin.id,
-    )
-    db.session.add(transition)
-    db.session.commit()
+    with FEATContext("FEAT-IDEN-001", idempotency_key=f"economy-policy:activate-due:{economy.class_id}:legacy"):
+        activated, labels = activate_due_rebalances(
+            admin.id,
+            reference_time=datetime(2026, 4, 1, tzinfo=timezone.utc),
+        )
+        db.session.refresh(rent_settings)
+        db.session.refresh(source_version)
+        db.session.refresh(target_version)
+        db.session.refresh(transition)
 
-    activated, labels = activate_due_rebalances(
-        admin.id,
-        reference_time=datetime(2026, 4, 1, tzinfo=timezone.utc),
-    )
-    db.session.commit()
-
-    db.session.refresh(rent_settings)
-    db.session.refresh(source_version)
-    db.session.refresh(target_version)
-    db.session.refresh(transition)
-
-    assert activated == 1
-    assert labels == ['Rent']
-    assert rent_settings.rent_amount == Decimal('650.00')
-    assert source_version.is_active is False
-    assert target_version.is_active is True
-    assert transition.status == 'applied'
+        assert activated == 1
+        assert labels == ['Rent']
+        assert rent_settings.rent_amount == Decimal('650.00')
+        assert source_version.is_active is False
+        assert target_version.is_active is True
+        assert transition.status == 'applied'

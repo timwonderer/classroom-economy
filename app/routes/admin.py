@@ -2412,7 +2412,7 @@ def _extract_pending_rebalance_effective_at(policy_summary: dict) -> datetime | 
     return get_pending_policy_transition_effective_at(class_id)
 
 
-def _build_rebalance_preview(canonical_context, selected_block, checker, cwi, rent_settings, insurance_policies):
+def _build_rebalance_preview(canonical_context, selected_block, class_id, checker, cwi, rent_settings, insurance_policies):
     preview_items = []
     recommendations = get_price_recommendation_context(checker.policy_mode, cwi) or {}
 
@@ -2434,7 +2434,7 @@ def _build_rebalance_preview(canonical_context, selected_block, checker, cwi, re
                 'change': {
                     'type': 'rent',
                     'block': selected_block,
-                    'class_id': selected_scope.get("class_id"),
+                    'class_id': class_id,
                     'current_value': str(current_amount),
                     'new_value': str(recommended_amount),
                 },
@@ -5866,7 +5866,6 @@ def delete_store_item(item_id):
     # For active collective items, refund any pending purchases before deactivating
     # so students are not left with purchased but unredeemable items.
     idempotency_key = f"feat:store:item-deactivate:{selected_scope['class_id']}:{item.id}"
-    db.session.rollback()
     with FEATContext("FEAT-STOR-003", idempotency_key=idempotency_key):
         item = StoreItem.query.filter_by(id=item_id, class_id=selected_scope['class_id']).first_or_404()
         refunded = 0
@@ -8004,6 +8003,7 @@ def apply_economy_rebalance():
     preview_items = _build_rebalance_preview(
         g.canonical_context,
         effective_block,
+        selected_scope.get("class_id"),
         checker,
         analysis.cwi.cwi,
         rent_settings,
