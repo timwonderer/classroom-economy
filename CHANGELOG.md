@@ -353,6 +353,7 @@ and this project follows semantic versioning principles.
   - Added `docs/LOGS/AUDITS/LOG-ARC-039_Project_Timeline.md` as the source timeline document
 
 ### Changed
+- **Audit follow-up for canonical v2 repair slices** — Updated the rent-display test fixture to full canonical student display names, recorded the implied-authority doc gaps in `docs/TRACKING/AUDIT_IMPLIED_AUTHORITY_TODO.md`, and confirmed the repaired policy-mode and collective-goal slices still pass targeted validation.
 - **System Admin interface redesigned** - Complete redesign matching teacher/student interface patterns
   - **Mobile-friendly layout** - Fixed sidebar with hamburger toggle on mobile, mobile bottom navigation bar with quick access to Dashboard, Teachers, Support, Logs, and Announcements
   - **Dashboard revamped** - Stat cards (Total Teachers, Total Students, Active Invites, Open Tickets), 6 quick-action buttons, recent teacher registrations and errors panels, system admins table

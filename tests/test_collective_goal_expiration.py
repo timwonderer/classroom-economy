@@ -65,7 +65,7 @@ def _create_student(teacher, first_name, join_code, block='A'):
         seat = make_student_identity(
             class_id=class_row.class_id,
             first_name=first_name,
-            last_name="S",
+            last_name="Smith",
             claimed=True,
         )
         # Give the student funds so purchases succeed

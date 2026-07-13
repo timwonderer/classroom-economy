@@ -377,7 +377,7 @@ def test_rebalanced_rent_amount_does_not_backdate_current_coverage_due(client):
 
     with FEATContext("FEAT-IDEN-001", idempotency_key=f"economy-policy:coverage-paid:{economy.class_id}"):
         assessment = ObligationAssessment(
-            seat_id=make_student_identity(class_id=economy.class_id, first_name="Coverage", last_name="S").id,
+            seat_id=make_student_identity(class_id=economy.class_id, first_name="Coverage", last_name="Smith").id,
             class_id=economy.class_id,
             join_code=economy.join_code,
             obligation_type="RENT",
@@ -418,7 +418,7 @@ def test_class_scope_cycle_locks_rent_rate_after_first_payment(client):
         db.session.flush()
         coverage_due_date = datetime(2026, 3, 1, 0, 0, tzinfo=timezone.utc)
 
-        seat = make_student_identity(first_name="Rate", last_name="L", class_id=lock_class.class_id)
+        seat = make_student_identity(first_name="Rate", last_name="Lock", class_id=lock_class.class_id)
 
         payment_date = datetime(2026, 3, 5, 8, 0, tzinfo=timezone.utc)
         assessment = ObligationAssessment(

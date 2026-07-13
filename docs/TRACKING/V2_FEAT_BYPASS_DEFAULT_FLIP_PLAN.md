@@ -191,6 +191,9 @@ explicit fixture helpers."
   `seed_student_membership`,
   `seed_class_feature`,
   `clear_class_feature`).
+- The remaining audit-only implied-authority gaps for the policy-mode and
+  collective-goal fixture reshapes are tracked in
+  [`AUDIT_IMPLIED_AUTHORITY_TODO.md`](./AUDIT_IMPLIED_AUTHORITY_TODO.md).
 - Representative tests have been migrated onto the shared helpers:
   `tests/test_canonical_auth_session.py` and
   `tests/test_sysadmin_issue_rewards.py`, plus
