@@ -36,7 +36,7 @@ PyYAML==6.0.3
 soupsieve==2.8.4
 SQLAlchemy==2.0.51
 tomli==2.4.1
-typing_extensions==4.15.0
+typing_extensions==4.16.0
 Werkzeug==3.1.8
 # TODO: [DEPENDABOT PR #847] zope.event 6.x is a major version change. Review for
 # breaking changes (transitive dep for gevent) before upgrading from 5.0 to 6.1
