@@ -3024,7 +3024,11 @@ def rent():
         return redirect(url_for('student.dashboard'))
 
     class_id = class_id or context.class_id
-    current_block = (getattr(seat, "block", None) or "").strip().upper()
+    current_block = (
+        seat.class_economy.section.strip().upper()
+        if seat and seat.class_economy and seat.class_economy.section
+        else ""
+    )
     settings = get_rent_settings_for_context(context)
 
     if not settings:
@@ -3233,7 +3237,7 @@ def rent_pay(period):
 
     # Validate period for the current class context only
     period = (period or '').strip().upper()
-    current_block = (seat.class_economy.block or '').strip().upper() if seat and seat.class_economy else ''
+    current_block = (seat.class_economy.section or '').strip().upper() if seat and seat.class_economy else ''
     if not current_block:
         current_block = period
     current_app.logger.info(
