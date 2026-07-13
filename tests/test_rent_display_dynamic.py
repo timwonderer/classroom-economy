@@ -6,18 +6,15 @@ Tests the following features:
 2. Dynamic color coding based on days until rent is due
 3. Status text changes based on payment status and due date proximity
 """
-from tests.helpers.v2_fixtures import seed_canonical_admin, make_sysadmin
-import pytest
 from datetime import datetime, timezone, timedelta
-import os
 
-from werkzeug.security import generate_password_hash
+import pytest
 
 from app import db
 from app.feats.base import FEATContext
-from app.models import User, UserRole, RentSettings, RentItem, ClassEconomy, Transaction, TransactionStatus, Seat, IdentityProfile
+from app.models import RentSettings, RentItem, Transaction, TransactionStatus
 from app.services.obligations_service import create_and_schedule_rent_policy_version
-from tests.helpers.class_scope import make_student_identity
+from tests.helpers.v2_fixtures import seed_canonical_admin, seed_class_with_seat
 from tests.helpers.canonical_session import set_canonical_context
 
 
@@ -26,24 +23,16 @@ def setup_rent_with_items(client):
     """Create teacher, student, rent settings, and rent items."""
     with FEATContext("FEAT-IDEN-001", idempotency_key="rent-display:setup"):
         teacher = seed_canonical_admin("test_teacher").user
-        db.session.flush()
-
-        economy = ClassEconomy(
+        seeded = seed_class_with_seat(
+            teacher=teacher,
             join_code="TESTA",
-            user_id=teacher.id,
-            display_name='Test Rent Class',
-            section='A',
-            status='active',
+            display_name="Test Rent Class",
+            section="A",
+            student_first_name="Test",
+            student_last_name="S",
         )
-        db.session.add(economy)
-        db.session.flush()
-
-        student_seat = make_student_identity(
-            class_id=economy.class_id,
-            first_name="Test",
-            last_name="S",
-            claimed=True,
-        )
+        economy = seeded.class_row
+        student_seat = seeded.seat
 
         # Create rent settings on the canonical class scope.
         now = datetime.now(timezone.utc)
@@ -85,7 +74,6 @@ def setup_rent_with_items(client):
         'student': student_seat,
         'rent_settings': rent_settings,
         'items': [item1, item2],
-        'join_code': "TESTA"
     }
 
 
