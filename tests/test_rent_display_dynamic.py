@@ -14,6 +14,7 @@ from app import db
 from app.feats.base import FEATContext
 from app.models import RentSettings, RentItem, Transaction, TransactionStatus
 from app.services.obligations_service import create_and_schedule_rent_policy_version
+from app.utils.time import utc_now
 from tests.helpers.v2_fixtures import seed_canonical_admin, seed_student_identity
 from tests.helpers.class_scope import create_class_scope
 from tests.helpers.canonical_session import set_canonical_context
@@ -32,11 +33,11 @@ def setup_rent_with_items(client):
         student_seat = seed_student_identity(
             class_id=economy.class_id,
             first_name="Test",
-            last_name="S",
+            last_name="Smith",
         ).seat
 
         # Create rent settings on the canonical class scope.
-        now = datetime.now(timezone.utc)
+        now = utc_now()
         rent_settings = RentSettings(
             class_id=economy.class_id,
             rent_amount=50.0,
@@ -106,7 +107,7 @@ def test_rent_items_display_after_due_date(client, setup_rent_with_items):
     data = setup_rent_with_items
     
     # Update rent settings to have due date in the past.
-    now = datetime.now(timezone.utc)
+    now = utc_now()
     with FEATContext("FEAT-OBL-001", idempotency_key="rent-display:after-due"):
         data['rent_settings'].first_rent_due_date = now - timedelta(days=2)
         db.session.flush()
@@ -211,7 +212,7 @@ def test_overdue_current_period_does_not_show_future_due_countdown(client, setup
 def test_days_until_due_calculation(client, setup_rent_with_items):
     """Test that days_until_due is correctly calculated and passed to template."""
     data = setup_rent_with_items
-    now = datetime.now(timezone.utc)
+    now = utc_now()
     # Activate preview so the countdown is visible (due in 10 days, preview for 12)
     with FEATContext("FEAT-OBL-001", idempotency_key="rent-display:days-until-due"):
         data['rent_settings'].bill_preview_enabled = True
@@ -242,7 +243,7 @@ def test_status_text_more_than_7_days(client, setup_rent_with_items):
     data = setup_rent_with_items
     
     # Set rent due date to 8 days from now (within preview period so it's active)
-    now = datetime.now(timezone.utc)
+    now = utc_now()
     with FEATContext("FEAT-OBL-001", idempotency_key="rent-display:status-gt-7"):
         data['rent_settings'].first_rent_due_date = now + timedelta(days=8, hours=1)
         data['rent_settings'].bill_preview_enabled = True
@@ -271,7 +272,7 @@ def test_status_text_between_3_and_7_days(client, setup_rent_with_items):
     data = setup_rent_with_items
     
     # Set rent due date to 3 days from now
-    now = datetime.now(timezone.utc)
+    now = utc_now()
     with FEATContext("FEAT-OBL-001", idempotency_key="rent-display:status-3to7"):
         data['rent_settings'].first_rent_due_date = now + timedelta(days=3, hours=1)
         db.session.flush()
@@ -297,7 +298,7 @@ def test_status_text_within_2_days(client, setup_rent_with_items):
     data = setup_rent_with_items
     
     # Set rent due date to 2 days from now
-    now = datetime.now(timezone.utc)
+    now = utc_now()
     with FEATContext("FEAT-OBL-001", idempotency_key="rent-display:status-2days"):
         data['rent_settings'].first_rent_due_date = now + timedelta(days=2, hours=1)
         db.session.flush()
@@ -323,7 +324,7 @@ def test_status_text_past_due(client, setup_rent_with_items):
     data = setup_rent_with_items
     
     # Set rent due date to 5 days ago (past grace period)
-    now = datetime.now(timezone.utc)
+    now = utc_now()
     due_date = now - timedelta(days=5)
     with FEATContext("FEAT-OBL-001", idempotency_key="rent-display:status-past-due"):
         data['rent_settings'].first_rent_due_date = due_date
@@ -350,7 +351,7 @@ def test_status_text_due_today(client, setup_rent_with_items):
     """Test status text when rent is due today."""
     data = setup_rent_with_items
     
-    now = datetime.now(timezone.utc)
+    now = utc_now()
     with FEATContext("FEAT-OBL-001", idempotency_key="rent-display:status-due-today"):
         data['rent_settings'].first_rent_due_date = now + timedelta(hours=1)
         db.session.flush()
@@ -377,7 +378,7 @@ def test_status_text_no_rent_yet(client, setup_rent_with_items):
     
     # Set rent due date to 20 days from now with 5-day preview
     # So we're more than 5 days before the due date
-    now = datetime.now(timezone.utc)
+    now = utc_now()
     with FEATContext("FEAT-OBL-001", idempotency_key="rent-display:status-no-rent"):
         data['rent_settings'].first_rent_due_date = now + timedelta(days=20)
         data['rent_settings'].bill_preview_enabled = True
@@ -428,7 +429,7 @@ def test_incremental_rent_form_shows_even_when_full_balance_is_short(client, set
     """Incremental mode should still render the payment form even if full amount isn't affordable."""
     data = setup_rent_with_items
 
-    now = datetime.now(timezone.utc)
+    now = utc_now()
     with FEATContext("FEAT-OBL-001", idempotency_key="rent-display:incremental"):
         data['rent_settings'].first_rent_due_date = now - timedelta(days=1)
         data['rent_settings'].allow_incremental_payment = True
