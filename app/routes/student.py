@@ -92,6 +92,7 @@ from app.utils.time import (
     ensure_utc,
     normalize_for_db,
     get_timezone,
+    get_class_timezone,
     class_date,
     claim_period_bounds_utc,
     get_class_month_start_utc,
@@ -2292,23 +2293,23 @@ def shop():
 # -------------------- RENT --------------------
 
 
-def _get_rent_timezone(settings):
+def _get_rent_timezone(class_id: str):
     """
-    Return the server-side timezone used for rent schedule semantics.
+    Return the class-authoritative timezone used for rent schedule semantics.
 
-    This intentionally avoids session/client timezone so browser locale changes
-    do not change due-date boundaries.
+    Rent is a class-level evaluation and must use the class timezone
+    established on ClassEconomy. If the class cannot be resolved, fail closed.
     """
-    tz_name = getattr(settings, "timezone", None)
-    if not tz_name and has_app_context():
-        tz_name = current_app.config.get("DEFAULT_TIMEZONE")
-    return get_timezone(tz_name)
+    if not class_id:
+        raise ValueError("Rent timezone resolution requires class_id")
+    return get_timezone(get_class_timezone(class_id))
 
 
 def _calculate_rent_deadlines(settings, reference_date=None):
     """Return the due date and grace end date for the active month."""
     reference_date = ensure_utc(reference_date) if reference_date else utc_now()
-    teacher_tz = _get_rent_timezone(settings)
+    class_id = getattr(settings, "class_id", None)
+    teacher_tz = _get_rent_timezone(class_id)
     reference_local = reference_date.astimezone(teacher_tz)
 
     def _local_due_to_utc(
@@ -2929,7 +2930,7 @@ def _calculate_rent_coverage_due_date(settings, reference_date=None):
     # For monthly settings without a first_rent_due_date, compute the prior
     # month explicitly to preserve the configured day-of-month.
     if settings.frequency_type == 'monthly' and not settings.first_rent_due_date:
-        teacher_tz = _get_rent_timezone(settings)
+        teacher_tz = _get_rent_timezone(getattr(settings, "class_id", None))
         current_due_local = ensure_utc(current_due_date).astimezone(teacher_tz)
         prev_year = current_due_local.year
         prev_month = current_due_local.month - 1
