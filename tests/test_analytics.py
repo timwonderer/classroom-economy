@@ -97,6 +97,7 @@ def test_participation_rate_calculation(client, setup_analytics_test):
     with FEATContext("FEAT-LED-001", idempotency_key="analytics:participation"):
         for seat_id in students[:3]:
             seat = db.session.get(Seat, seat_id)
+            assert seat is not None
             tx = Transaction(
                 seat_id=seat.id,
                 class_id=seat.class_id,

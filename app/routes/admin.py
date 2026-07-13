@@ -8677,6 +8677,7 @@ def payroll():
     )
     student_lookup = {s.id: s for s in students}
     seat_lookup = {s.id: s for s in seats}
+    join_codes_by_block = _get_join_codes_by_block(g.canonical_context, blocks)
     payroll_history = []
     for tx in payroll_history_transactions:
         seat = seat_lookup.get(tx.seat_id)

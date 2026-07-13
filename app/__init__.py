@@ -671,7 +671,7 @@ def create_app():
         try:
             from app.auth import get_current_class_id, get_current_user
             from app.models import FeatureSettings
-            from app.routes.admin import get_admin_feature_settings_for_join_code
+            from app.routes.admin import get_admin_feature_settings_for_class_id
 
             current_user = get_current_user()
             current_class_id = get_current_class_id()
@@ -683,9 +683,9 @@ def create_app():
             if not class_row or not class_row.user_id:
                 return {'admin_feature_settings': FeatureSettings.get_defaults()}
             return {
-                'admin_feature_settings': get_admin_feature_settings_for_join_code(
-                    class_row.user_id,
-                    join_code=get_display_join_code(class_row.class_id),
+                'admin_feature_settings': get_admin_feature_settings_for_class_id(
+                    g.canonical_context,
+                    class_id=current_class_id,
                 )
             }
         except Exception as e:

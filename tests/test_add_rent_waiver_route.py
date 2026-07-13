@@ -59,7 +59,7 @@ def test_past_due_scope_creates_one_waiver_per_date(client, app):
         assert tb is not None
         _make_rent_settings("A", first_due, class_id=tb.class_id)
         student_seat = seed_student_identity(class_id=tb.class_id, first_name="Test", last_name="W").seat
-        db.session.commit()
+        db.session.flush()
 
         _login_admin(client, admin)
 
@@ -99,7 +99,7 @@ def test_current_scope_creates_waiver_for_current_period(client, app):
         assert tb is not None
         _make_rent_settings("A", first_due, class_id=tb.class_id)
         student_seat = seed_student_identity(class_id=tb.class_id, first_name="Test", last_name="W").seat
-        db.session.commit()
+        db.session.flush()
 
         _login_admin(client, admin)
 
@@ -133,7 +133,7 @@ def test_future_scope_creates_waiver_spanning_n_periods(client, app):
         assert tb is not None
         _make_rent_settings("A", first_due, class_id=tb.class_id)
         student_seat = seed_student_identity(class_id=tb.class_id, first_name="Test", last_name="W").seat
-        db.session.commit()
+        db.session.flush()
 
         _login_admin(client, admin)
 
@@ -167,7 +167,7 @@ def test_invalid_future_periods_count_flashes_error(client, app):
         assert tb is not None
         _make_rent_settings("A", first_due, class_id=tb.class_id)
         student_seat = seed_student_identity(class_id=tb.class_id, first_name="Test", last_name="W").seat
-        db.session.commit()
+        db.session.flush()
 
         _login_admin(client, admin)
 
@@ -195,7 +195,7 @@ def test_missing_join_code_flashes_error(client, app):
         assert tb is not None
         _make_rent_settings("A", first_due, class_id=tb.class_id)
         student_seat = seed_student_identity(class_id=tb.class_id, first_name="Test", last_name="W").seat
-        db.session.commit()
+        db.session.flush()
 
         _login_admin(client, admin)
 
