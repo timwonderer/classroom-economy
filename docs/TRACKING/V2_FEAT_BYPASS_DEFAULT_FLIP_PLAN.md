@@ -1,6 +1,6 @@
 # V2 FEATBypass Default-Flip Plan
 
-**Status:** Phase 1 complete (2026-06-09). Phase 2 next.
+**Status:** Enforcement is default in tree; Phase 2 fixture consolidation continues.
 **Owner:** V2 architecture
 **Related:** [V2_Full_compliance_migration_plan.md](./V2_Full_compliance_migration_plan.md), [V2_FEAT_BYPASS_DEPENDENCY_REPORT.md](./V2_FEAT_BYPASS_DEPENDENCY_REPORT.md) (Phase 1 output), [FEAT-CORE-000](../FEATURE-EXECUTION/FEAT-CORE-000_FEATURE_EXECUTION_CONSTITUTIONAL_DIRECTIVE.md), [INV-ARC-006](../INVARIANT/ARCHITECTURE/INV-ARC-006_COMMAND_BOUNDARY_FOR_MUTATION.md)
 
@@ -14,19 +14,16 @@ lives in `app/feats/base.py` via `init_feat_enforcement(app)`, which attaches
 a `before_flush` listener that raises `FEATContextError` on any unscoped
 mutation.
 
-In tests, `tests/conftest.py:268-285` declares an `autouse=True` fixture that
-wraps **every test** in `FEATBypass()` unless the test opts out with
-`@pytest.mark.enforce_feat`. The constitutional model is therefore inverted in
-CI: enforcement is opt-in rather than the default.
+The test harness previously inverted the constitutional model by wrapping
+tests in `FEATBypass()` by default. That state has now been removed from the
+tree; enforcement is the default execution model and bypass is restricted to
+explicit fixture seeding or audit scaffolding.
 
-This inversion was discovered during the FEAT-STOR-006 audit (2026-06-08), when
-two production routes (`/api/approve-redemption`, `/api/reject-redemption`)
-were found to be **dead in production** — they raised `FEATContextError →
-HTTP 500` for any real request, but the test suite passed because every test
-ran under bypass. CI could not surface the breakage. The redemption fix
-landed under a `@pytest.mark.enforce_feat`-marked test suite that explicitly
-runs the routes with enforcement live; that pattern is the template this
-plan rolls out everywhere else.
+The inversion was discovered during the FEAT-STOR-006 audit (2026-06-08),
+when two production routes (`/api/approve-redemption`,
+`/api/reject-redemption`) were found to be dead in production. The current
+tree has since moved those tests onto live enforcement, and that pattern is
+now the reference point for the remaining migration work.
 
 A second architectural bug surfaced in the same audit: the cross-FEAT
 correlation guard in `app/models.py:932` was firing on UPDATE as well as
@@ -35,8 +32,9 @@ created by a previous FEAT (refunds, voids, `reversal_transaction_id`
 linkage). Hidden because each test ran under a single FEATBypass
 correlation. Fixed alongside the redemption work.
 
-The pattern is consistent: **the test default is masking real production
-breakage**. The default must invert.
+The pattern is consistent: **the test default used to mask real production
+breakage**. The tree has now inverted that default; remaining work is to
+finish the fixture migration and drain the explicit exceptions.
 
 ---
 
@@ -50,15 +48,15 @@ breakage**. The default must invert.
 | Mutating route calls in tests (`client.post/put/delete/patch`) | 371 | Each is a potential dead-route observation |
 | `@feat_shell`-decorated routes/functions in `app/` | 65 across 17 files | The known-safe surface |
 | Mutating route declarations in `app/routes/` | 143 | Ceiling on dead-route candidates: ~78 |
-| Tests using `@pytest.mark.enforce_feat` today | 7 (in 2 files) | The marker is rarely used; the default is doing 99.2% of the work |
-| Inline `with FEATBypass():` in tests | 5 occurrences across 2 files | Fixture-level bypass is the exception, not the norm |
+| Tests using `@pytest.mark.enforce_feat` today | 7 (in 2 files) | The enforcement marker is present and green on the current pilot slices |
+| Inline `with FEATBypass():` in tests | 5 occurrences across 2 files | Explicit bypass is now confined to fixture seeding / audit scaffolding |
 | `FEATBypass()` calls in `app/` (production code) | **0** | Bypass is structurally test-only; flip carries no production risk |
 | Bypass-aware checks in `app/` | 16 (all in `models.py` / `feats/base.py`) | Production knows about bypass but never instantiates it |
 
 ### Headline findings
 
-**A. The load-bearing default.** With 872 tests and 7 opt-outs, 99.2% of the
-suite runs with enforcement disabled. The constitution is inverted.
+**A. The load-bearing default is fixed.** The autouse bypass wrapper is gone
+from `tests/conftest.py`; enforcement now runs by default in-tree.
 
 **B. Estimated dead-route surface.** With 143 mutating route declarations and
 65 `@feat_shell` decorators, the upper bound on dead routes is ~78. Actual
@@ -157,10 +155,11 @@ in [V2_FEAT_BYPASS_DEPENDENCY_REPORT.md](./V2_FEAT_BYPASS_DEPENDENCY_REPORT.md).
 **Implication for downstream phases:**
 - Phase 2 (fixture consolidation) is the bulk of the migration work, not
   Phase 4 (the flip).
-- Phase 4's triage workload is bounded: 4 routes to fix, each a small
-  targeted change.
-- Phase 5's dead-route inventory starts at 4 entries; achievable to drain
-  before Wave 12.
+- The 4-route dead-route list above is now a historical snapshot, not the
+  current live surface; the routes have since been verified FEAT-owned in
+  the tree.
+- Phase 5's dead-route inventory should be regenerated from the current
+  codebase before using it as launch-readiness evidence.
 
 ---
 
@@ -188,14 +187,55 @@ explicit fixture helpers."
 **Progress update (2026-07-12):**
 - `tests/helpers/v2_fixtures.py` now includes the shared canonical seed
   helpers (`seed_canonical_admin`, `seed_class_with_seat`,
-  `seed_store_item`, `seed_purchase`).
+  `seed_store_item`, `seed_purchase`, `seed_student_identity`,
+  `seed_student_membership`,
+  `seed_class_feature`,
+  `clear_class_feature`).
 - Representative tests have been migrated onto the shared helpers:
   `tests/test_canonical_auth_session.py` and
-  `tests/test_sysadmin_issue_rewards.py`.
+  `tests/test_sysadmin_issue_rewards.py`, plus
+  `tests/test_feature_flag_enforcement.py` for class-feature setup and
+  `tests/test_api_tenancy.py` and `tests/test_admin_multi_tenancy.py` for
+  shared student/class seeding, plus
+  `tests/test_core_invariants_smoke.py` for shared class-feature seeding,
+  plus `tests/test_shared_student_payroll.py` for multi-class student
+  membership and payroll scoping.
+- `tests/test_feature_flag_enforcement.py` had a latent banking fixture bug
+  (`join_code` undefined) that was corrected while moving it onto the shared
+  helper path.
+- `tests/helpers/class_scope.py` now accepts `feature_names` so class setup
+  can seed canonical `ClassFeature` rows inline instead of open-coding the
+  loop in each test.
+- `tests/helpers/context_factory.py` now also supports `feature_names` so
+  higher-level classroom context builders can seed canonical feature flags
+  without bespoke helper code.
+- `tests/test_feature_settings.py` now uses FEAT-scoped feature-row writes
+  for its class-feature assertions instead of unscoped commits.
+- `tests/test_attendance_seat_scope.py` now seeds and mutates attendance
+  records inside FEAT contexts rather than relying on raw commits.
+- `tests/test_payroll_settings_class_scope.py` and
+  `tests/test_banking_settings_class_scope.py` now use FEAT-scoped class
+  creation and canonical session setup for their class-scope assertions.
+- `app/routes/admin.py:rent_settings` now resolves scope from canonical
+  `class_id` and treats `settings_block` as display-only, matching DOM-IDEN
+  authority rules.
+- `tests/test_rent_settings_class_scope.py` now uses the shared feature-seed
+  helper instead of hand-rolling the `ClassFeature` row.
+- `tests/test_economy_api.py` now seeds its canonical admin/class/session
+  state through the shared helpers and canonical session context instead of
+  committing ad hoc session mirrors outside FEAT contexts.
+- The economy API verification slice that exercises payroll-hours defaults
+  and frozen analysis snapshots is passing again under the canonical setup.
+- The global autouse `FEATBypass()` wrapper is gone from the test harness.
+  Enforcement is now the default execution model; bypass remains limited to
+  explicit fixture seeding helpers and the audit plugin.
+- Enforcement-marked suites currently pass:
+  `tests/test_feat_enforcement.py` and
+  `tests/test_redemption_disposition_feat.py`.
 
-**Constraint:** Phase 2 is additive. Existing tests continue to inherit the
-conftest autouse bypass. The migration of legacy tests onto these helpers
-happens during Phase 4 triage.
+**Constraint:** Phase 2 is additive. Legacy tests may still need explicit
+fixture-helper migration, but the harness no longer relies on a global
+autouse bypass.
 
 **Exit criterion:** Helper catalog exists; three example tests run cleanly
 under `@pytest.mark.enforce_feat`.
@@ -229,83 +269,43 @@ distribution from the pilot documented; used as the input estimate for Phase
 
 ---
 
-### Phase 4 — Flag day: invert the marker (1 day to flip; 1–2 weeks of triage)
+### Phase 4 — Flag day completed in tree (evidence-driven state)
 
-**Goal:** Enforcement is the default; opt-out is explicit and traceable.
+**Goal:** Enforcement is the default; the old autouse bypass wrapper is no
+longer present in `tests/conftest.py`.
 
-**Change to `tests/conftest.py`:**
+**Current state:**
+- `tests/conftest.py` no longer wraps every test in `FEATBypass()`.
+- Enforcement-marked suites run under live FEAT enforcement.
+- Explicit bypass remains only as a test-only fixture helper primitive and
+  audit/instrumentation concept.
 
-```python
-@pytest.fixture(autouse=True)
-def _feat_enforcement_default(request, app):
-    """
-    FEAT enforcement is the default. Tests that must seed legacy state
-    or test legacy paths can opt out with @pytest.mark.legacy_bypass.
+**Current triage focus:**
+1. Remove or rewrite any test that still assumes v1-tainted bypass behavior.
+2. Continue migrating remaining fixture helpers to canonical FEAT ownership.
+3. Keep dead-route validation on enforcement-marked slices, and only add new
+   route coverage when a real route-level bug is proven.
 
-    The old `enforce_feat` marker is preserved as a no-op alias for one
-    release cycle so existing marked tests don't need to be touched.
-    """
-    if "legacy_bypass" in request.keywords:
-        from app.feats.base import FEATBypass
-        with FEATBypass():
-            yield
-        return
-    yield
-```
+### Phase 5 — Drain remaining exceptions (ongoing)
 
-**Triage procedure for each failing test:**
-1. **Fixture-setup failure on flush** → add `@pytest.mark.legacy_bypass` with
-   a one-line comment naming the reason. Tracked for Phase 5.
-2. **Route call failure because the route is dead** → DO NOT add the bypass.
-   Add `@pytest.mark.xfail(reason="...", strict=True)` referencing the issue
-   number. This becomes the dead-route inventory.
-3. **Architectural bug (like Finding C)** → fix as part of this PR if small;
-   otherwise file an issue and xfail with reference.
-4. **Test infrastructure bug (session keys, etc.)** → fix as part of this PR.
-
-**Deliverables:**
-- One PR that ships the conftest flip + all marker/xfail additions
-- `docs/TRACKING/V2_DEAD_ROUTE_INVENTORY.md` — every `xfail` from
-  category 2, with route, FEAT-code-needed, and assigned wave
-
-**Exit criterion:**
-- Default-on enforcement is live in `main`
-- Every `legacy_bypass` marker has a one-line reason comment
-- Dead-route inventory exists with a count and per-route disposition
-
----
-
-### Phase 5 — Drain `legacy_bypass` and the dead-route inventory (ongoing)
-
-**Goal:** Reduce both markers to zero.
-
-**Per-marker disposition:**
-- `(fixture-only)` markers → refactor to use Phase-2 fixture helpers; remove
-  the test-level marker
-- Dead-route xfails → fix the route (add `@feat_shell`, register a FEAT code
-  if needed); remove the xfail
-- Architectural-bug xfails → architecture PRs; remove the xfail
+**Goal:** Reduce bypass-dependent fixture code and any remaining dead-route
+inventory to zero.
 
 **Tracked metrics:**
-- `legacy_bypass` marker count
+- explicit `with FEATBypass():` helper count
 - `xfail(reason=dead-route)` count
+- bypass-hidden fixture helper count
 
-Both metrics are surfaced in
-`V2_Full_compliance_migration_plan.md`. **Wave 12 (final validation) gates on
-both metrics being zero.**
+Wave 12 (final validation) still gates on those metrics reaching zero.
 
----
+## Open questions
 
-## Open questions to resolve before Phase 4
-
-- Should the `enforce_feat` marker remain as a no-op alias for one release
-  cycle, or be removed immediately? (Current preference: preserve for one
-  cycle to avoid churn on the 7 existing marked tests.)
-- Should the conftest change include a transition log line ("running under
-  legacy_bypass: <reason>") on every bypass-marked test, to make accidental
-  regression visible? (Probably yes; cheap and informative.)
-- Should the Phase 1 report be machine-readable (JSON/CSV) as well as
-  markdown? (Probably yes; helps Phase 4 triage automation.)
+- Which remaining fixture helpers still need canonicalization under the shared
+  FEAT-scoped helper catalog?
+- Are there any lingering dead-route xfails that should be converted back into
+  live enforcement tests or removed entirely?
+- Should the bypass audit report continue to emphasize fixture-only dependency
+  now that the global autouse wrapper is gone?
 
 ---
 

@@ -98,11 +98,11 @@
                 <form method="post" action="/verify/hallpass/{{ token }}">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <div class="mb-3">
-                        <label for="join_code" class="form-label fw-semibold">Class</label>
-                        <select class="form-select" id="join_code" name="join_code" required>
+                        <label for="class_id" class="form-label fw-semibold">Class</label>
+                        <select class="form-select" id="class_id" name="class_id" required>
                             <option value="" disabled selected>Select a class…</option>
                             {% for cls in classes %}
-                            <option value="{{ cls.join_code }}">{{ cls.label }}</option>
+                            <option value="{{ cls.class_id }}">{{ cls.label }}</option>
                             {% endfor %}
                         </select>
                     </div>

@@ -11,7 +11,7 @@ from typing import Any
 from app.services.classroom_setup import create_teacher as _svc_create_teacher
 from app.feats.base import FEATContext
 from app.extensions import db
-from app.models import ClassEconomy, Seat, StoreItem, StudentItem, Transaction, User, UserRole
+from app.models import ClassEconomy, ClassFeature, Seat, StoreItem, StudentItem, Transaction, User, UserRole
 from app.services import ledger_service
 
 
@@ -46,15 +46,6 @@ def make_sysadmin(username: str, totp_secret: str | None = None) -> User:
     return sysadmin
 
 
-# ---------------------------------------------------------------------------
-# Backward-compat shim — tests importing make_admin get make_teacher.
-# Remove once all call sites are migrated.
-# ---------------------------------------------------------------------------
-def make_admin(username: str, totp_secret: str | None = None, **_ignored) -> User:
-    """Deprecated: use make_teacher(). Returns canonical User (role=TEACHER)."""
-    return make_teacher(username, totp_secret=totp_secret)
-
-
 @dataclass(frozen=True)
 class CanonicalFixtureSeed:
     user: User
@@ -63,6 +54,7 @@ class CanonicalFixtureSeed:
     item: StoreItem | None = None
     transaction: Transaction | None = None
     purchase: StudentItem | None = None
+    class_feature: ClassFeature | None = None
 
 
 def seed_canonical_admin(username: str, totp_secret: str | None = None) -> CanonicalFixtureSeed:
@@ -95,6 +87,65 @@ def seed_class_with_seat(
         claimed=True,
     )
     return CanonicalFixtureSeed(user=teacher, class_row=class_row, seat=seat)
+
+
+def seed_student_identity(
+    *,
+    class_id: str,
+    first_name: str,
+    last_name: str = "Test",
+    username: str | None = None,
+) -> CanonicalFixtureSeed:
+    """Create a canonical student identity row under FEAT ownership."""
+    from tests.helpers.class_scope import make_student_identity
+
+    seat = make_student_identity(
+        class_id=class_id,
+        first_name=first_name,
+        last_name=last_name,
+        username=username,
+        claimed=True,
+    )
+    return CanonicalFixtureSeed(
+        user=db.session.get(User, seat.user_id),
+        seat=seat,
+    )
+
+
+def seed_student_membership(
+    *,
+    user: User,
+    class_id: str,
+    first_name: str,
+    last_name: str = "Test",
+    claimed: bool = True,
+) -> CanonicalFixtureSeed:
+    """Bind an existing user to an additional canonical student seat."""
+    from app.models import IdentityProfile
+    from app.utils.time import utc_now
+
+    with FEATContext("FEAT-IDEN-001", idempotency_key=f"seed_student_membership:{user.id}:{class_id}:{first_name}:{last_name}"):
+        seat = Seat(
+            user_id=user.id,
+            class_id=class_id,
+            role="student",
+            claimed_at=utc_now() if claimed else None,
+        )
+        db.session.add(seat)
+        db.session.flush()
+        profile = IdentityProfile(
+            seat_id=seat.id,
+            class_id=class_id,
+            profile_type="student_claimed" if claimed else "student_unclaimed",
+            first_name=first_name,
+            last_name=last_name,
+        )
+        db.session.add(profile)
+        db.session.flush()
+    return CanonicalFixtureSeed(
+        user=user,
+        seat=seat,
+    )
 
 
 def seed_store_item(
@@ -158,3 +209,33 @@ def seed_purchase(
             db.session.add(purchase)
         db.session.flush()
     return CanonicalFixtureSeed(user=db.session.get(User, user_id), transaction=tx, purchase=purchase)
+
+
+def seed_class_feature(
+    *,
+    class_id: str,
+    feature_name: str,
+) -> CanonicalFixtureSeed:
+    """Create a canonical class feature flag row under FEAT ownership."""
+    with FEATContext("FEAT-ADMN-001", idempotency_key=f"seed_class_feature:{class_id}:{feature_name}"):
+        existing = ClassFeature.query.filter_by(class_id=class_id, feature_name=feature_name).first()
+        if existing:
+            return CanonicalFixtureSeed(user=None, class_feature=existing)
+        row = ClassFeature(class_id=class_id, feature_name=feature_name)
+        db.session.add(row)
+        db.session.flush()
+    return CanonicalFixtureSeed(user=None, class_feature=row)
+
+
+def clear_class_feature(
+    *,
+    class_id: str,
+    feature_name: str,
+) -> int:
+    """Remove a canonical class feature row under FEAT ownership."""
+    with FEATContext("FEAT-ADMN-001", idempotency_key=f"clear_class_feature:{class_id}:{feature_name}"):
+        rows = ClassFeature.query.filter_by(class_id=class_id, feature_name=feature_name).all()
+        for row in rows:
+            db.session.delete(row)
+        db.session.flush()
+    return len(rows)

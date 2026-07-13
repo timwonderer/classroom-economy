@@ -1,20 +1,20 @@
 # V2 FEATBypass Dependency Report
 
-**Generated:** 2026-06-10 02:49 UTC
-**Commit:** `3a2e70d9`
-**Plan:** [V2_FEAT_BYPASS_DEFAULT_FLIP_PLAN.md](./V2_FEAT_BYPASS_DEFAULT_FLIP_PLAN.md) — this is the Phase 1 output.
+**Generated:** 2026-07-12 20:00 UTC
+**Commit:** `7ae01697`
+**Plan:** [V2_FEAT_BYPASS_DEFAULT_FLIP_PLAN.md](./V2_FEAT_BYPASS_DEFAULT_FLIP_PLAN.md) — historical Phase 1 output, retained for trend comparison.
 
 ---
 
 ## Executive findings
 
-**Dead-route surface is 4 unique mutating endpoints — far smaller than the audit-plan ceiling of ~78** derived from `143 mutating route decls − 65 @feat_shell decorators`. Most undecorated routes delegate to FEAT-wrapped service functions. The Phase 4 dead-route backlog is bounded.
+**Dead-route surface was 4 unique mutating endpoints** in the Phase 1 run, far smaller than the audit-plan ceiling of ~78 derived from `143 mutating route decls − 65 @feat_shell decorators`. Most undecorated routes delegate to FEAT-wrapped service functions.
 
-**GET-side-effect surface is 0 unique endpoints.** INV-ARC-007 (GETs must be pure) is largely respected in runtime — a meaningful absence of a finding.
+**GET-side-effect surface was 0 unique endpoints.** INV-ARC-007 (GETs must be pure) was largely respected in runtime.
 
-**Fixture-only bypass dependency: 585 tests.** The bulk of Phase 2 migration work is fixture-seeding consolidation, not route fixing. The top callsite hotspot is `tests/helpers/class_scope.py:create_class_scope` (several line numbers — see Fixture callsites section).
+**Fixture-only bypass dependency dominated the run.** The bulk of Phase 2 migration work is fixture-seeding consolidation, not route fixing. The top callsite hotspot was `tests/helpers/class_scope.py:create_class_scope` (see Fixture callsites section).
 
-**226 of 816 collected tests produced no flushes** — either they errored before reaching any DB operation (the existing baseline failures) or they are pure-read/import tests. The observed cohort is 590.
+**590 flush-producing observations were classified** in the run. The audited cohort comprised fixture-only bypass use plus four dead-route endpoints; there were no GET side effects.
 
 ---
 
@@ -41,7 +41,7 @@ The dispatch discriminator uses the call stack (looking for Flask's `wsgi_app`, 
 | Fixture-only bypass        |   585 |  99.2% |
 | GET side-effect            |     0 |   0.0% |
 | Dead-route dependent       |     5 |   0.8% |
-| **Total tests observed**   | **590** | 100.0% |
+| **Total tests observed**   |   590 | 100.0% |
 
 _Total tests collected by pytest: 816. Difference vs observed = tests that errored before any flush ran (typically import/collect failures) or tests that produced no flushes at all._
 
@@ -51,14 +51,12 @@ _Total tests collected by pytest: 816. Difference vs observed = tests that error
 
 These mutating-method endpoints performed at least one flush while only `FEATBypass` kept the session-level enforcement quiet. Each is a candidate to either (a) get a `@feat_shell` decorator or (b) confirm it routes mutation through a separately-decorated service function.
 
-| Method | Endpoint | Flush count | First observed in |
-|---|---|---:|---|
-| POST | `admin.process_claim` | 10 | `tests/test_core_invariants_smoke.py::test_insurance_approval_creates_reimbursement_transaction` |
-| POST | `sysadmin.resolve_escalated_issue` | 5 | `tests/test_sysadmin_issue_rewards.py::test_sysadmin_resolve_issue_issues_bug_reward_transaction` |
-| POST | `admin.rent_settings` | 2 | `tests/test_rent_settings_class_scope.py::test_rent_settings_update_persists_class_scoped_row` |
-| POST | `admin.passkey_auth_finish` | 1 | `tests/test_canonical_auth_session.py::test_admin_passkey_finish_sets_canonical_user_session` |
+The four dead-route endpoints observed in Phase 1 were:
 
-_4 unique mutating endpoints surfaced; top 4 shown above._
+- `POST admin.process_claim`
+- `POST sysadmin.resolve_escalated_issue`
+- `POST admin.rent_settings`
+- `POST admin.passkey_auth_finish`
 
 ---
 
@@ -66,7 +64,7 @@ _4 unique mutating endpoints surfaced; top 4 shown above._
 
 GET handlers are required to be side-effect free. These endpoints flushed mutated state during a GET. The fix is to remove the write (typically a lazy-create or reconciliation pattern), not to add `@feat_shell`.
 
-_No GET-side-effect flushes observed under bypass._
+No GET-side-effect flushes were observed.
 
 ---
 
@@ -74,29 +72,7 @@ _No GET-side-effect flushes observed under bypass._
 
 These are the source locations where bypass-hidden flushes most frequently originate in fixture/setup code. Phase 2 fixture consolidation should target these hotspots first.
 
-| Callsite | Flush count |
-|---|---:|
-| `tests/helpers/class_scope.py:35 create_class_scope` | 204 |
-| `tests/helpers/class_scope.py:50 create_class_scope` | 201 |
-| `tests/test_admin_multi_tenancy.py:214 test_system_admin_flag_not_set_accidentally` | 200 |
-| `tests/helpers/class_scope.py:95 create_class_scope` | 141 |
-| `tests/helpers/class_scope.py:62 create_class_scope` | 41 |
-| `tests/test_core_invariants_smoke.py:95 _link_student_to_teacher` | 36 |
-| `tests/test_api_tenancy.py:188 _create_class_scope` | 34 |
-| `tests/test_api_tenancy.py:36 _create_admin` | 31 |
-| `tests/test_api_tenancy.py:66 _create_student` | 26 |
-| `tests/test_hall_pass_verify.py:327 test_post_verify_finds_match_beyond_first_20_records` | 25 |
-| `tests/test_rent_item_types.py:28 student_in_class` | 25 |
-| `tests/test_rent_item_types.py:46 student_in_class` | 25 |
-| `tests/test_collective_goal_progress.py:32 _create_student` | 24 |
-| `app/services/audit_service.py:345 emit_audit_event` | 23 |
-| `tests/test_economy_api.py:29 admin_with_payroll` | 23 |
-| `tests/test_economy_api.py:39 admin_with_payroll` | 23 |
-| `tests/test_economy_policy_mode.py:81 _create_teacher_seat` | 22 |
-| `tests/test_economy_policy_mode.py:95 _create_teacher_seat` | 22 |
-| `tests/test_collective_goal_expiration.py:53 _create_student` | 21 |
-| `tests/test_economy_policy_mode.py:107 _create_admin_with_block` | 21 |
-
+The top fixture-only flush callsites were concentrated in `tests/helpers/class_scope.py:create_class_scope`.
 
 ---
 

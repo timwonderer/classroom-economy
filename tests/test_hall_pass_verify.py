@@ -11,13 +11,14 @@ Validates the privacy-respecting single-student verification per spec v1.0:
 - Rate limiting not tested here (requires integration harness)
 """
 
-from tests.helpers.v2_fixtures import make_admin
+from tests.helpers.v2_fixtures import seed_canonical_admin
 import pytest
 from datetime import datetime, timezone, timedelta
 
 from app.extensions import db
+from app.feats.base import FEATContext
 from app.models import User, HallPassLog
-from tests.helpers.class_scope import make_student_identity
+from tests.helpers.class_scope import make_student_identity, create_class_scope
 
 
 # ---------------------------------------------------------------------------
@@ -27,51 +28,54 @@ from tests.helpers.class_scope import make_student_identity
 @pytest.fixture
 def hp_teacher(client):
     """Create a teacher with a hall pass verify token."""
-    teacher = make_admin("hpteacher")
-    teacher.hall_pass_verify_token = User.generate_verify_token()
-    db.session.commit()
+    with FEATContext("FEAT-IDEN-001", idempotency_key="hall_pass_verify:teacher"):
+        teacher = seed_canonical_admin("hpteacher").user
+        teacher.hall_pass_verify_token = User.generate_verify_token()
+        db.session.flush()
     return teacher
 
 
 @pytest.fixture
 def hp_class(client, hp_teacher):
     """Create a class for hp_teacher."""
-    from tests.helpers.class_scope import create_class_scope
-    class_row = create_class_scope(
-        teacher_user=hp_teacher,
-        join_code="jc_chem3",
-        display_name="Period3",
-        section="Period3",
-    )
-    db.session.commit()
+    with FEATContext("FEAT-IDEN-001", idempotency_key="hall_pass_verify:class"):
+        class_row = create_class_scope(
+            teacher_user=hp_teacher,
+            join_code="jc_chem3",
+            display_name="Period3",
+            section="Period3",
+        )
+        db.session.flush()
     return class_row
 
 
 @pytest.fixture
 def hp_student(client, hp_teacher, hp_class):
     """Create a student in hp_class."""
-    student = make_student_identity(class_id=hp_class.class_id, first_name="Maria", last_name="Garcia")
-    db.session.commit()
+    with FEATContext("FEAT-IDEN-001", idempotency_key="hall_pass_verify:student"):
+        student = make_student_identity(class_id=hp_class.class_id, first_name="Maria", last_name="Garcia")
+        db.session.flush()
     return student
 
 
 @pytest.fixture
 def hp_pass_today(client, hp_student, hp_class):
     """Create a 'left' hall pass for today for Maria G."""
-    now = datetime.now(timezone.utc)
-    log = HallPassLog(
-        seat_id=hp_student.id,
-        class_id=hp_class.class_id,
-        reason="Bathroom",
-        status="left",
-        join_code="jc_chem3",
-        period="Period3",
-        request_time=now - timedelta(minutes=15),
-        decision_time=now - timedelta(minutes=14),
-        left_time=now - timedelta(minutes=9),
-    )
-    db.session.add(log)
-    db.session.commit()
+    with FEATContext("FEAT-IDEN-001", idempotency_key="hall_pass_verify:pass_today"):
+        now = datetime.now(timezone.utc)
+        log = HallPassLog(
+            seat_id=hp_student.id,
+            class_id=hp_class.class_id,
+            reason="Bathroom",
+            status="left",
+            join_code="jc_chem3",
+            period="Period3",
+            request_time=now - timedelta(minutes=15),
+            decision_time=now - timedelta(minutes=14),
+            left_time=now - timedelta(minutes=9),
+        )
+        db.session.add(log)
+        db.session.flush()
     return log
 
 
@@ -102,9 +106,10 @@ def test_get_verify_page_invalid_token(client):
 
 def test_get_verify_page_rejects_null_token_teacher(client):
     """Teacher records with null token must not be publicly reachable."""
-    teacher = make_admin("nulltoken_teacher")
-    teacher.hall_pass_verify_token = None
-    db.session.commit()
+    with FEATContext("FEAT-IDEN-001", idempotency_key="hall_pass_verify:null_token"):
+        teacher = seed_canonical_admin("nulltoken_teacher").user
+        teacher.hall_pass_verify_token = None
+        db.session.flush()
 
     # URL token 'None' must not resolve to the null token row.
     resp = client.get("/verify/hallpass/None")
@@ -117,12 +122,12 @@ def test_get_verify_page_rejects_null_token_teacher(client):
 # POST: verification outcomes
 # ---------------------------------------------------------------------------
 
-def test_post_verify_no_match(client, hp_teacher, hp_student):
+def test_post_verify_no_match(client, hp_teacher, hp_student, hp_class):
     """POST with a name that does not match any pass returns no_match."""
     resp = client.post(
         f"/verify/hallpass/{hp_teacher.hall_pass_verify_token}",
         data={
-            "join_code": "jc_chem3",
+            "class_id": hp_class.class_id,
             "first_name": "Nonexistent",
             "last_name": "Zimmer",
         },
@@ -132,12 +137,12 @@ def test_post_verify_no_match(client, hp_teacher, hp_student):
     assert "No hall pass record found" in html
 
 
-def test_post_verify_match_left(client, hp_teacher, hp_student, hp_pass_today):
+def test_post_verify_match_left(client, hp_teacher, hp_student, hp_pass_today, hp_class):
     """POST with a matching student who is currently out returns match with status."""
     resp = client.post(
         f"/verify/hallpass/{hp_teacher.hall_pass_verify_token}",
         data={
-            "join_code": "jc_chem3",
+            "class_id": hp_class.class_id,
             "first_name": "Maria",
             "last_name": "Garcia",
         },
@@ -152,7 +157,7 @@ def test_post_verify_match_left(client, hp_teacher, hp_student, hp_pass_today):
     assert f"/hall-pass/{hp_pass_today.id}" not in html
 
 
-def test_post_verify_match_returned(client, hp_teacher, hp_student):
+def test_post_verify_match_returned(client, hp_teacher, hp_student, hp_class):
     """POST matching a student who has returned shows returned status."""
     now = datetime.now(timezone.utc)
     log = HallPassLog(
@@ -167,13 +172,14 @@ def test_post_verify_match_returned(client, hp_teacher, hp_student):
         left_time=now - timedelta(minutes=25),
         return_time=now - timedelta(minutes=10),
     )
-    db.session.add(log)
-    db.session.commit()
+    with FEATContext("FEAT-IDEN-001", idempotency_key="hall_pass_verify:return_log"):
+        db.session.add(log)
+        db.session.flush()
 
     resp = client.post(
         f"/verify/hallpass/{hp_teacher.hall_pass_verify_token}",
         data={
-            "join_code": "jc_chem3",
+            "class_id": hp_class.class_id,
             "first_name": "Maria",
             "last_name": "Garcia",
         },
@@ -184,28 +190,29 @@ def test_post_verify_match_returned(client, hp_teacher, hp_student):
     assert "Returned" in html
 
 
-def test_post_verify_ambiguous(client, hp_teacher, hp_student):
+def test_post_verify_ambiguous(client, hp_teacher, hp_student, hp_class):
     """POST matching multiple students returns ambiguous response."""
-    student2 = make_student_identity(class_id=hp_student.class_id, first_name="Maria", last_name="Garcia")
-    now = datetime.now(timezone.utc)
-    for s in [hp_student, student2]:
-        db.session.add(HallPassLog(
-            seat_id=s.id,
-            class_id=hp_student.class_id,
-            reason="Bathroom",
-            status="left",
-            join_code="jc_chem3",
-            period="Period3",
-            request_time=now - timedelta(minutes=10),
-            decision_time=now - timedelta(minutes=9),
-            left_time=now - timedelta(minutes=5),
-        ))
-    db.session.commit()
+    with FEATContext("FEAT-IDEN-001", idempotency_key="hall_pass_verify:ambiguous"):
+        student2 = make_student_identity(class_id=hp_student.class_id, first_name="Maria", last_name="Garcia")
+        now = datetime.now(timezone.utc)
+        for s in [hp_student, student2]:
+            db.session.add(HallPassLog(
+                seat_id=s.id,
+                class_id=hp_student.class_id,
+                reason="Bathroom",
+                status="left",
+                join_code="jc_chem3",
+                period="Period3",
+                request_time=now - timedelta(minutes=10),
+                decision_time=now - timedelta(minutes=9),
+                left_time=now - timedelta(minutes=5),
+            ))
+        db.session.flush()
 
     resp = client.post(
         f"/verify/hallpass/{hp_teacher.hall_pass_verify_token}",
         data={
-            "join_code": "jc_chem3",
+            "class_id": hp_class.class_id,
             "first_name": "Maria",
             "last_name": "Garcia",
         },
@@ -217,12 +224,12 @@ def test_post_verify_ambiguous(client, hp_teacher, hp_student):
     assert "Bathroom" not in html
 
 
-def test_post_verify_no_history_shown(client, hp_teacher, hp_student, hp_pass_today):
+def test_post_verify_no_history_shown(client, hp_teacher, hp_student, hp_pass_today, hp_class):
     """POST result must not expose any list of passes or roster."""
     resp = client.post(
         f"/verify/hallpass/{hp_teacher.hall_pass_verify_token}",
         data={
-            "join_code": "jc_chem3",
+            "class_id": hp_class.class_id,
             "first_name": "Maria",
             "last_name": "Garcia",
         },
@@ -235,12 +242,18 @@ def test_post_verify_no_history_shown(client, hp_teacher, hp_student, hp_pass_to
     assert f'"id": {hp_pass_today.id}' not in html
 
 
-def test_post_verify_wrong_join_code_rejected(client, hp_teacher, hp_student, hp_pass_today):
-    """POST with a join_code that doesn't belong to this teacher returns no_match."""
+def test_post_verify_wrong_class_rejected(client, hp_teacher, hp_student, hp_pass_today):
+    """POST with a class_id that doesn't belong to this teacher returns no_match."""
+    other_class = create_class_scope(
+        teacher_user=hp_teacher,
+        join_code="jc_other_class",
+        display_name="Other Period",
+        section="Other Period",
+    )
     resp = client.post(
         f"/verify/hallpass/{hp_teacher.hall_pass_verify_token}",
         data={
-            "join_code": "jc_other_class",
+            "class_id": other_class.class_id,
             "first_name": "Maria",
             "last_name": "Garcia",
         },
@@ -250,73 +263,75 @@ def test_post_verify_wrong_join_code_rejected(client, hp_teacher, hp_student, hp
     assert "No hall pass record found" in html
 
 
-def test_post_verify_old_pass_not_shown(client, hp_teacher, hp_student):
+def test_post_verify_old_pass_not_shown(client, hp_teacher, hp_student, hp_class):
     """Passes from yesterday are not returned by today-scoped query."""
-    yesterday = datetime.now(timezone.utc) - timedelta(days=1)
-    old_log = HallPassLog(
-        seat_id=hp_student.id,
-        class_id=hp_student.class_id,
-        reason="Bathroom",
-        status="left",
-        join_code="jc_chem3",
-        period="Period3",
-        request_time=yesterday,
-        decision_time=yesterday + timedelta(minutes=1),
-        left_time=yesterday + timedelta(minutes=5),
-    )
-    db.session.add(old_log)
-    db.session.commit()
-
-    resp = client.post(
-        f"/verify/hallpass/{hp_teacher.hall_pass_verify_token}",
-        data={
-            "join_code": "jc_chem3",
-            "first_name": "Maria",
-            "last_name": "Garcia",
-        },
-    )
-    assert resp.status_code == 200
-    html = resp.data.decode()
-    assert "No hall pass record found" in html
-
-
-def test_post_verify_finds_match_beyond_first_20_records(client, hp_teacher, hp_student):
-    """Matching search must not be truncated by an arbitrary fixed result window."""
-    now = datetime.now(timezone.utc)
-
-    # Insert many newer non-matching records for the same class/day.
-    for i in range(25):
-        other = make_student_identity(class_id=hp_student.class_id, first_name=f"Other{i}", last_name="Zimmer")
-        db.session.add(HallPassLog(
-            seat_id=other.id,
+    with FEATContext("FEAT-IDEN-001", idempotency_key="hall_pass_verify:old_pass"):
+        yesterday = datetime.now(timezone.utc) - timedelta(days=1)
+        old_log = HallPassLog(
+            seat_id=hp_student.id,
             class_id=hp_student.class_id,
-            reason="Office",
+            reason="Bathroom",
             status="left",
             join_code="jc_chem3",
             period="Period3",
-            request_time=now - timedelta(minutes=i),
-            decision_time=now - timedelta(minutes=i),
-            left_time=now - timedelta(minutes=i),
-        ))
-
-    # Add the target match as an older same-day record.
-    db.session.add(HallPassLog(
-        seat_id=hp_student.id,
-        class_id=hp_student.class_id,
-        reason="Bathroom",
-        status="left",
-        join_code="jc_chem3",
-        period="Period3",
-        request_time=now - timedelta(hours=2),
-        decision_time=now - timedelta(hours=2),
-        left_time=now - timedelta(hours=2),
-    ))
-    db.session.commit()
+            request_time=yesterday,
+            decision_time=yesterday + timedelta(minutes=1),
+            left_time=yesterday + timedelta(minutes=5),
+        )
+        db.session.add(old_log)
+        db.session.flush()
 
     resp = client.post(
         f"/verify/hallpass/{hp_teacher.hall_pass_verify_token}",
         data={
-            "join_code": "jc_chem3",
+            "class_id": hp_class.class_id,
+            "first_name": "Maria",
+            "last_name": "Garcia",
+        },
+    )
+    assert resp.status_code == 200
+    html = resp.data.decode()
+    assert "No hall pass record found" in html
+
+
+def test_post_verify_finds_match_beyond_first_20_records(client, hp_teacher, hp_student, hp_class):
+    """Matching search must not be truncated by an arbitrary fixed result window."""
+    with FEATContext("FEAT-IDEN-001", idempotency_key="hall_pass_verify:result_window"):
+        now = datetime.now(timezone.utc)
+
+        # Insert many newer non-matching records for the same class/day.
+        for i in range(25):
+            other = make_student_identity(class_id=hp_student.class_id, first_name=f"Other{i}", last_name="Zimmer")
+            db.session.add(HallPassLog(
+                seat_id=other.id,
+                class_id=hp_student.class_id,
+                reason="Office",
+                status="left",
+                join_code="jc_chem3",
+                period="Period3",
+                request_time=now - timedelta(minutes=i),
+                decision_time=now - timedelta(minutes=i),
+                left_time=now - timedelta(minutes=i),
+            ))
+
+        # Add the target match as an older same-day record.
+        db.session.add(HallPassLog(
+            seat_id=hp_student.id,
+            class_id=hp_student.class_id,
+            reason="Bathroom",
+            status="left",
+            join_code="jc_chem3",
+            period="Period3",
+            request_time=now - timedelta(hours=2),
+            decision_time=now - timedelta(hours=2),
+            left_time=now - timedelta(hours=2),
+        ))
+        db.session.flush()
+
+    resp = client.post(
+        f"/verify/hallpass/{hp_teacher.hall_pass_verify_token}",
+        data={
+            "class_id": hp_class.class_id,
             "first_name": "Maria",
             "last_name": "Garcia",
         },
@@ -327,12 +342,12 @@ def test_post_verify_finds_match_beyond_first_20_records(client, hp_teacher, hp_
     assert "No hall pass record found" not in html
 
 
-def test_post_verify_input_normalization(client, hp_teacher, hp_student, hp_pass_today):
+def test_post_verify_input_normalization(client, hp_teacher, hp_student, hp_pass_today, hp_class):
     """Input normalization: mixed-case first name and last name should still match."""
     resp = client.post(
         f"/verify/hallpass/{hp_teacher.hall_pass_verify_token}",
         data={
-            "join_code": "jc_chem3",
+            "class_id": hp_class.class_id,
             "first_name": "  MARIA  ",
             "last_name": " garcia ",
         },
@@ -343,13 +358,13 @@ def test_post_verify_input_normalization(client, hp_teacher, hp_student, hp_pass
     assert "Currently Out" in html
 
 
-def test_post_verify_malformed_last_name(client, hp_teacher, hp_student):
+def test_post_verify_malformed_last_name(client, hp_teacher, hp_student, hp_class):
     """POST with invalid or empty last_name returns no_match."""
     for bad_last_name in ["", "   "]:
         resp = client.post(
             f"/verify/hallpass/{hp_teacher.hall_pass_verify_token}",
             data={
-                "join_code": "jc_chem3",
+                "class_id": hp_class.class_id,
                 "first_name": "Maria",
                 "last_name": bad_last_name,
             },

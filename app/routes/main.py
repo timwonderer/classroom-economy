@@ -248,13 +248,13 @@ def verify_hall_pass(teacher_public_token):
             message=_GENERIC_UNAVAILABLE
         ), 404
 
-    # Get teacher's active classes (distinct join_codes with labels)
+    # Get teacher's active classes (display uses join_code, but POST should carry class_id)
     classes_rows = (
         ClassEconomy.query.filter_by(user_id=teacher_user.id)
         .order_by(ClassEconomy.display_name)
         .all()
     )
-    # Build list: [{"join_code": ..., "label": ...}, ...]
+    # Build list: [{"join_code": ..., "class_id": ..., "label": ...}, ...]
     classes = []
     for c in classes_rows:
         classes.append({
@@ -275,13 +275,13 @@ def verify_hall_pass(teacher_public_token):
     # ---- POST: verification attempt ----
     raw_first_name = request.form.get('first_name', '')
     raw_last_name = request.form.get('last_name', '')
-    selected_join_code = request.form.get('join_code', '')
+    selected_class_id = request.form.get('class_id', '')
 
     first_name_norm = _normalize_first_name(raw_first_name)
     last_name_norm = _normalize_last_name(raw_last_name)
 
     # Reject malformed input uniformly
-    if not first_name_norm or not last_name_norm or not selected_join_code:
+    if not first_name_norm or not last_name_norm or not selected_class_id:
         return render_template(
             'hall_pass_verify.html',
             unavailable=False,
@@ -290,9 +290,9 @@ def verify_hall_pass(teacher_public_token):
             result={'outcome': 'no_match'}
         )
 
-    # Validate selected join_code belongs to this teacher
-    valid_code = any(c['join_code'] == selected_join_code for c in classes)
-    if not valid_code:
+    # Validate selected class belongs to this teacher.
+    selected_class = next((c for c in classes if c['class_id'] == selected_class_id), None)
+    if not selected_class:
         return render_template(
             'hall_pass_verify.html',
             unavailable=False,
@@ -313,8 +313,6 @@ def verify_hall_pass(teacher_public_token):
     # Normalize for DB comparison (handles SQLite naive datetime storage)
     today_start_db = normalize_for_db(today_start_utc)
     today_end_db = normalize_for_db(today_end_utc)
-
-    selected_class_id = next((c['class_id'] for c in classes if c['join_code'] == selected_join_code), None)
 
     # Query today's hall pass records for this class scope.
     # Only include actionable statuses (not pending/rejected).
@@ -346,7 +344,7 @@ def verify_hall_pass(teacher_public_token):
         result = {'outcome': 'ambiguous'}
     else:
         entry = matched[0]
-        class_label = next((c['label'] for c in classes if c['join_code'] == selected_join_code), selected_join_code)
+        class_label = selected_class['label']
 
         # Format time_out in school timezone
         time_out_str = None
