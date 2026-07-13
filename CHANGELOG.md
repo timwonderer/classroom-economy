@@ -9,6 +9,7 @@ and this project follows semantic versioning principles.
 ## [Unreleased]
 
 ### Changed
+- Canonical auth-session tests now seed student identity via unclaimed-seat then claim-binding semantics, and use canonical class scope creation instead of non-authoritative convenience seed helpers in `tests/test_canonical_auth_session.py`.
 - **Canonical monetary resolution FEAT landed** — Added `FEAT-LED-000` as the single monetary-resolution boundary, rewired store/rent/insurance/admin monetary flows to build intended ledger plans before posting, and removed the legacy `app/utils/overdraft.py` helper. Targeted FEAT regressions now pass against the canonical path only.
 - **Pytest artifacts no longer emit on collect-only discovery runs** — Artifact generation now skips when pytest is invoked with `--collect-only`, preventing VS Code test discovery from recreating files in `pytest_result/` when no tests were actually executed.
 - **Pytest failure classification quality improved** — Result artifacts now extract exception classes from pytest traceback `E ...` lines (for example `FEATContextError`) and prefer application frames when computing `first_project_frame`, so grouped-failure sections collapse by root cause instead of splitting by per-test callsite lines.

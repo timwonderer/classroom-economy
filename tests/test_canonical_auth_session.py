@@ -18,11 +18,53 @@ from app.models import (
     UserRole,
 )
 from app.utils.time import utc_now
-from tests.helpers.v2_fixtures import make_admin, make_sysadmin, seed_canonical_admin, seed_class_with_seat, seed_student_identity
-from tests.helpers.class_scope import make_student_identity
+from tests.helpers.class_scope import create_class_scope
+from tests.helpers.v2_fixtures import make_sysadmin, seed_canonical_admin
 from tests.helpers.canonical_session import set_canonical_context
 
 
+def _seed_claimed_student_for_class(*, class_id: str, username: str, first_name: str, last_name: str, pin: str = "2468"):
+    """Create a student through claim semantics: unclaimed seat first, then bind user."""
+    with FEATContext("FEAT-IDEN-001"):
+        seat = Seat(
+            class_id=class_id,
+            role="student",
+            claim_first_name_hash=hash_username_lookup(first_name.lower()),
+            claim_last_name_hash=hash_username_lookup(last_name.lower()),
+        )
+        db.session.add(seat)
+        db.session.flush()
+
+        profile = IdentityProfile(
+            seat_id=seat.id,
+            class_id=class_id,
+            profile_type="student_unclaimed",
+            first_name=first_name,
+            last_name=last_name,
+        )
+        db.session.add(profile)
+        db.session.flush()
+
+        salt = get_random_salt()
+        user = User(
+            user_role=UserRole.STUDENT,
+            username_hash=hash_username(username, salt),
+            username_lookup_hash=hash_username_lookup(username),
+            pin_hash=generate_password_hash(pin),
+        )
+        db.session.add(user)
+        db.session.flush()
+
+        seat.user_id = user.id
+        seat.claimed_at = utc_now()
+        profile.profile_type = "student_claimed"
+        user.last_active_class_id = class_id
+        user.last_active_seat_id = seat.id
+        db.session.flush()
+
+    return user, seat
+
+ 
 def test_system_admin_login_verifies_canonical_totp(client):
     canonical_secret = pyotp.random_base32()
     admin = make_sysadmin("canonical_sysadmin", canonical_secret)
@@ -47,24 +89,19 @@ def test_student_login_verifies_user_pin_and_resolves_through_claimed_seat(clien
 
     with FEATContext("FEAT-IDEN-001"):
         teacher = seed_canonical_admin("student_login_teacher", pyotp.random_base32()).user
-        class_seed = seed_class_with_seat(
-            teacher=teacher,
+        class_row = create_class_scope(
+            teacher_user=teacher,
             join_code="CANONICAL-LOGIN",
             display_name="Canonical",
         )
-        class_row = class_seed.class_row
 
         username = "canonical_student"
-        student_seed = seed_student_identity(
+        student_user, _seat = _seed_claimed_student_for_class(
             class_id=class_row.class_id,
+            username=username,
             first_name="Canonical",
             last_name="S",
-            username=username,
         )
-        student_user = student_seed.user
-        seat = student_seed.seat
-        student_user.pin_hash = generate_password_hash("2468")
-        db.session.flush()
 
     response = client.post(
         "/student/login",
@@ -83,23 +120,19 @@ def test_student_login_missing_last_active_class_shows_selector(client, monkeypa
 
     with FEATContext("FEAT-IDEN-001"):
         teacher = seed_canonical_admin("student_selector_teacher", pyotp.random_base32()).user
-        class_seed = seed_class_with_seat(
-            teacher=teacher,
+        class_row = create_class_scope(
+            teacher_user=teacher,
             join_code="SELECTOR-LOGIN",
             display_name="Selector",
         )
-        class_row = class_seed.class_row
 
         username = "selector_student"
-        student_seed = seed_student_identity(
+        user, seat = _seed_claimed_student_for_class(
             class_id=class_row.class_id,
+            username=username,
             first_name="Select",
             last_name="A",
-            username=username,
         )
-        user = student_seed.user
-        seat = student_seed.seat
-        user.pin_hash = generate_password_hash("2468")
         user.last_active_class_id = None
         db.session.flush()
 
@@ -118,23 +151,19 @@ def test_student_login_no_valid_class_seats_hard_fails(client, monkeypatch):
 
     with FEATContext("FEAT-IDEN-001"):
         teacher = seed_canonical_admin("student_hard_fail_teacher", pyotp.random_base32()).user
-        class_seed = seed_class_with_seat(
-            teacher=teacher,
+        class_row = create_class_scope(
+            teacher_user=teacher,
             join_code="HARDFAIL-LOGIN",
             display_name="HardFail",
         )
-        class_row = class_seed.class_row
 
         username = "hardfail_student"
-        student_seed = seed_student_identity(
+        user, seat = _seed_claimed_student_for_class(
             class_id=class_row.class_id,
+            username=username,
             first_name="Hard",
             last_name="F",
-            username=username,
         )
-        user = student_seed.user
-        seat = student_seed.seat
-        user.pin_hash = generate_password_hash("2468")
         user.last_active_class_id = None
         db.session.flush()
 
@@ -160,13 +189,12 @@ def test_admin_passkey_register_uses_canonical_user_external_id(client, monkeypa
 
     with FEATContext("FEAT-IDEN-001"):
         admin = seed_canonical_admin("passkey_teacher", pyotp.random_base32()).user
-        class_seed = seed_class_with_seat(
-            teacher=admin,
+        class_row = create_class_scope(
+            teacher_user=admin,
             join_code="PASSKEY1",
             display_name="Passkey",
         )
         user = db.session.get(User, admin.id)
-        class_row = class_seed.class_row
         teacher_seat = Seat.query.filter_by(class_id=class_row.class_id, role="teacher").first()
         user.current_session_nonce = "nonce"
         db.session.flush()
@@ -196,13 +224,12 @@ def test_admin_passkey_register_uses_canonical_user_external_id(client, monkeypa
 def test_admin_passkey_finish_sets_canonical_user_session(client, monkeypatch):
     with FEATContext("FEAT-IDEN-001"):
         admin = seed_canonical_admin("passkey_finish_teacher", pyotp.random_base32()).user
-        class_seed = seed_class_with_seat(
-            teacher=admin,
+        class_row = create_class_scope(
+            teacher_user=admin,
             join_code="PASSKEY2",
             display_name="Passkey2",
         )
         user = db.session.get(User, admin.id)
-        class_row = class_seed.class_row
         teacher_seat = Seat.query.filter_by(class_id=class_row.class_id, role="teacher").first()
         db.session.add(PasskeyCredential(user_id=user.id, authenticator_name="Key"))
         db.session.flush()
