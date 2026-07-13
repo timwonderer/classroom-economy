@@ -14,7 +14,8 @@ from app import db
 from app.feats.base import FEATContext
 from app.models import RentSettings, RentItem, Transaction, TransactionStatus
 from app.services.obligations_service import create_and_schedule_rent_policy_version
-from tests.helpers.v2_fixtures import seed_canonical_admin, seed_class_with_seat
+from tests.helpers.v2_fixtures import seed_canonical_admin, seed_student_identity
+from tests.helpers.class_scope import create_class_scope
 from tests.helpers.canonical_session import set_canonical_context
 
 
@@ -23,16 +24,16 @@ def setup_rent_with_items(client):
     """Create teacher, student, rent settings, and rent items."""
     with FEATContext("FEAT-IDEN-001", idempotency_key="rent-display:setup"):
         teacher = seed_canonical_admin("test_teacher").user
-        seeded = seed_class_with_seat(
-            teacher=teacher,
-            join_code="TESTA",
+        economy = create_class_scope(
+            teacher_user=teacher,
             display_name="Test Rent Class",
             section="A",
-            student_first_name="Test",
-            student_last_name="S",
         )
-        economy = seeded.class_row
-        student_seat = seeded.seat
+        student_seat = seed_student_identity(
+            class_id=economy.class_id,
+            first_name="Test",
+            last_name="S",
+        ).seat
 
         # Create rent settings on the canonical class scope.
         now = datetime.now(timezone.utc)
