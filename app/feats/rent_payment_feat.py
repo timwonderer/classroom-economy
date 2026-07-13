@@ -8,6 +8,7 @@ from app.models import ClassEconomy, _quantize_currency
 from app.services import access_policy_service, ledger_service, obligations_service, store_service
 from app.services.entitlement_service import reconcile_rent_hall_pass_top_off
 from app.feats.ledger_resolution_feat import build_intended_ledger_plan, resolve_intended_ledger_plan, apply_resolved_ledger_plan
+from app.utils.join_code import get_display_join_code
 from app.utils.time import utc_now
 
 
@@ -48,8 +49,7 @@ def execute_rent_payment(
     now = now or utc_now()
     user_id = getattr(context, "user_id", None)
     class_id = seat.class_id
-    class_economy = ClassEconomy.query.filter_by(class_id=class_id).first()
-    join_code = class_economy.join_code if class_economy else None
+    join_code = get_display_join_code(class_id)
 
     # Resolve the immutable policy version governing this cycle
     active_version = obligations_service.resolve_active_rent_policy_version(class_id)

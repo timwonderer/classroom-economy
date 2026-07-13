@@ -22,8 +22,8 @@ from app.extensions import db, limiter
 from app.models import (
     Admin, StoreItem, StorePurchase, Transaction, TransactionStatus, TapEvent, AttendanceSession,
     AttendanceReasonCode, TapEventReasonCode, HallPassLog, HallPassSettings, InsuranceClaim, BankingSettings,
-    StoreItemBlock, User,
-    RedemptionAuditLog, RedemptionAuditAction, RedemptionAuditSource, _quantize_currency,
+    StoreItemBlock, StoreItemVisibility, User,
+    RedemptionEvent, RedemptionEventAction, RedemptionEventSource, _quantize_currency,
     ClassEconomy, Seat, SeatAttendanceState, IdentityProfile,
 )
 from app.auth import (
@@ -199,24 +199,20 @@ def _resolve_class_display_label(class_id, fallback_block=None):
     if class_id:
         class_economy = ClassEconomy.query.filter_by(class_id=class_id).first()
         if class_economy:
-            return class_economy.display_name or class_economy.join_code
+            return class_economy.display_name or get_display_join_code(class_id)
 
     return fallback_block or "Unknown Class"
 
 
 def _append_redemption_audit_log(*, student_item, student, user_id, action, notes, guard_state, fallback_block=None):
-    """
-    Append exactly one live redemption audit log row for this request path.
-
-    Must be called before redemption state mutations.
-    """
+    """Append exactly one live redemption event row for this request path."""
     if guard_state.get('inserted'):
         raise RuntimeError("Duplicate redemption audit insertion attempt in single request path")
 
     action_map = {
-        'request': RedemptionAuditAction.REQUEST,
-        'approved': RedemptionAuditAction.APPROVED,
-        'rejected': RedemptionAuditAction.REJECTED,
+        'request': RedemptionEventAction.REQUEST,
+        'approved': RedemptionEventAction.APPROVED,
+        'rejected': RedemptionEventAction.REJECTED,
     }
     if action not in action_map:
         raise ValueError(f"Unsupported redemption audit action: {action}")
@@ -224,7 +220,7 @@ def _append_redemption_audit_log(*, student_item, student, user_id, action, note
     class_id = getattr(student_item, 'class_id', None)
     class_label = _resolve_class_display_label(class_id, fallback_block=fallback_block)
 
-    # Derive student display name from IdentityProfile (v2 canonical)
+    # Derive student display name from IdentityProfile (v2 canonical).
     from app.models import IdentityProfile
     seat_id_val = getattr(student_item, 'seat_id', None)
     identity = IdentityProfile.query.filter_by(seat_id=seat_id_val).first() if seat_id_val else None
@@ -238,17 +234,17 @@ def _append_redemption_audit_log(*, student_item, student, user_id, action, note
     else:
         student_display_name = 'Unknown'
 
-    db.session.add(RedemptionAuditLog(
-        student_item_id=None,  # legacy FK to student_items; StorePurchase rows are in store_purchases
-        student_display_name=student_display_name,
-        class_display_label=class_label,
-        action=action_map[action],
-        notes=notes if notes else None,
-        user_id=user_id,
-        class_id=class_id,
+    db.session.add(RedemptionEvent(
+        purchase_id=student_item.id,
         seat_id=getattr(student_item, 'seat_id', None),
+        class_id=class_id,
+        action=action_map[action],
+        source=RedemptionEventSource.LIVE,
+        initiated_by_user_id=user_id,
+        seat_display_name=student_display_name,
+        class_display_label=class_label,
+        notes=notes if notes else None,
         timestamp=utc_now(),
-        source=RedemptionAuditSource.LIVE,
     ))
     guard_state['inserted'] = True
 
@@ -440,8 +436,6 @@ def purchase_item():
 
     # Authoritative seat object
     seat = db.session.get(Seat, seat_id)
-    current_block = (seat.class_economy.section or "").strip().upper() if seat and seat.class_economy and seat.class_economy.section else ""
-
     purchase_idempotency_key = None
     if client_purchase_id:
         purchase_idempotency_key = purchase_transaction_key(
@@ -457,18 +451,13 @@ def purchase_item():
         StoreItem.id == item_id,
         StoreItem.class_id == class_id,
     ]
-    if current_block:
-        item_filters.append(
-            or_(
-                StoreItem.visible_blocks.any(func.upper(StoreItemBlock.block) == current_block),
-                ~StoreItem.visible_blocks.any(),
-            )
-        )
     item = (
         StoreItem.query
         .filter(*item_filters)
         .first()
     )
+    if item and not store_service.is_item_visible_to_seat(item.id, seat.id):
+        item = None
 
     # 2. Validate item and purchase conditions
     if not item or not item.is_active:
@@ -766,6 +755,7 @@ def use_item():
 
     user = db.session.get(User, context.user_id)
     student = db.session.get(Seat, context.seat_id)
+    student_id = student.id if student else None
     
     if not user or not student:
         return jsonify({"status": "error", "message": "Unauthorized"}), 401
@@ -902,7 +892,7 @@ def use_item():
 
     except (SQLAlchemyError, RuntimeError, ValueError) as e:
         db.session.rollback()
-        current_app.logger.error(f"Item use failed for student {student.id}: {e}", exc_info=True)
+        current_app.logger.error(f"Item use failed for student {student_id}: {e}", exc_info=True)
         return jsonify({"status": "error", "message": "An error occurred. Please try again."}), 500
 
 
@@ -1022,7 +1012,7 @@ def handle_hall_pass_action(pass_id, action):
     user_id = g.canonical_context.user_id
     if not log_entry.class_id:
         return jsonify({"status": "error", "message": "Pass not found."}), 404
-    if not _admin_owns_class(g.canonical_context, log_entry.class_id):
+    if g.canonical_context.class_id != log_entry.class_id:
         return jsonify({"status": "error", "message": "Pass not found."}), 404
     now = utc_now()
     try:
@@ -1913,9 +1903,6 @@ def handle_tap():
         if seat_period and period != seat_period:
             return jsonify({"error": "Invalid period or action"}), 400
 
-    economy = ClassEconomy.query.filter_by(class_id=class_id).first()
-    join_code = economy.join_code if economy else None
-
     now = utc_now()
 
     if not seat_id or not class_id:
@@ -1975,8 +1962,7 @@ def handle_tap():
 
             # Keep hall-pass rent grants in sync for the active rent coverage period.
             # This applies the monthly top-off model even if the student paid rent earlier.
-            context = {'join_code': join_code, 'block': period, 'user_id': user_id}
-            if should_require_pass and context:
+            if should_require_pass:
                 _, _, hall_pass_reconciled = _ensure_rent_hall_pass_top_off(student, context)
                 if hall_pass_reconciled:
                     db.session.flush()

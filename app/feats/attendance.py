@@ -20,6 +20,7 @@ from app.models import (
 from app.services.entitlement_service import consume_hall_pass, get_hall_pass_balance
 from app.payroll import get_daily_limit_seconds
 from app.utils.economy_policy import resolve_feature_class_for_class
+from app.utils.join_code import get_display_join_code
 from app.utils.time import ensure_utc, get_class_now, get_class_today_range, normalize_for_db, utc_now
 from app.attendance import calculate_period_attendance_utc_range
 
@@ -363,8 +364,7 @@ def checkout_hall_pass(*, student, log_entry: HallPassLog, now_utc=None) -> Hall
     if not student.id or not resolved_class_id or not resolved_seat_id:
         raise PermissionError("Missing class/seat context for hall pass checkout.")
 
-    class_row = ClassEconomy.query.filter_by(class_id=resolved_class_id).first()
-    resolved_join_code = (log_entry.join_code or (class_row.join_code if class_row else None))
+    resolved_join_code = log_entry.join_code or get_display_join_code(resolved_class_id)
 
     log_entry.status = "left"
     log_entry.left_time = now
@@ -392,8 +392,7 @@ def checkin_hall_pass(*, student, log_entry: HallPassLog, now_utc=None) -> HallP
     if not student.id or not resolved_class_id or not resolved_seat_id:
         raise PermissionError("Missing class/seat context for hall pass checkin.")
 
-    class_row = ClassEconomy.query.filter_by(class_id=resolved_class_id).first()
-    resolved_join_code = (log_entry.join_code or (class_row.join_code if class_row else None))
+    resolved_join_code = log_entry.join_code or get_display_join_code(resolved_class_id)
 
     log_entry.status = "returned"
     log_entry.return_time = now

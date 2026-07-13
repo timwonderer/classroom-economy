@@ -163,7 +163,7 @@ from tests.helpers.canonical_session import set_canonical_context
 from app.extensions import db
 from app.models import ClassEconomy, Seat, IdentityProfile, RentSettings, User, TeacherOnboarding
 from tests.helpers.class_scope import create_class_scope, make_student_identity
-from tests.helpers.v2_fixtures import make_admin
+from tests.helpers.v2_fixtures import seed_canonical_admin
 from app.hash_utils import hash_username
 from app.utils.auth_username import build_hashed_username_fields
 from werkzeug.security import generate_password_hash
@@ -174,7 +174,7 @@ def auth_student_context(app, client):
     """Sets up a V2 student and class context, and logs them in."""
     with app.app_context():
         with FEATContext("FEAT-IDEN-001", idempotency_key="accessibility:student_context"):
-            teacher = make_admin("access_teacher_s")
+            teacher = seed_canonical_admin("access_teacher_s").user
             db.session.flush()
 
             join_code = "ACCESST1"
@@ -234,7 +234,7 @@ def auth_teacher_context(app, client):
     """Sets up a V2 teacher and logs them in."""
     with app.app_context():
         with FEATContext("FEAT-IDEN-001", idempotency_key="accessibility:teacher_context"):
-            teacher = make_admin("access_teacher_t")
+            teacher = seed_canonical_admin("access_teacher_t").user
             db.session.flush()
 
             class_row = create_class_scope(

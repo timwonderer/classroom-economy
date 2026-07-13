@@ -4,6 +4,7 @@ from decimal import Decimal
 from typing import Any, Dict, Optional
 
 from flask import has_app_context
+from app.utils.join_code import get_display_join_code
 
 
 POLICY_MODE_DEFAULT = "default"
@@ -430,7 +431,7 @@ def resolve_class_scope(
         return None
 
     class_row = (
-        ClassEconomy.query.with_entities(ClassEconomy.class_id, ClassEconomy.join_code, ClassEconomy.section)
+        ClassEconomy.query.with_entities(ClassEconomy.class_id, ClassEconomy.section)
         .filter(
             ClassEconomy.user_id == user_id,
             ClassEconomy.class_id == normalized_class_id,
@@ -442,7 +443,7 @@ def resolve_class_scope(
 
     return {
         "class_id": class_row.class_id,
-        "join_code": class_row.join_code,
+        "join_code": get_display_join_code(class_row.class_id),
         "block": class_row.section,
     }
 
@@ -593,6 +594,7 @@ def resolve_feature_class_for_class(
     from app.extensions import db
     from app.models import ClassFeature
     from app.models import ClassEconomy
+    from app.utils.join_code import get_display_join_code
 
     class_row = db.session.get(ClassEconomy, class_id)
     if not class_row:
@@ -603,7 +605,7 @@ def resolve_feature_class_for_class(
         "class_id": class_id,
         "enabled": bool(enabled),
         "feature_name": feature_name,
-        "join_code": class_row.join_code,
+        "join_code": get_display_join_code(class_id),
     }
 
 

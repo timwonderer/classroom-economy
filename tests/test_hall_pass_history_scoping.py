@@ -9,7 +9,7 @@ from datetime import datetime, timezone, timedelta
 
 from app.extensions import db
 from app.models import Seat, ClassEconomy, HallPassLog
-from tests.helpers.v2_fixtures import make_admin
+from tests.helpers.v2_fixtures import seed_canonical_admin
 from tests.helpers.class_scope import create_class_scope, make_student_identity
 from tests.helpers.canonical_session import set_canonical_context
 
@@ -34,7 +34,7 @@ def test_hall_pass_history_requires_admin_login(client):
 
 def test_hall_pass_history_scoped_to_class(client):
     """Teacher logged into class A only sees class A hall pass history."""
-    teacher = make_admin("hp_hist_t1")
+    teacher = seed_canonical_admin("hp_hist_t1").user
     db.session.flush()
 
     class_a = create_class_scope(teacher_user=teacher, join_code="HISTCA1")

@@ -2,9 +2,9 @@
 Tests for teacher announcement feature.
 
 Tests the Announcement model, admin routes, and student display.
-Ensures proper multi-tenancy scoping by join_code.
+Ensures proper multi-tenancy scoping by class_id, with join_code retained as display metadata.
 """
-from tests.helpers.v2_fixtures import make_admin
+from tests.helpers.v2_fixtures import seed_canonical_admin
 import pytest
 import pyotp
 from datetime import datetime, timedelta, timezone
@@ -15,15 +15,15 @@ from app.models import User, Announcement, ClassEconomy, Seat, IdentityProfile
 @pytest.fixture
 def test_teacher():
     """Create a test teacher with TOTP."""
-    teacher = make_admin('test_teacher_announcements')
+    teacher = seed_canonical_admin('test_teacher_announcements').user
     db.session.commit()
     return teacher
 
 
 @pytest.fixture
 def teacher_block(test_teacher):
-    """Create a teacher block with join code."""
-    economy = ClassEconomy.query.filter_by(join_code='TEST123').first()
+    """Create a teacher block with a display alias."""
+    economy = ClassEconomy.query.filter_by(user_id=test_teacher.id).first()
     if not economy:
         economy = ClassEconomy(
             join_code='TEST123',
@@ -51,7 +51,7 @@ class TestAnnouncementModel:
         announcement = Announcement(
             user_id=test_teacher.id,
             class_id=teacher_block.class_id,
-            join_code='TEST123',
+            join_code=teacher_block.class_economy.join_code,
             audience_type='class',
             title='Test Announcement',
             message='This is a test message',
@@ -72,7 +72,7 @@ class TestAnnouncementModel:
         announcement = Announcement(
             user_id=test_teacher.id,
             class_id=teacher_block.class_id,
-            join_code='TEST123',
+            join_code=teacher_block.class_economy.join_code,
             title='Test',
             message='Test message'
         )
@@ -89,7 +89,7 @@ class TestAnnouncementModel:
         expired_announcement = Announcement(
             user_id=test_teacher.id,
             class_id=teacher_block.class_id,
-            join_code='TEST123',
+            join_code=teacher_block.class_economy.join_code,
             title='Expired',
             message='This is expired',
             expires_at=datetime.now(timezone.utc) - timedelta(days=1)
@@ -99,7 +99,7 @@ class TestAnnouncementModel:
         active_announcement = Announcement(
             user_id=test_teacher.id,
             class_id=teacher_block.class_id,
-            join_code='TEST123',
+            join_code=teacher_block.class_economy.join_code,
             title='Active',
             message='This is active',
             expires_at=datetime.now(timezone.utc) + timedelta(days=1)
@@ -109,7 +109,7 @@ class TestAnnouncementModel:
         no_expiry = Announcement(
             user_id=test_teacher.id,
             class_id=teacher_block.class_id,
-            join_code='TEST123',
+            join_code=teacher_block.class_economy.join_code,
             title='No Expiry',
             message='Never expires'
         )
@@ -183,8 +183,8 @@ class TestAnnouncementModel:
 class TestAnnouncementMultiTenancy:
     """Tests for announcement multi-tenancy scoping."""
 
-    def test_announcements_scoped_by_join_code(self, client, test_teacher):
-        """Test that announcements are properly scoped by join_code."""
+    def test_announcements_scoped_by_class_id(self, client, test_teacher):
+        """Test that announcements are properly scoped by class_id."""
         economy_a = ClassEconomy(
             join_code='TESTA',
             user_id=test_teacher.id,

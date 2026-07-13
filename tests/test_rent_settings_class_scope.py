@@ -1,14 +1,13 @@
 from datetime import datetime, timezone
 
 from app.extensions import db
-from app.models import ClassFeature, RentSettings, Seat, User, UserRole
-from app.feats.base import FEATContext
+from app.models import RentSettings, Seat, User
 from tests.helpers.class_scope import create_class_scope
 from tests.helpers.canonical_session import set_canonical_context
-from tests.helpers.v2_fixtures import make_admin
+from tests.helpers.v2_fixtures import seed_canonical_admin, seed_class_feature
 
 
-def _login_canonical_admin(client, admin: User, *, class_id: str, join_code: str) -> None:
+def _login_canonical_admin(client, admin: User, *, class_id: str) -> None:
     teacher_seat = Seat.query.filter_by(class_id=class_id, role="teacher").first()
     with client.session_transaction() as sess:
         sess["user_id"] = admin.id
@@ -22,21 +21,17 @@ def _login_canonical_admin(client, admin: User, *, class_id: str, join_code: str
 
 
 def test_rent_settings_update_persists_class_scoped_row(client):
-    admin = make_admin("rent_scope_admin")
-    db.session.flush()
+    admin = seed_canonical_admin("rent_scope_admin").user
 
     class_row = create_class_scope(
         teacher_user=admin,
     )
-    with FEATContext("FEAT-ADMN-001", idempotency_key=f"rent_scope_seed:{class_row.class_id}"):
-        db.session.add(ClassFeature(class_id=class_row.class_id, feature_name="rent"))
-        db.session.flush()
+    seed_class_feature(class_id=class_row.class_id, feature_name="rent")
 
     _login_canonical_admin(
         client,
         admin,
         class_id=class_row.class_id,
-        join_code=class_row.join_code,
     )
 
     response = client.post(

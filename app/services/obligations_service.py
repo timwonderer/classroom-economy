@@ -652,6 +652,22 @@ def remove_rent_waiver_assessment(assessment_id: int) -> ObligationAssessment | 
     return assessment
 
 
+def remove_rent_payment_assessment(assessment_id: int) -> ObligationAssessment | None:
+    """Delete a canonical rent-payment assessment and its derived rows."""
+    assessment = db.session.get(ObligationAssessment, assessment_id)
+    if assessment is None or assessment.obligation_type != "RENT":
+        return None
+
+    if assessment.satisfaction is not None:
+        db.session.delete(assessment.satisfaction)
+    if assessment.reversal is not None:
+        db.session.delete(assessment.reversal)
+    if assessment.lifecycle is not None:
+        db.session.delete(assessment.lifecycle)
+    db.session.delete(assessment)
+    return assessment
+
+
 def get_cycle_rent_amount(
     class_id: str,
     coverage_month: int,

@@ -1,10 +1,10 @@
 import pyotp
 from app import db
 from tests.helpers.class_scope import create_class_scope, make_student_identity
-from tests.helpers.v2_fixtures import make_admin
+from tests.helpers.v2_fixtures import seed_canonical_admin
 
 def test_student_login_next_redirect(client):
-    admin = make_admin("login_redirect_teacher", pyotp.random_base32())
+    admin = seed_canonical_admin("login_redirect_teacher", pyotp.random_base32()).user
     db.session.flush()
     class_row = create_class_scope(teacher_user=admin, join_code="LOGIN-REDIRECT", display_name="Login")
     make_student_identity(

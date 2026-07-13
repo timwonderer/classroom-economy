@@ -1,43 +1,28 @@
 import pytest
 from decimal import Decimal
-from uuid import uuid4
-
 from app.extensions import db
-from app.models import ClassEconomy, PayrollSettings
+from app.feats.base import FEATContext
+from app.models import PayrollSettings
 from app.payroll import get_daily_limit_seconds, get_pay_rate_for_block
-from tests.helpers.v2_fixtures import make_admin
-
-
-def _create_class(teacher_id: int, join_code: str) -> ClassEconomy:
-    class_row = ClassEconomy(
-        class_id=str(uuid4()),
-        join_code=join_code,
-        teacher_id=teacher_id,
-        display_name=join_code,
-    )
-    db.session.add(class_row)
-    db.session.flush()
-    return class_row
+from tests.helpers.v2_fixtures import seed_canonical_admin, seed_class_with_seat
 
 
 def test_pay_rate_isolation_by_class_id(client):
     """Same teacher + same block across classes must not bleed settings."""
-    teacher = make_admin("teacher_scope_rates", "secret")
-    db.session.add(teacher)
-    db.session.flush()
+    teacher = seed_canonical_admin("teacher_scope_rates", "secret").user
+    class_a = seed_class_with_seat(teacher=teacher, join_code="CLASS-A").class_row
+    class_b = seed_class_with_seat(teacher=teacher, join_code="CLASS-B").class_row
 
-    class_a = _create_class(teacher.id, "CLASS-A")
-    class_b = _create_class(teacher.id, "CLASS-B")
-
-    db.session.add(
-        PayrollSettings(
-            class_id=class_a.class_id,
-            block="Period 1",
-            pay_rate=Decimal("0.50"),
-            is_active=True,
+    with FEATContext("FEAT-ADMN-001", idempotency_key="payroll_join_code_scoping:rate"):
+        db.session.add(
+            PayrollSettings(
+                class_id=class_a.class_id,
+                block="Period 1",
+                pay_rate=Decimal("0.50"),
+                is_active=True,
+            )
         )
-    )
-    db.session.commit()
+        db.session.flush()
 
     rate_a = get_pay_rate_for_block("Period 1", class_id=class_a.class_id)
     rate_b = get_pay_rate_for_block("Period 1", class_id=class_b.class_id)
@@ -48,23 +33,21 @@ def test_pay_rate_isolation_by_class_id(client):
 
 def test_daily_limit_isolation_by_class_id(client):
     """Daily limits must resolve by class_id, not teacher-level ownership."""
-    teacher = make_admin("teacher_scope_limits", "secret")
-    db.session.add(teacher)
-    db.session.flush()
+    teacher = seed_canonical_admin("teacher_scope_limits", "secret").user
+    class_x = seed_class_with_seat(teacher=teacher, join_code="CLASS-X").class_row
+    class_y = seed_class_with_seat(teacher=teacher, join_code="CLASS-Y").class_row
 
-    class_x = _create_class(teacher.id, "CLASS-X")
-    class_y = _create_class(teacher.id, "CLASS-Y")
-
-    db.session.add(
-        PayrollSettings(
-            class_id=class_x.class_id,
-            block="Period 1",
-            settings_mode="simple",
-            daily_limit_hours=2.0,
-            is_active=True,
+    with FEATContext("FEAT-ADMN-001", idempotency_key="payroll_join_code_scoping:limit"):
+        db.session.add(
+            PayrollSettings(
+                class_id=class_x.class_id,
+                block="Period 1",
+                settings_mode="simple",
+                daily_limit_hours=2.0,
+                is_active=True,
+            )
         )
-    )
-    db.session.commit()
+        db.session.flush()
 
     assert get_daily_limit_seconds("Period 1", class_id=class_x.class_id) == 7200
     assert get_daily_limit_seconds("Period 1", class_id=class_y.class_id) is None
@@ -80,29 +63,27 @@ def test_payroll_settings_lookup_requires_class_id(client):
 
 def test_duplicate_active_settings_fail_closed(client):
     """Ambiguous active rows for same class/block must fail closed."""
-    teacher = make_admin("teacher_scope_dup", "secret")
-    db.session.add(teacher)
-    db.session.flush()
+    teacher = seed_canonical_admin("teacher_scope_dup", "secret").user
+    class_a = seed_class_with_seat(teacher=teacher, join_code="CLASS-DUP").class_row
 
-    class_a = _create_class(teacher.id, "CLASS-DUP")
-
-    db.session.add_all(
-        [
-            PayrollSettings(
-                class_id=class_a.class_id,
-                block="Period 1",
-                pay_rate=Decimal("0.50"),
-                is_active=True,
-            ),
-            PayrollSettings(
-                class_id=class_a.class_id,
-                block="Period 1",
-                pay_rate=Decimal("0.65"),
-                is_active=True,
-            ),
-        ]
-    )
-    db.session.commit()
+    with FEATContext("FEAT-ADMN-001", idempotency_key="payroll_join_code_scoping:duplicate"):
+        db.session.add_all(
+            [
+                PayrollSettings(
+                    class_id=class_a.class_id,
+                    block="Period 1",
+                    pay_rate=Decimal("0.50"),
+                    is_active=True,
+                ),
+                PayrollSettings(
+                    class_id=class_a.class_id,
+                    block="Period 1",
+                    pay_rate=Decimal("0.65"),
+                    is_active=True,
+                ),
+            ]
+        )
+        db.session.flush()
 
     with pytest.raises(ValueError, match="Ambiguous PayrollSettings scope"):
         get_pay_rate_for_block("Period 1", class_id=class_a.class_id)

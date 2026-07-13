@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from decimal import Decimal
 
-from tests.helpers.v2_fixtures import make_admin
+from tests.helpers.v2_fixtures import seed_canonical_admin, seed_purchase
 from app.extensions import db
 from app.feats.base import FEATContext
 from app.models import Seat, IdentityProfile, Transaction, TransactionStatus, User, UserRole
@@ -9,7 +9,7 @@ from tests.helpers.class_scope import create_class_scope
 from tests.helpers.canonical_session import set_canonical_context
 
 
-def _login_admin(client, *, user_id: int, class_id: str, join_code: str):
+def _login_admin(client, *, user_id: int, class_id: str):
     teacher_seat = Seat.query.filter_by(class_id=class_id, role="teacher").first()
     assert teacher_seat is not None
     with client.session_transaction() as sess:
@@ -23,8 +23,8 @@ def _login_admin(client, *, user_id: int, class_id: str, join_code: str):
 
 
 def test_admin_payroll_displays_scoped_balances_only(client):
-    teacher_a = make_admin("payroll_scope_a")
-    teacher_b = make_admin("payroll_scope_b")
+    teacher_a = seed_canonical_admin("payroll_scope_a").user
+    teacher_b = seed_canonical_admin("payroll_scope_b").user
     db.session.flush()
 
     class_a = create_class_scope(teacher_user=teacher_a, join_code="PAYA01", display_name="A")
@@ -44,35 +44,27 @@ def test_admin_payroll_displays_scoped_balances_only(client):
     assert seat_a is not None and seat_b is not None
 
     with FEATContext("FEAT-ADMN-001"):
-        db.session.add_all([
-            Transaction(
-                user_id=student_user.id, join_code="PAYA01",
-                class_id=class_a.class_id,
-                seat_id=seat_a.id,
-                amount=Decimal("111.11"),
-                account_type="checking",
-                status=TransactionStatus.PENDING,
-                type="deposit",
-                description="Teacher A balance",
-            ),
-            Transaction(
-                user_id=student_user.id, join_code="PAYB01",
-                class_id=class_b.class_id,
-                seat_id=seat_b.id,
-                amount=Decimal("222.22"),
-                account_type="checking",
-                status=TransactionStatus.PENDING,
-                type="deposit",
-                description="Teacher B balance",
-            ),
-        ])
-        db.session.flush()
+        seed_purchase(
+            seat_id=seat_a.id,
+            class_id=class_a.class_id,
+            user_id=student_user.id,
+            amount="111.11",
+            description="Teacher A balance",
+            transaction_type="deposit",
+        )
+        seed_purchase(
+            seat_id=seat_b.id,
+            class_id=class_b.class_id,
+            user_id=student_user.id,
+            amount="222.22",
+            description="Teacher B balance",
+            transaction_type="deposit",
+        )
 
     _login_admin(
         client,
         user_id=teacher_a.id,
         class_id=class_a.class_id,
-        join_code="PAYA01",
     )
     response = client.get("/admin/payroll")
     assert response.status_code == 200

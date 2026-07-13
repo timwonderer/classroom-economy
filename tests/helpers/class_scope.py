@@ -9,7 +9,7 @@ No Admin objects, no legacy bridge patterns.
 
 from app.extensions import db
 from app.feats.base import FEATContext
-from app.models import ClassEconomy, Seat, User
+from app.models import ClassEconomy, ClassFeature, Seat, User
 from werkzeug.security import generate_password_hash
 
 
@@ -19,6 +19,7 @@ def create_class_scope(
     join_code: str | None = None,
     display_name: str | None = None,
     section: str | None = None,
+    feature_names: list[str] | tuple[str, ...] | None = None,
     # Convenience: add a student immediately after creating the class
     student_first_name: str | None = None,
     student_last_name: str | None = None,
@@ -40,16 +41,16 @@ def create_class_scope(
 
     resolved_join_code = join_code or f"CLS{uuid4().hex[:8].upper()}"
     with FEATContext("FEAT-IDEN-001", idempotency_key=f"create_class_scope:{resolved_join_code}"):
-        existing = ClassEconomy.query.filter_by(join_code=resolved_join_code).first()
-        if existing:
-            class_row = existing
-        else:
-            class_row = create_class(
-                teacher_user.id,
-                join_code=resolved_join_code,
-                display_name=display_name,
-                section=section,
-            )
+        class_row = create_class(
+            teacher_user.id,
+            join_code=resolved_join_code,
+            display_name=display_name,
+            section=section,
+        )
+
+        for feature_name in feature_names or ():
+            if not ClassFeature.query.filter_by(class_id=class_row.class_id, feature_name=feature_name).first():
+                db.session.add(ClassFeature(class_id=class_row.class_id, feature_name=feature_name))
 
         if student_first_name and student_last_name:
             create_student(
@@ -69,8 +70,6 @@ def make_student_identity(
     claimed: bool = True,
     username: str | None = None,
     pin: str | None = None,
-    block: str | None = None,
-    join_code: str | None = None,
 ) -> Seat:
     """Create a canonical student identity (User → Seat → IdentityProfile).
 
@@ -86,12 +85,7 @@ def make_student_identity(
         idempotency_key=f"make_student_identity:{resolved_class_id}:{username or first_name}:{last_name}",
     ):
         if resolved_class_id is None:
-            if not join_code:
-                raise TypeError("make_student_identity() requires class_id or join_code")
-            class_row = ClassEconomy.query.filter_by(join_code=join_code).first()
-            if not class_row:
-                raise LookupError(f"No class found for join_code={join_code!r}")
-            resolved_class_id = class_row.class_id
+            raise TypeError("make_student_identity() requires class_id")
 
         _user, seat, _profile = create_student(
             resolved_class_id,
@@ -103,9 +97,4 @@ def make_student_identity(
         )
         if seat.user and not seat.user.passphrase_hash:
             seat.user.passphrase_hash = generate_password_hash("password")
-        if block:
-            # Preserve older helper call sites that supplied block metadata.
-            # The canonical model derives scope from class_id; this field is display-only.
-            seat.block = block
-            db.session.flush()
     return seat

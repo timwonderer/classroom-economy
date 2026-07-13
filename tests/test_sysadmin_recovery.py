@@ -1,4 +1,4 @@
-from tests.helpers.v2_fixtures import make_admin, make_sysadmin
+from tests.helpers.v2_fixtures import seed_canonical_admin, make_sysadmin
 import pytest
 from app import db
 from app.models import SystemAdmin, User
@@ -11,7 +11,7 @@ def test_sysadmin_reset_totp(client):
 
     # Create teacher
     old_secret = pyotp.random_base32()
-    teacher = make_admin("teacher_to_reset")
+    teacher = seed_canonical_admin("teacher_to_reset").user
     db.session.flush()
     db.session.add(User(
         username_hash=teacher.username_hash,
@@ -42,7 +42,7 @@ def test_sysadmin_reset_totp(client):
 
 def test_sysadmin_reset_totp_unauthorized(client):
     # Create teacher
-    teacher = make_admin("teacher_fail")
+    teacher = seed_canonical_admin("teacher_fail").user
     db.session.commit()
 
     # Call reset endpoint without login

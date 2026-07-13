@@ -1,6 +1,6 @@
 
 from datetime import datetime, timezone, timedelta
-from tests.helpers.v2_fixtures import make_admin
+from tests.helpers.v2_fixtures import seed_canonical_admin
 from tests.helpers.class_scope import make_student_identity, create_class_scope
 import pytest
 from app.extensions import db
@@ -24,8 +24,8 @@ def _login_student(client, student_user_id, class_id, seat_id):
 
 def test_hall_pass_active_requires_teacher_seat_public_id_and_scopes_to_one_class(client):
     """Verification display should require one class-bound teacher seat public ID."""
-    admin = make_admin("hall_pass_admin", "secret")
-    other_admin = make_admin("hall_pass_other", "secret")
+    admin = seed_canonical_admin("hall_pass_admin", "secret").user
+    other_admin = seed_canonical_admin("hall_pass_other", "secret").user
     db.session.flush()
 
     class_a = create_class_scope(teacher_user=admin, join_code="HPCLSA")
@@ -99,8 +99,8 @@ def test_hall_pass_active_requires_teacher_seat_public_id_and_scopes_to_one_clas
 
 def test_approve_redemption_requires_membership(client):
     """Test that redemption approval requires admin membership in the class."""
-    admin_owner = make_admin("owner_admin", "secret")
-    admin_intruder = make_admin("intruder_admin", "secret")
+    admin_owner = seed_canonical_admin("owner_admin", "secret").user
+    admin_intruder = seed_canonical_admin("intruder_admin", "secret").user
     db.session.flush()
 
     class_row = create_class_scope(teacher_user=admin_owner, join_code="REDEEM1")
@@ -137,7 +137,7 @@ def test_approve_redemption_requires_membership(client):
 
 def test_file_claim_scoped_to_class(client):
     """Test that insurance claims are scoped to the class of the policy."""
-    admin = make_admin("claim_admin", "secret")
+    admin = seed_canonical_admin("claim_admin", "secret").user
     db.session.flush()
 
     class_a = create_class_scope(teacher_user=admin, join_code="CLAIM_A")

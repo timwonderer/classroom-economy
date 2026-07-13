@@ -1,4 +1,4 @@
-from tests.helpers.v2_fixtures import make_admin, make_sysadmin
+from tests.helpers.v2_fixtures import make_sysadmin, seed_canonical_admin
 from tests.helpers.class_scope import make_student_identity
 from tests.helpers.class_scope import create_class_scope
 import pytest
@@ -11,7 +11,7 @@ from app.hash_utils import hash_username_lookup, get_random_salt, hash_hmac
 
 # Helper to create teacher
 def create_teacher(username="teacher1"):
-    teacher = make_admin(username)
+    teacher = seed_canonical_admin(username).user
     db.session.flush()
     teacher._canonical_user_id_for_test = teacher.id
     return teacher

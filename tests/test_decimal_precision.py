@@ -5,7 +5,7 @@ These tests verify that the fixes for floating-point rounding bugs work correctl
 1. Transfers that zero out checking account don't trigger -0.00 overdraft fees
 2. Partial rent payments with problematic float values can be fully paid off
 """
-from tests.helpers.v2_fixtures import make_admin
+from tests.helpers.v2_fixtures import seed_canonical_admin
 from tests.helpers.class_scope import make_student_identity
 import pytest
 from decimal import Decimal
@@ -23,9 +23,8 @@ from app.services.obligations_service import create_and_schedule_rent_policy_ver
 def _setup_student_in_class(teacher, join_code):
     """Create a class and student, return (class_id, seat_id, student_seat)."""
     with FEATContext("FEAT-IDEN-001", idempotency_key=f"decimal_precision:setup:{join_code}"):
-        economy = ClassEconomy(join_code=join_code, user_id=teacher.id)
-        db.session.add(economy)
-        db.session.flush()
+        from tests.helpers.class_scope import create_class_scope
+        economy = create_class_scope(teacher_user=teacher, join_code=join_code)
 
         student = make_student_identity(class_id=economy.class_id, first_name="Test", last_name="S")
         db.session.flush()
@@ -66,7 +65,7 @@ class TestDecimalPrecision:
         CRITICAL BUG FIX TEST: Transfer that zeros out checking should not trigger overdraft fee.
         """
         with FEATContext("FEAT-LED-001", idempotency_key="decimal_precision:overdraft_setup"):
-            teacher = make_admin('teacher_overdraft_test', 'test_secret')
+            teacher = seed_canonical_admin('teacher_overdraft_test', 'test_secret').user
             db.session.flush()
 
             join_code = 'OVERDRAFT_TEST'
@@ -139,7 +138,7 @@ class TestDecimalPrecision:
         CRITICAL BUG FIX TEST: Partial rent payments with float-problematic values should pay off completely.
         """
         with FEATContext("FEAT-OBL-001", idempotency_key="decimal_precision:rent_setup"):
-            teacher = make_admin('teacher_rent_test', 'test_secret')
+            teacher = seed_canonical_admin('teacher_rent_test', 'test_secret').user
             db.session.flush()
 
             join_code = 'RENT_TEST'
@@ -242,7 +241,7 @@ class TestDecimalPrecision:
     def test_near_zero_balance_normalization(self, client):
         """Test that near-zero balances are normalized to exactly zero."""
         with FEATContext("FEAT-LED-001", idempotency_key="decimal_precision:near_zero_setup"):
-            teacher = make_admin('teacher_zero_test', 'test_secret')
+            teacher = seed_canonical_admin('teacher_zero_test', 'test_secret').user
             db.session.flush()
 
             join_code = 'ZERO_TEST'
@@ -303,7 +302,7 @@ class TestDecimalPrecision:
     def test_actually_negative_balance_charges_fee(self, client):
         """Test that genuinely negative balances still trigger overdraft fees correctly."""
         with FEATContext("FEAT-LED-001", idempotency_key="decimal_precision:negative_setup"):
-            teacher = make_admin('teacher_negative_test', 'test_secret')
+            teacher = seed_canonical_admin('teacher_negative_test', 'test_secret').user
             db.session.flush()
 
             join_code = 'NEG_TEST'
@@ -335,7 +334,6 @@ class TestDecimalPrecision:
 
         with client.session_transaction() as sess:
             sess['user_id'] = student_user_id
-            sess['current_join_code'] = join_code
             from tests.helpers.canonical_session import set_canonical_context
             set_canonical_context(
                 sess,

@@ -6,10 +6,12 @@ when a transaction has a NULL amount value.
 """
 from decimal import Decimal
 from unittest.mock import PropertyMock, patch
-from tests.helpers.v2_fixtures import make_admin
+from tests.helpers.v2_fixtures import seed_canonical_admin
 from tests.helpers.class_scope import make_student_identity
+from app.feats.base import FEATContext
 from app import db
 from app.models import Transaction, ClassEconomy
+from app.routes.student import _get_total_earnings_for_seat
 import sqlalchemy as sa
 
 def test_get_total_earnings_defensive_checks(client, app):
@@ -19,166 +21,147 @@ def test_get_total_earnings_defensive_checks(client, app):
     is not None) doesn't break normal transaction processing.
     """
     with app.app_context():
-        # Create a teacher
-        teacher = make_admin("test_teacher", "test_secret")
-        db.session.flush()
-        
-        join_code = "TEST123"
-        
-        # Create ClassEconomy first for FK constraint
-        economy = ClassEconomy(
-            join_code=join_code,
-            user_id=teacher.id,
-            display_name='Test Class',
-            status='active',
-        )
-        db.session.add(economy)
-        db.session.flush()
-        
-        # Create a student
-        student = make_student_identity(class_id=economy.class_id, first_name="TestStudent", last_name="A")
-        db.session.commit()
-        
-        # Create a normal transaction with a valid amount
-        valid_tx = Transaction(
-            user_id=student.user_id, join_code=join_code,
-            amount=Decimal('10.50'),
-            description="Valid earning",
-            is_void=False
-        )
-        db.session.add(valid_tx)
-        db.session.commit()
-        
-        # Verify normal case works with the is not None check
-        earnings = student.get_total_earnings(join_code=join_code, teacher_id=teacher.id)
+        with FEATContext("FEAT-IDEN-001", idempotency_key="transaction-amount-null:case-1"):
+            teacher = seed_canonical_admin("test_teacher", "test_secret").user
+            db.session.flush()
+
+            economy = ClassEconomy(
+                join_code="TEST123",
+                user_id=teacher.id,
+                display_name='Test Class',
+                status='active',
+            )
+            db.session.add(economy)
+            db.session.flush()
+
+            student = make_student_identity(class_id=economy.class_id, first_name="TestStudent", last_name="A")
+
+            valid_tx = Transaction(
+                user_id=student.user_id,
+                class_id=economy.class_id,
+                amount=Decimal('10.50'),
+                description="Valid earning",
+                is_void=False
+            )
+            db.session.add(valid_tx)
+
+        # Verify normal case works with the canonical class scope.
+        earnings = _get_total_earnings_for_seat(student.id, class_id=economy.class_id)
         assert earnings == 10.50
         
-        # Deprecated teacher-only path should not return cross-class aggregates.
-        earnings_by_teacher = student.get_total_earnings(teacher_id=teacher.id)
-        assert earnings_by_teacher == 0.0
-        
-        # Unscoped path should not return cross-class aggregates.
-        earnings_all = student.get_total_earnings()
-        assert earnings_all == 0.0
-        
-        # Add another transaction to verify aggregation still works
-        another_tx = Transaction(
-            user_id=student.user_id, join_code=join_code,
-            amount=Decimal('5.25'),
-            description="Another earning",
-            is_void=False
-        )
-        db.session.add(another_tx)
-        db.session.commit()
-        
+        # Add another transaction to verify aggregation still works.
+        with FEATContext("FEAT-IDEN-001", idempotency_key="transaction-amount-null:case-1:more"):
+            another_tx = Transaction(
+                user_id=student.user_id,
+                class_id=economy.class_id,
+                amount=Decimal('5.25'),
+                description="Another earning",
+                is_void=False
+            )
+            db.session.add(another_tx)
+
         # Should now be 15.75
-        earnings = student.get_total_earnings(join_code=join_code, teacher_id=teacher.id)
+        earnings = _get_total_earnings_for_seat(student.id, class_id=economy.class_id)
         assert earnings == 15.75
 
 
 def test_get_total_earnings_with_negative_amounts(client, app):
     """Test that get_total_earnings correctly filters negative amounts (expenses)."""
     with app.app_context():
-        # Create a teacher
-        teacher = make_admin("test_teacher2", "test_secret")
-        db.session.flush()
-        
-        join_code = "TEST456"
-        
-        # Create ClassEconomy first for FK constraint
-        economy = ClassEconomy(
-            join_code=join_code,
-            user_id=teacher.id,
-            display_name='Test Class 2',
-            status='active',
-        )
-        db.session.add(economy)
-        db.session.flush()
-        
-        # Create a student
-        student = make_student_identity(class_id=economy.class_id, first_name="TestStudent2", last_name="B")
-        db.session.commit()
-        
-        # Create positive transactions (earnings)
-        positive_tx1 = Transaction(
-            user_id=student.user_id, join_code=join_code,
-            amount=Decimal('15.00'),
-            description="Earning 1",
-            is_void=False
-        )
-        positive_tx2 = Transaction(
-            user_id=student.user_id, join_code=join_code,
-            amount=Decimal('25.50'),
-            description="Earning 2",
-            is_void=False
-        )
-        
-        # Create negative transaction (expense) - should not be counted in earnings
-        negative_tx = Transaction(
-            user_id=student.user_id, join_code=join_code,
-            amount=Decimal('-10.00'),
-            description="Expense",
-            is_void=False
-        )
-        
-        # Create voided transaction - should not be counted
-        voided_tx = Transaction(
-            user_id=student.user_id, join_code=join_code,
-            amount=Decimal('100.00'),
-            description="Voided earning",
-            is_void=True
-        )
-        
-        db.session.add_all([positive_tx1, positive_tx2, negative_tx, voided_tx])
-        db.session.commit()
-        
+        with FEATContext("FEAT-IDEN-001", idempotency_key="transaction-amount-null:case-2"):
+            teacher = seed_canonical_admin("test_teacher2", "test_secret").user
+            db.session.flush()
+
+            economy = ClassEconomy(
+                join_code="TEST456",
+                user_id=teacher.id,
+                display_name='Test Class 2',
+                status='active',
+            )
+            db.session.add(economy)
+            db.session.flush()
+
+            student = make_student_identity(class_id=economy.class_id, first_name="TestStudent2", last_name="B")
+
+            # Create positive transactions (earnings)
+            positive_tx1 = Transaction(
+                user_id=student.user_id,
+                class_id=economy.class_id,
+                amount=Decimal('15.00'),
+                description="Earning 1",
+                is_void=False
+            )
+            positive_tx2 = Transaction(
+                user_id=student.user_id,
+                class_id=economy.class_id,
+                amount=Decimal('25.50'),
+                description="Earning 2",
+                is_void=False
+            )
+
+            # Create negative transaction (expense) - should not be counted in earnings
+            negative_tx = Transaction(
+                user_id=student.user_id,
+                class_id=economy.class_id,
+                amount=Decimal('-10.00'),
+                description="Expense",
+                is_void=False
+            )
+
+            # Create voided transaction - should not be counted
+            voided_tx = Transaction(
+                user_id=student.user_id,
+                class_id=economy.class_id,
+                amount=Decimal('100.00'),
+                description="Voided earning",
+                is_void=True
+            )
+
+            db.session.add_all([positive_tx1, positive_tx2, negative_tx, voided_tx])
+
         # Earnings should only include positive, non-voided transactions
-        earnings = student.get_total_earnings(join_code=join_code, teacher_id=teacher.id)
+        earnings = _get_total_earnings_for_seat(student.id, class_id=economy.class_id)
         assert earnings == 40.50  # 15.00 + 25.50
 
 
 def test_get_total_earnings_with_zero_amount(client, app):
     """Test that get_total_earnings handles zero amounts correctly."""
     with app.app_context():
-        # Create a teacher
-        teacher = make_admin("test_teacher3", "test_secret")
-        db.session.flush()
-        
-        join_code = "TEST789"
-        
-        # Create ClassEconomy first for FK constraint
-        economy = ClassEconomy(
-            join_code=join_code,
-            user_id=teacher.id,
-            display_name='Test Class 3',
-            status='active',
-        )
-        db.session.add(economy)
-        db.session.flush()
-        
-        # Create a student
-        student = make_student_identity(class_id=economy.class_id, first_name="TestStudent3", last_name="C")
-        db.session.commit()
-        
-        # Create a transaction with zero amount
-        zero_tx = Transaction(
-            user_id=student.user_id, join_code=join_code,
-            amount=Decimal('0.00'),
-            description="Zero transaction",
-            is_void=False
-        )
-        
-        # Create a positive transaction
-        positive_tx = Transaction(
-            user_id=student.user_id, join_code=join_code,
-            amount=Decimal('5.00'),
-            description="Positive transaction",
-            is_void=False
-        )
-        
-        db.session.add_all([zero_tx, positive_tx])
-        db.session.commit()
-        
+        with FEATContext("FEAT-IDEN-001", idempotency_key="transaction-amount-null:case-3"):
+            teacher = seed_canonical_admin("test_teacher3", "test_secret").user
+            db.session.flush()
+
+            economy = ClassEconomy(
+                join_code="TEST789",
+                user_id=teacher.id,
+                display_name='Test Class 3',
+                status='active',
+            )
+            db.session.add(economy)
+            db.session.flush()
+
+            student = make_student_identity(class_id=economy.class_id, first_name="TestStudent3", last_name="C")
+
+            # Create a transaction with zero amount
+            zero_tx = Transaction(
+                user_id=student.user_id,
+                class_id=economy.class_id,
+                amount=Decimal('0.00'),
+                description="Zero transaction",
+                is_void=False
+            )
+
+            # Create a positive transaction
+            positive_tx = Transaction(
+                user_id=student.user_id,
+                class_id=economy.class_id,
+                amount=Decimal('5.00'),
+                description="Positive transaction",
+                is_void=False
+            )
+
+            db.session.add_all([zero_tx, positive_tx])
+
         # Earnings should not include zero amounts (> 0 condition)
-        earnings = student.get_total_earnings(join_code=join_code, teacher_id=teacher.id)
+        earnings = _get_total_earnings_for_seat(student.id, class_id=economy.class_id)
         assert earnings == 5.00

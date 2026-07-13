@@ -1,6 +1,6 @@
 from decimal import Decimal
 
-from tests.helpers.v2_fixtures import make_admin
+from tests.helpers.v2_fixtures import seed_canonical_admin
 from tests.helpers.class_scope import make_student_identity, create_class_scope
 import pytest
 from sqlalchemy.exc import IntegrityError
@@ -29,7 +29,7 @@ def test_idempotent_transaction_types_are_explicit():
 
 
 def test_create_idempotent_transaction_reuses_existing_row_on_retry(client):
-    teacher = make_admin("idempotent-teacher", "secret")
+    teacher = seed_canonical_admin("idempotent-teacher", "secret").user
     db.session.flush()
     class_row = create_class_scope(teacher_user=teacher, join_code="IDEMP123")
     student = make_student_identity(class_id=class_row.class_id, first_name="Retry", last_name="R")
@@ -64,7 +64,7 @@ def test_create_idempotent_transaction_reuses_existing_row_on_retry(client):
 
 
 def test_create_idempotent_transaction_recovers_from_integrity_race(client, monkeypatch):
-    teacher = make_admin("idempotent-race-teacher", "secret")
+    teacher = seed_canonical_admin("idempotent-race-teacher", "secret").user
     db.session.flush()
     class_row = create_class_scope(teacher_user=teacher, join_code="IDEMP456")
     student = make_student_identity(class_id=class_row.class_id, first_name="Race", last_name="R")
@@ -115,7 +115,7 @@ def test_create_idempotent_transaction_recovers_from_integrity_race(client, monk
 
 
 def test_create_idempotent_transaction_rejects_non_idempotent_types(client):
-    teacher = make_admin("idempotent-invalid-teacher", "secret")
+    teacher = seed_canonical_admin("idempotent-invalid-teacher", "secret").user
     db.session.flush()
     class_row = create_class_scope(teacher_user=teacher, join_code="IDEMP789")
     student = make_student_identity(class_id=class_row.class_id, first_name="Nope", last_name="N")
@@ -136,7 +136,7 @@ def test_create_idempotent_transaction_rejects_non_idempotent_types(client):
 
 @pytest.mark.parametrize("bad_key", [None, "", "   "])
 def test_create_idempotent_transaction_rejects_empty_keys(client, bad_key):
-    teacher = make_admin("idempotent-empty-key-teacher", "secret")
+    teacher = seed_canonical_admin("idempotent-empty-key-teacher", "secret").user
     db.session.flush()
     class_row = create_class_scope(teacher_user=teacher, join_code="IDEMP000")
     student = make_student_identity(class_id=class_row.class_id, first_name="Empty", last_name="E")
@@ -156,7 +156,7 @@ def test_create_idempotent_transaction_rejects_empty_keys(client, bad_key):
 
 
 def test_create_idempotent_transaction_rejects_oversize_keys(client):
-    teacher = make_admin("idempotent-long-key-teacher", "secret")
+    teacher = seed_canonical_admin("idempotent-long-key-teacher", "secret").user
     db.session.flush()
     class_row = create_class_scope(teacher_user=teacher, join_code="IDEMP001")
     student = make_student_identity(class_id=class_row.class_id, first_name="Long", last_name="L")

@@ -1,8 +1,9 @@
 import pytest
 from app.extensions import db
-from app.models import User, UserRole, ClassEconomy
+from app.models import User, UserRole
 from app.feats.base import FEATContextError, requires_feat_context, is_feat_active
-from tests.helpers.class_scope import make_student_identity
+from tests.helpers.class_scope import create_class_scope, make_student_identity
+from tests.helpers.v2_fixtures import seed_canonical_admin
 
 @pytest.mark.enforce_feat
 def test_commit_fails_outside_feat_context(app):
@@ -38,16 +39,8 @@ def test_commit_succeeds_inside_feat_context(app):
     """
     CONFIRM: Mutations are permitted in FEAT context without direct commit.
     """
-    teacher = User(user_role=UserRole.TEACHER, username_hash="feat_test_teacher_unique")
-    db.session.add(teacher)
-    # Need a FEAT context just to flush the teacher
-    from app.feats.base import FEATContext
-    with FEATContext("FEAT-TEST-001"):
-        db.session.flush()
-    class_row = ClassEconomy(user_id=teacher.id, join_code="FEAT-TEST-CLS")
-    db.session.add(class_row)
-    with FEATContext("FEAT-TEST-002"):
-        db.session.flush()
+    teacher = seed_canonical_admin("feat_test_teacher_unique").user
+    class_row = create_class_scope(teacher_user=teacher, join_code="FEAT-TEST-CLS")
 
     @requires_feat_context("FEAT-TEST-001")
     def legal_mutation():

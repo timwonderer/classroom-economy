@@ -24,6 +24,7 @@ from app.models import (
     PayrollSettings, RentSettings, ClassEconomy, Seat
 )
 from app.models import Transaction
+from app.utils.join_code import get_display_join_code
 
 # Define allowed window types constant
 ALLOWED_WINDOW_TYPES = {'week', 'month', 'pay_cycle', 'rent_cycle'}
@@ -60,7 +61,7 @@ def get_teacher_class_options(user_id: int):
 
 
 def resolve_current_class_context(user_id: int):
-    """Resolve class context using class_id as authority; join_code is derived alias."""
+    """Resolve class context using class_id as authority; join_code is derived display metadata."""
     available_classes = get_teacher_class_options(user_id)
     by_class_id = {
         (item.get('class_id') or ''): item
@@ -215,7 +216,7 @@ def dashboard():
         class_row = db.session.get(ClassEconomy, class_id)
         if not class_row:
             raise ContextResolutionError("Class not found")
-        join_code = class_row.join_code
+        join_code = get_display_join_code(class_row.class_id)
         selected_class, available_classes = resolve_current_class_context(user_id)
         if not selected_class:
             raise ContextResolutionError("No class context available")
@@ -295,7 +296,7 @@ def api_snapshot(window_type):
         class_row = db.session.get(ClassEconomy, class_id)
         if not class_row:
             return jsonify({'error': 'No class period selected'}), 400
-        join_code = class_row.join_code
+        join_code = get_display_join_code(class_row.class_id)
     except Exception:
         return jsonify({'error': 'No class period selected'}), 400
 
@@ -365,7 +366,7 @@ def api_alerts():
         class_id = context.class_id
         from app.models import ClassEconomy
         class_row = db.session.get(ClassEconomy, class_id)
-        join_code = class_row.join_code if class_row else None
+        join_code = get_display_join_code(class_row.class_id) if class_row else None
     except Exception:
         return jsonify({'error': 'No class period selected'}), 400
     if not join_code:
@@ -416,7 +417,7 @@ def acknowledge_alert(alert_id):
         class_id = context.class_id
         from app.models import ClassEconomy
         class_row = db.session.get(ClassEconomy, class_id)
-        join_code = class_row.join_code if class_row else None
+        join_code = get_display_join_code(class_row.class_id) if class_row else None
     except Exception:
         return jsonify({'error': 'No class period selected'}), 400
     if not join_code:
@@ -458,7 +459,7 @@ def events():
         class_row = db.session.get(ClassEconomy, class_id)
         if not class_row:
             raise Exception("No class found")
-        join_code = class_row.join_code
+        join_code = get_display_join_code(class_row.class_id)
         available_classes = [{"class_id": class_id, "join_code": join_code}] # Note: minimal stub for UI
     except Exception:
         flash('You need to set up class periods before viewing analytics.', 'warning')
@@ -506,14 +507,13 @@ def student_drill_down(student_id):
     if not selected_class:
         flash('You need to set up class periods before viewing analytics.', 'warning')
         return redirect(url_for('admin.students'))
-    join_code = selected_class['join_code']
-    
+    class_id = selected_class['class_id']
+
     # Get class economy row
-    class_row = ClassEconomy.query.filter_by(join_code=join_code).first()
+    class_row = ClassEconomy.query.filter_by(class_id=class_id).first()
     if not class_row:
         flash('Class period not found.', 'warning')
         return redirect(url_for('admin.students'))
-    class_id = class_row.class_id
 
     # Get student with scoping
     student = Seat.query.filter(

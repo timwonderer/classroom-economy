@@ -1,4 +1,4 @@
-from tests.helpers.v2_fixtures import make_admin, make_sysadmin
+from tests.helpers.v2_fixtures import seed_canonical_admin, make_sysadmin
 import json
 from datetime import datetime, timezone
 from decimal import Decimal
@@ -25,6 +25,7 @@ from app.routes.student import (
     _get_effective_rent_amount_for_coverage_period,
     _is_coverage_period_paid,
 )
+from app.feats.base import FEATContext
 from app.utils.economy_balance import EconomyBalanceChecker, WarningLevel
 from app.utils.economy_policy import (
     convert_weekly_amount_to_frequency,
@@ -37,21 +38,17 @@ from app.utils.economy_rebalance import (
     activate_due_rebalances,
     prepare_scheduled_rebalance_changes,
 )
+from tests.helpers.class_scope import create_class_scope
 
 
-def _login_admin(client, teacher_id, *, join_code=None, class_id=None):
+def _login_admin(client, teacher_id, *, class_id=None):
     from tests.helpers.admin_context import login_teacher
     teacher = db.session.get(User, teacher_id)
     if teacher is None:
         return
-    resolved_class_id = class_id
-    if not resolved_class_id and join_code:
-        row = ClassEconomy.query.filter_by(join_code=join_code).first()
-        if row:
-            resolved_class_id = row.class_id
-    if not resolved_class_id:
+    if not class_id:
         raise ValueError("economy-policy tests require an explicit canonical class scope")
-    login_teacher(client, teacher, class_id=resolved_class_id, join_code=join_code)
+    login_teacher(client, teacher, class_id=class_id)
 
 
 def _create_teacher_seat(user_id, block='A', join_code='JOINPOLA', class_id=None):
@@ -70,52 +67,51 @@ def _create_teacher_seat(user_id, block='A', join_code='JOINPOLA', class_id=None
 
 def _create_admin_with_block(block='A', join_code='JOINPOLA'):
     from tests.helpers.class_scope import create_class_scope
-    teacher = make_admin(f"policyadmin_{block.lower()}_{join_code.lower()}")
-    db.session.flush()
+    teacher = seed_canonical_admin(f"policyadmin_{block.lower()}_{join_code.lower()}").user
+    with FEATContext("FEAT-IDEN-001", idempotency_key=f"economy-policy:create-admin:{block}:{join_code}:{teacher.id}"):
+        economy = create_class_scope(
+            teacher_user=teacher,
+            join_code=join_code,
+            display_name=f'Period {block}',
+            section=block,
+        )
+        db.session.flush()
+        admin = teacher
 
-    economy = create_class_scope(
-        teacher_user=teacher,
-        join_code=join_code,
-        display_name=f'Period {block}',
-        section=block,
-    )
-    db.session.flush()
-    admin = teacher
-
-    payroll_settings = PayrollSettings(
-        class_id=economy.class_id,
-        block=block,
-        pay_rate=Decimal('0.25'),
-        expected_weekly_hours=5.0,
-        payroll_frequency_days=14,
-        settings_mode='simple',
-        is_active=True,
-    )
-    rent_settings = RentSettings(
-        class_id=economy.class_id,
-        rent_amount=Decimal('500.00'),
-        frequency_type='monthly',
-    )
-    db.session.add_all([payroll_settings, rent_settings])
-    db.session.commit()
+        payroll_settings = PayrollSettings(
+            class_id=economy.class_id,
+            block=block,
+            pay_rate=Decimal('0.25'),
+            expected_weekly_hours=5.0,
+            payroll_frequency_days=14,
+            settings_mode='simple',
+            is_active=True,
+        )
+        rent_settings = RentSettings(
+            class_id=economy.class_id,
+            rent_amount=Decimal('500.00'),
+            frequency_type='monthly',
+        )
+        db.session.add_all([payroll_settings, rent_settings])
+        db.session.flush()
     return admin, payroll_settings, rent_settings, economy
 
 
 def _create_insurance_policy(user_id, title, premium, block='A', join_code=None):
     join_code = join_code or f"JOIN{block}{user_id}"
-    class_row = ClassEconomy.query.filter_by(join_code=join_code, user_id=user_id).first()
-    if not class_row:
-        db.session.add(ClassEconomy(
-            join_code=join_code,
-            user_id=user_id,
-            display_name=f'Period {block}',
-        ))
-        db.session.flush()
-        class_row = ClassEconomy.query.filter_by(join_code=join_code, user_id=user_id).first()
+    teacher = db.session.get(User, user_id)
+    if teacher is None:
+        raise ValueError("economy-policy tests require an existing teacher user")
+    class_row = create_class_scope(
+        teacher_user=teacher,
+        join_code=join_code,
+        display_name=f'Period {block}',
+        section=block,
+    )
     policy = InsurancePolicy(
         teacher_id=user_id,
         join_code=join_code,
-        class_id=class_row.class_id if class_row else None,
+        class_id=class_row.class_id,
         policy_code=f"{title[:3].upper()}{user_id}",
         title=title,
         premium=Decimal(str(premium)),
@@ -203,8 +199,9 @@ def test_checker_uses_feature_policy_mode_for_recommendations(client):
     default_checker = EconomyBalanceChecker(admin.id, 'A', class_id=economy.class_id, policy_mode='default')
     default_recommendations = default_checker.analyze_economy(payroll_settings).recommendations
 
-    db.session.add(FeatureSettings(class_id=economy.class_id, economy_policy_mode='tight'))
-    db.session.commit()
+    with FEATContext("FEAT-IDEN-001", idempotency_key=f"economy-policy:set-tight:{economy.class_id}"):
+        db.session.add(FeatureSettings(class_id=economy.class_id, economy_policy_mode='tight'))
+        db.session.flush()
 
     tight_checker = EconomyBalanceChecker(admin.id, 'A', class_id=economy.class_id)
     tight_recommendations = tight_checker.analyze_economy(payroll_settings).recommendations
@@ -397,7 +394,7 @@ def test_rebalanced_rent_amount_does_not_backdate_current_coverage_due(client):
     )
 
 
-def test_join_code_cycle_locks_rent_rate_after_first_payment(client):
+def test_class_scope_cycle_locks_rent_rate_after_first_payment(client):
     admin, _, rent_settings, economy = _create_admin_with_block()
     join_code = "LOCKA1"
     lock_class = ClassEconomy(

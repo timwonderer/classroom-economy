@@ -685,7 +685,7 @@ def create_app():
             return {
                 'admin_feature_settings': get_admin_feature_settings_for_join_code(
                     class_row.user_id,
-                    join_code=class_row.join_code,
+                    join_code=get_display_join_code(class_row.class_id),
                 )
             }
         except Exception as e:
@@ -735,10 +735,10 @@ def create_app():
             current_class_label = (
                 current_class_row.display_name
                 if current_class_row and current_class_row.display_name
-                else (current_class_row.join_code if current_class_row else None)
+                else (get_display_join_code(current_class_row.class_id) if current_class_row else None)
             )
             available_classes = [{
-                'join_code': current_class_row.join_code if current_class_row else None,
+                'join_code': get_display_join_code(current_class_row.class_id) if current_class_row else None,
                 'class_id': getattr(current_class_row, 'class_id', None),
                 'class_identifier': current_class_label,
                 'class_timezone': getattr(current_class_row, 'class_timezone', None),
@@ -749,7 +749,7 @@ def create_app():
                 'is_current': True,
             }]
             current_class_context = {
-                'join_code': current_class_row.join_code if current_class_row else None,
+                'join_code': get_display_join_code(current_class_row.class_id) if current_class_row else None,
                 'class_id': getattr(current_class_row, 'class_id', None),
                 'class_identifier': current_class_label,
                 'class_timezone': getattr(current_class_row, 'class_timezone', None),
@@ -786,12 +786,12 @@ def create_app():
                 return {'admin_current_class_context': None, 'admin_available_classes': []}
 
             admin_current_class_context = {
-                'join_code': class_row.join_code,
+                'join_code': get_display_join_code(class_row.class_id),
                 'class_id': class_row.class_id,
-                'class_identifier': class_row.display_name or class_row.join_code,
+                'class_identifier': class_row.display_name or get_display_join_code(class_row.class_id),
                 'class_timezone': class_row.class_timezone,
                 'block': class_row.section,
-                'block_display': class_row.display_name or class_row.join_code,
+                'block_display': class_row.display_name or get_display_join_code(class_row.class_id),
             }
 
             return {

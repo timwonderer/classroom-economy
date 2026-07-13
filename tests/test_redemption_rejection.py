@@ -1,22 +1,17 @@
-from tests.helpers.v2_fixtures import make_admin
+from tests.helpers.v2_fixtures import seed_canonical_admin
 import pytest
 from decimal import Decimal
 from datetime import datetime, timezone
-from app.models import Transaction, StoreItem, StudentItem, ClassEconomy, Seat
+from app.models import Transaction, StoreItem, StorePurchase, ClassEconomy, Seat
 from app.extensions import db
+from app.feats.base import FEATContext
 from tests.helpers.canonical_session import set_canonical_context
 from tests.helpers.class_scope import make_student_identity, create_class_scope
 
 
-def _class_id_for(join_code):
-    class_row = ClassEconomy.query.filter_by(join_code=join_code).first()
-    assert class_row is not None
-    return class_row.class_id
-
-
 @pytest.fixture
 def teacher_admin(client):
-    admin = make_admin("teacher_r", "secret")
+    admin = seed_canonical_admin("teacher_r", "secret").user
     db.session.commit()
     return admin
 
@@ -33,30 +28,31 @@ def student_in_class(client, teacher_admin):
 def test_reject_redemption_refunds_student(client, teacher_admin, student_in_class):
     """Test that rejecting a redemption refunds the student and removes the item."""
     student = student_in_class
-    seat = Seat.query.filter_by(user_id=student.user_id, class_id=_class_id_for('REJECT123'), role="student").first()
+    seat = Seat.query.filter_by(user_id=student.user_id, class_id=student.class_id, role="student").first()
 
-    item = StoreItem(
-        user_id=teacher_admin.id,
-        class_id=_class_id_for('REJECT123'),
-        join_code='REJECT123',
-        name='Refundable Item',
-        price=Decimal('15.00'),
-        item_type='delayed',
-        is_active=True
-    )
-    db.session.add(item)
-    db.session.flush()
+    with FEATContext("FEAT-IDEN-001", idempotency_key=f"redemption-reject:seed:{student.class_id}:{student.user_id}"):
+        item = StoreItem(
+            user_id=teacher_admin.id,
+            class_id=student.class_id,
+            join_code='REJECT123',
+            name='Refundable Item',
+            price=Decimal('15.00'),
+            item_type='delayed',
+            is_active=True
+        )
+        db.session.add(item)
+        db.session.flush()
 
-    initial_balance = Decimal('100.00')
-    tx = Transaction(
-        user_id=student.user_id, seat_id=seat.id, join_code='REJECT123',
-        amount=initial_balance,
-        account_type='checking',
-        type='deposit',
-        description='Initial funds'
-    )
-    db.session.add(tx)
-    db.session.commit()
+        initial_balance = Decimal('100.00')
+        tx = Transaction(
+            user_id=student.user_id, seat_id=seat.id, join_code='REJECT123',
+            amount=initial_balance,
+            account_type='checking',
+            type='deposit',
+            description='Initial funds'
+        )
+        db.session.add(tx)
+        db.session.flush()
 
     with client.session_transaction() as sess:
         set_canonical_context(
@@ -75,7 +71,7 @@ def test_reject_redemption_refunds_student(client, teacher_admin, student_in_cla
     assert purchase_resp.status_code == 200
     assert purchase_resp.json['status'] == 'success'
 
-    student_item = StudentItem.query.filter_by(user_id=student.user_id, store_item_id=item.id).first()
+    student_item = StorePurchase.query.filter_by(seat_id=seat.id, store_item_id=item.id).first()
     assert student_item is not None
     assert student_item.status == 'purchased'
 
@@ -91,14 +87,21 @@ def test_reject_redemption_refunds_student(client, teacher_admin, student_in_cla
     assert student_item.status == 'processing'
 
     with client.session_transaction() as sess:
-        sess['user_id'] = teacher_admin.id
-        sess['current_class_id'] = _class_id_for('REJECT123')
+        teacher_seat = Seat.query.filter_by(user_id=teacher_admin.id, class_id=seat.class_id, role="teacher").first()
+        assert teacher_seat is not None
+        set_canonical_context(
+            sess,
+            user_id=teacher_admin.id,
+            class_id=seat.class_id,
+            seat_id=teacher_seat.id,
+            role="teacher",
+        )
 
     resp = client.post('/api/reject-redemption', json={'student_item_id': student_item.id})
     assert resp.status_code == 200
     assert resp.json['status'] == 'success'
 
-    item_check = db.session.get(StudentItem, student_item.id)
+    item_check = db.session.get(StorePurchase, student_item.id)
     assert item_check is not None
     assert item_check.status == 'rejected'
 
@@ -120,28 +123,29 @@ def test_reject_redemption_refunds_student(client, teacher_admin, student_in_cla
 def test_reject_redemption_refunds_single_unit_from_multi_quantity_purchase(client, teacher_admin, student_in_class):
     """Ensure a rejected redemption refunds only one unit from a multi-quantity purchase."""
     student = student_in_class
-    seat = Seat.query.filter_by(user_id=student.user_id, class_id=_class_id_for('REJECT123'), role="student").first()
+    seat = Seat.query.filter_by(user_id=student.user_id, class_id=student.class_id, role="student").first()
 
-    item = StoreItem(
-        user_id=teacher_admin.id,
-        class_id=_class_id_for('REJECT123'),
-        name='Bulk Item',
-        price=Decimal('10.00'),
-        item_type='delayed',
-        is_active=True
-    )
-    db.session.add(item)
-    db.session.flush()
+    with FEATContext("FEAT-IDEN-001", idempotency_key=f"redemption-reject:seed-bulk:{student.class_id}:{student.user_id}"):
+        item = StoreItem(
+            user_id=teacher_admin.id,
+            class_id=student.class_id,
+            name='Bulk Item',
+            price=Decimal('10.00'),
+            item_type='delayed',
+            is_active=True
+        )
+        db.session.add(item)
+        db.session.flush()
 
-    initial_balance = Decimal('100.00')
-    db.session.add(Transaction(
-        user_id=student.user_id, seat_id=seat.id, join_code='REJECT123',
-        amount=initial_balance,
-        account_type='checking',
-        type='deposit',
-        description='Initial funds'
-    ))
-    db.session.commit()
+        initial_balance = Decimal('100.00')
+        db.session.add(Transaction(
+            user_id=student.user_id, seat_id=seat.id, join_code='REJECT123',
+            amount=initial_balance,
+            account_type='checking',
+            type='deposit',
+            description='Initial funds'
+        ))
+        db.session.flush()
 
     with client.session_transaction() as sess:
         set_canonical_context(
@@ -160,7 +164,7 @@ def test_reject_redemption_refunds_single_unit_from_multi_quantity_purchase(clie
     assert purchase_resp.status_code == 200
     assert purchase_resp.json['status'] == 'success'
 
-    student_item = StudentItem.query.filter_by(user_id=student.user_id, store_item_id=item.id).first()
+    student_item = StorePurchase.query.filter_by(seat_id=seat.id, store_item_id=item.id).first()
     assert student_item is not None
 
     use_resp = client.post('/api/use-item', json={
@@ -175,8 +179,15 @@ def test_reject_redemption_refunds_single_unit_from_multi_quantity_purchase(clie
     assert student_item.status == 'processing'
 
     with client.session_transaction() as sess:
-        sess['user_id'] = teacher_admin.id
-        sess['current_class_id'] = _class_id_for('REJECT123')
+        teacher_seat = Seat.query.filter_by(user_id=teacher_admin.id, class_id=seat.class_id, role="teacher").first()
+        assert teacher_seat is not None
+        set_canonical_context(
+            sess,
+            user_id=teacher_admin.id,
+            class_id=seat.class_id,
+            seat_id=teacher_seat.id,
+            role="teacher",
+        )
 
     resp = client.post('/api/reject-redemption', json={'student_item_id': student_item.id})
     assert resp.status_code == 200
@@ -188,4 +199,3 @@ def test_reject_redemption_refunds_single_unit_from_multi_quantity_purchase(clie
         amount=Decimal('10.00')
     ).first()
     assert refund_tx is not None
-

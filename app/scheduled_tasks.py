@@ -164,7 +164,7 @@ def database_maintenance_job():
 
         logger.info(
             "Skipping legacy join_code backfill in nightly maintenance; "
-            "records are expected to already be join_code-scoped."
+            "records are expected to already be class-scoped."
         )
         logger.info(f"Database maintenance completed. Total orphaned entries cleaned: {total_cleaned}")
 

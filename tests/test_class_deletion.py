@@ -1,4 +1,4 @@
-from tests.helpers.v2_fixtures import make_admin, make_sysadmin
+from tests.helpers.v2_fixtures import seed_canonical_admin, make_sysadmin, seed_purchase
 from tests.helpers.class_scope import make_student_identity
 import pytest
 from datetime import datetime, timezone
@@ -19,7 +19,7 @@ from app.utils.deletion import collapse_universe
 from tests.helpers.class_scope import create_class_scope
 
 def test_collapse_universe_cascades_and_cleans_up(client):
-    admin = make_admin("collapse_admin", "secret")
+    admin = seed_canonical_admin("collapse_admin", "secret").user
     db.session.flush()
 
     join_code = "COLL01"
@@ -46,7 +46,14 @@ def test_collapse_universe_cascades_and_cleans_up(client):
     db.session.add(RentSettings(class_id=economy.class_id))
 
     # Transaction
-    db.session.add(Transaction(user_id=student_user.id, join_code=join_code, amount=10, account_type="checking", type="deposit", is_void=False))
+    seed_purchase(
+        seat_id=Seat.query.filter_by(class_id=economy.class_id, user_id=student_user.id).first().id,
+        class_id=economy.class_id,
+        user_id=student_user.id,
+        amount="10.00",
+        description="Test deposit",
+        transaction_type="deposit",
+    )
 
     # Store Item and Block
     store_item = StoreItem(user_id=admin.id, join_code=join_code, name="Item", price=10, item_type='immediate')
@@ -77,8 +84,8 @@ def test_collapse_universe_cascades_and_cleans_up(client):
     db.session.commit()
 
     # Pre-collapse assertions
-    assert ClassEconomy.query.filter_by(join_code=join_code).first() is not None
-    assert db.session.query(Transaction).filter_by(join_code=join_code).count() == 1
+    assert ClassEconomy.query.filter_by(class_id=economy.class_id).first() is not None
+    assert db.session.query(Transaction).filter_by(class_id=economy.class_id).count() == 1
     assert db.session.query(StoreItemBlock).filter_by(store_item_id=store_item.id).count() == 1
     assert db.session.query(StoreItem).filter_by(id=store_item.id).count() == 1
     assert db.session.query(Seat).filter_by(user_id=student_user.id).first() is not None
@@ -94,11 +101,11 @@ def test_collapse_universe_cascades_and_cleans_up(client):
     assert success is True
 
     # Post-collapse assertions
-    assert ClassEconomy.query.filter_by(join_code=join_code).first() is None
+    assert ClassEconomy.query.filter_by(class_id=economy.class_id).first() is None
     assert Seat.query.filter_by(class_id=economy.class_id).count() == 0
-    assert db.session.query(Transaction).filter_by(join_code=join_code).count() == 0
+    assert db.session.query(Transaction).filter_by(class_id=economy.class_id).count() == 0
     assert db.session.query(Seat).filter_by(class_id=economy.class_id).count() == 0
-    assert db.session.query(Issue).filter_by(join_code=join_code).count() == 0
+    assert db.session.query(Issue).filter_by(class_id=economy.class_id).count() == 0
 
     # Store settings cleanup
     assert db.session.query(StoreItemBlock).filter_by(store_item_id=store_item_id_val).count() == 0
@@ -117,8 +124,8 @@ def test_collapse_universe_cascades_and_cleans_up(client):
     assert db.session.query(Seat).filter_by(user_id=student_b_user_id_val).first() is not None
 
 
-def test_admin_join_code_delete_route(client):
-    admin = make_admin("route_admin", "secret")
+def test_admin_class_delete_route(client):
+    admin = seed_canonical_admin("route_admin", "secret").user
     db.session.flush()
 
     join_code = "ROUT01"
@@ -137,11 +144,11 @@ def test_admin_join_code_delete_route(client):
     })
 
     assert response.status_code == 200
-    assert ClassEconomy.query.filter_by(join_code=join_code).first() is None
+    assert ClassEconomy.query.filter_by(class_id=economy.class_id).first() is None
 
 
 def test_collapse_universe_raises_on_null_class_id_scope_rows(client):
-    admin = make_admin("collapse_invalid_admin", "secret")
+    admin = seed_canonical_admin("collapse_invalid_admin", "secret").user
     db.session.flush()
 
     economy = create_class_scope(teacher_user=admin, join_code="INV001")

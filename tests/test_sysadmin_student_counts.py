@@ -13,7 +13,7 @@ from app import app, db
 from app.models import User, UserRole, SystemAdmin, Seat
 from app.routes.system_admin import _user_student_counts
 from tests.helpers.class_scope import create_class_scope, make_student_identity
-from tests.helpers.v2_fixtures import make_admin, make_sysadmin
+from tests.helpers.v2_fixtures import seed_canonical_admin, make_sysadmin
 
 
 def _create_sysadmin(username: str = "sysadmin"):
@@ -27,7 +27,7 @@ def _create_sysadmin(username: str = "sysadmin"):
 def _create_admin(username: str):
     """Create a teacher admin for testing."""
     secret = pyotp.random_base32()
-    admin = make_admin(username)
+    admin = seed_canonical_admin(username).user
     db.session.flush()
     return admin, secret
 

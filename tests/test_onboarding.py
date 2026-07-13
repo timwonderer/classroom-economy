@@ -1,4 +1,4 @@
-from tests.helpers.v2_fixtures import make_admin, make_sysadmin
+from tests.helpers.v2_fixtures import seed_canonical_admin, make_sysadmin
 import pytest
 
 pytestmark = [pytest.mark.critical, pytest.mark.regression]
@@ -13,7 +13,7 @@ def login_admin(client, username='admin'):
     from app.models import User, UserRole
     admin = User.query.filter_by(username_lookup_hash=hash_username_lookup(username)).first()
     if not admin:
-        admin = make_admin(username)
+        admin = seed_canonical_admin(username).user
         db.session.commit()
 
     nonce = secrets.token_urlsafe(32)

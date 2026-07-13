@@ -93,7 +93,7 @@ def settle_balances(seat_id: int, class_id: str) -> None:
         resolved_seat_id = int(seat_id)
         class_row = (
             ClassEconomy.query
-            .with_entities(ClassEconomy.class_id, ClassEconomy.join_code)
+            .with_entities(ClassEconomy.class_id)
             .filter_by(class_id=class_id)
             .first()
         )
@@ -105,7 +105,6 @@ def settle_balances(seat_id: int, class_id: str) -> None:
             raise ValueError("settle_balances requires a seat bound to the provided class_id")
 
         scope_filter = transaction_scope_filter(Transaction, resolved_seat_id)
-        resolved_join_code = class_row[1]
         cache_was_created = False
         # 1. Lock (or Create) BalanceCache Row
         # ---------------------------------------------------------
@@ -127,7 +126,6 @@ def settle_balances(seat_id: int, class_id: str) -> None:
                     cache = BalanceCache(
                         seat_id=resolved_seat_id,
                         class_id=canonical_class_id,
-                        join_code=resolved_join_code,
                     )
                     db.session.add(cache)
                     db.session.flush()
@@ -305,12 +303,11 @@ def settle_balances(seat_id: int, class_id: str) -> None:
         cache.last_settlement_at = now
         
         logger.info(
-            "Settled balances resolved=(seat_id=%s, class_id=%s, student_id=%s, join_code=%s): "
+            "Settled balances resolved=(seat_id=%s, class_id=%s, student_id=%s): "
             "Posted %s, Voided %s. Checking Net: %s, Savings Net: %s",
             resolved_seat_id,
             canonical_class_id,
             seat.user_id,
-            resolved_join_code,
             cnt_posted,
             cnt_voided,
             checking_delta_cents,

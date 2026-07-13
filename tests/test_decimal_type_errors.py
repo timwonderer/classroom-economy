@@ -10,7 +10,7 @@ These tests verify fixes for the following errors:
 Root cause: Mixing Decimal (from database Numeric columns) with float literals (0.0).
 Fix: Use Decimal('0.00') consistently for all currency values.
 """
-from tests.helpers.v2_fixtures import make_admin, make_sysadmin
+from tests.helpers.v2_fixtures import make_sysadmin, seed_canonical_admin
 import pytest
 from decimal import Decimal
 from datetime import datetime, timedelta, timezone
@@ -41,7 +41,7 @@ class TestDecimalTypeErrors:
         """
         # Create teacher
         with FEATContext("FEAT-IDEN-001", idempotency_key="decimal_precision:rent_dashboard"):
-            teacher = make_admin('teacher_rent_decimal')
+            teacher = seed_canonical_admin('teacher_rent_decimal').user
             db.session.flush()
             class_scope = create_class_scope(
                 teacher_user=teacher,
@@ -93,7 +93,7 @@ class TestDecimalTypeErrors:
         """
         # Create teacher
         with FEATContext("FEAT-IDEN-001", idempotency_key="decimal_precision:get_total_earnings"):
-            teacher = make_admin('teacher_earnings_decimal')
+            teacher = seed_canonical_admin('teacher_earnings_decimal').user
             db.session.flush()
             class_scope = create_class_scope(
                 teacher_user=teacher,
@@ -219,7 +219,7 @@ class TestDecimalTypeErrors:
         """
         # Create teacher
         with FEATContext("FEAT-IDEN-001", idempotency_key="decimal_precision:rent_calc_regression"):
-            teacher = make_admin('teacher_regression')
+            teacher = seed_canonical_admin('teacher_regression').user
             db.session.flush()
             class_scope = create_class_scope(
                 teacher_user=teacher,
@@ -271,7 +271,7 @@ class TestDecimalTypeErrors:
         
         # Create teacher
         with FEATContext("FEAT-IDEN-001", idempotency_key="decimal_precision:interest"):
-            teacher = make_admin('teacher_interest_test')
+            teacher = seed_canonical_admin('teacher_interest_test').user
             db.session.flush()
             class_scope = create_class_scope(
                 teacher_user=teacher,
@@ -352,7 +352,7 @@ class TestDecimalTypeErrors:
         from tests.helpers.class_scope import create_class_scope
 
         # Create teacher
-        teacher = make_admin('teacher_claim_cap')
+        teacher = seed_canonical_admin('teacher_claim_cap').user
         db.session.flush()
 
         # Create student

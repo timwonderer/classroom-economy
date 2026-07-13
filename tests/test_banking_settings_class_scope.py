@@ -1,22 +1,19 @@
-from datetime import datetime, timezone
-
 from app.extensions import db
-from app.models import BankingSettings, ClassFeature, Seat, User
+from app.feats.base import FEATContext
+from app.models import BankingSettings
 from tests.helpers.class_scope import create_class_scope
-from tests.helpers.canonical_session import set_canonical_context
-from tests.helpers.v2_fixtures import make_teacher
+from tests.helpers.v2_fixtures import seed_canonical_admin, seed_class_feature
 from tests.helpers.admin_context import login_teacher
 
 
 def test_banking_settings_update_persists_class_scoped_row(client):
-    teacher = make_teacher("bank_scope_admin")
-    db.session.flush()
+    teacher = seed_canonical_admin("bank_scope_admin").user
 
-    class_row = create_class_scope(teacher_user=teacher, join_code="BANK001")
-    db.session.add(ClassFeature(class_id=class_row.class_id, feature_name="banking"))
-    db.session.commit()
+    with FEATContext("FEAT-IDEN-001", idempotency_key="banking_scope:create_class"):
+        class_row = create_class_scope(teacher_user=teacher, join_code="BANK001", section="B")
+        seed_class_feature(class_id=class_row.class_id, feature_name="banking")
 
-    login_teacher(client, teacher, join_code="BANK001", class_id=class_row.class_id)
+    login_teacher(client, teacher, class_id=class_row.class_id)
 
     response = client.post(
         "/admin/banking/settings",

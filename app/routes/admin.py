@@ -83,7 +83,7 @@ from app.forms import (
 # Import utility functions
 from app.utils.helpers import is_safe_url, format_utc_iso, generate_anonymous_code, render_template_with_fallback as render_template
 from app.utils.store import refund_pending_collective_purchases
-from app.utils.join_code import generate_join_code
+from app.utils.join_code import generate_join_code, get_display_join_code
 from app.utils.economy_balance import EconomyBalanceChecker
 from app.utils.economy_policy import (
     POLICY_MODES,
@@ -157,7 +157,6 @@ from app.attendance import (
     get_batch_attendance_events,
     calculate_seconds_in_memory,
 )
-from app.utils.attendance_helpers import get_join_code_for_student_period
 from app.services.balance_service import get_batch_balances_by_class_seat
 from app.services import access_policy_service, ledger_service, obligations_service
 from app.services.entitlement_service import adjust_hall_passes, get_hall_pass_balance, grant_hall_passes
@@ -379,7 +378,7 @@ def _resolve_admin_class_context(canonical_context=None) -> dict | None:
     if candidate_class_id:
         class_row = (
             ClassEconomy.query.with_entities(
-                ClassEconomy.class_id, ClassEconomy.join_code, ClassEconomy.user_id
+                ClassEconomy.class_id, ClassEconomy.user_id
             )
             .filter(
                 ClassEconomy.user_id == user_id,
@@ -394,7 +393,7 @@ def _resolve_admin_class_context(canonical_context=None) -> dict | None:
 
     return {
         'class_id': class_row.class_id,
-        'join_code': class_row.join_code,
+        'join_code': get_display_join_code(class_row.class_id),
     }
 
 
@@ -557,17 +556,13 @@ def _get_teacher_user_join_code(canonical_context=None) -> str | None:
     current_class_id = (getattr(canonical_context, "class_id", None) or '').strip()
     if not current_class_id:
         return None
-    class_row = (
-        ClassEconomy.query.with_entities(ClassEconomy.join_code)
-        .filter(
-            ClassEconomy.user_id == user_id,
-            ClassEconomy.class_id == current_class_id,
-        )
-        .first()
-    )
-    if not class_row or not class_row.join_code:
+    class_row = ClassEconomy.query.with_entities(ClassEconomy.class_id).filter(
+        ClassEconomy.user_id == user_id,
+        ClassEconomy.class_id == current_class_id,
+    ).first()
+    if not class_row:
         return None
-    return class_row.join_code
+    return get_display_join_code(class_row.class_id)
 
 
 def get_admin_feature_settings_for_class_id(canonical_context=None, class_id: str | None = None) -> dict:
@@ -605,7 +600,6 @@ def get_admin_feature_join_code_options(feature_name: str, canonical_context=Non
     classes = (
         ClassEconomy.query.with_entities(
             ClassEconomy.class_id,
-            ClassEconomy.join_code,
             ClassEconomy.section,
             ClassEconomy.display_name,
         )
@@ -617,7 +611,7 @@ def get_admin_feature_join_code_options(feature_name: str, canonical_context=Non
     )
     options: list[dict[str, str]] = []
     seen_class_ids: set[str] = set()
-    for class_id, join_code, section, display_name in classes:
+    for class_id, section, display_name in classes:
         if not class_id or class_id in seen_class_ids:
             continue
         seen_class_ids.add(class_id)
@@ -647,8 +641,9 @@ def resolve_admin_feature_join_code(feature_name: str, canonical_context=None) -
             user_id=canonical_context.user_id,
             class_id=current_class_id,
         ).first()
-        if current_class and current_class.join_code in enabled_join_codes:
-            return current_class.join_code
+        current_join_code = get_display_join_code(current_class.class_id) if current_class else None
+        if current_join_code and current_join_code in enabled_join_codes:
+            return current_join_code
 
     return options[0]['join_code'] if options else None
 
@@ -701,11 +696,6 @@ def _parse_dob_date(dob_str):
 def _normalize_full_name_for_dedupe(first_name: str, last_name: str) -> str:
     """Return lowercase letters-only full name for dedupe key input."""
     return re.sub(r"[^a-z]", "", f"{first_name}{last_name}".lower())
-
-
-def _resolve_class_id(user_id: int, join_code: str) -> str:
-    """Get or create the canonical ClassEconomy row and return class_id."""
-    return _ensure_join_code_anchors(user_id, join_code)
 
 
 def _build_teacher_block_dedupe_key(class_id: str, first_name: str, last_name: str) -> str:
@@ -881,45 +871,68 @@ def _get_join_codes_by_block(canonical_context, blocks):
     user_id = canonical_context.user_id
     class_id = (getattr(canonical_context, "class_id", None) or "").strip() or None
     query = (
-        db.session.query(ClassEconomy.section, ClassEconomy.join_code)
+        db.session.query(ClassEconomy.section, ClassEconomy.class_id)
         .filter(
             ClassEconomy.user_id == user_id,
             ClassEconomy.section.in_(blocks),
-            ClassEconomy.join_code.isnot(None),
         )
     )
     if class_id:
         query = query.filter(ClassEconomy.class_id == class_id)
     rows = query.all()
-    return {section: join_code for section, join_code in rows if join_code}
+    return {
+        section: get_display_join_code(resolved_class_id)
+        for section, resolved_class_id in rows
+        if resolved_class_id and get_display_join_code(resolved_class_id)
+    }
 
 
-def _build_payroll_preview_state(students, join_codes_by_block):
+def _get_class_ids_by_block(canonical_context, blocks):
+    """Return mapping of block -> class_id for the given admin without N+1 queries."""
+
+    if canonical_context is None or not getattr(canonical_context, "user_id", None) or not blocks:
+        return {}
+
+    user_id = canonical_context.user_id
+    class_id = (getattr(canonical_context, "class_id", None) or "").strip() or None
+    query = (
+        db.session.query(ClassEconomy.section, ClassEconomy.class_id)
+        .filter(
+            ClassEconomy.user_id == user_id,
+            ClassEconomy.section.in_(blocks),
+        )
+    )
+    if class_id:
+        query = query.filter(ClassEconomy.class_id == class_id)
+    rows = query.all()
+    return {section: resolved_class_id for section, resolved_class_id in rows if resolved_class_id}
+
+
+def _build_payroll_preview_state(students, class_ids_by_block):
     """Aggregate payroll preview data from class-scoped payroll anchors."""
-    students_by_join_code: dict[str, dict[int, Seat]] = defaultdict(dict)
+    students_by_class_id: dict[str, dict[int, Seat]] = defaultdict(dict)
 
     for student in students:
         for raw_block in (student.block or "").split(","):
             block = raw_block.strip()
             if not block:
                 continue
-            join_code = join_codes_by_block.get(block)
-            if join_code:
-                students_by_join_code[join_code][student.id] = student
+            class_id = class_ids_by_block.get(block)
+            if class_id:
+                students_by_class_id[class_id][student.id] = student
 
-    summary_by_join_code: dict[str, dict[int, Decimal]] = {}
-    anchor_by_join_code: dict[str, datetime | None] = {}
-    updated_at_by_join_code: dict[str, datetime] = {}
+    summary_by_class_id: dict[str, dict[int, Decimal]] = {}
+    anchor_by_class_id: dict[str, datetime | None] = {}
+    updated_at_by_class_id: dict[str, datetime] = {}
     total_summary: dict[int, Decimal] = defaultdict(lambda: Decimal("0.00"))
 
-    for join_code, students_map in students_by_join_code.items():
+    for class_id, students_map in students_by_class_id.items():
         class_students = list(students_map.values())
 
-        economy = ClassEconomy.query.filter_by(join_code=join_code).first()
+        economy = db.session.get(ClassEconomy, class_id)
         if not economy:
             continue
 
-        class_id = economy.class_id
         student_ids = [s.id for s in class_students]
         seat_rows = (
             db.session.query(Seat.id, Seat.user_id)
@@ -948,18 +961,18 @@ def _build_payroll_preview_state(students, join_codes_by_block):
             if s_id in seat_to_student:
                 summary[seat_to_student[s_id]] = amt
 
-        anchor_by_join_code[join_code] = anchor
-        summary_by_join_code[join_code] = summary
+        anchor_by_class_id[class_id] = anchor
+        summary_by_class_id[class_id] = summary
         if updated_at is not None:
-            updated_at_by_join_code[join_code] = ensure_utc(updated_at)
+            updated_at_by_class_id[class_id] = ensure_utc(updated_at)
         for student_id, amount in summary.items():
             total_summary[student_id] += Decimal(str(amount))
 
-    latest_updated_at = max(updated_at_by_join_code.values()) if updated_at_by_join_code else None
+    latest_updated_at = max(updated_at_by_class_id.values()) if updated_at_by_class_id else None
     return {
-        "summary_by_join_code": summary_by_join_code,
-        "anchor_by_join_code": anchor_by_join_code,
-        "updated_at_by_join_code": updated_at_by_join_code,
+        "summary_by_class_id": summary_by_class_id,
+        "anchor_by_class_id": anchor_by_class_id,
+        "updated_at_by_class_id": updated_at_by_class_id,
         "total_summary": dict(total_summary),
         "latest_updated_at": latest_updated_at,
     }
@@ -1059,7 +1072,7 @@ def _require_payroll_feature_scope_from_request(
     enabled = "payroll" in ClassFeature.enabled_names_for_class(resolved_class_id)
 
     return {
-        'join_code': class_row.join_code if class_row else None,
+        'join_code': get_display_join_code(class_row.class_id) if class_row else None,
         'class_id': resolved_class_id,
         'block': resolved_block,
         'teacher_seat': canonical_seat,
@@ -1068,22 +1081,22 @@ def _require_payroll_feature_scope_from_request(
 
 
 
-def _join_code_exists(join_code):
-    """Return True when a class identified by join_code still exists in ClassEconomy."""
-    if not join_code:
+def _class_exists(class_id):
+    """Return True when a class identified by class_id still exists in ClassEconomy."""
+    if not class_id:
         return False
-    return ClassEconomy.query.filter_by(join_code=join_code).first() is not None
+    return db.session.get(ClassEconomy, class_id) is not None
 
 
-def _assert_transaction_deletion_allowed(join_code, *, join_code_deletion=False):
+def _assert_transaction_deletion_allowed(class_id, *, join_code_deletion=False):
     """
-    Guardrail: transactions are immutable while class join code exists.
+    Guardrail: transactions are immutable while the class exists.
 
-    Hard transaction deletion is only allowed from join-code destruction workflow.
+    Hard transaction deletion is only allowed from class destruction workflow.
     """
-    if not join_code_deletion and _join_code_exists(join_code):
+    if not join_code_deletion and _class_exists(class_id):
         raise AssertionError(
-            f"Refusing to delete transactions for active join code '{join_code}'. "
+            f"Refusing to delete transactions for active class '{class_id}'. "
             "Use student removal or class deletion flows instead."
         )
 
@@ -1129,7 +1142,6 @@ def _hard_delete_class_scope(class_id, canonical_context):
     if not class_row:
         return
 
-    join_code = class_row.join_code
     invalid_scope_rows = []
     scoped_models = (
         ("ledger_transaction", Transaction),
@@ -1148,22 +1160,19 @@ def _hard_delete_class_scope(class_id, canonical_context):
         if join_code_column is None or class_id_column is None:
             continue
         count = db.session.query(model).filter(
-            join_code_column == join_code,
             class_id_column.is_(None),
             ).count()
         if count:
             invalid_scope_rows.append(f"{label}={count}")
     if sa.inspect(db.engine).has_table("tap_events"):
         count = db.session.query(TapEvent).filter(
-            TapEvent.join_code == join_code,
             TapEvent.class_id.is_(None),
         ).count()
         if count:
             invalid_scope_rows.append(f"tap_events={count}")
     if invalid_scope_rows:
         message = (
-            f"class_id NULL rows detected for class_id={class_id} join_code={join_code}: "
-            f"{', '.join(invalid_scope_rows)}"
+            f"class_id NULL rows detected for class_id={class_id}: {', '.join(invalid_scope_rows)}"
         )
         current_app.logger.critical("P0 INVARIANT VIOLATION: %s", message)
         raise InvariantViolation(message)
@@ -1509,17 +1518,18 @@ def _get_admin_owned_join_codes(canonical_context):
         return []
     user_id = canonical_context.user_id
 
-    return [
-        jc
-        for (jc,) in (
-            db.session.query(ClassEconomy.join_code)
+    class_ids = [
+        class_id
+        for (class_id,) in (
+            db.session.query(ClassEconomy.class_id)
             .join(Seat, Seat.class_id == ClassEconomy.class_id)
             .filter(Seat.user_id == user_id, Seat.role == 'teacher')
             .distinct()
             .all()
         )
-        if jc
+        if class_id
     ]
+    return [code for code in (get_display_join_code(class_id) for class_id in class_ids) if code]
 
 
 def _admin_owns_class(canonical_context, class_id):
@@ -1693,8 +1703,8 @@ def _get_table_columns(table_name: str) -> set[str]:
 def _build_pending_class_timezone_payload(class_row: ClassEconomy) -> dict:
     return {
         "class_id": class_row.class_id,
-        "join_code": class_row.join_code,
-        "class_identifier": class_row.display_name or class_row.join_code,
+        "join_code": get_display_join_code(class_row.class_id),
+        "class_identifier": class_row.display_name or get_display_join_code(class_row.class_id),
         "display_name": class_row.display_name,
         "class_timezone": class_row.class_timezone,
     }
@@ -1764,16 +1774,16 @@ def _remove_pending_class_timezone_confirmation(class_id: str):
     session.modified = True
 
 
-def _ensure_join_code_anchors(user_id, join_code, class_label=None, return_metadata: bool = False):
+def _ensure_join_code_anchors(user_id, join_code, class_label=None, class_id=None, return_metadata: bool = False):
     """Ensure the canonical class row and membership exist before child inserts."""
-    if not user_id or not join_code:
+    if not user_id or (not join_code and not class_id):
         return (None, False, None) if return_metadata else None
 
-    economy = ClassEconomy.query.filter_by(join_code=join_code).first()
+    economy = db.session.get(ClassEconomy, class_id) if class_id else None
     created = False
     if economy is not None:
         if economy.user_id != user_id:
-            raise ValueError("Join code belongs to a different teacher.")
+            raise ValueError("Class belongs to a different teacher.")
         if class_label and not economy.display_name:
             economy.display_name = class_label
         if economy.created_by_user_id is None:
@@ -1808,15 +1818,8 @@ def _ensure_join_code_anchors(user_id, join_code, class_label=None, return_metad
 
 
 def _generate_unique_teacher_join_code(section: str) -> str:
-    """Generate a teacher-scoped join code, falling back to a timestamp suffix."""
-    for _ in range(MAX_JOIN_CODE_RETRIES):
-        candidate = generate_join_code()
-        if not ClassEconomy.query.filter_by(join_code=candidate).first():
-            return candidate
-
-    block_initial = section[:FALLBACK_BLOCK_PREFIX_LENGTH].ljust(FALLBACK_BLOCK_PREFIX_LENGTH, 'X')
-    timestamp_suffix = int(time.time()) % FALLBACK_CODE_MODULO
-    return f"B{block_initial}{timestamp_suffix:04d}"
+    """Generate a teacher-scoped join code."""
+    return generate_join_code()
 
 
 def _resolve_student_add_class_context(canonical_context, section: str) -> dict | None:
@@ -1854,7 +1857,6 @@ def _link_student_to_admin(
     student,
     canonical_context,
     *,
-    join_code: str | None = None,
     class_id: str | None = None,
     class_label: str | None = None,
     block: str | None = None,
@@ -1875,29 +1877,28 @@ def _link_student_to_admin(
         )
         return
 
-    target_join_code = join_code
     target_class_id = class_id
+    target_join_code = None
 
-    if target_join_code:
-        if not target_class_id:
-            target_class_id = _resolve_class_id(user_id, target_join_code)
-    else:
-        # Find or create a join_code for this teacher+block combo via ClassEconomy.
+    if not target_class_id:
         existing_class = ClassEconomy.query.filter(
             ClassEconomy.user_id == user_id,
             ClassEconomy.section == target_block,
         ).first()
-        if existing_class and existing_class.join_code:
-            target_join_code = existing_class.join_code
+        if existing_class:
             target_class_id = existing_class.class_id
+            target_join_code = existing_class.join_code
         else:
             from app.utils.join_code import generate_join_code as _gen_jc
             target_join_code = _gen_jc()
-        if not target_class_id:
-            target_class_id = _resolve_class_id(user_id, target_join_code)
+            target_class_id = _ensure_join_code_anchors(
+                user_id,
+                target_join_code,
+                class_label=class_label,
+            )
 
     # 2. Ensure ClassEconomy record exists.
-    _ensure_join_code_anchors(user_id, target_join_code, class_label=class_label)
+    _ensure_join_code_anchors(user_id, target_join_code, class_label=class_label, class_id=target_class_id)
 
     # 3. Create or update Seat record.
     existing_seat = Seat.query.filter_by(
@@ -1964,7 +1965,7 @@ def _build_economy_snapshot_from_analysis(class_id, checker, analysis):
     class_row = db.session.get(ClassEconomy, class_id) if class_id else None
     return EconomySnapshot(
         class_id=class_id,
-        join_code=class_row.join_code if class_row else None,
+        join_code=get_display_join_code(class_row.class_id) if class_row else None,
         policy_mode=checker.policy_mode,
         pay_rate=Decimal(str(analysis.cwi.pay_rate_per_minute or 0)),
         expected_hours=Decimal(str((analysis.cwi.expected_weekly_minutes or 0) / 60.0)).quantize(Decimal('0.01')),
@@ -2606,7 +2607,7 @@ def _get_validated_teacher_class_options(user_id: int) -> list[dict]:
         return []
 
     class_rows = (
-        db.session.query(ClassEconomy.class_id, ClassEconomy.join_code, ClassEconomy.display_name)
+        db.session.query(ClassEconomy.class_id, ClassEconomy.display_name)
         .filter(ClassEconomy.user_id == user_id)
         .order_by(ClassEconomy.created_at.asc(), ClassEconomy.class_id.asc())
         .all()
@@ -2614,7 +2615,7 @@ def _get_validated_teacher_class_options(user_id: int) -> list[dict]:
     if not class_rows:
         return []
 
-    class_ids = [class_id for class_id, _join_code, _display_name in class_rows if class_id]
+    class_ids = [class_id for class_id, _display_name in class_rows if class_id]
     teacher_seats = {
         seat.class_id: seat
         for seat in Seat.query.filter(
@@ -2625,13 +2626,14 @@ def _get_validated_teacher_class_options(user_id: int) -> list[dict]:
         if seat.class_id
     }
     options = []
-    for class_id, join_code, display_name in class_rows:
+    for class_id, display_name in class_rows:
         if not class_id:
             continue
         # Resolve the canonical seat for this class; fail closed if missing.
         seat = teacher_seats.get(class_id)
         if not seat:
             continue
+        join_code = get_display_join_code(class_id)
         options.append(
             {
                 "class_id": class_id,
@@ -2834,8 +2836,8 @@ def dashboard():
 
     # --- Payroll Info ---
     dashboard_blocks = sorted({b.strip() for s in seats for b in (s.block or "").split(',') if b.strip()})
-    dashboard_join_codes_by_block = _get_join_codes_by_block(g.canonical_context, dashboard_blocks)
-    payroll_preview = _build_payroll_preview_state(seats, dashboard_join_codes_by_block)
+    dashboard_class_ids_by_block = _get_class_ids_by_block(g.canonical_context, dashboard_blocks)
+    payroll_preview = _build_payroll_preview_state(seats, dashboard_class_ids_by_block)
     payroll_summary = payroll_preview["total_summary"]
     payroll_updated_at = payroll_preview["latest_updated_at"]
     total_payroll_estimate = sum(payroll_summary.values())
@@ -2843,7 +2845,7 @@ def dashboard():
     # Calculate next payroll date (keep in UTC for template conversion)
     anchor_candidates = [
         anchor + timedelta(days=14)
-        for anchor in payroll_preview["anchor_by_join_code"].values()
+        for anchor in payroll_preview["anchor_by_class_id"].values()
         if anchor is not None
     ]
     if anchor_candidates:
@@ -3304,24 +3306,26 @@ def recover():
             return render_template("admin_recover.html", form=form)
 
         # ----------------------------------------------------------------
-        # Step 1: Establish class authority from the first join_code boundary
+        # Step 1: Establish class authority from the first explicit ingress boundary
         # ----------------------------------------------------------------
-        recovered_join_code = recovery_pairs[0][0]
-        first_class = ClassEconomy.query.filter_by(join_code=recovered_join_code).first()
+        all_classes = ClassEconomy.query.all()
+        display_join_code = recovery_pairs[0][0]
+        first_class = next((c for c in all_classes if c.join_code == display_join_code), None)
         if not first_class:
             current_app.logger.warning(
-                f"Admin recovery: initial join_code '{recovered_join_code}' not found"
+                f"Admin recovery: initial join_code '{display_join_code}' not found"
             )
             flash(_GENERIC_ERROR, "error")
             return render_template("admin_recover.html", form=form)
 
         recovered_account_id = first_class.user_id
+        active_classes = [c for c in all_classes if c.user_id == recovered_account_id]
+        class_by_join_code = {c.join_code: c for c in active_classes if c.join_code}
 
         # ----------------------------------------------------------------
         # Step 2: Verify submitted join codes exactly match the active class records
         # ----------------------------------------------------------------
-        active_classes = ClassEconomy.query.filter_by(user_id=recovered_account_id).all()
-        all_active_join_codes = {c.join_code for c in active_classes if c.join_code}
+        all_active_join_codes = set(class_by_join_code)
         submitted_class_join_codes = set(jc for jc, _ in recovery_pairs)
 
         # Must exactly match backend list
@@ -4098,7 +4102,7 @@ def students():
         first_class = (
             ClassEconomy.query.with_entities(ClassEconomy.class_id)
             .filter(ClassEconomy.user_id == user_id)
-            .order_by(ClassEconomy.display_name.asc(), ClassEconomy.join_code.asc())
+            .order_by(ClassEconomy.display_name.asc(), ClassEconomy.class_id.asc())
             .first()
         )
         if not first_class:
@@ -4204,7 +4208,7 @@ def students():
         if class_row:
             for block in blocks:
                 unclaimed_seats_list_by_block[block] = []
-                join_codes_by_block[block] = class_row.join_code
+                join_codes_by_block[block] = get_display_join_code(class_row.class_id)
                 class_labels_by_block[block] = class_row.display_name or block
                 class_ids_by_block[block] = class_row.class_id
                 unclaimed_seats_by_block[block] = 0
@@ -4282,7 +4286,7 @@ def set_current_class():
         return jsonify({'status': 'error', 'message': 'Class ID required'}), 400
 
     user_id = g.canonical_context.user_id
-    query = ClassEconomy.query.with_entities(ClassEconomy.class_id, ClassEconomy.join_code).filter(
+    query = ClassEconomy.query.with_entities(ClassEconomy.class_id).filter(
         ClassEconomy.user_id == user_id,
     )
     query = query.filter(ClassEconomy.class_id == class_id)
@@ -4350,7 +4354,7 @@ def set_class_timezone(class_id: str):
         'status': 'success',
         'message': 'Class timezone saved.',
         'class_timezone': class_row.class_timezone,
-        'class_identifier': class_row.display_name or class_row.join_code,
+        'class_identifier': class_row.display_name or get_display_join_code(class_row.class_id),
     }), 200
 
 
@@ -4533,8 +4537,10 @@ def student_detail_public(actor_public_id):
                 ClassEconomy.section.in_(block_parts)
             ).all()
             for class_row in class_rows:
-                if class_row.join_code and class_row.section:
-                    join_codes[class_row.section] = class_row.join_code
+                if class_row.section:
+                    display_join_code = get_display_join_code(class_row.class_id)
+                    if display_join_code:
+                        join_codes[class_row.section] = display_join_code
 
     _student_user = db.session.get(User, student.user_id) if student.user_id else None
     reset_code_is_active = bool(
@@ -4647,15 +4653,15 @@ def edit_student():
     # Handle per-period balance transfers
     transferred_blocks = []
     if added_blocks:
-        # Get join codes for old blocks (source of transfers)
-        old_join_codes = []
+        # Get class ids for old blocks (source of transfers)
+        old_class_ids = []
         for block in removed_blocks:
             ce = ClassEconomy.query.filter_by(
                 user_id=user_id,
                 section=block
             ).first()
-            if ce and ce.join_code:
-                old_join_codes.append(ce.join_code)
+            if ce and ce.class_id:
+                old_class_ids.append(ce.class_id)
 
     # For each added block, check if teacher wants to transfer balance
         for block in added_blocks:
@@ -4663,7 +4669,7 @@ def edit_student():
             balance_action_key = f'balance_action_{block}'
             balance_action = request.form.get(balance_action_key, 'start_fresh')
 
-            if balance_action == 'transfer' and old_join_codes:
+            if balance_action == 'transfer' and old_class_ids:
                 # Get join code for this new block
                 ce = ClassEconomy.query.filter_by(
                     user_id=user_id,
@@ -4683,9 +4689,7 @@ def edit_student():
                     )
 
                     # Transfer transactions from old blocks to this new block
-                    for old_join_code in old_join_codes:
-                        old_class_row = ClassEconomy.query.filter_by(join_code=old_join_code).first()
-                        old_class_id = old_class_row.class_id if old_class_row else None
+                    for old_class_id in old_class_ids:
                         old_seat_id = (
                             Seat.query.with_entities(Seat.id)
                             .filter(Seat.user_id == student.id, Seat.class_id == old_class_id)
@@ -4703,12 +4707,12 @@ def edit_student():
                         }
                         update_res = Transaction.query.filter_by(
                             seat_id=old_seat_id,
-                            join_code=old_join_code
+                            class_id=old_class_id,
                         ).update(update_values, synchronize_session=False)
 
                     transferred_blocks.append(block)
                     current_app.logger.info(
-                        f"Transferred transactions for student {student.id} from {old_join_codes} to {target_join_code} (block: {block})"
+                        f"Transferred transactions for student {student.id} from {old_class_ids} to {target_join_code} (block: {block})"
                     )
             # If 'start_fresh', do nothing - student starts with $0 in that period
 
@@ -4796,28 +4800,16 @@ def edit_student():
                 class_id=ce_row.class_id,
             ).delete()
 
-    # Create Seat entries for blocks that need them (reusing existing join codes)
-    for block in blocks_to_ensure:
-        # Resolve class economy for this block
-        ce_row = ClassEconomy.query.filter_by(user_id=user_id, section=block).first()
-        if ce_row:
-            join_code = ce_row.join_code
-            class_id = ce_row.class_id
-        else:
-            # Generate a unique join code with bounded retries and fallback
-            join_code = None
-            for _ in range(MAX_JOIN_CODE_RETRIES):
-                candidate = generate_join_code()
-                if not ClassEconomy.query.filter_by(join_code=candidate).first():
-                    join_code = candidate
-                    break
+        # Create Seat entries for blocks that need them.
+        for block in blocks_to_ensure:
+            # Resolve class economy for this block
+            ce_row = ClassEconomy.query.filter_by(user_id=user_id, section=block).first()
+            if ce_row:
+                class_id = ce_row.class_id
+                join_code = get_display_join_code(class_id)
             else:
-                # Fallback to timestamp-based code
-                block_initial = block[:FALLBACK_BLOCK_PREFIX_LENGTH].ljust(FALLBACK_BLOCK_PREFIX_LENGTH, 'X')
-                timestamp_suffix = int(time.time()) % FALLBACK_CODE_MODULO
-                join_code = f"B{block_initial}{timestamp_suffix:04d}"
-
-            class_id = _ensure_join_code_anchors(user_id, join_code, class_label=block)
+                join_code = generate_join_code()
+                class_id = _ensure_join_code_anchors(user_id, join_code, class_label=block)
 
         # Check if a Seat already exists for this student in this class
         existing_seat = Seat.query.filter_by(
@@ -4968,43 +4960,33 @@ def delete_block():
         return gate_error
 
     try:
-        join_codes = [
-            code for (code,) in db.session.query(ClassEconomy.join_code).filter(
-                ClassEconomy.user_id == user_id,
-                ClassEconomy.section == section,
-                ClassEconomy.join_code.isnot(None),
-            ).distinct().all()
-        ]
-        if not join_codes:
-            return jsonify({"status": "success", "message": f"No join code found for Block {section}. Nothing to delete."})
-        if len(join_codes) > 1:
-            return jsonify({
-                "status": "error",
-                "message": f"Block {section} has multiple join codes. Delete by join code explicitly."
-            }), 400
-
-        join_code = join_codes[0]
-        class_row = ClassEconomy.query.filter_by(join_code=join_code).first()
-        if not class_row:
-            return jsonify({"status": "error", "message": "Join code not found or access denied."}), 404
-        _hard_delete_class_scope(class_row.class_id, g.canonical_context)
-
-        # Cleanup any residual unclaimed seats in same block for this join code teacher.
-        # Find the class_id(s) for this block, then delete unclaimed Seats.
-        block_class_ids = [
+        class_ids = [
             cid for (cid,) in db.session.query(ClassEconomy.class_id).filter(
                 ClassEconomy.user_id == user_id,
                 ClassEconomy.section == section,
             ).all()
         ]
-        if block_class_ids:
+        if not class_ids:
+            return jsonify({"status": "success", "message": f"No class found for Block {section}. Nothing to delete."})
+        if len(class_ids) > 1:
+            return jsonify({
+                "status": "error",
+                "message": f"Block {section} has multiple classes. Delete by class explicitly."
+            }), 400
+
+        class_row = db.session.get(ClassEconomy, class_ids[0])
+        if not class_row:
+            return jsonify({"status": "error", "message": "Join code not found or access denied."}), 404
+        _hard_delete_class_scope(class_row.class_id, g.canonical_context)
+
+        if class_ids:
             Seat.query.filter(
-                Seat.class_id.in_(block_class_ids),
+                Seat.class_id.in_(class_ids),
                 Seat.claimed_at.is_(None),
             ).delete(synchronize_session=False)
         return jsonify({
             "status": "success",
-            "message": f"Successfully deleted class Block {section} (join code {join_code}) and scoped records."
+            "message": f"Successfully deleted class Block {section} and scoped records."
         })
     except InvariantViolation:
         db.session.rollback()
@@ -5022,36 +5004,39 @@ def delete_block():
 def delete_join_code():
     """Hard-delete a class economy and all records scoped to the join code."""
     data = request.get_json(silent=True) or request.form
-    join_code = (data.get('join_code') or '').strip().upper()
+    display_join_code = (data.get('join_code') or '').strip().upper()
     user_id = g.canonical_context.user_id
 
-    if not join_code:
+    if not display_join_code:
         return jsonify({"status": "error", "message": "join_code is required."}), 400
 
-    class_row = ClassEconomy.query.filter_by(join_code=join_code).first()
+    class_rows = ClassEconomy.query.with_entities(ClassEconomy.class_id).filter_by(user_id=user_id).all()
+    class_row = next(
+        (row for row in class_rows if (get_display_join_code(row.class_id) or "").upper() == display_join_code),
+        None,
+    )
     if not class_row or not _admin_owns_class(g.canonical_context, class_row.class_id):
         return jsonify({"status": "error", "message": "Join code not found or access denied."}), 403
 
     confirm_join_code = str((data or {}).get("confirm_join_code", "")).strip().upper()
     if confirm_join_code:
-        if confirm_join_code != join_code:
+        if confirm_join_code != display_join_code:
             return jsonify({
                 "status": "error",
                 "message": "Confirmation failed: join code did not match."
             }), 400
     else:
-        gate_error = _validate_destruction_gate(data, expected_phrase=f"DELETE JOIN CODE {join_code}")
+        gate_error = _validate_destruction_gate(data, expected_phrase=f"DELETE JOIN CODE {display_join_code}")
         if gate_error:
             return gate_error
 
     try:
-        class_row = ClassEconomy.query.filter_by(join_code=join_code).first()
         if not class_row:
             return jsonify({"status": "error", "message": "Join code not found or access denied."}), 404
         _hard_delete_class_scope(class_row.class_id, g.canonical_context)
         return jsonify({
             "status": "success",
-            "message": f"Join code {join_code} and all scoped records were permanently deleted."
+            "message": f"Join code {display_join_code} and all scoped records were permanently deleted."
         })
     except InvariantViolation:
         db.session.rollback()
@@ -5249,32 +5234,33 @@ def add_individual_student():
             flash(f"Student {first_name} {last_name} is already in your class.", "info")
             return redirect(url_for('admin.students'))
 
-        # Seat only — no User until student completes claim (DOM-IDEN-002 §VIII).
-        profile = IdentityProfile(
-            profile_type='student',
-            first_name=first_name,
-            last_name=last_name,
-            notes=additional_notes or None,
-        )
+        with FEATContext("FEAT-IDEN-001", idempotency_key=f"admin:add-individual-student:{class_id}:{first_name}:{last_name}:{dedupe_key}"):
+            # Seat only — no User until student completes claim (DOM-IDEN-002 §VIII).
+            profile = IdentityProfile(
+                profile_type='student',
+                first_name=first_name,
+                last_name=last_name,
+                notes=additional_notes or None,
+            )
 
-        # Ensure ClassEconomy record exists before creating Seat
-        _ensure_join_code_anchors(user_id, join_code)
+            # Ensure ClassEconomy record exists before creating Seat
+            _ensure_join_code_anchors(user_id, join_code, class_id=class_id)
 
-        new_seat = Seat(
-            user_id=None,
-            class_id=class_id,
-            dedupe_code=dedupe_key,
-            claimed_at=None,
-        )
-        db.session.add(new_seat)
-        db.session.flush()
+            new_seat = Seat(
+                user_id=None,
+                class_id=class_id,
+                dedupe_code=dedupe_key,
+                claimed_at=None,
+            )
+            db.session.add(new_seat)
+            db.session.flush()
 
-        grant_hall_passes(new_seat, 3, trigger_id=f"student_init_{new_seat.id}")
+            grant_hall_passes(new_seat, 3, trigger_id=f"student_init_{new_seat.id}")
 
-        profile.seat_id = new_seat.id
+            profile.seat_id = new_seat.id
 
-        if class_context.get('class_created'):
-            _queue_pending_class_timezone_confirmation(class_context.get('class_row'))
+            if class_context.get('class_created'):
+                _queue_pending_class_timezone_confirmation(class_context.get('class_row'))
 
     except Exception as e:
         db.session.rollback()
@@ -5383,40 +5369,40 @@ def add_manual_student():
                     _link_student_to_admin(
                         existing_student,
                         user_id,
-                        join_code=join_code,
                         class_id=class_id,
                     )
                     if class_context.get('class_created'):
                         _queue_pending_class_timezone_confirmation(class_context.get('class_row'))
                 return redirect(url_for('admin.students'))
 
-        # Seat only — no User until student completes claim (DOM-IDEN-002 §VIII).
-        profile = IdentityProfile(
-            profile_type='student',
-            first_name=first_name,
-            last_name=last_name,
-        )
+        with FEATContext("FEAT-IDEN-001", idempotency_key=f"admin:add-manual-student:{class_id}:{first_name}:{last_name}:{dedupe_key}"):
+            # Seat only — no User until student completes claim (DOM-IDEN-002 §VIII).
+            profile = IdentityProfile(
+                profile_type='student',
+                first_name=first_name,
+                last_name=last_name,
+            )
 
-        # Ensure ClassEconomy record exists before creating Seat
-        _ensure_join_code_anchors(user_id, join_code)
+            # Ensure ClassEconomy record exists before creating Seat
+            _ensure_join_code_anchors(user_id, join_code, class_id=class_id)
 
-        new_seat = Seat(
-            user_id=None,
-            class_id=class_id,
-            dedupe_code=dedupe_key,
-            claimed_at=None,
-            has_received_rent_exemption=not rent_enabled,
-        )
-        db.session.add(new_seat)
-        db.session.flush()
+            new_seat = Seat(
+                user_id=None,
+                class_id=class_id,
+                dedupe_code=dedupe_key,
+                claimed_at=None,
+                has_received_rent_exemption=not rent_enabled,
+            )
+            db.session.add(new_seat)
+            db.session.flush()
 
-        if hall_passes > 0:
-            grant_hall_passes(new_seat, hall_passes, trigger_id=f"student_init_{new_seat.id}")
+            if hall_passes > 0:
+                grant_hall_passes(new_seat, hall_passes, trigger_id=f"student_init_{new_seat.id}")
 
-        profile.seat_id = new_seat.id
+            profile.seat_id = new_seat.id
 
-        if class_context.get('class_created'):
-            _queue_pending_class_timezone_confirmation(class_context.get('class_row'))
+            if class_context.get('class_created'):
+                _queue_pending_class_timezone_confirmation(class_context.get('class_row'))
 
     except Exception as e:
         db.session.rollback()
@@ -5579,7 +5565,7 @@ def store_management():
         class_sizes = {}
         class_size_query = (
             db.session.query(
-                ClassEconomy.join_code,
+                ClassEconomy.class_id,
                 db.func.count(db.func.distinct(Seat.id)).label('student_count')
             )
             .join(Seat, Seat.class_id == ClassEconomy.class_id)
@@ -5588,16 +5574,19 @@ def store_management():
                 Seat.role == 'student',
                 Seat.claimed_at.isnot(None),
             )
-            .group_by(ClassEconomy.join_code)
+            .group_by(ClassEconomy.class_id)
             .all()
         )
-        class_sizes = {row.join_code: int(row.student_count or 0) for row in class_size_query}
+        class_sizes = {row.class_id: int(row.student_count or 0) for row in class_size_query}
 
         for ce_row in class_economy_rows:
-            if not ce_row.join_code:
+            if not ce_row.class_id:
                 continue
-            join_code_to_block.setdefault(ce_row.join_code, (ce_row.section or '').strip().upper())
-            join_code_to_label.setdefault(ce_row.join_code, ce_row.display_name or ce_row.join_code)
+            display_join_code = get_display_join_code(ce_row.class_id)
+            if not display_join_code:
+                continue
+            join_code_to_block.setdefault(display_join_code, (ce_row.section or '').strip().upper())
+            join_code_to_label.setdefault(display_join_code, ce_row.display_name or display_join_code)
 
         collective_item_ids = [item.id for item in collective_items]
         collective_counts = (
@@ -5636,7 +5625,7 @@ def store_management():
                 if item.collective_goal_type == 'fixed':
                     target = int(item.collective_goal_target or 0)
                 else:
-                    target = class_sizes.get(selected_join_code, 0)
+                    target = class_sizes.get(selected_scope['class_id'], 0)
                 per_class.append({
                     'join_code': jc,
                     'class_label': join_code_to_label.get(jc, jc),
@@ -5660,8 +5649,9 @@ def store_management():
     join_code_label_map = {}
     teacher_class_rows = ClassEconomy.query.filter_by(user_id=user_id).all()
     for ce_row in teacher_class_rows:
-        if ce_row.join_code and ce_row.join_code not in join_code_label_map:
-            join_code_label_map[ce_row.join_code] = ce_row.display_name or ce_row.join_code
+        display_join_code = get_display_join_code(ce_row.class_id)
+        if display_join_code and display_join_code not in join_code_label_map:
+            join_code_label_map[display_join_code] = ce_row.display_name or display_join_code
 
     parsed_audit_action = None
     if audit_action:
@@ -6113,26 +6103,42 @@ def _calculate_base_rent_amount(rent_settings: RentSettings, current_year: int, 
 def rent_settings():
     """Configure rent settings."""
     user_id = g.canonical_context.user_id
-    feature_options = get_admin_feature_join_code_options('rent', canonical_context=g.canonical_context)
-    current_class_id = getattr(g.canonical_context, "class_id", None)
-    selected_scope = next(
-        (option for option in feature_options if option.get("class_id") == current_class_id),
-        None,
-    )
-    if not selected_scope:
+    current_class_id = (getattr(g.canonical_context, "class_id", None) or "").strip()
+    if not current_class_id:
         abort(404)
+    feature_options = get_admin_feature_join_code_options('rent', canonical_context=g.canonical_context)
+
+    class_row = (
+        ClassEconomy.query.with_entities(
+            ClassEconomy.class_id,
+            ClassEconomy.section,
+            ClassEconomy.display_name,
+        )
+        .filter_by(user_id=user_id, class_id=current_class_id)
+        .first()
+    )
+    if not class_row or not class_row.class_id:
+        abort(404)
+    feature_scope = resolve_feature_class_for_class(current_class_id, 'rent')
+    if not feature_scope or not feature_scope["enabled"]:
+        abort(404)
+
+    selected_scope = {
+        "class_id": class_row.class_id,
+        "join_code": get_display_join_code(class_row.class_id),
+        "block": (class_row.section or "").strip().upper() or None,
+        "label": class_row.display_name or class_row.section or get_display_join_code(class_row.class_id),
+    }
     class_id = selected_scope['class_id']
     payroll_settings = PayrollSettings.query.filter_by(
         class_id=class_id,
         is_active=True,
     ).first()
-    teacher_blocks = [option['block'] for option in feature_options]
+    teacher_blocks = [option['block'] for option in get_admin_feature_join_code_options('rent', canonical_context=g.canonical_context)]
     settings_block = selected_scope['block']
 
-    # Get or create rent settings for this class (class_id is the canonical scope; block column removed)
-    settings = None
-    if settings_block:
-        settings = RentSettings.query.filter_by(class_id=selected_scope['class_id']).first()
+    # Get or create rent settings for this class (class_id is the canonical scope; block column is display-only)
+    settings = RentSettings.query.filter_by(class_id=class_id).first()
 
     if request.method == 'POST':
         apply_to_all = request.form.get('apply_to_all') == 'true'
@@ -6149,14 +6155,14 @@ def rent_settings():
         join_code_map = {}   # class_id → join_code (display use only)
         blocks_with_rows = set()  # class_ids that have a RentSettings row
         if class_ids_to_update:
-            ce_rows = db.session.query(ClassEconomy.class_id, ClassEconomy.join_code).filter(
+            ce_rows = db.session.query(ClassEconomy.class_id).filter(
                 ClassEconomy.user_id == user_id,
                 ClassEconomy.class_id.in_(class_ids_to_update),
             ).all()
-            for cid, jc in ce_rows:
+            for (cid,) in ce_rows:
                 blocks_with_rows.add(cid)
-                if jc and cid not in join_code_map:
-                    join_code_map[cid] = jc
+                if cid and cid not in join_code_map:
+                    join_code_map[cid] = get_display_join_code(cid)
 
         payload_hash = hashlib.sha256(
             json.dumps(
@@ -6420,7 +6426,7 @@ def rent_settings():
             flash(f"Rent settings applied to all {len(blocks_to_update)} classes!", "success")
         else:
             flash("Rent settings updated successfully!", "success")
-        return redirect(url_for('admin.rent_settings', settings_block=settings_block))
+        return redirect(url_for('admin.rent_settings'))
 
     # Get statistics — total claimed student seats in class
     total_students = Seat.query.filter(
@@ -6908,7 +6914,7 @@ def reverse_cycle_penalties():
         RENT_PAYMENT_MATCH_TOLERANCE_SECONDS,
         _calculate_rent_coverage_due_date,
         _calculate_rent_timeline,
-        _get_locked_rent_amount_for_join_code_cycle,
+        _get_locked_rent_amount_for_class_cycle,
     )
 
     user_id = g.canonical_context.user_id
@@ -6925,7 +6931,6 @@ def reverse_cycle_penalties():
     block = class_row_for_rent.section
     rent_settings = RentSettings.query.filter_by(
         class_id=class_row_for_rent.class_id,
-        block=block,
     ).first()
     if not rent_settings:
         flash("Rent system is not enabled for this class.", "info")
@@ -6938,7 +6943,7 @@ def reverse_cycle_penalties():
         flash("No active coverage period found for this class.", "info")
         return redirect(url_for('admin.rent_settings', settings_block=settings_block or block))
 
-    locked_rate = _get_locked_rent_amount_for_join_code_cycle(join_code, coverage_due_date)
+    locked_rate = _get_locked_rent_amount_for_class_cycle(class_row_for_rent.class_id, coverage_due_date)
     if locked_rate is None:
         flash("No valid payments found for the current cycle — nothing to reverse.", "info")
         return redirect(url_for('admin.rent_settings', settings_block=settings_block or block))
@@ -6965,6 +6970,9 @@ def reverse_cycle_penalties():
     total_refunded = Decimal('0.00')
 
     for seat_id, payments in payments_by_seat.items():
+        seat_row = db.session.get(Seat, seat_id)
+        if seat_row is None:
+            continue
         paid_by_grace = sum(
             payment.satisfaction.amount_paid for payment in payments
             if payment.satisfaction and payment.satisfaction.satisfied_at and ensure_utc(payment.satisfaction.satisfied_at) <= ensure_utc(grace_end_date)
@@ -6981,8 +6989,8 @@ def reverse_cycle_penalties():
             refund_amount = total_late_fee_charged
             ledger_service.create_pending_transaction(
                 seat_id=seat_id,
-                class_id=teacher_block.class_id,
-                user_id=user_id,
+                class_id=class_row_for_rent.class_id,
+                user_id=seat_row.user_id,
                 amount=refund_amount,
                 account_type='checking',
                 type='Rent Late Fee Reversal',
@@ -7019,15 +7027,16 @@ def reverse_cycle_penalties():
 
 
 def _get_teacher_user_tier_namespace_seed(user_id):
-    """Return a stable seed for tenant-scoped tier IDs using the teacher user's join code."""
-    join_code_row = (
-        db.session.query(ClassEconomy.join_code)
+    """Return a stable seed for tenant-scoped tier IDs using a display alias if available."""
+    class_row = (
+        db.session.query(ClassEconomy.class_id)
         .filter_by(user_id=user_id)
-        .order_by(ClassEconomy.join_code)
+        .order_by(ClassEconomy.class_id)
         .first()
     )
-
-    return join_code_row[0] if join_code_row else f"teacher-{user_id}"
+    if not class_row:
+        return f"teacher-{user_id}"
+    return get_display_join_code(class_row[0]) or f"teacher-{user_id}"
 
 
 def _generate_tenant_scoped_tier_id(seed, sequence):
@@ -7472,7 +7481,7 @@ def view_student_policy(enrollment_id):
                           policy=enrollment.policy,
                           seat=seat,
                           profile=profile,
-                          join_code=class_row.join_code if class_row else '',
+                          join_code=get_display_join_code(class_row.class_id) if class_row else '',
                           claims=claims)
 
 
@@ -8492,14 +8501,13 @@ def payroll():
 
     # Recent payroll activity
     # CRITICAL: Filter by canonical class_id for class isolation.
-    my_join_codes = [selected_join_code]
-    join_codes_by_block = {selected_block: selected_join_code} if selected_block else {}
     my_class_ids = [selected_class_id] if selected_class_id else []
-    payroll_preview = _build_payroll_preview_state(students, join_codes_by_block)
+    class_ids_by_block = {selected_block: selected_class_id} if selected_block else {}
+    payroll_preview = _build_payroll_preview_state(students, class_ids_by_block)
     payroll_summary = payroll_preview["total_summary"]
     payroll_updated_at = payroll_preview["latest_updated_at"]
-    payroll_anchor_by_join_code = payroll_preview["anchor_by_join_code"]
-    payroll_summary_by_join_code = payroll_preview["summary_by_join_code"]
+    payroll_anchor_by_class_id = payroll_preview["anchor_by_class_id"]
+    payroll_summary_by_class_id = payroll_preview["summary_by_class_id"]
 
     recent_payrolls = (
         Transaction.query
@@ -8517,12 +8525,12 @@ def payroll():
     # Next payroll by block
     next_payroll_by_block = []
     for block in blocks:
-        join_code = join_codes_by_block.get(block)
         block_students = [s for s in students if block in [b.strip() for b in (s.block or '').split(',')]]
+        class_id = class_ids_by_block.get(block)
         block_estimate = sum(
-            payroll_summary_by_join_code.get(join_code, {}).get(s.id, Decimal("0.00"))
+            payroll_summary_by_class_id.get(class_id, {}).get(s.id, Decimal("0.00"))
             for s in block_students
-        ) if join_code else Decimal("0.00")
+        ) if class_id else Decimal("0.00")
         setting = settings_by_block.get(block, default_setting)
         block_next_payroll = _compute_next_pay_date(setting, now_utc)
         next_payroll_by_block.append({
@@ -8581,35 +8589,26 @@ def payroll():
     ).group_by(Transaction.seat_id).all()
     last_payroll_map = {student_id_by_seat[seat_id]: ts for seat_id, ts in last_payroll_rows if seat_id in student_id_by_seat}
 
-    events_map_by_join_code = {}
-    seat_ids_by_join_code = defaultdict(set)
+    events_map_by_class_id = {}
+    seat_ids_by_class_id = defaultdict(set)
     seat_id_by_student_block_class = {}
-    class_rows = (
-        ClassEconomy.query.with_entities(ClassEconomy.join_code, ClassEconomy.class_id)
-        .filter(ClassEconomy.join_code.in_(my_join_codes))
-        .all()
-    )
-    class_id_by_join_code = {row.join_code: row.class_id for row in class_rows if row.class_id}
-    join_code_by_class_id = {row.class_id: row.join_code for row in class_rows if row.class_id}
     for seat_row in seats:
-        seat_join_code = join_code_by_class_id.get(seat_row.class_id)
-        if not seat_join_code or seat_join_code not in my_join_codes:
+        if seat_row.class_id not in my_class_ids:
             continue
         seat_block = ((seat_row.class_economy.section if seat_row and seat_row.class_economy and seat_row.class_economy.section else "")).strip().upper()
-        seat_ids_by_join_code[seat_join_code].add(seat_row.id)
+        seat_ids_by_class_id[seat_row.class_id].add(seat_row.id)
         seat_id_by_student_block_class.setdefault(
             (seat_row.user_id, seat_block, seat_row.class_id),
             seat_row.id,
         )
 
-    for join_code in my_join_codes:
-        anchor = payroll_anchor_by_join_code.get(join_code)
-        class_id = class_id_by_join_code.get(join_code)
+    for class_id in my_class_ids:
+        anchor = payroll_anchor_by_class_id.get(class_id)
         if not class_id:
-            events_map_by_join_code[join_code] = {}
+            events_map_by_class_id[class_id] = {}
             continue
-        scoped_seat_ids = sorted(seat_ids_by_join_code.get(join_code, set()))
-        events_map_by_join_code[join_code] = get_batch_attendance_events(
+        scoped_seat_ids = sorted(seat_ids_by_class_id.get(class_id, set()))
+        events_map_by_class_id[class_id] = get_batch_attendance_events(
             scoped_seat_ids,
             anchor,
             allowed_class_ids=[class_id],
@@ -8621,21 +8620,18 @@ def payroll():
         student_blocks = [b.strip() for b in (student.block or "").split(',') if b.strip()]
         for block in student_blocks:
             block_upper = block.upper()
-            join_code = join_codes_by_block.get(block)
-            if not join_code:
-                continue
-            class_id = class_id_by_join_code.get(join_code)
+            class_id = class_ids_by_block.get(block)
             if not class_id:
                 continue
             seat_id = seat_id_by_student_block_class.get((student.id, block_upper, class_id))
             if not seat_id:
                 continue
             key = (seat_id, block_upper, class_id)
-            events = events_map_by_join_code.get(join_code, {}).get(key, [])
+            events = events_map_by_class_id.get(class_id, {}).get(key, [])
             if events:
                 unpaid_seconds += calculate_seconds_in_memory(
                     events,
-                    payroll_anchor_by_join_code.get(join_code),
+                    payroll_anchor_by_class_id.get(class_id),
                 )
 
         unpaid_minutes = unpaid_seconds / 60.0
@@ -9280,8 +9276,8 @@ def attendance_log():
     class_ids_subq = db.session.query(ClassEconomy.class_id).filter_by(user_id=g.canonical_context.user_id).subquery()
     periods_query = (
         db.session.query(ClassEconomy.section)
-        .join(ClassEconomy, ClassEconomy.class_id == Seat.class_id)
-        .filter(Seat.class_id.in_(sa.select(class_ids_subq)))
+        .select_from(ClassEconomy)
+        .filter(ClassEconomy.class_id.in_(sa.select(class_ids_subq)))
         .filter(ClassEconomy.section.isnot(None))
         .distinct()
         .order_by(ClassEconomy.section)
@@ -9334,6 +9330,25 @@ def upload_students():
     db.session.rollback()
 
     with FEATContext("FEAT-IDEN-001", idempotency_key=idempotency_key):
+        def _insert_identity_profile(*, seat_id: int, class_id: str | None, profile_type: str, first_name, last_name, notes):
+            db.session.execute(
+                sa.text(
+                    "INSERT INTO identity_profiles "
+                    "(seat_id, class_id, profile_type, first_name, last_name, notes, created_at, updated_at) "
+                    "VALUES (:seat_id, :class_id, :profile_type, :first_name, :last_name, :notes, :created_at, :updated_at)"
+                ),
+                {
+                    "seat_id": seat_id,
+                    "class_id": class_id,
+                    "profile_type": profile_type,
+                    "first_name": first_name,
+                    "last_name": last_name,
+                    "notes": notes,
+                    "created_at": utc_now(),
+                    "updated_at": utc_now(),
+                },
+            )
+
         if force_new_class and not roster_sync:
             from app.models import ClassEconomy, Seat, IdentityProfile
             from app.utils.join_code import generate_join_code
@@ -9377,16 +9392,7 @@ def upload_students():
                 flash("You can only create one class at a time", "error")
                 return redirect(url_for("admin.onboarding"))
 
-            join_code = None
-            for _ in range(MAX_JOIN_CODE_RETRIES):
-                candidate = generate_join_code()
-                if not ClassEconomy.query.filter_by(join_code=candidate).first():
-                    join_code = candidate
-                    break
-            if not join_code:
-                block_initial = "NEW"
-                timestamp_suffix = int(time.time()) % FALLBACK_CODE_MODULO
-                join_code = f"B{block_initial}{timestamp_suffix:04d}"
+            join_code = generate_join_code()
 
             class_name = next((row.get("class_name") for row in rows if row.get("class_name")), None)
             if not class_name:
@@ -9404,30 +9410,10 @@ def upload_students():
             teacher_seat = Seat(
                 user_id=user_id,
                 class_id=class_row.class_id,
-                join_code=join_code,
                 role="teacher",
             )
             db.session.add(teacher_seat)
             db.session.flush()
-
-            def _insert_identity_profile(*, seat_id: int, class_id: str | None, profile_type: str, first_name, last_name, notes):
-                db.session.execute(
-                    sa.text(
-                        "INSERT INTO identity_profiles "
-                        "(seat_id, class_id, profile_type, first_name, last_name, notes, created_at, updated_at) "
-                        "VALUES (:seat_id, :class_id, :profile_type, :first_name, :last_name, :notes, :created_at, :updated_at)"
-                    ),
-                    {
-                        "seat_id": seat_id,
-                        "class_id": class_id,
-                        "profile_type": profile_type,
-                        "first_name": first_name,
-                        "last_name": last_name,
-                        "notes": notes,
-                        "created_at": utc_now(),
-                        "updated_at": utc_now(),
-                    },
-                )
 
             for row in rows:
                 first_name = row["first_name"]
@@ -9508,7 +9494,7 @@ def upload_students():
             file_join_code = next(iter(file_join_codes))
             resolved_file_class_id = (
                 db.session.query(ClassEconomy.class_id)
-                .filter(ClassEconomy.join_code == file_join_code)
+                .filter(ClassEconomy.class_id == class_id)
                 .scalar()
             )
             if not resolved_file_class_id or resolved_file_class_id != class_id:
@@ -9561,7 +9547,6 @@ def upload_students():
 
                 new_seat = Seat(
                     class_id=class_id,
-                    join_code=class_row.join_code,
                     role="student",
                     claimed_at=None,
                 )
@@ -9661,24 +9646,8 @@ def upload_students():
                                 "Select an existing class before uploading roster data, or use the onboarding page to create a new class."
                             )
                     else:
-                        # Generate new unique join code with retry limit
-                        new_code = None
-                        for _ in range(MAX_JOIN_CODE_RETRIES):
-                            new_code = generate_join_code()
-                            # Ensure uniqueness across all classes
-                            if not ClassEconomy.query.filter_by(join_code=new_code).first():
-                                join_codes_by_block[block] = new_code
-                                break
-                        else:
-                            # If we couldn't generate a unique code after max_retries, use a timestamp-based fallback
-                            block_initial = block[:FALLBACK_BLOCK_PREFIX_LENGTH].ljust(FALLBACK_BLOCK_PREFIX_LENGTH, 'X')
-                            timestamp_suffix = int(time.time()) % FALLBACK_CODE_MODULO
-                            new_code = f"B{block_initial}{timestamp_suffix:04d}"
-                            join_codes_by_block[block] = new_code
-                            current_app.logger.warning(
-                                f"Failed to generate unique join code after {MAX_JOIN_CODE_RETRIES} attempts. "
-                                f"Using fallback code {new_code} for block {block} in roster upload"
-                            )
+                        new_code = generate_join_code()
+                        join_codes_by_block[block] = new_code
 
                 if block not in class_ids_by_block:
                     class_id, class_created, class_row = _ensure_join_code_anchors(
@@ -9861,7 +9830,7 @@ def export_class_roster():
         profile = next((p for p in seat.identity_profiles if p.profile_type == "student"), None)
         checking_balance, savings_balance = get_available_balances(seat.id, class_id)
         writer.writerow([
-            class_row.join_code,
+            get_display_join_code(class_row.class_id),
             seat.public_id or "",
             _sanitize_csv_field(getattr(profile, "first_name", "") or ""),
             _sanitize_csv_field(getattr(profile, "last_name", "") or ""),
@@ -9871,7 +9840,7 @@ def export_class_roster():
         ])
 
     output.seek(0)
-    filename = f"class_roster_{class_row.join_code}_{utc_now().strftime('%Y%m%d_%H%M%S')}.csv"
+    filename = f"class_roster_{get_display_join_code(class_row.class_id)}_{utc_now().strftime('%Y%m%d_%H%M%S')}.csv"
     return Response(
         output.getvalue(),
         mimetype="text/csv",
@@ -10759,9 +10728,10 @@ def help_support():
     class_scope_map = {}
     class_id_by_join_code = {}
     for ce_row in teacher_user_class_rows:
-        if ce_row.join_code and ce_row.join_code not in class_scope_map:
-            class_scope_map[ce_row.join_code] = ce_row.display_name or ce_row.join_code
-            class_id_by_join_code[ce_row.join_code] = ce_row.class_id
+        display_join_code = get_display_join_code(ce_row.class_id)
+        if display_join_code and display_join_code not in class_scope_map:
+            class_scope_map[display_join_code] = ce_row.display_name or display_join_code
+            class_id_by_join_code[display_join_code] = ce_row.class_id
 
     class_scope_options = [
         {'join_code': join_code, 'class_id': class_id_by_join_code.get(join_code), 'label': label}
@@ -12343,7 +12313,7 @@ def resolve_issue(issue_ref):
             transaction = db.session.get(Transaction, issue.related_transaction_id)
             if (
                 not transaction
-                or transaction.student_id != issue.student_id
+                or transaction.seat_id != issue.seat_id
                 or transaction.is_void
                 or transaction.class_id != issue.class_id
             ):
@@ -12372,7 +12342,7 @@ def resolve_issue(issue_ref):
         elif action_type == 'compensating_transaction' and issue.related_transaction_id:
             # Append-only correction: create a compensating ledger entry.
             transaction = db.session.get(Transaction, issue.related_transaction_id)
-            if not transaction or transaction.student_id != issue.student_id or transaction.is_void:
+            if not transaction or transaction.seat_id != issue.seat_id or transaction.is_void:
                 flash("The related transaction could not be found for this issue.", "error")
                 return redirect(url_for('admin.view_issue', issue_ref=make_opaque_ref('issue', issue.id)))
 
@@ -12504,6 +12474,7 @@ def escalate_issue(issue_ref):
 
 @admin_bp.route('/issues/<issue_ref>/close', methods=['POST'])
 @admin_required
+@feat_shell("FEAT-SUP-001")
 def close_issue(issue_ref):
     """Owner/admin-only closure after final review."""
     from app.models import Issue

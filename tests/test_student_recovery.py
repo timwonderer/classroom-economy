@@ -23,9 +23,11 @@ from app import db
 from app.models import Seat, IdentityProfile, User, UserRole, Transaction
 from app.utils.money_guard import check_financial_cooldown
 from app.utils.time import ensure_utc, utc_now
-from tests.helpers.v2_fixtures import make_admin
+from app.feats.base import FEATContext
+from tests.helpers.v2_fixtures import seed_canonical_admin
 from tests.helpers.admin_context import login_teacher
 from tests.helpers.class_scope import create_class_scope, make_student_identity
+from tests.helpers.canonical_session import set_canonical_context
 
 
 # ----------------------------------------------------------------------
@@ -35,7 +37,7 @@ from tests.helpers.class_scope import create_class_scope, make_student_identity
 @pytest.fixture
 def recovery_data(client):
     """Set up a teacher, class, and a claimed student for recovery tests."""
-    teacher = make_admin("teacher_rec")
+    teacher = seed_canonical_admin("teacher_rec").user
     db.session.flush()
 
     join_code = "A123"
@@ -54,7 +56,7 @@ def recovery_data(client):
         pin="1111",
         claimed=True,
     )
-    db.session.commit()
+    db.session.flush()
 
     user = db.session.get(User, seat.user_id)
 
@@ -123,7 +125,8 @@ def test_student_lookup_success(client, recovery_data):
     user.reset_code = "RESET123"
     user.reset_code_generated_at = utc_now()
     user.reset_code_expires_at = utc_now() + timedelta(minutes=10)
-    db.session.commit()
+    with FEATContext("FEAT-IDEN-002", idempotency_key="recovery:test_student_lookup_success"):
+        db.session.flush()
 
     resp = client.post("/recovery/lookup", data={
         "reset_code": "RESET123",
@@ -151,7 +154,8 @@ def test_student_lookup_expired_code(client, recovery_data):
     user.reset_code = "RESET123"
     user.reset_code_generated_at = utc_now() - timedelta(minutes=20)
     user.reset_code_expires_at = utc_now() - timedelta(minutes=10)
-    db.session.commit()
+    with FEATContext("FEAT-IDEN-002", idempotency_key="recovery:test_student_lookup_expired_code"):
+        db.session.flush()
 
     resp = client.post("/recovery/lookup", data={
         "reset_code": "RESET123",
@@ -177,7 +181,8 @@ def test_recovery_does_not_create_new_user_row(client, recovery_data):
     user.reset_code = "ROWTEST1"
     user.reset_code_generated_at = utc_now()
     user.reset_code_expires_at = utc_now() + timedelta(minutes=10)
-    db.session.commit()
+    with FEATContext("FEAT-IDEN-002", idempotency_key="recovery:test_does_not_create_new_user_row"):
+        db.session.flush()
 
     client.post("/recovery/lookup", data={
         "reset_code": "ROWTEST1",
@@ -194,7 +199,8 @@ def test_recovery_preserves_seat_binding(client, recovery_data):
     user.reset_code = "KEEPCLM1"
     user.reset_code_generated_at = utc_now()
     user.reset_code_expires_at = utc_now() + timedelta(minutes=10)
-    db.session.commit()
+    with FEATContext("FEAT-IDEN-002", idempotency_key="recovery:test_preserves_seat_binding"):
+        db.session.flush()
 
     client.post("/recovery/lookup", data={
         "reset_code": "KEEPCLM1",
@@ -213,7 +219,17 @@ def test_recovery_preserves_identity(client, recovery_data):
     user.reset_code = "IDTEST01"
     user.reset_code_generated_at = utc_now()
     user.reset_code_expires_at = utc_now() + timedelta(minutes=10)
-    db.session.commit()
+    with FEATContext("FEAT-IDEN-002", idempotency_key="recovery:test_preserves_identity"):
+        db.session.flush()
+
+    with client.session_transaction() as sess:
+        set_canonical_context(
+            sess,
+            user_id=user.id,
+            class_id=seat.class_id,
+            seat_id=seat.id,
+            role="student",
+        )
 
     client.post("/recovery/lookup", data={
         "reset_code": "IDTEST01",
@@ -237,27 +253,39 @@ def test_recovery_preserves_balance_and_transactions(client, recovery_data):
     tx = Transaction(
         user_id=user.id,
         seat_id=seat.id,
+        class_id=recovery_data["class_id"],
         amount=200.0,
         type="deposit",
         description="Initial deposit",
         account_type="checking",
         join_code=join_code,
     )
-    db.session.add(tx)
-    db.session.commit()
+    with FEATContext("FEAT-LED-001", idempotency_key="recovery:preserve_transactions"):
+        db.session.add(tx)
+        db.session.flush()
 
-    tx_count_before = Transaction.query.filter_by(seat_id=seat.id, join_code=join_code).count()
+    tx_count_before = Transaction.query.filter_by(seat_id=seat.id, class_id=recovery_data["class_id"]).count()
 
-    user.reset_code = "PRESRV01"
-    user.reset_code_generated_at = utc_now()
-    user.reset_code_expires_at = utc_now() + timedelta(minutes=10)
-    db.session.commit()
+    with FEATContext("FEAT-IDEN-002", idempotency_key="recovery:reset_code_preserve"):
+        user.reset_code = "PRESRV01"
+        user.reset_code_generated_at = utc_now()
+        user.reset_code_expires_at = utc_now() + timedelta(minutes=10)
+        db.session.flush()
+
+    with client.session_transaction() as sess:
+        set_canonical_context(
+            sess,
+            user_id=user.id,
+            class_id=seat.class_id,
+            seat_id=seat.id,
+            role="student",
+        )
 
     client.post("/recovery/lookup", data={
         "reset_code": "PRESRV01",
     }, follow_redirects=True)
 
-    tx_count_after = Transaction.query.filter_by(seat_id=seat.id, join_code=join_code).count()
+    tx_count_after = Transaction.query.filter_by(seat_id=seat.id, class_id=recovery_data["class_id"]).count()
     assert tx_count_after == tx_count_before
 
 
@@ -276,7 +304,17 @@ def test_reset_code_invalid_after_credential_setup(client, recovery_data):
     user.pin_hash = None
     user.passphrase_hash = None
     user.username_lookup_hash = None
-    db.session.commit()
+    with FEATContext("FEAT-IDEN-002", idempotency_key="recovery:test_reset_code_invalid_after_setup"):
+        db.session.flush()
+
+    with client.session_transaction() as sess:
+        set_canonical_context(
+            sess,
+            user_id=user.id,
+            class_id=recovery_data["class_id"],
+            seat_id=recovery_data["seat"].id,
+            role="student",
+        )
 
     client.post("/recovery/lookup", data={"reset_code": "ONETIME1"}, follow_redirects=True)
     client.post("/student/create-username", data={"write_in_word": "planet"}, follow_redirects=True)
@@ -326,12 +364,13 @@ def test_interrupting_reclaim_after_lookup(client, recovery_data):
     seat = recovery_data["seat"]
     join_code = recovery_data["join_code"]
 
-    user.reset_code = "MIDFLOW1"
-    user.reset_code_generated_at = utc_now()
-    user.reset_code_expires_at = utc_now() + timedelta(minutes=10)
-    user.pin_hash = None
-    user.passphrase_hash = None
-    db.session.commit()
+    with FEATContext("FEAT-IDEN-002", idempotency_key="recovery:midflow_guard"):
+        user.reset_code = "MIDFLOW1"
+        user.reset_code_generated_at = utc_now()
+        user.reset_code_expires_at = utc_now() + timedelta(minutes=10)
+        user.pin_hash = None
+        user.passphrase_hash = None
+        db.session.flush()
 
     resp = client.post("/recovery/lookup", data={"reset_code": "MIDFLOW1"}, follow_redirects=False)
     assert resp.status_code == 302
@@ -353,6 +392,7 @@ def test_interrupting_reclaim_after_lookup(client, recovery_data):
 def test_recovery_username_uses_random_segment(client, recovery_data, monkeypatch):
     """Recovery username generation stores value in session."""
     user = recovery_data["user"]
+    seat = recovery_data["seat"]
 
     user.reset_code = "RAND4001"
     user.reset_code_generated_at = utc_now()
@@ -360,7 +400,17 @@ def test_recovery_username_uses_random_segment(client, recovery_data, monkeypatc
     user.pin_hash = None
     user.passphrase_hash = None
     user.username_lookup_hash = None
-    db.session.commit()
+    with FEATContext("FEAT-IDEN-002", idempotency_key="recovery:test_username_random_segment"):
+        db.session.flush()
+
+    with client.session_transaction() as sess:
+        set_canonical_context(
+            sess,
+            user_id=user.id,
+            class_id=recovery_data["class_id"],
+            seat_id=seat.id,
+            role="student",
+        )
 
     client.post("/recovery/lookup", data={"reset_code": "RAND4001"}, follow_redirects=False)
 

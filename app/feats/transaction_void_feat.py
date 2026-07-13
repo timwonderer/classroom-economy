@@ -145,7 +145,7 @@ def _void_rent_payment(tx: Transaction) -> None:
             rent_payments,
             key=lambda p: abs((ensure_utc(p.satisfaction.satisfied_at or tx.timestamp or utc_now()) - tx_ts).total_seconds())
         )
-        db.session.delete(matched_rent_payment)
+        obligations_service.remove_rent_payment_assessment(matched_rent_payment.id)
 
 
 def _void_insurance_premium(tx: Transaction) -> None:

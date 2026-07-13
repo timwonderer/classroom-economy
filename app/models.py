@@ -683,15 +683,6 @@ def _enforce_transaction_integrity(_mapper, _connection, target):
         from app.feats.base import FEATContextError
         raise FEATContextError("MANDATORY FEAT CONSTITUTIONAL VIOLATION: Ledger mutation outside of FEAT context.")
 
-    # 4. Auto-populate seat_id, class_id if possible
-    if not target.class_id and target.join_code:
-        class_row = _connection.execute(
-            sa.text("SELECT class_id FROM classes WHERE join_code = :jc LIMIT 1"),
-            {"jc": target.join_code}
-        ).fetchone()
-        if class_row:
-            target.class_id = class_row[0]
-
     if not target.class_id and target.seat_id:
         seat_class_id = _connection.execute(
             sa.text("SELECT class_id FROM seats WHERE id = :seat_id LIMIT 1"),
@@ -707,14 +698,6 @@ def _enforce_transaction_integrity(_mapper, _connection, target):
         ).scalar()
         if resolved_seat_id:
             target.seat_id = int(resolved_seat_id)
-
-    if not target.join_code and target.class_id:
-        resolved_join_code = _connection.execute(
-            sa.text("SELECT join_code FROM classes WHERE class_id = :class_id LIMIT 1"),
-            {"class_id": target.class_id},
-        ).scalar()
-        if resolved_join_code:
-            target.join_code = str(resolved_join_code)
 
     # 5. Global Format Validation
     state = sa.inspect(target)
@@ -770,7 +753,7 @@ def _enforce_transaction_integrity(_mapper, _connection, target):
     # 4. Identity synchronization (pure assignment only)
     # seat_id is the runtime anchor; student_id is only used for seat lookup.
 
-def _resolve_seat_id(connection, student_id, *, class_id=None, join_code=None):
+def _resolve_seat_id(connection, student_id, *, class_id=None):
     """Lookup seat ID for a student in a class universe."""
     if not student_id or not class_id:
         return None
@@ -1067,15 +1050,8 @@ class StoreItem(db.Model):
 def _sync_store_item_scope(_mapper, connection, target):
     """Synchronize store_items class scope during the transition."""
     class_id = getattr(target, "class_id", None)
-    join_code = getattr(target, "join_code", None)
-
-    if not class_id and join_code:
-        class_id = connection.execute(
-            sa.text("SELECT class_id FROM classes WHERE join_code = :join_code LIMIT 1"),
-            {"join_code": join_code},
-        ).scalar()
-        if class_id:
-            target.class_id = str(class_id)
+    if not class_id:
+        raise ValueError("store_items require canonical class_id")
 
 
 class StoreItemBlock(db.Model):
@@ -1388,16 +1364,9 @@ class RentSettings(db.Model):
 @event.listens_for(RentSettings, "before_insert")
 @event.listens_for(RentSettings, "before_update")
 def _sync_rent_settings_scope(mapper, connection, target):
-    """Best-effort class scope repair for join-code seeded data."""
+    """Canonical rent settings scope must already be class_id anchored."""
     if getattr(target, "class_id", None) is None:
-        join_code = getattr(target, "join_code", None)
-        if join_code:
-            class_id = connection.execute(
-                sa.text("SELECT class_id FROM classes WHERE join_code = :join_code"),
-                {"join_code": join_code},
-            ).scalar()
-            if class_id:
-                target.class_id = str(class_id)
+        raise ValueError("rent_settings require canonical class_id")
 
 
 class RentPolicyVersion(db.Model):
@@ -2761,7 +2730,8 @@ class Announcement(db.Model):
     Announcements for teachers and system administrators.
 
     Teacher Announcements:
-    - Teachers post to specific class periods (scoped by join_code)
+    - Teachers post to specific class periods (scoped by class_id)
+    - join_code remains ingress/display metadata only
     - Only visible to students in that class period
 
     System Admin Announcements:

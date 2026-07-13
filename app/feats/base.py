@@ -412,7 +412,7 @@ def feat_shell(feat_name: str):
             idempotency_key = kwargs.get("idempotency_key")
             if not idempotency_key:
                 try:
-                    from flask import g, request
+                    from flask import g, request, session
                 except Exception:
                     g = None
                     request = None
@@ -440,6 +440,24 @@ def feat_shell(feat_name: str):
                     class_id = getattr(getattr(g, "canonical_context", None), "class_id", None) or "NOCLASS"
                     seat_id = getattr(getattr(g, "canonical_context", None), "seat_id", None) or "NOSEAT"
                     idempotency_key = f"feat:admin:{request.method.lower()}:{request.path}:{class_id}:{seat_id}"
+                elif feat_name == "FEAT-LED-003":
+                    idempotency_key = "feat:ledger:settle_pending_transaction_contexts"
+                elif feat_name == "FEAT-IDEN-002" and request is not None:
+                    reset_code = (request.form.get("reset_code") or "").strip().upper()
+                    endpoint_name = request.endpoint or getattr(f, "__name__", None)
+                    if endpoint_name in {"recovery.account_lookup", "account_lookup"}:
+                        idempotency_key = f"feat:identity:recovery_lookup:{reset_code or 'NO_CODE'}"
+                    elif endpoint_name in {"recovery.generate_reset_code", "generate_reset_code"}:
+                        seat_id = kwargs.get("seat_id") or "NOSEAT"
+                        idempotency_key = f"feat:identity:recovery_generate:{seat_id}"
+                    elif endpoint_name in {"student.create_username", "create_username"}:
+                        seat_ref = getattr(getattr(g, "canonical_context", None), "seat_id", None) or session.get("onboarding_seat_ref") or "NOSEAT"
+                        user_ref = session.get("onboarding_user_ref") or "NOUUSER"
+                        idempotency_key = f"feat:identity:create_username:{user_ref}:{seat_ref}"
+                    elif endpoint_name in {"student.setup_pin_passphrase", "setup_pin_passphrase"}:
+                        seat_ref = getattr(getattr(g, "canonical_context", None), "seat_id", None) or session.get("onboarding_seat_ref") or "NOSEAT"
+                        user_ref = session.get("onboarding_user_ref") or "NOUUSER"
+                        idempotency_key = f"feat:identity:setup_pin_passphrase:{user_ref}:{seat_ref}"
             
             logger.warning(
                 f"FEAT-SHELL-DIRTY: Executing legacy logic in shell {feat_name}. "

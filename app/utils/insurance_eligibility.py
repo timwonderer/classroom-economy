@@ -283,7 +283,7 @@ def evaluate_claim_transaction_eligibility(
         if (now_class.date() - tx_ts_class.date()).days > effective_time_limit:
             return False, CLAIM_REASON_TIME_LIMIT_EXCEEDED
 
-    if enrollment_join_code and tx.join_code != enrollment_join_code:
+    if getattr(tx, "class_id", None) and tx.class_id != class_id:
         return False, CLAIM_REASON_UNCLASSIFIED_TRANSACTION
 
     if claimed_tx_ids is None:

@@ -36,6 +36,7 @@ from app.utils.economy_policy import (
     get_analytics_policy,
     get_policy_profile,
 )
+from app.utils.join_code import get_display_join_code
 from app.feats.base import feat_shell
 import logging
 
@@ -85,7 +86,7 @@ class AnalyticsEngine:
         self.class_id = class_row.class_id
         self.teacher_id = class_row.user_id
         self.user_id = class_row.user_id
-        self.join_code = class_row.join_code
+        self.join_code = get_display_join_code(class_row.class_id)
         self.policy_mode = get_active_policy_mode_for_class(self.class_id)
         self.policy_profile = get_policy_profile(self.policy_mode)
         self.analytics_policy = get_analytics_policy(self.policy_mode)

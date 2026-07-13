@@ -27,14 +27,12 @@ def _create_teacher(username: str) -> User:
 
 
 def _create_class(teacher: User, join_code: str, *, section: str | None = None) -> ClassEconomy:
-    class_row = create_class_scope(teacher_user=teacher, join_code=join_code, section=section)
-    with FEATContext("FEAT-IDEN-001", idempotency_key=f"core_invariants:create_class_features:{join_code}"):
-        with db.session.no_autoflush:
-            # Ensure ClassFeatures exist without triggering an autoflush of pending rows.
-            for feature_name in ClassFeature.feature_names():
-                if not ClassFeature.query.filter_by(class_id=class_row.class_id, feature_name=feature_name).first():
-                    db.session.add(ClassFeature(class_id=class_row.class_id, feature_name=feature_name))
-        db.session.flush()
+    class_row = create_class_scope(
+        teacher_user=teacher,
+        join_code=join_code,
+        section=section,
+        feature_names=ClassFeature.feature_names(),
+    )
     return class_row
 
 
@@ -43,10 +41,10 @@ def _create_student(class_id: str, first_name: str) -> Seat:
 
 
 def _login_teacher(client, teacher: User, class_row: ClassEconomy) -> None:
-    login_teacher(client, teacher, class_id=class_row.class_id, join_code=class_row.join_code)
+    login_teacher(client, teacher, class_id=class_row.class_id)
 
 
-def _login_student(client, seat: Seat, join_code: str) -> None:
+def _login_student(client, seat: Seat) -> None:
     with client.session_transaction() as sess:
         set_canonical_context(
             sess,
@@ -135,7 +133,7 @@ def test_payroll_run_creates_payroll_transaction(client):
 
     payroll_query = Transaction.query.filter(
         Transaction.seat_id == seat.id,
-        Transaction.join_code == "JOIN-PAY",
+        Transaction.class_id == economy.class_id,
         Transaction.type == "payroll",
     )
     pre_payroll_count = payroll_query.count()
@@ -147,7 +145,7 @@ def test_payroll_run_creates_payroll_transaction(client):
     assert response.status_code in (200, 400)
     post_payroll_query = Transaction.query.filter(
         Transaction.seat_id == seat.id,
-        Transaction.join_code == "JOIN-PAY",
+        Transaction.class_id == economy.class_id,
         Transaction.type == "payroll",
     )
     assert post_payroll_query.count() > pre_payroll_count
@@ -224,9 +222,7 @@ def test_insurance_approval_creates_reimbursement_transaction(client):
         )
     db.session.commit()
 
-    login_teacher(client, teacher, join_code="JOIN-INS")
-    with client.session_transaction() as sess:
-        sess["current_class_id"] = economy.class_id
+    login_teacher(client, teacher, class_id=economy.class_id)
     response = client.post(
         f"/admin/insurance/claim/{claim.id}",
         data={"status": "approved", "approved_amount": "", "rejection_reason": "", "admin_notes": ""},
@@ -288,7 +284,7 @@ def test_store_purchase_deducts_balance_and_records_transaction(client):
         Transaction.status == TransactionStatus.POSTED,
     ).scalar() or Decimal("0.00")
 
-    _login_student(client, seat, "JOIN-STORE")
+    _login_student(client, seat)
     response = client.post(
         "/api/purchase-item",
         json={"item_id": item.id, "passphrase": "password", "quantity": 1},
@@ -307,7 +303,7 @@ def test_store_purchase_deducts_balance_and_records_transaction(client):
     purchase_tx = (
         Transaction.query.filter(
             Transaction.seat_id == seat.id,
-            Transaction.join_code == "JOIN-STORE",
+            Transaction.class_id == economy.class_id,
             Transaction.type == "purchase",
         )
         .order_by(Transaction.id.desc())
@@ -371,8 +367,8 @@ def test_transfer_pairs_are_zero_sum_within_class_scope(client):
         or Decimal("0.00")
     )
 
-    assert withdraw_tx.join_code == "JOIN-XFER"
-    assert deposit_tx.join_code == "JOIN-XFER"
+    assert withdraw_tx.class_id == economy_xfer.class_id
+    assert deposit_tx.class_id == economy_xfer.class_id
     assert withdraw_tx.amount + deposit_tx.amount == Decimal("0.00")
     assert join_xfer_total == Decimal("0.00")
     assert join_other_total == Decimal("0.00")
@@ -417,7 +413,7 @@ def test_store_purchase_bulk_discount_uses_quantized_total_for_funds_check(clien
         db.session.flush()
     db.session.commit()
 
-    _login_student(client, seat, "JOIN-DISC")
+    _login_student(client, seat)
     response = client.post(
         "/api/purchase-item",
         json={"item_id": item.id, "passphrase": "password", "quantity": 1},
@@ -427,7 +423,7 @@ def test_store_purchase_bulk_discount_uses_quantized_total_for_funds_check(clien
     purchase_tx = (
         Transaction.query.filter(
             Transaction.seat_id == seat.id,
-            Transaction.join_code == "JOIN-DISC",
+            Transaction.class_id == economy.class_id,
             Transaction.type == "purchase",
         )
         .order_by(Transaction.id.desc())
@@ -495,11 +491,11 @@ def test_rent_payment_creates_rent_obligation_record(client):
         db.session.flush()
     db.session.commit()
 
-    _login_student(client, seat, "JOIN-RENT")
+    _login_student(client, seat)
     response = client.post("/student/rent/pay/A", follow_redirects=False)
     assert response.status_code in (302, 303)
 
-    rent_payment = RentPayment.query.filter_by(seat_id=seat.id, join_code="JOIN-RENT").first()
+    rent_payment = RentPayment.query.filter_by(seat_id=seat.id, class_id=economy.class_id).first()
     assert rent_payment is not None or response.status_code in (302, 303)
 
     rent_tx = (

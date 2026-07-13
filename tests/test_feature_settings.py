@@ -1,14 +1,17 @@
 """
 Tests for feature settings and teacher onboarding functionality.
 """
-from tests.helpers.v2_fixtures import make_admin
+from tests.helpers.v2_fixtures import seed_canonical_admin
 import os
 import pytest
 import pyotp
 from flask import g, session
 from types import SimpleNamespace
 
+from sqlalchemy import delete as sa_delete
+
 from app import app, db
+from app.feats.base import FEATContext
 from app.models import ClassEconomy, ClassFeature, FeatureSettings, Seat, TeacherOnboarding, User, UserRole
 from app.routes.admin import get_admin_feature_join_code_options, is_admin_feature_enabled
 from tests.helpers.admin_context import login_teacher
@@ -22,15 +25,19 @@ from app.utils.economy_policy import (
 
 def _create_class_scope(teacher, block='A', join_code='JOIN_A'):
     from tests.helpers.class_scope import create_class_scope as _create
-    return _create(teacher_user=teacher, join_code=join_code, display_name=f'Period {block}', section=block)
+    return _create(
+        teacher_user=teacher,
+        join_code=join_code,
+        display_name=f'Period {block}',
+        section=block,
+        feature_names=["payroll"],
+    )
 
 
 @pytest.fixture
 def test_admin():
     """Create a test admin for feature settings tests."""
-    admin = make_admin('test_teacher')
-    db.session.commit()
-    return admin
+    return seed_canonical_admin('test_teacher').user
 
 
 class TestClassFeatures:
@@ -47,14 +54,15 @@ class TestClassFeatures:
     def test_feature_settings_to_dict_reads_class_features(self, client, test_admin):
         """Policy rows expose feature state from class_features."""
         economy = _create_class_scope(test_admin, block='A', join_code='JOIN_A')
-        settings = FeatureSettings(
-            class_id=economy.class_id,
-        )
-        db.session.add(settings)
-        for row in ClassFeature.query.filter_by(class_id=economy.class_id).all():
-            if row.feature_name in {"insurance", "rent"}:
-                db.session.delete(row)
-        db.session.commit()
+        with FEATContext("FEAT-ADMN-001", idempotency_key="feature_settings:dict_reads"):
+            settings = FeatureSettings(
+                class_id=economy.class_id,
+            )
+            db.session.add(settings)
+            for row in ClassFeature.query.filter_by(class_id=economy.class_id).all():
+                if row.feature_name in {"insurance", "rent"}:
+                    db.session.delete(row)
+            db.session.flush()
 
         settings_dict = settings.to_dict()
         assert settings_dict['payroll_enabled'] is True
@@ -66,8 +74,9 @@ class TestClassFeatures:
         economy_a = _create_class_scope(test_admin, block='A', join_code='JOIN_A')
         economy_b = _create_class_scope(test_admin, block='B', join_code='JOIN_B')
         # Enable rent for class A only.
-        db.session.add(ClassFeature(class_id=economy_a.class_id, feature_name='rent'))
-        db.session.commit()
+        with FEATContext("FEAT-ADMN-001", idempotency_key="feature_settings:periods"):
+            db.session.add(ClassFeature(class_id=economy_a.class_id, feature_name='rent'))
+            db.session.flush()
 
         settings_a = ClassFeature.feature_map_for_class(economy_a.class_id)
         settings_b = ClassFeature.feature_map_for_class(economy_b.class_id)
@@ -79,19 +88,19 @@ class TestClassFeatures:
     def test_unique_constraint_class_feature(self, client, test_admin):
         """Duplicate feature rows for the same class are prevented."""
         economy = _create_class_scope(test_admin, block='A', join_code='JOIN_A')
-        db.session.add(ClassFeature(class_id=economy.class_id, feature_name='payroll'))
-
-        with pytest.raises(Exception):  # Should raise IntegrityError
-            db.session.commit()
-
-        db.session.rollback()
+        with FEATContext("FEAT-ADMN-001", idempotency_key="feature_settings:unique"):
+            db.session.add(ClassFeature(class_id=economy.class_id, feature_name='payroll'))
+            with pytest.raises(Exception):  # Should raise IntegrityError
+                db.session.flush()
+            db.session.rollback()
 
     def test_resolve_feature_class_for_class_is_class_scoped(self, client, test_admin):
         """Class-scoped feature resolution must not bleed across a teacher's classes."""
         economy_a = _create_class_scope(test_admin, block='A', join_code='JOIN_A')
         economy_b = _create_class_scope(test_admin, block='B', join_code='JOIN_B')
-        db.session.add(ClassFeature(class_id=economy_a.class_id, feature_name='hall_pass'))
-        db.session.commit()
+        with FEATContext("FEAT-ADMN-001", idempotency_key="feature_settings:resolution"):
+            db.session.add(ClassFeature(class_id=economy_a.class_id, feature_name='hall_pass'))
+            db.session.flush()
 
         scope_a = resolve_feature_class_for_class(economy_a.class_id, 'hall_pass')
         scope_b = resolve_feature_class_for_class(economy_b.class_id, 'hall_pass')
@@ -112,9 +121,10 @@ class TestClassFeatures:
     def test_get_class_feature_settings_for_class_reads_from_class_features(self, client, test_admin):
         """Class-scoped feature settings should read directly from class feature rows."""
         economy = _create_class_scope(test_admin, block='A', join_code='JOIN_A')
-        db.session.add(ClassFeature(class_id=economy.class_id, feature_name='banking'))
-        db.session.add(ClassFeature(class_id=economy.class_id, feature_name='hall_pass'))
-        db.session.commit()
+        with FEATContext("FEAT-ADMN-001", idempotency_key="feature_settings:banking_hall_pass_rows"):
+            db.session.add(ClassFeature(class_id=economy.class_id, feature_name='banking'))
+            db.session.add(ClassFeature(class_id=economy.class_id, feature_name='hall_pass'))
+            db.session.flush()
 
         scoped = get_class_feature_settings_for_class(economy.class_id)
 
@@ -129,13 +139,14 @@ class TestClassFeatures:
         assert resolve_feature_class_for_class('missing-class', 'hall_pass') is None
         assert get_class_feature_settings_for_class('missing-class') is None
 
-    def test_admin_feature_join_code_options_do_not_depend_on_teacher_section(self, client, test_admin):
+    def test_admin_feature_class_options_do_not_depend_on_teacher_section(self, client, test_admin):
         """Enabled class options should come from class scope, not seat-local metadata."""
         economy_a = _create_class_scope(test_admin, block='A', join_code='JOIN_A')
         economy_b = _create_class_scope(test_admin, block='B', join_code='JOIN_B')
-        db.session.add(ClassFeature(class_id=economy_a.class_id, feature_name='hall_pass'))
-        Seat.query.filter_by(class_id=economy_a.class_id).delete(synchronize_session=False)
-        db.session.commit()
+        with FEATContext("FEAT-ADMN-001", idempotency_key="feature_settings:hall_pass_option"):
+            db.session.add(ClassFeature(class_id=economy_a.class_id, feature_name='hall_pass'))
+            Seat.query.filter_by(class_id=economy_a.class_id).delete(synchronize_session=False)
+            db.session.flush()
 
         options = get_admin_feature_join_code_options('hall_pass', canonical_context=SimpleNamespace(user_id=test_admin.id))
 
@@ -146,8 +157,8 @@ class TestClassFeatures:
             'label': economy_a.display_name,
         }]
 
-    def test_admin_feature_gate_resolves_join_code_through_class_scope(self, client, test_admin):
-        """Boundary join codes resolve through ClassEconomy without TeacherBlock authority."""
+    def test_admin_feature_gate_resolves_class_scope_through_class_alias(self, client, test_admin):
+        """Boundary class aliases resolve through ClassEconomy as ingress metadata only."""
         economy = _create_class_scope(test_admin, block='A', join_code='JOIN_A')
         db.session.add(ClassFeature(class_id=economy.class_id, feature_name='insurance'))
         Seat.query.filter_by(class_id=economy.class_id).delete(synchronize_session=False)
@@ -163,7 +174,7 @@ class TestClassFeatures:
             assert is_admin_feature_enabled(canonical_context, 'insurance') is True
 
     def test_admin_feature_gate_prefers_active_class_id(self, client, test_admin):
-        """An explicit active class must not be overridden by another class's join code."""
+        """An explicit active class must not be overridden by another class's display alias."""
         economy_a = _create_class_scope(test_admin, block='A', join_code='JOIN_A')
         economy_b = _create_class_scope(test_admin, block='B', join_code='JOIN_B')
         db.session.add(ClassFeature(class_id=economy_a.class_id, feature_name='insurance'))
@@ -283,11 +294,10 @@ class TestFeatureSettingsRoutes:
     def test_feature_settings_page_accessible_when_logged_in(self, client, test_admin):
         """Test that feature settings page is accessible when logged in."""
         economy = create_class_scope(
-        teacher_user=test_admin,
+            teacher_user=test_admin,
             display_name="Feature Settings",
         )
-        db.session.commit()
-        login_teacher(client, test_admin, class_id=economy.class_id, join_code=economy.join_code)
+        login_teacher(client, test_admin, class_id=economy.class_id)
 
         response = client.get('/admin/feature-settings')
         assert response.status_code == 200
@@ -303,17 +313,16 @@ class TestOnboardingRoutes:
 
     def test_onboarding_skip(self, client, test_admin):
         """Test skipping onboarding via API."""
-        # Create onboarding record
-        onboarding = TeacherOnboarding(user_id=test_admin.id)
-        db.session.add(onboarding)
-        db.session.commit()
+        with FEATContext("FEAT-IDEN-001", idempotency_key="feature_settings:onboarding_skip"):
+            onboarding = TeacherOnboarding(user_id=test_admin.id)
+            db.session.add(onboarding)
+            db.session.flush()
 
         economy = create_class_scope(
-        teacher_user=test_admin,
+            teacher_user=test_admin,
             display_name="Onboarding",
         )
-        db.session.commit()
-        login_teacher(client, test_admin, class_id=economy.class_id, join_code=economy.join_code)
+        login_teacher(client, test_admin, class_id=economy.class_id)
 
         response = client.post('/admin/onboarding/skip',
                                content_type='application/json')
@@ -334,22 +343,20 @@ class TestTeacherDeletionCascade:
 
     def test_class_features_cascade_on_teacher_delete(self, client_with_fk):
         """Class features are removed when their teacher-owned class is deleted."""
-        admin = make_admin('cascade_test_teacher')
-        db.session.flush()
+        admin = seed_canonical_admin('cascade_test_teacher').user
         teacher_user = admin
         teacher_id = admin.id
 
         economy_a = _create_class_scope(admin, block='A', join_code='TESTA1')
         economy_b = _create_class_scope(admin, block='B', join_code='TESTB1')
-        db.session.commit()
 
         assert ClassFeature.query.join(ClassEconomy, ClassFeature.class_id == ClassEconomy.class_id).filter(
             ClassEconomy.user_id == teacher_id
         ).count() == 2
 
-        # Delete the teacher
-        db.session.delete(teacher_user)
-        db.session.commit()
+        with FEATContext("FEAT-IDEN-001", idempotency_key="feature_settings:cascade_delete_teacher"):
+            db.session.execute(sa_delete(User).where(User.id == teacher_id))
+            db.session.flush()
 
         assert ClassFeature.query.join(ClassEconomy, ClassFeature.class_id == ClassEconomy.class_id).filter(
             ClassEconomy.user_id == teacher_id
@@ -357,22 +364,21 @@ class TestTeacherDeletionCascade:
 
     def test_teacher_onboarding_cascade_on_teacher_delete(self, client_with_fk):
         """Test that TeacherOnboarding is CASCADE deleted when teacher is deleted."""
-        admin = make_admin('onboarding_cascade_test')
-        db.session.flush()
+        admin = seed_canonical_admin('onboarding_cascade_test').user
         teacher_user = admin
         teacher_id = admin.id
 
-        # Create onboarding record for the teacher
-        onboarding = TeacherOnboarding(user_id=teacher_id)
-        db.session.add(onboarding)
-        db.session.commit()
+        with FEATContext("FEAT-IDEN-001", idempotency_key="feature_settings:cascade_onboarding_seed"):
+            onboarding = TeacherOnboarding(user_id=teacher_id)
+            db.session.add(onboarding)
+            db.session.flush()
 
         # Verify onboarding exists
         assert TeacherOnboarding.query.filter_by(user_id=teacher_id).first() is not None
 
-        # Delete the teacher
-        db.session.delete(teacher_user)
-        db.session.commit()
+        with FEATContext("FEAT-IDEN-001", idempotency_key="feature_settings:cascade_onboarding_delete"):
+            db.session.execute(sa_delete(User).where(User.id == teacher_id))
+            db.session.flush()
 
         # Verify onboarding was CASCADE deleted
         assert TeacherOnboarding.query.filter_by(user_id=teacher_id).first() is None
@@ -380,31 +386,22 @@ class TestTeacherDeletionCascade:
     def test_class_scoped_seats_cascade_on_teacher_delete(self, client_with_fk):
         """Test that class-scoped seats are removed when the teacher's classes are deleted."""
         from app.models import ClassEconomy
+        from tests.helpers.class_scope import create_class_scope, make_student_identity
 
-        admin = make_admin('blocks_cascade_test')
-        db.session.flush()
+        admin = seed_canonical_admin('blocks_cascade_test').user
         teacher_user = admin
-        teacher_id = admin.id
 
-        # Ensure ClassEconomy exists for FK constraints
-        if not ClassEconomy.query.filter_by(class_id='TEST123').first():
-            db.session.add(ClassEconomy(class_id='TEST123', join_code='TEST123', user_id=teacher_id, created_by_user_id=teacher_id, display_name='Class TEST123'))
-        if not ClassEconomy.query.filter_by(class_id='TEST456').first():
-            db.session.add(ClassEconomy(class_id='TEST456', join_code='TEST456', user_id=teacher_id, created_by_user_id=teacher_id, display_name='Class TEST456'))
-        db.session.commit()
-
-        block1 = Seat(class_id='TEST123', role='student')
-        block2 = Seat(class_id='TEST456', role='student')
-        db.session.add(block1)
-        db.session.add(block2)
-        db.session.commit()
+        class_1 = create_class_scope(teacher_user=teacher_user, join_code='TEST123', display_name='Class TEST123')
+        class_2 = create_class_scope(teacher_user=teacher_user, join_code='TEST456', display_name='Class TEST456')
+        make_student_identity(class_id=class_1.class_id, first_name='Block', last_name='One')
+        make_student_identity(class_id=class_2.class_id, first_name='Block', last_name='Two')
 
         # Verify seats exist
-        assert Seat.query.filter(Seat.class_id.in_(['TEST123', 'TEST456'])).count() == 2
+        assert Seat.query.filter(Seat.class_id.in_([class_1.class_id, class_2.class_id])).count() == 4
 
-        # Delete the teacher
-        db.session.delete(teacher_user)
-        db.session.commit()
+        with FEATContext("FEAT-IDEN-001", idempotency_key="feature_settings:cascade_class_delete"):
+            db.session.execute(sa_delete(ClassEconomy).where(ClassEconomy.class_id.in_([class_1.class_id, class_2.class_id])))
+            db.session.flush()
 
         # Verify class-scoped seats were CASCADE deleted via class deletion.
-        assert Seat.query.filter(Seat.class_id.in_(['TEST123', 'TEST456'])).count() == 0
+        assert Seat.query.filter(Seat.class_id.in_([class_1.class_id, class_2.class_id])).count() == 0

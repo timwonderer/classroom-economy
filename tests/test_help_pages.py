@@ -1,4 +1,4 @@
-from tests.helpers.v2_fixtures import make_admin, make_sysadmin
+from tests.helpers.v2_fixtures import seed_canonical_admin, make_sysadmin
 from app import db
 from app.models import User, UserRole
 from datetime import datetime, timezone
@@ -6,8 +6,7 @@ from tests.helpers.canonical_session import set_canonical_context
 
 def test_admin_help_page(client):
     # Create admin
-    admin = make_admin('admin')
-    db.session.commit()
+    admin = seed_canonical_admin('admin').user
 
     # Login as admin with all required session keys
     with client.session_transaction() as sess:

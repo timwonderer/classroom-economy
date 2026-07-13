@@ -26,8 +26,9 @@ from app.models import (
     ClassEconomy,
     Seat, IdentityProfile, RentSettings, User, TeacherOnboarding, ClassFeature,
 )
+from app.feats.base import FEATContext
 from tests.helpers.class_scope import create_class_scope
-from tests.helpers.v2_fixtures import make_admin
+from tests.helpers.v2_fixtures import seed_canonical_admin
 from app.hash_utils import hash_username
 from app.utils.auth_username import build_hashed_username_fields
 from werkzeug.security import generate_password_hash
@@ -241,8 +242,7 @@ def teacher_page(app, client, axe_live_server, browser, axe_script):
     Yields (page, live_server_url, axe_script).
     """
     with app.app_context():
-        user = make_admin("axe_teacher_t")
-        db.session.flush()
+        user = seed_canonical_admin("axe_teacher_t").user
 
         join_code = "AXET01"
         class_row = create_class_scope(
@@ -253,17 +253,18 @@ def teacher_page(app, client, axe_live_server, browser, axe_script):
 
         user.last_active_class_id = class_row.class_id
 
-        onboarding = TeacherOnboarding(
-            user_id=user.id,
-            is_completed=True,
-            completed_at=datetime.now(timezone.utc),
-        )
-        db.session.add(onboarding)
+        with FEATContext("FEAT-IDEN-001", idempotency_key="axe:teacher_page_seed"):
+            onboarding = TeacherOnboarding(
+                user_id=user.id,
+                is_completed=True,
+                completed_at=datetime.now(timezone.utc),
+            )
+            db.session.add(onboarding)
 
-        for feat in ClassFeature.feature_names():
-            if not ClassFeature.query.filter_by(class_id=class_row.class_id, feature_name=feat).first():
-                db.session.add(ClassFeature(class_id=class_row.class_id, feature_name=feat))
-        db.session.commit()
+            for feat in ClassFeature.feature_names():
+                if not ClassFeature.query.filter_by(class_id=class_row.class_id, feature_name=feat).first():
+                    db.session.add(ClassFeature(class_id=class_row.class_id, feature_name=feat))
+            db.session.flush()
 
         class_id = class_row.class_id
         user_id = user.id
@@ -272,7 +273,6 @@ def teacher_page(app, client, axe_live_server, browser, axe_script):
     with client.session_transaction() as sess:
         sess["is_admin"] = True
         sess["user_id"] = user_id
-        sess["current_join_code"] = join_code
         sess["current_class_id"] = str(class_id)
         sess["is_system_admin"] = False
         sess["last_activity"] = datetime.now(timezone.utc).isoformat()
@@ -294,23 +294,23 @@ def student_page(app, client, axe_live_server, browser, axe_script):
     Yields (page, live_server_url, axe_script).
     """
     with app.app_context():
-        teacher_user = make_admin("axe_teacher_s")
-        db.session.flush()
+        teacher_user = seed_canonical_admin("axe_teacher_s").user
 
         _, student_username_hash, student_username_lookup_hash = build_hashed_username_fields("axe_student")
-        user = User(
-            username_hash=student_username_hash,
-            username_lookup_hash=student_username_lookup_hash,
-            password_hash=generate_password_hash("secret"),
-            pin_hash=generate_password_hash("1234"),
-            user_role="student",
-            has_completed_setup=True,
-        )
-        db.session.add(user)
-        db.session.flush()
-        profile = IdentityProfile(profile_type="student", first_name="AxeTest", last_name="S")
-        db.session.add(profile)
-        db.session.flush()
+        with FEATContext("FEAT-IDEN-001", idempotency_key="axe:student_page_seed"):
+            user = User(
+                username_hash=student_username_hash,
+                username_lookup_hash=student_username_lookup_hash,
+                password_hash=generate_password_hash("secret"),
+                pin_hash=generate_password_hash("1234"),
+                user_role="student",
+                has_completed_setup=True,
+            )
+            db.session.add(user)
+            db.session.flush()
+            profile = IdentityProfile(profile_type="student", first_name="AxeTest", last_name="S")
+            db.session.add(profile)
+            db.session.flush()
 
         join_code = "AXES01"
         class_row = create_class_scope(
@@ -325,24 +325,25 @@ def student_page(app, client, axe_live_server, browser, axe_script):
             role="student",
             claimed_at=datetime.now(timezone.utc),
         )
-        db.session.add(seat)
-        db.session.flush()
-        profile.seat_id = seat.id
-        teacher_user.last_active_class_id = class_row.class_id
-        user.last_active_class_id = class_row.class_id
-
-        seat = Seat.query.filter_by(user_id=user.id, class_id=class_row.class_id).first()
-        if seat:
-            seat.claimed_at = datetime.now(timezone.utc)
+        with FEATContext("FEAT-IDEN-001", idempotency_key="axe:student_seat_seed"):
+            db.session.add(seat)
             db.session.flush()
-            user.last_active_seat_id = seat.id
-            db.session.flush()
+            profile.seat_id = seat.id
+            teacher_user.last_active_class_id = class_row.class_id
+            user.last_active_class_id = class_row.class_id
 
-        db.session.add(RentSettings(class_id=class_row.class_id))
-        for feat in ClassFeature.feature_names():
-            if not ClassFeature.query.filter_by(class_id=class_row.class_id, feature_name=feat).first():
-                db.session.add(ClassFeature(class_id=class_row.class_id, feature_name=feat))
-        db.session.commit()
+            seat = Seat.query.filter_by(user_id=user.id, class_id=class_row.class_id).first()
+            if seat:
+                seat.claimed_at = datetime.now(timezone.utc)
+                db.session.flush()
+                user.last_active_seat_id = seat.id
+                db.session.flush()
+
+            db.session.add(RentSettings(class_id=class_row.class_id))
+            for feat in ClassFeature.feature_names():
+                if not ClassFeature.query.filter_by(class_id=class_row.class_id, feature_name=feat).first():
+                    db.session.add(ClassFeature(class_id=class_row.class_id, feature_name=feat))
+            db.session.flush()
 
         student_id = seat.id if seat else None
         class_id = class_row.class_id

@@ -4,13 +4,13 @@ from app import db
 from app.models import User
 from app.services.context_resolver import resolve_canonical_context
 from app.services.tlcp import resolve_actor_context
-from tests.helpers.v2_fixtures import make_admin, make_sysadmin
+from tests.helpers.v2_fixtures import seed_canonical_admin, make_sysadmin
 from tests.helpers.canonical_session import set_canonical_context
 from tests.helpers.class_scope import create_class_scope, make_student_identity
 
 
 def test_resolve_actor_context_student_session(app):
-    teacher_user = make_admin("tlcp_student_admin", "secret-admin")
+    teacher_user = seed_canonical_admin("tlcp_student_admin", "secret-admin").user
     db.session.flush()
     class_row = create_class_scope(teacher_user=teacher_user)
     seat = make_student_identity(
@@ -45,7 +45,7 @@ def test_resolve_actor_context_student_session(app):
 
 
 def test_resolve_actor_context_admin_session(app):
-    teacher_user = make_admin("tlcp_admin_actor", "secret-admin-actor")
+    teacher_user = seed_canonical_admin("tlcp_admin_actor", "secret-admin-actor").user
     db.session.flush()
     class_row = create_class_scope(teacher_user=teacher_user)
     # create_class_scope → create_class creates the teacher seat; fetch it

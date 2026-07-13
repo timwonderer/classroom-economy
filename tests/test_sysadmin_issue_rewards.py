@@ -93,7 +93,7 @@ def test_sysadmin_resolve_issue_issues_bug_reward_transaction(client):
     reward_tx = Transaction.query.filter(
         Transaction.seat_id == seat.id,
         Transaction.user_id == student.user_id,
-        Transaction.join_code == "JOINBUG123",
+        Transaction.class_id == economy.class_id,
         Transaction.type == "bug_reward",
     ).first()
     assert reward_tx is not None

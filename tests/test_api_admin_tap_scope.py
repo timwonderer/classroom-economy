@@ -1,76 +1,67 @@
 from datetime import datetime, timezone
 
 from flask import g
-from tests.helpers.v2_fixtures import make_teacher
+from tests.helpers.v2_fixtures import seed_canonical_admin, seed_class_with_seat, seed_student_identity
 from app.extensions import db
-from app.models import ClassEconomy, Seat, AttendanceSession, IdentityProfile, User, UserRole
+from app.feats.base import FEATContext
+from app.models import ClassEconomy, Seat, AttendanceSession, User
 from tests.helpers.canonical_session import set_canonical_context
-from tests.helpers.class_scope import create_class_scope
 
 
-def _login_admin(client, user: User, join_code: str):
+def _login_admin(client, user: User, class_id: str):
     # Clear cached auth state from previous requests in the same test
     for attr in ('_auth_current_user_cache', '_auth_current_seat_cache', '_auth_current_system_admin_cache'):
         g.pop(attr, None)
-    economy = ClassEconomy.query.filter_by(join_code=join_code, user_id=user.id).first()
     with client.session_transaction() as sess:
-        if economy and economy.class_id:
-            teacher_seat = Seat.query.filter_by(class_id=economy.class_id, role="teacher").first()
-            if teacher_seat:
-                set_canonical_context(
-                    sess,
-                    user_id=user.id,
-                    class_id=economy.class_id,
-                    seat_id=teacher_seat.id,
-                    role="teacher",
-                )
-        elif join_code:
-            sess["current_join_code"] = join_code
+        teacher_seat = Seat.query.filter_by(class_id=class_id, role="teacher").first()
+        if teacher_seat:
+            set_canonical_context(
+                sess,
+                user_id=user.id,
+                class_id=class_id,
+                seat_id=teacher_seat.id,
+                role="teacher",
+            )
 
 
 def _setup_shared_student_with_split_membership():
-    teacher_a = make_teacher("tap_scope_admin_a")
-    teacher_b = make_teacher("tap_scope_admin_b")
-    db.session.flush()
+    with FEATContext("FEAT-IDEN-001", idempotency_key="api-admin-tap-scope:seed"):
+        teacher_a = seed_canonical_admin("tap_scope_admin_a").user
+        teacher_b = seed_canonical_admin("tap_scope_admin_b").user
+        class_a = seed_class_with_seat(
+            teacher=teacher_a,
+            join_code="TAPA01",
+            student_first_name="AnchorA",
+            student_last_name="Tap",
+        ).class_row
+        class_b = seed_class_with_seat(
+            teacher=teacher_b,
+            join_code="TAPB01",
+            student_first_name="AnchorB",
+            student_last_name="Tap",
+        ).class_row
+        student = seed_student_identity(
+            class_id=class_b.class_id,
+            first_name="Tap",
+            last_name="S",
+            username="tap_student",
+        ).seat
 
-    class_a = create_class_scope(teacher_user=teacher_a, join_code="TAPA01")
-    class_b = create_class_scope(teacher_user=teacher_b, join_code="TAPB01")
-    db.session.flush()
-
-    student_user = User(user_role=UserRole.STUDENT, username_hash="tap_student_hash", username_lookup_hash="tap_student_lookup")
-    db.session.add(student_user)
-    db.session.flush()
-
-    profile = IdentityProfile(profile_type="student", first_name="Tap", last_name="S")
-    db.session.add(profile)
-    db.session.flush()
-
-    seat = Seat(
-        user_id=student_user.id,
-        class_id=class_b.class_id,
-        role="student",
-        block="A",
-        claimed_at=datetime.now(timezone.utc),
-    )
-    db.session.add(seat)
-    db.session.flush()
-    profile.seat_id = seat.id
-
-    tap_event = AttendanceSession(
-        seat_id=seat.id,
-        class_id=seat.class_id,
-        started_at=datetime.now(timezone.utc),
-    )
-    db.session.add(tap_event)
-    db.session.commit()
-    return teacher_a, teacher_b, seat, tap_event
+        seat = Seat.query.filter_by(user_id=student.user_id, class_id=class_b.class_id).first()
+        assert seat is not None
+        tap_event = AttendanceSession(
+            seat_id=seat.id,
+            class_id=seat.class_id,
+            started_at=datetime.now(timezone.utc),
+        )
+        db.session.add(tap_event)
+        db.session.flush()
+    return teacher_a, teacher_b, class_a, class_b, seat, tap_event
 
 
-def test_get_tap_entries_requires_student_in_current_join_code(client):
-    teacher_a, teacher_b, seat, _event = _setup_shared_student_with_split_membership()
+def test_get_tap_entries_requires_student_in_current_class_scope(client):
+    teacher_a, teacher_b, class_a, class_b, seat, _event = _setup_shared_student_with_split_membership()
 
-    class_a = ClassEconomy.query.filter_by(join_code="TAPA01").first()
-    class_b = ClassEconomy.query.filter_by(join_code="TAPB01").first()
     teacher_a_seat = Seat.query.filter_by(class_id=class_a.class_id, role="teacher").first()
     teacher_b_seat = Seat.query.filter_by(class_id=class_b.class_id, role="teacher").first()
 
@@ -100,11 +91,9 @@ def test_get_tap_entries_requires_student_in_current_join_code(client):
     assert data["periods"]
 
 
-def test_delete_tap_entry_rejects_cross_join_code_context(client):
-    teacher_a, teacher_b, _seat, event = _setup_shared_student_with_split_membership()
+def test_delete_tap_entry_rejects_cross_class_scope_context(client):
+    teacher_a, teacher_b, class_a, class_b, _seat, event = _setup_shared_student_with_split_membership()
 
-    class_a = ClassEconomy.query.filter_by(join_code="TAPA01").first()
-    class_b = ClassEconomy.query.filter_by(join_code="TAPB01").first()
     teacher_a_seat = Seat.query.filter_by(class_id=class_a.class_id, role="teacher").first()
     teacher_b_seat = Seat.query.filter_by(class_id=class_b.class_id, role="teacher").first()
 

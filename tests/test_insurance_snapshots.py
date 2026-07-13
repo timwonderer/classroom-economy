@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
-from tests.helpers.v2_fixtures import make_admin, make_sysadmin
+from tests.helpers.v2_fixtures import seed_canonical_admin, make_sysadmin
 from app import db
 from app.services import obligations_service
 from app.models import (
@@ -40,7 +40,7 @@ def _create_policy(user_id: int, *, title: str = "Snapshot Coverage", max_claim_
 
 
 def test_insurance_policy_version_increments_on_edit(client):
-    admin = make_admin("policy-version-admin")
+    admin = seed_canonical_admin("policy-version-admin").user
     db.session.commit()
 
     policy = _create_policy(admin.id)
@@ -54,7 +54,7 @@ def test_insurance_policy_version_increments_on_edit(client):
 
 
 def test_student_insurance_keeps_frozen_snapshot_after_policy_edit(client, test_student):
-    admin = make_admin("snapshot-admin")
+    admin = seed_canonical_admin("snapshot-admin").user
     db.session.commit()
 
     policy = _create_policy(admin.id, title="Original Policy", max_claim_amount=Decimal("42.00"))
@@ -98,7 +98,7 @@ def test_student_insurance_keeps_frozen_snapshot_after_policy_edit(client, test_
 
 
 def test_admin_claim_approval_uses_frozen_claim_cap(client, test_student):
-    admin = make_admin("snapshot-claim-admin")
+    admin = seed_canonical_admin("snapshot-claim-admin").user
     db.session.flush()
 
     db.session.commit()

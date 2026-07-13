@@ -1,11 +1,11 @@
-from tests.helpers.v2_fixtures import make_admin
+from tests.helpers.v2_fixtures import seed_canonical_admin
 from tests.helpers.class_scope import create_class_scope, make_student_identity
 from app import db
 from app.models import IdentityProfile, Seat
 
 
 def _create_admin(username: str):
-    admin = make_admin(username, "TESTSECRET123456")
+    admin = seed_canonical_admin(username, "TESTSECRET123456").user
     db.session.commit()
     return admin
 

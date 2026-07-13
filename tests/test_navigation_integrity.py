@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from app.extensions import db
 from app.models import TeacherOnboarding, User, UserRole, Seat, IdentityProfile
 from app.utils.economy_policy import replace_enabled_class_features
-from tests.helpers.v2_fixtures import make_admin, make_sysadmin
+from tests.helpers.v2_fixtures import make_sysadmin, seed_canonical_admin
 from tests.helpers.class_scope import create_class_scope
 from tests.helpers.class_scope import make_student_identity
 from tests.helpers.navigation_traversal import NavigationTester
@@ -28,7 +28,7 @@ def integrity_tester(client):
 
 def test_teacher_navigation_integrity(client, integrity_tester):
     """Test full teacher navigation tree for 500s and mutations."""
-    admin = make_admin("nav_teacher", "secret")
+    admin = seed_canonical_admin("nav_teacher", "secret").user
     db.session.commit()
 
     onboarding = TeacherOnboarding(
@@ -64,7 +64,7 @@ def test_teacher_navigation_integrity(client, integrity_tester):
 
 def test_student_navigation_integrity(client, integrity_tester):
     """Test full student navigation tree for 500s and mutations."""
-    teacher = make_admin("nav_teacher2", "secret")
+    teacher = seed_canonical_admin("nav_teacher2", "secret").user
     db.session.flush()
     db.session.commit()
 

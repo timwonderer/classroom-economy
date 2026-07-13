@@ -1,16 +1,16 @@
-"""canonicalContextFactory — thin wrapper around production classroom_setup service.
+"""ClassroomContextFactory — thin wrapper around production classroom_setup service.
 
 Tests use the same production path as routes. If the service changes, tests
 automatically get the updated behavior.
 
 Usage:
-    ctx = canonicalContextFactory(db).build()
-    ctx = canonicalContextFactory(db, join_code="MATH-01").with_students(3).build()
+    ctx = ClassroomContextFactory(db).build()
+    ctx = ClassroomContextFactory(db, join_code="MATH-01").with_students(3).build()
 
     ctx.teacher_user    — User instance (role=TEACHER)
     ctx.economy         — ClassEconomy instance
     ctx.class_id        — UUID string
-    ctx.join_code       — public alias
+    ctx.join_code       — display/ingress alias
     ctx.teacher_seat    — teacher Seat
 
     student = ctx.add_student("Alice", "Anderson")
@@ -56,7 +56,6 @@ class StudentContext:
                 class_id=self.class_id,
                 seat_id=self.seat.id,
                 role="student",
-                join_code=self.join_code,
             )
 
 
@@ -106,7 +105,6 @@ class ClassroomContext:
                     class_id=self.class_id,
                     seat_id=self.teacher_seat.id,
                     role="teacher",
-                    join_code=self.join_code,
                 )
 
     def commit(self):
@@ -122,13 +120,15 @@ class ClassroomContextFactory:
     """
 
     def __init__(self, db, *, join_code=None, class_id=None,
-                 display_name=None, section=None, teacher_username=None):
+                 display_name=None, section=None, teacher_username=None,
+                 feature_names=None):
         self._db = db
         self._join_code = join_code
         self._class_id = class_id
         self._display_name = display_name
         self._section = section
         self._teacher_username = teacher_username
+        self._feature_names = list(feature_names or [])
         self._student_count = 0
         self._student_specs = []  # list of (first_name, last_name, kwargs)
 
@@ -155,6 +155,12 @@ class ClassroomContextFactory:
                 display_name=self._display_name or f"Test Class {join_code}",
                 section=self._section,
             )
+
+            if self._feature_names:
+                from app.models import ClassFeature
+                for feature_name in self._feature_names:
+                    if not ClassFeature.query.filter_by(class_id=economy.class_id, feature_name=feature_name).first():
+                        self._db.session.add(ClassFeature(class_id=economy.class_id, feature_name=feature_name))
 
             # Teacher seat is created inside create_class; retrieve it.
             from app.models import Seat
@@ -186,6 +192,3 @@ class ClassroomContextFactory:
             self._db.session.flush()
             return ctx
 
-
-# Backward-compat alias used by conftest.py fixtures
-canonicalContextFactory = ClassroomContextFactory

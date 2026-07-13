@@ -282,12 +282,12 @@ def batch_auto_tapout_students(user_id):
         return 0
 
     # 1b. SECURITY: Fetch only class scopes owned by this owner user.
-    admin_class_rows = db.session.query(ClassEconomy.class_id, ClassEconomy.join_code).filter(
+    admin_class_ids = [
+        row[0] for row in db.session.query(ClassEconomy.class_id).filter(
         ClassEconomy.user_id == user_id,
         ClassEconomy.class_id.isnot(None),
     ).distinct().all()
-    admin_class_ids = [row.class_id for row in admin_class_rows if row.class_id]
-    join_code_by_class_id = {row.class_id: row.join_code for row in admin_class_rows if row.class_id}
+    ]
 
     if not admin_class_ids:
         return 0
@@ -393,7 +393,6 @@ def batch_auto_tapout_students(user_id):
 
                     if not class_id or not resolved_seat_id:
                         continue
-                    join_code = join_code_by_class_id.get(class_id)
                     student_tap(
                         seat_id=resolved_seat_id,
                         class_id=class_id,

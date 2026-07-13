@@ -41,7 +41,7 @@ def _student(first_name: str = "Seat", last_initial: str = "S", block: str = "A"
     return seat
 
 
-def test_transaction_autofills_seat_id_from_student_and_join_code(client):
+def test_transaction_autofills_seat_id_from_student_and_class_scope(client):
     student = _student()
     db.session.add(student)
     db.session.flush()

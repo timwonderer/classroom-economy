@@ -18,7 +18,7 @@ from app.models import (
     UserRole,
 )
 from app.utils.time import utc_now
-from tests.helpers.v2_fixtures import make_admin, make_sysadmin, seed_canonical_admin, seed_class_with_seat
+from tests.helpers.v2_fixtures import make_admin, make_sysadmin, seed_canonical_admin, seed_class_with_seat, seed_student_identity
 from tests.helpers.class_scope import make_student_identity
 from tests.helpers.canonical_session import set_canonical_context
 
@@ -46,43 +46,24 @@ def test_student_login_verifies_user_pin_and_resolves_through_claimed_seat(clien
     monkeypatch.setattr("app.routes.student.verify_turnstile_token", lambda *_args, **_kwargs: True)
 
     with FEATContext("FEAT-IDEN-001"):
-        admin = make_admin("student_login_teacher", pyotp.random_base32())
-        teacher_user = db.session.get(User, admin.id)
-        class_row = ClassEconomy(
-            user_id=teacher_user.id,
+        teacher = seed_canonical_admin("student_login_teacher", pyotp.random_base32()).user
+        class_seed = seed_class_with_seat(
+            teacher=teacher,
             join_code="CANONICAL-LOGIN",
             display_name="Canonical",
-            class_timezone="UTC",
         )
-        db.session.add(class_row)
-        db.session.flush()
+        class_row = class_seed.class_row
 
         username = "canonical_student"
-        student_user = User(
-            user_role=UserRole.STUDENT,
-            username_hash=hash_username_lookup(username),
-            username_lookup_hash=hash_username_lookup(username),
-            pin_hash=generate_password_hash("2468"),
-            last_active_class_id=class_row.class_id,
-        )
-        db.session.add(student_user)
-        db.session.flush()
-        seat = Seat(
-            user_id=student_user.id,
+        student_seed = seed_student_identity(
             class_id=class_row.class_id,
-            role="student",
-            claimed_at=utc_now(),
-        )
-        db.session.add(seat)
-        db.session.flush()
-        profile = IdentityProfile(
-            seat_id=seat.id,
-            class_id=class_row.class_id,
-            profile_type="student",
             first_name="Canonical",
             last_name="S",
+            username=username,
         )
-        db.session.add(profile)
+        student_user = student_seed.user
+        seat = student_seed.seat
+        student_user.pin_hash = generate_password_hash("2468")
         db.session.flush()
 
     response = client.post(
@@ -101,43 +82,25 @@ def test_student_login_missing_last_active_class_shows_selector(client, monkeypa
     monkeypatch.setattr("app.routes.student.verify_turnstile_token", lambda *_args, **_kwargs: True)
 
     with FEATContext("FEAT-IDEN-001"):
-        admin = make_admin("student_selector_teacher", pyotp.random_base32())
-        teacher_user = db.session.get(User, admin.id)
-        class_row = ClassEconomy(
-            user_id=teacher_user.id,
+        teacher = seed_canonical_admin("student_selector_teacher", pyotp.random_base32()).user
+        class_seed = seed_class_with_seat(
+            teacher=teacher,
             join_code="SELECTOR-LOGIN",
             display_name="Selector",
-            class_timezone="UTC",
         )
-        db.session.add(class_row)
-        db.session.flush()
+        class_row = class_seed.class_row
 
         username = "selector_student"
-        user = User(
-            user_role=UserRole.STUDENT,
-            username_hash=hash_username_lookup(username),
-            username_lookup_hash=hash_username_lookup(username),
-            pin_hash=generate_password_hash("2468"),
-            last_active_class_id=None,
-        )
-        db.session.add(user)
-        db.session.flush()
-        seat = Seat(
-            user_id=user.id,
+        student_seed = seed_student_identity(
             class_id=class_row.class_id,
-            role="student",
-            claimed_at=utc_now(),
-        )
-        db.session.add(seat)
-        db.session.flush()
-        profile = IdentityProfile(
-            seat_id=seat.id,
-            class_id=class_row.class_id,
-            profile_type="student",
             first_name="Select",
             last_name="A",
+            username=username,
         )
-        db.session.add(profile)
+        user = student_seed.user
+        seat = student_seed.seat
+        user.pin_hash = generate_password_hash("2468")
+        user.last_active_class_id = None
         db.session.flush()
 
     monkeypatch.setattr(
@@ -154,43 +117,25 @@ def test_student_login_no_valid_class_seats_hard_fails(client, monkeypatch):
     monkeypatch.setattr("app.routes.student.verify_turnstile_token", lambda *_args, **_kwargs: True)
 
     with FEATContext("FEAT-IDEN-001"):
-        admin = make_admin("student_hard_fail_teacher", pyotp.random_base32())
-        teacher_user = db.session.get(User, admin.id)
-        class_row = ClassEconomy(
-            user_id=teacher_user.id,
+        teacher = seed_canonical_admin("student_hard_fail_teacher", pyotp.random_base32()).user
+        class_seed = seed_class_with_seat(
+            teacher=teacher,
             join_code="HARDFAIL-LOGIN",
             display_name="HardFail",
-            class_timezone="UTC",
         )
-        db.session.add(class_row)
-        db.session.flush()
+        class_row = class_seed.class_row
 
         username = "hardfail_student"
-        user = User(
-            user_role=UserRole.STUDENT,
-            username_hash=hash_username_lookup(username),
-            username_lookup_hash=hash_username_lookup(username),
-            pin_hash=generate_password_hash("2468"),
-            last_active_class_id=None,
-        )
-        db.session.add(user)
-        db.session.flush()
-        seat = Seat(
-            user_id=user.id,
+        student_seed = seed_student_identity(
             class_id=class_row.class_id,
-            role="student",
-            claimed_at=utc_now(),
-        )
-        db.session.add(seat)
-        db.session.flush()
-        profile = IdentityProfile(
-            seat_id=seat.id,
-            class_id=class_row.class_id,
-            profile_type="student",
             first_name="Hard",
             last_name="F",
+            username=username,
         )
-        db.session.add(profile)
+        user = student_seed.user
+        seat = student_seed.seat
+        user.pin_hash = generate_password_hash("2468")
+        user.last_active_class_id = None
         db.session.flush()
 
     monkeypatch.setattr("app.routes.student._get_identity_bound_seat_options", lambda _user_id: [])

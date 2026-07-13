@@ -1,6 +1,6 @@
 from datetime import timedelta
 
-from tests.helpers.v2_fixtures import make_admin, make_sysadmin
+from tests.helpers.v2_fixtures import seed_canonical_admin, make_sysadmin
 import pyotp
 
 from app import db
@@ -86,7 +86,7 @@ def test_expired_sysadmin_dashboard_still_redirects_to_login(client):
 
 def test_sysadmin_auth_check_rejects_non_sysadmin_user(client):
     _create_sysadmin("auth_check_match")
-    teacher = make_admin("auth_check_teacher", pyotp.random_base32())
+    teacher = seed_canonical_admin("auth_check_teacher", pyotp.random_base32()).user
     teacher.current_session_nonce = "nonce-auth_check_teacher"
     db.session.commit()
 

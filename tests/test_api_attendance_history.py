@@ -1,7 +1,7 @@
 """
 Tests for the /api/attendance/history endpoint to ensure it returns attendance records.
 """
-from tests.helpers.v2_fixtures import make_admin
+from tests.helpers.v2_fixtures import seed_canonical_admin
 from tests.helpers.class_scope import make_student_identity, create_class_scope
 import pytest
 from datetime import datetime, timezone, timedelta
@@ -9,42 +9,47 @@ from app import app, db
 from app.models import AttendanceSession, AttendanceReasonCode, ClassEconomy, Seat, User
 from tests.helpers.canonical_session import set_canonical_context
 from tests.helpers.admin_context import login_teacher
+from app.feats.base import FEATContext
 
 
 @pytest.fixture
 def admin_with_students(client):
     """Create an admin with students and tap events for testing."""
-    teacher = make_admin('testadmin')
-    db.session.flush()
+    with FEATContext("FEAT-IDEN-001", idempotency_key="attendance_history:admin_setup"):
+        teacher = seed_canonical_admin('testadmin').user
+        class_row = create_class_scope(
+            teacher_user=teacher,
+            join_code="ATTN01",
+            display_name="Attendance History Class",
+        )
 
-    class_row = create_class_scope(teacher_user=teacher, join_code="ATTN01", display_name="Attendance History Class")
-    db.session.flush()
+        student = make_student_identity(
+            class_id=class_row.class_id,
+            first_name='Test',
+            last_name='S',
+        )
 
-    student = make_student_identity(class_id=class_row.class_id, first_name='Test', last_name='S')
-    db.session.flush()
+        seat = Seat.query.filter_by(user_id=student.user_id, class_id=class_row.class_id, role="student").first()
+        teacher_seat = Seat.query.filter_by(user_id=teacher.id, class_id=class_row.class_id, role="teacher").first()
+        now_utc = datetime.now(timezone.utc)
 
-    seat = Seat.query.filter_by(user_id=student.user_id, class_id=class_row.class_id, role="student").first()
-    teacher_seat = Seat.query.filter_by(user_id=teacher.id, class_id=class_row.class_id, role="teacher").first()
-    now_utc = datetime.now(timezone.utc)
+        tap_in = AttendanceSession(
+            seat_id=seat.id,
+            class_id=class_row.class_id,
+            started_at=now_utc - timedelta(hours=1),
+        )
+        db.session.add(tap_in)
 
-    tap_in = AttendanceSession(
-        seat_id=seat.id,
-        class_id=class_row.class_id,
-        started_at=now_utc - timedelta(hours=1),
-    )
-    db.session.add(tap_in)
-
-    tap_out = AttendanceSession(
-        seat_id=seat.id,
-        class_id=class_row.class_id,
-        started_at=now_utc - timedelta(minutes=30),
-        ended_at=now_utc - timedelta(minutes=30),
-        duration_seconds=0,
-        end_reason='done for the day',
-    )
-    db.session.add(tap_out)
-
-    db.session.commit()
+        tap_out = AttendanceSession(
+            seat_id=seat.id,
+            class_id=class_row.class_id,
+            started_at=now_utc - timedelta(minutes=30),
+            ended_at=now_utc - timedelta(minutes=30),
+            duration_seconds=0,
+            end_reason='done for the day',
+        )
+        db.session.add(tap_out)
+        db.session.flush()
 
     return {
         'teacher': teacher,
@@ -107,33 +112,32 @@ def test_attendance_history_with_date_filters(client, admin_with_students):
 
 def test_attendance_history_tenant_scoping(client):
     """Test that admins can only see their own students' attendance records."""
-    admin1 = make_admin('admin1')
-    admin2 = make_admin('admin2')
-    db.session.flush()
+    with FEATContext("FEAT-IDEN-001", idempotency_key="attendance_history:tenant_scoping"):
+        admin1 = seed_canonical_admin('admin1').user
+        admin2 = seed_canonical_admin('admin2').user
 
-    class1 = create_class_scope(teacher_user=admin1, join_code="ATTN-A", display_name="Attendance A")
-    class2 = create_class_scope(teacher_user=admin2, join_code="ATTN-B", display_name="Attendance B")
-    db.session.flush()
+        class1 = create_class_scope(teacher_user=admin1, join_code="ATTN-A", display_name="Attendance A")
+        class2 = create_class_scope(teacher_user=admin2, join_code="ATTN-B", display_name="Attendance B")
 
-    teacher1 = Seat.query.filter_by(user_id=admin1.id, class_id=class1.class_id, role="teacher").first()
+        teacher1 = Seat.query.filter_by(user_id=admin1.id, class_id=class1.class_id, role="teacher").first()
 
-    student1 = make_student_identity(class_id=class1.class_id, first_name='Student', last_name='1')
-    student2 = make_student_identity(class_id=class2.class_id, first_name='Student', last_name='2')
+        student1 = make_student_identity(class_id=class1.class_id, first_name='Student', last_name='1')
+        student2 = make_student_identity(class_id=class2.class_id, first_name='Student', last_name='2')
 
-    now_utc = datetime.now(timezone.utc)
+        now_utc = datetime.now(timezone.utc)
 
-    tap1 = AttendanceSession(
-        seat_id=student1.id,
-        class_id=class1.class_id,
-        started_at=now_utc,
-    )
-    tap2 = AttendanceSession(
-        seat_id=student2.id,
-        class_id=class2.class_id,
-        started_at=now_utc,
-    )
-    db.session.add_all([tap1, tap2])
-    db.session.commit()
+        tap1 = AttendanceSession(
+            seat_id=student1.id,
+            class_id=class1.class_id,
+            started_at=now_utc,
+        )
+        tap2 = AttendanceSession(
+            seat_id=student2.id,
+            class_id=class2.class_id,
+            started_at=now_utc,
+        )
+        db.session.add_all([tap1, tap2])
+        db.session.flush()
 
     login_teacher(client, admin1, class_id=class1.class_id)
 
@@ -158,8 +162,9 @@ def test_attendance_history_excludes_deleted_records(client, admin_with_students
         is_deleted=True,
         deleted_at=now_utc - timedelta(minutes=5),
     )
-    db.session.add(deleted_tap)
-    db.session.commit()
+    with FEATContext("FEAT-IDEN-001", idempotency_key="attendance_history:deleted_record"):
+        db.session.add(deleted_tap)
+        db.session.flush()
 
     login_teacher(client, teacher, class_id=admin_with_students['class_id'])
 
@@ -180,25 +185,26 @@ def test_attendance_history_dedupes_duplicate_daily_limit_tapouts(client, admin_
     duplicate_ts = now_utc - timedelta(minutes=10)
     reason = "Daily limit (1.2h) reached"
 
-    db.session.add(AttendanceSession(
-        seat_id=admin_with_students['seat'].id,
-        class_id=admin_with_students['class_id'],
-        started_at=duplicate_ts,
-        ended_at=duplicate_ts,
-        duration_seconds=0,
-        end_reason=reason,
-        end_reason_code=AttendanceReasonCode.DAILY_LIMIT,
-    ))
-    db.session.add(AttendanceSession(
-        seat_id=admin_with_students['seat'].id,
-        class_id=admin_with_students['class_id'],
-        started_at=duplicate_ts,
-        ended_at=duplicate_ts,
-        duration_seconds=0,
-        end_reason=reason,
-        end_reason_code=AttendanceReasonCode.DAILY_LIMIT,
-    ))
-    db.session.commit()
+    with FEATContext("FEAT-IDEN-001", idempotency_key="attendance_history:duplicate_daily_limit"):
+        db.session.add(AttendanceSession(
+            seat_id=admin_with_students['seat'].id,
+            class_id=admin_with_students['class_id'],
+            started_at=duplicate_ts,
+            ended_at=duplicate_ts,
+            duration_seconds=0,
+            end_reason=reason,
+            end_reason_code=AttendanceReasonCode.DAILY_LIMIT,
+        ))
+        db.session.add(AttendanceSession(
+            seat_id=admin_with_students['seat'].id,
+            class_id=admin_with_students['class_id'],
+            started_at=duplicate_ts,
+            ended_at=duplicate_ts,
+            duration_seconds=0,
+            end_reason=reason,
+            end_reason_code=AttendanceReasonCode.DAILY_LIMIT,
+        ))
+        db.session.flush()
 
     login_teacher(client, teacher, class_id=admin_with_students['class_id'])
 

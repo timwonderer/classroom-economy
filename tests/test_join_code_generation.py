@@ -1,10 +1,10 @@
 """
-Tests for join code generation and retry logic in the students management page.
+Tests for display-alias generation and retry logic in the students management page.
 
 This specifically tests that the MAX_JOIN_CODE_RETRIES constant is properly defined
-and used when generating unique join codes for classroom blocks.
+and used when generating unique display aliases for classroom blocks.
 """
-from tests.helpers.v2_fixtures import make_admin
+from tests.helpers.v2_fixtures import seed_canonical_admin
 from tests.helpers.class_scope import create_class_scope, make_student_identity
 import pyotp
 from datetime import datetime, timezone
@@ -16,7 +16,7 @@ from app.models import User, Seat, IdentityProfile
 def _create_admin(username: str) -> tuple[str]:
     """Helper to create an admin user."""
     secret = pyotp.random_base32()
-    admin = make_admin(username, secret)
+    admin = seed_canonical_admin(username, secret).user
     db.session.commit()
     return admin, secret
 
@@ -28,9 +28,9 @@ def _login_admin(client, admin: User):
         sess['last_activity'] = datetime.now(timezone.utc).isoformat()
 
 
-def test_students_page_generates_join_codes_for_blocks(client):
+def test_students_page_generates_display_aliases_for_blocks(client):
     """
-    Test that accessing /admin/students doesn't crash when generating join codes.
+    Test that accessing /admin/students doesn't crash when generating display aliases.
 
     This verifies that MAX_JOIN_CODE_RETRIES and related constants are defined.
     Regression test for: NameError: name 'MAX_JOIN_CODE_RETRIES' is not defined
@@ -63,7 +63,7 @@ def test_students_page_works_with_no_students(client):
     """
     Test that the students page works even with no students.
 
-    Verifies the constants are defined even when the join code generation
+    Verifies the constants are defined even when the display-alias generation
     code path may not be exercised.
     """
     teacher, secret = _create_admin("teacher-without-students")

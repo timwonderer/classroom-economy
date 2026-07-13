@@ -139,7 +139,7 @@ def create_issue(actor, user_id, class_id, category_id, explanation, expected_ou
 
     # Resolve class label and join_code from ClassEconomy
     class_row = ClassEconomy.query.filter_by(class_id=class_id).first()
-    join_code = class_row.join_code if class_row else None
+    join_code = get_display_join_code(class_row.class_id) if class_row else None
     class_label = (class_row.display_name if class_row and class_row.display_name else None) or join_code or class_id
     canonical_seat = _resolve_actor_seat(actor)
     if not canonical_seat:

@@ -10,11 +10,11 @@ from app.models import IdentityProfile, User, UserRole, Transaction, Seat
 from app.routes import student as student_routes
 from app.services import attendance_service
 from tests.helpers.class_scope import create_class_scope
-from tests.helpers.v2_fixtures import make_admin
+from tests.helpers.v2_fixtures import seed_canonical_admin
 from tests.helpers.canonical_session import set_canonical_context
 
 
-def _login_student(client, student_id, join_code):
+def _login_student(client, student_id):
     with client.session_transaction() as sess:
         seat = Seat.query.filter_by(user_id=student_id).order_by(Seat.id.asc()).first()
         if seat:
@@ -277,7 +277,7 @@ def test_dashboard_read_is_interest_mutation_free(client):
     from app.services import ledger_service
     from tests.helpers.class_scope import make_student_identity
 
-    teacher = make_admin("dash_guard_teacher")
+    teacher = seed_canonical_admin("dash_guard_teacher").user
     db.session.flush()
     class_row = create_class_scope(teacher_user=teacher, join_code="READPURE1", display_name="A", section="A")
     seat = make_student_identity(class_id=class_row.class_id, first_name="Read", last_name="P", claimed=True)
@@ -298,7 +298,7 @@ def test_dashboard_read_is_interest_mutation_free(client):
     db.session.remove()
 
     before_count = Transaction.query.filter_by(user_id=user_id).count()
-    _login_student(client, user_id, "READPURE1")
+    _login_student(client, user_id)
 
     response = client.get("/student/dashboard")
 
@@ -316,12 +316,12 @@ def test_dashboard_access_policy_fail_closed_no_canonical_context(client):
     """Dashboard must redirect to select-class-context when the user has no canonical class context.
 
     v2 semantics: class authority lives in user.last_active_class_id (DB), not in
-    session["current_join_code"]. When last_active_class_id is absent/cleared the
+    a session join-code alias. When last_active_class_id is absent/cleared the
     dashboard cannot establish a CanonicalContext and must redirect rather than serve.
     """
     from tests.helpers.class_scope import make_student_identity
 
-    teacher = make_admin("dash_scope_teacher")
+    teacher = seed_canonical_admin("dash_scope_teacher").user
     db.session.flush()
     class_a = create_class_scope(teacher_user=teacher, join_code="DASHACLSS", display_name="A", section="A")
     seat = make_student_identity(class_id=class_a.class_id, first_name="Scope", last_name="Q", claimed=True)

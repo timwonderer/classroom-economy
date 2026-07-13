@@ -1,4 +1,4 @@
-from tests.helpers.v2_fixtures import make_admin, make_sysadmin
+from tests.helpers.v2_fixtures import seed_canonical_admin, make_sysadmin
 
 from app import db
 from app.models import Seat, User, UserRole, Transaction, StoreItem, StoreItemBlock, StudentItem, IssueCategory, Issue, ClassFeature
@@ -10,7 +10,7 @@ from tests.helpers.class_scope import make_student_identity
 
 
 def _create_admin(username: str) -> tuple[str]:
-    admin = make_admin(username)
+    admin = seed_canonical_admin(username).user
     db.session.commit()
     return admin, "unused"
 
@@ -27,9 +27,9 @@ def _create_student(teacher: User, first_name: str, block: str, join_code: str):
     return seat
 
 
-def _login_admin(client, admin: User, secret: str, *, class_id: str | None = None, seat_id: int | None = None, join_code: str | None = None):
+def _login_admin(client, admin: User, secret: str, *, class_id: str | None = None, seat_id: int | None = None):
     if class_id is not None:
-        login_teacher(client, admin, class_id=class_id, join_code=join_code)
+        login_teacher(client, admin, class_id=class_id)
     return None
 
 
@@ -66,7 +66,7 @@ def test_delete_student_removes_transactions(client):
     tx_id = tx.id
     student_id = student.id
 
-    _login_admin(client, teacher, secret, class_id=student.class_id, join_code="ARCHIVE1")
+    _login_admin(client, teacher, secret, class_id=student.class_id)
     response = client.post(
         "/admin/student/archive",
         data={"seat_id": student_id, "confirmation": "DELETE"},
@@ -115,7 +115,7 @@ def test_deactivate_item_does_not_delete_transactions(client):
     db.session.commit()
     tx_id = tx.id
 
-    _login_admin(client, teacher, secret, class_id=student.class_id, join_code="ITEMJC1")
+    _login_admin(client, teacher, secret, class_id=student.class_id)
     response = client.post(
         f"/admin/item/deactivate/{item.id}",
         data={"block": "A"},
@@ -129,7 +129,7 @@ def test_deactivate_item_does_not_delete_transactions(client):
     assert db.session.get(Transaction, tx_id) is not None
 
 
-def test_delete_join_code_removes_only_scoped_records(client):
+def test_delete_class_removes_only_scoped_records(client):
     teacher, secret = _create_admin("teacher-join-delete")
     student_a = _create_student(teacher, "Cara", "A", "JCDEL1")
     student_b = _create_student(teacher, "Dylan", "B", "JCKEEP2")
@@ -203,7 +203,7 @@ def test_delete_join_code_removes_only_scoped_records(client):
     item_a_id = item_a.id
     item_b_id = item_b.id
 
-    _login_admin(client, teacher, secret, class_id=student_a.class_id, join_code="JCDEL1")
+    _login_admin(client, teacher, secret, class_id=student_a.class_id)
     response = client.post(
         "/admin/join-code/delete",
         json={

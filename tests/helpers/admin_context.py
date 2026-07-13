@@ -14,7 +14,6 @@ def login_teacher(
     teacher_user: User,
     *,
     class_id: str | None = None,
-    join_code: str | None = None,
     seat_id: int | None = None,
 ) -> None:
     """Set up a teacher session on the test client.
@@ -25,11 +24,6 @@ def login_teacher(
     """
     resolved_class_id = class_id
     resolved_seat_id = seat_id
-
-    if resolved_class_id is None and join_code is not None:
-        row = ClassEconomy.query.filter_by(join_code=join_code).first()
-        if row:
-            resolved_class_id = row.class_id
 
     if resolved_seat_id is None and resolved_class_id is not None:
         seat = Seat.query.filter_by(
@@ -52,8 +46,6 @@ def login_teacher(
             if resolved_class_id and resolved_seat_id:
                 sess["current_class_id"] = resolved_class_id
                 sess["current_seat_id"] = resolved_seat_id
-                if join_code:
-                    sess["current_join_code"] = join_code
 
         teacher_user.current_session_nonce = nonce
         if resolved_class_id:

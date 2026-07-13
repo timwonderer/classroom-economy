@@ -6,7 +6,7 @@ Insurance Management page, only the policies, enrollments, and claims
 for the selected class are displayed.
 """
 
-from tests.helpers.v2_fixtures import make_admin, make_sysadmin
+from tests.helpers.v2_fixtures import seed_canonical_admin, make_sysadmin
 import pytest
 from datetime import datetime, timedelta, timezone
 
@@ -23,8 +23,7 @@ from tests.helpers.class_scope import make_student_identity
 @pytest.fixture
 def teacher_with_two_classes(client):
     """Create a teacher with two class periods, each with a different join_code."""
-    teacher = make_admin("multi-class-teacher", "test-secret")
-    db.session.add(teacher)
+    teacher = seed_canonical_admin("multi-class-teacher", "test-secret").user
     db.session.flush()
     db.session.commit()
     return teacher
@@ -330,5 +329,5 @@ def test_no_data_shown_for_class_without_insurance(
     assert "Period A Coverage" not in policy_titles
     assert "Period B Coverage" not in policy_titles
 
-    period_c_enrollments = InsuranceEnrollment.query.filter_by(join_code="JOINC789").all()
+    period_c_enrollments = InsuranceEnrollment.query.filter_by(class_id=class_c.class_id).all()
     assert len(period_c_enrollments) == 0

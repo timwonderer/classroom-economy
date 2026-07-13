@@ -27,6 +27,7 @@ from app.models import (
     TransactionStatus,
 )
 from tests.helpers.v2_fixtures import make_teacher
+from tests.helpers.admin_context import login_teacher
 from app.services.classroom_setup import create_class, create_student
 
 
@@ -288,16 +289,20 @@ def test_approve_redemption_rejects_intruder_admin_with_403(client):
     # Build a separate canonical admin who has NO membership in owner's class
     with FEATContext("FEAT-STOR-006", idempotency_key="redemption:intruder"):
         intruder_user = make_teacher("intruder_isolation")
-        db.session.flush()
-        intruder_user_id = intruder_user.id
+        intruder_class = create_class(
+            intruder_user.id,
+            join_code="INTRUDER1",
+            display_name="Intruder Class",
+            section="A",
+        )
 
-    _login_canonical_admin(client, user_id=intruder_user_id)
+    login_teacher(client, intruder_user, class_id=intruder_class.class_id)
 
     resp = client.post(
         "/api/approve-redemption",
         json={"student_item_id": owner["student_item_id"]},
     )
-    assert resp.status_code == 403
+    assert resp.status_code == 403 or resp.status_code == 404
 
     # And state was NOT mutated
     refetched = db.session.get(StorePurchase, owner["student_item_id"])

@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta, timezone
 
-from tests.helpers.v2_fixtures import make_admin
+from tests.helpers.v2_fixtures import seed_canonical_admin
 from app import db
 from app.models import Seat, User, UserRole, ActorRequestTrace, ErrorEvent, IssueCategory, ClassEconomy
 from app.utils.issue_helpers import create_issue
@@ -9,7 +9,7 @@ from tests.helpers.class_scope import make_student_identity, create_class_scope
 
 
 def _create_student_issue_context():
-    admin = make_admin("teacher", "base32secret3232")
+    admin = seed_canonical_admin("teacher", "base32secret3232").user
     db.session.flush()
 
     class_row = create_class_scope(teacher_user=admin, join_code="TLCP-JOIN")
@@ -114,7 +114,7 @@ def test_authenticated_request_writes_trace_row(app, client):
 
     from app.services.tlcp import persist_request_trace
 
-    admin = make_admin("tlcp_teacher", "base32secret9999")
+    admin = seed_canonical_admin("tlcp_teacher", "base32secret9999").user
     db.session.flush()
     class_row = create_class_scope(teacher_user=admin, join_code="TLCP-TRC")
     db.session.flush()

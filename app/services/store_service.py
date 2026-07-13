@@ -26,10 +26,8 @@ def is_item_visible_to_seat(store_item_id: int, seat_id: int) -> bool:
     No visibility rows means visible to all. Presence of rows restricts to
     those specific seats.
     """
-    has_grants = db.session.query(
-        StoreItemVisibility.query.filter_by(store_item_id=store_item_id).exists()
-    ).scalar()
-    if not has_grants:
+    has_grant_rows = StoreItemVisibility.query.filter_by(store_item_id=store_item_id).first()
+    if has_grant_rows is None:
         return True
     return StoreItemVisibility.query.filter_by(
         store_item_id=store_item_id,

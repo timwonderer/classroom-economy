@@ -23,7 +23,7 @@ def _raise_invariant_violation(message: str) -> None:
     raise InvariantViolation(message)
 
 
-def _assert_class_scope_integrity(class_id: str, join_code: str) -> None:
+def _assert_class_scope_integrity(class_id: str) -> None:
     scoped_models = (
         ("ledger_transaction", Transaction),
         ("hall_pass_logs", HallPassLog),
@@ -38,10 +38,9 @@ def _assert_class_scope_integrity(class_id: str, join_code: str) -> None:
     )
     violations = []
     for label, model in scoped_models:
-        if not hasattr(model, 'join_code') or not hasattr(model, 'class_id'):
+        if not hasattr(model, 'class_id'):
             continue
         count = db.session.query(model).filter(
-            model.join_code == join_code,
             model.class_id.is_(None),
         ).count()
         if count:
@@ -49,7 +48,7 @@ def _assert_class_scope_integrity(class_id: str, join_code: str) -> None:
 
     if violations:
         _raise_invariant_violation(
-            f"class_id NULL rows detected for class_id={class_id} join_code={join_code}: {', '.join(violations)}"
+            f"class_id NULL rows detected for class_id={class_id}: {', '.join(violations)}"
         )
 
 @feat_shell("FEAT-OPS-001")
@@ -57,9 +56,6 @@ def collapse_universe(class_id: str, reason: str, actor_membership_id: Optional[
     """
     Canonical destruction primitive for a class economy.
     
-    The boundary may enter through `join_code`, but this primitive executes on the
-    canonical `class_id` anchor only.
-
     A deleted class MUST leave zero remaining rows in any table scoped by that class.
     There is no soft delete. There is no archive state. There is no preserved financial history.
     
@@ -78,13 +74,11 @@ def collapse_universe(class_id: str, reason: str, actor_membership_id: Optional[
         economy = db.session.get(ClassEconomy, class_id)
         if not economy:
             return True
-        join_code = economy.join_code
-        _assert_class_scope_integrity(class_id, join_code)
+        _assert_class_scope_integrity(class_id)
 
         logger.info(
-            "Collapsing universe for class_id=%s join_code=%s. Reason: %s. Actor: %s",
+            "Collapsing universe for class_id=%s. Reason: %s. Actor: %s",
             class_id,
-            join_code,
             reason,
             actor_membership_id,
         )

@@ -3,7 +3,7 @@ Tests for Timezone API Fix:
 1. Allow admins to sync timezone
 2. Return 401 instead of redirect for unauthenticated users
 """
-from tests.helpers.v2_fixtures import make_admin, make_sysadmin
+from tests.helpers.v2_fixtures import seed_canonical_admin, make_sysadmin
 import pytest
 from datetime import datetime, timezone, timedelta
 from app import db
@@ -13,7 +13,7 @@ from tests.helpers.canonical_session import set_canonical_context
 @pytest.fixture
 def admin_user(client):
     """Create an admin for testing."""
-    admin = make_admin("testadmin_tz")
+    admin = seed_canonical_admin("testadmin_tz").user
     db.session.commit()
     return admin
 

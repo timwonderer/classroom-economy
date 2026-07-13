@@ -3,9 +3,12 @@ from decimal import Decimal
 
 from werkzeug.security import generate_password_hash
 
-from tests.helpers.v2_fixtures import make_admin, make_sysadmin
+from tests.helpers.v2_fixtures import seed_canonical_admin, make_sysadmin
 from app.extensions import db
-from app.models import Seat, IdentityProfile, User, UserRole, InsurancePolicy, RentPayment, StoreItem, InsuranceEnrollment, StorePurchase, Transaction, ClassEconomy
+from app.feats.base import FEATContext
+from app.models import Seat, IdentityProfile, User, UserRole, InsurancePolicy, RentPolicyVersion, StoreItem, InsuranceEnrollment, StorePurchase, Transaction, ClassEconomy
+from app.services import obligations_service
+from tests.helpers.canonical_session import set_canonical_context
 
 
 def _login_admin(client, user_id):
@@ -14,57 +17,90 @@ def _login_admin(client, user_id):
         sess['current_session_nonce'] = 'testnonce'
 
 
-def _login_student(client, student_user, join_code):
+def _login_student(client, student_user):
+    seat = Seat.query.filter_by(user_id=student_user.id).order_by(Seat.id.asc()).first()
+    assert seat is not None
     with client.session_transaction() as sess:
-        sess['user_id'] = student_user.id
-        sess['current_session_nonce'] = student_user.current_session_nonce
-        sess['current_join_code'] = join_code
-        sess['login_time'] = datetime.now(timezone.utc).isoformat()
+        set_canonical_context(
+            sess,
+            user_id=student_user.id,
+            class_id=seat.class_id,
+            seat_id=seat.id,
+            role="student",
+        )
+        sess["current_class_id"] = seat.class_id
+        sess["current_seat_id"] = seat.id
 
 
 def _build_teacher_student(join_code='VOID123'):
     from tests.helpers.class_scope import create_class_scope, make_student_identity
-    teacher_user = make_admin(f"teacher_{join_code}")
-    teacher_user.current_session_nonce = 'testnonce'
-    db.session.flush()
+    with FEATContext("FEAT-IDEN-001", idempotency_key=f"void-rules:{join_code}"):
+        teacher_user = seed_canonical_admin(f"teacher_{join_code}").user
+        teacher_user.current_session_nonce = 'testnonce'
+        db.session.flush()
 
-    economy = create_class_scope(teacher_user=teacher_user, join_code=join_code)
-    db.session.flush()
+        economy = create_class_scope(teacher_user=teacher_user, join_code=join_code)
+        db.session.flush()
 
-    student_seat = make_student_identity(class_id=economy.class_id, first_name='Void', last_name='T', claimed=True)
-    db.session.flush()
+        student_seat = make_student_identity(class_id=economy.class_id, first_name='Void', last_name='T', claimed=True)
+        db.session.flush()
 
-    student_user = db.session.get(User, student_seat.user_id)
-    student_user.passphrase_hash = generate_password_hash('password')
-    student_user.current_session_nonce = 'testnonce'
-    student_user.last_active_class_id = student_seat.class_id
-    student_user.last_active_seat_id = student_seat.id
-    teacher_user.last_active_class_id = economy.class_id
-    db.session.commit()
+        student_user = db.session.get(User, student_seat.user_id)
+        student_user.passphrase_hash = generate_password_hash('password')
+        student_user.current_session_nonce = 'testnonce'
+        student_user.last_active_class_id = student_seat.class_id
+        student_user.last_active_seat_id = student_seat.id
+        teacher_user.last_active_class_id = economy.class_id
+        db.session.flush()
 
     return teacher_user, student_user
+
+
+def _make_store_item(*, owner_id: int, class_id: str, name: str, price: Decimal, item_type: str = 'delayed', is_active: bool = True):
+    with FEATContext("FEAT-STOR-002", idempotency_key=f"void-rules:item:{class_id}:{name}"):
+        item = StoreItem(
+            user_id=owner_id,
+            class_id=class_id,
+            name=name,
+            price=price,
+            item_type=item_type,
+            is_active=is_active,
+        )
+        db.session.add(item)
+        db.session.flush()
+    return item
+
+
+def _seed_checking_balance(*, seat_id: int, class_id: str, amount: Decimal, description: str):
+    with FEATContext("FEAT-LED-001", idempotency_key=f"void-rules:seed:{seat_id}:{class_id}:{description}"):
+        db.session.add(Transaction(
+            seat_id=seat_id,
+            class_id=class_id,
+            amount=amount,
+            account_type='checking',
+            type='deposit',
+            description=description,
+        ))
+        db.session.flush()
 
 
 def test_void_delayed_purchase_removes_item_and_refunds(client):
     teacher_user, student_user = _build_teacher_student('VOIDDLY1')
 
-    print('SEAT ID:', student_user.last_active_seat_id); delayed_item = StoreItem(
-        user_id=teacher_user.id,
+    delayed_item = _make_store_item(
+        owner_id=teacher_user.id,
+        class_id=student_user.last_active_class_id,
         name='Delayed Reward',
         price=Decimal('25.00'),
-        item_type='delayed',
-        is_active=True,
     )
-    db.session.add(delayed_item)
-    db.session.add(Transaction(seat_id=student_user.last_active_seat_id, class_id=student_user.last_active_class_id,
+    _seed_checking_balance(
+        seat_id=student_user.last_active_seat_id,
+        class_id=student_user.last_active_class_id,
         amount=Decimal('100.00'),
-        account_type='checking',
-        type='deposit',
         description='Initial funds',
-    ))
-    db.session.commit()
+    )
 
-    _login_student(client, student_user, 'VOIDDLY1')
+    _login_student(client, student_user)
     purchase_resp = client.post('/api/purchase-item', json={
         'item_id': delayed_item.id,
         'passphrase': 'password',
@@ -115,23 +151,20 @@ def test_void_delayed_purchase_removes_item_and_refunds(client):
 def test_duplicate_purchase_submission_with_same_client_token_is_idempotent(client):
     teacher_user, student_user = _build_teacher_student('VOIDIDEMP1')
 
-    print('SEAT ID:', student_user.last_active_seat_id); delayed_item = StoreItem(
-        user_id=teacher_user.id,
+    delayed_item = _make_store_item(
+        owner_id=teacher_user.id,
+        class_id=student_user.last_active_class_id,
         name='Notebook',
         price=Decimal('25.00'),
-        item_type='delayed',
-        is_active=True,
     )
-    db.session.add(delayed_item)
-    db.session.add(Transaction(seat_id=student_user.last_active_seat_id, class_id=student_user.last_active_class_id,
+    _seed_checking_balance(
+        seat_id=student_user.last_active_seat_id,
+        class_id=student_user.last_active_class_id,
         amount=Decimal('100.00'),
-        account_type='checking',
-        type='deposit',
         description='Initial funds',
-    ))
-    db.session.commit()
+    )
 
-    _login_student(client, student_user, 'VOIDIDEMP1')
+    _login_student(client, student_user)
     payload = {
         'item_id': delayed_item.id,
         'passphrase': 'password',
@@ -160,23 +193,20 @@ def test_duplicate_purchase_submission_with_same_client_token_is_idempotent(clie
 def test_purchase_rejects_non_numeric_quantity_with_400(client):
     teacher_user, student_user = _build_teacher_student('VOIDBADQ1')
 
-    print('SEAT ID:', student_user.last_active_seat_id); delayed_item = StoreItem(
-        user_id=teacher_user.id,
+    delayed_item = _make_store_item(
+        owner_id=teacher_user.id,
+        class_id=student_user.last_active_class_id,
         name='Marker',
         price=Decimal('5.00'),
-        item_type='delayed',
-        is_active=True,
     )
-    db.session.add(delayed_item)
-    db.session.add(Transaction(seat_id=student_user.last_active_seat_id, class_id=student_user.last_active_class_id,
+    _seed_checking_balance(
+        seat_id=student_user.last_active_seat_id,
+        class_id=student_user.last_active_class_id,
         amount=Decimal('20.00'),
-        account_type='checking',
-        type='deposit',
         description='Initial funds',
-    ))
-    db.session.commit()
+    )
 
-    _login_student(client, student_user, 'VOIDBADQ1')
+    _login_student(client, student_user)
     resp = client.post('/api/purchase-item', json={
         'item_id': delayed_item.id,
         'passphrase': 'password',
@@ -190,23 +220,20 @@ def test_purchase_rejects_non_numeric_quantity_with_400(client):
 def test_purchase_rejects_oversized_client_purchase_id_with_400(client):
     teacher_user, student_user = _build_teacher_student('VOIDLONG1')
 
-    print('SEAT ID:', student_user.last_active_seat_id); delayed_item = StoreItem(
-        user_id=teacher_user.id,
+    delayed_item = _make_store_item(
+        owner_id=teacher_user.id,
+        class_id=student_user.last_active_class_id,
         name='Folder',
         price=Decimal('5.00'),
-        item_type='delayed',
-        is_active=True,
     )
-    db.session.add(delayed_item)
-    db.session.add(Transaction(seat_id=student_user.last_active_seat_id, class_id=student_user.last_active_class_id,
+    _seed_checking_balance(
+        seat_id=student_user.last_active_seat_id,
+        class_id=student_user.last_active_class_id,
         amount=Decimal('20.00'),
-        account_type='checking',
-        type='deposit',
         description='Initial funds',
-    ))
-    db.session.commit()
+    )
 
-    _login_student(client, student_user, 'VOIDLONG1')
+    _login_student(client, student_user)
     resp = client.post('/api/purchase-item', json={
         'item_id': delayed_item.id,
         'passphrase': 'password',
@@ -221,23 +248,21 @@ def test_purchase_rejects_oversized_client_purchase_id_with_400(client):
 def test_void_immediate_purchase_is_not_allowed(client):
     teacher_user, student_user = _build_teacher_student('VOIDIMM1')
 
-    immediate_item = StoreItem(
-        user_id=teacher_user.id,
+    immediate_item = _make_store_item(
+        owner_id=teacher_user.id,
+        class_id=student_user.last_active_class_id,
         name='Immediate Reward',
         price=Decimal('15.00'),
         item_type='immediate',
-        is_active=True,
     )
-    db.session.add(immediate_item)
-    db.session.add(Transaction(seat_id=student_user.last_active_seat_id, class_id=student_user.last_active_class_id,
+    _seed_checking_balance(
+        seat_id=student_user.last_active_seat_id,
+        class_id=student_user.last_active_class_id,
         amount=Decimal('100.00'),
-        account_type='checking',
-        type='deposit',
         description='Initial funds',
-    ))
-    db.session.commit()
+    )
 
-    _login_student(client, student_user, 'VOIDIMM1')
+    _login_student(client, student_user)
     purchase_resp = client.post('/api/purchase-item', json={
         'item_id': immediate_item.id,
         'passphrase': 'password',
@@ -250,41 +275,38 @@ def test_void_immediate_purchase_is_not_allowed(client):
         type='purchase',
     ).filter(Transaction.description.like("Purchase: Immediate Reward%")).first()
     assert purchase_tx is not None
+    purchase_tx_id = purchase_tx.id
 
     _login_admin(client, teacher_user.id)
     resp = client.post(
-        f'/admin/void-transaction/{purchase_tx.id}',
+        f'/admin/void-transaction/{purchase_tx_id}',
         headers={'X-Requested-With': 'XMLHttpRequest'},
     )
     assert resp.status_code == 400
     assert 'Immediate-use item purchases are not voidable.' in resp.get_json()['message']
-
-    purchase_tx_id = purchase_tx.id
-    db.session.expire_all()
-    purchase_tx = Transaction.query.filter_by(id=purchase_tx_id).first()
-    assert purchase_tx.is_void is False
+    assert Transaction.query.filter_by(
+        id=purchase_tx_id,
+        is_void=True,
+    ).count() == 0
 
 
 def test_void_delayed_purchase_after_redemption_request_is_not_allowed(client):
     teacher_user, student_user = _build_teacher_student('VOIDUSE1')
 
-    print('SEAT ID:', student_user.last_active_seat_id); delayed_item = StoreItem(
-        user_id=teacher_user.id,
+    delayed_item = _make_store_item(
+        owner_id=teacher_user.id,
+        class_id=student_user.last_active_class_id,
         name='Delayed Use Reward',
         price=Decimal('20.00'),
-        item_type='delayed',
-        is_active=True,
     )
-    db.session.add(delayed_item)
-    db.session.add(Transaction(seat_id=student_user.last_active_seat_id, class_id=student_user.last_active_class_id,
+    _seed_checking_balance(
+        seat_id=student_user.last_active_seat_id,
+        class_id=student_user.last_active_class_id,
         amount=Decimal('100.00'),
-        account_type='checking',
-        type='deposit',
         description='Initial funds',
-    ))
-    db.session.commit()
+    )
 
-    _login_student(client, student_user, 'VOIDUSE1')
+    _login_student(client, student_user)
     purchase_resp = client.post('/api/purchase-item', json={
         'item_id': delayed_item.id,
         'passphrase': 'password',
@@ -309,41 +331,38 @@ def test_void_delayed_purchase_after_redemption_request_is_not_allowed(client):
         type='purchase',
     ).filter(Transaction.description.like("Purchase: Delayed Use Reward%")).first()
     assert purchase_tx is not None
+    purchase_tx_id = purchase_tx.id
 
     _login_admin(client, teacher_user.id)
     resp = client.post(
-        f'/admin/void-transaction/{purchase_tx.id}',
+        f'/admin/void-transaction/{purchase_tx_id}',
         headers={'X-Requested-With': 'XMLHttpRequest'},
     )
     assert resp.status_code == 400
     assert 'cannot be voided' in resp.get_json()['message']
-
-    purchase_tx_id = purchase_tx.id
-    db.session.expire_all()
-    purchase_tx = Transaction.query.filter_by(id=purchase_tx_id).first()
-    assert purchase_tx.is_void is False
+    assert Transaction.query.filter_by(
+        id=purchase_tx_id,
+        is_void=True,
+    ).count() == 0
 
 
 def test_void_already_voided_transaction_is_rejected(client):
     teacher_user, student_user = _build_teacher_student('VOIDDBL1')
 
-    print('SEAT ID:', student_user.last_active_seat_id); delayed_item = StoreItem(
-        user_id=teacher_user.id,
+    delayed_item = _make_store_item(
+        owner_id=teacher_user.id,
+        class_id=student_user.last_active_class_id,
         name='Double Void Item',
         price=Decimal('10.00'),
-        item_type='delayed',
-        is_active=True,
     )
-    db.session.add(delayed_item)
-    db.session.add(Transaction(seat_id=student_user.last_active_seat_id, class_id=student_user.last_active_class_id,
+    _seed_checking_balance(
+        seat_id=student_user.last_active_seat_id,
+        class_id=student_user.last_active_class_id,
         amount=Decimal('100.00'),
-        account_type='checking',
-        type='deposit',
         description='Initial funds',
-    ))
-    db.session.commit()
+    )
 
-    _login_student(client, student_user, 'VOIDDBL1')
+    _login_student(client, student_user)
     purchase_resp = client.post('/api/purchase-item', json={
         'item_id': delayed_item.id,
         'passphrase': 'password',
@@ -356,11 +375,12 @@ def test_void_already_voided_transaction_is_rejected(client):
         type='purchase',
     ).filter(Transaction.description.like("Purchase: Double Void Item%")).first()
     assert purchase_tx is not None
+    purchase_tx_id = purchase_tx.id
 
     _login_admin(client, teacher_user.id)
     # First void should succeed
     resp1 = client.post(
-        f'/admin/void-transaction/{purchase_tx.id}',
+        f'/admin/void-transaction/{purchase_tx_id}',
         headers={'X-Requested-With': 'XMLHttpRequest'},
     )
     assert resp1.status_code == 200
@@ -368,7 +388,7 @@ def test_void_already_voided_transaction_is_rejected(client):
 
     # Second void of the same transaction should be rejected
     resp2 = client.post(
-        f'/admin/void-transaction/{purchase_tx.id}',
+        f'/admin/void-transaction/{purchase_tx_id}',
         headers={'X-Requested-With': 'XMLHttpRequest'},
     )
     assert resp2.status_code == 400
@@ -385,27 +405,53 @@ def test_void_already_voided_transaction_is_rejected(client):
 
 def test_void_rent_payment_reverts_bill_to_unpaid(client):
     teacher_user, student_user = _build_teacher_student('VOIDRNT1')
+    now = datetime.now(timezone.utc)
 
-    rent_tx = Transaction(seat_id=student_user.last_active_seat_id, class_id=student_user.last_active_class_id,
-        amount=Decimal('-30.00'),
-        account_type='checking',
-        type='Rent Payment',
-        description='Rent for Period A - January 2026',
-    )
-    db.session.add(rent_tx)
-    db.session.flush()
+    with FEATContext("FEAT-LED-001", idempotency_key="void-rules:VOIDRNT1:rent"):
+        policy_version = RentPolicyVersion(
+            class_id=student_user.last_active_class_id,
+            version_number=1,
+            rent_amount=Decimal('30.00'),
+            frequency_type='monthly',
+            cycle_length_days=30,
+            grace_period_days=3,
+            late_penalty_amount=Decimal('10.00'),
+            late_penalty_type='once',
+            bill_preview_enabled=False,
+            bill_preview_days=7,
+            allow_incremental_payment=False,
+            prevent_purchase_when_late=False,
+            frozen_items=[],
+        )
+        db.session.add(policy_version)
+        db.session.flush()
 
-    rent_payment = RentPayment(
-        seat_id=student_user.last_active_seat_id,
-        period='A',
-        amount_paid=Decimal('30.00'),
-        period_month=1,
-        period_year=2026,
-        coverage_month=1,
-        coverage_year=2026,
-    )
-    db.session.add(rent_payment)
-    db.session.commit()
+        rent_tx = Transaction(
+            seat_id=student_user.last_active_seat_id,
+            class_id=student_user.last_active_class_id,
+            amount=Decimal('-30.00'),
+            account_type='checking',
+            type='Rent Payment',
+            description=f'Rent for Period A - {now.strftime("%B %Y")}',
+            timestamp=now,
+        )
+        db.session.add(rent_tx)
+        db.session.flush()
+
+        rent_assessment = obligations_service.record_rent_payment(
+            seat_id=student_user.last_active_seat_id,
+            class_id=student_user.last_active_class_id,
+            period='A',
+            amount_paid=Decimal('30.00'),
+            period_month=now.month,
+            period_year=now.year,
+            coverage_month=now.month,
+            coverage_year=now.year,
+            was_late=False,
+            late_fee_charged=Decimal('0.00'),
+            transaction_id=rent_tx.id,
+            rent_policy_version_id=policy_version.id,
+        )
 
     _login_admin(client, teacher_user.id)
     resp = client.post(
@@ -414,12 +460,12 @@ def test_void_rent_payment_reverts_bill_to_unpaid(client):
     )
     assert resp.status_code == 200
     rent_tx_id = rent_tx.id
-    rent_payment_id = rent_payment.id
+    rent_assessment_id = rent_assessment.id
     db.session.expire_all()
     rent_tx = Transaction.query.filter_by(id=rent_tx_id).first()
     assert rent_tx.is_void is True
     assert rent_tx.reversal_transaction_id is not None
-    assert db.session.get(RentPayment, rent_payment_id) is None
+    assert db.session.get(type(rent_assessment), rent_assessment_id) is None
 
 
 def test_void_insurance_premium_marks_enrollment_unpaid(client):
@@ -434,27 +480,28 @@ def test_void_insurance_premium_marks_enrollment_unpaid(client):
         is_monetary=True,
         is_active=True,
     )
-    db.session.add(policy)
-    db.session.flush()
+    with FEATContext("FEAT-ADMN-001", idempotency_key="void-rules:VOIDINS1:policy"):
+        db.session.add(policy)
+        db.session.flush()
 
-    enrollment = InsuranceEnrollment(
-        seat_id=student_user.last_active_seat_id,
-        class_id=student_user.last_active_class_id,
-        policy_id=policy.id,
-        status='active',
-        payment_current=True,
-        days_unpaid=0,
-    )
-    db.session.add(enrollment)
+        enrollment = InsuranceEnrollment(
+            seat_id=student_user.last_active_seat_id,
+            class_id=student_user.last_active_class_id,
+            policy_id=policy.id,
+            status='active',
+            payment_current=True,
+            days_unpaid=0,
+        )
+        db.session.add(enrollment)
 
-    insurance_tx = Transaction(seat_id=student_user.last_active_seat_id, class_id=student_user.last_active_class_id,
-        amount=Decimal('-12.00'),
-        account_type='checking',
-        type='insurance_premium',
-        description='Insurance premium: Coverage',
-    )
-    db.session.add(insurance_tx)
-    db.session.commit()
+        insurance_tx = Transaction(seat_id=student_user.last_active_seat_id, class_id=student_user.last_active_class_id,
+            amount=Decimal('-12.00'),
+            account_type='checking',
+            type='insurance_premium',
+            description='Insurance premium: Coverage',
+        )
+        db.session.add(insurance_tx)
+        db.session.flush()
 
     _login_admin(client, teacher_user.id)
     resp = client.post(

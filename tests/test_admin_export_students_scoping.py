@@ -2,45 +2,49 @@ from datetime import datetime, timezone
 from decimal import Decimal
 import io
 
-from tests.helpers.v2_fixtures import make_teacher
+from tests.helpers.v2_fixtures import seed_canonical_admin, seed_class_with_seat, seed_purchase
 from app.extensions import db
 from app.models import IdentityProfile, Seat, Transaction, User, UserRole
 from app.services.ledger_service import get_available_balances
 from app.routes.admin import _sanitize_roster_text
-from tests.helpers.class_scope import create_class_scope, make_student_identity
 from tests.helpers.admin_context import login_teacher
+from app.feats.base import FEATContext
 
 
 def test_roster_upload_ignores_balance_columns_and_keeps_ledger_truth(client):
-    teacher = make_teacher("teacher_roster_sync")
+    teacher = seed_canonical_admin("teacher_roster_sync").user
     db.session.flush()
 
-    class_row = create_class_scope(teacher_user=teacher, join_code="ROSTER-SYNC-1", display_name="Roster Sync")
-    seat = make_student_identity(class_id=class_row.class_id, first_name="Original", last_name="N")
-    db.session.commit()
+    seeded = seed_class_with_seat(
+        teacher=teacher,
+        join_code="ROSTER-SYNC-1",
+        display_name="Roster Sync",
+        student_first_name="Original",
+        student_last_name="N",
+    )
+    class_row = seeded.class_row
+    seat = seeded.seat
 
     teacher_seat = Seat.query.filter_by(class_id=class_row.class_id, role="teacher").first()
-    seat.public_id = "stu_roster_sync_1"
-    db.session.commit()
+    with FEATContext("FEAT-IDEN-001", idempotency_key="admin_export_students_scoping:public_id"):
+        seat.public_id = "stu_roster_sync_1"
+        db.session.flush()
 
-    db.session.add(
-        Transaction(
-            user_id=seat.user_id,
+    with FEATContext("FEAT-LED-001", idempotency_key="admin_export_students_scoping:seed_balance"):
+        seed_purchase(
             seat_id=seat.id,
             class_id=class_row.class_id,
-            amount=Decimal("42.50"),
-            account_type="checking",
-            type="deposit",
+            user_id=seat.user_id,
+            amount="42.50",
             description="Seed checking balance",
+            transaction_type="deposit",
         )
-    )
-    db.session.commit()
 
     before_checking, before_savings = get_available_balances(seat.id, class_row.class_id)
     assert before_checking == Decimal("42.50")
     assert before_savings == Decimal("0.00")
 
-    login_teacher(client, teacher, class_id=class_row.class_id, join_code=class_row.join_code)
+    login_teacher(client, teacher, class_id=class_row.class_id)
 
     csv_body = (
         "join_code,actor_public_id,first_name,last_name,notes,checking_balance,savings_balance\n"
@@ -51,7 +55,6 @@ def test_roster_upload_ignores_balance_columns_and_keeps_ledger_truth(client):
         data={
             "csv_file": (io.BytesIO(csv_body.encode("utf-8")), "roster.csv"),
             "roster_sync": "1",
-            "confirm_roster_delete": "1",
         },
         content_type="multipart/form-data",
         follow_redirects=True,

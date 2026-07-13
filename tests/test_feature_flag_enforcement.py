@@ -5,10 +5,11 @@ This ensures that when a teacher disables a feature (banking, payroll, etc.),
 students cannot access those routes even via direct URL.
 """
 
-from tests.helpers.v2_fixtures import make_admin
+from tests.helpers.v2_fixtures import seed_canonical_admin, seed_class_feature, clear_class_feature, seed_purchase
 import pytest
 from datetime import datetime, timezone
 from werkzeug.security import generate_password_hash
+from app.feats.base import FEATContext
 from app.models import Transaction, ClassEconomy, ClassFeature, StoreItem, Seat, User, UserRole, IdentityProfile
 from tests.helpers.class_scope import make_student_identity, create_class_scope
 from app.extensions import db
@@ -33,8 +34,8 @@ def _login_student(client, data, *, transfer_token=None):
 @pytest.fixture
 def setup_student_with_disabled_banking(client):
     """Create a student with banking feature disabled."""
-    teacher = make_admin("teacher1")
-    db.session.flush()
+    teacher = seed_canonical_admin("teacher1").user
+    join_code = "BANKDIS1"
 
     economy = create_class_scope(teacher_user=teacher, join_code=join_code, display_name='Math Period 1B')
     db.session.flush()
@@ -45,17 +46,15 @@ def setup_student_with_disabled_banking(client):
     user = db.session.get(User, student_seat_obj.user_id)
     user.passphrase_hash = generate_password_hash('password')
 
-    db.session.add(Transaction(
-        class_id=economy.class_id,
+    seed_purchase(
         seat_id=student_seat.id,
-        amount=100.0,
-        account_type='checking',
-        type='Initial',
-        description='Starting balance',
-    ))
-    db.session.flush()
-    for row in ClassFeature.query.filter_by(class_id=economy.class_id, feature_name='banking').all():
-        db.session.delete(row)
+        class_id=economy.class_id,
+        user_id=user.id,
+        amount="100.00",
+        description="Starting balance",
+        transaction_type="Initial",
+    )
+    clear_class_feature(class_id=economy.class_id, feature_name='banking')
     db.session.commit()
 
     return {
@@ -71,8 +70,8 @@ def setup_student_with_disabled_banking(client):
 @pytest.fixture
 def setup_student_with_enabled_banking(client):
     """Create a student with banking feature enabled."""
-    teacher = make_admin("teacher_enabled_banking")
-    db.session.flush()
+    teacher = seed_canonical_admin("teacher_enabled_banking").user
+    join_code = "BANKEN1"
 
     economy = create_class_scope(teacher_user=teacher, join_code=join_code, display_name='Math Period 1A')
     db.session.flush()
@@ -83,15 +82,15 @@ def setup_student_with_enabled_banking(client):
     user = db.session.get(User, student_seat_obj.user_id)
     user.passphrase_hash = generate_password_hash('carol_pass')
 
-    db.session.add(Transaction(
-        class_id=economy.class_id,
+    seed_purchase(
         seat_id=student_seat.id,
-        amount=100.0,
-        account_type='checking',
-        type='Initial',
-        description='Starting balance',
-    ))
-    db.session.add(ClassFeature(class_id=economy.class_id, feature_name='banking'))
+        class_id=economy.class_id,
+        user_id=user.id,
+        amount="100.00",
+        description="Starting balance",
+        transaction_type="Initial",
+    )
+    seed_class_feature(class_id=economy.class_id, feature_name='banking')
     db.session.commit()
 
     return {
@@ -135,7 +134,7 @@ def test_payroll_allowed_when_payroll_enabled(client, setup_student_with_enabled
     assert b'Payroll' in response.data or b'payroll' in response.data
 
 
-def _create_admin_feature_scope(teacher, *, join_code, block, feature_name, enabled):
+def _create_admin_class_scope(teacher, *, block, feature_name, enabled):
     economy = create_class_scope(
         teacher_user=teacher,
         display_name=f'{feature_name.title()} Period {block}',
@@ -149,16 +148,14 @@ def _create_admin_feature_scope(teacher, *, join_code, block, feature_name, enab
 
 
 def test_admin_banking_rejects_disabled_class_scope(client):
-    teacher = make_admin("teacher_admin_feature_scope")
-    db.session.flush()
+    teacher = seed_canonical_admin("teacher_admin_feature_scope").user
 
     economy = create_class_scope(teacher_user=teacher, join_code="BANKA1", display_name='Banking Period A')
     db.session.flush()
-    for row in ClassFeature.query.filter_by(class_id=economy.class_id, feature_name='banking').all():
-        db.session.delete(row)
+    clear_class_feature(class_id=economy.class_id, feature_name='banking')
     db.session.commit()
 
-    login_teacher(client, teacher, class_id=economy.class_id, join_code="BANKA1")
+    login_teacher(client, teacher, class_id=economy.class_id)
 
     response = client.get('/admin/banking?settings_block=A')
     assert response.status_code == 200
@@ -166,14 +163,13 @@ def test_admin_banking_rejects_disabled_class_scope(client):
 
 
 def test_admin_store_rejects_disabled_class_scope(client):
-    teacher = make_admin("teacher_admin_store_scope")
-    db.session.flush()
+    teacher = seed_canonical_admin("teacher_admin_store_scope").user
 
-    _create_admin_feature_scope(teacher, join_code="STORE1", block="1", feature_name="store", enabled=True)
-    disabled_economy = _create_admin_feature_scope(teacher, join_code="STORE2", block="2", feature_name="store", enabled=False)
+    _create_admin_class_scope(teacher, block="1", feature_name="store", enabled=True)
+    disabled_economy = _create_admin_class_scope(teacher, block="2", feature_name="store", enabled=False)
     db.session.commit()
 
-    login_teacher(client, teacher, class_id=disabled_economy.class_id, join_code="STORE2")
+    login_teacher(client, teacher, class_id=disabled_economy.class_id)
 
     response = client.get('/admin/store')
     assert response.status_code == 200
@@ -181,14 +177,13 @@ def test_admin_store_rejects_disabled_class_scope(client):
 
 
 def test_admin_hall_pass_rejects_disabled_class_scope(client):
-    teacher = make_admin("teacher_admin_hall_scope")
-    db.session.flush()
+    teacher = seed_canonical_admin("teacher_admin_hall_scope").user
 
-    _create_admin_feature_scope(teacher, join_code="HALL1", block="1", feature_name="hall_pass", enabled=True)
-    disabled_economy = _create_admin_feature_scope(teacher, join_code="HALL2", block="2", feature_name="hall_pass", enabled=False)
+    _create_admin_class_scope(teacher, block="1", feature_name="hall_pass", enabled=True)
+    disabled_economy = _create_admin_class_scope(teacher, block="2", feature_name="hall_pass", enabled=False)
     db.session.commit()
 
-    login_teacher(client, teacher, class_id=disabled_economy.class_id, join_code="HALL2")
+    login_teacher(client, teacher, class_id=disabled_economy.class_id)
 
     response = client.get('/admin/hall-pass')
     assert response.status_code == 200
@@ -196,14 +191,14 @@ def test_admin_hall_pass_rejects_disabled_class_scope(client):
 
 
 def test_admin_payroll_rejects_disabled_class_scope(client):
-    teacher = make_admin("teacher_admin_payroll_scope")
-    db.session.flush()
+    teacher = seed_canonical_admin("teacher_admin_payroll_scope").user
 
-    _create_admin_feature_scope(teacher, join_code="PAY1", block="1", feature_name="payroll", enabled=True)
-    disabled_economy = _create_admin_feature_scope(teacher, join_code="PAY2", block="2", feature_name="payroll", enabled=False)
-    db.session.commit()
+    with FEATContext("FEAT-ADMN-001", idempotency_key="feature_flag:payroll_scope"):
+        _create_admin_class_scope(teacher, block="1", feature_name="payroll", enabled=True)
+        disabled_economy = _create_admin_class_scope(teacher, block="2", feature_name="payroll", enabled=False)
+        db.session.flush()
 
-    login_teacher(client, teacher, class_id=disabled_economy.class_id, join_code="PAY2")
+    login_teacher(client, teacher, class_id=disabled_economy.class_id)
 
     response = client.get('/admin/payroll')
     assert response.status_code == 200
@@ -211,24 +206,24 @@ def test_admin_payroll_rejects_disabled_class_scope(client):
 
 
 def test_admin_store_delete_rejects_disabled_class_scope(client):
-    teacher = make_admin("teacher_admin_store_delete_scope")
-    db.session.flush()
+    teacher = seed_canonical_admin("teacher_admin_store_delete_scope").user
 
-    _create_admin_feature_scope(teacher, join_code="STD1", block="1", feature_name="store", enabled=True)
-    disabled_economy = _create_admin_feature_scope(teacher, join_code="STD2", block="2", feature_name="store", enabled=False)
-    store_item = StoreItem(
-        user_id=teacher.id,
-        class_id=disabled_economy.class_id,
-        name="Pencil",
-        description="Simple item",
-        price=1,
-        item_type='immediate',
-        is_active=True,
-    )
-    db.session.add(store_item)
-    db.session.commit()
+    with FEATContext("FEAT-ADMN-001", idempotency_key="feature_flag:store_delete_scope"):
+        _create_admin_class_scope(teacher, block="1", feature_name="store", enabled=True)
+        disabled_economy = _create_admin_class_scope(teacher, block="2", feature_name="store", enabled=False)
+        store_item = StoreItem(
+            user_id=teacher.id,
+            class_id=disabled_economy.class_id,
+            name="Pencil",
+            description="Simple item",
+            price=1,
+            item_type='immediate',
+            is_active=True,
+        )
+        db.session.add(store_item)
+        db.session.flush()
 
-    login_teacher(client, teacher, class_id=disabled_economy.class_id, join_code="STD2")
+    login_teacher(client, teacher, class_id=disabled_economy.class_id)
 
     response = client.post(
         f'/admin/store/delete/{store_item.id}',
@@ -240,9 +235,9 @@ def test_admin_store_delete_rejects_disabled_class_scope(client):
     assert store_item.is_active is True
 
 
-def test_student_rent_rejects_disabled_feature_scope(client):
-    teacher = make_admin("teacher_rent_disabled")
-    db.session.flush()
+def test_student_rent_rejects_disabled_class_scope(client):
+    teacher = seed_canonical_admin("teacher_rent_disabled").user
+    join_code = "RENTDIS1"
 
     economy = create_class_scope(teacher_user=teacher, join_code=join_code, display_name='Rent Period 3')
     db.session.flush()

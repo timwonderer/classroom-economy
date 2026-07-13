@@ -1,4 +1,4 @@
-from tests.helpers.v2_fixtures import make_admin, make_sysadmin
+from tests.helpers.v2_fixtures import make_sysadmin, seed_canonical_admin, seed_class_feature
 import pytest
 
 pytestmark = [pytest.mark.critical, pytest.mark.regression]
@@ -14,6 +14,7 @@ from decimal import Decimal
 from os import urandom
 import secrets
 from app import db
+from app.feats.base import FEATContext
 from app.models import ClassEconomy, EconomySnapshot, PayrollSettings, Seat, IdentityProfile, User, UserRole
 from app.utils.economy_balance import EconomyBalanceChecker, WarningLevel
 from app.routes import admin as admin_routes
@@ -25,14 +26,7 @@ from tests.helpers.class_scope import create_class_scope
 def admin_with_payroll(client):
     """Create an admin with payroll settings for testing."""
     # Create admin
-    admin = make_admin("testeconomyadmin")
-    db.session.flush()
-
-    teacher_user = User(
-        username_hash=admin.username_lookup_hash,
-        username_lookup_hash=admin.username_lookup_hash,
-        user_role=UserRole.TEACHER,
-    )
+    admin = seed_canonical_admin("testeconomyadmin").user
     db.session.flush()
 
     class_scope = create_class_scope(
@@ -40,18 +34,20 @@ def admin_with_payroll(client):
         display_name="A",
     )
     db.session.flush()
+    seed_class_feature(class_id=class_scope.class_id, feature_name="payroll")
 
     # Create payroll settings with specific expected_weekly_hours
-    payroll_settings = PayrollSettings(
-        class_id=class_scope.class_id,
-        pay_rate=0.25,  # $0.25/min = $15/hour
-        expected_weekly_hours=8.0,  # Custom value, not 5.0
-        payroll_frequency_days=14,
-        settings_mode='simple',
-        is_active=True
-    )
-    db.session.add(payroll_settings)
-    db.session.commit()
+    with FEATContext("FEAT-LED-004", idempotency_key="economy_api:admin_with_payroll"):
+        payroll_settings = PayrollSettings(
+            class_id=class_scope.class_id,
+            pay_rate=0.25,  # $0.25/min = $15/hour
+            expected_weekly_hours=8.0,  # Custom value, not 5.0
+            payroll_frequency_days=14,
+            settings_mode='simple',
+            is_active=True
+        )
+        db.session.add(payroll_settings)
+        db.session.flush()
 
     return admin, payroll_settings
 
@@ -60,47 +56,23 @@ def admin_with_payroll(client):
 def logged_in_admin_client(client, admin_with_payroll):
     """A client with a logged-in admin."""
     admin, _ = admin_with_payroll
-    user = User.query.filter_by(username_lookup_hash=admin.username_lookup_hash).first()
-    if not user:
-        user = User(
-            username_hash=admin.username_lookup_hash,
-            username_lookup_hash=admin.username_lookup_hash,
-            user_role=UserRole.TEACHER,
-        )
-        db.session.add(user)
-        db.session.commit()
+    user = User.query.filter_by(username_lookup_hash=admin.username_lookup_hash).first() or admin
     with client.session_transaction() as sess:
-        sess['user_id'] = user.id
-        sess['current_session_nonce'] = secrets.token_urlsafe(32)
-        user.current_session_nonce = sess['current_session_nonce']
-        db.session.commit()
-        sess['is_system_admin'] = False
-        sess['last_activity'] = datetime.now(timezone.utc).isoformat()
-    return client
-
-
-def _attach_join_code(admin, block='A', token='JOIN-A'):
-    economy = ClassEconomy.query.filter_by(join_code=token).first()
-    if not economy:
-        economy = ClassEconomy(
-            user_id=admin.id,
-            created_by_user_id=admin.id,
-            display_name=f'Period {block}',
+        class_scope = ClassEconomy.query.filter_by(user_id=admin.id).order_by(ClassEconomy.class_id.asc()).first()
+        if class_scope is None:
+            raise AssertionError("Expected canonical class scope for admin fixture")
+        teacher_seat = Seat.query.filter_by(class_id=class_scope.class_id, user_id=admin.id, role="teacher").first()
+        if teacher_seat is None:
+            raise AssertionError("Expected teacher seat for canonical admin fixture")
+        set_canonical_context(
+            sess,
+            user_id=user.id,
+            class_id=class_scope.class_id,
+            seat_id=teacher_seat.id,
+            role="teacher",
         )
-        db.session.add(economy)
-        db.session.flush()
-
-    _tb_seat = Seat(class_id=economy.class_id, role="student")
-    db.session.add(_tb_seat)
-    db.session.flush()
-    db.session.add(IdentityProfile(seat_id=_tb_seat.id, profile_type='student_unclaimed', first_name='Test', last_name='Anderson'))
-
-    payroll_settings = PayrollSettings.query.filter_by(class_id=economy.class_id).first()
-    if payroll_settings:
-        payroll_settings.join_code = token
-
-    db.session.commit()
-    return economy
+        sess['is_system_admin'] = False
+    return client
 
 
 def test_validate_endpoint_uses_payroll_settings_hours(logged_in_admin_client, admin_with_payroll):
@@ -342,59 +314,45 @@ def test_serialize_economy_analysis_payload_coerces_decimal_values(app):
 
 def test_different_expected_hours_per_block(client):
     """Test that different blocks can have different expected_weekly_hours."""
-    # Create admin
-    admin = make_admin("testmultiblock")
+    admin = seed_canonical_admin("testmultiblock").user
     db.session.flush()
 
-    teacher_user = User(
-        username_hash=admin.username_lookup_hash,
-        username_lookup_hash=admin.username_lookup_hash,
-        user_role=UserRole.TEACHER,
-    )
-    db.session.flush()
+    with FEATContext("FEAT-IDEN-001", idempotency_key="economy_api:test_different_expected_hours_per_block"):
+        class_a = create_class_scope(
+            teacher_user=admin,
+            display_name="A",
+        )
+        class_b = create_class_scope(
+            teacher_user=admin,
+            display_name="B",
+        )
 
-    # Create payroll settings for different blocks with different hours
-    class_a = create_class_scope(
-        teacher_user=admin,
-        display_name="A",
-    )
-    class_b = create_class_scope(
-        teacher_user=admin,
-        display_name="B",
-    )
+    with FEATContext("FEAT-LED-004", idempotency_key=f"economy_api:payroll_hours:{class_a.class_id}"):
+        db.session.add(PayrollSettings(
+            class_id=class_a.class_id,
+            pay_rate=0.25,
+            expected_weekly_hours=5.0,
+            payroll_frequency_days=14,
+            settings_mode='simple',
+            is_active=True,
+        ))
+        db.session.flush()
 
-    payroll_a = PayrollSettings(
-        class_id=class_a.class_id,
-        pay_rate=0.25,
-        expected_weekly_hours=5.0,  # Block A: 5 hours
-        payroll_frequency_days=14,
-        settings_mode='simple',
-        is_active=True
-    )
-
-    payroll_b = PayrollSettings(
-        class_id=class_b.class_id,
-        pay_rate=0.25,
-        expected_weekly_hours=10.0,  # Block B: 10 hours
-        payroll_frequency_days=14,
-        settings_mode='simple',
-        is_active=True
-    )
-
-    db.session.add(payroll_a)
-    db.session.add(payroll_b)
-    db.session.commit()
+    with FEATContext("FEAT-LED-004", idempotency_key=f"economy_api:payroll_hours:{class_b.class_id}"):
+        db.session.add(PayrollSettings(
+            class_id=class_b.class_id,
+            pay_rate=0.25,
+            expected_weekly_hours=10.0,
+            payroll_frequency_days=14,
+            settings_mode='simple',
+            is_active=True,
+        ))
+        db.session.flush()
 
     # Login as admin
     teacher_seat_a = Seat.query.filter_by(class_id=class_a.class_id, role="teacher").first()
     teacher_seat_b = Seat.query.filter_by(class_id=class_b.class_id, role="teacher").first()
     with client.session_transaction() as sess:
-        sess['user_id'] = admin.id
-        sess['current_session_nonce'] = secrets.token_urlsafe(32)
-        admin.current_session_nonce = sess['current_session_nonce']
-        db.session.commit()
-        sess['is_system_admin'] = False
-        sess['last_activity'] = datetime.now(timezone.utc).isoformat()
         set_canonical_context(
             sess,
             user_id=admin.id,
@@ -402,6 +360,7 @@ def test_different_expected_hours_per_block(client):
             seat_id=teacher_seat_a.id,
             role="teacher",
         )
+        sess['is_system_admin'] = False
 
     # Test Block A
     response_a = client.post(
@@ -897,7 +856,7 @@ def test_analyze_endpoint_error_does_not_leak_exception_details(client):
     the error message returned to the client is generic and doesn't expose internal
     implementation details, exception types, or stack traces.
     """
-    admin = make_admin("testadmin_error")
+    admin = seed_canonical_admin("testadmin_error").user
     db.session.flush()
 
     from app.models import User, UserRole
@@ -948,7 +907,7 @@ def test_analyze_endpoint_error_does_not_leak_exception_details(client):
 
 def test_analyze_block_ignores_teacher_global_payroll_settings(client):
     """Block-scoped analyze requests must not fall back to teacher-global payroll settings."""
-    admin = make_admin("globalfallbackanalyze")
+    admin = seed_canonical_admin("globalfallbackanalyze").user
     db.session.flush()
 
     from app.models import User, UserRole
@@ -992,7 +951,7 @@ def test_analyze_block_ignores_teacher_global_payroll_settings(client):
 
 def test_validate_block_ignores_teacher_global_payroll_settings(client):
     """Block-scoped validate requests must not fall back to teacher-global payroll settings."""
-    admin = make_admin("globalfallbackvalidate")
+    admin = seed_canonical_admin("globalfallbackvalidate").user
     db.session.flush()
 
     from app.models import User, UserRole
@@ -1035,9 +994,9 @@ def test_validate_block_ignores_teacher_global_payroll_settings(client):
     assert 'configure payroll first' in data['message'].lower()
 
 
-def test_analyze_block_prefers_join_code_scoped_payroll_settings(client):
-    """Join-code-scoped payroll settings should take precedence over legacy block-only rows."""
-    admin = make_admin("joincodescopewins")
+def test_analyze_block_prefers_class_scoped_payroll_settings(client):
+    """Class-scoped payroll settings should take precedence over legacy block-only rows."""
+    admin = seed_canonical_admin("joincodescopewins").user
     db.session.flush()
 
     teacher_user = User(

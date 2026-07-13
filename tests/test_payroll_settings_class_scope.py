@@ -1,13 +1,14 @@
 from datetime import datetime, timezone
 
 from app.extensions import db
-from app.models import PayrollSettings, Seat, User, UserRole
+from app.feats.base import FEATContext
+from app.models import PayrollSettings, Seat, User
 from tests.helpers.class_scope import create_class_scope
 from tests.helpers.canonical_session import set_canonical_context
-from tests.helpers.v2_fixtures import make_admin
+from tests.helpers.v2_fixtures import seed_canonical_admin
 
 
-def _login_canonical_admin(client, admin: User, *, class_id: str, join_code: str) -> None:
+def _login_canonical_admin(client, admin: User, *, class_id: str) -> None:
     teacher_seat = Seat.query.filter_by(class_id=class_id, role="teacher").first()
     assert teacher_seat is not None
     with client.session_transaction() as sess:
@@ -22,13 +23,14 @@ def _login_canonical_admin(client, admin: User, *, class_id: str, join_code: str
 
 
 def test_payroll_settings_update_persists_class_scoped_row(client):
-    admin = make_admin("pay_scope_admin")
-    db.session.flush()
+    admin = seed_canonical_admin("pay_scope_admin").user
 
-    class_row = create_class_scope(
-        teacher_user=admin,
-    )
-    db.session.commit()
+    with FEATContext("FEAT-IDEN-001", idempotency_key="payroll_settings_scope:create_class"):
+        class_row = create_class_scope(
+            teacher_user=admin,
+            section="B",
+        )
+        db.session.flush()
 
     _login_canonical_admin(
         client,
@@ -57,13 +59,14 @@ def test_payroll_settings_update_persists_class_scoped_row(client):
 
 
 def test_expected_weekly_hours_update_creates_class_scoped_row(client):
-    admin = make_admin("pay_hours_admin")
-    db.session.flush()
+    admin = seed_canonical_admin("pay_hours_admin").user
 
-    class_row = create_class_scope(
-        teacher_user=admin,
-    )
-    db.session.commit()
+    with FEATContext("FEAT-IDEN-001", idempotency_key="payroll_settings_scope:create_class_hours"):
+        class_row = create_class_scope(
+            teacher_user=admin,
+            section="C",
+        )
+        db.session.flush()
 
     _login_canonical_admin(
         client,

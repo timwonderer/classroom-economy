@@ -4,7 +4,7 @@ Regression tests for sysadmin manage-teachers deletion policy.
 System admins should not have executable teacher/class deletion actions.
 """
 
-from tests.helpers.v2_fixtures import make_admin, make_sysadmin
+from tests.helpers.v2_fixtures import seed_canonical_admin, make_sysadmin
 import pyotp
 
 from app import db
@@ -20,7 +20,7 @@ def _create_sysadmin(username: str):
 
 
 def _create_teacher(username: str):
-    teacher = make_admin(username, pyotp.random_base32())
+    teacher = seed_canonical_admin(username, pyotp.random_base32()).user
     db.session.flush()
     return teacher
 

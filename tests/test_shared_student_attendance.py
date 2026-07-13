@@ -1,4 +1,4 @@
-from tests.helpers.v2_fixtures import make_admin
+from tests.helpers.v2_fixtures import seed_canonical_admin
 import uuid
 from datetime import datetime, timezone
 from app import db
@@ -13,8 +13,8 @@ def test_attendance_status_isolation(client):
     even if they share the same block name.
     """
     # 1. Setup Teachers
-    t1 = make_admin(f"t1_{uuid.uuid4().hex[:8]}", 'secret')
-    t2 = make_admin(f"t2_{uuid.uuid4().hex[:8]}", 'secret')
+    t1 = seed_canonical_admin(f"t1_{uuid.uuid4().hex[:8]}", 'secret').user
+    t2 = seed_canonical_admin(f"t2_{uuid.uuid4().hex[:8]}", 'secret').user
     db.session.flush()
 
     # 2. Create class scopes

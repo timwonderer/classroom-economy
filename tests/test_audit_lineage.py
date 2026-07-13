@@ -14,6 +14,7 @@ import uuid
 
 import pyotp
 import pytest
+from sqlalchemy import text
 
 from app.extensions import db
 from app.feats.base import FEATContext
@@ -53,7 +54,7 @@ def _make_class(user_id):
     return ce
 
 
-def _make_seat(class_id, join_code):
+def _make_seat(class_id):
     """Create a minimal Seat row and return it (does not commit)."""
     from app.models import Seat
 
@@ -112,15 +113,15 @@ def test_chain_hash_continuity(app):
         class_id = _make_class_id()
         scope = f"class:{class_id}"
 
-        for i in range(1, 6):
-            emit_audit_event(
-                table_name="ledger_transaction",
-                row_pk=str(i),
-                operation="INSERT",
-                protected_fields={"amount": str(i * 10)},
-                class_id=class_id,
-            )
-        db.session.commit()
+        with FEATContext("FEAT-TEST-AUDIT", idempotency_key=f"audit-lineage:chain:{class_id}"):
+            for i in range(1, 6):
+                emit_audit_event(
+                    table_name="ledger_transaction",
+                    row_pk=str(i),
+                    operation="INSERT",
+                    protected_fields={"amount": str(i * 10)},
+                    class_id=class_id,
+                )
 
         events = (
             AuditEvent.query
@@ -149,24 +150,27 @@ def test_verify_chain_detects_tampered_payload(app):
         class_id = _make_class_id()
         scope = f"class:{class_id}"
 
-        for i in range(1, 4):
-            emit_audit_event(
-                table_name="ledger_transaction",
-                row_pk=str(i),
-                operation="INSERT",
-                protected_fields={"amount": str(i)},
-                class_id=class_id,
-            )
-        db.session.commit()
+        with FEATContext("FEAT-TEST-AUDIT", idempotency_key=f"audit-lineage:tamper:{class_id}"):
+            for i in range(1, 4):
+                emit_audit_event(
+                    table_name="ledger_transaction",
+                    row_pk=str(i),
+                    operation="INSERT",
+                    protected_fields={"amount": str(i)},
+                    class_id=class_id,
+                )
 
-        # Directly corrupt payload_digest on the second event
+        # Directly corrupt payload_digest on the second event outside FEAT.
         second = (
             AuditEvent.query
             .filter_by(chain_scope=scope, sequence_number=2)
             .first()
         )
         assert second is not None
-        second.payload_digest = "a" * 64  # tampered
+        db.session.execute(
+            text("UPDATE audit_events SET payload_digest = :payload_digest WHERE id = :id"),
+            {"payload_digest": "a" * 64, "id": second.id},
+        )
         db.session.commit()
 
         result = verify_chain(scope)
@@ -188,23 +192,27 @@ def test_verify_chain_detects_deleted_event(app):
         class_id = _make_class_id()
         scope = f"class:{class_id}"
 
-        for i in range(1, 5):
-            emit_audit_event(
-                table_name="ledger_transaction",
-                row_pk=str(i),
-                operation="INSERT",
-                protected_fields={"amount": str(i)},
-                class_id=class_id,
-            )
-        db.session.commit()
+        with FEATContext("FEAT-TEST-AUDIT", idempotency_key=f"audit-lineage:delete:{class_id}"):
+            for i in range(1, 5):
+                emit_audit_event(
+                    table_name="ledger_transaction",
+                    row_pk=str(i),
+                    operation="INSERT",
+                    protected_fields={"amount": str(i)},
+                    class_id=class_id,
+                )
 
-        # Delete the second event to create a sequence gap
+        # Delete the second event to create a sequence gap.
         second = (
             AuditEvent.query
             .filter_by(chain_scope=scope, sequence_number=2)
             .first()
         )
-        db.session.delete(second)
+        assert second is not None
+        db.session.execute(
+            text("DELETE FROM audit_events WHERE id = :id"),
+            {"id": second.id},
+        )
         db.session.commit()
 
         result = verify_chain(scope)
@@ -244,20 +252,20 @@ def test_protected_write_attaches_lineage_token(app):
     with app.app_context():
         from app.services.ledger_service import create_pending_transaction
 
-        teacher_user = _make_user()
-        ce = _make_class(teacher_user.id)
-        seat = _make_seat(ce.class_id, ce.join_code)
+        with FEATContext("FEAT-TEST-AUDIT", idempotency_key="audit-lineage:protected-write"):
+            teacher_user = _make_user()
+            ce = _make_class(teacher_user.id)
+            seat = _make_seat(ce.class_id)
 
-        txn = create_pending_transaction(
-            seat_id=seat.id,
-            class_id=ce.class_id,
-            user_id=teacher_user.id,
-            amount="25.00",
-            account_type="checking",
-            type="payroll",
-            description="Test payroll",
-        )
-        db.session.commit()
+            txn = create_pending_transaction(
+                seat_id=seat.id,
+                class_id=ce.class_id,
+                user_id=teacher_user.id,
+                amount="25.00",
+                account_type="checking",
+                type="payroll",
+                description="Test payroll",
+            )
 
         assert txn.lineage_token is not None, (
             "lineage_token must be set after create_pending_transaction"
@@ -279,24 +287,30 @@ def test_integrity_status_degraded_on_bad_chain(app):
         class_id = _make_class_id()
         scope = f"class:{class_id}"
 
-        for i in range(1, 3):
-            emit_audit_event(
-                table_name="ledger_transaction",
-                row_pk=str(i),
-                operation="INSERT",
-                protected_fields={"amount": str(i)},
-                class_id=class_id,
-            )
-        db.session.commit()
+        with FEATContext("FEAT-TEST-AUDIT", idempotency_key=f"audit-lineage:integrity:{class_id}"):
+            for i in range(1, 3):
+                emit_audit_event(
+                    table_name="ledger_transaction",
+                    row_pk=str(i),
+                    operation="INSERT",
+                    protected_fields={"amount": str(i)},
+                    class_id=class_id,
+                )
 
-        # Break the chain by corrupting the first event's hash
+        # Break the chain by corrupting the first event's hash outside FEAT.
         first = (
             AuditEvent.query
             .filter_by(chain_scope=scope, sequence_number=1)
             .first()
         )
-        first.event_hash = "b" * 64
-        first.hmac_signature = "b" * 64
+        assert first is not None
+        db.session.execute(
+            text(
+                "UPDATE audit_events SET event_hash = :event_hash, hmac_signature = :hmac_signature "
+                "WHERE id = :id"
+            ),
+            {"event_hash": "b" * 64, "hmac_signature": "b" * 64, "id": first.id},
+        )
         db.session.commit()
 
         results = run_full_invariant_check()

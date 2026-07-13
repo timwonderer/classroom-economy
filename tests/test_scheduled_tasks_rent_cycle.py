@@ -5,7 +5,7 @@ from app import db
 from app.models import User, UserRole, ClassEconomy, RentPayment, RentSettings, Seat, IdentityProfile
 from app.scheduled_tasks import run_rent_cycle_for_class
 from app.utils.time import utc_now
-from tests.helpers.v2_fixtures import make_admin
+from tests.helpers.v2_fixtures import seed_canonical_admin
 
 
 def _make_student() -> Seat:
@@ -32,7 +32,7 @@ def _make_student() -> Seat:
 
 def test_rent_cycle_idempotency_same_cycle(monkeypatch, app):
     with app.app_context():
-        admin = make_admin("rent_cycle_teacher")
+        admin = seed_canonical_admin("rent_cycle_teacher").user
         db.session.flush()
 
         class_row = ClassEconomy(

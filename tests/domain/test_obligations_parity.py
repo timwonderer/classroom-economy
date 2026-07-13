@@ -23,7 +23,7 @@ from app.hash_utils import get_random_salt
 from app.services import obligations_service
 from tests.helpers.class_scope import create_class_scope
 from tests.helpers.class_scope import make_student_identity
-from tests.helpers.v2_fixtures import make_admin
+from tests.helpers.v2_fixtures import seed_canonical_admin
 
 _counter = 0
 
@@ -34,7 +34,7 @@ def _make_env(client):
     tag = f"obl-{_counter}"
 
     with FEATContext("FEAT-IDEN-001", idempotency_key=f"obligations_parity:{tag}:setup"):
-        admin = make_admin(f"{tag}-teacher", "secret")
+        admin = seed_canonical_admin(f"{tag}-teacher", "secret").user
         db.session.flush()
 
         class_row = create_class_scope(

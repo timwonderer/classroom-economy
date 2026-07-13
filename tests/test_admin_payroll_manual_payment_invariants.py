@@ -2,7 +2,7 @@ import pytest
 from app.feats.base import InvariantViolation
 from app.feats.base import FEATContext
 from app.extensions import db
-from tests.helpers.v2_fixtures import make_admin
+from tests.helpers.v2_fixtures import seed_canonical_admin
 from tests.helpers.class_scope import create_class_scope
 from app.models import Seat
 from tests.helpers.canonical_session import set_canonical_context
@@ -22,16 +22,14 @@ def test_payroll_scope_missing_class_id_raises_invariant(client):
 
 
 def test_payroll_scope_missing_seat_id_raises_invariant(client):
-    teacher = make_admin("teacher_no_seat", "secret")
-    db.session.add(teacher)
-    db.session.flush()
-
-    class_scope = create_class_scope(
-        teacher_user=teacher,
-        join_code="NOSEAT1",
-        display_name="No Seat Class",
-    )
-    db.session.commit()
+    with FEATContext("FEAT-IDEN-001", idempotency_key="admin_payroll_manual_payment:no_seat"):
+        teacher = seed_canonical_admin("teacher_no_seat", "secret").user
+        class_scope = create_class_scope(
+            teacher_user=teacher,
+            join_code="NOSEAT1",
+            display_name="No Seat Class",
+        )
+        db.session.flush()
 
     from app.routes.admin import _require_payroll_feature_scope_from_request
 
@@ -54,15 +52,13 @@ def test_payroll_scope_missing_seat_id_raises_invariant(client):
 
 
 def test_payroll_scope_seat_not_found_raises_invariant(client):
-    teacher = make_admin("teacher_invalid_seat", "secret")
-    db.session.add(teacher)
-    db.session.flush()
-
-    class_scope = create_class_scope(
-        teacher_user=teacher,
-        display_name="Invalid Seat Class",
-    )
-    db.session.commit()
+    with FEATContext("FEAT-IDEN-001", idempotency_key="admin_payroll_manual_payment:invalid_seat"):
+        teacher = seed_canonical_admin("teacher_invalid_seat", "secret").user
+        class_scope = create_class_scope(
+            teacher_user=teacher,
+            display_name="Invalid Seat Class",
+        )
+        db.session.flush()
 
     from app.routes.admin import _require_payroll_feature_scope_from_request
 
@@ -83,15 +79,13 @@ def test_payroll_scope_seat_not_found_raises_invariant(client):
 
 
 def test_payroll_scope_seat_class_mismatch_raises_invariant(client):
-    teacher = make_admin("teacher_mismatch", "secret")
-    db.session.add(teacher)
-    db.session.flush()
-
-    class_a = create_class_scope(
-        teacher_user=teacher, join_code="MISMATCA", display_name="Class A")
-    class_b = create_class_scope(
-        teacher_user=teacher, join_code="MISMATCB", display_name="Class B")
-    db.session.commit()
+    with FEATContext("FEAT-IDEN-001", idempotency_key="admin_payroll_manual_payment:mismatch"):
+        teacher = seed_canonical_admin("teacher_mismatch", "secret").user
+        class_a = create_class_scope(
+            teacher_user=teacher, join_code="MISMATCA", display_name="Class A")
+        class_b = create_class_scope(
+            teacher_user=teacher, join_code="MISMATCB", display_name="Class B")
+        db.session.flush()
 
     seat_a = Seat.query.filter_by(role='teacher', class_id=class_a.class_id).first()
     assert seat_a is not None
@@ -115,21 +109,18 @@ def test_payroll_scope_seat_class_mismatch_raises_invariant(client):
 
 
 def test_payroll_scope_student_seat_insufficient_authority(client):
-    teacher = make_admin("teacher_student_seat", "secret")
-    db.session.add(teacher)
-    db.session.flush()
+    with FEATContext("FEAT-IDEN-001", idempotency_key="admin_payroll_manual_payment:student_scope"):
+        teacher = seed_canonical_admin("teacher_student_seat", "secret").user
+        class_scope = create_class_scope(
+            teacher_user=teacher, join_code="STUDSEAT1", display_name="Class A")
 
-    class_scope = create_class_scope(
-        teacher_user=teacher, join_code="STUDSEAT1", display_name="Class A")
-
-    with FEATContext("FEAT-IDEN-001", idempotency_key="admin_payroll_manual_payment:student_seed"):
-        student_seat = Seat(
-            class_id=class_scope.class_id,
-            role='student',
-        )
-        db.session.add(student_seat)
-        db.session.flush()
-    db.session.commit()
+        with FEATContext("FEAT-IDEN-001", idempotency_key="admin_payroll_manual_payment:student_seed"):
+            student_seat = Seat(
+                class_id=class_scope.class_id,
+                role='student',
+            )
+            db.session.add(student_seat)
+            db.session.flush()
 
     from app.routes.admin import _require_payroll_feature_scope_from_request
 
@@ -150,16 +141,13 @@ def test_payroll_scope_student_seat_insufficient_authority(client):
 
 
 def test_payroll_scope_resolves_active_teacher_seat(client):
-    teacher = make_admin("teacher_two_seats", "secret")
-    db.session.add(teacher)
-    db.session.flush()
-
-    class_a = create_class_scope(
-        teacher_user=teacher, join_code="SEATRESA1", display_name="Class A")
-    class_b = create_class_scope(
-        teacher_user=teacher, join_code="SEATRESB1", display_name="Class B")
-
-    db.session.commit()
+    with FEATContext("FEAT-IDEN-001", idempotency_key="admin_payroll_manual_payment:active_teacher"):
+        teacher = seed_canonical_admin("teacher_two_seats", "secret").user
+        class_a = create_class_scope(
+            teacher_user=teacher, join_code="SEATRESA1", display_name="Class A")
+        class_b = create_class_scope(
+            teacher_user=teacher, join_code="SEATRESB1", display_name="Class B")
+        db.session.flush()
 
     from app.routes.admin import _require_payroll_feature_scope_from_request
 

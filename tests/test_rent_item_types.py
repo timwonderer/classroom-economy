@@ -1,5 +1,5 @@
 """Tests for rent item types (privilege, per-use, hall-pass) in V2 canonical patterns."""
-from tests.helpers.v2_fixtures import make_teacher
+from tests.helpers.v2_fixtures import make_teacher, seed_class_feature
 from tests.helpers.class_scope import create_class_scope, make_student_identity
 from tests.helpers.admin_context import login_teacher
 import pytest
@@ -17,18 +17,12 @@ from datetime import datetime, timezone, timedelta
 
 def _enable_rent(class_id):
     """Enable the 'rent' feature for a class if not already enabled."""
-    existing = ClassFeature.query.filter_by(class_id=class_id, feature_name="rent").first()
-    if not existing:
-        db.session.add(ClassFeature(class_id=class_id, feature_name="rent"))
-        db.session.flush()
+    seed_class_feature(class_id=class_id, feature_name="rent")
 
 
 def _enable_store(class_id):
     """Enable the 'store' feature for a class if not already enabled."""
-    existing = ClassFeature.query.filter_by(class_id=class_id, feature_name="store").first()
-    if not existing:
-        db.session.add(ClassFeature(class_id=class_id, feature_name="store"))
-        db.session.flush()
+    seed_class_feature(class_id=class_id, feature_name="store")
 
 
 # ---------------------------------------------------------------------------
@@ -69,7 +63,7 @@ def student_seat(client, class_scope):
 @pytest.fixture
 def admin_class_scope(client, teacher_user):
     """Create a second class scope used by admin-focused tests (section='A' so block routes work)."""
-    ce = ClassEconomy.query.filter_by(join_code="SCOPE123").first()
+    ce = ClassEconomy.query.filter_by(user_id=teacher_user.id).order_by(ClassEconomy.class_id.asc()).first()
     if not ce:
         ce = create_class_scope(teacher_user=teacher_user, join_code="SCOPE123", section="A")
         db.session.flush()
@@ -105,9 +99,6 @@ def _login_student(client, seat):
     with client.session_transaction() as sess:
         sess["user_id"] = student_user.id
         sess["current_session_nonce"] = nonce
-        sess["current_join_code"] = ClassEconomy.query.filter_by(
-            class_id=seat.class_id
-        ).first().join_code
         sess["login_time"] = datetime.now(timezone.utc).isoformat()
     return student_user
 

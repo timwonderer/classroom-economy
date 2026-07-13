@@ -9,8 +9,9 @@ import pytest
 from datetime import datetime, timezone, timedelta
 
 from app.extensions import db
+from app.feats.base import FEATContext
 from app.models import Seat, ClassEconomy, HallPassLog, HallPassSettings
-from tests.helpers.v2_fixtures import make_admin
+from tests.helpers.v2_fixtures import seed_canonical_admin
 from tests.helpers.class_scope import create_class_scope, make_student_identity
 from tests.helpers.canonical_session import set_canonical_context
 
@@ -42,39 +43,37 @@ def _login_teacher(client, *, teacher, class_row: ClassEconomy) -> None:
 @pytest.fixture
 def hp_ctx(client):
     """Create teacher, class, settings, student seat, and an approved hall pass."""
-    teacher = make_admin("hp_co_teacher1")
-    db.session.flush()
-    class_row = create_class_scope(teacher_user=teacher, join_code="HPTEST1")
-    db.session.flush()
+    with FEATContext("FEAT-IDEN-001", idempotency_key="hall-pass-checkout:seed"):
+        teacher = seed_canonical_admin("hp_co_teacher1").user
+        class_row = create_class_scope(teacher_user=teacher, join_code="HPTEST1")
 
-    settings = HallPassSettings(
-        class_id=class_row.class_id,
-        queue_enabled=True,
-        queue_limit=10,
-        pass_types=[
-            {"name": "Bathroom", "simultaneous_limit": 2, "enabled": True},
-            {"name": "Office", "simultaneous_limit": None, "enabled": True},
-        ],
-    )
-    db.session.add(settings)
+        settings = HallPassSettings(
+            class_id=class_row.class_id,
+            queue_enabled=True,
+            queue_limit=10,
+            pass_types=[
+                {"name": "Bathroom", "simultaneous_limit": 2, "enabled": True},
+                {"name": "Office", "simultaneous_limit": None, "enabled": True},
+            ],
+        )
+        db.session.add(settings)
 
-    student_seat = make_student_identity(
-        class_id=class_row.class_id, first_name="Alice", last_name="A"
-    )
-    db.session.flush()
+        student_seat = make_student_identity(
+            class_id=class_row.class_id, first_name="Alice", last_name="A"
+        )
 
-    now = datetime.now(timezone.utc)
-    hall_pass = HallPassLog(
-        seat_id=student_seat.id,
-        class_id=class_row.class_id,
-        reason="Bathroom",
-        status="approved",
-        period="Period1",
-        request_time=now - timedelta(minutes=10),
-        decision_time=now - timedelta(minutes=5),
-    )
-    db.session.add(hall_pass)
-    db.session.commit()
+        now = datetime.now(timezone.utc)
+        hall_pass = HallPassLog(
+            seat_id=student_seat.id,
+            class_id=class_row.class_id,
+            reason="Bathroom",
+            status="approved",
+            period="Period1",
+            request_time=now - timedelta(minutes=10),
+            decision_time=now - timedelta(minutes=5),
+        )
+        db.session.add(hall_pass)
+        db.session.flush()
 
     return {
         "teacher": teacher,
@@ -126,10 +125,11 @@ def test_checkout_rejects_wrong_student(client, hp_ctx):
     hall_pass = hp_ctx["hall_pass"]
     class_row = hp_ctx["class_row"]
 
-    other_seat = make_student_identity(
-        class_id=class_row.class_id, first_name="Bob", last_name="B"
-    )
-    db.session.commit()
+    with FEATContext("FEAT-IDEN-001", idempotency_key="hall-pass-checkout:wrong-student"):
+        other_seat = make_student_identity(
+            class_id=class_row.class_id, first_name="Bob", last_name="B"
+        )
+        db.session.flush()
 
     _login_student(client, seat=other_seat)
 
@@ -150,8 +150,9 @@ def test_checkout_rejects_non_approved_pass(client, hp_ctx):
     seat = hp_ctx["student_seat"]
     hall_pass = hp_ctx["hall_pass"]
 
-    hall_pass.status = "pending"
-    db.session.commit()
+    with FEATContext("FEAT-IDEN-001", idempotency_key="hall-pass-checkout:pending-pass"):
+        hall_pass.status = "pending"
+        db.session.flush()
 
     _login_student(client, seat=seat)
 
@@ -173,9 +174,10 @@ def test_checkin_with_left_pass(client, hp_ctx):
     hall_pass = hp_ctx["hall_pass"]
 
     now = datetime.now(timezone.utc)
-    hall_pass.status = "left"
-    hall_pass.left_time = now - timedelta(minutes=5)
-    db.session.commit()
+    with FEATContext("FEAT-IDEN-001", idempotency_key="hall-pass-checkout:left-pass"):
+        hall_pass.status = "left"
+        hall_pass.left_time = now - timedelta(minutes=5)
+        db.session.flush()
 
     _login_student(client, seat=seat)
 
@@ -223,25 +225,25 @@ def test_checkout_blocked_by_simultaneous_limit(client, hp_ctx):
     class_row = hp_ctx["class_row"]
 
     now = datetime.now(timezone.utc)
-    for i in range(2):
-        other_seat = make_student_identity(
-            class_id=class_row.class_id,
-            first_name=f"Other{i}",
-            last_name="S",
-        )
+    with FEATContext("FEAT-IDEN-001", idempotency_key="hall-pass-checkout:simultaneous-limit"):
+        for i in range(2):
+            other_seat = make_student_identity(
+                class_id=class_row.class_id,
+                first_name=f"Other{i}",
+                last_name="S",
+            )
+            other_pass = HallPassLog(
+                seat_id=other_seat.id,
+                class_id=class_row.class_id,
+                reason="Bathroom",
+                status="left",
+                period="Period1",
+                request_time=now - timedelta(minutes=15),
+                decision_time=now - timedelta(minutes=10),
+                left_time=now - timedelta(minutes=5),
+            )
+            db.session.add(other_pass)
         db.session.flush()
-        other_pass = HallPassLog(
-            seat_id=other_seat.id,
-            class_id=class_row.class_id,
-            reason="Bathroom",
-            status="left",
-            period="Period1",
-            request_time=now - timedelta(minutes=15),
-            decision_time=now - timedelta(minutes=10),
-            left_time=now - timedelta(minutes=5),
-        )
-        db.session.add(other_pass)
-    db.session.commit()
 
     _login_student(client, seat=seat)
 
@@ -266,10 +268,11 @@ def test_approve_does_not_generate_pass_number(client, hp_ctx):
     class_row = hp_ctx["class_row"]
     hall_pass = hp_ctx["hall_pass"]
 
-    hall_pass.status = "pending"
-    hall_pass.reason = "Office"
-    hall_pass.decision_time = None
-    db.session.commit()
+    with FEATContext("FEAT-IDEN-001", idempotency_key="hall-pass-checkout:approve-state"):
+        hall_pass.status = "pending"
+        hall_pass.reason = "Office"
+        hall_pass.decision_time = None
+        db.session.flush()
 
     _login_teacher(client, teacher=teacher, class_row=class_row)
 
@@ -293,15 +296,13 @@ def test_checkout_rejects_mismatched_class_context(client, hp_ctx):
     seat = hp_ctx["student_seat"]
     hall_pass = hp_ctx["hall_pass"]
 
-    class_b = create_class_scope(teacher_user=teacher, join_code="HPTEST2")
-    db.session.flush()
-
-    other_seat = make_student_identity(
-        class_id=class_b.class_id, first_name="Alice", last_name="A"
-    )
-    other_seat.user_id = seat.user_id
-    db.session.flush()
-    db.session.commit()
+    with FEATContext("FEAT-IDEN-001", idempotency_key="hall-pass-checkout:mismatched-context"):
+        class_b = create_class_scope(teacher_user=teacher, join_code="HPTEST2")
+        other_seat = make_student_identity(
+            class_id=class_b.class_id, first_name="Alice", last_name="A"
+        )
+        other_seat.user_id = seat.user_id
+        db.session.flush()
 
     _login_student(client, seat=other_seat)
 
@@ -322,18 +323,16 @@ def test_cancel_rejects_mismatched_class_context(client, hp_ctx):
     seat = hp_ctx["student_seat"]
     hall_pass = hp_ctx["hall_pass"]
 
-    hall_pass.status = "pending"
-    hall_pass.decision_time = None
+    with FEATContext("FEAT-IDEN-001", idempotency_key="hall-pass-checkout:cancel-state"):
+        hall_pass.status = "pending"
+        hall_pass.decision_time = None
 
-    class_b = create_class_scope(teacher_user=teacher, join_code="HPTEST3")
-    db.session.flush()
-
-    other_seat = make_student_identity(
-        class_id=class_b.class_id, first_name="Alice", last_name="A"
-    )
-    other_seat.user_id = seat.user_id
-    db.session.flush()
-    db.session.commit()
+        class_b = create_class_scope(teacher_user=teacher, join_code="HPTEST3")
+        other_seat = make_student_identity(
+            class_id=class_b.class_id, first_name="Alice", last_name="A"
+        )
+        other_seat.user_id = seat.user_id
+        db.session.flush()
 
     _login_student(client, seat=other_seat)
 

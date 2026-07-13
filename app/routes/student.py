@@ -24,7 +24,7 @@ from dateutil.relativedelta import relativedelta
 
 from app.extensions import db, limiter
 from app.models import (
-    Transaction, TransactionStatus, AttendanceSession, StoreItem, StoreItemBlock, StorePurchase,
+    Transaction, TransactionStatus, AttendanceSession, StoreItem, StoreItemBlock, StoreItemVisibility, StorePurchase,
     RentSettings, RentPayment, InsurancePolicy, InsuranceEnrollment, InsuranceClaim,
     BankingSettings, UserReport, FeatureSettings, Issue, Seat, User, UserRole,
     ClassEconomy, IdentityProfile, _quantize_currency
@@ -118,15 +118,15 @@ def _get_identity_bound_seat_options(user_id: int):
             Seat.claimed_at.isnot(None),
             Seat.class_id.isnot(None),
         )
-        .order_by(ClassEconomy.display_name.asc(), ClassEconomy.join_code.asc(), Seat.id.asc())
+        .order_by(ClassEconomy.display_name.asc(), ClassEconomy.class_id.asc(), Seat.id.asc())
         .all()
     )
     return [
         {
             "seat_id": seat.id,
             "class_id": seat.class_id,
-            "join_code": class_row.join_code,
-            "class_identifier": class_row.block or class_row.join_code,
+            "join_code": get_display_join_code(class_row.class_id),
+            "class_identifier": class_row.display_name or get_display_join_code(class_row.class_id),
             "class_name": class_row.display_name,
         }
         for seat, class_row in seat_rows
@@ -265,7 +265,7 @@ def _get_canonical_student_from_context() -> Seat | None:
 
 
 
-def _get_total_earnings_for_seat(seat_id: int | None, *, class_id: str | None = None, join_code: str | None = None) -> float:
+def _get_total_earnings_for_seat(seat_id: int | None, *, class_id: str | None = None) -> float:
     if not seat_id:
         return 0.0
     query = Transaction.query.filter(
@@ -276,8 +276,6 @@ def _get_total_earnings_for_seat(seat_id: int | None, *, class_id: str | None = 
     )
     if class_id:
         query = query.filter(Transaction.class_id == class_id)
-    elif join_code:
-        query = query.filter(Transaction.join_code == join_code)
     total = query.with_entities(func.sum(Transaction.amount)).scalar()
     return float(round(_quantize_currency(total), 2)) if total else 0.0
 
@@ -492,16 +490,16 @@ def claim_account():
     form = StudentClaimAccountForm()
 
     if form.validate_on_submit():
-        join_code = format_join_code(form.join_code.data)
+        display_join_code = format_join_code(form.join_code.data)
         first_name = (form.first_name.data or "").strip()
         last_name = form.last_name.data.strip()
         dedupe_code = (form.dedupe_code.data or "").strip().upper()
 
         # Resolve class context
-        class_row = ClassEconomy.query.filter_by(join_code=join_code).first()
+        class_row = ClassEconomy.query.filter_by(class_id=context.class_id).first()
         if not class_row:
             current_app.logger.warning(
-                f"Claim attempt failed: No class found for join_code={join_code}"
+                f"Claim attempt failed: No class found for join_code={display_join_code}"
             )
             flash("Invalid join code or all seats already claimed. Check with your teacher.", "claim")
             return redirect(url_for('student.claim_account'))
@@ -535,7 +533,7 @@ def claim_account():
 
         if not matched_seats:
             current_app.logger.warning(
-                f"Claim attempt failed for join_code={join_code}, "
+                f"Claim attempt failed for join_code={display_join_code}, "
                 f"first_name={first_name}, last_name={last_name}. "
                 f"No matching seat found."
             )
@@ -764,13 +762,13 @@ def add_class():
         return url_for(default_endpoint)
 
     if form.validate_on_submit():
-        join_code = format_join_code(form.join_code.data)
+        display_join_code = format_join_code(form.join_code.data)
         first_name = (form.first_name.data or "").strip()
         last_name = form.last_name.data.strip()
         dedupe_code = (form.dedupe_code.data or "").strip().upper()
 
         # Resolve class context
-        class_row = ClassEconomy.query.filter_by(join_code=join_code).first()
+        class_row = ClassEconomy.query.filter_by(join_code=display_join_code).first()
         if not class_row:
             flash("Invalid join code or all seats already claimed. Check with your teacher.", "danger")
             return redirect(_get_return_target())
@@ -865,7 +863,7 @@ def dashboard():
     student = db.session.get(Seat, context.seat_id)
 
     try:
-        scope = resolve_scope(actor=student, selected_join_code=None)
+        scope = resolve_scope(actor=student, selected_class_id=None)
         if context and scope.class_id != context.class_id:
             raise AccessScopeDenied(reason_code="foreign_class_scope", message="Please switch to the selected class.")
         access_policy_service.assert_can_view_dashboard(scope)
@@ -1629,11 +1627,10 @@ def purchase_insurance(policy_id):
         flash("No class selected.", "danger")
         return redirect(url_for('student.dashboard'))
 
-    join_code = get_display_join_code(context.class_id)
     policy = db.get_or_404(InsurancePolicy, policy_id)
 
-    # FIX: Verify policy belongs to CURRENT teacher only
-    if policy.join_code != join_code:
+    # FIX: Verify policy belongs to the current class universe only
+    if policy.class_id != context.class_id:
         flash("This insurance policy is not available in your current class.", "danger")
         return redirect(url_for('student.student_insurance'))
 
@@ -1769,7 +1766,7 @@ def file_claim(policy_id):
         return redirect(url_for('student.student_insurance'))
     try:
         context = resolve_canonical_context()
-        scope = resolve_scope(actor=student, selected_join_code=None)
+        scope = resolve_scope(actor=student, selected_class_id=None)
         if context and scope.class_id != context.class_id:
             raise AccessScopeDenied(reason_code="foreign_class_scope", message="Please switch to the selected class.")
     except ContextResolutionError:
@@ -2106,8 +2103,6 @@ def shop():
     if not class_id:
         class_id = context.class_id
 
-    current_block = seat.class_economy.section.strip().upper() if seat and seat.class_economy and seat.class_economy.section else ""
-
     now = utc_now()
     now_db = normalize_for_db(now)
     items_query = StoreItem.query.filter(
@@ -2115,14 +2110,10 @@ def shop():
         StoreItem.is_active == True,
         or_(StoreItem.auto_delist_date == None, StoreItem.auto_delist_date > now_db),
     )
-    if current_block:
-        items_query = items_query.filter(
-            or_(
-                StoreItem.visible_blocks.any(func.upper(StoreItemBlock.block) == current_block),
-                ~StoreItem.visible_blocks.any(),
-            )
-        )
-    items = items_query.order_by(StoreItem.name).all()
+    items = [
+        item for item in items_query.order_by(StoreItem.name).all()
+        if store_service.is_item_visible_to_seat(item.id, seat.id)
+    ]
 
     student_items = (
         StorePurchase.query
@@ -2235,7 +2226,7 @@ def shop():
     # Calculate class size for collective goals (count unique students in this class)
     from app.models import Seat
     class_size = 0
-    if join_code:
+    if class_id:
         class_size = (
             db.session.query(db.func.count(db.func.distinct(Seat.id)))
             .filter(
@@ -2249,7 +2240,7 @@ def shop():
     collective_progress = {}
     collective_items = [item for item in items if item.item_type == 'collective']
     collective_item_ids = [item.id for item in collective_items]
-    if collective_item_ids and join_code:
+    if collective_item_ids and class_id:
         progress_rows = (
             db.session.query(
                 StorePurchase.store_item_id,
@@ -2285,6 +2276,7 @@ def shop():
                 'is_complete': bool(target > 0 and count >= target),
             }
 
+    current_block = seat.class_economy.section.strip().upper() if seat and seat.class_economy and seat.class_economy.section else ""
     return render_template('student_shop.html', student=seat, items=items, student_items=student_items,
                          has_paid_rent=has_paid_rent, per_period_rent_item_ids=per_period_rent_item_ids,
                          rent_item_types_by_store_id=rent_item_types_by_store_id,
@@ -2546,16 +2538,6 @@ def _get_locked_rent_amount_for_class_cycle(class_id, coverage_due_date):
     return get_cycle_rent_amount(class_id, coverage_due_date.month, coverage_due_date.year)
 
 
-def _get_locked_rent_amount_for_join_code_cycle(join_code, coverage_due_date):
-    """Backward-compatible alias for the class-scoped rent amount helper."""
-    if not join_code or not coverage_due_date:
-        return None
-    class_row = ClassEconomy.query.filter_by(join_code=join_code).first()
-    if not class_row:
-        return None
-    return _get_locked_rent_amount_for_class_cycle(class_row.class_id, coverage_due_date)
-
-
 def _get_effective_rent_amount_for_coverage_period(
     settings,
     assessments,
@@ -2683,8 +2665,7 @@ def _build_rent_coverage_context(
     if not settings or not class_id or not coverage_due_date or not seat_ids:
         return None
 
-    class_row = db.session.get(ClassEconomy, class_id)
-    join_code = class_row.join_code if class_row else None
+    join_code = get_display_join_code(class_id)
     if not join_code:
         return None
 
@@ -2887,19 +2868,14 @@ def _is_student_coverage_period_paid(
             and context_coverage_due == ensure_utc(coverage_due_date)
         )
 
-    join_code = None
     student_id = None
     locked_amount = None
     if context_applies:
-        join_code = coverage_context.get("join_code")
         student_id = (coverage_context.get("student_id_by_seat") or {}).get(seat_id)
         locked_amount = coverage_context.get("locked_rent_amount")
         if include_waivers and seat_id in (coverage_context.get("waived_seat_ids") or set()):
             return True
     else:
-        if class_id:
-            class_row = db.session.get(ClassEconomy, class_id)
-            join_code = class_row.join_code if class_row else None
         if seat_id:
             seat = db.session.get(Seat, seat_id)
             student_id = seat.user_id if seat else None

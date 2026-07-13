@@ -6,7 +6,7 @@ Tests the following features:
 2. Dynamic color coding based on days until rent is due
 3. Status text changes based on payment status and due date proximity
 """
-from tests.helpers.v2_fixtures import make_admin, make_sysadmin
+from tests.helpers.v2_fixtures import seed_canonical_admin, make_sysadmin
 import pytest
 from datetime import datetime, timezone, timedelta
 import os
@@ -14,6 +14,7 @@ import os
 from werkzeug.security import generate_password_hash
 
 from app import db
+from app.feats.base import FEATContext
 from app.models import User, UserRole, RentSettings, RentItem, ClassEconomy, Transaction, TransactionStatus, Seat, IdentityProfile
 from tests.helpers.class_scope import make_student_identity
 from tests.helpers.canonical_session import set_canonical_context
@@ -22,62 +23,60 @@ from tests.helpers.canonical_session import set_canonical_context
 @pytest.fixture
 def setup_rent_with_items(client):
     """Create teacher, student, rent settings, and rent items."""
-    teacher = make_admin("test_teacher")
-    db.session.flush()
-    db.session.commit()
+    with FEATContext("FEAT-IDEN-001", idempotency_key="rent-display:setup"):
+        teacher = seed_canonical_admin("test_teacher").user
+        db.session.flush()
 
-    economy = ClassEconomy(
-        join_code="TESTA",
-        user_id=teacher.id,
-        display_name='Test Rent Class',
-        status='active',
-    )
-    db.session.add(economy)
-    db.session.flush()
+        economy = ClassEconomy(
+            join_code="TESTA",
+            user_id=teacher.id,
+            display_name='Test Rent Class',
+            status='active',
+        )
+        db.session.add(economy)
+        db.session.flush()
 
-    student_seat = make_student_identity(
-        class_id=economy.class_id,
-        first_name="Test",
-        last_name="S",
-        claimed=True,
-    )
-    db.session.commit()
+        student_seat = make_student_identity(
+            class_id=economy.class_id,
+            first_name="Test",
+            last_name="S",
+            claimed=True,
+        )
+        student_seat.is_rent_enabled = True
 
-    # Create rent settings (join-code scoped)
-    now = datetime.now(timezone.utc)
-    rent_settings = RentSettings(join_code="TESTA",
-        block="A",
-        is_enabled=True,
-        rent_amount=50.0,
-        first_rent_due_date=now + timedelta(days=10),  # Due in 10 days
-        grace_period_days=3,
-        bill_preview_enabled=True,
-        bill_preview_days=5,
-    )
-    db.session.add(rent_settings)
-    db.session.commit()
+        # Create rent settings on the canonical class scope.
+        now = datetime.now(timezone.utc)
+        rent_settings = RentSettings(
+            class_id=economy.class_id,
+            rent_amount=50.0,
+            first_rent_due_date=now + timedelta(days=10),  # Due in 10 days
+            grace_period_days=3,
+            bill_preview_enabled=True,
+            bill_preview_days=5,
+        )
+        db.session.add(rent_settings)
+        db.session.flush()
 
-    # Create rent items
-    item1 = RentItem(
-        rent_setting_id=rent_settings.id,
-        name="Desk",
-        description="A comfortable desk space",
-        order_index=1,
-        is_available_in_store=True,
-        store_price=15.0,
-        purchase_duration='per_period'
-    )
-    item2 = RentItem(
-        rent_setting_id=rent_settings.id,
-        name="Locker",
-        description="Secure storage locker",
-        order_index=2,
-        is_available_in_store=True,
-        store_price=20.0,
-        purchase_duration='per_use'
-    )
-    db.session.add_all([item1, item2])
-    db.session.commit()
+        # Create rent items
+        item1 = RentItem(
+            rent_setting_id=rent_settings.id,
+            name="Desk",
+            description="A comfortable desk space",
+            order_index=1,
+            is_available_in_store=True,
+            store_price=15.0,
+            purchase_duration='per_period'
+        )
+        item2 = RentItem(
+            rent_setting_id=rent_settings.id,
+            name="Locker",
+            description="Secure storage locker",
+            order_index=2,
+            is_available_in_store=True,
+            store_price=20.0,
+            purchase_duration='per_use'
+        )
+        db.session.add_all([item1, item2])
 
     return {
         'teacher': teacher,
@@ -115,10 +114,11 @@ def test_rent_items_display_after_due_date(client, setup_rent_with_items):
     """Test that rent items are still visible after the rent is due."""
     data = setup_rent_with_items
     
-    # Update rent settings to have due date in the past
+    # Update rent settings to have due date in the past.
     now = datetime.now(timezone.utc)
-    data['rent_settings'].first_rent_due_date = now - timedelta(days=2)
-    db.session.commit()
+    with FEATContext("FEAT-OBL-001", idempotency_key="rent-display:after-due"):
+        data['rent_settings'].first_rent_due_date = now - timedelta(days=2)
+        db.session.commit()
     
     with client.session_transaction() as sess:
         set_canonical_context(
@@ -143,23 +143,24 @@ def test_overdue_rent_payment_uses_coverage_month_in_transaction_description(cli
     fixed_now = datetime(2026, 2, 17, 12, 0, tzinfo=timezone.utc)
 
     # Make this mirror the reported scenario: due day 28, preview enabled.
-    data['rent_settings'].first_rent_due_date = datetime(2026, 1, 28, tzinfo=timezone.utc)
-    data['rent_settings'].bill_preview_enabled = True
-    data['rent_settings'].bill_preview_days = 14
-    data['rent_settings'].late_penalty_amount = 20
-    data['rent_settings'].rent_amount = 570
-    data['student'].is_rent_enabled = True
-    db.session.add(
-        Transaction(
-            student_id=data['student'].id,join_code=data['join_code'],
-            amount=1000,
-            account_type='checking',
-            status=TransactionStatus.POSTED,
-            type='Deposit',
-            description='Seed funds for rent test',
+    with FEATContext("FEAT-OBL-001", idempotency_key="rent-display:overdue-payment"):
+        data['rent_settings'].first_rent_due_date = datetime(2026, 1, 28, tzinfo=timezone.utc)
+        data['rent_settings'].bill_preview_enabled = True
+        data['rent_settings'].bill_preview_days = 14
+        data['rent_settings'].late_penalty_amount = 20
+        data['rent_settings'].rent_amount = 570
+        data['student'].is_rent_enabled = True
+        db.session.add(
+            Transaction(
+                student_id=data['student'].id,join_code=data['join_code'],
+                amount=1000,
+                account_type='checking',
+                status=TransactionStatus.POSTED,
+                type='Deposit',
+                description='Seed funds for rent test',
+            )
         )
-    )
-    db.session.commit()
+        db.session.commit()
 
     monkeypatch.setattr('app.routes.student.utc_now', lambda: fixed_now)
 
@@ -191,12 +192,13 @@ def test_overdue_current_period_does_not_show_future_due_countdown(client, setup
     data = setup_rent_with_items
     fixed_now = datetime(2026, 2, 18, 12, 0, tzinfo=timezone.utc)
 
-    data['rent_settings'].first_rent_due_date = datetime(2026, 1, 28, tzinfo=timezone.utc)
-    data['rent_settings'].bill_preview_enabled = True
-    data['rent_settings'].bill_preview_days = 20
-    data['rent_settings'].grace_period_days = 5  # Keep this within grace to isolate due-date selection
-    data['student'].is_rent_enabled = True
-    db.session.commit()
+    with FEATContext("FEAT-OBL-001", idempotency_key="rent-display:overdue-countdown"):
+        data['rent_settings'].first_rent_due_date = datetime(2026, 1, 28, tzinfo=timezone.utc)
+        data['rent_settings'].bill_preview_enabled = True
+        data['rent_settings'].bill_preview_days = 20
+        data['rent_settings'].grace_period_days = 5  # Keep this within grace to isolate due-date selection
+        data['student'].is_rent_enabled = True
+        db.session.commit()
 
     monkeypatch.setattr('app.routes.student.utc_now', lambda: fixed_now)
 
@@ -220,10 +222,11 @@ def test_days_until_due_calculation(client, setup_rent_with_items):
     data = setup_rent_with_items
     now = datetime.now(timezone.utc)
     # Activate preview so the countdown is visible (due in 10 days, preview for 12)
-    data['rent_settings'].bill_preview_enabled = True
-    data['rent_settings'].bill_preview_days = 12
-    data['rent_settings'].first_rent_due_date = now + timedelta(days=10, hours=1)
-    db.session.commit()
+    with FEATContext("FEAT-OBL-001", idempotency_key="rent-display:days-until-due"):
+        data['rent_settings'].bill_preview_enabled = True
+        data['rent_settings'].bill_preview_days = 12
+        data['rent_settings'].first_rent_due_date = now + timedelta(days=10, hours=1)
+        db.session.commit()
     
     with client.session_transaction() as sess:
         set_canonical_context(
@@ -249,10 +252,11 @@ def test_status_text_more_than_7_days(client, setup_rent_with_items):
     
     # Set rent due date to 8 days from now (within preview period so it's active)
     now = datetime.now(timezone.utc)
-    data['rent_settings'].first_rent_due_date = now + timedelta(days=8, hours=1)
-    data['rent_settings'].bill_preview_enabled = True
-    data['rent_settings'].bill_preview_days = 9  # Activate preview before the due date
-    db.session.commit()
+    with FEATContext("FEAT-OBL-001", idempotency_key="rent-display:status-gt-7"):
+        data['rent_settings'].first_rent_due_date = now + timedelta(days=8, hours=1)
+        data['rent_settings'].bill_preview_enabled = True
+        data['rent_settings'].bill_preview_days = 9  # Activate preview before the due date
+        db.session.commit()
     
     with client.session_transaction() as sess:
         set_canonical_context(
@@ -277,8 +281,9 @@ def test_status_text_between_3_and_7_days(client, setup_rent_with_items):
     
     # Set rent due date to 3 days from now
     now = datetime.now(timezone.utc)
-    data['rent_settings'].first_rent_due_date = now + timedelta(days=3, hours=1)
-    db.session.commit()
+    with FEATContext("FEAT-OBL-001", idempotency_key="rent-display:status-3to7"):
+        data['rent_settings'].first_rent_due_date = now + timedelta(days=3, hours=1)
+        db.session.commit()
     
     with client.session_transaction() as sess:
         set_canonical_context(
@@ -302,8 +307,9 @@ def test_status_text_within_2_days(client, setup_rent_with_items):
     
     # Set rent due date to 2 days from now
     now = datetime.now(timezone.utc)
-    data['rent_settings'].first_rent_due_date = now + timedelta(days=2, hours=1)
-    db.session.commit()
+    with FEATContext("FEAT-OBL-001", idempotency_key="rent-display:status-2days"):
+        data['rent_settings'].first_rent_due_date = now + timedelta(days=2, hours=1)
+        db.session.commit()
     
     with client.session_transaction() as sess:
         set_canonical_context(
@@ -328,9 +334,10 @@ def test_status_text_past_due(client, setup_rent_with_items):
     # Set rent due date to 5 days ago (past grace period)
     now = datetime.now(timezone.utc)
     due_date = now - timedelta(days=5)
-    data['rent_settings'].first_rent_due_date = due_date
-    data['rent_settings'].grace_period_days = 0
-    db.session.commit()
+    with FEATContext("FEAT-OBL-001", idempotency_key="rent-display:status-past-due"):
+        data['rent_settings'].first_rent_due_date = due_date
+        data['rent_settings'].grace_period_days = 0
+        db.session.commit()
     
     with client.session_transaction() as sess:
         set_canonical_context(
@@ -353,8 +360,9 @@ def test_status_text_due_today(client, setup_rent_with_items):
     data = setup_rent_with_items
     
     now = datetime.now(timezone.utc)
-    data['rent_settings'].first_rent_due_date = now + timedelta(hours=1)
-    db.session.commit()
+    with FEATContext("FEAT-OBL-001", idempotency_key="rent-display:status-due-today"):
+        data['rent_settings'].first_rent_due_date = now + timedelta(hours=1)
+        db.session.commit()
     
     with client.session_transaction() as sess:
         set_canonical_context(
@@ -379,10 +387,11 @@ def test_status_text_no_rent_yet(client, setup_rent_with_items):
     # Set rent due date to 20 days from now with 5-day preview
     # So we're more than 5 days before the due date
     now = datetime.now(timezone.utc)
-    data['rent_settings'].first_rent_due_date = now + timedelta(days=20)
-    data['rent_settings'].bill_preview_enabled = True
-    data['rent_settings'].bill_preview_days = 5
-    db.session.commit()
+    with FEATContext("FEAT-OBL-001", idempotency_key="rent-display:status-no-rent"):
+        data['rent_settings'].first_rent_due_date = now + timedelta(days=20)
+        data['rent_settings'].bill_preview_enabled = True
+        data['rent_settings'].bill_preview_days = 5
+        db.session.commit()
     
     with client.session_transaction() as sess:
         set_canonical_context(
@@ -429,9 +438,10 @@ def test_incremental_rent_form_shows_even_when_full_balance_is_short(client, set
     data = setup_rent_with_items
 
     now = datetime.now(timezone.utc)
-    data['rent_settings'].first_rent_due_date = now - timedelta(days=1)
-    data['rent_settings'].allow_incremental_payment = True
-    db.session.commit()
+    with FEATContext("FEAT-OBL-001", idempotency_key="rent-display:incremental"):
+        data['rent_settings'].first_rent_due_date = now - timedelta(days=1)
+        data['rent_settings'].allow_incremental_payment = True
+        db.session.commit()
 
     with client.session_transaction() as sess:
         set_canonical_context(

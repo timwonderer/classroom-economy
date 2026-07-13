@@ -1,5 +1,6 @@
-from tests.helpers.v2_fixtures import make_admin
+from tests.helpers.v2_fixtures import seed_canonical_admin
 from app import db
+from app.feats.base import FEATContext
 from werkzeug.security import generate_password_hash
 from app.hash_utils import hash_username_lookup
 from bs4 import BeautifulSoup
@@ -22,8 +23,7 @@ def parse_server_state(html):
 
 def _create_class_with_login_student(teacher, join_code, block, username, pin):
     """Create a class, student, and set up login credentials. Returns (class_row, seat, user)."""
-    class_economy = ClassEconomy.query.filter_by(join_code=join_code).first()
-    if not class_economy:
+    with FEATContext("FEAT-IDEN-001", idempotency_key=f"tap-flow:seed:{join_code}:{username}"):
         class_economy = ClassEconomy(
             user_id=teacher.id,
             join_code=join_code,
@@ -33,15 +33,15 @@ def _create_class_with_login_student(teacher, join_code, block, username, pin):
         db.session.add(class_economy)
         db.session.flush()
 
-    student_seat = make_student_identity(class_id=class_economy.class_id, first_name="Test", last_name="S", claimed=True)
-    db.session.flush()
-    student_user = db.session.get(User, student_seat.user_id)
-    student_user.username_lookup_hash = hash_username_lookup(username)
-    student_user.pin_hash = generate_password_hash(pin)
-    student_user.has_completed_setup = True
-    student_user.last_active_class_id = class_economy.class_id
-    student_user.last_active_seat_id = student_seat.id
-    db.session.flush()
+        student_seat = make_student_identity(class_id=class_economy.class_id, first_name="Test", last_name="S", claimed=True)
+        db.session.flush()
+        student_user = db.session.get(User, student_seat.user_id)
+        student_user.username_lookup_hash = hash_username_lookup(username)
+        student_user.pin_hash = generate_password_hash(pin)
+        student_user.has_completed_setup = True
+        student_user.last_active_class_id = class_economy.class_id
+        student_user.last_active_seat_id = student_seat.id
+        db.session.flush()
 
     seat = Seat.query.filter_by(user_id=student_user.id, class_id=class_economy.class_id, role="student").first()
     return class_economy, seat, student_user
@@ -50,7 +50,7 @@ def _create_class_with_login_student(teacher, join_code, block, username, pin):
 def test_dynamic_blocks_and_tap_flow(client):
     import pyotp
 
-    teacher = make_admin("tapflow-teacher", pyotp.random_base32())
+    teacher = seed_canonical_admin("tapflow-teacher", pyotp.random_base32()).user
     db.session.flush()
 
     username = "t1_tap"
@@ -88,7 +88,7 @@ def test_dynamic_blocks_and_tap_flow(client):
 def test_invalid_period_and_action(client):
     import pyotp
 
-    teacher = make_admin("t2_teacher", pyotp.random_base32())
+    teacher = seed_canonical_admin("t2_teacher", pyotp.random_base32()).user
     db.session.flush()
 
     username = "t2_tap"
@@ -116,7 +116,7 @@ def test_invalid_period_and_action(client):
 def test_server_state_json(client):
     import pyotp
 
-    teacher = make_admin("serverstate-teacher", pyotp.random_base32())
+    teacher = seed_canonical_admin("serverstate-teacher", pyotp.random_base32()).user
     db.session.flush()
 
     username = "t3_tap"
@@ -154,7 +154,7 @@ def test_auto_tapout_noops_without_canonical_seat_scope(client):
     import pyotp
     from uuid import uuid4 as _uuid4
 
-    teacher = make_admin("legacy_teacher", pyotp.random_base32())
+    teacher = seed_canonical_admin("legacy_teacher", pyotp.random_base32()).user
     db.session.flush()
 
     class_economy = ClassEconomy(
@@ -185,7 +185,7 @@ def test_student_status_get_is_read_only_and_reconcile_is_explicit_mutation(clie
     import pyotp
     from app.routes import api as api_routes
 
-    teacher = make_admin("status_teacher", pyotp.random_base32())
+    teacher = seed_canonical_admin("status_teacher", pyotp.random_base32()).user
     db.session.flush()
 
     class_row = create_class_scope(teacher_user=teacher, join_code="JOIN-STATUS")

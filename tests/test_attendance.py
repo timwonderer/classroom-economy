@@ -1,4 +1,4 @@
-from tests.helpers.v2_fixtures import make_admin
+from tests.helpers.v2_fixtures import seed_canonical_admin
 from tests.helpers.class_scope import make_student_identity, create_class_scope
 from types import SimpleNamespace
 import pytest
@@ -17,7 +17,7 @@ from datetime import datetime, timedelta, timezone
 def _create_class_and_student(test_suffix, first_name="Test", last_name="S"):
     """Create a teacher + class + student. Returns (class_id, student_seat)."""
     join_code = f"ATT-{test_suffix}"
-    teacher = make_admin(f"teacher_{join_code.lower()}", "s")
+    teacher = seed_canonical_admin(f"teacher_{join_code.lower()}", "s").user
     db.session.flush()
     class_row = create_class_scope(teacher_user=teacher, join_code=join_code, display_name="A")
     student = make_student_identity(class_id=class_row.class_id, first_name=first_name, last_name=last_name)

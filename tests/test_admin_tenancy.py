@@ -1,4 +1,4 @@
-from tests.helpers.v2_fixtures import make_teacher
+from tests.helpers.v2_fixtures import seed_canonical_admin, seed_student_identity
 from datetime import datetime, timezone, timedelta
 from itsdangerous import URLSafeTimedSerializer
 
@@ -15,15 +15,17 @@ from tests.helpers.admin_context import login_teacher
 
 
 def _create_teacher(username: str) -> User:
-    teacher = make_teacher(username)
-    db.session.flush()
-    return teacher
+    return seed_canonical_admin(username).user
 
 
 def _create_student_in_class(class_row: ClassEconomy, first_name: str) -> tuple:
     """Create a canonical student identity in the given class. Returns (seat, student_user)."""
-    seat = make_student_identity(class_id=class_row.class_id, first_name=first_name, last_name="Test")
-    db.session.flush()
+    seed = seed_student_identity(
+        class_id=class_row.class_id,
+        first_name=first_name,
+        last_name="Test",
+    )
+    seat = seed.seat
     student_user = db.session.get(User, seat.user_id)
     return seat, student_user
 
@@ -40,14 +42,13 @@ def _create_class_for_teacher(
         display_name=display_name,
         section=section,
     )
-    db.session.flush()
     return class_row
 
 
 def _login_admin(client, teacher: User):
     class_row = ClassEconomy.query.filter_by(user_id=teacher.id).order_by(ClassEconomy.class_id.asc()).first()
     if class_row:
-        login_teacher(client, teacher, class_id=class_row.class_id, join_code=class_row.join_code)
+        login_teacher(client, teacher, class_id=class_row.class_id)
     else:
         login_teacher(client, teacher)
 
@@ -191,7 +192,7 @@ def test_student_detail_recovers_from_stale_class_context(client):
     assert response.status_code == 200
 
 
-def test_enforce_daily_limits_ignores_other_join_code_activity(client):
+def test_enforce_daily_limits_ignores_other_class_activity(client):
     teacher_a = _create_teacher("teacher-a")
     teacher_b = _create_teacher("teacher-b")
     class_a = _create_class_for_teacher(teacher_a, "JOINA")
