@@ -259,8 +259,9 @@ def test_analyze_endpoint_recomputes_after_payroll_change(logged_in_admin_client
     assert initial_data['snapshot_cached'] is False
     assert EconomySnapshot.query.count() == 1
 
-    payroll_settings.expected_weekly_hours = 9.5
-    db.session.commit()
+    with FEATContext("FEAT-LED-004", idempotency_key="economy_api:recompute_after_payroll_change"):
+        payroll_settings.expected_weekly_hours = 9.5
+        db.session.flush()
 
     refreshed_response = client.post('/admin/api/economy/analyze', json={'class_id': payroll_settings.class_id})
     assert refreshed_response.status_code == 200
@@ -874,15 +875,16 @@ def test_analyze_endpoint_error_does_not_leak_exception_details(client):
         teacher_user=admin,
         display_name="Error Test",
     )
-    db.session.commit()
+    db.session.flush()
 
-    with client.session_transaction() as sess:
-        sess['user_id'] = user.id
-        sess['current_session_nonce'] = secrets.token_urlsafe(32)
-        user.current_session_nonce = sess['current_session_nonce']
-        db.session.commit()
-        sess['is_system_admin'] = False
-        sess['last_activity'] = datetime.now(timezone.utc).isoformat()
+    with FEATContext("FEAT-IDEN-001", idempotency_key="economy_api:error_session"):
+        with client.session_transaction() as sess:
+            sess['user_id'] = user.id
+            sess['current_session_nonce'] = secrets.token_urlsafe(32)
+            user.current_session_nonce = sess['current_session_nonce']
+            db.session.flush()
+            sess['is_system_admin'] = False
+            sess['last_activity'] = datetime.now(timezone.utc).isoformat()
 
     # Test error handling - request with no payroll settings should return generic message
     response_no_settings = client.post(
@@ -927,20 +929,21 @@ def test_analyze_block_ignores_teacher_global_payroll_settings(client):
     )
     db.session.flush()
 
-    _tb_seat = Seat(class_id=class_scope.class_id, role="student")
-    db.session.add(_tb_seat)
-    db.session.flush()
+    with FEATContext("FEAT-IDEN-001", idempotency_key="economy_api:analyze_block_setup"):
+        _tb_seat = Seat(class_id=class_scope.class_id, role="student")
+        db.session.add(_tb_seat)
+        db.session.flush()
+        db.session.add(IdentityProfile(seat_id=_tb_seat.id, profile_type='student_unclaimed', first_name="Scoped", last_name="Taylor"))
+        db.session.flush()
 
-    db.session.add(IdentityProfile(seat_id=_tb_seat.id, profile_type='student_unclaimed', first_name="Scoped", last_name="Taylor"))
-    db.session.commit()
-
-    with client.session_transaction() as sess:
-        sess['user_id'] = user.id
-        sess['current_session_nonce'] = secrets.token_urlsafe(32)
-        user.current_session_nonce = sess['current_session_nonce']
-        db.session.commit()
-        sess['is_system_admin'] = False
-        sess['last_activity'] = datetime.now(timezone.utc).isoformat()
+    with FEATContext("FEAT-IDEN-001", idempotency_key="economy_api:analyze_block_session"):
+        with client.session_transaction() as sess:
+            sess['user_id'] = user.id
+            sess['current_session_nonce'] = secrets.token_urlsafe(32)
+            user.current_session_nonce = sess['current_session_nonce']
+            db.session.flush()
+            sess['is_system_admin'] = False
+            sess['last_activity'] = datetime.now(timezone.utc).isoformat()
 
     response = client.post('/admin/api/economy/analyze', json={'class_id': class_scope.class_id})
     assert response.status_code == 400
@@ -972,20 +975,21 @@ def test_validate_block_ignores_teacher_global_payroll_settings(client):
     )
     db.session.flush()
 
-    _tb_seat = Seat(class_id=class_scope.class_id, role="student")
-    db.session.add(_tb_seat)
-    db.session.flush()
+    with FEATContext("FEAT-IDEN-001", idempotency_key="economy_api:validate_block_setup"):
+        _tb_seat = Seat(class_id=class_scope.class_id, role="student")
+        db.session.add(_tb_seat)
+        db.session.flush()
+        db.session.add(IdentityProfile(seat_id=_tb_seat.id, profile_type='student_unclaimed', first_name="Scoped", last_name="Vega"))
+        db.session.flush()
 
-    db.session.add(IdentityProfile(seat_id=_tb_seat.id, profile_type='student_unclaimed', first_name="Scoped", last_name="Vega"))
-    db.session.commit()
-
-    with client.session_transaction() as sess:
-        sess['user_id'] = user.id
-        sess['current_session_nonce'] = secrets.token_urlsafe(32)
-        user.current_session_nonce = sess['current_session_nonce']
-        db.session.commit()
-        sess['is_system_admin'] = False
-        sess['last_activity'] = datetime.now(timezone.utc).isoformat()
+    with FEATContext("FEAT-IDEN-001", idempotency_key="economy_api:validate_block_session"):
+        with client.session_transaction() as sess:
+            sess['user_id'] = user.id
+            sess['current_session_nonce'] = secrets.token_urlsafe(32)
+            user.current_session_nonce = sess['current_session_nonce']
+            db.session.flush()
+            sess['is_system_admin'] = False
+            sess['last_activity'] = datetime.now(timezone.utc).isoformat()
 
     response = client.post('/admin/api/economy/validate/rent', json={'class_id': class_scope.class_id, 'value': 50.0})
     assert response.status_code == 200
@@ -1010,37 +1014,39 @@ def test_analyze_block_prefers_class_scoped_payroll_settings(client):
         teacher_user=admin,
         display_name="A",
     )
-    _tb_seat = Seat(class_id=class_scope.class_id, role="student")
-    db.session.add(_tb_seat)
-    db.session.flush()
-    db.session.add(IdentityProfile(seat_id=_tb_seat.id, profile_type='student_unclaimed', first_name="Scoped", last_name="Jones"))
-    # Join-code scoped row: should win.
-    db.session.add(PayrollSettings(
-        class_id=class_scope.class_id,
-        block=None,
-        pay_rate=0.25,
-        expected_weekly_hours=9.0,
-        payroll_frequency_days=7,
-        settings_mode='simple',
-        is_active=True
-    ))
-    db.session.commit()
-
-    with client.session_transaction() as sess:
-        sess['user_id'] = admin.id
-        sess['current_session_nonce'] = secrets.token_urlsafe(32)
-        admin.current_session_nonce = sess['current_session_nonce']
-        db.session.commit()
-        sess['is_system_admin'] = False
-        sess['last_activity'] = datetime.now(timezone.utc).isoformat()
-        teacher_seat = Seat.query.filter_by(class_id=class_scope.class_id, role="teacher").first()
-        set_canonical_context(
-            sess,
-            user_id=admin.id,
+    with FEATContext("FEAT-IDEN-001", idempotency_key="economy_api:class_scope_setup"):
+        _tb_seat = Seat(class_id=class_scope.class_id, role="student")
+        db.session.add(_tb_seat)
+        db.session.flush()
+        db.session.add(IdentityProfile(seat_id=_tb_seat.id, profile_type='student_unclaimed', first_name="Scoped", last_name="Jones"))
+        # Join-code scoped row: should win.
+        db.session.add(PayrollSettings(
             class_id=class_scope.class_id,
-            seat_id=teacher_seat.id,
-            role="teacher",
-        )
+            block=None,
+            pay_rate=0.25,
+            expected_weekly_hours=9.0,
+            payroll_frequency_days=7,
+            settings_mode='simple',
+            is_active=True
+        ))
+        db.session.flush()
+
+    with FEATContext("FEAT-IDEN-001", idempotency_key="economy_api:analyze_class_session"):
+        with client.session_transaction() as sess:
+            sess['user_id'] = admin.id
+            sess['current_session_nonce'] = secrets.token_urlsafe(32)
+            admin.current_session_nonce = sess['current_session_nonce']
+            db.session.flush()
+            sess['is_system_admin'] = False
+            sess['last_activity'] = datetime.now(timezone.utc).isoformat()
+            teacher_seat = Seat.query.filter_by(class_id=class_scope.class_id, role="teacher").first()
+            set_canonical_context(
+                sess,
+                user_id=admin.id,
+                class_id=class_scope.class_id,
+                seat_id=teacher_seat.id,
+                role="teacher",
+            )
 
     response = client.post('/admin/api/economy/analyze', json={'class_id': class_scope.class_id})
     assert response.status_code == 200

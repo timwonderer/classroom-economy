@@ -8,7 +8,9 @@ from tests.helpers.v2_fixtures import seed_canonical_admin
 import pytest
 import pyotp
 from datetime import datetime, timedelta, timezone
+from sqlalchemy import delete as sa_delete
 from app import db
+from app.feats.base import FEATContext
 from app.models import User, Announcement, ClassEconomy, Seat, IdentityProfile
 
 
@@ -16,30 +18,31 @@ from app.models import User, Announcement, ClassEconomy, Seat, IdentityProfile
 def test_teacher():
     """Create a test teacher with TOTP."""
     teacher = seed_canonical_admin('test_teacher_announcements').user
-    db.session.commit()
+    db.session.flush()
     return teacher
 
 
 @pytest.fixture
 def teacher_block(test_teacher):
     """Create a teacher block with a display alias."""
-    economy = ClassEconomy.query.filter_by(user_id=test_teacher.id).first()
-    if not economy:
-        economy = ClassEconomy(
-            join_code='TEST123',
-            user_id=test_teacher.id,
-            display_name='Test Announcements Class',
-            status='active',
-        )
-        db.session.add(economy)
+    with FEATContext("FEAT-IDEN-001", idempotency_key="announcements:teacher_block"):
+        economy = ClassEconomy.query.filter_by(user_id=test_teacher.id).first()
+        if not economy:
+            economy = ClassEconomy(
+                join_code='TEST123',
+                user_id=test_teacher.id,
+                display_name='Test Announcements Class',
+                status='active',
+            )
+            db.session.add(economy)
+            db.session.flush()
+
+        block = Seat(class_id=economy.class_id, user_id=test_teacher.id, role="teacher")
+        db.session.add(block)
         db.session.flush()
 
-    block = Seat(class_id=economy.class_id, user_id=test_teacher.id, role="teacher")
-    db.session.add(block)
-    db.session.flush()
-
-    db.session.add(IdentityProfile(seat_id=block.id, profile_type='teacher_primary', first_name='encrypted_test_name', last_name='T'))
-    db.session.commit()
+        db.session.add(IdentityProfile(seat_id=block.id, profile_type='teacher_primary', first_name='encrypted_test_name', last_name='T'))
+        db.session.flush()
     return block
 
 
@@ -58,8 +61,9 @@ class TestAnnouncementModel:
             priority='normal',
             is_active=True
         )
-        db.session.add(announcement)
-        db.session.commit()
+        with FEATContext("FEAT-ADMN-001", idempotency_key="announcements:create"):
+            db.session.add(announcement)
+            db.session.flush()
 
         assert announcement.id is not None
         assert announcement.title == 'Test Announcement'
@@ -76,8 +80,9 @@ class TestAnnouncementModel:
             title='Test',
             message='Test message'
         )
-        db.session.add(announcement)
-        db.session.commit()
+        with FEATContext("FEAT-ADMN-001", idempotency_key="announcements:defaults"):
+            db.session.add(announcement)
+            db.session.flush()
 
         assert announcement.is_active is True
         assert announcement.priority == 'normal'
@@ -86,35 +91,36 @@ class TestAnnouncementModel:
 
     def test_announcement_expiration(self, client, test_teacher, teacher_block):
         """Test announcement expiration logic."""
-        expired_announcement = Announcement(
-            user_id=test_teacher.id,
-            class_id=teacher_block.class_id,
-            join_code=teacher_block.class_economy.join_code,
-            title='Expired',
-            message='This is expired',
-            expires_at=datetime.now(timezone.utc) - timedelta(days=1)
-        )
-        db.session.add(expired_announcement)
+        with FEATContext("FEAT-ADMN-001", idempotency_key="announcements:expiration"):
+            expired_announcement = Announcement(
+                user_id=test_teacher.id,
+                class_id=teacher_block.class_id,
+                join_code=teacher_block.class_economy.join_code,
+                title='Expired',
+                message='This is expired',
+                expires_at=datetime.now(timezone.utc) - timedelta(days=1)
+            )
+            db.session.add(expired_announcement)
 
-        active_announcement = Announcement(
-            user_id=test_teacher.id,
-            class_id=teacher_block.class_id,
-            join_code=teacher_block.class_economy.join_code,
-            title='Active',
-            message='This is active',
-            expires_at=datetime.now(timezone.utc) + timedelta(days=1)
-        )
-        db.session.add(active_announcement)
+            active_announcement = Announcement(
+                user_id=test_teacher.id,
+                class_id=teacher_block.class_id,
+                join_code=teacher_block.class_economy.join_code,
+                title='Active',
+                message='This is active',
+                expires_at=datetime.now(timezone.utc) + timedelta(days=1)
+            )
+            db.session.add(active_announcement)
 
-        no_expiry = Announcement(
-            user_id=test_teacher.id,
-            class_id=teacher_block.class_id,
-            join_code=teacher_block.class_economy.join_code,
-            title='No Expiry',
-            message='Never expires'
-        )
-        db.session.add(no_expiry)
-        db.session.commit()
+            no_expiry = Announcement(
+                user_id=test_teacher.id,
+                class_id=teacher_block.class_id,
+                join_code=teacher_block.class_economy.join_code,
+                title='No Expiry',
+                message='Never expires'
+            )
+            db.session.add(no_expiry)
+            db.session.flush()
 
         assert expired_announcement.is_expired() is True
         assert active_announcement.is_expired() is False
@@ -122,37 +128,38 @@ class TestAnnouncementModel:
 
     def test_announcement_should_display(self, client, test_teacher, teacher_block):
         """Test should_display method."""
-        visible = Announcement(
-            user_id=test_teacher.id,
-            class_id=teacher_block.class_id,
-            join_code='TEST123',
-            title='Visible',
-            message='Should be visible',
-            is_active=True
-        )
-        db.session.add(visible)
+        with FEATContext("FEAT-ADMN-001", idempotency_key="announcements:should_display"):
+            visible = Announcement(
+                user_id=test_teacher.id,
+                class_id=teacher_block.class_id,
+                join_code='TEST123',
+                title='Visible',
+                message='Should be visible',
+                is_active=True
+            )
+            db.session.add(visible)
 
-        inactive = Announcement(
-            user_id=test_teacher.id,
-            class_id=teacher_block.class_id,
-            join_code='TEST123',
-            title='Inactive',
-            message='Should not be visible',
-            is_active=False
-        )
-        db.session.add(inactive)
+            inactive = Announcement(
+                user_id=test_teacher.id,
+                class_id=teacher_block.class_id,
+                join_code='TEST123',
+                title='Inactive',
+                message='Should not be visible',
+                is_active=False
+            )
+            db.session.add(inactive)
 
-        expired = Announcement(
-            user_id=test_teacher.id,
-            class_id=teacher_block.class_id,
-            join_code='TEST123',
-            title='Expired',
-            message='Should not be visible',
-            is_active=True,
-            expires_at=datetime.now(timezone.utc) - timedelta(days=1)
-        )
-        db.session.add(expired)
-        db.session.commit()
+            expired = Announcement(
+                user_id=test_teacher.id,
+                class_id=teacher_block.class_id,
+                join_code='TEST123',
+                title='Expired',
+                message='Should not be visible',
+                is_active=True,
+                expires_at=datetime.now(timezone.utc) - timedelta(days=1)
+            )
+            db.session.add(expired)
+            db.session.flush()
 
         assert visible.should_display() is True
         assert inactive.should_display() is False
@@ -173,8 +180,9 @@ class TestAnnouncementModel:
                 message='Test',
                 priority=priority
             )
-            db.session.add(announcement)
-            db.session.commit()
+            with FEATContext("FEAT-ADMN-001", idempotency_key=f"announcements:priority:{priority}"):
+                db.session.add(announcement)
+                db.session.flush()
 
             assert announcement.get_priority_class() == expected_class
             assert announcement.get_priority_icon() == expected_icon
@@ -197,9 +205,10 @@ class TestAnnouncementMultiTenancy:
             display_name='Class B',
             status='active',
         )
-        db.session.add(economy_a)
-        db.session.add(economy_b)
-        db.session.flush()
+        with FEATContext("FEAT-IDEN-001", idempotency_key="announcements:multi_tenancy"):
+            db.session.add(economy_a)
+            db.session.add(economy_b)
+            db.session.flush()
 
         announcement_a = Announcement(
             user_id=test_teacher.id,
@@ -217,9 +226,10 @@ class TestAnnouncementMultiTenancy:
             message='Only Block B should see this',
             is_active=True
         )
-        db.session.add(announcement_a)
-        db.session.add(announcement_b)
-        db.session.commit()
+        with FEATContext("FEAT-ADMN-001", idempotency_key="announcements:multi_tenancy_create"):
+            db.session.add(announcement_a)
+            db.session.add(announcement_b)
+            db.session.flush()
 
         announcements_a = Announcement.query.filter_by(is_active=True, class_id=economy_a.class_id).all()
         announcements_b = Announcement.query.filter_by(is_active=True, class_id=economy_b.class_id).all()
@@ -240,15 +250,15 @@ class TestAnnouncementMultiTenancy:
             message='This should be deleted with teacher',
             is_active=True
         )
-        db.session.add(announcement)
-        db.session.commit()
+        with FEATContext("FEAT-ADMN-001", idempotency_key="announcements:cascade"):
+            db.session.add(announcement)
+            db.session.flush()
 
         announcement_id = announcement.id
 
-        teacher_user = db.session.get(User, test_teacher.id)
-        assert teacher_user is not None
-        db.session.delete(teacher_user)
-        db.session.commit()
+        with FEATContext("FEAT-IDEN-001", idempotency_key="announcements:delete_teacher"):
+            db.session.execute(sa_delete(User).where(User.id == test_teacher.id))
+            db.session.flush()
 
         remaining = Announcement.query.filter_by(id=announcement_id).count()
         assert remaining == 0

@@ -2315,19 +2315,14 @@ def reconcile_student_status():
 @api_bp.route('/set-timezone', methods=['POST'])
 def set_timezone():
     """Store user's timezone in session for datetime formatting"""
-    is_authenticated = False
     now = utc_now()
 
     # Check via V2 Canonical Context
     context = getattr(g, "canonical_context", None)
-    if context:
-        is_authenticated = True
-        session['last_activity'] = now.isoformat()
-    else:
-        return False
-
-    if not is_authenticated:
+    if not context:
         return jsonify({"status": "error", "message": "Unauthorized"}), 401
+
+    session['last_activity'] = now.isoformat()
 
     data = request.get_json()
     timezone_name = data.get('timezone')

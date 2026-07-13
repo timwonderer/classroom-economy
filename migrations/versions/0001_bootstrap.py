@@ -80,7 +80,9 @@ def get_foreign_keys_by_column(table_name, column_name):
 def _create_tables_if_missing(metadata, bind):
     inspector = sa.inspect(bind)
     existing = set(inspector.get_table_names())
-    target_tables = [table for table in metadata.sorted_tables if table.name not in existing]
+    # Avoid metadata.sorted_tables here because the bootstrap metadata contains
+    # intentional FK cycles that produce noisy SAWarnings during test setup.
+    target_tables = [table for table in metadata.tables.values() if table.name not in existing]
     if target_tables:
         metadata.create_all(bind=bind, tables=target_tables, checkfirst=True)
 

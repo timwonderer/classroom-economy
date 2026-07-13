@@ -25,6 +25,7 @@ from app.models import (
 from app.utils.ip_handler import get_real_ip
 from app.services.tlcp import create_ticket_correlation_pack
 from app.feats.base import feat_shell
+from app.utils.join_code import get_display_join_code
 
 
 def _resolve_actor_seat(actor):

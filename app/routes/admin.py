@@ -9326,9 +9326,6 @@ def upload_students():
     idempotency_hash = hashlib.sha256(content.encode("utf-8")).hexdigest()[:16]
     idempotency_key = f"feat:iden:upload-students:{user_id}:{idempotency_hash}"
 
-    # Close any open read transaction before FEAT entry.
-    db.session.rollback()
-
     with FEATContext("FEAT-IDEN-001", idempotency_key=idempotency_key):
         def _insert_identity_profile(*, seat_id: int, class_id: str | None, profile_type: str, first_name, last_name, notes):
             db.session.execute(

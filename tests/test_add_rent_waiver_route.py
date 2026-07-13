@@ -197,7 +197,7 @@ def test_missing_join_code_flashes_error(client, app):
         student_seat = seed_student_identity(class_id=tb.class_id, first_name="Test", last_name="W").seat
         db.session.commit()
 
-        _login_admin(client, admin, "ARW_NOJC")
+        _login_admin(client, admin)
 
         resp = client.post(
             '/admin/rent-waiver/add',

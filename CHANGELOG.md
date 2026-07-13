@@ -9,6 +9,7 @@ and this project follows semantic versioning principles.
 ## [Unreleased]
 
 ### Changed
+- FEAT-by-default repair work now lands the remaining canonical test slices for API fixes and dashboard rendering: `/api/set-timezone` now returns a valid unauthorized response instead of a bare falsey value, dashboard rendering tests use canonical FEAT-backed setup, and the student dashboard no longer crashes when canonical class metadata omits legacy block state.
 - Canonical auth-session tests now seed student identity via unclaimed-seat then claim-binding semantics, and use canonical class scope creation instead of non-authoritative convenience seed helpers in `tests/test_canonical_auth_session.py`.
 - **Canonical monetary resolution FEAT landed** — Added `FEAT-LED-000` as the single monetary-resolution boundary, rewired store/rent/insurance/admin monetary flows to build intended ledger plans before posting, and removed the legacy `app/utils/overdraft.py` helper. Targeted FEAT regressions now pass against the canonical path only.
 - **Pytest artifacts no longer emit on collect-only discovery runs** — Artifact generation now skips when pytest is invoked with `--collect-only`, preventing VS Code test discovery from recreating files in `pytest_result/` when no tests were actually executed.

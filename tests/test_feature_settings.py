@@ -46,7 +46,7 @@ class TestClassFeatures:
     def test_class_feature_defaults(self, client, test_admin):
         """New classes start with payroll enabled and other features disabled."""
         economy = _create_class_scope(test_admin, block='A', join_code='JOIN_A')
-        db.session.commit()
+        db.session.flush()
 
         enabled_names = ClassFeature.enabled_names_for_class(economy.class_id)
         assert enabled_names == {'payroll'}
@@ -160,9 +160,10 @@ class TestClassFeatures:
     def test_admin_feature_gate_resolves_class_scope_through_class_alias(self, client, test_admin):
         """Boundary class aliases resolve through ClassEconomy as ingress metadata only."""
         economy = _create_class_scope(test_admin, block='A', join_code='JOIN_A')
-        db.session.add(ClassFeature(class_id=economy.class_id, feature_name='insurance'))
-        Seat.query.filter_by(class_id=economy.class_id).delete(synchronize_session=False)
-        db.session.commit()
+        with FEATContext("FEAT-ADMN-001", idempotency_key="feature_settings:resolve_alias"):
+            db.session.add(ClassFeature(class_id=economy.class_id, feature_name='insurance'))
+            Seat.query.filter_by(class_id=economy.class_id).delete(synchronize_session=False)
+            db.session.flush()
 
         with app.test_request_context('/admin/insurance'):
             canonical_context = SimpleNamespace(
@@ -177,8 +178,9 @@ class TestClassFeatures:
         """An explicit active class must not be overridden by another class's display alias."""
         economy_a = _create_class_scope(test_admin, block='A', join_code='JOIN_A')
         economy_b = _create_class_scope(test_admin, block='B', join_code='JOIN_B')
-        db.session.add(ClassFeature(class_id=economy_a.class_id, feature_name='insurance'))
-        db.session.commit()
+        with FEATContext("FEAT-ADMN-001", idempotency_key="feature_settings:prefer_active_class"):
+            db.session.add(ClassFeature(class_id=economy_a.class_id, feature_name='insurance'))
+            db.session.flush()
 
         teacher_seat = Seat.query.filter_by(class_id=economy_b.class_id, role='teacher').first()
         assert teacher_seat is not None
@@ -205,9 +207,10 @@ class TestTeacherOnboarding:
 
     def test_onboarding_model_defaults(self, client, test_admin):
         """Test that TeacherOnboarding has correct defaults."""
-        onboarding = TeacherOnboarding(user_id=test_admin.id)
-        db.session.add(onboarding)
-        db.session.commit()
+        with FEATContext("FEAT-IDEN-001", idempotency_key="feature_settings:onboarding_defaults"):
+            onboarding = TeacherOnboarding(user_id=test_admin.id)
+            db.session.add(onboarding)
+            db.session.flush()
 
         assert onboarding.is_completed is False
         assert onboarding.is_skipped is False
@@ -217,13 +220,13 @@ class TestTeacherOnboarding:
 
     def test_mark_step_completed(self, client, test_admin):
         """Test marking steps as completed."""
-        onboarding = TeacherOnboarding(user_id=test_admin.id)
-        db.session.add(onboarding)
-        db.session.commit()
-
-        onboarding.mark_step_completed('welcome')
-        onboarding.mark_step_completed('features')
-        db.session.commit()
+        with FEATContext("FEAT-IDEN-001", idempotency_key="feature_settings:onboarding_mark_step"):
+            onboarding = TeacherOnboarding(user_id=test_admin.id)
+            db.session.add(onboarding)
+            db.session.flush()
+            onboarding.mark_step_completed('welcome')
+            onboarding.mark_step_completed('features')
+            db.session.flush()
 
         assert onboarding.is_step_completed('welcome') is True
         assert onboarding.is_step_completed('features') is True
@@ -231,54 +234,56 @@ class TestTeacherOnboarding:
 
     def test_complete_onboarding(self, client, test_admin):
         """Test completing onboarding."""
-        onboarding = TeacherOnboarding(user_id=test_admin.id)
-        db.session.add(onboarding)
-        db.session.commit()
-
-        onboarding.complete_onboarding()
-        db.session.commit()
+        with FEATContext("FEAT-IDEN-001", idempotency_key="feature_settings:onboarding_complete"):
+            onboarding = TeacherOnboarding(user_id=test_admin.id)
+            db.session.add(onboarding)
+            db.session.flush()
+            onboarding.complete_onboarding()
+            db.session.flush()
 
         assert onboarding.is_completed is True
         assert onboarding.completed_at is not None
 
     def test_skip_onboarding(self, client, test_admin):
         """Test skipping onboarding."""
-        onboarding = TeacherOnboarding(user_id=test_admin.id)
-        db.session.add(onboarding)
-        db.session.commit()
-
-        onboarding.skip_onboarding()
-        db.session.commit()
+        with FEATContext("FEAT-IDEN-001", idempotency_key="feature_settings:onboarding_skip"):
+            onboarding = TeacherOnboarding(user_id=test_admin.id)
+            db.session.add(onboarding)
+            db.session.flush()
+            onboarding.skip_onboarding()
+            db.session.flush()
 
         assert onboarding.is_skipped is True
         assert onboarding.skipped_at is not None
 
     def test_needs_onboarding_property(self, client, test_admin):
         """Test the needs_onboarding property."""
-        onboarding = TeacherOnboarding(user_id=test_admin.id)
-        db.session.add(onboarding)
-        db.session.commit()
+        with FEATContext("FEAT-IDEN-001", idempotency_key="feature_settings:onboarding_needs"):
+            onboarding = TeacherOnboarding(user_id=test_admin.id)
+            db.session.add(onboarding)
+            db.session.flush()
 
-        # Initially needs onboarding
-        assert onboarding.needs_onboarding is True
+            # Initially needs onboarding
+            assert onboarding.needs_onboarding is True
 
-        # After completion, onboarding should be marked complete
-        onboarding.complete_onboarding()
-        db.session.commit()
-        assert onboarding.needs_onboarding is False
+            # After completion, onboarding should be marked complete
+            onboarding.complete_onboarding()
+            db.session.flush()
+            assert onboarding.needs_onboarding is False
 
     def test_unique_teacher_onboarding(self, client, test_admin):
         """Test that each teacher can only have one onboarding record."""
-        onboarding1 = TeacherOnboarding(user_id=test_admin.id)
-        db.session.add(onboarding1)
-        db.session.commit()
+        with FEATContext("FEAT-IDEN-001", idempotency_key="feature_settings:onboarding_unique"):
+            onboarding1 = TeacherOnboarding(user_id=test_admin.id)
+            db.session.add(onboarding1)
+            db.session.flush()
 
-        # Try to add another onboarding for the same teacher
-        onboarding2 = TeacherOnboarding(user_id=test_admin.id)
-        db.session.add(onboarding2)
+            # Try to add another onboarding for the same teacher
+            onboarding2 = TeacherOnboarding(user_id=test_admin.id)
+            db.session.add(onboarding2)
 
-        with pytest.raises(Exception):  # Should raise IntegrityError
-            db.session.commit()
+            with pytest.raises(Exception):  # Should raise IntegrityError
+                db.session.flush()
 
         db.session.rollback()
 

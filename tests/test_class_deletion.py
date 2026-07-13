@@ -5,17 +5,19 @@ from datetime import datetime, timezone
 
 from app.extensions import db
 from app.feats.base import InvariantViolation
+from app.feats.base import FEATContext
 from app.models import (
     User,
     UserRole,
     ClassEconomy, Transaction,
-    TapEvent, HallPassLog, RedemptionAuditLog, StudentItem, AnalyticsEvent,
+    HallPassLog, RedemptionAuditLog, StudentItem, AnalyticsEvent,
     AnalyticsSnapshot, Issue, IssueResolutionAction, InsuranceClaim,
     InsuranceEnrollment, RentPayment, Announcement, StoreItemBlock, StoreItem,
     Seat, PayrollSettings, RentSettings,
     IssueCategory, InsurancePolicy, InsurancePolicyBlock
 )
 from app.utils.deletion import collapse_universe
+from tests.helpers.admin_context import login_teacher
 from tests.helpers.class_scope import create_class_scope
 
 def test_collapse_universe_cascades_and_cleans_up(client):
@@ -24,64 +26,49 @@ def test_collapse_universe_cascades_and_cleans_up(client):
 
     join_code = "COLL01"
     economy = create_class_scope(teacher_user=admin, join_code=join_code)
-    db.session.flush()
 
     student = make_student_identity(class_id=economy.class_id, first_name="Collapse", last_name="S")
-    db.session.flush()
 
     # Student B has another class - create separately
     join_code_survive = "SURV01"
     economy_b = create_class_scope(teacher_user=admin, join_code=join_code_survive)
-    db.session.flush()
     student_b = make_student_identity(class_id=economy_b.class_id, first_name="Survive", last_name="B")
-    db.session.flush()
 
     student_user = db.session.get(User, student.user_id)
     student_b_user = db.session.get(User, student_b.user_id)
     assert student_user is not None
     assert student_b_user is not None
 
-    # Settings
-    db.session.add(PayrollSettings(block="A", class_id=economy.class_id))
-    db.session.add(RentSettings(class_id=economy.class_id))
+    with FEATContext("FEAT-LED-001", idempotency_key="class_deletion:setup"):
+        # Settings
+        db.session.add(PayrollSettings(block="A", class_id=economy.class_id))
+        db.session.add(RentSettings(class_id=economy.class_id))
 
-    # Transaction
-    seed_purchase(
-        seat_id=Seat.query.filter_by(class_id=economy.class_id, user_id=student_user.id).first().id,
-        class_id=economy.class_id,
-        user_id=student_user.id,
-        amount="10.00",
-        description="Test deposit",
-        transaction_type="deposit",
-    )
+        # Transaction
+        student_seat = Seat.query.filter_by(class_id=economy.class_id, user_id=student_user.id).first()
+        assert student_seat is not None
+        seed_purchase(
+            seat_id=student_seat.id,
+            class_id=economy.class_id,
+            user_id=student_user.id,
+            amount="10.00",
+            description="Test deposit",
+            transaction_type="deposit",
+        )
 
-    # Store Item and Block
-    store_item = StoreItem(user_id=admin.id, join_code=join_code, name="Item", price=10, item_type='immediate')
-    db.session.add(store_item)
-    db.session.flush()
+        # Store Item and Block
+        store_item = StoreItem(
+            user_id=admin.id,
+            class_id=economy.class_id,
+            join_code=join_code,
+            name="Item",
+            price=10,
+            item_type='immediate',
+        )
+        db.session.add(store_item)
+        db.session.flush()
 
-    db.session.add(StoreItemBlock(store_item_id=store_item.id, block="A"))
-
-    # Issue
-    issue_cat = IssueCategory(name="Issue", category_type="transaction", is_active=True)
-    db.session.add(issue_cat)
-    db.session.flush()
-
-    issue = Issue(
-        user_id=admin.id,
-        student_first_name="Collapse",
-        student_last_initial="S",
-        actor_public_id="ref",
-        class_label="A",
-        class_id=economy.class_id,
-        join_code=join_code,
-        category_id=issue_cat.id,
-        issue_type="transaction",
-        student_explanation="Test explanation"
-    )
-    db.session.add(issue)
-
-    db.session.commit()
+        db.session.add(StoreItemBlock(store_item_id=store_item.id, block="A"))
 
     # Pre-collapse assertions
     assert ClassEconomy.query.filter_by(class_id=economy.class_id).first() is not None
@@ -129,13 +116,10 @@ def test_admin_class_delete_route(client):
     db.session.flush()
 
     join_code = "ROUT01"
-    create_class_scope(
+    economy = create_class_scope(
         teacher_user=admin, join_code=join_code)
-    db.session.commit()
 
-    with client.session_transaction() as sess:
-        sess["user_id"] = admin.id
-        sess["last_activity"] = datetime.now(timezone.utc).isoformat()
+    login_teacher(client, admin, class_id=economy.class_id)
 
     # Valid deletion
     response = client.post("/admin/join-code/delete", json={
@@ -158,20 +142,31 @@ def test_collapse_universe_raises_on_null_class_id_scope_rows(client):
     db.session.flush()
 
     membership = Seat.query.filter_by(class_id=economy.class_id, role="teacher").first()
-    db.session.add(
-        TapEvent(
-            seat_id=Seat.query.filter_by(user_id=student.user_id, class_id=economy.class_id).first().id,
-            period="A",
-            join_code="INV001",
-            class_id=None,
-            status="active",
+    issue_cat = IssueCategory(name="Issue", category_type="transaction", is_active=True)
+    with FEATContext("FEAT-SUP-001", idempotency_key="class_deletion:null_class_id_issue"):
+        db.session.add(issue_cat)
+        db.session.flush()
+        db.session.add(
+            Issue(
+                actor_public_id="ref",
+                seat_id=Seat.query.filter_by(user_id=student.user_id, class_id=economy.class_id).first().id,
+                user_id=admin.id,
+                class_id=None,
+                join_code="INV001",
+                category_id=issue_cat.id,
+                issue_type="transaction",
+                student_explanation="Test explanation",
+            )
         )
-    )
-    db.session.commit()
+        db.session.flush()
 
-    success = collapse_universe(
-        economy.class_id,
-        reason="Invariant test",
-        actor_membership_id=membership.id if membership else admin.id,
-    )
-    assert success is True
+    with pytest.raises(InvariantViolation, match="class_id NULL rows detected"):
+        with FEATContext(
+            "FEAT-OPS-001",
+            idempotency_key="class_deletion:null_class_id_collapse",
+        ):
+            collapse_universe(
+                economy.class_id,
+                reason="Invariant test",
+                actor_membership_id=membership.id if membership else admin.id,
+            )

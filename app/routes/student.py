@@ -877,7 +877,10 @@ def dashboard():
         return redirect(url_for('student.login'))
 
     join_code = scope.join_code
-    current_block = scope.block  # Get current class block
+    current_block = (
+        (getattr(scope, "section", None) or "")
+        or (getattr(scope, "block", None) or "")
+    ).strip()
     if not scope.class_id:
         flash("Class context unavailable. Please select a class and retry.", "error")
         return redirect(url_for("student.select_class_context"))
@@ -914,8 +917,9 @@ def dashboard():
     # Get status for only the current block (not all blocks)
     period_states = get_all_block_statuses(student, class_id=scope.class_id)
     # Filter to only current class block
-    period_states = {current_block.upper(): period_states.get(current_block.upper(), {})}
-    student_blocks = [current_block.upper()]  # Only current block
+    current_block_key = current_block.upper() if current_block else ""
+    period_states = {current_block_key: period_states.get(current_block_key, {})} if current_block_key else {}
+    student_blocks = [current_block_key] if current_block_key else []  # Only current block
 
     # Convert Decimal values to float for JSON serialization
     for state in period_states.values():
