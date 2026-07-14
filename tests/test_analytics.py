@@ -25,11 +25,9 @@ def setup_analytics_test(client):
     with FEATContext("FEAT-IDEN-001", idempotency_key="analytics:test-setup"):
         # Create admin/teacher
         admin = seed_canonical_admin("analyticstest", "TESTSECRET123456").user
-        display_join_code = "TEST123"
         block = "A"
         class_row = create_class_scope(
             teacher_user=admin,
-            join_code=display_join_code,
             display_name="Analytics Test",
             section=block,
         )
@@ -60,7 +58,7 @@ def setup_analytics_test(client):
 
         db.session.flush()
 
-    return admin.id, display_join_code, block, class_row.class_id, students, payroll.class_id
+    return admin.id, class_row.join_code, block, class_row.class_id, students, payroll.class_id
 
 
 def test_analytics_engine_initialization(client, setup_analytics_test):
