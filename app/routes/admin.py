@@ -4603,16 +4603,22 @@ def set_hall_passes(seat_id):
 def edit_student():
     """Edit student basic information."""
     seat_id = request.form.get('seat_id', type=int)
-    user_id = g.canonical_context.user_id
+    canonical_context = getattr(g, "canonical_context", None)
+    user_id = canonical_context.user_id
+    current_class_id = (getattr(canonical_context, "class_id", None) or "").strip()
 
     if not seat_id:
+        abort(404)
+    if not current_class_id:
         abort(404)
 
     student = db.session.get(Seat, seat_id)
     if not student:
         # Not accessible by this admin
         abort(404)
-    if not ClassEconomy.query.filter_by(class_id=student.class_id, user_id=user_id).first():
+    if student.class_id != current_class_id:
+        abort(404)
+    if not ClassEconomy.query.filter_by(class_id=current_class_id, user_id=user_id).first():
         abort(404)
 
     # Get form data
@@ -4667,6 +4673,7 @@ def edit_student():
         for block in removed_blocks:
             ce = ClassEconomy.query.filter_by(
                 user_id=user_id,
+                class_id=current_class_id,
                 section=block
             ).first()
             if ce and ce.class_id:
@@ -4682,6 +4689,7 @@ def edit_student():
                 # Get join code for this new block
                 ce = ClassEconomy.query.filter_by(
                     user_id=user_id,
+                    class_id=current_class_id,
                     section=block
                 ).first()
                 if ce and ce.class_id:

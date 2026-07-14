@@ -454,6 +454,52 @@ def test_class_scoped_write_rejects_stale_session_alias(client):
     assert db.session.query(Seat).filter(Seat.role == "student").count() == initial_student_count + 1
 
 
+def test_edit_student_requires_active_canonical_class_scope(client):
+    with FEATContext("FEAT-IDEN-001", idempotency_key="admin-membership:student-edit-scope"):
+        admin = seed_canonical_admin("student_edit_scope_admin", "secret").user
+        class_a = create_class_scope(
+            teacher_user=admin,
+            join_code="EDTA001",
+            section="A",
+        )
+        class_b = create_class_scope(
+            teacher_user=admin,
+            join_code="EDTB001",
+            section="A",
+        )
+        student_seat = make_student_identity(
+            class_id=class_b.class_id,
+            first_name="Scope",
+            last_name="Guard",
+            username="scope_guard_student",
+        )
+
+    teacher_seat = Seat.query.filter_by(class_id=class_a.class_id, role="teacher").first()
+    assert teacher_seat is not None
+    _login_admin(client, admin, class_id=class_a.class_id, seat_id=teacher_seat.id)
+    with client.session_transaction() as sess:
+        set_canonical_context(
+            sess,
+            user_id=admin.id,
+            class_id=class_a.class_id,
+            seat_id=teacher_seat.id,
+            role="teacher",
+        )
+
+    response = client.post(
+        "/admin/student/edit",
+        data={
+            "seat_id": student_seat.id,
+            "first_name": "Updated",
+            "last_name": "Guard",
+            "blocks": ["A"],
+        },
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 404
+
+
 def test_store_query_scope_does_not_implicitly_switch_session_context(client):
     with FEATContext("FEAT-IDEN-001", idempotency_key="admin-membership:query-scope"):
         admin = seed_canonical_admin("query_scope_admin", "secret").user
