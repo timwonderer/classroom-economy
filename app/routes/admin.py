@@ -7578,7 +7578,6 @@ def process_claim(claim_id):
             claim_type=claim_type,
             claim_time_limit_days=claim_time_limit_days,
             policy_id=claim.policy_id,
-            enrollment_join_code=enrollment.join_code,
             claimed_tx_ids=claimed_tx_ids,
             reimbursed_tx_ids=reimbursed_tx_ids,
         )
