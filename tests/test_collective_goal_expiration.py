@@ -9,7 +9,7 @@ Covers:
 - Teacher deleting an active collective item refunds pending purchases
 - Purchase API blocks purchases when goal has expired
 - Reactivated items start with zero progress (voided items excluded from count)
-- Expiration is scoped by teacher_id, not across teachers
+- Expiration is scoped by class_id, not across classes
 """
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
@@ -76,12 +76,12 @@ def _create_student(class_id, first_name):
         return seat
 
 
-def _collective_item(teacher_id, class_id, name, goal_type='fixed', target=2,
+def _collective_item(owner_user_id, class_id, name, goal_type='fixed', target=2,
                      expires_at=None, is_active=True):
     """Create a collective StoreItem."""
     with FEATContext("FEAT-STOR-002", idempotency_key=f"FEAT-STOR-002:test-collective-item:{class_id}:{name}:{uuid4().hex}"):
         item = StoreItem(
-            user_id=teacher_id,
+            user_id=owner_user_id,
             class_id=class_id,
             name=name,
             price=Decimal('10.00'),
