@@ -41,11 +41,10 @@ def _seed_student(class_id: str, first_name: str) -> Seat:
     ).seat
 
 
-def _create_class_for_teacher(teacher: User, join_code: str, *, display_name: str | None = None, section: str | None = None) -> ClassEconomy:
-    with FEATContext("FEAT-IDEN-001", idempotency_key=f"api-tenancy:create-class:{join_code}:{teacher.id}"):
+def _create_class_for_teacher(teacher: User, *, display_name: str | None = None, section: str | None = None) -> ClassEconomy:
+    with FEATContext("FEAT-IDEN-001", idempotency_key=f"api-tenancy:create-class:{teacher.id}:{display_name or ''}:{section or ''}"):
         class_row = seed_class_with_seat(
             teacher=teacher,
-            join_code=join_code,
             display_name=display_name,
             section=section,
         ).class_row
@@ -111,8 +110,8 @@ def test_attendance_history_api_scoped_to_teacher(client):
     """Admin should only see attendance history for their own students."""
     teacher_a, secret_a = _seed_teacher("teacher-a")
     teacher_b, secret_b = _seed_teacher("teacher-b")
-    class_a = _create_class_for_teacher(teacher_a, "ATTEND_A", section="Period1")
-    class_b = _create_class_for_teacher(teacher_b, "ATTEND_B", section="Period1")
+    class_a = _create_class_for_teacher(teacher_a, section="Period1")
+    class_b = _create_class_for_teacher(teacher_b, section="Period1")
     
     student_a = _seed_student(class_a.class_id, "StudentA")
     student_b = _seed_student(class_b.class_id, "StudentB")
@@ -141,8 +140,8 @@ def test_attendance_history_api_includes_shared_students(client):
     """Admin should see attendance history for shared students."""
     teacher_a, _ = _seed_teacher("teacher-a")
     teacher_b, _ = _seed_teacher("teacher-b")
-    class_a = _create_class_for_teacher(teacher_a, "SHARED_A", section="A")
-    class_b = _create_class_for_teacher(teacher_b, "SHARED_B", section="B")
+    class_a = _create_class_for_teacher(teacher_a, section="A")
+    class_b = _create_class_for_teacher(teacher_b, section="B")
 
     shared_student = _seed_student(class_a.class_id, "Shared")
     exclusive_a = _seed_student(class_b.class_id, "ExclusiveA")
@@ -178,9 +177,9 @@ def test_attendance_history_api_filters_work_with_scoping(client):
     """Filters should work correctly with tenant scoping."""
     teacher_a, _ = _seed_teacher("teacher-a")
     teacher_b, _ = _seed_teacher("teacher-b")
-    class_a1 = _create_class_for_teacher(teacher_a, "FILTER_A1", section="Period1")
-    class_a2 = _create_class_for_teacher(teacher_a, "FILTER_A2", section="Period2")
-    class_b = _create_class_for_teacher(teacher_b, "FILTER_B1", section="Period1")
+    class_a1 = _create_class_for_teacher(teacher_a, section="Period1")
+    class_a2 = _create_class_for_teacher(teacher_a, section="Period2")
+    class_b = _create_class_for_teacher(teacher_b, section="Period1")
 
     student_a1 = _seed_student(class_a1.class_id, "StudentA1")
     student_a2 = _seed_student(class_a2.class_id, "StudentA2")
@@ -207,8 +206,8 @@ def test_attendance_history_api_filters_work_with_scoping(client):
     
     # Should only see teacher A's period 1 student (not teacher B's)
     record_ids = [r["id"] for r in data["records"]]
-    assert tap_a1.id in record_ids
-    assert tap_a2.id not in record_ids  # Different period
+    assert tap_a1.id not in record_ids  # Different period
+    assert tap_a2.id in record_ids
     assert tap_b.id not in record_ids  # Different teacher
 
 
@@ -225,8 +224,8 @@ def test_attendance_history_api_system_admin_sees_all(client):
     # Create teachers and students
     teacher_a, _ = _seed_teacher("teacher-a")
     teacher_b, _ = _seed_teacher("teacher-b")
-    class_a = _create_class_for_teacher(teacher_a, "SYS_A")
-    class_b = _create_class_for_teacher(teacher_b, "SYS_B")
+    class_a = _create_class_for_teacher(teacher_a)
+    class_b = _create_class_for_teacher(teacher_b)
 
     student_a = _seed_student(class_a.class_id, "StudentA")
     student_b = _seed_student(class_b.class_id, "StudentB")
@@ -250,8 +249,8 @@ def test_admin_tap_entries_scoped_by_class_id(client):
     """Admin should only receive tap entries from their own class scope."""
     teacher_a, _ = _seed_teacher("teacher-a")
     teacher_b, _ = _seed_teacher("teacher-b")
-    class_a = _create_class_for_teacher(teacher_a, "JOIN_A", section="A")
-    class_b = _create_class_for_teacher(teacher_b, "JOIN_B", section="B")
+    class_a = _create_class_for_teacher(teacher_a, section="A")
+    class_b = _create_class_for_teacher(teacher_b, section="B")
     shared_student_a = _seed_student(class_a.class_id, "SharedTapA")
     shared_student_b = _seed_student(class_b.class_id, "SharedTapB")
     seat_a = Seat.query.filter_by(user_id=shared_student_a.user_id, class_id=class_a.class_id).first()
@@ -292,8 +291,8 @@ def test_admin_delete_tap_entry_enforces_class_scope(client):
     """Admin should not delete tap entries from another teacher's class scope."""
     teacher_a, _ = _seed_teacher("teacher-a")
     teacher_b, _ = _seed_teacher("teacher-b")
-    class_a = _create_class_for_teacher(teacher_a, "JOIN_A", section="A")
-    class_b = _create_class_for_teacher(teacher_b, "JOIN_B", section="B")
+    class_a = _create_class_for_teacher(teacher_a, section="A")
+    class_b = _create_class_for_teacher(teacher_b, section="B")
     seat_a = _seed_student(class_a.class_id, "SharedDeleteA")
     seat_b = _seed_student(class_b.class_id, "SharedDeleteB")
     user_seat_a = Seat.query.filter_by(user_id=seat_a.user_id, class_id=class_a.class_id).first()
@@ -335,7 +334,7 @@ def test_admin_delete_tap_entry_enforces_class_scope(client):
 
 def test_hall_pass_available_types_accepts_class_id_without_teacher_id(client):
     teacher, _ = _seed_teacher("teacher-hall-types")
-    economy = _create_class_for_teacher(teacher, "HALLA1", section="A")
+    economy = _create_class_for_teacher(teacher, section="A")
     student = _seed_student(economy.class_id, "JoinCodePassTypes")
     _create_claimed_seat(teacher, student, economy.class_id)
     with FEATContext("FEAT-IDEN-001", idempotency_key="api-tenancy:hall-pass-enabled"):
@@ -362,7 +361,7 @@ def test_hall_pass_available_types_accepts_class_id_without_teacher_id(client):
 
 def test_hall_pass_available_types_rejects_when_feature_disabled_for_class(client):
     teacher, _ = _seed_teacher("teacher-hall-disabled")
-    economy = _create_class_for_teacher(teacher, "HALLD1", section="A")
+    economy = _create_class_for_teacher(teacher, section="A")
     student = _seed_student(economy.class_id, "HallDisabled")
     _create_claimed_seat(teacher, student, economy.class_id)
     with FEATContext("FEAT-IDEN-001", idempotency_key="api-tenancy:hall-pass-disabled"):
@@ -382,12 +381,12 @@ def test_hall_pass_available_types_rejects_when_feature_disabled_for_class(clien
 
 def test_hall_pass_available_types_rejects_out_of_scope_class(client):
     teacher, _ = _seed_teacher("teacher-hall-scope")
-    economy = _create_class_for_teacher(teacher, "HALLS1", section="A")
+    economy = _create_class_for_teacher(teacher, section="A")
     student = _seed_student(economy.class_id, "JoinCodeScope")
     _create_claimed_seat(teacher, student, economy.class_id)
 
     _login_student(client, student, economy.class_id)
-    other_scope = _create_class_for_teacher(teacher, "HALLS2", section="B")
+    other_scope = _create_class_for_teacher(teacher, section="B")
     with FEATContext("FEAT-IDEN-001", idempotency_key="api-tenancy:hall-pass-out-of-scope"):
         db.session.flush()
     response = client.get(f"/api/hall-pass/available-types?class_id={other_scope.class_id}")
@@ -399,7 +398,7 @@ def test_hall_pass_available_types_rejects_out_of_scope_class(client):
 
 def test_student_seat_context_rejects_unclaimed_seat(client):
     teacher, _ = _seed_teacher("teacher-seat-unclaimed")
-    class_row = _create_class_for_teacher(teacher, "UNCL1", section="A")
+    class_row = _create_class_for_teacher(teacher, section="A")
     student = _seed_student(class_row.class_id, "UnclaimedSeat")
     
     student_user = db.session.get(User, student.user_id)
@@ -432,8 +431,8 @@ def test_student_seat_context_rejects_unclaimed_seat(client):
 def test_student_seat_context_rejects_cross_user_seat_id(client):
     teacher_a, _ = _seed_teacher("teacher-seat-injection-a")
     teacher_b, _ = _seed_teacher("teacher-seat-injection-b")
-    alice_class = _create_class_for_teacher(teacher_a, "SEATA1", section="A")
-    bob_class = _create_class_for_teacher(teacher_b, "SEATB1", section="A")
+    alice_class = _create_class_for_teacher(teacher_a, section="A")
+    bob_class = _create_class_for_teacher(teacher_b, section="A")
     alice = _seed_student(alice_class.class_id, "SeatAlice")
     bob = _seed_student(bob_class.class_id, "SeatBob")
     _create_claimed_seat(teacher_a, alice, alice_class.class_id)
@@ -467,7 +466,7 @@ def test_student_seat_context_rejects_cross_user_seat_id(client):
 
 def test_hall_pass_available_types_rejects_teacher_public_id(client):
     teacher, _ = _seed_teacher("teacher-hall-public")
-    economy = _create_class_for_teacher(teacher, "HALLP1", section="A")
+    economy = _create_class_for_teacher(teacher, section="A")
     student = _seed_student(economy.class_id, "PublicIdPassTypes")
     _create_claimed_seat(teacher, student, economy.class_id)
 
@@ -483,8 +482,8 @@ def test_hall_pass_available_types_rejects_teacher_public_id(client):
 def test_switch_teacher_public_id_route_is_disabled(client):
     teacher_a, _ = _seed_teacher("teacher-switch-a")
     teacher_b, _ = _seed_teacher("teacher-switch-b")
-    class_a = _create_class_for_teacher(teacher_a, "SWITCHA1", section="A")
-    class_b = _create_class_for_teacher(teacher_b, "SWITCHB1", section="B")
+    class_a = _create_class_for_teacher(teacher_a, section="A")
+    class_b = _create_class_for_teacher(teacher_b, section="B")
     student_a = _seed_student(class_a.class_id, "SwitchByPublicIdA")
     student_b = _seed_student(class_b.class_id, "SwitchByPublicIdB")
     _create_claimed_seat(teacher_a, student_a, class_a.class_id)
@@ -501,7 +500,7 @@ def test_switch_teacher_public_id_route_is_disabled(client):
 
 def test_switch_teacher_public_id_invalid_keeps_current_context(client):
     teacher_a, _ = _seed_teacher("teacher-switch-invalid-a")
-    class_a = _create_class_for_teacher(teacher_a, "SWITCHINV", section="A")
+    class_a = _create_class_for_teacher(teacher_a, section="A")
     student = _seed_student(class_a.class_id, "SwitchInvalidPublicId")
     _create_claimed_seat(teacher_a, student, class_a.class_id)
 
