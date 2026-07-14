@@ -2745,7 +2745,6 @@ class Announcement(db.Model):
 
     # Audience targeting
     class_id = db.Column(db.String(36), db.ForeignKey('classes.class_id', ondelete='CASCADE'), nullable=True, index=True)
-    join_code = db.Column(db.String(20), nullable=True, index=True)  # For teacher/sysadmin specific class announcements
     audience_type = db.Column(db.String(30), default='class', nullable=False)  # 'class', 'system_wide', 'all_teachers', 'all_students', 'teacher_all_classes', 'specific_class'
     target_teacher_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'), nullable=True)  # For 'teacher_all_classes' audience type
 
@@ -2769,8 +2768,6 @@ class Announcement(db.Model):
 
     # Indexes
     __table_args__ = (
-        db.Index('ix_announcements_join_code_active', 'join_code', 'is_active'),
-        db.Index('ix_announcements_teacher_join_code', 'user_id', 'join_code'),
         db.Index('ix_announcements_audience_type', 'audience_type', 'is_active'),
         db.Index('ix_announcements_system_admin', 'system_admin_id', 'is_active'),
     )

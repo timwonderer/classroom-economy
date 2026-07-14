@@ -11027,7 +11027,7 @@ def announcements():
         return redirect(url_for('admin.dashboard'))
 
     selected_class_id = class_context["class_id"]
-    selected_join_code = class_context["join_code"]
+    selected_join_code = get_display_join_code(selected_class_id)
 
     # Get announcements for this teacher scoped to the active class context only.
     from app.models import Announcement
@@ -11061,7 +11061,7 @@ def announcement_create():
         return redirect(url_for('admin.dashboard'))
 
     selected_class_id = class_context["class_id"]
-    selected_join_code = class_context["join_code"]
+    selected_join_code = get_display_join_code(selected_class_id)
 
     form = AnnouncementForm()
     form.class_id.data = selected_class_id
@@ -11073,7 +11073,6 @@ def announcement_create():
             announcement = Announcement(
                 user_id=user_id,
                 class_id=selected_class_id,
-                join_code=selected_join_code,
                 title=form.title.data,
                 message=form.message.data,
                 priority=form.priority.data,

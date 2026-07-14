@@ -2,7 +2,7 @@
 Tests for teacher announcement feature.
 
 Tests the Announcement model, admin routes, and student display.
-Ensures proper multi-tenancy scoping by class_id, with join_code retained as display metadata.
+Ensures proper multi-tenancy scoping by class_id.
 """
 from tests.helpers.v2_fixtures import seed_canonical_admin
 from tests.helpers.admin_context import login_teacher
@@ -54,7 +54,6 @@ class TestAnnouncementModel:
         announcement = Announcement(
             user_id=test_teacher.id,
             class_id=teacher_block.class_id,
-            join_code=teacher_block.class_economy.join_code,
             audience_type='class',
             title='Test Announcement',
             message='This is a test message',
@@ -76,7 +75,6 @@ class TestAnnouncementModel:
         announcement = Announcement(
             user_id=test_teacher.id,
             class_id=teacher_block.class_id,
-            join_code=teacher_block.class_economy.join_code,
             title='Test',
             message='Test message'
         )
@@ -95,7 +93,6 @@ class TestAnnouncementModel:
             expired_announcement = Announcement(
                 user_id=test_teacher.id,
                 class_id=teacher_block.class_id,
-                join_code=teacher_block.class_economy.join_code,
                 title='Expired',
                 message='This is expired',
                 expires_at=datetime.now(timezone.utc) - timedelta(days=1)
@@ -105,7 +102,6 @@ class TestAnnouncementModel:
             active_announcement = Announcement(
                 user_id=test_teacher.id,
                 class_id=teacher_block.class_id,
-                join_code=teacher_block.class_economy.join_code,
                 title='Active',
                 message='This is active',
                 expires_at=datetime.now(timezone.utc) + timedelta(days=1)
@@ -115,7 +111,6 @@ class TestAnnouncementModel:
             no_expiry = Announcement(
                 user_id=test_teacher.id,
                 class_id=teacher_block.class_id,
-                join_code=teacher_block.class_economy.join_code,
                 title='No Expiry',
                 message='Never expires'
             )
@@ -132,7 +127,6 @@ class TestAnnouncementModel:
             visible = Announcement(
                 user_id=test_teacher.id,
                 class_id=teacher_block.class_id,
-                join_code='TEST123',
                 title='Visible',
                 message='Should be visible',
                 is_active=True
@@ -142,7 +136,6 @@ class TestAnnouncementModel:
             inactive = Announcement(
                 user_id=test_teacher.id,
                 class_id=teacher_block.class_id,
-                join_code='TEST123',
                 title='Inactive',
                 message='Should not be visible',
                 is_active=False
@@ -152,7 +145,6 @@ class TestAnnouncementModel:
             expired = Announcement(
                 user_id=test_teacher.id,
                 class_id=teacher_block.class_id,
-                join_code='TEST123',
                 title='Expired',
                 message='Should not be visible',
                 is_active=True,
@@ -175,7 +167,6 @@ class TestAnnouncementModel:
             announcement = Announcement(
                 user_id=test_teacher.id,
                 class_id=teacher_block.class_id,
-                join_code='TEST123',
                 title=f'{priority} priority',
                 message='Test',
                 priority=priority
@@ -213,7 +204,6 @@ class TestAnnouncementMultiTenancy:
         announcement_a = Announcement(
             user_id=test_teacher.id,
             class_id=economy_a.class_id,
-            join_code='TESTA',
             title='Announcement for Block A',
             message='Only Block A should see this',
             is_active=True
@@ -221,7 +211,6 @@ class TestAnnouncementMultiTenancy:
         announcement_b = Announcement(
             user_id=test_teacher.id,
             class_id=economy_b.class_id,
-            join_code='TESTB',
             title='Announcement for Block B',
             message='Only Block B should see this',
             is_active=True
@@ -245,7 +234,6 @@ class TestAnnouncementMultiTenancy:
         announcement = Announcement(
             user_id=test_teacher.id,
             class_id=teacher_block.class_id,
-            join_code='TEST123',
             title='Test Announcement',
             message='This should be deleted with teacher',
             is_active=True
