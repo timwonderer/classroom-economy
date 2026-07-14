@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from app import db
 from app.models import AttendanceSession, ClassEconomy, Seat, SeatAttendanceState
 from app.attendance import get_all_block_statuses
+from app.feats.base import FEATContext
 from tests.helpers.class_scope import create_class_scope, make_student_identity
 
 
@@ -18,8 +19,8 @@ def test_attendance_status_isolation(client):
     db.session.flush()
 
     # 2. Create class scopes
-    class_t1 = create_class_scope(teacher_user=t1, join_code="JC1", display_name="PERIOD 1")
-    class_t2 = create_class_scope(teacher_user=t2, join_code="JC2", display_name="PERIOD 1")
+    class_t1 = create_class_scope(teacher_user=t1, display_name="PERIOD 1")
+    class_t2 = create_class_scope(teacher_user=t2, display_name="PERIOD 1")
     db.session.flush()
 
     # 3. Create student in t1's class
@@ -31,24 +32,24 @@ def test_attendance_status_isolation(client):
 
     # 4. Mark active attendance for T1 class scope only.
     now = datetime.now(timezone.utc)
-    session = AttendanceSession(
-        seat_id=seat.id,
-        class_id=class_t1.class_id,
-        started_at=now,
-    )
-    db.session.add(session)
-    db.session.flush()
-    db.session.add(
-        SeatAttendanceState(
-            user_id=student.user_id,
+    with FEATContext("FEAT-IDEN-001", idempotency_key=f"shared-attendance:{class_t1.class_id}:{seat.id}"):
+        session = AttendanceSession(
             seat_id=seat.id,
             class_id=class_t1.class_id,
-            is_active=True,
-            open_session_id=session.id,
-            last_event_at=now,
-            last_event_status="active",
+            started_at=now,
         )
-    )
+        db.session.add(session)
+        db.session.flush()
+        db.session.add(
+            SeatAttendanceState(
+                seat_id=seat.id,
+                class_id=class_t1.class_id,
+                is_active=True,
+                open_session_id=session.id,
+                last_event_at=now,
+                last_event_status="active",
+            )
+        )
     db.session.commit()
 
     # 5. Check Status via get_all_block_statuses in canonical class scope.
