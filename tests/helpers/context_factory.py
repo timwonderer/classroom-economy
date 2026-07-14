@@ -5,7 +5,7 @@ automatically get the updated behavior.
 
 Usage:
     ctx = ClassroomContextFactory(db).build()
-    ctx = ClassroomContextFactory(db, join_code="MATH-01").with_students(3).build()
+    ctx = ClassroomContextFactory(db, join_code="MATH-01", teacher_username="teacher_math01").with_students(3).build()
 
     ctx.teacher_user    — User instance (role=TEACHER)
     ctx.economy         — ClassEconomy instance
@@ -144,7 +144,9 @@ class ClassroomContextFactory:
 
         if self._join_code is None:
             raise TypeError("ClassroomContextFactory.build() requires explicit join_code")
-        username = self._teacher_username or f"teacher_{self._join_code.lower()}"
+        if self._teacher_username is None:
+            raise TypeError("ClassroomContextFactory.build() requires explicit teacher_username")
+        username = self._teacher_username
 
         idempotency_key = "classroom_context_build:" + ":".join(
             [

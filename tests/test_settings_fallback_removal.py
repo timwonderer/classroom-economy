@@ -19,8 +19,16 @@ from tests.helpers.context_factory import ClassroomContextFactory
 def two_class_ctx(client):
     """Two canonical classes under one teacher; settings only on the second class."""
     with FEATContext("FEAT-IDEN-001", idempotency_key="settings_fallback_setup"):
-        ctx1 = ClassroomContextFactory(db, join_code="FALL01").build()
-        ctx2 = ClassroomContextFactory(db, join_code="FALL02", teacher_username=None).build()
+        ctx1 = ClassroomContextFactory(
+            db,
+            join_code="FALL01",
+            teacher_username="teacher_fall01",
+        ).build()
+        ctx2 = ClassroomContextFactory(
+            db,
+            join_code="FALL02",
+            teacher_username="teacher_fall02",
+        ).build()
 
         # Add a student to ctx1 so we have a seat to test with
         student = ctx1.add_student("Fallback", "T")
