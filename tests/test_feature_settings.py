@@ -27,7 +27,6 @@ def _create_class_scope(teacher, block='A'):
     from tests.helpers.class_scope import create_class_scope as _create
     return _create(
         teacher_user=teacher,
-        join_code=f'FEAT-{block}',
         display_name=f'Period {block}',
         section=block,
         feature_names=["payroll"],
@@ -300,7 +299,6 @@ class TestFeatureSettingsRoutes:
         """Test that feature settings page is accessible when logged in."""
         economy = create_class_scope(
             teacher_user=test_admin,
-            join_code="FEAT-SETTINGS-01",
             display_name="Feature Settings",
         )
         login_teacher(client, test_admin, class_id=economy.class_id)
@@ -326,7 +324,6 @@ class TestOnboardingRoutes:
 
         economy = create_class_scope(
             teacher_user=test_admin,
-            join_code="FEAT-ONBOARD-01",
             display_name="Onboarding",
         )
         login_teacher(client, test_admin, class_id=economy.class_id)
@@ -398,8 +395,8 @@ class TestTeacherDeletionCascade:
         admin = seed_canonical_admin('blocks_cascade_test').user
         teacher_user = admin
 
-        class_1 = create_class_scope(teacher_user=teacher_user, join_code='FEAT-TEST123', display_name='Class TEST123')
-        class_2 = create_class_scope(teacher_user=teacher_user, join_code='FEAT-TEST456', display_name='Class TEST456')
+        class_1 = create_class_scope(teacher_user=teacher_user, display_name='Class TEST123')
+        class_2 = create_class_scope(teacher_user=teacher_user, display_name='Class TEST456')
         make_student_identity(class_id=class_1.class_id, first_name='Block', last_name='One')
         make_student_identity(class_id=class_2.class_id, first_name='Block', last_name='Two')
 

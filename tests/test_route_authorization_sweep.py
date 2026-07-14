@@ -36,9 +36,9 @@ def test_hall_pass_active_requires_teacher_seat_public_id_and_scopes_to_one_clas
     other_admin = seed_canonical_admin("hall_pass_other", "secret").user
     db.session.flush()
 
-    class_a = create_class_scope(teacher_user=admin, join_code="RAS-A", section="A")
-    class_b = create_class_scope(teacher_user=admin, join_code="RAS-B", section="B")
-    class_other = create_class_scope(teacher_user=other_admin, join_code="RAS-C", section="C")
+    class_a = create_class_scope(teacher_user=admin, section="A")
+    class_b = create_class_scope(teacher_user=admin, section="B")
+    class_other = create_class_scope(teacher_user=other_admin, section="C")
     db.session.flush()
 
     student_a_seat = make_student_identity(class_id=class_a.class_id, first_name="Alpha", last_name="A")
@@ -112,8 +112,8 @@ def test_approve_redemption_requires_membership(client):
     admin_intruder = seed_canonical_admin("intruder_admin", "secret").user
     db.session.flush()
 
-    class_row = create_class_scope(teacher_user=admin_owner, join_code="RAS-D")
-    intruder_class_row = create_class_scope(teacher_user=admin_intruder, join_code="RAS-E")
+    class_row = create_class_scope(teacher_user=admin_owner)
+    intruder_class_row = create_class_scope(teacher_user=admin_intruder)
     db.session.flush()
 
     student_seat = make_student_identity(class_id=class_row.class_id, first_name="Redeem", last_name="S")
@@ -172,8 +172,8 @@ def test_file_claim_scoped_to_class(client):
     admin = seed_canonical_admin("claim_admin", "secret").user
     db.session.flush()
 
-    class_a = create_class_scope(teacher_user=admin, join_code="RAS-F", section="A")
-    class_b = create_class_scope(teacher_user=admin, join_code="RAS-G", section="B")
+    class_a = create_class_scope(teacher_user=admin, section="A")
+    class_b = create_class_scope(teacher_user=admin, section="B")
     db.session.flush()
 
     student_seat_a = make_student_identity(class_id=class_a.class_id, first_name="Claimer", last_name="S", claimed=True)
