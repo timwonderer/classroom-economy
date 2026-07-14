@@ -6803,7 +6803,6 @@ def add_rent_waiver():
             flash("Future periods count must be a positive whole number.", "danger")
             return redirect(url_for('admin.rent_settings'))
     reason = request.form.get('reason', '')
-    settings_block = request.form.get('settings_block', '')
 
     if not student_ids:
         flash("Please select at least one student.", "danger")
@@ -6855,7 +6854,7 @@ def add_rent_waiver():
 
     if not waiver_windows:
         flash("No valid waiver periods could be determined. Check that rent is configured and a scope was selected.", "danger")
-        return redirect(url_for('admin.rent_settings', settings_block=settings_block))
+        return redirect(url_for('admin.rent_settings'))
 
     scope_labels = []
     if 'past_due' in waiver_scopes:
@@ -6891,7 +6890,7 @@ def add_rent_waiver():
         count += 1
 
     flash(f"Rent waiver added for {count} student(s) covering: {scope_str}.", "success")
-    return redirect(url_for('admin.rent_settings', settings_block=settings_block))
+    return redirect(url_for('admin.rent_settings'))
 
 
 @admin_bp.route('/rent-waiver/<int:waiver_id>/remove', methods=['POST'])
@@ -6925,7 +6924,6 @@ def reverse_cycle_penalties():
     )
 
     user_id = g.canonical_context.user_id
-    settings_block = request.form.get('settings_block') or request.args.get('settings_block')
     class_id = (getattr(getattr(g, "canonical_context", None), "class_id", None) or '').strip()
     class_row_for_rent = ClassEconomy.query.filter_by(
         user_id=user_id,
@@ -6941,19 +6939,19 @@ def reverse_cycle_penalties():
     ).first()
     if not rent_settings:
         flash("Rent system is not enabled for this class.", "info")
-        return redirect(url_for('admin.rent_settings', settings_block=settings_block or block))
+        return redirect(url_for('admin.rent_settings'))
 
     now = utc_now()
     timeline = _calculate_rent_timeline(rent_settings, now)
     coverage_due_date = timeline.get('coverage_due_date')
     if not coverage_due_date:
         flash("No active coverage period found for this class.", "info")
-        return redirect(url_for('admin.rent_settings', settings_block=settings_block or block))
+        return redirect(url_for('admin.rent_settings'))
 
     locked_rate = _get_locked_rent_amount_for_class_cycle(class_row_for_rent.class_id, coverage_due_date)
     if locked_rate is None:
         flash("No valid payments found for the current cycle — nothing to reverse.", "info")
-        return redirect(url_for('admin.rent_settings', settings_block=settings_block or block))
+        return redirect(url_for('admin.rent_settings'))
 
     grace_end_date = coverage_due_date + timedelta(days=rent_settings.grace_period_days)
     from app.services.obligations_service import get_paid_rent_assessments_for_cycle
@@ -7027,7 +7025,7 @@ def reverse_cycle_penalties():
             "info",
         )
 
-    return redirect(url_for('admin.rent_settings', settings_block=settings_block or block))
+    return redirect(url_for('admin.rent_settings'))
 
 
 # -------------------- INSURANCE MANAGEMENT --------------------

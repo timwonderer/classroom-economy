@@ -72,7 +72,6 @@ def test_past_due_scope_creates_one_waiver_per_date(client, app):
                     'student_ids': [student_seat.public_id],
                 'waiver_scope': ['past_due'],
                 'past_due_dates': [date1, date2],
-                'settings_block': 'A',
             },
         )
         assert resp.status_code == 302
@@ -108,7 +107,6 @@ def test_current_scope_creates_waiver_for_current_period(client, app):
             data={
                     'student_ids': [student_seat.public_id],
                 'waiver_scope': ['current'],
-                'settings_block': 'A',
             },
         )
         assert resp.status_code == 302
@@ -143,7 +141,6 @@ def test_future_scope_creates_waiver_spanning_n_periods(client, app):
                     'student_ids': [student_seat.public_id],
                 'waiver_scope': ['future'],
                 'future_periods_count': '3',
-                'settings_block': 'A',
             },
         )
         assert resp.status_code == 302
@@ -177,7 +174,6 @@ def test_invalid_future_periods_count_flashes_error(client, app):
                 'student_ids': [student_seat.public_id],
                 'waiver_scope': ['future'],
                 'future_periods_count': 'not_a_number',
-                'settings_block': 'A',
             },
             follow_redirects=True,
         )
@@ -204,7 +200,6 @@ def test_missing_join_code_flashes_error(client, app):
             data={
                 'student_ids': [student_seat.public_id],
                 'waiver_scope': ['current'],
-                'settings_block': 'A',
             },
         )
         assert resp.status_code == 302
@@ -236,7 +231,6 @@ def test_invalid_past_due_dates_skipped_count_reflects_actual(client, app):
                     'student_ids': [student_seat.public_id],
                 'waiver_scope': ['past_due'],
                 'past_due_dates': [valid_date, 'NOT_A_DATE', ''],
-                'settings_block': 'A',
             },
             follow_redirects=True,
         )
@@ -272,7 +266,6 @@ def test_add_rent_waiver_logs_analytics_event(client, app, monkeypatch):
             data={
                     'student_ids': [student_seat.public_id],
                 'waiver_scope': ['current'],
-                'settings_block': 'A',
                 'reason': 'Medical absence',
             },
         )

@@ -215,7 +215,7 @@ def test_reverse_cycle_penalties_refunds_only_misapplied_fees(client, monkeypatc
         db.session.flush()
 
     _login_admin(client, admin.id, settings.class_id)
-    response = client.post('/admin/rent/reverse-cycle-penalties', data={'settings_block': 'A'})
+    response = client.post('/admin/rent/reverse-cycle-penalties')
 
     assert response.status_code == 302
 

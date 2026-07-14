@@ -38,7 +38,6 @@ def test_rent_settings_update_persists_class_scoped_row(client):
     response = client.post(
         "/admin/rent-settings",
         data={
-            "settings_block": "B",
             "is_enabled": "on",
             "rent_amount": "75.00",
             "frequency_type": "weekly",
