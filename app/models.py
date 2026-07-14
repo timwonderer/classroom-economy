@@ -2400,7 +2400,6 @@ class SavedAdjustment(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     seat_id = db.Column(db.Integer, db.ForeignKey('seats.id', ondelete='CASCADE'), nullable=False, index=True)
     class_id = db.Column(db.String(36), db.ForeignKey('classes.class_id', ondelete='CASCADE'), nullable=True, index=True)
-    join_code = db.Column(db.String(20), nullable=True, index=True)
     name = db.Column(db.String(100), nullable=False)
     description = db.Column(db.Text, nullable=True)
     amount = db.Column(db.Numeric(precision=12, scale=2), nullable=False)
