@@ -53,15 +53,6 @@ def _login_admin(client, teacher_id, *, class_id=None):
     login_teacher(client, teacher, class_id=class_id)
 
 
-def _create_teacher_seat(user_id, block='A', join_code='JOINPOLA', class_id=None):
-    db.session.add(Seat(
-        class_id=class_id,
-        role="teacher",
-        block=block,
-    ))
-    db.session.flush()
-
-
 def _create_admin_with_block(block='A', join_code=None):
     from tests.helpers.class_scope import create_class_scope
     resolved_join_code = join_code or f"JOINPOL{block}"

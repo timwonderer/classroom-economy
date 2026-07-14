@@ -191,6 +191,10 @@ explicit fixture helpers."
   `seed_student_membership`,
   `seed_class_feature`,
   `clear_class_feature`).
+- `tests/test_collective_goal_expiration.py` and
+  `tests/test_economy_policy_mode.py` now keep students and class-owned
+  records on one explicit canonical class scope per scenario instead of
+  re-deriving class ownership from teacher lookup or join-code shims.
 - The remaining audit-only implied-authority gaps for the policy-mode and
   collective-goal fixture reshapes are tracked in
   [`AUDIT_IMPLIED_AUTHORITY_TODO.md`](./AUDIT_IMPLIED_AUTHORITY_TODO.md).

@@ -9,6 +9,7 @@ and this project follows semantic versioning principles.
 ## [Unreleased]
 
 ### Changed
+- Shared canonical fixture cleanup moved the collective-goal and economy-policy test slices onto a single explicit class scope per scenario, eliminating teacher-ownership lookup from the test setup path and keeping student/item seeding anchored to `class_id`.
 - FEAT-by-default repair work now lands the remaining canonical test slices for API fixes and dashboard rendering: `/api/set-timezone` now returns a valid unauthorized response instead of a bare falsey value, dashboard rendering tests use canonical FEAT-backed setup, and the student dashboard no longer crashes when canonical class metadata omits legacy block state.
 - Canonical auth-session tests now seed student identity via unclaimed-seat then claim-binding semantics, and use canonical class scope creation instead of non-authoritative convenience seed helpers in `tests/test_canonical_auth_session.py`.
 - **Canonical monetary resolution FEAT landed** — Added `FEAT-LED-000` as the single monetary-resolution boundary, rewired store/rent/insurance/admin monetary flows to build intended ledger plans before posting, and removed the legacy `app/utils/overdraft.py` helper. Targeted FEAT regressions now pass against the canonical path only.
