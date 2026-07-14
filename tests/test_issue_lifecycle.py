@@ -32,7 +32,6 @@ def test_teacher_must_close_issue_after_final_review(client):
             actor_public_id=student.public_id,
             class_id=class_row.class_id,
             seat_id=student.id,
-            join_code="JOINLIFE1",
             class_label="Block A",
             category_id=category.id,
             issue_type="general",

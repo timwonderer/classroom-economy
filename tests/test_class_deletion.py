@@ -60,7 +60,6 @@ def test_collapse_universe_cascades_and_cleans_up(client):
         store_item = StoreItem(
             user_id=admin.id,
             class_id=economy.class_id,
-            join_code=join_code,
             name="Item",
             price=10,
             item_type='immediate',
@@ -152,7 +151,6 @@ def test_collapse_universe_raises_on_null_class_id_scope_rows(client):
                 seat_id=Seat.query.filter_by(user_id=student.user_id, class_id=economy.class_id).first().id,
                 user_id=admin.id,
                 class_id=None,
-                join_code="INV001",
                 category_id=issue_cat.id,
                 issue_type="transaction",
                 student_explanation="Test explanation",

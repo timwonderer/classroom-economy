@@ -156,7 +156,6 @@ def test_delete_class_removes_only_scoped_records(client):
         actor_public_id="seat-public-join-delete",
         class_id=student_a.class_id,
         seat_id=student_a.id,
-        join_code="JCDEL1",
         category_id=category.id,
         issue_type="transaction",
         student_explanation="Bad transaction",
@@ -191,7 +190,7 @@ def test_delete_class_removes_only_scoped_records(client):
         ])
         db.session.flush()
 
-        purchase = StudentItem(correlation_id='corr_test', seat_id=student_a.id, store_item_id=item_a.id, join_code="JCDEL1", status="purchased")
+        purchase = StudentItem(correlation_id='corr_test', seat_id=student_a.id, store_item_id=item_a.id, status="purchased")
         db.session.add(purchase)
     db.session.commit()
 

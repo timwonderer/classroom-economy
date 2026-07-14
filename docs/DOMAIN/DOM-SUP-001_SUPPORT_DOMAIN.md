@@ -119,7 +119,6 @@ Key fields:
 - `class_id` — FK to `classes`
 - `escalated_by_user_id` — nullable FK to `users`; set if issue is escalated
 - `category_id` — FK to issue_categories
-- `join_code` — class isolation anchor; every issue belongs to exactly one class
 - `status` — `OPEN` | `TEACHER_REVIEW` | `ESCALATED_TO_DEV` | `DEV_RESOLVED` | `TEACHER_FINAL_REVIEW` | `CLOSED`
 - `issue_type` — `transaction` | `general`
 - Immutable submission fields:
@@ -178,7 +177,6 @@ Key fields:
 
 - `id`
 - `issue_id` — FK to issues (CASCADE)
-- `join_code`
 - `previous_status`
 - `new_status`
 - `changed_at`
@@ -198,7 +196,6 @@ Key fields:
 
 - `id`
 - `issue_id` — FK to issues (CASCADE)
-- `join_code`
 - `action_type` — `reverse_transaction` | `correct_amount` | `waive_fee` | or other enumerated types
 - `action_description`
 - `performed_by_user_id` — FK to `users`; the teacher or sysadmin who took the action

@@ -2038,7 +2038,6 @@ class Issue(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
     class_id = db.Column(db.String(36), db.ForeignKey('classes.class_id', ondelete='CASCADE'), nullable=True, index=True)
     seat_id = db.Column(db.Integer, db.ForeignKey('seats.id', ondelete='SET NULL'), nullable=True, index=True)
-    join_code = db.Column(db.String(20), nullable=False, index=True)
     class_label = db.Column(db.String(50), nullable=True)  # Cached class name
 
     # Issue categorization
@@ -2108,7 +2107,6 @@ class Issue(db.Model):
     __table_args__ = (
         db.Index('ix_issues_teacher_status', 'user_id', 'status'),
         db.Index('ix_issues_student_status', 'seat_id', 'status'),
-        db.Index('ix_issues_join_code_status', 'join_code', 'status'),
     )
 
     # Canonical lifecycle statuses (SPEC-TICK-001).
@@ -2180,7 +2178,6 @@ class IssueStatusHistory(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     issue_id = db.Column(db.Integer, db.ForeignKey('issues.id', ondelete='CASCADE'), nullable=False, index=True)
     class_id = db.Column(db.String(36), db.ForeignKey('classes.class_id', ondelete='CASCADE'), nullable=True, index=True)
-    join_code = db.Column(db.String(20), nullable=True, index=True)
 
     previous_status = db.Column(db.String(50), nullable=True)
     new_status = db.Column(db.String(50), nullable=False)
@@ -2203,7 +2200,6 @@ class IssueResolutionAction(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     issue_id = db.Column(db.Integer, db.ForeignKey('issues.id', ondelete='CASCADE'), nullable=False, index=True)
     class_id = db.Column(db.String(36), db.ForeignKey('classes.class_id', ondelete='CASCADE'), nullable=True, index=True)
-    join_code = db.Column(db.String(20), nullable=True, index=True)
 
     action_type = db.Column(db.String(100), nullable=False)
     # Action types: 'reverse_transaction', 'correct_amount', 'correct_time', 'waive_fee', 'deny_issue', 'manual_adjustment', etc.

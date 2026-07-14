@@ -26,7 +26,6 @@ from app.utils.ip_handler import get_real_ip
 from app.services.tlcp import create_ticket_correlation_pack
 from app.services.ledger_service import get_available_balances
 from app.feats.base import feat_shell
-from app.utils.join_code import get_display_join_code
 
 
 def _resolve_actor_seat(actor):
@@ -138,10 +137,9 @@ def create_issue(actor, user_id, class_id, category_id, explanation, expected_ou
     if not category:
         raise ValueError("Invalid category")
 
-    # Resolve class label and join_code from ClassEconomy
+    # Resolve class label from ClassEconomy.
     class_row = ClassEconomy.query.filter_by(class_id=class_id).first()
-    join_code = get_display_join_code(class_row.class_id) if class_row else None
-    class_label = (class_row.display_name if class_row and class_row.display_name else None) or join_code or class_id
+    class_label = (class_row.display_name if class_row and class_row.display_name else None) or class_id
     canonical_seat = _resolve_actor_seat(actor)
     if not canonical_seat:
         raise ValueError("create_issue requires canonical seat public_id scope.")
@@ -162,7 +160,6 @@ def create_issue(actor, user_id, class_id, category_id, explanation, expected_ou
         actor_public_id=actor_public_id,
         user_id=user_id,
         class_id=class_id,
-        join_code=join_code,
         class_label=class_label,
         category_id=category_id,
         issue_type=category.category_type,

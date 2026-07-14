@@ -45,7 +45,6 @@ def test_sysadmin_resolve_issue_issues_bug_reward_transaction(client):
         issue = Issue(
             user_id=student.user_id,
             actor_public_id=seat.public_id,
-            join_code="JOINBUG123",
             class_id=economy.class_id,
             seat_id=seat.id,
             class_label="Block A",
