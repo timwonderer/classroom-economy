@@ -12,7 +12,7 @@ import pytest
 from datetime import datetime, timedelta, timezone
 from app import db
 from app.models import Seat, IdentityProfile, User, UserRole, ClassEconomy, Transaction, PayrollSettings, RentSettings, AnalyticsAlert, FeatureSettings
-from app.routes.analytics import get_pay_cycle_days, get_rent_cycle_days
+from app.routes.analytics import get_pay_cycle_days, get_rent_cycle_days, resolve_current_class_context
 from app.utils.analytics_engine import AnalyticsEngine
 from app.feats.base import FEATContext
 import app.services.ledger_service as ledger_service
@@ -386,6 +386,18 @@ def test_analytics_policy_mode_resolves_by_class_id(client, setup_analytics_test
     engine = AnalyticsEngine(payroll)
     assert engine.class_id == payroll
     assert engine.policy_mode == 'tight'
+
+
+def test_analytics_class_context_requires_explicit_class_id(client, setup_analytics_test):
+    admin, join_code, block, class_row, students, payroll = setup_analytics_test
+    admin_user = db.session.get(User, admin)
+    assert admin_user is not None
+    other_class = create_class_scope(teacher_user=admin_user, join_code="TEST789", section="B", display_name="Analytics Three")
+
+    selected, available = resolve_current_class_context(admin, None)
+
+    assert selected is None
+    assert {item["class_id"] for item in available} == {class_row, other_class.class_id}
 
 
 def test_budget_survival_uses_policy_mode_min_savings_ratio(client, setup_analytics_test, monkeypatch):

@@ -60,8 +60,8 @@ def get_teacher_class_options(user_id: int):
     return options
 
 
-def resolve_current_class_context(user_id: int):
-    """Resolve class context using class_id as authority; join_code is derived display metadata."""
+def resolve_current_class_context(user_id: int, class_id: str | None):
+    """Resolve the requested class context using explicit class_id authority."""
     available_classes = get_teacher_class_options(user_id)
     by_class_id = {
         (item.get('class_id') or ''): item
@@ -69,13 +69,7 @@ def resolve_current_class_context(user_id: int):
         if item.get('class_id')
     }
 
-    selected = None
-    session_class_id = (getattr(getattr(g, "canonical_context", None), "class_id", None) or '').strip()
-    if session_class_id:
-        selected = by_class_id.get(session_class_id)
-
-    if not selected and available_classes:
-        selected = available_classes[0]
+    selected = by_class_id.get((class_id or '').strip())
 
     if not selected:
         return None, available_classes
@@ -217,7 +211,7 @@ def dashboard():
         if not class_row:
             raise ContextResolutionError("Class not found")
         join_code = get_display_join_code(class_row.class_id)
-        selected_class, available_classes = resolve_current_class_context(user_id)
+        selected_class, available_classes = resolve_current_class_context(user_id, class_id)
         if not selected_class:
             raise ContextResolutionError("No class context available")
     except Exception as e:
@@ -487,11 +481,11 @@ def student_drill_down(student_id):
     - Must explain why the metric matters
     """
     user_id = g.canonical_context.user_id
-    selected_class, available_classes = resolve_current_class_context(user_id)
+    class_id = g.canonical_context.class_id
+    selected_class, available_classes = resolve_current_class_context(user_id, class_id)
     if not selected_class:
         flash('You need to set up class periods before viewing analytics.', 'warning')
         return redirect(url_for('admin.students'))
-    class_id = selected_class['class_id']
 
     # Get class economy row
     class_row = ClassEconomy.query.filter_by(class_id=class_id).first()
