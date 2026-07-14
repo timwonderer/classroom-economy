@@ -10,7 +10,7 @@ def test_banking_settings_update_persists_class_scoped_row(client):
     teacher = seed_canonical_admin("bank_scope_admin").user
 
     with FEATContext("FEAT-IDEN-001", idempotency_key="banking_scope:create_class"):
-        class_row = create_class_scope(teacher_user=teacher, join_code="BANK001", section="B")
+        class_row = create_class_scope(teacher_user=teacher, section="B")
         seed_class_feature(class_id=class_row.class_id, feature_name="banking")
 
     login_teacher(client, teacher, class_id=class_row.class_id)
