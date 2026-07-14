@@ -1665,7 +1665,7 @@ def purchase_insurance(policy_id):
             InsuranceEnrollment.seat_id == seat.id,
             InsuranceEnrollment.status == 'active',
             InsurancePolicy.tier_category_id == policy.tier_category_id,
-            InsuranceEnrollment.class_id == class_id,
+            InsuranceEnrollment.class_id == context.class_id,
         ).first()
 
         if existing_tier_enrollment:
@@ -1677,7 +1677,7 @@ def purchase_insurance(policy_id):
     banking_settings = get_banking_settings_for_context(context)
     intended_plan = build_intended_ledger_plan(
         seat_id=seat.id,
-        class_id=class_id,
+        class_id=context.class_id,
         user_id=context.user_id,
         debit_amount=policy.premium,
         description=f"Insurance premium: {policy.title}",
@@ -1687,7 +1687,7 @@ def purchase_insurance(policy_id):
     resolved_plan = resolve_intended_ledger_plan(
         plan=intended_plan,
         banking_settings=banking_settings,
-        idempotency_key=f"insurance:{seat.id}:{class_id}:{policy.id}:resolve",
+        idempotency_key=f"insurance:{seat.id}:{context.class_id}:{policy.id}:resolve",
         force_overdraft_fee=False,
         allow_recovery_transfer=True,
     )
