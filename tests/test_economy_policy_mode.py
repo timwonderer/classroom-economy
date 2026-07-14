@@ -56,7 +56,7 @@ def _login_admin(client, teacher_id, *, class_id=None):
 def _create_admin_with_block(block, *, join_code):
     from tests.helpers.class_scope import create_class_scope
     teacher = seed_canonical_admin(f"policyadmin_{block.lower()}").user
-    with FEATContext("FEAT-IDEN-001", idempotency_key=f"economy-policy:create-admin:{block}:{join_code}:{teacher.id}"):
+    with FEATContext("FEAT-IDEN-001", idempotency_key=f"economy-policy:create-admin:{block}:{teacher.id}"):
         economy = create_class_scope(
             teacher_user=teacher,
             join_code=join_code,

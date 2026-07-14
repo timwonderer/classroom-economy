@@ -2,6 +2,7 @@ from tests.helpers.v2_fixtures import seed_canonical_admin, make_sysadmin
 from tests.helpers.class_scope import make_student_identity
 import pytest
 from app import db, Transaction
+from app.feats.base import FEATContext
 from app.payroll import calculate_payroll_breakdown
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
@@ -22,14 +23,13 @@ def test_teacher(client):
 
 @pytest.fixture
 def test_class(test_teacher):
-    from app.models import ClassEconomy
+    from tests.helpers.class_scope import create_class_scope
 
-    class_economy = ClassEconomy(
-        join_code=f"PAYT{test_teacher.id}",
-        user_id=test_teacher.id,
+    class_economy = create_class_scope(
+        teacher_user=test_teacher,
+        join_code="PAYT-CLASS",
         display_name="Payroll Test Class",
     )
-    db.session.add(class_economy)
     db.session.commit()
     return class_economy
 
@@ -154,7 +154,7 @@ def test_calculate_payroll_ignores_other_class_manual_payment_anchor(client):
             duration_seconds=900,
         ),
         Transaction(
-            user_id=student_user.id,
+            user_id=student.user_id,
             seat_id=seat_a.id,
             class_id=class_a.class_id,
             amount=3,
@@ -333,14 +333,15 @@ def test_get_pay_rate_for_block_inactive_settings_ignored(test_teacher, test_cla
     from decimal import Decimal
 
     # Create an inactive setting
-    inactive_setting = PayrollSettings(
-        class_id=test_class.class_id,
-        block="A",
-        pay_rate=Decimal("0.99"),
-        is_active=False  # Inactive
-    )
-    db.session.add(inactive_setting)
-    db.session.commit()
+    with FEATContext("FEAT-LED-004", idempotency_key="payroll:inactive-setting"):
+        inactive_setting = PayrollSettings(
+            class_id=test_class.class_id,
+            block="A",
+            pay_rate=Decimal("0.99"),
+            is_active=False,  # Inactive
+        )
+        db.session.add(inactive_setting)
+        db.session.flush()
 
     # Should fall back to default rate since the setting is inactive
     rate = get_pay_rate_for_block("A", class_id=test_class.class_id)
@@ -367,7 +368,7 @@ def test_get_cached_payroll_with_meta(client):
     db.session.flush()
     db.session.commit()
 
-    class_economy = create_class_scope(teacher_user=teacher, display_name="A")
+    class_economy = create_class_scope(teacher_user=teacher, join_code="PAYR-CACHE", display_name="A")
     student = make_student_identity(class_id=class_economy.class_id, first_name="CacheUser", last_name="T", claimed=True)
     db.session.flush()
     db.session.commit()
@@ -385,8 +386,9 @@ def test_get_cached_payroll_with_meta(client):
         ended_at=now - timedelta(hours=1),
         duration_seconds=3600,
     )
-    db.session.add(session_one)
-    db.session.commit()
+    with FEATContext("FEAT-LED-004", idempotency_key="payroll:cached-session-one"):
+        db.session.add(session_one)
+        db.session.flush()
 
     seat_ids = [seat.id]
     last_payroll = now - timedelta(days=1)
@@ -414,8 +416,9 @@ def test_get_cached_payroll_with_meta(client):
         ended_at=now - timedelta(minutes=15),
         duration_seconds=900,
     )
-    db.session.add(session_two)
-    db.session.commit()
+    with FEATContext("FEAT-LED-004", idempotency_key="payroll:cached-session-two"):
+        db.session.add(session_two)
+        db.session.flush()
 
     # Call again - should still return OLD value (Cache Hit)
     summary_cached, updated_at_cached = get_cached_payroll_with_meta(class_economy.class_id, seat_ids, last_payroll)
@@ -426,8 +429,9 @@ def test_get_cached_payroll_with_meta(client):
 
     # 3. Simulate Expiry -> Cache Miss -> Calculation
     # Force cache timestamp to be old (2 hours ago)
-    cache.last_calculated_at = now - timedelta(hours=2)
-    db.session.commit()
+    with FEATContext("FEAT-LED-004", idempotency_key="payroll:cached-cache-expiry"):
+        cache.last_calculated_at = now - timedelta(hours=2)
+        db.session.flush()
 
     # Call again - should Recalculate
     summary_fresh, updated_at_fresh = get_cached_payroll_with_meta(class_economy.class_id, seat_ids, last_payroll)
