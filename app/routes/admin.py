@@ -9135,7 +9135,6 @@ def payroll_manual_payment():
                 saved_adj = SavedAdjustment(
                     seat_id=teacher_seat.id,
                     class_id=selected_class_id,
-                    join_code=selected_join_code,
                     name=description,
                     description=description,
                     amount=amount,
