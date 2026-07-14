@@ -774,7 +774,6 @@
                         {% endfor %}
                         <option value="__CREATE_NEW__">Create New Class Section</option>
                       </select>
-                      <input type="hidden" id="block" name="block" required>
                       <div class="form-text">Select an existing class or create a new one</div>
                       <div id="new_block_input" class="mt-2" style="display: none;">
                         <input type="text" class="form-control" id="new_block_name"
@@ -1981,11 +1980,10 @@
 
   document.addEventListener('DOMContentLoaded', function () {
     const blockSelect = document.getElementById('block_select');
-    const blockHidden = document.getElementById('block');
     const newBlockInput = document.getElementById('new_block_input');
     const newBlockName = document.getElementById('new_block_name');
 
-    if (blockSelect && blockHidden && newBlockInput && newBlockName) {
+    if (blockSelect && newBlockInput && newBlockName) {
       blockSelect.addEventListener('change', function () {
         const selectedValue = this.value;
 
@@ -1993,20 +1991,11 @@
           // Show the new block input field
           newBlockInput.style.display = 'block';
           newBlockName.required = true;
-          blockHidden.value = ''; // Clear hidden field until user types
-
-          // Update hidden field as user types
-          newBlockName.addEventListener('input', function () {
-            blockHidden.value = this.value.trim().toUpperCase();
-          });
         } else {
           // Hide the new block input field
           newBlockInput.style.display = 'none';
           newBlockName.required = false;
           newBlockName.value = '';
-
-          // Set hidden field to selected value
-          blockHidden.value = selectedValue.toUpperCase();
         }
       });
     }

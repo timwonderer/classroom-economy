@@ -1811,21 +1811,19 @@ def _generate_unique_teacher_join_code(section: str) -> str:
     return generate_join_code()
 
 
-def _resolve_student_add_class_context(canonical_context, section: str) -> dict | None:
+def _resolve_student_add_class_context(canonical_context, *, block_select: str, section: str | None) -> dict | None:
     """Resolve the target class for add-student flows, creating one when requested."""
     if canonical_context is None or not getattr(canonical_context, "user_id", None):
         return None
     user_id = canonical_context.user_id
 
-    block_select = (request.form.get('block_select') or '').strip()
     if block_select != '__CREATE_NEW__':
         return _resolve_admin_class_context(g.canonical_context)
 
     if not section:
         return None
 
-    class_name = (request.form.get('class_name') or '').strip()
-    class_label = class_name or section
+    class_label = (request.form.get('class_name') or '').strip() or section
     join_code = _generate_unique_teacher_join_code(section)
     class_id, class_created, class_row = _ensure_join_code_anchors(
         user_id,
@@ -5175,13 +5173,15 @@ def add_individual_student():
     try:
         first_name = request.form.get('first_name', '').strip()
         last_name = request.form.get('last_name', '').strip()
-        section = request.form.get('block', '').strip().upper()
+        block_select = (request.form.get('block_select') or '').strip()
+        new_block_name = request.form.get('new_block_name', '').strip().upper()
         additional_notes = (request.form.get('additional_notes') or '').strip()
 
-        if not all([first_name, last_name, section]):
+        if not all([first_name, last_name, block_select]):
             flash("All fields are required.", "error")
             return redirect(url_for('admin.students'))
 
+        section = new_block_name if block_select == '__CREATE_NEW__' else block_select.upper()
         # Student.block is VARCHAR(10) in the DB; enforce before insert to avoid flush-time errors.
         if len(section) > 10:
             flash("Class section name must be 10 characters or fewer.", "error")
@@ -5204,7 +5204,11 @@ def add_individual_student():
         last_name_parts = hash_last_name_parts(last_name, salt)
 
         user_id = g.canonical_context.user_id
-        class_context = _resolve_student_add_class_context(g.canonical_context, section)
+        class_context = _resolve_student_add_class_context(
+            g.canonical_context,
+            block_select=block_select,
+            section=section,
+        )
         if not class_context:
             flash("Select a class before making changes.", "error")
             return redirect(url_for('admin.students'))

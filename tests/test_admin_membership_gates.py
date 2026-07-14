@@ -197,7 +197,7 @@ def test_add_individual_student_requires_current_class_context(client):
                 "first_name": "Casey",
                 "last_name": "Guard",
                 "dob": "2010-01-02",
-                "block": "A",
+                "block_select": "A",
             },
             follow_redirects=False,
         )
@@ -237,7 +237,7 @@ def test_add_individual_student_creates_single_student_seat_for_new_student(clie
             "first_name": "Indivuniq",
             "last_name": "Guarduniq",
             "dob": "2010-01-02",
-            "block": "A",
+            "block_select": "A",
         },
         follow_redirects=False,
     )
@@ -333,7 +333,7 @@ def test_add_individual_student_uses_selected_class_when_block_has_other_scope(c
             "first_name": "Scoped",
             "last_name": "Student",
             "dob": "2010-01-02",
-            "block": "A",
+            "block_select": "A",
         },
         follow_redirects=False,
     )
@@ -348,6 +348,15 @@ def test_add_individual_student_uses_selected_class_when_block_has_other_scope(c
     )
     assert linked_seat is not None
     assert ClassEconomy.query.filter_by(class_id=linked_seat.class_id).first().join_code == "NEWA001"
+
+
+def test_students_page_does_not_render_hidden_block_input(client):
+    from pathlib import Path
+
+    template_text = Path("/Users/timothychang/Documents/GitHub/classroom-economy/templates/admin_students.html").read_text()
+
+    assert 'name="block"' not in template_text
+    assert 'id="block"' not in template_text
 
 def test_store_create_requires_current_class_context(client):
     with FEATContext("FEAT-IDEN-001", idempotency_key="admin-membership:store-guard"):
@@ -446,14 +455,14 @@ def test_class_scoped_write_rejects_stale_session_alias(client):
                 "first_name": "Stale",
                 "last_name": "Session",
                 "dob": "2010-01-02",
-                "block": "A",
+                "block_select": "A",
             },
             follow_redirects=False,
         )
 
     assert response.status_code == 302
-    assert response.headers["Location"].endswith("/admin/students")
-    assert db.session.query(Seat).filter(Seat.role == "student").count() == initial_student_count + 1
+    assert response.headers["Location"].endswith("/admin/login")
+    assert db.session.query(Seat).filter(Seat.role == "student").count() == initial_student_count
 
 
 def test_edit_student_requires_active_canonical_class_scope(client):
