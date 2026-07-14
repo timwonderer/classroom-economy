@@ -53,14 +53,13 @@ def _login_admin(client, teacher_id, *, class_id=None):
     login_teacher(client, teacher, class_id=class_id)
 
 
-def _create_admin_with_block(block='A', join_code=None):
+def _create_admin_with_block(block, *, join_code):
     from tests.helpers.class_scope import create_class_scope
-    resolved_join_code = join_code or f"JOINPOL{block}"
     teacher = seed_canonical_admin(f"policyadmin_{block.lower()}").user
-    with FEATContext("FEAT-IDEN-001", idempotency_key=f"economy-policy:create-admin:{block}:{teacher.id}"):
+    with FEATContext("FEAT-IDEN-001", idempotency_key=f"economy-policy:create-admin:{block}:{join_code}:{teacher.id}"):
         economy = create_class_scope(
             teacher_user=teacher,
-            join_code=resolved_join_code,
+            join_code=join_code,
             display_name=f'Period {block}',
             section=block,
         )
@@ -176,7 +175,7 @@ def _create_pending_policy_transition(
 
 
 def test_checker_uses_feature_policy_mode_for_recommendations(client):
-    admin, payroll_settings, _, economy = _create_admin_with_block()
+    admin, payroll_settings, _, economy = _create_admin_with_block('A', join_code='JOINPOLA')
 
     default_checker = EconomyBalanceChecker(admin.id, 'A', class_id=economy.class_id, policy_mode='default')
     default_recommendations = default_checker.analyze_economy(payroll_settings).recommendations
@@ -199,7 +198,7 @@ def test_checker_uses_feature_policy_mode_for_recommendations(client):
 
 
 def test_comfortable_policy_uses_requested_ratio_profile(client):
-    admin, payroll_settings, _, economy = _create_admin_with_block()
+    admin, payroll_settings, _, economy = _create_admin_with_block('A', join_code='JOINPOLA')
 
     checker = EconomyBalanceChecker(admin.id, 'A', class_id=economy.class_id, policy_mode='comfortable')
     recommendations = checker.analyze_economy(payroll_settings).recommendations
@@ -228,7 +227,7 @@ def test_comfortable_policy_uses_requested_ratio_profile(client):
 
 
 def test_insurance_premium_recommendation_matches_checker_output(client):
-    admin, payroll_settings, _, economy = _create_admin_with_block()
+    admin, payroll_settings, _, economy = _create_admin_with_block('A', join_code='JOINPOLA')
 
     checker = EconomyBalanceChecker(admin.id, 'A', class_id=economy.class_id, policy_mode='default')
     analysis = checker.analyze_economy(payroll_settings)
@@ -271,7 +270,7 @@ def test_convert_weekly_amount_to_frequency_supports_custom_schedules(client):
 
 
 def test_edit_insurance_policy_renders_shared_recommendation_text(client):
-    admin, _, _, economy = _create_admin_with_block()
+    admin, _, _, economy = _create_admin_with_block('A', join_code='JOINPOLA')
     policy = _create_insurance_policy(admin.id, 'Coverage', Decimal('40.00'), economy=economy)
     _login_admin(client, admin.id, class_id=economy.class_id)
 
@@ -284,7 +283,7 @@ def test_edit_insurance_policy_renders_shared_recommendation_text(client):
 
 
 def test_update_economy_policy_creates_block_scoped_settings(client):
-    admin, _, _, economy = _create_admin_with_block()
+    admin, _, _, economy = _create_admin_with_block('A', join_code='JOINPOLA')
     _login_admin(client, admin.id, class_id=economy.class_id)
 
     response = client.post('/admin/economy-policy', data={
@@ -301,7 +300,7 @@ def test_update_economy_policy_creates_block_scoped_settings(client):
 
 
 def test_get_feature_settings_row_for_class_requires_explicit_class_scope(client):
-    admin, _, _, economy = _create_admin_with_block()
+    admin, _, _, economy = _create_admin_with_block('A', join_code='JOINPOLA')
     read_row = get_feature_settings_row_for_class(economy.class_id, create=False)
     with FEATContext("FEAT-IDEN-001", idempotency_key=f"economy-policy:create-feature-settings:{economy.class_id}"):
         created_row = get_feature_settings_row_for_class(
@@ -315,7 +314,7 @@ def test_get_feature_settings_row_for_class_requires_explicit_class_scope(client
 
 
 def test_rent_warnings_report_single_monthly_conversion(client):
-    admin, payroll_settings, _, economy = _create_admin_with_block()
+    admin, payroll_settings, _, economy = _create_admin_with_block('A', join_code='JOINPOLA')
     checker = EconomyBalanceChecker(admin.id, 'A', class_id=economy.class_id, policy_mode='default')
     cwi = checker.calculate_cwi(payroll_settings).cwi
     high_rent = RentSettings(
@@ -331,7 +330,7 @@ def test_rent_warnings_report_single_monthly_conversion(client):
 
 
 def test_immediate_rebalance_updates_rent_setting(client):
-    admin, payroll_settings, rent_settings, economy = _create_admin_with_block()
+    admin, payroll_settings, rent_settings, economy = _create_admin_with_block('A', join_code='JOINPOLA')
     _login_admin(client, admin.id, class_id=economy.class_id)
     with FEATContext("FEAT-IDEN-001", idempotency_key=f"economy-policy:set-tight:{economy.class_id}:immediate"):
         db.session.add(FeatureSettings(class_id=economy.class_id, economy_policy_mode='tight'))
@@ -355,7 +354,7 @@ def test_immediate_rebalance_updates_rent_setting(client):
 
 
 def test_rebalanced_rent_amount_does_not_backdate_current_coverage_due(client):
-    _, _, rent_settings, economy = _create_admin_with_block()
+    _, _, rent_settings, economy = _create_admin_with_block('A', join_code='JOINPOLA')
     rent_settings.rent_amount = Decimal('620.00')
     rent_settings.updated_at = datetime(2026, 3, 19, 12, 0, tzinfo=timezone.utc)
 
@@ -396,7 +395,7 @@ def test_rebalanced_rent_amount_does_not_backdate_current_coverage_due(client):
 
 
 def test_class_scope_cycle_locks_rent_rate_after_first_payment(client):
-    admin, _, rent_settings, economy = _create_admin_with_block()
+    admin, _, rent_settings, economy = _create_admin_with_block('A', join_code='JOINPOLA')
     join_code = "LOCKA1"
     with FEATContext("FEAT-IDEN-001", idempotency_key=f"economy-policy:lock-cycle:{economy.class_id}"):
         lock_class = ClassEconomy(
@@ -456,7 +455,7 @@ def test_class_scope_cycle_locks_rent_rate_after_first_payment(client):
 
 
 def test_invalid_activation_mode_is_rejected(client):
-    admin, _, rent_settings, economy = _create_admin_with_block()
+    admin, _, rent_settings, economy = _create_admin_with_block('A', join_code='JOINPOLA')
     _login_admin(client, admin.id, class_id=economy.class_id)
     with FEATContext("FEAT-IDEN-001", idempotency_key=f"economy-policy:set-tight:{economy.class_id}:invalid-mode"):
         db.session.add(FeatureSettings(class_id=economy.class_id, economy_policy_mode='tight'))
@@ -473,8 +472,8 @@ def test_invalid_activation_mode_is_rejected(client):
 
 
 def test_rebalance_ignores_cross_teacher_selected_ids(client):
-    admin_a, _, _, economy_a = _create_admin_with_block('A', 'JOINPOLA')
-    admin_b, _, _, economy = _create_admin_with_block('B', 'JOINPOLB')
+    admin_a, _, _, economy_a = _create_admin_with_block('A', join_code='JOINPOLA')
+    admin_b, _, _, economy = _create_admin_with_block('B', join_code='JOINPOLB')
     policy_a = _create_insurance_policy(admin_a.id, 'Teacher A Policy', '20.00', economy=economy_a)
     policy_b = _create_insurance_policy(admin_b.id, 'Teacher B Policy', '99.00', economy=economy)
     _login_admin(client, admin_a.id, class_id=economy_a.class_id)
@@ -496,7 +495,7 @@ def test_rebalance_ignores_cross_teacher_selected_ids(client):
 
 
 def test_run_payroll_applies_scheduled_rebalance(client):
-    admin, _, rent_settings, economy = _create_admin_with_block()
+    admin, _, rent_settings, economy = _create_admin_with_block('A', join_code='JOINPOLA')
     _login_admin(client, admin.id, class_id=economy.class_id)
     with FEATContext("FEAT-IDEN-001", idempotency_key=f"economy-policy:set-tight:{economy.class_id}:run-payroll"):
         db.session.add(FeatureSettings(
@@ -525,7 +524,7 @@ def test_run_payroll_applies_scheduled_rebalance(client):
 
 
 def test_next_renewal_rebalance_schedules_rent_for_next_cycle(client):
-    admin, _, rent_settings, economy = _create_admin_with_block()
+    admin, _, rent_settings, economy = _create_admin_with_block('A', join_code='JOINPOLA')
     _login_admin(client, admin.id, class_id=economy.class_id)
     with FEATContext("FEAT-IDEN-001", idempotency_key=f"economy-policy:set-tight:{economy.class_id}:next-renewal"):
         db.session.add(FeatureSettings(class_id=economy.class_id, economy_policy_mode='tight'))
@@ -555,7 +554,7 @@ def test_next_renewal_rebalance_schedules_rent_for_next_cycle(client):
 
 
 def test_activate_due_rebalances_applies_past_due_rent_change(client):
-    admin, _, rent_settings, economy = _create_admin_with_block()
+    admin, _, rent_settings, economy = _create_admin_with_block('A', join_code='JOINPOLA')
     with FEATContext("FEAT-IDEN-001", idempotency_key=f"economy-policy:set-tight:{economy.class_id}:past-due"):
         db.session.add(FeatureSettings(
             class_id=economy.class_id,
@@ -589,7 +588,7 @@ def test_activate_due_rebalances_applies_past_due_rent_change(client):
 
 
 def test_activate_due_rebalances_explicit_class_scope_applies_due_transition(client):
-    admin, _, rent_settings, economy = _create_admin_with_block()
+    admin, _, rent_settings, economy = _create_admin_with_block('A', join_code='JOINPOLA')
     with FEATContext("FEAT-IDEN-001", idempotency_key=f"economy-policy:set-tight:{economy.class_id}:explicit-scope"):
         db.session.add(FeatureSettings(
             class_id=economy.class_id,
@@ -624,7 +623,7 @@ def test_activate_due_rebalances_explicit_class_scope_applies_due_transition(cli
 
 
 def test_activate_due_rebalances_keeps_rent_mutation_in_settings_row_class(client):
-    admin, _, rent_settings_a, economy_a = _create_admin_with_block('A', 'JOINPOLA')
+    admin, _, rent_settings_a, economy_a = _create_admin_with_block('A', join_code='JOINPOLA')
 
     with FEATContext("FEAT-IDEN-001", idempotency_key=f"economy-policy:create-cross-class:{economy_a.class_id}"):
         economy_b = ClassEconomy(
@@ -678,7 +677,7 @@ def test_activate_due_rebalances_keeps_rent_mutation_in_settings_row_class(clien
 
 
 def test_activate_due_rebalances_does_not_mutate_cross_class_insurance_policy(client):
-    admin, _, _, economy_a = _create_admin_with_block('A', 'JOINPOLA')
+    admin, _, _, economy_a = _create_admin_with_block('A', join_code='JOINPOLA')
     economy_b = create_class_scope(
         teacher_user=db.session.get(User, admin.id),
         join_code='JOINPOLB',
@@ -717,7 +716,7 @@ def test_activate_due_rebalances_does_not_mutate_cross_class_insurance_policy(cl
 
 
 def test_prepare_scheduled_rebalance_changes_sets_rent_effective_at(client):
-    admin, _, rent_settings, economy = _create_admin_with_block()
+    admin, _, rent_settings, economy = _create_admin_with_block('A', join_code='JOINPOLA')
 
     changes = prepare_scheduled_rebalance_changes(
         [{
@@ -736,7 +735,7 @@ def test_prepare_scheduled_rebalance_changes_sets_rent_effective_at(client):
 
 
 def test_activate_due_rebalances_applies_pending_policy_transition_without_legacy_payload(client):
-    admin, _, rent_settings, economy = _create_admin_with_block()
+    admin, _, rent_settings, economy = _create_admin_with_block('A', join_code='JOINPOLA')
     with FEATContext("FEAT-IDEN-001", idempotency_key=f"economy-policy:legacy-payload:{economy.class_id}"):
         settings_row = FeatureSettings.query.filter_by(class_id=economy.class_id).first()
         if settings_row is None:
