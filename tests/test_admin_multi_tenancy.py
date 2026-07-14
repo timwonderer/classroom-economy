@@ -33,7 +33,6 @@ def two_teachers(client):
     for i in range(5):
         seed_class_with_seat(
             teacher=teacher1,
-            join_code=f"T1CLS{i}",
             display_name="A",
             student_first_name=f"StudentT1_{i}",
             student_last_name="A",
@@ -43,7 +42,6 @@ def two_teachers(client):
     for i in range(3):
         seed_class_with_seat(
             teacher=teacher2,
-            join_code=f"T2CLS{i}",
             display_name="B",
             student_first_name=f"StudentT2_{i}",
             student_last_name="B",

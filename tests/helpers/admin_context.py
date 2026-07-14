@@ -6,7 +6,8 @@ context_resolver. No Admin objects.
 import secrets
 from app.extensions import db
 from app.feats.base import FEATContext
-from app.models import ClassEconomy, Seat, User
+from app.models import User
+from tests.helpers.canonical_session import set_canonical_context
 
 
 def login_teacher(
@@ -16,42 +17,23 @@ def login_teacher(
     class_id: str | None = None,
     seat_id: int | None = None,
 ) -> None:
-    """Set up a teacher session on the test client.
-
-    If class_id / join_code is provided, establishes a full CanonicalContext
-    (teacher sees their class). If omitted, establishes a BoundaryContext
-    (teacher is logged in but has no active class — valid for onboarding routes).
-    """
-    resolved_class_id = class_id
-    resolved_seat_id = seat_id
-
-    if resolved_seat_id is None and resolved_class_id is not None:
-        seat = Seat.query.filter_by(
-            user_id=teacher_user.id,
-            class_id=resolved_class_id,
-        ).first()
-        if seat:
-            resolved_seat_id = seat.id
+    """Set up a teacher session on the test client."""
 
     nonce = secrets.token_urlsafe(32)
-
-    with FEATContext("FEAT-IDEN-001", idempotency_key=f"login_teacher:{teacher_user.id}:{nonce}"):
+    with FEATContext("FEAT-IDEN-001", idempotency_key=f"login_teacher:{teacher_user.id}:{class_id}:{seat_id}:{nonce}"):
         with client.session_transaction() as sess:
             sess["user_id"] = teacher_user.id
             sess["current_session_nonce"] = nonce
-            sess["last_activity"] = __import__('datetime').datetime.now(
-                __import__('datetime').timezone.utc
-            ).isoformat()
-
-            if resolved_class_id and resolved_seat_id:
-                sess["current_class_id"] = resolved_class_id
-                sess["current_seat_id"] = resolved_seat_id
-
+            sess["last_activity"] = __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat()
+            if class_id is not None and seat_id is not None:
+                set_canonical_context(
+                    sess,
+                    user_id=teacher_user.id,
+                    class_id=class_id,
+                    seat_id=seat_id,
+                    role="teacher",
+                )
         teacher_user.current_session_nonce = nonce
-        if resolved_class_id:
-            teacher_user.last_active_class_id = resolved_class_id
-        if resolved_seat_id:
-            teacher_user.last_active_seat_id = resolved_seat_id
         db.session.flush()
 
 

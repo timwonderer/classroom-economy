@@ -1664,7 +1664,7 @@ def hall_pass_verification_active():
         "passes": [
             {
                 "id": log.id,
-                "student_id": log.student_id,
+                "seat_id": log.seat_id,
                 "destination": log.reason,
                 "status": log.status,
                 "join_code": log.join_code,
