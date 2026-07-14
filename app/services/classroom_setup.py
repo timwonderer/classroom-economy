@@ -6,7 +6,7 @@ separate test-only fixture assembly.
 
 Canonical creation order for a class:
   1. user_id (Teacher User, pre-existing) + generated class_id (UUID) → ClassEconomy
-     join_code is a user-facing alias bound at creation time; it is ingress/display metadata, not runtime authority.
+     join_code is a user-facing alias bound at creation time; it is ingress/display metadata only.
      display_name / section are display metadata only, never identity anchors.
   2. Seat (seat_id generated, user_id + class_id bound, role='teacher')
   3. User.last_active_class_id = class_id, User.last_active_seat_id = seat_id

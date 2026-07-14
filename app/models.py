@@ -560,10 +560,9 @@ class Transaction(db.Model):
     seat_id = db.Column(db.Integer, db.ForeignKey('seats.id', ondelete='CASCADE'), nullable=False, index=True)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
 
-    # CRITICAL: join_code is the source of truth for class isolation
-    # Each join code represents a distinct class economy, even if same teacher
-    # Example: Teacher has Period A (join=MATH1A) and Period B (join=MATH3B)
-    # Student in both periods should see separate balances/transactions
+    # CRITICAL: class_id is the canonical anchor for class isolation.
+    # join_code is ingress/display metadata only and may resolve to class_id
+    # at the boundary, but it is never the runtime authority.
     join_code = db.Column(db.String(20), nullable=True, index=True)
     class_id = db.Column(db.String(36), db.ForeignKey('classes.class_id', ondelete='CASCADE'), nullable=True, index=True)
 
@@ -2853,7 +2852,8 @@ class AnalyticsSnapshot(db.Model):
     
     id = db.Column(db.Integer, primary_key=True)
     
-    # Scoping (CRITICAL: join_code is source of truth for multi-tenancy)
+    # Scoping (CRITICAL: class_id is the canonical multi-tenancy anchor;
+    # join_code is display metadata only)
     teacher_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
     class_id = db.Column(db.String(36), db.ForeignKey('classes.class_id', ondelete='CASCADE'), nullable=True, index=True)
     join_code = db.Column(db.String(20), nullable=False, index=True)

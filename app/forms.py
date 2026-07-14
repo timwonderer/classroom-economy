@@ -336,8 +336,8 @@ class BankingSettingsForm(FlaskForm):
 class StudentAddClassForm(FlaskForm):
     """Form for logged-in students to add a new class by entering a join code.
 
-    Each join_code is an independent universe. Credentials entered here are
-    verified against the *new* class's own unclaimed roster seat.
+    join_code is ingress/display metadata only; the boundary must resolve it
+    to class_id before any class-scoped work proceeds.
     """
     join_code = StringField('Join Code (from your teacher)', validators=[DataRequired()])
     first_name = StringField('First Name', validators=[DataRequired(), Length(min=1, max=128)])
