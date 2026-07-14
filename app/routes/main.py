@@ -248,7 +248,8 @@ def verify_hall_pass(teacher_public_token):
             message=_GENERIC_UNAVAILABLE
         ), 404
 
-    # Get teacher's active classes (display uses join_code, but POST should carry class_id)
+    # Build the display list from the teacher's classes; POST must still resolve
+    # the selected class directly by class_id.
     classes_rows = (
         ClassEconomy.query.filter_by(user_id=teacher_user.id)
         .order_by(ClassEconomy.display_name)
@@ -290,9 +291,12 @@ def verify_hall_pass(teacher_public_token):
             result={'outcome': 'no_match'}
         )
 
-    # Validate selected class belongs to this teacher.
-    selected_class = next((c for c in classes if c['class_id'] == selected_class_id), None)
-    if not selected_class:
+    # Validate selected class directly under the teacher's ownership boundary.
+    selected_class_row = ClassEconomy.query.filter_by(
+        class_id=selected_class_id,
+        user_id=teacher_user.id,
+    ).first()
+    if not selected_class_row:
         return render_template(
             'hall_pass_verify.html',
             unavailable=False,
@@ -344,7 +348,7 @@ def verify_hall_pass(teacher_public_token):
         result = {'outcome': 'ambiguous'}
     else:
         entry = matched[0]
-        class_label = selected_class['label']
+        class_label = selected_class_row.display_name or selected_class_row.join_code
 
         # Format time_out in school timezone
         time_out_str = None
