@@ -10525,7 +10525,6 @@ def banking():
         total_transactions=total_transactions,
         current_page="banking",
         format_utc_iso=format_utc_iso,
-        settings_block=settings_block,
         teacher_blocks=teacher_blocks,
         selected_feature_scope=selected_scope,
     )

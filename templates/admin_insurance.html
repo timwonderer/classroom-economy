@@ -1255,7 +1255,7 @@
             warningsContainer: '#economy-warnings'
           });
 
-          const currentBlock = '{{ settings_block }}';
+          const currentBlock = '{{ selected_feature_scope.block if selected_feature_scope else "" }}';
           economyChecker.analyzeEconomy(null, currentBlock).then(analysis => {
             economyChecker.displayCWIInfo(analysis, '#cwi-info');
           }).catch(err => {
