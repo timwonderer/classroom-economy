@@ -41,10 +41,8 @@ def _login_student(client, student_id):
             )
 
 
-def _login_admin(client, teacher):
-    class_row = ClassEconomy.query.filter_by(user_id=teacher.id).order_by(ClassEconomy.class_id.asc()).first()
-    assert class_row is not None
-    login_admin(client, teacher, class_id=class_row.class_id)
+def _login_admin(client, teacher, class_id):
+    login_admin(client, teacher, class_id=class_id)
 
 
 def _create_teacher(username):
@@ -579,7 +577,7 @@ def test_delete_active_collective_item_refunds_pending(client):
         db.session.add(si)
         db.session.flush()
 
-        _login_admin(client, teacher)
+        _login_admin(client, teacher, class_row.class_id)
         resp = client.post(f'/admin/store/delete/{item.id}')
         assert resp.status_code in (200, 302)
 
@@ -618,7 +616,7 @@ def test_delete_inactive_collective_item_does_not_refund(client):
         db.session.add(si)
         db.session.flush()
 
-        _login_admin(client, teacher)
+        _login_admin(client, teacher, class_row.class_id)
         resp = client.post(f'/admin/store/delete/{item.id}')
         assert resp.status_code in (200, 302)
 

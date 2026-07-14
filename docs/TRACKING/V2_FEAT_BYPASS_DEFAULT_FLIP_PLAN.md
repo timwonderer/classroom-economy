@@ -188,7 +188,9 @@ explicit fixture helpers."
 - Migrate any remaining fixture helpers that still construct canonical
   rows with v1-tainted assumptions rather than explicit `class_id`/`seat_id`
   inputs.
-- Drain the audit-only implied-authority gaps tracked in
+- Drain any remaining fixture-helper cleanup outside the collective-goal and
+  policy-mode slices; the implied-authority audit gaps for those two tests are
+  now resolved in
   [`AUDIT_IMPLIED_AUTHORITY_TODO.md`](./AUDIT_IMPLIED_AUTHORITY_TODO.md).
 
 **Progress update (2026-07-12):**
@@ -202,8 +204,8 @@ explicit fixture helpers."
   `tests/test_economy_policy_mode.py` now keep students and class-owned
   records on one explicit canonical class scope per scenario instead of
   re-deriving class ownership from teacher lookup or join-code shims.
-- The remaining audit-only implied-authority gaps for the policy-mode and
-  collective-goal fixture reshapes are tracked in
+- The policy-mode and collective-goal implied-authority audit gaps are now
+  resolved in
   [`AUDIT_IMPLIED_AUTHORITY_TODO.md`](./AUDIT_IMPLIED_AUTHORITY_TODO.md).
 - Representative tests have been migrated onto the shared helpers:
   `tests/test_canonical_auth_session.py` and
