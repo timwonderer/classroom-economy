@@ -45,12 +45,8 @@ def _create_class_for_teacher(
     return class_row
 
 
-def _login_admin(client, teacher: User):
-    class_row = ClassEconomy.query.filter_by(user_id=teacher.id).order_by(ClassEconomy.class_id.asc()).first()
-    if class_row:
-        login_teacher(client, teacher, class_id=class_row.class_id)
-    else:
-        login_teacher(client, teacher)
+def _login_admin(client, teacher: User, class_id: str):
+    login_teacher(client, teacher, class_id=class_id)
 
 
 def _build_student_detail_public_url(client, teacher_user: User, student_user: User) -> str:
@@ -96,7 +92,7 @@ def test_student_listing_scoped_to_teacher(client):
     _create_student_in_class(class_b, "Bob")
     db.session.commit()
 
-    _login_admin(client, teacher_a)
+    _login_admin(client, teacher_a, class_a.class_id)
 
     response = client.get("/admin/students")
     body = response.get_data(as_text=True)
@@ -115,7 +111,7 @@ def test_student_detail_forbids_cross_tenant_access(client):
     seat_b, _ = _create_student_in_class(class_b, "Bob")
     db.session.commit()
 
-    _login_admin(client, teacher_a)
+    _login_admin(client, teacher_a, class_a.class_id)
 
     response = client.get(f"/admin/students/{seat_b.id}")
     assert response.status_code == 404
@@ -132,7 +128,7 @@ def test_shared_student_accessible_to_multiple_teachers(client):
     seat_b = make_student_identity(class_id=class_b.class_id, first_name="SharedB", last_name="Test")
     db.session.commit()
 
-    _login_admin(client, teacher_b)
+    _login_admin(client, teacher_b, class_b.class_id)
     with client.session_transaction() as sess:
         teacher_b_seat = Seat.query.filter_by(class_id=class_b.class_id, role="teacher").first()
         set_canonical_context(
@@ -171,7 +167,7 @@ def test_student_detail_recovers_from_stale_class_context(client):
         db.session.flush()
 
     db.session.commit()
-    _login_admin(client, teacher)
+    _login_admin(client, teacher, class_row.class_id)
 
     # Point session to class B (stale context for student A)
     with FEATContext("FEAT-IDEN-001", idempotency_key="admin_tenancy:stale_class_context"):
@@ -227,7 +223,7 @@ def test_enforce_daily_limits_ignores_other_class_activity(client):
         db.session.flush()
     db.session.commit()
 
-    _login_admin(client, teacher_a)
+    _login_admin(client, teacher_a, class_a.class_id)
     response = client.post("/admin/enforce-daily-limits")
     payload = response.get_json()
 
@@ -269,7 +265,7 @@ def test_enforce_daily_limits_taps_out_when_limit_reached_in_scope(client):
         db.session.flush()
     db.session.commit()
 
-    _login_admin(client, teacher)
+    _login_admin(client, teacher, class_row.class_id)
     response = client.post("/admin/enforce-daily-limits")
     payload = response.get_json()
 
@@ -298,7 +294,7 @@ def test_student_detail_public_url_requires_nav_token(client):
     _, student_user = _create_student_in_class(class_row, "PublicDetail")
     db.session.commit()
 
-    _login_admin(client, teacher)
+    _login_admin(client, teacher, class_row.class_id)
 
     nav_url = _build_student_detail_public_url(client, teacher, student_user)
     ok = client.get(nav_url, follow_redirects=False)
@@ -322,7 +318,7 @@ def test_student_detail_public_id_is_seat_scoped_for_shared_student(client):
     assert seat_b is not None
     assert seat_a.public_id != seat_b.public_id
 
-    _login_admin(client, teacher_a)
+    _login_admin(client, teacher_a, class_a.class_id)
     own_detail_url = _build_student_detail_public_url(client, teacher_a, shared_student_user)
     assert f"/admin/students/{seat_a.public_id}?" in own_detail_url
     assert client.get(own_detail_url, follow_redirects=False).status_code == 200
