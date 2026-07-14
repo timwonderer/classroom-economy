@@ -96,7 +96,6 @@ def test_class_isolation_between_teachers(client):
 
     cls_a = seed_class_with_seat(
         teacher=teacher_a,
-        join_code="ISOCLS1",
         display_name="A",
         student_first_name="Isolated",
         student_last_name="I",
