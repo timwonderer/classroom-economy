@@ -24,6 +24,7 @@ from app.models import (
 )
 from app.utils.ip_handler import get_real_ip
 from app.services.tlcp import create_ticket_correlation_pack
+from app.services.ledger_service import get_available_balances
 from app.feats.base import feat_shell
 from app.utils.join_code import get_display_join_code
 
@@ -68,8 +69,7 @@ def create_context_snapshot(actor, class_id, related_transaction_id=None, relate
 
     # Get current balances (scoped by class_id + seat_id)
     # Convert Decimal to float for JSON serialization (db.JSON column)
-    checking_balance = seat.get_checking_balance(class_id=class_id, seat_id=seat.id)
-    savings_balance = seat.get_savings_balance(class_id=class_id, seat_id=seat.id)
+    checking_balance, savings_balance = get_available_balances(seat.id, class_id)
     snapshot['balances'] = {
         'checking': float(checking_balance),
         'savings': float(savings_balance),
@@ -160,7 +160,7 @@ def create_issue(actor, user_id, class_id, category_id, explanation, expected_ou
     issue = Issue(
         seat_id=canonical_seat.id,
         actor_public_id=actor_public_id,
-        teacher_id=user_id,
+        user_id=user_id,
         class_id=class_id,
         join_code=join_code,
         class_label=class_label,

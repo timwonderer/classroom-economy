@@ -5,22 +5,24 @@ from app import db
 from app.models import Seat, User, UserRole, ActorRequestTrace, ErrorEvent, IssueCategory, ClassEconomy
 from app.utils.issue_helpers import create_issue
 from app.utils.time import utc_now
+from app.feats.base import FEATContext
 from tests.helpers.class_scope import make_student_identity, create_class_scope
 
 
 def _create_student_issue_context():
-    admin = seed_canonical_admin("teacher", "base32secret3232").user
-    db.session.flush()
+    with FEATContext("FEAT-IDEN-001", idempotency_key="ticket_log_correlation_pack_setup"):
+        admin = seed_canonical_admin("teacher", "base32secret3232").user
+        db.session.flush()
 
-    class_row = create_class_scope(teacher_user=admin, join_code="TLCP-JOIN")
-    db.session.flush()
+        class_row = create_class_scope(teacher_user=admin, join_code="TLCP-JOIN")
+        db.session.flush()
 
-    seat = make_student_identity(class_id=class_row.class_id, first_name="Student", last_name="S")
-    actor_public_id = seat.public_id
+        seat = make_student_identity(class_id=class_row.class_id, first_name="Student", last_name="S")
+        actor_public_id = seat.public_id
 
-    category = IssueCategory(name="General TLCP", category_type="general", is_active=True)
-    db.session.add(category)
-    db.session.flush()
+        category = IssueCategory(name="General TLCP", category_type="general", is_active=True)
+        db.session.add(category)
+        db.session.flush()
 
     return admin, seat, class_row, category, actor_public_id
 
@@ -28,44 +30,46 @@ def _create_student_issue_context():
 def test_create_issue_attaches_correlation_pack_with_trace_and_error(app):
     admin, student, join_code_row, category, actor_public_id = _create_student_issue_context()
 
-    db.session.add(
-        ActorRequestTrace(
-            actor_type="student",
-            actor_public_id=actor_public_id,
-            class_id=join_code_row.class_id,
-            request_id="req-test-1",
-            method="POST",
-            endpoint="/store/buy",
-            status_code=500,
-            created_at=utc_now() - timedelta(minutes=20),
+    with FEATContext("FEAT-IDEN-001", idempotency_key="ticket_log_correlation_pack_trace"):
+        db.session.add(
+            ActorRequestTrace(
+                actor_type="student",
+                actor_public_id=actor_public_id,
+                class_id=join_code_row.class_id,
+                request_id="req-test-1",
+                method="POST",
+                endpoint="/store/buy",
+                status_code=500,
+                created_at=utc_now() - timedelta(minutes=20),
+            )
         )
-    )
-    db.session.add(
-        ErrorEvent(
-            request_id="req-test-1",
-            actor_type="student",
-            actor_public_id=actor_public_id,
-            class_id=join_code_row.class_id,
-            endpoint="/store/buy",
-            method="POST",
-            error_class="RuntimeError",
-            error_message="purchase failed",
-            correlation_version=1,
-            created_at=utc_now() - timedelta(minutes=15),
+        db.session.add(
+            ErrorEvent(
+                request_id="req-test-1",
+                actor_type="student",
+                actor_public_id=actor_public_id,
+                class_id=join_code_row.class_id,
+                endpoint="/store/buy",
+                method="POST",
+                error_class="RuntimeError",
+                error_message="purchase failed",
+                correlation_version=1,
+                created_at=utc_now() - timedelta(minutes=15),
+            )
         )
-    )
-    db.session.flush()
+        db.session.flush()
 
-    with app.test_request_context("/student/help-support/submit-issue", method="POST"):
-        issue = create_issue(
-            student=student,
-            teacher_id=admin.id,
-            join_code=join_code_row.join_code,
-            category_id=category.id,
-            explanation="Something broke",
-            expected_outcome="It should work",
-            include_recent_error=True,
-        )
+    with FEATContext("FEAT-SUP-001", idempotency_key="ticket_log_correlation_pack_issue"):
+        with app.test_request_context("/student/help-support/submit-issue", method="POST"):
+            issue = create_issue(
+                actor=student,
+                user_id=admin.id,
+                class_id=join_code_row.class_id,
+                category_id=category.id,
+                explanation="Something broke",
+                expected_outcome="It should work",
+                include_recent_error=True,
+            )
 
     assert issue.correlation_pack is not None
     assert issue.correlation_pack.actor_public_id == actor_public_id
@@ -78,31 +82,33 @@ def test_create_issue_attaches_correlation_pack_with_trace_and_error(app):
 def test_create_issue_can_skip_recent_error_refs(app):
     admin, student, join_code_row, category, actor_public_id = _create_student_issue_context()
 
-    db.session.add(
-        ErrorEvent(
-            request_id="req-test-2",
-            actor_type="student",
-            actor_public_id=actor_public_id,
-            class_id=join_code_row.class_id,
-            endpoint="/store/buy",
-            method="POST",
-            error_class="RuntimeError",
-            error_message="purchase failed",
-            correlation_version=1,
-            created_at=utc_now() - timedelta(minutes=5),
+    with FEATContext("FEAT-IDEN-001", idempotency_key="ticket_log_correlation_pack_error"):
+        db.session.add(
+            ErrorEvent(
+                request_id="req-test-2",
+                actor_type="student",
+                actor_public_id=actor_public_id,
+                class_id=join_code_row.class_id,
+                endpoint="/store/buy",
+                method="POST",
+                error_class="RuntimeError",
+                error_message="purchase failed",
+                correlation_version=1,
+                created_at=utc_now() - timedelta(minutes=5),
+            )
         )
-    )
-    db.session.flush()
+        db.session.flush()
 
-    with app.test_request_context("/student/help-support/submit-issue", method="POST"):
-        issue = create_issue(
-            student=student,
-            teacher_id=admin.id,
-            join_code=join_code_row.join_code,
-            category_id=category.id,
-            explanation="Something broke",
-            include_recent_error=False,
-        )
+    with FEATContext("FEAT-SUP-001", idempotency_key="ticket_log_correlation_pack_issue"):
+        with app.test_request_context("/student/help-support/submit-issue", method="POST"):
+            issue = create_issue(
+                actor=student,
+                user_id=admin.id,
+                class_id=join_code_row.class_id,
+                category_id=category.id,
+                explanation="Something broke",
+                include_recent_error=False,
+            )
 
     assert issue.correlation_pack is not None
     assert issue.correlation_pack.error_refs_json == []
