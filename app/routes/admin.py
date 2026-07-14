@@ -2351,7 +2351,7 @@ def _filter_economy_health_warnings(analysis, rent_settings, insurance_policies,
         'Fees',
         len([w for w in filtered if w.feature.startswith('Fine:')]) if fines else 0,
         'Review payroll fines',
-        url_for('admin.payroll', cwi_block=selected_block),
+        url_for('admin.payroll'),
     )
     add_summary(
         'Store',
@@ -8145,9 +8145,9 @@ def economy_health():
     feature_links = {
         'rent': url_for('admin.rent_settings', settings_block=selected_block),
         'insurance': url_for('admin.insurance_management', settings_block=selected_block),
-        'fine': url_for('admin.payroll', cwi_block=selected_block),
+        'fine': url_for('admin.payroll'),
         'store': url_for('admin.store_management'),
-        'budget survival test': url_for('admin.payroll', cwi_block=selected_block),
+        'budget survival test': url_for('admin.payroll'),
     }
 
     return render_template(
@@ -8180,7 +8180,7 @@ def economy_health():
         rebalance_preview=rebalance_preview,
         show_rebalance_review=show_rebalance_review,
         feature_links=feature_links,
-        payroll_link=url_for('admin.payroll', cwi_block=selected_block),
+        payroll_link=url_for('admin.payroll'),
         banking_link=url_for('admin.banking'),
         rent_link=url_for('admin.rent_settings', settings_block=selected_block),
         insurance_link=url_for('admin.insurance_management', settings_block=selected_block),
@@ -8928,7 +8928,7 @@ def update_expected_weekly_hours():
         # Validate expected_weekly_hours is within a reasonable range (0.25 to 80)
         if not (0.25 <= expected_weekly_hours <= 80):
             flash('Expected weekly hours must be between 0.25 and 80.', 'error')
-            return redirect(url_for('admin.payroll', cwi_block=cwi_block))
+            return redirect(url_for('admin.payroll'))
 
         payload_hash = hashlib.sha256(
             json.dumps(

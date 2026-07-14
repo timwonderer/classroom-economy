@@ -87,7 +87,8 @@ def test_expected_weekly_hours_update_creates_class_scoped_row(client):
     )
 
     assert response.status_code == 302
-    assert response.headers["Location"].endswith("/admin/payroll?cwi_block=C")
+    assert response.headers["Location"].endswith("/admin/payroll")
+    assert "cwi_block" not in response.headers["Location"]
 
     saved = PayrollSettings.query.filter_by(class_id=class_row.class_id).first()
     assert saved is not None
