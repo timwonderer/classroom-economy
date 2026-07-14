@@ -37,10 +37,8 @@ def _make_rent_settings(block, first_due, class_id=None, frequency_type="weekly"
         return settings
 
 
-def _login_admin(client, admin: User):
-    class_row = ClassEconomy.query.filter_by(user_id=admin.id).order_by(ClassEconomy.class_id.asc()).first()
-    assert class_row is not None
-    login_admin(client, admin, class_id=class_row.class_id)
+def _login_admin(client, admin: User, class_id: str):
+    login_admin(client, admin, class_id=class_id)
     with client.session_transaction() as sess:
         sess['is_system_admin'] = False
 
@@ -61,7 +59,7 @@ def test_past_due_scope_creates_one_waiver_per_date(client, app):
         student_seat = seed_student_identity(class_id=tb.class_id, first_name="Test", last_name="W").seat
         db.session.flush()
 
-        _login_admin(client, admin)
+        _login_admin(client, admin, class_row.class_id)
 
         date1 = datetime(2026, 1, 5, tzinfo=timezone.utc).isoformat()
         date2 = datetime(2026, 1, 12, tzinfo=timezone.utc).isoformat()
@@ -100,7 +98,7 @@ def test_current_scope_creates_waiver_for_current_period(client, app):
         student_seat = seed_student_identity(class_id=tb.class_id, first_name="Test", last_name="W").seat
         db.session.flush()
 
-        _login_admin(client, admin)
+        _login_admin(client, admin, class_row.class_id)
 
         resp = client.post(
             '/admin/rent-waiver/add',
@@ -133,7 +131,7 @@ def test_future_scope_creates_waiver_spanning_n_periods(client, app):
         student_seat = seed_student_identity(class_id=tb.class_id, first_name="Test", last_name="W").seat
         db.session.flush()
 
-        _login_admin(client, admin)
+        _login_admin(client, admin, class_row.class_id)
 
         resp = client.post(
             '/admin/rent-waiver/add',
@@ -166,7 +164,7 @@ def test_invalid_future_periods_count_flashes_error(client, app):
         student_seat = seed_student_identity(class_id=tb.class_id, first_name="Test", last_name="W").seat
         db.session.flush()
 
-        _login_admin(client, admin)
+        _login_admin(client, admin, class_row.class_id)
 
         resp = client.post(
             '/admin/rent-waiver/add',
@@ -193,7 +191,7 @@ def test_missing_join_code_flashes_error(client, app):
         student_seat = seed_student_identity(class_id=tb.class_id, first_name="Test", last_name="W").seat
         db.session.flush()
 
-        _login_admin(client, admin)
+        _login_admin(client, admin, class_row.class_id)
 
         resp = client.post(
             '/admin/rent-waiver/add',
@@ -221,7 +219,7 @@ def test_invalid_past_due_dates_skipped_count_reflects_actual(client, app):
         student_seat = seed_student_identity(class_id=tb.class_id, first_name="Test", last_name="W").seat
         db.session.commit()
 
-        _login_admin(client, admin)
+        _login_admin(client, admin, class_row.class_id)
 
         valid_date = datetime(2026, 1, 5, tzinfo=timezone.utc).isoformat()
 
@@ -259,7 +257,7 @@ def test_add_rent_waiver_logs_analytics_event(client, app, monkeypatch):
 
         fixed_now = datetime(2026, 2, 1, tzinfo=timezone.utc)
         monkeypatch.setattr('app.routes.admin.utc_now', lambda: fixed_now)
-        _login_admin(client, admin)
+        _login_admin(client, admin, class_row.class_id)
 
         resp = client.post(
             '/admin/rent-waiver/add',
@@ -297,7 +295,7 @@ def test_remove_rent_waiver_logs_analytics_event(client, app):
             db.session.flush()
         waiver_id = waiver.id
 
-        _login_admin(client, admin)
+        _login_admin(client, admin, class_row.class_id)
 
         resp = client.post(f'/admin/rent-waiver/{waiver_id}/remove')
         assert resp.status_code == 302
