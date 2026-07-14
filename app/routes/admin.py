@@ -4820,7 +4820,6 @@ def edit_student():
             new_seat = Seat(
                 student_id=student.id,
                 class_id=class_id,
-                join_code=join_code,
                 block=block,
                 claimed_at=utc_now() if is_claimed else None,
             )
@@ -9417,7 +9416,6 @@ def upload_students():
                 notes = row["notes"]
                 seat = Seat(
                     class_id=class_row.class_id,
-                    join_code=join_code,
                     role="student",
                     claimed_at=None,
                 )
@@ -9733,7 +9731,6 @@ def upload_students():
                     claim_last_name_hash=claim_last_name_hash,
                     roster_fingerprint=roster_fingerprint,
                     dedupe_code=dedupe_code,
-                    join_code=join_code,
                     claimed_at=None
                 )
                 db.session.add(seat)
