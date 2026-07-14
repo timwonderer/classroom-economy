@@ -6148,38 +6148,16 @@ def rent_settings():
     settings = RentSettings.query.filter_by(class_id=class_id).first()
 
     if request.method == 'POST':
-        apply_to_all = request.form.get('apply_to_all') == 'true'
-        # In v2, authority is class_id — resolve the list of class IDs to update directly.
-        if apply_to_all:
-            class_ids_to_update = [
-                opt['class_id'] for opt in feature_options if opt.get('class_id')
-            ]
-        else:
-            class_ids_to_update = [class_id]
-        # Keep a legacy variable alias for the iteration below (renamed but same purpose).
-        blocks_to_update = class_ids_to_update
-        # settings_block is display-only; canonical scope key is class_id throughout.
-        join_code_map = {}   # class_id → join_code (display use only)
-        blocks_with_rows = set()  # class_ids that have a RentSettings row
-        if class_ids_to_update:
-            ce_rows = db.session.query(ClassEconomy.class_id).filter(
-                ClassEconomy.user_id == user_id,
-                ClassEconomy.class_id.in_(class_ids_to_update),
-            ).all()
-            for (cid,) in ce_rows:
-                blocks_with_rows.add(cid)
-                if cid and cid not in join_code_map:
-                    join_code_map[cid] = get_display_join_code(cid)
+        blocks_to_update = [class_id]
 
         payload_hash = hashlib.sha256(
             json.dumps(
-                {
-                    "class_id": selected_scope["class_id"],
-                    "settings_block": settings_block,
-                    "apply_to_all": apply_to_all,
-                    "blocks_to_update": sorted([b for b in blocks_to_update if b]),
-                    "form_keys": sorted(request.form.keys()),
-                },
+                    {
+                        "class_id": selected_scope["class_id"],
+                        "settings_block": settings_block,
+                        "blocks_to_update": sorted([b for b in blocks_to_update if b]),
+                        "form_keys": sorted(request.form.keys()),
+                    },
                 sort_keys=True,
                 default=str,
             ).encode("utf-8")
@@ -6338,25 +6316,23 @@ def rent_settings():
 
                 # Mid-period lock: detect if any student has paid rent for current coverage period
                 mid_period_locked = False
-                block_join_code = join_code_map.get(block)
-                if block in blocks_with_rows:
-                    from app.routes.student import _calculate_rent_coverage_due_date
-                    now = utc_now()
-                    coverage_due = _calculate_rent_coverage_due_date(block_settings, now)
-                    if coverage_due:
-                        paid_count = (
-                            db.session.query(ObligationAssessment)
-                            .join(ObligationSatisfaction,
-                                  ObligationSatisfaction.assessment_id == ObligationAssessment.id)
-                            .filter(
-                                ObligationAssessment.class_id == block_settings.class_id,
-                                ObligationAssessment.coverage_month == coverage_due.month,
-                                ObligationAssessment.coverage_year == coverage_due.year,
-                            )
-                            .count()
+                from app.routes.student import _calculate_rent_coverage_due_date
+                now = utc_now()
+                coverage_due = _calculate_rent_coverage_due_date(block_settings, now)
+                if coverage_due:
+                    paid_count = (
+                        db.session.query(ObligationAssessment)
+                        .join(ObligationSatisfaction,
+                              ObligationSatisfaction.assessment_id == ObligationAssessment.id)
+                        .filter(
+                            ObligationAssessment.class_id == block_settings.class_id,
+                            ObligationAssessment.coverage_month == coverage_due.month,
+                            ObligationAssessment.coverage_year == coverage_due.year,
                         )
-                        if paid_count > 0:
-                            mid_period_locked = True
+                        .count()
+                    )
+                    if paid_count > 0:
+                        mid_period_locked = True
 
                 for item_data in parsed_items:
                     target_item = None
@@ -6429,10 +6405,7 @@ def rent_settings():
             # block IS a class_id (INV-ARC-014: authority is class_id, not label)
             create_and_schedule_rent_policy_version(block)
 
-        if apply_to_all:
-            flash(f"Rent settings applied to all {len(blocks_to_update)} classes!", "success")
-        else:
-            flash("Rent settings updated successfully!", "success")
+        flash("Rent settings updated successfully!", "success")
         return redirect(url_for('admin.rent_settings'))
 
     # Get statistics — total claimed student seats in class
@@ -10497,7 +10470,7 @@ def banking():
     # Get transaction types for filter (filtered to this teacher's students)
     transaction_types = (
         db.session.query(Transaction.type)
-        .filter(Transaction.class_id.in_(teacher_class_ids))
+        .filter(Transaction.class_id == selected_class_id)
         .filter(Transaction.type.isnot(None))
         .distinct()
         .all()
@@ -10545,11 +10518,7 @@ def banking_settings_update():
             canonical_context=g.canonical_context,
         )
         settings_block = selected_scope['block']
-        apply_to_all = request.form.get('apply_to_all') == 'true'
-
-        feature_options = get_admin_feature_join_code_options('banking', canonical_context=g.canonical_context)
-        enabled_blocks = [option['block'] for option in feature_options if option.get('block')]
-        blocks_to_update = enabled_blocks if apply_to_all else [settings_block]
+        blocks_to_update = [settings_block]
 
         try:
             payload_hash = hashlib.sha256(
@@ -10557,7 +10526,6 @@ def banking_settings_update():
                     {
                         "class_id": selected_scope["class_id"],
                         "settings_block": settings_block,
-                        "apply_to_all": apply_to_all,
                         "blocks_to_update": sorted([b for b in blocks_to_update if b]),
                         "savings_apy": str(form.savings_apy.data or 0),
                         "savings_monthly_rate": str(form.savings_monthly_rate.data or 0),
@@ -10620,10 +10588,7 @@ def banking_settings_update():
                     )
                     settings.updated_at = utc_now()
 
-            if apply_to_all:
-                flash(f'Banking settings applied to all {len(blocks_to_update)} classes!', 'success')
-            else:
-                flash('Banking settings updated successfully!', 'success')
+            flash('Banking settings updated successfully!', 'success')
             current_app.logger.info(f"Banking settings updated by admin for {len(blocks_to_update)} class(es)")
         except SQLAlchemyError as e:
             db.session.rollback()

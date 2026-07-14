@@ -339,7 +339,10 @@ def test_teacher_students_accessibility(client, auth_teacher_context):
 def test_teacher_rent_settings_accessibility(client, auth_teacher_context):
     response = client.get('/admin/rent-settings')
     assert response.status_code == 200
-    audit_html_accessibility(response.data.decode('utf-8'))
+    html = response.data.decode('utf-8')
+    audit_html_accessibility(html)
+    assert "Apply to All Classes" not in html
+    assert 'name="apply_to_all"' not in html
 
 
 def test_teacher_store_accessibility(client, auth_teacher_context):
@@ -352,3 +355,11 @@ def test_teacher_insurance_accessibility(client, auth_teacher_context):
     response = client.get('/admin/insurance')
     assert response.status_code == 200
     audit_html_accessibility(response.data.decode('utf-8'))
+
+
+def test_teacher_banking_accessibility(client, auth_teacher_context):
+    response = client.get('/admin/banking')
+    assert response.status_code == 200
+    html = response.data.decode('utf-8')
+    assert "Apply to All Classes" not in html
+    assert 'name="apply_to_all"' not in html
