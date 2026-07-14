@@ -60,3 +60,5 @@ def test_student_dashboard_rendering(client):
     response = client.get('/student/dashboard')
     assert response.status_code == 200
     assert b'Token Hub' in response.data
+    assert b'/api/hall-pass/available-types?class_id=' in response.data
+    assert b'/api/hall-pass/available-types?join_code=' not in response.data

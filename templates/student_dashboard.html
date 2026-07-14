@@ -356,11 +356,11 @@
 
 {% block extra_scripts %}
 <script>
-    const CURRENT_JOIN_CODE = {{ current_join_code|tojson }};
+    const CURRENT_CLASS_ID = {{ current_class_id|tojson }};
 
     // Load available pass types from teacher configuration
     function loadPassTypes() {
-        fetch(`/api/hall-pass/available-types?join_code=${encodeURIComponent(CURRENT_JOIN_CODE)}`)
+        fetch(`/api/hall-pass/available-types?class_id=${encodeURIComponent(CURRENT_CLASS_ID)}`)
             .then(response => response.json())
             .then(data => {
                 if (data.status === 'success') {
