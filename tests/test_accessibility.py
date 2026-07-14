@@ -237,8 +237,10 @@ def auth_teacher_context(app, client):
             teacher = seed_canonical_admin("access_teacher_t").user
             db.session.flush()
 
+            join_code = "ACCESST2"
             class_row = create_class_scope(
                 teacher_user=teacher,
+                join_code=join_code,
                 section="A",
                 display_name="A Period",
             )

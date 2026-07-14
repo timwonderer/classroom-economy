@@ -395,18 +395,6 @@ def get_banking_settings_for_context(context):
     return base_query.filter(BankingSettings.block.is_(None)).first()
 
 
-
-
-def get_current_join_code():
-    """Get the currently selected join code from class context.
-
-    Join code is the display token for the currently selected class context.
-    Returns None if no class context is available.
-    """
-    context = resolve_canonical_context()
-    return get_display_join_code(context.class_id) if context else None
-
-
 def get_feature_settings_for_student():
     """
     Get feature settings for the currently logged-in student.
@@ -1177,7 +1165,6 @@ def dashboard():
         spending_this_month=float(round(spending_this_month, 2)),
         announcements=announcements,
         current_class_id=class_id,
-        current_join_code=join_code,
         scoped_total_earnings=_get_total_earnings_for_seat(student.id, class_id=class_id),
     )
 
@@ -1264,7 +1251,6 @@ def payroll():
             ("4 hours", round(pay_rate_per_minute * 240, 2)),
         ],
         now=utc_now(),
-        current_join_code=join_code,
         scoped_total_earnings=_get_total_earnings_for_seat(student.id, class_id=effective_class_id),
     )
 
