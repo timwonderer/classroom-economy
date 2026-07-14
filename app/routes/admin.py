@@ -2486,22 +2486,12 @@ def _build_insurance_recommendation_context(canonical_context, *, class_id=None,
     )
 
 
-def _load_economy_rebalance_context(canonical_context, selected_block):
+def _load_economy_rebalance_context(canonical_context, class_id, selected_block):
     user_id = canonical_context.user_id
-    class_rows = (
-        db.session.query(ClassEconomy.section, ClassEconomy.class_id)
-        .filter(
-            ClassEconomy.user_id == user_id,
-            ClassEconomy.section.isnot(None),
-        )
-        .all()
-    )
-    class_id_by_block = {
-        (section or '').strip().upper(): class_id
-        for section, class_id in class_rows
-        if (section or '').strip() and class_id
-    }
-    selected_class_id = class_id_by_block.get((selected_block or '').strip().upper()) if selected_block else None
+    selected_class_id = (class_id or "").strip() or None
+    if not selected_class_id:
+        raise InvariantViolation("Missing canonical class_id for economy rebalance context.")
+
     class_ids_query = db.session.query(ClassEconomy.class_id).filter_by(user_id=user_id)
     payroll_query = PayrollSettings.query.filter(
         PayrollSettings.class_id.in_(sa.select(class_ids_query.subquery())),
@@ -2510,16 +2500,10 @@ def _load_economy_rebalance_context(canonical_context, selected_block):
     all_payroll_settings = payroll_query.order_by(PayrollSettings.block.asc()).all()
     settings_by_block = {s.block: s for s in all_payroll_settings if s.block}
 
-    payroll_settings = _resolve_payroll_settings_for_class_id(canonical_context, selected_class_id) if selected_class_id else None
+    payroll_settings = _resolve_payroll_settings_for_class_id(canonical_context, selected_class_id)
     effective_block = selected_block
 
-    if not payroll_settings and all_payroll_settings:
-        first_class_setting = next((s for s in all_payroll_settings if s.block), None)
-        if first_class_setting:
-            payroll_settings = first_class_setting
-            effective_block = first_class_setting.block
-
-    rent_settings = _resolve_rent_settings_for_class_id(selected_class_id) if selected_class_id else None
+    rent_settings = _resolve_rent_settings_for_class_id(selected_class_id)
 
     class_ids_query = db.session.query(ClassEconomy.class_id).filter_by(user_id=user_id)
     insurance_policies_query = InsurancePolicy.query.filter(
@@ -7961,6 +7945,7 @@ def apply_economy_rebalance():
 
     effective_block, payroll_settings, rent_settings, insurance_policies, _all_payroll_settings = _load_economy_rebalance_context(
         g.canonical_context,
+        selected_scope['class_id'],
         selected_scope['block'],
     )
 
@@ -8059,6 +8044,7 @@ def economy_health():
 
     selected_block, payroll_settings, rent_settings, insurance_policies, all_payroll_settings = _load_economy_rebalance_context(
         g.canonical_context,
+        selected_scope['class_id'],
         selected_block,
     )
     has_payroll_settings = len(all_payroll_settings) > 0

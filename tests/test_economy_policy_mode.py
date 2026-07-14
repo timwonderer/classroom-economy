@@ -494,6 +494,73 @@ def test_rebalance_ignores_cross_teacher_selected_ids(client):
     assert policy_b.premium == Decimal('99.00')
 
 
+def test_economy_rebalance_context_uses_explicit_class_id_not_block_label(client):
+    admin = seed_canonical_admin("policy_block_guard", "secret").user
+    with FEATContext("FEAT-IDEN-001", idempotency_key="economy-policy:block-guard:a"):
+        class_a = create_class_scope(
+            teacher_user=admin,
+            join_code="ECONA1",
+            display_name="Period A One",
+            section="A",
+        )
+        class_b = create_class_scope(
+            teacher_user=admin,
+            join_code="ECONA2",
+            display_name="Period A Two",
+            section="A",
+        )
+        payroll_a = PayrollSettings(
+            class_id=class_a.class_id,
+            pay_rate=Decimal('0.25'),
+            expected_weekly_hours=5.0,
+            payroll_frequency_days=14,
+            settings_mode='simple',
+            is_active=True,
+        )
+        payroll_b = PayrollSettings(
+            class_id=class_b.class_id,
+            pay_rate=Decimal('0.75'),
+            expected_weekly_hours=5.0,
+            payroll_frequency_days=14,
+            settings_mode='simple',
+            is_active=True,
+        )
+        rent_a = RentSettings(
+            class_id=class_a.class_id,
+            rent_amount=Decimal('500.00'),
+            frequency_type='monthly',
+        )
+        rent_b = RentSettings(
+            class_id=class_b.class_id,
+            rent_amount=Decimal('900.00'),
+            frequency_type='monthly',
+        )
+        db.session.add_all([payroll_a, payroll_b, rent_a, rent_b])
+        db.session.flush()
+
+    from app.routes.admin import _load_economy_rebalance_context
+
+    class CanonicalContext:
+        def __init__(self, user_id, class_id):
+            self.user_id = user_id
+            self.class_id = class_id
+
+    effective_block, payroll_settings, rent_settings, insurance_policies, all_payroll_settings = _load_economy_rebalance_context(
+        CanonicalContext(admin.id, class_a.class_id),
+        class_a.class_id,
+        "A",
+    )
+
+    assert effective_block == "A"
+    assert payroll_settings is not None
+    assert payroll_settings.class_id == class_a.class_id
+    assert rent_settings is not None
+    assert rent_settings.class_id == class_a.class_id
+    assert all_payroll_settings is not None
+    assert len(all_payroll_settings) >= 2
+    assert insurance_policies == []
+
+
 def test_run_payroll_applies_scheduled_rebalance(client):
     admin, _, rent_settings, economy = _create_admin_with_block('A', join_code='JOINPOLA')
     _login_admin(client, admin.id, class_id=economy.class_id)
