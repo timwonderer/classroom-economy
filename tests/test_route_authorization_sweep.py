@@ -10,18 +10,15 @@ from app.models import User, UserRole, ClassEconomy, Transaction, TransactionSta
 from tests.helpers.admin_context import login_teacher
 from tests.helpers.canonical_session import set_canonical_context
 
-def _login_admin(client, user_id, class_id=None):
+def _login_admin(client, user_id, class_id):
     user = db.session.get(User, user_id)
     if user is None:
-        return
-    if class_id is None:
-        login_teacher(client, user)
         return
     teacher_seat = Seat.query.filter_by(class_id=class_id, user_id=user_id, role="teacher").first()
     if teacher_seat is not None:
         login_teacher(client, user, class_id=class_id, seat_id=teacher_seat.id)
         return
-    login_teacher(client, user)
+    raise ValueError("route authorization sweep tests require an explicit teacher seat for the active class")
 
 def _login_student(client, student_user_id, class_id, seat_id):
     with client.session_transaction() as sess:
