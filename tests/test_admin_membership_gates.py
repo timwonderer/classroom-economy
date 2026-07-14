@@ -366,7 +366,8 @@ def test_store_create_requires_current_class_context(client):
         follow_redirects=False,
     )
 
-    assert response.status_code == 404
+    assert response.status_code == 302
+    assert response.headers["Location"].endswith("/admin/login")
     assert db.session.query(StoreItem).count() == initial_store_item_count
 
 
@@ -514,6 +515,20 @@ def test_store_query_scope_does_not_implicitly_switch_session_context(client):
     _login_admin(client, admin, class_id=class_row.class_id, seat_id=teacher_seat.id)
 
     response = client.get("/admin/store?join_code=STOREB2")
+    assert response.status_code == 200
+
+
+def test_store_page_ignores_request_block_selector(client):
+    with FEATContext("FEAT-IDEN-001", idempotency_key="admin-membership:store-page-block"):
+        admin = seed_canonical_admin("store_page_admin", "secret").user
+        class_row_a = create_class_scope(teacher_user=admin, join_code="STOR001", section="A")
+        create_class_scope(teacher_user=admin, join_code="STOR002", section="B")
+
+    teacher_seat = Seat.query.filter_by(class_id=class_row_a.class_id, role="teacher").first()
+    assert teacher_seat is not None
+    _login_admin(client, admin, class_id=class_row_a.class_id, seat_id=teacher_seat.id)
+
+    response = client.get("/admin/store?block=B")
     assert response.status_code == 200
 
 

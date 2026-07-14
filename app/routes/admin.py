@@ -5428,11 +5428,10 @@ def store_management():
     """Manage store items - view, create, edit, delete."""
     user_id = g.canonical_context.user_id
     feature_options = get_admin_feature_join_code_options('store', canonical_context=g.canonical_context)
-    selected_scope = require_admin_feature_scope(
-        'store',
-        canonical_context=g.canonical_context,
-        requested_block=request.args.get('block'),
-    )
+    current_class_id = g.canonical_context.class_id
+    selected_scope = next((option for option in feature_options if option.get('class_id') == current_class_id), None)
+    if not selected_scope:
+        abort(404)
     selected_join_code = selected_scope['join_code']
     selected_block = selected_scope['block']
     form = StoreItemForm()
