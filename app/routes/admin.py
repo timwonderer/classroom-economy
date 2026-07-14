@@ -5446,7 +5446,6 @@ def store_management():
             json.dumps(
                 {
                     "class_id": selected_scope["class_id"],
-                    "join_code": selected_scope["join_code"],
                     "name": form.name.data,
                     "item_type": form.item_type.data,
                     "price": str(form.price.data),
@@ -5463,7 +5462,6 @@ def store_management():
         with FEATContext("FEAT-STOR-001", idempotency_key=idempotency_key):
             new_item = StoreItem(
                 user_id=user_id,
-                join_code=selected_scope['join_code'],
                 class_id=selected_scope['class_id'],
                 name=form.name.data,
                 description=form.description.data,
