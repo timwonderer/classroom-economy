@@ -533,6 +533,22 @@ def test_store_page_ignores_request_block_selector(client):
     assert response.status_code == 200
 
 
+def test_transactions_redirect_drops_block_selector(client):
+    with FEATContext("FEAT-IDEN-001", idempotency_key="admin-membership:transactions-redirect-block"):
+        admin = seed_canonical_admin("transactions_page_admin", "secret").user
+        class_row = create_class_scope(teacher_user=admin, join_code="TRAN001", section="A")
+
+    teacher_seat = Seat.query.filter_by(class_id=class_row.class_id, role="teacher").first()
+    assert teacher_seat is not None
+    _login_admin(client, admin, class_id=class_row.class_id, seat_id=teacher_seat.id)
+
+    response = client.get("/admin/transactions?block=B", follow_redirects=False)
+
+    assert response.status_code == 302
+    assert response.headers["Location"].endswith("/admin/banking") or response.headers["Location"].endswith("/admin/login")
+    assert "block=" not in response.headers["Location"]
+
+
 def test_banking_page_ignores_request_block_selector(client):
     with FEATContext("FEAT-IDEN-001", idempotency_key="admin-membership:banking-page-block"):
         admin = seed_canonical_admin("banking_page_admin", "secret").user

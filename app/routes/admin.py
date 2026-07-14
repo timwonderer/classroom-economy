@@ -233,7 +233,6 @@ admin_bp = Blueprint('admin', __name__, url_prefix='/admin')
 
 _BANKING_REDIRECT_QUERY_KEYS = {
     "student",
-    "block",
     "account",
     "type",
     "start_date",

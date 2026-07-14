@@ -16,14 +16,6 @@
                  class="form-control" placeholder="Student name or ID">
         </div>
         <div class="col-auto">
-          <select name="block" class="form-select">
-            <option value="">All Blocks</option>
-            {% for b in ['A','B','C','D'] %}
-              <option value="{{ b }}" {% if request.args.get('block')==b %}selected{% endif %}>Block {{ b }}</option>
-            {% endfor %}
-          </select>
-        </div>
-        <div class="col-auto">
           <select name="type" class="form-select">
             <option value="">All Types</option>
             {% for t in ['Deposit','Withdrawal','Refund','Fees','Interest'] %}
@@ -86,7 +78,7 @@
           {% set current = page %}
           {% for p in range(1, total_pages+1) %}
             <li class="page-item {% if p==current %}active{% endif %}">
-              <a class="page-link" href="?{% for key,value in request.args.items() if key!='page' %}{{ key }}={{ value }}&{% endfor %}page={{ p }}">{{ p }}</a>
+              <a class="page-link" href="?{% for key,value in request.args.items() if key not in ['page', 'block'] %}{{ key }}={{ value }}&{% endfor %}page={{ p }}">{{ p }}</a>
             </li>
           {% endfor %}
         </ul>
