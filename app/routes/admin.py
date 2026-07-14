@@ -10663,7 +10663,7 @@ def help_support():
 
     canonical_context = g.canonical_context
     user_id = canonical_context.user_id
-    selected_class_id = (request.values.get('class_id') or '').strip()
+    selected_class_id = canonical_context.class_id
 
     teacher_user_class_rows = (
         ClassEconomy.query
@@ -10671,24 +10671,12 @@ def help_support():
         .order_by(ClassEconomy.section.asc(), ClassEconomy.created_at.asc())
         .all()
     )
-    class_scope_map = {}
-    for ce_row in teacher_user_class_rows:
-        display_join_code = get_display_join_code(ce_row.class_id)
-        if display_join_code and display_join_code not in class_scope_map:
-            class_scope_map[display_join_code] = ce_row.display_name or display_join_code
-
-    class_scope_options = [
-        {'class_id': ce_row.class_id, 'join_code': get_display_join_code(ce_row.class_id), 'label': ce_row.display_name or get_display_join_code(ce_row.class_id)}
-        for ce_row in teacher_user_class_rows
-        if get_display_join_code(ce_row.class_id)
-    ]
-    class_scope_options.sort(key=lambda item: item["label"] or item["join_code"] or item["class_id"])
-    class_scope_map_by_id = {item["class_id"]: item for item in class_scope_options}
-
-    if not selected_class_id and class_scope_options:
-        selected_class_id = class_scope_options[0]["class_id"]
-    selected_option = class_scope_map_by_id.get(selected_class_id)
-    selected_join_code = (selected_option["join_code"] if selected_option else "").strip()
+    selected_option = next(({
+        'class_id': ce_row.class_id,
+        'join_code': get_display_join_code(ce_row.class_id),
+        'label': ce_row.display_name or get_display_join_code(ce_row.class_id),
+    } for ce_row in teacher_user_class_rows if ce_row.class_id == selected_class_id), None)
+    selected_join_code = (selected_option["join_code"] if selected_option else get_display_join_code(selected_class_id) or "").strip()
     selected_class_label = selected_option["label"] if selected_option else None
 
     category_to_report_type = {
@@ -10725,16 +10713,14 @@ def help_support():
             cleaned_body,
         )
 
-    if not class_scope_options and request.method == 'GET':
-        # Inform owners who have no classes that they must create one before submitting tickets.
+    if not selected_class_id and request.method == 'GET':
         flash(
             "You don't have any classes yet. Please add a class from your dashboard before submitting a support ticket.",
             "info",
         )
 
     if request.method == 'POST':
-        # If the teacher has no classes, prevent submission and provide a clear message.
-        if not class_scope_options:
+        if not selected_class_id:
             flash(
                 "You cannot submit a support ticket until you have at least one class. "
                 "Please add a class from your dashboard first.",
@@ -10746,27 +10732,23 @@ def help_support():
         description = request.form.get('description', '').strip()
         expected_behavior = request.form.get('expected_behavior', '').strip()
         page_url = request.form.get('page_url', '').strip()
-        selected_option = class_scope_map_by_id.get(selected_class_id)
-        if not selected_option:
+        if not selected_class_id:
             flash("Please select one of your classes before submitting a support ticket.", "error")
             return redirect(url_for('admin.help_support'))
-        selected_join_code = selected_option["join_code"]
-        class_label = selected_option["label"]
+        class_label = selected_class_label or selected_join_code or 'Unknown'
 
         if issue_category not in category_to_report_type:
             flash("Please select a valid support ticket category.", "error")
 
             anonymous_code = generate_anonymous_code(f"admin:{user_id}")
             my_reports_query = UserReport.query.filter_by(anonymous_code=anonymous_code, user_type='teacher')
-            if selected_class_id:
-                my_reports_query = my_reports_query.filter_by(class_id=selected_class_id)
+            my_reports_query = my_reports_query.filter_by(class_id=selected_class_id)
             my_reports = my_reports_query.order_by(UserReport.submitted_at.desc()).limit(20).all()
 
             return render_template(
                 'admin_support_tickets.html',
                 current_page='help',
                 page_title='Help & Support',
-                class_scope_options=class_scope_options,
                 selected_class_id=selected_class_id,
                 my_reports=my_reports,
                 help_content=HELP_ARTICLES['teacher'],
@@ -10783,15 +10765,13 @@ def help_support():
 
             anonymous_code = generate_anonymous_code(f"admin:{user_id}")
             my_reports_query = UserReport.query.filter_by(anonymous_code=anonymous_code, user_type='teacher')
-            if selected_class_id:
-                my_reports_query = my_reports_query.filter_by(class_id=selected_class_id)
+            my_reports_query = my_reports_query.filter_by(class_id=selected_class_id)
             my_reports = my_reports_query.order_by(UserReport.submitted_at.desc()).limit(20).all()
 
             return render_template(
                 'admin_support_tickets.html',
                 current_page='help',
                 page_title='Help & Support',
-                class_scope_options=class_scope_options,
                 selected_class_id=selected_class_id,
                 my_reports=my_reports,
                 help_content=HELP_ARTICLES['teacher'],
@@ -10856,7 +10836,6 @@ def help_support():
     return render_template('admin_support_tickets.html',
                          current_page='help',
                          page_title='Help & Support',
-                         class_scope_options=class_scope_options,
                          selected_class_id=selected_class_id,
                          my_reports=my_reports,
                          help_content=HELP_ARTICLES['teacher'],
