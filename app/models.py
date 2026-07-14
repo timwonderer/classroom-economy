@@ -1058,7 +1058,6 @@ class StoreItemBlock(db.Model):
     store_item_id = db.Column(db.Integer, db.ForeignKey('store_items.id', ondelete='CASCADE'), primary_key=True)
     block = db.Column(db.String(10), primary_key=True)
     class_id = db.Column(db.String(36), db.ForeignKey('classes.class_id', ondelete='CASCADE'), nullable=True, index=True)
-    join_code = db.Column(db.String(20), nullable=True, index=True)
 
     __table_args__ = (
         db.Index('ix_store_item_blocks_item', 'store_item_id'),
