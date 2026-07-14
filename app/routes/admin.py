@@ -8267,13 +8267,12 @@ def _run_payroll():
             return redirect(url_for('admin.dashboard'))
 
         selected_scope = _require_payroll_feature_scope_from_request()
-        selected_join_code = selected_scope['join_code']
 
         # Get last payroll for the selected class only.
         last_payroll_tx = Transaction.query.filter_by(
             type="payroll",
             user_id=user_id,
-            join_code=selected_join_code,
+            class_id=selected_scope["class_id"],
         ).order_by(Transaction.timestamp.desc()).first()
         last_payroll_time = last_payroll_tx.timestamp if last_payroll_tx else None
         current_app.logger.info(f"Run payroll: last payroll at {last_payroll_time}")

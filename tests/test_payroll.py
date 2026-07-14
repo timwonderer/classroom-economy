@@ -115,14 +115,14 @@ def test_calculate_payroll_ignores_other_class_manual_payment_anchor(client):
     db.session.flush()
 
     student = make_student_identity(class_id=class_a.class_id, first_name="Multi", last_name="S", claimed=True)
-    db.session.flush()
-    # Manually add seat for class_b
-    from app.models import IdentityProfile as _IP
-    seat_b_row = Seat(user_id=student.user_id, class_id=class_b.class_id, role="student", claimed_at=datetime.now(timezone.utc))
-    db.session.add(seat_b_row)
-    db.session.flush()
-    db.session.add(_IP(seat_id=seat_b_row.id, profile_type='student_claimed', first_name="Multi", last_name="S", class_id=class_b.class_id))
-    db.session.flush()
+    with FEATContext("FEAT-IDEN-001", idempotency_key=f"payroll-multiclass:{class_a.class_id}:{class_b.class_id}:{student.user_id}"):
+        # Manually add seat for class_b
+        from app.models import IdentityProfile as _IP
+        seat_b_row = Seat(user_id=student.user_id, class_id=class_b.class_id, role="student", claimed_at=datetime.now(timezone.utc))
+        db.session.add(seat_b_row)
+        db.session.flush()
+        db.session.add(_IP(seat_id=seat_b_row.id, profile_type='student_claimed', first_name="Multi", last_name="S", class_id=class_b.class_id))
+        db.session.flush()
 
     from app.models import Seat
     seat_a = Seat.query.filter_by(user_id=student.user_id, class_id=class_a.class_id, role="student").first()
@@ -131,37 +131,38 @@ def test_calculate_payroll_ignores_other_class_manual_payment_anchor(client):
     assert seat_b is not None
 
     now = datetime.now(timezone.utc)
-    db.session.add_all([
-        AttendanceSession(
-            seat_id=seat_a.id,
-            class_id=class_a.class_id,
-            started_at=now - timedelta(minutes=50),
-            ended_at=now - timedelta(minutes=40),
-            duration_seconds=600,
-        ),
-        AttendanceSession(
-            seat_id=seat_a.id,
-            class_id=class_a.class_id,
-            started_at=now - timedelta(minutes=39),
-            ended_at=now - timedelta(minutes=35),
-            duration_seconds=240,
-        ),
-        AttendanceSession(
-            seat_id=seat_b.id,
-            class_id=class_b.class_id,
-            started_at=now - timedelta(minutes=30),
-            ended_at=now - timedelta(minutes=15),
-            duration_seconds=900,
-        ),
-        Transaction(
-            user_id=student.user_id,
-            seat_id=seat_a.id,
-            class_id=class_a.class_id,
-            amount=3,
-            type="manual_payment",
-            timestamp=now - timedelta(minutes=5),
-        ),
-    ])
+    with FEATContext("FEAT-LED-004", idempotency_key=f"payroll-multiclass-sessions:{class_a.class_id}:{class_b.class_id}:{student.user_id}"):
+        db.session.add_all([
+            AttendanceSession(
+                seat_id=seat_a.id,
+                class_id=class_a.class_id,
+                started_at=now - timedelta(minutes=50),
+                ended_at=now - timedelta(minutes=40),
+                duration_seconds=600,
+            ),
+            AttendanceSession(
+                seat_id=seat_a.id,
+                class_id=class_a.class_id,
+                started_at=now - timedelta(minutes=39),
+                ended_at=now - timedelta(minutes=35),
+                duration_seconds=240,
+            ),
+            AttendanceSession(
+                seat_id=seat_b.id,
+                class_id=class_b.class_id,
+                started_at=now - timedelta(minutes=30),
+                ended_at=now - timedelta(minutes=15),
+                duration_seconds=900,
+            ),
+            Transaction(
+                user_id=student.user_id,
+                seat_id=seat_a.id,
+                class_id=class_a.class_id,
+                amount=3,
+                type="manual_payment",
+                timestamp=now - timedelta(minutes=5),
+            ),
+        ])
     db.session.commit()
 
     summary_a = calculate_payroll_breakdown(class_a.class_id, [seat_a.id], now - timedelta(days=1))
