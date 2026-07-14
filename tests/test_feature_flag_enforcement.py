@@ -157,7 +157,7 @@ def test_admin_banking_rejects_disabled_class_scope(client):
 
     login_teacher(client, teacher, class_id=economy.class_id)
 
-    response = client.get('/admin/banking?settings_block=A')
+    response = client.get('/admin/banking')
     assert response.status_code == 200
     assert b"is disabled for this class" in response.data
 

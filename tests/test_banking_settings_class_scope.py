@@ -18,7 +18,6 @@ def test_banking_settings_update_persists_class_scoped_row(client):
     response = client.post(
         "/admin/banking/settings",
         data={
-            "settings_block": "B",
             "rate_input_mode": "apy",
             "savings_apy": "4.5",
             "savings_monthly_rate": "0.0",
@@ -33,7 +32,7 @@ def test_banking_settings_update_persists_class_scoped_row(client):
     )
 
     assert response.status_code == 302
-    assert response.headers["Location"].endswith("/admin/banking?settings_block=B")
+    assert response.headers["Location"].endswith("/admin/banking")
 
     saved = BankingSettings.query.filter_by(class_id=class_row.class_id, block="B").first()
     assert saved is not None

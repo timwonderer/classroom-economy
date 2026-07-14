@@ -10334,7 +10334,6 @@ def banking():
     selected_scope = require_admin_feature_scope(
         'banking',
         canonical_context=g.canonical_context,
-        requested_block=request.args.get('settings_block'),
     )
     teacher_blocks = [option['block'] for option in feature_options]
     settings_block = selected_scope['block']
@@ -10547,7 +10546,6 @@ def banking_settings_update():
         selected_scope = require_admin_feature_scope(
             'banking',
             canonical_context=g.canonical_context,
-            requested_block=request.form.get('settings_block'),
         )
         settings_block = selected_scope['block']
         apply_to_all = request.form.get('apply_to_all') == 'true'
@@ -10639,9 +10637,7 @@ def banking_settings_update():
             for error in errors:
                 flash(f'{field}: {error}', 'error')
 
-    # Redirect back to the same settings block
-    settings_block = request.form.get('settings_block')
-    return redirect(url_for('admin.banking', settings_block=settings_block))
+    return redirect(url_for('admin.banking'))
 
 
 # -------------------- DELETION REQUESTS --------------------
