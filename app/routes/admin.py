@@ -4685,7 +4685,6 @@ def edit_student():
                     section=block
                 ).first()
                 if ce and ce.class_id:
-                    target_join_code = ce.join_code
                     target_class_id = ce.class_id
                     target_seat_id = (
                         Seat.query
@@ -4708,9 +4707,7 @@ def edit_student():
                             continue
 
                         update_values = {
-                            'join_code': target_join_code,
                             'class_id': ce.class_id,
-                            # Ensure seat scope tracks the transferred join_code.
                             # If target seat is missing, clear the stale seat link to avoid cross-scope seat_id.
                             'seat_id': target_seat_id,
                         }
@@ -4721,7 +4718,7 @@ def edit_student():
 
                     transferred_blocks.append(block)
                     current_app.logger.info(
-                        f"Transferred transactions for student {student.id} from {old_class_ids} to {target_join_code} (block: {block})"
+                        f"Transferred transactions for student {student.id} from {old_class_ids} to class_id={target_class_id} (block: {block})"
                     )
             # If 'start_fresh', do nothing - student starts with $0 in that period
 
