@@ -400,7 +400,7 @@ def test_process_expired_goals_refund_fallback_to_item_price(client):
         db.session.flush()
 
         item = _collective_item(teacher.id, class_row.class_id, 'No TX Item', expires_at=_past())
-    # StudentItem with no corresponding purchase Transaction
+        # StudentItem with no corresponding purchase Transaction
         si = StorePurchase(
             seat_id=student.id,
             class_id=item.class_id,
