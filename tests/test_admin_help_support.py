@@ -49,5 +49,5 @@ def test_teacher_can_submit_class_scoped_support_ticket(client):
     assert report.title == "Roster sync issue"
     assert report.report_type == "comment"
     assert report.description.startswith(
-        f"SUPPORT_SCOPE|class_id={class_row.class_id}|join_code={class_row.join_code}|class_label=ELA|category=general"
+        f"SUPPORT_SCOPE|class_id={class_row.class_id}|class_label=ELA|category=general"
     )

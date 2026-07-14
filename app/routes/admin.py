@@ -10645,9 +10645,9 @@ def help_support():
         'feature': 'suggestion',
     }
 
-    def _build_scope_metadata(class_id_value, join_code_value, class_label_value, category_value):
+    def _build_scope_metadata(class_id_value, class_label_value, category_value):
         return (
-            f"SUPPORT_SCOPE|class_id={class_id_value}|join_code={join_code_value}|class_label={class_label_value}|category={category_value}"
+            f"SUPPORT_SCOPE|class_id={class_id_value}|class_label={class_label_value}|category={category_value}"
         )
 
     def _parse_scope_metadata(raw_description):
@@ -10667,7 +10667,6 @@ def help_support():
         cleaned_body = body.strip() if body else raw_description
         return (
             metadata.get('class_id'),
-            metadata.get('join_code'),
             metadata.get('class_label'),
             metadata.get('category'),
             cleaned_body,
@@ -10743,7 +10742,7 @@ def help_support():
                 form_page_url=page_url,
             )
         anonymous_code = generate_anonymous_code(f"admin:{user_id}")
-        metadata_header = _build_scope_metadata(selected_class_id, selected_join_code, class_label or 'Unknown', issue_category)
+        metadata_header = _build_scope_metadata(selected_class_id, class_label or 'Unknown', issue_category)
         scoped_description = f"{metadata_header}\n\n{description}"
 
         try:
@@ -10752,7 +10751,6 @@ def help_support():
                     anonymous_code=anonymous_code,
                     user_type="teacher",
                     class_id=selected_class_id,
-                    join_code=selected_join_code,
                     report_type=category_to_report_type[issue_category],
                     title=title,
                     description=scoped_description,
@@ -10779,13 +10777,12 @@ def help_support():
     reports = my_reports_query.order_by(UserReport.submitted_at.desc()).limit(50).all()
     my_reports = []
     for report in reports:
-        scope_class_id, scope_join_code, class_label, issue_category, clean_description = _parse_scope_metadata(report.description)
+        scope_class_id, class_label, issue_category, clean_description = _parse_scope_metadata(report.description)
         if selected_class_id and scope_class_id and scope_class_id != selected_class_id:
             continue
         my_reports.append({
             'report': report,
             'scope_class_id': scope_class_id,
-            'scope_join_code': scope_join_code,
             'class_label': class_label,
             'issue_category': issue_category,
             'clean_description': clean_description,

@@ -1959,7 +1959,6 @@ class UserReport(db.Model):
     anonymous_code = db.Column(db.String(64), nullable=False, index=True)
     user_type = db.Column(db.String(20), nullable=False)  # 'student', 'teacher', 'anonymous'
     class_id = db.Column(db.String(36), db.ForeignKey('classes.class_id', ondelete='CASCADE'), nullable=True, index=True)
-    join_code = db.Column(db.String(20), nullable=True, index=True)
 
     # Report details
     report_type = db.Column(db.String(20), nullable=False, default='bug')  # 'bug', 'suggestion', 'comment'
