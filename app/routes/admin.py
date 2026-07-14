@@ -1807,7 +1807,6 @@ def _ensure_join_code_anchors(user_id, join_code, class_label=None, class_id=Non
     if teacher_seat is None:
         db.session.add(Seat(
             class_id=economy.class_id,
-            join_code=join_code,
             role="teacher",
         ))
 
@@ -1915,7 +1914,6 @@ def _link_student_to_admin(
             class_id=target_class_id,
             student_id=student.id,
             role='student',
-            join_code=target_join_code,
             claim_first_name_hash=_h(seat_first_name.lower()) if seat_first_name else None,
             claim_last_name_hash=_h(seat_last_name.lower()) if seat_last_name else None,
             roster_fingerprint=_h(

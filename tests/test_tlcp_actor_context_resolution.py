@@ -12,7 +12,7 @@ from tests.helpers.class_scope import create_class_scope, make_student_identity
 def test_resolve_actor_context_student_session(app):
     teacher_user = seed_canonical_admin("tlcp_student_admin", "secret-admin").user
     db.session.flush()
-    class_row = create_class_scope(teacher_user=teacher_user)
+    class_row = create_class_scope(teacher_user=teacher_user, join_code="TLCP-STU-01")
     seat = make_student_identity(
         class_id=class_row.class_id,
         first_name="TLCP",
@@ -47,7 +47,7 @@ def test_resolve_actor_context_student_session(app):
 def test_resolve_actor_context_admin_session(app):
     teacher_user = seed_canonical_admin("tlcp_admin_actor", "secret-admin-actor").user
     db.session.flush()
-    class_row = create_class_scope(teacher_user=teacher_user)
+    class_row = create_class_scope(teacher_user=teacher_user, join_code="TLCP-ADM-01")
     # create_class_scope → create_class creates the teacher seat; fetch it
     from app.models import Seat
     teacher_seat = Seat.query.filter_by(

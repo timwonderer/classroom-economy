@@ -39,9 +39,9 @@ def test_hall_pass_active_requires_teacher_seat_public_id_and_scopes_to_one_clas
     other_admin = seed_canonical_admin("hall_pass_other", "secret").user
     db.session.flush()
 
-    class_a = create_class_scope(teacher_user=admin)
-    class_b = create_class_scope(teacher_user=admin)
-    class_other = create_class_scope(teacher_user=other_admin)
+    class_a = create_class_scope(teacher_user=admin, join_code="RAS-A", section="A")
+    class_b = create_class_scope(teacher_user=admin, join_code="RAS-B", section="B")
+    class_other = create_class_scope(teacher_user=other_admin, join_code="RAS-C", section="C")
     db.session.flush()
 
     student_a_seat = make_student_identity(class_id=class_a.class_id, first_name="Alpha", last_name="A")
@@ -115,8 +115,8 @@ def test_approve_redemption_requires_membership(client):
     admin_intruder = seed_canonical_admin("intruder_admin", "secret").user
     db.session.flush()
 
-    class_row = create_class_scope(teacher_user=admin_owner)
-    intruder_class_row = create_class_scope(teacher_user=admin_intruder)
+    class_row = create_class_scope(teacher_user=admin_owner, join_code="RAS-D")
+    intruder_class_row = create_class_scope(teacher_user=admin_intruder, join_code="RAS-E")
     db.session.flush()
 
     student_seat = make_student_identity(class_id=class_row.class_id, first_name="Redeem", last_name="S")
@@ -140,16 +140,34 @@ def test_approve_redemption_requires_membership(client):
         db.session.add(student_item)
         db.session.flush()
 
+    db.session.commit()
+
     # Intruder tries to approve
-    _login_admin(client, admin_intruder.id, class_id=intruder_class_row.class_id)
+    intruder_teacher_seat = Seat.query.filter_by(class_id=intruder_class_row.class_id, user_id=admin_intruder.id, role="teacher").first()
+    with client.session_transaction() as sess:
+        set_canonical_context(
+            sess,
+            user_id=admin_intruder.id,
+            class_id=intruder_class_row.class_id,
+            seat_id=intruder_teacher_seat.id,
+            role="teacher",
+        )
     response = client.post("/api/approve-redemption", json={"student_item_id": student_item.id})
-    assert response.status_code == 403
+    assert response.status_code == 403, response.headers.get("Location")
     assert b"You do not have access to this class" in response.data
 
     # Owner tries to approve
-    _login_admin(client, admin_owner.id, class_id=class_row.class_id)
+    owner_teacher_seat = Seat.query.filter_by(class_id=class_row.class_id, user_id=admin_owner.id, role="teacher").first()
+    with client.session_transaction() as sess:
+        set_canonical_context(
+            sess,
+            user_id=admin_owner.id,
+            class_id=class_row.class_id,
+            seat_id=owner_teacher_seat.id,
+            role="teacher",
+        )
     response = client.post("/api/approve-redemption", json={"student_item_id": student_item.id})
-    assert response.status_code == 200
+    assert response.status_code == 200, response.headers.get("Location")
     assert b"success" in response.data
 
 def test_file_claim_scoped_to_class(client):
@@ -157,8 +175,8 @@ def test_file_claim_scoped_to_class(client):
     admin = seed_canonical_admin("claim_admin", "secret").user
     db.session.flush()
 
-    class_a = create_class_scope(teacher_user=admin)
-    class_b = create_class_scope(teacher_user=admin)
+    class_a = create_class_scope(teacher_user=admin, join_code="RAS-F", section="A")
+    class_b = create_class_scope(teacher_user=admin, join_code="RAS-G", section="B")
     db.session.flush()
 
     student_seat_a = make_student_identity(class_id=class_a.class_id, first_name="Claimer", last_name="S", claimed=True)

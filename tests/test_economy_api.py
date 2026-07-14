@@ -31,6 +31,7 @@ def admin_with_payroll(client):
 
     class_scope = create_class_scope(
         teacher_user=admin,
+        join_code="ECO-API-01",
         display_name="A",
     )
     db.session.flush()
@@ -321,10 +322,12 @@ def test_different_expected_hours_per_block(client):
     with FEATContext("FEAT-IDEN-001", idempotency_key="economy_api:test_different_expected_hours_per_block"):
         class_a = create_class_scope(
             teacher_user=admin,
+            join_code="ECO-API-A",
             display_name="A",
         )
         class_b = create_class_scope(
             teacher_user=admin,
+            join_code="ECO-API-B",
             display_name="B",
         )
 
@@ -873,6 +876,7 @@ def test_analyze_endpoint_error_does_not_leak_exception_details(client):
 
     class_scope = create_class_scope(
         teacher_user=admin,
+        join_code="ECO-API-C",
         display_name="Error Test",
     )
     db.session.flush()
@@ -925,6 +929,7 @@ def test_analyze_block_ignores_teacher_global_payroll_settings(client):
 
     class_scope = create_class_scope(
         teacher_user=admin,
+        join_code="ECO-API-D",
         display_name="Scope A",
     )
     db.session.flush()
@@ -970,6 +975,7 @@ def test_validate_block_ignores_teacher_global_payroll_settings(client):
 
     class_scope = create_class_scope(
         teacher_user=admin,
+        join_code="ECO-API-E",
         display_name="Scope V",
         section="A",
     )
@@ -1012,6 +1018,7 @@ def test_analyze_block_prefers_class_scoped_payroll_settings(client):
 
     class_scope = create_class_scope(
         teacher_user=admin,
+        join_code="ECO-API-F",
         display_name="A",
     )
     with FEATContext("FEAT-IDEN-001", idempotency_key="economy_api:class_scope_setup"):
