@@ -431,17 +431,6 @@
     <form method="POST" id="rentSettingsForm">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
 
-      <!-- Class Selector Banner -->
-      <div class="alert alert-primary d-flex align-items-center justify-content-between mb-4">
-        <div class="d-flex align-items-center gap-3">
-          <span class="material-symbols-outlined" style="font-size: 2rem;">school</span>
-          <div>
-            <div class="mb-1 fw-bold h6">Configuring Rent Settings For:</div>
-            <div class="small text-muted">{{ selected_feature_scope.label }}</div>
-          </div>
-        </div>
-      </div>
-
       <!-- Main Toggle Card -->
       <div class="card shadow mb-4">
         <div class="card-header bg-primary text-white">
