@@ -1523,7 +1523,6 @@ def save_hall_pass_setup():
         settings = feat_save_hall_pass_setup_config(
             user_id=user_id,
             class_id=scope["class_id"],
-            join_code=scope.get("join_code"),
             hall_pass_enabled=hall_pass_enabled,
             pass_types=pass_types,
             updated_at=utc_now(),
