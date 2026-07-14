@@ -115,7 +115,7 @@ def test_process_expired_goals_refunds_pending_and_deactivates(client):
     """Expired collective goal: pending StudentItems are voided and item is deactivated."""
     with FEATContext("FEAT-STOR-002", idempotency_key=f"FEAT-STOR-002:test-expired-refund:{uuid4().hex}"):
         teacher = _create_teacher('teacher_exp_refund')
-        class_row = create_class_scope(teacher_user=teacher, display_name='A')
+        class_row = create_class_scope(teacher_user=teacher, join_code='CGE-A-01', display_name='A')
         student = _create_student(class_row.class_id, 'Alice')
         db.session.flush()
 
@@ -170,7 +170,7 @@ def test_process_expired_goals_skips_non_expired_items(client):
     """Items with a future expiration date are not affected."""
     with FEATContext("FEAT-STOR-002", idempotency_key=f"FEAT-STOR-002:test-expired-future:{uuid4().hex}"):
         teacher = _create_teacher('teacher_exp_future')
-        class_row = create_class_scope(teacher_user=teacher, display_name='A')
+        class_row = create_class_scope(teacher_user=teacher, join_code='CGE-A-02', display_name='A')
         student = _create_student(class_row.class_id, 'Bob')
         db.session.flush()
 
@@ -203,7 +203,7 @@ def test_process_expired_goals_ignores_items_without_expiration(client):
     """Items with no expiration date are never auto-expired."""
     with FEATContext("FEAT-STOR-002", idempotency_key=f"FEAT-STOR-002:test-expired-none:{uuid4().hex}"):
         teacher = _create_teacher('teacher_exp_none')
-        class_row = create_class_scope(teacher_user=teacher, display_name='A')
+        class_row = create_class_scope(teacher_user=teacher, join_code='CGE-A-03', display_name='A')
         student = _create_student(class_row.class_id, 'Carol')
         db.session.flush()
 
@@ -235,7 +235,7 @@ def test_process_expired_goals_ignores_already_inactive_items(client):
     """Already-deactivated items are not re-processed even if past the deadline."""
     with FEATContext("FEAT-STOR-002", idempotency_key=f"FEAT-STOR-002:test-expired-inactive:{uuid4().hex}"):
         teacher = _create_teacher('teacher_exp_inactive')
-        class_row = create_class_scope(teacher_user=teacher, display_name='A')
+        class_row = create_class_scope(teacher_user=teacher, join_code='CGE-A-04', display_name='A')
         student = _create_student(class_row.class_id, 'Dan')
         db.session.flush()
 
@@ -266,7 +266,7 @@ def test_process_expired_goals_only_voids_pending_not_processing(client):
     """Only 'pending' StudentItems are voided; 'processing' ones (goal already met) are left alone."""
     with FEATContext("FEAT-STOR-002", idempotency_key=f"FEAT-STOR-002:test-expired-processing:{uuid4().hex}"):
         teacher = _create_teacher('teacher_exp_processing')
-        class_row = create_class_scope(teacher_user=teacher, display_name='A')
+        class_row = create_class_scope(teacher_user=teacher, join_code='CGE-A-05', display_name='A')
         student_a = _create_student(class_row.class_id, 'Eve')
         student_b = _create_student(class_row.class_id, 'Frank')
         db.session.flush()
@@ -309,7 +309,7 @@ def test_process_expired_goals_skips_met_goals_with_no_pending(client):
     """An expired goal with no pending purchases (already met/unlocked) is not deactivated."""
     with FEATContext("FEAT-STOR-002", idempotency_key=f"FEAT-STOR-002:test-expired-met:{uuid4().hex}"):
         teacher = _create_teacher('teacher_exp_met')
-        class_row = create_class_scope(teacher_user=teacher, display_name='A')
+        class_row = create_class_scope(teacher_user=teacher, join_code='CGE-A-06', display_name='A')
         student = _create_student(class_row.class_id, 'Fay')
         db.session.flush()
 
@@ -341,8 +341,8 @@ def test_process_expired_goals_scoped_to_teacher(client):
     with FEATContext("FEAT-STOR-002", idempotency_key=f"FEAT-STOR-002:test-expired-scope:{uuid4().hex}"):
         teacher_a = _create_teacher('teacher_exp_scope_a')
         teacher_b = _create_teacher('teacher_exp_scope_b')
-        class_row_a = create_class_scope(teacher_user=teacher_a, display_name='A')
-        class_row_b = create_class_scope(teacher_user=teacher_b, display_name='B')
+        class_row_a = create_class_scope(teacher_user=teacher_a, join_code='CGE-A-07', display_name='A')
+        class_row_b = create_class_scope(teacher_user=teacher_b, join_code='CGE-B-07', display_name='B')
         student_a = _create_student(class_row_a.class_id, 'Grace')
         student_b = _create_student(class_row_b.class_id, 'Hank')
         db.session.flush()
@@ -393,7 +393,7 @@ def test_process_expired_goals_refund_fallback_to_item_price(client):
     """When no original purchase transaction is found, refund falls back to item price."""
     with FEATContext("FEAT-STOR-002", idempotency_key=f"FEAT-STOR-002:test-expired-fallback:{uuid4().hex}"):
         teacher = _create_teacher('teacher_exp_fallback')
-        class_row = create_class_scope(teacher_user=teacher, display_name='A')
+        class_row = create_class_scope(teacher_user=teacher, join_code='CGE-A-08', display_name='A')
         student = _create_student(class_row.class_id, 'Ivy')
         db.session.flush()
 
@@ -430,7 +430,7 @@ def test_refund_pending_collective_purchases_marks_voided_and_creates_refund(cli
     """refund_pending_collective_purchases voids all pending items and creates refund txs."""
     with FEATContext("FEAT-STOR-002", idempotency_key=f"FEAT-STOR-002:test-refund-pending:{uuid4().hex}"):
         teacher = _create_teacher('teacher_refund_direct')
-        class_row = create_class_scope(teacher_user=teacher, display_name='A')
+        class_row = create_class_scope(teacher_user=teacher, join_code='CGE-A-09', display_name='A')
         student = _create_student(class_row.class_id, 'Jay')
         db.session.flush()
 
@@ -475,7 +475,7 @@ def test_refund_matching_uses_purchase_transaction_id_after_item_rename(client):
     """Refund matching should remain correct even if the store item name changes."""
     with FEATContext("FEAT-STOR-002", idempotency_key=f"FEAT-STOR-002:test-refund-id-match:{uuid4().hex}"):
         teacher = _create_teacher('teacher_refund_id_match')
-        class_row = create_class_scope(teacher_user=teacher, display_name='A')
+        class_row = create_class_scope(teacher_user=teacher, join_code='CGE-A-10', display_name='A')
         student = _create_student(class_row.class_id, 'Jules')
         db.session.flush()
 
@@ -520,7 +520,7 @@ def test_refund_pending_skips_non_pending_statuses(client):
     """refund_pending_collective_purchases does not touch 'processing' or 'completed' items."""
     with FEATContext("FEAT-STOR-002", idempotency_key=f"FEAT-STOR-002:test-refund-skip:{uuid4().hex}"):
         teacher = _create_teacher('teacher_refund_skip')
-        class_row = create_class_scope(teacher_user=teacher, display_name='A')
+        class_row = create_class_scope(teacher_user=teacher, join_code='CGE-A-11', display_name='A')
         student = _create_student(class_row.class_id, 'Kim')
         db.session.flush()
 
@@ -548,7 +548,7 @@ def test_delete_active_collective_item_refunds_pending(client):
     """DELETE /admin/store/delete/<id> refunds pending purchases before deactivating."""
     with FEATContext("FEAT-STOR-002", idempotency_key=f"FEAT-STOR-002:test-delete-refund:{uuid4().hex}"):
         teacher = _create_teacher('teacher_del_refund')
-        class_row = create_class_scope(teacher_user=teacher, display_name='A')
+        class_row = create_class_scope(teacher_user=teacher, join_code='CGE-A-12', display_name='A')
         student = _create_student(class_row.class_id, 'Leo')
         db.session.flush()
 
@@ -597,7 +597,7 @@ def test_delete_inactive_collective_item_does_not_refund(client):
     """Deleting an already-inactive collective item does not generate extra refunds."""
     with FEATContext("FEAT-STOR-002", idempotency_key=f"FEAT-STOR-002:test-delete-inactive:{uuid4().hex}"):
         teacher = _create_teacher('teacher_del_inactive')
-        class_row = create_class_scope(teacher_user=teacher, display_name='A')
+        class_row = create_class_scope(teacher_user=teacher, join_code='CGE-A-13', display_name='A')
         student = _create_student(class_row.class_id, 'Mia')
         db.session.flush()
 
@@ -637,7 +637,7 @@ def test_purchase_blocked_when_collective_goal_expired(client):
     """POST /api/purchase-item returns 400 when the collective goal has expired."""
     with FEATContext("FEAT-STOR-002", idempotency_key=f"FEAT-STOR-002:test-purchase-expired:{uuid4().hex}"):
         teacher = _create_teacher('teacher_api_expired')
-        class_row = create_class_scope(teacher_user=teacher, display_name='A')
+        class_row = create_class_scope(teacher_user=teacher, join_code='CGE-A-14', display_name='A')
         student = _create_student(class_row.class_id, 'Nora')
         db.session.flush()
 
@@ -664,7 +664,7 @@ def test_purchase_allowed_for_non_expired_collective_goal(client):
     """POST /api/purchase-item succeeds for a collective goal with a future expiration."""
     with FEATContext("FEAT-STOR-002", idempotency_key=f"FEAT-STOR-002:test-purchase-future:{uuid4().hex}"):
         teacher = _create_teacher('teacher_api_future')
-        class_row = create_class_scope(teacher_user=teacher, display_name='A')
+        class_row = create_class_scope(teacher_user=teacher, join_code='CGE-A-15', display_name='A')
         student = _create_student(class_row.class_id, 'Owen')
         db.session.flush()
 
@@ -694,7 +694,7 @@ def test_reactivated_item_voided_purchases_excluded_from_progress(client):
     """
     with FEATContext("FEAT-STOR-002", idempotency_key=f"FEAT-STOR-002:test-reactivated-progress:{uuid4().hex}"):
         teacher = _create_teacher('teacher_reactivate')
-        class_row = create_class_scope(teacher_user=teacher, display_name='A')
+        class_row = create_class_scope(teacher_user=teacher, join_code='CGE-A-16', display_name='A')
         student = _create_student(class_row.class_id, 'Pam')
         db.session.flush()
 
@@ -727,7 +727,7 @@ def test_process_expired_goals_multiple_items_same_teacher(client):
     """Multiple expired items for the same teacher are all processed in one call."""
     with FEATContext("FEAT-STOR-002", idempotency_key=f"FEAT-STOR-002:test-expired-multi:{uuid4().hex}"):
         teacher = _create_teacher('teacher_exp_multi')
-        class_row = create_class_scope(teacher_user=teacher, display_name='A')
+        class_row = create_class_scope(teacher_user=teacher, join_code='CGE-A-17', display_name='A')
         student_a = _create_student(class_row.class_id, 'Quinn')
         student_b = _create_student(class_row.class_id, 'Rita')
         db.session.flush()
@@ -756,7 +756,7 @@ def test_shop_page_triggers_expiration_lazily(client):
     """Loading /student/shop triggers expiration processing for the teacher's items."""
     with FEATContext("FEAT-STOR-002", idempotency_key=f"FEAT-STOR-002:test-lazy-expiration:{uuid4().hex}"):
         teacher = _create_teacher('teacher_lazy_exp')
-        class_row = create_class_scope(teacher_user=teacher, display_name='A')
+        class_row = create_class_scope(teacher_user=teacher, join_code='CGE-A-18', display_name='A')
         student = _create_student(class_row.class_id, 'Sam')
         db.session.flush()
 

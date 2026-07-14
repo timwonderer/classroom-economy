@@ -496,8 +496,8 @@ def claim_account():
         last_name = form.last_name.data.strip()
         dedupe_code = (form.dedupe_code.data or "").strip().upper()
 
-        # Resolve class context
-        class_row = ClassEconomy.query.filter_by(class_id=context.class_id).first()
+        # Resolve the ingress join code to its canonical class_id before any seat lookup.
+        class_row = ClassEconomy.query.filter_by(join_code=display_join_code).first()
         if not class_row:
             current_app.logger.warning(
                 f"Claim attempt failed: No class found for join_code={display_join_code}"

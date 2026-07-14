@@ -33,7 +33,7 @@ def test_teacher_can_submit_class_scoped_support_ticket(client):
     response = client.post(
         "/admin/help-support",
         data={
-            "join_code": "ELA123",
+            "class_id": class_row.class_id,
             "issue_category": "general",
             "title": "Roster sync issue",
             "description": "Student roster did not sync after update.",

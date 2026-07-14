@@ -93,8 +93,6 @@
         <hr class="my-3">
         <h2 class="h6 fw-bold mb-3">Shadow Identity</h2>
         <form method="POST" action="{{ url_for('admin.shadow_student_onboard', join_code=join_code) }}">
-          <input type="hidden" name="join_code" value="{{ join_code }}">
-
           <div class="mb-3">
             <label for="shadow_first_name" class="form-label">First Name</label>
             <input type="text" class="form-control" id="shadow_first_name" name="first_name"

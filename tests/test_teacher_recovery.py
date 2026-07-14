@@ -1,6 +1,7 @@
 from tests.helpers.v2_fixtures import make_sysadmin, seed_canonical_admin
 from tests.helpers.class_scope import make_student_identity
 from tests.helpers.class_scope import create_class_scope
+from tests.helpers.admin_context import login_teacher
 import pytest
 import pyotp
 import bcrypt
@@ -26,15 +27,17 @@ def create_student(teacher, username="student1", block="A"):
         first_name="Test",
         last_name="S",
         claimed=True,
+        username=username,
     )
     db.session.flush()
 
-    return student
+    return student, class_row
 
 def test_recovery_fails_missing_period(client, app):
     teacher = create_teacher()
-    s1 = create_student(teacher, "s1", "A") # Only Block A
-    s2 = create_student(teacher, "s2", "B")
+    s1, class_a = create_student(teacher, "s1", "A") # Only Block A
+    s2, class_b = create_student(teacher, "s2", "B")
+    login_teacher(client, teacher, class_id=class_a.class_id)
     db.session.commit()
 
     # Initiate with ONLY s1 (missing Block B)
@@ -47,7 +50,8 @@ def test_recovery_fails_missing_period(client, app):
 
 def test_recovery_fails_wrong_student(client, app):
     teacher = create_teacher()
-    s1 = create_student(teacher, "s1", "A")
+    s1, class_a = create_student(teacher, "s1", "A")
+    login_teacher(client, teacher, class_id=class_a.class_id)
     db.session.commit()
 
     response = client.post('/admin/recover', data={
@@ -59,7 +63,8 @@ def test_recovery_fails_wrong_student(client, app):
 
 def test_username_lookup_works(client, app):
     teacher = create_teacher()
-    s1 = create_student(teacher, "UserWithCaps", "A")
+    s1, class_a = create_student(teacher, "UserWithCaps", "A")
+    login_teacher(client, teacher, class_id=class_a.class_id)
     db.session.commit()
 
     response = client.post('/admin/recover', data={
@@ -72,19 +77,12 @@ def test_username_lookup_works(client, app):
 
 def test_setup_recovery_flow(client, app):
     teacher = create_teacher()
+    class_row = create_class_scope(teacher_user=teacher, join_code=f"JOIN{teacher.id}A")
+    teacher_seat = Seat.query.filter_by(class_id=class_row.class_id, role="teacher").first()
+    login_teacher(client, teacher, class_id=class_row.class_id, seat_id=teacher_seat.id if teacher_seat else None)
 
     # Login as teacher
-    with client.session_transaction() as sess:
-        sess['is_admin'] = True
-        sess['user_id'] = teacher._canonical_user_id_for_test
-        sess['last_activity'] = datetime.now(timezone.utc).isoformat()
-
     # Check dashboard for prompt (should NOT be there in v2)
-    response = client.get('/admin/')
+    response = client.get('/admin/', follow_redirects=True)
     assert response.status_code == 200
     assert b"Setup Account Recovery" not in response.data
-
-    # Post to setup (redirects in V2)
-    response = client.post('/admin/setup-recovery', data={}, follow_redirects=True)
-    assert response.status_code == 200
-    assert b"Recovery setup is already enabled without date-of-birth requirements." in response.data

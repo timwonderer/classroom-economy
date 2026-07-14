@@ -365,7 +365,7 @@ class StudentCompleteProfileForm(FlaskForm):
 # -------------------- ANNOUNCEMENT FORMS --------------------
 class AnnouncementForm(FlaskForm):
     """Form for creating and editing teacher class announcements."""
-    periods = SelectMultipleField('Post to Class Periods', choices=[], validators=[DataRequired()])
+    class_id = HiddenField('Class ID', validators=[DataRequired()])
     title = StringField('Announcement Title', validators=[DataRequired(), Length(min=1, max=200)])
     message = TextAreaField('Message', validators=[DataRequired()])
     priority = SelectField('Priority', choices=[

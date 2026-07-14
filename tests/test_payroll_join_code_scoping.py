@@ -10,8 +10,8 @@ from tests.helpers.v2_fixtures import seed_canonical_admin, seed_class_with_seat
 def test_pay_rate_isolation_by_class_id(client):
     """Same teacher + same block across classes must not bleed settings."""
     teacher = seed_canonical_admin("teacher_scope_rates", "secret").user
-    class_a = seed_class_with_seat(teacher=teacher).class_row
-    class_b = seed_class_with_seat(teacher=teacher).class_row
+    class_a = seed_class_with_seat(teacher=teacher, join_code="PAY-JC-A").class_row
+    class_b = seed_class_with_seat(teacher=teacher, join_code="PAY-JC-B").class_row
 
     with FEATContext("FEAT-ADMN-001", idempotency_key="payroll_join_code_scoping:rate"):
         db.session.add(
@@ -34,8 +34,8 @@ def test_pay_rate_isolation_by_class_id(client):
 def test_daily_limit_isolation_by_class_id(client):
     """Daily limits must resolve by class_id, not teacher-level ownership."""
     teacher = seed_canonical_admin("teacher_scope_limits", "secret").user
-    class_x = seed_class_with_seat(teacher=teacher).class_row
-    class_y = seed_class_with_seat(teacher=teacher).class_row
+    class_x = seed_class_with_seat(teacher=teacher, join_code="PAY-JC-X").class_row
+    class_y = seed_class_with_seat(teacher=teacher, join_code="PAY-JC-Y").class_row
 
     with FEATContext("FEAT-ADMN-001", idempotency_key="payroll_join_code_scoping:limit"):
         db.session.add(
@@ -64,7 +64,7 @@ def test_payroll_settings_lookup_requires_class_id(client):
 def test_duplicate_active_settings_fail_closed(client):
     """Ambiguous active rows for same class/block must fail closed."""
     teacher = seed_canonical_admin("teacher_scope_dup", "secret").user
-    class_a = seed_class_with_seat(teacher=teacher).class_row
+    class_a = seed_class_with_seat(teacher=teacher, join_code="PAY-JC-Z").class_row
 
     with FEATContext("FEAT-ADMN-001", idempotency_key="payroll_join_code_scoping:duplicate"):
         db.session.add_all(

@@ -1807,7 +1807,6 @@ def _ensure_join_code_anchors(user_id, join_code, class_label=None, class_id=Non
     if teacher_seat is None:
         db.session.add(Seat(
             class_id=economy.class_id,
-            join_code=join_code,
             role="teacher",
         ))
 
@@ -1915,7 +1914,6 @@ def _link_student_to_admin(
             class_id=target_class_id,
             student_id=student.id,
             role='student',
-            join_code=target_join_code,
             claim_first_name_hash=_h(seat_first_name.lower()) if seat_first_name else None,
             claim_last_name_hash=_h(seat_last_name.lower()) if seat_last_name else None,
             roster_fingerprint=_h(
@@ -3279,9 +3277,9 @@ def recover():
 
     Teacher submits one (join_code, student_username) pair per class taught.
     Lookup order (enforced):
-      1. Resolve join_code -> ClassEconomy (establishes user_id and class scope)
+      1. Resolve join_code -> ClassEconomy -> class_id (establishes user_id and class scope)
       2. Find the seat by username_lookup_hash *within* the resolved class roster
-    All pairs must resolve to the same teacher and must cover all active join codes.
+    All pairs must resolve to the same teacher and must cover all active class_ids.
     No DOB is used.
 
     Generic errors only — do not reveal which pair failed.
@@ -3320,26 +3318,37 @@ def recover():
 
         recovered_account_id = first_class.user_id
         active_classes = [c for c in all_classes if c.user_id == recovered_account_id]
-        class_by_join_code = {c.join_code: c for c in active_classes if c.join_code}
+        class_by_id = {c.class_id: c for c in active_classes if c.class_id}
+
+        resolved_pairs = []
+        for recovery_join_code, recovery_username in recovery_pairs:
+            resolved_class = next((c for c in active_classes if c.join_code == recovery_join_code), None)
+            if not resolved_class:
+                current_app.logger.warning(
+                    f"Admin recovery: join_code '{recovery_join_code}' not found in recovered account scope"
+                )
+                flash(_GENERIC_ERROR, "error")
+                return render_template("admin_recover.html", form=form)
+            resolved_pairs.append((resolved_class.class_id, recovery_username))
 
         # ----------------------------------------------------------------
-        # Step 2: Verify submitted join codes exactly match the active class records
+        # Step 2: Verify submitted class_ids exactly match the active class records
         # ----------------------------------------------------------------
-        all_active_join_codes = set(class_by_join_code)
-        submitted_class_join_codes = set(jc for jc, _ in recovery_pairs)
+        all_active_class_ids = set(class_by_id)
+        submitted_class_ids = set(class_id for class_id, _ in resolved_pairs)
 
         # Must exactly match backend list
-        if all_active_join_codes != submitted_class_join_codes:
+        if all_active_class_ids != submitted_class_ids:
             current_app.logger.warning(
-                f"Admin recovery: join_code set mismatch for recovered account {recovered_account_id}"
+                f"Admin recovery: class_id set mismatch for recovered account {recovered_account_id}"
             )
             flash(_GENERIC_ERROR, "error")
             return render_template("admin_recover.html", form=form)
 
         # Reject duplicates (e.g. submitting the same valid class 3 times)
-        if len(submitted_class_join_codes) != len(recovery_pairs):
+        if len(submitted_class_ids) != len(resolved_pairs):
             current_app.logger.warning(
-                f"Admin recovery: duplicate join_codes submitted"
+                f"Admin recovery: duplicate class_ids submitted"
             )
             flash(_GENERIC_ERROR, "error")
             return render_template("admin_recover.html", form=form)
@@ -3347,12 +3356,12 @@ def recover():
         # ----------------------------------------------------------------
         # Step 3: Verify each recovered seat belongs in the correct class scope
         # ----------------------------------------------------------------
-        resolved_seats = {}   # join_code -> seat record
+        resolved_seats = {}   # class_id -> seat record
 
         # Group seat IDs by class for quick lookup
-        seats_by_jc = {}
+        seats_by_class_id = {}
         for c in active_classes:
-            if c.join_code:
+            if c.class_id:
                 jc_seats = (
                     Seat.query
                     .join(User, User.id == Seat.user_id)
@@ -3363,14 +3372,14 @@ def recover():
                     .with_entities(Seat.id, User.id)
                     .all()
                 )
-                seats_by_jc[c.join_code] = jc_seats
+                seats_by_class_id[c.class_id] = jc_seats
 
-        for recovery_join_code, recovery_username in recovery_pairs:
-            # We already know this class is in scope from the set comparison
+        for recovery_class_id, recovery_username in resolved_pairs:
+            # We already know this class is in scope from the set comparison.
             recovery_lookup_hash = hash_username_lookup(recovery_username)
 
             # Get all seat IDs associated with this specific class
-            seats_for_jc = seats_by_jc.get(recovery_join_code, [])
+            seats_for_jc = seats_by_class_id.get(recovery_class_id, [])
             seat_ids_in_class = [seat_id for seat_id, _student_id in seats_for_jc if seat_id]
 
             seat = (
@@ -3390,7 +3399,7 @@ def recover():
                 flash(_GENERIC_ERROR, "error")
                 return render_template("admin_recover.html", form=form)
 
-            resolved_seats[recovery_join_code] = seat
+            resolved_seats[recovery_class_id] = seat
 
         # ----------------------------------------------------------------
         # Step 4: Check for existing active recovery request
@@ -4822,7 +4831,6 @@ def edit_student():
             new_seat = Seat(
                 student_id=student.id,
                 class_id=class_id,
-                join_code=join_code,
                 block=block,
                 claimed_at=utc_now() if is_claimed else None,
             )
@@ -9419,7 +9427,6 @@ def upload_students():
                 notes = row["notes"]
                 seat = Seat(
                     class_id=class_row.class_id,
-                    join_code=join_code,
                     role="student",
                     claimed_at=None,
                 )
@@ -9735,7 +9742,6 @@ def upload_students():
                     claim_last_name_hash=claim_last_name_hash,
                     roster_fingerprint=roster_fingerprint,
                     dedupe_code=dedupe_code,
-                    join_code=join_code,
                     claimed_at=None
                 )
                 db.session.add(seat)
@@ -10715,7 +10721,7 @@ def help_support():
 
     canonical_context = g.canonical_context
     user_id = canonical_context.user_id
-    selected_join_code = (_get_teacher_user_join_code(canonical_context) or '').strip()
+    selected_class_id = (request.values.get('class_id') or '').strip()
 
     teacher_user_class_rows = (
         ClassEconomy.query
@@ -10724,17 +10730,24 @@ def help_support():
         .all()
     )
     class_scope_map = {}
-    class_id_by_join_code = {}
     for ce_row in teacher_user_class_rows:
         display_join_code = get_display_join_code(ce_row.class_id)
         if display_join_code and display_join_code not in class_scope_map:
             class_scope_map[display_join_code] = ce_row.display_name or display_join_code
-            class_id_by_join_code[display_join_code] = ce_row.class_id
 
     class_scope_options = [
-        {'join_code': join_code, 'class_id': class_id_by_join_code.get(join_code), 'label': label}
-        for join_code, label in sorted(class_scope_map.items(), key=lambda item: item[1] or item[0])
+        {'class_id': ce_row.class_id, 'join_code': get_display_join_code(ce_row.class_id), 'label': ce_row.display_name or get_display_join_code(ce_row.class_id)}
+        for ce_row in teacher_user_class_rows
+        if get_display_join_code(ce_row.class_id)
     ]
+    class_scope_options.sort(key=lambda item: item["label"] or item["join_code"] or item["class_id"])
+    class_scope_map_by_id = {item["class_id"]: item for item in class_scope_options}
+
+    if not selected_class_id and class_scope_options:
+        selected_class_id = class_scope_options[0]["class_id"]
+    selected_option = class_scope_map_by_id.get(selected_class_id)
+    selected_join_code = (selected_option["join_code"] if selected_option else "").strip()
+    selected_class_label = selected_option["label"] if selected_option else None
 
     category_to_report_type = {
         'general': 'comment',
@@ -10791,12 +10804,12 @@ def help_support():
         description = request.form.get('description', '').strip()
         expected_behavior = request.form.get('expected_behavior', '').strip()
         page_url = request.form.get('page_url', '').strip()
-        selected_class_id = class_id_by_join_code.get(selected_join_code)
-        class_label = class_scope_map.get(selected_join_code)
-
-        if not selected_join_code or selected_join_code not in class_scope_map or not selected_class_id:
+        selected_option = class_scope_map_by_id.get(selected_class_id)
+        if not selected_option:
             flash("Please select one of your classes before submitting a support ticket.", "error")
             return redirect(url_for('admin.help_support'))
+        selected_join_code = selected_option["join_code"]
+        class_label = selected_option["label"]
 
         if issue_category not in category_to_report_type:
             flash("Please select a valid support ticket category.", "error")
@@ -10812,7 +10825,7 @@ def help_support():
                 current_page='help',
                 page_title='Help & Support',
                 class_scope_options=class_scope_options,
-                selected_join_code=selected_join_code,
+                selected_class_id=selected_class_id,
                 my_reports=my_reports,
                 help_content=HELP_ARTICLES['teacher'],
                 format_utc_iso=format_utc_iso,
@@ -10837,7 +10850,7 @@ def help_support():
                 current_page='help',
                 page_title='Help & Support',
                 class_scope_options=class_scope_options,
-                selected_join_code=selected_join_code,
+                selected_class_id=selected_class_id,
                 my_reports=my_reports,
                 help_content=HELP_ARTICLES['teacher'],
                 format_utc_iso=format_utc_iso,
@@ -10855,7 +10868,7 @@ def help_support():
             with FEATContext("FEAT-SUP-001", idempotency_key=f"admin_help_support:{user_id}:{selected_class_id}:{title}"):
                 report = UserReport(
                     anonymous_code=anonymous_code,
-                    user_type='teacher',
+                    user_type="teacher",
                     class_id=selected_class_id,
                     join_code=selected_join_code,
                     report_type=category_to_report_type[issue_category],
@@ -10864,10 +10877,9 @@ def help_support():
                     expected_behavior=expected_behavior if expected_behavior else None,
                     page_url=page_url if page_url else None,
                     ip_address=get_real_ip(),
-                    user_agent=request.headers.get('User-Agent'),
-                    status='new'
+                    user_agent=request.headers.get("User-Agent"),
+                    status="new",
                 )
-
                 db.session.add(report)
                 db.session.flush()
 
@@ -10886,9 +10898,8 @@ def help_support():
     my_reports = []
     for report in reports:
         scope_class_id, scope_join_code, class_label, issue_category, clean_description = _parse_scope_metadata(report.description)
-        if selected_class_id := class_id_by_join_code.get(selected_join_code):
-            if scope_class_id and scope_class_id != selected_class_id:
-                continue
+        if selected_class_id and scope_class_id and scope_class_id != selected_class_id:
+            continue
         my_reports.append({
             'report': report,
             'scope_class_id': scope_class_id,
@@ -10904,7 +10915,7 @@ def help_support():
                          current_page='help',
                          page_title='Help & Support',
                          class_scope_options=class_scope_options,
-                         selected_join_code=selected_join_code,
+                         selected_class_id=selected_class_id,
                          my_reports=my_reports,
                          help_content=HELP_ARTICLES['teacher'],
                          format_utc_iso=format_utc_iso)
@@ -11171,11 +11182,10 @@ def announcement_create():
     selected_class_id = class_context["class_id"]
     selected_join_code = class_context["join_code"]
 
-    # Keep periods field for form validation, but lock it to active class context.
     form = AnnouncementForm()
-    form.periods.choices = [(selected_join_code, selected_join_code)]
+    form.class_id.data = selected_class_id
     if request.method == 'GET':
-        form.periods.data = [selected_join_code]
+        form.class_id.data = selected_class_id
 
     if form.validate_on_submit():
         try:
@@ -11237,8 +11247,7 @@ def announcement_edit(announcement_id):
 
     # Get the class info for this announcement
     form = AnnouncementForm(obj=announcement)
-    # Don't need periods field for editing - it's locked to one period
-    del form.periods
+    form.class_id.data = selected_class_id
 
     if form.validate_on_submit():
         try:

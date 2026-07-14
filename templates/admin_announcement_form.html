@@ -19,13 +19,13 @@
                 <form method="POST" action="">
                     {{ form.csrf_token }}
 
-                    {% if action == 'Create' and form.periods %}
+                    {% if action == 'Create' %}
                     <div class="alert alert-info mb-3">
                         <span class="material-symbols-outlined me-2">info</span>
                         This announcement will post to the class currently selected in the sidebar:
                         <strong>{{ active_class_label }}</strong>{% if active_block %} (Period {{ active_block }}){% endif %}{% if active_join_code %} — {{ active_join_code }}{% endif %}.
                     </div>
-                    <input type="hidden" name="periods" value="{{ active_join_code }}">
+                    {{ form.class_id }}
                     {% elif action == 'Edit' and teacher_block %}
                     <div class="alert alert-info mb-3">
                         <span class="material-symbols-outlined me-2">info</span>
