@@ -30,13 +30,11 @@ def _setup_shared_student_with_split_membership():
         teacher_b = seed_canonical_admin("tap_scope_admin_b").user
         class_a = seed_class_with_seat(
             teacher=teacher_a,
-            join_code="TAP-A",
             student_first_name="AnchorA",
             student_last_name="Tap",
         ).class_row
         class_b = seed_class_with_seat(
             teacher=teacher_b,
-            join_code="TAP-B",
             student_first_name="AnchorB",
             student_last_name="Tap",
         ).class_row
