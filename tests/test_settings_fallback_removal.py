@@ -21,12 +21,10 @@ def two_class_ctx(client):
     with FEATContext("FEAT-IDEN-001", idempotency_key="settings_fallback_setup"):
         ctx1 = ClassroomContextFactory(
             db,
-            join_code="FALL01",
             teacher_username="teacher_fall01",
         ).build()
         ctx2 = ClassroomContextFactory(
             db,
-            join_code="FALL02",
             teacher_username="teacher_fall02",
         ).build()
 
