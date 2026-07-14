@@ -7878,16 +7878,11 @@ def hall_pass_setup():
 @feat_shell("FEAT-ADMN-001")
 def update_economy_policy():
     user_id = g.canonical_context.user_id
-    selected_block = (request.form.get('block') or '').strip().upper() or None
-    if not selected_block:
-        flash("Select a class period before updating economy policy.", "warning")
-        return redirect(url_for('admin.economy_health'))
-    selected_scope = require_admin_feature_scope(
-        'payroll',
-        canonical_context=g.canonical_context,
-        requested_block=selected_block,
-        allow_default=False,
-    )
+    current_class_id = g.canonical_context.class_id
+    feature_options = get_admin_feature_join_code_options('payroll', canonical_context=g.canonical_context)
+    selected_scope = next((option for option in feature_options if option.get('class_id') == current_class_id), None)
+    if not selected_scope:
+        abort(404)
     policy_mode = normalize_policy_mode(request.form.get('policy_mode'))
     settings_row = get_feature_settings_row_for_class(
         selected_scope['class_id'],
@@ -7895,7 +7890,7 @@ def update_economy_policy():
     )
     if not settings_row:
         flash("Class scope not found for the selected period.", "warning")
-        return redirect(url_for('admin.economy_health', block=selected_scope['block']))
+        return redirect(url_for('admin.economy_health'))
     settings_row.economy_policy_mode = policy_mode
     settings_row.economy_policy_updated_at = utc_now()
     cancel_pending_policy_transitions(settings_row.class_id, actor_id=user_id)
@@ -7906,7 +7901,7 @@ def update_economy_policy():
         policy_mode,
     )
     flash(f"Economy policy updated to {POLICY_MODES[policy_mode]['label']}.", "success")
-    return redirect(url_for('admin.economy_health', block=selected_scope['block'], review_rebalance=1))
+    return redirect(url_for('admin.economy_health', review_rebalance=1))
 
 
 @admin_bp.route('/economy-policy/rebalance', methods=['POST'])
@@ -7914,16 +7909,11 @@ def update_economy_policy():
 @feat_shell("FEAT-ADMN-001")
 def apply_economy_rebalance():
     user_id = g.canonical_context.user_id
-    selected_block = (request.form.get('block') or '').strip().upper() or None
-    if not selected_block:
-        flash("Select a class period before applying a rebalance.", "warning")
-        return redirect(url_for('admin.economy_health'))
-    selected_scope = require_admin_feature_scope(
-        'payroll',
-        canonical_context=g.canonical_context,
-        requested_block=selected_block,
-        allow_default=False,
-    )
+    current_class_id = g.canonical_context.class_id
+    feature_options = get_admin_feature_join_code_options('payroll', canonical_context=g.canonical_context)
+    selected_scope = next((option for option in feature_options if option.get('class_id') == current_class_id), None)
+    if not selected_scope:
+        abort(404)
     activation_mode = (request.form.get('activation_mode') or REBALANCE_ACTIVATION_NEXT_RENEWAL).strip().lower()
     selected_keys = set(request.form.getlist('selected_changes'))
     settings_row = get_feature_settings_row_for_class(
@@ -7932,7 +7922,7 @@ def apply_economy_rebalance():
     )
     if not settings_row:
         flash("Class scope not found for the selected period.", "warning")
-        return redirect(url_for('admin.economy_health', block=selected_scope['block'], review_rebalance=1))
+        return redirect(url_for('admin.economy_health', review_rebalance=1))
     allowed_activation_modes = {
         REBALANCE_ACTIVATION_IMMEDIATE,
         REBALANCE_ACTIVATION_NEXT_RENEWAL,
@@ -7941,7 +7931,7 @@ def apply_economy_rebalance():
 
     if activation_mode not in allowed_activation_modes:
         flash("Invalid rebalance activation mode.", "warning")
-        return redirect(url_for('admin.economy_health', block=selected_scope['block'], review_rebalance=1))
+        return redirect(url_for('admin.economy_health', review_rebalance=1))
 
     effective_block, payroll_settings, rent_settings, insurance_policies, _all_payroll_settings = _load_economy_rebalance_context(
         g.canonical_context,
@@ -7951,7 +7941,7 @@ def apply_economy_rebalance():
 
     if not payroll_settings:
         flash("Payroll settings are required before a rebalance can be applied.", "warning")
-        return redirect(url_for('admin.economy_health', block=effective_block, review_rebalance=1))
+        return redirect(url_for('admin.economy_health', review_rebalance=1))
 
     checker = EconomyBalanceChecker(g.canonical_context.user_id, effective_block, class_id=getattr(payroll_settings, "class_id", None))
     effective_class_id = selected_scope.get("class_id")
@@ -7986,11 +7976,11 @@ def apply_economy_rebalance():
 
     if not change_plan:
         flash("No rebalance changes were selected.", "warning")
-        return redirect(url_for('admin.economy_health', block=effective_block, review_rebalance=1))
+        return redirect(url_for('admin.economy_health', review_rebalance=1))
 
     if activation_mode == REBALANCE_ACTIVATION_IMMEDIATE and request.form.get('confirm_immediate') != 'yes':
         flash("Confirm the immediate change warning before applying now.", "warning")
-        return redirect(url_for('admin.economy_health', block=effective_block, review_rebalance=1))
+        return redirect(url_for('admin.economy_health', review_rebalance=1))
 
     if activation_mode == REBALANCE_ACTIVATION_IMMEDIATE:
         applied_labels = _apply_rebalance_plan(
@@ -8023,7 +8013,7 @@ def apply_economy_rebalance():
             "success",
         )
 
-    return redirect(url_for('admin.economy_health', block=effective_block))
+    return redirect(url_for('admin.economy_health'))
 
 
 @admin_bp.route('/economy-health')
@@ -8031,12 +8021,11 @@ def apply_economy_rebalance():
 def economy_health():
     """Show a holistic view of the current economy configuration and CWI health."""
     user_id = g.canonical_context.user_id
-    requested_block = (request.args.get('block') or '').strip().upper() or None
-    selected_scope = require_admin_feature_scope(
-        'payroll',
-        canonical_context=g.canonical_context,
-        requested_block=requested_block,
-    )
+    current_class_id = g.canonical_context.class_id
+    feature_options = get_admin_feature_join_code_options('payroll', canonical_context=g.canonical_context)
+    selected_scope = next((option for option in feature_options if option.get('class_id') == current_class_id), None)
+    if not selected_scope:
+        abort(404)
 
     blocks = _get_teacher_blocks(g.canonical_context)
     # Always use per-class view since CWI is inherently class-scoped.

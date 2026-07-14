@@ -561,6 +561,18 @@ def test_economy_rebalance_context_uses_explicit_class_id_not_block_label(client
     assert insurance_policies == []
 
 
+def test_economy_health_ignores_request_block_selector(client):
+    admin, payroll_settings, rent_settings, economy = _create_admin_with_block('A', join_code='JOINPOLA')
+    _create_admin_with_block('B', join_code='JOINPOLB')
+    _login_admin(client, admin.id, class_id=economy.class_id)
+
+    response = client.get('/admin/economy-health?block=B')
+
+    assert response.status_code == 200
+    assert b"Class context: A" in response.data
+    assert b"Class context: B" not in response.data
+
+
 def test_run_payroll_applies_scheduled_rebalance(client):
     admin, _, rent_settings, economy = _create_admin_with_block('A', join_code='JOINPOLA')
     _login_admin(client, admin.id, class_id=economy.class_id)
