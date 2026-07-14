@@ -1051,21 +1051,12 @@ def _require_payroll_feature_scope_from_request(
             f"Insufficient authority: Seat {canonical_seat.id} is role='{canonical_seat.role}', not 'teacher'."
         )
 
-    # 4. Resolve available blocks from Seat (class-scoped)
-    requested_block = (request.values.get('cwi_block') or request.values.get('block') or '').strip().upper()
-
     class_row = ClassEconomy.query.filter_by(class_id=resolved_class_id).first()
     available_blocks = [class_row.section] if class_row and class_row.section else []
 
-    if requested_block:
-        if requested_block not in available_blocks:
-            raise InvariantViolation(f"Block '{requested_block}' is not associated with class_id '{resolved_class_id}'.")
-        resolved_block = requested_block
-    else:
-        # Fallback to the first available block, or default
-        resolved_block = available_blocks[0] if available_blocks else None
-        if not resolved_block and not allow_default:
-            raise InvariantViolation("No blocks found and default block is not allowed.")
+    resolved_block = available_blocks[0] if available_blocks else None
+    if not resolved_block and not allow_default:
+        raise InvariantViolation("No blocks found and default block is not allowed.")
 
     # 5. Verify feature is enabled
     enabled = "payroll" in ClassFeature.enabled_names_for_class(resolved_class_id)
@@ -5772,7 +5763,6 @@ def edit_store_item(item_id):
     selected_scope = require_admin_feature_scope(
         'store',
         canonical_context=g.canonical_context,
-        requested_block=request.values.get('block'),
     )
     item = StoreItem.query.filter_by(id=item_id, class_id=selected_scope['class_id']).first_or_404()
     if item.blocks_list and selected_scope['block'] not in {b.strip().upper() for b in item.blocks_list if b}:
@@ -5848,7 +5838,6 @@ def delete_store_item(item_id):
     selected_scope = require_admin_feature_scope(
         'store',
         canonical_context=g.canonical_context,
-        requested_block=request.values.get('block'),
     )
     item = StoreItem.query.filter_by(id=item_id, class_id=selected_scope['class_id']).first_or_404()
     if item.blocks_list and selected_scope['block'] not in {b.strip().upper() for b in item.blocks_list if b}:
@@ -5889,7 +5878,6 @@ def hard_delete_store_item(item_id):
     selected_scope = require_admin_feature_scope(
         'store',
         canonical_context=g.canonical_context,
-        requested_block=request.values.get('block'),
     )
     item = StoreItem.query.filter_by(id=item_id, class_id=selected_scope['class_id']).first_or_404()
     if item.blocks_list and selected_scope['block'] not in {b.strip().upper() for b in item.blocks_list if b}:
