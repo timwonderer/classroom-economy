@@ -7,6 +7,7 @@ No Admin objects, no bridge patterns.
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any
+import uuid
 
 from app.services.classroom_setup import create_teacher as _svc_create_teacher
 from app.feats.base import FEATContext
@@ -65,7 +66,7 @@ def seed_canonical_admin(username: str, totp_secret: str | None = None) -> Canon
 def seed_class_with_seat(
     *,
     teacher: User,
-    join_code: str,
+    join_code: str | None = None,
     display_name: str | None = None,
     section: str | None = None,
     student_first_name: str = "Student",
@@ -73,9 +74,10 @@ def seed_class_with_seat(
 ) -> CanonicalFixtureSeed:
     """Create a canonical class plus one claimed student seat."""
     from tests.helpers.class_scope import create_class_scope, make_student_identity
+    resolved_join_code = join_code or f"JC{uuid.uuid4().hex[:6].upper()}"
     class_row = create_class_scope(
         teacher_user=teacher,
-        join_code=join_code,
+        join_code=resolved_join_code,
         display_name=display_name,
         section=section,
     )
