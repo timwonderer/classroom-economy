@@ -28,16 +28,14 @@ def test_teacher():
 def teacher_block(test_teacher):
     """Create a teacher block with a display alias."""
     with FEATContext("FEAT-IDEN-001", idempotency_key="announcements:teacher_block"):
-        economy = ClassEconomy.query.filter_by(user_id=test_teacher.id).first()
-        if not economy:
-            economy = ClassEconomy(
-                join_code='TEST123',
-                user_id=test_teacher.id,
-                display_name='Test Announcements Class',
-                status='active',
-            )
-            db.session.add(economy)
-            db.session.flush()
+        economy = ClassEconomy(
+            join_code='TEST123',
+            user_id=test_teacher.id,
+            display_name='Test Announcements Class',
+            status='active',
+        )
+        db.session.add(economy)
+        db.session.flush()
 
         block = Seat(class_id=economy.class_id, user_id=test_teacher.id, role="teacher")
         db.session.add(block)
