@@ -18,11 +18,16 @@
                     <form method="POST" action="{{ url_for('admin.help_support') }}">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         <div class="mb-3">
-                            <label class="form-label">This issue applies to:</label>
-                            <div class="form-control bg-light">
-                                {{ class_scope_options | selectattr('join_code', 'equalto', selected_join_code) | map(attribute='label') | first | default('No active class selected') }}
-                                {% if selected_join_code %} ({{ selected_join_code }}){% endif %}
-                            </div>
+                            <label for="class_id" class="form-label">This issue applies to:</label>
+                            <select class="form-select" id="class_id" name="class_id" required>
+                                {% for option in class_scope_options %}
+                                <option value="{{ option.class_id }}" {% if option.class_id == selected_class_id %}selected{% endif %}>
+                                    {{ option.label }} ({{
+                                    option.join_code
+                                }})
+                                </option>
+                                {% endfor %}
+                            </select>
                         </div>
 
                         <div class="mb-3">
@@ -78,7 +83,7 @@
                                 <div>
                                     <h6 class="mb-1">{{ report.title }}</h6>
                                     <div class="small text-muted">
-                                        {{ entry.class_label or 'Unknown Class' }} • Scope Join Code: {{ entry.scope_join_code or 'Unknown' }}
+                                {{ entry.class_label or 'Unknown Class' }} • Scope Join Code: {{ entry.scope_join_code or 'Unknown' }}
                                     </div>
                                 </div>
                                 <span class="badge {% if report.status == 'new' %}bg-primary{% elif report.status == 'reviewed' %}bg-info{% elif report.status == 'closed' %}bg-secondary{% else %}bg-warning text-dark{% endif %}">{{ report.status|title }}</span>
