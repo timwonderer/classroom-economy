@@ -10,7 +10,6 @@ def _login_admin(client):
     db.session.flush()
     class_row = seed_class_with_seat(
         teacher=teacher,
-        join_code="ELA123",
         display_name="ELA",
         section="A",
     ).class_row
@@ -49,4 +48,6 @@ def test_teacher_can_submit_class_scoped_support_ticket(client):
     assert report is not None
     assert report.title == "Roster sync issue"
     assert report.report_type == "comment"
-    assert report.description.startswith(f"SUPPORT_SCOPE|class_id={class_row.class_id}|join_code=ELA123|class_label=ELA|category=general")
+    assert report.description.startswith(
+        f"SUPPORT_SCOPE|class_id={class_row.class_id}|join_code={class_row.join_code}|class_label=ELA|category=general"
+    )
