@@ -11171,11 +11171,10 @@ def announcement_create():
     selected_class_id = class_context["class_id"]
     selected_join_code = class_context["join_code"]
 
-    # Keep periods field for form validation, but lock it to active class context.
     form = AnnouncementForm()
-    form.periods.choices = [(selected_join_code, selected_join_code)]
+    form.class_id.data = selected_class_id
     if request.method == 'GET':
-        form.periods.data = [selected_join_code]
+        form.class_id.data = selected_class_id
 
     if form.validate_on_submit():
         try:
@@ -11237,8 +11236,7 @@ def announcement_edit(announcement_id):
 
     # Get the class info for this announcement
     form = AnnouncementForm(obj=announcement)
-    # Don't need periods field for editing - it's locked to one period
-    del form.periods
+    form.class_id.data = selected_class_id
 
     if form.validate_on_submit():
         try:

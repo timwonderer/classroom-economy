@@ -5,6 +5,8 @@ Tests the Announcement model, admin routes, and student display.
 Ensures proper multi-tenancy scoping by class_id, with join_code retained as display metadata.
 """
 from tests.helpers.v2_fixtures import seed_canonical_admin
+from tests.helpers.admin_context import login_teacher
+from tests.helpers.v2_fixtures import seed_class_with_seat
 import pytest
 import pyotp
 from datetime import datetime, timedelta, timezone
@@ -262,3 +264,21 @@ class TestAnnouncementMultiTenancy:
 
         remaining = Announcement.query.filter_by(id=announcement_id).count()
         assert remaining == 0
+
+
+def test_announcement_create_uses_class_id_scope(client):
+    teacher = seed_canonical_admin("announcements_create_route").user
+    db.session.flush()
+    class_row = seed_class_with_seat(
+        teacher=teacher,
+        join_code="ANN123",
+        display_name="Announcements",
+        section="A",
+    ).class_row
+    login_teacher(client, teacher, class_id=class_row.class_id)
+
+    response = client.get("/admin/announcements/create")
+
+    assert response.status_code == 200
+    assert b'name="class_id"' in response.data
+    assert b'name="periods"' not in response.data
