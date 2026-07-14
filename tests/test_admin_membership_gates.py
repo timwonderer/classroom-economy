@@ -55,6 +55,14 @@ def test_delete_class_requires_membership_even_if_teacherblock_exists(client):
         join_code="DELG001"
     )
     _login_admin(client, admin_a, class_id=owned_class.class_id, seat_id=Seat.query.filter_by(class_id=owned_class.class_id, role="teacher").first().id)
+    with client.session_transaction() as sess:
+        set_canonical_context(
+            sess,
+            user_id=admin_a.id,
+            class_id=owned_class.class_id,
+            seat_id=Seat.query.filter_by(class_id=owned_class.class_id, role="teacher").first().id,
+            role="teacher",
+        )
     response = client.post("/admin/join-code/delete", json={"join_code": "DELG001"})
     assert response.status_code == 403
     assert ClassEconomy.query.filter_by(class_id=class_b.class_id).first() is not None
