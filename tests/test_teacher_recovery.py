@@ -18,8 +18,7 @@ def create_teacher(username="teacher1"):
     return teacher
 
 # Helper to create student
-def create_student(teacher, username="student1", block="A"):
-    join_code = f"JOIN{teacher.id}{block}"
+def create_student(teacher, *, username="student1", block="A", join_code: str):
     class_row = create_class_scope(teacher_user=teacher, join_code=join_code)
 
     student = make_student_identity(
@@ -35,14 +34,16 @@ def create_student(teacher, username="student1", block="A"):
 
 def test_recovery_fails_missing_period(client, app):
     teacher = create_teacher()
-    s1, class_a = create_student(teacher, "s1", "A") # Only Block A
-    s2, class_b = create_student(teacher, "s2", "B")
+    join_code_a = "JOIN-A"
+    join_code_b = "JOIN-B"
+    s1, class_a = create_student(teacher, username="s1", block="A", join_code=join_code_a) # Only Block A
+    s2, class_b = create_student(teacher, username="s2", block="B", join_code=join_code_b)
     login_teacher(client, teacher, class_id=class_a.class_id)
     db.session.commit()
 
     # Initiate with ONLY s1 (missing Block B)
     response = client.post('/admin/recover', data={
-        'join_code[]': [f"JOIN{teacher.id}A"],
+        'join_code[]': [join_code_a],
         'student_username[]': ['s1']
     }, follow_redirects=True)
 
@@ -50,12 +51,13 @@ def test_recovery_fails_missing_period(client, app):
 
 def test_recovery_fails_wrong_student(client, app):
     teacher = create_teacher()
-    s1, class_a = create_student(teacher, "s1", "A")
+    join_code_a = "JOIN-A"
+    s1, class_a = create_student(teacher, username="s1", block="A", join_code=join_code_a)
     login_teacher(client, teacher, class_id=class_a.class_id)
     db.session.commit()
 
     response = client.post('/admin/recover', data={
-        'join_code[]': [f"JOIN{teacher.id}A"],
+        'join_code[]': [join_code_a],
         'student_username[]': ['wrong_user']
     }, follow_redirects=True)
 
@@ -63,12 +65,13 @@ def test_recovery_fails_wrong_student(client, app):
 
 def test_username_lookup_works(client, app):
     teacher = create_teacher()
-    s1, class_a = create_student(teacher, "UserWithCaps", "A")
+    join_code_a = "JOIN-A"
+    s1, class_a = create_student(teacher, username="UserWithCaps", block="A", join_code=join_code_a)
     login_teacher(client, teacher, class_id=class_a.class_id)
     db.session.commit()
 
     response = client.post('/admin/recover', data={
-        'join_code[]': [f"JOIN{teacher.id}A"],
+        'join_code[]': [join_code_a],
         'student_username[]': ['UserWithCaps']
     }, follow_redirects=False)
 
@@ -77,7 +80,8 @@ def test_username_lookup_works(client, app):
 
 def test_setup_recovery_flow(client, app):
     teacher = create_teacher()
-    class_row = create_class_scope(teacher_user=teacher, join_code=f"JOIN{teacher.id}A")
+    join_code_a = "JOIN-A"
+    class_row = create_class_scope(teacher_user=teacher, join_code=join_code_a)
     teacher_seat = Seat.query.filter_by(class_id=class_row.class_id, role="teacher").first()
     login_teacher(client, teacher, class_id=class_row.class_id, seat_id=teacher_seat.id if teacher_seat else None)
 
