@@ -7,14 +7,24 @@ from app.extensions import db
 from app.models import User, UserRole, ClassEconomy, IdentityProfile, Issue, IssueCategory, Seat, Transaction, TransactionStatus
 from tests.helpers.admin_context import login_teacher
 from tests.helpers.class_scope import create_class_scope
+from tests.helpers.canonical_session import set_canonical_context
+from app.utils.opaque_refs import make_opaque_ref
 
 
-def _login_admin(client, user_id):
+def _login_admin(client, user_id, class_id):
     teacher = db.session.get(User, user_id)
     assert teacher is not None
-    class_row = ClassEconomy.query.filter_by(user_id=user_id).order_by(ClassEconomy.class_id.asc()).first()
-    assert class_row is not None
-    login_teacher(client, teacher, class_id=class_row.class_id)
+    teacher_seat = Seat.query.filter_by(user_id=user_id, class_id=class_id, role="teacher").first()
+    assert teacher_seat is not None
+    login_teacher(client, teacher, class_id=class_id, seat_id=teacher_seat.id)
+    with client.session_transaction() as sess:
+        set_canonical_context(
+            sess,
+            user_id=user_id,
+            class_id=class_id,
+            seat_id=teacher_seat.id,
+            role="teacher",
+        )
 
 
 def _build_issue_context():
@@ -89,9 +99,10 @@ def test_issue_reverse_transaction_creates_reversal_for_posted_tx(client):
         db.session.flush()
     db.session.commit()
 
-    _login_admin(client, teacher.id)
+    _login_admin(client, teacher.id, class_a.class_id)
+    issue_ref = make_opaque_ref("issue", issue.id)
     response = client.post(
-        f"/admin/issues/{issue.id}/resolve",
+        f"/admin/issues/{issue_ref}/resolve",
         data={"action_type": "reverse_transaction", "teacher_notes": "Valid request"},
         follow_redirects=False,
     )
@@ -151,14 +162,15 @@ def test_issue_reverse_transaction_rejects_scope_mismatch(client):
         db.session.flush()
     db.session.commit()
 
-    _login_admin(client, teacher.id)
+    _login_admin(client, teacher.id, class_a.class_id)
+    issue_ref = make_opaque_ref("issue", issue.id)
     response = client.post(
-        f"/admin/issues/{issue.id}/resolve",
+        f"/admin/issues/{issue_ref}/resolve",
         data={"action_type": "reverse_transaction", "teacher_notes": "Attempt mismatch"},
         follow_redirects=False,
     )
     assert response.status_code == 302
-    assert f"/admin/issues/{issue.id}" in response.location
+    assert f"/admin/issues/{issue_ref}" in response.location
 
     db.session.refresh(tx)
     assert tx.is_void is False
