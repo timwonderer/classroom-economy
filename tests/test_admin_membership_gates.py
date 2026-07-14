@@ -179,6 +179,14 @@ def test_add_individual_student_requires_current_class_context(client):
     teacher_seat = Seat.query.filter_by(class_id=class_row.class_id, role="teacher").first()
     assert teacher_seat is not None
     _login_admin(client, admin, class_id=class_row.class_id, seat_id=teacher_seat.id)
+    with client.session_transaction() as sess:
+        set_canonical_context(
+            sess,
+            user_id=admin.id,
+            class_id=class_row.class_id,
+            seat_id=teacher_seat.id,
+            role="teacher",
+        )
 
     initial_student_count = db.session.query(Seat).filter(Seat.role == "student").count()
     with FEATContext("FEAT-IDEN-001", idempotency_key="admin-membership:student-guard:post"):
