@@ -27,8 +27,8 @@ def test_admin_payroll_displays_scoped_balances_only(client):
     teacher_b = seed_canonical_admin("payroll_scope_b").user
     db.session.flush()
 
-    class_a = create_class_scope(teacher_user=teacher_a, join_code="PAYROLL-A", display_name="A")
-    class_b = create_class_scope(teacher_user=teacher_b, join_code="PAYROLL-B", display_name="A")
+    class_a = create_class_scope(teacher_user=teacher_a, display_name="A")
+    class_b = create_class_scope(teacher_user=teacher_b, display_name="A")
     db.session.flush()
     with FEATContext("FEAT-IDEN-001", idempotency_key="admin_payroll_scoped_balances:student_seed"):
         student_user = User(user_role=UserRole.STUDENT, username_hash="payroll_scope_student_hash", username_lookup_hash="payroll_scope_student_lookup")
