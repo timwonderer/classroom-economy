@@ -249,16 +249,6 @@ def _append_redemption_audit_log(*, student_item, student, user_id, action, note
     guard_state['inserted'] = True
 
 
-def _get_request_join_code(payload=None):
-    """Resolve explicit class scope from request data or session."""
-    join_code = request.args.get("join_code", "").strip()
-    if not join_code and payload:
-        raw_join_code = payload.get("join_code")
-        if raw_join_code is not None:
-            join_code = str(raw_join_code).strip()
-    return join_code or None
-
-
 def _get_hall_pass_settings_scope(class_id):
     """Resolve canonical class scope for hall pass settings."""
     return resolve_class_scope(None, class_id=class_id)
@@ -1664,7 +1654,7 @@ def hall_pass_verification_active():
         "passes": [
             {
                 "id": log.id,
-                "student_id": log.student_id,
+                "seat_id": log.seat_id,
                 "destination": log.reason,
                 "status": log.status,
                 "join_code": log.join_code,

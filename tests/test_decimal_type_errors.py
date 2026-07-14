@@ -45,6 +45,7 @@ class TestDecimalTypeErrors:
             db.session.flush()
             class_scope = create_class_scope(
                 teacher_user=teacher,
+                join_code="DEC-RNT-01",
                 section='A',
                 display_name='A',
             )
@@ -97,6 +98,7 @@ class TestDecimalTypeErrors:
             db.session.flush()
             class_scope = create_class_scope(
                 teacher_user=teacher,
+                join_code="DEC-EARN-01",
                 section='A',
                 display_name='A',
             )
@@ -223,6 +225,7 @@ class TestDecimalTypeErrors:
             db.session.flush()
             class_scope = create_class_scope(
                 teacher_user=teacher,
+                join_code="DEC-RNT-02",
                 section='A',
                 display_name='A',
             )
@@ -275,6 +278,7 @@ class TestDecimalTypeErrors:
             db.session.flush()
             class_scope = create_class_scope(
                 teacher_user=teacher,
+                join_code="DEC-INT-01",
                 section='A',
                 display_name='Interest Test Class',
             )
@@ -359,6 +363,7 @@ class TestDecimalTypeErrors:
         with FEATContext("FEAT-IDEN-001", idempotency_key="decimal_precision:claim_cap"):
             class_scope = create_class_scope(
                 teacher_user=teacher,
+                join_code="DEC-CLM-01",
                 section='A',
                 display_name='A',
             )

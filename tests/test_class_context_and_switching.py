@@ -26,10 +26,10 @@ def setup_multi_class_student(client):
     teacher3 = seed_canonical_admin("teacher3_mcs", "t3secret").user
 
     with FEATContext("FEAT-IDEN-001", idempotency_key="setup_multi_class_student:classes"):
-        class_1a = create_class_scope(teacher_user=teacher1, join_code="TEACHER1A", display_name="Class 1A", section="A")
-        class_2b = create_class_scope(teacher_user=teacher2, join_code="TEACHER2B", display_name="Class 2B", section="B")
-        class_3c = create_class_scope(teacher_user=teacher3, join_code="TEACHER3C", display_name="Class 3C", section="C")
-        class_unclaimed = create_class_scope(teacher_user=teacher1, join_code="UNCLAIMEDZ", display_name="Unclaimed Z")
+        class_1a = create_class_scope(teacher_user=teacher1, join_code="CTX-1A", display_name="Class 1A", section="A")
+        class_2b = create_class_scope(teacher_user=teacher2, join_code="CTX-2B", display_name="Class 2B", section="B")
+        class_3c = create_class_scope(teacher_user=teacher3, join_code="CTX-3C", display_name="Class 3C", section="C")
+        class_unclaimed = create_class_scope(teacher_user=teacher1, join_code="CTX-ZZ", display_name="Unclaimed Z")
 
     with FEATContext("FEAT-IDEN-001", idempotency_key="setup_multi_class_student:student"):
         student = make_student_identity(class_id=class_1a.class_id, first_name="MultiClass", last_name="S", claimed=True)
@@ -56,7 +56,7 @@ def setup_single_class_student(client):
     teacher = seed_canonical_admin("single_teacher_mcs", "single_secret").user
 
     with FEATContext("FEAT-IDEN-001", idempotency_key="setup_single_class_student:class"):
-        class_single = create_class_scope(teacher_user=teacher, join_code="SINGLED", display_name="Single D")
+        class_single = create_class_scope(teacher_user=teacher, join_code="CTX-1D", display_name="Single D")
 
     with FEATContext("FEAT-IDEN-001", idempotency_key="setup_single_class_student:student"):
         student = make_student_identity(class_id=class_single.class_id, first_name="SingleClass", last_name="X", claimed=True)
@@ -87,7 +87,7 @@ def test_inject_class_context_no_claimed_seats(client, setup_multi_class_student
         ctx_processor = _get_inject_class_context_processor(client)
         context = ctx_processor()
         assert context["current_class_context"] is not None
-        assert context["current_class_context"]["join_code"] == "TEACHER2B"
+        assert context["current_class_context"]["join_code"] == setup_multi_class_student["classes"]["TEACHER2B"].join_code
         assert len(context["available_classes"]) == 1
 
 
@@ -121,7 +121,7 @@ def test_inject_class_context_uses_session_class_context(client, setup_multi_cla
         ctx_processor = _get_inject_class_context_processor(client)
         context = ctx_processor()
         assert context["current_class_context"] is not None
-        assert context["current_class_context"]["join_code"] == "TEACHER2B"
+        assert context["current_class_context"]["join_code"] == class_row.join_code
         assert context["current_class_context"]["block"] == "B"
 
 
@@ -140,10 +140,10 @@ def test_inject_class_context_available_classes_list(client, setup_multi_class_s
         context = ctx_processor()
         assert len(context["available_classes"]) == 1
         class_aliases = [c["join_code"] for c in context["available_classes"]]
-        assert class_aliases == ["TEACHER2B"]
+        assert class_aliases == [class_row.join_code]
         current_classes = [c for c in context["available_classes"] if c["is_current"]]
         assert len(current_classes) == 1
-        assert current_classes[0]["join_code"] == "TEACHER2B"
+        assert current_classes[0]["join_code"] == class_row.join_code
 
 
 def test_inject_class_context_handles_missing_teacher(client, setup_single_class_student):

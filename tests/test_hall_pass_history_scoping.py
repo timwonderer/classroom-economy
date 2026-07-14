@@ -8,6 +8,7 @@ active class context, preventing cross-class data leakage.
 from datetime import datetime, timezone, timedelta
 
 from app.extensions import db
+from app.feats.base import FEATContext
 from app.models import Seat, ClassEconomy, HallPassLog
 from tests.helpers.v2_fixtures import seed_canonical_admin
 from tests.helpers.class_scope import create_class_scope, make_student_identity
@@ -37,8 +38,8 @@ def test_hall_pass_history_scoped_to_class(client):
     teacher = seed_canonical_admin("hp_hist_t1").user
     db.session.flush()
 
-    class_a = create_class_scope(teacher_user=teacher, join_code="HISTCA1")
-    class_b = create_class_scope(teacher_user=teacher, join_code="HISTCB1")
+    class_a = create_class_scope(teacher_user=teacher, join_code="HPH-A")
+    class_b = create_class_scope(teacher_user=teacher, join_code="HPH-B")
     db.session.flush()
 
     seat_a = make_student_identity(class_id=class_a.class_id, first_name="Alice", last_name="A")
@@ -46,33 +47,33 @@ def test_hall_pass_history_scoped_to_class(client):
     db.session.flush()
 
     now = datetime.now(timezone.utc)
+    with FEATContext("FEAT-ATTN-001", idempotency_key="hall_pass_history_scoping:seed"):
+        pass_a = HallPassLog(
+            seat_id=seat_a.id,
+            class_id=class_a.class_id,
+            reason="Bathroom",
+            status="returned",
+            period="Period1",
+            request_time=now - timedelta(hours=2),
+            decision_time=now - timedelta(hours=2) + timedelta(minutes=5),
+            left_time=now - timedelta(hours=2) + timedelta(minutes=10),
+            return_time=now - timedelta(hours=2) + timedelta(minutes=15),
+        )
 
-    pass_a = HallPassLog(
-        seat_id=seat_a.id,
-        class_id=class_a.class_id,
-        reason="Bathroom",
-        status="returned",
-        period="Period1",
-        request_time=now - timedelta(hours=2),
-        decision_time=now - timedelta(hours=2) + timedelta(minutes=5),
-        left_time=now - timedelta(hours=2) + timedelta(minutes=10),
-        return_time=now - timedelta(hours=2) + timedelta(minutes=15),
-    )
+        pass_b = HallPassLog(
+            seat_id=seat_b.id,
+            class_id=class_b.class_id,
+            reason="Office",
+            status="returned",
+            period="Period2",
+            request_time=now - timedelta(hours=1),
+            decision_time=now - timedelta(hours=1) + timedelta(minutes=5),
+            left_time=now - timedelta(hours=1) + timedelta(minutes=10),
+            return_time=now - timedelta(hours=1) + timedelta(minutes=15),
+        )
 
-    pass_b = HallPassLog(
-        seat_id=seat_b.id,
-        class_id=class_b.class_id,
-        reason="Office",
-        status="returned",
-        period="Period2",
-        request_time=now - timedelta(hours=1),
-        decision_time=now - timedelta(hours=1) + timedelta(minutes=5),
-        left_time=now - timedelta(hours=1) + timedelta(minutes=10),
-        return_time=now - timedelta(hours=1) + timedelta(minutes=15),
-    )
-
-    db.session.add_all([pass_a, pass_b])
-    db.session.commit()
+        db.session.add_all([pass_a, pass_b])
+        db.session.flush()
 
     _login_teacher(client, teacher=teacher, class_row=class_a)
 

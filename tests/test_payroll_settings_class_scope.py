@@ -28,6 +28,7 @@ def test_payroll_settings_update_persists_class_scoped_row(client):
     with FEATContext("FEAT-IDEN-001", idempotency_key="payroll_settings_scope:create_class"):
         class_row = create_class_scope(
             teacher_user=admin,
+            join_code="PAY-SCOPE-A",
             section="B",
         )
         db.session.flush()
@@ -64,6 +65,7 @@ def test_expected_weekly_hours_update_creates_class_scoped_row(client):
     with FEATContext("FEAT-IDEN-001", idempotency_key="payroll_settings_scope:create_class_hours"):
         class_row = create_class_scope(
             teacher_user=admin,
+            join_code="PAY-SCOPE-H",
             section="C",
         )
         db.session.flush()

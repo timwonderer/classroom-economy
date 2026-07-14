@@ -19,8 +19,8 @@ def test_shared_student_diff_teacher_diff_period(client):
     db.session.flush()
     db.session.commit()
 
-    class_1 = create_class_scope(teacher_user=t1, join_code="JC1", display_name="T1-P1")
-    class_2 = create_class_scope(teacher_user=t2, join_code="JC2", display_name="T2-P2")
+    class_1 = create_class_scope(teacher_user=t1, display_name="T1-P1")
+    class_2 = create_class_scope(teacher_user=t2, display_name="T2-P2")
     db.session.flush()
 
     student_seed = seed_student_membership(
@@ -83,8 +83,8 @@ def test_same_teacher_same_block_diff_context(client):
     db.session.flush()
     db.session.commit()
 
-    class_1 = create_class_scope(teacher_user=t1, join_code="JC1", display_name="P1-JC1")
-    class_2 = create_class_scope(teacher_user=t1, join_code="JC2", display_name="P1-JC2")
+    class_1 = create_class_scope(teacher_user=t1, display_name="P1-JC1")
+    class_2 = create_class_scope(teacher_user=t1, display_name="P1-JC2")
     db.session.flush()
 
     student_seed = seed_student_membership(
@@ -137,8 +137,8 @@ def test_balance_separation_by_class_scope(client):
     db.session.flush()
     db.session.commit()
 
-    class_1 = create_class_scope(teacher_user=t1, join_code="JC1", display_name="P1")
-    class_2 = create_class_scope(teacher_user=t1, join_code="JC2", display_name="P1")
+    class_1 = create_class_scope(teacher_user=t1, display_name="P1")
+    class_2 = create_class_scope(teacher_user=t1, display_name="P1")
     db.session.flush()
 
     student_seed = seed_student_membership(

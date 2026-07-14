@@ -23,7 +23,6 @@ Usage:
     ctx.commit()
 """
 
-import uuid
 from dataclasses import dataclass, field
 from typing import List
 
@@ -143,24 +142,34 @@ class ClassroomContextFactory:
     def build(self) -> ClassroomContext:
         from app.services.classroom_setup import create_teacher, create_class
 
-        username = self._teacher_username or f"teacher_{uuid.uuid4().hex[:8]}"
-        join_code = self._join_code or f"CTX-{uuid.uuid4().hex[:6].upper()}"
+        if self._join_code is None:
+            raise TypeError("ClassroomContextFactory.build() requires explicit join_code")
+        username = self._teacher_username or f"teacher_{self._join_code.lower()}"
 
-        with FEATContext("FEAT-IDEN-001", idempotency_key=f"classroom_context_build:{join_code}"):
+        idempotency_key = "classroom_context_build:" + ":".join(
+            [
+                username,
+                self._join_code,
+                self._display_name or "",
+                self._section or "",
+                str(len(self._student_specs)),
+                str(self._student_count),
+            ]
+        )
+        with FEATContext("FEAT-IDEN-001", idempotency_key=idempotency_key):
             teacher_user = create_teacher(username)
 
             economy = create_class(
                 teacher_user.id,
-                join_code=join_code,
-                display_name=self._display_name or f"Test Class {join_code}",
+                join_code=self._join_code,
+                display_name=self._display_name or f"Test Class {self._join_code}",
                 section=self._section,
             )
 
             if self._feature_names:
                 from app.models import ClassFeature
                 for feature_name in self._feature_names:
-                    if not ClassFeature.query.filter_by(class_id=economy.class_id, feature_name=feature_name).first():
-                        self._db.session.add(ClassFeature(class_id=economy.class_id, feature_name=feature_name))
+                    self._db.session.add(ClassFeature(class_id=economy.class_id, feature_name=feature_name))
 
             # Teacher seat is created inside create_class; retrieve it.
             from app.models import Seat
@@ -191,4 +200,3 @@ class ClassroomContextFactory:
 
             self._db.session.flush()
             return ctx
-

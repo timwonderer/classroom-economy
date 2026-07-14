@@ -53,20 +53,11 @@ def _login_admin(client, teacher_id, *, class_id=None):
     login_teacher(client, teacher, class_id=class_id)
 
 
-def _create_teacher_seat(user_id, block='A', join_code='JOINPOLA', class_id=None):
-    db.session.add(Seat(
-        class_id=class_id,
-        role="teacher",
-        block=block,
-    ))
-    db.session.flush()
-
-
 def _create_admin_with_block(block='A', join_code=None):
     from tests.helpers.class_scope import create_class_scope
     resolved_join_code = join_code or f"JOINPOL{block}"
-    teacher = seed_canonical_admin(f"policyadmin_{block.lower()}_{resolved_join_code.lower()}").user
-    with FEATContext("FEAT-IDEN-001", idempotency_key=f"economy-policy:create-admin:{block}:{join_code}:{teacher.id}"):
+    teacher = seed_canonical_admin(f"policyadmin_{block.lower()}").user
+    with FEATContext("FEAT-IDEN-001", idempotency_key=f"economy-policy:create-admin:{block}:{teacher.id}"):
         economy = create_class_scope(
             teacher_user=teacher,
             join_code=resolved_join_code,
@@ -94,15 +85,14 @@ def _create_admin_with_block(block='A', join_code=None):
     return admin, payroll_settings, rent_settings, economy
 
 
-def _create_insurance_policy(user_id, title, premium, *, economy, join_code=None):
-    resolved_join_code = join_code or economy.join_code
+def _create_insurance_policy(user_id, title, premium, *, economy):
     teacher = db.session.get(User, user_id)
     if teacher is None:
         raise ValueError("economy-policy tests require an existing teacher user")
     with FEATContext("FEAT-IDEN-001", idempotency_key=f"economy-policy:create-insurance:{economy.class_id}:{user_id}:{title}"):
         policy = InsurancePolicy(
             teacher_id=user_id,
-            join_code=resolved_join_code,
+            join_code=economy.join_code,
             class_id=economy.class_id,
             policy_code=f"{title[:3].upper()}{user_id}",
             title=title,
@@ -377,7 +367,7 @@ def test_rebalanced_rent_amount_does_not_backdate_current_coverage_due(client):
 
     with FEATContext("FEAT-IDEN-001", idempotency_key=f"economy-policy:coverage-paid:{economy.class_id}"):
         assessment = ObligationAssessment(
-            seat_id=make_student_identity(class_id=economy.class_id, first_name="Coverage", last_name="S").id,
+            seat_id=make_student_identity(class_id=economy.class_id, first_name="Coverage", last_name="Smith").id,
             class_id=economy.class_id,
             join_code=economy.join_code,
             obligation_type="RENT",
@@ -418,7 +408,7 @@ def test_class_scope_cycle_locks_rent_rate_after_first_payment(client):
         db.session.flush()
         coverage_due_date = datetime(2026, 3, 1, 0, 0, tzinfo=timezone.utc)
 
-        seat = make_student_identity(first_name="Rate", last_name="L", class_id=lock_class.class_id)
+        seat = make_student_identity(first_name="Rate", last_name="Lock", class_id=lock_class.class_id)
 
         payment_date = datetime(2026, 3, 5, 8, 0, tzinfo=timezone.utc)
         assessment = ObligationAssessment(
@@ -695,7 +685,7 @@ def test_activate_due_rebalances_does_not_mutate_cross_class_insurance_policy(cl
         display_name='Period B',
         section='B',
     )
-    policy_b = _create_insurance_policy(admin.id, 'Cross Class Policy', '99.00', economy=economy_b, join_code='JOINPOLB')
+    policy_b = _create_insurance_policy(admin.id, 'Cross Class Policy', '99.00', economy=economy_b)
     with FEATContext("FEAT-IDEN-001", idempotency_key=f"economy-policy:set-tight:{economy_a.class_id}:insurance"):
         db.session.add(FeatureSettings(
             class_id=economy_a.class_id,

@@ -1794,9 +1794,8 @@ def file_claim(policy_id):
     # Validation errors
     errors = []
 
-    # Normalize coverage dates for safe comparisons
-    enrollment.coverage_start_date = ensure_utc(enrollment.coverage_start_date)
-    enrollment.cancel_date = ensure_utc(enrollment.cancel_date)
+    # Normalize coverage dates locally so read-only timezone checks do not dirty the session.
+    coverage_start_date = ensure_utc(enrollment.coverage_start_date)
     now_utc = utc_now()
 
     waiting_end_class = compute_waiting_end_class_for_enrollment(
@@ -1807,7 +1806,7 @@ def file_claim(policy_id):
     if waiting_end_class is not None and enrollment.class_id:
         now_class = get_class_now(enrollment.class_id, reference_time_utc=now_utc)
         coverage_not_started = now_class < waiting_end_class
-    elif not enrollment.coverage_start_date or enrollment.coverage_start_date > now_utc:
+    elif not coverage_start_date or coverage_start_date > now_utc:
         coverage_not_started = True
 
     # Check if coverage has started
@@ -1815,7 +1814,7 @@ def file_claim(policy_id):
         wait_until = (
             waiting_end_class.strftime('%B %d, %Y')
             if waiting_end_class is not None
-            else enrollment.coverage_start_date.strftime('%B %d, %Y') if enrollment.coverage_start_date else 'coverage starts'
+            else coverage_start_date.strftime('%B %d, %Y') if coverage_start_date else 'coverage starts'
         )
         errors.append(f"Coverage has not started yet. Please wait until {wait_until}.")
 

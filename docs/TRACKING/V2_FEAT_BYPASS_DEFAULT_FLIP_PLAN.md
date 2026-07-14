@@ -168,7 +168,7 @@ in [V2_FEAT_BYPASS_DEPENDENCY_REPORT.md](./V2_FEAT_BYPASS_DEPENDENCY_REPORT.md).
 **Goal:** Move bypass dependency from "wraps every test body" to "wraps
 explicit fixture helpers."
 
-**Deliverables:**
+**Done so far:**
 - Extend `tests/helpers/v2_fixtures.py` (or a new
   `tests/helpers/fixtures.py`) with bypass-scoped seed helpers:
   - `seed_canonical_admin(username) -> ids` — creates `User` + `Admin` shadow
@@ -181,8 +181,17 @@ explicit fixture helpers."
 - Each helper returns ID snapshots (not detached ORM objects) so post-commit
   reads work cleanly. Template:
   `tests/test_redemption_disposition_feat.py::_seed_redemption_scenario`.
+
+**Still remaining:**
 - At least three example tests demonstrating "uses Phase-2 fixtures,
   needs no autouse bypass."
+- Migrate any remaining fixture helpers that still construct canonical
+  rows with v1-tainted assumptions rather than explicit `class_id`/`seat_id`
+  inputs.
+- Drain any remaining fixture-helper cleanup outside the collective-goal and
+  policy-mode slices; the implied-authority audit gaps for those two tests are
+  now resolved in
+  [`AUDIT_IMPLIED_AUTHORITY_TODO.md`](./AUDIT_IMPLIED_AUTHORITY_TODO.md).
 
 **Progress update (2026-07-12):**
 - `tests/helpers/v2_fixtures.py` now includes the shared canonical seed
@@ -191,6 +200,13 @@ explicit fixture helpers."
   `seed_student_membership`,
   `seed_class_feature`,
   `clear_class_feature`).
+- `tests/test_collective_goal_expiration.py` and
+  `tests/test_economy_policy_mode.py` now keep students and class-owned
+  records on one explicit canonical class scope per scenario instead of
+  re-deriving class ownership from teacher lookup or join-code shims.
+- The policy-mode and collective-goal implied-authority audit gaps are now
+  resolved in
+  [`AUDIT_IMPLIED_AUTHORITY_TODO.md`](./AUDIT_IMPLIED_AUTHORITY_TODO.md).
 - Representative tests have been migrated onto the shared helpers:
   `tests/test_canonical_auth_session.py` and
   `tests/test_sysadmin_issue_rewards.py`, plus
@@ -237,8 +253,11 @@ explicit fixture helpers."
 fixture-helper migration, but the harness no longer relies on a global
 autouse bypass.
 
-**Exit criterion:** Helper catalog exists; three example tests run cleanly
-under `@pytest.mark.enforce_feat`.
+**Exit criteria:**
+- Helper catalog exists.
+- Three example tests run cleanly under `@pytest.mark.enforce_feat`.
+- Remaining fixtures no longer invent class ownership by teacher lookup or
+  join-code shims.
 
 ---
 

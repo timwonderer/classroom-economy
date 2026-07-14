@@ -3,6 +3,7 @@ from decimal import Decimal
 
 from tests.helpers.v2_fixtures import seed_canonical_admin, make_sysadmin
 from app import db
+from app.feats.base import FEATContext
 from app.services import obligations_service
 from app.models import (
     User,
@@ -21,33 +22,33 @@ from tests.helpers.class_scope import create_class_scope
 
 
 def _create_policy(user_id: int, *, title: str = "Snapshot Coverage", max_claim_amount=Decimal("75.00")):
-    policy = InsurancePolicy(
-        policy_code=f"POL-{title[:3].upper()}-{user_id}",
-        teacher_id=user_id,
-        title=title,
-        description="Base policy",
-        premium=Decimal("10.00"),
-        claim_type="transaction_monetary",
-        is_monetary=True,
-        max_claim_amount=max_claim_amount,
-        max_claims_period="month",
-        claim_time_limit_days=30,
-        is_active=True,
-    )
-    db.session.add(policy)
-    db.session.commit()
+    with FEATContext("FEAT-ADMN-001", idempotency_key=f"insurance_snapshots:create_policy:{user_id}:{title}"):
+        policy = InsurancePolicy(
+            policy_code=f"POL-{title[:3].upper()}-{user_id}",
+            teacher_id=user_id,
+            title=title,
+            description="Base policy",
+            premium=Decimal("10.00"),
+            claim_type="transaction_monetary",
+            is_monetary=True,
+            max_claim_amount=max_claim_amount,
+            max_claims_period="month",
+            claim_time_limit_days=30,
+            is_active=True,
+        )
+        db.session.add(policy)
+        db.session.flush()
     return policy
 
 
 def test_insurance_policy_version_increments_on_edit(client):
     admin = seed_canonical_admin("policy-version-admin").user
-    db.session.commit()
+    with FEATContext("FEAT-ADMN-001", idempotency_key="insurance_snapshots:policy_version"):
+        policy = _create_policy(admin.id)
+        assert policy.version_number == 1
 
-    policy = _create_policy(admin.id)
-    assert policy.version_number == 1
-
-    policy.title = "Snapshot Coverage Updated"
-    db.session.commit()
+        policy.title = "Snapshot Coverage Updated"
+        db.session.flush()
 
     db.session.refresh(policy)
     assert policy.version_number == 2
@@ -55,38 +56,38 @@ def test_insurance_policy_version_increments_on_edit(client):
 
 def test_student_insurance_keeps_frozen_snapshot_after_policy_edit(client, test_student):
     admin = seed_canonical_admin("snapshot-admin").user
-    db.session.commit()
+    with FEATContext("FEAT-ADMN-001", idempotency_key="insurance_snapshots:frozen_snapshot"):
+        policy = _create_policy(admin.id, title="Original Policy", max_claim_amount=Decimal("42.00"))
 
-    policy = _create_policy(admin.id, title="Original Policy", max_claim_amount=Decimal("42.00"))
+        class_row = create_class_scope(
+            teacher_user=admin,
+            join_code="INS-SNAP-01",
+            display_name="A",
+            section="A",
+            student_first_name="Test",
+            student_last_name="Student",
+        )
+        seat = Seat.query.filter_by(class_id=class_row.class_id, role="student").first()
+        assert seat is not None
+        enrollment = InsuranceEnrollment(
+            seat_id=seat.id,
+            class_id=seat.class_id,
+            policy_id=policy.id,
+            status="active",
+            purchase_date=datetime.now(timezone.utc),
+            coverage_start_date=datetime.now(timezone.utc) - timedelta(days=1),
+            payment_current=True,
+        )
+        enrollment.freeze_policy_snapshot(policy)
+        db.session.add(enrollment)
+        db.session.flush()
 
-    class_row = create_class_scope(
-        teacher_user=admin,
-        student=test_student,
-        block="A",
-        display_name="A",
-    )
-    seat = Seat.query.filter_by(class_id=class_row.class_id, role="student").first()
-    assert seat is not None
-    _snap_class = ClassEconomy.query.filter_by(class_id=seat.class_id).first()
-    enrollment = InsuranceEnrollment(
-        seat_id=seat.id,
-        class_id=seat.class_id,
-        policy_id=policy.id,
-        status="active",
-        purchase_date=datetime.now(timezone.utc),
-        coverage_start_date=datetime.now(timezone.utc) - timedelta(days=1),
-        payment_current=True,
-    )
-    enrollment.freeze_policy_snapshot(policy)
-    db.session.add(enrollment)
-    db.session.commit()
-
-    policy.title = "Mutated Template Title"
-    policy.description = "Mutated template description"
-    policy.max_claim_amount = Decimal("999.00")
-    policy.max_claims_count = 99
-    policy.claim_time_limit_days = 5
-    db.session.commit()
+        policy.title = "Mutated Template Title"
+        policy.description = "Mutated template description"
+        policy.max_claim_amount = Decimal("999.00")
+        policy.max_claims_count = 99
+        policy.claim_time_limit_days = 5
+        db.session.flush()
 
     db.session.refresh(enrollment)
 
@@ -99,69 +100,75 @@ def test_student_insurance_keeps_frozen_snapshot_after_policy_edit(client, test_
 
 def test_admin_claim_approval_uses_frozen_claim_cap(client, test_student):
     admin = seed_canonical_admin("snapshot-claim-admin").user
-    db.session.flush()
+    with FEATContext("FEAT-ADMN-001", idempotency_key="insurance_snapshots:claim_cap"):
+        class_row = create_class_scope(
+            teacher_user=admin,
+            join_code="INS-SNAP-02",
+            display_name="A",
+            section="A",
+            student_first_name="Test",
+            student_last_name="Student",
+        )
+        seat = Seat.query.filter_by(class_id=class_row.class_id, role="student").first()
+        assert seat is not None
 
-    db.session.commit()
-    class_row = create_class_scope(
-        teacher_user=admin, student=test_student, block="A")
-    db.session.commit()
+        policy = _create_policy(admin.id, title="Claim Cap Policy", max_claim_amount=Decimal("100.00"))
 
-    policy = _create_policy(admin.id, title="Claim Cap Policy", max_claim_amount=Decimal("100.00"))
+        student_seat = Seat.query.filter_by(class_id=class_row.class_id, role="student").first()
+        teacher_seat = Seat.query.filter_by(class_id=class_row.class_id, role="teacher").first()
+        assert student_seat is not None, "test_student must have a seat (created by create_class_scope)"
+        assert teacher_seat is not None, "teacher must have a seat (created by create_class_scope)"
 
-    student_seat = Seat.query.filter_by(class_id=class_row.class_id, role="student").first()
-    teacher_seat = Seat.query.filter_by(class_id=class_row.class_id, role="teacher").first()
-    assert student_seat is not None, "test_student must have a seat (created by create_class_scope)"
-    assert teacher_seat is not None, "teacher must have a seat (created by create_class_scope)"
+        enrollment = InsuranceEnrollment(
+            seat_id=student_seat.id,
+            class_id=student_seat.class_id,
+            policy_id=policy.id,
+            status="active",
+            purchase_date=datetime.now(timezone.utc) - timedelta(days=10),
+            coverage_start_date=datetime.now(timezone.utc) - timedelta(days=9),
+            payment_current=True,
+        )
+        enrollment.freeze_policy_snapshot(policy)
+        enrollment.frozen_max_claim_amount = Decimal("20.00")
+        db.session.add(enrollment)
+        db.session.flush()
 
-    enrollment = InsuranceEnrollment(
-        seat_id=student_seat.id,
-        class_id=student_seat.class_id,
-        policy_id=policy.id,
-        status="active",
-        purchase_date=datetime.now(timezone.utc) - timedelta(days=10),
-        coverage_start_date=datetime.now(timezone.utc) - timedelta(days=9),
-        payment_current=True,
-    )
-    enrollment.freeze_policy_snapshot(policy)
-    enrollment.frozen_max_claim_amount = Decimal("20.00")
-    db.session.add(enrollment)
-    db.session.flush()
+        tx = Transaction(
+            user_id=seat.user_id,
+            seat_id=seat.id,
+            class_id=seat.class_id,
+            amount=Decimal("-50.00"),
+            account_type="checking",
+            status=TransactionStatus.POSTED,
+            type="fine",
+            description="Fine: Lost calculator",
+        )
+        db.session.add(tx)
+        db.session.flush()
 
-    tx = Transaction(
-        user_id=test_student_user.id,
-        amount=Decimal("-50.00"),
-        account_type="checking",
-        status=TransactionStatus.POSTED,
-        type="fine",
-        description="Fine: Lost calculator",
-    )
-    db.session.add(tx)
-    db.session.flush()
+        claim = obligations_service.record_insurance_claim(
+            enrollment_id=enrollment.id,
+            policy_id=policy.id,
+            seat_id=enrollment.seat_id,
+            class_id=enrollment.class_id,
+            incident_date=tx.timestamp,
+            description="Need reimbursement",
+            claim_amount=Decimal("50.00"),
+            claim_item=None,
+            comments=None,
+            transaction_id=tx.id,
+        )
 
-    claim = obligations_service.record_insurance_claim(
-        enrollment_id=enrollment.id,
-        policy_id=policy.id,
-        seat_id=enrollment.seat_id,
-        class_id=enrollment.class_id,
-        incident_date=tx.timestamp,
-        description="Need reimbursement",
-        claim_amount=Decimal("50.00"),
-        claim_item=None,
-        comments=None,
-        transaction_id=tx.id,
-    )
-    db.session.commit()
-
-    obligations_service.apply_claim_resolution(
-        claim,
-        status="approved",
-        teacher_notes="",
-        rejection_reason="",
-        processed_by_user_id=admin.id,
-        processed_at=tx.timestamp,
-        approved_amount=Decimal("20.00"),
-    )
-    db.session.commit()
+        obligations_service.apply_claim_resolution(
+            claim,
+            status="approved",
+            teacher_notes="",
+            rejection_reason="",
+            processed_by_user_id=admin.id,
+            processed_at=tx.timestamp,
+            approved_amount=Decimal("20.00"),
+        )
+        db.session.flush()
 
     db.session.refresh(claim)
     assert claim.status == "approved"

@@ -17,7 +17,7 @@ def test_roster_upload_ignores_balance_columns_and_keeps_ledger_truth(client):
 
     seeded = seed_class_with_seat(
         teacher=teacher,
-        join_code="ROSTER-SYNC-1",
+        join_code="ROSTER-SYNC-01",
         display_name="Roster Sync",
         student_first_name="Original",
         student_last_name="N",

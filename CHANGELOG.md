@@ -9,6 +9,7 @@ and this project follows semantic versioning principles.
 ## [Unreleased]
 
 ### Changed
+- Shared canonical fixture cleanup moved the collective-goal and economy-policy test slices onto a single explicit class scope per scenario, eliminating teacher-ownership lookup from the test setup path and keeping student/item seeding anchored to `class_id`.
 - FEAT-by-default repair work now lands the remaining canonical test slices for API fixes and dashboard rendering: `/api/set-timezone` now returns a valid unauthorized response instead of a bare falsey value, dashboard rendering tests use canonical FEAT-backed setup, and the student dashboard no longer crashes when canonical class metadata omits legacy block state.
 - Canonical auth-session tests now seed student identity via unclaimed-seat then claim-binding semantics, and use canonical class scope creation instead of non-authoritative convenience seed helpers in `tests/test_canonical_auth_session.py`.
 - **Canonical monetary resolution FEAT landed** — Added `FEAT-LED-000` as the single monetary-resolution boundary, rewired store/rent/insurance/admin monetary flows to build intended ledger plans before posting, and removed the legacy `app/utils/overdraft.py` helper. Targeted FEAT regressions now pass against the canonical path only.
@@ -353,6 +354,7 @@ and this project follows semantic versioning principles.
   - Added `docs/LOGS/AUDITS/LOG-ARC-039_Project_Timeline.md` as the source timeline document
 
 ### Changed
+- **Audit follow-up for canonical v2 repair slices** — Updated the rent-display test fixture to full canonical student display names, recorded the implied-authority doc gaps in `docs/TRACKING/AUDIT_IMPLIED_AUTHORITY_TODO.md`, and confirmed the repaired policy-mode and collective-goal slices still pass targeted validation.
 - **System Admin interface redesigned** - Complete redesign matching teacher/student interface patterns
   - **Mobile-friendly layout** - Fixed sidebar with hamburger toggle on mobile, mobile bottom navigation bar with quick access to Dashboard, Teachers, Support, Logs, and Announcements
   - **Dashboard revamped** - Stat cards (Total Teachers, Total Students, Active Invites, Open Tickets), 6 quick-action buttons, recent teacher registrations and errors panels, system admins table

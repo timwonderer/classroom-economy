@@ -44,6 +44,7 @@ def _create_student(teacher, first_name, block='A', class_id=None):
         if resolved_class_id is None:
             class_row = create_class_scope(
                 teacher_user=teacher,
+                join_code=f"CGP-{block}-AUTO",
                 display_name=block,
             )
             resolved_class_id = class_row.class_id
@@ -95,8 +96,8 @@ def _enable_store_feature(class_id: str):
 def test_student_shop_collective_progress_counts_current_class_only(client):
     teacher = seed_canonical_admin('teacher_collective_shop').user
     db.session.flush()
-    class_a = create_class_scope(teacher_user=teacher, display_name='A')
-    class_b = create_class_scope(teacher_user=teacher, display_name='B')
+    class_a = create_class_scope(teacher_user=teacher, join_code='CGP-A-01', display_name='A')
+    class_b = create_class_scope(teacher_user=teacher, join_code='CGP-B-01', display_name='B')
 
     student_a1 = _create_student(teacher, 'Alice', block='A', class_id=class_a.class_id)
     student_a2 = _create_student(teacher, 'Ben', block='A', class_id=class_a.class_id)
@@ -149,8 +150,8 @@ def test_student_shop_collective_progress_counts_current_class_only(client):
 def test_student_shop_filters_items_by_store_item_block_visibility(client):
     teacher = seed_canonical_admin('teacher_block_visibility_shop').user
     db.session.flush()
-    class_a = create_class_scope(teacher_user=teacher, display_name='A')
-    class_d = create_class_scope(teacher_user=teacher, display_name='D')
+    class_a = create_class_scope(teacher_user=teacher, join_code='CGP-A-02', display_name='A')
+    class_d = create_class_scope(teacher_user=teacher, join_code='CGP-D-01', display_name='D')
 
     student_a = _create_student(teacher, 'Alex', block='A', class_id=class_a.class_id)
     student_d = _create_student(teacher, 'Bri', block='D', class_id=class_d.class_id)
@@ -198,7 +199,7 @@ def test_student_shop_filters_items_by_store_item_block_visibility(client):
 def test_purchase_item_rejects_items_not_visible_to_current_seat(client):
     teacher = seed_canonical_admin('teacher_block_visibility_purchase').user
     db.session.flush()
-    class_a = create_class_scope(teacher_user=teacher, display_name='A')
+    class_a = create_class_scope(teacher_user=teacher, join_code='CGP-A-03', display_name='A')
 
     student_a = _create_student(teacher, 'Casey', block='A', class_id=class_a.class_id)
     student_b = _create_student(teacher, 'Drew', block='A', class_id=class_a.class_id)
@@ -235,7 +236,7 @@ def test_purchase_item_allows_class_scoped_item_without_block_visibility(client)
     """Class-scoped items without block visibility restrictions remain purchasable."""
     teacher = seed_canonical_admin('teacher_unscoped_purchase').user
     db.session.flush()
-    class_a = create_class_scope(teacher_user=teacher, display_name='A')
+    class_a = create_class_scope(teacher_user=teacher, join_code='CGP-A-04', display_name='A')
 
     student_a = _create_student(teacher, 'Devon', block='A', class_id=class_a.class_id)
     db.session.flush()
@@ -269,8 +270,8 @@ def test_purchase_item_allows_class_scoped_item_without_block_visibility(client)
 def test_collective_unlock_scoped_to_class_and_goal_type(client):
     teacher = seed_canonical_admin('teacher_collective_unlock').user
     db.session.flush()
-    class_a = create_class_scope(teacher_user=teacher, display_name='A')
-    class_b = create_class_scope(teacher_user=teacher, display_name='B')
+    class_a = create_class_scope(teacher_user=teacher, join_code='CGP-A-05', display_name='A')
+    class_b = create_class_scope(teacher_user=teacher, join_code='CGP-B-05', display_name='B')
 
     student_a1 = _create_student(teacher, 'Alex', block='A', class_id=class_a.class_id)
     student_a2 = _create_student(teacher, 'Bri', block='A', class_id=class_a.class_id)
@@ -338,7 +339,7 @@ def test_collective_unlock_scoped_to_class_and_goal_type(client):
 def test_admin_store_shows_collective_progress(client):
     teacher = seed_canonical_admin('teacher_collective_admin').user
     db.session.flush()
-    class_a = create_class_scope(teacher_user=teacher, display_name='A')
+    class_a = create_class_scope(teacher_user=teacher, join_code='CGP-A-06', display_name='A')
 
     student_a1 = _create_student(teacher, 'Ana', block='A', class_id=class_a.class_id)
     _create_student(teacher, 'Bo', block='A', class_id=class_a.class_id)
@@ -376,7 +377,7 @@ def test_whole_class_collective_prevents_duplicate_purchase(client):
     """Test that students can only purchase a whole_class collective item once."""
     teacher = seed_canonical_admin('teacher_whole_class').user
     db.session.flush()
-    class_a = create_class_scope(teacher_user=teacher, display_name='A')
+    class_a = create_class_scope(teacher_user=teacher, join_code='CGP-A-07', display_name='A')
 
     student_a1 = _create_student(teacher, 'Dana', block='A', class_id=class_a.class_id)
     student_a2 = _create_student(teacher, 'Eve', block='A', class_id=class_a.class_id)
@@ -422,7 +423,7 @@ def test_whole_class_collective_goal_uses_correct_class_size(client):
     """Test that whole_class collective goals use actual student count, not seat count."""
     teacher = seed_canonical_admin('teacher_class_size').user
     db.session.flush()
-    class_a = create_class_scope(teacher_user=teacher, display_name='A')
+    class_a = create_class_scope(teacher_user=teacher, join_code='CGP-A-08', display_name='A')
 
     # Create 2 students for the class
     student_a1 = _create_student(teacher, 'Frank', block='A', class_id=class_a.class_id)
@@ -469,7 +470,7 @@ def test_collective_progress_with_correct_roster_count_admin(client):
     """Test that admin view shows correct class size based on actual students."""
     teacher = seed_canonical_admin('teacher_admin_size').user
     db.session.flush()
-    class_a = create_class_scope(teacher_user=teacher, display_name='A')
+    class_a = create_class_scope(teacher_user=teacher, join_code='CGP-A-09', display_name='A')
 
     # Create 3 students
     student_a1 = _create_student(teacher, 'Henry', block='A', class_id=class_a.class_id)
@@ -510,7 +511,7 @@ def test_fixed_collective_allows_multiple_purchases(client):
     """Test that fixed collective goals still allow multiple purchases from same student."""
     teacher = seed_canonical_admin('teacher_fixed_multi').user
     db.session.flush()
-    class_a = create_class_scope(teacher_user=teacher, display_name='A')
+    class_a = create_class_scope(teacher_user=teacher, join_code='CGP-A-11', display_name='A')
 
     student_a1 = _create_student(teacher, 'Kelly', block='A', class_id=class_a.class_id)
     db.session.flush()
@@ -558,7 +559,7 @@ def test_whole_class_goal_with_duplicate_seats_shows_correct_roster(client):
     """Whole-class goals should count canonical seats only."""
     teacher = seed_canonical_admin('teacher_dup_seats').user
     db.session.flush()
-    class_a = create_class_scope(teacher_user=teacher, display_name='A')
+    class_a = create_class_scope(teacher_user=teacher, join_code='CGP-A-12', display_name='A')
 
     # Create 2 students
     student_a1 = _create_student(teacher, 'Laura', block='A', class_id=class_a.class_id)
@@ -596,8 +597,8 @@ def test_whole_class_collective_allows_purchase_per_class_for_same_teacher(clien
     """Students in different classes with the same teacher can each purchase once."""
     teacher = seed_canonical_admin('teacher_whole_class_multi').user
     db.session.flush()
-    class_1 = create_class_scope(teacher_user=teacher, display_name='A')
-    class_2 = create_class_scope(teacher_user=teacher, display_name='B')
+    class_1 = create_class_scope(teacher_user=teacher, join_code='CGP-A-10', display_name='A')
+    class_2 = create_class_scope(teacher_user=teacher, join_code='CGP-B-10', display_name='B')
 
     # Create student in two different classes for the same teacher.
     student_class1 = _create_student(teacher, 'Nina', block='A', class_id=class_1.class_id)

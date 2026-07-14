@@ -9,14 +9,14 @@ No Admin objects, no legacy bridge patterns.
 
 from app.extensions import db
 from app.feats.base import FEATContext
-from app.models import ClassEconomy, ClassFeature, Seat, User
+from app.models import ClassEconomy, Seat, User
 from werkzeug.security import generate_password_hash
 
 
 def create_class_scope(
     *,
     teacher_user: User,
-    join_code: str | None = None,
+    join_code: str,
     display_name: str | None = None,
     section: str | None = None,
     feature_names: list[str] | tuple[str, ...] | None = None,
@@ -37,20 +37,24 @@ def create_class_scope(
     Returns the ClassEconomy row. Flushes but does NOT commit.
     """
     from app.services.classroom_setup import create_class, create_student
-    from uuid import uuid4
 
-    resolved_join_code = join_code or f"CLS{uuid4().hex[:8].upper()}"
-    with FEATContext("FEAT-IDEN-001", idempotency_key=f"create_class_scope:{resolved_join_code}"):
+    idempotency_key = "create_class_scope:" + ":".join(
+        [
+            str(teacher_user.id),
+            join_code,
+            display_name or "",
+            section or "",
+            student_first_name or "",
+            student_last_name or "",
+        ]
+    )
+    with FEATContext("FEAT-IDEN-001", idempotency_key=idempotency_key):
         class_row = create_class(
             teacher_user.id,
-            join_code=resolved_join_code,
+            join_code=join_code,
             display_name=display_name,
             section=section,
         )
-
-        for feature_name in feature_names or ():
-            if not ClassFeature.query.filter_by(class_id=class_row.class_id, feature_name=feature_name).first():
-                db.session.add(ClassFeature(class_id=class_row.class_id, feature_name=feature_name))
 
         if student_first_name and student_last_name:
             create_student(

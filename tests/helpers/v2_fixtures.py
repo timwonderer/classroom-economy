@@ -73,7 +73,6 @@ def seed_class_with_seat(
 ) -> CanonicalFixtureSeed:
     """Create a canonical class plus one claimed student seat."""
     from tests.helpers.class_scope import create_class_scope, make_student_identity
-
     class_row = create_class_scope(
         teacher_user=teacher,
         join_code=join_code,

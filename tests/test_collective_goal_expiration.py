@@ -41,10 +41,8 @@ def _login_student(client, student_id):
             )
 
 
-def _login_admin(client, teacher):
-    class_row = ClassEconomy.query.filter_by(user_id=teacher.id).order_by(ClassEconomy.class_id.asc()).first()
-    assert class_row is not None
-    login_admin(client, teacher, class_id=class_row.class_id)
+def _login_admin(client, teacher, class_id):
+    login_admin(client, teacher, class_id=class_id)
 
 
 def _create_teacher(username):
@@ -55,24 +53,20 @@ def _create_teacher(username):
         return teacher
 
 
-def _create_student(teacher, first_name, join_code, block='A'):
-    """Create canonical student identity enrolled in the given class period."""
-    with FEATContext("FEAT-IDEN-001", idempotency_key=f"FEAT-IDEN-001:test-create-student:{join_code}:{first_name}:{uuid4().hex}"):
-        class_row = create_class_scope(
-            teacher_user=teacher,
-            display_name=block,
-        )
+def _create_student(class_id, first_name):
+    """Create canonical student identity enrolled in the provided class."""
+    with FEATContext("FEAT-IDEN-001", idempotency_key=f"FEAT-IDEN-001:test-create-student:{class_id}:{first_name}:{uuid4().hex}"):
         seat = make_student_identity(
-            class_id=class_row.class_id,
+            class_id=class_id,
             first_name=first_name,
-            last_name="S",
+            last_name="Smith",
             claimed=True,
         )
-        # Give the student funds so purchases succeed
+        # Give the student funds so purchases succeed.
         db.session.add(Transaction(
             seat_id=seat.id,
             user_id=seat.user_id,
-            class_id=class_row.class_id,
+            class_id=class_id,
             amount=Decimal('100.00'),
             account_type='checking',
             type='deposit',
@@ -81,14 +75,14 @@ def _create_student(teacher, first_name, join_code, block='A'):
         db.session.flush()
         return seat
 
-def _collective_item(teacher, name, goal_type='fixed', target=2,
+
+def _collective_item(teacher_id, class_id, name, goal_type='fixed', target=2,
                      expires_at=None, is_active=True):
     """Create a collective StoreItem."""
-    with FEATContext("FEAT-STOR-002", idempotency_key=f"FEAT-STOR-002:test-collective-item:{name}:{uuid4().hex}"):
-        class_row = ClassEconomy.query.filter_by(user_id=teacher.id).order_by(ClassEconomy.class_id.asc()).first()
+    with FEATContext("FEAT-STOR-002", idempotency_key=f"FEAT-STOR-002:test-collective-item:{class_id}:{name}:{uuid4().hex}"):
         item = StoreItem(
-            user_id=teacher.id,
-            class_id=class_row.class_id if class_row else None,
+            user_id=teacher_id,
+            class_id=class_id,
             name=name,
             price=Decimal('10.00'),
             item_type='collective',
@@ -121,10 +115,11 @@ def test_process_expired_goals_refunds_pending_and_deactivates(client):
     """Expired collective goal: pending StudentItems are voided and item is deactivated."""
     with FEATContext("FEAT-STOR-002", idempotency_key=f"FEAT-STOR-002:test-expired-refund:{uuid4().hex}"):
         teacher = _create_teacher('teacher_exp_refund')
-        student = _create_student(teacher, 'Alice', 'JOINEXP1')
+        class_row = create_class_scope(teacher_user=teacher, join_code='CGE-A-01', display_name='A')
+        student = _create_student(class_row.class_id, 'Alice')
         db.session.flush()
 
-        item = _collective_item(teacher, 'Expired Pizza', expires_at=_past())
+        item = _collective_item(teacher.id, class_row.class_id, 'Expired Pizza', expires_at=_past())
 
         # Create a purchase transaction and a pending StorePurchase
         purchase_tx = Transaction(
@@ -175,10 +170,11 @@ def test_process_expired_goals_skips_non_expired_items(client):
     """Items with a future expiration date are not affected."""
     with FEATContext("FEAT-STOR-002", idempotency_key=f"FEAT-STOR-002:test-expired-future:{uuid4().hex}"):
         teacher = _create_teacher('teacher_exp_future')
-        student = _create_student(teacher, 'Bob', 'JOINEXP2')
+        class_row = create_class_scope(teacher_user=teacher, join_code='CGE-A-02', display_name='A')
+        student = _create_student(class_row.class_id, 'Bob')
         db.session.flush()
 
-        item = _collective_item(teacher, 'Future Goal', 'JOINEXP2', expires_at=_future())
+        item = _collective_item(teacher.id, class_row.class_id, 'Future Goal', expires_at=_future())
         si = StorePurchase(
             seat_id=student.id,
             class_id=item.class_id,
@@ -207,11 +203,12 @@ def test_process_expired_goals_ignores_items_without_expiration(client):
     """Items with no expiration date are never auto-expired."""
     with FEATContext("FEAT-STOR-002", idempotency_key=f"FEAT-STOR-002:test-expired-none:{uuid4().hex}"):
         teacher = _create_teacher('teacher_exp_none')
-        student = _create_student(teacher, 'Carol', 'JOINEXP3')
+        class_row = create_class_scope(teacher_user=teacher, join_code='CGE-A-03', display_name='A')
+        student = _create_student(class_row.class_id, 'Carol')
         db.session.flush()
 
         # No expires_at set
-        item = _collective_item(teacher, 'No Expiry Goal', 'JOINEXP3', expires_at=None)
+        item = _collective_item(teacher.id, class_row.class_id, 'No Expiry Goal', expires_at=None)
         si = StorePurchase(
             seat_id=student.id,
             class_id=item.class_id,
@@ -238,11 +235,12 @@ def test_process_expired_goals_ignores_already_inactive_items(client):
     """Already-deactivated items are not re-processed even if past the deadline."""
     with FEATContext("FEAT-STOR-002", idempotency_key=f"FEAT-STOR-002:test-expired-inactive:{uuid4().hex}"):
         teacher = _create_teacher('teacher_exp_inactive')
-        student = _create_student(teacher, 'Dan', 'JOINEXP4')
+        class_row = create_class_scope(teacher_user=teacher, join_code='CGE-A-04', display_name='A')
+        student = _create_student(class_row.class_id, 'Dan')
         db.session.flush()
 
         # is_active=False and past deadline
-        item = _collective_item(teacher, 'Already Inactive', 'JOINEXP4',
+        item = _collective_item(teacher.id, class_row.class_id, 'Already Inactive',
                                 expires_at=_past(), is_active=False)
         si = StorePurchase(
             seat_id=student.id,
@@ -268,11 +266,12 @@ def test_process_expired_goals_only_voids_pending_not_processing(client):
     """Only 'pending' StudentItems are voided; 'processing' ones (goal already met) are left alone."""
     with FEATContext("FEAT-STOR-002", idempotency_key=f"FEAT-STOR-002:test-expired-processing:{uuid4().hex}"):
         teacher = _create_teacher('teacher_exp_processing')
-        student_a = _create_student(teacher, 'Eve', 'JOINEXP5')
-        student_b = _create_student(teacher, 'Frank', 'JOINEXP5B', block='B')
+        class_row = create_class_scope(teacher_user=teacher, join_code='CGE-A-05', display_name='A')
+        student_a = _create_student(class_row.class_id, 'Eve')
+        student_b = _create_student(class_row.class_id, 'Frank')
         db.session.flush()
 
-        item = _collective_item(teacher, 'Mixed Status Goal', 'JOINEXP5', expires_at=_past())
+        item = _collective_item(teacher.id, class_row.class_id, 'Mixed Status Goal', expires_at=_past())
 
         si_processing = StorePurchase(
             seat_id=student_a.id,
@@ -310,10 +309,11 @@ def test_process_expired_goals_skips_met_goals_with_no_pending(client):
     """An expired goal with no pending purchases (already met/unlocked) is not deactivated."""
     with FEATContext("FEAT-STOR-002", idempotency_key=f"FEAT-STOR-002:test-expired-met:{uuid4().hex}"):
         teacher = _create_teacher('teacher_exp_met')
-        student = _create_student(teacher, 'Fay', 'JOINEXPMET')
+        class_row = create_class_scope(teacher_user=teacher, join_code='CGE-A-06', display_name='A')
+        student = _create_student(class_row.class_id, 'Fay')
         db.session.flush()
 
-        item = _collective_item(teacher, 'Met Goal', 'JOINEXPMET', expires_at=_past())
+        item = _collective_item(teacher.id, class_row.class_id, 'Met Goal', expires_at=_past())
         si_processing = StorePurchase(
             seat_id=student.id,
             class_id=item.class_id,
@@ -341,12 +341,14 @@ def test_process_expired_goals_scoped_to_teacher(client):
     with FEATContext("FEAT-STOR-002", idempotency_key=f"FEAT-STOR-002:test-expired-scope:{uuid4().hex}"):
         teacher_a = _create_teacher('teacher_exp_scope_a')
         teacher_b = _create_teacher('teacher_exp_scope_b')
-        student_a = _create_student(teacher_a, 'Grace', 'JOINEXPA')
-        student_b = _create_student(teacher_b, 'Hank', 'JOINEXPB')
+        class_row_a = create_class_scope(teacher_user=teacher_a, join_code='CGE-A-07', display_name='A')
+        class_row_b = create_class_scope(teacher_user=teacher_b, join_code='CGE-B-07', display_name='B')
+        student_a = _create_student(class_row_a.class_id, 'Grace')
+        student_b = _create_student(class_row_b.class_id, 'Hank')
         db.session.flush()
 
-        expired_item_a = _collective_item(teacher_a, 'Teacher A Expired', 'JOINEXPA', expires_at=_past())
-        expired_item_b = _collective_item(teacher_b, 'Teacher B Expired', 'JOINEXPB', expires_at=_past())
+        expired_item_a = _collective_item(teacher_a.id, class_row_a.class_id, 'Teacher A Expired', expires_at=_past())
+        expired_item_b = _collective_item(teacher_b.id, class_row_b.class_id, 'Teacher B Expired', expires_at=_past())
 
         si_a = StorePurchase(
             seat_id=student_a.id,
@@ -391,11 +393,12 @@ def test_process_expired_goals_refund_fallback_to_item_price(client):
     """When no original purchase transaction is found, refund falls back to item price."""
     with FEATContext("FEAT-STOR-002", idempotency_key=f"FEAT-STOR-002:test-expired-fallback:{uuid4().hex}"):
         teacher = _create_teacher('teacher_exp_fallback')
-        student = _create_student(teacher, 'Ivy', 'JOINEXPFB')
+        class_row = create_class_scope(teacher_user=teacher, join_code='CGE-A-08', display_name='A')
+        student = _create_student(class_row.class_id, 'Ivy')
         db.session.flush()
 
-        item = _collective_item(teacher, 'No TX Item', 'JOINEXPFB', expires_at=_past())
-    # StudentItem with no corresponding purchase Transaction
+        item = _collective_item(teacher.id, class_row.class_id, 'No TX Item', expires_at=_past())
+        # StudentItem with no corresponding purchase Transaction
         si = StorePurchase(
             seat_id=student.id,
             class_id=item.class_id,
@@ -427,10 +430,11 @@ def test_refund_pending_collective_purchases_marks_voided_and_creates_refund(cli
     """refund_pending_collective_purchases voids all pending items and creates refund txs."""
     with FEATContext("FEAT-STOR-002", idempotency_key=f"FEAT-STOR-002:test-refund-pending:{uuid4().hex}"):
         teacher = _create_teacher('teacher_refund_direct')
-        student = _create_student(teacher, 'Jay', 'JOINREFUND')
+        class_row = create_class_scope(teacher_user=teacher, join_code='CGE-A-09', display_name='A')
+        student = _create_student(class_row.class_id, 'Jay')
         db.session.flush()
 
-        item = _collective_item(teacher, 'Direct Refund Item', 'JOINREFUND', expires_at=None)
+        item = _collective_item(teacher.id, class_row.class_id, 'Direct Refund Item', expires_at=None)
         purchase_tx = Transaction(
             seat_id=student.id, user_id=student.user_id, amount=Decimal('-10.00'),
             account_type='checking', type='purchase',
@@ -471,10 +475,11 @@ def test_refund_matching_uses_purchase_transaction_id_after_item_rename(client):
     """Refund matching should remain correct even if the store item name changes."""
     with FEATContext("FEAT-STOR-002", idempotency_key=f"FEAT-STOR-002:test-refund-id-match:{uuid4().hex}"):
         teacher = _create_teacher('teacher_refund_id_match')
-        student = _create_student(teacher, 'Jules', 'JOINIDMATCH')
+        class_row = create_class_scope(teacher_user=teacher, join_code='CGE-A-10', display_name='A')
+        student = _create_student(class_row.class_id, 'Jules')
         db.session.flush()
 
-        item = _collective_item(teacher, 'Original Name', 'JOINIDMATCH')
+        item = _collective_item(teacher.id, class_row.class_id, 'Original Name')
         purchase_tx = Transaction(
             seat_id=student.id, user_id=student.user_id, amount=Decimal('-13.00'),
             account_type='checking', type='purchase',
@@ -515,10 +520,11 @@ def test_refund_pending_skips_non_pending_statuses(client):
     """refund_pending_collective_purchases does not touch 'processing' or 'completed' items."""
     with FEATContext("FEAT-STOR-002", idempotency_key=f"FEAT-STOR-002:test-refund-skip:{uuid4().hex}"):
         teacher = _create_teacher('teacher_refund_skip')
-        student = _create_student(teacher, 'Kim', 'JOINSKIP')
+        class_row = create_class_scope(teacher_user=teacher, join_code='CGE-A-11', display_name='A')
+        student = _create_student(class_row.class_id, 'Kim')
         db.session.flush()
 
-        item = _collective_item(teacher, 'Skip Status Item', 'JOINSKIP')
+        item = _collective_item(teacher.id, class_row.class_id, 'Skip Status Item')
         si_proc = StorePurchase(seat_id=student.id, class_id=item.class_id, store_item_id=item.id, quantity=1, price_at_purchase=item.price, total_price=item.price, status='processing', collective_goal_instance_code=item.collective_goal_instance_code)
         si_comp = StorePurchase(seat_id=student.id, class_id=item.class_id, store_item_id=item.id, quantity=1, price_at_purchase=item.price, total_price=item.price, status='completed', collective_goal_instance_code=item.collective_goal_instance_code)
         db.session.add_all([si_proc, si_comp])
@@ -542,10 +548,11 @@ def test_delete_active_collective_item_refunds_pending(client):
     """DELETE /admin/store/delete/<id> refunds pending purchases before deactivating."""
     with FEATContext("FEAT-STOR-002", idempotency_key=f"FEAT-STOR-002:test-delete-refund:{uuid4().hex}"):
         teacher = _create_teacher('teacher_del_refund')
-        student = _create_student(teacher, 'Leo', 'JOINDEL')
+        class_row = create_class_scope(teacher_user=teacher, join_code='CGE-A-12', display_name='A')
+        student = _create_student(class_row.class_id, 'Leo')
         db.session.flush()
 
-        item = _collective_item(teacher, 'Delete Me', 'JOINDEL')
+        item = _collective_item(teacher.id, class_row.class_id, 'Delete Me')
         db.session.add(ClassFeature(class_id=item.class_id, feature_name='store'))
         purchase_tx = Transaction(
             seat_id=student.id,
@@ -570,7 +577,7 @@ def test_delete_active_collective_item_refunds_pending(client):
         db.session.add(si)
         db.session.flush()
 
-        _login_admin(client, teacher)
+        _login_admin(client, teacher, class_row.class_id)
         resp = client.post(f'/admin/store/delete/{item.id}')
         assert resp.status_code in (200, 302)
 
@@ -590,10 +597,11 @@ def test_delete_inactive_collective_item_does_not_refund(client):
     """Deleting an already-inactive collective item does not generate extra refunds."""
     with FEATContext("FEAT-STOR-002", idempotency_key=f"FEAT-STOR-002:test-delete-inactive:{uuid4().hex}"):
         teacher = _create_teacher('teacher_del_inactive')
-        student = _create_student(teacher, 'Mia', 'JOINDELINACT')
+        class_row = create_class_scope(teacher_user=teacher, join_code='CGE-A-13', display_name='A')
+        student = _create_student(class_row.class_id, 'Mia')
         db.session.flush()
 
-        item = _collective_item(teacher, 'Already Inactive Del', 'JOINDELINACT', is_active=False)
+        item = _collective_item(teacher.id, class_row.class_id, 'Already Inactive Del', is_active=False)
         db.session.add(ClassFeature(class_id=item.class_id, feature_name='store'))
         si = StorePurchase(
             seat_id=student.id,
@@ -608,7 +616,7 @@ def test_delete_inactive_collective_item_does_not_refund(client):
         db.session.add(si)
         db.session.flush()
 
-        _login_admin(client, teacher)
+        _login_admin(client, teacher, class_row.class_id)
         resp = client.post(f'/admin/store/delete/{item.id}')
         assert resp.status_code in (200, 302)
 
@@ -629,10 +637,11 @@ def test_purchase_blocked_when_collective_goal_expired(client):
     """POST /api/purchase-item returns 400 when the collective goal has expired."""
     with FEATContext("FEAT-STOR-002", idempotency_key=f"FEAT-STOR-002:test-purchase-expired:{uuid4().hex}"):
         teacher = _create_teacher('teacher_api_expired')
-        student = _create_student(teacher, 'Nora', 'JOINAPIEXP')
+        class_row = create_class_scope(teacher_user=teacher, join_code='CGE-A-14', display_name='A')
+        student = _create_student(class_row.class_id, 'Nora')
         db.session.flush()
 
-        item = _collective_item(teacher, 'Expired API Goal', 'JOINAPIEXP', expires_at=_past())
+        item = _collective_item(teacher.id, class_row.class_id, 'Expired API Goal', expires_at=_past())
         db.session.add(ClassFeature(class_id=item.class_id, feature_name='store'))
         db.session.flush()
 
@@ -655,10 +664,11 @@ def test_purchase_allowed_for_non_expired_collective_goal(client):
     """POST /api/purchase-item succeeds for a collective goal with a future expiration."""
     with FEATContext("FEAT-STOR-002", idempotency_key=f"FEAT-STOR-002:test-purchase-future:{uuid4().hex}"):
         teacher = _create_teacher('teacher_api_future')
-        student = _create_student(teacher, 'Owen', 'JOINAPIFUT')
+        class_row = create_class_scope(teacher_user=teacher, join_code='CGE-A-15', display_name='A')
+        student = _create_student(class_row.class_id, 'Owen')
         db.session.flush()
 
-        item = _collective_item(teacher, 'Future API Goal', 'JOINAPIFUT', expires_at=_future())
+        item = _collective_item(teacher.id, class_row.class_id, 'Future API Goal', expires_at=_future())
         db.session.add(ClassFeature(class_id=item.class_id, feature_name='store'))
         db.session.flush()
 
@@ -684,10 +694,11 @@ def test_reactivated_item_voided_purchases_excluded_from_progress(client):
     """
     with FEATContext("FEAT-STOR-002", idempotency_key=f"FEAT-STOR-002:test-reactivated-progress:{uuid4().hex}"):
         teacher = _create_teacher('teacher_reactivate')
-        student = _create_student(teacher, 'Pam', 'JOINREACT')
+        class_row = create_class_scope(teacher_user=teacher, join_code='CGE-A-16', display_name='A')
+        student = _create_student(class_row.class_id, 'Pam')
         db.session.flush()
 
-        item = _collective_item(teacher, 'Reactivated Goal',
+        item = _collective_item(teacher.id, class_row.class_id, 'Reactivated Goal',
                                 goal_type='fixed', target=2, expires_at=_past())
         db.session.add(ClassFeature(class_id=item.class_id, feature_name='store'))
         si_voided = StorePurchase(
@@ -716,12 +727,13 @@ def test_process_expired_goals_multiple_items_same_teacher(client):
     """Multiple expired items for the same teacher are all processed in one call."""
     with FEATContext("FEAT-STOR-002", idempotency_key=f"FEAT-STOR-002:test-expired-multi:{uuid4().hex}"):
         teacher = _create_teacher('teacher_exp_multi')
-        student_a = _create_student(teacher, 'Quinn', 'JOINMULTA')
-        student_b = _create_student(teacher, 'Rita', 'JOINMULTB')
+        class_row = create_class_scope(teacher_user=teacher, join_code='CGE-A-17', display_name='A')
+        student_a = _create_student(class_row.class_id, 'Quinn')
+        student_b = _create_student(class_row.class_id, 'Rita')
         db.session.flush()
 
-        item_a = _collective_item(teacher, 'Multi Expired A', 'JOINMULTA', expires_at=_past())
-        item_b = _collective_item(teacher, 'Multi Expired B', 'JOINMULTB', expires_at=_past())
+        item_a = _collective_item(teacher.id, class_row.class_id, 'Multi Expired A', expires_at=_past())
+        item_b = _collective_item(teacher.id, class_row.class_id, 'Multi Expired B', expires_at=_past())
         si_a = StorePurchase(seat_id=student_a.id, class_id=item_a.class_id, store_item_id=item_a.id, quantity=1, price_at_purchase=item_a.price, total_price=item_a.price, status='pending', collective_goal_instance_code=item_a.collective_goal_instance_code)
         si_b = StorePurchase(seat_id=student_b.id, class_id=item_b.class_id, store_item_id=item_b.id, quantity=1, price_at_purchase=item_b.price, total_price=item_b.price, status='pending', collective_goal_instance_code=item_b.collective_goal_instance_code)
         db.session.add_all([si_a, si_b])
@@ -744,10 +756,11 @@ def test_shop_page_triggers_expiration_lazily(client):
     """Loading /student/shop triggers expiration processing for the teacher's items."""
     with FEATContext("FEAT-STOR-002", idempotency_key=f"FEAT-STOR-002:test-lazy-expiration:{uuid4().hex}"):
         teacher = _create_teacher('teacher_lazy_exp')
-        student = _create_student(teacher, 'Sam', 'JOINLAZY')
+        class_row = create_class_scope(teacher_user=teacher, join_code='CGE-A-18', display_name='A')
+        student = _create_student(class_row.class_id, 'Sam')
         db.session.flush()
 
-        item = _collective_item(teacher, 'Lazy Expired Goal', 'JOINLAZY', expires_at=_past())
+        item = _collective_item(teacher.id, class_row.class_id, 'Lazy Expired Goal', expires_at=_past())
         db.session.add(ClassFeature(class_id=item.class_id, feature_name='store'))
         si = StorePurchase(
             seat_id=student.id,

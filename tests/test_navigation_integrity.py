@@ -2,6 +2,7 @@ import os
 import pytest
 from datetime import datetime, timezone
 from app.extensions import db
+from app.feats.base import FEATContext
 from app.models import TeacherOnboarding, User, UserRole, Seat, IdentityProfile
 from app.utils.economy_policy import replace_enabled_class_features
 from tests.helpers.v2_fixtures import make_sysadmin, seed_canonical_admin
@@ -23,31 +24,36 @@ def integrity_tester(client):
             "/export",
             "/static",
             "/admin/banking",
+            "/student/help-support",
         ]
     )
 
 def test_teacher_navigation_integrity(client, integrity_tester):
     """Test full teacher navigation tree for 500s and mutations."""
     admin = seed_canonical_admin("nav_teacher", "secret").user
-    db.session.commit()
 
-    onboarding = TeacherOnboarding(
-        teacher_id=admin.id,
-        is_completed=True,
-        completed_at=datetime.now(timezone.utc)
-    )
-    db.session.add(onboarding)
-    
-    class_row = create_class_scope(
-        teacher_user=admin,
-    )
-    student = make_student_identity(class_id=class_row.class_id, first_name="Nav", last_name="T", claimed=True)
-    db.session.flush()
-    _tb_seat = Seat.query.filter_by(user_id=student.user_id, class_id=class_row.class_id, role="student").first()
-    replace_enabled_class_features(
-        class_row.class_id,
-        {"insurance", "banking", "rent", "hall_pass", "store"},
-    )
+    with FEATContext("FEAT-IDEN-001", idempotency_key="nav_integrity:teacher_onboarding"):
+        onboarding = TeacherOnboarding(
+            user_id=admin.id,
+            is_completed=True,
+            completed_at=datetime.now(timezone.utc)
+        )
+        db.session.add(onboarding)
+
+    with FEATContext("FEAT-IDEN-001", idempotency_key="nav_integrity:class_setup"):
+        class_row = create_class_scope(
+            teacher_user=admin,
+            join_code="NAV-TEACHER-01",
+        )
+        student = make_student_identity(class_id=class_row.class_id, first_name="Nav", last_name="T", claimed=True)
+        db.session.flush()
+        _tb_seat = Seat.query.filter_by(user_id=student.user_id, class_id=class_row.class_id, role="student").first()
+        replace_enabled_class_features(
+            class_row.class_id,
+            {"insurance", "banking", "rent", "hall_pass", "store"},
+        )
+        db.session.flush()
+
     db.session.commit()
 
     with client.session_transaction() as sess:
@@ -65,12 +71,14 @@ def test_teacher_navigation_integrity(client, integrity_tester):
 def test_student_navigation_integrity(client, integrity_tester):
     """Test full student navigation tree for 500s and mutations."""
     teacher = seed_canonical_admin("nav_teacher2", "secret").user
-    db.session.flush()
-    db.session.commit()
 
-    class_row = create_class_scope(teacher_user=teacher)
+    class_row = create_class_scope(
+        teacher_user=teacher,
+        join_code="NAV-STUDENT-01",
+        section="A",
+        display_name="Nav Student",
+    )
     student = make_student_identity(class_id=class_row.class_id, first_name="Nav", last_name="S", claimed=True)
-    db.session.flush()
     seat = Seat.query.filter_by(user_id=student.user_id, class_id=class_row.class_id, role="student").first()
     db.session.commit()
 

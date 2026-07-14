@@ -27,6 +27,7 @@ def setup_rent_with_items(client):
         teacher = seed_canonical_admin("test_teacher").user
         economy = create_class_scope(
             teacher_user=teacher,
+            join_code="RENT-DISP-01",
             display_name="Test Rent Class",
             section="A",
         )
