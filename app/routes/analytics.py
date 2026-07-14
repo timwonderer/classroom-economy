@@ -290,13 +290,6 @@ def api_snapshot(window_type):
         from app.services.context_resolver import resolve_canonical_context
         context = resolve_canonical_context()
         class_id = context.class_id
-        
-        # Get join_code from ClassEconomy
-        from app.models import ClassEconomy
-        class_row = db.session.get(ClassEconomy, class_id)
-        if not class_row:
-            return jsonify({'error': 'No class period selected'}), 400
-        join_code = get_display_join_code(class_row.class_id)
     except Exception:
         return jsonify({'error': 'No class period selected'}), 400
 
@@ -364,12 +357,7 @@ def api_alerts():
         from app.services.context_resolver import resolve_canonical_context
         context = resolve_canonical_context()
         class_id = context.class_id
-        from app.models import ClassEconomy
-        class_row = db.session.get(ClassEconomy, class_id)
-        join_code = get_display_join_code(class_row.class_id) if class_row else None
     except Exception:
-        return jsonify({'error': 'No class period selected'}), 400
-    if not join_code:
         return jsonify({'error': 'No class period selected'}), 400
 
     requested_window_type = request.args.get('window', 'week')
@@ -417,12 +405,8 @@ def acknowledge_alert(alert_id):
         class_id = context.class_id
         from app.models import ClassEconomy
         class_row = db.session.get(ClassEconomy, class_id)
-        join_code = get_display_join_code(class_row.class_id) if class_row else None
     except Exception:
         return jsonify({'error': 'No class period selected'}), 400
-    if not join_code:
-        flash('Alert not found.', 'danger')
-        return redirect(url_for('analytics.dashboard'))
     
     alert = AnalyticsAlert.query.filter(
         AnalyticsAlert.id == alert_id,
