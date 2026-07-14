@@ -17,6 +17,7 @@ from app.utils.analytics_engine import AnalyticsEngine
 from app.feats.base import FEATContext
 import app.services.ledger_service as ledger_service
 from tests.helpers.class_scope import create_class_scope, make_student_identity
+from tests.helpers.canonical_session import set_canonical_context
 
 
 @pytest.fixture
@@ -421,3 +422,28 @@ def test_budget_survival_uses_policy_mode_min_savings_ratio(client, setup_analyt
     _set_policy('comfortable')  # min savings ratio = 0.15
     comfortable_engine = AnalyticsEngine(payroll)
     assert comfortable_engine.calculate_budget_survival_pass_rate(100.0) == 0.0
+
+
+def test_analytics_student_drill_down_renders_join_code_display(client, setup_analytics_test):
+    admin, join_code, block, class_id, students, payroll = setup_analytics_test
+    teacher = db.session.get(User, admin)
+    assert teacher is not None
+    teacher_seat = Seat.query.filter_by(user_id=teacher.id, class_id=class_id, role="teacher").first()
+    assert teacher_seat is not None
+
+    student_seat = db.session.get(Seat, students[0])
+    assert student_seat is not None
+
+    with client.session_transaction() as sess:
+        set_canonical_context(
+            sess,
+            user_id=teacher.id,
+            class_id=class_id,
+            seat_id=teacher_seat.id,
+            role="teacher",
+        )
+
+    response = client.get(f"/admin/analytics/student/{student_seat.id}")
+
+    assert response.status_code == 200
+    assert join_code.encode("utf-8") in response.data

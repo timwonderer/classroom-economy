@@ -24,6 +24,7 @@ from app.models import (
     PayrollSettings, RentSettings, ClassEconomy, Seat
 )
 from app.models import Transaction
+from app.services.ledger_service import get_available_balance
 from app.utils.join_code import get_display_join_code
 
 # Define allowed window types constant
@@ -492,6 +493,7 @@ def student_drill_down(student_id):
     if not class_row:
         flash('Class period not found.', 'warning')
         return redirect(url_for('admin.students'))
+    join_code = get_display_join_code(class_row.class_id)
 
     # Get student with scoping
     student = Seat.query.filter(
@@ -535,10 +537,7 @@ def student_drill_down(student_id):
         return jsonify({'error': 'Student has no canonical seat in selected class'}), 400
     
     # Get student balance
-    current_balance = student.get_checking_balance(
-        class_id=class_id,
-        seat_id=seat.id,
-    )
+    current_balance = get_available_balance(seat.id, class_id, "checking")
     
     # Calculate expected balance based on CWI
     # This is a simplified calculation - could be enhanced
