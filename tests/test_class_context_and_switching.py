@@ -26,10 +26,10 @@ def setup_multi_class_student(client):
     teacher3 = seed_canonical_admin("teacher3_mcs", "t3secret").user
 
     with FEATContext("FEAT-IDEN-001", idempotency_key="setup_multi_class_student:classes"):
-        class_1a = create_class_scope(teacher_user=teacher1, join_code="CTX-1A", display_name="Class 1A", section="A")
-        class_2b = create_class_scope(teacher_user=teacher2, join_code="CTX-2B", display_name="Class 2B", section="B")
-        class_3c = create_class_scope(teacher_user=teacher3, join_code="CTX-3C", display_name="Class 3C", section="C")
-        class_unclaimed = create_class_scope(teacher_user=teacher1, join_code="CTX-ZZ", display_name="Unclaimed Z")
+        class_1a = create_class_scope(teacher_user=teacher1, display_name="Class 1A", section="A")
+        class_2b = create_class_scope(teacher_user=teacher2, display_name="Class 2B", section="B")
+        class_3c = create_class_scope(teacher_user=teacher3, display_name="Class 3C", section="C")
+        class_unclaimed = create_class_scope(teacher_user=teacher1, display_name="Unclaimed Z")
 
     with FEATContext("FEAT-IDEN-001", idempotency_key="setup_multi_class_student:student"):
         student = make_student_identity(class_id=class_1a.class_id, first_name="MultiClass", last_name="S", claimed=True)
@@ -56,7 +56,7 @@ def setup_single_class_student(client):
     teacher = seed_canonical_admin("single_teacher_mcs", "single_secret").user
 
     with FEATContext("FEAT-IDEN-001", idempotency_key="setup_single_class_student:class"):
-        class_single = create_class_scope(teacher_user=teacher, join_code="CTX-1D", display_name="Single D")
+        class_single = create_class_scope(teacher_user=teacher, display_name="Single D")
 
     with FEATContext("FEAT-IDEN-001", idempotency_key="setup_single_class_student:student"):
         student = make_student_identity(class_id=class_single.class_id, first_name="SingleClass", last_name="X", claimed=True)
