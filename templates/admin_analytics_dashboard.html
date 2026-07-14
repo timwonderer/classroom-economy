@@ -4,10 +4,6 @@
 
 {% block page_header_actions %}
 <div class="d-flex align-items-center gap-2 flex-wrap">
-  <div class="text-muted small">
-    Active class comes from the navigation context switcher.
-  </div>
-
   <div class="btn-group" role="group">
     <a href="{{ url_for('analytics.dashboard', window='week') }}"
       class="btn {% if window_type == 'week' %}btn-primary{% else %}btn-outline-primary{% endif %}">
