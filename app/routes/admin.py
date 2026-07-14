@@ -7668,9 +7668,10 @@ def process_claim(claim_id):
             flash("Claim has been rejected.", "warning")
 
         try:
+            claim_class_join_code = get_display_join_code(ctx.class_id) or ""
             claim_scope = Scope(
                 class_id=ctx.class_id,
-                join_code=enrollment.join_code,
+                join_code=claim_class_join_code,
                 actor_id=ctx.user_id,
                 role="teacher",
                 user_id=ctx.user_id,
