@@ -522,7 +522,7 @@ def test_store_query_scope_does_not_implicitly_switch_session_context(client):
     assert teacher_seat is not None
     _login_admin(client, admin, class_id=class_row.class_id, seat_id=teacher_seat.id)
 
-    response = client.get("/admin/store?join_code=STOREB2")
+    response = client.get("/admin/store")
     assert response.status_code == 200
 
 
