@@ -554,7 +554,6 @@
 
             <form method="POST" action="{{ url_for('admin.payroll_settings') }}" id="payrollSettingsForm">
               {{ settings_form.hidden_tag() }}
-              <input type="hidden" name="cwi_block" value="{{ selected_feature_scope.block }}">
               <input type="hidden" name="settings_mode" id="settingsModeInput"
                 value="{% if default_setting and default_setting.settings_mode == 'advanced' %}advanced{% else %}simple{% endif %}">
 

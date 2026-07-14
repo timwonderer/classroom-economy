@@ -8355,12 +8355,11 @@ def payroll():
 
     ctx = g.canonical_context
     user_id = ctx.user_id
+    current_class_id = ctx.class_id
     feature_options = get_admin_feature_join_code_options('payroll', canonical_context=g.canonical_context)
-    selected_scope = require_admin_feature_scope(
-        'payroll',
-        canonical_context=g.canonical_context,
-        requested_block=request.args.get('cwi_block') or request.args.get('block'),
-    )
+    selected_scope = next((option for option in feature_options if option.get('class_id') == current_class_id), None)
+    if not selected_scope:
+        abort(404)
     selected_join_code = selected_scope['join_code']
     selected_block = selected_scope['block']
     selected_class_id = selected_scope['class_id']
@@ -8712,11 +8711,10 @@ def payroll_settings():
             for option in feature_options
             if option.get('block') and option.get('class_id')
         }
-        selected_scope = require_admin_feature_scope(
-            'payroll',
-            canonical_context=g.canonical_context,
-            requested_block=request.form.get('cwi_block') or request.form.get('block'),
-        )
+        current_class_id = ctx.class_id
+        selected_scope = next((option for option in feature_options if option.get('class_id') == current_class_id), None)
+        if not selected_scope:
+            abort(404)
 
         # Derive assignable blocks from canonical feature scopes, not student.block text.
         blocks = enabled_blocks
@@ -8909,10 +8907,13 @@ def payroll_settings():
 @admin_required
 def update_expected_weekly_hours():
     """Update the expected weekly hours for CWI calculation for a specific block or all blocks."""
-    redirect_block = (request.form.get('cwi_block') or request.form.get('block') or '').strip().upper()
     try:
         from app.models import _quantize_currency
-        selected_scope = _require_payroll_feature_scope_from_request()
+        ctx = g.canonical_context
+        feature_options = get_admin_feature_join_code_options('payroll', canonical_context=g.canonical_context)
+        selected_scope = next((option for option in feature_options if option.get('class_id') == ctx.class_id), None)
+        if not selected_scope:
+            abort(404)
         expected_weekly_hours = _quantize_currency(request.form.get('expected_weekly_hours', '5.0'))
         cwi_block = selected_scope['block']
         apply_to_all = request.form.get('apply_to_all', 'false').lower() == 'true'
@@ -9011,8 +9012,6 @@ def update_expected_weekly_hours():
         current_app.logger.error(f"Error updating expected weekly hours: {e}")
         flash(f'Error updating expected weekly hours', 'error')
 
-    if redirect_block:
-        return redirect(url_for('admin.payroll', cwi_block=redirect_block))
     return redirect(url_for('admin.payroll'))
 
 
