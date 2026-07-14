@@ -24,6 +24,7 @@ from app.models import Seat, IdentityProfile, User, UserRole, Transaction
 from app.utils.money_guard import check_financial_cooldown
 from app.utils.time import ensure_utc, utc_now
 from app.feats.base import FEATContext
+from app.hash_utils import hash_username_lookup
 from tests.helpers.v2_fixtures import seed_canonical_admin
 from tests.helpers.admin_context import login_teacher
 from tests.helpers.class_scope import create_class_scope, make_student_identity
@@ -424,6 +425,57 @@ def test_recovery_username_uses_random_segment(client, recovery_data, monkeypatc
 
     assert generated_username is not None
     assert "4242" in generated_username
+
+
+def test_claim_account_resolves_join_code_to_class_id(client):
+    teacher = seed_canonical_admin("claim_teacher").user
+    db.session.flush()
+    class_row = create_class_scope(
+        teacher_user=teacher,
+        join_code="CLAIM123",
+        display_name="Claim Class",
+    )
+    from app.models import Seat, User, UserRole
+    with FEATContext("FEAT-IDEN-001", idempotency_key="claim_account:test_unclaimed_seat"):
+        student = User(user_role=UserRole.STUDENT, username_hash="claim-student")
+        db.session.add(student)
+        db.session.flush()
+        seat = Seat(
+            user_id=None,
+            class_id=class_row.class_id,
+            role="student",
+            claimed_at=None,
+            claim_first_name_hash=hash_username_lookup("First".lower()),
+            claim_last_name_hash=hash_username_lookup("Last".lower()),
+        )
+        db.session.add(seat)
+        db.session.flush()
+        db.session.add(
+            IdentityProfile(
+                seat_id=seat.id,
+                class_id=class_row.class_id,
+                profile_type="student_unclaimed",
+                first_name="First",
+                last_name="Last",
+            )
+        )
+        db.session.flush()
+
+    resp = client.post(
+        "/student/claim-account",
+        data={
+            "join_code": "CLAIM123",
+            "first_name": "First",
+            "last_name": "Last",
+        },
+        follow_redirects=False,
+    )
+
+    assert resp.status_code == 302
+    assert "/student/create-username" in resp.location
+
+    with client.session_transaction() as sess:
+        assert sess.get("onboarding_seat_ref") == seat.id
 
 
 # ------------------------------------------------------------------
