@@ -64,13 +64,7 @@ def student_seat(client, class_scope):
 @pytest.fixture
 def admin_class_scope(client, teacher_user):
     """Create a second class scope used by admin-focused tests (section='A' so block routes work)."""
-    ce = ClassEconomy.query.filter_by(user_id=teacher_user.id).order_by(ClassEconomy.class_id.asc()).first()
-    if not ce:
-        ce = create_class_scope(teacher_user=teacher_user, join_code="SCOPE123", section="A")
-        db.session.flush()
-    elif ce.section != "A":
-        ce.section = "A"
-        db.session.flush()
+    ce = create_class_scope(teacher_user=teacher_user, join_code="SCOPE123", section="A")
     _enable_rent(ce.class_id)
     _enable_store(ce.class_id)
     # ensure at least one student seat exists so routes can resolve context
@@ -244,64 +238,66 @@ def test_admin_configure_rent_item_types(client, teacher_user, admin_class_scope
 
 def test_store_sync_logic(client, teacher_user, admin_class_scope):
     """Test that store items are created/updated correctly based on type."""
-    settings = RentSettings(class_id=admin_class_scope.class_id)
-    db.session.add(settings)
-    db.session.flush()
+    with FEATContext("FEAT-TEST-001", idempotency_key=f"rent-item-types:store-sync:{admin_class_scope.class_id}"):
+        settings = RentSettings(class_id=admin_class_scope.class_id)
+        db.session.add(settings)
+        db.session.flush()
 
-    # Pre-create store items so sync takes the "update existing" path
-    # (avoids a bug in admin.py line 6168 that uses teacher_id instead of user_id)
-    privilege_store = StoreItem(
-        user_id=teacher_user.id,
-        class_id=admin_class_scope.class_id,
-        join_code=admin_class_scope.join_code,
-        name="Privilege",
-        price=Decimal("10.00"),
-        item_type="delayed",
-        is_active=True,
-    )
-    per_use_store = StoreItem(
-        user_id=teacher_user.id,
-        class_id=admin_class_scope.class_id,
-        join_code=admin_class_scope.join_code,
-        name="Consumable",
-        price=Decimal("2.00"),
-        item_type="delayed",
-        is_active=True,
-    )
-    db.session.add_all([privilege_store, per_use_store])
-    db.session.flush()
+        # Pre-create store items so sync takes the "update existing" path
+        # (avoids a bug in admin.py line 6168 that uses teacher_id instead of user_id)
+        privilege_store = StoreItem(
+            user_id=teacher_user.id,
+            class_id=admin_class_scope.class_id,
+            join_code=admin_class_scope.join_code,
+            name="Privilege",
+            price=Decimal("10.00"),
+            item_type="delayed",
+            is_active=True,
+        )
+        per_use_store = StoreItem(
+            user_id=teacher_user.id,
+            class_id=admin_class_scope.class_id,
+            join_code=admin_class_scope.join_code,
+            name="Consumable",
+            price=Decimal("2.00"),
+            item_type="delayed",
+            is_active=True,
+        )
+        db.session.add_all([privilege_store, per_use_store])
+        db.session.flush()
 
-    privilege = RentItem(
-        rent_setting_id=settings.id,
-        name="Privilege",
-        rent_item_type="privilege",
-        is_available_in_store=True,
-        store_price=Decimal("10.00"),
-        purchase_duration="per_period",
-        store_item_id=privilege_store.id,
-    )
-    per_use = RentItem(
-        rent_setting_id=settings.id,
-        name="Consumable",
-        rent_item_type="per_use",
-        is_available_in_store=True,
-        store_price=Decimal("2.00"),
-        purchase_duration="per_use",
-        use_limit=1,
-        store_item_id=per_use_store.id,
-    )
-    hall_pass = RentItem(
-        rent_setting_id=settings.id,
-        name="HP",
-        rent_item_type="hall_pass",
-        hall_pass_count=1,
-    )
-    db.session.add_all([privilege, per_use, hall_pass])
-    db.session.flush()
+        privilege = RentItem(
+            rent_setting_id=settings.id,
+            name="Privilege",
+            rent_item_type="privilege",
+            is_available_in_store=True,
+            store_price=Decimal("10.00"),
+            purchase_duration="per_period",
+            store_item_id=privilege_store.id,
+        )
+        per_use = RentItem(
+            rent_setting_id=settings.id,
+            name="Consumable",
+            rent_item_type="per_use",
+            is_available_in_store=True,
+            store_price=Decimal("2.00"),
+            purchase_duration="per_use",
+            use_limit=1,
+            store_item_id=per_use_store.id,
+        )
+        hall_pass = RentItem(
+            rent_setting_id=settings.id,
+            name="HP",
+            rent_item_type="hall_pass",
+            hall_pass_count=1,
+        )
+        db.session.add_all([privilege, per_use, hall_pass])
+        db.session.flush()
 
     from app.routes.admin import _sync_rent_items_to_store
     # block parameter is now canonical class_id (INV-ARC-014: block labels are not authority)
-    _sync_rent_items_to_store(settings, teacher_user.id, admin_class_scope.class_id)
+    with FEATContext("FEAT-TEST-001", idempotency_key=f"rent-item-types:sync-store:{admin_class_scope.class_id}"):
+        _sync_rent_items_to_store(settings, teacher_user.id, admin_class_scope.class_id)
 
     db.session.refresh(privilege_store)
     assert privilege_store is not None
@@ -440,17 +436,18 @@ def test_prevent_deletion_of_linked_items(client, teacher_user, admin_class_scop
     resp = client.get("/admin/store")
     assert resp.status_code == 200
 
-    store_item = StoreItem(
-        user_id=teacher_user.id,
-        class_id=admin_class_scope.class_id,
-        join_code=admin_class_scope.join_code,
-        name="Rent Linked",
-        price=10,
-        is_active=True,
-        is_rent_linked=True,
-    )
-    db.session.add(store_item)
-    db.session.commit()
+    with FEATContext("FEAT-TEST-001", idempotency_key=f"rent-item-types:delete-linked:{admin_class_scope.class_id}"):
+        store_item = StoreItem(
+            user_id=teacher_user.id,
+            class_id=admin_class_scope.class_id,
+            join_code=admin_class_scope.join_code,
+            name="Rent Linked",
+            price=10,
+            is_active=True,
+            is_rent_linked=True,
+        )
+        db.session.add(store_item)
+        db.session.flush()
 
     resp = client.post(
         f"/admin/store/delete/{store_item.id}",
