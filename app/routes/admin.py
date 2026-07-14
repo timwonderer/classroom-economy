@@ -9026,7 +9026,7 @@ def void_payroll_transaction(transaction_id):
             return jsonify({'success': False, 'message': 'Transaction is already voided'}), 400
 
         idempotency_key = (
-            f"feat:led:payroll-void:{selected_scope['class_id']}:{selected_scope['join_code']}:{transaction.id}"
+            f"feat:led:payroll-void:{selected_scope['class_id']}:{transaction.id}"
         )
         db.session.rollback()
         with FEATContext("FEAT-LED-004", idempotency_key=idempotency_key):
@@ -9067,7 +9067,6 @@ def void_transactions_bulk():
             json.dumps(
                 {
                     "class_id": selected_scope["class_id"],
-                    "join_code": selected_scope["join_code"],
                     "transaction_ids": [int(tx_id) for tx_id in transaction_ids],
                 },
                 sort_keys=True,
