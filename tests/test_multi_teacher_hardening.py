@@ -13,7 +13,7 @@ def test_student_count_relies_only_on_link_table(client):
     """Verify seat count per class."""
     t_username = f"harden_prof_{uuid.uuid4().hex[:8]}"
     teacher = seed_canonical_admin(t_username).user
-    class_row = create_class_scope(teacher_user=teacher, join_code=f"HARD{uuid.uuid4().hex[:6].upper()}")
+    class_row = create_class_scope(teacher_user=teacher)
     db.session.flush()
 
     # Initially no students
@@ -33,7 +33,7 @@ def test_delete_teacher_cleans_up_links(client):
     with FEATContext("FEAT-IDEN-001", idempotency_key="multi-teacher:delete-links"):
         t1_username = f"del_target_{uuid.uuid4().hex[:8]}"
         teacher = seed_canonical_admin(t1_username).user
-        class_row = create_class_scope(teacher_user=teacher, join_code=f"DEL{uuid.uuid4().hex[:6].upper()}")
+        class_row = create_class_scope(teacher_user=teacher)
         db.session.flush()
 
         s_firstname = f"Survivor_{uuid.uuid4().hex[:8]}"
@@ -55,7 +55,7 @@ def test_student_teacher_unique_constraint(client):
 
     with FEATContext("FEAT-IDEN-001", idempotency_key="multi-teacher:unique-seat"):
         teacher = seed_canonical_admin(f"unique_t_{uuid.uuid4().hex}").user
-        class_row = create_class_scope(teacher_user=teacher, join_code=f"UNQ{uuid.uuid4().hex[:6].upper()}")
+        class_row = create_class_scope(teacher_user=teacher)
         db.session.flush()
 
         seat = make_student_identity(class_id=class_row.class_id, first_name="Unique", last_name="S")
@@ -73,8 +73,8 @@ def test_remove_student_from_teacher_scope_preserves_shared_student(client):
     with FEATContext("FEAT-IDEN-001", idempotency_key="multi-teacher:shared-student"):
         t1 = seed_canonical_admin(f"t1_{uuid.uuid4().hex[:8]}").user
         t2 = seed_canonical_admin(f"t2_{uuid.uuid4().hex[:8]}").user
-        class_a = create_class_scope(teacher_user=t1, join_code=f"SHA{uuid.uuid4().hex[:6].upper()}")
-        class_b = create_class_scope(teacher_user=t2, join_code=f"SHB{uuid.uuid4().hex[:6].upper()}")
+        class_a = create_class_scope(teacher_user=t1)
+        class_b = create_class_scope(teacher_user=t2)
         db.session.flush()
 
         seat_a = make_student_identity(class_id=class_a.class_id, first_name="Shared", last_name="S")
