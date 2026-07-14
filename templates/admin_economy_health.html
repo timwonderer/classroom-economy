@@ -294,8 +294,6 @@
                 <div class="text-muted small">Expected Hours/Week</div>
                 <form method="post" action="{{ url_for('admin.update_expected_weekly_hours') }}">
                   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                  <input type="hidden" name="cwi_block" value="{{ selected_block }}">
-                  <input type="hidden" name="next" value="{{ url_for('admin.economy_health', block=selected_block) }}">
                   <div class="input-group">
                     <input type="number" step="0.25" min="0.25" max="80" name="expected_weekly_hours" class="form-control" value="{{ expected_hours }}">
                     <button class="btn btn-primary" type="submit">Update</button>

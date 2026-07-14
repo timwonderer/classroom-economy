@@ -585,6 +585,25 @@ def test_payroll_page_ignores_request_block_selector(client):
     assert b"Class context" not in response.data or b"Class context: A" in response.data
 
 
+def test_update_expected_hours_ignores_request_block_selector(client):
+    admin, payroll_settings, rent_settings, economy = _create_admin_with_block('A', join_code='JOINPOLA')
+    _create_admin_with_block('B', join_code='JOINPOLB')
+    _login_admin(client, admin.id, class_id=economy.class_id)
+
+    response = client.post(
+        '/admin/payroll/update-expected-hours?cwi_block=B',
+        data={
+            'expected_weekly_hours': '6.0',
+            'apply_to_all': 'false',
+        },
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 302
+    assert response.headers["Location"].endswith("/admin/payroll")
+    assert "cwi_block" not in response.headers["Location"]
+
+
 def test_run_payroll_applies_scheduled_rebalance(client):
     admin, _, rent_settings, economy = _create_admin_with_block('A', join_code='JOINPOLA')
     _login_admin(client, admin.id, class_id=economy.class_id)
