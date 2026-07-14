@@ -221,7 +221,6 @@ def evaluate_claim_transaction_eligibility(
     claim_type: Optional[str] = None,
     claim_time_limit_days: Optional[int] = None,
     policy_id: Optional[int] = None,
-    enrollment_join_code: Optional[str] = None,
     claimed_tx_ids: Optional[Set[int]] = None,
     reimbursed_tx_ids: Optional[Set[int]] = None,
 ) -> Tuple[bool, Optional[str]]:
