@@ -23,7 +23,7 @@ def teacher_user(client):
 
 def test_block_tap_settings_get_endpoint(client, teacher_user):
     """Test that /api/admin/block-tap-settings GET endpoint works with correct import."""
-    class_row = create_class_scope(teacher_user=teacher_user, join_code="APIFIX-G", section="A")
+    class_row = create_class_scope(teacher_user=teacher_user, section="A")
     login_teacher(client, teacher_user, class_id=class_row.class_id)
 
     response = client.get('/api/admin/block-tap-settings?block=A')
@@ -38,7 +38,7 @@ def test_block_tap_settings_get_endpoint(client, teacher_user):
 
 def test_block_tap_settings_post_endpoint(client, teacher_user):
     """Test that /api/admin/block-tap-settings POST endpoint works with correct import."""
-    class_row = create_class_scope(teacher_user=teacher_user, join_code="APIFIX-P", section="A")
+    class_row = create_class_scope(teacher_user=teacher_user, section="A")
     login_teacher(client, teacher_user, class_id=class_row.class_id)
 
     response = client.post(
@@ -65,7 +65,7 @@ def test_timezone_sync_with_student_session(client):
     with FEATContext("FEAT-IDEN-001", idempotency_key=f"FEAT-IDEN-001:test-timezone-sync:{uuid4().hex}"):
         teacher = make_teacher("timezone_admin")
         db.session.flush()
-        class_row = create_class_scope(teacher_user=teacher, join_code="TZ01")
+        class_row = create_class_scope(teacher_user=teacher)
         db.session.flush()
 
         student_user = User(
