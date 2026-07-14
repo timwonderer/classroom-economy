@@ -79,10 +79,22 @@ _TRANSACTION_AUDIT_FIELDS = [
 ]
 
 
-def create_idempotent_transaction(*, idempotency_key, **transaction_kwargs):
+def create_idempotent_transaction(
+    *,
+    idempotency_key,
+    seat_id,
+    class_id,
+    user_id=None,
+    amount,
+    account_type,
+    type,
+    description,
+    original_transaction_id=None,
+    policy_id=None,
+):
     from app.feats.base import get_active_feat_name, audit_protected
 
-    transaction_type = transaction_kwargs.get("type")
+    transaction_type = type
     if transaction_type not in IDEMPOTENT_TRANSACTION_TYPES:
         raise ValueError(f"Transaction type '{transaction_type}' is not enabled for idempotent creation.")
     if not isinstance(idempotency_key, str) or not idempotency_key.strip():
@@ -96,30 +108,43 @@ def create_idempotent_transaction(*, idempotency_key, **transaction_kwargs):
 
     existing = get_idempotent_transaction(
         idempotency_key,
-        class_id=transaction_kwargs.get("class_id"),
-        seat_id=transaction_kwargs.get("seat_id"),
+        class_id=class_id,
+        seat_id=seat_id,
         type=transaction_type,
         feat_code=feat_code,
     )
     if existing:
         return existing, False
 
-    new_txn = Transaction(idempotency_key=idempotency_key, feat_code=feat_code, **transaction_kwargs)
+    new_txn = Transaction(
+        idempotency_key=idempotency_key,
+        feat_code=feat_code,
+        seat_id=seat_id,
+        class_id=class_id,
+        user_id=user_id,
+        amount=amount,
+        account_type=account_type,
+        type=type,
+        description=description,
+        original_transaction_id=original_transaction_id,
+        policy_id=policy_id,
+    )
     try:
-        with db.session.begin_nested():
-            db.session.add(new_txn)
-            db.session.flush()
+        db.session.add(new_txn)
+        db.session.flush()
         # Emit audit event after successful creation (id is now populated)
         audit_protected("ledger_transaction", new_txn, "INSERT", _TRANSACTION_AUDIT_FIELDS)
         return new_txn, True
     except IntegrityError:
-        existing = get_idempotent_transaction(
-            idempotency_key,
-            class_id=transaction_kwargs.get("class_id"),
-            seat_id=transaction_kwargs.get("seat_id"),
-            type=transaction_type,
-            feat_code=feat_code,
-        )
+        db.session.rollback()
+        with db.session.begin_nested():
+            existing = get_idempotent_transaction(
+                idempotency_key,
+                class_id=class_id,
+                seat_id=seat_id,
+                type=transaction_type,
+                feat_code=feat_code,
+            )
         if existing:
             return existing, False
         raise

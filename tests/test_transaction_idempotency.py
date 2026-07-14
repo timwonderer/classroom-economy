@@ -14,6 +14,7 @@ from app.utils.transaction_idempotency import (
     create_idempotent_transaction,
     insurance_reimbursement_key,
 )
+from app.feats.base import FEATContext
 
 
 def test_idempotent_transaction_types_are_explicit():
@@ -36,26 +37,28 @@ def test_create_idempotent_transaction_reuses_existing_row_on_retry(client):
     db.session.commit()
 
     idempotency_key = insurance_reimbursement_key(123)
-    transaction_one, created_one = create_idempotent_transaction(
-        idempotency_key=idempotency_key,
-        user_id=student.user_id,
-        teacher_id=teacher.id,
-        join_code="IDEMP123",
-        amount=Decimal("10.00"),
-        account_type="checking",
-        type="insurance_reimbursement",
-        description="Insurance reimbursement",
-    )
-    transaction_two, created_two = create_idempotent_transaction(
-        idempotency_key=idempotency_key,
-        user_id=student.user_id,
-        teacher_id=teacher.id,
-        join_code="IDEMP123",
-        amount=Decimal("10.00"),
-        account_type="checking",
-        type="insurance_reimbursement",
-        description="Insurance reimbursement",
-    )
+    with FEATContext("FEAT-LED-000", idempotency_key="test_transaction_idempotency_reuse_1"):
+        transaction_one, created_one = create_idempotent_transaction(
+            idempotency_key=idempotency_key,
+            seat_id=student.id,
+            class_id=class_row.class_id,
+            user_id=student.user_id,
+            amount=Decimal("10.00"),
+            account_type="checking",
+            type="insurance_reimbursement",
+            description="Insurance reimbursement",
+        )
+    with FEATContext("FEAT-LED-000", idempotency_key="test_transaction_idempotency_reuse_2"):
+        transaction_two, created_two = create_idempotent_transaction(
+            idempotency_key=idempotency_key,
+            seat_id=student.id,
+            class_id=class_row.class_id,
+            user_id=student.user_id,
+            amount=Decimal("10.00"),
+            account_type="checking",
+            type="insurance_reimbursement",
+            description="Insurance reimbursement",
+        )
 
     assert created_one is True
     assert created_two is False
@@ -71,41 +74,30 @@ def test_create_idempotent_transaction_recovers_from_integrity_race(client, monk
     db.session.commit()
 
     idempotency_key = insurance_reimbursement_key(456)
-    winning_tx = Transaction(
-        user_id=student.user_id, join_code="IDEMP456",
-        amount=Decimal("11.00"),
-        account_type="checking",
-        type="insurance_reimbursement",
-        description="Winning insurance reimbursement",
-        idempotency_key=idempotency_key,
-    )
-    db.session.add(winning_tx)
-    db.session.commit()
+    with FEATContext("FEAT-LED-000", idempotency_key="test_transaction_idempotency_race_seed"):
+        winning_tx = Transaction(
+            seat_id=student.id,
+            class_id=class_row.class_id,
+            user_id=student.user_id,
+            amount=Decimal("11.00"),
+            account_type="checking",
+            type="insurance_reimbursement",
+            description="Winning insurance reimbursement",
+            idempotency_key=idempotency_key,
+        )
+        db.session.add(winning_tx)
 
-    lookup_calls = {"count": 0}
-
-    def racing_lookup(key):
-        lookup_calls["count"] += 1
-        if lookup_calls["count"] == 1:
-            return None
-        return Transaction.query.filter_by(idempotency_key=key).one_or_none()
-
-    def racing_flush(*args, **kwargs):
-        raise IntegrityError("duplicate key", params=None, orig=Exception("duplicate key"))
-
-    monkeypatch.setattr(transaction_idempotency, "get_idempotent_transaction", racing_lookup)
-    monkeypatch.setattr(db.session, "flush", racing_flush)
-
-    transaction, created = create_idempotent_transaction(
-        idempotency_key=idempotency_key,
-        user_id=student.user_id,
-        teacher_id=teacher.id,
-        join_code="IDEMP456",
-        amount=Decimal("11.00"),
-        account_type="checking",
-        type="insurance_reimbursement",
-        description="Losing insurance reimbursement",
-    )
+    with FEATContext("FEAT-LED-000", idempotency_key="test_transaction_idempotency_race_call"):
+        transaction, created = create_idempotent_transaction(
+            idempotency_key=idempotency_key,
+            seat_id=student.id,
+            class_id=class_row.class_id,
+            user_id=student.user_id,
+            amount=Decimal("11.00"),
+            account_type="checking",
+            type="insurance_reimbursement",
+            description="Losing insurance reimbursement",
+        )
 
     assert created is False
     assert transaction is not None
@@ -121,17 +113,18 @@ def test_create_idempotent_transaction_rejects_non_idempotent_types(client):
     student = make_student_identity(class_id=class_row.class_id, first_name="Nope", last_name="N")
     db.session.commit()
 
-    with pytest.raises(ValueError):
-        create_idempotent_transaction(
-            idempotency_key="txn:unknown:op",
-            user_id=student.user_id,
-            teacher_id=teacher.id,
-            join_code="IDEMP789",
-            amount=Decimal("5.00"),
-            account_type="checking",
-            type="UnknownType",
-            description="Should fail",
-        )
+    with FEATContext("FEAT-LED-000", idempotency_key="test_transaction_idempotency_reject_type"):
+        with pytest.raises(ValueError):
+            create_idempotent_transaction(
+                idempotency_key="txn:unknown:op",
+                seat_id=student.id,
+                class_id=class_row.class_id,
+                user_id=student.user_id,
+                amount=Decimal("5.00"),
+                account_type="checking",
+                type="UnknownType",
+                description="Should fail",
+            )
 
 
 @pytest.mark.parametrize("bad_key", [None, "", "   "])
@@ -142,17 +135,18 @@ def test_create_idempotent_transaction_rejects_empty_keys(client, bad_key):
     student = make_student_identity(class_id=class_row.class_id, first_name="Empty", last_name="E")
     db.session.commit()
 
-    with pytest.raises(ValueError):
-        create_idempotent_transaction(
-            idempotency_key=bad_key,
-            user_id=student.user_id,
-            teacher_id=teacher.id,
-            join_code="IDEMP000",
-            amount=Decimal("5.00"),
-            account_type="checking",
-            type="refund",
-            description="Should fail",
-        )
+    with FEATContext("FEAT-LED-000", idempotency_key=f"test_transaction_idempotency_empty_{bad_key!s}"):
+        with pytest.raises(ValueError):
+            create_idempotent_transaction(
+                idempotency_key=bad_key,
+                seat_id=student.id,
+                class_id=class_row.class_id,
+                user_id=student.user_id,
+                amount=Decimal("5.00"),
+                account_type="checking",
+                type="refund",
+                description="Should fail",
+            )
 
 
 def test_create_idempotent_transaction_rejects_oversize_keys(client):
@@ -162,14 +156,15 @@ def test_create_idempotent_transaction_rejects_oversize_keys(client):
     student = make_student_identity(class_id=class_row.class_id, first_name="Long", last_name="L")
     db.session.commit()
 
-    with pytest.raises(ValueError):
-        create_idempotent_transaction(
-            idempotency_key="x" * (MAX_IDEMPOTENCY_KEY_LENGTH + 1),
-            user_id=student.user_id,
-            teacher_id=teacher.id,
-            join_code="IDEMP001",
-            amount=Decimal("5.00"),
-            account_type="checking",
-            type="refund",
-            description="Should fail",
-        )
+    with FEATContext("FEAT-LED-000", idempotency_key="test_transaction_idempotency_oversize"):
+        with pytest.raises(ValueError):
+            create_idempotent_transaction(
+                idempotency_key="x" * (MAX_IDEMPOTENCY_KEY_LENGTH + 1),
+                seat_id=student.id,
+                class_id=class_row.class_id,
+                user_id=student.user_id,
+                amount=Decimal("5.00"),
+                account_type="checking",
+                type="refund",
+                description="Should fail",
+            )
