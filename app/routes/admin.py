@@ -3277,9 +3277,9 @@ def recover():
 
     Teacher submits one (join_code, student_username) pair per class taught.
     Lookup order (enforced):
-      1. Resolve join_code -> ClassEconomy (establishes user_id and class scope)
+      1. Resolve join_code -> ClassEconomy -> class_id (establishes user_id and class scope)
       2. Find the seat by username_lookup_hash *within* the resolved class roster
-    All pairs must resolve to the same teacher and must cover all active join codes.
+    All pairs must resolve to the same teacher and must cover all active class_ids.
     No DOB is used.
 
     Generic errors only — do not reveal which pair failed.
@@ -3318,26 +3318,37 @@ def recover():
 
         recovered_account_id = first_class.user_id
         active_classes = [c for c in all_classes if c.user_id == recovered_account_id]
-        class_by_join_code = {c.join_code: c for c in active_classes if c.join_code}
+        class_by_id = {c.class_id: c for c in active_classes if c.class_id}
+
+        resolved_pairs = []
+        for recovery_join_code, recovery_username in recovery_pairs:
+            resolved_class = next((c for c in active_classes if c.join_code == recovery_join_code), None)
+            if not resolved_class:
+                current_app.logger.warning(
+                    f"Admin recovery: join_code '{recovery_join_code}' not found in recovered account scope"
+                )
+                flash(_GENERIC_ERROR, "error")
+                return render_template("admin_recover.html", form=form)
+            resolved_pairs.append((resolved_class.class_id, recovery_username))
 
         # ----------------------------------------------------------------
-        # Step 2: Verify submitted join codes exactly match the active class records
+        # Step 2: Verify submitted class_ids exactly match the active class records
         # ----------------------------------------------------------------
-        all_active_join_codes = set(class_by_join_code)
-        submitted_class_join_codes = set(jc for jc, _ in recovery_pairs)
+        all_active_class_ids = set(class_by_id)
+        submitted_class_ids = set(class_id for class_id, _ in resolved_pairs)
 
         # Must exactly match backend list
-        if all_active_join_codes != submitted_class_join_codes:
+        if all_active_class_ids != submitted_class_ids:
             current_app.logger.warning(
-                f"Admin recovery: join_code set mismatch for recovered account {recovered_account_id}"
+                f"Admin recovery: class_id set mismatch for recovered account {recovered_account_id}"
             )
             flash(_GENERIC_ERROR, "error")
             return render_template("admin_recover.html", form=form)
 
         # Reject duplicates (e.g. submitting the same valid class 3 times)
-        if len(submitted_class_join_codes) != len(recovery_pairs):
+        if len(submitted_class_ids) != len(resolved_pairs):
             current_app.logger.warning(
-                f"Admin recovery: duplicate join_codes submitted"
+                f"Admin recovery: duplicate class_ids submitted"
             )
             flash(_GENERIC_ERROR, "error")
             return render_template("admin_recover.html", form=form)
@@ -3345,12 +3356,12 @@ def recover():
         # ----------------------------------------------------------------
         # Step 3: Verify each recovered seat belongs in the correct class scope
         # ----------------------------------------------------------------
-        resolved_seats = {}   # join_code -> seat record
+        resolved_seats = {}   # class_id -> seat record
 
         # Group seat IDs by class for quick lookup
-        seats_by_jc = {}
+        seats_by_class_id = {}
         for c in active_classes:
-            if c.join_code:
+            if c.class_id:
                 jc_seats = (
                     Seat.query
                     .join(User, User.id == Seat.user_id)
@@ -3361,14 +3372,14 @@ def recover():
                     .with_entities(Seat.id, User.id)
                     .all()
                 )
-                seats_by_jc[c.join_code] = jc_seats
+                seats_by_class_id[c.class_id] = jc_seats
 
-        for recovery_join_code, recovery_username in recovery_pairs:
-            # We already know this class is in scope from the set comparison
+        for recovery_class_id, recovery_username in resolved_pairs:
+            # We already know this class is in scope from the set comparison.
             recovery_lookup_hash = hash_username_lookup(recovery_username)
 
             # Get all seat IDs associated with this specific class
-            seats_for_jc = seats_by_jc.get(recovery_join_code, [])
+            seats_for_jc = seats_by_class_id.get(recovery_class_id, [])
             seat_ids_in_class = [seat_id for seat_id, _student_id in seats_for_jc if seat_id]
 
             seat = (
@@ -3388,7 +3399,7 @@ def recover():
                 flash(_GENERIC_ERROR, "error")
                 return render_template("admin_recover.html", form=form)
 
-            resolved_seats[recovery_join_code] = seat
+            resolved_seats[recovery_class_id] = seat
 
         # ----------------------------------------------------------------
         # Step 4: Check for existing active recovery request
