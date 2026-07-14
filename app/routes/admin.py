@@ -8236,29 +8236,18 @@ def payroll_history():
 
     payroll_transactions = query.order_by(desc(Transaction.timestamp)).all()
     current_app.logger.info(f"Payroll transactions found: {len(payroll_transactions)}")
-
-    # Fetch lookup data
-    teacher_class_ids = [
-        class_id for (class_id,) in db.session.query(ClassEconomy.class_id)
-        .filter(ClassEconomy.user_id == user_id).all() if class_id
-    ]
-    seat_lookup = {s.id: s for s in Seat.query.filter(Seat.class_id.in_(teacher_class_ids)).all()}
-    blocks = sorted({s.block for s in seat_lookup.values() if s.block})
-    class_labels_by_block = _get_class_labels_for_blocks(g.canonical_context, blocks)
-    join_codes_by_block = _get_join_codes_by_block(g.canonical_context, blocks)
+    seat_lookup = {s.id: s for s in Seat.query.filter_by(class_id=ctx.class_id).all()}
 
     payroll_records = []
     for tx in payroll_transactions:
         seat = seat_lookup.get(tx.seat_id)
-        student_block = seat.class_economy.section if seat and seat.class_economy else 'Unknown'
         payroll_records.append({
             'id': tx.id,
             'timestamp': tx.timestamp,
-            'block': student_block,
-            'class_label': class_labels_by_block.get(student_block, student_block) if student_block != 'Unknown' else 'Unknown',
+            'class_label': ctx.class_label or ctx.class_id,
+            'class_id': ctx.class_id,
             'actor_public_id': seat.public_id if seat else None,
             'student_name': (seat.identity_profile.full_name if seat and seat.identity_profile else 'Unknown'),
-            'join_code': join_codes_by_block.get(student_block, ''),
             'amount': tx.amount,
             'notes': tx.description,
         })
@@ -8271,13 +8260,8 @@ def payroll_history():
     return render_template(
         'admin_payroll_history.html',
         payroll_history=payroll_records,
-        blocks=blocks,
-        class_labels_by_block=class_labels_by_block,
-        join_codes_by_block=join_codes_by_block,
         current_page="payroll_history",
-        selected_block=block,
-        selected_start=start_date_str,
-        selected_end=end_date_str,
+        selected_class_id=ctx.class_id,
         current_time=current_time
     )
 

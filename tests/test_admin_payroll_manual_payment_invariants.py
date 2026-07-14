@@ -56,6 +56,7 @@ def test_payroll_scope_seat_not_found_raises_invariant(client):
         teacher = seed_canonical_admin("teacher_invalid_seat", "secret").user
         class_scope = create_class_scope(
             teacher_user=teacher,
+            join_code="NOSEAT2",
             display_name="Invalid Seat Class",
         )
         db.session.flush()
