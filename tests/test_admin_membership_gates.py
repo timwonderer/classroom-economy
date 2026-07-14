@@ -7,6 +7,7 @@ from app.extensions import db
 from app.feats.base import FEATContext
 from app.models import (
     ClassEconomy,
+    BankingSettings,
     Issue,
     IssueCategory,
     PayrollSettings,
@@ -530,6 +531,39 @@ def test_store_page_ignores_request_block_selector(client):
 
     response = client.get("/admin/store?block=B")
     assert response.status_code == 200
+
+
+def test_banking_page_ignores_request_block_selector(client):
+    with FEATContext("FEAT-IDEN-001", idempotency_key="admin-membership:banking-page-block"):
+        admin = seed_canonical_admin("banking_page_admin", "secret").user
+        class_row_a = create_class_scope(teacher_user=admin, join_code="BANK001", section="A")
+        class_row_b = create_class_scope(teacher_user=admin, join_code="BANK002", section="B")
+        db.session.add(
+            BankingSettings(
+                class_id=class_row_a.class_id,
+                block="A",
+                savings_apy=4.5,
+                savings_monthly_rate=0.0,
+            )
+        )
+        db.session.add(
+            BankingSettings(
+                class_id=class_row_b.class_id,
+                block="B",
+                savings_apy=7.5,
+                savings_monthly_rate=0.0,
+            )
+        )
+
+    teacher_seat = Seat.query.filter_by(class_id=class_row_a.class_id, role="teacher").first()
+    assert teacher_seat is not None
+    _login_admin(client, admin, class_id=class_row_a.class_id, seat_id=teacher_seat.id)
+
+    response = client.get("/admin/banking?block=B")
+
+    assert response.status_code == 200
+    assert b'name="block"' not in response.data
+    assert b"request.args.get('block')" not in response.data
 
 
 def test_class_scoped_post_rejects_request_class_mismatch(client):

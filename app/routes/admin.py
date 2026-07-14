@@ -10299,7 +10299,6 @@ def banking():
 
     # Get filter and pagination parameters
     student_q = request.args.get('student', '').strip()
-    section_q = request.args.get('block', '')
     account_q = request.args.get('account', '')
     type_q = request.args.get('type', '')
     start_date = request.args.get('start_date')
@@ -10342,8 +10341,6 @@ def banking():
             # If no students match, return no results
             query = query.filter(sa.false())
 
-    if section_q:
-        query = query.join(ClassEconomy, ClassEconomy.class_id == Seat.class_id).filter(ClassEconomy.section == section_q)
     if account_q:
         query = query.filter(Transaction.account_type == account_q)
     if type_q:
