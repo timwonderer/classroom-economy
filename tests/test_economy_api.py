@@ -50,18 +50,15 @@ def admin_with_payroll(client):
         db.session.add(payroll_settings)
         db.session.flush()
 
-    return admin, payroll_settings
+    return admin, payroll_settings, class_scope
 
 
 @pytest.fixture
 def logged_in_admin_client(client, admin_with_payroll):
     """A client with a logged-in admin."""
-    admin, _ = admin_with_payroll
+    admin, _, class_scope = admin_with_payroll
     user = User.query.filter_by(username_lookup_hash=admin.username_lookup_hash).first() or admin
     with client.session_transaction() as sess:
-        class_scope = ClassEconomy.query.filter_by(user_id=admin.id).order_by(ClassEconomy.class_id.asc()).first()
-        if class_scope is None:
-            raise AssertionError("Expected canonical class scope for admin fixture")
         teacher_seat = Seat.query.filter_by(class_id=class_scope.class_id, user_id=admin.id, role="teacher").first()
         if teacher_seat is None:
             raise AssertionError("Expected teacher seat for canonical admin fixture")
@@ -78,7 +75,7 @@ def logged_in_admin_client(client, admin_with_payroll):
 
 def test_validate_endpoint_uses_payroll_settings_hours(logged_in_admin_client, admin_with_payroll):
     """Test that /api/economy/validate reads expected_weekly_hours from payroll_settings."""
-    admin, payroll_settings = admin_with_payroll
+    admin, payroll_settings, _ = admin_with_payroll
     client = logged_in_admin_client
 
     # Test validation endpoint - should use expected_weekly_hours from payroll_settings (8.0)
@@ -114,7 +111,7 @@ def test_validate_endpoint_uses_payroll_settings_hours(logged_in_admin_client, a
 
 def test_validate_endpoint_not_hardcoded_5_hours(logged_in_admin_client, admin_with_payroll):
     """Test that validation doesn't use hardcoded 5.0 hours."""
-    admin, payroll_settings = admin_with_payroll
+    admin, payroll_settings, _ = admin_with_payroll
     client = logged_in_admin_client
 
     response = client.post(
@@ -132,7 +129,7 @@ def test_validate_endpoint_not_hardcoded_5_hours(logged_in_admin_client, admin_w
 
 def test_analyze_endpoint_uses_payroll_settings_hours(logged_in_admin_client, admin_with_payroll):
     """Test that /api/economy/analyze reads expected_weekly_hours from payroll_settings."""
-    admin, payroll_settings = admin_with_payroll
+    admin, payroll_settings, _ = admin_with_payroll
     client = logged_in_admin_client
 
     # Test analyze endpoint - should use expected_weekly_hours from payroll_settings (8.0)
