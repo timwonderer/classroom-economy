@@ -4,34 +4,9 @@
 
 {% block page_header_actions %}
 <div class="d-flex align-items-center gap-2 flex-wrap">
-  {% if available_classes %}
-  <div class="d-flex align-items-center gap-2">
-    <label class="small text-muted mb-0" for="classDropdownButton">Class</label>
-    <div class="dropdown">
-      <button class="btn btn-outline-primary btn-sm dropdown-toggle" type="button" id="classDropdownButton"
-        data-bs-toggle="dropdown" aria-expanded="false">
-        {% set selected_class = namespace(found=False) %}
-        {% for class_option in available_classes %}
-        {% if class_option.class_id and class_option.class_id == session.get('current_class_id') %}
-        {{ class_option.label }} ({{ class_option.block }})
-        {% set selected_class.found = True %}
-        {% endif %}
-        {% endfor %}
-        {% if not selected_class.found %}Select Class{% endif %}
-      </button>
-      <ul class="dropdown-menu" aria-labelledby="classDropdownButton">
-        {% for class_option in available_classes %}
-        <li><a class="dropdown-item analytics-class-switch {% if class_option.class_id and class_option.class_id == session.get('current_class_id') %}active{% endif %}"
-            href="#"
-            data-class-id="{{ class_option.class_id }}"
-            data-next-url="{{ url_for('analytics.dashboard', window=window_type) }}">
-            {{ class_option.label }} ({{ class_option.block }})
-          </a></li>
-        {% endfor %}
-      </ul>
-    </div>
+  <div class="text-muted small">
+    Active class comes from the navigation context switcher.
   </div>
-  {% endif %}
 
   <div class="btn-group" role="group">
     <a href="{{ url_for('analytics.dashboard', window='week') }}"
@@ -50,31 +25,6 @@
   <span class="material-symbols-outlined">quick_reference_all</span> <span>Need Help?</span>
 </button>
 </div>
-
-<script>
-  document.addEventListener('click', async (event) => {
-    const link = event.target.closest('.analytics-class-switch');
-    if (!link) return;
-    event.preventDefault();
-
-    const classId = (link.dataset.classId || '').trim();
-    const nextUrl = link.dataset.nextUrl || "{{ url_for('analytics.dashboard') }}";
-    if (!classId) return;
-
-    try {
-      const response = await window.AppCore.csrfFetch('{{ url_for("admin.set_current_class") }}', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ class_id: classId })
-      });
-      if (response.ok) {
-        window.location.assign(nextUrl);
-      }
-    } catch (_err) {
-      // Keep failure silent; nav class switcher already exposes visible errors globally.
-    }
-  });
-</script>
 {% endblock %}
 
 {% block content %}
