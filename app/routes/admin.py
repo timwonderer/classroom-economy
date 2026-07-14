@@ -6520,33 +6520,32 @@ def rent_settings():
             current_period_end = selected_next_due
             next_due_date = selected_next_due
 
-        # Build class/join_code map for this teacher using ClassEconomy + Seat
+        # Build class/class_id map for this teacher using ClassEconomy + Seat
         ce_rows = ClassEconomy.query.filter_by(user_id=user_id).all()
-        classes_by_join_code = {}
+        classes_by_class_id = {}
         for ce in ce_rows:
             block_name = (ce.section or '').strip().upper()
-            join_code = (ce.join_code or '').strip()
-            if not join_code:
+            class_id = (ce.class_id or '').strip()
+            if not class_id:
                 continue
             active_student_user_ids = {
                 student_id for (student_id,) in db.session.query(Seat.user_id).filter(
-                    Seat.class_id == ce.class_id,
+                    Seat.class_id == class_id,
                     Seat.claimed_at.isnot(None),
                 ).all()
             }
             if not active_student_user_ids:
                 continue
-            classes_by_join_code[join_code] = {
+            classes_by_class_id[class_id] = {
                 'block': block_name,
-                'join_code': join_code,
-                'class_id': ce.class_id,
-                'class_label': ce.display_name or join_code,
+                'join_code': get_display_join_code(class_id) or '',
+                'class_id': class_id,
+                'class_label': ce.display_name or get_display_join_code(class_id) or class_id,
                 'student_ids': active_student_user_ids,
             }
 
-        for class_info in classes_by_join_code.values():
+        for class_info in classes_by_class_id.values():
             block_name = class_info['block']
-            join_code = class_info['join_code']
             class_id = class_info['class_id']
             class_label = class_info['class_label']
             student_ids = list(class_info['student_ids'])
@@ -6621,7 +6620,7 @@ def rent_settings():
                     item = {
                         'student': student,
                         'actor_public_id': (db.session.get(Seat, seat_id).public_id if seat_id else None),
-                        'join_code': join_code,
+                        'join_code': class_info['join_code'],
                         'class_label': class_label,
                         'block': block_name,
                         'months_behind': months_behind,
@@ -6632,8 +6631,7 @@ def rent_settings():
 
         from app.services.obligations_service import get_paid_rent_assessments_for_cycle
         payment_query = []
-        for join_code, info in classes_by_join_code.items():
-            class_id = info.get('class_id')
+        for class_id, info in classes_by_class_id.items():
             if not class_id:
                 continue
             for assessment in get_paid_rent_assessments_for_cycle(
@@ -6643,13 +6641,14 @@ def rent_settings():
             ):
                 if assessment.seat and assessment.seat.user_id in (info.get('student_ids') or set()):
                     payment_query.append(assessment)
-        class_label_by_join = {
-            info['join_code']: info['class_label']
-            for info in classes_by_join_code.values()
+        class_label_by_class_id = {
+            class_id: info['class_label']
+            for class_id, info in classes_by_class_id.items()
         }
         for payment in payment_query:
             _payment_class = ClassEconomy.query.filter_by(class_id=payment.seat.class_id).first() if payment.seat and payment.seat.class_id else None
-            payment_join = (_payment_class.join_code if _payment_class else '') or ''
+            payment_class_id = _payment_class.class_id if _payment_class else ''
+            payment_join = get_display_join_code(payment_class_id) if payment_class_id else ''
             payment_join = payment_join.strip()
             payment_block = payment.seat.class_economy.section if payment.seat and payment.seat.class_economy else ''
             coverage_label = "Unknown"
@@ -6661,7 +6660,7 @@ def rent_settings():
                 'student': payment.seat.user if payment.seat and payment.seat.user else None,
                 'actor_public_id': payment.seat.public_id if payment.seat else None,
                 'join_code': payment_join,
-                'class_label': class_label_by_join.get(payment_join, payment.period),
+                'class_label': class_label_by_class_id.get(payment_class_id, payment.period),
                 'block': payment_block,
                 'coverage_label': coverage_label,
                 'amount_paid': payment.satisfaction.amount_paid if payment.satisfaction else Decimal('0.00'),
