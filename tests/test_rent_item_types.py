@@ -2,6 +2,7 @@
 from tests.helpers.v2_fixtures import make_teacher, seed_class_feature
 from tests.helpers.class_scope import create_class_scope, make_student_identity
 from tests.helpers.admin_context import login_teacher
+from app.feats.base import FEATContext
 import pytest
 import re
 from decimal import Decimal
@@ -183,52 +184,52 @@ def test_admin_configure_rent_item_types(client, teacher_user, admin_class_scope
     """Test that admin can configure different rent item types."""
     login_teacher(client, teacher_user, class_id=admin_class_scope.class_id)
 
-    settings = RentSettings(class_id=admin_class_scope.class_id)
-    db.session.add(settings)
-    db.session.commit()
+    with FEATContext("FEAT-TEST-001", idempotency_key=f"rent-item-types:admin-configure:{admin_class_scope.class_id}"):
+        settings = RentSettings(class_id=admin_class_scope.class_id)
+        db.session.add(settings)
+        db.session.flush()
 
-    data = {
-        "settings_block": "A",
-        "is_enabled": "on",
-        "rent_amount": "50.00",
-        "frequency_type": "monthly",
-        "due_day_of_month": "1",
-        "grace_period_days": "3",
-        "late_penalty_amount": "10.00",
-        # Item 0: Privilege
-        "rent_item_name_0": "Desk",
-        "rent_item_type_0": "privilege",
-        "rent_item_store_available_0": "on",
-        "rent_item_store_price_0": "100.00",
-        "rent_item_purchase_duration_0": "per_period",
-        # Item 1: Per-Use
-        "rent_item_name_1": "Pencil",
-        "rent_item_type_1": "per_use",
-        "rent_item_store_available_1": "on",
-        "rent_item_store_price_1": "5.00",
-        "rent_item_purchase_duration_1": "per_use",
-        "rent_item_use_limit_1": "5",
-        # Item 2: Hall Pass
-        "rent_item_name_2": "Bonus Pass",
-        "rent_item_type_2": "hall_pass",
-        "rent_item_hall_pass_count_2": "2",
-    }
+        data = {
+            "is_enabled": "on",
+            "rent_amount": "50.00",
+            "frequency_type": "monthly",
+            "due_day_of_month": "1",
+            "grace_period_days": "3",
+            "late_penalty_amount": "10.00",
+            # Item 0: Privilege
+            "rent_item_name_0": "Desk",
+            "rent_item_type_0": "privilege",
+            "rent_item_store_available_0": "on",
+            "rent_item_store_price_0": "100.00",
+            "rent_item_purchase_duration_0": "per_period",
+            # Item 1: Per-Use
+            "rent_item_name_1": "Pencil",
+            "rent_item_type_1": "per_use",
+            "rent_item_store_available_1": "on",
+            "rent_item_store_price_1": "5.00",
+            "rent_item_purchase_duration_1": "per_use",
+            "rent_item_use_limit_1": "5",
+            # Item 2: Hall Pass
+            "rent_item_name_2": "Bonus Pass",
+            "rent_item_type_2": "hall_pass",
+            "rent_item_hall_pass_count_2": "2",
+        }
 
-    resp = client.post("/admin/rent-settings", data=data, follow_redirects=True)
-    assert resp.status_code == 200
-    assert b"Rent settings updated successfully" in resp.data
+        resp = client.post("/admin/rent-settings", data=data, follow_redirects=True)
+        assert resp.status_code == 200
+        assert b"Rent settings updated successfully" in resp.data
 
-    items = (
-        RentItem.query.filter_by(rent_setting_id=settings.id)
-        .order_by(RentItem.order_index)
-        .all()
-    )
-    assert len(items) == 3
+        items = (
+            RentItem.query.filter_by(rent_setting_id=settings.id)
+            .order_by(RentItem.order_index)
+            .all()
+        )
+        assert len(items) == 3
 
-    assert items[0].name == "Desk"
-    assert items[0].rent_item_type == "privilege"
-    assert items[0].store_price == Decimal("100.00")
-    assert items[0].store_item_id is not None
+        assert items[0].name == "Desk"
+        assert items[0].rent_item_type == "privilege"
+        assert items[0].store_price == Decimal("100.00")
+        assert items[0].store_item_id is not None
 
     assert items[1].name == "Pencil"
     assert items[1].rent_item_type == "per_use"
@@ -296,7 +297,7 @@ def test_store_sync_logic(client, teacher_user, admin_class_scope):
         hall_pass_count=1,
     )
     db.session.add_all([privilege, per_use, hall_pass])
-    db.session.commit()
+    db.session.flush()
 
     from app.routes.admin import _sync_rent_items_to_store
     # block parameter is now canonical class_id (INV-ARC-014: block labels are not authority)
@@ -360,7 +361,7 @@ def test_student_purchase_per_use_item(client, teacher_user, class_scope, studen
             account_type="checking",
         )
     )
-    db.session.commit()
+    db.session.flush()
 
     # Set student password
     from werkzeug.security import generate_password_hash
@@ -723,141 +724,141 @@ def test_mid_period_lock_blocks_semantic_changes(client, teacher_user, admin_cla
     """Test that semantic fields are locked when students have paid rent for current period."""
     login_teacher(client, teacher_user, class_id=admin_class_scope.class_id)
 
-    settings = RentSettings(
-        class_id=admin_class_scope.class_id,
-        rent_amount=Decimal("50.00"),
-        frequency_type="monthly",
-        due_day_of_month=1,
-        first_rent_due_date=datetime(2026, 2, 1, tzinfo=timezone.utc),
-    )
-    db.session.add(settings)
-    db.session.flush()
+    with FEATContext("FEAT-TEST-001", idempotency_key=f"rent-item-types:mid-period-lock:{admin_class_scope.class_id}"):
+        settings = RentSettings(
+            class_id=admin_class_scope.class_id,
+            rent_amount=Decimal("50.00"),
+            frequency_type="monthly",
+            due_day_of_month=1,
+            first_rent_due_date=datetime(2026, 2, 1, tzinfo=timezone.utc),
+        )
+        db.session.add(settings)
+        db.session.flush()
 
-    rent_item = RentItem(
-        rent_setting_id=settings.id,
-        name="Desk",
-        rent_item_type="privilege",
-        order_index=0,
-        is_available_in_store=True,
-        store_price=Decimal("100.00"),
-        purchase_duration="per_period",
-    )
-    db.session.add(rent_item)
-    db.session.flush()
+        rent_item = RentItem(
+            rent_setting_id=settings.id,
+            name="Desk",
+            rent_item_type="privilege",
+            order_index=0,
+            is_available_in_store=True,
+            store_price=Decimal("100.00"),
+            purchase_duration="per_period",
+        )
+        db.session.add(rent_item)
+        db.session.flush()
 
-    # Create a student who has paid rent for the current coverage period
-    payer_seat = make_student_identity(
-        class_id=admin_class_scope.class_id,
-        first_name="Payer",
-        last_name="P",
-    )
-    db.session.flush()
+        # Create a student who has paid rent for the current coverage period
+        payer_seat = make_student_identity(
+            class_id=admin_class_scope.class_id,
+            first_name="Payer",
+            last_name="P",
+        )
+        db.session.flush()
 
-    now = datetime.now(timezone.utc)
-    _add_rent_payment(payer_seat, admin_class_scope.class_id, amount="50.00", period="A", now=now)
-    db.session.commit()
+        now = datetime.now(timezone.utc)
+        _add_rent_payment(payer_seat, admin_class_scope.class_id, amount="50.00", period="A", now=now)
+        db.session.flush()
 
-    data = {
-        "settings_block": "A",
-        "is_enabled": "on",
-        "rent_amount": "50.00",
-        "frequency_type": "monthly",
-        "due_day_of_month": "1",
-        "rent_item_name_0": "Desk",
-        "rent_item_id_0": str(rent_item.id),
-        "rent_item_type_0": "per_use",  # Changed from privilege
-        "rent_item_store_available_0": "on",
-        "rent_item_store_price_0": "100.00",
-        "rent_item_purchase_duration_0": "per_use",
-        "rent_item_use_limit_0": "5",
-    }
+        data = {
+            "is_enabled": "on",
+            "rent_amount": "50.00",
+            "frequency_type": "monthly",
+            "due_day_of_month": "1",
+            "rent_item_name_0": "Desk",
+            "rent_item_id_0": str(rent_item.id),
+            "rent_item_type_0": "per_use",  # Changed from privilege
+            "rent_item_store_available_0": "on",
+            "rent_item_store_price_0": "100.00",
+            "rent_item_purchase_duration_0": "per_use",
+            "rent_item_use_limit_0": "5",
+        }
 
-    resp = client.post("/admin/rent-settings", data=data, follow_redirects=True)
-    assert resp.status_code == 200
+        resp = client.post("/admin/rent-settings", data=data, follow_redirects=True)
+        assert resp.status_code == 200
 
-    db.session.refresh(rent_item)
-    assert rent_item.rent_item_type == "privilege"
-    assert rent_item.use_limit is None
-    assert rent_item.name == "Desk"
+        db.session.refresh(rent_item)
+        assert rent_item.rent_item_type == "privilege"
+        assert rent_item.use_limit is None
+        assert rent_item.name == "Desk"
 
 
 def test_mid_period_lock_allows_new_items(client, teacher_user, admin_class_scope):
     """Test that new items can be added even when mid-period lock is active."""
     login_teacher(client, teacher_user, class_id=admin_class_scope.class_id)
 
-    settings = RentSettings(
-        class_id=admin_class_scope.class_id,
-        rent_amount=Decimal("50.00"),
-        frequency_type="monthly",
-        due_day_of_month=1,
-        first_rent_due_date=datetime(2026, 2, 1, tzinfo=timezone.utc),
-    )
-    db.session.add(settings)
-    db.session.flush()
+    with FEATContext("FEAT-TEST-001", idempotency_key=f"rent-item-types:mid-period-new:{admin_class_scope.class_id}"):
+        settings = RentSettings(
+            class_id=admin_class_scope.class_id,
+            rent_amount=Decimal("50.00"),
+            frequency_type="monthly",
+            due_day_of_month=1,
+            first_rent_due_date=datetime(2026, 2, 1, tzinfo=timezone.utc),
+        )
+        db.session.add(settings)
+        db.session.flush()
 
-    payer_seat = make_student_identity(
-        class_id=admin_class_scope.class_id,
-        first_name="Payer",
-        last_name="P",
-    )
-    db.session.flush()
+        payer_seat = make_student_identity(
+            class_id=admin_class_scope.class_id,
+            first_name="Payer",
+            last_name="P",
+        )
+        db.session.flush()
 
-    now = datetime.now(timezone.utc)
-    _add_rent_payment(payer_seat, admin_class_scope.class_id, amount="50.00", period="A", now=now)
-    db.session.commit()
+        now = datetime.now(timezone.utc)
+        _add_rent_payment(payer_seat, admin_class_scope.class_id, amount="50.00", period="A", now=now)
+        db.session.flush()
 
-    data = {
-        "settings_block": "A",
-        "is_enabled": "on",
-        "rent_amount": "50.00",
-        "frequency_type": "monthly",
-        "due_day_of_month": "1",
-        "rent_item_name_0": "New Item",
-        "rent_item_type_0": "per_use",
-        "rent_item_store_available_0": "on",
-        "rent_item_store_price_0": "10.00",
-        "rent_item_purchase_duration_0": "per_use",
-        "rent_item_use_limit_0": "3",
-    }
+        data = {
+            "is_enabled": "on",
+            "rent_amount": "50.00",
+            "frequency_type": "monthly",
+            "due_day_of_month": "1",
+            "rent_item_name_0": "New Item",
+            "rent_item_type_0": "per_use",
+            "rent_item_store_available_0": "on",
+            "rent_item_store_price_0": "10.00",
+            "rent_item_purchase_duration_0": "per_use",
+            "rent_item_use_limit_0": "3",
+        }
 
-    resp = client.post("/admin/rent-settings", data=data, follow_redirects=True)
-    assert resp.status_code == 200
+        resp = client.post("/admin/rent-settings", data=data, follow_redirects=True)
+        assert resp.status_code == 200
 
-    new_item = RentItem.query.filter_by(
-        rent_setting_id=settings.id, name="New Item"
-    ).first()
-    assert new_item is not None
-    assert new_item.rent_item_type == "per_use"
-    assert new_item.use_limit == 3
+        new_item = RentItem.query.filter_by(
+            rent_setting_id=settings.id, name="New Item"
+        ).first()
+        assert new_item is not None
+        assert new_item.rent_item_type == "per_use"
+        assert new_item.use_limit == 3
 
 
 def test_rent_settings_rejects_privilege_with_per_use_duration(client, teacher_user, admin_class_scope):
     """Privilege items must not be saved with per-use duration; use per_use instead."""
     login_teacher(client, teacher_user, class_id=admin_class_scope.class_id)
 
-    settings = RentSettings(class_id=admin_class_scope.class_id)
-    db.session.add(settings)
-    db.session.commit()
+    with FEATContext("FEAT-TEST-001", idempotency_key=f"rent-item-types:reject-privilege:{admin_class_scope.class_id}"):
+        settings = RentSettings(class_id=admin_class_scope.class_id)
+        db.session.add(settings)
+        db.session.flush()
 
-    data = {
-        "settings_block": "A",
-        "is_enabled": "on",
-        "rent_amount": "50.00",
-        "frequency_type": "monthly",
-        "due_day_of_month": "1",
-        "rent_item_name_0": "Desk",
-        "rent_item_type_0": "privilege",
-        "rent_item_store_available_0": "on",
-        "rent_item_store_price_0": "100.00",
-        "rent_item_purchase_duration_0": "per_use",
-    }
+        data = {
+            "is_enabled": "on",
+            "rent_amount": "50.00",
+            "frequency_type": "monthly",
+            "due_day_of_month": "1",
+            "rent_item_name_0": "Desk",
+            "rent_item_type_0": "privilege",
+            "rent_item_store_available_0": "on",
+            "rent_item_store_price_0": "100.00",
+            "rent_item_purchase_duration_0": "per_use",
+        }
 
-    resp = client.post("/admin/rent-settings", data=data, follow_redirects=True)
-    assert resp.status_code == 200
-    assert b"cannot be saved as privilege with per-use duration" in resp.data
+        resp = client.post("/admin/rent-settings", data=data, follow_redirects=True)
+        assert resp.status_code == 200
+        assert b"cannot be saved as privilege with per-use duration" in resp.data
 
-    item = RentItem.query.filter_by(rent_setting_id=settings.id, name="Desk").first()
-    assert item is None
+        item = RentItem.query.filter_by(rent_setting_id=settings.id, name="Desk").first()
+        assert item is None
 
 
 def test_per_use_free_purchase_from_rent(client, teacher_user, class_scope, student_seat):
