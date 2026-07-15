@@ -9,6 +9,7 @@ and this project follows semantic versioning principles.
 ## [Unreleased]
 
 ### Changed
+- Full v2 test stabilization checkpoint landed: the FEAT transaction teardown leak was fixed in `app/feats/base.py`, legacy v1-style rent/time/payroll tests were rewritten to current canonical helpers where needed, and the latest full suite now passes as `744 passed, 19 skipped, 1 warning`.
 - Shared canonical fixture cleanup moved the collective-goal and economy-policy test slices onto a single explicit class scope per scenario, eliminating teacher-ownership lookup from the test setup path and keeping student/item seeding anchored to `class_id`.
 - FEAT-by-default repair work now lands the remaining canonical test slices for API fixes and dashboard rendering: `/api/set-timezone` now returns a valid unauthorized response instead of a bare falsey value, dashboard rendering tests use canonical FEAT-backed setup, and the student dashboard no longer crashes when canonical class metadata omits legacy block state.
 - Canonical auth-session tests now seed student identity via unclaimed-seat then claim-binding semantics, and use canonical class scope creation instead of non-authoritative convenience seed helpers in `tests/test_canonical_auth_session.py`.

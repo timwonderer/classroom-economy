@@ -266,9 +266,9 @@ def _get_canonical_student_from_context() -> Seat | None:
 
 
 
-def _get_total_earnings_for_seat(seat_id: int | None, *, class_id: str | None = None) -> float:
+def _get_total_earnings_for_seat(seat_id: int | None, *, class_id: str | None = None) -> Decimal:
     if not seat_id:
-        return 0.0
+        return Decimal('0.00')
     query = Transaction.query.filter(
         Transaction.seat_id == seat_id,
         Transaction.amount > 0,
@@ -278,7 +278,7 @@ def _get_total_earnings_for_seat(seat_id: int | None, *, class_id: str | None = 
     if class_id:
         query = query.filter(Transaction.class_id == class_id)
     total = query.with_entities(func.sum(Transaction.amount)).scalar()
-    return float(round(_quantize_currency(total), 2)) if total else 0.0
+    return _quantize_currency(total) if total else Decimal('0.00')
 
 
 

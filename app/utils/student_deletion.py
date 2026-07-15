@@ -184,7 +184,7 @@ def remove_student_from_teacher_scope(seat_id, user_id):
 
     student_user_id = seat.user_id
     store_purchase_ids, issue_ids, insurance_ids, tx_ids, seat_ids = _collect_related_ids(student_user_id)
-    teacher_class_ids = db.session.query(ClassEconomy.class_id).filter_by(user_id=user_id).subquery()
+    teacher_class_ids = sa.select(ClassEconomy.class_id).where(ClassEconomy.user_id == user_id)
     Seat.query.filter(
         Seat.id == seat_id,
         Seat.class_id.in_(teacher_class_ids),

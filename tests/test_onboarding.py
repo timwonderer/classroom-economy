@@ -6,23 +6,23 @@ import json
 import secrets
 from datetime import datetime, timezone
 from app import db
+from app.feats.base import FEATContext
 from app.models import TeacherOnboarding
 
 def login_admin(client, username='admin'):
     from app.utils.auth_username import hash_username_lookup
-    from app.models import User, UserRole
+    from app.models import User
+    from app.feats.base import FEATContext
     admin = User.query.filter_by(username_lookup_hash=hash_username_lookup(username)).first()
     if not admin:
         admin = seed_canonical_admin(username).user
-        db.session.commit()
-
     nonce = secrets.token_urlsafe(32)
-    admin.current_session_nonce = nonce
-    db.session.commit()
+    with FEATContext("FEAT-IDEN-001", idempotency_key=f"onboarding:login_admin:{admin.id}:{nonce}"):
+        admin.current_session_nonce = nonce
+        db.session.flush()
 
     # Simulate login by setting session
     with client.session_transaction() as sess:
-        sess['user_id'] = admin.id
         sess['user_id'] = admin.id
         sess['current_session_nonce'] = nonce
         sess['last_activity'] = datetime.now(timezone.utc).isoformat()
@@ -31,6 +31,14 @@ def login_admin(client, username='admin'):
     return admin
 
 
+def create_onboarding_record(user_id, **overrides):
+    onboarding = TeacherOnboarding(user_id=user_id)
+    for key, value in overrides.items():
+        setattr(onboarding, key, value)
+    with FEATContext("FEAT-IDEN-001", idempotency_key=f"onboarding:create:{user_id}:{secrets.token_urlsafe(8)}"):
+        db.session.add(onboarding)
+        db.session.flush()
+    return onboarding
 
 # ==================== WIDGET FUNCTIONALITY TESTS ====================
 
@@ -39,25 +47,25 @@ def test_widget_task_completed_methods(client):
     admin = login_admin(client)
     
     # Create onboarding record
-    onboarding = TeacherOnboarding(user_id=admin.id)
-    db.session.add(onboarding)
-    db.session.commit()
+    onboarding = create_onboarding_record(admin.id)
     
     # Initially, no tasks should be completed
     assert onboarding.is_widget_task_completed('roster') is False
     assert onboarding.is_widget_task_completed('payroll') is False
     
     # Mark a task as completed
-    onboarding.mark_widget_task_completed('roster')
-    db.session.commit()
+    with FEATContext("FEAT-IDEN-001", idempotency_key=f"onboarding:mark-roster:{admin.id}"):
+        onboarding.mark_widget_task_completed('roster')
+        db.session.flush()
     
     # Check it's marked as completed
     assert onboarding.is_widget_task_completed('roster') is True
     assert onboarding.is_widget_task_completed('payroll') is False
     
     # Mark another task
-    onboarding.mark_widget_task_completed('payroll')
-    db.session.commit()
+    with FEATContext("FEAT-IDEN-001", idempotency_key=f"onboarding:mark-payroll:{admin.id}"):
+        onboarding.mark_widget_task_completed('payroll')
+        db.session.flush()
     
     # Both should be completed now
     assert onboarding.is_widget_task_completed('roster') is True
@@ -72,18 +80,16 @@ def test_widget_task_completed_with_null_dict(client):
     admin = login_admin(client)
     
     # Create onboarding record with null widget_tasks_completed
-    onboarding = TeacherOnboarding(user_id=admin.id)
-    onboarding.widget_tasks_completed = None
-    db.session.add(onboarding)
-    db.session.commit()
+    onboarding = create_onboarding_record(admin.id, widget_tasks_completed=None)
     
     # Should return False for any task when dict is None
     assert onboarding.is_widget_task_completed('roster') is False
     assert onboarding.is_widget_task_completed('payroll') is False
     
     # Marking a task should initialize the dict
-    onboarding.mark_widget_task_completed('roster')
-    db.session.commit()
+    with FEATContext("FEAT-IDEN-001", idempotency_key=f"onboarding:mark-roster-null:{admin.id}"):
+        onboarding.mark_widget_task_completed('roster')
+        db.session.flush()
     
     # Now it should be tracked
     assert onboarding.widget_tasks_completed is not None
@@ -95,17 +101,16 @@ def test_dismiss_widget_method(client):
     admin = login_admin(client)
     
     # Create onboarding record
-    onboarding = TeacherOnboarding(user_id=admin.id)
-    db.session.add(onboarding)
-    db.session.commit()
+    onboarding = create_onboarding_record(admin.id)
     
     # Initially not dismissed
     assert onboarding.widget_dismissed is False
     assert onboarding.widget_dismissed_at is None
     
     # Dismiss the widget
-    onboarding.dismiss_widget()
-    db.session.commit()
+    with FEATContext("FEAT-IDEN-001", idempotency_key=f"onboarding:dismiss-widget:{admin.id}"):
+        onboarding.dismiss_widget()
+        db.session.flush()
     
     # Should be marked as dismissed
     assert onboarding.widget_dismissed is True
@@ -196,10 +201,10 @@ def test_onboarding_status_endpoint_dismissed(client):
     admin = login_admin(client)
     
     # Create and dismiss widget
-    onboarding = TeacherOnboarding(user_id=admin.id)
-    onboarding.dismiss_widget()
-    db.session.add(onboarding)
-    db.session.commit()
+    onboarding = create_onboarding_record(admin.id)
+    with FEATContext("FEAT-IDEN-001", idempotency_key=f"onboarding:dismiss-status:{admin.id}"):
+        onboarding.dismiss_widget()
+        db.session.flush()
     
     # Check status
     response = client.get('/admin/onboarding/status')

@@ -183,6 +183,10 @@ class FEATContext:
     def __enter__(self):
         if not hasattr(_feat_context, "stack"):
             _feat_context.stack = []
+        elif getattr(_feat_context, "active_feat", None) is None and _feat_context.stack:
+            # A previous FEAT may have leaked stack state if teardown was interrupted.
+            # Clear it when starting a fresh top-level FEAT so the new context owns a clean boundary.
+            _feat_context.stack = []
         
         # Track nested FEATs
         active = getattr(_feat_context, "active_feat", None)
@@ -230,29 +234,36 @@ class FEATContext:
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         # Commit on success / rollback on failure for the whole FEAT transaction.
-        if self._owns_transaction and self._transaction_ctx is not None:
-            # Allow the single orchestrator commit path triggered by session.begin().__exit__.
-            db.session.info["feat_orchestrator_commit"] = True
-            try:
+        txn_error = None
+        try:
+            if self._owns_transaction and self._transaction_ctx is not None:
+                # Allow the single orchestrator commit path triggered by session.begin().__exit__.
+                db.session.info["feat_orchestrator_commit"] = True
                 self._transaction_ctx.__exit__(exc_type, exc_val, exc_tb)
-            finally:
-                db.session.info["feat_orchestrator_commit"] = False
+        except Exception as exc:  # noqa: BLE001
+            txn_error = exc
+        finally:
+            if hasattr(_feat_context, "stack") and _feat_context.stack:
+                prev = _feat_context.stack.pop()
+                _feat_context.active_feat = prev["name"]
+                _feat_context.correlation_id = prev["correlation_id"]
+                _feat_context.commit_count = prev["commit_count"]
+                _feat_context.flush_count = prev["flush_count"]
+                db.session.info["active_correlation_id"] = prev["correlation_id"]
+            else:
+                _feat_context.active_feat = None
+                _feat_context.correlation_id = None
+                _feat_context.commit_count = 0
+                _feat_context.flush_count = 0
+                db.session.info["feat_context_active"] = False
+                db.session.info["active_correlation_id"] = None
+                if hasattr(_feat_context, "stack"):
+                    _feat_context.stack = []
 
-        if hasattr(_feat_context, "stack") and _feat_context.stack:
-            prev = _feat_context.stack.pop()
-            _feat_context.active_feat = prev["name"]
-            _feat_context.correlation_id = prev["correlation_id"]
-            _feat_context.commit_count = prev["commit_count"]
-            _feat_context.flush_count = prev["flush_count"]
-            db.session.info["active_correlation_id"] = prev["correlation_id"]
-        else:
-            _feat_context.active_feat = None
-            _feat_context.correlation_id = None
-            _feat_context.commit_count = 0
-            _feat_context.flush_count = 0
-            db.session.info["feat_context_active"] = False
-            db.session.info["active_correlation_id"] = None
             db.session.info["feat_orchestrator_commit"] = False
+
+        if txn_error is not None:
+            raise txn_error
 
 def increment_commit_count():
     """Track number of commits in current FEAT and tripwire multiple commits."""

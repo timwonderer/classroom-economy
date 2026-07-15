@@ -8,111 +8,110 @@ HELP_ARTICLES = {
         "how_to": [
             {
                 "id": "getting_started",
-                "title": "Getting Started",
+                "title": "Start Here",
                 "content": """
-                    <p>Welcome to Classroom Token Hub! Follow these steps to set up your classroom economy:</p>
+                    <p>Use these first steps to get your classroom ready:</p>
                     <ol>
-                        <li><strong>Complete Onboarding:</strong> If you haven't already, the setup wizard will guide you through choosing features (Payroll, Store, etc.) and defining your class periods.</li>
-                        <li><strong>Add Students:</strong> Go to the <strong>Students</strong> tab. You can:
+                        <li><strong>Finish setup:</strong> Open your classroom dashboard and turn on the features you want to use.</li>
+                        <li><strong>Check your class scope:</strong> Make sure you are working in the correct class before making changes.</li>
+                        <li><strong>Add students:</strong> Go to <strong>Students</strong>. You can:
                             <ul>
-                                <li><strong>Upload Roster:</strong> Use the CSV template to upload your entire class list at once.</li>
-                                <li><strong>Add Manually:</strong> Add students one by one if you have a small class or a new student joins.</li>
+                                <li><strong>Upload a roster:</strong> Use the roster upload option for a full class list.</li>
+                                <li><strong>Add one student:</strong> Use manual add when a new student joins later.</li>
                             </ul>
                         </li>
-                        <li><strong>Distribute Join Codes:</strong> Each period has a unique <strong>Join Code</strong> (visible on the Students tab). Share this with your students so they can claim their accounts.</li>
+                        <li><strong>Share the class join code:</strong> Students use it once to enter the class and claim their seat.</li>
                     </ol>
                     <div class="alert alert-info">
-                        <strong>Tip:</strong> Students must "claim" their accounts using the Join Code and their Name/DOB before they can log in.
+                        <strong>Tip:</strong> Use the class you already selected for day-to-day work. If the wrong class is open, switch classes first.
                     </div>
                 """
             },
             {
                 "id": "managing_students",
-                "title": "Managing Students",
+                "title": "Manage Students",
                 "content": """
-                    <p>Manage your classroom roster efficiently with these tools:</p>
+                    <p>Use the Students area to keep your roster clean and current:</p>
                     <ul>
-                        <li><strong>Add Students:</strong> Go to the <strong>Students</strong> tab and click "Add Student". Enter the student's name, date of birth, and assign them to a class period. You can add students individually or use the "Bulk Add" option to paste a list.</li>
-                        <li><strong>Edit Students:</strong> In the <strong>Students</strong> tab, find the student you wish to edit and click the "Edit" (pencil) icon. Update their information as needed and save your changes.</li>
-                        <li><strong>Delete Students:</strong> To remove a student, click the "Delete" (trash) icon next to their name. <span class="text-danger">Warning:</span> Deleting a student will permanently remove their account and all associated data.</li>
-                        <li><strong>Reset Join Codes:</strong> If a student is having trouble joining, you can reset their join code from the student's options menu.</li>
+                        <li><strong>Add a student:</strong> Add a new student if they join your class later.</li>
+                        <li><strong>Review a seat:</strong> Check whether a student has claimed their seat and is in the correct class.</li>
+                        <li><strong>Remove a student:</strong> Deleting a seat removes the class link completely. Use it only when the student should no longer be part of that class.</li>
+                        <li><strong>Fix a mismatch:</strong> If a student is in the wrong class, correct the class assignment instead of creating duplicate records.</li>
                     </ul>
                     <div class="alert alert-info">
-                        <strong>Tip:</strong> Encourage students to claim their accounts promptly using the join code and their personal details.
+                        <strong>Tip:</strong> If something looks wrong, check the student in the current class first. Most problems are caused by being in the wrong class view.
                     </div>
                 """
             },
             {
                 "id": "running_payroll",
-                "title": "Running Payroll",
+                "title": "Run Payroll",
                 "content": """
-                    <p>Payroll pays students based on their attendance. Here is how to manage it:</p>
+                    <p>Payroll pays students based on the class rules you set.</p>
                     <ul>
-                        <li><strong>Run Payroll:</strong> Go to the <strong>Payroll</strong> tab and click "Run Payroll Now". The system calculates earnings based on attendance logs since the last run.</li>
-                        <li><strong>Settings:</strong> Click "Manage Payroll Settings" to configure:
+                        <li><strong>Run payroll:</strong> Open <strong>Payroll</strong> and start the run for the current class.</li>
+                        <li><strong>Check settings:</strong> Review:
                             <ul>
-                                <li><strong>Pay Rate:</strong> How much students earn per hour (or period).</li>
-                                <li><strong>Frequency:</strong> How often payroll should run (e.g., Weekly, Bi-Weekly).</li>
+                                <li><strong>Pay rate:</strong> how much students earn.</li>
+                                <li><strong>Frequency:</strong> when payroll should run.</li>
+                                <li><strong>Rules:</strong> any reward or fine settings that affect the result.</li>
                             </ul>
                         </li>
-                        <li><strong>Bonuses & Fines:</strong> Use the "Rewards" and "Fines" sections to issue one-time payments or deductions to specific students or the whole class.</li>
+                        <li><strong>Review the result:</strong> Look for missing attendance or a class scope mismatch before rerunning payroll.</li>
                     </ul>
                 """
             },
             {
                 "id": "store_management",
-                "title": "Classroom Store & Inventory",
+                "title": "Manage Store Items",
                 "content": """
-                    <p>The Store allows students to spend their hard-earned money. Manage it from the <strong>Store</strong> tab:</p>
+                    <p>The store is where students spend class money.</p>
                     <ul>
-                        <li><strong>Add Items:</strong> Click "Add Item" to create rewards. You can set:
+                        <li><strong>Add items:</strong> Create a reward or item from the <strong>Store</strong> page.</li>
+                        <li><strong>Set the rules:</strong> Decide:
                             <ul>
-                                <li><strong>Inventory:</strong> Limit how many are available.</li>
-                                <li><strong>Bundles:</strong> Create packs of items (e.g., "5 Homework Passes").</li>
-                                <li><strong>Bulk Discounts:</strong> Offer lower prices for buying in bulk.</li>
+                                <li><strong>Price:</strong> how much the item costs.</li>
+                                <li><strong>Availability:</strong> whether it can be bought now.</li>
+                                <li><strong>Fulfillment:</strong> whether the item is immediate or needs teacher delivery.</li>
                             </ul>
                         </li>
-                        <li><strong>Fulfillment:</strong> When students buy "Delayed" items (physical goods), they appear in your <strong>Dashboard</strong> under "Pending Actions". Click "Approve" once you have delivered the item.</li>
+                        <li><strong>Review redemptions:</strong> Finish delayed items after you hand them out.</li>
                     </ul>
                 """
             },
             {
                 "id": "insurance_policies",
-                "title": "Insurance Policies",
+                "title": "Use Rent and Insurance",
                 "content": """
-                    <p>Insurance helps students manage risk (e.g., fines, lost items).</p>
+                    <p>Rent and insurance help you handle recurring charges and special protections.</p>
                     <ul>
-                        <li><strong>Create Policies:</strong> Go to the <strong>Insurance</strong> tab and click "Create Policy".</li>
-                        <li><strong>Grouped Policies:</strong> You can group policies (e.g., "Health Levels") so students can only choose one from that group.</li>
-                        <li><strong>Claims:</strong> Students file claims from their portal. You review them on your <strong>Dashboard</strong> or the Insurance tab. You can approve (auto-pay) or reject claims.</li>
+                        <li><strong>Rent:</strong> Set the amount and timing for class rent.</li>
+                        <li><strong>Insurance:</strong> Add policies that protect students from specific losses or fines.</li>
+                        <li><strong>Claims:</strong> Review claims from the class view and decide whether to approve them.</li>
                     </ul>
                 """
             },
             {
                 "id": "banking_rent",
-                "title": "Banking & Rent",
+                "title": "Banking Basics",
                 "content": """
-                    <p><strong>Banking:</strong> Manage interest and overdrafts in the <strong>Banking</strong> tab.</p>
+                    <p>Use Banking to understand balances and keep money rules clear.</p>
                     <ul>
-                        <li><strong>Interest:</strong> Set an APY (Annual Percentage Yield) or Monthly rate to encourage savings.</li>
-                        <li><strong>Overdraft Protection:</strong> Enable this to allow savings to cover checking overdrafts automatically.</li>
-                    </ul>
-                    <p><strong>Rent:</strong> Charge students for their desks/seats.</p>
-                    <ul>
-                        <li><strong>Configure:</strong> Go to <strong>Rent Settings</strong> to set the amount and due dates.</li>
-                        <li><strong>Waivers:</strong> You can exempt specific students from rent if needed.</li>
+                        <li><strong>Balances:</strong> Checking is what students can spend now. Savings may earn interest if your class has it on.</li>
+                        <li><strong>Interest:</strong> Check the active savings rule before you expect money to grow.</li>
+                        <li><strong>Transfers:</strong> Use transfers only inside the correct class.</li>
                     </ul>
                 """
             },
             {
                 "id": "hall_passes",
-                "title": "Hall Passes",
+                "title": "Hall Passes and Announcements",
                 "content": """
-                    <p>Manage student movement digitally:</p>
+                    <p>Use these tools to manage movement and class updates.</p>
                     <ul>
-                        <li><strong>Requests:</strong> Students request passes from a kiosk or their device.</li>
-                        <li><strong>Approval:</strong> Requests appear in your <strong>Dashboard</strong> or the <strong>Hall Pass</strong> tab.</li>
-                        <li><strong>Tracking:</strong> See who is currently "Out" and view history of all passes.</li>
+                        <li><strong>Hall passes:</strong> Review requests and approve them when the student is allowed to leave.</li>
+                        <li><strong>Announcements:</strong> Share class updates that students need to see right away.</li>
+                        <li><strong>Need help:</strong> Use the support page when the app behavior does not match what you expected.</li>
                     </ul>
                 """
             }
@@ -120,25 +119,26 @@ HELP_ARTICLES = {
         "troubleshooting": [
             {
                 "id": "student_login_issues",
-                "title": "Student Cannot Log In",
+                "title": "A student cannot join",
                 "content": """
-                    <p>Common solutions:</p>
+                    <p>Check these in order:</p>
                     <ol>
-                        <li><strong>Account Claimed?</strong> Check the student list. If their status is not "Active", they need to claim their account first using the Join Code.</li>
-                        <li><strong>Wrong Username:</strong> Verify they are typing the username exactly as shown in your roster.</li>
-                        <li><strong>Forgot PIN:</strong> Go to the student's profile and click "Reset Login". This will force them to re-claim their account and set a new PIN.</li>
+                        <li><strong>Class code:</strong> Make sure the student is using the correct class join code.</li>
+                        <li><strong>Current class:</strong> Confirm you are looking at the right class when you review the roster.</li>
+                        <li><strong>Seat status:</strong> If the seat is already claimed, the student should use the seat they already claimed instead of starting over.</li>
                     </ol>
                 """
             },
             {
                 "id": "missing_pay",
-                "title": "Payroll Seems Wrong",
+                "title": "Payroll looks wrong",
                 "content": """
-                    <p>If a student didn't get paid:</p>
+                    <p>If a student did not get paid, check these first:</p>
                     <ul>
-                        <li><strong>Check Attendance:</strong> Payroll relies on "Start Work" records. If a student forgot to start working, they earned $0.</li>
-                        <li><strong>Check Settings:</strong> Ensure your "Pay Rate" is greater than $0.</li>
-                        <li><strong>Manual Adjustment:</strong> You can use the "Manual Payment" tool in the Payroll tab to fix any errors.</li>
+                        <li><strong>Attendance:</strong> Was the student present for the class period that payroll uses?</li>
+                        <li><strong>Class scope:</strong> Are you viewing the correct class?</li>
+                        <li><strong>Payroll settings:</strong> Is the active pay rate turned on?</li>
+                        <li><strong>Support:</strong> If the result still looks wrong, submit a support ticket with the class, date, and what you expected.</li>
                     </ul>
                 """
             }
@@ -148,59 +148,60 @@ HELP_ARTICLES = {
         "how_to": [
             {
                 "id": "student_dashboard",
-                "title": "Your Dashboard",
+                "title": "Start Here",
                 "content": """
-                    <p>Your Dashboard is your command center. Here you can see:</p>
+                    <p>Your dashboard is the fastest place to check your class work.</p>
                     <ul>
-                        <li><strong>Money:</strong> How much is in your <strong>Checking</strong> (spendable) and <strong>Savings</strong> (earning interest) accounts.</li>
-                        <li><strong>Attendance:</strong> Are you "Tapped In"? Make sure you are to earn money!</li>
-                        <li><strong>Alerts:</strong> Check here for rent bills or messages from your teacher.</li>
+                        <li><strong>Your class:</strong> Make sure you are in the right class first.</li>
+                        <li><strong>Your balance:</strong> See what you can spend and what is in savings.</li>
+                        <li><strong>Your status:</strong> Check whether you are signed in and active for class.</li>
                     </ul>
                 """
             },
             {
                 "id": "earning_spending",
-                "title": "Earning & Spending",
+                "title": "Earning and Spending",
                 "content": """
-                    <p><strong>Earning:</strong> You earn money by coming to class and doing your job. Just remember to <strong>Tap In</strong> every day!</p>
-                    <p><strong>Spending:</strong> Visit the <strong>Shop</strong> to buy rewards.</p>
+                    <p>You earn money by following the class rules and taking part in class.</p>
                     <ul>
-                        <li><strong>Immediate Items:</strong> You get these right away (like digital stickers).</li>
-                        <li><strong>Delayed Items:</strong> Your teacher will bring these to you later (like a pencil or eraser).</li>
+                        <li><strong>Spend money:</strong> Open the store to buy items your teacher has made available.</li>
+                        <li><strong>Immediate items:</strong> You get them right away.</li>
+                        <li><strong>Delayed items:</strong> Your teacher gives them to you later.</li>
                     </ul>
                 """
             },
             {
                 "id": "paying_bills",
-                "title": "Paying Rent & Bills",
+                "title": "Pay Rent",
                 "content": """
-                    <p>Part of growing up is paying bills!</p>
+                    <p>If your class charges rent, you will see it in the app.</p>
                     <ul>
-                        <li><strong>Rent:</strong> Check the <strong>Rent</strong> tab to see when your payment is due.</li>
-                        <li><strong>Pay Early:</strong> You can pay before the due date if you have the money.</li>
-                        <li><strong>Late Fees:</strong> If you wait too long, you might have to pay extra!</li>
+                        <li><strong>Check the due date:</strong> Look at the rent section before the deadline.</li>
+                        <li><strong>Pay early:</strong> If you have enough checking money, you can pay before it is due.</li>
+                        <li><strong>Need help:</strong> Ask your teacher if the rent amount or timing looks wrong.</li>
                     </ul>
                 """
             },
             {
                 "id": "insurance_help",
-                "title": "Insurance",
+                "title": "Use Insurance",
                 "content": """
-                    <p>Protect your money with Insurance.</p>
+                    <p>Insurance can help protect you from certain class charges or losses.</p>
                     <ul>
-                        <li><strong>Buy Policy:</strong> Go to the <strong>Insurance</strong> tab to see plans your teacher offers.</li>
-                        <li><strong>File a Claim:</strong> If something bad happens (like you get a fine), go to "My Policies" and click "File Claim". Your teacher will decide if insurance covers it.</li>
+                        <li><strong>Check your options:</strong> Open the insurance area to see what your teacher offers.</li>
+                        <li><strong>File a claim:</strong> Send a claim when something covered happens.</li>
+                        <li><strong>Wait for review:</strong> Your teacher decides whether the claim is approved.</li>
                     </ul>
                 """
             },
             {
                 "id": "manage_classes",
-                "title": "Joining Multiple Classes",
+                "title": "Switch Classes",
                 "content": """
-                    <p>Do you have Classroom Token Hub in more than one class?</p>
+                    <p>If you have more than one class, you can switch between them.</p>
                     <ul>
-                        <li><strong>Add Class:</strong> Click "Add New Class" in the sidebar and enter the <strong>Join Code</strong> from your other teacher.</li>
-                        <li><strong>Switching:</strong> You can switch between your classes anytime using the "Switch Class" button on your dashboard.</li>
+                        <li><strong>Use the class switcher:</strong> Pick the class you want from the class list.</li>
+                        <li><strong>Use the correct class:</strong> Most problems happen when the wrong class is selected.</li>
                     </ul>
                 """
             }
@@ -208,31 +209,32 @@ HELP_ARTICLES = {
         "troubleshooting": [
             {
                 "id": "forgot_pin",
-                "title": "I forgot my PIN",
+                "title": "I cannot sign in",
                 "content": """
-                    <p>It happens! Ask your teacher for help. They can reset your login so you can pick a new PIN.</p>
+                    <p>Ask your teacher for help. They can help you get back into the right class or reset your access if needed.</p>
                 """
             },
             {
                 "id": "cant_buy",
-                "title": "Why can't I buy this?",
+                "title": "I cannot buy an item",
                 "content": """
                     <p>Check these three things:</p>
                     <ol>
-                        <li><strong>Money:</strong> Do you have enough cash in your <em>Checking</em> account? (Savings doesn't count!)</li>
-                        <li><strong>Inventory:</strong> Is the item sold out?</li>
-                        <li><strong>Limit:</strong> Did you already buy the maximum amount allowed?</li>
+                        <li><strong>Money:</strong> Do you have enough in checking?</li>
+                        <li><strong>Availability:</strong> Is the item still available?</li>
+                        <li><strong>Limit:</strong> Did you already buy the maximum amount?</li>
                     </ol>
                 """
             },
             {
                 "id": "no_pay",
-                "title": "I didn't get paid!",
+                "title": "I did not get paid",
                 "content": """
-                    <p>Payroll works by checking if you were in class.</p>
+                    <p>Payroll depends on the class rules and your attendance.</p>
                     <ul>
-                        <li>Did you <strong>Tap In</strong> when you arrived?</li>
-                        <li>Check your attendance log. If you forgot to Start Work, tell your teacher nicely!</li>
+                        <li>Make sure you were in the correct class.</li>
+                        <li>Check whether the class uses attendance or work time for payroll.</li>
+                        <li>Ask your teacher to review it if it still looks wrong.</li>
                     </ul>
                 """
             }

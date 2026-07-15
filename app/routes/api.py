@@ -1839,22 +1839,34 @@ def handle_tap():
     current_app.logger.info(f"TAP DEBUG: Received data {safe_data}")
 
     context = getattr(g, "canonical_context", None)
-    student = db.session.get(Seat, context.seat_id) if context else None
+    student_seat = db.session.get(Seat, context.seat_id) if context else None
+    student_user = db.session.get(User, context.user_id) if context else None
 
-    if not student:
+    if not student_seat or not student_user:
         current_app.logger.warning("TAP ERROR: Unauthenticated tap attempt.")
         return jsonify({"error": "User not logged in or session expired"}), 401
 
     pin = data.get("pin", "").strip()
 
 
-    if not check_password_hash(student.pin_hash or '', pin):
-        current_app.logger.warning(f"TAP ERROR: Invalid PIN for student {student.id}")
+    if not check_password_hash(student_user.pin_hash or '', pin):
+        current_app.logger.warning(f"TAP ERROR: Invalid PIN for student {student_user.id}")
         return jsonify({"error": "Invalid PIN"}), 403
 
 
-    student_blocks_raw = [b.strip() for b in student.block.split(',') if b.strip()] if student and isinstance(student.block, str) else []
-    block_lookup = {b.upper(): b for b in student_blocks_raw}
+    context = resolve_canonical_context()
+    class_id = context.class_id if context else None
+    if not class_id:
+        current_app.logger.warning("TAP ERROR: Missing class_id context for student_id=%s", student_user.id)
+        return jsonify({"error": "Unable to resolve class context for this period."}), 400
+
+    class_row = db.session.get(ClassEconomy, class_id)
+    class_periods = []
+    if class_row and isinstance(class_row.section, str) and class_row.section.strip():
+        class_periods = [part.strip() for part in class_row.section.split(",") if part.strip()]
+    elif student_seat and isinstance(student_seat.block, str) and student_seat.block.strip():
+        class_periods = [part.strip() for part in student_seat.block.split(",") if part.strip()]
+    block_lookup = {b.upper(): b for b in class_periods}
     valid_periods = list(block_lookup.keys())
     period = data.get("period", "").upper()
     action = data.get("action")
@@ -1876,13 +1888,11 @@ def handle_tap():
     # Normalize action to new terminology
     normalized_action = action_map[action]
 
-    context = resolve_canonical_context()
-    class_id = context.class_id if context else None
-    if not class_id:
-        current_app.logger.warning("TAP ERROR: Missing class_id context for student_id=%s", student.id)
-        return jsonify({"error": "Unable to resolve class context for this period."}), 400
-
-    seat_id = seat.id if seat and seat.class_id == class_id else (student.identity_profile.seat_id if student and student.identity_profile else None)
+    # The canonical seat is the authenticated seat row itself; identity_profile
+    # only exists as a fallback for older login flows that may still populate it.
+    seat_id = student_seat.id if student_seat and student_seat.class_id == class_id else (
+        student_user.identity_profile.seat_id if student_user and student_user.identity_profile else None
+    )
     if not seat_id:
         return jsonify({"error": "No seat assigned in this class."}), 403
 
@@ -1937,7 +1947,7 @@ def handle_tap():
             pass
         else:
             policy_guard = feat_check_hall_pass_request_policy(
-                student=student,
+                student=student_seat,
                 class_id=class_id,
                 reason=reason,
                 now_utc=now,
@@ -1952,15 +1962,15 @@ def handle_tap():
             # Keep hall-pass rent grants in sync for the active rent coverage period.
             # This applies the monthly top-off model even if the student paid rent earlier.
             if should_require_pass:
-                _, _, hall_pass_reconciled = _ensure_rent_hall_pass_top_off(student, context)
+                _, _, hall_pass_reconciled = _ensure_rent_hall_pass_top_off(student_seat, context)
                 if hall_pass_reconciled:
                     db.session.flush()
 
-            if should_require_pass and get_hall_pass_balance(student.id, student.class_id) <= 0:
+            if should_require_pass and get_hall_pass_balance(student_seat.id, student_seat.class_id) <= 0:
                 return jsonify({"error": "Insufficient hall passes."}), 400
 
             hall_pass_log = feat_request_hall_pass(
-                student=student,
+                student=student_seat,
                 seat_id=seat_id,
                 class_id=class_id,
                 reason=reason,

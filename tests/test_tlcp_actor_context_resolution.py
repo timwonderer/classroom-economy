@@ -102,9 +102,9 @@ def test_resolve_actor_context_logs_missing_context(app):
     from unittest.mock import patch
 
     with app.test_request_context("/student/help-support/submit-issue", method="POST"):
-        with patch("app.services.tlcp.current_app") as mock_app:
+        with patch("app.services.tlcp.current_app.logger.error") as mock_error:
             context = resolve_actor_context(None)
-            logged = [call.args[0] for call in mock_app.logger.error.call_args_list]
+            logged = [call.args[0] for call in mock_error.call_args_list]
 
     assert context is None
     assert any("TLCP-INVARIANT-VIOLATION: missing canonical context" in msg for msg in logged)
@@ -116,10 +116,10 @@ def test_resolve_actor_context_logs_missing_seat(app):
 
     with app.test_request_context("/student/help-support/submit-issue", method="POST"):
         ctx = CanonicalContext(user_id=1, class_id="class-1", seat_id=1, actor_role="student")
-        with patch("app.services.tlcp.current_app") as mock_app:
+        with patch("app.services.tlcp.current_app.logger.error") as mock_error:
             with patch("app.services.tlcp.db.session.get", return_value=None):
                 result = resolve_actor_context(ctx)
-            logged = [call.args[0] for call in mock_app.logger.error.call_args_list]
+            logged = [call.args[0] for call in mock_error.call_args_list]
 
     assert result is None
     assert any("TLCP-INVARIANT-VIOLATION: missing canonical seat" in msg for msg in logged)

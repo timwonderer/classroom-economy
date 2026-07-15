@@ -739,6 +739,8 @@ Focused validation:
 - `pytest -q tests/test_admin_payroll_scoped_balances.py tests/test_feature_flag_enforcement.py -k "admin_payroll" tests/test_admin_membership_gates.py -k "payroll"`
 - Result: `6 passed` (`22 deselected`)
 
+Session note 2026-07-15: closed the shared FEAT teardown leak, rewrote the remaining legacy v1-style rent/time/payroll test slices to current v2 helpers where their expectations were obsolete, and validated the current repository state with a full suite result of `744 passed, 19 skipped, 1 warning`.
+
 Focused validation:
 
 - `pytest -q tests/test_time_money_guardrails.py tests/test_scheduled_tasks_rent_cycle.py tests/test_add_rent_waiver_route.py tests/test_redemption_audit_log.py tests/test_redemption_rejection.py tests/test_scheduled_tasks_store_item_cleanup.py`

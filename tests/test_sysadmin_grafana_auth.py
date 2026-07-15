@@ -4,6 +4,7 @@ from tests.helpers.v2_fixtures import seed_canonical_admin, make_sysadmin
 import pyotp
 
 from app import db
+from app.feats.base import FEATContext
 from app.auth import SYSTEM_ADMIN_SESSION_TIMEOUT_MINUTES
 from app.models import SystemAdmin, User, UserRole
 from app.utils.encryption import encrypt_totp
@@ -13,22 +14,22 @@ from app.utils.time import utc_now
 def _create_sysadmin(username: str = "grafana_sysadmin"):
     secret = pyotp.random_base32()
     sysadmin = make_sysadmin(username, encrypt_totp(secret))
-    db.session.commit()
     return sysadmin, secret
 
 
 def _login_sysadmin_session(client, *, user_id: int, username: str = "grafana_sysadmin", minutes_ago: int = 0):
     nonce = f"nonce-{username}"
+    with FEATContext("FEAT-IDEN-001", idempotency_key=f"sysadmin:grafana_login:{user_id}:{username}:{minutes_ago}"):
+        user = db.session.get(User, user_id)
+        if user is not None:
+            user.current_session_nonce = nonce
+            db.session.flush()
     with client.session_transaction() as sess:
         sess["is_system_admin"] = True
         sess["user_id"] = user_id
         sess["sysadmin_auth_username"] = username
         sess["current_session_nonce"] = nonce
         sess["last_activity"] = (utc_now() - timedelta(minutes=minutes_ago)).isoformat()
-    user = db.session.get(User, user_id)
-    if user is not None:
-        user.current_session_nonce = nonce
-        db.session.flush()
 
 
 def test_sysadmin_login_get_requests_do_not_trip_rate_limit(client):
@@ -87,8 +88,9 @@ def test_expired_sysadmin_dashboard_still_redirects_to_login(client):
 def test_sysadmin_auth_check_rejects_non_sysadmin_user(client):
     _create_sysadmin("auth_check_match")
     teacher = seed_canonical_admin("auth_check_teacher", pyotp.random_base32()).user
-    teacher.current_session_nonce = "nonce-auth_check_teacher"
-    db.session.commit()
+    with FEATContext("FEAT-IDEN-001", idempotency_key="sysadmin:auth_check_teacher_nonce"):
+        teacher.current_session_nonce = "nonce-auth_check_teacher"
+        db.session.flush()
 
     with client.session_transaction() as sess:
         sess["is_system_admin"] = True

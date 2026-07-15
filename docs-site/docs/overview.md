@@ -1,19 +1,15 @@
 ---
 slug: /overview
-title: Preview Overview
+title: Overview
 ---
 
-This is the local internal Docusaurus preview surface for Classroom Token Hub.
+This site provides the current user and technical guides for Classroom Token Hub.
 
-> Preview only: these pages are exploratory v2 docs surfaces and are not yet canonical.
+It keeps the product guidance in one place:
 
-The immediate purpose of this workspace is to separate:
+- student help
+- teacher help
+- technical reference pages
+- support and troubleshooting
 
-- local preview publishing
-- in-app contextual help inside the Flask application
-
-Initial migration scope:
-
-- preserve stable route shapes where practical
-- test a few local preview routes here
-- keep authenticated contextual help links working during the transition
+Use the site search or the guide index to jump straight to the topic you need.

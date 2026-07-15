@@ -2,6 +2,7 @@ from datetime import timedelta
 from decimal import Decimal
 
 from app import db
+from app.feats.base import FEATContext
 from app.models import User, UserRole, ClassEconomy, RentPayment, RentSettings, Seat, IdentityProfile
 from app.scheduled_tasks import run_rent_cycle_for_class
 from app.utils.time import utc_now
@@ -33,43 +34,45 @@ def _make_student() -> Seat:
 def test_rent_cycle_idempotency_same_cycle(monkeypatch, app):
     with app.app_context():
         admin = seed_canonical_admin("rent_cycle_teacher").user
-        db.session.flush()
 
-        class_row = ClassEconomy(
-            join_code="RENTCYCLE1",
-            user_id=admin.id,
-            status="active",
-        )
-        db.session.add(class_row)
-        db.session.flush()
+        with FEATContext("FEAT-IDEN-001", idempotency_key="rent-cycle:seed-class"):
+            class_row = ClassEconomy(
+                join_code="RENTCYCLE1",
+                user_id=admin.id,
+                status="active",
+            )
+            db.session.add(class_row)
+            db.session.flush()
 
-        seat = _make_student()
-        seat.class_id = class_row.class_id
-        db.session.flush()
+            seat = _make_student()
+            seat.class_id = class_row.class_id
+            db.session.flush()
 
-        configured_at = utc_now() - timedelta(days=60)
-        settings = RentSettings(class_id=class_row.class_id,
-            join_code=class_row.join_code,
-            block="A",
-            is_enabled=True,
-            rent_amount=Decimal("10.00"),
-            cycle_length_days=30,
-            rent_configured_at=configured_at,
-            rent_effective_at=configured_at + timedelta(days=30),
-        )
-        db.session.add(settings)
+            configured_at = utc_now() - timedelta(days=60)
+            settings = RentSettings(
+                class_id=class_row.class_id,
+                rent_amount=Decimal("10.00"),
+                cycle_length_days=30,
+                rent_configured_at=configured_at,
+                rent_effective_at=configured_at + timedelta(days=30),
+            )
+            db.session.add(settings)
+            db.session.flush()
         db.session.commit()
 
         def _fake_charge(*, seat, settings, class_id, execution_time, idempotency_key):
             from app.models import ClassEconomy as _CE
             _class_row = _CE.query.filter_by(class_id=class_id).first()
             payment = RentPayment(
-                student_id=seat.user_id,
                 seat_id=seat.id,
                 class_id=class_id,
                 join_code=_class_row.join_code if _class_row else None,
                 period=seat.block or "A",
                 amount_paid=settings.rent_amount,
+                period_month=execution_time.month,
+                period_year=execution_time.year,
+                coverage_month=execution_time.month,
+                coverage_year=execution_time.year,
                 coverage_start_time=execution_time,
                 coverage_end_time=execution_time + timedelta(days=int(settings.cycle_length_days)),
                 cycle_idempotency_key=idempotency_key,

@@ -1,8 +1,10 @@
 {
-  "ARCHITECTURE/ARC-CORE-000_Architecture_Foundation": "/technical/architecture-preview",
-  "ARCHITECTURE/OPERATIONS/ARC-OPS-005_Api_Reference": "/technical/api-preview",
+  "ARCHITECTURE/ARC-CORE-000_Architecture_Foundation": "/technical/architecture",
+  "ARCHITECTURE/OPERATIONS/ARC-OPS-005_Api_Reference": "/technical/api",
   "development/specs/V2_DOCS_PLATFORM_SPLIT": "/technical/migration-plan",
   "user-guides": "/user-guides",
-  "user-guides/diagnostics/student": "/user-guides/diagnostics/student",
-  "user-guides/diagnostics/teacher": "/user-guides/diagnostics/teacher"
+  "user-guides/student": "/user-guides/student",
+  "user-guides/teacher": "/user-guides/teacher",
+  "user-guides/diagnostics/student": "/user-guides/student",
+  "user-guides/diagnostics/teacher": "/user-guides/teacher"
 }

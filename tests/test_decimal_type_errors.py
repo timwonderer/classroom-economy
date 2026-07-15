@@ -175,8 +175,8 @@ class TestDecimalTypeErrors:
 
         # Should only count positive, non-transfer transactions
         # 100.00 + 75.50 = 175.50
-        assert total_earnings == 175.50
-        assert isinstance(total_earnings, float)  # Returns float per spec
+        assert total_earnings == Decimal('175.50')
+        assert isinstance(total_earnings, Decimal)
 
     def test_mixed_decimal_operations_consistency(self, app):
         """
