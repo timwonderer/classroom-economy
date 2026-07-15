@@ -194,7 +194,7 @@ def execute_redemption_rejection(
         idempotency_key=store_purchase_refund_key(purchase.id, "redemption-rejected"),
         seat_id=purchase.seat_id,
         class_id=purchase.class_id,
-        user_id=actor_user_id,
+        user_id=purchase.seat.user_id if purchase.seat else actor_user_id,
         amount=refund_amount,
         account_type="checking",
         type="refund",

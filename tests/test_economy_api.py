@@ -161,7 +161,7 @@ def test_analyze_endpoint_uses_payroll_settings_hours(logged_in_admin_client, ad
 
 def test_analyze_endpoint_override_hours(logged_in_admin_client, admin_with_payroll):
     """Test that /api/economy/analyze accepts override when explicitly provided."""
-    admin, payroll_settings = admin_with_payroll
+    admin, payroll_settings, _class_scope = admin_with_payroll
     client = logged_in_admin_client
 
     # Test with explicit override to 10 hours
@@ -188,7 +188,7 @@ def test_analyze_endpoint_override_hours(logged_in_admin_client, admin_with_payr
 
 def test_analyze_endpoint_null_override_uses_payroll(logged_in_admin_client, admin_with_payroll):
     """Test that null expected_weekly_hours falls back to payroll_settings."""
-    admin, payroll_settings = admin_with_payroll
+    admin, payroll_settings, _class_scope = admin_with_payroll
     client = logged_in_admin_client
 
     # Test with explicit null - should fall back to payroll_settings
@@ -210,7 +210,7 @@ def test_analyze_endpoint_null_override_uses_payroll(logged_in_admin_client, adm
 
 
 def test_analyze_endpoint_reuses_frozen_weekly_snapshot(logged_in_admin_client, admin_with_payroll):
-    admin, _payroll_settings = admin_with_payroll
+    admin, _payroll_settings, _class_scope = admin_with_payroll
     client = logged_in_admin_client
     response_one = client.post('/admin/api/economy/analyze', json={'class_id': _payroll_settings.class_id})
     assert response_one.status_code == 200
@@ -230,7 +230,7 @@ def test_analyze_endpoint_reuses_frozen_weekly_snapshot(logged_in_admin_client, 
 
 
 def test_analyze_endpoint_override_bypasses_frozen_snapshot(logged_in_admin_client, admin_with_payroll):
-    admin, _payroll_settings = admin_with_payroll
+    admin, _payroll_settings, _class_scope = admin_with_payroll
     client = logged_in_admin_client
     initial_response = client.post('/admin/api/economy/analyze', json={'class_id': _payroll_settings.class_id})
     assert initial_response.status_code == 200
@@ -249,7 +249,7 @@ def test_analyze_endpoint_override_bypasses_frozen_snapshot(logged_in_admin_clie
 
 
 def test_analyze_endpoint_recomputes_after_payroll_change(logged_in_admin_client, admin_with_payroll):
-    admin, payroll_settings = admin_with_payroll
+    admin, payroll_settings, _class_scope = admin_with_payroll
     client = logged_in_admin_client
     initial_response = client.post('/admin/api/economy/analyze', json={'class_id': payroll_settings.class_id})
     assert initial_response.status_code == 200
@@ -394,7 +394,7 @@ def test_different_expected_hours_per_block(client):
 
 def test_validate_rent_with_monthly_frequency(logged_in_admin_client, admin_with_payroll):
     """Test that monthly rent recommendations follow the default economy policy."""
-    admin, payroll_settings = admin_with_payroll
+    admin, payroll_settings, _class_scope = admin_with_payroll
     client = logged_in_admin_client
 
     # Test with monthly rent of $440
@@ -432,7 +432,7 @@ def test_validate_rent_with_monthly_frequency(logged_in_admin_client, admin_with
 
 def test_validate_insurance_premium_only(logged_in_admin_client, admin_with_payroll):
     """Test insurance premium validation without coverage parameters."""
-    admin, payroll_settings = admin_with_payroll
+    admin, payroll_settings, _class_scope = admin_with_payroll
     client = logged_in_admin_client
 
     # CWI = 0.25 * 8 * 60 = 120.0 per week
@@ -468,7 +468,7 @@ def test_validate_insurance_premium_only(logged_in_admin_client, admin_with_payr
 
 def test_validate_insurance_premium_too_high(logged_in_admin_client, admin_with_payroll):
     """Test insurance premium that exceeds maximum ratio."""
-    admin, payroll_settings = admin_with_payroll
+    admin, payroll_settings, _class_scope = admin_with_payroll
     client = logged_in_admin_client
 
     # CWI = 120.0, max premium should be 12% = $14.40
@@ -493,7 +493,7 @@ def test_validate_insurance_premium_too_high(logged_in_admin_client, admin_with_
 
 def test_validate_insurance_premium_too_low(logged_in_admin_client, admin_with_payroll):
     """Test insurance premium that is below minimum ratio."""
-    admin, payroll_settings = admin_with_payroll
+    admin, payroll_settings, _class_scope = admin_with_payroll
     client = logged_in_admin_client
 
     # CWI = 120.0, min premium should be 5% = $6.00
@@ -516,7 +516,7 @@ def test_validate_insurance_premium_too_low(logged_in_admin_client, admin_with_p
 
 def test_validate_insurance_with_coverage_balanced(logged_in_admin_client, admin_with_payroll):
     """Test insurance validation with balanced coverage (3-5x premium)."""
-    admin, payroll_settings = admin_with_payroll
+    admin, payroll_settings, _class_scope = admin_with_payroll
     client = logged_in_admin_client
 
     # Premium: $10/week
@@ -544,7 +544,7 @@ def test_validate_insurance_with_coverage_balanced(logged_in_admin_client, admin
 
 def test_validate_insurance_with_coverage_too_low(logged_in_admin_client, admin_with_payroll):
     """Test insurance validation with coverage below 3x premium."""
-    admin, payroll_settings = admin_with_payroll
+    admin, payroll_settings, _class_scope = admin_with_payroll
     client = logged_in_admin_client
 
     # Premium: $10/week
@@ -570,7 +570,7 @@ def test_validate_insurance_with_coverage_too_low(logged_in_admin_client, admin_
 
 def test_validate_insurance_with_coverage_too_high(logged_in_admin_client, admin_with_payroll):
     """Test insurance validation with coverage exceeding 5x premium."""
-    admin, payroll_settings = admin_with_payroll
+    admin, payroll_settings, _class_scope = admin_with_payroll
     client = logged_in_admin_client
 
     # Premium: $10/week
@@ -596,7 +596,7 @@ def test_validate_insurance_with_coverage_too_high(logged_in_admin_client, admin
 
 def test_validate_insurance_with_period_cap_balanced(logged_in_admin_client, admin_with_payroll):
     """Test insurance validation with balanced period cap (6-10x premium)."""
-    admin, payroll_settings = admin_with_payroll
+    admin, payroll_settings, _class_scope = admin_with_payroll
     client = logged_in_admin_client
 
     # Premium: $10/week
@@ -624,7 +624,7 @@ def test_validate_insurance_with_period_cap_balanced(logged_in_admin_client, adm
 
 def test_validate_insurance_with_period_cap_too_low(logged_in_admin_client, admin_with_payroll):
     """Test insurance validation with period cap below 6x premium."""
-    admin, payroll_settings = admin_with_payroll
+    admin, payroll_settings, _class_scope = admin_with_payroll
     client = logged_in_admin_client
 
     # Premium: $10/week
@@ -650,7 +650,7 @@ def test_validate_insurance_with_period_cap_too_low(logged_in_admin_client, admi
 
 def test_validate_insurance_with_period_cap_too_high(logged_in_admin_client, admin_with_payroll):
     """Test insurance validation with period cap exceeding 10x premium."""
-    admin, payroll_settings = admin_with_payroll
+    admin, payroll_settings, _class_scope = admin_with_payroll
     client = logged_in_admin_client
 
     # Premium: $10/week
@@ -676,7 +676,7 @@ def test_validate_insurance_with_period_cap_too_high(logged_in_admin_client, adm
 
 def test_validate_insurance_with_all_parameters(logged_in_admin_client, admin_with_payroll):
     """Test insurance validation with premium, coverage, and period cap all specified."""
-    admin, payroll_settings = admin_with_payroll
+    admin, payroll_settings, _class_scope = admin_with_payroll
     client = logged_in_admin_client
 
     # Premium: $10/week (balanced)
@@ -714,7 +714,7 @@ def test_validate_insurance_with_all_parameters(logged_in_admin_client, admin_wi
 
 def test_validate_insurance_non_monetary_skips_coverage(logged_in_admin_client, admin_with_payroll):
     """Test that non-monetary insurance policies don't validate coverage parameters."""
-    admin, payroll_settings = admin_with_payroll
+    admin, payroll_settings, _class_scope = admin_with_payroll
     client = logged_in_admin_client
 
     # For non-monetary policies, coverage parameters should be ignored
@@ -741,7 +741,7 @@ def test_validate_insurance_non_monetary_skips_coverage(logged_in_admin_client, 
 
 def test_validate_insurance_monthly_frequency(logged_in_admin_client, admin_with_payroll):
     """Test insurance validation with monthly frequency."""
-    admin, payroll_settings = admin_with_payroll
+    admin, payroll_settings, _class_scope = admin_with_payroll
     client = logged_in_admin_client
 
     # CWI = 120.0/week
@@ -771,7 +771,7 @@ def test_validate_insurance_monthly_frequency(logged_in_admin_client, admin_with
 
 def test_validate_insurance_with_coverage_monthly_frequency(logged_in_admin_client, admin_with_payroll):
     """Test insurance coverage validation scales correctly with monthly frequency."""
-    admin, payroll_settings = admin_with_payroll
+    admin, payroll_settings, _class_scope = admin_with_payroll
     client = logged_in_admin_client
 
     # Monthly premium: $40
@@ -797,7 +797,7 @@ def test_validate_insurance_with_coverage_monthly_frequency(logged_in_admin_clie
 
 def test_validate_insurance_with_period_cap_monthly_frequency(logged_in_admin_client, admin_with_payroll):
     """Test insurance period cap validation scales correctly with monthly frequency."""
-    admin, payroll_settings = admin_with_payroll
+    admin, payroll_settings, _class_scope = admin_with_payroll
     client = logged_in_admin_client
 
     response = client.post(

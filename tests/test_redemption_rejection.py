@@ -34,7 +34,6 @@ def test_reject_redemption_refunds_student(client, teacher_admin, student_in_cla
         item = StoreItem(
             user_id=teacher_admin.id,
             class_id=student.class_id,
-            join_code='REJECT123',
             name='Refundable Item',
             price=Decimal('15.00'),
             item_type='delayed',
@@ -45,7 +44,7 @@ def test_reject_redemption_refunds_student(client, teacher_admin, student_in_cla
 
         initial_balance = Decimal('100.00')
         tx = Transaction(
-            user_id=student.user_id, seat_id=seat.id, join_code='REJECT123',
+            user_id=student.user_id, seat_id=seat.id,
             amount=initial_balance,
             account_type='checking',
             type='deposit',
@@ -106,14 +105,14 @@ def test_reject_redemption_refunds_student(client, teacher_admin, student_in_cla
     assert item_check.status == 'rejected'
 
     refund_tx = Transaction.query.filter_by(
-        user_id=student.user_id,
+        seat_id=seat.id,
         type='refund',
         amount=Decimal('15.00')
     ).first()
     assert refund_tx is not None
     assert "Refund:" in refund_tx.description
     purchase_tx = Transaction.query.filter_by(
-        user_id=student.user_id,
+        seat_id=seat.id,
         type='purchase',
     ).filter(Transaction.description.like('Purchase: Refundable Item%')).first()
     assert purchase_tx is not None
@@ -139,7 +138,7 @@ def test_reject_redemption_refunds_single_unit_from_multi_quantity_purchase(clie
 
         initial_balance = Decimal('100.00')
         db.session.add(Transaction(
-            user_id=student.user_id, seat_id=seat.id, join_code='REJECT123',
+            user_id=student.user_id, seat_id=seat.id,
             amount=initial_balance,
             account_type='checking',
             type='deposit',
@@ -194,7 +193,7 @@ def test_reject_redemption_refunds_single_unit_from_multi_quantity_purchase(clie
     assert resp.json['status'] == 'success'
 
     refund_tx = Transaction.query.filter_by(
-        user_id=student.user_id,
+        seat_id=seat.id,
         type='refund',
         amount=Decimal('10.00')
     ).first()

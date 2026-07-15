@@ -3773,7 +3773,7 @@ def help_support():
     # Get student's issues for current class (last 20)
     my_issues = Issue.query.filter_by(
         seat_id=student.id,
-        join_code=get_display_join_code(class_context.class_id)
+        class_id=class_context.class_id,
     ).order_by(Issue.submitted_at.desc()).limit(20).all()
 
     return render_template('student_help_support_new.html',

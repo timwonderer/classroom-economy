@@ -63,7 +63,8 @@ def test_migration_1ef03001fb2a_idempotency(test_db):
     """Test that migration 1ef03001fb2a can detect existing columns."""
     inspector = inspect(db.engine)
     columns = [col["name"] for col in inspector.get_columns("store_items")]
-    assert "teacher_id" in columns
+    assert "user_id" in columns
+    assert "teacher_id" not in columns
 
     with db.engine.begin() as conn:
         conn.execute(
@@ -81,11 +82,11 @@ def test_migration_1ef03001fb2a_idempotency(test_db):
     assert "teacher_id" not in columns_before
 
     with db.engine.begin() as conn:
-        conn.execute(text("ALTER TABLE test_store_items ADD COLUMN teacher_id INTEGER"))
+        conn.execute(text("ALTER TABLE test_store_items ADD COLUMN user_id INTEGER"))
 
     inspector = inspect(db.engine)
     columns_after = [col["name"] for col in inspector.get_columns("test_store_items")]
-    assert "teacher_id" in columns_after
+    assert "user_id" in columns_after
 
 
 def test_migration_w2x3y4z5a6b7_idempotency(test_db):
@@ -119,12 +120,12 @@ def test_migration_w2x3y4z5a6b7_idempotency(test_db):
 
     with db.engine.begin() as conn:
         for table in test_tables:
-            conn.execute(text(f"ALTER TABLE {table} ADD COLUMN teacher_id INTEGER"))
+            conn.execute(text(f"ALTER TABLE {table} ADD COLUMN user_id INTEGER"))
 
     inspector = inspect(db.engine)
     for table in test_tables:
         columns = [col["name"] for col in inspector.get_columns(table)]
-        assert "teacher_id" in columns
+        assert "user_id" in columns
 
 
 def test_migration_00212c18b0ac_idempotency(test_db):
@@ -136,7 +137,7 @@ def test_migration_00212c18b0ac_idempotency(test_db):
                 CREATE TABLE IF NOT EXISTS transaction_test (
                     id INTEGER PRIMARY KEY,
                     student_id INTEGER,
-                    join_code VARCHAR(20),
+                    class_id VARCHAR(64),
                     amount INTEGER
                 )
                 """
@@ -145,27 +146,27 @@ def test_migration_00212c18b0ac_idempotency(test_db):
         conn.execute(
             text(
                 """
-                CREATE INDEX IF NOT EXISTS ix_transaction_test_join_code
-                ON transaction_test (join_code)
+                CREATE INDEX IF NOT EXISTS ix_transaction_test_class_id
+                ON transaction_test (class_id)
                 """
             )
         )
         conn.execute(
             text(
                 """
-                CREATE INDEX IF NOT EXISTS ix_transaction_test_student_join_code
-                ON transaction_test (student_id, join_code)
+                CREATE INDEX IF NOT EXISTS ix_transaction_test_student_class_id
+                ON transaction_test (student_id, class_id)
                 """
             )
         )
 
     inspector = inspect(db.engine)
     columns = [col["name"] for col in inspector.get_columns("transaction_test")]
-    assert "join_code" in columns
+    assert "class_id" in columns
 
     indexes = [idx["name"] for idx in inspector.get_indexes("transaction_test")]
-    assert "ix_transaction_test_join_code" in indexes
-    assert "ix_transaction_test_student_join_code" in indexes
+    assert "ix_transaction_test_class_id" in indexes
+    assert "ix_transaction_test_student_class_id" in indexes
 
 
 def test_helper_functions_dont_crash_with_existing_schema(test_db):

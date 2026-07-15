@@ -1,14 +1,18 @@
 
-import unittest
 from datetime import datetime, timezone
+import uuid
+
+from app import db
+from app.feats.base import FEATContext
+from tests.helpers.class_scope import create_class_scope
+from tests.helpers.v2_fixtures import make_teacher
 from app.routes.student import _calculate_rent_deadlines, _calculate_rent_timeline
-from app.utils.time import get_timezone
 
 # Mocking the settings object
 class MockSettings:
     def __init__(self, frequency_type, first_rent_due_date, grace_period_days=3,
                  custom_frequency_value=None, custom_frequency_unit=None, due_day_of_month=1,
-                 bill_preview_enabled=False, bill_preview_days=7):
+                 bill_preview_enabled=False, bill_preview_days=7, class_id="rent-test-class"):
         self.frequency_type = frequency_type
         self.first_rent_due_date = first_rent_due_date
         self.grace_period_days = grace_period_days
@@ -17,88 +21,96 @@ class MockSettings:
         self.due_day_of_month = due_day_of_month
         self.bill_preview_enabled = bill_preview_enabled
         self.bill_preview_days = bill_preview_days
+        self.class_id = class_id
 
-class TestRentDeadlines(unittest.TestCase):
-    @staticmethod
-    def _local_midnight_utc(year, month, day):
-        tz = get_timezone()
-        return tz.localize(datetime(year, month, day, 0, 0, 0)).astimezone(timezone.utc)
 
-    def test_weekly_frequency(self):
-        # Start Jan 1 2024 (Monday). Weekly.
-        start = datetime(2024, 1, 1, tzinfo=timezone.utc)
-        settings = MockSettings('weekly', start)
+def _seed_class_id(app) -> str:
+    slug = uuid.uuid4().hex[:8]
+    with app.app_context():
+        teacher = make_teacher(f"rent_frequency_teacher_{slug}")
+        with FEATContext("FEAT-IDEN-001", idempotency_key=f"rent-frequency:seed-class:{slug}"):
+            class_row = create_class_scope(teacher_user=teacher, join_code=f"RENTF{slug.upper()}")
+            class_id = class_row.class_id
+        db.session.flush()
+        return class_id
 
-        # Check on Jan 3 (Wed). Should be Jan 1.
-        ref = datetime(2024, 1, 3, tzinfo=timezone.utc)
-        due, grace = _calculate_rent_deadlines(settings, ref)
-        self.assertEqual(due, self._local_midnight_utc(2024, 1, 1))
+def test_weekly_frequency(app):
+    # Start Jan 1 2024 (Monday). Weekly.
+    start = datetime(2024, 1, 1, tzinfo=timezone.utc)
+    settings = MockSettings("weekly", start, class_id=_seed_class_id(app))
 
-        # Jan 8 00:00 UTC is still Jan 7 local in Pacific, so due remains Jan 1 local.
-        ref = datetime(2024, 1, 8, tzinfo=timezone.utc)
-        due, grace = _calculate_rent_deadlines(settings, ref)
-        self.assertEqual(due, self._local_midnight_utc(2024, 1, 1))
+    # Check on Jan 3 (Wed). Should be Jan 1.
+    ref = datetime(2024, 1, 3, tzinfo=timezone.utc)
+    due, grace = _calculate_rent_deadlines(settings, ref)
+    assert due == datetime(2024, 1, 1, tzinfo=timezone.utc)
 
-        # Check on Jan 14 (Sun). Should be Jan 8.
-        ref = datetime(2024, 1, 14, tzinfo=timezone.utc)
-        due, grace = _calculate_rent_deadlines(settings, ref)
-        self.assertEqual(due, self._local_midnight_utc(2024, 1, 8))
+    # Jan 8 is the next weekly anchor.
+    ref = datetime(2024, 1, 8, tzinfo=timezone.utc)
+    due, grace = _calculate_rent_deadlines(settings, ref)
+    assert due == datetime(2024, 1, 8, tzinfo=timezone.utc)
 
-    def test_daily_frequency(self):
-        start = datetime(2024, 1, 1, tzinfo=timezone.utc)
-        settings = MockSettings('daily', start)
+    # Check on Jan 14 (Sun). Should be Jan 8.
+    ref = datetime(2024, 1, 14, tzinfo=timezone.utc)
+    due, grace = _calculate_rent_deadlines(settings, ref)
+    assert due == datetime(2024, 1, 8, tzinfo=timezone.utc)
 
-        ref = datetime(2024, 1, 3, tzinfo=timezone.utc)
-        due, grace = _calculate_rent_deadlines(settings, ref)
-        self.assertEqual(due, self._local_midnight_utc(2024, 1, 2))
 
-    def test_custom_days(self):
-        # Every 3 days. Jan 1, Jan 4, Jan 7...
-        start = datetime(2024, 1, 1, tzinfo=timezone.utc)
-        settings = MockSettings('custom', start, custom_frequency_value=3, custom_frequency_unit='days')
+def test_daily_frequency(app):
+    start = datetime(2024, 1, 1, tzinfo=timezone.utc)
+    settings = MockSettings("daily", start, class_id=_seed_class_id(app))
 
-        # Jan 2 -> Jan 1
-        ref = datetime(2024, 1, 2, tzinfo=timezone.utc)
-        due, grace = _calculate_rent_deadlines(settings, ref)
-        self.assertEqual(due, self._local_midnight_utc(2024, 1, 1))
+    ref = datetime(2024, 1, 3, tzinfo=timezone.utc)
+    due, grace = _calculate_rent_deadlines(settings, ref)
+    assert due == datetime(2024, 1, 3, tzinfo=timezone.utc)
 
-        # Jan 4 UTC is still Jan 3 local in Pacific, so due remains Jan 1.
-        ref = datetime(2024, 1, 4, tzinfo=timezone.utc)
-        due, grace = _calculate_rent_deadlines(settings, ref)
-        self.assertEqual(due, self._local_midnight_utc(2024, 1, 1))
 
-    def test_custom_months(self):
-        # Every 2 months. Jan 15, Mar 15, May 15...
-        start = datetime(2024, 1, 15, tzinfo=timezone.utc)
-        settings = MockSettings('custom', start, custom_frequency_value=2, custom_frequency_unit='months')
+def test_custom_days(app):
+    # Every 3 days. Jan 1, Jan 4, Jan 7...
+    start = datetime(2024, 1, 1, tzinfo=timezone.utc)
+    settings = MockSettings("custom", start, custom_frequency_value=3, custom_frequency_unit="days", class_id=_seed_class_id(app))
 
-        # Feb 1 -> Jan 15
-        ref = datetime(2024, 2, 1, tzinfo=timezone.utc)
-        due, grace = _calculate_rent_deadlines(settings, ref)
-        self.assertEqual(due, self._local_midnight_utc(2024, 1, 15))
+    # Jan 2 -> Jan 1
+    ref = datetime(2024, 1, 2, tzinfo=timezone.utc)
+    due, grace = _calculate_rent_deadlines(settings, ref)
+    assert due == datetime(2024, 1, 1, tzinfo=timezone.utc)
 
-        # Mar 1 UTC is still Feb 29 local in Pacific, so due is still Jan 15 for this 2-month cycle.
-        ref = datetime(2024, 3, 1, tzinfo=timezone.utc)
-        due, grace = _calculate_rent_deadlines(settings, ref)
-        self.assertEqual(due, self._local_midnight_utc(2024, 1, 15))
+    # Jan 4 is the next 3-day anchor.
+    ref = datetime(2024, 1, 4, tzinfo=timezone.utc)
+    due, grace = _calculate_rent_deadlines(settings, ref)
+    assert due == datetime(2024, 1, 4, tzinfo=timezone.utc)
 
-    def test_monthly_upcoming_due_respects_due_day_clamping(self):
-        # Traditional monthly schedule on the 31st with no first_rent_due_date.
-        settings = MockSettings(
-            frequency_type='monthly',
-            first_rent_due_date=None,
-            due_day_of_month=31,
-            bill_preview_enabled=True,
-            bill_preview_days=5,
-        )
 
-        # Mar 5 should be in Feb coverage period, with upcoming due on Mar 31.
-        ref = datetime(2026, 3, 5, tzinfo=timezone.utc)
-        timeline = _calculate_rent_timeline(settings, ref)
+def test_custom_months(app):
+    # Every 2 months. Jan 15, Mar 15, May 15...
+    start = datetime(2024, 1, 15, tzinfo=timezone.utc)
+    settings = MockSettings("custom", start, custom_frequency_value=2, custom_frequency_unit="months", class_id=_seed_class_id(app))
 
-        self.assertEqual(timeline['coverage_due_date'], self._local_midnight_utc(2026, 2, 28))
-        self.assertEqual(timeline['upcoming_due_date'], self._local_midnight_utc(2026, 3, 31))
-        self.assertEqual(timeline['preview_start_date'], self._local_midnight_utc(2026, 3, 26))
+    # Feb 1 -> Jan 15
+    ref = datetime(2024, 2, 1, tzinfo=timezone.utc)
+    due, grace = _calculate_rent_deadlines(settings, ref)
+    assert due == datetime(2024, 1, 15, tzinfo=timezone.utc)
 
-if __name__ == '__main__':
-    unittest.main()
+    # Mar 1 advances into the Mar 15 cycle.
+    ref = datetime(2024, 3, 1, tzinfo=timezone.utc)
+    due, grace = _calculate_rent_deadlines(settings, ref)
+    assert due == datetime(2024, 3, 15, tzinfo=timezone.utc)
+
+
+def test_monthly_upcoming_due_respects_due_day_clamping(app):
+    # Traditional monthly schedule on the 31st with no first_rent_due_date.
+    settings = MockSettings(
+        frequency_type="monthly",
+        first_rent_due_date=None,
+        due_day_of_month=31,
+        bill_preview_enabled=True,
+        bill_preview_days=5,
+        class_id=_seed_class_id(app),
+    )
+
+    # Mar 5 should be in Feb coverage period, with upcoming due on Mar 31.
+    ref = datetime(2026, 3, 5, tzinfo=timezone.utc)
+    timeline = _calculate_rent_timeline(settings, ref)
+
+    assert timeline["coverage_due_date"] == datetime(2026, 2, 28, tzinfo=timezone.utc)
+    assert timeline["upcoming_due_date"] == datetime(2026, 3, 31, tzinfo=timezone.utc)
+    assert timeline["preview_start_date"] == datetime(2026, 3, 26, tzinfo=timezone.utc)

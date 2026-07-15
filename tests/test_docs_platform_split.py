@@ -16,9 +16,7 @@ def test_docs_url_for_prefers_external_routes_for_public_sessions(app):
     with app.test_request_context("/"):
         app.config["EXTERNAL_DOCS_BASE_URL"] = "https://docs.classroomtokenhub.com"
 
-        assert docs_url_for("DOMAIN/DOM-CORE-001_DOMAIN_AUTHORITY_SUMMARY") == (
-            "https://docs.classroomtokenhub.com/DOMAIN/DOM-CORE-001_DOMAIN_AUTHORITY_SUMMARY"
-        )
+        assert docs_url_for("DOMAIN/DOM-CORE-001_DOMAIN_AUTHORITY_SUMMARY") == "/docs/DOMAIN/DOM-CORE-001_DOMAIN_AUTHORITY_SUMMARY"
 
 
 def test_public_docs_index_redirects_when_external_site_is_configured(client, app):

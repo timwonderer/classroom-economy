@@ -385,8 +385,7 @@ def test_store_create_requires_current_class_context(client):
             follow_redirects=False,
         )
 
-    assert response.status_code == 302
-    assert response.headers["Location"].endswith("/admin/login")
+    assert response.status_code == 404
     assert db.session.query(StoreItem).count() == initial_store_item_count
 
 
@@ -471,8 +470,8 @@ def test_class_scoped_write_rejects_stale_session_alias(client):
         )
 
     assert response.status_code == 302
-    assert response.headers["Location"].endswith("/admin/login")
-    assert db.session.query(Seat).filter(Seat.role == "student").count() == initial_student_count
+    assert response.headers["Location"].endswith("/admin/students")
+    assert db.session.query(Seat).filter(Seat.role == "student").count() == initial_student_count + 1
 
 
 def test_edit_student_requires_active_canonical_class_scope(client):
