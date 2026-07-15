@@ -22,10 +22,12 @@ def two_class_ctx(client):
         ctx1 = ClassroomContextFactory(
             db,
             teacher_username="teacher_fall01",
+            join_code="FALL01",
         ).build()
         ctx2 = ClassroomContextFactory(
             db,
             teacher_username="teacher_fall02",
+            join_code="FALL02",
         ).build()
 
         # Add a student to ctx1 so we have a seat to test with
