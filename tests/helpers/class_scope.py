@@ -11,13 +11,12 @@ from app.extensions import db
 from app.feats.base import FEATContext
 from app.models import ClassEconomy, Seat, User
 from werkzeug.security import generate_password_hash
-import uuid
 
 
 def create_class_scope(
     *,
     teacher_user: User,
-    join_code: str | None = None,
+    join_code: str,
     display_name: str | None = None,
     section: str | None = None,
     feature_names: list[str] | tuple[str, ...] | None = None,
@@ -29,7 +28,7 @@ def create_class_scope(
 
     Args:
         teacher_user: V2 canonical User with role=TEACHER.
-        join_code: user-facing alias; auto-generated UUID fragment if omitted.
+        join_code: user-facing alias supplied by the caller.
         display_name: display metadata only, not an identity anchor.
         section: display metadata only (e.g. "Period 1").
         student_first_name / student_last_name: if both provided, also
@@ -39,11 +38,10 @@ def create_class_scope(
     """
     from app.services.classroom_setup import create_class, create_student
 
-    resolved_join_code = join_code or f"JC{uuid.uuid4().hex[:6].upper()}"
     idempotency_key = "create_class_scope:" + ":".join(
         [
             str(teacher_user.id),
-            resolved_join_code,
+            join_code,
             display_name or "",
             section or "",
             student_first_name or "",
@@ -53,7 +51,7 @@ def create_class_scope(
     with FEATContext("FEAT-IDEN-001", idempotency_key=idempotency_key):
         class_row = create_class(
             teacher_user.id,
-            join_code=resolved_join_code,
+            join_code=join_code,
             display_name=display_name,
             section=section,
         )

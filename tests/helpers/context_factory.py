@@ -25,7 +25,6 @@ Usage:
 
 from dataclasses import dataclass, field
 from typing import List
-import uuid
 
 from app.feats.base import FEATContext
 
@@ -144,8 +143,10 @@ class ClassroomContextFactory:
 
         if self._teacher_username is None:
             raise TypeError("ClassroomContextFactory.build() requires explicit teacher_username")
+        if self._join_code is None:
+            raise TypeError("ClassroomContextFactory.build() requires explicit join_code")
         username = self._teacher_username
-        join_code = self._join_code or f"JC{uuid.uuid4().hex[:6].upper()}"
+        join_code = self._join_code
 
         idempotency_key = "classroom_context_build:" + ":".join(
             [
