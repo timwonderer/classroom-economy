@@ -30,6 +30,10 @@ DEFAULT_NOISE_ENDPOINT_PREFIXES = (
 )
 
 DEFAULT_PUBLIC_ENDPOINTS = {
+    "docs.index",
+    "docs.timeline",
+    "docs.view_doc",
+    "docs.search",
     "admin.login",
     "main.district",
     "main.offline",
