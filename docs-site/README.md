@@ -25,7 +25,7 @@ npm run start
 
 ## Routing Assumption
 
-The Docusaurus docs plugin is mounted at the site root, but Flask only redirects the subset of public routes listed in `route-map.json`.
+The Docusaurus docs plugin is mounted at the site root, but Flask only redirects the subset of routes listed in `route-map.json`.
 
 That lets the migration move incrementally instead of breaking unmigrated docs.
 
@@ -40,5 +40,3 @@ to:
 ```text
 https://docs.example.com/<mapped-path>
 ```
-
-The site also uses Docusaurus client redirects for those legacy aliases.

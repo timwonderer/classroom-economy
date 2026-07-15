@@ -8,10 +8,6 @@ const docsSiteUrl = stripTrailingSlash(
 const appDocsOrigin = stripTrailingSlash(
   process.env.APP_DOCS_ORIGIN || "http://127.0.0.1:5000",
 );
-// Docusaurus config for the external docs/blog site.
-// Route base path stays at the site root for migrated public docs.
-// Flask only redirects the subset of /docs paths that exist in route-map.json.
-
 /** @type {import('@docusaurus/types').Config} */
 const config = {
   title: "Classroom Token Hub",
