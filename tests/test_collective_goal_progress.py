@@ -38,20 +38,15 @@ def _login_admin(client, teacher, class_id):
     login_teacher(client, teacher, class_id=class_id)
 
 
-def _create_student(teacher, first_name, block='A', class_id=None):
-    with FEATContext("FEAT-IDEN-001", idempotency_key=f"collective-goal:create-student:{first_name}:{block}:{class_id or 'auto'}"):
-        resolved_class_id = class_id
-        if resolved_class_id is None:
-            class_row = create_class_scope(
-                teacher_user=teacher,
-                join_code=f"CGP-{block}-AUTO",
-                display_name=block,
-            )
-            resolved_class_id = class_row.class_id
-        student = make_student_identity(class_id=resolved_class_id, first_name=first_name, last_name='S')
+def _create_student(teacher, first_name, section='A', class_id=None):
+    if class_id is None:
+        raise TypeError("_create_student() requires explicit class_id")
+
+    with FEATContext("FEAT-IDEN-001", idempotency_key=f"collective-goal:create-student:{first_name}:{section}:{class_id}"):
+        student = make_student_identity(class_id=class_id, first_name=first_name, last_name='S')
         db.session.add(Transaction(
             user_id=student.user_id,
-            class_id=resolved_class_id,
+            class_id=class_id,
             amount=Decimal('100.00'),
             account_type='checking',
             type='deposit',
@@ -99,9 +94,9 @@ def test_student_shop_collective_progress_counts_current_class_only(client):
     class_a = create_class_scope(teacher_user=teacher, join_code='CGP-A-01', display_name='A')
     class_b = create_class_scope(teacher_user=teacher, join_code='CGP-B-01', display_name='B')
 
-    student_a1 = _create_student(teacher, 'Alice', block='A', class_id=class_a.class_id)
-    student_a2 = _create_student(teacher, 'Ben', block='A', class_id=class_a.class_id)
-    student_b1 = _create_student(teacher, 'Cara', block='B', class_id=class_b.class_id)
+    student_a1 = _create_student(teacher, 'Alice', section='A', class_id=class_a.class_id)
+    student_a2 = _create_student(teacher, 'Ben', section='A', class_id=class_a.class_id)
+    student_b1 = _create_student(teacher, 'Cara', section='B', class_id=class_b.class_id)
     db.session.flush()
     _enable_store_feature(student_a1.class_id)
 
@@ -153,8 +148,8 @@ def test_student_shop_filters_items_by_store_item_block_visibility(client):
     class_a = create_class_scope(teacher_user=teacher, join_code='CGP-A-02', display_name='A')
     class_d = create_class_scope(teacher_user=teacher, join_code='CGP-D-01', display_name='D')
 
-    student_a = _create_student(teacher, 'Alex', block='A', class_id=class_a.class_id)
-    student_d = _create_student(teacher, 'Bri', block='D', class_id=class_d.class_id)
+    student_a = _create_student(teacher, 'Alex', section='A', class_id=class_a.class_id)
+    student_d = _create_student(teacher, 'Bri', section='D', class_id=class_d.class_id)
     db.session.flush()
     _enable_store_feature(student_a.class_id)
 
@@ -201,8 +196,8 @@ def test_purchase_item_rejects_items_not_visible_to_current_seat(client):
     db.session.flush()
     class_a = create_class_scope(teacher_user=teacher, join_code='CGP-A-03', display_name='A')
 
-    student_a = _create_student(teacher, 'Casey', block='A', class_id=class_a.class_id)
-    student_b = _create_student(teacher, 'Drew', block='A', class_id=class_a.class_id)
+    student_a = _create_student(teacher, 'Casey', section='A', class_id=class_a.class_id)
+    student_b = _create_student(teacher, 'Drew', section='A', class_id=class_a.class_id)
     db.session.flush()
     _enable_store_feature(student_a.class_id)
 
@@ -238,7 +233,7 @@ def test_purchase_item_allows_class_scoped_item_without_block_visibility(client)
     db.session.flush()
     class_a = create_class_scope(teacher_user=teacher, join_code='CGP-A-04', display_name='A')
 
-    student_a = _create_student(teacher, 'Devon', block='A', class_id=class_a.class_id)
+    student_a = _create_student(teacher, 'Devon', section='A', class_id=class_a.class_id)
     db.session.flush()
     _enable_store_feature(student_a.class_id)
 
@@ -273,9 +268,9 @@ def test_collective_unlock_scoped_to_class_and_goal_type(client):
     class_a = create_class_scope(teacher_user=teacher, join_code='CGP-A-05', display_name='A')
     class_b = create_class_scope(teacher_user=teacher, join_code='CGP-B-05', display_name='B')
 
-    student_a1 = _create_student(teacher, 'Alex', block='A', class_id=class_a.class_id)
-    student_a2 = _create_student(teacher, 'Bri', block='A', class_id=class_a.class_id)
-    student_b1 = _create_student(teacher, 'Cy', block='B', class_id=class_b.class_id)
+    student_a1 = _create_student(teacher, 'Alex', section='A', class_id=class_a.class_id)
+    student_a2 = _create_student(teacher, 'Bri', section='A', class_id=class_a.class_id)
+    student_b1 = _create_student(teacher, 'Cy', section='B', class_id=class_b.class_id)
     db.session.flush()
     _enable_store_feature(student_a1.class_id)
     _enable_store_feature(student_b1.class_id)
@@ -341,8 +336,8 @@ def test_admin_store_shows_collective_progress(client):
     db.session.flush()
     class_a = create_class_scope(teacher_user=teacher, join_code='CGP-A-06', display_name='A')
 
-    student_a1 = _create_student(teacher, 'Ana', block='A', class_id=class_a.class_id)
-    _create_student(teacher, 'Bo', block='A', class_id=class_a.class_id)
+    student_a1 = _create_student(teacher, 'Ana', section='A', class_id=class_a.class_id)
+    _create_student(teacher, 'Bo', section='A', class_id=class_a.class_id)
     db.session.flush()
     _enable_store_feature(student_a1.class_id)
 
@@ -379,8 +374,8 @@ def test_whole_class_collective_prevents_duplicate_purchase(client):
     db.session.flush()
     class_a = create_class_scope(teacher_user=teacher, join_code='CGP-A-07', display_name='A')
 
-    student_a1 = _create_student(teacher, 'Dana', block='A', class_id=class_a.class_id)
-    student_a2 = _create_student(teacher, 'Eve', block='A', class_id=class_a.class_id)
+    student_a1 = _create_student(teacher, 'Dana', section='A', class_id=class_a.class_id)
+    student_a2 = _create_student(teacher, 'Eve', section='A', class_id=class_a.class_id)
     db.session.flush()
     _enable_store_feature(student_a1.class_id)
 
@@ -426,8 +421,8 @@ def test_whole_class_collective_goal_uses_correct_class_size(client):
     class_a = create_class_scope(teacher_user=teacher, join_code='CGP-A-08', display_name='A')
 
     # Create 2 students for the class
-    student_a1 = _create_student(teacher, 'Frank', block='A', class_id=class_a.class_id)
-    student_a2 = _create_student(teacher, 'Grace', block='A', class_id=class_a.class_id)
+    student_a1 = _create_student(teacher, 'Frank', section='A', class_id=class_a.class_id)
+    student_a2 = _create_student(teacher, 'Grace', section='A', class_id=class_a.class_id)
     db.session.flush()
     _enable_store_feature(student_a1.class_id)
 
@@ -473,9 +468,9 @@ def test_collective_progress_with_correct_roster_count_admin(client):
     class_a = create_class_scope(teacher_user=teacher, join_code='CGP-A-09', display_name='A')
 
     # Create 3 students
-    student_a1 = _create_student(teacher, 'Henry', block='A', class_id=class_a.class_id)
-    student_a2 = _create_student(teacher, 'Iris', block='A', class_id=class_a.class_id)
-    student_a3 = _create_student(teacher, 'Jack', block='A', class_id=class_a.class_id)
+    student_a1 = _create_student(teacher, 'Henry', section='A', class_id=class_a.class_id)
+    student_a2 = _create_student(teacher, 'Iris', section='A', class_id=class_a.class_id)
+    student_a3 = _create_student(teacher, 'Jack', section='A', class_id=class_a.class_id)
     db.session.flush()
     _enable_store_feature(student_a1.class_id)
 
@@ -513,7 +508,7 @@ def test_fixed_collective_allows_multiple_purchases(client):
     db.session.flush()
     class_a = create_class_scope(teacher_user=teacher, join_code='CGP-A-11', display_name='A')
 
-    student_a1 = _create_student(teacher, 'Kelly', block='A', class_id=class_a.class_id)
+    student_a1 = _create_student(teacher, 'Kelly', section='A', class_id=class_a.class_id)
     db.session.flush()
     _enable_store_feature(student_a1.class_id)
 
@@ -562,8 +557,8 @@ def test_whole_class_goal_with_duplicate_seats_shows_correct_roster(client):
     class_a = create_class_scope(teacher_user=teacher, join_code='CGP-A-12', display_name='A')
 
     # Create 2 students
-    student_a1 = _create_student(teacher, 'Laura', block='A', class_id=class_a.class_id)
-    student_a2 = _create_student(teacher, 'Mike', block='A', class_id=class_a.class_id)
+    student_a1 = _create_student(teacher, 'Laura', section='A', class_id=class_a.class_id)
+    student_a2 = _create_student(teacher, 'Mike', section='A', class_id=class_a.class_id)
     db.session.flush()
     _enable_store_feature(student_a1.class_id)
     
@@ -601,8 +596,8 @@ def test_whole_class_collective_allows_purchase_per_class_for_same_teacher(clien
     class_2 = create_class_scope(teacher_user=teacher, join_code='CGP-B-10', display_name='B')
 
     # Create student in two different classes for the same teacher.
-    student_class1 = _create_student(teacher, 'Nina', block='A', class_id=class_1.class_id)
-    student_class2 = _create_student(teacher, 'Nina', block='B', class_id=class_2.class_id)
+    student_class1 = _create_student(teacher, 'Nina', section='A', class_id=class_1.class_id)
+    student_class2 = _create_student(teacher, 'Nina', section='B', class_id=class_2.class_id)
     db.session.flush()
     _enable_store_feature(student_class1.class_id)
     _enable_store_feature(student_class2.class_id)
