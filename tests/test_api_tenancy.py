@@ -73,17 +73,17 @@ def _login_student(client, student: Seat, class_id: str):
         sess["last_activity"] = datetime.now(timezone.utc).isoformat()
 
 
-def _create_tap_event(student: Seat, teacher: User, class_id: str, status: str = "active"):
+def _create_tap_event(student: Seat, class_id: str, status: str = "active"):
     """Create a canonical v2 attendance session for testing."""
-    with FEATContext("FEAT-IDEN-001", idempotency_key=f"api-tenancy:create-tap:{class_id}:{student.id}:{teacher.id}:{status}"):
-        class_row = ClassEconomy.query.filter_by(class_id=class_id, user_id=teacher.id).first()
+    with FEATContext("FEAT-IDEN-001", idempotency_key=f"api-tenancy:create-tap:{class_id}:{student.id}:{status}"):
+        class_row = ClassEconomy.query.filter_by(class_id=class_id).first()
         assert class_row is not None and class_row.class_id, "Expected class scope to exist before attendance session creation"
-        seat = Seat.query.filter_by(user_id=student.user_id, class_id=class_row.class_id).first()
+        seat = Seat.query.filter_by(user_id=student.user_id, class_id=class_id).first()
         assert seat is not None, "Expected canonical student seat to exist for attendance session creation"
         now = datetime.now(timezone.utc)
         tap = AttendanceSession(
             seat_id=seat.id,
-            class_id=class_row.class_id,
+            class_id=class_id,
             started_at=now,
         )
         if status == "inactive":
@@ -94,11 +94,11 @@ def _create_tap_event(student: Seat, teacher: User, class_id: str, status: str =
     return tap
 
 
-def _create_claimed_seat(teacher: User, student: Seat, class_id: str):
+def _create_claimed_seat(student: Seat, class_id: str):
     """Mark the canonical student seat as claimed for tenancy tests."""
-    with FEATContext("FEAT-IDEN-001", idempotency_key=f"api-tenancy:create-claimed-seat:{class_id}:{student.id}:{teacher.id}"):
-        class_row = ClassEconomy.query.filter_by(class_id=class_id, user_id=teacher.id).first()
-        runtime_seat = Seat.query.filter_by(user_id=student.user_id, class_id=class_row.class_id).first() if class_row else None
+    with FEATContext("FEAT-IDEN-001", idempotency_key=f"api-tenancy:create-claimed-seat:{class_id}:{student.id}"):
+        class_row = ClassEconomy.query.filter_by(class_id=class_id).first()
+        runtime_seat = Seat.query.filter_by(user_id=student.user_id, class_id=class_id).first() if class_row else None
         assert runtime_seat is not None, "Expected canonical student seat to exist before claim state mutation"
         if runtime_seat and not runtime_seat.claimed_at:
             runtime_seat.claimed_at = datetime.now(timezone.utc)
@@ -117,8 +117,8 @@ def test_attendance_history_api_scoped_to_teacher(client):
     student_b = _seed_student(class_b.class_id, "StudentB")
     
     # Create tap events for both students
-    tap_a = _create_tap_event(student_a, teacher_a, class_a.class_id, status="active")
-    tap_b = _create_tap_event(student_b, teacher_b, class_b.class_id, status="active")
+    tap_a = _create_tap_event(student_a, class_a.class_id, status="active")
+    tap_b = _create_tap_event(student_b, class_b.class_id, status="active")
     
     # Login as teacher A
     _login_admin(client, teacher_a, class_a.class_id)
@@ -147,9 +147,9 @@ def test_attendance_history_api_includes_shared_students(client):
     exclusive_a = _seed_student(class_b.class_id, "ExclusiveA")
     exclusive_b = _seed_student(class_b.class_id, "ExclusiveB")
 
-    tap_shared = _create_tap_event(shared_student, teacher_a, class_a.class_id)
-    tap_a = _create_tap_event(exclusive_a, teacher_b, class_b.class_id)
-    tap_b = _create_tap_event(exclusive_b, teacher_b, class_b.class_id)
+    tap_shared = _create_tap_event(shared_student, class_a.class_id)
+    tap_a = _create_tap_event(exclusive_a, class_b.class_id)
+    tap_b = _create_tap_event(exclusive_b, class_b.class_id)
 
     _login_admin(client, teacher_a, class_a.class_id)
     
@@ -230,8 +230,8 @@ def test_attendance_history_api_system_admin_sees_all(client):
     student_a = _seed_student(class_a.class_id, "StudentA")
     student_b = _seed_student(class_b.class_id, "StudentB")
 
-    tap_a = _create_tap_event(student_a, teacher_a, class_a.class_id)
-    tap_b = _create_tap_event(student_b, teacher_b, class_b.class_id)
+    tap_a = _create_tap_event(student_a, class_a.class_id)
+    tap_b = _create_tap_event(student_b, class_b.class_id)
     
     # Login as system admin
     client.post(
@@ -336,7 +336,7 @@ def test_hall_pass_available_types_accepts_class_id_without_teacher_id(client):
     teacher, _ = _seed_teacher("teacher-hall-types")
     economy = _create_class_for_teacher(teacher, section="A")
     student = _seed_student(economy.class_id, "JoinCodePassTypes")
-    _create_claimed_seat(teacher, student, economy.class_id)
+    _create_claimed_seat(student, economy.class_id)
     with FEATContext("FEAT-IDEN-001", idempotency_key="api-tenancy:hall-pass-enabled"):
         db.session.add(HallPassSettings(
             class_id=economy.class_id,
@@ -363,7 +363,7 @@ def test_hall_pass_available_types_rejects_when_feature_disabled_for_class(clien
     teacher, _ = _seed_teacher("teacher-hall-disabled")
     economy = _create_class_for_teacher(teacher, section="A")
     student = _seed_student(economy.class_id, "HallDisabled")
-    _create_claimed_seat(teacher, student, economy.class_id)
+    _create_claimed_seat(student, economy.class_id)
     with FEATContext("FEAT-IDEN-001", idempotency_key="api-tenancy:hall-pass-disabled"):
         db.session.add(HallPassSettings(
             class_id=economy.class_id,
@@ -383,7 +383,7 @@ def test_hall_pass_available_types_rejects_out_of_scope_class(client):
     teacher, _ = _seed_teacher("teacher-hall-scope")
     economy = _create_class_for_teacher(teacher, section="A")
     student = _seed_student(economy.class_id, "JoinCodeScope")
-    _create_claimed_seat(teacher, student, economy.class_id)
+    _create_claimed_seat(student, economy.class_id)
 
     _login_student(client, student, economy.class_id)
     other_scope = _create_class_for_teacher(teacher, section="B")
@@ -435,8 +435,8 @@ def test_student_seat_context_rejects_cross_user_seat_id(client):
     bob_class = _create_class_for_teacher(teacher_b, section="A")
     alice = _seed_student(alice_class.class_id, "SeatAlice")
     bob = _seed_student(bob_class.class_id, "SeatBob")
-    _create_claimed_seat(teacher_a, alice, alice_class.class_id)
-    _create_claimed_seat(teacher_b, bob, bob_class.class_id)
+    _create_claimed_seat(alice, alice_class.class_id)
+    _create_claimed_seat(bob, bob_class.class_id)
     
     bob_user = db.session.get(User, bob.user_id)
     assert bob_user is not None
@@ -468,7 +468,7 @@ def test_hall_pass_available_types_rejects_teacher_public_id(client):
     teacher, _ = _seed_teacher("teacher-hall-public")
     economy = _create_class_for_teacher(teacher, section="A")
     student = _seed_student(economy.class_id, "PublicIdPassTypes")
-    _create_claimed_seat(teacher, student, economy.class_id)
+    _create_claimed_seat(student, economy.class_id)
 
     _login_student(client, student, economy.class_id)
     response = client.get("/api/hall-pass/available-types?teacher_public_id=crisp-otter-leaf")
@@ -486,8 +486,8 @@ def test_switch_teacher_public_id_route_is_disabled(client):
     class_b = _create_class_for_teacher(teacher_b, section="B")
     student_a = _seed_student(class_a.class_id, "SwitchByPublicIdA")
     student_b = _seed_student(class_b.class_id, "SwitchByPublicIdB")
-    _create_claimed_seat(teacher_a, student_a, class_a.class_id)
-    _create_claimed_seat(teacher_b, student_b, class_b.class_id)
+    _create_claimed_seat(student_a, class_a.class_id)
+    _create_claimed_seat(student_b, class_b.class_id)
 
     _login_student(client, student_a, class_a.class_id)
     response = client.post("/student/switch-teacher/teacher-switch-b-public")
@@ -502,7 +502,7 @@ def test_switch_teacher_public_id_invalid_keeps_current_context(client):
     teacher_a, _ = _seed_teacher("teacher-switch-invalid-a")
     class_a = _create_class_for_teacher(teacher_a, section="A")
     student = _seed_student(class_a.class_id, "SwitchInvalidPublicId")
-    _create_claimed_seat(teacher_a, student, class_a.class_id)
+    _create_claimed_seat(student, class_a.class_id)
 
     _login_student(client, student, class_a.class_id)
     response = client.post("/student/switch-teacher/not-valid-public-id")
