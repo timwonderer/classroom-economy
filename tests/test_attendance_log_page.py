@@ -20,6 +20,7 @@ def admin_with_data(client):
         teacher = seed_canonical_admin('testadmin').user
         class_row = create_class_scope(
             teacher_user=teacher,
+            join_code="ATLOG1",
             display_name="Attendance Class",
         )
 
@@ -73,6 +74,7 @@ def test_attendance_log_page_with_no_data(client):
         teacher = seed_canonical_admin('testadmin2').user
         class_row = create_class_scope(
             teacher_user=teacher,
+            join_code="ATLOG2",
             display_name="Attendance Empty Class",
         )
 
@@ -92,8 +94,8 @@ def test_attendance_log_tenant_scoping(client):
     with FEATContext("FEAT-IDEN-001", idempotency_key="attendance_log_page:tenant_scoping"):
         admin1 = seed_canonical_admin('admin1').user
         admin2 = seed_canonical_admin('admin2').user
-        class1 = create_class_scope(teacher_user=admin1, display_name="Attendance Tenant 1")
-        class2 = create_class_scope(teacher_user=admin2, display_name="Attendance Tenant 2")
+        class1 = create_class_scope(teacher_user=admin1, join_code="ATLOG3A", display_name="Attendance Tenant 1")
+        class2 = create_class_scope(teacher_user=admin2, join_code="ATLOG3B", display_name="Attendance Tenant 2")
 
         teacher1 = Seat.query.filter_by(user_id=admin1.id, class_id=class1.class_id, role="teacher").first()
 

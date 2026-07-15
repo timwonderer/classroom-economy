@@ -19,6 +19,7 @@ def admin_with_students(client):
         teacher = seed_canonical_admin('testadmin').user
         class_row = create_class_scope(
             teacher_user=teacher,
+            join_code="APIATN1",
             display_name="Attendance History Class",
         )
 
@@ -115,8 +116,8 @@ def test_attendance_history_tenant_scoping(client):
         admin1 = seed_canonical_admin('admin1').user
         admin2 = seed_canonical_admin('admin2').user
 
-        class1 = create_class_scope(teacher_user=admin1, display_name="Attendance A")
-        class2 = create_class_scope(teacher_user=admin2, display_name="Attendance B")
+        class1 = create_class_scope(teacher_user=admin1, join_code="APIATN2A", display_name="Attendance A")
+        class2 = create_class_scope(teacher_user=admin2, join_code="APIATN2B", display_name="Attendance B")
 
         teacher1 = Seat.query.filter_by(user_id=admin1.id, class_id=class1.class_id, role="teacher").first()
 
