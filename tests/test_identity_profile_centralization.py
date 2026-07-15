@@ -13,7 +13,7 @@ def _create_admin(username: str):
 
 def test_student_requires_explicit_identity_profile(client):
     teacher = _create_admin("identity-teacher-1")
-    class_row = create_class_scope(teacher_user=teacher)
+    class_row = create_class_scope(teacher_user=teacher, join_code="IDCENT1")
     db.session.commit()
 
     seat = make_student_identity(class_id=class_row.class_id, first_name="Alicia", last_name="Quinn")
@@ -29,7 +29,7 @@ def test_student_requires_explicit_identity_profile(client):
 
 def test_student_name_update_syncs_identity_profile(client):
     teacher = _create_admin("identity-teacher-2")
-    class_row = create_class_scope(teacher_user=teacher)
+    class_row = create_class_scope(teacher_user=teacher, join_code="IDCENT2")
 
     with FEATContext("FEAT-IDEN-001", idempotency_key="identity_profile:update_sync"):
         seat = make_student_identity(class_id=class_row.class_id, first_name="Jordan", last_name="Mills")
@@ -46,7 +46,7 @@ def test_student_name_update_syncs_identity_profile(client):
 
 def test_seat_reads_name_from_identity_profile(client):
     teacher = _create_admin("identity-teacher-3")
-    class_row = create_class_scope(teacher_user=teacher)
+    class_row = create_class_scope(teacher_user=teacher, join_code="IDCENT3")
 
     with FEATContext("FEAT-IDEN-001", idempotency_key="identity_profile:seat_reads_name"):
         seat = Seat(class_id=class_row.class_id, role="student")
@@ -65,7 +65,7 @@ def test_seat_reads_name_from_identity_profile(client):
 
 def test_student_internal_reference_is_non_sequential_and_unique(client):
     teacher = _create_admin("identity-teacher-4")
-    class_row = create_class_scope(teacher_user=teacher)
+    class_row = create_class_scope(teacher_user=teacher, join_code="IDCENT4")
 
     with FEATContext("FEAT-IDEN-001", idempotency_key="identity_profile:unique_refs"):
         a = make_student_identity(class_id=class_row.class_id, first_name="One", last_name="Alpha")

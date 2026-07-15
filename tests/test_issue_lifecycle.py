@@ -12,7 +12,7 @@ from app.utils.opaque_refs import make_opaque_ref
 def test_teacher_must_close_issue_after_final_review(client):
     with FEATContext("FEAT-IDEN-001", idempotency_key="issue_lifecycle:setup"):
         teacher = seed_canonical_admin("teacher_issue_lifecycle").user
-        class_row = create_class_scope(teacher_user=teacher)
+        class_row = create_class_scope(teacher_user=teacher, join_code="ISLIFE1")
         student = make_student_identity(
             first_name="Casey",
             last_name="Lopez",

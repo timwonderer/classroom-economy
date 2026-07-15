@@ -19,8 +19,8 @@ def test_attendance_status_isolation(client):
     db.session.flush()
 
     # 2. Create class scopes
-    class_t1 = create_class_scope(teacher_user=t1, display_name="PERIOD 1")
-    class_t2 = create_class_scope(teacher_user=t2, display_name="PERIOD 1")
+    class_t1 = create_class_scope(teacher_user=t1, join_code="SHATT1", display_name="PERIOD 1")
+    class_t2 = create_class_scope(teacher_user=t2, join_code="SHATT2", display_name="PERIOD 1")
     db.session.flush()
 
     # 3. Create student in t1's class

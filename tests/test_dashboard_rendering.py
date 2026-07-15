@@ -16,7 +16,7 @@ def test_admin_dashboard_rendering(client):
     with FEATContext("FEAT-IDEN-001", idempotency_key=f"FEAT-IDEN-001:test-admin-dashboard-rendering:{uuid4().hex}"):
         teacher = make_teacher("render_admin")
         db.session.flush()
-        class_row = create_class_scope(teacher_user=teacher, section="A")
+        class_row = create_class_scope(teacher_user=teacher, join_code="DASH1", section="A")
 
         # Mark onboarding as completed so we don't get redirected
         onboarding = TeacherOnboarding(
@@ -40,7 +40,7 @@ def test_student_dashboard_rendering(client):
         teacher = make_teacher("render_teacher")
         db.session.flush()
 
-        class_row = create_class_scope(teacher_user=teacher, section="A")
+        class_row = create_class_scope(teacher_user=teacher, join_code="DASH2", section="A")
         seat = make_student_identity(
             class_id=class_row.class_id,
             first_name="Render",

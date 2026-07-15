@@ -11,7 +11,7 @@ def test_attendance_session_records_seat_id(client):
     """AttendanceSession records seat_id correctly."""
     teacher = make_teacher("att_scope_teacher")
     db.session.flush()
-    class_scope = create_class_scope(teacher_user=teacher)
+    class_scope = create_class_scope(teacher_user=teacher, join_code="ATTSCOPE1")
     student = make_student_identity(class_id=class_scope.class_id, first_name="Attend", last_name="A")
 
     seat = Seat.query.filter_by(user_id=student.user_id, class_id=class_scope.class_id, role="student").first()
@@ -36,7 +36,7 @@ def test_attendance_session_requires_seat_id(client):
 
     teacher = make_teacher("att_scope_teacher2")
     db.session.flush()
-    class_scope = create_class_scope(teacher_user=teacher)
+    class_scope = create_class_scope(teacher_user=teacher, join_code="ATTSCOPE2")
 
     with FEATContext("FEAT-ATTN-001", idempotency_key="attendance_seat_scope:requires"):
         event = AttendanceSession(

@@ -38,8 +38,8 @@ def test_hall_pass_history_scoped_to_class(client):
     teacher = seed_canonical_admin("hp_hist_t1").user
     db.session.flush()
 
-    class_a = create_class_scope(teacher_user=teacher)
-    class_b = create_class_scope(teacher_user=teacher)
+    class_a = create_class_scope(teacher_user=teacher, join_code="HPHISTA")
+    class_b = create_class_scope(teacher_user=teacher, join_code="HPHISTB")
     db.session.flush()
 
     seat_a = make_student_identity(class_id=class_a.class_id, first_name="Alice", last_name="A")

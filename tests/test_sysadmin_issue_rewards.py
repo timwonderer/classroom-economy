@@ -29,7 +29,7 @@ def test_sysadmin_resolve_issue_issues_bug_reward_transaction(client):
         category_type="general",
         is_active=True,
     )
-    economy = create_class_scope(teacher_user=teacher, section="A")
+    economy = create_class_scope(teacher_user=teacher, join_code="SIR1", section="A")
     student = make_student_identity(
         class_id=economy.class_id,
         first_name="Bug",
