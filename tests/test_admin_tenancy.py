@@ -49,25 +49,19 @@ def _login_admin(client, teacher: User, class_id: str):
     login_teacher(client, teacher, class_id=class_id)
 
 
-def _build_student_detail_public_url(client, teacher_user: User, student_user: User) -> str:
-    selected_class_id = teacher_user.last_active_class_id
-
-    seat_query = (
+def _build_student_detail_public_url(client, teacher_user: User, student_user: User, *, class_id: str) -> str:
+    seat = (
         Seat.query
-        .join(ClassEconomy, ClassEconomy.class_id == Seat.class_id)
         .filter(
             Seat.user_id == student_user.id,
             Seat.role == "student",
             Seat.public_id.isnot(None),
-            ClassEconomy.user_id == teacher_user.id,
+            Seat.class_id == class_id,
         )
+        .order_by(Seat.id.asc())
+        .first()
     )
-    seat = None
-    if selected_class_id:
-        seat = seat_query.filter(Seat.class_id == selected_class_id).first()
-    if not seat:
-        seat = seat_query.order_by(Seat.id.asc()).first()
-    assert seat is not None, "No seat found for student in teacher's classes"
+    assert seat is not None, "No seat found for student in the requested class"
 
     serializer = URLSafeTimedSerializer(
         client.application.config["SECRET_KEY"], salt="cth-student-detail-nav-v1"
@@ -167,7 +161,7 @@ def test_student_detail_recovers_from_stale_class_context(client):
         db.session.flush()
 
     db.session.commit()
-    _login_admin(client, teacher, class_row.class_id)
+    _login_admin(client, teacher, class_a.class_id)
 
     # Point session to class B (stale context for student A)
     with FEATContext("FEAT-IDEN-001", idempotency_key="admin_tenancy:stale_class_context"):
@@ -265,7 +259,7 @@ def test_enforce_daily_limits_taps_out_when_limit_reached_in_scope(client):
         db.session.flush()
     db.session.commit()
 
-    _login_admin(client, teacher, class_row.class_id)
+    _login_admin(client, teacher, class_scope.class_id)
     response = client.post("/admin/enforce-daily-limits")
     payload = response.get_json()
 
@@ -296,7 +290,7 @@ def test_student_detail_public_url_requires_nav_token(client):
 
     _login_admin(client, teacher, class_row.class_id)
 
-    nav_url = _build_student_detail_public_url(client, teacher, student_user)
+    nav_url = _build_student_detail_public_url(client, teacher, student_user, class_id=class_row.class_id)
     ok = client.get(nav_url, follow_redirects=False)
     assert ok.status_code == 200
 
@@ -319,7 +313,7 @@ def test_student_detail_public_id_is_seat_scoped_for_shared_student(client):
     assert seat_a.public_id != seat_b.public_id
 
     _login_admin(client, teacher_a, class_a.class_id)
-    own_detail_url = _build_student_detail_public_url(client, teacher_a, shared_student_user)
+    own_detail_url = _build_student_detail_public_url(client, teacher_a, shared_student_user, class_id=class_a.class_id)
     assert f"/admin/students/{seat_a.public_id}?" in own_detail_url
     assert client.get(own_detail_url, follow_redirects=False).status_code == 200
 
