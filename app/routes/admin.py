@@ -4666,11 +4666,12 @@ def edit_student():
                 ).first()
                 if ce and ce.class_id:
                     target_class_id = ce.class_id
+                    student_user_id = student.user_id
                     target_seat_id = (
                         Seat.query
                         .with_entities(Seat.id)
                         .filter(
-                            Seat.user_id == student.id,
+                            Seat.user_id == student_user_id,
                             Seat.class_id == target_class_id,
                         )
                         .scalar()
@@ -4687,7 +4688,7 @@ def edit_student():
                         for old_class_id in old_class_ids:
                             old_seat_id = (
                                 Seat.query.with_entities(Seat.id)
-                                .filter(Seat.user_id == student.id, Seat.class_id == old_class_id)
+                                .filter(Seat.user_id == student_user_id, Seat.class_id == old_class_id)
                                 .scalar()
                             ) if old_class_id else None
                             if not old_seat_id:
@@ -4751,7 +4752,7 @@ def edit_student():
         seats_to_update = (
             Seat.query
             .filter(
-                Seat.user_id == student.id,
+                Seat.user_id == student.user_id,
                 Seat.class_id.in_(sa.select(class_ids_subq)),
             )
             .all()
@@ -4772,7 +4773,7 @@ def edit_student():
     existing_seat_count = (
         Seat.query
         .filter(
-            Seat.user_id == student.id,
+            Seat.user_id == student.user_id,
             Seat.class_id.in_(sa.select(class_ids_subq)),
         )
         .count()
