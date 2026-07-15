@@ -24,6 +24,15 @@ def _login_admin(client, admin: User, *, class_id: str | None = None, seat_id: i
     if class_id is None:
         raise ValueError("admin membership gate tests require an explicit canonical class scope")
     login_teacher(client, admin, class_id=class_id, seat_id=seat_id)
+    if seat_id is not None:
+        with client.session_transaction() as sess:
+            set_canonical_context(
+                sess,
+                user_id=admin.id,
+                class_id=class_id,
+                seat_id=seat_id,
+                role="teacher",
+            )
 
 
 def test_set_current_class_requires_membership_even_if_teacherblock_exists(client):

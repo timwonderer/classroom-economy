@@ -23,12 +23,12 @@ from app.utils.economy_policy import (
 )
 
 
-def _create_class_scope(teacher, block='A'):
+def _create_class_scope(teacher, section='A'):
     from tests.helpers.class_scope import create_class_scope as _create
     return _create(
         teacher_user=teacher,
-        display_name=f'Period {block}',
-        section=block,
+        display_name=f'Period {section}',
+        section=section,
         feature_names=["payroll"],
     )
 
@@ -44,7 +44,7 @@ class TestClassFeatures:
 
     def test_class_feature_defaults(self, client, test_admin):
         """New classes start with payroll enabled and other features disabled."""
-        economy = _create_class_scope(test_admin, block='A')
+        economy = _create_class_scope(test_admin, section='A')
         db.session.flush()
 
         enabled_names = ClassFeature.enabled_names_for_class(economy.class_id)
@@ -52,7 +52,7 @@ class TestClassFeatures:
 
     def test_feature_settings_to_dict_reads_class_features(self, client, test_admin):
         """Policy rows expose feature state from class_features."""
-        economy = _create_class_scope(test_admin, block='A')
+        economy = _create_class_scope(test_admin, section='A')
         with FEATContext("FEAT-ADMN-001", idempotency_key="feature_settings:dict_reads"):
             settings = FeatureSettings(
                 class_id=economy.class_id,
@@ -70,8 +70,8 @@ class TestClassFeatures:
 
     def test_class_features_per_period(self, client, test_admin):
         """Test that different periods can have different settings."""
-        economy_a = _create_class_scope(test_admin, block='A')
-        economy_b = _create_class_scope(test_admin, block='B')
+        economy_a = _create_class_scope(test_admin, section='A')
+        economy_b = _create_class_scope(test_admin, section='B')
         # Enable rent for class A only.
         with FEATContext("FEAT-ADMN-001", idempotency_key="feature_settings:periods"):
             db.session.add(ClassFeature(class_id=economy_a.class_id, feature_name='rent'))
@@ -86,7 +86,7 @@ class TestClassFeatures:
 
     def test_unique_constraint_class_feature(self, client, test_admin):
         """Duplicate feature rows for the same class are prevented."""
-        economy = _create_class_scope(test_admin, block='A')
+        economy = _create_class_scope(test_admin, section='A')
         with FEATContext("FEAT-ADMN-001", idempotency_key="feature_settings:unique"):
             db.session.add(ClassFeature(class_id=economy.class_id, feature_name='payroll'))
             with pytest.raises(Exception):  # Should raise IntegrityError
@@ -95,8 +95,8 @@ class TestClassFeatures:
 
     def test_resolve_feature_class_for_class_is_class_scoped(self, client, test_admin):
         """Class-scoped feature resolution must not bleed across a teacher's classes."""
-        economy_a = _create_class_scope(test_admin, block='A')
-        economy_b = _create_class_scope(test_admin, block='B')
+        economy_a = _create_class_scope(test_admin, section='A')
+        economy_b = _create_class_scope(test_admin, section='B')
         with FEATContext("FEAT-ADMN-001", idempotency_key="feature_settings:resolution"):
             db.session.add(ClassFeature(class_id=economy_a.class_id, feature_name='hall_pass'))
             db.session.flush()
@@ -119,7 +119,7 @@ class TestClassFeatures:
 
     def test_get_class_feature_settings_for_class_reads_from_class_features(self, client, test_admin):
         """Class-scoped feature settings should read directly from class feature rows."""
-        economy = _create_class_scope(test_admin, block='A')
+        economy = _create_class_scope(test_admin, section='A')
         with FEATContext("FEAT-ADMN-001", idempotency_key="feature_settings:banking_hall_pass_rows"):
             db.session.add(ClassFeature(class_id=economy.class_id, feature_name='banking'))
             db.session.add(ClassFeature(class_id=economy.class_id, feature_name='hall_pass'))
@@ -140,8 +140,8 @@ class TestClassFeatures:
 
     def test_admin_feature_class_options_do_not_depend_on_teacher_section(self, client, test_admin):
         """Enabled class options should come from class scope, not seat-local metadata."""
-        economy_a = _create_class_scope(test_admin, block='A')
-        economy_b = _create_class_scope(test_admin, block='B')
+        economy_a = _create_class_scope(test_admin, section='A')
+        economy_b = _create_class_scope(test_admin, section='B')
         with FEATContext("FEAT-ADMN-001", idempotency_key="feature_settings:hall_pass_option"):
             db.session.add(ClassFeature(class_id=economy_a.class_id, feature_name='hall_pass'))
             Seat.query.filter_by(class_id=economy_a.class_id).delete(synchronize_session=False)
@@ -158,7 +158,7 @@ class TestClassFeatures:
 
     def test_admin_feature_gate_resolves_class_scope_through_class_alias(self, client, test_admin):
         """Boundary class aliases resolve through ClassEconomy as ingress metadata only."""
-        economy = _create_class_scope(test_admin, block='A')
+        economy = _create_class_scope(test_admin, section='A')
         with FEATContext("FEAT-ADMN-001", idempotency_key="feature_settings:resolve_alias"):
             db.session.add(ClassFeature(class_id=economy.class_id, feature_name='insurance'))
             Seat.query.filter_by(class_id=economy.class_id).delete(synchronize_session=False)
@@ -175,8 +175,8 @@ class TestClassFeatures:
 
     def test_admin_feature_gate_prefers_active_class_id(self, client, test_admin):
         """An explicit active class must not be overridden by another class's display alias."""
-        economy_a = _create_class_scope(test_admin, block='A')
-        economy_b = _create_class_scope(test_admin, block='B')
+        economy_a = _create_class_scope(test_admin, section='A')
+        economy_b = _create_class_scope(test_admin, section='B')
         with FEATContext("FEAT-ADMN-001", idempotency_key="feature_settings:prefer_active_class"):
             db.session.add(ClassFeature(class_id=economy_a.class_id, feature_name='insurance'))
             db.session.flush()
@@ -351,8 +351,8 @@ class TestTeacherDeletionCascade:
         teacher_user = admin
         teacher_id = admin.id
 
-        economy_a = _create_class_scope(admin, block='A')
-        economy_b = _create_class_scope(admin, block='B')
+        economy_a = _create_class_scope(admin, section='A')
+        economy_b = _create_class_scope(admin, section='B')
 
         assert ClassFeature.query.join(ClassEconomy, ClassFeature.class_id == ClassEconomy.class_id).filter(
             ClassEconomy.user_id == teacher_id
