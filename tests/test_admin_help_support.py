@@ -10,6 +10,7 @@ def _login_admin(client):
     db.session.flush()
     class_row = seed_class_with_seat(
         teacher=teacher,
+        join_code="HELPELA",
         display_name="ELA",
         section="A",
     ).class_row

@@ -33,6 +33,7 @@ def two_teachers(client):
     for i in range(5):
         seed_class_with_seat(
             teacher=teacher1,
+            join_code=f"T1A{i}",
             display_name="A",
             student_first_name=f"StudentT1_{i}",
             student_last_name="A",
@@ -42,6 +43,7 @@ def two_teachers(client):
     for i in range(3):
         seed_class_with_seat(
             teacher=teacher2,
+            join_code=f"T2B{i}",
             display_name="B",
             student_first_name=f"StudentT2_{i}",
             student_last_name="B",
@@ -96,6 +98,7 @@ def test_class_isolation_between_teachers(client):
 
     cls_a = seed_class_with_seat(
         teacher=teacher_a,
+        join_code="CLSISOA",
         display_name="A",
         student_first_name="Isolated",
         student_last_name="I",
