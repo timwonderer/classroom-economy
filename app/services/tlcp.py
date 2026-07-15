@@ -29,6 +29,14 @@ DEFAULT_NOISE_ENDPOINT_PREFIXES = (
     "/api/set-timezone",
 )
 
+# TODO: No namespaced authority doc (INV-*, DOM-*, FEAT-*) currently governs
+# which endpoints are public vs authenticated. Create an authoritative doc
+# (e.g. INV-ARC-0XX_ROUTE_ACCESS_CLASSIFICATION) that defines:
+#   1. The classification tiers (public, authenticated, class-scoped)
+#   2. The criteria for each tier
+#   3. The canonical list of public endpoints and the rationale for each
+#   4. The enforcement mechanism (this set + TLCP gating)
+# Until then, changes to these sets have no constitutional audit trail.
 DEFAULT_PUBLIC_ENDPOINTS = {
     "docs.index",
     "docs.timeline",
@@ -42,6 +50,9 @@ DEFAULT_PUBLIC_ENDPOINTS = {
     "api.tips",
 }
 
+# TODO: Same gap — no authoritative doc governs which endpoints bypass
+# canonical context resolution. Document alongside the route access
+# classification spec above.
 DEFAULT_NO_CONTEXT_ENDPOINTS = {
     "admin.onboarding",
     "admin.select_class_context",
