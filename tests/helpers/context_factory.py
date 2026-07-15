@@ -119,12 +119,11 @@ class ClassroomContextFactory:
     path production routes use. Tests and routes stay in sync automatically.
     """
 
-    def __init__(self, db, *, join_code=None, class_id=None,
+    def __init__(self, db, *, join_code=None,
                  display_name=None, section=None, teacher_username=None,
                  feature_names=None):
         self._db = db
         self._join_code = join_code
-        self._class_id = class_id
         self._display_name = display_name
         self._section = section
         self._teacher_username = teacher_username
