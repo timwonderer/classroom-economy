@@ -66,6 +66,7 @@ All documents are classified into one of three tiers. See [SOP-DOC-000 Section V
 - **[Core Invariants](INVARIANT/CORE/INV-CORE-000_CORE_INVARIANTS.md)** — Canonical v2 core invariants
 - **[Authority Model](INVARIANT/CORE/INV-CORE-001_CAPABILITY_BASED_ARCHITECTURE_AND_AUTHORITY_MODEL.md)** — Canonical capability-based authority hierarchy
 - **[Domain Authority Summary](DOMAIN/DOM-CORE-001_DOMAIN_AUTHORITY_SUMMARY.md)** — Per-domain authority overview
+- **[Identity Reference Models](DOMAIN/DOM-IDEN-007_Identity_Models_and_References.md)** — Canonical identity reference ownership and lookup rules
 - **[FEAT Constitutional Directive](FEATURE-EXECUTION/FEAT-CORE-000_FEATURE_EXECUTION_CONSTITUTIONAL_DIRECTIVE.md)** — FEAT execution rules
 - **[Canonical Monetary Resolution](FEATURE-EXECUTION/FEAT-LED-000_CANONICAL_MONETARY_RESOLUTION_WORKFLOW.md)** — intended plan / resolved plan workflow before posting
 - **[Canonical Schema Definition](DOMAIN/DOM-CORE-002_CANONICAL_SCHEMA_DEFINITION.md)** — Runtime schema, table ownership, and structural constraints

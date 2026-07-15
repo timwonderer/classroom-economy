@@ -30,7 +30,9 @@ Execution MUST NOT depend on:
 - sections
 - periods
 
-Only canonical identifiers such as `class_id` and `join_code` may be used.
+Only canonical identifiers such as `class_id` may be used for runtime authority.
+`join_code` may only be used as a boundary-ingress alias that resolves to
+`class_id` before execution-time logic begins.
 
 ## VI. Rebuild Intent
 

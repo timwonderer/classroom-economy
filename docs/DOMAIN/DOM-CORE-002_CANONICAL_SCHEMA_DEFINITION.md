@@ -157,8 +157,9 @@ The system guarantees:
 identity. No separate `system_admins`, `admin_credentials`, or
 `system_admin_credentials` table may define identity authority.
 
-**Compatibility bridge rule:** During the v1-to-v2 runtime cutover, implementation
-tables such as `teacher_credentials` and `system_admin_credentials` SHALL be unified as one table `passkey_credentials` keyed by `user_id`. Any found instances that use the legacy split tables must be fixed in place before moving on.
+**Migration note:** Legacy split credential tables such as `teacher_credentials` and
+`system_admin_credentials` are migration artifacts only. They do not define runtime
+authority in v2 and must not be treated as canonical schema surfaces.
 
 ---
 

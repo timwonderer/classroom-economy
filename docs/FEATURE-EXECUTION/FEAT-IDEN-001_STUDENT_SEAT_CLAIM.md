@@ -49,7 +49,8 @@ The FEAT MUST resolve the following before mutation:
 2. **Seat Binding**:
     * Create Authoritative `Seat`: Link `user_id` to `class_id` and the `roster_seat_id`.
 3. **Roster Finalization (PII Scrubbing)**:
-    * Update Roster Seat: Set `is_claimed = True`, `claimed_at = NOW`, `student_id = user_id`.
+    * Update Roster Seat: set `is_claimed = True`, `claimed_at = NOW`, and bind the
+      resolved `user_id` to the claimed seat record.
     * **Explicit Scrub**: MUST zero out `last_name_hash_part` and `dob_sum_hash` to prevent future collision or recovery leaks.
 4. **Membership Initialization**:
     * Call `DOM-CLASS` to record `ClassMembership`.
