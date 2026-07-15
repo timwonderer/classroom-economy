@@ -284,20 +284,21 @@ def test_add_manual_student_creates_single_student_seat_for_new_student(client):
     initial_student_count = db.session.query(Seat).filter(Seat.role == "student").count()
     initial_student_seat_count = db.session.query(Seat).filter(Seat.class_id == class_row_manu.class_id, Seat.role == "student").count()
 
-    response = client.post(
-        "/admin/student/add-manual",
-        data={
-            "first_name": "Manualuniq",
-            "last_name": "Seatuniq",
-            "dob": "2010-03-04",
-            "block": "B",
-            "username": "",
-            "pin": "",
-            "passphrase": "",
-            "hall_passes": "3",
-        },
-        follow_redirects=False,
-    )
+    with FEATContext("FEAT-IDEN-001", idempotency_key="admin-membership:student-single-manual:post"):
+        response = client.post(
+            "/admin/student/add-manual",
+            data={
+                "first_name": "Manualuniq",
+                "last_name": "Seatuniq",
+                "dob": "2010-03-04",
+                "block": "B",
+                "username": "",
+                "pin": "",
+                "passphrase": "",
+                "hall_passes": "3",
+            },
+            follow_redirects=False,
+        )
 
     assert response.status_code == 302
     assert db.session.query(Seat).filter(Seat.role == "student").count() == initial_student_count + 1
@@ -377,11 +378,12 @@ def test_store_create_requires_current_class_context(client):
     _login_admin(client, admin, class_id=class_row.class_id, seat_id=teacher_seat.id)
 
     initial_store_item_count = db.session.query(StoreItem).count()
-    response = client.post(
-        "/admin/store",
-        data={},
-        follow_redirects=False,
-    )
+    with FEATContext("FEAT-IDEN-001", idempotency_key="admin-membership:store-guard:post"):
+        response = client.post(
+            "/admin/store",
+            data={},
+            follow_redirects=False,
+        )
 
     assert response.status_code == 302
     assert response.headers["Location"].endswith("/admin/login")
@@ -425,17 +427,18 @@ def test_payroll_settings_uses_feature_scope_blocks_not_student_block_text(clien
     assert teacher_seat is not None
     _login_admin(client, admin, class_id=class_row.class_id, seat_id=teacher_seat.id)
 
-    response = client.post(
-        "/admin/payroll/settings",
-        data={
-            "cwi_block": "B",
-            "settings_mode": "simple",
-            "simple_pay_rate": "15.0",
-            "simple_frequency": "biweekly",
-            "expected_weekly_hours": "5.0",
-        },
-        follow_redirects=False,
-    )
+    with FEATContext("FEAT-IDEN-001", idempotency_key="admin-membership:payroll-guard:post"):
+        response = client.post(
+            "/admin/payroll/settings",
+            data={
+                "cwi_block": "B",
+                "settings_mode": "simple",
+                "simple_pay_rate": "15.0",
+                "simple_frequency": "biweekly",
+                "expected_weekly_hours": "5.0",
+            },
+            follow_redirects=False,
+        )
 
     assert response.status_code == 302
     assert response.headers["Location"].endswith("/admin/payroll")
