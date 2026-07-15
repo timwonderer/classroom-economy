@@ -4676,25 +4676,33 @@ def edit_student():
                         .scalar()
                     )
 
-                    # Transfer transactions from old blocks to this new block
-                    for old_class_id in old_class_ids:
-                        old_seat_id = (
-                            Seat.query.with_entities(Seat.id)
-                            .filter(Seat.user_id == student.id, Seat.class_id == old_class_id)
-                            .scalar()
-                        ) if old_class_id else None
-                        if not old_seat_id:
-                            continue
+                    with FEATContext(
+                        "FEAT-ADMN-001",
+                        idempotency_key=(
+                            f"admin:student-transfer:{student.id}:{target_class_id}:"
+                            f"{','.join(sorted(old_class_ids))}"
+                        ),
+                    ):
+                        # Transfer transactions from old blocks to this new block
+                        for old_class_id in old_class_ids:
+                            old_seat_id = (
+                                Seat.query.with_entities(Seat.id)
+                                .filter(Seat.user_id == student.id, Seat.class_id == old_class_id)
+                                .scalar()
+                            ) if old_class_id else None
+                            if not old_seat_id:
+                                continue
 
-                        update_values = {
-                            'class_id': ce.class_id,
-                            # If target seat is missing, clear the stale seat link to avoid cross-scope seat_id.
-                            'seat_id': target_seat_id,
-                        }
-                        update_res = Transaction.query.filter_by(
-                            seat_id=old_seat_id,
-                            class_id=old_class_id,
-                        ).update(update_values, synchronize_session=False)
+                            update_values = {
+                                'class_id': ce.class_id,
+                                'join_code': get_display_join_code(target_class_id),
+                                # If target seat is missing, clear the stale seat link to avoid cross-scope seat_id.
+                                'seat_id': target_seat_id,
+                            }
+                            update_res = Transaction.query.filter_by(
+                                seat_id=old_seat_id,
+                                class_id=old_class_id,
+                            ).update(update_values, synchronize_session=False)
 
                     transferred_blocks.append(block)
                     current_app.logger.info(
@@ -5307,7 +5315,11 @@ def add_manual_student():
         last_name_parts = hash_last_name_parts(last_name, salt)
 
         user_id = g.canonical_context.user_id
-        class_context = _resolve_student_add_class_context(g.canonical_context, section)
+        class_context = _resolve_student_add_class_context(
+            g.canonical_context,
+            block_select=section,
+            section=section,
+        )
         if not class_context:
             flash("Select a class before making changes.", "error")
             return redirect(url_for('admin.students'))
@@ -6505,7 +6517,7 @@ def rent_settings():
         classes_by_class_id = {}
         for ce in ce_rows:
             block_name = (ce.section or '').strip().upper()
-            class_id = (ce.class_id or '').strip()
+            class_id = ce.class_id
             if not class_id:
                 continue
             active_student_user_ids = {
@@ -6626,10 +6638,8 @@ def rent_settings():
             for class_id, info in classes_by_class_id.items()
         }
         for payment in payment_query:
-            _payment_class = ClassEconomy.query.filter_by(class_id=payment.seat.class_id).first() if payment.seat and payment.seat.class_id else None
-            payment_class_id = _payment_class.class_id if _payment_class else ''
+            payment_class_id = payment.seat.class_id if payment.seat else ''
             payment_join = get_display_join_code(payment_class_id) if payment_class_id else ''
-            payment_join = payment_join.strip()
             payment_block = payment.seat.class_economy.section if payment.seat and payment.seat.class_economy else ''
             coverage_label = "Unknown"
             if payment.period_year and payment.period_month:

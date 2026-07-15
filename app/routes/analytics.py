@@ -398,8 +398,6 @@ def acknowledge_alert(alert_id):
         from app.services.context_resolver import resolve_canonical_context
         context = resolve_canonical_context()
         class_id = context.class_id
-        from app.models import ClassEconomy
-        class_row = db.session.get(ClassEconomy, class_id)
     except Exception:
         return jsonify({'error': 'No class period selected'}), 400
     
