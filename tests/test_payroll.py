@@ -42,7 +42,7 @@ def test_calculate_payroll(client):
     db.session.flush()
     db.session.commit()
 
-    class_economy = create_class_scope(teacher_user=teacher, display_name="A")
+    class_economy = create_class_scope(teacher_user=teacher, join_code="PAYROLL1", display_name="A")
     student = make_student_identity(class_id=class_economy.class_id, first_name='Test', last_name='S', claimed=True)
     db.session.flush()
     seat = Seat.query.filter_by(user_id=student.user_id, class_id=class_economy.class_id, role="student").first()
@@ -60,8 +60,9 @@ def test_calculate_payroll(client):
         ended_at=session_end,
         duration_seconds=1800,
     )
-    db.session.add(attendance_session)
-    db.session.commit()
+    with FEATContext("FEAT-LED-004", idempotency_key="payroll:test_calculate_payroll:attendance"):
+        db.session.add(attendance_session)
+        db.session.flush()
 
     # Calculate payroll
     seat_ids = [seat.id]
@@ -95,8 +96,9 @@ def test_calculate_payroll(client):
         class_id=class_economy.class_id,
         seat_id=seat.id,
     )
-    db.session.add(manual_tx)
-    db.session.commit()
+    with FEATContext("FEAT-LED-004", idempotency_key="payroll:test_calculate_payroll:manual"):
+        db.session.add(manual_tx)
+        db.session.flush()
 
     post_manual_summary = calculate_payroll_breakdown(class_economy.class_id, seat_ids, last_payroll_time)
     assert post_manual_summary == {}
@@ -110,8 +112,8 @@ def test_calculate_payroll_ignores_other_class_manual_payment_anchor(client):
     db.session.flush()
     db.session.commit()
 
-    class_a = create_class_scope(teacher_user=teacher, display_name="A")
-    class_b = create_class_scope(teacher_user=teacher, display_name="B")
+    class_a = create_class_scope(teacher_user=teacher, join_code="PAYROLL2A", display_name="A")
+    class_b = create_class_scope(teacher_user=teacher, join_code="PAYROLL2B", display_name="B")
     db.session.flush()
 
     student = make_student_identity(class_id=class_a.class_id, first_name="Multi", last_name="S", claimed=True)
@@ -199,8 +201,9 @@ def test_get_pay_rate_for_block_block_specific(test_teacher, test_class):
         pay_rate=Decimal("0.50"),  # $0.50 per minute
         is_active=True
     )
-    db.session.add(block_setting)
-    db.session.commit()
+    with FEATContext("FEAT-ADMN-001", idempotency_key="payroll:block_specific"):
+        db.session.add(block_setting)
+        db.session.flush()
 
     # Get pay rate for the block - should convert to per-second rate
     rate = get_pay_rate_for_block("A", class_id=test_class.class_id)
@@ -224,8 +227,9 @@ def test_get_pay_rate_for_block_global_fallback(test_teacher, test_class):
         pay_rate=Decimal("0.30"),  # $0.30 per minute
         is_active=True
     )
-    db.session.add(global_setting)
-    db.session.commit()
+    with FEATContext("FEAT-ADMN-001", idempotency_key="payroll:global_fallback"):
+        db.session.add(global_setting)
+        db.session.flush()
 
     # Get pay rate for a block that doesn't have specific settings
     # Should fall back to global settings
@@ -259,8 +263,9 @@ def test_get_pay_rate_for_block_precedence(test_teacher, test_class):
         is_active=True
     )
 
-    db.session.add_all([global_setting, block_setting])
-    db.session.commit()
+    with FEATContext("FEAT-ADMN-001", idempotency_key="payroll:precedence"):
+        db.session.add_all([global_setting, block_setting])
+        db.session.flush()
 
     # Block A should use block-specific rate
     rate_a = get_pay_rate_for_block("A", class_id=test_class.class_id)
@@ -284,8 +289,9 @@ def test_get_pay_rate_for_block_per_minute_to_per_second_conversion(test_teacher
         pay_rate=Decimal("1.20"),  # $1.20 per minute
         is_active=True
     )
-    db.session.add(setting)
-    db.session.commit()
+    with FEATContext("FEAT-ADMN-001", idempotency_key="payroll:conversion"):
+        db.session.add(setting)
+        db.session.flush()
 
     # Get pay rate
     rate = get_pay_rate_for_block("A", class_id=test_class.class_id)
@@ -309,8 +315,9 @@ def test_get_pay_rate_for_block_json_serialization(test_teacher, test_class):
         pay_rate=Decimal("0.45"),
         is_active=True
     )
-    db.session.add(setting)
-    db.session.commit()
+    with FEATContext("FEAT-ADMN-001", idempotency_key="payroll:json"):
+        db.session.add(setting)
+        db.session.flush()
 
     # Get pay rate
     rate = get_pay_rate_for_block("A", class_id=test_class.class_id)

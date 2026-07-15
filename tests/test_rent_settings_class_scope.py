@@ -25,6 +25,7 @@ def test_rent_settings_update_persists_class_scoped_row(client):
 
     class_row = create_class_scope(
         teacher_user=admin,
+        join_code="RENTSET1",
     )
     seed_class_feature(class_id=class_row.class_id, feature_name="rent")
 
