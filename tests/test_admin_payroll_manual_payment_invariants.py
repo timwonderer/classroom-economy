@@ -152,7 +152,6 @@ def test_payroll_scope_resolves_active_teacher_seat(client):
 
     with client.application.test_request_context('/admin/payroll/manual-payment'):
         from flask import session
-        session['user_id'] = teacher.id
         seat_a = Seat.query.filter_by(role='teacher', class_id=class_a.class_id).first()
         assert seat_a is not None
         set_canonical_context(
