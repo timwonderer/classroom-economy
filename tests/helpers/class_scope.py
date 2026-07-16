@@ -4,7 +4,7 @@ Only the V2 canonical identity model is supported:
   User (role=TEACHER) → ClassEconomy (class_id UUID) → Seat (role='teacher')
   User (role=STUDENT) → Seat (class_id, role='student') → IdentityProfile
 
-No Admin objects, no legacy bridge patterns.
+No authority bridge patterns.
 """
 
 from __future__ import annotations

@@ -1,7 +1,7 @@
 """V2 canonical test fixture helpers.
 
 Tests create identity through the production service layer.
-No Admin objects, no bridge patterns.
+No authority bridge patterns.
 """
 
 from dataclasses import dataclass

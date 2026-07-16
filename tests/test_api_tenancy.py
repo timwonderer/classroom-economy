@@ -114,7 +114,7 @@ def _create_claimed_seat(student: Seat, class_id: str):
 
 
 def test_attendance_history_api_scoped_to_teacher(client):
-    """Admin should only see attendance history for their own students."""
+    """System admin should only see attendance history for their own students."""
     teacher_a, secret_a = _seed_teacher("teacher-a")
     teacher_b, secret_b = _seed_teacher("teacher-b")
     class_a = _create_class_for_teacher(teacher_a, join_code="AT01", section="Period1")
@@ -144,7 +144,7 @@ def test_attendance_history_api_scoped_to_teacher(client):
 
 
 def test_attendance_history_api_includes_shared_students(client):
-    """Admin should see attendance history for shared students."""
+    """System admin should see attendance history for shared students."""
     teacher_a, _ = _seed_teacher("teacher-a")
     teacher_b, _ = _seed_teacher("teacher-b")
     class_a = _create_class_for_teacher(teacher_a, join_code="AT02", section="A")
@@ -251,7 +251,7 @@ def test_attendance_history_api_system_admin_sees_all(client):
 
 
 def test_admin_tap_entries_scoped_by_class_id(client):
-    """Admin should only receive tap entries from their own class scope."""
+    """System admin should only receive tap entries from their own class scope."""
     teacher_a, _ = _seed_teacher("teacher-a")
     teacher_b, _ = _seed_teacher("teacher-b")
     class_a = _create_class_for_teacher(teacher_a, join_code="AT06", section="A")
@@ -293,7 +293,7 @@ def test_admin_tap_entries_scoped_by_class_id(client):
 
 
 def test_admin_delete_tap_entry_enforces_class_scope(client):
-    """Admin should not delete tap entries from another teacher's class scope."""
+    """System admin should not delete tap entries from another teacher's class scope."""
     teacher_a, _ = _seed_teacher("teacher-a")
     teacher_b, _ = _seed_teacher("teacher-b")
     class_a = _create_class_for_teacher(teacher_a, join_code="AT07", section="A")

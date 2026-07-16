@@ -1,7 +1,7 @@
 """V2 canonical admin session helpers.
 
 Teacher auth works entirely through the canonical User (role=TEACHER) +
-context_resolver. No Admin objects.
+context_resolver. No authority bridge objects.
 """
 import secrets
 from app.extensions import db

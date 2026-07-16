@@ -1030,27 +1030,6 @@
             <form id="manualPaymentForm">
               {{ manual_payment_form.hidden_tag() }}
 
-              <!-- Preset Saved Adjustment Selector -->
-              <div class="mb-3">
-                <label for="presetSelector" class="form-label fw-bold">Use Saved Template (Optional):</label>
-                <div class="input-group">
-                  <select id="presetSelector" class="form-select">
-                    <option value="">-- Select Saved Payment --</option>
-                    {% for adj in saved_adjustments %}
-                    {% if adj.is_active %}
-                    <option value="{{ adj.id }}" data-description="{{ adj.name }}"
-                      data-amount="{{ adj.amount }}" data-type="{% if adj.type == 'deposit' %}deposit{% else %}deduction{% endif %}">
-                      {{ adj.name }} ({% if adj.type == 'deposit' %}+{% else %}-{% endif %}${{ "%.2f"|format(adj.amount) }})
-                    </option>
-                    {% endif %}
-                    {% endfor %}
-                  </select>
-                  <button class="btn btn-outline-secondary" type="button" id="clearFormBtn" title="Clear Form">Clear</button>
-                </div>
-              </div>
-
-              <hr>
-
               <!-- Description -->
               <div class="mb-3">
                 {{ manual_payment_form.description.label(class="form-label fw-bold") }}
