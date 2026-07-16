@@ -403,6 +403,25 @@ class Seat(db.Model):
             self.class_economy.section = value
 
 
+# -------------------- SYSTEM ADMIN MODEL --------------------
+class SystemAdmin(db.Model):
+    __tablename__ = 'system_admins'
+    id = db.Column(db.Integer, primary_key=True)
+    # V2: username column REMOVED from ORM. DB column drop is in migration drop_plaintext_username_columns.
+    # Any access to .username will now raise AttributeError — intentional.
+    username_hash = db.Column(db.String(64), unique=True, nullable=True)
+    username_lookup_hash = db.Column(db.String(64), unique=True, nullable=True, index=True)
+    salt = db.Column(db.LargeBinary(16), nullable=True)
+    totp_secret = db.Column(db.String(200), nullable=False)  # Stores base64-encoded encrypted TOTP secret
+
+    @validates('totp_secret')
+    def _validate_totp_secret(self, key, value):
+        return normalize_totp_for_storage(value)
+
+    def get_display_username(self):
+        return f"sysadmin_{self.id}"
+
+
 class AdminInviteCode(db.Model):
     # Replaced in v2 by open teacher signup (Turnstile-gated form → TOTP → passkey → done)
     __tablename__ = 'teacher_invite_codes'
@@ -513,26 +532,6 @@ class EconomySnapshot(db.Model):
         backref=db.backref('economy_snapshots', lazy='dynamic', passive_deletes=True),
     )
 
-
-
-# -------------------- SYSTEM ADMIN MODEL --------------------
-class SystemAdmin(db.Model):
-    __tablename__ = 'system_admins'
-    id = db.Column(db.Integer, primary_key=True)
-    # V2: username column REMOVED from ORM. DB column drop is in migration drop_plaintext_username_columns.
-    # Any access to .username will now raise AttributeError — intentional.
-    username_hash = db.Column(db.String(64), unique=True, nullable=True)
-    username_lookup_hash = db.Column(db.String(64), unique=True, nullable=True, index=True)
-    salt = db.Column(db.LargeBinary(16), nullable=True)
-    totp_secret = db.Column(db.String(200), nullable=False)  # Stores base64-encoded encrypted TOTP secret
-
-    @validates('totp_secret')
-    def _validate_totp_secret(self, key, value):
-        return normalize_totp_for_storage(value)
-
-
-    def get_display_username(self):
-        return f"sysadmin_{self.id}"
 
 
 class PasskeyCredential(db.Model):
@@ -2222,7 +2221,6 @@ class IssueResolutionAction(db.Model):
         return f'<IssueResolutionAction Issue#{self.issue_id}: {self.action_type}>'
 
 
-# ---- Admin Model ----
 class Admin(db.Model):
     __tablename__ = 'teachers'
     id = db.Column(db.Integer, primary_key=True)
@@ -2298,8 +2296,6 @@ class RecoveryRequest(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
-    join_code = db.Column(db.String(20), nullable=True, index=True)
-    dob_sum_hash = db.Column(db.String(64), nullable=True)  # Hashed input for verification trail
 
     # Status tracking
     status = db.Column(
@@ -2327,19 +2323,16 @@ class StudentRecoveryCode(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     recovery_request_id = db.Column(db.Integer, db.ForeignKey('recovery_requests.id'), nullable=False, index=True)
-    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
-    join_code = db.Column(db.String(20), nullable=True, index=True)
+    seat_id = db.Column(db.Integer, db.ForeignKey('seats.id'), nullable=False, index=True)
+    class_id = db.Column(db.String(36), db.ForeignKey('classes.class_id', ondelete='CASCADE'), nullable=False, index=True)
 
-    # Verification code (6-digit, hashed)
-    code_hash = db.Column(db.String(64), nullable=True)  # NULL until student verifies
+    code_hash = db.Column(db.String(64), nullable=True)
     verified_at = db.Column(db.DateTime(timezone=True), nullable=True)
 
-    # Notification tracking
     notified_at = db.Column(db.DateTime(timezone=True), default=utc_now, nullable=False)
-    dismissed = db.Column(db.Boolean, default=False, nullable=False)  # Student dismissed notification
+    dismissed = db.Column(db.Boolean, default=False, nullable=False)
 
-    # Relationships
-    user = db.relationship('User', backref=db.backref('recovery_codes', lazy='dynamic'))
+    seat = db.relationship('Seat', backref=db.backref('recovery_codes', lazy='dynamic'))
 
 
 # ---- Payroll Settings Model ----

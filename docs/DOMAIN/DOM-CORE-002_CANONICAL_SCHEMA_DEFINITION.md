@@ -2,7 +2,7 @@
 
 | Reference Number | Version | Effective Date | Supersedes | Authority Level |
 |------------------|---------|----------------|------------|-----------------|
-| DOM-CORE-002     | 1.4     | 2026-07-10     | 1.3        | Constitutional |
+| DOM-CORE-002     | 1.5     | 2026-07-15     | 1.4        | Constitutional |
 
 ---
 
@@ -161,6 +161,12 @@ identity. No separate `system_admins`, `admin_credentials`, or
 `system_admin_credentials` are migration artifacts only. They do not define runtime
 authority in v2 and must not be treated as canonical schema surfaces.
 
+**Recovery and authentication tables** (owned by DOM-IDEN-003):
+
+- `recovery_requests` — teacher credential recovery lifecycle; at most one pending per user
+- `student_recovery_codes` — per-student verification codes; child of `recovery_requests`, CASCADE-deleted
+- `passkey_credentials` — WebAuthn/FIDO2 credential bindings; owned by `users.id`
+
 ---
 
 ### 2. Class Configuration (DOM-CLASS-001)
@@ -288,6 +294,18 @@ authority in v2 and must not be treated as canonical schema surfaces.
 - `ticket_correlation_packs`
 - `announcements`
 - `issue_categories`
+- `user_reports`
+
+---
+
+### 10. Economic Policy (DOM-ECON-003)
+
+**Purpose:** Record policy versioning and transition lifecycle.
+
+**Tables:**
+
+- `policy_versions`
+- `policy_transitions`
 
 ---
 

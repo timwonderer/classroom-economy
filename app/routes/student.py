@@ -76,8 +76,8 @@ from app.services import access_policy_service, store_service
 from app.services.entitlement_service import reconcile_rent_hall_pass_top_off as _reconcile_rent_hall_pass_top_off
 from app.services.recovery_service import (
     dismiss_recovery_code as dismiss_recovery_code_row,
-    get_pending_recovery_code_for_student,
-    get_recovery_code_for_student,
+    get_pending_recovery_code_for_seat,
+    get_recovery_code_for_seat,
     set_recovery_code_verified,
 )
 from app.feats.base import feat_shell
@@ -1038,7 +1038,7 @@ def dashboard():
     feature_settings = get_feature_settings_for_student()
 
     # --- Check for pending recovery request ---
-    pending_recovery_code = get_pending_recovery_code_for_student(student.id, utc_now())
+    pending_recovery_code = get_pending_recovery_code_for_seat(student.id, utc_now())
 
     # --- Calculate weekly/monthly analytics ---
     from app.models import AttendanceSession as _AttSession
@@ -3978,7 +3978,7 @@ def verify_recovery(code_id):
     student = db.session.get(Seat, context.seat_id) if context and getattr(context, "seat_id", None) else None
 
     # Get the recovery code request
-    recovery_code = get_recovery_code_for_student(code_id, student.id)
+    recovery_code = get_recovery_code_for_seat(code_id, student.id)
     if recovery_code is None:
         flash("Invalid recovery request.", "error")
         return redirect(url_for('student.dashboard'))
@@ -4048,7 +4048,7 @@ def dismiss_recovery(code_id):
     student = db.session.get(Seat, context.seat_id) if context and getattr(context, "seat_id", None) else None
 
     # Get the recovery code request
-    recovery_code = get_recovery_code_for_student(code_id, student.id)
+    recovery_code = get_recovery_code_for_seat(code_id, student.id)
     if recovery_code is None:
         flash("Invalid recovery request.", "error")
         return redirect(url_for('student.dashboard'))

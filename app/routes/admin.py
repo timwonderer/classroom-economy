@@ -178,7 +178,7 @@ from app.services.admin_identity_service import (
     touch_admin_credentials_last_used,
 )
 from app.services.recovery_service import (
-    create_recovery_request_with_students,
+    create_recovery_request_with_seats,
     delete_recovery_rows_for_user,
     find_recovery_request_by_resume_pin,
     get_active_recovery_request_for_user,
@@ -3159,11 +3159,6 @@ def signup():
             )
         # Step 6: Create admin account and mark invite as used
         current_app.logger.info(f"TOTP verified. Creating admin account")
-        # v2: no DOB usage in teacher signup.
-        salt = get_random_salt()
-        signup_seed = int.from_bytes(salt[:2], "big") % 10000
-        signup_seed_hash = hash_hmac(str(signup_seed).encode(), salt)
-
         # Check ToS acknowledgement
         tos_agreed = request.form.get('tos_agreed') == 'true'
         if not tos_agreed:
@@ -3196,17 +3191,7 @@ def signup():
         # Encrypt TOTP secret before storing
         encrypted_totp_secret = encrypt_totp(totp_secret)
 
-        salt, username_hash, username_lookup_hash = _build_admin_auth_fields(username, existing_salt=salt)
-        new_admin = Admin(
-            username_hash=username_hash,
-            username_lookup_hash=username_lookup_hash,
-            totp_secret=encrypted_totp_secret,
-            dob_sum_hash=signup_seed_hash,
-            salt=salt,
-            hall_pass_verify_token=Admin.generate_verify_token(),
-            tos_accepted=True,
-            tos_accepted_at=utc_now()
-        )
+        salt, username_hash, username_lookup_hash = _build_admin_auth_fields(username)
         new_user = User(
             user_role=UserRole.TEACHER,
             username_hash=username_hash,
@@ -3219,8 +3204,18 @@ def signup():
 
         signup_idempotency_key = f"feat:iden:admin-signup:{username}"
         with FEATContext("FEAT-IDEN-001", idempotency_key=signup_idempotency_key):
-            db.session.add_all([new_admin, new_user])
+            db.session.add(new_user)
             db.session.flush()
+
+            from app.services.classroom_setup import create_class
+
+            initial_join_code = generate_join_code()
+            initial_display_name = username.strip() or "New Class"
+            create_class(
+                new_user.id,
+                join_code=initial_join_code,
+                display_name=initial_display_name,
+            )
         current_app.logger.info(f"Admin account created successfully")
         # Clear session
         session.pop("admin_totp_secret", None)
@@ -3387,9 +3382,9 @@ def recover():
         # Step 4: Create recovery request (5-day expiration)
         # ----------------------------------------------------------------
         expires_at = utc_now() + timedelta(days=5)
-        recovery_request = create_recovery_request_with_students(
+        recovery_request = create_recovery_request_with_seats(
             user_id=recovered_account_id,
-            student_ids=[seat.id for seat in resolved_seats.values()],
+            seat_class_pairs=[(seat.id, class_id) for class_id, seat in resolved_seats.items()],
             expires_at=expires_at,
         )
 

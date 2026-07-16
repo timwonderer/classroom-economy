@@ -23,7 +23,7 @@ from app.models import (
     Seat,
     IdentityProfile,
 )
-from app.services.recovery_service import delete_recovery_codes_for_student
+from app.services.recovery_service import delete_recovery_codes_for_seat
 
 
 def _collect_related_ids(student_id):
@@ -140,7 +140,8 @@ def _delete_student_scoped_rows(student_id, store_purchase_ids, issue_ids, insur
     InsuranceEnrollment.query.filter(
         InsuranceEnrollment.seat_id.in_(seat_ids_for_student)
     ).delete(synchronize_session=False)
-    delete_recovery_codes_for_student(student_id)
+    for sid in (seat_ids_for_student or []):
+        delete_recovery_codes_for_seat(sid)
     if tx_ids:
         Transaction.query.filter(Transaction.id.in_(tx_ids)).delete(synchronize_session=False)
     if seat_ids_for_student:
