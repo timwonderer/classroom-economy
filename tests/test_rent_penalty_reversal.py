@@ -59,7 +59,6 @@ def _login_admin(client, user_id, class_id):
 
 def _make_admin_with_block(join_code="LOCKA1", block="A", suffix="rv"):
     from tests.helpers.class_scope import create_class_scope, make_student_identity
-    from app.models import RentPolicyVersion
 
     with FEATContext("FEAT-IDEN-001", idempotency_key=f"rent-reversal:admin:{join_code}"):
         admin = seed_canonical_admin(f"rent_admin_{suffix}_{join_code.lower()}", "TESTSECRET123456").user
@@ -84,12 +83,6 @@ def _make_admin_with_block(join_code="LOCKA1", block="A", suffix="rv"):
         )
         db.session.add(settings)
         db.session.flush()
-        version = settings.create_policy_version()
-        db.session.add(version)
-        db.session.flush()
-        settings.active_version_id = version.id
-        settings.next_version_id = None
-        db.session.flush()
 
     return admin, settings
 
@@ -104,7 +97,7 @@ def _add_payment(student, user_id, class_id, amount_paid, late_fee, payment_date
     seat = Seat.query.filter_by(user_id=student.user_id, class_id=class_id).first()
     assert seat is not None
     settings = RentSettings.query.filter_by(class_id=class_id).first()
-    assert settings is not None and settings.active_version_id is not None
+    assert settings is not None
     with FEATContext("FEAT-LED-001", idempotency_key=f"rent-reversal:payment:{seat.id}:{payment_date.isoformat()}"):
         transaction = Transaction(
             seat_id=seat.id,
@@ -133,7 +126,6 @@ def _add_payment(student, user_id, class_id, amount_paid, late_fee, payment_date
             coverage_start_time=coverage_due_date,
             coverage_end_time=coverage_due_date,
             cycle_idempotency_key=f"rent-reversal:cycle:{seat.id}:{coverage_due_date.isoformat()}",
-            rent_policy_version_id=settings.active_version_id,
             transaction_id=transaction.id,
         )
         payment.satisfaction.satisfied_at = payment_date

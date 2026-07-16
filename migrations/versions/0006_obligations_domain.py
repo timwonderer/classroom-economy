@@ -164,51 +164,8 @@ def upgrade():
     if not index_exists('obligation_reversal', 'ix_obligation_reversal_assessment_id'):
         op.create_index('ix_obligation_reversal_assessment_id', 'obligation_reversal', ['assessment_id'])
 
-    # 4. insurance_enrollments — canonical seat-level insurance contracts
-    if not table_exists('insurance_enrollments'):
-        op.create_table(
-            'insurance_enrollments',
-            sa.Column('id', sa.Integer(), nullable=False),
-            sa.Column('seat_id', sa.Integer(), nullable=False),
-            sa.Column('class_id', sa.String(36), nullable=False),
-            sa.Column('policy_id', sa.Integer(), nullable=False),
-            sa.Column('join_code', sa.String(20), nullable=True),
-            sa.Column('status', sa.String(20), nullable=False, server_default='active'),
-            sa.Column('purchase_date', sa.DateTime(timezone=True), nullable=True),
-            sa.Column('cancel_date', sa.DateTime(timezone=True), nullable=True),
-            sa.Column('last_payment_date', sa.DateTime(timezone=True), nullable=True),
-            sa.Column('next_payment_due', sa.DateTime(timezone=True), nullable=True),
-            sa.Column('coverage_start_date', sa.DateTime(timezone=True), nullable=True),
-            sa.Column('payment_current', sa.Boolean(), nullable=False, server_default='true'),
-            sa.Column('days_unpaid', sa.Integer(), nullable=False, server_default='0'),
-            # Immutable policy snapshot
-            sa.Column('frozen_policy_title', sa.String(100), nullable=True),
-            sa.Column('frozen_policy_description', sa.Text(), nullable=True),
-            sa.Column('frozen_max_claim_amount', sa.Numeric(precision=12, scale=2), nullable=True),
-            sa.Column('frozen_max_payout_per_period', sa.Numeric(precision=12, scale=2), nullable=True),
-            sa.Column('frozen_max_claims_count', sa.Integer(), nullable=True),
-            sa.Column('frozen_max_claims_period', sa.String(20), nullable=True),
-            sa.Column('frozen_claim_time_limit_days', sa.Integer(), nullable=True),
-            sa.Column('policy_version', sa.Integer(), nullable=True),
-            sa.ForeignKeyConstraint(['seat_id'], ['seats.id'], ondelete='CASCADE'),
-            sa.ForeignKeyConstraint(['class_id'], ['classes.class_id'], ondelete='CASCADE'),
-            sa.ForeignKeyConstraint(['policy_id'], ['insurance_policies.id']),
-            sa.PrimaryKeyConstraint('id'),
-        )
-        print("✅ Created insurance_enrollments")
-    else:
-        print("⚠️  Table 'insurance_enrollments' already exists, skipping create...")
-
-    if not index_exists('insurance_enrollments', 'ix_insurance_enrollment_seat_id'):
-        op.create_index('ix_insurance_enrollment_seat_id', 'insurance_enrollments', ['seat_id'])
-    if not index_exists('insurance_enrollments', 'ix_insurance_enrollment_class_id'):
-        op.create_index('ix_insurance_enrollment_class_id', 'insurance_enrollments', ['class_id'])
-    if not index_exists('insurance_enrollments', 'ix_insurance_enrollment_policy_id'):
-        op.create_index('ix_insurance_enrollment_policy_id', 'insurance_enrollments', ['policy_id'])
-    if not index_exists('insurance_enrollments', 'ix_insurance_enrollment_join_code'):
-        op.create_index('ix_insurance_enrollment_join_code', 'insurance_enrollments', ['join_code'])
-    if not index_exists('insurance_enrollments', 'ix_insurance_enrollment_seat_class'):
-        op.create_index('ix_insurance_enrollment_seat_class', 'insurance_enrollments', ['seat_id', 'class_id'])
+    # 4. insurance_enrollments was removed in the v2 cutover.
+    # The historical table is intentionally not recreated in the baseline.
 
     # 5. entitlement_events — append-only perk grant/consumption stream
     if not table_exists('entitlement_events'):

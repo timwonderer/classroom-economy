@@ -365,9 +365,9 @@ def test_get_pay_rate_for_block_requires_class_scope(client):
 
 
 def test_get_cached_payroll_with_meta(client):
-    """Test the caching logic for payroll."""
+    """Payroll must recalculate directly without persisted cache state."""
     from app.payroll import get_cached_payroll_with_meta
-    from app.models import Seat, IdentityProfile, AttendanceSession, PayrollCache, User, UserRole
+    from app.models import Seat, AttendanceSession
     from tests.helpers.class_scope import create_class_scope
     from datetime import datetime, timedelta, timezone
 
@@ -405,18 +405,10 @@ def test_get_cached_payroll_with_meta(client):
     summary, updated_at = get_cached_payroll_with_meta(class_economy.class_id, seat_ids, last_payroll)
     assert seat.id in summary
     assert summary[seat.id] > 0
-    # Store initial values to compare later
     initial_amount = summary[seat.id]
     initial_updated_at = updated_at
 
-    # Verify Cache Entry Exists
-    cache = PayrollCache.query.filter_by(class_id=class_economy.class_id).first()
-    assert cache is not None
-    assert str(seat.id) in cache.cached_breakdown
-
-    # 2. Second Call: Cache Hit (Verify Staleness)
-    # Add more attendance events that SHOULD increase payroll if recalculated
-    # Adding another 15 minutes
+    # Add more attendance events that should increase payroll on the next call.
     session_two = AttendanceSession(
         seat_id=seat.id,
         class_id=class_economy.class_id,
@@ -428,25 +420,9 @@ def test_get_cached_payroll_with_meta(client):
         db.session.add(session_two)
         db.session.flush()
 
-    # Call again - should still return OLD value (Cache Hit)
-    summary_cached, updated_at_cached = get_cached_payroll_with_meta(class_economy.class_id, seat_ids, last_payroll)
-    # Value should be unchanged
-    assert summary_cached[seat.id] == initial_amount
-    # Timestamp should be unchanged
-    assert updated_at_cached == initial_updated_at
-
-    # 3. Simulate Expiry -> Cache Miss -> Calculation
-    # Force cache timestamp to be old (2 hours ago)
-    with FEATContext("FEAT-LED-004", idempotency_key="payroll:cached-cache-expiry"):
-        cache.last_calculated_at = now - timedelta(hours=2)
-        db.session.flush()
-
-    # Call again - should Recalculate
     summary_fresh, updated_at_fresh = get_cached_payroll_with_meta(class_economy.class_id, seat_ids, last_payroll)
-    # Amount should increase due to new events
     assert summary_fresh[seat.id] > initial_amount
-    # Timestamp should be newer
-    assert updated_at_fresh > initial_updated_at
+    assert updated_at_fresh >= initial_updated_at
 
 
 def test_get_cached_payroll_with_meta_fails_closed(client):

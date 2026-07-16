@@ -284,7 +284,7 @@ class Seat(db.Model):
             self.class_economy.section = value
 
 
-# SystemAdmin removed — prohibited by INV-IDEN-001; identity authority lives in User.user_role=SYSADMIN
+# Legacy sysadmin identity table removed; authority now lives on User.user_role=SYSADMIN
 # AdminInviteCode removed — teacher_invite_codes superseded by open signup; prohibited (DOM-CORE-002 §1)
 
 
@@ -416,7 +416,7 @@ class Transaction(db.Model):
     # Stored as IDs for backend portability.
     original_transaction_id = db.Column(db.Integer, nullable=True, index=True)
     reversal_transaction_id = db.Column(db.Integer, nullable=True, index=True)
-    policy_id = db.Column(db.Integer, db.ForeignKey('insurance_policies.id'), nullable=True, index=True)
+    policy_id = db.Column(db.Integer, nullable=True, index=True)
     type = db.Column(db.String(50))  # optional field to describe the transaction type
     # All times stored as UTC
     date_funds_available = db.Column(db.DateTime(timezone=True), default=utc_now)
@@ -435,15 +435,6 @@ class Transaction(db.Model):
 
     __table_args__ = (
         db.Index('ix_transaction_seat_ledger', 'join_code', 'seat_id', 'status', 'account_type'),
-        db.Index(
-            'uq_insurance_reimbursement_source_policy',
-            'original_transaction_id',
-            'policy_id',
-            unique=True,
-            postgresql_where=sa.text(
-                "type = 'insurance_reimbursement' AND original_transaction_id IS NOT NULL AND policy_id IS NOT NULL"
-            ),
-        ),
         db.Index(
             'uq_transaction_idempotency_scope',
             'class_id',
@@ -1092,20 +1083,7 @@ class RentSettings(db.Model):
     cycle_length_days = db.Column(db.Integer, nullable=False, default=30)
     updated_at = db.Column(db.DateTime(timezone=True), default=utc_now, onupdate=utc_now)
 
-    # Version tracking — each meaningful save creates a new immutable RentPolicyVersion
-    active_version_id = db.Column(db.Integer, db.ForeignKey('rent_policy_versions.id', ondelete='SET NULL', use_alter=True), nullable=True)
-    next_version_id = db.Column(db.Integer, db.ForeignKey('rent_policy_versions.id', ondelete='SET NULL', use_alter=True), nullable=True)
-
-    active_version = db.relationship(
-        'RentPolicyVersion',
-        foreign_keys=[active_version_id],
-        post_update=True,
-    )
-    next_version = db.relationship(
-        'RentPolicyVersion',
-        foreign_keys=[next_version_id],
-        post_update=True,
-    )
+    # Version tracking removed — policy versions are now modeled in canonical policy tables.
 
     # Keep old field names for accessors.
     @property
@@ -1119,54 +1097,6 @@ class RentSettings(db.Model):
         'allow_incremental_payment', 'prevent_purchase_when_late', 'cycle_length_days',
     )
 
-    def create_policy_version(self):
-        """Snapshot current settings + rent items into a new immutable RentPolicyVersion."""
-        # Derive next version number from existing versions
-        max_version = (
-            db.session.query(db.func.coalesce(db.func.max(RentPolicyVersion.version_number), 0))
-            .filter(RentPolicyVersion.class_id == self.class_id)
-            .scalar()
-        )
-        next_version = max_version + 1
-
-        items_snapshot = [
-            {
-                'name': item.name,
-                'description': item.description,
-                'order_index': item.order_index,
-                'rent_item_type': item.rent_item_type,
-                'use_limit': item.use_limit,
-                'hall_pass_count': item.hall_pass_count,
-                'is_available_in_store': item.is_available_in_store,
-                'store_price': str(item.store_price) if item.store_price is not None else None,
-                'purchase_duration': item.purchase_duration,
-                'store_item_id': item.store_item_id,
-            }
-            for item in self.rent_items.all()
-        ]
-        version = RentPolicyVersion(
-            class_id=self.class_id,
-            version_number=next_version,
-            source_rent_setting_id=self.id,
-            rent_amount=self.rent_amount,
-            frequency_type=self.frequency_type,
-            custom_frequency_value=self.custom_frequency_value,
-            custom_frequency_unit=self.custom_frequency_unit,
-            due_day_of_month=self.due_day_of_month,
-            grace_period_days=self.grace_period_days,
-            late_penalty_amount=self.late_penalty_amount,
-            late_penalty_type=self.late_penalty_type,
-            late_penalty_frequency_days=self.late_penalty_frequency_days,
-            bill_preview_enabled=self.bill_preview_enabled,
-            bill_preview_days=self.bill_preview_days,
-            allow_incremental_payment=self.allow_incremental_payment,
-            prevent_purchase_when_late=self.prevent_purchase_when_late,
-            cycle_length_days=self.cycle_length_days,
-            frozen_items=items_snapshot,
-        )
-        return version
-
-
 @event.listens_for(RentSettings, "before_insert")
 @event.listens_for(RentSettings, "before_update")
 def _sync_rent_settings_scope(mapper, connection, target):
@@ -1175,7 +1105,7 @@ def _sync_rent_settings_scope(mapper, connection, target):
         raise ValueError("rent_settings require canonical class_id")
 
 
-# RentPolicyVersion removed — absorbed into policy_versions(domain='rent') (DOM-ECON-003)
+# Legacy rent policy version rows removed; rent policy state is now canonical
 
 
 # RentPayment removed — expressed as obligation_satisfaction(method=PAYMENT) + ledger_transaction ref (DOM-OBL-001)
@@ -1204,7 +1134,7 @@ def _sync_hall_pass_seat(_mapper, connection, target):
             target.class_id = str(seat_class_id)
 
 
-# RentItem removed — absorbed into store_items + rent_settings (DOM-STORE-001 + DOM-CLASS-001)
+# Legacy rent item rows removed; rent store state is now canonical
 
 
 
@@ -1237,7 +1167,7 @@ class ObligationAssessment(db.Model):
     assessed_at = db.Column(db.DateTime(timezone=True), default=utc_now, nullable=False)
 
     # Rent policy version — links to the immutable contract that governed this assessment
-    rent_policy_version_id = db.Column(db.Integer, db.ForeignKey('rent_policy_versions.id', ondelete='SET NULL'), nullable=True, index=True)
+    rent_policy_version_id = db.Column(db.Integer, nullable=True, index=True)
 
     # Rent-cycle fields — preserved from prepay coverage-window model (INV-ARC-015)
     period_key = db.Column(db.String(20), nullable=True)
@@ -1253,8 +1183,6 @@ class ObligationAssessment(db.Model):
     satisfaction = db.relationship('ObligationSatisfaction', uselist=False, backref='assessment')
     reversal = db.relationship('ObligationReversal', uselist=False, backref='assessment')
     entitlement_events = db.relationship('EntitlementEvent', backref='assessment')
-    rent_policy_version = db.relationship('RentPolicyVersion', backref='assessments')
-
     __table_args__ = (
         db.UniqueConstraint('seat_id', 'class_id', 'cycle_idempotency_key', name='uq_assessment_events_idempotency'),
         db.Index('ix_assessment_events_seat_class', 'seat_id', 'class_id'),
@@ -1349,7 +1277,7 @@ class ActorRequestTrace(db.Model):
 
 
 # ---- User Report Model (Bug Reports, Suggestions, Comments) ----
-# UserReport removed — absorbed into Issues pipeline (DOM-SUP-001, DOM-IDEN-007)
+# Legacy support report rows removed; support issues are now canonical
 
 
 # ---- Issue Resolution System Models ----

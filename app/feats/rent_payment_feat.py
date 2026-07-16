@@ -51,11 +51,6 @@ def execute_rent_payment(
     class_id = seat.class_id
     join_code = get_display_join_code(class_id)
 
-    # Resolve the immutable policy version governing this cycle
-    active_version = obligations_service.resolve_active_rent_policy_version(class_id)
-    if active_version is None:
-        raise ValueError(f"No active rent policy version for class {class_id}")
-
     access_policy_service.assert_can_pay_rent(
         seat_id=seat.id,
         class_id=class_id,
@@ -100,7 +95,6 @@ def execute_rent_payment(
         was_late=is_late,
         late_fee_charged=late_fee_for_this_payment,
         transaction_id=transaction.id,
-        rent_policy_version_id=active_version.id,
     )
     db.session.flush()
 
@@ -133,15 +127,14 @@ def execute_rent_payment(
     per_use_items_granted = 0
     newly_fully_paid = total_paid_so_far < total_due and (total_paid_so_far + payment_amount >= total_due)
     if newly_fully_paid:
-        target_rent_passes = store_service.get_rent_hall_pass_grant_total_from_version(active_version)
+        target_rent_passes = store_service.get_rent_hall_pass_grant_total_from_settings(settings)
         passes_awarded, _, _ = reconcile_rent_hall_pass_top_off(
             seat=seat,
             target_rent_passes=target_rent_passes,
         )
         if calculate_due_dates_fn is not None:
-            per_use_items_granted = store_service.grant_rent_per_use_items_from_version(
+            per_use_items_granted = store_service.grant_rent_per_use_items_from_settings(
                 seat=seat,
-                version=active_version,
                 calculate_due_dates_fn=calculate_due_dates_fn,
                 settings=settings,
             )

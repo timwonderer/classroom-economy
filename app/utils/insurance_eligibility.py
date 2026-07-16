@@ -8,7 +8,7 @@ from typing import Optional, Set, Tuple
 
 from sqlalchemy import and_
 
-from app.models import InsuranceClaim, RedemptionEvent, RedemptionEventAction, RentItem, StoreItem, StorePurchase, Transaction, TransactionStatus
+from app.models import RedemptionEvent, RedemptionEventAction, StoreItem, StorePurchase, Transaction, TransactionStatus
 from app.utils.time import ensure_utc, get_class_now, to_class_time
 
 CLAIM_TYPE_TRANSACTION_MONETARY = "transaction_monetary"
@@ -208,9 +208,7 @@ def _is_rent_perk_or_privilege_purchase(tx: Transaction, *, class_id: str) -> bo
     store_item = item_query.order_by(StoreItem.id.desc()).first()
     if not store_item:
         return False
-
-    rent_item = RentItem.query.filter(RentItem.store_item_id == store_item.id).first()
-    return bool(rent_item and (rent_item.rent_item_type or "").lower() == "privilege")
+    return bool(getattr(store_item, "is_rent_linked", False))
 
 
 def evaluate_claim_transaction_eligibility(

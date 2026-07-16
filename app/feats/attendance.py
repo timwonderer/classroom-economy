@@ -8,7 +8,6 @@ import sqlalchemy as sa
 
 from app.extensions import db
 from app.models import (
-    Admin,
     AttendanceSession,
     ClassEconomy,
     HallPassLog,

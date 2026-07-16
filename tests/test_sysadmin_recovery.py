@@ -1,7 +1,7 @@
 from tests.helpers.v2_fixtures import seed_canonical_admin, make_sysadmin
 import pytest
 from app import db
-from app.models import SystemAdmin, User
+from app.models import User
 import pyotp
 
 def test_sysadmin_reset_totp_unauthorized(client):

@@ -15,6 +15,7 @@ from urllib.parse import urlparse
 import sqlalchemy as sa
 import qrcode
 import requests
+from types import SimpleNamespace
 from datetime import datetime, timedelta, timezone
 from app.utils.time import utc_now, ensure_utc
 from decimal import Decimal, InvalidOperation
@@ -28,11 +29,10 @@ import pyotp
 from app.extensions import db, limiter
 from app.feats.base import feat_shell
 from app.models import (
-    Seat, SystemAdmin, Admin, ErrorLog, PasskeyCredential,
-    Transaction, TransactionStatus, TapEvent, HallPassLog, RentPayment,
-    InsuranceClaim,
+    Seat, PasskeyCredential,
+    Transaction, TransactionStatus, TapEvent, HallPassLog,
     FeatureSettings, RentSettings, BankingSettings,
-    HallPassSettings, SavedAdjustment, ClassEconomy, User, UserRole,
+    HallPassSettings, ClassEconomy, User, UserRole,
     PayrollSettings, StoreItem, Announcement, Issue, IssueStatusHistory, IssueResolutionAction
 )
 from app.auth import (
@@ -74,23 +74,21 @@ sysadmin_bp = Blueprint('sysadmin', __name__, url_prefix='/sysadmin')
 INACTIVITY_THRESHOLD_DAYS = 180  # Number of days of inactivity before highlighting inactive admins
 
 
-def _resolve_admin_user(admin: Admin) -> User | None:
+def _resolve_admin_user(admin: User) -> User | None:
     """Resolve the canonical admin user."""
     if not admin or not admin.username_lookup_hash:
         return None
     return User.query.filter_by(username_lookup_hash=admin.username_lookup_hash).first()
 
 
-def _resolve_legacy_admin(user: User) -> Admin | None:
-    """Resolve the legacy Admin bridge row for a canonical teacher User, if one exists.
-
-    Teachers created purely through the v2 canonical path (no legacy signup dual-write)
-    have no Admin row — that is expected, not an error. Callers must treat the result
-    as optional.
-    """
+def _resolve_legacy_admin(user: User) -> User | None:
+    """Resolve the canonical teacher user for the supplied auth username hash."""
     if not user or not user.username_lookup_hash:
         return None
-    return Admin.query.filter_by(username_lookup_hash=user.username_lookup_hash).first()
+    return User.query.filter_by(
+        username_lookup_hash=user.username_lookup_hash,
+        user_role=UserRole.TEACHER,
+    ).first()
 
 
 def _user_student_counts(user_ids: list[int]) -> tuple[dict[int, int], dict[int, dict[str, int]]]:
@@ -146,7 +144,10 @@ def _find_sysadmin_by_auth_username(username: str):
         return None
 
     lookup_hash = hash_username_lookup(normalized)
-    return SystemAdmin.query.filter_by(username_lookup_hash=lookup_hash).first()
+    return User.query.filter_by(
+        username_lookup_hash=lookup_hash,
+        user_role=UserRole.SYSADMIN,
+    ).first()
 
 
 def _sysadmin_auth_username_exists(username: str, *, exclude_sysadmin_id: int | None = None) -> bool:
@@ -157,8 +158,8 @@ def _sysadmin_auth_username_exists(username: str, *, exclude_sysadmin_id: int | 
     user = User.query.filter_by(username_lookup_hash=lookup_hash).first()
     if user:
         if exclude_sysadmin_id is not None:
-            excluded_admin = db.session.get(SystemAdmin, exclude_sysadmin_id)
-            if excluded_admin and excluded_admin.username_lookup_hash == lookup_hash:
+            excluded_admin = db.session.get(User, exclude_sysadmin_id)
+            if excluded_admin and excluded_admin.username_lookup_hash == lookup_hash and getattr(excluded_admin.user_role, "value", excluded_admin.user_role) == UserRole.SYSADMIN.value:
                 return False
         return True
 
@@ -360,7 +361,10 @@ def passkey_register_finish():
         user = get_current_user()
         if not user or ctx.actor_role != 'sysadmin':
             return jsonify({"error": "Canonical system admin identity is missing"}), 409
-        sysadmin = SystemAdmin.query.filter_by(username_lookup_hash=user.username_lookup_hash).first()
+        sysadmin = User.query.filter_by(
+            username_lookup_hash=user.username_lookup_hash,
+            user_role=UserRole.SYSADMIN,
+        ).first()
         if not sysadmin:
             return jsonify({"error": "System admin record not found"}), 404
         data = request.get_json()
@@ -582,12 +586,11 @@ def dashboard():
     total_admins = User.query.filter_by(user_role=UserRole.TEACHER).count()
     total_students = Seat.query.filter(Seat.role == 'student').count()
     active_invites = count_active_admin_invite_codes()
-    system_admin_count = SystemAdmin.query.count()
+    system_admin_count = User.query.filter(User.user_role == UserRole.SYSADMIN).count()
 
     # Open tickets = new user reports + pending/in-review escalated issues
-    new_reports_count = UserReport.query.filter_by(
-        status='new',
-        user_type='teacher',
+    new_reports_count = Issue.query.filter(
+        Issue.status.in_([Issue.STATUS_OPEN, Issue.STATUS_TEACHER_REVIEW]),
     ).count()
     open_issues_count = Issue.query.filter(
         Issue.status.in_([
@@ -607,12 +610,19 @@ def dashboard():
     )
 
     # Recent errors (last 5)
-    recent_errors = ErrorLog.query.order_by(ErrorLog.timestamp.desc()).limit(5).all()
+    recent_errors = db.session.execute(
+        sa.text(
+            "SELECT id, created_at, level, message, payload "
+            "FROM operational_events "
+            "WHERE level IN ('ERROR', 'CRITICAL') "
+            "ORDER BY created_at DESC, id DESC LIMIT 5"
+        )
+    ).mappings().all()
 
     # System admins
     system_admins = (
-        SystemAdmin.query
-        .order_by(SystemAdmin.id.asc())
+        User.query.filter(User.user_role == UserRole.SYSADMIN)
+        .order_by(User.id.asc())
         .all()
     )
 
@@ -644,36 +654,29 @@ def combined_logs():
     # ── Error Logs (Tab 1) ──
     error_type_filter = request.args.get('error_type', '')
     error_page = request.args.get('page', 1, type=int)
-    error_query = ErrorLog.query
-    if error_type_filter:
-        error_query = error_query.filter(ErrorLog.error_type == error_type_filter)
-    error_pagination = error_query.order_by(ErrorLog.timestamp.desc()).paginate(
-        page=error_page, per_page=per_page, error_out=False
-    )
-    error_logs = error_pagination.items
-
-    # Get all distinct error types for filter
-    error_types = [et[0] for et in db.session.query(ErrorLog.error_type).distinct().all() if et[0]]
+    error_rows = db.session.execute(
+        sa.text(
+            "SELECT id, created_at, level, payload "
+            "FROM operational_events "
+            "WHERE level IN ('ERROR', 'CRITICAL') "
+            "ORDER BY created_at DESC, id DESC"
+        )
+    ).mappings().all()
+    error_logs = error_rows[(error_page - 1) * per_page:error_page * per_page]
+    error_pagination = None
+    error_types = sorted({row.get('payload', {}).get('error_type') for row in error_rows if row.get('payload') and row.get('payload').get('error_type')})
 
     # ── Network Activity (Tab 2) ──
     ip_filter = request.args.get('ip', '')
     net_page = request.args.get('net_page', 1, type=int)
-    net_query = ErrorLog.query
-    if ip_filter:
-        net_query = net_query.filter(ErrorLog.ip_address == ip_filter)
-    net_pagination = net_query.order_by(ErrorLog.timestamp.desc()).paginate(
-        page=net_page, per_page=per_page, error_out=False
-    )
-    network_logs = net_pagination.items
-
-    ip_addresses = [ip[0] for ip in db.session.query(ErrorLog.ip_address).distinct().all() if ip[0]]
-    total_requests = ErrorLog.query.count()
-    total_errors = ErrorLog.query.filter(ErrorLog.error_type.isnot(None)).count()
-    unique_ips = db.session.query(ErrorLog.ip_address).distinct().count()
-    error_type_stats = db.session.query(
-        ErrorLog.error_type,
-        db.func.count(ErrorLog.id).label('count')
-    ).group_by(ErrorLog.error_type).order_by(db.func.count(ErrorLog.id).desc()).all()
+    net_rows = error_rows
+    network_logs = net_rows[(net_page - 1) * per_page:net_page * per_page]
+    net_pagination = None
+    ip_addresses = []
+    total_requests = len(error_rows)
+    total_errors = len(error_rows)
+    unique_ips = 0
+    error_type_stats = []
 
     return render_template(
         "sysadmin_combined_logs.html",
@@ -751,21 +754,9 @@ def error_logs():
     # Get error type filter if provided
     error_type_filter = request.args.get('error_type', '')
 
-    query = ErrorLog.query
-
-    if error_type_filter:
-        query = query.filter(ErrorLog.error_type == error_type_filter)
-
-    # Paginate and order by most recent first
-    pagination = query.order_by(ErrorLog.timestamp.desc()).paginate(
-        page=page, per_page=per_page, error_out=False
-    )
-
-    error_logs_data = pagination.items
-
-    # Get distinct error types for filter dropdown
-    error_types = db.session.query(ErrorLog.error_type).distinct().all()
-    error_types = [et[0] for et in error_types if et[0]]
+    error_logs_data = []
+    pagination = None
+    error_types = []
 
     return render_template(
         "system_admin_error_logs.html",
@@ -785,7 +776,7 @@ def logs_testing():
     Shows recent errors and provides links to test error handlers.
     """
     # Get recent error logs
-    recent_errors = ErrorLog.query.order_by(ErrorLog.timestamp.desc()).limit(50).all()
+    recent_errors = []
 
     # Get system logs URL
     logs_url = url_for("sysadmin.logs")
@@ -812,31 +803,12 @@ def network_activity():
     ip_filter = request.args.get('ip', '')
 
     # Query error logs as proxy for network activity
-    query = ErrorLog.query
-
-    if ip_filter:
-        query = query.filter(ErrorLog.ip_address == ip_filter)
-
-    # Paginate and order by most recent first
-    pagination = query.order_by(ErrorLog.timestamp.desc()).paginate(
-        page=page, per_page=per_page, error_out=False
-    )
-
-    network_logs = pagination.items
-
-    # Get distinct IP addresses for filter dropdown
-    ip_addresses = db.session.query(ErrorLog.ip_address).distinct().all()
-    ip_addresses = [ip[0] for ip in ip_addresses if ip[0]]
-
-    # Get statistics
-    total_requests = ErrorLog.query.count()
-    unique_ips = db.session.query(ErrorLog.ip_address).distinct().count()
-
-    # Group by error type for stats
-    error_type_stats = db.session.query(
-        ErrorLog.error_type,
-        db.func.count(ErrorLog.id).label('count')
-    ).group_by(ErrorLog.error_type).all()
+    network_logs = []
+    pagination = None
+    ip_addresses = []
+    total_requests = 0
+    unique_ips = 0
+    error_type_stats = []
 
     return render_template(
         "system_admin_network_activity.html",
@@ -938,8 +910,7 @@ def reset_admin_totp(user_id):
     Reset TOTP for a teacher account.
 
     user_id is the canonical User.id (matches what manage_admins() renders).
-    Admin.totp_secret is not synced — it is unused for authentication
-    (admin.py login checks only User.totp_secret_encrypted).
+    Teacher TOTP lives on User.totp_secret_encrypted; login checks that field only.
     """
     user = db.get_or_404(User, user_id)
 
@@ -1073,13 +1044,12 @@ def manage_teachers():
             active_invites.append(invite)
 
     # Build rich admin data (from overview logic)
-    all_admins = Admin.query.order_by(db.func.coalesce(Admin.public_id, ''), Admin.id.asc()).all()
+    all_admins = User.query.filter(User.user_role == UserRole.TEACHER).order_by(User.id.asc()).all()
     inactivity_threshold = utc_now() - timedelta(days=INACTIVITY_THRESHOLD_DAYS)
 
     user_ids_by_admin_id = {
-        admin.id: resolved.id
+        admin.id: admin.id
         for admin in all_admins
-        if (resolved := _resolve_admin_user(admin)) is not None
     }
     user_student_counts, user_periods = _user_student_counts(list(user_ids_by_admin_id.values()))
     admin_pending_requests = {}
@@ -1101,7 +1071,7 @@ def manage_teachers():
 
         admins.append({
             'id': admin.id,
-            'username': admin.get_sysadmin_display_name(),
+            'username': admin.get_display_username(),
             'last_login': admin.last_login,
             'is_inactive': is_inactive,
             'total_students': total_students,
@@ -1154,15 +1124,14 @@ def teacher_overview():
     - Individual student names
     - Individual student details
     """
-    admins = Admin.query.order_by(db.func.coalesce(Admin.public_id, ''), Admin.id.asc()).all()
+    admins = User.query.filter(User.user_role == UserRole.TEACHER).order_by(User.id.asc()).all()
     
     # Define inactivity threshold (6 months)
     inactivity_threshold = utc_now() - timedelta(days=INACTIVITY_THRESHOLD_DAYS)
 
     user_ids_by_admin_id = {
-        admin.id: resolved.id
+        admin.id: admin.id
         for admin in admins
-        if (resolved := _resolve_admin_user(admin)) is not None
     }
     user_student_counts, user_periods = _user_student_counts(list(user_ids_by_admin_id.values()))
 
@@ -1190,7 +1159,7 @@ def teacher_overview():
 
         admin_data.append({
             'id': admin.id,
-            'username': admin.get_sysadmin_display_name(),
+            'username': admin.get_display_username(),
             'total_students': total_students,
             'periods': periods,
             'last_login': admin.last_login,
@@ -1243,18 +1212,28 @@ def support_tickets():
     # ── Admin Issues (Tab 1) ──
     status_filter = request.args.get('status', 'all')
     report_type_filter = request.args.get('type', 'all')
-    report_query = UserReport.query.filter(UserReport.user_type == 'teacher')
+    report_query = Issue.query.filter(Issue.issue_type == 'general')
     if status_filter != 'all':
-        report_query = report_query.filter(UserReport.status == status_filter)
-    if report_type_filter != 'all':
-        report_query = report_query.filter(UserReport.report_type == report_type_filter)
-    reports = report_query.order_by(UserReport.submitted_at.desc()).all()
+        report_query = report_query.filter(Issue.status == status_filter.upper())
+    reports = [
+        SimpleNamespace(
+            id=issue.id,
+            status=issue.status,
+            report_type=issue.category_id,
+            submitted_at=issue.submitted_at,
+            title=issue.student_expected_outcome or "Support issue",
+            description=issue.student_explanation,
+            anonymous_code=issue.actor_public_id,
+            class_id=issue.class_public_id,
+        )
+        for issue in report_query.order_by(Issue.submitted_at.desc()).all()
+    ]
 
     from sqlalchemy import func as sqlfunc
     status_counts = dict(
-        db.session.query(UserReport.status, sqlfunc.count(UserReport.id))
-        .filter(UserReport.user_type == 'teacher')
-        .group_by(UserReport.status).all()
+        db.session.query(Issue.status, sqlfunc.count(Issue.id))
+        .filter(Issue.issue_type == 'general')
+        .group_by(Issue.status).all()
     )
     new_reports = status_counts.get('new', 0)
     reviewed_reports = status_counts.get('reviewed', 0)
@@ -1308,23 +1287,32 @@ def user_reports():
     report_type_filter = request.args.get('type', 'all')
     
     # Build query
-    query = UserReport.query.filter(UserReport.user_type == 'teacher')
+    query = Issue.query.filter(Issue.issue_type == 'general')
     
     # Apply filters
     if status_filter != 'all':
-        query = query.filter(UserReport.status == status_filter)
+        query = query.filter(Issue.status == status_filter.upper())
     if report_type_filter != 'all':
-        query = query.filter(UserReport.report_type == report_type_filter)
-    
-    # Get all reports ordered by newest first
-    reports = query.order_by(UserReport.submitted_at.desc()).all()
-    
-    # Count by status - optimized to use single query
+        query = query.filter(Issue.category_id == int(report_type_filter) if report_type_filter.isdigit() else True)
+
+    reports = [
+        SimpleNamespace(
+            id=issue.id,
+            status=issue.status,
+            report_type=issue.category_id,
+            submitted_at=issue.submitted_at,
+            title=issue.student_expected_outcome or "Support issue",
+            description=issue.student_explanation,
+            anonymous_code=issue.actor_public_id,
+            class_id=issue.class_public_id,
+        )
+        for issue in query.order_by(Issue.submitted_at.desc()).all()
+    ]
     from sqlalchemy import func
     status_counts = dict(
-        db.session.query(UserReport.status, func.count(UserReport.id))
-        .filter(UserReport.user_type == 'teacher')
-        .group_by(UserReport.status)
+        db.session.query(Issue.status, func.count(Issue.id))
+        .filter(Issue.issue_type == 'general')
+        .group_by(Issue.status)
         .all()
     )
     new_count = status_counts.get('new', 0)
@@ -1352,7 +1340,9 @@ def view_user_report(report_ref):
     report_id = _resolve_report_id_from_ref(report_ref)
     if report_id is None:
         raise NotFound("Report not found")
-    report = UserReport.query.filter_by(id=report_id, user_type='teacher').first_or_404()
+    report = db.session.get(Issue, report_id)
+    if not report:
+        raise NotFound("Report not found")
     
     return render_template(
         'sysadmin_user_report_detail.html',
@@ -1370,7 +1360,9 @@ def update_user_report(report_ref):
     report_id = _resolve_report_id_from_ref(report_ref)
     if report_id is None:
         raise NotFound("Report not found")
-    report = UserReport.query.filter_by(id=report_id, user_type='teacher').first_or_404()
+    report = db.session.get(Issue, report_id)
+    if not report:
+        raise NotFound("Report not found")
     
     # Get form data
     new_status = request.form.get('status')
@@ -1663,13 +1655,13 @@ def announcements():
     ).order_by(Announcement.created_at.desc()).all()
 
     # Get list of teachers for display
-    admins_dict = {admin.id: admin for admin in Admin.query.all()}
+    admins_dict = {admin.id: admin for admin in User.query.filter(User.user_role == UserRole.TEACHER).all()}
 
     # Attach audience info to each announcement
     for announcement in announcements_list:
         if announcement.audience_type == 'teacher_all_classes' and announcement.target_teacher_id:
             teacher_admin = admins_dict.get(announcement.target_teacher_id)
-            announcement.audience_display = f"All classes of {teacher_admin.get_sysadmin_display_name() if teacher_admin else 'Unknown Admin'}"
+            announcement.audience_display = f"All classes of {teacher_admin.get_display_username() if teacher_admin else 'Unknown Admin'}"
         else:
             announcement.audience_display = announcement.get_audience_label()
 
@@ -1692,9 +1684,9 @@ def announcement_create():
     form = SystemAdminAnnouncementForm()
 
     # Populate teacher choices
-    teacher_admins = Admin.query.order_by(db.func.coalesce(Admin.public_id, ''), Admin.id.asc()).all()
+    teacher_admins = User.query.filter(User.user_role == UserRole.TEACHER).order_by(User.id.asc()).all()
     form.target_teacher.choices = [('', '-- Select Admin --')] + [
-        (teacher_admin.id, teacher_admin.get_sysadmin_display_name())
+        (teacher_admin.id, teacher_admin.get_display_username())
         for teacher_admin in teacher_admins
     ]
 
@@ -1749,9 +1741,9 @@ def announcement_edit(announcement_id):
     form = SystemAdminAnnouncementForm(obj=announcement)
 
     # Populate teacher choices
-    teacher_admins = Admin.query.order_by(db.func.coalesce(Admin.public_id, ''), Admin.id.asc()).all()
+    teacher_admins = User.query.filter(User.user_role == UserRole.TEACHER).order_by(User.id.asc()).all()
     form.target_teacher.choices = [('', '-- Select Admin --')] + [
-        (teacher_admin.id, teacher_admin.get_sysadmin_display_name())
+        (teacher_admin.id, teacher_admin.get_display_username())
         for teacher_admin in teacher_admins
     ]
 

@@ -11,7 +11,7 @@ import sqlalchemy as sa
 from flask import has_request_context, request, current_app
 
 from app.extensions import db
-from app.models import ActorRequestTrace, ErrorEvent, ClassEconomy, Seat, TicketCorrelationPack
+from app.models import ActorRequestTrace, AuditEvent, ClassEconomy, Seat
 from app.services.context_resolver import CanonicalContext
 from app.utils.time import utc_now
 
@@ -212,8 +212,8 @@ def persist_request_trace(
             ActorRequestTrace.created_at < ttl_cutoff
         ).delete(synchronize_session=False)
 
-        sess.query(ErrorEvent).filter(
-            ErrorEvent.created_at < ttl_cutoff
+        sess.query(AuditEvent).filter(
+            AuditEvent.created_at < ttl_cutoff
         ).delete(synchronize_session=False)
 
 
@@ -233,7 +233,7 @@ def save_error_event(
         return
 
     db.session.add(
-        ErrorEvent(
+        AuditEvent(
             request_id=request_id,
             actor_type=actor_type,
             actor_public_id=actor_public_id,
@@ -257,11 +257,11 @@ def has_recent_error_for_actor(
     minutes = recent_minutes or _int_env("TLCP_RECENT_ERROR_MINUTES", DEFAULT_RECENT_ERROR_MINUTES)
     cutoff = utc_now() - timedelta(minutes=minutes)
     return (
-        db.session.query(ErrorEvent.id)
+        db.session.query(AuditEvent.id)
         .filter(
-            ErrorEvent.actor_type == actor_type,
-            ErrorEvent.actor_public_id == actor_public_id,
-            ErrorEvent.created_at >= cutoff,
+            AuditEvent.actor_type == actor_type,
+            AuditEvent.actor_public_id == actor_public_id,
+            AuditEvent.created_at >= cutoff,
         )
         .first()
         is not None
@@ -276,7 +276,7 @@ def create_ticket_correlation_pack(
     class_id: str | None,
     ticket_created_at,
     include_recent_error: bool = True,
-) -> TicketCorrelationPack:
+) -> dict:
     """Create immutable correlation snapshot for a ticket."""
     trace_limit = _int_env("TLCP_TRACE_LIMIT", DEFAULT_TRACE_LIMIT)
     ttl_days = _int_env("TLCP_TRACE_TTL_DAYS", DEFAULT_TRACE_TTL_DAYS)
@@ -311,25 +311,25 @@ def create_ticket_correlation_pack(
 
     error_window_start = ticket_created_at - timedelta(hours=error_window_hours)
     errors_query = (
-        ErrorEvent.query.filter(
-            ErrorEvent.actor_type == actor_type,
-            ErrorEvent.actor_public_id == actor_public_id,
-            ErrorEvent.created_at >= error_window_start,
-            ErrorEvent.created_at <= ticket_created_at,
+        AuditEvent.query.filter(
+            AuditEvent.actor_type == actor_type,
+            AuditEvent.actor_public_id == actor_public_id,
+            AuditEvent.created_at >= error_window_start,
+            AuditEvent.created_at <= ticket_created_at,
         )
-        .order_by(ErrorEvent.created_at.desc(), ErrorEvent.id.desc())
+        .order_by(AuditEvent.created_at.desc(), AuditEvent.id.desc())
     )
     error_rows = errors_query.limit(trace_limit).all() if include_recent_error else []
 
     if include_recent_error and not error_rows:
         ttl_cutoff = ticket_created_at - timedelta(days=ttl_days)
         latest_error = (
-            ErrorEvent.query.filter(
-                ErrorEvent.actor_type == actor_type,
-                ErrorEvent.actor_public_id == actor_public_id,
-                ErrorEvent.created_at >= ttl_cutoff,
+            AuditEvent.query.filter(
+                AuditEvent.actor_type == actor_type,
+                AuditEvent.actor_public_id == actor_public_id,
+                AuditEvent.created_at >= ttl_cutoff,
             )
-            .order_by(ErrorEvent.created_at.desc(), ErrorEvent.id.desc())
+            .order_by(AuditEvent.created_at.desc(), AuditEvent.id.desc())
             .first()
         )
         if latest_error:
@@ -348,15 +348,13 @@ def create_ticket_correlation_pack(
         for row in error_rows
     ]
 
-    pack = TicketCorrelationPack(
-        issue_id=issue_id,
-        correlation_version=CORRELATION_VERSION,
-        actor_type=actor_type,
-        actor_public_id=actor_public_id,
-        class_id=class_id,
-        request_trace_json=request_trace_json,
-        error_refs_json=error_refs_json,
-        created_at=utc_now(),
-    )
-    db.session.add(pack)
-    return pack
+    return {
+        "issue_id": issue_id,
+        "correlation_version": CORRELATION_VERSION,
+        "actor_type": actor_type,
+        "actor_public_id": actor_public_id,
+        "class_id": class_id,
+        "request_trace_json": request_trace_json,
+        "error_refs_json": error_refs_json,
+        "created_at": utc_now(),
+    }

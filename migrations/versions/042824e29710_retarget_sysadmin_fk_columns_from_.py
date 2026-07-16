@@ -99,8 +99,15 @@ _FK_CHANGES = [
 def upgrade():
     conn = op.get_bind()
 
+    if not table_exists('system_admins'):
+        print("  ⚠️  system_admins missing, skipping sysadmin retargets")
+        return
+
     # 1. Retarget 3 FK columns from system_admins.id -> users.id
     for table, column, old_fk, old_target, new_target, ondelete in _FK_CHANGES:
+        if not table_exists(table):
+            print(f"  ⚠️  {table} missing, skipping")
+            continue
         # Backfill data first
         conn.execute(sa.text(_BACKFILL_SQL.format(table=table, column=column)))
         print(f"  ✅ Backfilled {table}.{column} system_admins.id → users.id")

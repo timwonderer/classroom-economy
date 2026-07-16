@@ -20,10 +20,10 @@ from app.extensions import db, limiter
 from app.feats.base import feat_shell
 from app.auth import admin_required
 from app.models import (
-    AnalyticsAlert, AnalyticsEvent,
     PayrollSettings, RentSettings, ClassEconomy, Seat
 )
 from app.models import Transaction
+from app.models import AuditEvent
 from app.services.ledger_service import get_available_balance
 from app.utils.join_code import get_display_join_code
 
@@ -236,26 +236,18 @@ def dashboard():
         else engine.get_or_create_snapshot(window_type, window_start, window_end)
     )
     
-    # Get active alerts
-    active_alerts = AnalyticsAlert.query.filter(
-        AnalyticsAlert.class_id == class_id,
-        AnalyticsAlert.window_type == window_type,
-        AnalyticsAlert.window_start == window_start,
-        AnalyticsAlert.window_end == window_end,
-        AnalyticsAlert.resolved_at.is_(None)
-    ).order_by(
-        # Sort by severity: critical, warning, info
-        desc(AnalyticsAlert.severity == 'critical'),
-        desc(AnalyticsAlert.severity == 'warning'),
-        AnalyticsAlert.created_at.desc()
-    ).all()
-    
-    # Get recent events for context
-    recent_events = AnalyticsEvent.query.filter(
-        AnalyticsEvent.class_id == class_id,
-        AnalyticsEvent.event_date >= window_start,
-        AnalyticsEvent.event_date <= window_end
-    ).order_by(AnalyticsEvent.event_date.desc()).limit(10).all()
+    active_alerts = []
+
+    recent_events = (
+        AuditEvent.query.filter(
+            AuditEvent.class_id == class_id,
+            AuditEvent.created_at_utc >= window_start,
+            AuditEvent.created_at_utc <= window_end,
+        )
+        .order_by(AuditEvent.created_at_utc.desc())
+        .limit(10)
+        .all()
+    )
     
     return render_template(
         'admin_analytics_dashboard.html',
@@ -359,30 +351,7 @@ def api_alerts():
     window_type = requested_window_type if requested_window_type in ALLOWED_WINDOW_TYPES else 'week'
     window_start, window_end = get_time_window(window_type, class_id)
     
-    active_alerts = AnalyticsAlert.query.filter(
-        AnalyticsAlert.class_id == class_id,
-        AnalyticsAlert.window_type == window_type,
-        AnalyticsAlert.window_start == window_start,
-        AnalyticsAlert.window_end == window_end,
-        AnalyticsAlert.resolved_at.is_(None)
-    ).order_by(
-        desc(AnalyticsAlert.severity == 'critical'),
-        desc(AnalyticsAlert.severity == 'warning'),
-        AnalyticsAlert.created_at.desc()
-    ).all()
-    
     alerts_data = []
-    for alert in active_alerts:
-        alerts_data.append({
-            'id': alert.id,
-            'alert_key': alert.alert_key,
-            'severity': alert.severity,
-            'what_changed': alert.what_changed,
-            'why_it_matters': alert.why_it_matters,
-            'suggested_action': alert.suggested_action,
-            'created_at': alert.created_at.isoformat(),
-            'acknowledged': alert.acknowledged_at is not None
-        })
     
     return jsonify({'alerts': alerts_data})
 
@@ -401,20 +370,7 @@ def acknowledge_alert(alert_id):
     except Exception:
         return jsonify({'error': 'No class period selected'}), 400
     
-    alert = AnalyticsAlert.query.filter(
-        AnalyticsAlert.id == alert_id,
-        AnalyticsAlert.class_id == class_id,
-        AnalyticsAlert.resolved_at.is_(None)
-    ).first()
-    
-    if not alert:
-        flash('Alert not found.', 'danger')
-        return redirect(url_for('analytics.dashboard'))
-    
-    alert.acknowledge()
-    db.session.flush()
-    flash('Alert acknowledged.', 'success')
-    
+    flash('Alerts are no longer persisted in v2.', 'warning')
     return redirect(url_for('analytics.dashboard'))
 
 
@@ -443,9 +399,11 @@ def events():
         return redirect(url_for('admin.students'))
     
     # Get all events for this class
-    events_list = AnalyticsEvent.query.filter(
-        AnalyticsEvent.class_id == class_id
-    ).order_by(AnalyticsEvent.event_date.desc()).all()
+    events_list = (
+        AuditEvent.query.filter(AuditEvent.class_id == class_id)
+        .order_by(AuditEvent.created_at_utc.desc())
+        .all()
+    )
     
     try:
         return render_template(
@@ -460,10 +418,10 @@ def events():
         for event in events_list:
             events_data.append({
                 'id': event.id,
-                'event_type': event.event_type,
-                'description': event.description,
-                'event_date': event.event_date.isoformat(),
-                'affected_students': event.affected_students
+                'event_type': event.operation,
+                'description': f"{event.table_name}:{event.row_pk}",
+                'event_date': event.created_at_utc.isoformat(),
+                'affected_students': event.seat_id
             })
         return jsonify({'events': events_data, 'join_code': join_code})
 

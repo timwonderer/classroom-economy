@@ -57,12 +57,33 @@ def get_foreign_keys_by_column(table_name, column_name):
     except Exception:
         return []
 
+def foreign_key_exists(table_name, constraint_name):
+    conn = op.get_bind()
+    inspector = sa.inspect(conn)
+    try:
+        return any(fk.get('name') == constraint_name for fk in inspector.get_foreign_keys(table_name))
+    except Exception:
+        return False
+
 def drop_table_if_exists(table_name):
     if table_exists(table_name):
         op.drop_table(table_name)
         print(f"✅ Dropped {table_name}")
     else:
         print(f"⚠️  {table_name} does not exist, skipping")
+
+
+def drop_constraint_if_exists(table_name, constraint_name):
+    if not table_exists(table_name):
+        return
+    for fk in get_foreign_keys_by_column(table_name, 'id'):
+        if fk.get('name') == constraint_name:
+            op.drop_constraint(constraint_name, table_name, type_='foreignkey')
+            print(f"✅ Dropped constraint {constraint_name}")
+            return
+    if foreign_key_exists(table_name, constraint_name):
+        op.drop_constraint(constraint_name, table_name, type_='foreignkey')
+        print(f"✅ Dropped constraint {constraint_name}")
 
 # ============================================================================
 
@@ -96,6 +117,8 @@ def upgrade():
     drop_table_if_exists('rent_payments')
     drop_table_if_exists('rent_waivers')
     drop_table_if_exists('rent_items')
+    drop_constraint_if_exists('rent_settings', 'fk_rent_settings_active_version_id')
+    drop_constraint_if_exists('rent_settings', 'fk_rent_settings_next_version_id')
     drop_table_if_exists('rent_policy_versions')
 
     # =========================================================================

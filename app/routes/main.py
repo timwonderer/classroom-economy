@@ -12,7 +12,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.extensions import db, limiter
-from app.models import Admin
+from app.models import User, UserRole
 from app.utils.helpers import render_template_with_fallback as render_template, is_safe_url
 from app.utils.time import utc_now, ensure_utc, normalize_for_db, get_timezone
 
@@ -99,15 +99,14 @@ def health_check_deep():
         checks['seats_table'] = 'error'
         overall_status = 'degraded'
 
-    # Check if admin table is accessible
+    # Check if teacher user rows are accessible
     try:
-        with db.engine.connect() as conn:
-            admin_count = conn.execute(text('SELECT COUNT(*) FROM teachers')).scalar()
-        checks['admins_table'] = 'accessible'
-        checks['admin_count'] = admin_count
+        teacher_count = User.query.filter(User.user_role == UserRole.TEACHER).count()
+        checks['teachers_table'] = 'accessible'
+        checks['teacher_count'] = teacher_count
     except SQLAlchemyError as e:
-        current_app.logger.warning('Admins table check failed: %s', str(e))
-        checks['admins_table'] = 'error'
+        current_app.logger.warning('Teachers table check failed: %s', str(e))
+        checks['teachers_table'] = 'error'
         overall_status = 'degraded'
 
     # Check if hall pass logs table is accessible (may fail due to RLS/tenant context)
@@ -419,7 +418,7 @@ def debug_admin_db_test():
     Temporary route to confirm admin and invite codes tables are accessible.
     """
     try:
-        admins = Admin.query.all()
+        admins = User.query.filter(User.user_role == UserRole.TEACHER).all()
         with db.engine.connect() as conn:
             invite_codes_count = conn.execute(text('SELECT COUNT(*) FROM teacher_invite_codes')).scalar()
         return jsonify({

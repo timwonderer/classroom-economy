@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """
 Analytics Engine for Classroom Economy
 
@@ -21,13 +23,14 @@ from datetime import datetime, timezone
 from app.utils.time import utc_now
 from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass
+from types import SimpleNamespace
 from sqlalchemy import true
 import sqlalchemy as sa
 
 from app.extensions import db
 from app.models import (
     Transaction, AttendanceSession, PayrollSettings,
-    RentSettings, AnalyticsSnapshot, AnalyticsAlert, ClassEconomy,
+    RentSettings, ClassEconomy,
     Seat, IdentityProfile
 )
 from app.utils.economy_balance import EconomyBalanceChecker
@@ -59,6 +62,27 @@ class TrendMetrics:
     balance_trend: str  # 'increasing', 'stable', 'decreasing'
     velocity_trend: str  # 'increasing', 'stable', 'decreasing'
     participation_trend: str  # 'increasing', 'stable', 'decreasing'
+
+
+@dataclass
+class AnalyticsSnapshotView:
+    window_type: str
+    window_start: datetime
+    window_end: datetime
+    participation_rate: float
+    money_velocity: float
+    cwi_deviation_within_20pct: float
+    budget_survival_pass_rate: float
+    cwi_value: float
+    avg_student_balance: float
+    balance_trend: str
+    velocity_trend: str
+    participation_trend: str
+    total_students: int
+    active_students: int
+    total_transactions: int
+    computed_at: datetime
+    is_complete: bool
 
 
 class AnalyticsEngine:
@@ -400,7 +424,7 @@ class AnalyticsEngine:
     def compute_trends(
         self,
         current_snapshot: SystemHealthMetrics,
-        previous_snapshot: Optional[AnalyticsSnapshot]
+        previous_snapshot: Optional[AnalyticsSnapshotView]
     ) -> TrendMetrics:
         """
         Compute trend indicators by comparing to previous period.
@@ -507,30 +531,14 @@ class AnalyticsEngine:
         window_start: datetime,
         window_end: datetime,
         is_complete: bool = True
-    ) -> AnalyticsSnapshot:
-        """
-        Create and save an analytics snapshot for a time window.
-        
-        Per spec section 10:
-        - Metrics must be precomputed where possible
-        - Cached by time window
-        - Resilient to partial data
-        """
+    ) -> AnalyticsSnapshotView:
         if not self.class_id:
             raise ValueError("AnalyticsEngine requires canonical class_id context.")
 
         # Compute metrics
         health_metrics = self.compute_system_health(window_start, window_end)
         
-        # Get previous snapshot for trend calculation
-        previous_snapshot = AnalyticsSnapshot.query.filter(
-            AnalyticsSnapshot.class_id == self.class_id,
-            AnalyticsSnapshot.window_type == window_type,
-            AnalyticsSnapshot.window_start < window_start,
-            AnalyticsSnapshot.is_complete == True
-        ).order_by(AnalyticsSnapshot.window_start.desc()).first()
-        
-        trends = self.compute_trends(health_metrics, previous_snapshot)
+        trends = self.compute_trends(health_metrics, None)
         
         # Count transactions
         total_transactions = Transaction.query.filter(
@@ -549,11 +557,7 @@ class AnalyticsEngine:
         )
         avg_balance = total_balance / len(students) if students else 0.0
         
-        # Create snapshot
-        snapshot = AnalyticsSnapshot(
-            teacher_id=self.user_id,
-            class_id=self.class_id,
-            join_code=self.join_code,
+        return AnalyticsSnapshotView(
             window_type=window_type,
             window_start=window_start,
             window_end=window_end,
@@ -569,94 +573,19 @@ class AnalyticsEngine:
             total_students=health_metrics.total_students,
             active_students=health_metrics.active_students,
             total_transactions=total_transactions,
-            is_complete=is_complete
+            computed_at=utc_now(),
+            is_complete=is_complete,
         )
-        
-        db.session.add(snapshot)
-        db.session.flush()  # FEAT-AUTHORIZED-SHELL
-        
-        # Generate and handle alerts according to new AnalyticsAlert lifecycle
-        alerts = self.generate_alerts(health_metrics, trends)
-        active_alert_keys = set()
-
-        for alert_data in alerts:
-            alert_key = alert_data['alert_key']
-            active_alert_keys.add(alert_key)
-
-            # Check if alert already exists for this window
-            existing_alert = AnalyticsAlert.query.filter(
-                AnalyticsAlert.alert_key == alert_key,
-                AnalyticsAlert.class_id == self.class_id,
-                AnalyticsAlert.window_type == window_type,
-                AnalyticsAlert.window_start == window_start,
-                AnalyticsAlert.window_end == window_end
-            ).first()
-
-            # Only create if doesn't exist (regardless of resolved status)
-            if not existing_alert:
-                alert = AnalyticsAlert(
-                    alert_key=alert_key,
-                    class_id=self.class_id,
-                    join_code=self.join_code,
-                    window_type=window_type,
-                    window_start=window_start,
-                    window_end=window_end,
-                    severity=alert_data['severity'],
-                    what_changed=alert_data['what_changed'],
-                    why_it_matters=alert_data['why_it_matters'],
-                    suggested_action=alert_data.get('suggested_action'),
-                    created_at=utc_now()
-                )
-                db.session.add(alert)
-            elif existing_alert.resolved_at:
-                # If alert was previously resolved, re-activate it
-                existing_alert.resolved_at = None
-                existing_alert.created_at = utc_now()
-
-        # Resolve alerts from this window that no longer apply
-        stale_alerts = AnalyticsAlert.query.filter(
-            AnalyticsAlert.class_id == self.class_id,
-            AnalyticsAlert.window_type == window_type,
-            AnalyticsAlert.window_start == window_start,
-            AnalyticsAlert.window_end == window_end,
-            AnalyticsAlert.resolved_at.is_(None),
-            ~AnalyticsAlert.alert_key.in_(active_alert_keys) if active_alert_keys else true()
-        ).all()
-
-        for alert in stale_alerts:
-            alert.resolve()
-        
-        db.session.flush()  # FEAT-AUTHORIZED-SHELL
-        
-        return snapshot
     
     def get_or_create_snapshot(
         self,
         window_type: str,
         window_start: datetime,
         window_end: datetime
-    ) -> AnalyticsSnapshot:
-        """
-        Get existing snapshot or create new one if not cached.
-        
-        Implements caching strategy per spec section 10.
-        """
+    ) -> AnalyticsSnapshotView:
+        """Return a canonical in-memory analytics snapshot view."""
         if not self.class_id:
             raise ValueError("AnalyticsEngine requires canonical class_id context.")
-
-        # Check for existing snapshot
-        snapshot = AnalyticsSnapshot.query.filter(
-            AnalyticsSnapshot.class_id == self.class_id,
-            AnalyticsSnapshot.window_type == window_type,
-            AnalyticsSnapshot.window_start == window_start,
-            AnalyticsSnapshot.window_end == window_end
-        ).first()
-        
-        if snapshot and snapshot.is_complete:
-            # Return cached snapshot
-            return snapshot
-        
-        # Create new snapshot
         is_complete = window_end <= utc_now()
         return self.create_snapshot(window_type, window_start, window_end, is_complete)
 
@@ -665,28 +594,13 @@ class AnalyticsEngine:
         window_type: str,
         window_start: datetime,
         window_end: datetime,
-    ) -> AnalyticsSnapshot:
-        """Return an existing snapshot or an in-memory preview without DB writes."""
+    ) -> AnalyticsSnapshotView:
+        """Return an in-memory preview without DB writes."""
         if not self.class_id:
             raise ValueError("AnalyticsEngine requires canonical class_id context.")
 
-        snapshot = AnalyticsSnapshot.query.filter(
-            AnalyticsSnapshot.class_id == self.class_id,
-            AnalyticsSnapshot.window_type == window_type,
-            AnalyticsSnapshot.window_start == window_start,
-            AnalyticsSnapshot.window_end == window_end,
-        ).first()
-        if snapshot:
-            return snapshot
-
         health_metrics = self.compute_system_health(window_start, window_end)
-        previous_snapshot = AnalyticsSnapshot.query.filter(
-            AnalyticsSnapshot.class_id == self.class_id,
-            AnalyticsSnapshot.window_type == window_type,
-            AnalyticsSnapshot.window_start < window_start,
-            AnalyticsSnapshot.is_complete == True,
-        ).order_by(AnalyticsSnapshot.window_start.desc()).first()
-        trends = self.compute_trends(health_metrics, previous_snapshot)
+        trends = self.compute_trends(health_metrics, None)
         total_transactions = Transaction.query.filter(
             Transaction.class_id == self.class_id,
             Transaction.timestamp >= window_start,
@@ -701,10 +615,7 @@ class AnalyticsEngine:
         )
         avg_balance = total_balance / len(students) if students else 0.0
 
-        return AnalyticsSnapshot(
-            teacher_id=self.user_id,
-            class_id=self.class_id,
-            join_code=self.join_code,
+        return AnalyticsSnapshotView(
             window_type=window_type,
             window_start=window_start,
             window_end=window_end,
@@ -720,5 +631,6 @@ class AnalyticsEngine:
             total_students=health_metrics.total_students,
             active_students=health_metrics.active_students,
             total_transactions=total_transactions,
+            computed_at=utc_now(),
             is_complete=(window_end <= utc_now()),
         )

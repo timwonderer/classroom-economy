@@ -8,7 +8,6 @@ from tests.helpers.v2_fixtures import seed_canonical_admin, make_sysadmin
 import pyotp
 
 from app import db
-from app.models import SystemAdmin
 from tests.helpers.class_scope import create_class_scope, make_student_identity
 
 

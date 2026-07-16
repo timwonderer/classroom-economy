@@ -698,7 +698,7 @@ def create_app():
         """Inject current class context and available classes for student navigation."""
         try:
             from app.auth import get_current_seat, get_current_class_id, get_current_user
-            from app.models import Seat, Admin, ClassEconomy
+            from app.models import Seat, User, UserRole, ClassEconomy
             from app.utils.display_name_session import (
                 get_teacher_display_name_cache,
                 upsert_teacher_display_name_cache,

@@ -1,5 +1,5 @@
 from app import db
-from app.models import ClassEconomy, Seat, UserReport
+from app.models import ClassEconomy, Seat, Issue
 from tests.helpers.canonical_session import set_canonical_context
 from tests.helpers.v2_fixtures import seed_canonical_admin, seed_class_with_seat
 from tests.helpers.admin_context import login_teacher
@@ -45,10 +45,10 @@ def test_teacher_can_submit_class_scoped_support_ticket(client):
     assert response.status_code == 200
     assert b"submitted directly to system administration" in response.data
 
-    report = UserReport.query.filter_by(user_type="teacher", title="Roster sync issue").first()
+    report = Issue.query.filter_by(actor_public_id=teacher.get_display_username(), student_expected_outcome="Roster should sync immediately.").first()
     assert report is not None
-    assert report.title == "Roster sync issue"
-    assert report.report_type == "comment"
-    assert report.description.startswith(
+    assert report.student_expected_outcome == "Roster should sync immediately."
+    assert report.issue_type == "general"
+    assert report.student_explanation.startswith(
         f"SUPPORT_SCOPE|class_id={class_row.class_id}|class_label=ELA|category=general"
     )

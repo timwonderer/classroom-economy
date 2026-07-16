@@ -20,8 +20,8 @@ from werkzeug.security import check_password_hash
 
 from app.extensions import db, limiter
 from app.models import (
-    Admin, StoreItem, StorePurchase, Transaction, TransactionStatus, TapEvent, AttendanceSession,
-    AttendanceReasonCode, TapEventReasonCode, HallPassLog, HallPassSettings, InsuranceClaim, BankingSettings,
+    StoreItem, StorePurchase, Transaction, TransactionStatus, TapEvent, AttendanceSession,
+    AttendanceReasonCode, TapEventReasonCode, HallPassLog, HallPassSettings, BankingSettings,
     StoreItemBlock, StoreItemVisibility, User,
     RedemptionEvent, RedemptionEventAction, RedemptionEventSource, _quantize_currency,
     ClassEconomy, Seat, SeatAttendanceState, IdentityProfile,
@@ -465,7 +465,7 @@ def purchase_item():
             return jsonify({"status": "error", "message": "You have already purchased this whole class goal item."}), 400
 
     # Check rent late restrictions
-    from app.models import RentSettings, RentItem
+    from app.models import RentSettings
     from datetime import timedelta
 
     rent_settings = get_rent_settings_for_context(context)
@@ -485,27 +485,9 @@ def purchase_item():
                 coverage_due_date,
             )
 
-        rent_item_links = RentItem.query.filter(
-            RentItem.rent_setting_id == rent_settings.id,
-            RentItem.store_item_id == item.id
-        ).all()
-        has_per_use_link = any(
-            ri.rent_item_type == 'per_use' or (ri.rent_item_type == 'privilege' and ri.purchase_duration == 'per_use')
-            for ri in rent_item_links
-        )
-        has_privilege_link = any(
-            ri.rent_item_type == 'privilege' and ri.purchase_duration != 'per_use'
-            for ri in rent_item_links
-        )
-        per_use_rent_item = next(
-            (ri for ri in rent_item_links
-             if ri.rent_item_type == 'per_use' or (ri.rent_item_type == 'privilege' and ri.purchase_duration == 'per_use')),
-            None
-        )
-
-        # Fallback for stale linkage where StoreItem.is_rent_linked is True but mapping row is missing.
-        if not per_use_rent_item and item.is_rent_linked:
-            has_per_use_link = True
+        has_per_use_link = item.is_rent_linked and item.item_type != 'hall_pass'
+        has_privilege_link = item.is_rent_linked and item.item_type != 'hall_pass'
+        per_use_rent_item = None
 
     # Privilege-only rent items are already included when rent is paid and
     # should not be purchasable.
@@ -538,22 +520,7 @@ def purchase_item():
 
                 # Student is late if they haven't fully settled the coverage period
                 if not is_paid_for_coverage:
-                    # Check if itemization is enabled
-                    rent_items = RentItem.query.filter_by(rent_setting_id=rent_settings.id).all()
-
-                    if rent_items:
-                        # Itemization is enabled: check if this item is a rent item
-                        rent_item_store_ids = [ri.store_item_id for ri in rent_items if ri.store_item_id]
-
-                        if item.id not in rent_item_store_ids:
-                            # This item is NOT part of rent - block purchase
-                            return jsonify({
-                                "status": "error",
-                                "message": "You are late on rent. You can only purchase items covered by rent until you pay your rent."
-                            }), 403
-                        # If item IS part of rent, allow purchase (they can buy à la carte)
-                    else:
-                        # No itemization: block ALL purchases
+                    if not item.is_rent_linked:
                         return jsonify({
                             "status": "error",
                             "message": "You cannot make purchases while late on rent. Please pay your rent first."
@@ -677,22 +644,19 @@ def purchase_item():
         if item.bulk_discount_enabled and quantity >= item.bulk_discount_quantity:
             purchase_description += f" [{item.bulk_discount_percentage}% bulk discount]"
         expiry_date = None
-        from app.models import RentItem, RentSettings
-        rent_item = RentItem.query.filter_by(store_item_id=item.id).first()
+        from app.models import RentSettings
         uses_remaining = None
-
-        if rent_item:
-            if rent_item.rent_item_type == 'privilege':
-                rent_setting = db.session.get(RentSettings, rent_item.rent_setting_id)
-                if rent_setting:
-                    now = utc_now()
-                    if rent_setting.first_rent_due_date:
-                        current_due, next_due = _calculate_due_dates(rent_setting, now)
-                        if current_due and next_due:
-                            expiry_date = next_due
-                    else:
-                        delta = _get_period_delta(rent_setting)
-                        expiry_date = _add_period(now, delta)
+        if item.is_rent_linked:
+            rent_setting = RentSettings.query.filter_by(class_id=class_id).first()
+            if rent_setting:
+                now = utc_now()
+                if rent_setting.first_rent_due_date:
+                    current_due, next_due = _calculate_due_dates(rent_setting, now)
+                    if current_due and next_due:
+                        expiry_date = next_due
+                else:
+                    delta = _get_period_delta(rent_setting)
+                    expiry_date = _add_period(now, delta)
 
         # Fall back to standard auto_expiry for delayed items
         if expiry_date is None and item.item_type == 'delayed' and item.auto_expiry_days:

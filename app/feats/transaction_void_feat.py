@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 
 from app.extensions import db
-from app.models import InsurancePolicy, InsuranceEnrollment, StoreItem, StorePurchase, Transaction, TransactionStatus
+from app.models import StoreItem, StorePurchase, Transaction, TransactionStatus
 from app.services import ledger_service, obligations_service
 from app.utils.seat_scope import seat_scoped_filter
 from app.utils.time import ensure_utc, utc_now
@@ -34,8 +34,6 @@ def execute_void_transaction(tx: Transaction) -> VoidTransactionResult:
         _void_purchase(tx)
     elif tx.type == 'Rent Payment':
         _void_rent_payment(tx)
-    elif tx.type == 'insurance_premium':
-        _void_insurance_premium(tx)
 
     reversal_tx = None
     if tx.type == 'purchase':
@@ -146,31 +144,3 @@ def _void_rent_payment(tx: Transaction) -> None:
             key=lambda p: abs((ensure_utc(p.satisfaction.satisfied_at or tx.timestamp or utc_now()) - tx_ts).total_seconds())
         )
         obligations_service.remove_rent_payment_assessment(matched_rent_payment.id)
-
-
-def _void_insurance_premium(tx: Transaction) -> None:
-    policy_title = None
-    if tx.description and tx.description.startswith("Insurance premium: "):
-        policy_title = tx.description.replace("Insurance premium: ", "", 1).strip()
-    if not tx.class_id:
-        raise ValueError("Transaction is missing class scope (class_id) and cannot be voided safely.")
-
-    enrollments_query = (
-        InsuranceEnrollment.query
-        .join(InsurancePolicy, InsuranceEnrollment.policy_id == InsurancePolicy.id)
-        .filter(
-            InsuranceEnrollment.seat_id == tx.seat_id,
-            InsuranceEnrollment.class_id == tx.class_id,
-        )
-    )
-    if policy_title:
-        enrollments_query = enrollments_query.filter(InsurancePolicy.title == policy_title)
-    enrollments = enrollments_query.all()
-    if enrollments:
-        tx_ts = ensure_utc(tx.timestamp) if tx.timestamp else utc_now()
-        matched_enrollment = min(
-            enrollments,
-            key=lambda e: abs((ensure_utc(e.purchase_date or tx.timestamp or utc_now()) - tx_ts).total_seconds())
-        )
-        matched_enrollment.payment_current = False
-        matched_enrollment.days_unpaid = max(1, matched_enrollment.days_unpaid or 0)

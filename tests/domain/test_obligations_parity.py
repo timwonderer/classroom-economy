@@ -55,16 +55,14 @@ def _make_env(client):
         )
         db.session.add(rent_settings)
         db.session.flush()
-        rent_policy_version = obligations_service.create_and_schedule_rent_policy_version(class_row.class_id)
-        assert rent_policy_version is not None
 
     user = admin
-    return admin, user, student, class_row, seat, teacher_seat, rent_policy_version
+    return admin, user, student, class_row, seat, teacher_seat, rent_settings
 
 
 class TestRentPaymentCanonical:
     def test_record_produces_assessment_lifecycle_satisfaction(self, client):
-        admin, user, student, class_row, seat, teacher_seat, rent_policy_version = _make_env(client)
+        admin, user, student, class_row, seat, teacher_seat, rent_settings = _make_env(client)
 
         with FEATContext("FEAT-OBL-001", idempotency_key="obligations_parity:rent_payment"):
             assessment = obligations_service.record_rent_payment(
@@ -79,12 +77,11 @@ class TestRentPaymentCanonical:
                 was_late=False,
                 late_fee_charged=Decimal("0.00"),
                 cycle_idempotency_key="rent:test:2026-07",
-                rent_policy_version_id=rent_policy_version.id,
             )
             db.session.flush()
 
         assert assessment.obligation_type == "RENT"
-        assert assessment.amount_snap == rent_policy_version.rent_amount
+        assert assessment.amount_snap == rent_settings.rent_amount
         assert assessment.coverage_month == 7
         assert assessment.coverage_year == 2026
         assert assessment.lifecycle is not None
@@ -94,7 +91,7 @@ class TestRentPaymentCanonical:
         assert assessment.satisfaction.was_late is False
 
     def test_has_rent_coverage(self, client):
-        admin, user, student, class_row, seat, teacher_seat, rent_policy_version = _make_env(client)
+        admin, user, student, class_row, seat, teacher_seat, rent_settings = _make_env(client)
 
         with FEATContext("FEAT-OBL-001", idempotency_key="obligations_parity:rent_coverage"):
             obligations_service.record_rent_payment(
@@ -108,7 +105,6 @@ class TestRentPaymentCanonical:
                 coverage_year=2026,
                 was_late=False,
                 late_fee_charged=Decimal("0.00"),
-                rent_policy_version_id=rent_policy_version.id,
             )
             db.session.flush()
 
@@ -116,7 +112,7 @@ class TestRentPaymentCanonical:
         assert obligations_service.has_rent_coverage(seat.id, class_row.class_id, 7, 2026) is False
 
     def test_get_rent_payments_for_cycle(self, client):
-        admin, user, student, class_row, seat, teacher_seat, rent_policy_version = _make_env(client)
+        admin, user, student, class_row, seat, teacher_seat, rent_settings = _make_env(client)
 
         with FEATContext("FEAT-OBL-001", idempotency_key="obligations_parity:rent_cycle"):
             obligations_service.record_rent_payment(
@@ -130,7 +126,6 @@ class TestRentPaymentCanonical:
                 coverage_year=2026,
                 was_late=True,
                 late_fee_charged=Decimal("2.00"),
-                rent_policy_version_id=rent_policy_version.id,
             )
             db.session.flush()
 
@@ -140,7 +135,7 @@ class TestRentPaymentCanonical:
         assert results[0].satisfaction.late_fee_charged == Decimal("2.00")
 
     def test_get_rent_payment_history_newest_first(self, client):
-        admin, user, student, class_row, seat, teacher_seat, rent_policy_version = _make_env(client)
+        admin, user, student, class_row, seat, teacher_seat, rent_settings = _make_env(client)
 
         with FEATContext("FEAT-OBL-001", idempotency_key="obligations_parity:rent_history"):
             for month in (3, 4, 5):
@@ -155,7 +150,6 @@ class TestRentPaymentCanonical:
                     coverage_year=2026,
                     was_late=False,
                     late_fee_charged=Decimal("0.00"),
-                    rent_policy_version_id=rent_policy_version.id,
                 )
             db.session.flush()
 
@@ -166,7 +160,7 @@ class TestRentPaymentCanonical:
 
 class TestRentWaiverCanonical:
     def test_record_produces_assessment_reversal(self, client):
-        admin, user, student, class_row, seat, teacher_seat, rent_policy_version = _make_env(client)
+        admin, user, student, class_row, seat, teacher_seat, rent_settings = _make_env(client)
 
         with FEATContext("FEAT-OBL-001", idempotency_key="obligations_parity:rent_waiver"):
             now = datetime.now(timezone.utc)

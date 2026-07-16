@@ -220,8 +220,6 @@ def test_attendance_history_api_filters_work_with_scoping(client):
 
 def test_attendance_history_api_system_admin_sees_all(client):
     """System admin should see all attendance records."""
-    from app.models import SystemAdmin
-    
     # Create system admin
     sys_secret = pyotp.random_base32()
     sys_admin = make_sysadmin("sysadmin")

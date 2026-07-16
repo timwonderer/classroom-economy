@@ -25,7 +25,7 @@ from dateutil.relativedelta import relativedelta
 from app.extensions import db, limiter
 from app.models import (
     Transaction, TransactionStatus, AttendanceSession, StoreItem, StoreItemBlock, StoreItemVisibility, StorePurchase,
-    RentSettings, RentPayment, InsurancePolicy, InsuranceEnrollment, InsuranceClaim,
+    RentSettings,
     BankingSettings, FeatureSettings, Issue, Seat, User, UserRole,
     ClassEconomy, IdentityProfile, _quantize_currency
 )
@@ -311,7 +311,7 @@ def _get_claimed_setup_state():
 
 def _prime_seat_teacher_display_name_cache(student_user_id: int) -> None:
     """Cache teacher display names in session for this seat-scoped session."""
-    from app.models import Seat, ClassEconomy, Admin
+    from app.models import Seat, ClassEconomy
 
     seats = Seat.query.filter(
         Seat.user_id == student_user_id,
@@ -2115,8 +2115,8 @@ def shop():
         .all()
     )
 
-    # Check if student has paid rent this month and get per-period rent item IDs
-    from app.models import RentSettings, RentItem
+    # Check if student has paid rent this month using canonical rent settings only.
+    from app.models import RentSettings
     has_paid_rent = False
     per_period_rent_item_ids = set()
     rent_item_types_by_store_id = {}
@@ -2142,17 +2142,16 @@ def shop():
                     include_waivers=False,
                 )
 
-            # Read store-linked rent items from the active policy version's frozen
-            # manifest so mid-cycle teacher edits don't change what students see.
-            from app.services.obligations_service import resolve_active_rent_policy_version
+            # Read store-linked rent items from canonical rent settings so
+            # mid-cycle teacher edits don't change what students see.
             from app.services.store_service import get_frozen_store_linked_items, get_frozen_privilege_items
-            active_version = resolve_active_rent_policy_version(class_id)
+            rent_settings = get_rent_settings_for_context(context)
             rent_item_types_by_store_id = {}
             per_use_limit_by_store_id = {}
             per_period_rent_item_ids = set()
 
-            if active_version:
-                frozen_store_items = get_frozen_store_linked_items(active_version)
+            if rent_settings:
+                frozen_store_items = get_frozen_store_linked_items(rent_settings)
                 for frozen_item in frozen_store_items:
                     sid = frozen_item['store_item_id']
                     effective_type = frozen_item.get('rent_item_type', 'privilege')
@@ -2167,7 +2166,7 @@ def shop():
                         per_use_limit_by_store_id[sid] = use_limit if use_limit else -1
 
                 # Privilege items get the "Included in your rent!" badge
-                frozen_privileges = get_frozen_privilege_items(active_version)
+                frozen_privileges = get_frozen_privilege_items(rent_settings)
                 per_period_rent_item_ids = {
                     fp['store_item_id'] for fp in frozen_privileges if fp.get('store_item_id')
                 }
@@ -3151,11 +3150,9 @@ def rent():
         reverse=True,
     )
 
-    # Get rent items for this setting to show what rent includes
-    from app.models import RentItem
+    # Rent item rows were removed in v2; the page now renders from rent settings
+    # and store-item linkage only.
     rent_items = []
-    if settings:
-        rent_items = RentItem.query.filter_by(rent_setting_id=settings.id).order_by(RentItem.order_index).all()
 
     # Calculate days until the currently payable due date for dynamic display
     days_until_due = None
@@ -3691,7 +3688,7 @@ def logout():
 @feat_shell("FEAT-IDEN-001")
 def switch_class(class_id):
     """Switch to a different class using class_id as the stable backend reference."""
-    from app.models import Seat, Admin
+    from app.models import Seat
 
     student = _get_canonical_student_from_context()
     try:

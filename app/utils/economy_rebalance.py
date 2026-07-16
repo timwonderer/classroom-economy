@@ -10,7 +10,6 @@ from app.extensions import db
 from app.models import (
     ClassEconomy,
     FeatureSettings,
-    InsurancePolicy,
     PolicyTransition,
     PolicyVersion,
     RentSettings,
@@ -21,14 +20,12 @@ from app.utils.time import ensure_utc, utc_now
 REBALANCE_ACTIVATION_IMMEDIATE = "immediate"
 REBALANCE_ACTIVATION_NEXT_RENEWAL = "next_renewal"
 REBALANCE_ACTIVATION_NEXT_PAYROLL = "next_payroll"
-REBALANCE_TRIGGER_INSURANCE_RENEWAL = "insurance_renewal"
 POLICY_TRANSITION_STATUS_PENDING = "pending"
 POLICY_TRANSITION_STATUS_APPLIED = "applied"
 POLICY_TRANSITION_STATUS_CANCELLED = "cancelled"
 POLICY_TRANSITION_STATUS_SUPERSEDED = "superseded"
 
 REBALANCE_DOMAIN_RENT = "rent"
-REBALANCE_DOMAIN_INSURANCE = "insurance"
 
 
 def _serialize_dt(value: datetime | None) -> str | None:
@@ -58,7 +55,6 @@ def _get_rent_effective_at(settings, reference_time: datetime) -> datetime:
 
 def prepare_scheduled_rebalance_changes(change_plan, *, rent_settings=None, insurance_policies=None, reference_time=None):
     reference_time = ensure_utc(reference_time) if reference_time else utc_now()
-    insurance_by_id = {policy.id: policy for policy in (insurance_policies or [])}
     scheduled_changes = []
 
     for change in change_plan:
@@ -67,11 +63,6 @@ def prepare_scheduled_rebalance_changes(change_plan, *, rent_settings=None, insu
 
         if change.get("type") == "rent" and rent_settings is not None:
             effective_at = _get_rent_effective_at(rent_settings, reference_time)
-        elif change.get("type") == "insurance":
-            policy = insurance_by_id.get(change.get("policy_id"))
-            if policy is not None:
-                enriched_change["activation_event"] = REBALANCE_TRIGGER_INSURANCE_RENEWAL
-                enriched_change["activation_policy_id"] = policy.id
 
         enriched_change["effective_at"] = _serialize_dt(effective_at)
         scheduled_changes.append(enriched_change)
@@ -83,8 +74,6 @@ def _domain_for_change(change: dict[str, Any]) -> str | None:
     change_type = (change.get("type") or "").strip().lower()
     if change_type == "rent":
         return REBALANCE_DOMAIN_RENT
-    if change_type == "insurance":
-        return REBALANCE_DOMAIN_INSURANCE
     return None
 
 
@@ -98,8 +87,6 @@ def _canonical_change_payload(change: dict[str, Any]) -> str:
         "current_value",
         "new_value",
         "effective_at",
-        "activation_event",
-        "activation_policy_id",
     )
     payload = {key: change.get(key) for key in allowed_keys if change.get(key) is not None}
     return json.dumps(payload, sort_keys=True)
@@ -108,8 +95,6 @@ def _canonical_change_payload(change: dict[str, Any]) -> str:
 def _transition_conflict_key(domain: str, change: dict[str, Any]) -> str:
     if domain == REBALANCE_DOMAIN_RENT:
         return f"rent:{(change.get('block') or '').strip().upper()}"
-    if domain == REBALANCE_DOMAIN_INSURANCE:
-        return f"insurance:{change.get('policy_id')}"
     return domain
 
 
@@ -360,16 +345,6 @@ def _apply_change_list(user_id, settings_row, changes, activation_mode, *, refer
                 rent_settings.rent_amount = Decimal(str(change.get("new_value")))
                 applied_labels.append("Rent")
                 applied_changes.append(dict(change))
-        elif change_type == "insurance":
-            policy = InsurancePolicy.query.filter_by(
-                class_id=class_id,
-                id=change.get("policy_id"),
-                is_active=True,
-            ).first()
-            if policy:
-                policy.premium = Decimal(str(change.get("new_value")))
-                applied_labels.append(f"Insurance: {policy.title}")
-                applied_changes.append(dict(change))
 
     if applied_labels:
         settings_row.economy_last_rebalanced_at = reference_time
@@ -400,7 +375,7 @@ def apply_rebalance_changes(user_id, settings_row, change_plan, activation_mode,
     return applied_labels
 
 
-def activate_due_rebalances(user_id, *, class_id=None, reference_time=None, renewal_policy_id=None):
+def activate_due_rebalances(user_id, *, class_id=None, reference_time=None):
     reference_time = ensure_utc(reference_time) if reference_time else utc_now()
     class_ids_subq = (
         db.session.query(ClassEconomy.class_id)
@@ -430,13 +405,9 @@ def activate_due_rebalances(user_id, *, class_id=None, reference_time=None, rene
                     transition.cancelled_at = reference_time
                     continue
                 activation_mode = transition.activation_mode or REBALANCE_ACTIVATION_NEXT_PAYROLL
-                activation_event = change.get("activation_event")
-                activation_policy_id = change.get("activation_policy_id")
                 effective_at = _parse_dt(change.get("effective_at"))
                 is_due = False
-                if activation_event == REBALANCE_TRIGGER_INSURANCE_RENEWAL:
-                    is_due = renewal_policy_id is not None and str(activation_policy_id) == str(renewal_policy_id)
-                elif activation_mode == REBALANCE_ACTIVATION_NEXT_PAYROLL and effective_at is None:
+                if activation_mode == REBALANCE_ACTIVATION_NEXT_PAYROLL and effective_at is None:
                     is_due = True
                 elif effective_at is not None and effective_at <= reference_time:
                     is_due = True

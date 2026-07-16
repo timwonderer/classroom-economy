@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 import pyotp
 
 from app import app, db
-from app.models import User, UserRole, SystemAdmin, Seat
+from app.models import User, UserRole, Seat
 from app.routes.system_admin import _user_student_counts
 from tests.helpers.class_scope import create_class_scope, make_student_identity
 from tests.helpers.v2_fixtures import seed_canonical_admin, make_sysadmin

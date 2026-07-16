@@ -203,9 +203,8 @@ def run_rent_cycle_for_class(class_id: str, execution_time):
     Actor model: seat_id + class_id only.
     """
     from app.extensions import db
-    from app.models import RentSettings, RentPayment, Seat
+    from app.models import RentSettings, Seat, ObligationAssessment
     from app.feats.rent_cycle_feat import execute_scheduled_rent_charge
-    from app.services.obligations_service import activate_next_rent_policy_version
 
     execution_time = execution_time or utc_now()
 
@@ -217,9 +216,6 @@ def run_rent_cycle_for_class(class_id: str, execution_time):
     )
     if not settings:
         return {"status": "skipped", "reason": "rent_disabled_or_missing", "class_id": class_id}
-
-    # Cycle boundary: promote next_version → active_version if queued
-    activate_next_rent_policy_version(class_id)
 
     cycle_length_days = _derive_cycle_length_days(settings)
     settings.cycle_length_days = cycle_length_days
@@ -261,10 +257,11 @@ def run_rent_cycle_for_class(class_id: str, execution_time):
             continue
 
         idem_key = f"rent_cycle:{class_id}:{seat.id}:{cycle_start.isoformat()}"
-        existing = RentPayment.query.filter_by(
+        existing = ObligationAssessment.query.filter_by(
             class_id=class_id,
             seat_id=seat.id,
             cycle_idempotency_key=idem_key,
+            obligation_type="RENT",
         ).first()
         if existing:
             skipped_existing += 1

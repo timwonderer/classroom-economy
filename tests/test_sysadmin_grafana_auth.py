@@ -6,7 +6,7 @@ import pyotp
 from app import db
 from app.feats.base import FEATContext
 from app.auth import SYSTEM_ADMIN_SESSION_TIMEOUT_MINUTES
-from app.models import SystemAdmin, User, UserRole
+from app.models import User, UserRole
 from app.utils.encryption import encrypt_totp
 from app.utils.time import utc_now
 

@@ -6,15 +6,11 @@ from app.extensions import db
 from app.models import (
     BalanceCache,
     HallPassLog,
-    InsuranceClaim,
-    InsuranceEnrollment,
     Issue,
     IssueResolutionAction,
     IssueStatusHistory,
     RedemptionAuditLog,
     RedemptionEvent,
-    RentPayment,
-    RentWaiver,
     StorePurchase,
     AttendanceSession,
     SeatAttendanceState,
@@ -51,19 +47,13 @@ def _collect_related_ids(student_id):
             )
         ).all()
     ]
-    insurance_ids = [
-        row[0]
-        for row in db.session.query(InsuranceEnrollment.id)
-        .filter(InsuranceEnrollment.seat_id.in_(seat_ids_for_student))
-        .all()
-    ]
     tx_ids = [
         row[0]
         for row in db.session.query(Transaction.id)
         .filter(Transaction.seat_id.in_(seat_ids_for_student))
         .all()
     ]
-    return store_purchase_ids, issue_ids, insurance_ids, tx_ids, seat_ids_for_student
+    return store_purchase_ids, issue_ids, tx_ids, seat_ids_for_student
 
 
 def _unclaim_all_seats_for_student(student_id):
@@ -108,7 +98,7 @@ def _clear_cross_transaction_refs(tx_ids):
     )
 
 
-def _delete_student_scoped_rows(student_id, store_purchase_ids, issue_ids, insurance_ids, tx_ids, seat_ids, seat_ids_for_student=None):
+def _delete_student_scoped_rows(student_id, store_purchase_ids, issue_ids, tx_ids, seat_ids, seat_ids_for_student=None):
     """Delete records that are scoped directly to the student being removed."""
     if store_purchase_ids:
         RedemptionEvent.query.filter(
@@ -131,13 +121,6 @@ def _delete_student_scoped_rows(student_id, store_purchase_ids, issue_ids, insur
                 .all()
             )
         ]
-    insurance_claim_filters = [InsuranceClaim.seat_id.in_(seat_ids_for_student)] if seat_ids_for_student else []
-    if insurance_ids:
-        insurance_claim_filters.append(InsuranceClaim.enrollment_id.in_(insurance_ids))
-    if tx_ids:
-        insurance_claim_filters.append(InsuranceClaim.transaction_id.in_(tx_ids))
-    InsuranceClaim.query.filter(sa.or_(*insurance_claim_filters)).delete(synchronize_session=False)
-
     if seat_ids_for_student:
         seat_pub_ids = [
             pub_id for (pub_id,) in
@@ -145,9 +128,6 @@ def _delete_student_scoped_rows(student_id, store_purchase_ids, issue_ids, insur
         ]
         if seat_pub_ids:
             Issue.query.filter(Issue.actor_public_id.in_(seat_pub_ids)).delete(synchronize_session=False)
-    InsuranceEnrollment.query.filter(
-        InsuranceEnrollment.seat_id.in_(seat_ids_for_student)
-    ).delete(synchronize_session=False)
     for sid in (seat_ids_for_student or []):
         delete_recovery_codes_for_seat(sid)
     if tx_ids:
@@ -157,8 +137,6 @@ def _delete_student_scoped_rows(student_id, store_purchase_ids, issue_ids, insur
         AttendanceSession.query.filter(AttendanceSession.seat_id.in_(seat_ids_for_student)).delete(synchronize_session=False)
     if seat_ids_for_student:
         HallPassLog.query.filter(HallPassLog.seat_id.in_(seat_ids_for_student)).delete(synchronize_session=False)
-        RentPayment.query.filter(RentPayment.seat_id.in_(seat_ids_for_student)).delete(synchronize_session=False)
-        RentWaiver.query.filter(RentWaiver.seat_id.in_(seat_ids_for_student)).delete(synchronize_session=False)
     if seat_ids:
         BalanceCache.query.filter(BalanceCache.seat_id.in_(seat_ids)).delete(synchronize_session=False)
 
@@ -173,10 +151,10 @@ def hard_delete_student_if_orphaned(student_id):
     if has_links:
         return False
 
-    store_purchase_ids, issue_ids, insurance_ids, tx_ids, seat_ids = _collect_related_ids(student_id)
+    store_purchase_ids, issue_ids, tx_ids, seat_ids = _collect_related_ids(student_id)
     _unclaim_all_seats_for_student(student_id)
     _clear_cross_transaction_refs(tx_ids)
-    _delete_student_scoped_rows(student_id, store_purchase_ids, issue_ids, insurance_ids, tx_ids, seat_ids)
+    _delete_student_scoped_rows(student_id, store_purchase_ids, issue_ids, tx_ids, seat_ids)
     Seat.query.filter(Seat.user_id == student_id).delete(synchronize_session=False)
     return True
 
@@ -192,7 +170,7 @@ def remove_student_from_teacher_scope(seat_id, user_id):
         return False
 
     student_user_id = seat.user_id
-    store_purchase_ids, issue_ids, insurance_ids, tx_ids, seat_ids = _collect_related_ids(student_user_id)
+    store_purchase_ids, issue_ids, tx_ids, seat_ids = _collect_related_ids(student_user_id)
     teacher_class_ids = sa.select(ClassEconomy.class_id).where(ClassEconomy.user_id == user_id)
     Seat.query.filter(
         Seat.id == seat_id,
@@ -213,7 +191,6 @@ def remove_student_from_teacher_scope(seat_id, user_id):
         student_user_id,
         store_purchase_ids,
         issue_ids,
-        insurance_ids,
         tx_ids,
         seat_ids,
         seat_ids_for_student=seat_ids,

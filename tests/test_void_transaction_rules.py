@@ -6,7 +6,7 @@ from werkzeug.security import generate_password_hash
 from tests.helpers.v2_fixtures import seed_canonical_admin, make_sysadmin
 from app.extensions import db
 from app.feats.base import FEATContext
-from app.models import Seat, IdentityProfile, User, UserRole, InsurancePolicy, RentPolicyVersion, StoreItem, InsuranceEnrollment, StorePurchase, Transaction, ClassEconomy
+from app.models import Seat, IdentityProfile, User, UserRole, InsurancePolicy, StoreItem, InsuranceEnrollment, StorePurchase, Transaction, ClassEconomy, RentSettings
 from app.services import obligations_service
 from tests.helpers.canonical_session import set_canonical_context
 
@@ -408,22 +408,16 @@ def test_void_rent_payment_reverts_bill_to_unpaid(client):
     now = datetime.now(timezone.utc)
 
     with FEATContext("FEAT-LED-001", idempotency_key="void-rules:VOIDRNT1:rent"):
-        policy_version = RentPolicyVersion(
+        settings = RentSettings(
             class_id=student_user.last_active_class_id,
-            version_number=1,
             rent_amount=Decimal('30.00'),
             frequency_type='monthly',
             cycle_length_days=30,
             grace_period_days=3,
             late_penalty_amount=Decimal('10.00'),
             late_penalty_type='once',
-            bill_preview_enabled=False,
-            bill_preview_days=7,
-            allow_incremental_payment=False,
-            prevent_purchase_when_late=False,
-            frozen_items=[],
         )
-        db.session.add(policy_version)
+        db.session.add(settings)
         db.session.flush()
 
         rent_tx = Transaction(
@@ -450,7 +444,6 @@ def test_void_rent_payment_reverts_bill_to_unpaid(client):
             was_late=False,
             late_fee_charged=Decimal('0.00'),
             transaction_id=rent_tx.id,
-            rent_policy_version_id=policy_version.id,
         )
 
     _login_admin(client, teacher_user.id)

@@ -6,10 +6,10 @@ from decimal import Decimal
 from app.extensions import db
 from app.models import (
     IdentityProfile,
-    RentItem,
-    RentPolicyVersion,
+    RentSettings,
     Seat,
     StorePurchase,
+    StoreItem,
     StoreItemVisibility,
 )
 from app.utils.time import utc_now
@@ -77,50 +77,77 @@ def get_active_rent_grant(seat_id: int, class_id: str, store_item_id: int):
 # ---------------------------------------------------------------------------
 
 
-def get_rent_hall_pass_grant_total_from_version(version: RentPolicyVersion) -> int:
-    """Sum hall_pass_count from the frozen manifest on a policy version."""
+def _get_rent_linked_store_items(class_id: str) -> list[StoreItem]:
+    return (
+        StoreItem.query.filter(
+            StoreItem.class_id == class_id,
+            StoreItem.is_rent_linked.is_(True),
+        )
+        .order_by(StoreItem.id.asc())
+        .all()
+    )
+
+
+def get_rent_hall_pass_grant_total_from_settings(settings: RentSettings) -> int:
+    """Sum hall_pass_count from canonical rent-linked store items."""
+    if not settings:
+        return 0
     total = 0
-    for item in (version.frozen_items or []):
-        if item.get('rent_item_type') == 'hall_pass' and item.get('hall_pass_count'):
-            total += item['hall_pass_count']
+    for item in _get_rent_linked_store_items(settings.class_id):
+        if item.item_type == 'hall_pass' and item.hall_pass_count:
+            total += item.hall_pass_count
     return total
 
 
-def get_frozen_privilege_items(version: RentPolicyVersion) -> list[dict]:
-    """Return privilege-type items from the frozen manifest that are store-linked."""
+def get_frozen_privilege_items(settings: RentSettings) -> list[dict]:
+    """Return privilege-type rent-linked items from canonical store rows."""
+    if not settings:
+        return []
     return [
-        item for item in (version.frozen_items or [])
-        if item.get('rent_item_type') == 'privilege'
-        and item.get('is_available_in_store')
-        and item.get('purchase_duration') != 'per_use'
+        {
+            'store_item_id': item.id,
+            'rent_item_type': 'privilege',
+            'is_available_in_store': item.is_rent_linked,
+            'purchase_duration': 'per_period',
+            'use_limit': item.limit_per_student,
+        }
+        for item in _get_rent_linked_store_items(settings.class_id)
+        if item.item_type != 'hall_pass'
     ]
 
 
-def get_frozen_store_linked_items(version: RentPolicyVersion) -> list[dict]:
-    """Return all store-linked items from the frozen manifest (excludes hall passes)."""
+def get_frozen_store_linked_items(settings: RentSettings) -> list[dict]:
+    """Return all rent-linked store items from canonical store rows."""
+    if not settings:
+        return []
     return [
-        item for item in (version.frozen_items or [])
-        if item.get('is_available_in_store')
-        and item.get('store_item_id')
-        and item.get('rent_item_type') != 'hall_pass'
+        {
+            'store_item_id': item.id,
+            'rent_item_type': 'hall_pass' if item.item_type == 'hall_pass' else 'privilege',
+            'is_available_in_store': item.is_rent_linked,
+            'purchase_duration': 'per_use' if item.limit_per_student == -1 else 'per_period',
+            'use_limit': item.limit_per_student,
+        }
+        for item in _get_rent_linked_store_items(settings.class_id)
+        if item.item_type != 'hall_pass'
     ]
 
 
-def grant_rent_per_use_items_from_version(
-    *, seat, version: RentPolicyVersion, calculate_due_dates_fn, settings=None,
+def grant_rent_per_use_items_from_settings(
+    *, seat, settings: RentSettings, calculate_due_dates_fn,
 ) -> int:
     """Store-owned mutation for rent-derived per-use entitlements."""
     per_use_items = [
-        item for item in (version.frozen_items or [])
-        if item.get('rent_item_type') == 'per_use' and item.get('store_item_id')
+        item for item in _get_rent_linked_store_items(settings.class_id)
+        if item.limit_per_student is not None
     ]
 
     granted = 0
     now = utc_now()
 
     for pu_item in per_use_items:
-        store_item_id = pu_item['store_item_id']
-        use_limit = pu_item.get('use_limit')
+        store_item_id = pu_item.id
+        use_limit = pu_item.limit_per_student
 
         existing = StorePurchase.query.filter(
             StorePurchase.seat_id == seat.id,
@@ -158,62 +185,17 @@ def grant_rent_per_use_items_from_version(
 
 
 def get_rent_hall_pass_grant_total(rent_setting_id: int) -> int:
-    total = db.session.query(
-        db.func.coalesce(db.func.sum(RentItem.hall_pass_count), 0)
-    ).filter(
-        RentItem.rent_setting_id == rent_setting_id,
-        RentItem.rent_item_type == 'hall_pass',
-    ).scalar() or 0
-    return int(total)
+    settings = db.session.get(RentSettings, rent_setting_id)
+    return get_rent_hall_pass_grant_total_from_settings(settings) if settings else 0
 
 
 def grant_rent_per_use_items(*, seat, settings, calculate_due_dates_fn) -> int:
     """Store-owned mutation for rent-derived per-use entitlements."""
-    per_use_items = RentItem.query.filter_by(
-        rent_setting_id=settings.id,
-        rent_item_type='per_use',
-    ).all()
-
-    granted = 0
-    now = utc_now()
-
-    for pu_item in per_use_items:
-        if not pu_item.store_item_id:
-            continue
-
-        existing = StorePurchase.query.filter(
-            StorePurchase.seat_id == seat.id,
-            StorePurchase.store_item_id == pu_item.store_item_id,
-            db.or_(StorePurchase.uses_remaining > 0, StorePurchase.uses_remaining == -1),
-            db.or_(StorePurchase.expiry_date.is_(None), StorePurchase.expiry_date > now),
-        ).first()
-
-        if existing:
-            existing.uses_remaining = pu_item.use_limit if pu_item.use_limit else -1
-            continue
-
-        expiry_date = None
-        if settings.first_rent_due_date:
-            _, next_due = calculate_due_dates_fn(settings, now)
-            if next_due:
-                expiry_date = next_due
-
-        db.session.add(StorePurchase(
-            seat_id=seat.id,
-            class_id=seat.class_id,
-            store_item_id=pu_item.store_item_id,
-            quantity=1,
-            price_at_purchase=Decimal('0.00'),
-            total_price=Decimal('0.00'),
-            status='purchased',
-            purchased_at=now,
-            expiry_date=expiry_date,
-            is_from_bundle=False,
-            uses_remaining=pu_item.use_limit if pu_item.use_limit else -1,
-        ))
-        granted += 1
-
-    return granted
+    return grant_rent_per_use_items_from_settings(
+        seat=seat,
+        settings=settings,
+        calculate_due_dates_fn=calculate_due_dates_fn,
+    )
 
 
 def ensure_active_rent_per_use_grant(

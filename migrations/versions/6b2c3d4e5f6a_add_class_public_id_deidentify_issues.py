@@ -109,15 +109,17 @@ def upgrade():
         op.add_column('issues', sa.Column('reviewer_public_id', sa.String(64), nullable=True, index=True))
         print("✅ Added issues.reviewer_public_id")
 
-    # Backfill from existing class_id → classes.class_public_id
-    conn.execute(sa.text("""
-        UPDATE issues i
-        SET class_public_id = c.class_public_id
-        FROM classes c
-        WHERE i.class_id = c.class_id
-          AND i.class_public_id IS NULL
-    """))
-    print("✅ Backfilled issues.class_public_id from classes")
+    # Backfill from existing class_id → classes.class_public_id only when the
+    # legacy column still exists.
+    if column_exists('issues', 'class_id'):
+        conn.execute(sa.text("""
+            UPDATE issues i
+            SET class_public_id = c.class_public_id
+            FROM classes c
+            WHERE i.class_id = c.class_id
+              AND i.class_public_id IS NULL
+        """))
+        print("✅ Backfilled issues.class_public_id from classes")
 
     # Drop internal identity FKs and columns
     for fk in get_foreign_keys_by_column('issues', 'user_id'):
@@ -169,25 +171,28 @@ def upgrade():
         op.add_column('issue_status_history', sa.Column('changed_by_public_id', sa.String(64), nullable=True))
         print("✅ Added issue_status_history.changed_by_public_id")
 
-    conn.execute(sa.text("""
-        UPDATE issue_status_history ish
-        SET class_public_id = c.class_public_id
-        FROM classes c
-        WHERE ish.class_id = c.class_id
-          AND ish.class_public_id IS NULL
-          AND ish.class_id IS NOT NULL
-    """))
+    if column_exists('issue_status_history', 'class_id'):
+        conn.execute(sa.text("""
+            UPDATE issue_status_history ish
+            SET class_public_id = c.class_public_id
+            FROM classes c
+            WHERE ish.class_id = c.class_id
+              AND ish.class_public_id IS NULL
+              AND ish.class_id IS NOT NULL
+        """))
 
-    # Backfill changed_by_public_id from changed_by_id → seats or users
-    conn.execute(sa.text("""
-        UPDATE issue_status_history ish
-        SET changed_by_public_id = s.public_id
-        FROM seats s
-        INNER JOIN users u ON s.user_id = u.id
-        WHERE ish.changed_by_id = u.id
-          AND ish.changed_by_public_id IS NULL
-          AND ish.changed_by_id IS NOT NULL
-    """))
+    # Backfill changed_by_public_id from changed_by_id → seats or users only
+    # when the legacy column still exists.
+    if column_exists('issue_status_history', 'changed_by_id'):
+        conn.execute(sa.text("""
+            UPDATE issue_status_history ish
+            SET changed_by_public_id = s.public_id
+            FROM seats s
+            INNER JOIN users u ON s.user_id = u.id
+            WHERE ish.changed_by_id = u.id
+              AND ish.changed_by_public_id IS NULL
+              AND ish.changed_by_id IS NOT NULL
+        """))
 
     for fk in get_foreign_keys_by_column('issue_status_history', 'class_id'):
         if fk['name']:
@@ -211,25 +216,28 @@ def upgrade():
         op.add_column('issue_resolution_actions', sa.Column('performed_by_public_id', sa.String(64), nullable=True))
         print("✅ Added issue_resolution_actions.performed_by_public_id")
 
-    conn.execute(sa.text("""
-        UPDATE issue_resolution_actions ira
-        SET class_public_id = c.class_public_id
-        FROM classes c
-        WHERE ira.class_id = c.class_id
-          AND ira.class_public_id IS NULL
-          AND ira.class_id IS NOT NULL
-    """))
+    if column_exists('issue_resolution_actions', 'class_id'):
+        conn.execute(sa.text("""
+            UPDATE issue_resolution_actions ira
+            SET class_public_id = c.class_public_id
+            FROM classes c
+            WHERE ira.class_id = c.class_id
+              AND ira.class_public_id IS NULL
+              AND ira.class_id IS NOT NULL
+        """))
 
-    # Backfill performed_by_public_id from performed_by_id → seats
-    conn.execute(sa.text("""
-        UPDATE issue_resolution_actions ira
-        SET performed_by_public_id = s.public_id
-        FROM seats s
-        INNER JOIN users u ON s.user_id = u.id
-        WHERE ira.performed_by_id = u.id
-          AND ira.performed_by_public_id IS NULL
-          AND ira.performed_by_id IS NOT NULL
-    """))
+    # Backfill performed_by_public_id from performed_by_id → seats only when
+    # the legacy column still exists.
+    if column_exists('issue_resolution_actions', 'performed_by_id'):
+        conn.execute(sa.text("""
+            UPDATE issue_resolution_actions ira
+            SET performed_by_public_id = s.public_id
+            FROM seats s
+            INNER JOIN users u ON s.user_id = u.id
+            WHERE ira.performed_by_id = u.id
+              AND ira.performed_by_public_id IS NULL
+              AND ira.performed_by_id IS NOT NULL
+        """))
 
     for fk in get_foreign_keys_by_column('issue_resolution_actions', 'class_id'):
         if fk['name']:
@@ -248,14 +256,15 @@ def upgrade():
         op.add_column('ticket_correlation_pack', sa.Column('class_public_id', sa.String(36), nullable=True))
         print("✅ Added ticket_correlation_pack.class_public_id")
 
-    conn.execute(sa.text("""
-        UPDATE ticket_correlation_pack tcp
-        SET class_public_id = c.class_public_id
-        FROM classes c
-        WHERE tcp.class_id = c.class_id
-          AND tcp.class_public_id IS NULL
-          AND tcp.class_id IS NOT NULL
-    """))
+    if column_exists('ticket_correlation_pack', 'class_id'):
+        conn.execute(sa.text("""
+            UPDATE ticket_correlation_pack tcp
+            SET class_public_id = c.class_public_id
+            FROM classes c
+            WHERE tcp.class_id = c.class_id
+              AND tcp.class_public_id IS NULL
+              AND tcp.class_id IS NOT NULL
+        """))
 
     for fk in get_foreign_keys_by_column('ticket_correlation_pack', 'class_id'):
         if fk['name']:

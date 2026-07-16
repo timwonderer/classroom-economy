@@ -11,7 +11,6 @@ from app.models import (
     IssueCategory,
     IssueResolutionAction,
     Seat,
-    SystemAdmin,
     Transaction,
     TransactionStatus,
 )

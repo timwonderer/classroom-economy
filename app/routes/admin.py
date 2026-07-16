@@ -58,14 +58,14 @@ from app.feats.base import feat_shell, FEATContext, InvariantViolation
 from app.access.scope import Scope
 from app.access import AccessScopeDenied, resolve_scope
 from app.models import (
-    Admin, ClassEconomy, Transaction, TransactionStatus, TapEvent, AttendanceSession, StoreItem, StorePurchase, StudentItem,
-    InsurancePolicy, InsurancePolicyBlock, RentItem, RentPayment, RentSettings, StoreItemBlock,
-    InsuranceEnrollment, InsuranceClaim, HallPassLog, HallPassSettings, PayrollSettings, SavedAdjustment,
+    ClassEconomy, Transaction, TransactionStatus, TapEvent, AttendanceSession, StoreItem, StorePurchase, StudentItem,
+    RentSettings, StoreItemBlock,
+    HallPassLog, HallPassSettings, PayrollSettings,
     BankingSettings,
     FeatureSettings,
     Announcement, RedemptionAuditLog, RedemptionAuditAction,
-    RedemptionAuditSource, RedemptionEvent, RedemptionEventAction, RedemptionEventSource, Issue, IssueStatusHistory, IssueResolutionAction, AnalyticsSnapshot, AnalyticsEvent, Seat,
-    BalanceCache, ClassEconomy, EconomySnapshot, User, UserRole, _quantize_currency,
+    RedemptionAuditSource, RedemptionEvent, RedemptionEventAction, RedemptionEventSource, Issue, IssueCategory, IssueStatusHistory, IssueResolutionAction, Seat,
+    BalanceCache, ClassEconomy, User, UserRole, _quantize_currency,
     ObligationAssessment, ObligationSatisfaction,
     SeatAttendanceState, TapEventReasonCode, IdentityProfile,
 )
@@ -711,7 +711,10 @@ def _find_admin_by_auth_username(username: str):
         return None
 
     lookup_hash = hash_username_lookup(normalized)
-    return Admin.query.filter_by(username_lookup_hash=lookup_hash).first()
+    return User.query.filter_by(
+        username_lookup_hash=lookup_hash,
+        user_role=UserRole.TEACHER,
+    ).first()
 
 
 def _auth_username_exists(username: str, *, exclude_admin_id: int | None = None) -> bool:
@@ -722,7 +725,7 @@ def _auth_username_exists(username: str, *, exclude_admin_id: int | None = None)
     user = User.query.filter_by(username_lookup_hash=lookup_hash).first()
     if user:
         if exclude_admin_id is not None:
-            excluded_admin = db.session.get(Admin, exclude_admin_id)
+            excluded_admin = db.session.get(User, exclude_admin_id)
             if excluded_admin and excluded_admin.username_lookup_hash == lookup_hash:
                 return False
         return True
@@ -735,7 +738,7 @@ def _auth_username_exists(username: str, *, exclude_admin_id: int | None = None)
     return True
 
 
-def _admin_requires_username_migration(admin: Admin) -> bool:
+def _admin_requires_username_migration(admin: User) -> bool:
     return needs_hashed_username_migration(admin)
 
 
@@ -1367,9 +1370,6 @@ def _delete_teacher_rent_rows(canonical_context):
     rent_setting_ids_subq = db.session.query(RentSettings.id).filter(
         RentSettings.class_id.in_(sa.select(class_ids_subq))
     ).subquery()
-    RentItem.query.filter(
-        RentItem.rent_setting_id.in_(sa.select(rent_setting_ids_subq))
-    ).delete(synchronize_session=False)
     RentSettings.query.filter(
         RentSettings.class_id.in_(sa.select(class_ids_subq))
     ).delete(synchronize_session=False)
@@ -2562,7 +2562,10 @@ def _check_onboarding_redirect():
     user = get_current_user()
     if not user:
         return None
-    admin = Admin.query.filter_by(username_lookup_hash=user.username_lookup_hash).first()
+    admin = User.query.filter_by(
+        username_lookup_hash=user.username_lookup_hash,
+        user_role=UserRole.TEACHER,
+    ).first()
 
     # Check if teacher has completed or skipped onboarding
     onboarding = get_admin_onboarding(user.id)
@@ -2988,7 +2991,7 @@ def login():
 @admin_required
 def username_migration():
     """One-time username update screen."""
-    admin = db.session.get(Admin, g.canonical_context.user_id)
+    admin = db.session.get(User, g.canonical_context.user_id)
     if not admin:
         flash("Account not found.", "error")
         return redirect(url_for("admin.login"))
@@ -3040,7 +3043,7 @@ def username_migration():
             user.username_hash = username_hash
             user.username_lookup_hash = username_lookup_hash
         if not admin.hall_pass_verify_token:
-            admin.hall_pass_verify_token = Admin.generate_verify_token()
+            admin.hall_pass_verify_token = User.generate_verify_token()
         if user and not user.hall_pass_verify_token:
             user.hall_pass_verify_token = User.generate_verify_token()
         db.session.flush()
@@ -3582,7 +3585,7 @@ def confirm_reset():
         flash("Invalid recovery session.", "error")
         return redirect(url_for('admin.recover'))
 
-    teacher = db.session.get(Admin, recovery_request.user_id)
+    teacher = db.session.get(User, recovery_request.user_id)
     if not teacher:
         flash("Invalid recovery session.", "error")
         return redirect(url_for('admin.recover'))
@@ -3735,7 +3738,7 @@ def settings():
     user_id = ctx.user_id
     from app.models import User
     user = db.session.get(User, user_id)
-    admin = Admin.query.filter_by(username_lookup_hash=user.username_lookup_hash).first() if user else None
+    admin = User.query.filter_by(username_lookup_hash=user.username_lookup_hash, user_role=UserRole.TEACHER).first() if user else None
     if not admin:
         abort(404)
 
@@ -3748,7 +3751,7 @@ def settings():
         db.session.rollback()
         with FEATContext("FEAT-IDEN-001", idempotency_key=idempotency_key):
             user = db.session.get(User, user_id)
-            admin = Admin.query.filter_by(username_lookup_hash=user.username_lookup_hash).first() if user else None
+            admin = User.query.filter_by(username_lookup_hash=user.username_lookup_hash, user_role=UserRole.TEACHER).first() if user else None
 
             # Update display name
             display_name = request.form.get('display_name', '').strip()
@@ -3850,29 +3853,12 @@ def _build_rent_privileges_by_block(user_id, blocks, class_ids_by_block, student
     if not settings_by_block:
         return student_rent_privileges
 
-    # 2. Fetch active policy versions and extract privilege items from frozen manifests.
-    #    This ensures mid-cycle teacher edits don't change visible perks until next cycle.
-    from app.models import RentPolicyVersion
     from app.services.store_service import get_frozen_privilege_items
-
-    active_version_ids = [
-        rs.active_version_id for rs in (
-            RentSettings.query
-            .filter(RentSettings.class_id.in_(target_class_ids))
-            .with_entities(RentSettings.active_version_id)
-            .all()
-        )
-        if rs.active_version_id
-    ]
-    active_versions_by_class = {}
-    if active_version_ids:
-        for v in RentPolicyVersion.query.filter(RentPolicyVersion.id.in_(active_version_ids)).all():
-            active_versions_by_class[v.class_id] = v
-
     frozen_items_by_class_id = {}
     all_store_item_ids = set()
-    for class_id_val, version in active_versions_by_class.items():
-        frozen_privs = get_frozen_privilege_items(version)
+    for block, rent_settings in settings_by_block.items():
+        frozen_privs = get_frozen_privilege_items(rent_settings)
+        class_id_val = class_ids_by_block.get(block)
         frozen_items_by_class_id[class_id_val] = frozen_privs
         for fp in frozen_privs:
             if fp.get('store_item_id'):
@@ -4035,15 +4021,14 @@ def _get_rent_privileges_for_student(student, class_id, seat_id):
         )
     )
 
-    # Read privilege items from the active policy version's frozen manifest
-    # so mid-cycle teacher edits don't change what students see until next cycle.
-    from app.services.obligations_service import resolve_active_rent_policy_version
+    # Read privilege items from canonical rent settings so mid-cycle edits
+    # don't change what students see until next cycle.
     from app.services.store_service import get_frozen_privilege_items
-    active_version = resolve_active_rent_policy_version(class_id)
-    if not active_version:
+    rent_settings = RentSettings.query.filter_by(class_id=class_id).first()
+    if not rent_settings:
         return rent_privileges
 
-    frozen_privileges = get_frozen_privilege_items(active_version)
+    frozen_privileges = get_frozen_privilege_items(rent_settings)
     store_item_ids = [item['store_item_id'] for item in frozen_privileges if item.get('store_item_id')]
     items_by_seat = set()
     if store_item_ids and seat_id:
@@ -4246,7 +4231,6 @@ def students():
                 }
 
     # Calculate rent privileges for each student in each block (batched)
-    from app.models import RentItem, RentSettings, RentPayment, StorePurchase
     student_rent_privileges = _build_rent_privileges_by_block(user_id, blocks, class_ids_by_block, students_by_block)
 
     return render_template('admin_students.html',
@@ -5750,11 +5734,9 @@ def store_management():
     audit_class_options = sorted(set(class_labels_by_block.values()))
 
     rent_managed_item_ids = {
-        row[0] for row in db.session.query(RentItem.store_item_id).join(
-            RentSettings, RentItem.rent_setting_id == RentSettings.id
-        ).filter(
-            RentSettings.class_id == selected_scope['class_id'],
-            RentItem.store_item_id.isnot(None)
+        item.id for item in StoreItem.query.filter_by(
+            class_id=selected_scope['class_id'],
+            is_rent_linked=True,
         ).all()
     }
 
@@ -5922,12 +5904,7 @@ def hard_delete_store_item(item_id):
 
 def _block_rent_linked_store_item(item: StoreItem) -> bool:
     """Return True if store item is rent-linked and deletion should be blocked."""
-    is_managed_by_rent = item.is_rent_linked or db.session.query(RentItem.id).join(
-        RentSettings, RentItem.rent_setting_id == RentSettings.id
-    ).filter(
-        RentSettings.class_id == item.class_id,
-        RentItem.store_item_id == item.id
-    ).first() is not None
+    is_managed_by_rent = bool(item.is_rent_linked)
 
     if is_managed_by_rent:
         flash(f"Cannot delete '{item.name}' because it is managed by Rent Settings. Please remove it from Rent Settings instead.", "error")
@@ -5943,7 +5920,7 @@ def _sync_rent_items_to_store(rent_settings, user_id, class_id):
     FIX: Prevents duplicate store items when applying rent settings to all periods.
     Store items are now shared across blocks using StoreItemBlock for visibility.
     """
-    from app.models import RentItem, StoreItem, StoreItemBlock
+    from app.models import StoreItem, StoreItemBlock
 
     if not class_id:
         current_app.logger.warning(
@@ -5952,99 +5929,44 @@ def _sync_rent_items_to_store(rent_settings, user_id, class_id):
         )
         return
 
-    rent_items = RentItem.query.filter_by(rent_setting_id=rent_settings.id).all()
+    rent_store_items = (
+        StoreItem.query.filter(
+            StoreItem.class_id == class_id,
+            StoreItem.is_rent_linked.is_(True),
+        )
+        .order_by(StoreItem.id.asc())
+        .all()
+    )
 
-    for rent_item in rent_items:
-        # Skip store sync for hall passes
-        if rent_item.rent_item_type == 'hall_pass':
+    for store_item in rent_store_items:
+        if not store_item.name:
             continue
 
-        if rent_item.is_available_in_store and rent_item.store_price:
-            # Determine purchase limit based on duration type
-            limit = None
-            duration_note = ""
+        if store_item.class_id != class_id:
+            store_item.class_id = class_id
+        store_item.is_active = True
 
-            if rent_item.rent_item_type == 'per_use':
-                limit = None
-                if rent_item.use_limit:
-                    duration_note = f"Includes {rent_item.use_limit} free uses per period."
-                else:
-                    duration_note = "Unlimited free uses per period for rent payers."
-            elif rent_item.rent_item_type == 'privilege':
-                limit = 1  # Can only buy once per rent period
-                duration_note = "Valid until next rent payment is due."
-            else:  # fallback
-                limit = None
-                duration_note = "Purchase each time you need to use it."
+        existing_block_links = {
+            link.block
+            for link in StoreItemBlock.query.filter_by(store_item_id=store_item.id).all()
+            if link.block
+        }
+        desired_blocks = set()
+        if store_item.blocks_list:
+            desired_blocks = {block.strip().upper() for block in store_item.blocks_list if block}
+        if not desired_blocks:
+            desired_blocks = {""}
 
-            base_desc = rent_item.description or f"Single purchase alternative to rent. By paying rent (${rent_settings.rent_amount:.2f}), you get access to this and other items included in rent."
-            description = f"{base_desc}\n\n{duration_note}"
-
-            store_item = None
-
-            # Check if this rent_item already has a store_item_id
-            if rent_item.store_item_id:
-                store_item = db.session.get(StoreItem, rent_item.store_item_id)
-
-            # If no store_item yet, check if a rent-linked one exists for this teacher+name.
-            # Only consider store items already linked to a RentItem to avoid
-            # overwriting unrelated non-rent store items with the same name.
-            if not store_item:
-                store_item = StoreItem.query.join(
-                    RentItem, RentItem.store_item_id == StoreItem.id
-                ).filter(
-                    StoreItem.class_id == class_id,
-                    StoreItem.name == rent_item.name
-                ).first()
-
-            # Mark any store-backed rent item as rent-linked (privilege + per-use).
-            # Hall pass items are skipped earlier and never synced to store.
-            is_rent_linked_item = rent_item.rent_item_type in ('privilege', 'per_use')
-
-            if store_item:
-                # Update existing store item — class_id is canonical (INV-ARC-019)
-                if not store_item.class_id:
-                    store_item.class_id = class_id
-                store_item.name = rent_item.name
-                store_item.description = description
-                store_item.price = rent_item.store_price
-                store_item.limit_per_student = limit
-                store_item.is_active = True
-                store_item.is_rent_linked = is_rent_linked_item
-
-                # Link this rent_item to the store_item if not already linked
-                if not rent_item.store_item_id:
-                    rent_item.store_item_id = store_item.id
-            else:
-                # Create new store item scoped to class_id
-                store_item = StoreItem(
-                    user_id=user_id,
-                    class_id=class_id,
-                    name=rent_item.name,
-                    description=description,
-                    price=rent_item.store_price,
-                    item_type='delayed',
-                    limit_per_student=limit,
-                    is_active=True,
-                    is_rent_linked=is_rent_linked_item
+        for block in desired_blocks - existing_block_links:
+            db.session.add(
+                StoreItemBlock(
+                    store_item_id=store_item.id,
+                    block=block,
                 )
-                db.session.add(store_item)
-                db.session.flush()  # Get the store_item.id
+            )
 
-                # Link the rent item to this store item
-                rent_item.store_item_id = store_item.id
-
-        elif rent_item.store_item_id:
-            # Item no longer available in store — deactivate if no other rent items use it
-            store_item = db.session.get(StoreItem, rent_item.store_item_id)
-            if store_item:
-                other_refs = RentItem.query.filter(
-                    RentItem.store_item_id == store_item.id,
-                    RentItem.id != rent_item.id,
-                    RentItem.is_available_in_store == True
-                ).count()
-                if other_refs == 0:
-                    store_item.is_active = False
+        for block in existing_block_links - desired_blocks:
+            StoreItemBlock.query.filter_by(store_item_id=store_item.id, block=block).delete()
 
     db.session.flush()
 
@@ -6292,8 +6214,6 @@ def rent_settings():
             item_data['store_price'] = store_price
             parsed_items.append(item_data)
 
-        from app.models import RentItem
-
         # Apply parsed items to each class (blocks_to_update now contains class_ids)
         for block in blocks_to_update:
                 # block is now a class_id; fetch settings directly by class_id
@@ -6364,17 +6284,16 @@ def rent_settings():
                         processed_items.add(target_item)
                     else:
                         # Create new
-                        new_item = RentItem(
-                            rent_setting_id=block_settings.id,
+                        new_item = StoreItem(
+                            user_id=user_id,
+                            class_id=block_settings.class_id,
                             name=item_data['name'],
                             description=item_data['description'] if item_data['description'] else None,
-                            order_index=item_data['order_index'],
-                            is_available_in_store=item_data['is_available'],
-                            store_price=item_data['store_price'],
-                            purchase_duration=item_data['purchase_duration'] or 'per_use',
-                            rent_item_type=item_data['rent_item_type'],
-                            use_limit=item_data['use_limit'],
-                            hall_pass_count=item_data['hall_pass_count']
+                            item_type='delayed',
+                            price=item_data['store_price'],
+                            limit_per_student=(1 if item_data['rent_item_type'] == 'privilege' else None),
+                            is_active=item_data['is_available'],
+                            is_rent_linked=True,
                         )
                         db.session.add(new_item)
                         # No need to add to processed_items as it's new
@@ -6396,12 +6315,8 @@ def rent_settings():
                     flash("Some changes are locked because students have already paid rent this period. "
                           "Item type, use limits, and hall pass counts will apply next period.", "warning")
 
-        # Snapshot current settings + items into a new immutable policy version
-        db.session.flush()  # ensure all items are persisted before snapshotting
-        from app.services.obligations_service import create_and_schedule_rent_policy_version
-        for block in blocks_to_update:
-            # block IS a class_id (INV-ARC-014: authority is class_id, not label)
-            create_and_schedule_rent_policy_version(block)
+        # Rent settings are canonical; no policy-version snapshotting in v2.
+        db.session.flush()
 
         flash("Rent settings updated successfully!", "success")
         return redirect(url_for('admin.rent_settings'))
@@ -6483,8 +6398,7 @@ def rent_settings():
     # Get rent items for this setting
     rent_items = []
     if settings:
-        from app.models import RentItem
-        rent_items = RentItem.query.filter_by(rent_setting_id=settings.id).order_by(RentItem.order_index).all()
+        rent_items = settings.rent_items.order_by(StoreItem.id).all()
 
     # Calculate rent active status, backlog buckets, and logs
     rent_active_for_period = False
@@ -10577,11 +10491,11 @@ def account_delete():
     Deletion executes immediately after timed confirmation gate checks.
     """
     user_id = g.canonical_context.user_id
-    admin = db.session.get(Admin, user_id)
+    admin = db.session.get(User, user_id)
     if not admin:
         flash('Unable to load your account.', 'error')
         return redirect(url_for('admin.login'))
-    admin_username = admin.get_display_name().strip()
+    admin_username = admin.get_display_username().strip()
 
     if request.method == 'POST':
         request_type = request.form.get('request_type')  # account only
@@ -10717,11 +10631,20 @@ def help_support():
 
         if issue_category not in category_to_report_type:
             flash("Please select a valid support ticket category.", "error")
-
-            anonymous_code = generate_anonymous_code(f"admin:{user_id}")
-            my_reports_query = UserReport.query.filter_by(anonymous_code=anonymous_code, user_type='teacher')
-            my_reports_query = my_reports_query.filter_by(class_id=selected_class_id)
-            my_reports = my_reports_query.order_by(UserReport.submitted_at.desc()).limit(20).all()
+            my_reports = [
+                SimpleNamespace(
+                    report=issue,
+                    scope_class_id=issue.class_public_id,
+                    class_label=selected_class_label or selected_join_code or 'Unknown',
+                    issue_category=issue.issue_type,
+                    clean_description=issue.student_explanation,
+                )
+                for issue in Issue.query.filter(
+                    Issue.actor_public_id == generate_anonymous_code(f"admin:{user_id}"),
+                    Issue.class_public_id == selected_class_id,
+                    Issue.issue_type == 'general',
+                ).order_by(Issue.submitted_at.desc()).limit(20).all()
+            ]
 
             return render_template(
                 'admin_support_tickets.html',
@@ -10740,11 +10663,20 @@ def help_support():
 
         if not title or not description or not issue_category:
             flash("Please provide a category, title, and description for your support ticket.", "error")
-
-            anonymous_code = generate_anonymous_code(f"admin:{user_id}")
-            my_reports_query = UserReport.query.filter_by(anonymous_code=anonymous_code, user_type='teacher')
-            my_reports_query = my_reports_query.filter_by(class_id=selected_class_id)
-            my_reports = my_reports_query.order_by(UserReport.submitted_at.desc()).limit(20).all()
+            my_reports = [
+                SimpleNamespace(
+                    report=issue,
+                    scope_class_id=issue.class_public_id,
+                    class_label=selected_class_label or selected_join_code or 'Unknown',
+                    issue_category=issue.issue_type,
+                    clean_description=issue.student_explanation,
+                )
+                for issue in Issue.query.filter(
+                    Issue.actor_public_id == generate_anonymous_code(f"admin:{user_id}"),
+                    Issue.class_public_id == selected_class_id,
+                    Issue.issue_type == 'general',
+                ).order_by(Issue.submitted_at.desc()).limit(20).all()
+            ]
 
             return render_template(
                 'admin_support_tickets.html',
@@ -10766,18 +10698,20 @@ def help_support():
 
         try:
             with FEATContext("FEAT-SUP-001", idempotency_key=f"admin_help_support:{user_id}:{selected_class_id}:{title}"):
-                report = UserReport(
-                    anonymous_code=anonymous_code,
-                    user_type="teacher",
-                    class_id=selected_class_id,
-                    report_type=category_to_report_type[issue_category],
-                    title=title,
-                    description=scoped_description,
-                    expected_behavior=expected_behavior if expected_behavior else None,
+                category = IssueCategory.query.filter_by(
+                    name=category_to_report_type[issue_category],
+                ).first()
+                if not category:
+                    category = IssueCategory.query.first()
+                report = Issue(
+                    actor_public_id=anonymous_code,
+                    class_public_id=selected_class_id,
+                    category_id=category.id,
+                    issue_type='general',
+                    student_explanation=scoped_description,
+                    student_expected_outcome=expected_behavior if expected_behavior else None,
                     page_url=page_url if page_url else None,
-                    ip_address=get_real_ip(),
-                    user_agent=request.headers.get("User-Agent"),
-                    status="new",
+                    status=Issue.STATUS_OPEN,
                 )
                 db.session.add(report)
                 db.session.flush()
@@ -10791,23 +10725,21 @@ def help_support():
             return redirect(url_for('admin.help_support'))
 
     anonymous_code = generate_anonymous_code(f"admin:{user_id}")
-    my_reports_query = UserReport.query.filter_by(anonymous_code=anonymous_code, user_type='teacher')
-
-    reports = my_reports_query.order_by(UserReport.submitted_at.desc()).limit(50).all()
-    my_reports = []
-    for report in reports:
-        scope_class_id, class_label, issue_category, clean_description = _parse_scope_metadata(report.description)
-        if selected_class_id and scope_class_id and scope_class_id != selected_class_id:
-            continue
-        my_reports.append({
+    reports = Issue.query.filter(
+        Issue.actor_public_id == anonymous_code,
+        Issue.issue_type == 'general',
+    ).order_by(Issue.submitted_at.desc()).limit(50).all()
+    my_reports = [
+        {
             'report': report,
-            'scope_class_id': scope_class_id,
-            'class_label': class_label,
-            'issue_category': issue_category,
-            'clean_description': clean_description,
-        })
-        if len(my_reports) >= 20:
-            break
+            'scope_class_id': report.class_public_id,
+            'class_label': selected_class_label or selected_join_code or 'Unknown',
+            'issue_category': report.issue_type,
+            'clean_description': report.student_explanation,
+        }
+        for report in reports
+        if not selected_class_id or not report.class_public_id or report.class_public_id == selected_class_id
+    ][:20]
 
     return render_template('admin_support_tickets.html',
                          current_page='help',
@@ -12066,7 +11998,7 @@ def passkey_delete(passkey_id):
 def passkey_settings():
     """Passkey management page."""
     user_id = g.canonical_context.user_id
-    admin = db.get_or_404(Admin, user_id)
+    admin = db.get_or_404(User, user_id)
     credentials = list_admin_credentials(user_id)
 
     return render_template('admin_passkey_settings.html',

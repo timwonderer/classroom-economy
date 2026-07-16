@@ -316,7 +316,7 @@ Derived state — onboarding completion is inferrable from `class_features` + `f
 
 | Priority | Group | Blocking | Estimated Scope |
 |---|---|---|---|
-| P0 | `Admin` → `User` (teacher) | App cannot boot | ~101 refs across 9 files + auth rewrite |
+| P0 | `Admin` → `user`, `seat` (teacher) | App cannot boot | ~101 refs across 9 files + auth rewrite |
 | P0 | `SystemAdmin` → `User` (sysadmin) | Sysadmin cannot log in | ~7 refs, 1 file |
 | P1 | `UserReport` → `Issue` | Support broken | ~24 refs, 2 files |
 | P1 | `ErrorLog` → `operational_events` | Error visibility lost | ~30 refs, 1 file |

@@ -474,7 +474,6 @@ def test_rent_payment_creates_rent_obligation_record(client):
     with FEATContext("FEAT-OBL-001", idempotency_key="core_invariants:rent_seed"):
         db.session.add(settings)
         db.session.flush()
-        settings.active_version = settings.create_policy_version()
         assert seat is not None and seat.class_id is not None
         db.session.add(
             Transaction(

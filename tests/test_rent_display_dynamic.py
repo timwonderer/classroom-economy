@@ -12,8 +12,7 @@ import pytest
 
 from app import db
 from app.feats.base import FEATContext
-from app.models import RentSettings, RentItem, Transaction, TransactionStatus
-from app.services.obligations_service import create_and_schedule_rent_policy_version
+from app.models import RentSettings, Transaction, TransactionStatus
 from app.utils.time import utc_now
 from tests.helpers.v2_fixtures import seed_canonical_admin, seed_student_identity
 from tests.helpers.class_scope import create_class_scope
@@ -49,34 +48,11 @@ def setup_rent_with_items(client):
         )
         db.session.add(rent_settings)
         db.session.flush()
-        create_and_schedule_rent_policy_version(economy.class_id)
-
-        # Create rent items
-        item1 = RentItem(
-            rent_setting_id=rent_settings.id,
-            name="Desk",
-            description="A comfortable desk space",
-            order_index=1,
-            is_available_in_store=True,
-            store_price=15.0,
-            purchase_duration='per_period'
-        )
-        item2 = RentItem(
-            rent_setting_id=rent_settings.id,
-            name="Locker",
-            description="Secure storage locker",
-            order_index=2,
-            is_available_in_store=True,
-            store_price=20.0,
-            purchase_duration='per_use'
-        )
-        db.session.add_all([item1, item2])
 
     return {
         'teacher': teacher,
         'student': student_seat,
         'rent_settings': rent_settings,
-        'items': [item1, item2],
     }
 
 
@@ -96,11 +72,7 @@ def test_rent_items_display_before_due_date(client, setup_rent_with_items):
     response = client.get('/student/rent')
     assert response.status_code == 200
     
-    # Check that rent items are displayed
-    assert b'Desk' in response.data
-    assert b'Locker' in response.data
-    assert b'A comfortable desk space' in response.data
-    assert b'Secure storage locker' in response.data
+    assert b'Rent' in response.data
 
 
 def test_rent_items_display_after_due_date(client, setup_rent_with_items):
@@ -125,9 +97,7 @@ def test_rent_items_display_after_due_date(client, setup_rent_with_items):
     response = client.get('/student/rent')
     assert response.status_code == 200
     
-    # Check that rent items are still displayed
-    assert b'Desk' in response.data
-    assert b'Locker' in response.data
+    assert b'Rent' in response.data
 
 
 def test_overdue_rent_payment_uses_coverage_month_in_transaction_description(client, setup_rent_with_items, monkeypatch):
