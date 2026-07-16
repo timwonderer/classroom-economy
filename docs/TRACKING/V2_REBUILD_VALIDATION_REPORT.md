@@ -498,6 +498,17 @@ The first validation report's characterization of "0 of 44 canonical tables writ
 | 11 | Post-Launch Completion | ⚠️ PARTIAL | Low |
 | 12 | Final Validation | ❌ NOT STARTED | — |
 
+### Status Update (2026-07-16): Unauthorized Table Drop Validation
+
+- Applied migration `7c3d4e5f6a7b_drop_all_unauthorized_tables` to the dev database.
+- Current Alembic head is `7c3d4e5f6a7b`.
+- The unauthorized table set is no longer present in `public`.
+- `downgrade()` is intentionally irreversible and raises `NotImplementedError`.
+- Validation commands completed successfully:
+  - `flask db upgrade`
+  - `select version_num from alembic_version order by version_num;` → `7c3d4e5f6a7b`
+  - `select tablename from pg_tables where schemaname='public' and tablename in (...)` → `0 rows`
+
 **Current migration head:** `b1c2d3e4f5a6` (10 migrations, linear single-head chain ✅)  
 **Tables in `models.py`:** ~60 ORM classes, ~66 table names total  
 **Legacy tables dual-scoped with canonical columns:** Confirmed for `tap_events`, `hall_pass_logs` (ledger runtime tables now canonicalized as `ledger_transaction` / `ledger_balance_snapshot`)  
