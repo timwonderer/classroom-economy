@@ -2647,3 +2647,14 @@ All 51 test files that imported `ClassMembership`, `StudentTeacher`, or `Student
    - `test_user_seat_identity.py` — rewritten to use `class_id` scoping (done in Phase 0c)
 
 **Collection result:** 855 tests collected with 0 import errors.
+
+### Status Update (2026-07-16): Unauthorized Table Drop Cutover Complete
+
+- Migration `7c3d4e5f6a7b_drop_all_unauthorized_tables.py` has been applied to the dev database.
+- Current Alembic head is `7c3d4e5f6a7b`.
+- The unauthorized table set is fully removed from `public`.
+- The drop migration is irreversible by design; `downgrade()` raises `NotImplementedError`.
+- Validation completed:
+  - `flask db upgrade`
+  - `select version_num from alembic_version order by version_num;` → `7c3d4e5f6a7b`
+  - `select tablename from pg_tables where schemaname='public' and tablename in (...)` → `0 rows`
