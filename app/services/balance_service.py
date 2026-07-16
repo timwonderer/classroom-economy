@@ -2,7 +2,7 @@ from collections import defaultdict
 from decimal import Decimal, InvalidOperation
 from sqlalchemy import func, tuple_
 from app.extensions import db
-from app.models import BalanceCache, Transaction, TransactionStatus
+from app.models import LedgerBalanceSnapshot, Transaction, TransactionStatus
 
 def _quantize_currency(value):
     """
@@ -51,17 +51,17 @@ def get_batch_balances_by_class_seat(class_seat_pairs):
 
     class_ids = sorted({class_id for class_id, _ in normalized_pairs})
     seat_ids = sorted({seat_id for _, seat_id in normalized_pairs})
-    scope_tuple = tuple_(BalanceCache.class_id, BalanceCache.seat_id)
+    scope_tuple = tuple_(LedgerBalanceSnapshot.class_id, LedgerBalanceSnapshot.seat_id)
     tx_scope_tuple = tuple_(Transaction.class_id, Transaction.seat_id)
 
     cache_records = db.session.query(
-        BalanceCache.class_id,
-        BalanceCache.seat_id,
-        BalanceCache.posted_checking_balance_cents,
-        BalanceCache.posted_savings_balance_cents
+        LedgerBalanceSnapshot.class_id,
+        LedgerBalanceSnapshot.seat_id,
+        LedgerBalanceSnapshot.posted_checking_balance_cents,
+        LedgerBalanceSnapshot.posted_savings_balance_cents
     ).filter(
-        BalanceCache.class_id.in_(class_ids),
-        BalanceCache.seat_id.in_(seat_ids),
+        LedgerBalanceSnapshot.class_id.in_(class_ids),
+        LedgerBalanceSnapshot.seat_id.in_(seat_ids),
         scope_tuple.in_(list(normalized_pairs)),
     ).all()
 

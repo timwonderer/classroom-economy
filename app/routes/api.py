@@ -20,9 +20,12 @@ from werkzeug.security import check_password_hash
 
 from app.extensions import db, limiter
 from app.models import (
-    StoreItem, StorePurchase, Transaction, TransactionStatus, TapEvent, AttendanceSession,
-    AttendanceReasonCode, TapEventReasonCode, HallPassLog, HallPassSettings, BankingSettings,
-    StoreItemBlock, StoreItemVisibility, User,
+    StoreItem, StorePurchase, Transaction, TransactionStatus, AttendanceSession,
+    AttendanceReasonCode, HallPassLog, HallPassSettings, BankingSettings,
+    # TapEvent removed — tap_events unauthorized; use attendance_sessions (DOM-ATT-001)
+    # TapEventReasonCode removed — enum for dropped TapEvent
+    # StoreItemBlock removed — store_item_blocks unauthorized; use store_item_visibility (DOM-STORE-001)
+    StoreItemVisibility, User,
     RedemptionEvent, RedemptionEventAction, RedemptionEventSource, _quantize_currency,
     ClassEconomy, Seat, SeatAttendanceState, IdentityProfile,
 )

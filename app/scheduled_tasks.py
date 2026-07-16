@@ -86,8 +86,7 @@ def database_maintenance_job():
     Runs at 2 AM UTC to clean up orphaned entries and maintain data integrity.
     """
     # Import here to avoid circular imports
-    from sqlalchemy import and_, or_, tuple_
-    from app.models import Seat, StoreItemBlock, StoreItem
+    from app.models import StoreItem
     from app.extensions import db
 
     logger = logging.getLogger('scheduled_tasks')
@@ -96,71 +95,11 @@ def database_maintenance_job():
     total_cleaned = 0
 
     try:
-        # Task 1: Clean up orphaned StoreItemBlock entries.
-        # StoreItemBlock entries are class-scoped (store_item_id, class_id, block).
-        # They are orphaned when:
-        #   a) The parent StoreItem no longer exists (FK cascade should handle; explicit check as safety net).
-        #   b) The class_id is set but no Seat with that block identifier exists in that class
-        #      (the block period was retired while the class still exists).
-        logger.info("Checking for orphaned StoreItemBlock entries...")
-
-        # Subquery: active (class_id, block) pairs that exist in canonical Seat records
-        active_class_blocks_subq = (
-            db.session.query(
-                ClassEconomy.class_id.label("class_id"),
-                ClassEconomy.section.label("block"),
-            )
-            .filter(ClassEconomy.section.isnot(None), ClassEconomy.class_id.isnot(None))
-            .join(Seat, Seat.class_id == ClassEconomy.class_id)
-            .distinct()
-            .subquery()
-        )
-
-        orphaned_entries_subq = (
-            db.session.query(
-                StoreItemBlock.store_item_id.label("store_item_id"),
-                StoreItemBlock.block.label("block"),
-            )
-            .outerjoin(StoreItem, StoreItem.id == StoreItemBlock.store_item_id)
-            .outerjoin(
-                active_class_blocks_subq,
-                and_(
-                    active_class_blocks_subq.c.class_id == StoreItemBlock.class_id,
-                    active_class_blocks_subq.c.block == StoreItemBlock.block,
-                ),
-            )
-            .filter(
-                or_(
-                    StoreItem.id.is_(None),
-                    and_(
-                        StoreItemBlock.class_id.isnot(None),
-                        active_class_blocks_subq.c.class_id.is_(None),
-                    ),
-                )
-            )
-            .distinct()
-            .subquery()
-        )
-
-        orphaned_count = db.session.query(orphaned_entries_subq).count()
-        if orphaned_count:
-            logger.info("Found %s orphaned StoreItemBlock entries", orphaned_count)
-            total_cleaned = (
-                StoreItemBlock.query
-                .filter(
-                    tuple_(StoreItemBlock.store_item_id, StoreItemBlock.block).in_(
-                        db.session.query(
-                            orphaned_entries_subq.c.store_item_id,
-                            orphaned_entries_subq.c.block,
-                        )
-                    )
-                )
-                .delete(synchronize_session=False)
-            )
-            db.session.flush()  # FEAT-AUTHORIZED-SHELL
-            logger.info("Cleaned up %s orphaned StoreItemBlock entries", total_cleaned)
-        else:
-            logger.info("No orphaned StoreItemBlock entries found")
+        # Task 1: StoreItemBlock orphan cleanup REMOVED.
+        # store_item_blocks table dropped (migration 7c3d4e5f6a7b) — unauthorized per DOM-STORE-001.
+        # Canonical replacement: store_item_visibility (seat_id scoped, no block/period key).
+        # TODO: Implement store_item_visibility orphan cleanup if needed.
+        logger.info("StoreItemBlock cleanup skipped — table dropped (migration 7c3d4e5f6a7b)")
 
         logger.info(
             "Skipping legacy join_code backfill in nightly maintenance; "

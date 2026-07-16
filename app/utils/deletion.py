@@ -7,8 +7,10 @@ from sqlalchemy import func, or_, case, select
 from app.extensions import db
 from app.models import (
     ClassEconomy, Seat, Transaction,
-    AttendanceSession, HallPassLog, RedemptionAuditLog, StorePurchase, RedemptionEvent,
-    Issue, IssueResolutionAction, Announcement, StoreItemBlock, StoreItem,
+    AttendanceSession, HallPassLog, StorePurchase, RedemptionEvent,
+    Issue, IssueResolutionAction, Announcement, StoreItem,
+    # RedemptionAuditLog removed — redemption_audit_logs unauthorized; use redemption_events (DOM-STORE-001)
+    # StoreItemBlock removed — store_item_blocks unauthorized; use store_item_visibility (DOM-STORE-001)
 )
 from app.feats.base import feat_shell, InvariantViolation
 

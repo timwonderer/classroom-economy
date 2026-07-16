@@ -61,10 +61,10 @@ def get_validated_status_page_url():
 # Models
 from app.models import (
     Transaction,
-    TapEvent,
+    # TapEvent removed — tap_events unauthorized; use attendance_sessions (DOM-ATT-001)
     HallPassLog,
     StoreItem,
-    StudentItem,
+    # StudentItem removed — student_items unauthorized; use store_purchases + redemption_events (DOM-STORE-001)
     RentSettings,
     User,
     UserRole,

@@ -30,7 +30,8 @@ from app.extensions import db, limiter
 from app.feats.base import feat_shell
 from app.models import (
     Seat, PasskeyCredential,
-    Transaction, TransactionStatus, TapEvent, HallPassLog,
+    Transaction, TransactionStatus, HallPassLog,
+    # TapEvent removed — tap_events unauthorized; use attendance_sessions (DOM-ATT-001)
     FeatureSettings, RentSettings, BankingSettings,
     HallPassSettings, ClassEconomy, User, UserRole,
     PayrollSettings, StoreItem, Announcement, Issue, IssueStatusHistory, IssueResolutionAction

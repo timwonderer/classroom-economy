@@ -3,7 +3,7 @@ from __future__ import annotations
 from decimal import Decimal
 
 from app.extensions import db
-from app.models import BalanceCache, Seat, Transaction, TransactionStatus, ClassEconomy, _quantize_currency
+from app.models import LedgerBalanceSnapshot, Seat, Transaction, TransactionStatus, ClassEconomy, _quantize_currency
 from app.utils.seat_scope import transaction_scope_filter
 from app.utils.time import ensure_utc, utc_now
 from app.utils.transaction_idempotency import create_idempotent_transaction
@@ -52,7 +52,7 @@ def _get_balance_cache(seat_id: int, class_id: str):
     """Retrieve authoritative balance snapshot."""
     if not class_id or not seat_id:
         raise ValueError("FATAL: Balance lookup requires class_id and seat_id.")
-    return BalanceCache.query.filter_by(seat_id=seat_id, class_id=class_id).first()
+    return LedgerBalanceSnapshot.query.filter_by(seat_id=seat_id, class_id=class_id).first()
 
 
 def _get_posted_balance_fallback(seat_id: int, class_id: str, account_type: str) -> Decimal:

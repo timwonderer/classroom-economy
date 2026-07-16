@@ -4,12 +4,12 @@ import sqlalchemy as sa
 
 from app.extensions import db
 from app.models import (
-    BalanceCache,
+    LedgerBalanceSnapshot,
     HallPassLog,
     Issue,
     IssueResolutionAction,
     IssueStatusHistory,
-    RedemptionAuditLog,
+    # RedemptionAuditLog removed — redemption_audit_logs unauthorized (DOM-STORE-001)
     RedemptionEvent,
     StorePurchase,
     AttendanceSession,
@@ -138,7 +138,7 @@ def _delete_student_scoped_rows(student_id, store_purchase_ids, issue_ids, tx_id
     if seat_ids_for_student:
         HallPassLog.query.filter(HallPassLog.seat_id.in_(seat_ids_for_student)).delete(synchronize_session=False)
     if seat_ids:
-        BalanceCache.query.filter(BalanceCache.seat_id.in_(seat_ids)).delete(synchronize_session=False)
+        LedgerBalanceSnapshot.query.filter(LedgerBalanceSnapshot.seat_id.in_(seat_ids)).delete(synchronize_session=False)
 
 
 def hard_delete_student_if_orphaned(student_id):

@@ -75,10 +75,7 @@ class AttendanceReasonCode(str, enum.Enum):
     AUTO_SWITCH = 'auto_switch'
 
 
-class TapEventReasonCode(str, enum.Enum):
-    """Tap-event reason codes used during the attendance transition."""
-    DAILY_LIMIT = 'daily_limit'
-    AUTO_SWITCH = 'auto_switch'
+# TapEventReasonCode removed — TapEvent table unauthorized; attendance expressed via attendance_sessions (DOM-ATT-001)
 
 
 
@@ -576,10 +573,10 @@ def _resolve_seat_id(connection, student_id, *, class_id=None):
     return int(seat_id) if seat_id else None
 
 
-class BalanceCache(db.Model):
+class LedgerBalanceSnapshot(db.Model):
     """
-    snapshot of posted balances to allow O(1) reads.
-    Available Balance = Posted Balance (Cache) + Sum(Pending Transactions from Ledger)
+    Authorized snapshot of posted balances (ledger_balance_snapshot — DOM-LED-001).
+    Available Balance = Posted Balance (Snapshot) + Sum(Pending Transactions from Ledger)
     """
     __tablename__ = 'ledger_balance_snapshot'
 
@@ -669,44 +666,7 @@ class SeatAttendanceState(db.Model):
 
 
 
-class TapEvent(db.Model):
-    __tablename__ = 'tap_events'
-
-    id = db.Column(db.Integer, primary_key=True)
-    seat_id = db.Column(db.Integer, db.ForeignKey('seats.id', ondelete='SET NULL'), nullable=True, index=True)
-    period = db.Column(db.String(10), nullable=False)
-    class_id = db.Column(db.String(36), db.ForeignKey('classes.class_id', ondelete='CASCADE'), nullable=True, index=True)
-    join_code = db.Column(db.String(20), nullable=True, index=True)
-    status = db.Column(db.String(10), nullable=False)
-    timestamp = db.Column(db.DateTime(timezone=True), default=utc_now)
-    reason = db.Column(db.String(50), nullable=True)
-    reason_code = db.Column(db.Enum(AttendanceReasonCode, values_callable=lambda x: [e.value for e in x]), nullable=True, index=True)
-    is_deleted = db.Column(db.Boolean, default=False, nullable=False, index=True)
-    deleted_at = db.Column(db.DateTime(timezone=True), nullable=True)
-    deleted_by = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='SET NULL'), nullable=True)
-
-    seat = db.relationship("Seat", backref="tap_events")
-    deleted_by_user = db.relationship("User", foreign_keys=[deleted_by])
-
-    __table_args__ = (
-        db.Index('ix_tap_event_seat_period_timestamp', 'seat_id', 'period', 'timestamp'),
-    )
-
-
-@sa.event.listens_for(TapEvent, "before_insert")
-@sa.event.listens_for(TapEvent, "before_update")
-def _validate_tap_event_scope(_mapper, connection, target):
-    if not getattr(target, "class_id", None) and getattr(target, "seat_id", None):
-        seat_class_id = connection.execute(
-            sa.text("SELECT class_id FROM seats WHERE id = :seat_id LIMIT 1"),
-            {"seat_id": target.seat_id},
-        ).scalar()
-        if seat_class_id:
-            target.class_id = str(seat_class_id)
-    if not getattr(target, "class_id", None):
-        raise ValueError("TapEvent invariant violation: class_id is required.")
-    if not getattr(target, "seat_id", None):
-        raise ValueError("TapEvent invariant violation: seat_id is required.")
+# TapEvent removed — tap_events unauthorized; canonical replacement: attendance_sessions (DOM-ATT-001)
 
 
 
@@ -851,97 +811,12 @@ def _sync_store_item_scope(_mapper, connection, target):
         raise ValueError("store_items require canonical class_id")
 
 
-class StoreItemBlock(db.Model):
-    """Association model for store item block visibility."""
-    __tablename__ = 'store_item_blocks'
-    store_item_id = db.Column(db.Integer, db.ForeignKey('store_items.id', ondelete='CASCADE'), primary_key=True)
-    block = db.Column(db.String(10), primary_key=True)
-    class_id = db.Column(db.String(36), db.ForeignKey('classes.class_id', ondelete='CASCADE'), nullable=True, index=True)
-
-    __table_args__ = (
-        db.Index('ix_store_item_blocks_item', 'store_item_id'),
-        db.Index('ix_store_item_blocks_block', 'block'),
-    )
+# StoreItemBlock removed — store_item_blocks unauthorized; canonical replacement: store_item_visibility (DOM-STORE-001)
 
 
-class StudentItem(db.Model):
-    __tablename__ = 'student_items'
-    id = db.Column(db.Integer, primary_key=True)
-    store_item_id = db.Column(db.Integer, db.ForeignKey('store_items.id'), nullable=False)
-
-    # CRITICAL: class_id is the source of truth for class isolation
-    class_id = db.Column(db.String(36), db.ForeignKey('classes.class_id', ondelete='CASCADE'), nullable=True, index=True)
-    seat_id = db.Column(db.Integer, db.ForeignKey('seats.id', ondelete='SET NULL'), nullable=True, index=True)
-    join_code = db.Column(db.String(20), nullable=True, index=True)
-    correlation_id = db.Column(db.String(100), nullable=False, index=True)
-
-    purchase_date = db.Column(db.DateTime(timezone=True), default=utc_now)
-    expiry_date = db.Column(db.DateTime(timezone=True), nullable=True)
-    # purchased, pending (for collective), processing, completed, expired, redeemed
-    status = db.Column(db.String(20), default='purchased', nullable=False)
-    redemption_details = db.Column(db.Text, nullable=True) # For student notes on usage
-    redemption_date = db.Column(db.DateTime(timezone=True), nullable=True) # When student used it
-    # Stable link to the purchase transaction for accurate refunds even if item metadata changes.
-    purchase_transaction_id = db.Column(db.Integer, db.ForeignKey('ledger_transaction.id'), nullable=True, index=True)
-
-    # Bundle tracking - for items purchased as part of a bundle
-    is_from_bundle = db.Column(db.Boolean, default=False, nullable=False)
-    bundle_remaining = db.Column(db.Integer, nullable=True) # remaining uses in bundle
-    quantity_purchased = db.Column(db.Integer, default=1, nullable=False) # quantity purchased (for bulk discounts)
-
-    # Multi-use item tracking
-    uses_remaining = db.Column(db.Integer, nullable=True) # For per-use items with > 1 use limit
-
-    collective_goal_instance_code = db.Column(db.String(36), nullable=True, index=True)
-class RedemptionAuditAction(enum.Enum):
-    REQUEST = 'request'
-    APPROVED = 'approved'
-    REJECTED = 'rejected'
-
-
-class RedemptionAuditSource(enum.Enum):
-    LIVE = 'live'
-
-
-class RedemptionAuditLog(db.Model):
-    __tablename__ = 'redemption_audit_logs'
-
-    id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    student_item_id = db.Column(db.Integer, db.ForeignKey('student_items.id'), nullable=True, index=True)
-    student_display_name = db.Column(db.String(120), nullable=False)
-    class_display_label = db.Column(db.String(120), nullable=False)
-    action = db.Column(
-        db.Enum(
-            RedemptionAuditAction,
-            values_callable=lambda x: [e.value for e in x],
-            name='redemption_audit_action_enum',
-        ),
-        nullable=False,
-        index=True,
-    )
-    notes = db.Column(db.Text, nullable=True)
-    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True, index=True)
-    class_id = db.Column(db.String(36), db.ForeignKey('classes.class_id', ondelete='CASCADE'), nullable=True, index=True)
-    seat_id = db.Column(db.Integer, db.ForeignKey('seats.id', ondelete='SET NULL'), nullable=True, index=True)
-    join_code = db.Column(db.String(20), nullable=True, index=True)
-    timestamp = db.Column(db.DateTime(timezone=True), nullable=False, default=utc_now, index=True)
-    source = db.Column(
-        db.Enum(
-            RedemptionAuditSource,
-            values_callable=lambda x: [e.value for e in x],
-            name='redemption_audit_source_enum',
-        ),
-        nullable=False,
-        default=RedemptionAuditSource.LIVE,
-        index=True,
-    )
-
-    student_item = db.relationship('StudentItem', backref=db.backref('redemption_audit_logs', lazy='dynamic'))
-    teacher = db.relationship('User', backref=db.backref('redemption_audit_logs', lazy='dynamic'))
-
-    __table_args__ = (
-        db.Index('ix_redemption_audit_logs_teacher_timestamp', 'user_id', 'timestamp'),
-    )
+# StudentItem removed — student_items unauthorized; canonical replacement: store_purchases + redemption_events (DOM-STORE-001)
+# RedemptionAuditAction / RedemptionAuditSource / RedemptionAuditLog removed — redemption_audit_logs unauthorized;
+#   canonical replacement: redemption_events (DOM-STORE-001) + audit_events (DOM-OPS-001)
 
 
 # -------------------- CANONICAL STORE MODELS (v2) --------------------
@@ -1161,7 +1036,8 @@ class ObligationAssessment(db.Model):
     due_at = db.Column(db.DateTime(timezone=True), nullable=True)
     assessed_at = db.Column(db.DateTime(timezone=True), default=utc_now, nullable=False)
 
-    # Rent policy version — links to the immutable contract that governed this assessment
+    # ORPHANED FK — rent_policy_versions table dropped (migration 7c3d4e5f6a7b).
+    # Needs migration: repoint to policy_versions.id (domain='rent') per DOM-ECON-003.
     rent_policy_version_id = db.Column(db.Integer, nullable=True, index=True)
 
     # Rent-cycle fields — preserved from prepay coverage-window model (INV-ARC-015)

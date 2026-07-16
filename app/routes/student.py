@@ -24,7 +24,8 @@ from dateutil.relativedelta import relativedelta
 
 from app.extensions import db, limiter
 from app.models import (
-    Transaction, TransactionStatus, AttendanceSession, StoreItem, StoreItemBlock, StoreItemVisibility, StorePurchase,
+    Transaction, TransactionStatus, AttendanceSession, StoreItem, StoreItemVisibility, StorePurchase,
+    # StoreItemBlock removed — store_item_blocks unauthorized; use store_item_visibility (DOM-STORE-001)
     RentSettings,
     BankingSettings, FeatureSettings, Issue, Seat, User, UserRole,
     ClassEconomy, IdentityProfile, _quantize_currency
@@ -84,7 +85,7 @@ from app.feats.base import feat_shell
 from app.feats.rent_payment_feat import execute_rent_payment
 from app.feats.transfer_feat import execute_account_transfer
 from app.feats.insurance_purchase_feat import execute_insurance_purchase
-from app.feats.insurance_claim_feat import execute_file_claim
+# execute_file_claim removed — insurance_claim_feat.py deleted; insurance feature broken pending DOM-OBL-001 migration
 from app.payroll import get_pay_rate_for_block
 from app.utils.join_code import get_display_join_code
 from app.utils.time import (

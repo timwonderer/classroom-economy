@@ -58,16 +58,20 @@ from app.feats.base import feat_shell, FEATContext, InvariantViolation
 from app.access.scope import Scope
 from app.access import AccessScopeDenied, resolve_scope
 from app.models import (
-    ClassEconomy, Transaction, TransactionStatus, TapEvent, AttendanceSession, StoreItem, StorePurchase, StudentItem,
-    RentSettings, StoreItemBlock,
+    ClassEconomy, Transaction, TransactionStatus, AttendanceSession, StoreItem, StorePurchase,
+    # TapEvent removed — tap_events unauthorized; use attendance_sessions (DOM-ATT-001)
+    # StudentItem removed — student_items unauthorized; use store_purchases + redemption_events (DOM-STORE-001)
+    # StoreItemBlock removed — store_item_blocks unauthorized; use store_item_visibility (DOM-STORE-001)
+    # RedemptionAuditLog / RedemptionAuditAction / RedemptionAuditSource removed — use redemption_events (DOM-STORE-001)
+    # TapEventReasonCode removed — enum for dropped TapEvent
+    RentSettings,
     HallPassLog, HallPassSettings, PayrollSettings,
     BankingSettings,
     FeatureSettings,
-    Announcement, RedemptionAuditLog, RedemptionAuditAction,
-    RedemptionAuditSource, RedemptionEvent, RedemptionEventAction, RedemptionEventSource, Issue, IssueCategory, IssueStatusHistory, IssueResolutionAction, Seat,
-    BalanceCache, ClassEconomy, User, UserRole, _quantize_currency,
+    Announcement, RedemptionEvent, RedemptionEventAction, RedemptionEventSource, Issue, IssueCategory, IssueStatusHistory, IssueResolutionAction, Seat,
+    LedgerBalanceSnapshot, ClassEconomy, User, UserRole, _quantize_currency,
     ObligationAssessment, ObligationSatisfaction,
-    SeatAttendanceState, TapEventReasonCode, IdentityProfile,
+    SeatAttendanceState, IdentityProfile,
 )
 from app.auth import (
     admin_required,
@@ -143,7 +147,7 @@ from app.utils.seat_scope import seat_scoped_filter, transaction_scope_filter
 from app.utils.transaction_idempotency import create_idempotent_transaction, void_refund_key
 from app.feats.admin_adjustment_feat import execute_admin_adjustments
 from app.feats.attendance import student_tap
-from app.feats.insurance_claim_feat import execute_insurance_claim_resolution
+# execute_insurance_claim_resolution removed — insurance_claim_feat.py deleted; insurance feature broken pending DOM-OBL-001 migration
 from app.feats.transaction_void_feat import (
     ImmediatePurchaseNotVoidable,
     UsedDelayedPurchaseNotVoidable,
@@ -1206,7 +1210,7 @@ def _hard_delete_class_scope(class_id, canonical_context):
         TapEvent.query.filter(TapEvent.class_id == class_id).delete(synchronize_session=False)
     HallPassLog.query.filter(HallPassLog.class_id == class_id).delete(synchronize_session=False)
     SeatAttendanceState.query.filter(SeatAttendanceState.class_id == class_id).delete(synchronize_session=False)
-    BalanceCache.query.filter(BalanceCache.class_id == class_id).delete(synchronize_session=False)
+    LedgerBalanceSnapshot.query.filter(LedgerBalanceSnapshot.class_id == class_id).delete(synchronize_session=False)
     Announcement.query.filter(
         Announcement.user_id == user_id,
         Announcement.class_id == class_id,
@@ -5781,7 +5785,8 @@ def _sync_rent_items_to_store(rent_settings, user_id, class_id):
     FIX: Prevents duplicate store items when applying rent settings to all periods.
     Store items are now shared across blocks using StoreItemBlock for visibility.
     """
-    from app.models import StoreItem, StoreItemBlock
+    from app.models import StoreItem
+    # StoreItemBlock removed — store_item_blocks unauthorized; migrate to store_item_visibility (DOM-STORE-001)
 
     if not class_id:
         current_app.logger.warning(
