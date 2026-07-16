@@ -11,14 +11,18 @@
 As of 2026-07-16, all model classes for tables not authorized by DOM-CORE-002 have been removed from `app/models.py`. This intentionally breaks runtime imports to surface every illegal reference across the codebase. This document catalogs each removed model, its current code usage, and the canonical replacement path.
 
 **Total illegal references:** 597 across 23 files  
-**Migrations queued:** `6b2c3d4e5f6a` (deidentify issues, drop user_reports), `7c3d4e5f6a7b` (drop all 26 unauthorized tables; applied to dev DB on 2026-07-16)
+**Migrations applied (dev):**
+- `6b2c3d4e5f6a` — deidentify issues surface, drop `user_reports` ✅
+- `7c3d4e5f6a7b` — drop all 26 unauthorized tables ✅
 
-### Status Update (2026-07-16): Unauthorized Table Drop Cutover
+**Current Alembic head (dev):** `7c3d4e5f6a7b`  
+**Executable violations remaining:** 0 (confirmed by audit 2026-07-16)
 
-- Migration `7c3d4e5f6a7b_drop_all_unauthorized_tables.py` has been applied to the dev database.
-- The drop migration is intentionally irreversible; `downgrade()` raises `NotImplementedError`.
-- Current Alembic head in dev is `7c3d4e5f6a7b`.
-- The legacy unauthorized table set is no longer present in `public`.
+### Status (2026-07-16)
+
+- Both migrations applied to dev. Unauthorized table set no longer present in `public`.
+- All model-layer references to removed classes have been remediated.
+- Drop migrations are intentionally irreversible; `downgrade()` raises `NotImplementedError`.
 
 ---
 

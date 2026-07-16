@@ -214,10 +214,14 @@ These tables exist in the database but have no explicit permission in DOM-CORE-0
 
 ### Migrations
 
-| Revision | Description |
-|---|---|
-| `4bf6de0868a4` | Canonicalize recovery tables: seat_id, class_id, drop legacy columns |
-| `5a1b2c3d4e5f` | Drop 4 legacy absorbed tables |
+| Revision | Description | Status |
+|---|---|---|
+| `4bf6de0868a4` | Canonicalize recovery tables: seat_id, class_id, drop legacy columns | ✅ applied |
+| `5a1b2c3d4e5f` | Drop 4 legacy absorbed orphan tables | ✅ applied |
+| `6b2c3d4e5f6a` | Add `class_public_id`; deidentify issues surface; drop `user_reports` | ✅ applied |
+| `7c3d4e5f6a7b` | Drop all 26 unauthorized tables (DOM-CORE-002 audit) | ✅ applied |
+
+**Current Alembic head (dev):** `7c3d4e5f6a7b`
 
 ### test_smoke.py
 
@@ -228,8 +232,9 @@ These tables exist in the database but have no explicit permission in DOM-CORE-0
 
 ## VII. Recommended Next Steps
 
-1. **Amend DOM-CORE-002 v1.7** for Category A tables (7 unique tables needing authorization)
-2. **Code-migrate `error_logs`** → `error_events` (Category B, highest priority — 15+ active refs)
-3. **Remove `payroll_cache`** reads/writes (explicitly prohibited by §2)
-4. **Investigate Category C** tables and classify
+1. **Amend DOM-CORE-002 v1.7** for Category A tables (`actor_request_trace` — sole table needing amendment)
+2. **Rewrite `Admin` → `User(TEACHER)`** across all routes (P0 — app cannot boot without this)
+3. **Rewrite `SystemAdmin` → `User(SYSADMIN)`** in `system_admin.py` (P0)
+4. **Migrate insurance feature** → `policy_versions` + obligation domain (P2)
+5. **Migrate rent feature** → obligation satisfaction chain + `policy_versions(domain='rent')` (P2)
 5. **Plan legacy identity table drops** (prohibited tables — largest code migration effort)
