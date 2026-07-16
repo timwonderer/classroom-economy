@@ -30,7 +30,7 @@ from app.feats.base import feat_shell
 from app.models import (
     Seat, SystemAdmin, Admin, ErrorLog, PasskeyCredential,
     Transaction, TransactionStatus, TapEvent, HallPassLog, RentPayment,
-    InsuranceClaim, UserReport,
+    InsuranceClaim,
     FeatureSettings, RentSettings, BankingSettings,
     HallPassSettings, SavedAdjustment, ClassEconomy, User, UserRole,
     PayrollSettings, StoreItem, Announcement, Issue, IssueStatusHistory, IssueResolutionAction
@@ -1978,12 +1978,16 @@ def resolve_escalated_issue(issue_ref):
         issue.eligible_for_reward = eligible_for_reward
 
         if reward_amount_value is not None:
-            # Bug rewards must be anchored to the canonical owner of the issue's class.
-            user_id = issue.user_id
+            # Resolve internal identity from external-facing public IDs.
+            reward_seat = Seat.query.filter_by(public_id=issue.actor_public_id).first()
+            if not reward_seat:
+                flash("Cannot issue reward: actor seat not found.", "error")
+                return redirect(url_for('system_admin.view_issue', issue_id=issue.id))
+            reward_class = ClassEconomy.query.filter_by(class_public_id=issue.class_public_id).first()
             reward_transaction = ledger_service.create_pending_transaction(
-                seat_id=issue.seat_id,
-                class_id=issue.class_id,
-                user_id=user_id,
+                seat_id=reward_seat.id,
+                class_id=reward_class.class_id if reward_class else None,
+                user_id=reward_seat.user_id,
                 amount=reward_amount_value,
                 account_type='checking',
                 description=f"Bug Reward (Issue #{issue.id})",
@@ -2015,7 +2019,7 @@ def resolve_escalated_issue(issue_ref):
             old_status,
             Issue.STATUS_DEV_RESOLVED,
             'sysadmin',
-            sysadmin_user_id,
+            None,  # sysadmin acts outside class scope; identified by issue.sysadmin_id
             notes=f"{resolution_note}{reward_note}",
         )
 

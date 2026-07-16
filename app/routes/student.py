@@ -26,7 +26,7 @@ from app.extensions import db, limiter
 from app.models import (
     Transaction, TransactionStatus, AttendanceSession, StoreItem, StoreItemBlock, StoreItemVisibility, StorePurchase,
     RentSettings, RentPayment, InsurancePolicy, InsuranceEnrollment, InsuranceClaim,
-    BankingSettings, UserReport, FeatureSettings, Issue, Seat, User, UserRole,
+    BankingSettings, FeatureSettings, Issue, Seat, User, UserRole,
     ClassEconomy, IdentityProfile, _quantize_currency
 )
 from app.auth import (

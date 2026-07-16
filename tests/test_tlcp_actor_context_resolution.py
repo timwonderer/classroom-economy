@@ -110,6 +110,18 @@ def test_resolve_actor_context_logs_missing_context(app):
     assert any("TLCP-INVARIANT-VIOLATION: missing canonical context" in msg for msg in logged)
 
 
+def test_resolve_actor_context_does_not_log_signup_as_missing_context(app):
+    from unittest.mock import patch
+
+    with app.test_request_context("/admin/signup", method="POST"):
+        with patch("app.services.tlcp.current_app.logger.error") as mock_error:
+            context = resolve_actor_context(None)
+            logged = [call.args[0] for call in mock_error.call_args_list]
+
+    assert context is None
+    assert logged == []
+
+
 def test_resolve_actor_context_logs_missing_seat(app):
     from unittest.mock import patch
     from app.services.context_resolver import CanonicalContext

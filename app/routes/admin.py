@@ -62,7 +62,7 @@ from app.models import (
     InsurancePolicy, InsurancePolicyBlock, RentItem, RentPayment, RentSettings, StoreItemBlock,
     InsuranceEnrollment, InsuranceClaim, HallPassLog, HallPassSettings, PayrollSettings, SavedAdjustment,
     BankingSettings,
-    UserReport, FeatureSettings,
+    FeatureSettings,
     Announcement, RedemptionAuditLog, RedemptionAuditAction,
     RedemptionAuditSource, RedemptionEvent, RedemptionEventAction, RedemptionEventSource, Issue, IssueStatusHistory, IssueResolutionAction, AnalyticsSnapshot, AnalyticsEvent, Seat,
     BalanceCache, ClassEconomy, EconomySnapshot, User, UserRole, _quantize_currency,
@@ -1188,9 +1188,11 @@ def _hard_delete_class_scope(class_id, canonical_context):
         .filter(Transaction.class_id == class_id)
         .subquery()
     )
+    _class_row = ClassEconomy.query.filter_by(class_id=class_id).first()
+    _class_pub_id = _class_row.class_public_id if _class_row else None
     issue_ids_subq = (
         db.session.query(Issue.id)
-        .filter(Issue.class_id == class_id)
+        .filter(Issue.class_public_id == _class_pub_id)
         .subquery()
     )
     class_blocks = [
@@ -1223,7 +1225,7 @@ def _hard_delete_class_scope(class_id, canonical_context):
     IssueResolutionAction.query.filter(
         IssueResolutionAction.issue_id.in_(sa.select(issue_ids_subq))
     ).delete(synchronize_session=False)
-    Issue.query.filter(Issue.class_id == class_id).delete(synchronize_session=False)
+    Issue.query.filter(Issue.class_public_id == _class_pub_id).delete(synchronize_session=False)
 
     # Insurance data tied to this class or class-scoped transactions
     InsuranceClaim.query.filter(
@@ -1397,16 +1399,27 @@ def _delete_teacher_insurance_rows(canonical_context):
 
 
 def _delete_teacher_issue_rows(canonical_context):
-    """Delete teacher-user-owned issue records and their dependent rows."""
+    """Delete issue records belonging to classes owned by this teacher.
+
+    Issues are scoped by class_public_id matching the teacher's classes.
+    """
     user_id = canonical_context.user_id
-    issue_ids_subq = db.session.query(Issue.id).filter(Issue.user_id == user_id).subquery()
+    class_public_ids = [
+        pub_id for (pub_id,) in
+        db.session.query(ClassEconomy.class_public_id).filter(ClassEconomy.user_id == user_id).all()
+    ]
+    if not class_public_ids:
+        return
+    issue_ids_subq = db.session.query(Issue.id).filter(
+        Issue.class_public_id.in_(class_public_ids)
+    ).subquery()
     IssueResolutionAction.query.filter(
         IssueResolutionAction.issue_id.in_(sa.select(issue_ids_subq))
     ).delete(synchronize_session=False)
     IssueStatusHistory.query.filter(
         IssueStatusHistory.issue_id.in_(sa.select(issue_ids_subq))
     ).delete(synchronize_session=False)
-    Issue.query.filter(Issue.user_id == user_id).delete(synchronize_session=False)
+    Issue.query.filter(Issue.class_public_id.in_(class_public_ids)).delete(synchronize_session=False)
 
 
 def _delete_teacher_recovery_and_credentials_rows(canonical_context):
@@ -12167,11 +12180,14 @@ def resolve_issue(issue_ref):
     Can apply various resolution actions depending on issue type.
     """
     from app.models import Issue, Transaction
-    from app.utils.issue_helpers import update_issue_status, record_resolution_action
+    from app.utils.issue_helpers import update_issue_status, record_resolution_action, resolve_public_id_for_user
 
     user_id = g.canonical_context.user_id
     canonical_context = getattr(g, "canonical_context", None)
     class_id = getattr(canonical_context, "class_id", None)
+
+    # Resolve teacher's public identity for external-facing support records
+    teacher_public_id = resolve_public_id_for_user(user_id, class_id) if class_id else None
 
     issue_id = _resolve_issue_id_from_ref(issue_ref)
     if issue_id is None:
@@ -12179,7 +12195,9 @@ def resolve_issue(issue_ref):
 
     issue_query = Issue.query.filter_by(id=issue_id)
     if class_id:
-        issue_query = issue_query.filter_by(class_id=class_id)
+        class_row = ClassEconomy.query.filter_by(class_id=class_id).first()
+        if class_row:
+            issue_query = issue_query.filter_by(class_public_id=class_row.class_public_id)
     issue = issue_query.first_or_404()
 
     action_type = request.form.get('action_type')
@@ -12199,13 +12217,16 @@ def resolve_issue(issue_ref):
 
     try:
         # Apply resolution based on action type
+        # Resolve submitter seat from actor_public_id for transaction ownership checks
+        submitter_seat = Seat.query.filter_by(public_id=issue.actor_public_id).first()
+
         if action_type == 'reverse_transaction' and issue.related_transaction_id:
             transaction = db.session.get(Transaction, issue.related_transaction_id)
             if (
                 not transaction
-                or transaction.seat_id != issue.seat_id
+                or not submitter_seat
+                or transaction.seat_id != submitter_seat.id
                 or transaction.is_void
-                or transaction.class_id != issue.class_id
             ):
                 flash("The related transaction could not be reversed for this issue.", "error")
                 return redirect(url_for('admin.view_issue', issue_ref=issue_ref))
@@ -12221,7 +12242,7 @@ def resolve_issue(issue_ref):
                 issue,
                 'reverse_transaction',
                 'teacher',
-                user_id,
+                teacher_public_id,
                 action_description=f"Reversed transaction #{transaction.id} with reversal #{reversal_tx.id}",
                 related_transaction_id=reversal_tx.id,
                 amount_changed=float(reversal_tx.amount),
@@ -12232,7 +12253,7 @@ def resolve_issue(issue_ref):
         elif action_type == 'compensating_transaction' and issue.related_transaction_id:
             # Append-only correction: create a compensating ledger entry.
             transaction = db.session.get(Transaction, issue.related_transaction_id)
-            if not transaction or transaction.seat_id != issue.seat_id or transaction.is_void:
+            if not transaction or not submitter_seat or transaction.seat_id != submitter_seat.id or transaction.is_void:
                 flash("The related transaction could not be found for this issue.", "error")
                 return redirect(url_for('admin.view_issue', issue_ref=make_opaque_ref('issue', issue.id)))
 
@@ -12247,7 +12268,7 @@ def resolve_issue(issue_ref):
                 issue,
                 'compensating_transaction',
                 'teacher',
-                user_id,
+                teacher_public_id,
                 action_description=f"Posted compensating transaction #{compensating_tx.id} for transaction #{transaction.id}",
                 related_transaction_id=compensating_tx.id,
                 amount_changed=float(compensating_tx.amount),
@@ -12259,7 +12280,7 @@ def resolve_issue(issue_ref):
             # Owner/admin handles manually (no automatic action)
             issue.teacher_resolution = 'Manual Adjustment'
             record_resolution_action(
-                issue, 'manual_adjustment', 'teacher', user_id,
+                issue, 'manual_adjustment', 'teacher', teacher_public_id,
                 action_description=resolution_notes
             )
 
@@ -12269,7 +12290,7 @@ def resolve_issue(issue_ref):
             issue.teacher_resolution = 'Denied'
             resolution_notes = denial_reason  # Reassign to preserve denial reason
             record_resolution_action(
-                issue, 'deny_issue', 'teacher', user_id,
+                issue, 'deny_issue', 'teacher', teacher_public_id,
                 action_description=denial_reason
             )
         else:
@@ -12277,7 +12298,7 @@ def resolve_issue(issue_ref):
             return redirect(url_for('admin.view_issue', issue_ref=make_opaque_ref('issue', issue.id)))
 
         # Move to teacher/admin final review; closure is a separate explicit action.
-        update_issue_status(issue, Issue.STATUS_TEACHER_FINAL_REVIEW, 'teacher', user_id, notes=resolution_notes)
+        update_issue_status(issue, Issue.STATUS_TEACHER_FINAL_REVIEW, 'teacher', teacher_public_id, notes=resolution_notes)
         issue.teacher_resolved_at = utc_now()
         issue.teacher_notes = resolution_notes
 
@@ -12301,11 +12322,12 @@ def escalate_issue(issue_ref):
     Owner/admin marks the issue for developer investigation.
     """
     from app.models import Issue
-    from app.utils.issue_helpers import update_issue_status
+    from app.utils.issue_helpers import update_issue_status, resolve_public_id_for_user
 
     user_id = g.canonical_context.user_id
     canonical_context = getattr(g, "canonical_context", None)
     class_id = getattr(canonical_context, "class_id", None)
+    teacher_public_id = resolve_public_id_for_user(user_id, class_id) if class_id else None
 
     issue_id = _resolve_issue_id_from_ref(issue_ref)
     if issue_id is None:
@@ -12313,7 +12335,9 @@ def escalate_issue(issue_ref):
 
     issue_query = Issue.query.filter_by(id=issue_id)
     if class_id:
-        issue_query = issue_query.filter_by(class_id=class_id)
+        class_row = ClassEconomy.query.filter_by(class_id=class_id).first()
+        if class_row:
+            issue_query = issue_query.filter_by(class_public_id=class_row.class_public_id)
     issue = issue_query.first_or_404()
 
     escalation_reason = request.form.get('escalation_reason', '').strip()
@@ -12346,7 +12370,7 @@ def escalate_issue(issue_ref):
             issue,
             Issue.STATUS_ESCALATED_TO_DEV,
             'teacher',
-            user_id,
+            teacher_public_id,
             notes=f"Escalated: {escalation_reason}",
         )
 
@@ -12368,17 +12392,20 @@ def escalate_issue(issue_ref):
 def close_issue(issue_ref):
     """Owner/admin-only closure after final review."""
     from app.models import Issue
-    from app.utils.issue_helpers import update_issue_status
+    from app.utils.issue_helpers import update_issue_status, resolve_public_id_for_user
 
     user_id = g.canonical_context.user_id
     canonical_context = getattr(g, "canonical_context", None)
     class_id = getattr(canonical_context, "class_id", None)
+    teacher_public_id = resolve_public_id_for_user(user_id, class_id) if class_id else None
     issue_id = _resolve_issue_id_from_ref(issue_ref)
     if issue_id is None:
         abort(404)
     issue_query = Issue.query.filter_by(id=issue_id)
     if class_id:
-        issue_query = issue_query.filter_by(class_id=class_id)
+        class_row = ClassEconomy.query.filter_by(class_id=class_id).first()
+        if class_row:
+            issue_query = issue_query.filter_by(class_public_id=class_row.class_public_id)
     issue = issue_query.first_or_404()
 
     allowed_statuses = {
@@ -12401,7 +12428,7 @@ def close_issue(issue_ref):
             issue.teacher_notes = resolution_summary
         issue.closed_at = utc_now()
         issue.closed_by_type = 'teacher'
-        update_issue_status(issue, Issue.STATUS_CLOSED, 'teacher', user_id, notes=resolution_summary)
+        update_issue_status(issue, Issue.STATUS_CLOSED, 'teacher', teacher_public_id, notes=resolution_summary)
         db.session.flush()
         flash("Issue closed.", "success")
     except Exception:

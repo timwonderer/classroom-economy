@@ -19,7 +19,6 @@ from app.models import (
     AttendanceSession,
     SeatAttendanceState,
     Transaction,
-    UserReport,
     Seat,
     IdentityProfile,
 )
@@ -46,7 +45,11 @@ def _collect_related_ids(student_id):
     ]
     issue_ids = [
         row[0]
-        for row in db.session.query(Issue.id).filter(Issue.seat_id.in_(seat_ids_for_student)).all()
+        for row in db.session.query(Issue.id).filter(
+            Issue.actor_public_id.in_(
+                db.session.query(Seat.public_id).filter(Seat.id.in_(seat_ids_for_student))
+            )
+        ).all()
     ]
     insurance_ids = [
         row[0]
@@ -136,7 +139,12 @@ def _delete_student_scoped_rows(student_id, store_purchase_ids, issue_ids, insur
     InsuranceClaim.query.filter(sa.or_(*insurance_claim_filters)).delete(synchronize_session=False)
 
     if seat_ids_for_student:
-        Issue.query.filter(Issue.seat_id.in_(seat_ids_for_student)).delete(synchronize_session=False)
+        seat_pub_ids = [
+            pub_id for (pub_id,) in
+            db.session.query(Seat.public_id).filter(Seat.id.in_(seat_ids_for_student)).all()
+        ]
+        if seat_pub_ids:
+            Issue.query.filter(Issue.actor_public_id.in_(seat_pub_ids)).delete(synchronize_session=False)
     InsuranceEnrollment.query.filter(
         InsuranceEnrollment.seat_id.in_(seat_ids_for_student)
     ).delete(synchronize_session=False)

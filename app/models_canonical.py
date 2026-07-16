@@ -235,9 +235,14 @@ class OperationalEvent(Base, TimestampMixin):
     id = sa.Column(sa.Integer, primary_key=True)
 
 
-class AuditLog(Base, TimestampMixin):
-    __tablename__ = "audit_log"
+class AuditEvent(Base, TimestampMixin):
+    __tablename__ = "audit_events"
     id = sa.Column(sa.Integer, primary_key=True)
+
+
+class ChainHead(Base):
+    __tablename__ = "chain_heads"
+    chain_scope = sa.Column(sa.String(64), primary_key=True)
 
 
 class IncidentEvent(Base, TimestampMixin):
@@ -295,9 +300,9 @@ class IssueResolutionAction(Base, TimestampMixin):
     id = sa.Column(sa.Integer, primary_key=True)
 
 
-class TicketCorrelationPack(Base, TimestampMixin):
-    __tablename__ = "ticket_correlation_packs"
-    id = sa.Column(sa.Integer, primary_key=True)
+class TicketCorrelationPack(Base):
+    __tablename__ = "ticket_correlation_pack"
+    issue_id = sa.Column(sa.Integer, primary_key=True)
 
 
 class Announcement(Base, TimestampMixin):
@@ -341,7 +346,8 @@ __all__ = [
     "StorePurchase",
     "RedemptionEvent",
     "OperationalEvent",
-    "AuditLog",
+    "AuditEvent",
+    "ChainHead",
     "IncidentEvent",
     "IncidentSummary",
     "AlertEvent",

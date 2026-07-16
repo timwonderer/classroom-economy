@@ -55,6 +55,7 @@ DEFAULT_PUBLIC_ENDPOINTS = {
 # classification spec above.
 DEFAULT_NO_CONTEXT_ENDPOINTS = {
     "admin.onboarding",
+    "admin.signup",
     "admin.select_class_context",
     "student.select_class_context",
 }

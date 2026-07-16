@@ -3,7 +3,8 @@ from app.models_canonical import (
     Announcement,
     AssessmentEvent,
     AttendanceSession,
-    AuditLog,
+    AuditEvent,
+    ChainHead,
     BankingSetting,
     Class_,
     ClassFeature,
@@ -77,7 +78,8 @@ def test_canonical_models_importable():
         StorePurchase,
         RedemptionEvent,
         OperationalEvent,
-        AuditLog,
+        AuditEvent,
+    ChainHead,
         IncidentEvent,
         IncidentSummary,
         AlertEvent,
@@ -93,4 +95,4 @@ def test_canonical_models_importable():
         Announcement,
         IssueCategory,
     ]
-    assert len(models) == 44
+    assert len(models) == 45

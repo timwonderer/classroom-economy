@@ -2,7 +2,7 @@
 
 | Reference Number | Version | Effective Date | Supersedes | Authority Level |
 |------------------|---------|----------------|------------|-----------------|
-| DOM-CORE-002     | 1.5     | 2026-07-15     | 1.4        | Constitutional |
+| DOM-CORE-002     | 1.6     | 2026-07-15     | 1.5        | Constitutional |
 
 ---
 
@@ -257,7 +257,8 @@ authority in v2 and must not be treated as canonical schema surfaces.
 **Tables:**
 
 - `operational_events`
-- `audit_log`
+- `audit_events`
+- `chain_heads`
 - `incident_events`
 - `incident_summary`
 - `alert_events`
@@ -291,10 +292,9 @@ authority in v2 and must not be treated as canonical schema surfaces.
 - `issues`
 - `issue_status_history`
 - `issue_resolution_actions`
-- `ticket_correlation_packs`
+- `ticket_correlation_pack`
 - `announcements`
 - `issue_categories`
-- `user_reports`
 
 ---
 
