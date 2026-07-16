@@ -7,11 +7,8 @@ from sqlalchemy import func, or_, case, select
 from app.extensions import db
 from app.models import (
     ClassEconomy, Seat, Transaction,
-    AttendanceSession, HallPassLog, RedemptionAuditLog, StorePurchase, RedemptionEvent, AnalyticsEvent,
-    AnalyticsSnapshot, Issue, IssueResolutionAction, InsuranceClaim,
-    InsuranceEnrollment, RentPayment, Announcement, StoreItemBlock, StoreItem,
-    PayrollSettings, RentSettings,
-    InsurancePolicyBlock,
+    AttendanceSession, HallPassLog, RedemptionAuditLog, StorePurchase, RedemptionEvent,
+    Issue, IssueResolutionAction, Announcement, StoreItemBlock, StoreItem,
 )
 from app.feats.base import feat_shell, InvariantViolation
 
@@ -29,11 +26,7 @@ def _assert_class_scope_integrity(class_id: str) -> None:
         ("hall_pass_logs", HallPassLog),
         ("store_purchases", StorePurchase),
         ("redemption_events", RedemptionEvent),
-        ("analytics_events", AnalyticsEvent),
-        ("analytics_snapshots", AnalyticsSnapshot),
         ("issues", Issue),
-        ("insurance_enrollments", InsuranceEnrollment),
-        ("rent_payments", RentPayment),
         ("announcements", Announcement),
     )
     violations = []
@@ -98,32 +91,19 @@ def collapse_universe(class_id: str, reason: str, actor_membership_id: Optional[
         ]
         affected_student_ids = list(set(affected_student_ids_seat))
 
-        # Many tables are handled by ON DELETE CASCADE from ClassEconomy
-        # (e.g. BalanceCache, Transaction, AttendanceSession, RentPayment, ClassJoinCodeAlias)
-        # We explicitly delete the others or things that require manual cleanup first
+        # Many tables are handled by ON DELETE CASCADE from ClassEconomy.
+        # We explicitly delete the others or things that require manual cleanup first.
 
         # 2. Activity / State Logs & Records (Not all have ON DELETE CASCADE yet)
         HallPassLog.query.filter_by(class_id=class_id).delete(synchronize_session=False)
-        AnalyticsSnapshot.query.filter_by(class_id=class_id).delete(synchronize_session=False)
-        AnalyticsEvent.query.filter_by(class_id=class_id).delete(synchronize_session=False)
         Announcement.query.filter_by(class_id=class_id).delete(synchronize_session=False)
 
-        # 3. Insurance & Issue Data
+        # 3. Issue Data
         issue_ids_sel = select(Issue.id).filter_by(class_id=class_id)
         IssueResolutionAction.query.filter(
             IssueResolutionAction.issue_id.in_(issue_ids_sel)
         ).delete(synchronize_session=False)
         Issue.query.filter_by(class_id=class_id).delete(synchronize_session=False)
-
-        insurance_ids_sel = select(InsuranceEnrollment.id).filter_by(class_id=class_id)
-        tx_ids_sel = select(Transaction.id).filter_by(class_id=class_id)
-        InsuranceClaim.query.filter(
-            or_(
-                InsuranceClaim.enrollment_id.in_(insurance_ids_sel),
-                InsuranceClaim.transaction_id.in_(tx_ids_sel)
-            )
-        ).delete(synchronize_session=False)
-        InsuranceEnrollment.query.filter_by(class_id=class_id).delete(synchronize_session=False)
 
         # 4. Inventory / Store Data
         store_purchase_ids_subq = select(StorePurchase.id).filter_by(class_id=class_id).subquery()
@@ -161,23 +141,6 @@ def collapse_universe(class_id: str, reason: str, actor_membership_id: Optional[
                 remaining_seats = db.session.query(Seat.id).filter(Seat.user_id == s_id).count()
                 if remaining_seats == 0:
                     logger.info(f"Seat erasure rule triggered for student_id={s_id}")
-
-        # 8. Post-collapse: Settings cleanup
-        # If no remaining seat exists for that section name in the current owner's other classes, delete insurance policy sections.
-        if affected_seat_blocks:
-            for block_name in affected_seat_blocks:
-                remaining = (
-                    db.session.query(Seat.id)
-                    .join(ClassEconomy, ClassEconomy.class_id == Seat.class_id)
-                    .filter(
-                        ClassEconomy.section == block_name,
-                        ClassEconomy.user_id == user_id,
-                    )
-                    .count()
-                )
-                if remaining == 0:
-                    logger.info(f"Settings Cleanup Rule triggered for section={block_name}, user_id={user_id}")
-                    InsurancePolicyBlock.query.filter_by(block=block_name).delete(synchronize_session=False)
 
         db.session.flush()  # FEAT-AUTHORIZED-SHELL
         return True

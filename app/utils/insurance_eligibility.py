@@ -283,11 +283,7 @@ def evaluate_claim_transaction_eligibility(
     if getattr(tx, "class_id", None) and tx.class_id != class_id:
         return False, CLAIM_REASON_UNCLASSIFIED_TRANSACTION
 
-    if claimed_tx_ids is None:
-        existing_claim = InsuranceClaim.query.filter(InsuranceClaim.transaction_id == tx.id).first()
-        if existing_claim:
-            return False, CLAIM_REASON_ALREADY_CLAIMED
-    elif tx.id in claimed_tx_ids:
+    if claimed_tx_ids is not None and tx.id in claimed_tx_ids:
         return False, CLAIM_REASON_ALREADY_CLAIMED
 
     if reimbursed_tx_ids is None:

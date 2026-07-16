@@ -233,40 +233,9 @@ def record_insurance_enrollment(
     purchase_date,
     next_payment_due,
     coverage_start_date,
-) -> InsuranceEnrollment:
-    """Record an insurance enrollment in canonical tables only."""
-    enrollment = InsuranceEnrollment(
-        seat_id=seat_id,
-        class_id=class_id,
-        policy_id=policy.id,
-        status='active',
-        purchase_date=purchase_date,
-        last_payment_date=purchase_date,
-        next_payment_due=next_payment_due,
-        coverage_start_date=coverage_start_date,
-        payment_current=True,
-    )
-    enrollment.freeze_policy_snapshot(policy)
-    db.session.add(enrollment)
-
-    assessment = ObligationAssessment(
-        seat_id=seat_id,
-        class_id=class_id,
-        obligation_type="INSURANCE_ENROLLMENT",
-        amount_snap=0,
-        due_at=next_payment_due,
-        assessed_at=purchase_date,
-    )
-    db.session.add(assessment)
-    db.session.flush()
-    db.session.add(
-        ObligationLifecycle(
-            assessment_id=assessment.id,
-            status="DUE",
-            updated_at=purchase_date,
-        )
-    )
-    return enrollment
+) -> ObligationAssessment:
+    """Legacy insurance enrollment mutation is no longer supported."""
+    raise NotImplementedError("Insurance enrollment rows have been removed")
 
 
 def record_insurance_claim(
@@ -281,42 +250,13 @@ def record_insurance_claim(
     claim_item: str | None,
     comments: str | None,
     transaction_id: int | None,
-) -> InsuranceClaim:
-    """Record an insurance claim.
-
-    InsuranceClaim is retained as the claim metadata store until its columns
-    are migrated onto assessment_events. The canonical assessment/lifecycle
-    rows are created alongside it.
-    """
-    claim = InsuranceClaim(
-        enrollment_id=enrollment_id,
-        policy_id=policy_id,
-        seat_id=seat_id,
-        class_id=class_id,
-        incident_date=incident_date,
-        description=description,
-        claim_amount=claim_amount,
-        claim_item=claim_item,
-        comments=comments,
-        status='pending',
-        transaction_id=transaction_id,
-    )
-    db.session.add(claim)
-    db.session.flush()
-
-    _create_claim_assessment(
-        seat_id=seat_id,
-        class_id=class_id,
-        claim_id=claim.id,
-        claim_amount=claim_amount,
-        incident_date=incident_date,
-        assessed_at=utc_now(),
-    )
-    return claim
+) -> ObligationAssessment:
+    """Legacy insurance claim mutation is no longer supported."""
+    raise NotImplementedError("Insurance claim rows have been removed")
 
 
 def apply_claim_resolution(
-    claim: InsuranceClaim,
+    claim: ObligationAssessment,
     *,
     status: str,
     teacher_notes: str | None,
@@ -326,69 +266,8 @@ def apply_claim_resolution(
     approved_amount=None,
     processed_by_seat_id: int | None = None,
 ):
-    """Advance claim state and its canonical lifecycle."""
-    claim.status = status
-    claim.teacher_notes = teacher_notes
-    claim.rejection_reason = rejection_reason if status == 'rejected' else None
-    claim.processed_date = processed_at
-    claim.processed_by_user_id = processed_by_user_id
-    claim.approved_amount = approved_amount
-
-    assessment = _require_claim_assessment(claim.id, claim.seat_id, claim.class_id)
-    if processed_by_seat_id is None:
-        if processed_by_user_id is not None:
-            processed_by_seat_id = (
-                Seat.query.filter_by(
-                    class_id=claim.class_id,
-                    role="teacher",
-                    user_id=processed_by_user_id,
-                )
-                .order_by(Seat.id.asc())
-                .with_entities(Seat.id)
-                .scalar()
-            )
-        if processed_by_seat_id is None:
-            processed_by_seat_id = (
-                Seat.query.filter_by(class_id=claim.class_id, role="teacher")
-                .order_by(Seat.id.asc())
-                .with_entities(Seat.id)
-                .scalar()
-            )
-        if processed_by_seat_id is None:
-            raise ValueError(
-                f"No teacher seat found for class {claim.class_id}. A valid teacher seat is required to resolve claims."
-            )
-
-    if status in {"approved", "paid"}:
-        _set_assessment_lifecycle(assessment, status="PAID", updated_at=processed_at)
-        if assessment.satisfaction is None:
-            db.session.add(
-                ObligationSatisfaction(
-                    assessment_id=assessment.id,
-                    method="PAYMENT",
-                    amount_paid=approved_amount,
-                    satisfied_at=processed_at,
-                )
-            )
-        else:
-            assessment.satisfaction.amount_paid = approved_amount
-            assessment.satisfaction.satisfied_at = processed_at
-    elif status == "rejected":
-        _set_assessment_lifecycle(assessment, status="REVERSED", updated_at=processed_at)
-        if assessment.reversal is None:
-            db.session.add(
-                ObligationReversal(
-                    assessment_id=assessment.id,
-                    reason=rejection_reason or teacher_notes,
-                    reversed_at=processed_at,
-                    reversed_by_seat_id=processed_by_seat_id,
-                )
-            )
-        else:
-            assessment.reversal.reason = rejection_reason or teacher_notes
-            assessment.reversal.reversed_at = processed_at
-            assessment.reversal.reversed_by_seat_id = processed_by_seat_id
-    return claim
+    """Legacy insurance claim resolution is no longer supported."""
+    raise NotImplementedError("Insurance claim resolution rows have been removed")
 
 
 # ---------------------------------------------------------------------------
@@ -495,7 +374,7 @@ def get_claim_status(claim_id: int) -> str | None:
 
 
 # ---------------------------------------------------------------------------
-# Rent read helpers (canonical replacements for legacy RentPayment/RentWaiver)
+# Rent read helpers for canonical obligation assessments
 # ---------------------------------------------------------------------------
 
 def get_paid_rent_assessments_for_cycle(

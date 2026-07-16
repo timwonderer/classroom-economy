@@ -97,7 +97,7 @@ class UserRole(str, enum.Enum):
     TEACHER = 'teacher'
     SYSADMIN = 'sysadmin'
 
-# AnalyticsAlert removed — absorbed into alert_events (DOM-OPS-001)
+# Alerting history is represented in alert_events (DOM-OPS-001)
 
 
 class User(db.Model):
@@ -119,7 +119,7 @@ class User(db.Model):
     current_session_started_at = db.Column(db.DateTime(timezone=True), nullable=True)
     current_session_expires_at = db.Column(db.DateTime(timezone=True), nullable=True)
     current_session_nonce = db.Column(db.String(128), nullable=True, index=True)
-    # Student recovery fields (per DOM-IDEN-002 §V)
+    # Student recovery fields
     reset_code = db.Column(db.String(8), nullable=True)
     reset_code_generated_at = db.Column(db.DateTime(timezone=True), nullable=True)
     reset_code_expires_at = db.Column(db.DateTime(timezone=True), nullable=True)
@@ -141,7 +141,7 @@ class User(db.Model):
     updated_at = db.Column(db.DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False)
 
     # Hall pass public verification token (256-bit, capability-based, rotatable)
-    # Used for /verify/hallpass/<token> — not derived from teacher identity
+    # Used for /verify/hallpass/<token> and not derived from teacher authority
     hall_pass_verify_token = db.Column(db.String(64), unique=True, nullable=True, index=True)
 
     @staticmethod
@@ -195,7 +195,7 @@ class IdentityProfile(db.Model):
     first_name = db.Column(PIIEncryptedType(key_env_var='ENCRYPTION_KEY'), nullable=False)
     last_name = db.Column(PIIEncryptedType(key_env_var='ENCRYPTION_KEY'), nullable=False)
     notes = db.Column(PIIEncryptedType(key_env_var='ENCRYPTION_KEY'), nullable=True)
-    # No recovery artifacts on IdentityProfile (DOM-IDEN-001, INV-ARC-019 §X)
+    # No recovery artifacts on IdentityProfile
     created_at = db.Column(db.DateTime(timezone=True), default=utc_now, nullable=False)
     updated_at = db.Column(db.DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False)
 
@@ -213,8 +213,7 @@ class IdentityProfile(db.Model):
         return f"{self.first_name} {self.last_name}"
 
 
-# UserInviteToken removed — user_invite_tokens marked EXTINCT in DOM-CORE-002 §1
-# UserRecoveryToken removed — user_recovery_tokens marked EXTINCT in DOM-CORE-002 §1
+# Provisioning and recovery token tables are no longer part of the runtime schema
 
 
 class Seat(db.Model):
@@ -284,8 +283,8 @@ class Seat(db.Model):
             self.class_economy.section = value
 
 
-# Legacy sysadmin identity table removed; authority now lives on User.user_role=SYSADMIN
-# AdminInviteCode removed — teacher_invite_codes superseded by open signup; prohibited (DOM-CORE-002 §1)
+# Sysadmin authority now lives on User.user_role=SYSADMIN
+# Teacher invite-code support is handled outside the canonical runtime schema
 
 
 
@@ -353,7 +352,7 @@ def prevent_class_timezone_mutation(_mapper, _connection, target):
         raise ValueError("Class timezone is immutable once set.")
 
 
-# EconomySnapshot removed — derived interpretation cache (DOM-ITR-001)
+# Derived interpretation cache is excluded from the canonical runtime schema
 
 
 
@@ -770,7 +769,7 @@ class HallPassSettings(db.Model):
         return self.pass_types
 
 
-# PayrollCache removed — explicitly prohibited by DOM-CORE-002 §2 (no persisted compute-result caches)
+# Persisted compute-result caches are explicitly prohibited by DOM-CORE-002
 
 
 # -------------------- STORE MODELS --------------------
@@ -1083,7 +1082,7 @@ class RentSettings(db.Model):
     cycle_length_days = db.Column(db.Integer, nullable=False, default=30)
     updated_at = db.Column(db.DateTime(timezone=True), default=utc_now, onupdate=utc_now)
 
-    # Version tracking removed — policy versions are now modeled in canonical policy tables.
+    # Version tracking is modeled in canonical policy tables.
 
     # Keep old field names for accessors.
     @property
@@ -1105,13 +1104,13 @@ def _sync_rent_settings_scope(mapper, connection, target):
         raise ValueError("rent_settings require canonical class_id")
 
 
-# Legacy rent policy version rows removed; rent policy state is now canonical
+# Rent policy state is now canonical
 
 
-# RentPayment removed — expressed as obligation_satisfaction(method=PAYMENT) + ledger_transaction ref (DOM-OBL-001)
+# Rent payment state is expressed through obligation satisfaction and ledger references
 
 
-# RentWaiver removed — expressed as obligation_satisfaction(method=WAIVER) (DOM-OBL-001)
+# Rent waiver state is expressed through obligation satisfaction
 
 @sa.event.listens_for(HallPassLog, "before_insert")
 @sa.event.listens_for(HallPassLog, "before_update")
@@ -1134,16 +1133,12 @@ def _sync_hall_pass_seat(_mapper, connection, target):
             target.class_id = str(seat_class_id)
 
 
-# Legacy rent item rows removed; rent store state is now canonical
+# Rent store state is now canonical
 
 
 
 
-# InsurancePolicy removed — legacy insurance system, no domain authority (DOM-CORE-002 audit)
-# InsurancePolicyBlock removed — child of InsurancePolicy, same prohibition
-
-
-# InsuranceClaim removed — legacy insurance system, no domain authority (DOM-CORE-002 audit)
+# Legacy insurance system entities are not part of the canonical runtime schema
 
 
 
@@ -1226,7 +1221,7 @@ class ObligationReversal(db.Model):
     reversed_by_seat_id = db.Column(db.Integer, db.ForeignKey('seats.id', ondelete='CASCADE'), nullable=False, index=True)
 
 
-# InsuranceEnrollment removed — legacy insurance system, no domain authority (DOM-CORE-002 audit)
+# Legacy insurance enrollment state is not part of the canonical runtime schema
 
 
 class EntitlementEvent(db.Model):
@@ -1250,7 +1245,7 @@ class EntitlementEvent(db.Model):
 
 
 # ---- Error Log Model ----
-# ErrorLog removed — must migrate to ErrorEvent (DOM-OPS-001)
+# Error logging state is represented in the canonical operations tables
 
 
 class ActorRequestTrace(db.Model):
@@ -1273,7 +1268,7 @@ class ActorRequestTrace(db.Model):
     )
 
 
-# ErrorEvent removed — absorbed into operational_events (DOM-OPS-001)
+# Error events are represented in operational_events
 
 
 # ---- User Report Model (Bug Reports, Suggestions, Comments) ----
@@ -1514,7 +1509,7 @@ class IssueResolutionAction(db.Model):
         return f'<IssueResolutionAction Issue#{self.issue_id}: {self.action_type}>'
 
 
-# Admin removed — teachers table prohibited by INV-IDEN-001; teacher identity lives in User (user_role=TEACHER)
+# Teacher identity lives in User (user_role=TEACHER)
 
 
 # ---- Account Recovery Models ----
@@ -1608,7 +1603,7 @@ class PayrollSettings(db.Model):
         return f'<PayrollSettings class_id={self.class_id} block={self.block or "Global"}>'
 
 
-# SavedAdjustment removed — overlaps payroll_rewards/payroll_fines (DOM-CLASS-001)
+# Adjustment state overlaps payroll rewards and fines
 
 
 # ---- Banking Settings Model ----
@@ -1815,7 +1810,7 @@ def _seed_default_class_features(mapper, connection, target):
     )
 
 
-# TeacherOnboarding removed — derived from class_features + feature_settings; no authoritative state
+# Teacher onboarding state is derived from class_features and feature_settings
 
 
 # -------------------- ANNOUNCEMENT MODEL --------------------
@@ -1828,7 +1823,7 @@ class Announcement(db.Model):
     - join_code remains ingress/display metadata only
     - Only visible to students in that class period
 
-    System Admin Announcements:
+    Platform announcements:
     - System admins post with broader audience types
     - Can target: all students, all teachers, specific teacher's classes, or everyone
     - Teachers cannot see these in their announcement management
@@ -1924,9 +1919,7 @@ class Announcement(db.Model):
         return self.system_admin_id is not None
 
 
-# AnalyticsSnapshot removed — absorbed into interpretation_snapshots (DOM-ITR-001)
-
-# AnalyticsEvent removed — absorbed into audit_events/interpretation_annotations (DOM-OPS-001/DOM-ITR-001)
+# Analytics state is represented by interpretation and audit tables
 
 
 # -------------------- AUDIT LINEAGE MODELS --------------------
@@ -2000,4 +1993,4 @@ class ChainHead(db.Model):
         return f'<ChainHead {self.chain_scope} seq={self.latest_sequence}>'
 
 
-# IntegrityStatus removed — recomputable from chain_heads + audit_events (DOM-OPS-001)
+# Integrity status is recomputable from chain_heads and audit_events

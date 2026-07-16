@@ -312,14 +312,14 @@ def run_audit_invariant_check_job():
 
     Walks all active class chains and the system chain, recomputing HMAC
     signatures and verifying hash continuity. Writes the aggregate result to
-    IntegrityStatus, which is exposed by /health/deep.
+    the deep health endpoint.
     """
     logger = logging.getLogger('scheduled_tasks')
     logger.info("Starting nightly audit invariant check")
     try:
-        from app.utils.audit_verifier import run_full_invariant_check, update_integrity_status
+        from app.utils.audit_verifier import run_full_invariant_check, record_integrity_verification
         results = run_full_invariant_check()
-        update_integrity_status(results)
+        record_integrity_verification(results)
 
         passing = all(r.state == "VERIFIED" for r in results)
         if passing:

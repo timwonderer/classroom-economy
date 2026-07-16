@@ -90,31 +90,6 @@ class IdentityProfile(Base, TimestampMixin):
     notes = sa.Column(sa.LargeBinary, nullable=True)
 
 
-class UserInviteToken(Base, TimestampMixin):
-    __tablename__ = "user_invite_tokens"
-    id = sa.Column(sa.Integer, primary_key=True)
-    token_hash = sa.Column(sa.String(128), unique=True, nullable=False, index=True)
-    user_role = sa.Column(
-        sa.Enum("student", "teacher", "sysadmin", name="user_role_enum"),
-        nullable=False,
-    )
-    issued_by_user_id = sa.Column(sa.Integer, sa.ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
-    expires_at = sa.Column(sa.DateTime(timezone=True), nullable=False, index=True)
-    used_at = sa.Column(sa.DateTime(timezone=True), nullable=True)
-    revoked_at = sa.Column(sa.DateTime(timezone=True), nullable=True)
-
-
-class UserRecoveryToken(Base, TimestampMixin):
-    __tablename__ = "user_recovery_tokens"
-    id = sa.Column(sa.Integer, primary_key=True)
-    user_id = sa.Column(sa.Integer, sa.ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
-    token_hash = sa.Column(sa.String(128), unique=True, nullable=False, index=True)
-    issued_by_user_id = sa.Column(sa.Integer, sa.ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
-    expires_at = sa.Column(sa.DateTime(timezone=True), nullable=False, index=True)
-    used_at = sa.Column(sa.DateTime(timezone=True), nullable=True)
-    revoked_at = sa.Column(sa.DateTime(timezone=True), nullable=True)
-
-
 class ClassFeature(Base, TimestampMixin):
     __tablename__ = "class_features"
     id = sa.Column(sa.Integer, primary_key=True)
@@ -147,11 +122,6 @@ class RentSetting(Base, TimestampMixin):
 
 class PayrollSetting(Base, TimestampMixin):
     __tablename__ = "payroll_settings"
-    id = sa.Column(sa.Integer, primary_key=True)
-
-
-class SavedAdjustment(Base, TimestampMixin):
-    __tablename__ = "saved_adjustments"
     id = sa.Column(sa.Integer, primary_key=True)
 
 
@@ -320,8 +290,6 @@ __all__ = [
     "Seat",
     "Class_",
     "IdentityProfile",
-    "UserInviteToken",
-    "UserRecoveryToken",
     "ClassFeature",
     "FeatureSetting",
     "PolicyVersion",
@@ -329,7 +297,6 @@ __all__ = [
     "HallPassSetting",
     "RentSetting",
     "PayrollSetting",
-    "SavedAdjustment",
     "BankingSetting",
     "AttendanceSession",
     "HallPassLog",

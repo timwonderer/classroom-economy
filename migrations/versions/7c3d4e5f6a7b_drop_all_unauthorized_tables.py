@@ -104,6 +104,7 @@ def upgrade():
     drop_table_if_exists('insurance_claims')
     drop_table_if_exists('insurance_enrollments')
     drop_table_if_exists('insurance_policy_blocks')
+    drop_constraint_if_exists('ledger_transaction', 'ledger_transaction_policy_id_fkey')
     drop_table_if_exists('insurance_policies')
 
     # =========================================================================
@@ -117,8 +118,9 @@ def upgrade():
     drop_table_if_exists('rent_payments')
     drop_table_if_exists('rent_waivers')
     drop_table_if_exists('rent_items')
-    drop_constraint_if_exists('rent_settings', 'fk_rent_settings_active_version_id')
-    drop_constraint_if_exists('rent_settings', 'fk_rent_settings_next_version_id')
+    drop_constraint_if_exists('rent_settings', 'rent_settings_active_version_id_fkey')
+    drop_constraint_if_exists('rent_settings', 'rent_settings_next_version_id_fkey')
+    drop_constraint_if_exists('assessment_events', 'assessment_events_rent_policy_version_id_fkey')
     drop_table_if_exists('rent_policy_versions')
 
     # =========================================================================
@@ -138,6 +140,7 @@ def upgrade():
     drop_table_if_exists('system_admin_credentials')
     drop_table_if_exists('teacher_credentials')
     # teachers / system_admins dropped last (other tables may FK to them)
+    drop_constraint_if_exists('ledger_transaction', 'ledger_transaction_teacher_id_fkey')
     drop_table_if_exists('system_admins')
     drop_table_if_exists('teachers')
 

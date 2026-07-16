@@ -65,7 +65,7 @@ class TrendMetrics:
 
 
 @dataclass
-class AnalyticsSnapshotView:
+class AnalyticsWindowView:
     window_type: str
     window_start: datetime
     window_end: datetime
@@ -424,7 +424,7 @@ class AnalyticsEngine:
     def compute_trends(
         self,
         current_snapshot: SystemHealthMetrics,
-        previous_snapshot: Optional[AnalyticsSnapshotView]
+        previous_snapshot: Optional[AnalyticsWindowView]
     ) -> TrendMetrics:
         """
         Compute trend indicators by comparing to previous period.
@@ -531,7 +531,7 @@ class AnalyticsEngine:
         window_start: datetime,
         window_end: datetime,
         is_complete: bool = True
-    ) -> AnalyticsSnapshotView:
+    ) -> AnalyticsWindowView:
         if not self.class_id:
             raise ValueError("AnalyticsEngine requires canonical class_id context.")
 
@@ -557,7 +557,7 @@ class AnalyticsEngine:
         )
         avg_balance = total_balance / len(students) if students else 0.0
         
-        return AnalyticsSnapshotView(
+        return AnalyticsWindowView(
             window_type=window_type,
             window_start=window_start,
             window_end=window_end,
@@ -582,7 +582,7 @@ class AnalyticsEngine:
         window_type: str,
         window_start: datetime,
         window_end: datetime
-    ) -> AnalyticsSnapshotView:
+    ) -> AnalyticsWindowView:
         """Return a canonical in-memory analytics snapshot view."""
         if not self.class_id:
             raise ValueError("AnalyticsEngine requires canonical class_id context.")
@@ -594,7 +594,7 @@ class AnalyticsEngine:
         window_type: str,
         window_start: datetime,
         window_end: datetime,
-    ) -> AnalyticsSnapshotView:
+    ) -> AnalyticsWindowView:
         """Return an in-memory preview without DB writes."""
         if not self.class_id:
             raise ValueError("AnalyticsEngine requires canonical class_id context.")
@@ -615,7 +615,7 @@ class AnalyticsEngine:
         )
         avg_balance = total_balance / len(students) if students else 0.0
 
-        return AnalyticsSnapshotView(
+        return AnalyticsWindowView(
             window_type=window_type,
             window_start=window_start,
             window_end=window_end,

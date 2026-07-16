@@ -180,7 +180,6 @@ def register_error_handlers(app):
             # then persist the TLCP error event in a fresh, independent transaction.
             db.session.rollback()
             with db.engine.begin() as conn:
-                from app.models import ErrorEvent
                 from app.utils.time import utc_now
                 if context.get("actor_type") and context.get("actor_public_id"):
                     from app.services.tlcp import _sanitize_error_message

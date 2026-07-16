@@ -2139,7 +2139,7 @@ def delete_tap_entry(event_id):
     db.session.flush()
 
     current_app.logger.info(
-        "Admin %s deleted tap entry %s for student %s",
+        "System admin %s deleted tap entry %s for student %s",
         g.canonical_context.user_id,
         event_id,
         event.seat_id,
@@ -2191,7 +2191,7 @@ def update_student_block_settings():
         return jsonify({"error": "Seat not found or access denied"}), 403
 
     current_app.logger.info(
-        "Admin %s set tap_enabled=%s for seat %s",
+        "System admin %s set tap_enabled=%s for seat %s",
         user_id,
         tap_enabled,
         seat_id,
@@ -2414,7 +2414,7 @@ def update_block_tap_settings():
             updated_count += 1
 
         current_app.logger.info(
-            "Admin %s set tap_enabled=%s for %s seats in class %s",
+            "System admin %s set tap_enabled=%s for %s seats in class %s",
             user_id,
             tap_enabled,
             updated_count,

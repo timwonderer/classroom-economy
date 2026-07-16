@@ -77,7 +77,7 @@ from app.auth import (
 from app.services.context_resolver import CanonicalContext
 from app.forms import (
     AdminLoginForm, AdminSignupForm, AdminTOTPConfirmForm, AdminRecoveryForm, AdminResetCredentialsForm, StoreItemForm,
-    InsurancePolicyForm, AdminClaimProcessForm, PayrollSettingsForm,
+    AdminClaimProcessForm, PayrollSettingsForm,
     ManualPaymentForm, BankingSettingsForm
 )
 # Import utility functions
@@ -1140,11 +1140,7 @@ def _hard_delete_class_scope(class_id, canonical_context):
         ("ledger_transaction", Transaction),
         ("hall_pass_logs", HallPassLog),
         ("student_items", StorePurchase),
-        ("analytics_events", AnalyticsEvent),
-        ("analytics_snapshots", AnalyticsSnapshot),
         ("issues", Issue),
-        ("student_insurance", InsuranceEnrollment),
-        ("rent_payments", RentPayment),
         ("announcements", Announcement),
     )
     for label, model in scoped_models:
@@ -1181,11 +1177,6 @@ def _hard_delete_class_scope(class_id, canonical_context):
         .filter(StorePurchase.class_id == class_id)
         .subquery()
     )
-    insurance_ids_subq = (
-        db.session.query(InsuranceEnrollment.id)
-        .filter(InsuranceEnrollment.class_id == class_id)
-        .subquery()
-    )
     tx_ids_subq = (
         db.session.query(Transaction.id)
         .filter(Transaction.class_id == class_id)
@@ -1214,11 +1205,8 @@ def _hard_delete_class_scope(class_id, canonical_context):
     if sa.inspect(db.engine).has_table("tap_events"):
         TapEvent.query.filter(TapEvent.class_id == class_id).delete(synchronize_session=False)
     HallPassLog.query.filter(HallPassLog.class_id == class_id).delete(synchronize_session=False)
-    RentPayment.query.filter(RentPayment.class_id == class_id).delete(synchronize_session=False)
     SeatAttendanceState.query.filter(SeatAttendanceState.class_id == class_id).delete(synchronize_session=False)
     BalanceCache.query.filter(BalanceCache.class_id == class_id).delete(synchronize_session=False)
-    AnalyticsSnapshot.query.filter(AnalyticsSnapshot.class_id == class_id).delete(synchronize_session=False)
-    AnalyticsEvent.query.filter(AnalyticsEvent.class_id == class_id).delete(synchronize_session=False)
     Announcement.query.filter(
         Announcement.user_id == user_id,
         Announcement.class_id == class_id,
@@ -1229,15 +1217,6 @@ def _hard_delete_class_scope(class_id, canonical_context):
         IssueResolutionAction.issue_id.in_(sa.select(issue_ids_subq))
     ).delete(synchronize_session=False)
     Issue.query.filter(Issue.class_public_id == _class_pub_id).delete(synchronize_session=False)
-
-    # Insurance data tied to this class or class-scoped transactions
-    InsuranceClaim.query.filter(
-        sa.or_(
-            InsuranceClaim.enrollment_id.in_(sa.select(insurance_ids_subq)),
-            InsuranceClaim.transaction_id.in_(sa.select(tx_ids_subq)),
-        )
-    ).delete(synchronize_session=False)
-    InsuranceEnrollment.query.filter(InsuranceEnrollment.class_id == class_id).delete(synchronize_session=False)
 
     # Financial ledger (only here)
     Transaction.query.filter(Transaction.class_id == class_id).delete(synchronize_session=False)
@@ -1345,9 +1324,6 @@ def _delete_teacher_settings_activity_and_audit_rows(canonical_context):
     HallPassSettings.query.filter(
         HallPassSettings.class_id.in_(sa.select(class_ids_subq))
     ).delete(synchronize_session=False)
-    SavedAdjustment.query.filter(
-        SavedAdjustment.class_id.in_(sa.select(class_ids_subq))
-    ).delete(synchronize_session=False)
     PayrollSettings.query.filter(
         PayrollSettings.class_id.in_(sa.select(class_ids_subq))
     ).delete(synchronize_session=False)
@@ -1367,9 +1343,6 @@ def _delete_teacher_rent_rows(canonical_context):
     class_ids_subq = db.session.query(ClassEconomy.class_id).filter(
         ClassEconomy.user_id == user_id
     ).subquery()
-    rent_setting_ids_subq = db.session.query(RentSettings.id).filter(
-        RentSettings.class_id.in_(sa.select(class_ids_subq))
-    ).subquery()
     RentSettings.query.filter(
         RentSettings.class_id.in_(sa.select(class_ids_subq))
     ).delete(synchronize_session=False)
@@ -1381,21 +1354,8 @@ def _delete_teacher_insurance_rows(canonical_context):
     class_ids_subq = db.session.query(ClassEconomy.class_id).filter(
         ClassEconomy.user_id == user_id
     ).subquery()
-    policy_ids_subq = db.session.query(InsurancePolicy.id).filter(
-        InsurancePolicy.class_id.in_(sa.select(class_ids_subq))
-    ).subquery()
-    InsuranceClaim.query.filter(
-        InsuranceClaim.policy_id.in_(sa.select(policy_ids_subq))
-    ).delete(synchronize_session=False)
-    InsuranceEnrollment.query.filter(
-        InsuranceEnrollment.policy_id.in_(sa.select(policy_ids_subq))
-    ).delete(synchronize_session=False)
-    InsurancePolicyBlock.query.filter(
-        InsurancePolicyBlock.policy_id.in_(sa.select(policy_ids_subq))
-    ).delete(synchronize_session=False)
-    InsurancePolicy.query.filter(
-        InsurancePolicy.id.in_(sa.select(policy_ids_subq))
-    ).delete(synchronize_session=False)
+    # Insurance tables are removed in v2; no legacy cleanup path remains here.
+    _ = class_ids_subq
 
 
 def _delete_teacher_issue_rows(canonical_context):
@@ -1957,34 +1917,11 @@ def _get_feature_settings(class_id=None):
 
 
 def _build_economy_snapshot_from_analysis(class_id, checker, analysis):
-    recommendations = analysis.recommendations or {}
-    rent = recommendations.get('rent') or {}
-    insurance = recommendations.get('insurance_premium_weekly') or {}
-    store_tiers = recommendations.get('store_tiers') or {}
-    class_row = db.session.get(ClassEconomy, class_id) if class_id else None
-    return EconomySnapshot(
-        class_id=class_id,
-        join_code=get_display_join_code(class_row.class_id) if class_row else None,
-        policy_mode=checker.policy_mode,
-        pay_rate=Decimal(str(analysis.cwi.pay_rate_per_minute or 0)),
-        expected_hours=Decimal(str((analysis.cwi.expected_weekly_minutes or 0) / 60.0)).quantize(Decimal('0.01')),
-        weekly_cwi=Decimal(str(analysis.cwi.cwi or 0)).quantize(Decimal('0.01')),
-        rent_min=Decimal(str(rent.get('min', 0))).quantize(Decimal('0.01')),
-        rent_recommended=Decimal(str(rent.get('recommended', 0))).quantize(Decimal('0.01')),
-        rent_max=Decimal(str(rent.get('max', 0))).quantize(Decimal('0.01')),
-        insurance_weekly_min=Decimal(str(insurance.get('min', 0))).quantize(Decimal('0.01')),
-        insurance_weekly_recommended=Decimal(str(insurance.get('recommended', 0))).quantize(Decimal('0.01')),
-        insurance_weekly_max=Decimal(str(insurance.get('max', 0))).quantize(Decimal('0.01')),
-        store_tier_min={
-            key: str(_quantize_currency((values or {}).get('min', 0)))
-            for key, values in store_tiers.items()
-        },
-        store_tier_max={
-            key: str(_quantize_currency((values or {}).get('max', 0)))
-            for key, values in store_tiers.items()
-        },
-        analysis_payload=_serialize_economy_analysis_payload(analysis),
-    )
+    return {
+        "class_id": class_id,
+        "policy_mode": checker.policy_mode,
+        "analysis_payload": _serialize_economy_analysis_payload(analysis),
+    }
 
 
 def _economy_refresh_timezone():
@@ -2163,26 +2100,6 @@ def _get_frozen_economy_analysis_payload(
         expected_weekly_hours=expected_weekly_hours,
     )
     class_id = getattr(payroll_settings, "class_id", None)
-    weekly_window_start, _next_weekly_refresh = _economy_weekly_refresh_bounds()
-    weekly_window_start_db = normalize_for_db(weekly_window_start)
-    latest_snapshot = None
-
-    if class_id and expected_weekly_hours is None:
-        latest_snapshot = (
-            EconomySnapshot.query
-            .filter(
-                EconomySnapshot.class_id == class_id,
-                EconomySnapshot.effective_at >= weekly_window_start_db,
-            )
-            .order_by(EconomySnapshot.effective_at.desc(), EconomySnapshot.id.desc())
-            .first()
-        )
-        if _economy_snapshot_matches_inputs(latest_snapshot, expected_inputs=expected_inputs) and latest_snapshot.analysis_payload:
-            payload = dict(latest_snapshot.analysis_payload)
-            payload['analysis_schedule'] = _economy_analysis_schedule(latest_snapshot, frozen=True)
-            payload['snapshot_cached'] = True
-            return payload, latest_snapshot
-
     analysis = checker.analyze_economy(
         payroll_settings=payroll_settings,
         rent_settings=rent_settings,
@@ -2193,14 +2110,6 @@ def _get_frozen_economy_analysis_payload(
     )
 
     if class_id and expected_weekly_hours is None:
-        if persist_snapshot:
-            snapshot = _build_economy_snapshot_from_analysis(class_id, checker, analysis)
-            db.session.add(snapshot)
-            db.session.flush()
-            payload = _serialize_economy_analysis_payload(analysis, snapshot=snapshot, frozen=True)
-            payload['snapshot_cached'] = False
-            return payload, snapshot
-
         payload = _serialize_economy_analysis_payload(analysis, frozen=True)
         payload['analysis_schedule'] = _economy_analysis_schedule(None, frozen=False)
         payload['snapshot_cached'] = False
@@ -2507,17 +2416,7 @@ def _load_economy_rebalance_context(canonical_context, class_id, selected_block)
     rent_settings = _resolve_rent_settings_for_class_id(selected_class_id)
 
     class_ids_query = db.session.query(ClassEconomy.class_id).filter_by(user_id=user_id)
-    insurance_policies_query = InsurancePolicy.query.filter(
-        InsurancePolicy.class_id.in_(sa.select(class_ids_query.subquery())),
-        InsurancePolicy.is_active.is_(True),
-    )
-    if effective_block:
-        insurance_policies = [
-            policy for policy in insurance_policies_query.all()
-            if not policy.blocks_list or effective_block.upper() in [b.upper() for b in policy.blocks_list]
-        ]
-    else:
-        insurance_policies = insurance_policies_query.all()
+    insurance_policies = []
 
     return effective_block, payroll_settings, rent_settings, insurance_policies, all_payroll_settings
 
@@ -2742,13 +2641,8 @@ def dashboard():
         .filter(HallPassLog.status == 'pending')
         .count()
     )
-    pending_insurance_claims_count = (
-        InsuranceClaim.query
-        .filter(InsuranceClaim.class_id.in_(teacher_class_ids))
-        .filter(InsuranceClaim.status == 'pending')
-        .count()
-    )
-    total_pending_actions = pending_redemptions_count + pending_hall_passes_count + pending_insurance_claims_count
+    pending_insurance_claims_count = 0
+    total_pending_actions = pending_redemptions_count + pending_hall_passes_count
 
     # Get recent items for each pending type (limited for display)
     recent_redemptions = (
@@ -2767,14 +2661,7 @@ def dashboard():
         .limit(5)
         .all()
     )
-    recent_insurance_claims = (
-        InsuranceClaim.query
-        .filter(InsuranceClaim.class_id.in_(teacher_class_ids))
-        .filter(InsuranceClaim.status == 'pending')
-        .order_by(InsuranceClaim.filed_date.desc())
-        .limit(5)
-        .all()
-    )
+    recent_insurance_claims = []
 
     # Recent transactions (limited to 5 for display)
     recent_transactions = (
@@ -2849,21 +2736,7 @@ def dashboard():
     # Prompt teachers to upgrade insurance policies to the new tiered design.
     show_insurance_tier_prompt = False
     onboarding_record = get_admin_onboarding(current_user_id)
-    if onboarding_record and onboarding_record.steps_completed and onboarding_record.steps_completed.get("needs_insurance_tier_upgrade"):
-        class_ids_subq = (
-            db.session.query(ClassEconomy.class_id)
-            .filter(ClassEconomy.user_id == current_user_id)
-            .subquery()
-        )
-        policy_needs_upgrade = (
-            db.session.query(InsurancePolicy.id)
-            .filter(InsurancePolicy.class_id.in_(sa.select(class_ids_subq)))
-            .filter(InsurancePolicy.tier_category_id.is_(None))
-            .filter(InsurancePolicy.tier_level.is_(None))
-            .first()
-            is not None
-        )
-        show_insurance_tier_prompt = policy_needs_upgrade
+    show_insurance_tier_prompt = False
 
     return render_template(
         'admin_dashboard.html',
@@ -4418,7 +4291,7 @@ def student_detail_public(actor_public_id):
     if class_id:
         store_purchases = store_purchases.filter(StorePurchase.class_id == class_id)
     store_purchases = store_purchases.order_by(StorePurchase.purchased_at.desc()).all()
-    # Fetch most recent TapEvent for this student when the legacy table is present.
+    # Fetch most recent tap entry for this student when present.
     latest_tap_event = (
         latest_tap_event_query.order_by(TapEvent.timestamp.desc()).first()
         if latest_tap_event_query is not None else None
@@ -4435,20 +4308,8 @@ def student_detail_public(actor_public_id):
     if not sa.inspect(db.engine).has_table("tap_events"):
         student.__dict__["tap_events"] = []
 
-    # Get the active insurance enrollment scoped to the current class and seat.
-    active_insurance = (
-        InsuranceEnrollment.query.join(
-            InsurancePolicy, InsuranceEnrollment.policy_id == InsurancePolicy.id
-        )
-        .filter(
-            InsuranceEnrollment.seat_id == scoped_seat.id,
-            InsuranceEnrollment.class_id == class_id,
-            InsuranceEnrollment.status == 'active',
-            InsurancePolicy.class_id == class_id,
-        )
-        .order_by(InsuranceEnrollment.id.desc())
-        .first()
-    )
+    # Removed legacy insurance enrollment lookup.
+    active_insurance = None
 
     # Get all blocks for the edit modal
     all_students = Seat.query.filter(Seat.class_id == class_id).join(IdentityProfile, IdentityProfile.seat_id == Seat.id).all()
@@ -6950,7 +6811,6 @@ def _next_tenant_scoped_tier_id(seed, existing_ids):
 def insurance_management():
     """Main insurance management dashboard."""
     user_id = g.canonical_context.user_id
-    form = InsurancePolicyForm()
     class_context = _resolve_admin_class_context(g.canonical_context)
     if not class_context:
         flash("Select a class from the sidebar before managing insurance.", "warning")
@@ -6963,233 +6823,14 @@ def insurance_management():
     settings_block = class_context.get("block")
     active_class_label = selected_join_code
 
-    # Populate blocks choices from the teacher's students
-    blocks = _get_teacher_blocks(g.canonical_context)
-    form.blocks.choices = [(block, f"Period {block}") for block in blocks]
-
-    # V2 class-authoritative scoping: all policy reads are bounded by canonical class_id.
-    existing_policies = InsurancePolicy.query.filter_by(class_id=selected_class_id).all()
-
-    # Collect existing tier groups for the current teacher
-    tier_groups_map = {}
-    for policy in existing_policies:
-        if policy.tier_category_id:
-            category_id = policy.tier_category_id
-            if category_id not in tier_groups_map:
-                tier_groups_map[category_id] = {
-                    'id': category_id,
-                    'name': policy.tier_name or f"Group {category_id}",
-                    'color': policy.tier_color or 'primary',
-                    'policies': []
-                }
-            tier_groups_map[category_id]['policies'].append({
-                'title': policy.title,
-                'level': policy.tier_level
-            })
-
-    tier_groups = sorted(tier_groups_map.values(), key=lambda g: g['id'])
-    tier_namespace_seed = _get_teacher_user_tier_namespace_seed(user_id)
-    existing_tier_ids = set(tier_groups_map.keys())
-    next_tier_category_id = _next_tenant_scoped_tier_id(tier_namespace_seed, existing_tier_ids)
-
-    if request.method == 'POST' and form.validate_on_submit():
-        # Generate unique policy code
-        policy_code = secrets.token_urlsafe(12)[:16]
-        while InsurancePolicy.query.filter_by(policy_code=policy_code).first():
-            policy_code = secrets.token_urlsafe(12)[:16]
-
-        tier_category_id = None
-        if form.tier_category_id.data:
-            tier_category_id = form.tier_category_id.data
-        elif form.tier_name.data or form.tier_color.data:
-            tier_category_id = next_tier_category_id
-
-        # Create new insurance policy
-        policy = InsurancePolicy(
-            policy_code=policy_code,
-            teacher_id=g.canonical_context.user_id,
-            class_id=selected_class_id,
-            settings_mode=request.form.get('settings_mode', 'advanced'),
-        )
-        _populate_policy_from_form(policy, form, next_tier_category_id=tier_category_id)
-        db.session.add(policy)
-        db.session.flush()  # Get the ID for the policy before adding blocks
-        db.session.flush()
-        flash(f"Insurance policy '{policy.title}' created successfully!", "success")
-        return redirect(url_for('admin.insurance_management'))
-
-    # Get policies for current teacher only
-    policies = existing_policies
-
-    seats_in_scope = Seat.query.filter(
-        Seat.class_id == selected_class_id,
-        Seat.role == 'student',
-    ).all()
-    seat_ids_in_scope = [seat.id for seat in seats_in_scope]
-
-    # Get student enrollments for selected block
-        # CRITICAL: Filter by the selected class scope for proper multi-tenancy scoping
-    active_enrollments = []
-    cancelled_enrollments = []
-    claims = []
-    pending_claims_count = 0
-
-    if seat_ids_in_scope and selected_join_code:
-        active_enrollments = (
-            InsuranceEnrollment.query
-            .filter(InsuranceEnrollment.seat_id.in_(seat_ids_in_scope))
-            .filter(InsuranceEnrollment.class_id == selected_class_id)
-            .filter(InsuranceEnrollment.status == 'active')
-            .all()
-        )
-        cancelled_enrollments = (
-            InsuranceEnrollment.query
-            .filter(InsuranceEnrollment.seat_id.in_(seat_ids_in_scope))
-            .filter(InsuranceEnrollment.class_id == selected_class_id)
-            .filter(InsuranceEnrollment.status == 'cancelled')
-            .all()
-        )
-
-        claims = (
-            InsuranceClaim.query
-            .join(InsuranceEnrollment, InsuranceClaim.enrollment_id == InsuranceEnrollment.id)
-            .filter(InsuranceEnrollment.seat_id.in_(seat_ids_in_scope))
-            .filter(InsuranceEnrollment.class_id == selected_class_id)
-            .order_by(InsuranceClaim.filed_date.desc())
-            .all()
-        )
-        pending_claims_count = (
-            InsuranceClaim.query
-            .join(InsuranceEnrollment, InsuranceClaim.enrollment_id == InsuranceEnrollment.id)
-            .filter(InsuranceEnrollment.seat_id.in_(seat_ids_in_scope))
-            .filter(InsuranceEnrollment.class_id == selected_class_id)
-            .filter(InsuranceClaim.status == 'pending')
-            .count()
-        )
-
-    policy_enrollment_counts = {}
-    for enrollment in active_enrollments:
-        policy_enrollment_counts[enrollment.policy_id] = (
-            policy_enrollment_counts.get(enrollment.policy_id, 0) + 1
-        )
-
-    policy_pending_claim_counts = {}
-    for claim in claims:
-        if claim.status != 'pending':
-            continue
-        policy_pending_claim_counts[claim.policy_id] = (
-            policy_pending_claim_counts.get(claim.policy_id, 0) + 1
-        )
-
-    insurance_recommendation = _build_insurance_recommendation_context(
-        g.canonical_context,
-        class_id=selected_class_id,
-        charge_frequency=form.charge_frequency.data or 'monthly',
-    )
-
-    return render_template('admin_insurance.html',
-                          form=form,
-                          policies=policies,
-                          active_enrollments=active_enrollments,
-                          cancelled_enrollments=cancelled_enrollments,
-                          claims=claims,
-                          pending_claims_count=pending_claims_count,
-                          policy_enrollment_counts=policy_enrollment_counts,
-                          policy_pending_claim_counts=policy_pending_claim_counts,
-                          tier_groups=tier_groups,
-                          next_tier_category_id=next_tier_category_id,
-                          settings_block=settings_block,
-                          active_class_label=active_class_label,
-                          active_join_code=selected_join_code,
-                          insurance_recommendation=insurance_recommendation,
-                          selected_feature_scope=selected_scope)
+    abort(404)
 
 
 @admin_bp.route('/insurance/edit/<int:policy_id>', methods=['GET', 'POST'])
 @admin_required
 def edit_insurance_policy(policy_id):
     """Edit existing insurance policy."""
-    policy = db.get_or_404(InsurancePolicy, policy_id)
-
-    # Verify this policy belongs to a class currently owned by the current teacher.
-    class_owned = ClassEconomy.query.filter_by(
-        class_id=policy.class_id,
-        user_id=g.canonical_context.user_id,
-    ).first()
-    if not class_owned:
-        abort(403)
-
-    form = InsurancePolicyForm(obj=policy)
-
-    # Populate blocks choices from the teacher's students
-    blocks = _get_teacher_blocks(g.canonical_context)
-    form.blocks.choices = [(block, f"Period {block}") for block in blocks]
-
-    # Pre-populate selected blocks on GET request (using many-to-many relationship)
-    if request.method == 'GET':
-        form.blocks.data = policy.blocks_list
-
-    teacher_policies = InsurancePolicy.query.filter_by(class_id=policy.class_id).all()
-    tier_groups_map = {}
-    for teacher_policy in teacher_policies:
-        if teacher_policy.tier_category_id:
-            category_id = teacher_policy.tier_category_id
-            if category_id not in tier_groups_map:
-                tier_groups_map[category_id] = {
-                    'id': category_id,
-                    'name': teacher_policy.tier_name or f"Group {category_id}",
-                    'color': teacher_policy.tier_color or 'primary',
-                    'policies': []
-                }
-            tier_groups_map[category_id]['policies'].append({
-                'title': teacher_policy.title,
-                'level': teacher_policy.tier_level
-            })
-
-    tier_groups = sorted(tier_groups_map.values(), key=lambda g: g['id'])
-    tier_namespace_seed = _get_teacher_user_tier_namespace_seed(policy.teacher_id)
-    existing_tier_ids = set(tier_groups_map.keys())
-    next_tier_category_id = _next_tenant_scoped_tier_id(tier_namespace_seed, existing_tier_ids)
-
-    if request.method == 'POST' and form.validate_on_submit():
-        _populate_policy_from_form(policy, form, next_tier_category_id=next_tier_category_id)
-
-        db.session.flush()
-        flash(f"Insurance policy '{policy.title}' updated successfully!", "success")
-        return redirect(url_for('admin.insurance_management'))
-
-    # Get other active policies for bundle selection (excluding current policy)
-    available_policies = InsurancePolicy.query.filter(
-        InsurancePolicy.is_active == True,
-        InsurancePolicy.class_id == policy.class_id,
-        InsurancePolicy.id != policy_id
-    ).all()
-
-    recommendation_block = policy.blocks_list[0] if policy.blocks_list else None
-    recommendation_scope = resolve_class_scope(
-        g.canonical_context.user_id,
-        class_id=policy.class_id,
-    )
-    payroll_settings = _resolve_admin_payroll_settings_for_class_id(
-        g.canonical_context,
-        recommendation_scope["class_id"] if recommendation_scope else None,
-    )
-    insurance_recommendation = _build_insurance_recommendation_context(
-        g.canonical_context,
-        class_id=policy.class_id,
-        charge_frequency=policy.charge_frequency or 'monthly',
-    )
-
-    return render_template(
-        'admin_edit_insurance_policy.html',
-        form=form,
-        policy=policy,
-        available_policies=available_policies,
-        tier_groups=tier_groups,
-        next_tier_category_id=next_tier_category_id,
-        payroll_settings=payroll_settings,
-        insurance_recommendation=insurance_recommendation,
-    )
+    abort(404)
 
 
 @admin_bp.route('/insurance/deactivate/<int:policy_id>', methods=['POST'])
@@ -7197,15 +6838,7 @@ def edit_insurance_policy(policy_id):
 @feat_shell("FEAT-ADMN-001")
 def deactivate_insurance_policy(policy_id):
     """Deactivate an insurance policy."""
-    policy = db.get_or_404(InsurancePolicy, policy_id)
-
-    # Verify this policy belongs to the current teacher
-    if policy.teacher_id != g.canonical_context.user_id:
-        abort(403)
-
-    policy.is_active = False
-    flash(f"Insurance policy '{policy.title}' has been deactivated.", "success")
-    return redirect(url_for('admin.insurance_management'))
+    abort(404)
 
 
 @admin_bp.route('/insurance/delete/<int:policy_id>', methods=['POST'])
@@ -7217,127 +6850,14 @@ def delete_insurance_policy(policy_id):
     this safely deletes only the current teacher's policy data without affecting
     other teachers.
     """
-    policy = db.get_or_404(InsurancePolicy, policy_id)
-
-    # Verify this policy belongs to the current teacher
-    if policy.teacher_id != g.canonical_context.user_id:
-        abort(403)
-
-    force_delete = request.form.get('force_delete') == 'true'
-
-    class_id = g.canonical_context.class_id
-
-    # Check for active enrollments within scope
-    active_enrollments = InsuranceEnrollment.query.filter(
-        InsuranceEnrollment.policy_id == policy_id,
-        InsuranceEnrollment.status == 'active',
-        InsuranceEnrollment.class_id == class_id,
-    ).count()
-
-    # Check for pending claims within scope
-    pending_claims = (
-        InsuranceClaim.query
-        .filter(
-            InsuranceClaim.policy_id == policy_id,
-            InsuranceClaim.status == 'pending',
-            InsuranceClaim.class_id == class_id,
-        ).count()
-    )
-
-    if not force_delete and (active_enrollments > 0 or pending_claims > 0):
-        flash(f"Cannot delete policy '{policy.title}': {active_enrollments} active enrollments and {pending_claims} pending claims. Cancel all enrollments first or use force delete.", "danger")
-        return redirect(url_for('admin.insurance_management'))
-
-    try:
-        # Cancel active enrollments if force delete
-        if force_delete and active_enrollments > 0:
-            cancelled_count = InsuranceEnrollment.query.filter(
-                InsuranceEnrollment.policy_id == policy_id,
-                InsuranceEnrollment.status == 'active',
-                InsuranceEnrollment.seat_id.in_(
-                    sa.select(Seat.id).filter(Seat.user_id.in_(sa.select(student_ids_subq)))
-                ),
-            ).update({'status': 'cancelled'}, synchronize_session=False)
-            flash(f"Cancelled {cancelled_count} active enrollments.", "info")
-
-        # Delete all claims for this policy
-        claim_ids_to_delete = [
-            c.id for c in InsuranceClaim.query
-            .join(Seat, InsuranceClaim.seat_id == Seat.id)
-            .filter(
-                InsuranceClaim.policy_id == policy_id,
-                Seat.user_id.in_(sa.select(student_ids_subq)),
-            ).all()
-        ]
-        claims_deleted = InsuranceClaim.query.filter(InsuranceClaim.id.in_(claim_ids_to_delete)).delete(synchronize_session=False) if claim_ids_to_delete else 0
-
-        # Delete all enrollments for this policy.
-        enrollments_deleted = InsuranceEnrollment.query.filter(
-            InsuranceEnrollment.policy_id == policy_id,
-            InsuranceEnrollment.seat_id.in_(
-                sa.select(Seat.id).filter(Seat.user_id.in_(sa.select(student_ids_subq)))
-            ),
-        ).delete(synchronize_session=False)
-        InsuranceEnrollment.query.filter(
-            InsuranceEnrollment.policy_id == policy_id,
-        ).delete(synchronize_session=False)
-
-        # Delete the policy itself
-        db.session.delete(policy)
-        db.session.flush()
-
-    except Exception as e:
-        db.session.rollback()
-        current_app.logger.error(f"Error deleting policy {policy_id}", exc_info=True)
-        flash(f"Cannot delete insurance policy due to internal error", "danger")
-
-    return redirect(url_for('admin.insurance_management'))
+    abort(404)
 
 
 @admin_bp.route('/insurance/mass-remove/<int:policy_id>', methods=['POST'])
 @admin_required
 def mass_remove_policy(policy_id):
     """Cancel insurance policy for multiple or all students."""
-    policy = db.get_or_404(InsurancePolicy, policy_id)
-
-    # Verify this policy belongs to the current teacher
-    if policy.teacher_id != g.canonical_context.user_id:
-        abort(403)
-
-    # Get list of student IDs to remove (or 'all')
-    student_ids_raw = request.form.get('student_ids', 'all')
-
-    class_id = g.canonical_context.class_id
-
-    if student_ids_raw == 'all':
-        # Cancel for all active enrollments in scope
-        count = InsuranceEnrollment.query.filter(
-            InsuranceEnrollment.policy_id == policy_id,
-            InsuranceEnrollment.status == 'active',
-            InsuranceEnrollment.class_id == class_id,
-        ).update({'status': 'cancelled'}, synchronize_session=False)
-    else:
-        # Cancel for specific seats
-        try:
-            seat_ids = [int(sid.strip()) for sid in student_ids_raw.split(',') if sid.strip()]
-            count = InsuranceEnrollment.query.filter(
-                InsuranceEnrollment.policy_id == policy_id,
-                InsuranceEnrollment.seat_id.in_(seat_ids),
-                InsuranceEnrollment.class_id == class_id,
-                InsuranceEnrollment.status == 'active'
-            ).update({'status': 'cancelled'}, synchronize_session=False)
-        except ValueError:
-            flash("Invalid seat IDs provided.", "danger")
-            return redirect(url_for('admin.insurance_management'))
-
-    db.session.flush()
-
-    if student_ids_raw == 'all':
-        flash(f"Cancelled policy '{policy.title}' for {count} students.", "success")
-    else:
-        flash(f"Cancelled policy '{policy.title}' for {count} selected students.", "success")
-
-    return redirect(url_for('admin.insurance_management'))
+    abort(404)
 
 
 @admin_bp.route('/insurance/student-policy/<int:enrollment_id>')
@@ -7345,31 +6865,7 @@ def mass_remove_policy(policy_id):
 def view_student_policy(enrollment_id):
     """View student's policy enrollment details and claims history."""
     class_id = g.canonical_context.class_id
-    enrollment = (
-        InsuranceEnrollment.query
-        .filter(
-            InsuranceEnrollment.id == enrollment_id,
-            InsuranceEnrollment.class_id == class_id,
-        )
-        .first_or_404()
-    )
-
-    # Get claims for this enrollment
-    claims = InsuranceClaim.query.filter_by(enrollment_id=enrollment.id).order_by(
-        InsuranceClaim.filed_date.desc()
-    ).all()
-
-    seat = db.session.get(Seat, enrollment.seat_id)
-    profile = IdentityProfile.query.filter_by(seat_id=enrollment.seat_id).first()
-    class_row = ClassEconomy.query.filter_by(class_id=class_id).first()
-
-    return render_template('admin_view_student_policy.html',
-                          enrollment=enrollment,
-                          policy=enrollment.policy,
-                          seat=seat,
-                          profile=profile,
-                          join_code=get_display_join_code(class_row.class_id) if class_row else '',
-                          claims=claims)
+    abort(404)
 
 
 @admin_bp.route('/insurance/claim/<int:claim_id>', methods=['GET', 'POST'])
@@ -7377,265 +6873,7 @@ def view_student_policy(enrollment_id):
 @admin_required
 def process_claim(claim_id):
     """Process insurance claim with auto-deposit for monetary claims."""
-    claim = db.session.get(InsuranceClaim, claim_id)
-    if claim is None:
-        abort(404)
-
-    enrollment = db.session.get(InsuranceEnrollment, claim.enrollment_id)
-    if enrollment is None:
-        abort(404)
-
-    try:
-        ctx = g.canonical_context
-        if (enrollment and enrollment.class_id != ctx.class_id) or (claim and claim.class_id != ctx.class_id):
-            raise access_policy_service.AccessPolicyDenied(reason_code="foreign_class", message="You do not have access to that class insurance claim.")
-    except (AccessScopeDenied, access_policy_service.AccessPolicyDenied):
-        abort(403)
-
-    form = AdminClaimProcessForm(obj=claim)
-
-    claim_type = resolve_claim_type(
-        claim=claim,
-        policy_claim_type=getattr(enrollment.policy, "claim_type", None),
-    )
-    max_claim_amount = enrollment.contract_max_claim_amount
-    max_payout_per_period = enrollment.contract_max_payout_per_period
-    max_claims_count = enrollment.contract_max_claims_count
-    max_claims_period = (enrollment.contract_max_claims_period or 'month').lower()
-    claim_time_limit_days = enrollment.contract_claim_time_limit_days
-
-    period_start, period_end = claim_period_bounds_utc(max_claims_period)
-    period_start_db = normalize_for_db(period_start)
-    period_end_db = normalize_for_db(period_end)
-
-    def _claim_base_amount(target_claim):
-        if claim_type == 'transaction_monetary' and target_claim.transaction:
-            return abs(target_claim.transaction.amount)
-        return target_claim.claim_amount or Decimal('0.00')
-
-    # Validate claim
-    validation_errors = []
-
-    # Canonical waiting-period gate:
-    # 00:00 next class-local day after purchase through 00:00 after day N.
-    now_utc = utc_now()
-    waiting_end_class = compute_waiting_end_class_for_enrollment(
-        enrollment,
-        fallback_purchase_utc=claim.transaction.timestamp if claim.transaction else claim.incident_date,
-        fallback_class_id=getattr(claim.transaction, "class_id", None),
-    )
-    if waiting_end_class is not None and enrollment.class_id:
-        now_class = get_class_now(enrollment.class_id, reference_time_utc=now_utc)
-        if now_class < waiting_end_class:
-            validation_errors.append("Coverage has not started yet (still in waiting period)")
-
-    # Check if payment is current
-    if not enrollment.payment_current:
-        validation_errors.append("Premium payments are not current")
-
-    if claim_type == 'transaction_monetary' and not claim.transaction:
-        validation_errors.append("Transaction-based claim is missing a linked transaction")
-    if claim_type == 'transaction_monetary' and claim.transaction and claim.transaction.is_void:
-        validation_errors.append("Linked transaction has been voided and cannot be reimbursed")
-
-    # P0-3 Fix: Validate transaction ownership to prevent cross-student fraud
-    if claim_type == 'transaction_monetary' and claim.transaction:
-        if claim.transaction.seat_id != claim.seat_id:
-            validation_errors.append(
-                f"SECURITY: Transaction ownership mismatch. "
-                f"Transaction belongs to seat ID {claim.transaction.seat_id}, "
-                f"but claim filed by seat ID {claim.seat_id}."
-            )
-            current_app.logger.error(
-                f"SECURITY ALERT: Transaction ownership mismatch in claim {claim.id}. "
-                f"Claim seat_id={claim.seat_id}, transaction seat_id={claim.transaction.seat_id}"
-            )
-
-    if claim_type == 'transaction_monetary' and claim.transaction_id:
-        duplicate_claim = InsuranceClaim.query.filter(
-            InsuranceClaim.transaction_id == claim.transaction_id,
-            InsuranceClaim.id != claim.id,
-        ).first()
-        if duplicate_claim:
-            validation_errors.append("Another claim is already tied to this transaction")
-
-    if claim_type == 'transaction_monetary' and claim.transaction:
-        reason_to_message = {
-            CLAIM_REASON_HARD_DENY_CATEGORY: "Linked transaction category is never eligible for reimbursement",
-            CLAIM_REASON_INTERNAL_TRANSFER: "Internal transfer transactions are not eligible for reimbursement",
-            CLAIM_REASON_DELAY_USE_NOT_USED: "Delay-use purchase has not been used yet",
-            CLAIM_REASON_DELAY_USE_EXPIRED: "Delay-use purchase was used after expiration",
-            CLAIM_REASON_PREMIUM_NOT_CURRENT: "Premium payments are not current",
-            CLAIM_REASON_WAITING_PERIOD: "Coverage waiting period requirements are not satisfied",
-            CLAIM_REASON_TIME_LIMIT_EXCEEDED: "Claim is outside the filing time limit",
-            CLAIM_REASON_ALREADY_CLAIMED: "Another claim is already tied to this transaction",
-            CLAIM_REASON_REIMBURSEMENT_ALREADY_EXISTS: "A reimbursement already exists for this source transaction/policy",
-            CLAIM_REASON_UNCLASSIFIED_TRANSACTION: "Transaction could not be classified as eligible",
-        }
-        claimed_tx_ids = {
-            row[0]
-            for row in db.session.query(InsuranceClaim.transaction_id)
-            .filter(InsuranceClaim.transaction_id.isnot(None), InsuranceClaim.id != claim.id)
-            .all()
-            if row[0] is not None
-        }
-        reimbursed_tx_ids = collect_reimbursed_source_tx_ids(claim.policy_id)
-        transaction_eligible, reason_code = evaluate_claim_transaction_eligibility(
-            claim.transaction,
-            enrollment=enrollment,
-            now_utc=now_utc,
-            claim_type=claim_type,
-            claim_time_limit_days=claim_time_limit_days,
-            policy_id=claim.policy_id,
-            claimed_tx_ids=claimed_tx_ids,
-            reimbursed_tx_ids=reimbursed_tx_ids,
-        )
-        if not transaction_eligible:
-            validation_errors.append(reason_to_message.get(reason_code, "Linked transaction is not eligible"))
-
-    incident_reference = claim.transaction.timestamp if claim_type == 'transaction_monetary' and claim.transaction else claim.incident_date
-    incident_reference = ensure_utc(incident_reference)
-    days_since_incident = (now_utc - incident_reference).days if incident_reference else 0
-    if claim_time_limit_days is not None and days_since_incident > claim_time_limit_days:
-        validation_errors.append(f"Claim filed too late ({days_since_incident} days after incident, limit is {claim_time_limit_days} days)")
-
-    # Check max claims count
-    approved_claims = InsuranceClaim.query.filter(
-        InsuranceClaim.enrollment_id == enrollment.id,
-        InsuranceClaim.status.in_(['approved', 'paid']),
-        InsuranceClaim.processed_date >= period_start_db,
-        InsuranceClaim.processed_date < period_end_db,
-        InsuranceClaim.id != claim.id,
-    )
-    if max_claims_count and approved_claims.count() >= max_claims_count:
-        validation_errors.append(f"Maximum claims limit reached ({max_claims_count} per {max_claims_period})")
-
-    period_payouts = None
-    remaining_period_cap = None
-    if max_payout_per_period:
-        period_payouts = db.session.query(func.sum(InsuranceClaim.approved_amount)).filter(
-            InsuranceClaim.enrollment_id == enrollment.id,
-            InsuranceClaim.status.in_(['approved', 'paid']),
-            InsuranceClaim.processed_date >= period_start_db,
-            InsuranceClaim.processed_date < period_end_db,
-            InsuranceClaim.approved_amount.isnot(None),
-            InsuranceClaim.id != claim.id,
-        ).scalar() or Decimal('0.00')
-
-        requested_amount = _claim_base_amount(claim)
-        remaining_period_cap = max(max_payout_per_period - period_payouts, Decimal('0.00'))
-        if remaining_period_cap is not None and requested_amount > remaining_period_cap and claim_type != 'non_monetary':
-            validation_errors.append(
-                f"Maximum payout limit would be exceeded (${period_payouts:.2f} paid + ${requested_amount:.2f} requested > ${max_payout_per_period:.2f} limit per {max_claims_period})"
-            )
-
-    # Get claims statistics
-    claims_stats = {
-        'pending': InsuranceClaim.query.filter_by(enrollment_id=enrollment.id, status='pending').count(),
-        'approved': InsuranceClaim.query.filter_by(enrollment_id=enrollment.id, status='approved').count(),
-        'rejected': InsuranceClaim.query.filter_by(enrollment_id=enrollment.id, status='rejected').count(),
-        'paid': InsuranceClaim.query.filter_by(enrollment_id=enrollment.id, status='paid').count(),
-    }
-
-    if request.method == 'POST' and form.validate_on_submit():
-        old_status = claim.status
-        new_status = form.status.data
-        scope = g.canonical_context
-
-        is_monetary_claim = claim_type != 'non_monetary'
-        requires_payout = is_monetary_claim and new_status in ('approved', 'paid') and old_status not in ('approved', 'paid')
-
-        if validation_errors and requires_payout:
-            flash("Resolve validation errors before approving or paying out this claim.", "danger")
-            return redirect(url_for('admin.process_claim', claim_id=claim_id))
-
-        approved_amount = None
-        if requires_payout:
-            approved_claims_count = approved_claims.count()
-            if max_claims_count and approved_claims_count >= max_claims_count:
-                flash(f"Cannot approve claim: maximum of {max_claims_count} claims already reached this {max_claims_period}.", "danger")
-                db.session.rollback()
-                return redirect(url_for('admin.process_claim', claim_id=claim_id))
-
-            base_amount = _claim_base_amount(claim)
-            approved_amount = base_amount
-            if is_monetary_claim and form.approved_amount.data is not None:
-                approved_amount = Decimal(str(form.approved_amount.data))
-
-            if max_claim_amount:
-                approved_amount = min(approved_amount, max_claim_amount)
-
-            if remaining_period_cap is not None:
-                if remaining_period_cap <= 0:
-                    flash(
-                        f"Cannot approve claim: Would exceed maximum payout limit of ${max_payout_per_period:.2f} per {max_claims_period} (${period_payouts:.2f} already paid)",
-                        "danger",
-                    )
-                    db.session.rollback()
-                    return redirect(url_for('admin.process_claim', claim_id=claim_id))
-                approved_amount = min(approved_amount, remaining_period_cap)
-        elif claim_type == 'non_monetary' and new_status == 'approved':
-            flash(f"Non-monetary claim approved for {claim.claim_item}. Item/service will be provided offline.", "success")
-        elif new_status == 'rejected':
-            flash("Claim has been rejected.", "warning")
-
-        try:
-            claim_class_join_code = get_display_join_code(ctx.class_id) or ""
-            claim_scope = Scope(
-                class_id=ctx.class_id,
-                join_code=claim_class_join_code,
-                actor_id=ctx.user_id,
-                role="teacher",
-                user_id=ctx.user_id,
-                block=getattr(getattr(enrollment, "seat", None), "class_economy", None).section if getattr(getattr(enrollment, "seat", None), "class_economy", None) else None,
-                seat_id=ctx.seat_id,
-            )
-            with FEATContext(
-                "FEAT-ADMN-001",
-                idempotency_key=f"feat:claim-resolution:{claim.id}:{new_status}",
-            ):
-                execute_insurance_claim_resolution(
-                    scope=claim_scope,
-                    claim=claim,
-                    enrollment=enrollment,
-                    new_status=new_status,
-                    teacher_notes=form.teacher_notes.data,
-                    rejection_reason=form.rejection_reason.data,
-                    processed_by_user_id=g.canonical_context.user_id,
-                    processed_by_seat_id=scope.seat_id,
-                    approved_amount=approved_amount,
-                )
-            if requires_payout:
-                _enr_ip = enrollment.seat.identity_profile if enrollment.seat else None
-                student_name = _enr_ip.first_name if _enr_ip else "the student"
-                student_initial = _enr_ip.last_initial if _enr_ip else ""
-                student_display = f"{student_name} {student_initial}.".strip()
-                flash(f"Monetary claim approved! ${approved_amount:.2f} deposited to {student_display}'s checking account.", "success")
-        except IntegrityError as exc:
-            db.session.rollback()
-            if 'uq_insurance_reimbursement_source_policy' in str(exc.orig):
-                flash("Reimbursement already exists for this source transaction and policy.", "danger")
-            else:
-                flash("Could not process the claim due to a concurrent update. Please retry.", "danger")
-            return redirect(url_for('admin.process_claim', claim_id=claim_id))
-        return redirect(url_for('admin.insurance_management'))
-
-    return render_template('admin_process_claim.html',
-                          claim=claim,
-                          form=form,
-                          enrollment=enrollment,
-                          claim_type=claim_type,
-                          contract_title=enrollment.contract_title,
-                          contract_description=enrollment.contract_description,
-                          contract_max_claim_amount=max_claim_amount,
-                          contract_max_claims_count=max_claims_count,
-                          contract_max_claims_period=max_claims_period,
-                          contract_claim_time_limit_days=claim_time_limit_days,
-                          contract_max_payout_per_period=max_payout_per_period,
-                          validation_errors=validation_errors,
-                          claims_stats=claims_stats,
-                          remaining_period_cap=remaining_period_cap,
-                          period_payouts=period_payouts)
+    abort(404)
 
 
 # -------------------- TRANSACTIONS --------------------
@@ -8509,13 +7747,6 @@ def payroll():
             'total_earned': earnings_map.get(student.id, Decimal('0.00'))
         })
 
-    # Get saved templates for this class scope
-    saved_adjustments = (
-        SavedAdjustment.query
-        .filter_by(class_id=selected_scope['class_id'])
-        .order_by(SavedAdjustment.created_at.desc())
-        .all()
-    )
     # Initialize forms
     settings_form = PayrollSettingsForm()
     settings_form.block.choices = (
@@ -8596,8 +7827,6 @@ def payroll():
         # Students tab
         student_stats=student_stats,
         scoped_balances_by_student=scoped_balances_by_student,
-        # Saved Adjustments
-        saved_adjustments=saved_adjustments,
         # Manual Payment tab
         manual_payment_form=manual_payment_form,
         all_students=students,
@@ -9063,17 +8292,7 @@ def payroll_manual_payment():
 
             # Save Template Logic
             if save_action in ['save_only', 'save_and_apply']:
-                saved_adj = SavedAdjustment(
-                    seat_id=teacher_seat.id,
-                    class_id=selected_class_id,
-                    name=description,
-                    description=description,
-                    amount=amount,
-                    type=payment_type,
-                    is_active=True
-                )
-                db.session.add(saved_adj)
-                db.session.commit()
+                pass
                 if save_action == 'save_only':
                     flash(f'Template "{description}" saved successfully!', 'success')
                     return redirect(url_for('admin.payroll'))
@@ -9758,20 +8977,7 @@ def export_students():
     active_insurances_map = {}
     if user_id and seat_ids:
         class_ids_subq = db.session.query(ClassEconomy.class_id).filter_by(user_id=user_id).subquery()
-        scoped_insurances = InsuranceEnrollment.query.join(
-            InsurancePolicy, InsuranceEnrollment.policy_id == InsurancePolicy.id
-        ).filter(
-            InsuranceEnrollment.seat_id.in_(seat_ids),
-            InsuranceEnrollment.status == 'active',
-            InsurancePolicy.class_id.in_(sa.select(class_ids_subq)),
-        )
-        if selected_class_id:
-            scoped_insurances = scoped_insurances.filter(InsuranceEnrollment.class_id == selected_class_id)
-        scoped_insurances = scoped_insurances.all()
-
-        for ins in scoped_insurances:
-            if ins.seat_id not in active_insurances_map:
-                active_insurances_map[ins.seat_id] = ins
+        pass
 
     for seat in seats:
         export_block = seat.class_economy.section if seat and seat.class_economy else None
@@ -11282,13 +10488,8 @@ def onboarding_status():
         )
         data_completed['rent'] = rent_settings is not None
 
-        # Insurance: has at least one insurance policy for ANY block OR marked complete
-        insurance_policies = (
-            InsurancePolicy.query
-            .filter(InsurancePolicy.class_id.in_(sa.select(class_ids_subq)))
-            .count()
-        )
-        data_completed['insurance'] = insurance_policies > 0
+        # Insurance provisioning is no longer tracked through legacy policy rows.
+        data_completed['insurance'] = False
 
         # Hall pass: check if hall pass settings exist for ANY block OR marked complete
         hall_pass_settings = (
@@ -11597,10 +10798,7 @@ def api_economy_analyze():
                 .first()
             )
 
-        insurance_policies_query = InsurancePolicy.query.filter(
-            InsurancePolicy.class_id.in_(sa.select(class_ids_query.subquery())),
-            InsurancePolicy.is_active.is_(True),
-        )
+        insurance_policies_query = []
         fines_query = []
         store_items_query = StoreItem.query.filter(
             StoreItem.class_id.in_(sa.select(class_ids_query.subquery())),
@@ -11608,10 +10806,9 @@ def api_economy_analyze():
         )
 
         if scoped_class_id:
-            insurance_policies_query = insurance_policies_query.filter(InsurancePolicy.class_id == scoped_class_id)
             store_items_query = store_items_query.filter(StoreItem.class_id == scoped_class_id)
 
-        insurance_policies = insurance_policies_query.all()
+        insurance_policies = insurance_policies_query
         fines = fines_query
         store_items = store_items_query.all()
 

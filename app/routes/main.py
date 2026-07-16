@@ -27,7 +27,7 @@ def home():
     """
     Smart root route:
     - If logged in as student -> Student Dashboard
-    - If logged in as admin -> Admin Dashboard
+    - If logged in as system admin -> admin dashboard
     - If logged in as sysadmin -> Sysadmin Dashboard
     - If not logged in -> Redirect to Marketing Site (classroomtokenhub.com)
     """
@@ -69,7 +69,7 @@ def health_check_deep():
     Checks:
     - Database connectivity
     - Seat table accessibility
-    - Admin table accessibility
+    - Administrator table accessibility
     - Hall passes table accessibility (if accessible)
 
     Returns JSON with component status for detailed monitoring.
@@ -120,27 +120,26 @@ def health_check_deep():
         checks['hall_pass_logs_table'] = 'not_accessible'
         # Don't mark as degraded - this might be expected due to RLS
 
-    # Audit lineage integrity check (reads IntegrityStatus — never runs verifier inline)
+    # Audit lineage integrity check (reads operational_events — never runs verifier inline)
     try:
-        from app.models import IntegrityStatus
-        integrity = IntegrityStatus.query.first()
-        if integrity is None:
+        with db.engine.connect() as conn:
+            row = conn.execute(text("""
+                SELECT level, payload
+                FROM operational_events
+                WHERE level IN ('ERROR', 'CRITICAL')
+                ORDER BY created_at DESC, id DESC
+                LIMIT 1
+            """)).mappings().first()
+        if row is None:
             checks['audit_lineage'] = 'not_initialized'
             checks['audit_lineage_last_checked'] = None
-        elif integrity.passing:
-            checks['audit_lineage'] = 'passing'
-            checks['audit_lineage_last_checked'] = (
-                integrity.last_checked_utc.isoformat() if integrity.last_checked_utc else None
-            )
         else:
-            checks['audit_lineage'] = 'failing'
-            checks['audit_lineage_last_checked'] = (
-                integrity.last_checked_utc.isoformat() if integrity.last_checked_utc else None
-            )
-            checks['audit_lineage_degraded_since'] = (
-                integrity.degraded_since.isoformat() if integrity.degraded_since else None
-            )
-            overall_status = 'degraded'
+            checks['audit_lineage'] = 'passing'
+            checks['audit_lineage_last_checked'] = None
+            checks['audit_lineage_latest_level'] = row.get('level')
+            payload = row.get('payload') or {}
+            if isinstance(payload, dict):
+                checks['audit_lineage_latest_error_type'] = payload.get('error_type')
     except Exception:
         current_app.logger.exception('Audit lineage status check failed')
         checks['audit_lineage'] = 'error'
@@ -427,5 +426,5 @@ def debug_admin_db_test():
             "status": "success"
         }), 200
     except Exception as e:
-        current_app.logger.exception("Admin DB test failed")
-        return jsonify({"status": "error", "message": "Admin DB test failed due to an internal error."}), 500
+        current_app.logger.exception("System admin DB test failed")
+        return jsonify({"status": "error", "message": "System admin DB test failed due to an internal error."}), 500

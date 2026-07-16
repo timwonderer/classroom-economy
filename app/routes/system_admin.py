@@ -330,7 +330,7 @@ def passkey_register_start():
         # Generate registration token using official SDK
         user_id = f"user_{user.id}"
         username = session.get("sysadmin_auth_username") or user.auth_username or f"sysadmin_{user.id}"
-        displayname = f"System Admin: {username}"
+        displayname = f"System administrator: {username}"
 
         token = create_register_token(user_id, username, displayname)
 
@@ -601,7 +601,7 @@ def dashboard():
     ).count()
     open_tickets = new_reports_count + open_issues_count
 
-    # Recent admins (last 5) — canonical teacher Users, not the legacy Admin bridge table.
+    # Recent admins (last 5) are the canonical teacher Users.
     recent_admins = (
         User.query.filter_by(user_role=UserRole.TEACHER)
         .order_by(User.created_at.desc())
@@ -874,13 +874,7 @@ def test_error_503():
 @sysadmin_bp.route('/admins')
 @system_admin_required
 def manage_admins():
-    """
-    Admin account management.
-
-    Lists canonical teacher Users (role=TEACHER) — the authoritative identity
-    per INV-IDEN-001. Legacy Admin bridge rows, where present, contribute no
-    display data here; reset/delete actions resolve them separately.
-    """
+    """Teacher account management for canonical teacher Users."""
     teachers = User.query.filter_by(user_role=UserRole.TEACHER).order_by(User.id.asc()).all()
     user_student_counts, _ = _user_student_counts([teacher.id for teacher in teachers])
 
@@ -925,7 +919,7 @@ def reset_admin_totp(user_id):
         # Generate QR code
         totp_uri = pyotp.totp.TOTP(new_secret).provisioning_uri(
             name=display_name,
-            issuer_name="Classroom Economy Admin"
+            issuer_name="Classroom Economy System Admin"
         )
 
         img = qrcode.make(totp_uri)
@@ -955,14 +949,7 @@ def reset_admin_totp(user_id):
 @system_admin_required
 @feat_shell("FEAT-OPS-001")
 def delete_admin(user_id):
-    """
-    Delete a teacher account and all students created under that teacher.
-    This is a permanent action that cascades to all student data.
-
-    user_id is the canonical User.id (matches what manage_admins() renders).
-    A legacy Admin bridge row, if present (bridge-period dual-write signups),
-    is also removed for consistency but its absence is not an error.
-    """
+    """Delete a teacher account and all students created under that teacher."""
     admin_user = db.get_or_404(User, user_id)
 
     try:
@@ -994,7 +981,7 @@ def delete_admin(user_id):
         db.session.flush()
 
         flash(
-            f"Admin '{admin_username}' deleted. Removed {deleted_student_count} student seats across {deleted_class_count} classes.",
+            f"Teacher '{admin_username}' deleted. Removed {deleted_student_count} student seats across {deleted_class_count} classes.",
             "success",
         )
 
@@ -1114,11 +1101,11 @@ def teacher_overview():
     Privacy-compliant admin overview showing only aggregated student counts.
 
     System admins can view:
-    - Admin public ID/display name
+    - Teacher public ID/display name
     - Total student count per admin
     - Student counts by period/block
     - Last login date
-    - Admin public IDs/display names and aggregate roster state only
+    - Teacher public IDs/display names and aggregate roster state only
 
     System admins CANNOT view:
     - Individual student names
@@ -1179,14 +1166,14 @@ def teacher_overview():
 @sysadmin_bp.route('/delete-period/<int:user_id>/<string:period>', methods=['POST'])
 @system_admin_required
 def delete_period(user_id, period):
-    flash("Admin deletions are self-managed. System admins cannot delete classes.", "error")
+    flash("Teacher account deletions are self-managed. System admins cannot delete classes.", "error")
     return redirect(url_for('sysadmin.manage_teachers'))
 
 
 @sysadmin_bp.route('/manage-teachers/delete/<int:user_id>', methods=['POST'])
 @system_admin_required
 def delete_teacher(user_id):
-    flash("Admin deletions are self-managed. System admins cannot delete admin accounts.", "error")
+    flash("Teacher account deletions are self-managed. System admins cannot delete admin accounts.", "error")
     return redirect(url_for('sysadmin.manage_teachers'))
 
 
@@ -1204,12 +1191,12 @@ def _resolve_report_id_from_ref(report_ref: str) -> int | None:
 def support_tickets():
     """
     Unified support ticket dashboard combining admin issues and escalated student issues.
-    Tab 1: Admin Issues (admin-submitted support tickets)
+    Tab 1: Teacher issues (teacher-submitted support tickets)
     Tab 2: Escalated Issues (student-escalated issues awaiting developer review)
     """
     active_tab = request.args.get('tab', 'reports')
 
-    # ── Admin Issues (Tab 1) ──
+    # ── Teacher Issues (Tab 1) ──
     status_filter = request.args.get('status', 'all')
     report_type_filter = request.args.get('type', 'all')
     report_query = Issue.query.filter(Issue.issue_type == 'general')
@@ -1259,7 +1246,7 @@ def support_tickets():
         'sysadmin_support_tickets.html',
         current_page='support_tickets',
         active_tab=active_tab,
-        # Admin issues
+        # Teacher issues
         reports=reports,
         status_filter=status_filter,
         report_type_filter=report_type_filter,
@@ -1322,7 +1309,7 @@ def user_reports():
     return render_template(
         'sysadmin_user_reports.html',
         current_page='user_reports',
-        page_title='Admin Issues',
+        page_title='Teacher Issues',
         reports=reports,
         new_count=new_count,
         reviewed_count=reviewed_count,
@@ -1661,7 +1648,7 @@ def announcements():
     for announcement in announcements_list:
         if announcement.audience_type == 'teacher_all_classes' and announcement.target_teacher_id:
             teacher_admin = admins_dict.get(announcement.target_teacher_id)
-            announcement.audience_display = f"All classes of {teacher_admin.get_display_username() if teacher_admin else 'Unknown Admin'}"
+            announcement.audience_display = f"All classes of {teacher_admin.get_display_username() if teacher_admin else 'Unknown teacher'}"
         else:
             announcement.audience_display = announcement.get_audience_label()
 
@@ -1685,7 +1672,7 @@ def announcement_create():
 
     # Populate teacher choices
     teacher_admins = User.query.filter(User.user_role == UserRole.TEACHER).order_by(User.id.asc()).all()
-    form.target_teacher.choices = [('', '-- Select Admin --')] + [
+    form.target_teacher.choices = [('', '-- Select Teacher --')] + [
         (teacher_admin.id, teacher_admin.get_display_username())
         for teacher_admin in teacher_admins
     ]
@@ -1695,7 +1682,7 @@ def announcement_create():
             # Validate target admin requirement
             if form.audience_type.data == 'teacher_all_classes':
                 if not form.target_teacher.data:
-                    flash('Please select a target admin for "All Classes of Specific Admin" audience.', 'danger')
+                    flash('Please select a target teacher for "All Classes of Specific Teacher" audience.', 'danger')
                     return render_template('sysadmin_announcement_form.html', form=form, action='Create')
 
             announcement = Announcement(
@@ -1742,7 +1729,7 @@ def announcement_edit(announcement_id):
 
     # Populate teacher choices
     teacher_admins = User.query.filter(User.user_role == UserRole.TEACHER).order_by(User.id.asc()).all()
-    form.target_teacher.choices = [('', '-- Select Admin --')] + [
+    form.target_teacher.choices = [('', '-- Select Teacher --')] + [
         (teacher_admin.id, teacher_admin.get_display_username())
         for teacher_admin in teacher_admins
     ]
@@ -1752,7 +1739,7 @@ def announcement_edit(announcement_id):
             # Validate target admin requirement
             if form.audience_type.data == 'teacher_all_classes':
                 if not form.target_teacher.data:
-                    flash('Please select a target admin for "All Classes of Specific Admin" audience.', 'danger')
+                    flash('Please select a target teacher for "All Classes of Specific Teacher" audience.', 'danger')
                     return render_template('sysadmin_announcement_form.html', form=form, announcement=announcement, action='Edit')
 
             announcement.audience_type = form.audience_type.data

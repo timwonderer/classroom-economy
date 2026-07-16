@@ -177,11 +177,11 @@ def admin_required(f):
         try:
             ctx = resolve_canonical_context(require_class=False)
         except (ContextNotEstablished, ContextMismatch, ContextForbidden, ContextInvariantViolation):
-            flash("Admin session is invalid. Please log in again.")
+            flash("System admin session is invalid. Please log in again.")
             return redirect(url_for('admin.login'))
 
         if ctx.actor_role != 'teacher':
-            flash("Admin session is invalid. Please log in again.")
+            flash("System admin session is invalid. Please log in again.")
             return redirect(url_for('admin.login'))
 
         if isinstance(ctx, BoundaryContext):
@@ -197,7 +197,7 @@ def admin_required(f):
             last_activity = datetime.fromisoformat(last_activity)
             if (now - last_activity) > timedelta(minutes=SESSION_TIMEOUT_MINUTES):
                 session.clear()
-                flash("Admin session expired. Please log in again.")
+                flash("System admin session expired. Please log in again.")
                 return redirect(url_for('admin.login'))
 
         session['last_activity'] = now.isoformat()

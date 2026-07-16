@@ -371,7 +371,7 @@ class EconomyBalanceChecker:
         Check if insurance premiums are balanced relative to CWI.
 
         Args:
-            insurance_policies: List of InsurancePolicy model instances
+            insurance_policies: List of policy rows
             cwi: Calculated CWI value
 
         Returns:
@@ -1189,7 +1189,7 @@ class EconomyBalanceChecker:
         Args:
             payroll_settings: PayrollSettings instance
             rent_settings: RentSettings instance (optional)
-            insurance_policies: List of InsurancePolicy instances (optional)
+            insurance_policies: Policy rows (optional)
             fines: List of PayrollFine instances (optional)
             store_items: List of StoreItem instances (optional)
             expected_weekly_hours: Expected weekly attendance hours
