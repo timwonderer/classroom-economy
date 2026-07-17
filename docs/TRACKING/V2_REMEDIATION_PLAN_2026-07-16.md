@@ -3,21 +3,71 @@
 | Field | Value |
 |---|---|
 | Created | 2026-07-16 |
-| Last updated | 2026-07-16 |
+| Last updated | 2026-07-16 (live scan audit) |
 | Branch | `codex/v2.0` |
 | Authority docs | INV-IDEN-001, INV-ARC-007, INV-ARC-019, DOM-CORE-002 §§1–5, DOM-IDEN-007, DOM-SUP-001, FEAT layer contract |
 | Original violations | 166 |
-| Resolved | 8 (Cat-5: 4 models + rename; Cat-6: 1 file; Cat-7: 1 task block; + Cat-5/BalanceCache correction) |
-| **Remaining violations** | **0 (route-file categories verified clean in live scan; historical snapshot retained below)** |
-| Prepared by | Automated audit |
+| Resolved | 163 |
+| **Remaining violations** | **3** |
+| Prepared by | Automated audit + live grep verification 2026-07-16 |
 
 ---
 
 ## Executive Summary
 
-The codebase originally contained 166 constitutional violations across seven categories. As of commit `85b6be64`, Categories 5, 6, and 7 are fully resolved: the 4 non-canonical model classes (`TapEvent`, `StoreItemBlock`, `StudentItem`, `RedemptionAuditLog`) have been removed from `models.py`; `BalanceCache` has been renamed `LedgerBalanceSnapshot` (the underlying table `ledger_balance_snapshot` was already authorized — the class name was the violation); `app/feats/insurance_claim_feat.py` has been deleted; and the `StoreItemBlock` orphan-cleanup block in `scheduled_tasks.py` has been replaced with a tombstone comment. Category 4 is also resolved by the irreversible `a1b2c3d4e5f6` migration, which repointed `ObligationAssessment` to `policy_versions.id` and does not expose a downgrade path that recreates the legacy column/table.
+The codebase originally contained 166 constitutional violations across seven categories. Live grep verification against the current worktree finds **3 remaining violations**, all in `app/routes/admin.py`. Categories 1, 2, 3, 4, 5, 6, and 7 are fully or nearly resolved:
 
-Live code audit note: the current worktree no longer matches the original route-level snapshot for Categories 1 through 3. Live route scans now show no direct `db.session.add/delete/flush` call sites in `app/routes/admin.py`, `app/routes/api.py`, `app/routes/student.py`, or `app/routes/system_admin.py`, the earlier `session["user_id"]` writes remain removed, and the remaining `ClassEconomy.section` references are confined to helper/display assembly paths.
+- **Cat-1 (FEAT bypass)**: 0 remaining — no `db.session.add/delete/flush` calls in any route file.
+- **Cat-2 (block/section as authority scope)**: 0 hard violations remaining — all 13 original call sites fixed. One soft residue at lines 5834–5835 (`~ClassEconomy.section.in_(desired_blocks)` inside a delete scope) is already bounded by `class_id == class_id` and poses no cross-class data-bleed risk; flagged for eventual cleanup.
+- **Cat-3 (session writes in routes)**: 0 remaining — canonical session helpers in `app/auth.py` used everywhere.
+- **Cat-4 (orphaned FK)**: 0 remaining — `rent_policy_version_id` renamed to `policy_version_id` and repointed to `policy_versions.id`.
+- **Cat-5, Cat-6, Cat-7**: Resolved (see section details below).
+
+The 3 remaining violations are **runtime NameErrors** from `TapEvent`/`TapEventReasonCode` references that survive outside of their `has_table("tap_events")` guards. These will crash specific routes in production.
+
+---
+
+## Remaining Violations (3) — Active Crash Bugs
+
+### R-1 · admin.py line 4249 — TapEvent NameError in student detail route
+
+```python
+# app/routes/admin.py:4249 — OUTSIDE of any has_table guard
+tap_scope = sa.and_(TapEvent.seat_id == seat_id, TapEvent.class_id == class_id)
+```
+
+**Impact:** `NameError: name 'TapEvent' is not defined` when the student detail page route is called. Crashes the route entirely.
+
+**Fix:** Replace `tap_scope` and all downstream `TapEvent` references in this route with `AttendanceSession`-based query:
+```python
+# canonical replacement
+att_scope = sa.and_(AttendanceSession.seat_id == seat_id, AttendanceSession.class_id == class_id)
+latest_session = AttendanceSession.query.filter(att_scope).order_by(AttendanceSession.started_at.desc()).first()
+```
+Also remove `latest_tap_event_query` (line 4281) and `latest_tap_event` (line 4295) — replace with `latest_session`.
+
+### R-2 · admin.py line 9008 — TapEventReasonCode NameError in payroll/attendance route
+
+```python
+# app/routes/admin.py:9008 — OUTSIDE of any guard
+reason_code=TapEventReasonCode.DAILY_LIMIT,
+```
+
+**Impact:** `NameError: name 'TapEventReasonCode' is not defined` when the daily attendance limit logic fires during payroll or tap processing. `student_tap()` call fails.
+
+**Fix:** `TapEventReasonCode` was the enum for the dropped `TapEvent`. The `student_tap()` FEAT (in `app/feats/attendance.py`) should accept `AttendanceReasonCode` instead. Replace:
+```python
+# before
+reason_code=TapEventReasonCode.DAILY_LIMIT,
+
+# after
+reason_code=AttendanceReasonCode.DAILY_LIMIT,
+```
+Verify `student_tap()` signature accepts `AttendanceReasonCode` (it already uses `AttendanceReasonCode` on `AttendanceSession`).
+
+### R-3 · admin.py line 4249 companion — TapEvent.class_id / TapEvent.timestamp refs (lines 4249, 4281, 4295)
+
+Already covered by R-1. Lines 4281 and 4295 are downstream of the `tap_scope` defined at 4249 and will also NameError. Fix together with R-1.
 
 ---
 
@@ -25,13 +75,14 @@ Live code audit note: the current worktree no longer matches the original route-
 
 | Priority | Category | Files Affected | Remaining Count | Status |
 |---|---|---|---|---|
-| ✅ done | Cat-4: Orphaned FK (`ObligationAssessment`) | `app/models.py`, `migrations/versions/a1b2c3d4e5f6_repoint_obligation_assessment_policy_version_.py` | 0 | Resolved irreversibly — `downgrade()` is unsupported |
-| ✅ done | Cat-6: Dead FEAT file | ~~`app/feats/insurance_claim_feat.py`~~ | 0 | Deleted — commit `85b6be64` |
-| ✅ done | Cat-5: Non-canonical models | ~~`app/models.py`~~ | 0 | 4 classes removed, 1 renamed — commit `85b6be64` |
-| ✅ done | Cat-7: Orphaned scheduled task | ~~`app/scheduled_tasks.py`~~ | 0 | Tombstoned — commit `85b6be64` |
-| ✅ done | Cat-2: Block/section as authority scope | `app/routes/admin.py`, `app/routes/api.py` | 0 | Resolved in live route scan; remaining `section` reads are display/helper metadata only |
-| ✅ done | Cat-3: Session identity written in routes | `app/routes/admin.py`, `app/routes/student.py`, `app/routes/system_admin.py` | 0 | Resolved via canonical session helpers in `app/auth.py` |
-| ✅ done | Cat-1: FEAT layer bypass in route files | `app/routes/admin.py`, `app/routes/student.py`, `app/routes/system_admin.py`, `app/routes/api.py` | 0 | Live route scans show no direct `db.session.add/delete/flush` call sites |
+| **P0** | R-1/R-2/R-3: TapEvent NameErrors | `app/routes/admin.py` lines 4249, 4281, 4295, 9008 | 3 | **Open — runtime crashes** |
+| ✅ done | Cat-1: FEAT layer bypass | route files | 0 | Verified clean by live grep |
+| ✅ done | Cat-2: Block/section as authority scope | `app/routes/admin.py`, `app/routes/api.py` | 0 | 13 violations fixed; soft residue at lines 5834–5835 (bounded by class_id) |
+| ✅ done | Cat-3: Session identity written in routes | route files | 0 | Canonical session helpers used |
+| ✅ done | Cat-4: Orphaned FK (`ObligationAssessment`) | `app/models.py` | 0 | Column renamed + FK repointed to `policy_versions.id` |
+| ✅ done | Cat-5: Non-canonical model classes | `app/models.py` | 0 | 4 removed, 1 renamed — commit `85b6be64` |
+| ✅ done | Cat-6: Dead FEAT file | `app/feats/` | 0 | `insurance_claim_feat.py` deleted — commit `85b6be64` |
+| ✅ done | Cat-7: Orphaned scheduled task | `app/scheduled_tasks.py` | 0 | Tombstoned — commit `85b6be64` |
 
 ---
 

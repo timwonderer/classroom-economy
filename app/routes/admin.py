@@ -71,7 +71,7 @@ from app.models import (
     Announcement, RedemptionEvent, RedemptionEventAction, RedemptionEventSource, Issue, IssueCategory, IssueStatusHistory, IssueResolutionAction, Seat,
     LedgerBalanceSnapshot, ClassEconomy, User, UserRole, _quantize_currency,
     ObligationAssessment, ObligationSatisfaction,
-    SeatAttendanceState, IdentityProfile,
+    SeatAttendanceState, AttendanceReasonCode, IdentityProfile,
 )
 from app.auth import (
     admin_required,
@@ -4246,9 +4246,10 @@ def student_detail_public(actor_public_id):
     seat_id = scoped_seat.id
 
     tx_scope = sa.and_(Transaction.seat_id == seat_id, Transaction.class_id == class_id)
-    tap_scope = sa.and_(TapEvent.seat_id == seat_id, TapEvent.class_id == class_id)
+    # tap_scope removed — TapEvent dropped; attendance via AttendanceSession (DOM-ATT-001)
+    att_scope = sa.and_(AttendanceSession.seat_id == seat_id, AttendanceSession.class_id == class_id)
 
-    # Remove deprecated last_tap_in/last_tap_out logic; rely on TapEvent backend.
+    # Attendance context (replaces deprecated TapEvent backend).
     # Fetch last rent payment
     rent_query = Transaction.query.filter(tx_scope, Transaction.type == "rent")
     latest_rent = rent_query.order_by(Transaction.timestamp.desc()).first()
@@ -4278,7 +4279,6 @@ def student_detail_public(actor_public_id):
     )
 
     transactions_query = Transaction.query.filter(tx_scope)
-    latest_tap_event_query = TapEvent.query.filter(tap_scope) if sa.inspect(db.engine).has_table("tap_events") else None
 
     transactions = transactions_query.order_by(Transaction.timestamp.desc()).all()
     store_purchases = (
@@ -4290,10 +4290,11 @@ def student_detail_public(actor_public_id):
     if class_id:
         store_purchases = store_purchases.filter(StorePurchase.class_id == class_id)
     store_purchases = store_purchases.order_by(StorePurchase.purchased_at.desc()).all()
-    # Fetch most recent tap entry for this student when present.
-    latest_tap_event = (
-        latest_tap_event_query.order_by(TapEvent.timestamp.desc()).first()
-        if latest_tap_event_query is not None else None
+    # Most recent attendance session (canonical replacement for TapEvent — DOM-ATT-001)
+    latest_attendance_session = (
+        AttendanceSession.query.filter(att_scope)
+        .order_by(AttendanceSession.started_at.desc())
+        .first()
     )
 
     scoped_seat = (
@@ -9005,7 +9006,7 @@ def enforce_daily_limits():
                 class_id=class_id,
                 status="inactive",
                 reason=f"Daily limit reached ({daily_limit / 3600:.1f}h)",
-                reason_code=TapEventReasonCode.DAILY_LIMIT,
+                reason_code=AttendanceReasonCode.DAILY_LIMIT,
                 timestamp_utc=now_utc,
             )
             today_local = class_date(timestamp_utc=now_utc)
