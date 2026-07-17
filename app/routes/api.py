@@ -60,6 +60,7 @@ from app.feats.attendance import (
     soft_delete_session as feat_soft_delete_session,
     update_hall_pass_queue_settings as feat_update_hall_pass_queue_settings,
     return_hall_pass as feat_return_hall_pass,
+    _get_or_create_hall_pass_settings as feat_get_or_create_hall_pass_settings,
 )
 from app.routes.student import (
     get_feature_settings_for_student,
@@ -76,6 +77,7 @@ from app.feats.redemption_disposition_feat import (
     RedemptionDispositionError,
     execute_redemption_approval,
     execute_redemption_rejection,
+    record_live_redemption_event,
 )
 from app.services import store_service
 from app.services.entitlement_service import get_hall_pass_balance, grant_hall_passes
@@ -237,18 +239,16 @@ def _append_redemption_audit_log(*, student_item, student, user_id, action, note
     else:
         student_display_name = 'Unknown'
 
-    db.session.add(RedemptionEvent(
+    record_live_redemption_event(
         purchase_id=student_item.id,
         seat_id=getattr(student_item, 'seat_id', None),
         class_id=class_id,
         action=action_map[action],
-        source=RedemptionEventSource.LIVE,
         initiated_by_user_id=user_id,
         seat_display_name=student_display_name,
         class_display_label=class_label,
         notes=notes if notes else None,
-        timestamp=utc_now(),
-    ))
+    )
     guard_state['inserted'] = True
 
 
@@ -259,20 +259,7 @@ def _get_hall_pass_settings_scope(class_id):
 
 def _get_or_create_hall_pass_settings(class_id):
     """Return the hall pass settings row for a specific class, creating it if needed."""
-    if not class_id:
-        return None
-
-    settings = HallPassSettings.query.filter_by(class_id=class_id).first()
-    if settings:
-        return settings
-
-    settings = HallPassSettings(
-        class_id=class_id,
-        queue_enabled=True,
-        queue_limit=10,
-    )
-    db.session.add(settings)
-    return settings
+    return feat_get_or_create_hall_pass_settings(class_id=class_id)
 
 
 def _get_teacher_class_scope(canonical_context):
@@ -739,7 +726,6 @@ def use_item():
         qty = student_item.quantity or 1
         grant_hall_passes(student, qty, trigger_id=f"inventory_redeem_{student_item.id}")
         student_item.status = 'redeemed'
-        db.session.flush()
         return jsonify({"status": "success", "message": f"Added {qty} hall pass(es) to your balance!"})
 
     # Validate the item can be used
@@ -755,7 +741,6 @@ def use_item():
     # Check expiry
     if student_item.expiry_date and utc_now() > student_item.expiry_date:
         student_item.status = 'expired'
-        db.session.flush()
         return jsonify({"status": "error", "message": "This item has expired."}), 400
 
     # Get context up front for audit snapshots and transaction scoping.
@@ -833,7 +818,6 @@ def use_item():
                 description=f"Used: {student_item.store_item.name if student_item.store_item else 'Unknown Item'}" + (f" (bundle: {student_item.bundle_remaining} remaining)" if student_item.is_from_bundle and student_item.store_item else "")
             )
         # FEAT wrapper owns commit/rollback boundaries; keep mutations in the open transaction.
-        db.session.flush()
 
         if student_item.is_from_bundle:
             return jsonify({"status": "success", "message": f"You have used 1 from your bundle of {student_item.store_item.name if student_item.store_item else 'item'}. {student_item.bundle_remaining} uses remaining."})
@@ -1320,8 +1304,7 @@ def hall_pass_history():
         query = HallPassLog.query.filter(HallPassLog.class_id == current_class_id)
 
         # Apply filters
-        if period:
-            query = query.filter(HallPassLog.period == period)
+        # period is display metadata only; HallPassLog is already scoped by class_id.
 
         if pass_type:
             query = query.filter(HallPassLog.reason == pass_type)
@@ -1640,8 +1623,6 @@ def attendance_history():
         page_size = min(int(request.args.get('page_size', 50)), 100)  # Max 100 per page
 
         # Get filter parameters
-        period = request.args.get('period', '').strip()
-        section = request.args.get('block', '').strip()
         status = request.args.get('status', '').strip()  # 'active' or 'inactive'
         start_date = request.args.get('start_date', '').strip()
         end_date = request.args.get('end_date', '').strip()
@@ -1682,7 +1663,7 @@ def attendance_history():
             )
         ))
 
-        # Apply filters (period filter removed — period is no longer on AttendanceSession)
+        # Apply filters. Display labels are not authority keys; scope stays class_id-only.
 
         if status:
             if status == 'active':
@@ -1706,13 +1687,6 @@ def attendance_history():
             except ValueError:
                 return jsonify({"status": "error", "message": "Invalid end date format"}), 400
 
-        from app.models import Seat
-        # Filter by section (join with ClassEconomy to match class-level display metadata)
-        if section:
-            query = query.join(Seat, AttendanceSession.seat_id == Seat.id)
-            query = query.join(ClassEconomy, ClassEconomy.class_id == Seat.class_id)
-            query = query.filter(ClassEconomy.section == section)
-
         # Order by most recent first
         query = query.order_by(AttendanceSession.started_at.desc())
 
@@ -1723,46 +1697,46 @@ def attendance_history():
         offset = (page - 1) * page_size
         records = query.offset(offset).limit(page_size).all()
 
-        # Build seat lookup for names and blocks without loading full Seat entities.
+        # Build seat lookup for names and classes without loading full Seat entities.
         seat_ids = [r.seat_id for r in records if r.seat_id]
         seats = {}
         if seat_ids:
             seat_rows = (
-                db.session.query(Seat.id, ClassEconomy.section, IdentityProfile.first_name, IdentityProfile.last_name)
+                db.session.query(Seat.id, Seat.class_id, IdentityProfile.first_name, IdentityProfile.last_name)
                 .outerjoin(IdentityProfile, IdentityProfile.seat_id == Seat.id)
                 .join(ClassEconomy, ClassEconomy.class_id == Seat.class_id)
                 .filter(Seat.id.in_(seat_ids))
                 .all()
             )
 
-        section_by_seat_id = {}
+        class_id_by_seat_id = {}
         for record in records:
-            if record.seat_id and record.seat_id not in section_by_seat_id:
-                section_by_seat_id[record.seat_id] = getattr(record, "section", None)
+            if record.seat_id and record.seat_id not in class_id_by_seat_id:
+                class_id_by_seat_id[record.seat_id] = getattr(record, "class_id", None)
 
         for row in seat_rows:
             student_name = " ".join(part for part in [row.first_name, row.last_name] if part).strip() or "Unknown"
-            student_section = section_by_seat_id.get(row.id) or row.section or "Unknown"
-            seats[row.id] = {"name": student_name, "block": student_section}
+            student_class_id = class_id_by_seat_id.get(row.id) or row.class_id
+            seats[row.id] = {"name": student_name, "class_id": student_class_id}
 
-        # Get class labels for sections
-        sections_in_records = set(seats[sid]['block'] for sid in seats if seats[sid]['block'])
+        # Get class labels for class IDs.
+        class_ids_in_records = set(seats[sid]['class_id'] for sid in seats if seats[sid]['class_id'])
         class_labels = {}
-        if sections_in_records:
+        if class_ids_in_records:
             scoped_user_id = getattr(g.canonical_context, "user_id", None)
             classes = ClassEconomy.query.filter(
-                ClassEconomy.user_id == scoped_user_id
+                ClassEconomy.user_id == scoped_user_id,
+                ClassEconomy.class_id.in_(class_ids_in_records),
             ).all()
             for c in classes:
-                section_name = (c.display_name or '').strip().upper()
-                class_labels[section_name] = c.display_name or c.join_code
+                class_labels[c.class_id] = c.display_name or c.join_code
 
         # Format records for response
         records_data = []
         for record in records:
-            seat_info = seats.get(record.seat_id, {'name': 'Unknown', 'block': 'Unknown'})
-            student_section = seat_info['block']
-            student_class_label = class_labels.get(student_section, student_section) if student_section != 'Unknown' else 'Unknown'
+            seat_info = seats.get(record.seat_id, {'name': 'Unknown', 'class_id': 'Unknown'})
+            student_class_id = seat_info['class_id']
+            student_class_label = class_labels.get(student_class_id, student_class_id) if student_class_id != 'Unknown' else 'Unknown'
 
             # Format timestamp as UTC with 'Z' suffix
             timestamp_str = None
@@ -1773,7 +1747,7 @@ def attendance_history():
                 "id": record.id,
                 "seat_id": record.seat_id,
                 "student_name": seat_info['name'],
-                "student_block": student_section,
+                "student_block": student_class_label,
                 "student_class_label": student_class_label,
                 "period": getattr(record, "block", None),
                 "status": record.status,
@@ -1896,7 +1870,6 @@ def handle_tap():
         if done_date is not None and done_date < today_local:
             if att_state:
                 att_state.done_for_day_date = None
-            db.session.flush()
             done_date = None
         if done_date == today_local:
             return jsonify({"error": "You are done for the day. You cannot Start Work again until tomorrow."}), 403
@@ -1930,8 +1903,6 @@ def handle_tap():
             # This applies the monthly top-off model even if the student paid rent earlier.
             if should_require_pass:
                 _, _, hall_pass_reconciled = _ensure_rent_hall_pass_top_off(student_seat, context)
-                if hall_pass_reconciled:
-                    db.session.flush()
 
             if should_require_pass and get_hall_pass_balance(student_seat.id, student_seat.class_id) <= 0:
                 return jsonify({"error": "Insufficient hall passes."}), 400
@@ -1952,7 +1923,6 @@ def handle_tap():
             rate_per_second = get_pay_rate_for_block(block_lookup.get(period, period), class_id=class_id)
             projected_pay = duration * rate_per_second
 
-            db.session.flush() # FEAT-AUTHORIZED-SHELL
             return jsonify({
                 "status": "ok",
                 "message": "Hall pass requested.",
@@ -1980,7 +1950,6 @@ def handle_tap():
             current_app.logger.info(f"Duplicate {action} ignored for seat {seat_id}")
             last_payroll_time = get_last_payroll_time(seat_id=seat_id, class_id=class_id)
             duration = calculate_unpaid_attendance_seconds(seat_id, class_id, last_payroll_time)
-            db.session.flush() # FEAT-AUTHORIZED-SHELL
             return jsonify({
                 "status": "ok",
                 "active": latest_state.is_active,
@@ -2023,7 +1992,6 @@ def handle_tap():
     rate_per_second = get_pay_rate_for_block(block_lookup.get(period, period), class_id=class_id)
     projected_pay = duration * rate_per_second
 
-    db.session.flush()
     return jsonify({
         "status": "ok",
         "active": is_active,
@@ -2139,7 +2107,6 @@ def delete_tap_entry(event_id):
 
     event.is_deleted = True
     event.deleted_at = utc_now()
-    db.session.flush()
 
     current_app.logger.info(
         "System admin %s deleted tap entry %s for student %s",

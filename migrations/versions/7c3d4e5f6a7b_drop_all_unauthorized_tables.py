@@ -76,11 +76,6 @@ def drop_table_if_exists(table_name):
 def drop_constraint_if_exists(table_name, constraint_name):
     if not table_exists(table_name):
         return
-    for fk in get_foreign_keys_by_column(table_name, 'id'):
-        if fk.get('name') == constraint_name:
-            op.drop_constraint(constraint_name, table_name, type_='foreignkey')
-            print(f"✅ Dropped constraint {constraint_name}")
-            return
     if foreign_key_exists(table_name, constraint_name):
         op.drop_constraint(constraint_name, table_name, type_='foreignkey')
         print(f"✅ Dropped constraint {constraint_name}")
@@ -118,9 +113,9 @@ def upgrade():
     drop_table_if_exists('rent_payments')
     drop_table_if_exists('rent_waivers')
     drop_table_if_exists('rent_items')
-    drop_constraint_if_exists('rent_settings', 'rent_settings_active_version_id_fkey')
-    drop_constraint_if_exists('rent_settings', 'rent_settings_next_version_id_fkey')
-    drop_constraint_if_exists('assessment_events', 'assessment_events_rent_policy_version_id_fkey')
+    drop_constraint_if_exists('rent_settings', 'fk_rent_settings_active_version_id')
+    drop_constraint_if_exists('rent_settings', 'fk_rent_settings_next_version_id')
+    drop_constraint_if_exists('assessment_events', 'fk_assessment_events_rent_policy_version_id')
     drop_table_if_exists('rent_policy_versions')
 
     # =========================================================================

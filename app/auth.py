@@ -361,6 +361,28 @@ def set_canonical_user_session(*, username_lookup_hash: str, expected_role: str)
     return user
 
 
+def establish_teacher_session(user):
+    """Establish canonical teacher session keys."""
+    session["user_id"] = user.id
+    session["role"] = "admin"
+    session.permanent = True
+
+
+def establish_sysadmin_session(user):
+    """Establish canonical system-admin session keys."""
+    session["user_id"] = user.id
+    session["role"] = "sysadmin"
+    session.permanent = True
+
+
+def establish_student_session(user, *, class_id: str):
+    """Establish canonical student session keys."""
+    session["user_id"] = user.id
+    session["class_id"] = class_id
+    session["role"] = "student"
+    session.permanent = True
+
+
 def get_current_user():
     """
     Return the current User from session/seat context.

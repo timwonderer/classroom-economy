@@ -11,6 +11,7 @@ from app.models import (
     StorePurchase,
     StoreItem,
     StoreItemVisibility,
+    ClassEconomy,
 )
 from app.utils.time import utc_now
 
@@ -70,6 +71,64 @@ def get_active_rent_grant(seat_id: int, class_id: str, store_item_id: int):
         db.or_(StorePurchase.uses_remaining > 0, StorePurchase.uses_remaining == -1),
         db.or_(StorePurchase.expiry_date.is_(None), StorePurchase.expiry_date > now),
     ).first()
+
+
+def create_store_item(*, user_id: int, class_id: str, **fields) -> StoreItem:
+    """Create and flush a canonical store item row."""
+    item = StoreItem(
+        user_id=user_id,
+        class_id=class_id,
+        **fields,
+    )
+    db.session.add(item)
+    db.session.flush()
+    return item
+
+
+def deactivate_store_item(item: StoreItem) -> StoreItem:
+    """Canonical soft-delete for a store item."""
+    item.is_active = False
+    db.session.flush()
+    return item
+
+
+def create_store_item_block(*, store_item_id: int, block: str) -> None:
+    """Grant visibility to all seats in the given block."""
+    store_item = db.session.get(StoreItem, store_item_id)
+    if not store_item or not block:
+        return
+    normalized_block = block.strip().upper()
+    seat_ids = [
+        seat_id
+        for (seat_id,) in (
+            db.session.query(Seat.id)
+            .join(ClassEconomy, ClassEconomy.class_id == Seat.class_id)
+            .filter(
+                ClassEconomy.class_id == store_item.class_id,
+                ClassEconomy.section.isnot(None),
+                ClassEconomy.section == normalized_block,
+            )
+            .distinct()
+            .all()
+        )
+    ]
+    if seat_ids:
+        db.session.add_all([
+            StoreItemVisibility(store_item_id=store_item_id, seat_id=seat_id)
+            for seat_id in seat_ids
+        ])
+
+
+def deactivate_linked_store_item(item_id: int) -> None:
+    """Deactivate a linked store item by ID if it still exists."""
+    store_item = db.session.get(StoreItem, item_id)
+    if store_item:
+        store_item.is_active = False
+
+
+def delete_rent_item(item) -> None:
+    """Delete a rent settings item row."""
+    db.session.delete(item)
 
 
 # ---------------------------------------------------------------------------

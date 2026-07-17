@@ -8,7 +8,7 @@ import uuid
 
 from app.extensions import db
 from app.feats.base import FEATContext
-from app.models import User, UserRole, StoreItem, StoreItemBlock, StudentItem, StorePurchase, Transaction, Seat, IdentityProfile
+from app.models import User, UserRole, StoreItem, StorePurchase, Transaction, Seat, IdentityProfile
 from tests.helpers.admin_context import login_teacher
 from tests.helpers.class_scope import create_class_scope, make_student_identity
 from tests.helpers.canonical_session import set_canonical_context
@@ -221,7 +221,7 @@ def test_purchase_item_rejects_items_not_visible_to_current_seat(client):
         'quantity': 1,
     })
     assert resp.status_code == 404
-    assert StudentItem.query.filter_by(
+    assert StorePurchase.query.filter_by(
         seat_id=student_a.id,
         store_item_id=d_only_item.id,
     ).count() == 0

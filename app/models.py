@@ -775,30 +775,55 @@ class StoreItem(db.Model):
 
     # Relationships
     teacher = db.relationship('User', backref=db.backref('store_items', lazy='dynamic'))
-    student_items = db.relationship('StudentItem', backref='store_item', lazy=True)
-
-    # Many-to-many relationship for block visibility
-    visible_blocks = db.relationship(
-        'StoreItemBlock',
-        backref='store_item',
+    # Seat-level visibility is the canonical replacement for legacy block visibility.
+    visible_seats = db.relationship(
+        'StoreItemVisibility',
+        back_populates='store_item',
         lazy='dynamic',
         cascade='all, delete-orphan'
     )
 
     @property
     def blocks_list(self):
-        """Return list of block names this item is visible to (empty list means all blocks)."""
-        return [b.block for b in self.visible_blocks]
+        """Return block labels derived from canonical seat-level visibility."""
+        seat_ids = [row.seat_id for row in self.visible_seats.all()]
+        if not seat_ids:
+            return []
+        rows = (
+            db.session.query(ClassEconomy.section)
+            .join(Seat, Seat.class_id == ClassEconomy.class_id)
+            .filter(Seat.id.in_(seat_ids), ClassEconomy.section.isnot(None))
+            .distinct()
+            .all()
+        )
+        return [section for (section,) in rows if section]
 
     def set_blocks(self, block_list):
-        """Set the blocks this item is visible to. Pass empty list for all blocks."""
-        # Clear existing blocks
-        StoreItemBlock.query.filter_by(store_item_id=self.id).delete()
-        # Add new blocks
-        if block_list:
+        """Set the visibility blocks using canonical seat-level visibility rows."""
+        StoreItemVisibility.query.filter_by(store_item_id=self.id).delete()
+        if not block_list:
+            return
+        normalized_blocks = {block.strip().upper() for block in block_list if block and block.strip()}
+        if not normalized_blocks:
+            return
+        seat_ids = [
+            seat_id
+            for (seat_id,) in (
+                db.session.query(Seat.id)
+                .join(ClassEconomy, ClassEconomy.class_id == Seat.class_id)
+                .filter(
+                    ClassEconomy.section.isnot(None),
+                    ClassEconomy.section.in_(normalized_blocks),
+                    ClassEconomy.class_id == self.class_id,
+                )
+                .distinct()
+                .all()
+            )
+        ]
+        if seat_ids:
             db.session.add_all([
-                StoreItemBlock(store_item_id=self.id, block=block.strip().upper())
-                for block in block_list
+                StoreItemVisibility(store_item_id=self.id, seat_id=seat_id)
+                for seat_id in seat_ids
             ])
 
 
@@ -832,7 +857,7 @@ class StoreItemVisibility(db.Model):
         db.UniqueConstraint('store_item_id', 'seat_id', name='uq_store_item_visibility_item_seat'),
     )
 
-    store_item = db.relationship('StoreItem', backref=db.backref('visibility_grants', lazy='dynamic', cascade='all, delete-orphan'))
+    store_item = db.relationship('StoreItem', back_populates='visible_seats')
     seat = db.relationship('Seat', backref=db.backref('store_visibility_grants', lazy='dynamic'))
 
 
@@ -1036,9 +1061,12 @@ class ObligationAssessment(db.Model):
     due_at = db.Column(db.DateTime(timezone=True), nullable=True)
     assessed_at = db.Column(db.DateTime(timezone=True), default=utc_now, nullable=False)
 
-    # ORPHANED FK — rent_policy_versions table dropped (migration 7c3d4e5f6a7b).
-    # Needs migration: repoint to policy_versions.id (domain='rent') per DOM-ECON-003.
-    rent_policy_version_id = db.Column(db.Integer, nullable=True, index=True)
+    policy_version_id = db.Column(
+        db.Integer,
+        db.ForeignKey('policy_versions.id'),
+        nullable=True,
+        index=True,
+    )
 
     # Rent-cycle fields — preserved from prepay coverage-window model (INV-ARC-015)
     period_key = db.Column(db.String(20), nullable=True)
@@ -1054,6 +1082,7 @@ class ObligationAssessment(db.Model):
     satisfaction = db.relationship('ObligationSatisfaction', uselist=False, backref='assessment')
     reversal = db.relationship('ObligationReversal', uselist=False, backref='assessment')
     entitlement_events = db.relationship('EntitlementEvent', backref='assessment')
+    policy_version = db.relationship('PolicyVersion', backref=db.backref('assessments', lazy='dynamic'))
     __table_args__ = (
         db.UniqueConstraint('seat_id', 'class_id', 'cycle_idempotency_key', name='uq_assessment_events_idempotency'),
         db.Index('ix_assessment_events_seat_class', 'seat_id', 'class_id'),

@@ -58,7 +58,7 @@ from app.feats.base import feat_shell, FEATContext, InvariantViolation
 from app.access.scope import Scope
 from app.access import AccessScopeDenied, resolve_scope
 from app.models import (
-    ClassEconomy, Transaction, TransactionStatus, AttendanceSession, StoreItem, StorePurchase,
+    ClassEconomy, Transaction, TransactionStatus, AttendanceSession, StoreItem, StorePurchase, StoreItemVisibility,
     # TapEvent removed — tap_events unauthorized; use attendance_sessions (DOM-ATT-001)
     # StudentItem removed — student_items unauthorized; use store_purchases + redemption_events (DOM-STORE-001)
     # StoreItemBlock removed — store_item_blocks unauthorized; use store_item_visibility (DOM-STORE-001)
@@ -75,6 +75,7 @@ from app.models import (
 )
 from app.auth import (
     admin_required,
+    establish_teacher_session,
     find_canonical_user_by_auth_username,
     get_current_user,
 )
@@ -119,6 +120,35 @@ from app.utils.claim_credentials import (
     match_claim_hash,
     normalize_claim_hash,
 )
+from app.services.announcement_service import (
+    create_class_announcement,
+    delete_class_announcement,
+    update_class_announcement,
+)
+from app.services.classroom_setup import (
+    create_class,
+    create_class_with_roster,
+    create_teacher_account_with_class,
+    create_pending_student_seat,
+    create_student_seat_with_profile,
+    delete_seat_with_profile,
+    create_roster_student_seat,
+    update_or_create_roster_seat,
+)
+from app.services.payroll_settings_service import (
+    upsert_payroll_settings_for_blocks,
+    update_expected_weekly_hours_for_blocks,
+)
+from app.services.store_service import (
+    create_store_item,
+    deactivate_store_item,
+    create_store_item_block,
+    deactivate_linked_store_item,
+    delete_rent_item,
+)
+from app.services.admin_identity_service import delete_admin_account_rows
+from app.services.admin_settings_service import create_rent_settings, create_banking_settings
+from app.services.issue_service import create_support_ticket
 from app.utils.ip_handler import get_real_ip
 from app.utils.turnstile import verify_turnstile_token
 from app.utils.name_utils import hash_last_name_parts, verify_last_name_parts
@@ -609,7 +639,7 @@ def get_admin_feature_join_code_options(feature_name: str, canonical_context=Non
         .filter(
             ClassEconomy.user_id == resolved_admin_user_id,
         )
-        .order_by(ClassEconomy.section.asc(), ClassEconomy.created_at.asc())
+        .order_by(ClassEconomy.class_id.asc(), ClassEconomy.created_at.asc())
         .all()
     )
     options: list[dict[str, str]] = []
@@ -781,6 +811,35 @@ def _get_teacher_seat_for_class(class_id: str):
     return Seat.query.filter_by(class_id=class_id, role="teacher").order_by(Seat.id.asc()).first()
 
 
+def _resolve_block_class_ids(canonical_context, blocks):
+    """Resolve display labels to canonical class IDs for the current teacher."""
+    if canonical_context is None or not getattr(canonical_context, "user_id", None) or not blocks:
+        return []
+
+    user_id = canonical_context.user_id
+    class_id = (getattr(canonical_context, "class_id", None) or "").strip() or None
+    rows = (
+        db.session.query(ClassEconomy.section, ClassEconomy.class_id)
+        .filter(
+            ClassEconomy.user_id == user_id,
+            ClassEconomy.class_id.isnot(None),
+        )
+        .all()
+    )
+    wanted_blocks = {(block or "").strip().upper() for block in blocks if (block or "").strip()}
+    if not wanted_blocks:
+        return []
+
+    resolved_class_ids = [
+        resolved_class_id
+        for section, resolved_class_id in rows
+        if (section or "").strip().upper() in wanted_blocks and resolved_class_id
+    ]
+    if class_id:
+        resolved_class_ids = [resolved_class_id for resolved_class_id in resolved_class_ids if resolved_class_id == class_id]
+    return resolved_class_ids
+
+
 def _count_rent_waiver_periods(settings, waiver) -> int:
     """Return how many rent periods a canonical waiver covers."""
     from app.routes.student import _add_rent_period, _get_rent_period_delta
@@ -848,18 +907,15 @@ def _get_class_labels_for_blocks(canonical_context, blocks):
     if canonical_context is None or not getattr(canonical_context, "user_id", None) or not blocks:
         return {}
 
-    user_id = canonical_context.user_id
-    class_id = (getattr(canonical_context, "class_id", None) or "").strip() or None
-    query = (
+    class_ids = _resolve_block_class_ids(canonical_context, blocks)
+    if not class_ids:
+        return {block: block for block in blocks}
+
+    rows = (
         db.session.query(ClassEconomy.section, ClassEconomy.display_name)
-        .filter(
-            ClassEconomy.user_id == user_id,
-            ClassEconomy.section.in_(blocks),
-        )
+        .filter(ClassEconomy.class_id.in_(class_ids))
+        .all()
     )
-    if class_id:
-        query = query.filter(ClassEconomy.class_id == class_id)
-    rows = query.all()
     labels = {section: (display_name or section) for section, display_name in rows}
 
     for block in blocks:
@@ -874,18 +930,15 @@ def _get_join_codes_by_block(canonical_context, blocks):
     if canonical_context is None or not getattr(canonical_context, "user_id", None) or not blocks:
         return {}
 
-    user_id = canonical_context.user_id
-    class_id = (getattr(canonical_context, "class_id", None) or "").strip() or None
-    query = (
+    class_ids = _resolve_block_class_ids(canonical_context, blocks)
+    if not class_ids:
+        return {}
+
+    rows = (
         db.session.query(ClassEconomy.section, ClassEconomy.class_id)
-        .filter(
-            ClassEconomy.user_id == user_id,
-            ClassEconomy.section.in_(blocks),
-        )
+        .filter(ClassEconomy.class_id.in_(class_ids))
+        .all()
     )
-    if class_id:
-        query = query.filter(ClassEconomy.class_id == class_id)
-    rows = query.all()
     return {
         section: get_display_join_code(resolved_class_id)
         for section, resolved_class_id in rows
@@ -899,18 +952,15 @@ def _get_class_ids_by_block(canonical_context, blocks):
     if canonical_context is None or not getattr(canonical_context, "user_id", None) or not blocks:
         return {}
 
-    user_id = canonical_context.user_id
-    class_id = (getattr(canonical_context, "class_id", None) or "").strip() or None
-    query = (
+    class_ids = _resolve_block_class_ids(canonical_context, blocks)
+    if not class_ids:
+        return {}
+
+    rows = (
         db.session.query(ClassEconomy.section, ClassEconomy.class_id)
-        .filter(
-            ClassEconomy.user_id == user_id,
-            ClassEconomy.section.in_(blocks),
-        )
+        .filter(ClassEconomy.class_id.in_(class_ids))
+        .all()
     )
-    if class_id:
-        query = query.filter(ClassEconomy.class_id == class_id)
-    rows = query.all()
     return {section: resolved_class_id for section, resolved_class_id in rows if resolved_class_id}
 
 
@@ -1193,11 +1243,7 @@ def _hard_delete_class_scope(class_id, canonical_context):
         .filter(Issue.class_public_id == _class_pub_id)
         .subquery()
     )
-    class_blocks = [
-        block for (block,) in db.session.query(ClassEconomy.section)
-        .filter(ClassEconomy.class_id == class_id, ClassEconomy.section.isnot(None))
-        .distinct().all()
-    ]
+    class_blocks = _get_teacher_blocks(g.canonical_context)
     if class_blocks and scoped_student_ids:
         pass
 
@@ -1227,31 +1273,28 @@ def _hard_delete_class_scope(class_id, canonical_context):
     PayrollSettings.query.filter(PayrollSettings.class_id == class_id).delete(synchronize_session=False)
     RentSettings.query.filter(RentSettings.class_id == class_id).delete(synchronize_session=False)
 
-    # Remove store items tied only to this class block scope.
+    # Remove store items that no longer have any canonical visibility rows for this class.
     if class_blocks:
-        store_item_ids_for_blocks = (
-            db.session.query(StoreItemBlock.store_item_id)
-            .group_by(StoreItemBlock.store_item_id)
-            .having(sa.func.count() > 0)
-            .having(sa.func.sum(sa.case((StoreItemBlock.block.in_(class_blocks), 1), else_=0)) == sa.func.count())
+        visible_seat_ids_for_class = (
+            db.session.query(StoreItemVisibility.seat_id)
+            .join(Seat, Seat.id == StoreItemVisibility.seat_id)
+            .filter(Seat.class_id == class_id)
             .subquery()
         )
+        StoreItemVisibility.query.filter(
+            StoreItemVisibility.seat_id.in_(sa.select(visible_seat_ids_for_class))
+        ).delete(synchronize_session=False)
+
         deletable_store_item_ids = (
             db.session.query(StoreItem.id)
-            .filter(
-                StoreItem.class_id == class_id,
-                StoreItem.id.in_(sa.select(store_item_ids_for_blocks)),
-            )
+            .filter(StoreItem.class_id == class_id)
+            .outerjoin(StoreItemVisibility, StoreItem.id == StoreItemVisibility.store_item_id)
+            .filter(StoreItemVisibility.store_item_id.is_(None))
             .subquery()
         )
         class_item_purchase_ids = (
             db.session.query(StorePurchase.id)
             .filter(StorePurchase.store_item_id.in_(sa.select(deletable_store_item_ids)))
-            .subquery()
-        )
-        class_item_student_item_ids = (
-            db.session.query(StudentItem.id)
-            .filter(StudentItem.store_item_id.in_(sa.select(deletable_store_item_ids)))
             .subquery()
         )
         RedemptionEvent.query.filter(
@@ -1260,29 +1303,8 @@ def _hard_delete_class_scope(class_id, canonical_context):
         StorePurchase.query.filter(
             StorePurchase.store_item_id.in_(sa.select(deletable_store_item_ids))
         ).delete(synchronize_session=False)
-        StudentItem.query.filter(
-            StudentItem.store_item_id.in_(sa.select(deletable_store_item_ids))
-        ).delete(synchronize_session=False)
         StoreItem.query.filter(
             StoreItem.id.in_(sa.select(deletable_store_item_ids))
-        ).delete(synchronize_session=False)
-
-    # Clean up orphaned StoreItemBlock entries for the deleted class blocks
-    # This handles items that are visible to multiple classes
-    if class_blocks:
-        deletable_block_entries = (
-            db.session.query(StoreItemBlock.store_item_id, StoreItemBlock.block)
-            .join(StoreItem, StoreItemBlock.store_item_id == StoreItem.id)
-            .filter(
-                StoreItem.class_id == class_id,
-                StoreItemBlock.block.in_(class_blocks)
-            )
-            .subquery()
-        )
-        StoreItemBlock.query.filter(
-            sa.tuple_(StoreItemBlock.store_item_id, StoreItemBlock.block).in_(
-                sa.select(deletable_block_entries)
-            )
         ).delete(synchronize_session=False)
 
     # Seats/ownership for this class
@@ -1338,7 +1360,7 @@ def _delete_teacher_settings_activity_and_audit_rows(canonical_context):
         )
     ).delete(synchronize_session=False)
     Transaction.query.filter_by(user_id=user_id).delete(synchronize_session=False)
-    RedemptionAuditLog.query.filter_by(user_id=user_id).delete(synchronize_session=False)
+    RedemptionEvent.query.filter_by(initiated_by_user_id=user_id).delete(synchronize_session=False)
 
 
 def _delete_teacher_rent_rows(canonical_context):
@@ -1756,28 +1778,20 @@ def _ensure_join_code_anchors(user_id, join_code, class_label=None, class_id=Non
         if economy.created_by_user_id is None:
             economy.created_by_user_id = user_id
     else:
-        economy = ClassEconomy(
+        economy = create_class(
+            user_id,
             join_code=join_code,
-            user_id=user_id,
-            created_by_user_id=user_id,
             display_name=class_label,
         )
-        db.session.add(economy)
         created = True
-    if economy.class_id is None:
-        db.session.flush()
 
     teacher_seat = Seat.query.filter_by(
         class_id=economy.class_id,
         role="teacher",
     ).first()
     if teacher_seat is None:
-        db.session.add(Seat(
-            class_id=economy.class_id,
-            role="teacher",
-        ))
+        raise RuntimeError("Teacher seat missing after class anchor creation.")
 
-    db.session.flush()
     if return_metadata:
         return economy.class_id, created, economy
     return economy.class_id
@@ -1847,7 +1861,9 @@ def _link_student_to_admin(
     if not target_class_id:
         existing_class = ClassEconomy.query.filter(
             ClassEconomy.user_id == user_id,
-            ClassEconomy.section == target_block,
+            ClassEconomy.class_id.in_(
+                [cid for cid in _get_class_ids_by_block(g.canonical_context, [target_block]).values() if cid]
+            ),
         ).first()
         if existing_class:
             target_class_id = existing_class.class_id
@@ -1875,26 +1891,18 @@ def _link_student_to_admin(
         _student_ip = getattr(student, 'identity_profile', None)
         seat_first_name = (_student_ip.first_name if _student_ip else "") or ""
         seat_last_name = (_student_ip.last_name if _student_ip else "") or ""
-        new_seat = Seat(
+        new_seat = create_student_seat_with_profile(
             class_id=target_class_id,
-            student_id=student.id,
-            role='student',
-            claim_first_name_hash=_h(seat_first_name.lower()) if seat_first_name else None,
-            claim_last_name_hash=_h(seat_last_name.lower()) if seat_last_name else None,
-            roster_fingerprint=_h(
-                f"{target_class_id}|{seat_first_name.lower()}|{seat_last_name.lower()}"
-            ),
-            claimed_at=utc_now(),
-        )
-        db.session.add(new_seat)
-        db.session.flush()
-        profile = IdentityProfile(
-            seat_id=new_seat.id,
-            profile_type='student',
             first_name=seat_first_name,
             last_name=seat_last_name,
+            student_id=student.id,
+            claimed_at=utc_now(),
         )
-        db.session.add(profile)
+        new_seat.claim_first_name_hash = _h(seat_first_name.lower()) if seat_first_name else None
+        new_seat.claim_last_name_hash = _h(seat_last_name.lower()) if seat_last_name else None
+        new_seat.roster_fingerprint = _h(
+            f"{target_class_id}|{seat_first_name.lower()}|{seat_last_name.lower()}"
+        )
         current_app.logger.info(
             "Created claimed Seat for student %s, teacher %s, block %s",
             student.id, user_id, target_block,
@@ -2558,7 +2566,6 @@ def select_class_context():
         user = db.session.get(User, ctx.user_id)
         if user and user.last_active_class_id != selected["class_id"]:
             user.last_active_class_id = selected["class_id"]
-            db.session.flush()
         return redirect(url_for("admin.dashboard"))
 
     return render_template("admin_select_class_context.html", class_options=class_options)
@@ -2844,7 +2851,7 @@ def login():
                 except (TypeError, ValueError):
                     totp_valid = False
                 if totp_valid:
-                    session["user_id"] = user.id
+                    establish_teacher_session(user)
                     nonce = secrets.token_urlsafe(32)
                     session["current_session_nonce"] = nonce
                     user.current_session_nonce = nonce
@@ -2923,8 +2930,6 @@ def username_migration():
             admin.hall_pass_verify_token = User.generate_verify_token()
         if user and not user.hall_pass_verify_token:
             user.hall_pass_verify_token = User.generate_verify_token()
-        db.session.flush()
-
         session["admin_auth_username"] = chosen_username
         set_admin_display_name_cache(user_id=admin.id, display_name=admin.get_display_name())
         session.pop("force_admin_username_migration", None)
@@ -3097,15 +3102,11 @@ def signup():
 
         signup_idempotency_key = f"feat:iden:admin-signup:{username}"
         with FEATContext("FEAT-IDEN-001", idempotency_key=signup_idempotency_key):
-            db.session.add(new_user)
-            db.session.flush()
-
-            from app.services.classroom_setup import create_class
-
             initial_join_code = generate_join_code()
             initial_display_name = username.strip() or "New Class"
-            create_class(
-                new_user.id,
+            new_user = create_teacher_account_with_class(
+                username=username,
+                totp_secret=totp_secret,
                 join_code=initial_join_code,
                 display_name=initial_display_name,
             )
@@ -3439,7 +3440,6 @@ def _invalidate_all_recovery_codes(recovery_request_id: int):
     This prevents attackers from testing codes individually.
     """
     invalidated_count = invalidate_recovery_codes(recovery_request_id)
-    db.session.flush()  # Flush after invalidating recovery codes.
     current_app.logger.info(
         f"Invalidated {invalidated_count} recovery codes - students must regenerate"
     )
@@ -3501,8 +3501,6 @@ def confirm_reset():
     # Mark recovery request as completed
     mark_recovery_request_verified(recovery_request.id, utc_now())
 
-    db.session.flush()
-
     # Clear recovery session
     session.pop('reset_totp_secret', None)
     session.pop('reset_new_username', None)
@@ -3550,8 +3548,6 @@ def save_recovery_progress():
         resume_pin_hash=resume_pin_hash,
         resume_new_username=new_username,
     )
-    db.session.flush()
-
     current_app.logger.info(f"Admin recovery: saved partial progress for request {recovery_request.id}")
 
     # Show the PIN to the teacher
@@ -3653,7 +3649,7 @@ def settings():
     # Derive blocks from ClassEconomy (canonical class anchor)
     blocks = [
         (cls.section or cls.join_code or '', cls.display_name)
-        for cls in ClassEconomy.query.filter_by(user_id=user_id).order_by(ClassEconomy.section.asc()).all()
+        for cls in ClassEconomy.query.filter_by(user_id=user_id).order_by(ClassEconomy.class_id.asc()).all()
     ]
 
     return render_template(
@@ -4192,7 +4188,6 @@ def set_class_timezone(class_id: str):
         with FEATContext("FEAT-IDEN-001", idempotency_key=idempotency_key):
             # Persist an explicit confirmed UTC value distinct from default placeholder UTC.
             class_row.class_timezone = 'Etc/UTC' if timezone_name == 'UTC' else timezone_name
-            db.session.flush()
     except Exception:
         current_app.logger.error(
             "Failed to set class timezone for class_id=%s", class_id, exc_info=True
@@ -4372,7 +4367,9 @@ def student_detail_public(actor_public_id):
         if block_parts:
             class_rows = ClassEconomy.query.filter(
                 ClassEconomy.user_id == user_id,
-                ClassEconomy.section.in_(block_parts)
+                ClassEconomy.class_id.in_(
+                    [cid for cid in _get_class_ids_by_block(g.canonical_context, block_parts).values() if cid]
+                ),
             ).all()
             for class_row in class_rows:
                 if class_row.section:
@@ -4671,17 +4668,14 @@ def edit_student():
 
         if not existing_seat:
             is_claimed = bool(student.username_hash)
-            new_seat = Seat(
-                student_id=student.id,
+            new_seat = create_pending_student_seat(
                 class_id=class_id,
+                dedupe_code=None,
                 block=block,
                 claimed_at=utc_now() if is_claimed else None,
             )
-            db.session.add(new_seat)
 
     try:
-        db.session.flush()
-
         # Build flash message with balance transfer info
         message = f"Successfully updated {(student.identity_profile.full_name if student.identity_profile else str(student.id))}'s information."
         if transferred_blocks:
@@ -4812,10 +4806,7 @@ def delete_block():
 
     try:
         class_ids = [
-            cid for (cid,) in db.session.query(ClassEconomy.class_id).filter(
-                ClassEconomy.user_id == user_id,
-                ClassEconomy.section == section,
-            ).all()
+            cid for cid in _get_class_ids_by_block(g.canonical_context, [section]).values() if cid
         ]
         if not class_ids:
             return jsonify({"status": "success", "message": f"No class found for Block {section}. Nothing to delete."})
@@ -4950,7 +4941,7 @@ def delete_pending_student():
         )
 
         # Delete the Seat entry (this is the only record for unclaimed seats)
-        db.session.delete(seat_entry)
+        delete_seat_with_profile(seat_entry)
         return jsonify({
             "status": "success",
             "message": f"Successfully deleted pending student {student_name}."
@@ -4988,10 +4979,7 @@ def bulk_delete_pending_students():
         if section:
             # Delete all unclaimed Seat entries for this teacher and section
             block_class_ids = [
-                cid for (cid,) in db.session.query(ClassEconomy.class_id).filter(
-                    ClassEconomy.user_id == user_id,
-                    ClassEconomy.section == section,
-                ).all()
+                cid for cid in _get_class_ids_by_block(g.canonical_context, [section]).values() if cid
             ]
             if block_class_ids:
                 deleted_count = Seat.query.filter(
@@ -5014,7 +5002,7 @@ def bulk_delete_pending_students():
                 if seat_entry:
                     # Verify it's actually unclaimed
                     if seat_entry.claimed_at is None and seat_entry.student_id is None:
-                        db.session.delete(seat_entry)
+                        delete_seat_with_profile(seat_entry)
                         deleted_count += 1
 
         message = f"Successfully deleted {deleted_count} pending student(s)."
@@ -5103,14 +5091,10 @@ def add_individual_student():
             # Ensure ClassEconomy record exists before creating Seat
             _ensure_join_code_anchors(user_id, join_code, class_id=class_id)
 
-            new_seat = Seat(
-                user_id=None,
+            new_seat = create_pending_student_seat(
                 class_id=class_id,
                 dedupe_code=dedupe_key,
-                claimed_at=None,
             )
-            db.session.add(new_seat)
-            db.session.flush()
 
             grant_hall_passes(new_seat, 3, trigger_id=f"student_init_{new_seat.id}")
 
@@ -5247,15 +5231,11 @@ def add_manual_student():
             # Ensure ClassEconomy record exists before creating Seat
             _ensure_join_code_anchors(user_id, join_code, class_id=class_id)
 
-            new_seat = Seat(
-                user_id=None,
+            new_seat = create_pending_student_seat(
                 class_id=class_id,
                 dedupe_code=dedupe_key,
-                claimed_at=None,
                 has_received_rent_exemption=not rent_enabled,
             )
-            db.session.add(new_seat)
-            db.session.flush()
 
             if hall_passes > 0:
                 grant_hall_passes(new_seat, hall_passes, trigger_id=f"student_init_{new_seat.id}")
@@ -5368,8 +5348,36 @@ def store_management():
                 # Redemption prompt
                 redemption_prompt=form.redemption_prompt.data if form.redemption_prompt.data else None
             )
-            db.session.add(new_item)
-            db.session.flush()  # Get the ID for the item before adding blocks
+            new_item = create_store_item(
+                user_id=user_id,
+                class_id=selected_scope['class_id'],
+                name=form.name.data,
+                description=form.description.data,
+                item_type=form.item_type.data,
+                price=form.price.data,
+                limit_per_student=form.limit_per_student.data,
+                is_active=form.is_active.data,
+                is_long_term_goal=form.is_long_term_goal.data,
+                bypass_cwi_warnings=form.bypass_cwi_warnings.data,
+                is_bundle=form.is_bundle.data,
+                bundle_quantity=form.bundle_quantity.data if form.is_bundle.data else None,
+                bulk_discount_enabled=form.bulk_discount_enabled.data,
+                bulk_discount_quantity=form.bulk_discount_quantity.data if form.bulk_discount_enabled.data else None,
+                bulk_discount_percentage=form.bulk_discount_percentage.data if form.bulk_discount_enabled.data else None,
+                collective_goal_type=form.collective_goal_type.data if form.item_type.data == 'collective' else None,
+                collective_goal_target=form.collective_goal_target.data if form.item_type.data == 'collective' else None,
+                collective_goal_expires_at=(
+                    _end_of_day_utc(form.collective_goal_expires_at.data)
+                    if form.item_type.data == 'collective'
+                    else None
+                ),
+                collective_goal_instance_code=(
+                    generate_collective_goal_instance_code()
+                    if form.item_type.data == 'collective' and form.is_active.data
+                    else None
+                ),
+                redemption_prompt=form.redemption_prompt.data if form.redemption_prompt.data else None,
+            )
             # Set blocks using many-to-many relationship
             if form.blocks.data:
                 new_item.set_blocks(form.blocks.data)
@@ -5514,41 +5522,38 @@ def store_management():
     parsed_audit_action = None
     if audit_action:
         try:
-            parsed_audit_action = RedemptionAuditAction(audit_action)
+            parsed_audit_action = RedemptionEventAction(audit_action)
         except ValueError:
             flash("Invalid audit action filter.", "warning")
 
     live_query = (
         db.session.query(
-            RedemptionAuditLog.id.label("id"),
-            RedemptionAuditLog.student_item_id.label("student_item_id"),
-            RedemptionAuditLog.class_display_label.label("class_display_label"),
-            RedemptionAuditLog.action.label("action"),
-            RedemptionAuditLog.notes.label("notes"),
-            RedemptionAuditLog.user_id.label("user_id"),
-            RedemptionAuditLog.class_id.label("class_id"),
-            RedemptionAuditLog.seat_id.label("seat_id"),
-            RedemptionAuditLog.join_code.label("join_code"),
-            RedemptionAuditLog.timestamp.label("timestamp"),
-            RedemptionAuditLog.source.label("source"),
-            Seat,
+            RedemptionEvent.id.label("id"),
+            RedemptionEvent.purchase_id.label("purchase_id"),
+            RedemptionEvent.seat_display_name.label("student_display_name"),
+            RedemptionEvent.class_display_label.label("class_display_label"),
+            RedemptionEvent.action.label("action"),
+            RedemptionEvent.notes.label("notes"),
+            RedemptionEvent.initiated_by_user_id.label("user_id"),
+            RedemptionEvent.class_id.label("class_id"),
+            RedemptionEvent.timestamp.label("timestamp"),
+            RedemptionEvent.source.label("source"),
         )
-        .outerjoin(Seat, RedemptionAuditLog.seat_id == Seat.id)
         .filter(
-            RedemptionAuditLog.user_id == user_id,
-            RedemptionAuditLog.source == RedemptionAuditSource.LIVE,
-            RedemptionAuditLog.class_id == selected_scope['class_id'],
+            RedemptionEvent.initiated_by_user_id == user_id,
+            RedemptionEvent.source == RedemptionEventSource.LIVE,
+            RedemptionEvent.class_id == selected_scope['class_id'],
         )
     )
     if audit_class:
-        live_query = live_query.filter(RedemptionAuditLog.class_display_label == audit_class)
+        live_query = live_query.filter(RedemptionEvent.class_display_label == audit_class)
     if parsed_audit_action:
-        live_query = live_query.filter(RedemptionAuditLog.action == parsed_audit_action)
+        live_query = live_query.filter(RedemptionEvent.action == parsed_audit_action)
     if audit_start_date:
         try:
             start_day = datetime.strptime(audit_start_date, '%Y-%m-%d').date()
             start_dt, _ = local_date_bounds_utc(start_day)
-            live_query = live_query.filter(RedemptionAuditLog.timestamp >= start_dt)
+            live_query = live_query.filter(RedemptionEvent.timestamp >= start_dt)
         except ValueError:
             flash("Invalid audit start date format. Please use YYYY-MM-DD.", "warning")
     if audit_end_date:
@@ -5556,17 +5561,17 @@ def store_management():
             end_day = datetime.strptime(audit_end_date, '%Y-%m-%d').date()
             _, end_dt = local_date_bounds_utc(end_day)
             end_dt = end_dt + timedelta(seconds=1)
-            live_query = live_query.filter(RedemptionAuditLog.timestamp < end_dt)
+            live_query = live_query.filter(RedemptionEvent.timestamp < end_dt)
         except ValueError:
             flash("Invalid audit end date format. Please use YYYY-MM-DD.", "warning")
 
-    live_rows = live_query.order_by(RedemptionAuditLog.timestamp.desc()).limit(5000).all()
+    live_rows = live_query.order_by(RedemptionEvent.timestamp.desc()).limit(5000).all()
     if audit_student:
         audit_student_lower = audit_student.lower()
         live_rows = [
             row for row in live_rows
             if audit_student_lower in (
-                (row.Seat.identity_profile.full_name if row.Seat and row.Seat.identity_profile else "Unknown")
+                row.student_display_name or "Unknown"
             ).lower()
         ]
     live_keys = {
@@ -5576,8 +5581,8 @@ def store_management():
     inferred_rows = []
 
     live_serialized = [{
-        'student_item_id': row.student_item_id,
-        'student_display_name': row.Seat.identity_profile.full_name if row.Seat and row.Seat.identity_profile else "Unknown",
+        'student_item_id': row.purchase_id,
+        'student_display_name': row.student_display_name or "Unknown",
         'class_display_label': row.class_display_label,
         'action': row.action.value if hasattr(row.action, 'value') else row.action,
         'notes': row.notes,
@@ -5728,8 +5733,7 @@ def delete_store_item(item_id):
 
         # To preserve history, we'll just deactivate it instead of a hard delete
         # A hard delete would be: db.session.delete(item)
-        item.is_active = False
-        db.session.flush()
+        deactivate_store_item(item)
 
     if refunded:
         flash(
@@ -5783,10 +5787,9 @@ def _sync_rent_items_to_store(rent_settings, user_id, class_id):
     Deactivates store items for rent items that are no longer available.
 
     FIX: Prevents duplicate store items when applying rent settings to all periods.
-    Store items are now shared across blocks using StoreItemBlock for visibility.
+    Store items use canonical seat-level visibility rows; block labels are derived metadata.
     """
-    from app.models import StoreItem
-    # StoreItemBlock removed — store_item_blocks unauthorized; migrate to store_item_visibility (DOM-STORE-001)
+    from app.models import StoreItem, StoreItemVisibility, Seat
 
     if not class_id:
         current_app.logger.warning(
@@ -5812,29 +5815,33 @@ def _sync_rent_items_to_store(rent_settings, user_id, class_id):
             store_item.class_id = class_id
         store_item.is_active = True
 
-        existing_block_links = {
-            link.block
-            for link in StoreItemBlock.query.filter_by(store_item_id=store_item.id).all()
-            if link.block
-        }
-        desired_blocks = set()
-        if store_item.blocks_list:
-            desired_blocks = {block.strip().upper() for block in store_item.blocks_list if block}
+        desired_blocks = {block.strip().upper() for block in store_item.blocks_list if block}
         if not desired_blocks:
-            desired_blocks = {""}
+            continue
 
-        for block in desired_blocks - existing_block_links:
-            db.session.add(
-                StoreItemBlock(
-                    store_item_id=store_item.id,
-                    block=block,
+        for block in desired_blocks:
+            create_store_item_block(store_item_id=store_item.id, block=block)
+
+        existing_visibility_seat_ids = [
+            seat_id
+            for (seat_id,) in (
+                db.session.query(StoreItemVisibility.seat_id)
+                .join(Seat, Seat.id == StoreItemVisibility.seat_id)
+                .join(ClassEconomy, ClassEconomy.class_id == Seat.class_id)
+                .filter(
+                    StoreItemVisibility.store_item_id == store_item.id,
+                    ClassEconomy.class_id == class_id,
+                    ClassEconomy.section.isnot(None),
+                    ~ClassEconomy.section.in_(desired_blocks),
                 )
+                .all()
             )
-
-        for block in existing_block_links - desired_blocks:
-            StoreItemBlock.query.filter_by(store_item_id=store_item.id, block=block).delete()
-
-    db.session.flush()
+        ]
+        if existing_visibility_seat_ids:
+            StoreItemVisibility.query.filter(
+                StoreItemVisibility.store_item_id == store_item.id,
+                StoreItemVisibility.seat_id.in_(existing_visibility_seat_ids),
+            ).delete(synchronize_session=False)
 
 
 def _calculate_base_rent_amount(rent_settings: RentSettings, current_year: int, current_month: int) -> Decimal:
@@ -5957,8 +5964,7 @@ def rent_settings():
                 # block IS a class_id; query directly — no label-based lookup (INV-ARC-014)
                 block_settings = RentSettings.query.filter_by(class_id=block).first()
                 if not block_settings:
-                    block_settings = RentSettings(class_id=block)
-                    db.session.add(block_settings)
+                    block_settings = create_rent_settings(class_id=block)
 
                 # Rent amount and frequency
                 from app.models import _quantize_currency
@@ -6150,7 +6156,7 @@ def rent_settings():
                         processed_items.add(target_item)
                     else:
                         # Create new
-                        new_item = StoreItem(
+                        new_item = create_store_item(
                             user_id=user_id,
                             class_id=block_settings.class_id,
                             name=item_data['name'],
@@ -6161,7 +6167,6 @@ def rent_settings():
                             is_active=item_data['is_available'],
                             is_rent_linked=True,
                         )
-                        db.session.add(new_item)
                         # No need to add to processed_items as it's new
 
                 # Delete items that were not in the form (and thus not processed)
@@ -6169,10 +6174,8 @@ def rent_settings():
                     if item not in processed_items:
                         # If this item had a linked store item, deactivate it
                         if item.store_item_id:
-                            store_item = db.session.get(StoreItem, item.store_item_id)
-                            if store_item:
-                                store_item.is_active = False
-                        db.session.delete(item)
+                            deactivate_linked_store_item(item.store_item_id)
+                        delete_rent_item(item)
 
                 # Sync to store
                 _sync_rent_items_to_store(block_settings, user_id, block_settings.class_id)
@@ -6182,8 +6185,6 @@ def rent_settings():
                           "Item type, use limits, and hall pass counts will apply next period.", "warning")
 
         # Rent settings are canonical; no policy-version snapshotting in v2.
-        db.session.flush()
-
         flash("Rent settings updated successfully!", "success")
         return redirect(url_for('admin.rent_settings'))
 
@@ -7481,7 +7482,6 @@ def _run_payroll():
             user_id,
             class_id=selected_scope['class_id'],
         )
-        db.session.flush()  # Flush after applying scheduled rebalances.
         current_app.logger.info(f"Payroll complete. Created {result.applied_count} transactions.")
 
         success_message = f"Payroll complete. Processed {result.applied_count} payments."
@@ -8028,21 +8028,11 @@ def payroll_settings():
 
         db.session.rollback()
         with FEATContext("FEAT-ADMN-001", idempotency_key=idempotency_key):
-            for block_value in target_blocks:
-                class_id = class_id_by_block.get(block_value)
-                if not class_id:
-                    raise ValueError(f"Missing class scope for payroll block '{block_value}'")
-
-                setting = PayrollSettings.query.filter_by(class_id=class_id, block=block_value).first()
-                if not setting:
-                    setting = PayrollSettings(class_id=class_id, block=block_value)
-
-                # Update all fields
-                for key, value in settings_data.items():
-                    setattr(setting, key, value)
-
-                setting.updated_at = utc_now()
-                db.session.add(setting)
+            upsert_payroll_settings_for_blocks(
+                class_id_by_block=class_id_by_block,
+                target_blocks=target_blocks,
+                settings_data=settings_data,
+            )
 
         if apply_to == 'all' or not selected_blocks:
             flash(f'Payroll settings ({settings_mode} mode) applied to all periods successfully!', 'success')
@@ -8120,19 +8110,14 @@ def update_expected_weekly_hours():
                         setting.expected_weekly_hours = expected_weekly_hours
                     flash_message = f'Expected weekly hours updated to {expected_weekly_hours} hours/week for all classes.'
                 else:
-                    # No settings exist - create a default one for the selected block
-                    class_id = class_id_by_block.get(cwi_block)
-                    if not class_id:
-                        abort(404)
-                    new_setting = PayrollSettings(
-                        class_id=class_id,
-                        block=cwi_block,
-                        pay_rate=0.25,  # Default $0.25/min = $15/hour
+                    update_expected_weekly_hours_for_blocks(
+                        class_id_by_block=class_id_by_block,
+                        target_blocks=[cwi_block],
                         expected_weekly_hours=expected_weekly_hours,
+                        default_pay_rate=Decimal('0.25'),
                         payroll_frequency_days=14,
-                        settings_mode='simple'
+                        settings_mode='simple',
                     )
-                    db.session.add(new_setting)
                     flash_message = f'Expected weekly hours set to {expected_weekly_hours} hours/week for all classes.'
             else:
                 # Update only the selected block
@@ -8145,16 +8130,14 @@ def update_expected_weekly_hours():
                     block_setting.expected_weekly_hours = expected_weekly_hours
                     flash_message = f'Expected weekly hours updated to {expected_weekly_hours} hours/week for {cwi_block}.'
                 else:
-                    # Create new setting for this block
-                    new_setting = PayrollSettings(
-                        class_id=class_id,
-                        block=cwi_block,
-                        pay_rate=0.25,  # Default $0.25/min = $15/hour
+                    update_expected_weekly_hours_for_blocks(
+                        class_id_by_block=class_id_by_block,
+                        target_blocks=[cwi_block],
                         expected_weekly_hours=expected_weekly_hours,
+                        default_pay_rate=Decimal('0.25'),
                         payroll_frequency_days=14,
-                        settings_mode='simple'
+                        settings_mode='simple',
                     )
-                    db.session.add(new_setting)
                     flash_message = f'Expected weekly hours set to {expected_weekly_hours} hours/week for {cwi_block}.'
 
         flash(flash_message, 'success')
@@ -8357,16 +8340,7 @@ def payroll_manual_payment():
 def attendance_log():
     """View complete attendance log."""
     # Attendance history is now seat-scoped; derive periods from canonical session rows.
-    class_ids_subq = db.session.query(ClassEconomy.class_id).filter_by(user_id=g.canonical_context.user_id).subquery()
-    periods_query = (
-        db.session.query(ClassEconomy.section)
-        .select_from(ClassEconomy)
-        .filter(ClassEconomy.class_id.in_(sa.select(class_ids_subq)))
-        .filter(ClassEconomy.section.isnot(None))
-        .distinct()
-        .order_by(ClassEconomy.section)
-    )
-    periods = [p[0] for p in periods_query.all() if p[0]]
+    periods = _get_teacher_blocks(g.canonical_context)
 
     # Get distinct blocks from Students for this admin's students
     blocks = _get_teacher_blocks(g.canonical_context)
@@ -8479,45 +8453,14 @@ def upload_students():
             if not class_name:
                 class_name = next((row.get("class_section") for row in rows if row.get("class_section")), None)
             class_name = (class_name or "").strip() or "New Class"
-            class_row = ClassEconomy(
+            class_row = create_class_with_roster(
+                user_id=user_id,
                 join_code=join_code,
-                user_id=user_id,
-                created_by_user_id=user_id,
-                display_name=class_name,
+                class_name=class_name,
+                rows=rows,
             )
-            db.session.add(class_row)
-            db.session.flush()
 
-            teacher_seat = Seat(
-                user_id=user_id,
-                class_id=class_row.class_id,
-                role="teacher",
-            )
-            db.session.add(teacher_seat)
-            db.session.flush()
-
-            for row in rows:
-                first_name = row["first_name"]
-                last_name = row["last_name"]
-                notes = row["notes"]
-                seat = Seat(
-                    class_id=class_row.class_id,
-                    role="student",
-                    claimed_at=None,
-                )
-                db.session.add(seat)
-                db.session.flush()
-                _insert_identity_profile(
-                    seat_id=seat.id,
-                    class_id=class_row.class_id,
-                    profile_type="student",
-                    first_name=first_name,
-                    last_name=last_name,
-                    notes=notes,
-                )
-
-            session["user_id"] = user_id
-            db.session.flush()
+            establish_teacher_session(db.session.get(User, user_id))
             flash("Class created and roster uploaded. You are now switched into the new class.", "admin_success")
             return redirect(url_for("admin.dashboard"))
 
@@ -8613,11 +8556,13 @@ def upload_students():
                 notes = row["notes"]
                 if actor_public_id and actor_public_id in existing_by_public_id:
                     seat = existing_by_public_id[actor_public_id]
-                    profile = IdentityProfile.query.filter_by(seat_id=seat.id).first()
-                    if profile:
-                        profile.first_name = first_name
-                        profile.last_name = last_name
-                        profile.notes = notes
+                    update_or_create_roster_seat(
+                        class_id=class_id,
+                        first_name=first_name,
+                        last_name=last_name,
+                        notes=notes,
+                        existing_seat=seat,
+                    )
                     updated_count += 1
                     continue
 
@@ -8625,17 +8570,8 @@ def upload_students():
                     # Unknown public_id: treat as add only if it is not already in the class.
                     pass
 
-                new_seat = Seat(
+                update_or_create_roster_seat(
                     class_id=class_id,
-                    role="student",
-                    claimed_at=None,
-                )
-                db.session.add(new_seat)
-                db.session.flush()
-                _insert_identity_profile(
-                    seat_id=new_seat.id,
-                    class_id=class_id,
-                    profile_type="student",
                     first_name=first_name,
                     last_name=last_name,
                     notes=notes,
@@ -8644,13 +8580,9 @@ def upload_students():
 
             if confirm_roster_delete and missing_seats:
                 for seat in missing_seats:
-                    profile = IdentityProfile.query.filter_by(seat_id=seat.id).first()
-                    if profile:
-                        db.session.delete(profile)
-                    db.session.delete(seat)
+                    delete_seat_with_profile(seat)
                     deleted_count += 1
 
-            db.session.flush()
             flash(
                 f"Roster synced: {updated_count} updated, {added_count} added, {deleted_count} deleted.",
                 "admin_success",
@@ -8810,35 +8742,14 @@ def upload_students():
                     )
 
                 # Create Seat (unclaimed account)
-                seat = Seat(
+                seat = create_roster_student_seat(
                     class_id=class_id,
-                    role='student',
+                    first_name=first_name,
+                    last_name=last_name,
+                    dedupe_code=dedupe_code,
                     claim_first_name_hash=claim_first_name_hash,
                     claim_last_name_hash=claim_last_name_hash,
                     roster_fingerprint=roster_fingerprint,
-                    dedupe_code=dedupe_code,
-                    claimed_at=None
-                )
-                db.session.add(seat)
-                db.session.flush()
-
-                # Create associated IdentityProfile
-                db.session.execute(
-                    sa.text(
-                        "INSERT INTO identity_profiles "
-                        "(seat_id, class_id, profile_type, first_name, last_name, notes, created_at, updated_at) "
-                        "VALUES (:seat_id, :class_id, :profile_type, :first_name, :last_name, :notes, :created_at, :updated_at)"
-                    ),
-                    {
-                        "seat_id": seat.id,
-                        "class_id": class_id,
-                        "profile_type": "student",
-                        "first_name": first_name,
-                        "last_name": last_name,
-                        "notes": additional_notes or None,
-                        "created_at": utc_now(),
-                        "updated_at": utc_now(),
-                    },
                 )
                 added_count += 1
             except Exception as e:
@@ -9356,8 +9267,6 @@ def bulk_update_hall_passes():
             )
 
         # Commit all updates
-        db.session.flush()
-
         # Build response message
         action_text = {
             'set': f'set to {value}',
@@ -9648,11 +9557,10 @@ def banking_settings_update():
                         block=block,
                     ).first()
                     if not settings:
-                        settings = BankingSettings(
+                        settings = create_banking_settings(
                             class_id=scope_for_block['class_id'],
                             block=block,
                         )
-                        db.session.add(settings)
 
                     # Update settings from form
                     settings.savings_apy = Decimal(str(form.savings_apy.data or 0)).quantize(Decimal('0.000001'))
@@ -9740,8 +9648,7 @@ def account_delete():
 
         try:
             _hard_delete_teacher_account_scope(user_id)
-            db.session.delete(admin)
-            db.session.flush()
+            delete_admin_account_rows(admin)
 
             session.pop("user_id", None)
             session.pop("last_activity", None)
@@ -9772,7 +9679,7 @@ def help_support():
     teacher_user_class_rows = (
         ClassEconomy.query
         .filter_by(user_id=user_id)
-        .order_by(ClassEconomy.section.asc(), ClassEconomy.created_at.asc())
+        .order_by(ClassEconomy.class_id.asc(), ClassEconomy.created_at.asc())
         .all()
     )
     selected_option = next(({
@@ -9914,18 +9821,14 @@ def help_support():
                 ).first()
                 if not category:
                     category = IssueCategory.query.first()
-                report = Issue(
+                create_support_ticket(
                     actor_public_id=anonymous_code,
                     class_public_id=selected_class_id,
                     category_id=category.id,
-                    issue_type='general',
-                    student_explanation=scoped_description,
-                    student_expected_outcome=expected_behavior if expected_behavior else None,
-                    page_url=page_url if page_url else None,
-                    status=Issue.STATUS_OPEN,
+                    scoped_description=scoped_description,
+                    expected_behavior=expected_behavior,
+                    page_url=page_url,
                 )
-                db.session.add(report)
-                db.session.flush()
 
             flash("Your support ticket has been submitted directly to system administration.", "success")
             return redirect(url_for('admin.help_support'))
@@ -9975,33 +9878,12 @@ def feature_settings():
     user_id = g.canonical_context.user_id
 
     # Get all configured periods for this teacher from class economy anchors.
-    period_rows = (
-        db.session.query(ClassEconomy.section)
-        .filter(
-            ClassEconomy.user_id == user_id,
-            ClassEconomy.section.isnot(None),
-        )
-        .all()
-    )
-    periods = sorted({
-        (section or '').strip().upper()
-        for (section,) in period_rows
-        if (section or '').strip()
-    })
+    periods = _get_teacher_blocks(g.canonical_context)
     join_codes_by_period = _get_join_codes_by_block(g.canonical_context, periods)
-    class_rows = (
-        ClassEconomy.query
-        .with_entities(ClassEconomy.section, ClassEconomy.class_id)
-        .filter(
-            ClassEconomy.user_id == user_id,
-            ClassEconomy.section.in_(periods),
-        )
-        .all()
-    )
     class_id_by_period = {
-        (section or '').strip().upper(): class_id
-        for section, class_id in class_rows
-        if (section or '').strip() and class_id
+        block: class_id
+        for block, class_id in _get_class_ids_by_block(g.canonical_context, periods).items()
+        if class_id
     }
 
     period_settings = {}
@@ -10037,12 +9919,7 @@ def update_period_feature_settings(period):
         period = period.strip().upper()
 
         class_id = (
-            ClassEconomy.query.with_entities(ClassEconomy.class_id)
-            .filter(
-                ClassEconomy.user_id == user_id,
-                ClassEconomy.section == period,
-            )
-            .scalar()
+            next(iter([cid for cid in _get_class_ids_by_block(g.canonical_context, [period]).values() if cid]), None)
         )
         if not class_id:
             return jsonify({'status': 'error', 'message': 'Class scope not found for this period.'}), 400
@@ -10101,12 +9978,7 @@ def copy_feature_settings():
 
         # Get source settings
         source_class_id = (
-            ClassEconomy.query.with_entities(ClassEconomy.class_id)
-            .filter(
-                ClassEconomy.user_id == user_id,
-                ClassEconomy.section == source_period,
-            )
-            .scalar()
+            next(iter([cid for cid in _get_class_ids_by_block(g.canonical_context, [source_period]).values() if cid]), None)
         )
         if not source_class_id:
             return jsonify({
@@ -10137,12 +10009,7 @@ def copy_feature_settings():
                     continue  # Skip copying to self
 
                 target_class_id = (
-                    ClassEconomy.query.with_entities(ClassEconomy.class_id)
-                    .filter(
-                        ClassEconomy.user_id == user_id,
-                        ClassEconomy.section == period,
-                    )
-                    .scalar()
+                    next(iter([cid for cid in _get_class_ids_by_block(g.canonical_context, [period]).values() if cid]), None)
                 )
                 if not target_class_id:
                     return jsonify({
@@ -10229,18 +10096,15 @@ def announcement_create():
 
     if form.validate_on_submit():
         try:
-            announcement = Announcement(
+            announcement = create_class_announcement(
                 user_id=user_id,
                 class_id=selected_class_id,
                 title=form.title.data,
                 message=form.message.data,
                 priority=form.priority.data,
                 is_active=form.is_active.data,
-                expires_at=form.expires_at.data
+                expires_at=form.expires_at.data,
             )
-            db.session.add(announcement)
-
-            db.session.flush()
             flash(f'Announcement "{form.title.data}" created successfully!', 'success')
 
             return redirect(url_for('admin.announcements'))
@@ -10268,7 +10132,7 @@ def announcement_edit(announcement_id):
     from app.models import Announcement
 
     user_id = g.canonical_context.user_id
-    class_context = _resolve_admin_class_context(canonical_context)
+    class_context = _resolve_admin_class_context(g.canonical_context)
     if not class_context:
         flash("Select a class from the sidebar before editing announcements.", "warning")
         return redirect(url_for('admin.dashboard'))
@@ -10286,18 +10150,18 @@ def announcement_edit(announcement_id):
 
     # Get the class info for this announcement
     form = AnnouncementForm(obj=announcement)
-    form.class_id.data = selected_class_id
+    form.class_id.data = class_context["class_id"]
 
     if form.validate_on_submit():
         try:
-            announcement.title = form.title.data
-            announcement.message = form.message.data
-            announcement.priority = form.priority.data
-            announcement.is_active = form.is_active.data
-            announcement.expires_at = form.expires_at.data
-            announcement.updated_at = utc_now()
-
-            db.session.flush()
+            update_class_announcement(
+                announcement,
+                title=form.title.data,
+                message=form.message.data,
+                priority=form.priority.data,
+                is_active=form.is_active.data,
+                expires_at=form.expires_at.data,
+            )
 
             flash(f'Announcement "{announcement.title}" updated successfully!', 'success')
             return redirect(url_for('admin.announcements'))
@@ -10323,7 +10187,7 @@ def announcement_delete(announcement_id):
     from app.models import Announcement
 
     user_id = g.canonical_context.user_id
-    class_context = _resolve_admin_class_context(canonical_context)
+    class_context = _resolve_admin_class_context(g.canonical_context)
     if not class_context:
         flash("Select a class from the sidebar before deleting announcements.", "warning")
         return redirect(url_for('admin.dashboard'))
@@ -10341,8 +10205,7 @@ def announcement_delete(announcement_id):
 
     try:
         title = announcement.title
-        db.session.delete(announcement)
-        db.session.flush()
+        delete_class_announcement(announcement)
 
         flash(f'Announcement "{title}" deleted successfully!', 'success')
 
@@ -10361,7 +10224,7 @@ def announcement_toggle(announcement_id):
     from app.models import Announcement
 
     user_id = g.canonical_context.user_id
-    class_context = _resolve_admin_class_context(canonical_context)
+    class_context = _resolve_admin_class_context(g.canonical_context)
     if not class_context:
         return jsonify({'status': 'error', 'message': 'Select a class from the sidebar first.'}), 400
 
@@ -10376,9 +10239,14 @@ def announcement_toggle(announcement_id):
         return jsonify({'status': 'error', 'message': 'Announcement not found'}), 404
 
     try:
-        announcement.is_active = not announcement.is_active
-        announcement.updated_at = utc_now()
-        db.session.flush()
+        update_class_announcement(
+            announcement,
+            title=announcement.title,
+            message=announcement.message,
+            priority=announcement.priority,
+            is_active=not announcement.is_active,
+            expires_at=announcement.expires_at,
+        )
 
         return jsonify({
             'status': 'success',
@@ -10416,11 +10284,7 @@ def onboarding_status():
         # see all setup tasks immediately.
 
         # Get all blocks for this teacher (for account-wide onboarding checks)
-        all_blocks = list({
-            (section or '').strip().upper()
-            for (section,) in db.session.query(ClassEconomy.section).filter_by(user_id=user_id).all()
-            if (section or '').strip()
-        })
+        all_blocks = _get_teacher_blocks(g.canonical_context)
 
         # Initialize completion status
         completion = {
@@ -10551,7 +10415,6 @@ def onboarding_skip():
 
     get_or_create_admin_onboarding(user.id, utc_now())
     set_admin_onboarding_skipped(user.id, utc_now())
-    db.session.flush()
     return jsonify({'status': 'success'})
 
 
@@ -10578,8 +10441,6 @@ def onboarding_skip_task():
             now=utc_now(),
         )
 
-        db.session.flush()
-
         return jsonify({
             'status': 'success',
             'message': f'Task "{task_name}" marked as skipped'
@@ -10603,8 +10464,6 @@ def onboarding_dismiss_widget():
         # Get or create onboarding record
         set_admin_onboarding_widget_dismissed(user.id, dismissed=True, now=utc_now())
 
-        db.session.flush()
-
         return jsonify({
             'status': 'success',
             'message': 'Getting Started widget dismissed'
@@ -10627,8 +10486,6 @@ def onboarding_undismiss_widget():
     try:
         # Get onboarding record
         set_admin_onboarding_widget_dismissed(user.id, dismissed=False, now=utc_now())
-
-        db.session.flush()
 
         return jsonify({
             'status': 'success',
@@ -11033,8 +10890,6 @@ def passkey_register_finish():
             credential_id=None,  # Not needed - stored on passwordless.dev servers
             authenticator_name=authenticator_name,
         )
-        db.session.flush()
-
         flash("Passkey registered successfully!", "success")
         return jsonify({"success": True}), 200
 
@@ -11122,12 +10977,10 @@ def passkey_auth_finish():
         now = utc_now()
         touch_admin_credentials_last_used(user.id, now)
 
-        db.session.flush()
-
         # Create session
         auth_username = session.get('passkey_auth_username')
         session.clear()
-        session["user_id"] = user.id
+        establish_teacher_session(user)
         nonce = secrets.token_urlsafe(32)
         session["current_session_nonce"] = nonce
         user.current_session_nonce = nonce
@@ -11184,8 +11037,6 @@ def passkey_delete(passkey_id):
             return jsonify({"error": "Passkey not found"}), 404
 
         delete_admin_credential(passkey_id, user_id)
-        db.session.flush()
-
         flash("Passkey deleted successfully", "success")
         return jsonify({"success": True}), 200
 
@@ -11436,8 +11287,6 @@ def resolve_issue(issue_ref):
         issue.teacher_resolved_at = utc_now()
         issue.teacher_notes = resolution_notes
 
-        db.session.flush()
-
         flash("Issue moved to final review. Close it after confirming classroom state.", "success")
         return redirect(url_for('admin.view_issue', issue_ref=make_opaque_ref('issue', issue.id)))
 
@@ -11508,8 +11357,6 @@ def escalate_issue(issue_ref):
             notes=f"Escalated: {escalation_reason}",
         )
 
-        db.session.flush()
-
         flash("Issue escalated to developer successfully.", "success")
         return redirect(url_for('admin.issues_queue'))
 
@@ -11563,7 +11410,6 @@ def close_issue(issue_ref):
         issue.closed_at = utc_now()
         issue.closed_by_type = 'teacher'
         update_issue_status(issue, Issue.STATUS_CLOSED, 'teacher', teacher_public_id, notes=resolution_summary)
-        db.session.flush()
         flash("Issue closed.", "success")
     except Exception:
         db.session.rollback()

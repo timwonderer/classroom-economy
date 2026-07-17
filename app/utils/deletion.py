@@ -8,7 +8,7 @@ from app.extensions import db
 from app.models import (
     ClassEconomy, Seat, Transaction,
     AttendanceSession, HallPassLog, StorePurchase, RedemptionEvent,
-    Issue, IssueResolutionAction, Announcement, StoreItem,
+    Issue, IssueResolutionAction, Announcement, StoreItem, StoreItemVisibility,
     # RedemptionAuditLog removed — redemption_audit_logs unauthorized; use redemption_events (DOM-STORE-001)
     # StoreItemBlock removed — store_item_blocks unauthorized; use store_item_visibility (DOM-STORE-001)
 )
@@ -114,15 +114,18 @@ def collapse_universe(class_id: str, reason: str, actor_membership_id: Optional[
         ).delete(synchronize_session=False)
         StorePurchase.query.filter_by(class_id=class_id).delete(synchronize_session=False)
 
-        # 4b. StoreItemBlocks for this class (class-scoped; also handled by FK cascade on class deletion)
-        StoreItemBlock.query.filter_by(class_id=class_id).delete(synchronize_session=False)
-        # Delete StoreItems that now have NO remaining StoreItemBlock visibility entries for this class
+        # 4b. Seat-level store visibility rows for this class
+        seat_ids_subq = select(Seat.id).filter_by(class_id=class_id).subquery()
+        StoreItemVisibility.query.filter(
+            StoreItemVisibility.seat_id.in_(select(seat_ids_subq))
+        ).delete(synchronize_session=False)
+        # Delete StoreItems that now have NO remaining visibility entries for this class
         deletable_store_items = (
             db.session.query(StoreItem.id)
-            .outerjoin(StoreItemBlock, StoreItem.id == StoreItemBlock.store_item_id)
+            .outerjoin(StoreItemVisibility, StoreItem.id == StoreItemVisibility.store_item_id)
             .filter(
                 StoreItem.class_id == class_id,
-                StoreItemBlock.store_item_id.is_(None),
+                StoreItemVisibility.store_item_id.is_(None),
             )
             .subquery()
         )

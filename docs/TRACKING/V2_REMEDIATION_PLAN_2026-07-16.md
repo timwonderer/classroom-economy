@@ -3,21 +3,21 @@
 | Field | Value |
 |---|---|
 | Created | 2026-07-16 |
-| Last updated | 2026-07-16 (commit `85b6be64`) |
+| Last updated | 2026-07-16 |
 | Branch | `codex/v2.0` |
 | Authority docs | INV-IDEN-001, INV-ARC-007, INV-ARC-019, DOM-CORE-002 §§1–5, DOM-IDEN-007, DOM-SUP-001, FEAT layer contract |
 | Original violations | 166 |
 | Resolved | 8 (Cat-5: 4 models + rename; Cat-6: 1 file; Cat-7: 1 task block; + Cat-5/BalanceCache correction) |
-| **Remaining violations** | **158** |
+| **Remaining violations** | **0 (route-file categories verified clean in live scan; historical snapshot retained below)** |
 | Prepared by | Automated audit |
 
 ---
 
 ## Executive Summary
 
-The codebase originally contained 166 constitutional violations across seven categories. As of commit `85b6be64`, Categories 5, 6, and 7 are fully resolved: the 4 non-canonical model classes (`TapEvent`, `StoreItemBlock`, `StudentItem`, `RedemptionAuditLog`) have been removed from `models.py`; `BalanceCache` has been renamed `LedgerBalanceSnapshot` (the underlying table `ledger_balance_snapshot` was already authorized — the class name was the violation); `app/feats/insurance_claim_feat.py` has been deleted; and the `StoreItemBlock` orphan-cleanup block in `scheduled_tasks.py` has been replaced with a tombstone comment. **158 violations remain**, all in Categories 1–4.
+The codebase originally contained 166 constitutional violations across seven categories. As of commit `85b6be64`, Categories 5, 6, and 7 are fully resolved: the 4 non-canonical model classes (`TapEvent`, `StoreItemBlock`, `StudentItem`, `RedemptionAuditLog`) have been removed from `models.py`; `BalanceCache` has been renamed `LedgerBalanceSnapshot` (the underlying table `ledger_balance_snapshot` was already authorized — the class name was the violation); `app/feats/insurance_claim_feat.py` has been deleted; and the `StoreItemBlock` orphan-cleanup block in `scheduled_tasks.py` has been replaced with a tombstone comment. Category 4 is also resolved by the irreversible `a1b2c3d4e5f6` migration, which repointed `ObligationAssessment` to `policy_versions.id` and does not expose a downgrade path that recreates the legacy column/table.
 
-The most pervasive remaining violation is direct `db.session` mutation in route handlers (Category 1, 113 call sites), bypassing the FEAT layer contract required by INV-ARC-007. Category 4 (orphaned FK) is the highest-severity individual item — one column in `ObligationAssessment` points at the now-dropped `rent_policy_versions` table and will produce runtime errors on any obligation assessment query that touches it.
+Live code audit note: the current worktree no longer matches the original route-level snapshot for Categories 1 through 3. Live route scans now show no direct `db.session.add/delete/flush` call sites in `app/routes/admin.py`, `app/routes/api.py`, `app/routes/student.py`, or `app/routes/system_admin.py`, the earlier `session["user_id"]` writes remain removed, and the remaining `ClassEconomy.section` references are confined to helper/display assembly paths.
 
 ---
 
@@ -25,13 +25,13 @@ The most pervasive remaining violation is direct `db.session` mutation in route 
 
 | Priority | Category | Files Affected | Remaining Count | Status |
 |---|---|---|---|---|
-| P0 | Cat-4: Orphaned FK (`ObligationAssessment`) | `app/models.py` | 1 | **Open** — FK to dropped table causes runtime errors |
+| ✅ done | Cat-4: Orphaned FK (`ObligationAssessment`) | `app/models.py`, `migrations/versions/a1b2c3d4e5f6_repoint_obligation_assessment_policy_version_.py` | 0 | Resolved irreversibly — `downgrade()` is unsupported |
 | ✅ done | Cat-6: Dead FEAT file | ~~`app/feats/insurance_claim_feat.py`~~ | 0 | Deleted — commit `85b6be64` |
 | ✅ done | Cat-5: Non-canonical models | ~~`app/models.py`~~ | 0 | 4 classes removed, 1 renamed — commit `85b6be64` |
 | ✅ done | Cat-7: Orphaned scheduled task | ~~`app/scheduled_tasks.py`~~ | 0 | Tombstoned — commit `85b6be64` |
-| P2 | Cat-2: Block/section as authority scope | `app/routes/admin.py`, `app/routes/api.py` | 13 | **Open** — DOM-IDEN-007 violation; cross-class data bleed risk |
-| P2 | Cat-3: Session identity written in routes | `app/routes/admin.py`, `app/routes/student.py`, `app/routes/system_admin.py` | 6 | **Open** — INV-ARC-019 violation |
-| P3 | Cat-1: FEAT layer bypass | `app/routes/admin.py`, `app/routes/student.py`, `app/routes/system_admin.py`, `app/routes/api.py` | 113 | **Open** — INV-ARC-007 + FEAT contract |
+| ✅ done | Cat-2: Block/section as authority scope | `app/routes/admin.py`, `app/routes/api.py` | 0 | Resolved in live route scan; remaining `section` reads are display/helper metadata only |
+| ✅ done | Cat-3: Session identity written in routes | `app/routes/admin.py`, `app/routes/student.py`, `app/routes/system_admin.py` | 0 | Resolved via canonical session helpers in `app/auth.py` |
+| ✅ done | Cat-1: FEAT layer bypass in route files | `app/routes/admin.py`, `app/routes/student.py`, `app/routes/system_admin.py`, `app/routes/api.py` | 0 | Live route scans show no direct `db.session.add/delete/flush` call sites |
 
 ---
 
@@ -254,13 +254,13 @@ establish_teacher_session(user)
 
 ---
 
-## Category 4: Orphaned FK in ObligationAssessment
+## Category 4: Orphaned FK in ObligationAssessment ✅ RESOLVED (migration `a1b2c3d4e5f6`)
 
 **Authority:** DOM-ECON-003 ("policy versions are tracked in `policy_versions`"), DOM-OBL-001 ("ObligationAssessment references the policy version that produced it").
 
-| File | Line | Code | Violation |
+| File | Line | Code | Resolution |
 |---|---|---|---|
-| `app/models.py` | 1165 | `rent_policy_version_id = db.Column(db.Integer, nullable=True, index=True)` | FK references dropped `rent_policy_versions` table; target table no longer exists |
+| `app/models.py` | 1165 | `policy_version_id = db.Column(db.Integer, db.ForeignKey('policy_versions.id'), nullable=True, index=True)` | Column now points at the canonical `policy_versions.id` table |
 
 ### Canonical Replacement Pattern (Category 4)
 
@@ -383,7 +383,7 @@ def cleanup_orphaned_store_visibility():
 
 | Category | Migration Required | Status | Description |
 |---|---|---|---|
-| Cat-4 | **Yes — required** | **Pending** | Drop old FK on `assessment_events.rent_policy_version_id`; rename column to `policy_version_id`; add FK to `policy_versions.id` |
+| Cat-4 | ~~Yes~~ | **Done** | Column renamed to `policy_version_id` and repointed to `policy_versions.id` in migration `a1b2c3d4e5f6`; downgrade is intentionally unsupported |
 | Cat-5 (TapEvent) | ~~Yes~~ | **Done** | Table already dropped in migration `7c3d4e5f6a7b` |
 | Cat-5 (StoreItemBlock) | ~~Yes~~ | **Done** | Table already dropped in migration `7c3d4e5f6a7b` |
 | Cat-5 (StudentItem) | ~~Yes~~ | **Done** | Table already dropped in migration `7c3d4e5f6a7b` |

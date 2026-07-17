@@ -37,6 +37,7 @@ from app.models import (
     PayrollSettings, StoreItem, Announcement, Issue, IssueStatusHistory, IssueResolutionAction
 )
 from app.auth import (
+    establish_sysadmin_session,
     system_admin_required,
     _expire_system_admin_session,
     _system_admin_timeout_expired,
@@ -60,12 +61,24 @@ from app.utils.opaque_refs import make_opaque_ref, resolve_opaque_ref
 from app.services.admin_identity_service import (
     count_active_admin_invite_codes,
     create_admin_invite_code,
+    create_admin_credential,
     delete_admin_credentials_for_user,
+    delete_admin_credential,
     delete_admin_onboarding_for_user,
+    delete_admin_account_rows,
     get_admin_invite_code_by_id,
     list_admin_invite_codes,
+    admin_has_passkeys,
+    list_admin_credentials,
     mark_admin_invite_code_used,
+    touch_admin_credentials_last_used,
 )
+from app.services.announcement_service import (
+    create_system_announcement,
+    delete_system_announcement,
+    update_system_announcement,
+)
+from app.utils.issue_helpers import record_resolution_action
 from app.services.recovery_service import delete_recovery_rows_for_user
 
 # Create blueprint
@@ -270,7 +283,7 @@ def login():
                     totp_valid = False
                 if totp_valid:
                     # Canonical session — no extinct keys
-                    session["user_id"] = user.id
+                    establish_sysadmin_session(user)
                     nonce = secrets.token_urlsafe(32)
                     session["current_session_nonce"] = nonce
                     user.current_session_nonce = nonce
@@ -376,15 +389,7 @@ def passkey_register_finish():
         # We just track that registration occurred for UX purposes
         authenticator_name = data.get('authenticatorName', 'Unnamed Passkey')
 
-        # Save credential metadata (credential_id is optional, stored on passwordless.dev)
-        credential = PasskeyCredential(
-            user_id=user.id,
-            credential_id=None,  # Not needed - stored on passwordless.dev servers
-            authenticator_name=authenticator_name
-        )
-
-        db.session.add(credential)
-        db.session.flush()
+        create_admin_credential(user.id, authenticator_name, credential_id=None)
 
         flash("Passkey registered successfully!", "success")
         return jsonify({"success": True}), 200
@@ -417,7 +422,7 @@ def passkey_auth_start():
             return jsonify({"error": "Invalid credentials"}), 401
 
         # Check if user has passkeys
-        has_passkeys = PasskeyCredential.query.filter_by(user_id=user.id).first() is not None
+        has_passkeys = admin_has_passkeys(user.id)
         if not has_passkeys:
             return jsonify({"error": "Invalid credentials"}), 401
 
@@ -467,19 +472,11 @@ def passkey_auth_finish():
         user = db.session.get(User, canonical_user_id)
         if not user or getattr(user.user_role, "value", user.user_role) != "sysadmin":
             return jsonify({"error": "Invalid user ID"}), 401
-        # Update credential last_used timestamp
-        # Credentials are stored without credential_id (managed by passwordless.dev),
-        # so update last_used for all credentials belonging to this sysadmin.
         now = utc_now()
-        PasskeyCredential.query.filter_by(user_id=user.id).update(
-            {'last_used': now},
-            synchronize_session=False,
-        )
-
-        db.session.flush()
+        touch_admin_credentials_last_used(user.id, now)
 
         # Create session — canonical keys only
-        session["user_id"] = user.id
+        establish_sysadmin_session(user)
         nonce = secrets.token_urlsafe(32)
         session["current_session_nonce"] = nonce
         user.current_session_nonce = nonce
@@ -514,7 +511,7 @@ def passkey_list():
         user = get_current_user()
         if not user:
             return jsonify({"error": "Canonical system admin identity is missing"}), 409
-        credentials = PasskeyCredential.query.filter_by(user_id=user.id).order_by(PasskeyCredential.created_at.desc()).all()
+        credentials = list_admin_credentials(user.id)
 
         return jsonify([{
             "id": cred.id,
@@ -537,13 +534,9 @@ def passkey_delete(credential_id):
         user = get_current_user()
         if not user:
             return jsonify({"error": "Canonical system admin identity is missing"}), 409
-        credential = PasskeyCredential.query.filter_by(id=credential_id, user_id=user.id).first()
-
-        if not credential:
+        deleted = delete_admin_credential(credential_id, user.id)
+        if not deleted:
             return jsonify({"error": "Passkey not found"}), 404
-
-        db.session.delete(credential)
-        db.session.flush()
 
         flash("Passkey deleted successfully.", "success")
         return jsonify({"success": True}), 200
@@ -562,12 +555,7 @@ def passkey_settings():
     user = get_current_user()
     if not user or ctx.actor_role != 'sysadmin':
         abort(404)
-    credentials = (
-        PasskeyCredential.query
-        .filter_by(user_id=user.id)
-        .order_by(PasskeyCredential.created_at.desc())
-        .all()
-    )
+    credentials = list_admin_credentials(user.id)
 
     return render_template("system_admin_passkey_settings.html",
                          admin=user,
@@ -914,7 +902,6 @@ def reset_admin_totp(user_id):
         new_secret = pyotp.random_base32()
         encrypted_totp_secret = encrypt_totp(new_secret)
         user.totp_secret_encrypted = encrypted_totp_secret
-        db.session.flush()
         stored_secret = user.totp_secret_encrypted
 
         # Generate QR code
@@ -975,11 +962,7 @@ def delete_admin(user_id):
         delete_admin_onboarding_for_user(admin_user.id)
 
         legacy_admin = _resolve_legacy_admin(admin_user)
-        if legacy_admin:
-            db.session.delete(legacy_admin)
-
-        db.session.delete(admin_user)
-        db.session.flush()
+        delete_admin_account_rows(admin_user, legacy_admin=legacy_admin)
 
         flash(
             f"Teacher '{admin_username}' deleted. Removed {deleted_student_count} student seats across {deleted_class_count} classes.",
@@ -1008,7 +991,6 @@ def manage_teachers():
         expiry_days = request.form.get('expiry_days', 30, type=int)
         expires_at = utc_now() + timedelta(days=expiry_days)
         invite = create_admin_invite_code(code=code, expires_at=expires_at)
-        db.session.flush()
         current_app.logger.info(f"Invite code created in database: {repr(invite.code)} (id: {invite.id})")
         flash(f"Invite code '{code}' created successfully.", "success")
         return redirect(url_for("sysadmin.manage_teachers") + "#invite-codes")
@@ -1090,7 +1072,6 @@ def void_invite_code(code_id):
         flash("This invite code has already been used or voided.", "warning")
     else:
         mark_admin_invite_code_used(code_id)
-        db.session.flush()
         flash(f"Invite code '{invite.code}' has been voided.", "success")
     return redirect(url_for("sysadmin.manage_teachers") + "#invite-codes")
 
@@ -1369,7 +1350,6 @@ def update_user_report(report_ref):
     report.reviewed_by_sysadmin_id = g.canonical_context.user_id
     
     try:
-        db.session.flush()
         flash(f"Report #{report_id} updated successfully.", "success")
     except Exception as e:
         db.session.rollback()
@@ -1686,7 +1666,7 @@ def announcement_create():
                     flash('Please select a target teacher for "All Classes of Specific Teacher" audience.', 'danger')
                     return render_template('sysadmin_announcement_form.html', form=form, action='Create')
 
-            announcement = Announcement(
+            announcement = create_system_announcement(
                 system_admin_id=sysadmin_user_id,
                 audience_type=form.audience_type.data,
                 target_teacher_id=form.target_teacher.data if form.audience_type.data == 'teacher_all_classes' else None,
@@ -1694,10 +1674,8 @@ def announcement_create():
                 message=form.message.data,
                 priority=form.priority.data,
                 is_active=form.is_active.data,
-                expires_at=form.expires_at.data
+                expires_at=form.expires_at.data,
             )
-            db.session.add(announcement)
-            db.session.flush()
 
             flash(f'System announcement "{announcement.title}" created successfully!', 'success')
             return redirect(url_for('sysadmin.announcements'))
@@ -1743,16 +1721,16 @@ def announcement_edit(announcement_id):
                     flash('Please select a target teacher for "All Classes of Specific Teacher" audience.', 'danger')
                     return render_template('sysadmin_announcement_form.html', form=form, announcement=announcement, action='Edit')
 
-            announcement.audience_type = form.audience_type.data
-            announcement.target_teacher_id = form.target_teacher.data if form.audience_type.data == 'teacher_all_classes' else None
-            announcement.title = form.title.data
-            announcement.message = form.message.data
-            announcement.priority = form.priority.data
-            announcement.is_active = form.is_active.data
-            announcement.expires_at = form.expires_at.data
-            announcement.updated_at = utc_now()
-
-            db.session.flush()
+            update_system_announcement(
+                announcement,
+                audience_type=form.audience_type.data,
+                target_teacher_id=form.target_teacher.data if form.audience_type.data == 'teacher_all_classes' else None,
+                title=form.title.data,
+                message=form.message.data,
+                priority=form.priority.data,
+                is_active=form.is_active.data,
+                expires_at=form.expires_at.data,
+            )
 
             flash(f'System announcement "{announcement.title}" updated successfully!', 'success')
             return redirect(url_for('sysadmin.announcements'))
@@ -1780,8 +1758,7 @@ def announcement_delete(announcement_id):
 
     try:
         title = announcement.title
-        db.session.delete(announcement)
-        db.session.flush()
+        delete_system_announcement(announcement)
 
         flash(f'System announcement "{title}" deleted successfully!', 'success')
 
@@ -1808,7 +1785,6 @@ def announcement_toggle(announcement_id):
     try:
         announcement.is_active = not announcement.is_active
         announcement.updated_at = utc_now()
-        db.session.flush()
 
         return jsonify({
             'status': 'success',
@@ -1973,19 +1949,18 @@ def resolve_escalated_issue(issue_ref):
                 description=f"Bug Reward (Issue #{issue.id})",
                 type='bug_reward',
             )
-            db.session.flush()
 
-            db.session.add(IssueResolutionAction(
-                issue_id=issue.id,
+            record_resolution_action(
+                issue,
                 action_type='bug_reward_issued',
-                action_description=f"Issued bug reward while resolving issue #{issue.id}",
                 performed_by_type='sysadmin',
-                performed_by_id=sysadmin_user_id,
+                performed_by_public_id=None,
+                action_description=f"Issued bug reward while resolving issue #{issue.id}",
                 related_transaction_id=reward_transaction.id,
                 amount_changed=float(reward_amount_value),
                 before_value='0.00',
                 after_value=str(reward_amount_value),
-            ))
+            )
 
         # Record status change
         from app.utils.issue_helpers import record_status_change
@@ -2002,8 +1977,6 @@ def resolve_escalated_issue(issue_ref):
             None,  # sysadmin acts outside class scope; identified by issue.sysadmin_id
             notes=f"{resolution_note}{reward_note}",
         )
-
-        db.session.flush()
         if reward_amount_value is not None:
             flash(
                 f"Technical fix recorded, bug reward of ${reward_amount_value:.2f} issued, and ticket returned to teacher review.",

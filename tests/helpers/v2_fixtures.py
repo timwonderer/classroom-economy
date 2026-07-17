@@ -11,7 +11,7 @@ from typing import Any
 from app.services.classroom_setup import create_teacher as _svc_create_teacher
 from app.feats.base import FEATContext
 from app.extensions import db
-from app.models import ClassEconomy, ClassFeature, Seat, StoreItem, StudentItem, Transaction, User, UserRole
+from app.models import ClassEconomy, ClassFeature, Seat, StoreItem, StorePurchase, Transaction, User, UserRole
 from app.services import ledger_service
 
 
@@ -53,7 +53,7 @@ class CanonicalFixtureSeed:
     seat: Seat | None = None
     item: StoreItem | None = None
     transaction: Transaction | None = None
-    purchase: StudentItem | None = None
+    purchase: StorePurchase | None = None
     class_feature: ClassFeature | None = None
 
 
@@ -184,7 +184,7 @@ def seed_purchase(
     account_type: str = "checking",
     transaction_type: str = "purchase",
 ) -> CanonicalFixtureSeed:
-    """Create a canonical pending purchase transaction and matching StudentItem."""
+    """Create a canonical pending purchase transaction and matching StorePurchase."""
     with FEATContext("FEAT-STOR-002", idempotency_key=f"seed_purchase:{seat_id}:{class_id}:{description}"):
         tx = ledger_service.create_pending_transaction(
             seat_id=seat_id,
@@ -197,12 +197,13 @@ def seed_purchase(
         )
         purchase = None
         if item is not None:
-            purchase = StudentItem(
-                correlation_id=f"seed:{seat_id}:{class_id}:{item.id}",
+            purchase = StorePurchase(
                 seat_id=seat_id,
                 class_id=class_id,
                 store_item_id=item.id,
-                purchase_transaction_id=tx.id,
+                quantity=1,
+                price_at_purchase=Decimal("0.00"),
+                total_price=Decimal("0.00"),
                 status="purchased",
             )
             db.session.add(purchase)

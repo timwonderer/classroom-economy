@@ -80,6 +80,36 @@ def _write_event(*, purchase: StorePurchase, actor_user_id: int, action: str, no
     return event.id
 
 
+def record_live_redemption_event(
+    *,
+    purchase_id: int,
+    seat_id: int | None,
+    class_id: str | None,
+    action: RedemptionEventAction,
+    initiated_by_user_id: int,
+    seat_display_name: str,
+    class_display_label: str,
+    notes: Optional[str] = None,
+) -> str:
+    """Persist a live redemption audit event through the canonical FEAT-owned path."""
+    event = RedemptionEvent(
+        id=str(uuid4()),
+        purchase_id=purchase_id,
+        seat_id=seat_id,
+        class_id=class_id,
+        action=action,
+        source=RedemptionEventSource.LIVE,
+        initiated_by_user_id=initiated_by_user_id,
+        seat_display_name=seat_display_name,
+        class_display_label=class_display_label,
+        notes=notes if notes else None,
+        timestamp=utc_now(),
+    )
+    db.session.add(event)
+    db.session.flush()
+    return event.id
+
+
 def _find_original_purchase_tx(purchase: StorePurchase):
     item_name = purchase.store_item.name if purchase.store_item else None
     if not item_name:

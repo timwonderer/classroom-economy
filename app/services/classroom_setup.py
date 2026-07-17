@@ -20,6 +20,7 @@ import uuid
 from app.extensions import db
 from app.models import ClassEconomy, IdentityProfile, Seat, User, UserRole
 from app.utils.auth_username import build_hashed_username_fields
+from app.utils.time import utc_now
 
 
 # ---------------------------------------------------------------------------
@@ -42,6 +43,23 @@ def create_teacher(username: str, *, totp_secret: str | None = None) -> User:
     )
     db.session.add(teacher)
     db.session.flush()
+    return teacher
+
+
+def create_teacher_account_with_class(
+    *,
+    username: str,
+    totp_secret: str | None = None,
+    join_code: str,
+    display_name: str | None = None,
+) -> User:
+    """Create the canonical teacher account and initial class."""
+    teacher = create_teacher(username, totp_secret=totp_secret)
+    create_class(
+        teacher.id,
+        join_code=join_code,
+        display_name=display_name,
+    )
     return teacher
 
 
@@ -160,3 +178,206 @@ def create_student(
     db.session.flush()
 
     return student, seat, profile
+
+
+def create_student_user_for_seat(
+    seat: Seat,
+    *,
+    username: str,
+    pin: str,
+    passphrase: str,
+) -> User:
+    """Create the canonical student User and bind it to an already-claimed seat."""
+    from werkzeug.security import generate_password_hash
+
+    _salt, u_hash, u_lookup = build_hashed_username_fields(username)
+    student = User(
+        user_role=UserRole.STUDENT,
+        username_hash=u_hash,
+        username_lookup_hash=u_lookup,
+        pin_hash=generate_password_hash(pin),
+        passphrase_hash=generate_password_hash(passphrase),
+    )
+    db.session.add(student)
+    db.session.flush()
+
+    seat.user_id = student.id
+    seat.claimed_at = seat.claimed_at or utc_now()
+    student.last_active_class_id = seat.class_id
+    student.last_active_seat_id = seat.id
+    db.session.flush()
+    return student
+
+
+def create_class_with_roster(
+    *,
+    user_id: int,
+    join_code: str,
+    class_name: str,
+    rows: list[dict],
+) -> ClassEconomy:
+    """Create a class, teacher seat, and roster rows in canonical order."""
+    class_row = create_class(
+        user_id,
+        join_code=join_code,
+        display_name=class_name,
+    )
+
+    for row in rows:
+        first_name = row["first_name"]
+        last_name = row["last_name"]
+        notes = row["notes"]
+        seat = Seat(
+            class_id=class_row.class_id,
+            role="student",
+            claimed_at=None,
+        )
+        db.session.add(seat)
+        db.session.flush()
+        profile = IdentityProfile(
+            seat_id=seat.id,
+            class_id=class_row.class_id,
+            profile_type="student",
+            first_name=first_name,
+            last_name=last_name,
+            notes=notes,
+        )
+        db.session.add(profile)
+        db.session.flush()
+
+    return class_row
+
+
+def create_student_seat_with_profile(
+    *,
+    class_id: str,
+    first_name: str,
+    last_name: str,
+    notes: str | None = None,
+    student_id: int | None = None,
+    claimed_at=None,
+) -> Seat:
+    """Create a canonical student seat and its identity profile."""
+    seat = Seat(
+        class_id=class_id,
+        role="student",
+        claimed_at=claimed_at,
+        student_id=student_id,
+    )
+    db.session.add(seat)
+    db.session.flush()
+
+    profile = IdentityProfile(
+        seat_id=seat.id,
+        class_id=class_id,
+        profile_type="student",
+        first_name=first_name,
+        last_name=last_name,
+        notes=notes,
+    )
+    db.session.add(profile)
+    db.session.flush()
+    return seat
+
+
+def update_or_create_roster_seat(
+    *,
+    class_id: str,
+    first_name: str,
+    last_name: str,
+    notes: str | None = None,
+    existing_seat: Seat | None = None,
+) -> Seat:
+    """Update an existing roster seat or create a new canonical student seat."""
+    if existing_seat:
+        profile = IdentityProfile.query.filter_by(seat_id=existing_seat.id).first()
+        if profile:
+            profile.first_name = first_name
+            profile.last_name = last_name
+            profile.notes = notes
+        else:
+            profile = IdentityProfile(
+                seat_id=existing_seat.id,
+                class_id=class_id,
+                profile_type="student",
+                first_name=first_name,
+                last_name=last_name,
+                notes=notes,
+            )
+            db.session.add(profile)
+        db.session.flush()
+        return existing_seat
+
+    return create_student_seat_with_profile(
+        class_id=class_id,
+        first_name=first_name,
+        last_name=last_name,
+        notes=notes,
+    )
+
+
+def create_pending_student_seat(
+    *,
+    class_id: str,
+    dedupe_code: str,
+    has_received_rent_exemption: bool = False,
+    block: str | None = None,
+    claimed_at=None,
+) -> Seat:
+    """Create a canonical pending student seat without binding a user."""
+    seat = Seat(
+        class_id=class_id,
+        dedupe_code=dedupe_code,
+        has_received_rent_exemption=has_received_rent_exemption,
+        block=block,
+        claimed_at=claimed_at,
+    )
+    db.session.add(seat)
+    db.session.flush()
+    return seat
+
+
+def create_roster_student_seat(
+    *,
+    class_id: str,
+    first_name: str,
+    last_name: str,
+    dedupe_code: str | None = None,
+    block: str | None = None,
+    claim_first_name_hash=None,
+    claim_last_name_hash=None,
+    roster_fingerprint=None,
+    claimed_at=None,
+) -> Seat:
+    """Create a canonical roster seat for import/edit flows."""
+    seat = Seat(
+        class_id=class_id,
+        role="student",
+        claim_first_name_hash=claim_first_name_hash,
+        claim_last_name_hash=claim_last_name_hash,
+        roster_fingerprint=roster_fingerprint,
+        dedupe_code=dedupe_code,
+        block=block,
+        claimed_at=claimed_at,
+    )
+    db.session.add(seat)
+    db.session.flush()
+
+    profile = IdentityProfile(
+        seat_id=seat.id,
+        class_id=class_id,
+        profile_type="student",
+        first_name=first_name,
+        last_name=last_name,
+    )
+    db.session.add(profile)
+    db.session.flush()
+    return seat
+
+
+def delete_seat_with_profile(seat: Seat) -> None:
+    """Delete a seat and its identity profile in canonical order."""
+    profile = IdentityProfile.query.filter_by(seat_id=seat.id).first()
+    if profile:
+        db.session.delete(profile)
+    db.session.delete(seat)

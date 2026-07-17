@@ -32,6 +32,7 @@ from app.models import (
 )
 from app.auth import (
     admin_required,
+    establish_student_session,
     get_current_class_id,
     get_current_seat,
     get_current_user,
@@ -81,6 +82,7 @@ from app.services.recovery_service import (
     get_recovery_code_for_seat,
     set_recovery_code_verified,
 )
+from app.services.classroom_setup import create_student_user_for_seat
 from app.feats.base import feat_shell
 from app.feats.rent_payment_feat import execute_rent_payment
 from app.feats.transfer_feat import execute_account_transfer
@@ -641,26 +643,21 @@ def setup_pin_passphrase():
             user.reset_code_generated_at = None
             user.reset_code_expires_at = None
         else:
-            # New claim path: create User and bind seat atomically.
-            user = User(
-                user_role=UserRole.STUDENT,
-                username_hash=hash_username_lookup(username),
-                username_lookup_hash=hash_username_lookup(username),
-                pin_hash=generate_password_hash(pin),
-                passphrase_hash=generate_password_hash(passphrase),
-            )
-            db.session.add(user)
+            # New claim path: create canonical student User and bind the existing seat atomically.
             try:
-                db.session.flush()
+                user = create_student_user_for_seat(
+                    seat,
+                    username=username,
+                    pin=pin,
+                    passphrase=passphrase,
+                )
             except IntegrityError:
                 db.session.rollback()
                 flash("That username is already taken. Please go back and choose another word.", "setup")
                 return redirect(url_for('student.create_username'))
-        if seat:
+        if seat and user:
             seat.user_id = user.id
             seat.claimed_at = seat.claimed_at or now
-
-        db.session.flush()
         # Clear session onboarding keys
         session.pop('onboarding_seat_ref', None)
         session.pop('onboarding_user_ref', None)
@@ -829,7 +826,6 @@ def add_class():
             student.block = ','.join(sorted(current_blocks))
 
         try:
-            db.session.flush()
             flash(f"Successfully added to Block {new_block}! You can now access this class from your dashboard.", "success")
             return redirect(_get_return_target())
         except Exception as e:
@@ -2986,7 +2982,7 @@ def login():
         session['last_activity'] = session['login_time']
 
         linked_user = user
-        session['user_id'] = linked_user.id
+        establish_student_session(linked_user, class_id=valid_persisted_selection["class_id"])
         session['current_session_nonce'] = secrets.token_urlsafe(32)
         linked_user.current_session_nonce = session['current_session_nonce']
 
@@ -3012,7 +3008,6 @@ def login():
                     },
                 )
                 linked_user.last_active_class_id = None
-                db.session.flush()
 
         if not seat_options:
             return _student_login_hard_fail(
@@ -3119,7 +3114,6 @@ def select_class_context():
             )
 
         linked_user.last_active_class_id = selected_class_id
-        db.session.flush()
 
         scope = resolve_scope(actor=student, actor_role="student")
         if not scope or scope.class_id != selected_class_id:
@@ -3482,7 +3476,6 @@ def verify_recovery(code_id):
         set_recovery_code_verified(code_id, hash_hmac(code.encode(), b''), verified_at)
         recovery_code.code_hash = "verified"
         recovery_code.verified_at = verified_at
-        db.session.flush()
 
         current_app.logger.info(f"Student {student.id} verified recovery request {recovery_code.recovery_request_id}")
 
@@ -3515,7 +3508,6 @@ def dismiss_recovery(code_id):
 
     # Mark as dismissed
     dismiss_recovery_code_row(code_id)
-    db.session.flush()
 
     flash("Recovery notification dismissed. You can still verify later from your notifications.", "info")
     return redirect(url_for('student.dashboard'))

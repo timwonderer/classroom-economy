@@ -1,12 +1,13 @@
 from tests.helpers.v2_fixtures import seed_canonical_admin, make_sysadmin
 
 from app import db
-from app.models import Seat, User, UserRole, Transaction, StoreItem, StoreItemBlock, StudentItem, IssueCategory, Issue, ClassFeature
+from app.models import Seat, User, UserRole, Transaction, StoreItem, StoreItemVisibility, StorePurchase, IssueCategory, Issue, ClassFeature, ClassEconomy
 from app.feats.base import FEATContext
 from app.hash_utils import get_random_salt, hash_hmac
 from tests.helpers.admin_context import login_teacher
 from tests.helpers.class_scope import create_class_scope
 from tests.helpers.class_scope import make_student_identity
+from app.services.store_service import set_item_visibility
 
 
 def _create_admin(username: str) -> tuple[str]:
@@ -98,7 +99,7 @@ def test_deactivate_item_does_not_delete_transactions(client):
     with FEATContext("FEAT-STOR-001", idempotency_key="join_code_deletion:item"):
         db.session.add(item)
         db.session.flush()
-        db.session.add(StoreItemBlock(store_item_id=item.id, block="A"))
+        set_item_visibility(item.id, [student.id])
 
     tx = Transaction(
         seat_id=student.id,
@@ -151,11 +152,10 @@ def test_delete_class_removes_only_scoped_records(client):
         db.session.add(category)
         db.session.flush()
 
+    class_public_id = ClassEconomy.query.filter_by(class_id=student_a.class_id).first().class_public_id
     issue = Issue(
-        user_id=student_a.user_id,
-        actor_public_id="seat-public-join-delete",
-        class_id=student_a.class_id,
-        seat_id=student_a.id,
+        actor_public_id=student_a.public_id,
+        class_public_id=class_public_id,
         category_id=category.id,
         issue_type="transaction",
         student_explanation="Bad transaction",
@@ -184,13 +184,19 @@ def test_delete_class_removes_only_scoped_records(client):
     with FEATContext("FEAT-STOR-001", idempotency_key="join_code_deletion:items"):
         db.session.add_all([item_a, item_b])
         db.session.flush()
-        db.session.add_all([
-            StoreItemBlock(store_item_id=item_a.id, block="A"),
-            StoreItemBlock(store_item_id=item_b.id, block="B"),
-        ])
+        set_item_visibility(item_a.id, [student_a.id])
+        set_item_visibility(item_b.id, [student_b.id])
         db.session.flush()
 
-        purchase = StudentItem(correlation_id='corr_test', seat_id=student_a.id, store_item_id=item_a.id, status="purchased")
+        purchase = StorePurchase(
+            seat_id=student_a.id,
+            class_id=student_a.class_id,
+            store_item_id=item_a.id,
+            quantity=1,
+            price_at_purchase=item_a.price,
+            total_price=item_a.price,
+            status="purchased",
+        )
         db.session.add(purchase)
     db.session.commit()
 
