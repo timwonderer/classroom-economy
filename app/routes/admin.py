@@ -2811,7 +2811,12 @@ def give_bonus_all():
             'account_type': 'checking',
         })
 
-    result = execute_admin_adjustments(adjustments=adjustments, banking_settings=banking_settings)
+    result = execute_admin_adjustments(
+        ctx=ctx,
+        adjustments=adjustments,
+        banking_settings=banking_settings,
+        actor_seat_id=ctx.seat_id,
+    )
     message = f"Bonus/Payroll posted to {result.applied_count} student(s)!"
     if result.declined_count:
         message += f" {result.declined_count} declined for insufficient funds."
@@ -6661,123 +6666,6 @@ def remove_rent_waiver(waiver_id):
     return redirect(url_for('admin.rent_settings'))
 
 
-@admin_bp.route('/rent/reverse-cycle-penalties', methods=['POST'])
-@admin_required
-@feat_shell("FEAT-ADMN-001")
-def reverse_cycle_penalties():
-    """Reverse misapplied rent late fees for the current cycle."""
-    from app.routes.student import (
-        RENT_PAYMENT_MATCH_TOLERANCE_SECONDS,
-        _calculate_rent_coverage_due_date,
-        _calculate_rent_timeline,
-        _get_locked_rent_amount_for_class_cycle,
-    )
-
-    user_id = g.canonical_context.user_id
-    class_id = (getattr(getattr(g, "canonical_context", None), "class_id", None) or '').strip()
-    class_row_for_rent = ClassEconomy.query.filter_by(
-        user_id=user_id,
-        class_id=class_id,
-    ).first() if class_id else None
-    if not class_row_for_rent:
-        flash("Could not find a class matching the current session.", "error")
-        return redirect(url_for('admin.rent_settings'))
-
-    block = class_row_for_rent.section
-    rent_settings = RentSettings.query.filter_by(
-        class_id=class_row_for_rent.class_id,
-    ).first()
-    if not rent_settings:
-        flash("Rent system is not enabled for this class.", "info")
-        return redirect(url_for('admin.rent_settings'))
-
-    now = utc_now()
-    timeline = _calculate_rent_timeline(rent_settings, now)
-    coverage_due_date = timeline.get('coverage_due_date')
-    if not coverage_due_date:
-        flash("No active coverage period found for this class.", "info")
-        return redirect(url_for('admin.rent_settings'))
-
-    locked_rate = _get_locked_rent_amount_for_class_cycle(class_row_for_rent.class_id, coverage_due_date)
-    if locked_rate is None:
-        flash("No valid payments found for the current cycle — nothing to reverse.", "info")
-        return redirect(url_for('admin.rent_settings'))
-
-    grace_end_date = coverage_due_date + timedelta(days=rent_settings.grace_period_days)
-    from app.services.obligations_service import get_paid_rent_assessments_for_cycle
-    cycle_payments = get_paid_rent_assessments_for_cycle(
-        class_row_for_rent.class_id,
-        coverage_due_date.month,
-        coverage_due_date.year,
-    )
-    cycle_payments.sort(
-        key=lambda payment: (
-            payment.seat_id,
-            payment.satisfaction.satisfied_at if payment.satisfaction and payment.satisfaction.satisfied_at else payment.assessed_at,
-        )
-    )
-    payments_by_seat = defaultdict(list)
-    for payment in cycle_payments:
-        if payment.satisfaction is not None:
-            payments_by_seat[payment.seat_id].append(payment)
-
-    students_fixed = 0
-    total_refunded = Decimal('0.00')
-
-    for seat_id, payments in payments_by_seat.items():
-        seat_row = db.session.get(Seat, seat_id)
-        if seat_row is None:
-            continue
-        paid_by_grace = sum(
-            payment.satisfaction.amount_paid for payment in payments
-            if payment.satisfaction and payment.satisfaction.satisfied_at and ensure_utc(payment.satisfaction.satisfied_at) <= ensure_utc(grace_end_date)
-        )
-        total_late_fee_charged = sum(
-            (payment.satisfaction.late_fee_charged or Decimal('0.00'))
-            for payment in payments
-            if payment.satisfaction
-        )
-        if total_late_fee_charged <= Decimal('0.00'):
-            continue
-
-        if paid_by_grace >= locked_rate:
-            refund_amount = total_late_fee_charged
-            ledger_service.create_pending_transaction(
-                seat_id=seat_id,
-                class_id=class_row_for_rent.class_id,
-                user_id=seat_row.user_id,
-                amount=refund_amount,
-                account_type='checking',
-                type='Rent Late Fee Reversal',
-                description=(
-                    f'Late fee reversal: rate was raised mid-cycle for '
-                    f'{coverage_due_date.strftime("%B %Y")} (locked at ${locked_rate:.2f})'
-                ),
-            )
-
-            for payment in payments:
-                if payment.satisfaction and payment.satisfaction.late_fee_charged and payment.satisfaction.late_fee_charged > Decimal('0.00'):
-                    payment.satisfaction.late_fee_charged = Decimal('0.00')
-                    payment.satisfaction.was_late = False
-
-            students_fixed += 1
-            total_refunded += refund_amount
-
-    if students_fixed:
-        flash(
-            f"Reversed misapplied late fees for {students_fixed} student(s). Total refunded: ${total_refunded:.2f}.",
-            "success",
-        )
-    else:
-        flash(
-            "No misapplied penalties found for the current cycle at the locked rate "
-            f"(${locked_rate:.2f}). Students who were genuinely late keep their fees.",
-            "info",
-        )
-
-    return redirect(url_for('admin.rent_settings'))
-
-
 # -------------------- INSURANCE MANAGEMENT --------------------
 
 
@@ -7477,7 +7365,11 @@ def _run_payroll():
                 'account_type': 'checking',
             })
 
-        result = execute_admin_adjustments(adjustments=adjustments)
+        result = execute_admin_adjustments(
+            ctx=g.canonical_context,
+            adjustments=adjustments,
+            actor_seat_id=selected_scope["teacher_seat"].id,
+        )
 
         scheduled_rebalances_applied, _scheduled_labels = activate_due_rebalances(
             user_id,
@@ -8304,7 +8196,12 @@ def payroll_manual_payment():
                         'type': 'manual_payment',
                     })
 
-            result = execute_admin_adjustments(adjustments=adjustments, banking_settings=banking_settings)
+            result = execute_admin_adjustments(
+                ctx=g.canonical_context,
+                adjustments=adjustments,
+                banking_settings=banking_settings,
+                actor_seat_id=g.canonical_context.seat_id,
+            )
 
             # Message formatting
             action_verb = "Deposit" if payment_type == 'deposit' else "Deduction"
@@ -9003,6 +8900,7 @@ def enforce_daily_limits():
 
             student_tap(
                 seat_id=seat_id,
+                actor_seat_id=g.canonical_context.seat_id,
                 class_id=class_id,
                 status="inactive",
                 reason=f"Daily limit reached ({daily_limit / 3600:.1f}h)",
@@ -9088,6 +8986,7 @@ def tap_out_students():
 
             student_tap(
                 seat_id=seat_id,
+                actor_seat_id=g.canonical_context.seat_id,
                 class_id=att_state.class_id,
                 status="inactive",
                 reason=reason,
@@ -9173,6 +9072,7 @@ def tap_in_students():
 
             student_tap(
                 seat_id=seat_id,
+                actor_seat_id=g.canonical_context.seat_id,
                 class_id=seat.class_id,
                 status="active",
                 reason="Teacher tap-in",

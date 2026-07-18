@@ -68,6 +68,7 @@ def _get_or_create_hall_pass_settings(*, class_id: str):
 def student_tap(
     *,
     seat_id: int,
+    actor_seat_id: int,
     class_id: str,
     status: str,
     reason: str | None = None,
@@ -84,6 +85,7 @@ def student_tap(
     if status == "active":
         session = AttendanceSession(
             seat_id=seat_id,
+            actor_seat_id=actor_seat_id,
             class_id=class_id,
             started_at=event_time,
             start_reason=reason,
@@ -134,6 +136,7 @@ def student_tap(
     else:
         session = AttendanceSession(
             seat_id=seat_id,
+            actor_seat_id=actor_seat_id,
             class_id=class_id,
             started_at=event_time,
             ended_at=event_time,
@@ -219,6 +222,7 @@ def get_or_create_attendance_state(
 def apply_standard_tap_mutations(
     *,
     seat_id: int,
+    actor_seat_id: int,
     class_id: str,
     normalized_action: str,
     reason: str | None,
@@ -243,6 +247,7 @@ def apply_standard_tap_mutations(
 
     student_tap(
         seat_id=seat_id,
+        actor_seat_id=actor_seat_id,
         class_id=class_id,
         status=status,
         reason=reason,
@@ -319,6 +324,7 @@ def leave_hall_pass(*, log_entry: HallPassLog, now_utc=None) -> HallPassMutation
     log_entry.left_time = now
     student_tap(
         seat_id=log_entry.seat_id,
+        actor_seat_id=log_entry.seat_id,
         class_id=log_entry.class_id,
         status="inactive",
         reason=log_entry.reason,
@@ -336,6 +342,7 @@ def return_hall_pass(*, log_entry: HallPassLog, now_utc=None) -> HallPassMutatio
     log_entry.return_time = now
     student_tap(
         seat_id=log_entry.seat_id,
+        actor_seat_id=log_entry.seat_id,
         class_id=log_entry.class_id,
         status="active",
         reason="Return from hall pass",
@@ -369,6 +376,7 @@ def checkout_hall_pass(*, student, log_entry: HallPassLog, now_utc=None) -> Hall
     log_entry.left_time = now
     student_tap(
         seat_id=resolved_seat_id,
+        actor_seat_id=student.id,
         class_id=resolved_class_id,
         status="inactive",
         reason=log_entry.reason,
@@ -397,6 +405,7 @@ def checkin_hall_pass(*, student, log_entry: HallPassLog, now_utc=None) -> HallP
     log_entry.return_time = now
     student_tap(
         seat_id=resolved_seat_id,
+        actor_seat_id=student.id,
         class_id=resolved_class_id,
         status="active",
         reason="Returned from hall pass",
@@ -649,6 +658,7 @@ def enforce_daily_limits(*, seat_id: int, class_id: str, commit: bool = True, lo
 
     student_tap(
         seat_id=seat_id,
+        actor_seat_id=seat_id,
         class_id=class_id,
         status="inactive",
         reason=f"Daily limit ({hours_limit:.1f}h) reached",
@@ -722,6 +732,7 @@ def admin_tap_out(
 ) -> AttendanceSession:
     return student_tap(
         seat_id=seat_id,
+        actor_seat_id=seat_id,
         class_id=class_id,
         status="inactive",
         reason=reason,
@@ -738,6 +749,7 @@ def admin_tap_in(
 ) -> AttendanceSession:
     return student_tap(
         seat_id=seat_id,
+        actor_seat_id=seat_id,
         class_id=class_id,
         status="active",
         reason=reason,

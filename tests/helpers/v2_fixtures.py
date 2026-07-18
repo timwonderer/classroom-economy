@@ -189,6 +189,9 @@ def seed_purchase(
         tx = ledger_service.create_pending_transaction(
             seat_id=seat_id,
             class_id=class_id,
+            target_seat_id=seat_id,
+            actor_seat_id=seat_id,
+            mechanism="self",
             user_id=user_id,
             amount=Decimal(str(amount)),
             account_type=account_type,

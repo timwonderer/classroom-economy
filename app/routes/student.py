@@ -466,14 +466,12 @@ def claim_account():
     """
     PAGE 1: Claim Account - Verify identity using join code to begin setup.
 
-    New join code-based flow:
+    Canonical claim flow:
     1. Student enters join code (resolves to class_id)
     2. Student enters full first + last name
     3. If multiple seats match, student enters optional dedupe code
-    4. System finds matching unclaimed seat in Seat
-    5. Creates Student record for the matched seat
-    6. Links Seat to Student
-    7. Creates the canonical student-seat linkage
+    4. System finds the matching unclaimed Seat (via claim_first_name_hash / claim_last_name_hash)
+    5. Stores seat_id in session; no DB writes until setup_pin_passphrase completes
     """
     from app.models import ClassEconomy, Seat
     from app.hash_utils import hash_username_lookup
@@ -585,24 +583,12 @@ def create_username():
         session['theme_prompt'] = selected_theme['prompt']
     form = StudentCreateUsernameForm()
     if form.validate_on_submit():
-        write_in_word = form.write_in_word.data.strip().lower()
-        if not write_in_word.isalpha() or len(write_in_word) < 3 or len(write_in_word) > 12:
+        from app.utils.username_generation import build_username, validate_chosen_word
+        chosen_word = form.write_in_word.data.strip().lower()
+        if not validate_chosen_word(chosen_word):
             flash("Please enter a valid word (3-12 letters, no numbers or spaces).", "setup")
             return redirect(url_for('student.create_username'))
-        adjectives = [
-            "brave", "clever", "curious", "daring", "eager", "fancy", "gentle", "honest", "jolly", "kind",
-            "lucky", "mighty", "noble", "quick", "proud", "silly", "witty", "zesty", "sunny", "chill"
-        ]
-        adjective = random.choice(adjectives)
-        # Username generation uses a transient backend-generated 4-digit
-        # segment so setup never derives usernames from DOB or stable IDs.
-        numeric_segment = random.randint(1000, 9999)
-        _ip = seat.identity_profile
-        last_name_initial = ((_ip.last_initial if _ip else "") or "")[:1].upper()
-        _first = (_ip.first_name if _ip else "") or ""
-        initials = f"{_first[0].upper() if _first else 'X'}{last_name_initial}"
-        username = f"{adjective}{write_in_word}{numeric_segment}{initials}"
-        # Save username plaintext in session for display
+        username = build_username(chosen_word, seat.roster_fingerprint or "")
         # Store username in session only — no DB writes until setup_pin_passphrase.
         session['generated_username'] = username
         session.pop('theme_prompt', None)
@@ -2938,26 +2924,18 @@ def login():
 
         try:
             pin_valid = bool(user and check_password_hash(user.pin_hash or '', pin))
-            student = None
+            has_claimed_seat = False
             if pin_valid:
-                from app.models import Seat
-
-                student = Seat.query.filter(
+                has_claimed_seat = Seat.query.filter(
                     Seat.user_id == user.id,
                     Seat.role == "student",
                     Seat.claimed_at.isnot(None),
-                ).first()
+                ).count() > 0
 
-            if not student or not pin_valid:
+            if not pin_valid or not has_claimed_seat:
                 if is_json:
                     return jsonify(status="error", message="Invalid credentials"), 401
                 flash("Invalid credentials", "error")
-                return redirect(url_for('student.login', next=request.args.get('next')))
-
-            if not is_student_account_active(student):
-                if is_json:
-                    return jsonify(status="error", message="Account is inactive. Contact your teacher."), 403
-                flash("Your account is inactive. Contact your teacher.", "error")
                 return redirect(url_for('student.login', next=request.args.get('next')))
 
         except Exception as e:
@@ -2968,25 +2946,29 @@ def login():
             flash("An error occurred during login. Please try again.", "error")
             return redirect(url_for('student.login'))
 
-        # --- Set session timeout ---
-        # Clear old student-specific session keys without wiping the CSRF token
+        # --- Establish canonical session ---
+        # Clear old student-specific session keys without wiping the CSRF token.
         _reset_student_login_session()
-        # Explicitly clear other potential student-related session keys
         session.pop('onboarding_seat_ref', None)
         session.pop('onboarding_user_ref', None)
         session.pop('generated_username', None)
         clear_teacher_display_name_cache()
 
-
         session['login_time'] = utc_now().isoformat()
         session['last_activity'] = session['login_time']
 
         linked_user = user
-        establish_student_session(linked_user, class_id=valid_persisted_selection["class_id"])
-        session['current_session_nonce'] = secrets.token_urlsafe(32)
-        linked_user.current_session_nonce = session['current_session_nonce']
 
+        # Find all classes this user has claimed seats in.
         seat_options = _get_identity_bound_seat_options(linked_user.id)
+        if not seat_options:
+            return _student_login_hard_fail(
+                student_id=linked_user.id,
+                reason=f"User {linked_user.id} login has no valid class seats.",
+                is_json=is_json,
+            )
+
+        # Restore the user's previously-selected class if still valid.
         persisted_class_id = getattr(linked_user, "last_active_class_id", None)
         valid_persisted_selection = None
         if persisted_class_id:
@@ -2996,8 +2978,8 @@ def login():
             )
             if valid_persisted_selection is None:
                 current_app.logger.error(
-                    "TLCP-INVARIANT-VIOLATION: Student %s login has invalid persisted class %s.",
-                    student.id,
+                    "TLCP-INVARIANT-VIOLATION: User %s login has invalid persisted class %s.",
+                    linked_user.id,
                     persisted_class_id,
                     extra={
                         "actor_type": "student",
@@ -3009,38 +2991,40 @@ def login():
                 )
                 linked_user.last_active_class_id = None
 
-        if not seat_options:
-            return _student_login_hard_fail(
-                student_id=student.id,
-                reason=f"Student {student.id} login has no valid class seats.",
-                is_json=is_json,
-            )
-
         if valid_persisted_selection is None:
+            # No valid class selection — establish minimal session and send to class selector.
+            session['user_id'] = linked_user.id
+            session['role'] = 'student'
+            session.permanent = True
+            nonce = secrets.token_urlsafe(32)
+            session['current_session_nonce'] = nonce
+            linked_user.current_session_nonce = nonce
             return redirect(url_for('student.select_class_context'))
 
-        seat = None
-        from app.models import Seat, IdentityProfile
-        seat = (
-            Seat.query
-            .join(IdentityProfile, IdentityProfile.seat_id == Seat.id)
-            .filter(
-                IdentityProfile.seat_id == student.id,
-                Seat.class_id == valid_persisted_selection["class_id"],
-                Seat.claimed_at.isnot(None),
-            )
-            .first()
-        )
-        if seat is None:
+        # Resolve the canonical seat for the selected class.
+        target_seat = Seat.query.filter(
+            Seat.user_id == linked_user.id,
+            Seat.class_id == valid_persisted_selection["class_id"],
+            Seat.claimed_at.isnot(None),
+        ).first()
+        if target_seat is None:
             return _student_login_hard_fail(
-                student_id=student.id,
-                reason=f"Student {student.id} login failed to hydrate canonical seat for class {valid_persisted_selection['class_id']}.",
+                student_id=linked_user.id,
+                reason=f"User {linked_user.id} login failed to resolve seat for class {valid_persisted_selection['class_id']}.",
                 is_json=is_json,
             )
-        _prime_seat_teacher_display_name_cache(student.id)
 
+        # Update canonical DB pointers before establishing session.
+        linked_user.last_active_class_id = valid_persisted_selection["class_id"]
+        linked_user.last_active_seat_id = target_seat.id
 
-        # Removed redirect to student_setup for has_completed_setup; new onboarding flow uses claim → username → pin/passphrase.
+        # Establish canonical session (user_id + class_id + role + nonce).
+        establish_student_session(linked_user, class_id=valid_persisted_selection["class_id"])
+        nonce = secrets.token_urlsafe(32)
+        session['current_session_nonce'] = nonce
+        linked_user.current_session_nonce = nonce
+
+        _prime_seat_teacher_display_name_cache(linked_user.id)
 
         if is_json:
             return jsonify(status="success", message="Login successful")
@@ -3056,29 +3040,25 @@ def login():
 
 
 @student_bp.route('/select-class-context', methods=['GET', 'POST'])
-@login_required
 @feat_shell("FEAT-IDEN-001")
 def select_class_context():
-    """Explicit class-selection gate when no durable class context exists."""
-    student = _get_canonical_student_from_context()
-    if not student:
-        return redirect(url_for('student.login'))
+    """Explicit class-selection gate when no durable class context exists.
 
-    linked_user = _find_linked_user_for_student(student)
+    Not decorated with @login_required because that decorator calls
+    resolve_canonical_context(), which raises ContextInvariantViolation when
+    last_active_class_id is None — which is exactly the state this route is
+    designed to repair. Session authentication is verified via get_current_user()
+    (reads session["user_id"] directly) and the before_request nonce hook.
+    """
+    linked_user = get_current_user()
     if not linked_user:
-        current_app.logger.critical(
-            "P0 INCIDENT: Student %s has no identity-linked user during class-context gate.",
-            student.id,
-        )
-        session.clear()
-        flash("Account scope incident detected. Contact support immediately.", "error")
         return redirect(url_for('student.login'))
 
     seat_options = _get_identity_bound_seat_options(linked_user.id)
     if not seat_options:
         current_app.logger.critical(
-            "P0 INCIDENT: Student %s has no surviving seats during class-context gate.",
-            student.id,
+            "P0 INCIDENT: User %s has no surviving seats during class-context gate.",
+            linked_user.id,
         )
         session.clear()
         flash("Account scope incident detected. Contact support immediately.", "error")
@@ -3089,42 +3069,28 @@ def select_class_context():
         allowed_class_ids = {item["class_id"] for item in seat_options}
         if selected_class_id not in allowed_class_ids:
             return _student_login_hard_fail(
-                student_id=student.id,
-                reason=f"Student {student.id} selected invalid class {selected_class_id} during class-context switch.",
+                student_id=linked_user.id,
+                reason=f"User {linked_user.id} selected invalid class {selected_class_id} during class-context switch.",
                 is_json=False,
                 status_code=302,
             )
 
-        selected_seat = (
-            Seat.query
-            .join(IdentityProfile, IdentityProfile.seat_id == Seat.id)
-            .filter(
-                IdentityProfile.id == student.identity_id,
-                Seat.class_id == selected_class_id,
-                Seat.claimed_at.isnot(None),
-            )
-            .first()
-        )
+        selected_seat = Seat.query.filter(
+            Seat.user_id == linked_user.id,
+            Seat.class_id == selected_class_id,
+            Seat.claimed_at.isnot(None),
+        ).first()
         if selected_seat is None:
             return _student_login_hard_fail(
-                student_id=student.id,
-                reason=f"Student {student.id} selected class {selected_class_id} but seat context failed to resolve.",
+                student_id=linked_user.id,
+                reason=f"User {linked_user.id} selected class {selected_class_id} but seat context failed to resolve.",
                 is_json=False,
                 status_code=302,
             )
 
+        # Update canonical DB pointers so resolve_canonical_context() succeeds on next request.
         linked_user.last_active_class_id = selected_class_id
-
-        scope = resolve_scope(actor=student, actor_role="student")
-        if not scope or scope.class_id != selected_class_id:
-            current_app.logger.critical(
-                "P0 INCIDENT: Scope construction mismatch for student %s class %s.",
-                student.id,
-                selected_class_id,
-            )
-            session.clear()
-            flash("Account scope incident detected. Contact support immediately.", "error")
-            return redirect(url_for('student.login'))
+        linked_user.last_active_seat_id = selected_seat.id
 
         return redirect(url_for('student.dashboard'))
 

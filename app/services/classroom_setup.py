@@ -52,6 +52,7 @@ def create_teacher_account_with_class(
     totp_secret: str | None = None,
     join_code: str,
     display_name: str | None = None,
+    section: str | None = None,
 ) -> User:
     """Create the canonical teacher account and initial class."""
     teacher = create_teacher(username, totp_secret=totp_secret)
@@ -59,6 +60,7 @@ def create_teacher_account_with_class(
         teacher.id,
         join_code=join_code,
         display_name=display_name,
+        section=section,
     )
     return teacher
 
@@ -214,23 +216,37 @@ def create_class_with_roster(
     user_id: int,
     join_code: str,
     class_name: str,
+    section: str | None = None,
     rows: list[dict],
 ) -> ClassEconomy:
-    """Create a class, teacher seat, and roster rows in canonical order."""
+    """Create a class, teacher seat, and roster rows in canonical order.
+
+    Each row must contain first_name, last_name, and notes.
+    claim_first_name_hash and claim_last_name_hash are computed automatically
+    so the claim flow can match students by name without plaintext storage.
+    """
+    from app.hash_utils import hash_username_lookup
+
     class_row = create_class(
         user_id,
         join_code=join_code,
         display_name=class_name,
+        section=section,
     )
 
     for row in rows:
         first_name = row["first_name"]
         last_name = row["last_name"]
-        notes = row["notes"]
+        notes = row.get("notes") or row.get("teacher_note")
         seat = Seat(
             class_id=class_row.class_id,
             role="student",
             claimed_at=None,
+            claim_first_name_hash=hash_username_lookup(first_name.lower()),
+            claim_last_name_hash=hash_username_lookup(last_name.lower()),
+            roster_fingerprint=hash_username_lookup(
+                f"{class_row.class_id}|{first_name.lower()}|{last_name.lower()}"
+            ),
         )
         db.session.add(seat)
         db.session.flush()

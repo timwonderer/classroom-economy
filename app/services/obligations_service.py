@@ -238,6 +238,56 @@ def record_insurance_enrollment(
     raise NotImplementedError("Insurance enrollment rows have been removed")
 
 
+def record_insurance_premium_payment(
+    *,
+    seat_id: int,
+    class_id: str,
+    policy_version_id: int | None,
+    amount_paid,
+    due_at,
+    coverage_start_time=None,
+    coverage_end_time=None,
+    cycle_idempotency_key: str | None = None,
+    transaction_id: int | None = None,
+) -> ObligationAssessment:
+    """Record a seat-scoped recurring insurance premium as a canonical assessment + satisfaction."""
+    now = utc_now()
+    assessment = ObligationAssessment(
+        seat_id=seat_id,
+        class_id=class_id,
+        obligation_type="INSURANCE_PREMIUM",
+        amount_snap=amount_paid,
+        due_at=due_at,
+        assessed_at=now,
+        coverage_start_time=coverage_start_time,
+        coverage_end_time=coverage_end_time,
+        cycle_idempotency_key=cycle_idempotency_key,
+        policy_version_id=policy_version_id,
+    )
+    db.session.add(assessment)
+    db.session.flush()
+
+    db.session.add(
+        ObligationLifecycle(
+            assessment_id=assessment.id,
+            status="PAID",
+            updated_at=now,
+        )
+    )
+    db.session.add(
+        ObligationSatisfaction(
+            assessment_id=assessment.id,
+            method="PAYMENT",
+            amount_paid=amount_paid,
+            was_late=False,
+            late_fee_charged=Decimal("0.00"),
+            transaction_id=transaction_id,
+            satisfied_at=now,
+        )
+    )
+    return assessment
+
+
 def record_insurance_claim(
     *,
     enrollment_id: int,

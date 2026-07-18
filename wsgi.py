@@ -34,6 +34,7 @@ import collections
 # Import and create the Flask application using the factory pattern
 from app import app
 from app.extensions import db, migrate, csrf
+from app.feats.base import FEATContext
 
 
 def maintenance_mode_enabled():
@@ -190,15 +191,15 @@ def create_sysadmin():
     # Save to database with encrypted secret
     salt, username_hash, username_lookup_hash = build_hashed_username_fields(username)
     encrypted_totp_secret = encrypt_totp(totp_secret)
-    user = User(
-        user_role=UserRole.SYSADMIN,
-        username_hash=username_hash,
-        username_lookup_hash=username_lookup_hash,
-        totp_secret_encrypted=encrypted_totp_secret,
-        has_completed_setup=True,
-    )
-    db.session.add(user)
-    db.session.commit()
+    with FEATContext("FEAT-IDEN-001", idempotency_key=f"create-sysadmin:{username}"):
+        user = User(
+            user_role=UserRole.SYSADMIN,
+            username_hash=username_hash,
+            username_lookup_hash=username_lookup_hash,
+            totp_secret_encrypted=encrypted_totp_secret,
+        )
+        db.session.add(user)
+        db.session.commit()
 
     # Display results
     print(f"\nSystem admin '{username}' created successfully.")
