@@ -3,54 +3,122 @@ Tests for API fixes:
 1. Block tap settings import fix
 2. Timezone sync CSRF token
 """
-from uuid import uuid4
-from app.feats.base import FEATContext
-from tests.helpers.v2_fixtures import make_teacher
 import pytest
-from datetime import datetime, timezone
+from app.feats.base import FEATContext
 from app import db
-from app.models import ClassEconomy, Seat, User, UserRole
-from tests.helpers.canonical_session import set_canonical_context
-from tests.helpers.class_scope import create_class_scope
-from tests.helpers.admin_context import login_teacher
+from app.models import SeatAttendanceState
+from tests.helpers.classroom_initializer import initialize_as_student, initialize_as_teacher
 
 
 @pytest.fixture
 def teacher_user(client):
     """Create a teacher for testing."""
-    return make_teacher("testadmin")
+    classroom = initialize_as_teacher("chemistry_p1", client, client.application)
+    return classroom.teacher_user
 
 
-def test_block_tap_settings_get_endpoint(client, teacher_user):
-    """Test that /api/admin/block-tap-settings GET endpoint works with correct import."""
-    class_row = create_class_scope(teacher_user=teacher_user, join_code="APIFIX1", section="A")
-    login_teacher(client, teacher_user, class_id=class_row.class_id)
+def test_DOM_ATT_001__block_tap_settings_get_returns_tap_enabled_aggregate(client, teacher_user):
+    """GET returns tap_enabled=True when any student seat has tap enabled (default)."""
+    initialize_as_teacher("chemistry_p1", client, client.application)
 
-    response = client.get('/api/admin/block-tap-settings?block=A')
+    response = client.get('/api/admin/block-tap-settings')
 
-    assert response.status_code in [200, 302, 400, 401, 403], \
-        f"Expected 200, 302, 400, 401, or 403, got {response.status_code}"
+    assert response.status_code == 200
+    data = response.get_json()
+    assert 'tap_enabled' in data
+    assert 'seat_count' in data
+    # Default state: no SeatAttendanceState rows → tap enabled=True
+    assert data['tap_enabled'] is True
+    assert data['seat_count'] == 1
 
-    if response.status_code == 200:
-        data = response.get_json()
-        assert 'tap_enabled' in data
+
+def test_DOM_ATT_001__block_tap_settings_get_no_students(client, teacher_user):
+    """GET returns tap_enabled=True and seat_count=0 when no claimed seats exist."""
+    initialize_as_teacher("ap_csp_p3", client, client.application)
+
+    response = client.get('/api/admin/block-tap-settings')
+
+    assert response.status_code == 200
+    data = response.get_json()
+    assert data['tap_enabled'] is True
+    assert data['seat_count'] == 0
 
 
-def test_block_tap_settings_post_endpoint(client, teacher_user):
-    """Test that /api/admin/block-tap-settings POST endpoint works with correct import."""
-    class_row = create_class_scope(teacher_user=teacher_user, join_code="APIFIX2", section="A")
-    login_teacher(client, teacher_user, class_id=class_row.class_id)
+def test_DOM_ATT_001__block_tap_settings_get_reflects_disabled_state(client, teacher_user):
+    """GET returns tap_enabled=False when all students have tap explicitly disabled."""
+    classroom, student = initialize_as_student("chemistry_p1", client, client.application)
+
+    with FEATContext("FEAT-ATTN-001", idempotency_key=f"test-disable-tap:{student.seat.id}"):
+        state = SeatAttendanceState(
+            seat_id=student.seat.id,
+            class_id=classroom.class_id,
+            tap_enabled=False,
+        )
+        db.session.add(state)
+
+    initialize_as_teacher("chemistry_p1", client, client.application)
+
+    response = client.get('/api/admin/block-tap-settings')
+
+    assert response.status_code == 200
+    data = response.get_json()
+    assert data['tap_enabled'] is False
+    assert data['seat_count'] == 1
+
+
+def test_DOM_ATT_001__block_tap_settings_post_updates_seat_attendance_state(client, teacher_user):
+    """POST sets tap_enabled on SeatAttendanceState for all claimed seats in the class."""
+    classroom, student = initialize_as_student("chemistry_p1", client, client.application)
+    initialize_as_teacher("chemistry_p1", client, client.application)
 
     response = client.post(
         '/api/admin/block-tap-settings',
-        json={'block': 'A', 'enabled': False}
+        json={'tap_enabled': False},
     )
 
-    assert response.status_code in [200, 302, 400, 401, 403], \
-        f"Expected 200, 302, 400, 401, or 403, got {response.status_code}"
+    assert response.status_code == 200
+    data = response.get_json()
+    assert data['status'] == 'ok'
+    assert data['tap_enabled'] is False
+    assert data['updated_count'] == 1
+
+    # Verify DB was actually updated
+    state = SeatAttendanceState.query.filter_by(
+        seat_id=student.seat.id,
+        class_id=classroom.class_id,
+    ).first()
+    assert state is not None
+    assert state.tap_enabled is False
 
 
-def test_set_timezone_endpoint_exists(client):
+def test_DOM_ATT_001__block_tap_settings_post_missing_tap_enabled_field(client, teacher_user):
+    """POST without tap_enabled field returns 400."""
+    initialize_as_teacher("chemistry_p1", client, client.application)
+
+    response = client.post(
+        '/api/admin/block-tap-settings',
+        json={'block': 'A'},  # legacy field, missing tap_enabled
+    )
+
+    assert response.status_code == 400
+    data = response.get_json()
+    assert 'error' in data
+
+
+def test_DOM_ATT_001__block_tap_settings_ignored_block_param(client, teacher_user):
+    """?block= query param is accepted but ignored — scoping is by class_id only (DOM-IDEN-007)."""
+    initialize_as_teacher("chemistry_p1", client, client.application)
+
+    # ?block=A is accepted for backwards-compat but must not restrict to that section
+    response = client.get('/api/admin/block-tap-settings?block=A')
+
+    assert response.status_code == 200
+    data = response.get_json()
+    # All seats in the class are returned, not just block "A"
+    assert data['seat_count'] == 1
+
+
+def test_DOM_ATT_001__set_timezone_endpoint_exists(client):
     """Test that /api/set-timezone endpoint exists and handles requests properly."""
     response = client.post(
         '/api/set-timezone',
@@ -60,38 +128,9 @@ def test_set_timezone_endpoint_exists(client):
     assert response.status_code == 401
 
 
-def test_timezone_sync_with_student_session(client):
+def test_DOM_ATT_001__timezone_sync_with_student_session(client):
     """Test timezone sync with authenticated student session."""
-    with FEATContext("FEAT-IDEN-001", idempotency_key=f"FEAT-IDEN-001:test-timezone-sync:{uuid4().hex}"):
-        teacher = make_teacher("timezone_admin")
-        db.session.flush()
-        class_row = create_class_scope(teacher_user=teacher, join_code="APIFIX3")
-        db.session.flush()
-
-        student_user = User(
-            user_role=UserRole.STUDENT,
-            username_hash="tz_student_hash",
-            username_lookup_hash="tz_student_lookup",
-        )
-        db.session.add(student_user)
-        db.session.flush()
-        student_seat = Seat(
-            user_id=student_user.id,
-            class_id=class_row.class_id,
-            role="student",
-            claimed_at=datetime.now(timezone.utc),
-        )
-        db.session.add(student_seat)
-        db.session.flush()
-
-    with client.session_transaction() as sess:
-        set_canonical_context(
-            sess,
-            user_id=student_seat.user_id,
-            class_id=class_row.class_id,
-            seat_id=student_seat.id,
-            role="student",
-        )
+    classroom, student = initialize_as_student("chemistry_p1", client, client.application)
 
     response = client.post(
         '/api/set-timezone',

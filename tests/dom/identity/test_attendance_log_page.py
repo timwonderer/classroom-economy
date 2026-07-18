@@ -1,43 +1,36 @@
 """
 Tests for the attendance log page to ensure it renders with proper context.
 """
-from tests.helpers.v2_fixtures import seed_canonical_admin
-from tests.helpers.class_scope import make_student_identity, create_class_scope
-import pytest
 from datetime import datetime, timezone
-import uuid
+
+import pytest
+
 from app import db
 from app.feats.base import FEATContext
-from app.models import AttendanceSession, ClassEconomy, Seat, User
-from tests.helpers.canonical_session import set_canonical_context
-from tests.helpers.admin_context import login_teacher
+from app.models import AttendanceSession, Seat, User
+from tests.helpers.classroom_initializer import initialize, initialize_as_teacher
+from tests.dom.identity.helpers import admin_get_attendance_log, api_get_attendance_history
 
 
 @pytest.fixture
 def admin_with_data(client):
     """Create an admin with students and tap events."""
+    classroom = initialize("chemistry_p1", client.application)
+    teacher = classroom.teacher_user
+    teacher_seat = classroom.teacher_seat
+    seat1 = classroom.students[0].seat
+    seat2 = classroom.students[1].seat
+
     with FEATContext("FEAT-IDEN-001", idempotency_key="attendance_log_page:admin_data"):
-        teacher = seed_canonical_admin('testadmin').user
-        class_row = create_class_scope(
-            teacher_user=teacher,
-            join_code="ATLOG1",
-            display_name="Attendance Class",
-        )
-
-        teacher_seat = Seat.query.filter_by(user_id=teacher.id, class_id=class_row.class_id, role="teacher").first()
-
-        seat1 = make_student_identity(class_id=class_row.class_id, first_name='Test', last_name='T')
-        seat2 = make_student_identity(class_id=class_row.class_id, first_name='Student', last_name='S')
-
-        tap1 = AttendanceSession(seat_id=seat1.id, class_id=class_row.class_id, started_at=datetime.now(timezone.utc))
+        tap1 = AttendanceSession(seat_id=seat1.id, class_id=classroom.class_id, started_at=datetime.now(timezone.utc))
         tap2 = AttendanceSession(
             seat_id=seat1.id,
-            class_id=class_row.class_id,
+            class_id=classroom.class_id,
             started_at=datetime.now(timezone.utc),
             ended_at=datetime.now(timezone.utc),
             duration_seconds=0,
         )
-        tap3 = AttendanceSession(seat_id=seat2.id, class_id=class_row.class_id, started_at=datetime.now(timezone.utc))
+        tap3 = AttendanceSession(seat_id=seat2.id, class_id=classroom.class_id, started_at=datetime.now(timezone.utc))
         db.session.add_all([tap1, tap2, tap3])
         db.session.flush()
 
@@ -47,18 +40,18 @@ def admin_with_data(client):
         'teacher_seat': teacher_seat,
         'students': [seat1, seat2],
         'tap_events': [tap1, tap2, tap3],
-        'class_id': class_row.class_id,
-        'join_code': class_row.join_code,
+        'class_id': classroom.class_id,
+        'join_code': classroom.join_code,
     }
 
 
-def test_attendance_log_page_renders_with_periods_and_blocks(client, admin_with_data):
+def test_DOM_IDEN_006__attendance_log_page_renders_with_periods_and_blocks(client, admin_with_data):
     """Test that the attendance log page renders with periods and blocks context."""
     teacher = admin_with_data['teacher']
 
-    login_teacher(client, teacher, class_id=admin_with_data['class_id'])
+    initialize_as_teacher("chemistry_p1", client, client.application)
 
-    response = client.get('/admin/attendance-log')
+    response = admin_get_attendance_log(client)
 
     assert response.status_code == 200
     html = response.data.decode('utf-8')
@@ -68,19 +61,12 @@ def test_attendance_log_page_renders_with_periods_and_blocks(client, admin_with_
     assert 'filterStartDate' in html, "Expected start date filter"
 
 
-def test_attendance_log_page_with_no_data(client):
+def test_DOM_IDEN_006__attendance_log_page_with_no_data(client):
     """Test that the attendance log page renders even with no data."""
-    with FEATContext("FEAT-IDEN-001", idempotency_key="attendance_log_page:no_data"):
-        teacher = seed_canonical_admin('testadmin2').user
-        class_row = create_class_scope(
-            teacher_user=teacher,
-            join_code="ATLOG2",
-            display_name="Attendance Empty Class",
-        )
+    classroom = initialize("ap_csp_p3", client.application)
+    initialize_as_teacher("ap_csp_p3", client, client.application)
 
-    login_teacher(client, teacher, class_id=class_row.class_id)
-
-    response = client.get('/admin/attendance-log')
+    response = admin_get_attendance_log(client)
 
     assert response.status_code == 200
     html = response.data.decode('utf-8')
@@ -89,36 +75,29 @@ def test_attendance_log_page_with_no_data(client):
     assert 'filterStatus' in html
 
 
-def test_attendance_log_tenant_scoping(client):
+def test_DOM_IDEN_006__attendance_log_tenant_scoping(client):
     """Test that admins only see periods/blocks from their own students."""
+    class1 = initialize_as_teacher("chemistry_p1", client, client.application)
+    class2 = initialize("biology_block_a", client.application)
+    admin1 = class1.teacher_user
+    admin2 = class2.teacher_user
+    seat1 = class1.students[0].seat
+    seat2 = class2.students[0].seat
+
     with FEATContext("FEAT-IDEN-001", idempotency_key="attendance_log_page:tenant_scoping"):
-        admin1 = seed_canonical_admin('admin1').user
-        admin2 = seed_canonical_admin('admin2').user
-        class1 = create_class_scope(teacher_user=admin1, join_code="ATLOG3A", display_name="Attendance Tenant 1")
-        class2 = create_class_scope(teacher_user=admin2, join_code="ATLOG3B", display_name="Attendance Tenant 2")
-
-        teacher1 = Seat.query.filter_by(user_id=admin1.id, class_id=class1.class_id, role="teacher").first()
-
-        student1 = make_student_identity(class_id=class1.class_id, first_name='Student1', last_name='S')
-        student2 = make_student_identity(class_id=class2.class_id, first_name='Student2', last_name='S')
-        seat1 = Seat.query.filter_by(user_id=student1.user_id, class_id=class1.class_id, role="student").first()
-        seat2 = Seat.query.filter_by(user_id=student2.user_id, class_id=class2.class_id, role="student").first()
-
         tap1 = AttendanceSession(seat_id=seat1.id, class_id=class1.class_id, started_at=datetime.now(timezone.utc))
         tap2 = AttendanceSession(seat_id=seat2.id, class_id=class2.class_id, started_at=datetime.now(timezone.utc))
         db.session.add_all([tap1, tap2])
         db.session.flush()
 
-    login_teacher(client, admin1, class_id=class1.class_id)
-
-    response = client.get('/admin/attendance-log')
+    response = admin_get_attendance_log(client)
 
     assert response.status_code == 200
     html = response.data.decode('utf-8')
 
     assert 'Attendance Log' in html or 'Attendance History' in html
 
-    api_response = client.get('/api/attendance/history')
+    api_response = api_get_attendance_history(client)
     assert api_response.status_code == 200
     data = api_response.get_json()
     returned_periods = {r['student_block'] for r in data['records']}

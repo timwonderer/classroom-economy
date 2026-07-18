@@ -32,7 +32,7 @@ class _SeatQueryStub:
 
 
 @patch("app.services.context_resolver.db.session.get")
-def test_resolve_canonical_context_rejects_sysadmin(mock_get, app):
+def test_DOM_IDEN_006__resolve_canonical_context_rejects_sysadmin(mock_get, app):
     with app.test_request_context():
         _seed_request_session()
         mock_get.return_value = User(id=1, user_role=UserRole.SYSADMIN)
@@ -41,14 +41,14 @@ def test_resolve_canonical_context_rejects_sysadmin(mock_get, app):
 
 
 @patch("app.services.context_resolver.db.session.get")
-def test_resolve_canonical_context_missing_keys(mock_get, app):
+def test_DOM_IDEN_006__resolve_canonical_context_missing_keys(mock_get, app):
     with app.test_request_context():
         with pytest.raises(ContextNotEstablished, match="Missing user_id in session."):
             resolve_canonical_context()
 
 
 @patch("app.services.context_resolver.db.session.get")
-def test_resolve_canonical_context_missing_scope_fails_closed(mock_get, app):
+def test_DOM_IDEN_006__resolve_canonical_context_missing_scope_fails_closed(mock_get, app):
     with app.test_request_context():
         _seed_request_session()
         mock_get.return_value = User(id=1, user_role=UserRole.TEACHER, last_active_class_id=None)
@@ -57,7 +57,7 @@ def test_resolve_canonical_context_missing_scope_fails_closed(mock_get, app):
 
 
 @patch("app.services.context_resolver.db.session.get")
-def test_resolve_canonical_context_invalid_format(mock_get, app):
+def test_DOM_IDEN_006__resolve_canonical_context_invalid_format(mock_get, app):
     with app.test_request_context():
         session["user_id"] = "not-an-int"
         with pytest.raises(ContextNotEstablished, match="Invalid format for user_id."):
@@ -66,7 +66,7 @@ def test_resolve_canonical_context_invalid_format(mock_get, app):
 
 @patch("app.services.context_resolver.db.session.query")
 @patch("app.services.context_resolver.db.session.get")
-def test_resolve_canonical_context_seat_not_found(mock_get, mock_query, app):
+def test_DOM_IDEN_006__resolve_canonical_context_seat_not_found(mock_get, mock_query, app):
     with app.test_request_context():
         _seed_request_session()
         def fake_get(model, ident):
@@ -81,7 +81,7 @@ def test_resolve_canonical_context_seat_not_found(mock_get, mock_query, app):
 
 @patch("app.services.context_resolver.db.session.query")
 @patch("app.services.context_resolver.db.session.get")
-def test_resolve_canonical_context_seat_unclaimed(mock_get, mock_query, app):
+def test_DOM_IDEN_006__resolve_canonical_context_seat_unclaimed(mock_get, mock_query, app):
     with app.test_request_context():
         _seed_request_session()
         def fake_get(model, ident):
@@ -98,7 +98,7 @@ def test_resolve_canonical_context_seat_unclaimed(mock_get, mock_query, app):
 
 @patch("app.services.context_resolver.db.session.query")
 @patch("app.services.context_resolver.db.session.get")
-def test_resolve_canonical_context_class_mismatch(mock_get, mock_query, app):
+def test_DOM_IDEN_006__resolve_canonical_context_class_mismatch(mock_get, mock_query, app):
     with app.test_request_context():
         _seed_request_session()
         def fake_get(model, ident):
@@ -115,7 +115,7 @@ def test_resolve_canonical_context_class_mismatch(mock_get, mock_query, app):
 
 @patch("app.services.context_resolver.db.session.query")
 @patch("app.services.context_resolver.db.session.get")
-def test_resolve_canonical_context_user_mismatch(mock_get, mock_query, app):
+def test_DOM_IDEN_006__resolve_canonical_context_user_mismatch(mock_get, mock_query, app):
     with app.test_request_context():
         _seed_request_session()
         def fake_get(model, ident):
@@ -132,7 +132,7 @@ def test_resolve_canonical_context_user_mismatch(mock_get, mock_query, app):
 
 @patch("app.services.context_resolver.db.session.query")
 @patch("app.services.context_resolver.db.session.get")
-def test_resolve_canonical_context_success(mock_get, mock_query, app):
+def test_DOM_IDEN_006__resolve_canonical_context_success(mock_get, mock_query, app):
     with app.test_request_context():
         _seed_request_session()
         def fake_get(model, ident):
@@ -151,7 +151,7 @@ def test_resolve_canonical_context_success(mock_get, mock_query, app):
 
 
 @patch("app.services.context_resolver.db.session.get")
-def test_resolve_canonical_context_teacher_exception_returns_none(mock_get, app):
+def test_DOM_IDEN_006__resolve_canonical_context_teacher_exception_returns_none(mock_get, app):
     with app.test_request_context("/admin/onboarding", method="GET"):
         _seed_request_session()
         def fake_get(model, ident):
@@ -163,7 +163,7 @@ def test_resolve_canonical_context_teacher_exception_returns_none(mock_get, app)
             resolve_canonical_context()
 
 
-def test_canonical_context_guards():
+def test_DOM_IDEN_006__canonical_context_guards():
     context = CanonicalContext(user_id=1, class_id="uuid", seat_id=1, actor_role="student")
 
     with pytest.raises(AttributeError, match="Strict context invariant violation: cannot access join_code"):

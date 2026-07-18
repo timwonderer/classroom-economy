@@ -11,14 +11,13 @@ Validates the privacy-respecting single-student verification per spec v1.0:
 - Rate limiting not tested here (requires integration harness)
 """
 
-from tests.helpers.v2_fixtures import seed_canonical_admin
 import pytest
 from datetime import datetime, timezone, timedelta
 
-from app.extensions import db
+from app import app, db
 from app.feats.base import FEATContext
 from app.models import User, HallPassLog
-from tests.helpers.class_scope import make_student_identity, create_class_scope
+from tests.helpers.classroom_initializer import initialize
 
 
 # ---------------------------------------------------------------------------
@@ -29,7 +28,7 @@ from tests.helpers.class_scope import make_student_identity, create_class_scope
 def hp_teacher(client):
     """Create a teacher with a hall pass verify token."""
     with FEATContext("FEAT-IDEN-001", idempotency_key="hall_pass_verify:teacher"):
-        teacher = seed_canonical_admin("hpteacher").user
+        teacher = initialize("chemistry_p1").teacher_user
         teacher.hall_pass_verify_token = User.generate_verify_token()
         db.session.flush()
     return teacher
@@ -39,12 +38,7 @@ def hp_teacher(client):
 def hp_class(client, hp_teacher):
     """Create a class for hp_teacher."""
     with FEATContext("FEAT-IDEN-001", idempotency_key="hall_pass_verify:class"):
-        class_row = create_class_scope(
-            teacher_user=hp_teacher,
-            join_code="jc_chem3",
-            display_name="Period3",
-            section="Period3",
-        )
+        class_row = initialize("chemistry_p1", app)
         db.session.flush()
     return class_row
 
@@ -53,7 +47,7 @@ def hp_class(client, hp_teacher):
 def hp_student(client, hp_teacher, hp_class):
     """Create a student in hp_class."""
     with FEATContext("FEAT-IDEN-001", idempotency_key="hall_pass_verify:student"):
-        student = make_student_identity(class_id=hp_class.class_id, first_name="Maria", last_name="Garcia")
+        student = hp_class.students[0].seat
         db.session.flush()
     return student
 
@@ -83,7 +77,7 @@ def hp_pass_today(client, hp_student, hp_class):
 # GET: page rendering
 # ---------------------------------------------------------------------------
 
-def test_get_verify_page_valid_token(client, hp_teacher, hp_student):
+def test_DOM_ATT_001__get_verify_page_valid_token(client, hp_teacher, hp_student):
     """GET with a valid token renders the verification form."""
     resp = client.get(f"/verify/hallpass/{hp_teacher.hall_pass_verify_token}")
     assert resp.status_code == 200
@@ -94,7 +88,7 @@ def test_get_verify_page_valid_token(client, hp_teacher, hp_student):
     assert f"teacher_id={hp_teacher.id}" not in html
 
 
-def test_get_verify_page_invalid_token(client):
+def test_DOM_ATT_001__get_verify_page_invalid_token(client):
     """GET with an invalid token returns a generic unavailable response."""
     resp = client.get("/verify/hallpass/deadbeef1234deadbeef1234deadbeef1234deadbeef1234deadbeef1234dead")
     assert resp.status_code == 404
@@ -104,10 +98,10 @@ def test_get_verify_page_invalid_token(client):
     assert "teacher_id" not in html.lower()
 
 
-def test_get_verify_page_rejects_null_token_teacher(client):
+def test_DOM_ATT_001__get_verify_page_rejects_null_token_teacher(client):
     """Teacher records with null token must not be publicly reachable."""
     with FEATContext("FEAT-IDEN-001", idempotency_key="hall_pass_verify:null_token"):
-        teacher = seed_canonical_admin("nulltoken_teacher").user
+        teacher = initialize("ap_csp_p3").teacher_user
         teacher.hall_pass_verify_token = None
         db.session.flush()
 
@@ -122,7 +116,7 @@ def test_get_verify_page_rejects_null_token_teacher(client):
 # POST: verification outcomes
 # ---------------------------------------------------------------------------
 
-def test_post_verify_no_match(client, hp_teacher, hp_student, hp_class):
+def test_DOM_ATT_001__post_verify_no_match(client, hp_teacher, hp_student, hp_class):
     """POST with a name that does not match any pass returns no_match."""
     resp = client.post(
         f"/verify/hallpass/{hp_teacher.hall_pass_verify_token}",
@@ -137,7 +131,7 @@ def test_post_verify_no_match(client, hp_teacher, hp_student, hp_class):
     assert "No hall pass record found" in html
 
 
-def test_post_verify_match_left(client, hp_teacher, hp_student, hp_pass_today, hp_class):
+def test_DOM_ATT_001__post_verify_match_left(client, hp_teacher, hp_student, hp_pass_today, hp_class):
     """POST with a matching student who is currently out returns match with status."""
     resp = client.post(
         f"/verify/hallpass/{hp_teacher.hall_pass_verify_token}",
@@ -157,7 +151,7 @@ def test_post_verify_match_left(client, hp_teacher, hp_student, hp_pass_today, h
     assert f"/hall-pass/{hp_pass_today.id}" not in html
 
 
-def test_post_verify_match_returned(client, hp_teacher, hp_student, hp_class):
+def test_DOM_ATT_001__post_verify_match_returned(client, hp_teacher, hp_student, hp_class):
     """POST matching a student who has returned shows returned status."""
     now = datetime.now(timezone.utc)
     log = HallPassLog(
@@ -190,10 +184,10 @@ def test_post_verify_match_returned(client, hp_teacher, hp_student, hp_class):
     assert "Returned" in html
 
 
-def test_post_verify_ambiguous(client, hp_teacher, hp_student, hp_class):
+def test_DOM_ATT_001__post_verify_ambiguous(client, hp_teacher, hp_student, hp_class):
     """POST matching multiple students returns ambiguous response."""
     with FEATContext("FEAT-IDEN-001", idempotency_key="hall_pass_verify:ambiguous"):
-        student2 = make_student_identity(class_id=hp_student.class_id, first_name="Maria", last_name="Garcia")
+        student2 = initialize("ap_csp_p3").students[0].seat
         now = datetime.now(timezone.utc)
         for s in [hp_student, student2]:
             db.session.add(HallPassLog(
@@ -224,7 +218,7 @@ def test_post_verify_ambiguous(client, hp_teacher, hp_student, hp_class):
     assert "Bathroom" not in html
 
 
-def test_post_verify_no_history_shown(client, hp_teacher, hp_student, hp_pass_today, hp_class):
+def test_DOM_ATT_001__post_verify_no_history_shown(client, hp_teacher, hp_student, hp_pass_today, hp_class):
     """POST result must not expose any list of passes or roster."""
     resp = client.post(
         f"/verify/hallpass/{hp_teacher.hall_pass_verify_token}",
@@ -242,14 +236,9 @@ def test_post_verify_no_history_shown(client, hp_teacher, hp_student, hp_pass_to
     assert f'"id": {hp_pass_today.id}' not in html
 
 
-def test_post_verify_wrong_class_rejected(client, hp_teacher, hp_student, hp_pass_today):
+def test_DOM_ATT_001__post_verify_wrong_class_rejected(client, hp_teacher, hp_student, hp_pass_today):
     """POST with a class_id that doesn't belong to this teacher returns no_match."""
-    other_class = create_class_scope(
-        teacher_user=hp_teacher,
-        join_code="jc_other_class",
-        display_name="Other Period",
-        section="Other Period",
-    )
+    other_class = initialize("ap_csp_p3")
     resp = client.post(
         f"/verify/hallpass/{hp_teacher.hall_pass_verify_token}",
         data={
@@ -263,7 +252,7 @@ def test_post_verify_wrong_class_rejected(client, hp_teacher, hp_student, hp_pas
     assert "No hall pass record found" in html
 
 
-def test_post_verify_old_pass_not_shown(client, hp_teacher, hp_student, hp_class):
+def test_DOM_ATT_001__post_verify_old_pass_not_shown(client, hp_teacher, hp_student, hp_class):
     """Passes from yesterday are not returned by today-scoped query."""
     with FEATContext("FEAT-IDEN-001", idempotency_key="hall_pass_verify:old_pass"):
         yesterday = datetime.now(timezone.utc) - timedelta(days=1)
@@ -294,14 +283,14 @@ def test_post_verify_old_pass_not_shown(client, hp_teacher, hp_student, hp_class
     assert "No hall pass record found" in html
 
 
-def test_post_verify_finds_match_beyond_first_20_records(client, hp_teacher, hp_student, hp_class):
+def test_DOM_ATT_001__post_verify_finds_match_beyond_first_20_records(client, hp_teacher, hp_student, hp_class):
     """Matching search must not be truncated by an arbitrary fixed result window."""
     with FEATContext("FEAT-IDEN-001", idempotency_key="hall_pass_verify:result_window"):
         now = datetime.now(timezone.utc)
 
         # Insert many newer non-matching records for the same class/day.
         for i in range(25):
-            other = make_student_identity(class_id=hp_student.class_id, first_name=f"Other{i}", last_name="Zimmer")
+            other = initialize("ap_csp_p3").students[0].seat
             db.session.add(HallPassLog(
                 seat_id=other.id,
                 class_id=hp_student.class_id,
@@ -342,7 +331,7 @@ def test_post_verify_finds_match_beyond_first_20_records(client, hp_teacher, hp_
     assert "No hall pass record found" not in html
 
 
-def test_post_verify_input_normalization(client, hp_teacher, hp_student, hp_pass_today, hp_class):
+def test_DOM_ATT_001__post_verify_input_normalization(client, hp_teacher, hp_student, hp_pass_today, hp_class):
     """Input normalization: mixed-case first name and last name should still match."""
     resp = client.post(
         f"/verify/hallpass/{hp_teacher.hall_pass_verify_token}",
@@ -358,7 +347,7 @@ def test_post_verify_input_normalization(client, hp_teacher, hp_student, hp_pass
     assert "Currently Out" in html
 
 
-def test_post_verify_malformed_last_name(client, hp_teacher, hp_student, hp_class):
+def test_DOM_ATT_001__post_verify_malformed_last_name(client, hp_teacher, hp_student, hp_class):
     """POST with invalid or empty last_name returns no_match."""
     for bad_last_name in ["", "   "]:
         resp = client.post(
@@ -378,18 +367,17 @@ def test_post_verify_malformed_last_name(client, hp_teacher, hp_student, hp_clas
 # Token rotation
 # ---------------------------------------------------------------------------
 
-def test_rotate_token_requires_auth(client, hp_teacher):
+def test_DOM_ATT_001__rotate_token_requires_auth(client, hp_teacher):
     """Token rotation endpoint requires admin authentication."""
     resp = client.post("/api/hall-pass/verify-token/rotate")
     assert resp.status_code in [302, 401, 403]
 
 
-def test_rotate_token_invalidates_old_token(client, hp_teacher, hp_class):
+def test_DOM_ATT_001__rotate_token_invalidates_old_token(client, hp_teacher, hp_class):
     """After rotation, old token returns unavailable."""
-    from tests.helpers.admin_context import login_teacher
     old_token = hp_teacher.hall_pass_verify_token
 
-    login_teacher(client, hp_teacher, class_id=hp_class.class_id)
+    initialize_as_teacher("chemistry_p1", client, client.application)
 
     resp = client.post("/api/hall-pass/verify-token/rotate")
     assert resp.status_code == 200
@@ -407,7 +395,7 @@ def test_rotate_token_invalidates_old_token(client, hp_teacher, hp_class):
     assert resp_new.status_code == 200
 
 
-def test_token_not_derived_from_teacher_id(hp_teacher):
+def test_DOM_ATT_001__token_not_derived_from_teacher_id(hp_teacher):
     """The token must not be derived from or equal to the teacher's numeric ID."""
     token = hp_teacher.hall_pass_verify_token
     # Token must be a 64-character hex string (256-bit random)

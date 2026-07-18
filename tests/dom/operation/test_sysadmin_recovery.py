@@ -1,10 +1,9 @@
-from tests.helpers.v2_fixtures import seed_canonical_admin, make_sysadmin
-import pytest
-from app import db
-from app.models import User
-import pyotp
+from app import app
+from tests.helpers.classroom_initializer import initialize
+from tests.helpers.operation_routes import post_sysadmin_reset_totp
 
-def test_sysadmin_reset_totp_unauthorized(client):
-    teacher = seed_canonical_admin("teacher_fail").user
-    response = client.post(f"/sysadmin/admins/{teacher.id}/reset-totp")
+def test_DOM_OPS_001__sysadmin_reset_totp_unauthorized(client):
+    classroom = initialize("chemistry_p1", app)
+    teacher = classroom.teacher_user
+    response = post_sysadmin_reset_totp(client, teacher.id)
     assert response.status_code == 302

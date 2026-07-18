@@ -1,43 +1,24 @@
-from tests.helpers.v2_fixtures import seed_canonical_admin, seed_student_membership
-import uuid
 from datetime import datetime, timedelta, timezone
 from app import db
 from app.feats.base import FEATContext
 from app.models import AttendanceSession, Seat, PayrollSettings, Transaction
 from app.payroll import calculate_payroll_breakdown
-from tests.helpers.class_scope import create_class_scope
+from tests.helpers.classroom_initializer import initialize
 
 
-def test_shared_student_diff_teacher_diff_period(client):
+def test_FEAT_PAY_001__shared_student_diff_teacher_diff_period(client):
     """
     Scenario A: Student S is in T1's class and T2's class.
     Verify T1 payroll only pays for T1 attendance.
     Verify T2 payroll only pays for T2 attendance.
     """
-    t1 = seed_canonical_admin(f"t1_{uuid.uuid4().hex[:8]}", 's').user
-    t2 = seed_canonical_admin(f"t2_{uuid.uuid4().hex[:8]}", 's').user
+    class_1 = initialize("chemistry_p1", client.application)
+    class_2 = initialize("biology_block_a", client.application)
+    student_seed = class_1.students[0]
+    seat_1 = student_seed.seat
+    seat_2_row = Seat(user_id=student_seed.user.id, class_id=class_2.class_id, role="student", claimed_at=datetime.now(timezone.utc))
+    db.session.add(seat_2_row)
     db.session.flush()
-    db.session.commit()
-
-    class_1 = create_class_scope(teacher_user=t1, join_code="SSP1", display_name="T1-P1")
-    class_2 = create_class_scope(teacher_user=t2, join_code="SSP2", display_name="T2-P2")
-    db.session.flush()
-
-    student_seed = seed_student_membership(
-        user=seed_canonical_admin("student_scenario_a").user,
-        class_id=class_1.class_id,
-        first_name="ScenarioA",
-        last_name="S",
-    )
-    db.session.flush()
-    seat_2_row = seed_student_membership(
-        user=student_seed.user,
-        class_id=class_2.class_id,
-        first_name="ScenarioA",
-        last_name="S",
-    ).seat
-
-    seat_1 = Seat.query.filter_by(user_id=student_seed.user.id, class_id=class_1.class_id, role="student").first()
     seat_2 = Seat.query.filter_by(user_id=student_seed.user.id, class_id=class_2.class_id, role="student").first()
     assert seat_1 is not None
     assert seat_2 is not None
@@ -74,34 +55,18 @@ def test_shared_student_diff_teacher_diff_period(client):
     assert abs(float(s2[seat_2.id]) - 300.0) < 0.1
 
 
-def test_same_teacher_same_block_diff_context(client):
+def test_FEAT_PAY_001__same_teacher_same_block_diff_context(client):
     """
     Scenario B: Same Teacher, Diff Join Codes (JC1, JC2).
     Verify attendance in JC1 is NOT counted for JC2.
     """
-    t1 = seed_canonical_admin(f"t1_{uuid.uuid4().hex[:8]}", 's').user
+    class_1 = initialize("chemistry_p1", client.application)
+    class_2 = initialize("biology_block_a", client.application)
+    student_seed = class_1.students[0]
+    seat_1 = student_seed.seat
+    seat_2_row = Seat(user_id=student_seed.user.id, class_id=class_2.class_id, role="student", claimed_at=datetime.now(timezone.utc))
+    db.session.add(seat_2_row)
     db.session.flush()
-    db.session.commit()
-
-    class_1 = create_class_scope(teacher_user=t1, join_code="SSP3", display_name="P1-JC1")
-    class_2 = create_class_scope(teacher_user=t1, join_code="SSP4", display_name="P1-JC2")
-    db.session.flush()
-
-    student_seed = seed_student_membership(
-        user=seed_canonical_admin("student_scenario_b").user,
-        class_id=class_1.class_id,
-        first_name="ScenarioB",
-        last_name="S",
-    )
-    db.session.flush()
-    seat_2_row = seed_student_membership(
-        user=student_seed.user,
-        class_id=class_2.class_id,
-        first_name="ScenarioB",
-        last_name="S",
-    ).seat
-
-    seat_1 = Seat.query.filter_by(user_id=student_seed.user.id, class_id=class_1.class_id, role="student").first()
     seat_2 = Seat.query.filter_by(user_id=student_seed.user.id, class_id=class_2.class_id, role="student").first()
     assert seat_1 is not None
     assert seat_2 is not None
@@ -127,45 +92,29 @@ def test_same_teacher_same_block_diff_context(client):
     assert paid_amount == 0.0, "Attendance from JC1 context leaked into JC2 context!"
 
 
-def test_balance_separation_by_class_scope(client):
+def test_DOM_CLASS_001__balance_separation_by_class_scope(client):
     """
     Verify that a student has distinct balances for different class scopes.
     """
     from app.routes.student import calculate_scoped_balances
 
-    t1 = seed_canonical_admin(f"t1_{uuid.uuid4().hex[:8]}", 'secret').user
+    class_1 = initialize("chemistry_p1", client.application)
+    class_2 = initialize("biology_block_a", client.application)
+    student_seed = class_1.students[0]
+    seat_1 = student_seed.seat
+    seat_2_row = Seat(user_id=student_seed.user.id, class_id=class_2.class_id, role="student", claimed_at=datetime.now(timezone.utc))
+    db.session.add(seat_2_row)
     db.session.flush()
-    db.session.commit()
-
-    class_1 = create_class_scope(teacher_user=t1, join_code="SSP5", display_name="P1")
-    class_2 = create_class_scope(teacher_user=t1, join_code="SSP6", display_name="P1")
-    db.session.flush()
-
-    student_seed = seed_student_membership(
-        user=seed_canonical_admin("student_balance_test").user,
-        class_id=class_1.class_id,
-        first_name="BalanceTest",
-        last_name="B",
-    )
-    db.session.flush()
-    seat_2_row = seed_student_membership(
-        user=student_seed.user,
-        class_id=class_2.class_id,
-        first_name="BalanceTest",
-        last_name="B",
-    ).seat
-
-    seat_1 = Seat.query.filter_by(user_id=student_seed.user.id, class_id=class_1.class_id, role="student").first()
     seat_2 = Seat.query.filter_by(user_id=student_seed.user.id, class_id=class_2.class_id, role="student").first()
     assert seat_1 is not None
     assert seat_2 is not None
 
     with FEATContext("FEAT-LED-001", idempotency_key=f"shared_payroll:balances:{class_1.class_id}:{class_2.class_id}"):
-        db.session.add(Transaction(user_id=student_seed.user.id, seat_id=seat_1.id, amount=100, account_type='checking', type='deposit', join_code='JC1',))
-        db.session.add(Transaction(user_id=student_seed.user.id, seat_id=seat_1.id, amount=50, account_type='savings', type='deposit', join_code='JC1',))
+        db.session.add(Transaction(user_id=student_seed.user.id, seat_id=seat_1.id, target_seat_id=seat_1.id, actor_seat_id=seat_1.id, mechanism="self", amount=100, account_type='checking', type='deposit', join_code='JC1',))
+        db.session.add(Transaction(user_id=student_seed.user.id, seat_id=seat_1.id, target_seat_id=seat_1.id, actor_seat_id=seat_1.id, mechanism="self", amount=50, account_type='savings', type='deposit', join_code='JC1',))
 
-        db.session.add(Transaction(user_id=student_seed.user.id, seat_id=seat_2.id, amount=200, account_type='checking', type='deposit', join_code='JC2',))
-        db.session.add(Transaction(user_id=student_seed.user.id, seat_id=seat_2.id, amount=100, account_type='savings', type='deposit', join_code='JC2',))
+        db.session.add(Transaction(user_id=student_seed.user.id, seat_id=seat_2.id, target_seat_id=seat_2.id, actor_seat_id=seat_2.id, mechanism="self", amount=200, account_type='checking', type='deposit', join_code='JC2',))
+        db.session.add(Transaction(user_id=student_seed.user.id, seat_id=seat_2.id, target_seat_id=seat_2.id, actor_seat_id=seat_2.id, mechanism="self", amount=100, account_type='savings', type='deposit', join_code='JC2',))
         db.session.flush()
 
     chk1, sav1 = calculate_scoped_balances(seat_1.id, class_1.class_id)

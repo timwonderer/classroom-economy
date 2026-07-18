@@ -10,7 +10,7 @@ import pytest
 from flask import current_app
 
 
-def test_offline_page_accessible(client):
+def test_DOM_OPS_001__offline_page_accessible(client):
     """Test that the offline fallback page is accessible."""
     with client.get('/offline') as response:
         assert response.status_code == 200
@@ -22,27 +22,27 @@ def test_offline_page_accessible(client):
         assert 'Try Again' in html
 
 
-def test_offline_page_content_type(client):
+def test_DOM_OPS_001__offline_page_content_type(client):
     """Test that the offline page returns proper HTML content type."""
     with client.get('/offline') as response:
         assert response.status_code == 200
         assert 'text/html' in response.content_type
 
 
-def test_service_worker_accessible(client):
+def test_DOM_OPS_001__service_worker_accessible(client):
     """Test that the service worker file is accessible."""
     with client.get('/sw.js') as response:
         assert response.status_code == 200
 
 
-def test_service_worker_content_type(client):
+def test_DOM_OPS_001__service_worker_content_type(client):
     """Test that the service worker returns JavaScript content type."""
     with client.get('/sw.js') as response:
         assert response.status_code == 200
         assert 'javascript' in response.content_type.lower() or 'text/plain' in response.content_type
 
 
-def test_service_worker_content(client):
+def test_DOM_OPS_001__service_worker_content(client):
     """Test that the service worker contains expected content."""
     with client.get('/sw.js') as response:
         assert response.status_code == 200
@@ -63,20 +63,20 @@ def test_service_worker_content(client):
         assert '/offline' in js_content
 
 
-def test_manifest_accessible(client):
+def test_DOM_OPS_001__manifest_accessible(client):
     """Test that the PWA manifest is accessible."""
     with client.get('/static/manifest.json') as response:
         assert response.status_code == 200
 
 
-def test_manifest_content_type(client):
+def test_DOM_OPS_001__manifest_content_type(client):
     """Test that the manifest returns proper JSON content type."""
     with client.get('/static/manifest.json') as response:
         assert response.status_code == 200
         assert 'json' in response.content_type.lower()
 
 
-def test_manifest_structure(client):
+def test_DOM_OPS_001__manifest_structure(client):
     """Test that the manifest contains required PWA fields."""
     with client.get('/static/manifest.json') as response:
         assert response.status_code == 200
@@ -100,7 +100,7 @@ def test_manifest_structure(client):
         assert 'orientation' in manifest
 
 
-def test_manifest_icon_properties(client):
+def test_DOM_OPS_001__manifest_icon_properties(client):
     """Test that manifest icons have required properties."""
     with client.get('/static/manifest.json') as response:
         assert response.status_code == 200
@@ -117,7 +117,7 @@ def test_manifest_icon_properties(client):
             assert 'type' in icon
 
 
-def test_pwa_meta_tags_in_mobile_layout(client):
+def test_DOM_OPS_001__pwa_meta_tags_in_mobile_layout(client):
     """Test that mobile layouts include PWA meta tags."""
     # This test would require authentication to access student pages
     # For now, we'll just verify the routes exist
@@ -131,7 +131,7 @@ def test_pwa_meta_tags_in_mobile_layout(client):
         assert '/sw.js' in routes
 
 
-def test_service_worker_cache_exclusions(client):
+def test_DOM_OPS_001__service_worker_cache_exclusions(client):
     """Test that service worker excludes authenticated routes from caching."""
     with client.get('/sw.js') as response:
         assert response.status_code == 200

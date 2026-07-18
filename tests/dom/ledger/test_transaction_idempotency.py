@@ -1,25 +1,27 @@
 from decimal import Decimal
 
-from tests.helpers.v2_fixtures import seed_canonical_admin
-from tests.helpers.class_scope import make_student_identity, create_class_scope
 import pytest
 from sqlalchemy.exc import IntegrityError
 
 from app.extensions import db
 from app.models import Transaction
-import app.utils.transaction_idempotency as transaction_idempotency
 from app.utils.transaction_idempotency import (
     IDEMPOTENT_TRANSACTION_TYPES,
     MAX_IDEMPOTENCY_KEY_LENGTH,
-    create_idempotent_transaction,
     insurance_reimbursement_key,
 )
 from app.feats.base import FEATContext
+from tests.helpers.ledger import (
+    create_ledger_idempotent_transaction,
+    create_ledger_pending_transaction,
+    provision_ledger_classroom,
+)
 
 
-def test_idempotent_transaction_types_are_explicit():
+def test_DOM_LED_001__idempotent_transaction_types_are_explicit():
     expected = frozenset({
         "insurance_reimbursement",
+        "insurance_premium",
         "purchase",
         "refund",
         "overdraft_fee",
@@ -29,16 +31,15 @@ def test_idempotent_transaction_types_are_explicit():
     assert IDEMPOTENT_TRANSACTION_TYPES == expected
 
 
-def test_create_idempotent_transaction_reuses_existing_row_on_retry(client):
-    teacher = seed_canonical_admin("idempotent-teacher", "secret").user
-    db.session.flush()
-    class_row = create_class_scope(teacher_user=teacher, join_code="IDEMP123")
-    student = make_student_identity(class_id=class_row.class_id, first_name="Retry", last_name="R")
+def test_DOM_LED_001__idempotent_transaction_reuses_existing_row_on_retry(client, app):
+    classroom = provision_ledger_classroom("chemistry_p1", app)
+    class_row = classroom.economy
+    student = classroom.students[0].seat
     db.session.commit()
 
     idempotency_key = insurance_reimbursement_key(123)
     with FEATContext("FEAT-LED-000", idempotency_key="test_transaction_idempotency_reuse_1"):
-        transaction_one, created_one = create_idempotent_transaction(
+        transaction_one, created_one = create_ledger_idempotent_transaction(
             idempotency_key=idempotency_key,
             seat_id=student.id,
             class_id=class_row.class_id,
@@ -49,7 +50,7 @@ def test_create_idempotent_transaction_reuses_existing_row_on_retry(client):
             description="Insurance reimbursement",
         )
     with FEATContext("FEAT-LED-000", idempotency_key="test_transaction_idempotency_reuse_2"):
-        transaction_two, created_two = create_idempotent_transaction(
+        transaction_two, created_two = create_ledger_idempotent_transaction(
             idempotency_key=idempotency_key,
             seat_id=student.id,
             class_id=class_row.class_id,
@@ -66,16 +67,15 @@ def test_create_idempotent_transaction_reuses_existing_row_on_retry(client):
     assert Transaction.query.filter_by(idempotency_key=idempotency_key).count() == 1
 
 
-def test_create_idempotent_transaction_recovers_from_integrity_race(client, monkeypatch):
-    teacher = seed_canonical_admin("idempotent-race-teacher", "secret").user
-    db.session.flush()
-    class_row = create_class_scope(teacher_user=teacher, join_code="IDEMP456")
-    student = make_student_identity(class_id=class_row.class_id, first_name="Race", last_name="R")
+def test_DOM_LED_001__idempotent_transaction_recovers_from_integrity_race(client, monkeypatch, app):
+    classroom = provision_ledger_classroom("chemistry_p1", app)
+    class_row = classroom.economy
+    student = classroom.students[0].seat
     db.session.commit()
 
     idempotency_key = insurance_reimbursement_key(456)
     with FEATContext("FEAT-LED-000", idempotency_key="test_transaction_idempotency_race_seed"):
-        winning_tx = Transaction(
+        winning_tx = create_ledger_pending_transaction(
             seat_id=student.id,
             class_id=class_row.class_id,
             user_id=student.user_id,
@@ -83,12 +83,12 @@ def test_create_idempotent_transaction_recovers_from_integrity_race(client, monk
             account_type="checking",
             type="insurance_reimbursement",
             description="Winning insurance reimbursement",
-            idempotency_key=idempotency_key,
         )
-        db.session.add(winning_tx)
+        winning_tx.idempotency_key = idempotency_key
+        db.session.flush()
 
     with FEATContext("FEAT-LED-000", idempotency_key="test_transaction_idempotency_race_call"):
-        transaction, created = create_idempotent_transaction(
+        transaction, created = create_ledger_idempotent_transaction(
             idempotency_key=idempotency_key,
             seat_id=student.id,
             class_id=class_row.class_id,
@@ -106,16 +106,15 @@ def test_create_idempotent_transaction_recovers_from_integrity_race(client, monk
     assert Transaction.query.filter_by(idempotency_key=idempotency_key).count() == 1
 
 
-def test_create_idempotent_transaction_rejects_non_idempotent_types(client):
-    teacher = seed_canonical_admin("idempotent-invalid-teacher", "secret").user
-    db.session.flush()
-    class_row = create_class_scope(teacher_user=teacher, join_code="IDEMP789")
-    student = make_student_identity(class_id=class_row.class_id, first_name="Nope", last_name="N")
+def test_DOM_LED_001__idempotent_transaction_rejects_non_idempotent_types(client, app):
+    classroom = provision_ledger_classroom("chemistry_p1", app)
+    class_row = classroom.economy
+    student = classroom.students[0].seat
     db.session.commit()
 
     with FEATContext("FEAT-LED-000", idempotency_key="test_transaction_idempotency_reject_type"):
         with pytest.raises(ValueError):
-            create_idempotent_transaction(
+            create_ledger_idempotent_transaction(
                 idempotency_key="txn:unknown:op",
                 seat_id=student.id,
                 class_id=class_row.class_id,
@@ -128,16 +127,15 @@ def test_create_idempotent_transaction_rejects_non_idempotent_types(client):
 
 
 @pytest.mark.parametrize("bad_key", [None, "", "   "])
-def test_create_idempotent_transaction_rejects_empty_keys(client, bad_key):
-    teacher = seed_canonical_admin("idempotent-empty-key-teacher", "secret").user
-    db.session.flush()
-    class_row = create_class_scope(teacher_user=teacher, join_code="IDEMP000")
-    student = make_student_identity(class_id=class_row.class_id, first_name="Empty", last_name="E")
+def test_DOM_LED_001__idempotent_transaction_rejects_empty_keys(client, bad_key, app):
+    classroom = provision_ledger_classroom("chemistry_p1", app)
+    class_row = classroom.economy
+    student = classroom.students[0].seat
     db.session.commit()
 
     with FEATContext("FEAT-LED-000", idempotency_key=f"test_transaction_idempotency_empty_{bad_key!s}"):
         with pytest.raises(ValueError):
-            create_idempotent_transaction(
+            create_ledger_idempotent_transaction(
                 idempotency_key=bad_key,
                 seat_id=student.id,
                 class_id=class_row.class_id,
@@ -149,16 +147,15 @@ def test_create_idempotent_transaction_rejects_empty_keys(client, bad_key):
             )
 
 
-def test_create_idempotent_transaction_rejects_oversize_keys(client):
-    teacher = seed_canonical_admin("idempotent-long-key-teacher", "secret").user
-    db.session.flush()
-    class_row = create_class_scope(teacher_user=teacher, join_code="IDEMP001")
-    student = make_student_identity(class_id=class_row.class_id, first_name="Long", last_name="L")
+def test_DOM_LED_001__idempotent_transaction_rejects_oversize_keys(client, app):
+    classroom = provision_ledger_classroom("chemistry_p1", app)
+    class_row = classroom.economy
+    student = classroom.students[0].seat
     db.session.commit()
 
     with FEATContext("FEAT-LED-000", idempotency_key="test_transaction_idempotency_oversize"):
         with pytest.raises(ValueError):
-            create_idempotent_transaction(
+            create_ledger_idempotent_transaction(
                 idempotency_key="x" * (MAX_IDEMPOTENCY_KEY_LENGTH + 1),
                 seat_id=student.id,
                 class_id=class_row.class_id,

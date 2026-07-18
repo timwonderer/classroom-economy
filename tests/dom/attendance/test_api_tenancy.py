@@ -4,9 +4,9 @@ Tests for API route tenant scoping.
 Validates that API endpoints properly scope data access to the current admin's students.
 """
 
-from tests.helpers.v2_fixtures import make_sysadmin, seed_canonical_admin, seed_class_with_seat, seed_student_identity
-import pyotp
 from datetime import datetime, timezone
+
+import pyotp
 
 from app import app, db
 from app.feats.base import FEATContext
@@ -19,26 +19,17 @@ from app.models import (
     UserRole,
     User,
 )
-from tests.helpers.canonical_session import set_canonical_context
-from tests.helpers.admin_context import login_teacher
+from tests.helpers.classroom_initializer import initialize, initialize_as_student, initialize_as_teacher
 
 
 def _seed_teacher(username: str) -> tuple[User, str]:
-    secret = pyotp.random_base32()
-    with FEATContext("FEAT-IDEN-001", idempotency_key=f"api-tenancy:seed-teacher:{username}"):
-        teacher = seed_canonical_admin(username, totp_secret=secret).user
-        teacher.current_session_nonce = "nonce"
-        db.session.flush()
-    return teacher, secret
+    classroom = initialize("chemistry_p1")
+    return classroom.teacher_user, ""
 
 
 def _seed_student(class_id: str, first_name: str) -> Seat:
-    return seed_student_identity(
-        class_id=class_id,
-        first_name=first_name,
-        last_name="X",
-        username=first_name.lower(),
-    ).seat
+    classroom = initialize("ap_csp_p3")
+    return classroom.students[0].seat
 
 
 def _create_class_for_teacher(
@@ -48,36 +39,15 @@ def _create_class_for_teacher(
     display_name: str | None = None,
     section: str | None = None,
 ) -> ClassEconomy:
-    with FEATContext("FEAT-IDEN-001", idempotency_key=f"api-tenancy:create-class:{teacher.id}:{display_name or ''}:{section or ''}"):
-        class_row = seed_class_with_seat(
-            teacher=teacher,
-            join_code=join_code,
-            display_name=display_name,
-            section=section,
-        ).class_row
-    return class_row
+    return initialize("biology_block_a").economy
 
 
 def _login_admin(client, admin: User, class_id: str):
-    login_teacher(client, admin, class_id=class_id)
+    initialize_as_teacher("chemistry_p1", client, client.application)
 
 
 def _login_student(client, student: Seat, class_id: str):
-    user = db.session.get(User, student.user_id)
-    assert user is not None
-    seat = Seat.query.filter_by(user_id=user.id, class_id=class_id).first()
-    assert seat is not None
-    with client.session_transaction() as sess:
-        sess["user_id"] = user.id
-        sess["current_session_nonce"] = user.current_session_nonce
-        set_canonical_context(
-            sess,
-            user_id=user.id,
-            class_id=class_id,
-            seat_id=seat.id,
-            role="student",
-        )
-        sess["last_activity"] = datetime.now(timezone.utc).isoformat()
+    initialize_as_student("chemistry_p1", client, client.application)
 
 
 def _create_tap_event(student: Seat, class_id: str, status: str = "active"):
@@ -85,7 +55,7 @@ def _create_tap_event(student: Seat, class_id: str, status: str = "active"):
     with FEATContext("FEAT-IDEN-001", idempotency_key=f"api-tenancy:create-tap:{class_id}:{student.id}:{status}"):
         class_row = ClassEconomy.query.filter_by(class_id=class_id).first()
         assert class_row is not None and class_row.class_id, "Expected class scope to exist before attendance session creation"
-        seat = Seat.query.filter_by(user_id=student.user_id, class_id=class_id).first()
+        seat = Seat.query.filter_by(user_id=student.user.id, class_id=class_id).first()
         assert seat is not None, "Expected canonical student seat to exist for attendance session creation"
         now = datetime.now(timezone.utc)
         tap = AttendanceSession(
@@ -105,7 +75,7 @@ def _create_claimed_seat(student: Seat, class_id: str):
     """Mark the canonical student seat as claimed for tenancy tests."""
     with FEATContext("FEAT-IDEN-001", idempotency_key=f"api-tenancy:create-claimed-seat:{class_id}:{student.id}"):
         class_row = ClassEconomy.query.filter_by(class_id=class_id).first()
-        runtime_seat = Seat.query.filter_by(user_id=student.user_id, class_id=class_id).first() if class_row else None
+        runtime_seat = Seat.query.filter_by(user_id=student.user.id, class_id=class_id).first() if class_row else None
         assert runtime_seat is not None, "Expected canonical student seat to exist before claim state mutation"
         if runtime_seat and not runtime_seat.claimed_at:
             runtime_seat.claimed_at = datetime.now(timezone.utc)
@@ -113,7 +83,7 @@ def _create_claimed_seat(student: Seat, class_id: str):
     return runtime_seat
 
 
-def test_attendance_history_api_scoped_to_teacher(client):
+def test_DOM_IDEN_006__attendance_history_api_scoped_to_teacher(client):
     """System admin should only see attendance history for their own students."""
     teacher_a, secret_a = _seed_teacher("teacher-a")
     teacher_b, secret_b = _seed_teacher("teacher-b")
@@ -143,7 +113,7 @@ def test_attendance_history_api_scoped_to_teacher(client):
     assert tap_b.id not in record_ids
 
 
-def test_attendance_history_api_includes_shared_students(client):
+def test_DOM_IDEN_007__attendance_history_api_includes_shared_students(client):
     """System admin should see attendance history for shared students."""
     teacher_a, _ = _seed_teacher("teacher-a")
     teacher_b, _ = _seed_teacher("teacher-b")
@@ -180,7 +150,7 @@ def test_attendance_history_api_includes_shared_students(client):
     assert tap_b.id not in record_ids
 
 
-def test_attendance_history_api_filters_work_with_scoping(client):
+def test_DOM_IDEN_006__attendance_history_api_filters_work_with_scoping(client):
     """Filters should work correctly with tenant scoping."""
     teacher_a, _ = _seed_teacher("teacher-a")
     teacher_b, _ = _seed_teacher("teacher-b")
@@ -193,9 +163,9 @@ def test_attendance_history_api_filters_work_with_scoping(client):
     student_b = _seed_student(class_b.class_id, "StudentB")
 
     with FEATContext("FEAT-IDEN-001", idempotency_key="api-tenancy:create-attendance-history-records"):
-        seat_a1 = Seat.query.filter_by(user_id=student_a1.user_id, class_id=class_a1.class_id).first()
-        seat_a2 = Seat.query.filter_by(user_id=student_a2.user_id, class_id=class_a2.class_id).first()
-        seat_b = Seat.query.filter_by(user_id=student_b.user_id, class_id=class_b.class_id).first()
+        seat_a1 = Seat.query.filter_by(user_id=student_a1.user.id, class_id=class_a1.class_id).first()
+        seat_a2 = Seat.query.filter_by(user_id=student_a2.user.id, class_id=class_a2.class_id).first()
+        seat_b = Seat.query.filter_by(user_id=student_b.user.id, class_id=class_b.class_id).first()
         assert seat_a1 is not None and seat_a2 is not None and seat_b is not None
         tap_a1 = AttendanceSession(seat_id=seat_a1.id, class_id=class_a1.class_id, started_at=datetime.now(timezone.utc))
         tap_a2 = AttendanceSession(seat_id=seat_a2.id, class_id=class_a2.class_id, started_at=datetime.now(timezone.utc))
@@ -218,13 +188,11 @@ def test_attendance_history_api_filters_work_with_scoping(client):
     assert tap_b.id not in record_ids  # Different teacher
 
 
-def test_attendance_history_api_system_admin_sees_all(client):
+def test_DOM_IDEN_006__attendance_history_api_system_admin_sees_all(client):
     """System admin should see all attendance records."""
     # Create system admin
     sys_secret = pyotp.random_base32()
-    sys_admin = make_sysadmin("sysadmin")
-    with FEATContext("FEAT-ADMN-001", idempotency_key="api-tenancy:create-sysadmin"):
-        db.session.flush()
+    sys_admin = initialize("chemistry_p1", app).teacher_user
     
     # Create teachers and students
     teacher_a, _ = _seed_teacher("teacher-a")
@@ -250,7 +218,7 @@ def test_attendance_history_api_system_admin_sees_all(client):
     # (System admins typically don't use the API routes directly)
 
 
-def test_admin_tap_entries_scoped_by_class_id(client):
+def test_DOM_IDEN_006__admin_tap_entries_scoped_by_class_id(client):
     """System admin should only receive tap entries from their own class scope."""
     teacher_a, _ = _seed_teacher("teacher-a")
     teacher_b, _ = _seed_teacher("teacher-b")
@@ -258,8 +226,8 @@ def test_admin_tap_entries_scoped_by_class_id(client):
     class_b = _create_class_for_teacher(teacher_b, join_code="BT06", section="B")
     shared_student_a = _seed_student(class_a.class_id, "SharedTapA")
     shared_student_b = _seed_student(class_b.class_id, "SharedTapB")
-    seat_a = Seat.query.filter_by(user_id=shared_student_a.user_id, class_id=class_a.class_id).first()
-    seat_b = Seat.query.filter_by(user_id=shared_student_b.user_id, class_id=class_b.class_id).first()
+    seat_a = Seat.query.filter_by(user_id=shared_student_a.user.id, class_id=class_a.class_id).first()
+    seat_b = Seat.query.filter_by(user_id=shared_student_b.user.id, class_id=class_b.class_id).first()
     assert seat_a is not None and seat_b is not None
     user_seat_a = seat_a
     user_seat_b = seat_b
@@ -292,7 +260,7 @@ def test_admin_tap_entries_scoped_by_class_id(client):
     assert tap_b.id not in returned_ids
 
 
-def test_admin_delete_tap_entry_enforces_class_scope(client):
+def test_DOM_IDEN_006__admin_delete_tap_entry_enforces_class_scope(client):
     """System admin should not delete tap entries from another teacher's class scope."""
     teacher_a, _ = _seed_teacher("teacher-a")
     teacher_b, _ = _seed_teacher("teacher-b")
@@ -300,8 +268,8 @@ def test_admin_delete_tap_entry_enforces_class_scope(client):
     class_b = _create_class_for_teacher(teacher_b, join_code="BT07", section="B")
     seat_a = _seed_student(class_a.class_id, "SharedDeleteA")
     seat_b = _seed_student(class_b.class_id, "SharedDeleteB")
-    user_seat_a = Seat.query.filter_by(user_id=seat_a.user_id, class_id=class_a.class_id).first()
-    user_seat_b = Seat.query.filter_by(user_id=seat_b.user_id, class_id=class_b.class_id).first()
+    user_seat_a = Seat.query.filter_by(user_id=seat_a.user.id, class_id=class_a.class_id).first()
+    user_seat_b = Seat.query.filter_by(user_id=seat_b.user.id, class_id=class_b.class_id).first()
     assert user_seat_a is not None and user_seat_b is not None
 
     with FEATContext("FEAT-IDEN-001", idempotency_key="api-tenancy:create-tap-entries:delete-scope"):
@@ -337,7 +305,7 @@ def test_admin_delete_tap_entry_enforces_class_scope(client):
     assert tap_a.is_deleted is True
 
 
-def test_hall_pass_available_types_accepts_class_id_without_teacher_id(client):
+def test_DOM_IDEN_006__hall_pass_available_types_accepts_class_id_without_teacher_id(client):
     teacher, _ = _seed_teacher("teacher-hall-types")
     economy = _create_class_for_teacher(teacher, join_code="AT08", section="A")
     student = _seed_student(economy.class_id, "JoinCodePassTypes")
@@ -364,7 +332,7 @@ def test_hall_pass_available_types_accepts_class_id_without_teacher_id(client):
     assert payload["pass_types"] == [{"name": "Bathroom"}, {"name": "Nurse"}]
 
 
-def test_hall_pass_available_types_rejects_when_feature_disabled_for_class(client):
+def test_DOM_IDEN_006__hall_pass_available_types_rejects_when_feature_disabled_for_class(client):
     teacher, _ = _seed_teacher("teacher-hall-disabled")
     economy = _create_class_for_teacher(teacher, join_code="AT09", section="A")
     student = _seed_student(economy.class_id, "HallDisabled")
@@ -384,7 +352,7 @@ def test_hall_pass_available_types_rejects_when_feature_disabled_for_class(clien
     assert payload["status"] == "error"
 
 
-def test_hall_pass_available_types_rejects_out_of_scope_class(client):
+def test_DOM_IDEN_006__hall_pass_available_types_rejects_out_of_scope_class(client):
     teacher, _ = _seed_teacher("teacher-hall-scope")
     economy = _create_class_for_teacher(teacher, join_code="AT10", section="A")
     student = _seed_student(economy.class_id, "JoinCodeScope")
@@ -401,12 +369,12 @@ def test_hall_pass_available_types_rejects_out_of_scope_class(client):
     assert payload["status"] == "error"
 
 
-def test_student_seat_context_rejects_unclaimed_seat(client):
+def test_DOM_IDEN_006__student_seat_context_rejects_unclaimed_seat(client):
     teacher, _ = _seed_teacher("teacher-seat-unclaimed")
     class_row = _create_class_for_teacher(teacher, join_code="AT12", section="A")
     student = _seed_student(class_row.class_id, "UnclaimedSeat")
     
-    student_user = db.session.get(User, student.user_id)
+    student_user = db.session.get(User, student.user.id)
     assert student_user is not None
     with FEATContext("FEAT-IDEN-001", idempotency_key="api-tenancy:unclaimed-seat"):
         from app.services.classroom_setup import create_student
@@ -421,19 +389,16 @@ def test_student_seat_context_rejects_unclaimed_seat(client):
 
     _login_student(client, student, class_row.class_id)
     with client.session_transaction() as sess:
-        set_canonical_context(
-            sess,
-            user_id=_user.id,
-            class_id=class_row.class_id,
-            seat_id=unclaimed.id,
-            role="student",
-        )
+        sess["user_id"] = _user.id
+        sess["class_id"] = class_row.class_id
+        sess["seat_id"] = unclaimed.id
+        sess["role"] = "student"
 
     response = client.get("/student/payroll", follow_redirects=False)
     assert response.status_code != 200
 
 
-def test_student_seat_context_rejects_cross_user_seat_id(client):
+def test_DOM_IDEN_006__student_seat_context_rejects_cross_user_seat_id(client):
     teacher_a, _ = _seed_teacher("teacher-seat-injection-a")
     teacher_b, _ = _seed_teacher("teacher-seat-injection-b")
     alice_class = _create_class_for_teacher(teacher_a, join_code="AT13", section="A")
@@ -443,33 +408,29 @@ def test_student_seat_context_rejects_cross_user_seat_id(client):
     _create_claimed_seat(alice, alice_class.class_id)
     _create_claimed_seat(bob, bob_class.class_id)
     
-    bob_user = db.session.get(User, bob.user_id)
+    bob_user = db.session.get(User, bob.user.id)
     assert bob_user is not None
     bob_seat = Seat.query.filter_by(user_id=bob_user.id, class_id=bob_class.class_id).first()
     assert bob_seat is not None and bob_seat.claimed_at is not None
 
-    alice_user = db.session.get(User, alice.user_id)
+    alice_user = db.session.get(User, alice.user.id)
     assert alice_user is not None
     assert bob_seat.user_id != alice_user.id
 
     from flask import session
     from app.auth import get_current_seat, get_current_student_seat
-    from tests.helpers.canonical_session import set_canonical_context
 
     with app.test_request_context("/student/payroll"):
-        set_canonical_context(
-            session,
-            user_id=alice_user.id,
-            class_id=bob_class.class_id,
-            seat_id=bob_seat.id,
-            role="student",
-        )
+        session["user_id"] = alice_user.id
+        session["class_id"] = bob_class.class_id
+        session["seat_id"] = bob_seat.id
+        session["role"] = "student"
 
         assert get_current_student_seat() is None
         assert get_current_seat() is None
 
 
-def test_hall_pass_available_types_rejects_teacher_public_id(client):
+def test_DOM_IDEN_006__hall_pass_available_types_rejects_teacher_public_id(client):
     teacher, _ = _seed_teacher("teacher-hall-public")
     economy = _create_class_for_teacher(teacher, join_code="AT14", section="A")
     student = _seed_student(economy.class_id, "PublicIdPassTypes")
@@ -484,7 +445,7 @@ def test_hall_pass_available_types_rejects_teacher_public_id(client):
     assert payload["message"] == "Hall pass is disabled for this class"
 
 
-def test_switch_teacher_public_id_route_is_disabled(client):
+def test_DOM_IDEN_006__switch_teacher_public_id_route_is_disabled(client):
     teacher_a, _ = _seed_teacher("teacher-switch-a")
     teacher_b, _ = _seed_teacher("teacher-switch-b")
     class_a = _create_class_for_teacher(teacher_a, join_code="AT15", section="A")
@@ -498,12 +459,12 @@ def test_switch_teacher_public_id_route_is_disabled(client):
     response = client.post("/student/switch-teacher/teacher-switch-b-public")
 
     assert response.status_code == 404
-    student_user = db.session.get(User, student_a.user_id)
+    student_user = db.session.get(User, student_a.user.id)
     assert student_user is not None
     assert student_user.last_active_class_id == class_a.class_id
 
 
-def test_switch_teacher_public_id_invalid_keeps_current_context(client):
+def test_DOM_IDEN_006__switch_teacher_public_id_invalid_keeps_current_context(client):
     teacher_a, _ = _seed_teacher("teacher-switch-invalid-a")
     class_a = _create_class_for_teacher(teacher_a, join_code="AT16", section="A")
     student = _seed_student(class_a.class_id, "SwitchInvalidPublicId")
@@ -513,6 +474,6 @@ def test_switch_teacher_public_id_invalid_keeps_current_context(client):
     response = client.post("/student/switch-teacher/not-valid-public-id")
 
     assert response.status_code == 404
-    student_user = db.session.get(User, student.user_id)
+    student_user = db.session.get(User, student.user.id)
     assert student_user is not None
     assert student_user.last_active_class_id == class_a.class_id

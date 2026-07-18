@@ -4,8 +4,7 @@ import uuid
 
 from app import db
 from app.feats.base import FEATContext
-from tests.helpers.class_scope import create_class_scope
-from tests.helpers.v2_fixtures import make_teacher
+from tests.helpers.classroom_initializer import initialize
 from app.routes.student import _calculate_rent_deadlines, _calculate_rent_timeline
 
 # Mocking the settings object
@@ -25,16 +24,10 @@ class MockSettings:
 
 
 def _seed_class_id(app) -> str:
-    slug = uuid.uuid4().hex[:8]
-    with app.app_context():
-        teacher = make_teacher(f"rent_frequency_teacher_{slug}")
-        with FEATContext("FEAT-IDEN-001", idempotency_key=f"rent-frequency:seed-class:{slug}"):
-            class_row = create_class_scope(teacher_user=teacher, join_code=f"RENTF{slug.upper()}")
-            class_id = class_row.class_id
-        db.session.flush()
-        return class_id
+    classroom = initialize("chemistry_p1", app)
+    return classroom.class_id
 
-def test_weekly_frequency(app):
+def test_DOM_OBL_001__weekly_frequency(app):
     # Start Jan 1 2024 (Monday). Weekly.
     start = datetime(2024, 1, 1, tzinfo=timezone.utc)
     settings = MockSettings("weekly", start, class_id=_seed_class_id(app))
@@ -55,7 +48,7 @@ def test_weekly_frequency(app):
     assert due == datetime(2024, 1, 8, tzinfo=timezone.utc)
 
 
-def test_daily_frequency(app):
+def test_DOM_OBL_001__daily_frequency(app):
     start = datetime(2024, 1, 1, tzinfo=timezone.utc)
     settings = MockSettings("daily", start, class_id=_seed_class_id(app))
 
@@ -64,7 +57,7 @@ def test_daily_frequency(app):
     assert due == datetime(2024, 1, 3, tzinfo=timezone.utc)
 
 
-def test_custom_days(app):
+def test_DOM_OBL_001__custom_days(app):
     # Every 3 days. Jan 1, Jan 4, Jan 7...
     start = datetime(2024, 1, 1, tzinfo=timezone.utc)
     settings = MockSettings("custom", start, custom_frequency_value=3, custom_frequency_unit="days", class_id=_seed_class_id(app))
@@ -80,7 +73,7 @@ def test_custom_days(app):
     assert due == datetime(2024, 1, 4, tzinfo=timezone.utc)
 
 
-def test_custom_months(app):
+def test_DOM_OBL_001__custom_months(app):
     # Every 2 months. Jan 15, Mar 15, May 15...
     start = datetime(2024, 1, 15, tzinfo=timezone.utc)
     settings = MockSettings("custom", start, custom_frequency_value=2, custom_frequency_unit="months", class_id=_seed_class_id(app))
@@ -96,7 +89,7 @@ def test_custom_months(app):
     assert due == datetime(2024, 3, 15, tzinfo=timezone.utc)
 
 
-def test_monthly_upcoming_due_respects_due_day_clamping(app):
+def test_DOM_OBL_001__monthly_upcoming_due_respects_due_day_clamping(app):
     # Traditional monthly schedule on the 31st with no first_rent_due_date.
     settings = MockSettings(
         frequency_type="monthly",

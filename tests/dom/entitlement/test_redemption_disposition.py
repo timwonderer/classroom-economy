@@ -71,6 +71,9 @@ def _seed_redemption_scenario(*, username: str, join_code: str, item_price: Deci
         # Original purchase transaction (the money that left the student's account)
         purchase_tx = Transaction(
             seat_id=student_seat.id,
+            target_seat_id=student_seat.id,
+            actor_seat_id=student_seat.id,
+            mechanism="self",
             class_id=economy.class_id,
             amount=-item_price,
             account_type="checking",
@@ -85,6 +88,9 @@ def _seed_redemption_scenario(*, username: str, join_code: str, item_price: Deci
         # Redemption transaction (the held-pending entry created by /use-item)
         redemption_tx = Transaction(
             seat_id=student_seat.id,
+            target_seat_id=student_seat.id,
+            actor_seat_id=student_seat.id,
+            mechanism="self",
             class_id=economy.class_id,
             amount=Decimal("0.00"),
             account_type="checking",
@@ -146,7 +152,7 @@ def _login_canonical_admin(client, *, user_id: int):
 
 
 @pytest.mark.enforce_feat
-def test_approve_redemption_succeeds_under_feat_enforcement(client):
+def test_DOM_STORE_001__approve_redemption_succeeds_under_feat_enforcement(client):
     """
     With FEAT enforcement ACTIVE (no global FEATBypass), POST /api/approve-redemption
     must succeed end-to-end: 200 response, audit row written, item status flipped.
@@ -187,7 +193,7 @@ def test_approve_redemption_succeeds_under_feat_enforcement(client):
 
 
 @pytest.mark.enforce_feat
-def test_reject_redemption_succeeds_and_creates_refund_under_enforcement(client):
+def test_DOM_STORE_001__reject_redemption_succeeds_and_creates_refund_under_enforcement(client):
     """
     POST /api/reject-redemption under live enforcement: 200, audit row, refund Tx,
     item status set to 'rejected'.
@@ -233,7 +239,7 @@ def test_reject_redemption_succeeds_and_creates_refund_under_enforcement(client)
 
 
 @pytest.mark.enforce_feat
-def test_approve_rejects_non_processing_item_with_409(client):
+def test_DOM_STORE_001__approve_rejects_non_processing_item_with_409(client):
     """
     Business-rule failure (item not in 'processing' state) should be caught
     by the route as RedemptionDispositionError and converted to a 409, NOT
@@ -263,7 +269,7 @@ def test_approve_rejects_non_processing_item_with_409(client):
 
 
 @pytest.mark.enforce_feat
-def test_approve_redemption_missing_student_item_id_returns_400(client):
+def test_DOM_STORE_001__approve_redemption_missing_student_item_id_returns_400(client):
     """Pure validation path — must not reach FEAT, must not 500."""
     ids = _seed_redemption_scenario(
         username="approver_validate",
@@ -278,7 +284,7 @@ def test_approve_redemption_missing_student_item_id_returns_400(client):
 
 
 @pytest.mark.enforce_feat
-def test_approve_redemption_rejects_intruder_admin_with_403(client):
+def test_DOM_STORE_001__approve_redemption_rejects_intruder_admin_with_403(client):
     """Authorization gate must fire before the FEAT body runs."""
     owner = _seed_redemption_scenario(
         username="owner_admin_isolation",

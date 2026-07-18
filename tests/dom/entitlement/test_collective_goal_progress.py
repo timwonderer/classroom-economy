@@ -47,6 +47,10 @@ def _create_student(teacher, first_name, section='A', class_id=None):
         db.session.add(Transaction(
             user_id=student.user_id,
             class_id=class_id,
+            seat_id=student.seat.id,
+            target_seat_id=student.seat.id,
+            actor_seat_id=student.seat.id,
+            mechanism="self",
             amount=Decimal('100.00'),
             account_type='checking',
             type='deposit',
@@ -88,7 +92,7 @@ def _enable_store_feature(class_id: str):
             db.session.info.pop("feat_orchestrator_commit", None)
 
 
-def test_student_shop_collective_progress_counts_current_class_only(client):
+def test_DOM_STORE_001__student_shop_collective_progress_counts_current_class_only(client):
     teacher = seed_canonical_admin('teacher_collective_shop').user
     db.session.flush()
     class_a = create_class_scope(teacher_user=teacher, join_code='CGP-A-01', display_name='A')
@@ -142,7 +146,7 @@ def test_student_shop_collective_progress_counts_current_class_only(client):
     assert b'1/2' in resp.data
 
 
-def test_student_shop_filters_items_by_store_item_block_visibility(client):
+def test_DOM_STORE_001__student_shop_filters_items_by_store_item_block_visibility(client):
     teacher = seed_canonical_admin('teacher_block_visibility_shop').user
     db.session.flush()
     class_a = create_class_scope(teacher_user=teacher, join_code='CGP-A-02', display_name='A')
@@ -191,7 +195,7 @@ def test_student_shop_filters_items_by_store_item_block_visibility(client):
     assert b'D Only Item' not in resp.data
 
 
-def test_purchase_item_rejects_items_not_visible_to_current_seat(client):
+def test_DOM_STORE_001__purchase_item_rejects_items_not_visible_to_current_seat(client):
     teacher = seed_canonical_admin('teacher_block_visibility_purchase').user
     db.session.flush()
     class_a = create_class_scope(teacher_user=teacher, join_code='CGP-A-03', display_name='A')
@@ -227,7 +231,7 @@ def test_purchase_item_rejects_items_not_visible_to_current_seat(client):
     ).count() == 0
 
 
-def test_purchase_item_allows_class_scoped_item_without_block_visibility(client):
+def test_DOM_STORE_001__purchase_item_allows_class_scoped_item_without_block_visibility(client):
     """Class-scoped items without block visibility restrictions remain purchasable."""
     teacher = seed_canonical_admin('teacher_unscoped_purchase').user
     db.session.flush()
@@ -262,7 +266,7 @@ def test_purchase_item_allows_class_scoped_item_without_block_visibility(client)
     ).count() == 1
 
 
-def test_collective_unlock_scoped_to_class_and_goal_type(client):
+def test_DOM_STORE_001__collective_unlock_scoped_to_class_and_goal_type(client):
     teacher = seed_canonical_admin('teacher_collective_unlock').user
     db.session.flush()
     class_a = create_class_scope(teacher_user=teacher, join_code='CGP-A-05', display_name='A')
@@ -331,7 +335,7 @@ def test_collective_unlock_scoped_to_class_and_goal_type(client):
     assert class_b_statuses == ['pending']
 
 
-def test_admin_store_shows_collective_progress(client):
+def test_DOM_STORE_001__admin_store_shows_collective_progress(client):
     teacher = seed_canonical_admin('teacher_collective_admin').user
     db.session.flush()
     class_a = create_class_scope(teacher_user=teacher, join_code='CGP-A-06', display_name='A')
@@ -368,7 +372,7 @@ def test_admin_store_shows_collective_progress(client):
     assert b'1/2' in resp.data
 
 
-def test_whole_class_collective_prevents_duplicate_purchase(client):
+def test_DOM_STORE_001__whole_class_collective_prevents_duplicate_purchase(client):
     """Test that students can only purchase a whole_class collective item once."""
     teacher = seed_canonical_admin('teacher_whole_class').user
     db.session.flush()
@@ -414,7 +418,7 @@ def test_whole_class_collective_prevents_duplicate_purchase(client):
     assert 'already purchased' in json_data['message'].lower()
 
 
-def test_whole_class_collective_goal_uses_correct_class_size(client):
+def test_DOM_STORE_001__whole_class_collective_goal_uses_correct_class_size(client):
     """Test that whole_class collective goals use actual student count, not seat count."""
     teacher = seed_canonical_admin('teacher_class_size').user
     db.session.flush()
@@ -461,7 +465,7 @@ def test_whole_class_collective_goal_uses_correct_class_size(client):
     assert all(si.status == 'processing' for si in items)
 
 
-def test_collective_progress_with_correct_roster_count_admin(client):
+def test_DOM_STORE_001__collective_progress_with_correct_roster_count_admin(client):
     """Test that admin view shows correct class size based on actual students."""
     teacher = seed_canonical_admin('teacher_admin_size').user
     db.session.flush()
@@ -502,7 +506,7 @@ def test_collective_progress_with_correct_roster_count_admin(client):
     assert b'1/3' in resp.data
 
 
-def test_fixed_collective_allows_multiple_purchases(client):
+def test_DOM_STORE_001__fixed_collective_allows_multiple_purchases(client):
     """Test that fixed collective goals still allow multiple purchases from same student."""
     teacher = seed_canonical_admin('teacher_fixed_multi').user
     db.session.flush()
@@ -550,7 +554,7 @@ def test_fixed_collective_allows_multiple_purchases(client):
     assert b'1/3' in resp_shop.data
 
 
-def test_whole_class_goal_with_duplicate_seats_shows_correct_roster(client):
+def test_DOM_STORE_001__whole_class_goal_with_duplicate_seats_shows_correct_roster(client):
     """Whole-class goals should count canonical seats only."""
     teacher = seed_canonical_admin('teacher_dup_seats').user
     db.session.flush()
@@ -588,7 +592,7 @@ def test_whole_class_goal_with_duplicate_seats_shows_correct_roster(client):
     assert b'0/2' in resp_admin.data
 
 
-def test_whole_class_collective_allows_purchase_per_class_for_same_teacher(client):
+def test_DOM_STORE_001__whole_class_collective_allows_purchase_per_class_for_same_teacher(client):
     """Students in different classes with the same teacher can each purchase once."""
     teacher = seed_canonical_admin('teacher_whole_class_multi').user
     db.session.flush()

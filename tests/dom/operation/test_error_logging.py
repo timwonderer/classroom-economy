@@ -3,7 +3,7 @@ import logging
 from app import create_app
 
 
-def test_unhandled_exception_logs_request_id_and_route(caplog):
+def test_DOM_OPS_001__unhandled_exception_logs_request_id_and_route(caplog):
     app = create_app()
     app.config.update(TESTING=True, PROPAGATE_EXCEPTIONS=False)
 

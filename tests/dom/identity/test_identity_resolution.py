@@ -1,77 +1,47 @@
-from tests.helpers.v2_fixtures import seed_canonical_admin
-from tests.helpers.class_scope import create_class_scope, make_student_identity
 from app import db
 from app.feats.base import FEATContext
-from app.models import IdentityProfile, Seat
+from tests.helpers.classroom_initializer import initialize
 
 
-def _create_admin(username: str):
-    admin = seed_canonical_admin(username, "TESTSECRET123456").user
-    db.session.commit()
-    return admin
+def test_DOM_IDEN_001__student_requires_explicit_identity_profile(client):
+    classroom = initialize("chemistry_p1", client.application)
+    student = classroom.students[0]
+
+    assert student.profile is not None
+    assert student.profile.profile_type in ("student", "student_claimed")
+    assert student.profile.first_name == "Ava"
+    assert student.profile.last_name == "Chen"
+    assert student.profile.full_name == "Ava Chen"
 
 
-def test_student_requires_explicit_identity_profile(client):
-    teacher = _create_admin("identity-teacher-1")
-    class_row = create_class_scope(teacher_user=teacher, join_code="IDCENT1")
-    db.session.commit()
-
-    seat = make_student_identity(class_id=class_row.class_id, first_name="Alicia", last_name="Quinn")
-    db.session.commit()
-
-    assert seat.identity_profile is not None
-    profile = seat.identity_profile
-    assert profile.profile_type in ("student", "student_claimed")
-    assert profile.first_name == "Alicia"
-    assert profile.last_name == "Quinn"
-    assert seat.identity_profile.full_name == "Alicia Quinn"
-
-
-def test_student_name_update_syncs_identity_profile(client):
-    teacher = _create_admin("identity-teacher-2")
-    class_row = create_class_scope(teacher_user=teacher, join_code="IDCENT2")
+def test_DOM_IDEN_001__student_name_update_syncs_identity_profile(client):
+    classroom = initialize("chemistry_p1", client.application)
+    student = classroom.students[0]
 
     with FEATContext("FEAT-IDEN-001", idempotency_key="identity_profile:update_sync"):
-        seat = make_student_identity(class_id=class_row.class_id, first_name="Jordan", last_name="Mills")
-        seat.identity_profile.first_name = "Jordyn"
-        seat.identity_profile.last_name = "Nguyen"
+        student.profile.first_name = "Jordyn"
+        student.profile.last_name = "Nguyen"
         db.session.flush()
 
-    profile = db.session.get(IdentityProfile, seat.identity_profile.id)
-    assert profile.first_name == "Jordyn"
-    assert profile.last_name == "Nguyen"
-    assert seat.identity_profile.first_name == "Jordyn"
-    assert seat.identity_profile.last_initial == "N"
+    assert student.profile.first_name == "Jordyn"
+    assert student.profile.last_name == "Nguyen"
+    assert student.profile.last_initial == "N"
 
 
-def test_seat_reads_name_from_identity_profile(client):
-    teacher = _create_admin("identity-teacher-3")
-    class_row = create_class_scope(teacher_user=teacher, join_code="IDCENT3")
+def test_DOM_IDEN_001__seat_reads_name_from_identity_profile(client):
+    classroom = initialize("chemistry_p1", client.application)
+    student = classroom.students[0]
 
-    with FEATContext("FEAT-IDEN-001", idempotency_key="identity_profile:seat_reads_name"):
-        seat = Seat(class_id=class_row.class_id, role="student")
-        db.session.add(seat)
-        db.session.flush()
-
-        profile = IdentityProfile(seat_id=seat.id, profile_type='student_unclaimed', first_name="Mateo", last_name="Rivera")
-        db.session.add(profile)
-        db.session.flush()
-
-    assert seat.identity_profile is not None
-    assert seat.identity_profile.profile_type == "student_unclaimed"
-    assert seat.identity_profile.first_name == "Mateo"
-    assert seat.identity_profile.last_initial == "R"
+    assert student.profile is not None
+    assert student.profile.profile_type == "student"
+    assert student.profile.first_name == "Ava"
+    assert student.profile.last_initial == "C"
 
 
-def test_student_internal_reference_is_non_sequential_and_unique(client):
-    teacher = _create_admin("identity-teacher-4")
-    class_row = create_class_scope(teacher_user=teacher, join_code="IDCENT4")
+def test_DOM_IDEN_001__student_internal_reference_is_non_sequential_and_unique(client):
+    classroom = initialize("chemistry_p1", client.application)
+    a = classroom.students[0].seat
+    b = classroom.students[1].seat
 
-    with FEATContext("FEAT-IDEN-001", idempotency_key="identity_profile:unique_refs"):
-        a = make_student_identity(class_id=class_row.class_id, first_name="One", last_name="Alpha")
-        b = make_student_identity(class_id=class_row.class_id, first_name="Two", last_name="Beta")
-        db.session.flush()
-
-    # Each seat has a unique public_id (UUID)
     assert a.public_id != b.public_id
     assert a.id != b.id

@@ -2,86 +2,49 @@ from flask import session
 
 from app import db
 from app.models import User
-from app.services.context_resolver import resolve_canonical_context
+from app.services.context_resolver import CanonicalContext, resolve_canonical_context
 from app.services.tlcp import resolve_actor_context
-from tests.helpers.v2_fixtures import seed_canonical_admin, make_sysadmin
-from tests.helpers.canonical_session import set_canonical_context
-from tests.helpers.class_scope import create_class_scope, make_student_identity
+from tests.helpers.support_domain import initialize_support_student, initialize_support_teacher
+from tests.helpers.v2_fixtures import make_sysadmin
 
 
-def test_resolve_actor_context_student_session(app):
-    teacher_user = seed_canonical_admin("tlcp_student_admin", "secret-admin").user
-    db.session.flush()
-    class_row = create_class_scope(teacher_user=teacher_user, join_code="TLCP-STU-01")
-    seat = make_student_identity(
-        class_id=class_row.class_id,
-        first_name="TLCP",
-        last_name="S",
+def test_DOM_SUP_001__resolve_actor_context_uses_student_canonical_context(app):
+    client = app.test_client()
+    classroom, student = initialize_support_student("chemistry_p1", client, app)
+    canonical_context = CanonicalContext(
+        user_id=student.user.id,
+        class_id=classroom.class_id,
+        seat_id=student.seat.id,
+        actor_role="student",
     )
-    seat_id = seat.id
-    seat_user_id = seat.user_id
-    seat_public_id = seat.public_id
-    class_id = class_row.class_id
-    db.session.commit()
-    db.session.remove()
-
-    with app.test_request_context("/student/help-support/submit-issue", method="POST"):
-        set_canonical_context(
-            session,
-            user_id=seat_user_id,
-            class_id=class_id,
-            seat_id=seat_id,
-            role="student",
-        )
-
-        canonical_context = resolve_canonical_context()
-        context = resolve_actor_context(canonical_context)
+    context = resolve_actor_context(canonical_context)
 
     assert context is not None
     assert context["actor_type"] == "student"
-    assert context["actor_id"] == seat_user_id
-    assert context["actor_public_id"] == seat_public_id
-    assert context["class_id"] == class_id
+    assert context["actor_id"] == student.user.id
+    assert context["actor_public_id"] == student.seat.public_id
+    assert context["class_id"] == classroom.class_id
 
 
-def test_resolve_actor_context_admin_session(app):
-    teacher_user = seed_canonical_admin("tlcp_admin_actor", "secret-admin-actor").user
-    db.session.flush()
-    class_row = create_class_scope(teacher_user=teacher_user, join_code="TLCP-ADM-01")
-    # create_class_scope → create_class creates the teacher seat; fetch it
-    from app.models import Seat
-    teacher_seat = Seat.query.filter_by(
-        user_id=teacher_user.id, class_id=class_row.class_id, role="teacher"
-    ).first()
-    assert teacher_seat is not None
-
-    user_id = teacher_user.id
-    teacher_seat_id = teacher_seat.id
-    teacher_public_id = teacher_seat.public_id
-    class_id = class_row.class_id
-    db.session.commit()
-    db.session.remove()
-
-    with app.test_request_context("/admin/dashboard", method="GET"):
-        set_canonical_context(
-            session,
-            user_id=user_id,
-            class_id=class_id,
-            seat_id=teacher_seat_id,
-            role="teacher",
-        )
-
-        canonical_context = resolve_canonical_context()
-        context = resolve_actor_context(canonical_context)
+def test_DOM_SUP_001__resolve_actor_context_uses_teacher_canonical_context(app):
+    client = app.test_client()
+    classroom = initialize_support_teacher("chemistry_p1", client, app)
+    canonical_context = CanonicalContext(
+        user_id=classroom.teacher_user.id,
+        class_id=classroom.class_id,
+        seat_id=classroom.teacher_seat.id,
+        actor_role="teacher",
+    )
+    context = resolve_actor_context(canonical_context)
 
     assert context is not None
     assert context["actor_type"] == "teacher"
-    assert context["actor_id"] == user_id
-    assert context["actor_public_id"] == teacher_public_id
-    assert context["class_id"] == class_id
+    assert context["actor_id"] == classroom.teacher_user.id
+    assert context["actor_public_id"] == classroom.teacher_seat.public_id
+    assert context["class_id"] == classroom.class_id
 
 
-def test_resolve_actor_context_sysadmin_session(app):
+def test_DOM_SUP_001__resolve_actor_context_sysadmin_session_returns_none(app):
     sysadmin = make_sysadmin("tlcp_sysadmin_actor", "secret-sysadmin-actor")
     db.session.flush()
     sysadmin_id = sysadmin.id
@@ -98,7 +61,7 @@ def test_resolve_actor_context_sysadmin_session(app):
     assert context is None
 
 
-def test_resolve_actor_context_logs_missing_context(app):
+def test_DOM_SUP_001__resolve_actor_context_logs_missing_canonical_context(app):
     from unittest.mock import patch
 
     with app.test_request_context("/student/help-support/submit-issue", method="POST"):
@@ -110,7 +73,7 @@ def test_resolve_actor_context_logs_missing_context(app):
     assert any("TLCP-INVARIANT-VIOLATION: missing canonical context" in msg for msg in logged)
 
 
-def test_resolve_actor_context_does_not_log_signup_as_missing_context(app):
+def test_DOM_SUP_001__resolve_actor_context_ignores_admin_signup_path(app):
     from unittest.mock import patch
 
     with app.test_request_context("/admin/signup", method="POST"):
@@ -122,7 +85,7 @@ def test_resolve_actor_context_does_not_log_signup_as_missing_context(app):
     assert logged == []
 
 
-def test_resolve_actor_context_logs_missing_seat(app):
+def test_DOM_SUP_001__resolve_actor_context_logs_missing_canonical_seat(app):
     from unittest.mock import patch
     from app.services.context_resolver import CanonicalContext
 

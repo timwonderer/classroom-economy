@@ -100,7 +100,7 @@ This file is the single active tracker for v2 migration execution. All prior tra
 - [ ] Complete Wave 9 operations + interpretation canonical migration
 - [ ] Complete Wave 10 support domain canonical migration
 - [ ] Integrate `DOM-ECON-000_ECONOMY_GOVERNANCE_FOUNDATION.md` into Waves 4-9 implementation scope (policy config, ledger/solvency math, timezone-safe recurring execution, and aggregate analytics) without creating a parallel migration track
-- [~] FEAT-LED-000 canonical monetary resolution rollout — intended-plan / resolved-plan orchestration is live for monetary workflows; remaining work is widening FEAT adoption to the rest of the v2 surfaces and retiring stale overdraft/ledger wording in docs and tests.
+- [~] FEAT-LED-000 canonical monetary resolution rollout — intended-plan / resolved-plan orchestration is live for monetary workflows; remaining work is widening FEAT adoption to the rest of the v2 surfaces and aligning the live ORM/migration contract to the class-scoped immutable schema.
 
 #### Post-launch hardening and readiness
 - [ ] Wave 11 backup/restore rehearsal evidence

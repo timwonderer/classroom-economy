@@ -2,7 +2,7 @@
 Tests for security headers including Content Security Policy (CSP).
 """
 
-def test_csp_header(client):
+def test_DOM_OPS_001__csp_header(client):
     """Verify that Content-Security-Policy header is correctly set with new directives."""
     response = client.get('/')
     assert 'Content-Security-Policy' in response.headers

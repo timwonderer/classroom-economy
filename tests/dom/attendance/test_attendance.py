@@ -1,9 +1,8 @@
-from tests.helpers.v2_fixtures import seed_canonical_admin
-from tests.helpers.class_scope import make_student_identity, create_class_scope
 from types import SimpleNamespace
 import pytest
-from app import db, Transaction
+from app import app, db, Transaction
 from app.feats.base import FEATContext
+from tests.helpers.classroom_initializer import initialize
 from app.attendance import (
     get_last_payroll_time,
     calculate_unpaid_attendance_seconds,
@@ -17,12 +16,15 @@ from datetime import datetime, timedelta, timezone
 
 def _create_class_and_student(test_suffix, first_name="Test", last_name="S", section="A"):
     """Create a teacher + class + student. Returns (class_id, student_seat)."""
-    teacher = seed_canonical_admin(f"teacher_{test_suffix.lower()}", "s").user
-    db.session.flush()
-    class_row = create_class_scope(teacher_user=teacher, display_name=section, section=section)
-    student = make_student_identity(class_id=class_row.class_id, first_name=first_name, last_name=last_name)
-    db.session.commit()
-    return class_row.class_id, student
+    classroom_key = "ap_csp_p3" if test_suffix.endswith("B") else {
+        "unpaid-A": "ap_csp_p3",
+        "period-A": "biology_block_a",
+        "session-A": "duplicate_names",
+        "blocks-A": "chemistry_p1",
+    }.get(test_suffix, "chemistry_p1")
+    classroom = initialize(classroom_key, app)
+    student = classroom.students[0]
+    return classroom.class_id, student
 
 
 def _resolve_scope(student_user_id, class_id):
@@ -30,19 +32,22 @@ def _resolve_scope(student_user_id, class_id):
     assert seat is not None
     return seat.id, class_id
 
-def test_get_last_payroll_time(client):
+def test_DOM_ATT_001__get_last_payroll_time(client):
     with pytest.raises(ValueError):
         get_last_payroll_time(seat_id=None, class_id=None)
 
     class_id, student = _create_class_and_student("payroll-A")
-    seat_id, class_id = _resolve_scope(student.user_id, class_id)
+    seat_id, class_id = _resolve_scope(student.user.id, class_id)
 
     # Test with a payroll transaction
     now = datetime.now(timezone.utc)
     with FEATContext("FEAT-ATTN-001", idempotency_key="attendance:get_last_payroll_time:payroll"):
         tx = Transaction(
-            user_id=student.user_id,
+            user_id=student.user.id,
             seat_id=seat_id,
+            target_seat_id=seat_id,
+            actor_seat_id=seat_id,
+            mechanism="self",
             class_id=class_id,
             amount=10,
             type="payroll",
@@ -56,8 +61,11 @@ def test_get_last_payroll_time(client):
     # Manual payments should only change the per-student anchor
     manual_time = now + timedelta(hours=1)
     manual_tx = Transaction(
-        user_id=student.user_id, 
+        user_id=student.user.id, 
         seat_id=seat_id,
+        target_seat_id=seat_id,
+        actor_seat_id=seat_id,
+        mechanism="self",
         class_id=class_id,
         amount=5, 
         type="manual_payment", 
@@ -70,11 +78,14 @@ def test_get_last_payroll_time(client):
 
     # Class-scoped anchors must ignore payroll/manual payment activity from other classes
     other_class_id, other_student = _create_class_and_student("payroll-B")
-    other_seat_id, other_class_id = _resolve_scope(other_student.user_id, other_class_id)
+    other_seat_id, other_class_id = _resolve_scope(other_student.user.id, other_class_id)
     other_join_time = manual_time + timedelta(hours=1)
     other_join_tx = Transaction(
-        user_id=other_student.user_id,
+        user_id=other_student.user.id,
         seat_id=other_seat_id,
+        target_seat_id=other_seat_id,
+        actor_seat_id=other_seat_id,
+        mechanism="self",
         class_id=other_class_id,
         amount=7,
         type="payroll",
@@ -87,13 +98,13 @@ def test_get_last_payroll_time(client):
     assert get_last_payroll_time(seat_id=other_seat_id, class_id=other_class_id) == other_join_time
     assert get_last_payroll_time(seat_id=seat_id, class_id=class_id) == manual_time
 
-def test_calculate_unpaid_attendance_seconds(client):
+def test_DOM_ATT_001__calculate_unpaid_attendance_seconds(client):
     class_id, student = _create_class_and_student("unpaid-A")
 
     now = datetime.now(timezone.utc)
     tap_in_time = now - timedelta(minutes=30)
     tap_out_time = now - timedelta(minutes=15)
-    seat_id, class_id = _resolve_scope(student.user_id, class_id)
+    seat_id, class_id = _resolve_scope(student.user.id, class_id)
 
     with FEATContext("FEAT-ATTN-001", idempotency_key="attendance:unpaid_seconds"):
         db.session.add(
@@ -113,13 +124,13 @@ def test_calculate_unpaid_attendance_seconds(client):
     # 15 minutes of attendance = 900 seconds
     assert unpaid_seconds == 900
 
-def test_calculate_period_attendance(client):
+def test_DOM_ATT_001__calculate_period_attendance(client):
     class_id, student = _create_class_and_student("period-A")
     now = datetime.now(timezone.utc)
     today = now.date()
     tap_in_time = now - timedelta(minutes=20)
     tap_out_time = now - timedelta(minutes=10)
-    seat_id, class_id = _resolve_scope(student.user_id, class_id)
+    seat_id, class_id = _resolve_scope(student.user.id, class_id)
 
     with FEATContext("FEAT-ATTN-001", idempotency_key="attendance:period_attendance"):
         db.session.add(
@@ -138,12 +149,12 @@ def test_calculate_period_attendance(client):
     # 10 minutes of attendance = 600 seconds
     assert period_attendance == 600
 
-def test_get_session_status(client):
+def test_DOM_ATT_001__get_session_status(client):
     class_id, student = _create_class_and_student("session-A")
 
     now = datetime.now(timezone.utc)
     tap_in_time = now - timedelta(minutes=5)
-    seat_id, class_id = _resolve_scope(student.user_id, class_id)
+    seat_id, class_id = _resolve_scope(student.user.id, class_id)
 
     with FEATContext("FEAT-ATTN-001", idempotency_key="attendance:get_session_status"):
         session = AttendanceSession(
@@ -171,14 +182,14 @@ def test_get_session_status(client):
     assert done is False
     assert duration > 0
 
-def test_get_all_block_statuses(client):
+def test_DOM_ATT_001__get_all_block_statuses(client):
     class_id_a, student = _create_class_and_student("blocks-A", section="A")
     class_id_b, student_b = _create_class_and_student("blocks-B", section="B")
 
     now = datetime.now(timezone.utc)
     tap_in_time_a = now - timedelta(minutes=10)
-    seat_id_a, class_id_a = _resolve_scope(student.user_id, class_id_a)
-    seat_id_b, class_id_b = _resolve_scope(student_b.user_id, class_id_b)
+    seat_id_a, class_id_a = _resolve_scope(student.user.id, class_id_a)
+    seat_id_b, class_id_b = _resolve_scope(student_b.user.id, class_id_b)
     with FEATContext("FEAT-ATTN-001", idempotency_key="attendance:get_all_block_statuses"):
         session_a = AttendanceSession(
             seat_id=seat_id_a,
@@ -199,14 +210,14 @@ def test_get_all_block_statuses(client):
         )
         db.session.flush()
 
-    student_user = SimpleNamespace(id=student.user_id)  # user_id is the User pk
+    student_user = SimpleNamespace(id=student.user.id)  # user.id is the User pk
     statuses_a = get_all_block_statuses(student_user, class_id=class_id_a)
     assert "A" in statuses_a
     assert "B" not in statuses_a
     assert statuses_a["A"]["active"] is True
     assert statuses_a["A"]["projected_pay"] is None
 
-    student_user_b = SimpleNamespace(id=student_b.user_id)
+    student_user_b = SimpleNamespace(id=student_b.user.id)
     statuses_b = get_all_block_statuses(student_user_b, class_id=class_id_b)
     assert "B" in statuses_b
     assert statuses_b["B"]["active"] is False

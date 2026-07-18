@@ -3,6 +3,7 @@ from pathlib import Path
 from dotenv import dotenv_values
 import pytest
 from app import create_app
+from tests.helpers.operation_routes import set_maintenance_global_bypass
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DOTENV_PATH = PROJECT_ROOT / ".env"
@@ -28,42 +29,39 @@ def make_app(monkeypatch, extra_env=None):
     return app
 
 
-def test_maintenance_normal(monkeypatch):
+def test_DOM_OPS_001__maintenance_normal(monkeypatch):
     app = make_app(monkeypatch, {'MAINTENANCE_MODE': 'true'})
     with app.test_client() as client:
         resp = client.get('/')
         assert resp.status_code == 503, 'Expected maintenance page (503) when active without bypass.'
 
 
-def test_sysadmin_bypass(monkeypatch):
+def test_DOM_OPS_001__sysadmin_bypass(monkeypatch):
     app = make_app(monkeypatch, {
         'MAINTENANCE_MODE': 'true',
         'MAINTENANCE_SYSADMIN_BYPASS': 'true'
     })
     with app.test_client() as client:
         # Simulate sysadmin login establishing global bypass
-        with client.session_transaction() as sess:
-            sess['is_system_admin'] = True
-            sess['maintenance_global_bypass'] = True
+        set_maintenance_global_bypass(client)
         resp = client.get('/')
         assert resp.status_code != 503, 'Sysadmin bypass should allow normal access.'
 
-def test_sysadmin_login_endpoint_accessible_under_maintenance(monkeypatch):
+def test_DOM_OPS_001__sysadmin_login_endpoint_accessible_under_maintenance(monkeypatch):
     app = make_app(monkeypatch, {'MAINTENANCE_MODE': 'true'})
     with app.test_client() as client:
         resp = client.get('/sysadmin/login')
         assert resp.status_code in (200, 302)
 
-def test_global_bypass_persists_after_logout(monkeypatch):
+def test_DOM_OPS_001__global_bypass_persists_after_logout(monkeypatch):
     app = make_app(monkeypatch, {'MAINTENANCE_MODE': 'true'})
     with app.test_client() as client:
-        with client.session_transaction() as sess:
-            sess['maintenance_global_bypass'] = True
+        set_maintenance_global_bypass(client)
         resp = client.get('/student/dashboard')
         assert resp.status_code != 503
 
 
-def test_token_bypass(monkeypatch):
+def test_DOM_OPS_001__token_bypass(monkeypatch):
     token = 'abc123'
     app = make_app(monkeypatch, {
         'MAINTENANCE_MODE': 'true',
@@ -74,7 +72,7 @@ def test_token_bypass(monkeypatch):
         assert resp.status_code != 503, 'Token bypass should allow normal access.'
 
 
-def test_invalid_token(monkeypatch):
+def test_DOM_OPS_001__invalid_token(monkeypatch):
     app = make_app(monkeypatch, {
         'MAINTENANCE_MODE': 'true',
         'MAINTENANCE_BYPASS_TOKEN': 'expected'

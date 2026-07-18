@@ -7,6 +7,7 @@ Tests the following features:
 3. Status text changes based on payment status and due date proximity
 """
 from datetime import datetime, timezone, timedelta
+from decimal import Decimal
 
 import pytest
 
@@ -14,34 +15,19 @@ from app import db
 from app.feats.base import FEATContext
 from app.models import RentSettings, Transaction, TransactionStatus
 from app.utils.time import utc_now
-from tests.helpers.v2_fixtures import seed_canonical_admin, seed_student_identity
-from tests.helpers.class_scope import create_class_scope
-from tests.helpers.canonical_session import set_canonical_context
+from tests.dom.obligations.helpers import rent_pay
+from tests.helpers.classroom_initializer import initialize_as_student
 
 
 @pytest.fixture
 def setup_rent_with_items(client):
     """Create teacher, student, rent settings, and rent items."""
-    with FEATContext("FEAT-IDEN-001", idempotency_key="rent-display:setup"):
-        teacher = seed_canonical_admin("test_teacher").user
-        economy = create_class_scope(
-            teacher_user=teacher,
-            join_code="RENT-DISP-01",
-            display_name="Test Rent Class",
-            section="A",
-        )
-        student_seat = seed_student_identity(
-            class_id=economy.class_id,
-            first_name="Test",
-            last_name="Smith",
-        ).seat
-
-        # Create rent settings on the canonical class scope.
-        now = utc_now()
+    classroom, student = initialize_as_student("chemistry_p1", client, client.application)
+    with FEATContext("FEAT-OBL-001", idempotency_key="rent-display:setup"):
         rent_settings = RentSettings(
-            class_id=economy.class_id,
-            rent_amount=50.0,
-            first_rent_due_date=now + timedelta(days=10),  # Due in 10 days
+            class_id=classroom.class_id,
+            rent_amount=Decimal("50.00"),
+            first_rent_due_date=utc_now() + timedelta(days=10),
             grace_period_days=3,
             bill_preview_enabled=True,
             bill_preview_days=5,
@@ -50,32 +36,22 @@ def setup_rent_with_items(client):
         db.session.flush()
 
     return {
-        'teacher': teacher,
-        'student': student_seat,
+        'student': student.seat,
         'rent_settings': rent_settings,
     }
 
 
-def test_rent_items_display_before_due_date(client, setup_rent_with_items):
+def test_DOM_OBL_001__rent_items_display_before_due_date(client, setup_rent_with_items):
     """Test that rent items are visible even before the rent is due."""
     data = setup_rent_with_items
     
-    with client.session_transaction() as sess:
-        set_canonical_context(
-            sess,
-            user_id=data['student'].user_id,
-            class_id=data['student'].class_id,
-            seat_id=data['student'].id,
-            role="student",
-        )
-
     response = client.get('/student/rent')
     assert response.status_code == 200
     
     assert b'Rent' in response.data
 
 
-def test_rent_items_display_after_due_date(client, setup_rent_with_items):
+def test_DOM_OBL_001__rent_items_display_after_due_date(client, setup_rent_with_items):
     """Test that rent items are still visible after the rent is due."""
     data = setup_rent_with_items
     
@@ -85,22 +61,13 @@ def test_rent_items_display_after_due_date(client, setup_rent_with_items):
         data['rent_settings'].first_rent_due_date = now - timedelta(days=2)
         db.session.flush()
     
-    with client.session_transaction() as sess:
-        set_canonical_context(
-            sess,
-            user_id=data['student'].user_id,
-            class_id=data['student'].class_id,
-            seat_id=data['student'].id,
-            role="student",
-        )
-
     response = client.get('/student/rent')
     assert response.status_code == 200
     
     assert b'Rent' in response.data
 
 
-def test_overdue_rent_payment_uses_coverage_month_in_transaction_description(client, setup_rent_with_items, monkeypatch):
+def test_DOM_OBL_001__overdue_rent_payment_uses_coverage_month_in_transaction_description(client, setup_rent_with_items, monkeypatch):
     """Overdue students should pay the oldest unpaid coverage month first."""
     data = setup_rent_with_items
     fixed_now = datetime(2026, 2, 17, 12, 0, tzinfo=timezone.utc)
@@ -115,6 +82,9 @@ def test_overdue_rent_payment_uses_coverage_month_in_transaction_description(cli
         db.session.add(
             Transaction(
                 seat_id=data['student'].id,
+                target_seat_id=data['student'].id,
+                actor_seat_id=data['student'].id,
+                mechanism="self",
                 class_id=data['student'].class_id,
                 user_id=data['student'].user_id,
                 amount=1000,
@@ -128,16 +98,7 @@ def test_overdue_rent_payment_uses_coverage_month_in_transaction_description(cli
 
     monkeypatch.setattr('app.routes.student.utc_now', lambda: fixed_now)
 
-    with client.session_transaction() as sess:
-        set_canonical_context(
-            sess,
-            user_id=data['student'].user_id,
-            class_id=data['student'].class_id,
-            seat_id=data['student'].id,
-            role="student",
-        )
-
-    response = client.post('/student/rent/pay/A', follow_redirects=False)
+    response = rent_pay(client, "A")
     assert response.status_code == 302
 
     rent_txn = Transaction.query.filter_by(
@@ -151,7 +112,7 @@ def test_overdue_rent_payment_uses_coverage_month_in_transaction_description(cli
     assert 'late fee' in rent_txn.description
 
 
-def test_overdue_current_period_does_not_show_future_due_countdown(client, setup_rent_with_items, monkeypatch):
+def test_DOM_OBL_001__overdue_current_period_does_not_show_future_due_countdown(client, setup_rent_with_items, monkeypatch):
     """When current coverage is overdue, status should not count down to a future period."""
     data = setup_rent_with_items
     fixed_now = datetime(2026, 2, 18, 12, 0, tzinfo=timezone.utc)
@@ -165,22 +126,13 @@ def test_overdue_current_period_does_not_show_future_due_countdown(client, setup
 
     monkeypatch.setattr('app.routes.student.utc_now', lambda: fixed_now)
 
-    with client.session_transaction() as sess:
-        set_canonical_context(
-            sess,
-            user_id=data['student'].user_id,
-            class_id=data['student'].class_id,
-            seat_id=data['student'].id,
-            role="student",
-        )
-
     response = client.get('/student/rent')
     assert response.status_code == 200
     assert b'Past due, pay now' in response.data
     assert b'Rent will be due in' not in response.data
 
 
-def test_days_until_due_calculation(client, setup_rent_with_items):
+def test_DOM_OBL_001__days_until_due_calculation(client, setup_rent_with_items):
     """Test that days_until_due is correctly calculated and passed to template."""
     data = setup_rent_with_items
     now = utc_now()
@@ -191,15 +143,6 @@ def test_days_until_due_calculation(client, setup_rent_with_items):
         data['rent_settings'].first_rent_due_date = now + timedelta(days=10, hours=1)
         db.session.flush()
     
-    with client.session_transaction() as sess:
-        set_canonical_context(
-            sess,
-            user_id=data['student'].user_id,
-            class_id=data['student'].class_id,
-            seat_id=data['student'].id,
-            role="student",
-        )
-
     response = client.get('/student/rent')
     assert response.status_code == 200
     
@@ -209,7 +152,7 @@ def test_days_until_due_calculation(client, setup_rent_with_items):
     assert b'Rent will be due in 10 days' in response.data
 
 
-def test_status_text_more_than_7_days(client, setup_rent_with_items):
+def test_DOM_OBL_001__status_text_more_than_7_days(client, setup_rent_with_items):
     """Test status text when rent is more than 7 days away."""
     data = setup_rent_with_items
     
@@ -221,15 +164,6 @@ def test_status_text_more_than_7_days(client, setup_rent_with_items):
         data['rent_settings'].bill_preview_days = 9  # Activate preview before the due date
         db.session.flush()
     
-    with client.session_transaction() as sess:
-        set_canonical_context(
-            sess,
-            user_id=data['student'].user_id,
-            class_id=data['student'].class_id,
-            seat_id=data['student'].id,
-            role="student",
-        )
-
     response = client.get('/student/rent')
     assert response.status_code == 200
     
@@ -238,7 +172,7 @@ def test_status_text_more_than_7_days(client, setup_rent_with_items):
     assert b'Rent will be due in 8 days' in response.data
 
 
-def test_status_text_between_3_and_7_days(client, setup_rent_with_items):
+def test_DOM_OBL_001__status_text_between_3_and_7_days(client, setup_rent_with_items):
     """Test status text when rent is between 3 and 7 days away (inclusive)."""
     data = setup_rent_with_items
     
@@ -248,15 +182,6 @@ def test_status_text_between_3_and_7_days(client, setup_rent_with_items):
         data['rent_settings'].first_rent_due_date = now + timedelta(days=3, hours=1)
         db.session.flush()
     
-    with client.session_transaction() as sess:
-        set_canonical_context(
-            sess,
-            user_id=data['student'].user_id,
-            class_id=data['student'].class_id,
-            seat_id=data['student'].id,
-            role="student",
-        )
-
     response = client.get('/student/rent')
     assert response.status_code == 200
     
@@ -264,7 +189,7 @@ def test_status_text_between_3_and_7_days(client, setup_rent_with_items):
     assert b'Rent due in 3 days' in response.data
 
 
-def test_status_text_within_2_days(client, setup_rent_with_items):
+def test_DOM_OBL_001__status_text_within_2_days(client, setup_rent_with_items):
     """Test status text when rent is within 2 days."""
     data = setup_rent_with_items
     
@@ -274,15 +199,6 @@ def test_status_text_within_2_days(client, setup_rent_with_items):
         data['rent_settings'].first_rent_due_date = now + timedelta(days=2, hours=1)
         db.session.flush()
     
-    with client.session_transaction() as sess:
-        set_canonical_context(
-            sess,
-            user_id=data['student'].user_id,
-            class_id=data['student'].class_id,
-            seat_id=data['student'].id,
-            role="student",
-        )
-
     response = client.get('/student/rent')
     assert response.status_code == 200
     
@@ -290,7 +206,7 @@ def test_status_text_within_2_days(client, setup_rent_with_items):
     assert b'Due, pay soon' in response.data
 
 
-def test_status_text_past_due(client, setup_rent_with_items):
+def test_DOM_OBL_001__status_text_past_due(client, setup_rent_with_items):
     """Test status text when rent is past due."""
     data = setup_rent_with_items
     
@@ -302,15 +218,6 @@ def test_status_text_past_due(client, setup_rent_with_items):
         data['rent_settings'].grace_period_days = 0
         db.session.flush()
     
-    with client.session_transaction() as sess:
-        set_canonical_context(
-            sess,
-            user_id=data['student'].user_id,
-            class_id=data['student'].class_id,
-            seat_id=data['student'].id,
-            role="student",
-        )
-
     response = client.get('/student/rent')
     assert response.status_code == 200
     
@@ -318,7 +225,7 @@ def test_status_text_past_due(client, setup_rent_with_items):
     assert b'Past due, pay now' in response.data
 
 
-def test_status_text_due_today(client, setup_rent_with_items):
+def test_DOM_OBL_001__status_text_due_today(client, setup_rent_with_items):
     """Test status text when rent is due today."""
     data = setup_rent_with_items
     
@@ -327,15 +234,6 @@ def test_status_text_due_today(client, setup_rent_with_items):
         data['rent_settings'].first_rent_due_date = now + timedelta(hours=1)
         db.session.flush()
     
-    with client.session_transaction() as sess:
-        set_canonical_context(
-            sess,
-            user_id=data['student'].user_id,
-            class_id=data['student'].class_id,
-            seat_id=data['student'].id,
-            role="student",
-        )
-
     response = client.get('/student/rent')
     assert response.status_code == 200
     
@@ -343,7 +241,7 @@ def test_status_text_due_today(client, setup_rent_with_items):
     assert b'Due, pay soon' in response.data
 
 
-def test_status_text_no_rent_yet(client, setup_rent_with_items):
+def test_DOM_OBL_001__status_text_no_rent_yet(client, setup_rent_with_items):
     """Test status text when rent is not yet active (before first due date and preview period)."""
     data = setup_rent_with_items
     
@@ -356,15 +254,6 @@ def test_status_text_no_rent_yet(client, setup_rent_with_items):
         data['rent_settings'].bill_preview_days = 5
         db.session.flush()
     
-    with client.session_transaction() as sess:
-        set_canonical_context(
-            sess,
-            user_id=data['student'].user_id,
-            class_id=data['student'].class_id,
-            seat_id=data['student'].id,
-            role="student",
-        )
-
     response = client.get('/student/rent')
     assert response.status_code == 200
     
@@ -372,19 +261,10 @@ def test_status_text_no_rent_yet(client, setup_rent_with_items):
     assert b'No rent is due yet' in response.data or b'Not yet due' in response.data
 
 
-def test_rent_items_show_store_availability(client, setup_rent_with_items):
+def test_DOM_OBL_001__rent_items_show_store_availability(client, setup_rent_with_items):
     """Test that rent items show store availability information."""
     data = setup_rent_with_items
     
-    with client.session_transaction() as sess:
-        set_canonical_context(
-            sess,
-            user_id=data['student'].user_id,
-            class_id=data['student'].class_id,
-            seat_id=data['student'].id,
-            role="student",
-        )
-
     response = client.get('/student/rent')
     assert response.status_code == 200
     
@@ -396,7 +276,7 @@ def test_rent_items_show_store_availability(client, setup_rent_with_items):
     assert b'valid until next rent is due' in response.data
 
 
-def test_incremental_rent_form_shows_even_when_full_balance_is_short(client, setup_rent_with_items):
+def test_DOM_OBL_001__incremental_rent_form_shows_even_when_full_balance_is_short(client, setup_rent_with_items):
     """Incremental mode should still render the payment form even if full amount isn't affordable."""
     data = setup_rent_with_items
 
@@ -405,15 +285,6 @@ def test_incremental_rent_form_shows_even_when_full_balance_is_short(client, set
         data['rent_settings'].first_rent_due_date = now - timedelta(days=1)
         data['rent_settings'].allow_incremental_payment = True
         db.session.flush()
-
-    with client.session_transaction() as sess:
-        set_canonical_context(
-            sess,
-            user_id=data['student'].user_id,
-            class_id=data['student'].class_id,
-            seat_id=data['student'].id,
-            role="student",
-        )
 
     response = client.get('/student/rent')
     assert response.status_code == 200

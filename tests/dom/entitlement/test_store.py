@@ -7,9 +7,7 @@ Tests verify:
    redemption_events, visibility is seat-scoped, insufficient balance blocks
    purchase, idempotency prevents duplicate purchase.
 """
-import uuid
 from decimal import Decimal
-from unittest.mock import MagicMock
 
 import pytest
 from sqlalchemy import UniqueConstraint
@@ -23,6 +21,9 @@ from app.models import (
     StorePurchaseStatus,
     StoreItemVisibility,
 )
+from tests.dom.entitlement.helpers import create_entitlement_store_item
+from tests.dom.entitlement.helpers import set_entitlement_item_visibility
+from tests.helpers.classroom_initializer import initialize
 
 
 # ---------------------------------------------------------------------------
@@ -46,7 +47,7 @@ def _unique_constraints(model):
 # ===========================================================================
 
 class TestStorePurchaseSchema:
-    def test_has_required_columns(self):
+    def test_DOM_STORE_001__store_purchase_has_required_columns(self):
         """DOM-STORE-001 §VII.3: store_purchases must have seat_id, class_id, store_item_id, quantity, price_at_purchase, total_price, status."""
         cols = _column_names(StorePurchase)
         assert {
@@ -57,30 +58,30 @@ class TestStorePurchaseSchema:
             "uses_remaining", "collective_goal_instance_code",
         } <= cols
 
-    def test_seat_fk_targets_seats(self):
+    def test_DOM_STORE_001__store_purchase_seat_fk_targets_seats(self):
         assert _fk_targets(StorePurchase, "seat_id") == {"seats.id"}
 
-    def test_class_fk_targets_classes(self):
+    def test_DOM_STORE_001__store_purchase_class_fk_targets_classes(self):
         assert _fk_targets(StorePurchase, "class_id") == {"classes.class_id"}
 
-    def test_store_item_fk_targets_store_items(self):
+    def test_DOM_STORE_001__store_purchase_store_item_fk_targets_store_items(self):
         assert _fk_targets(StorePurchase, "store_item_id") == {"store_items.id"}
 
-    def test_ledger_tx_fk_targets_ledger_transaction(self):
+    def test_DOM_STORE_001__store_purchase_ledger_tx_fk_targets_ledger_transaction(self):
         assert _fk_targets(StorePurchase, "ledger_tx_id") == {"ledger_transaction.id"}
 
-    def test_tablename(self):
+    def test_DOM_STORE_001__store_purchase_tablename(self):
         assert StorePurchase.__tablename__ == "store_purchases"
 
-    def test_no_student_id_column(self):
+    def test_DOM_STORE_001__store_purchase_no_student_id_column(self):
         """store_purchases must not have legacy student_id; seat_id is the canonical anchor."""
         assert "student_id" not in _column_names(StorePurchase)
 
-    def test_no_join_code_column(self):
+    def test_DOM_STORE_001__store_purchase_no_join_code_column(self):
         """store_purchases must not have join_code; class_id is the canonical boundary."""
         assert "join_code" not in _column_names(StorePurchase)
 
-    def test_no_teacher_id_column(self):
+    def test_DOM_STORE_001__store_purchase_no_teacher_id_column(self):
         """store_purchases must not have teacher_id; no teacher scoping in v2 store tables."""
         assert "teacher_id" not in _column_names(StorePurchase)
 
@@ -90,7 +91,7 @@ class TestStorePurchaseSchema:
 # ===========================================================================
 
 class TestRedemptionEventSchema:
-    def test_has_required_columns(self):
+    def test_DOM_STORE_001__redemption_event_has_required_columns(self):
         """DOM-STORE-001 §VII.4: redemption_events must have purchase_id, action, source, timestamp."""
         cols = _column_names(RedemptionEvent)
         assert {
@@ -100,20 +101,20 @@ class TestRedemptionEventSchema:
             "notes", "timestamp",
         } <= cols
 
-    def test_purchase_fk_targets_store_purchases(self):
+    def test_DOM_STORE_001__redemption_event_purchase_fk_targets_store_purchases(self):
         assert _fk_targets(RedemptionEvent, "purchase_id") == {"store_purchases.id"}
 
-    def test_tablename(self):
+    def test_DOM_STORE_001__redemption_event_tablename(self):
         assert RedemptionEvent.__tablename__ == "redemption_events"
 
-    def test_no_student_item_id_column(self):
+    def test_DOM_STORE_001__redemption_event_no_student_item_id_column(self):
         """redemption_events replaces redemption_audit_logs; no student_item_id FK."""
         assert "student_item_id" not in _column_names(RedemptionEvent)
 
-    def test_action_enum_values(self):
+    def test_DOM_STORE_001__redemption_event_action_enum_values(self):
         assert {e.value for e in RedemptionEventAction} == {"request", "approved", "rejected"}
 
-    def test_source_enum_values(self):
+    def test_DOM_STORE_001__redemption_event_source_enum_values(self):
         assert {e.value for e in RedemptionEventSource} == {"live"}
 
 
@@ -122,24 +123,24 @@ class TestRedemptionEventSchema:
 # ===========================================================================
 
 class TestStoreItemVisibilitySchema:
-    def test_has_required_columns(self):
+    def test_DOM_STORE_001__store_item_visibility_has_required_columns(self):
         """DOM-STORE-001 §VII.2: store_item_visibility must have store_item_id, seat_id."""
         cols = _column_names(StoreItemVisibility)
         assert {"id", "store_item_id", "seat_id"} <= cols
 
-    def test_store_item_fk_targets_store_items(self):
+    def test_DOM_STORE_001__store_item_visibility_store_item_fk_targets_store_items(self):
         assert _fk_targets(StoreItemVisibility, "store_item_id") == {"store_items.id"}
 
-    def test_seat_fk_targets_seats(self):
+    def test_DOM_STORE_001__store_item_visibility_seat_fk_targets_seats(self):
         assert _fk_targets(StoreItemVisibility, "seat_id") == {"seats.id"}
 
-    def test_tablename(self):
+    def test_DOM_STORE_001__store_item_visibility_tablename(self):
         assert StoreItemVisibility.__tablename__ == "store_item_visibility"
 
-    def test_unique_constraint_on_item_seat(self):
+    def test_DOM_STORE_001__store_item_visibility_unique_constraint_on_item_seat(self):
         assert "uq_store_item_visibility_item_seat" in _unique_constraints(StoreItemVisibility)
 
-    def test_no_block_column(self):
+    def test_DOM_STORE_001__store_item_visibility_no_block_column(self):
         """INV-CORE-000 §6: no label-based scoping. No block column."""
         assert "block" not in _column_names(StoreItemVisibility)
 
@@ -150,66 +151,29 @@ class TestStoreItemVisibilitySchema:
 
 @pytest.fixture
 def store_test_setup(app):
-    """Create minimal class + seat + store item for store domain tests."""
-    from app.models import ClassEconomy, Seat, StoreItem, User, UserRole
+    """Create canonical classroom + store item for store domain tests."""
+    from app.models import StoreItem
     from app.extensions import db
-    from app.utils.auth_username import build_hashed_username_fields
 
     with app.app_context():
-        with FEATContext("FEAT-IDEN-001", idempotency_key=f"store_test_setup:{uuid.uuid4().hex}"):
-            uname = f"store_teacher_{uuid.uuid4().hex[:8]}"
-            _, username_hash, username_lookup_hash = build_hashed_username_fields(uname)
-            user = User(
-                user_role=UserRole.TEACHER,
-                username_hash=username_hash,
-                username_lookup_hash=username_lookup_hash,
-            )
-            db.session.add(user)
-            db.session.flush()
-
-            class_id = str(uuid.uuid4())
-            join_code = uuid.uuid4().hex[:8].upper()
-            economy = ClassEconomy(
-                class_id=class_id,
-                join_code=join_code,
-                user_id=user.id,
-                display_name="Test Class",
-            )
-            db.session.add(economy)
-            db.session.flush()
-
-            seat = Seat(
-                class_id=class_id,
-                user_id=user.id,
-            )
-            db.session.add(seat)
-            db.session.flush()
-
-            item = StoreItem(
-                user_id=user.id,
-                class_id=class_id,
-                name="Test Reward",
-                price=Decimal("10.00"),
-                item_type="delayed",
-                is_active=True,
-            )
-            db.session.add(item)
-            db.session.flush()
-
-        db.session.commit()
+        classroom = initialize("chemistry_p1", app)
+        item = create_entitlement_store_item(
+            teacher_id=classroom.teacher_user.id,
+            class_id=classroom.class_id,
+            name="Test Reward",
+            price=Decimal("10.00"),
+            item_type="delayed",
+        )
 
         yield {
-            "user": user,
-            "class_id": class_id,
-            "join_code": join_code,
-            "seat": seat,
+            "classroom": classroom,
+            "seat": classroom.teacher_seat,
             "item": item,
-            "teacher_id": user.id,
         }
 
 
 class TestStorePurchaseBehavior:
-    def test_purchase_creates_store_purchase_record(self, app, store_test_setup):
+    def test_DOM_STORE_001__purchase_creates_store_purchase_record(self, app, store_test_setup):
         """Purchase through service creates a StorePurchase row."""
         from app.services.store_service import record_standard_purchase_items
         from app.extensions import db
@@ -235,12 +199,12 @@ class TestStorePurchaseBehavior:
                 purchase = db.session.get(StorePurchase, purchase_ids[0])
                 assert purchase is not None
                 assert purchase.seat_id == seat.id
-                assert purchase.class_id == ctx["class_id"]
+                assert purchase.class_id == ctx["classroom"].class_id
                 assert purchase.store_item_id == item.id
                 assert purchase.price_at_purchase == Decimal("10.00")
                 assert purchase.status == "purchased"
 
-    def test_idempotency_key_prevents_duplicate(self, app, store_test_setup):
+    def test_DOM_STORE_001__idempotency_key_prevents_duplicate(self, app, store_test_setup):
         """Duplicate idempotency_key is rejected by unique constraint."""
         from app.services.store_service import record_standard_purchase_items
         from app.extensions import db
@@ -281,7 +245,7 @@ class TestStorePurchaseBehavior:
 
 
 class TestStoreVisibilityBehavior:
-    def test_visibility_defaults_to_all(self, app, store_test_setup):
+    def test_DOM_STORE_001__visibility_defaults_to_all(self, app, store_test_setup):
         """No visibility rows means visible to all seats."""
         from app.services.store_service import is_item_visible_to_seat
         from app.extensions import db
@@ -293,9 +257,9 @@ class TestStoreVisibilityBehavior:
             with FEATContext("FEAT-STOR-001", idempotency_key="store_test:visibility_default"):
                 assert is_item_visible_to_seat(item.id, seat.id) is True
 
-    def test_visibility_restricts_to_granted_seats(self, app, store_test_setup):
+    def test_DOM_STORE_001__visibility_restricts_to_granted_seats(self, app, store_test_setup):
         """Visibility grants restrict to specific seats only."""
-        from app.services.store_service import is_item_visible_to_seat, set_item_visibility
+        from app.services.store_service import is_item_visible_to_seat
         from app.models import Seat
         from app.extensions import db
 
@@ -316,15 +280,14 @@ class TestStoreVisibilityBehavior:
                 db.session.add(other_seat)
                 db.session.flush()
 
-                set_item_visibility(item.id, [seat.id])
-                db.session.flush()
+                set_entitlement_item_visibility(item.id, [seat.id])
 
                 assert is_item_visible_to_seat(item.id, seat.id) is True
                 assert is_item_visible_to_seat(item.id, other_seat.id) is False
 
 
 class TestRedemptionEventBehavior:
-    def test_redemption_event_creation(self, app, store_test_setup):
+    def test_DOM_STORE_001__redemption_event_creation(self, app, store_test_setup):
         """Redemption event can be created against a StorePurchase."""
         from app.extensions import db
 
@@ -336,7 +299,7 @@ class TestRedemptionEventBehavior:
             with FEATContext("FEAT-STOR-006", idempotency_key="store_test:redemption_event"):
                 purchase = StorePurchase(
                     seat_id=seat.id,
-                    class_id=ctx["class_id"],
+                    class_id=ctx["classroom"].class_id,
                     store_item_id=item.id,
                     quantity=1,
                     price_at_purchase=Decimal("10.00"),
@@ -352,7 +315,7 @@ class TestRedemptionEventBehavior:
                     class_id=ctx["class_id"],
                     action=RedemptionEventAction.APPROVED,
                     source=RedemptionEventSource.LIVE,
-                    initiated_by_user_id=ctx["teacher_id"],
+                    initiated_by_user_id=ctx["classroom"].teacher_user.id,
                     seat_display_name="Test Student",
                     class_display_label="Test Class",
                 )

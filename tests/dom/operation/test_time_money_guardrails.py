@@ -27,7 +27,7 @@ def app_python_sources():
     return sources
 
 
-def test_no_direct_datetime_now_calls_outside_time_util(app_python_sources):
+def test_DOM_OPS_001__no_direct_datetime_now_calls_outside_time_util(app_python_sources):
     offenders = []
     for path, text in app_python_sources:
         if path.endswith("app/utils/time.py"):
@@ -38,7 +38,7 @@ def test_no_direct_datetime_now_calls_outside_time_util(app_python_sources):
     assert not offenders, f"Use utc_now() helper instead of direct datetime.now/utcnow: {offenders}"
 
 
-def test_no_ad_hoc_replace_tzinfo_utc_outside_time_util(app_python_sources):
+def test_DOM_OPS_001__no_ad_hoc_replace_tzinfo_utc_outside_time_util(app_python_sources):
     offenders = []
     for path, text in app_python_sources:
         if path.endswith("app/utils/time.py"):
@@ -49,7 +49,7 @@ def test_no_ad_hoc_replace_tzinfo_utc_outside_time_util(app_python_sources):
     assert not offenders, f"Use ensure_utc() instead of ad-hoc replace(tzinfo=timezone.utc): {offenders}"
 
 
-def test_no_generic_float_zero_fallbacks_in_routes(app_python_sources):
+def test_DOM_OPS_001__no_generic_float_zero_fallbacks_in_routes(app_python_sources):
     """
     Prevent reintroducing ambiguous float defaults in route logic.
     """
@@ -73,7 +73,7 @@ def test_no_generic_float_zero_fallbacks_in_routes(app_python_sources):
     assert not offenders, f"Use Decimal-safe defaults or explicit non-money justification: {offenders}"
 
 
-def test_no_unscoped_temporal_bounds_helpers(app_python_sources):
+def test_DOM_OPS_001__no_unscoped_temporal_bounds_helpers(app_python_sources):
     """
     Enforce INV-ARC-015 call-site discipline.
 

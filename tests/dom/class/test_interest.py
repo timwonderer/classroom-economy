@@ -1,17 +1,22 @@
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
-from tests.helpers.v2_fixtures import make_sysadmin
 from app import Transaction, apply_savings_interest, db
-from app.models import TransactionStatus, BalanceCache
+from app.models import TransactionStatus, LedgerBalanceSnapshot as BalanceCache
 from app.feats.base import FEATContext
 from unittest.mock import patch
+from tests.helpers.classroom_initializer import initialize
 
 
-def test_apply_savings_interest_with_naive_datetimes(client, test_student):
+def test_DOM_CLASS_001__apply_savings_interest_with_naive_datetimes(client, app):
+    classroom = initialize("chemistry_p1", app)
+    test_student = classroom.students[0].seat
     past_date = datetime.now(timezone.utc) - timedelta(days=31)
     savings_tx = Transaction(
         seat_id=test_student.id,
+        target_seat_id=test_student.id,
+        actor_seat_id=test_student.id,
+        mechanism="self",
         user_id=test_student.user_id,
         class_id=test_student.class_id,
         amount=100.0,

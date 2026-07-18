@@ -1,36 +1,26 @@
 """
 Tests for the /api/attendance/history endpoint to ensure it returns attendance records.
 """
-from tests.helpers.v2_fixtures import seed_canonical_admin
-from tests.helpers.class_scope import make_student_identity, create_class_scope
-import pytest
 from datetime import datetime, timezone, timedelta
+
+import pytest
+
 from app import app, db
-from app.models import AttendanceSession, AttendanceReasonCode, ClassEconomy, Seat, User
-from tests.helpers.canonical_session import set_canonical_context
-from tests.helpers.admin_context import login_teacher
 from app.feats.base import FEATContext
+from app.models import AttendanceReasonCode, AttendanceSession, Seat, User
+from tests.helpers.classroom_initializer import initialize, initialize_as_teacher
 
 
 @pytest.fixture
 def admin_with_students(client):
     """Create an admin with students and tap events for testing."""
     with FEATContext("FEAT-IDEN-001", idempotency_key="attendance_history:admin_setup"):
-        teacher = seed_canonical_admin('testadmin').user
-        class_row = create_class_scope(
-            teacher_user=teacher,
-            join_code="APIATN1",
-            display_name="Attendance History Class",
-        )
-
-        student = make_student_identity(
-            class_id=class_row.class_id,
-            first_name='Test',
-            last_name='S',
-        )
-
-        seat = Seat.query.filter_by(user_id=student.user_id, class_id=class_row.class_id, role="student").first()
-        teacher_seat = Seat.query.filter_by(user_id=teacher.id, class_id=class_row.class_id, role="teacher").first()
+        classroom = initialize("chemistry_p1", app)
+        teacher = classroom.teacher_user
+        class_row = classroom.economy
+        student = classroom.students[0].user
+        seat = classroom.students[0].seat
+        teacher_seat = classroom.teacher_seat
         now_utc = datetime.now(timezone.utc)
 
         tap_in = AttendanceSession(
@@ -63,11 +53,11 @@ def admin_with_students(client):
     }
 
 
-def test_attendance_history_returns_records(client, admin_with_students):
+def test_DOM_ATT_001__attendance_history_returns_records(client, admin_with_students):
     """Test that /api/attendance/history returns attendance records for an admin's students."""
     teacher = admin_with_students['teacher']
 
-    login_teacher(client, teacher, class_id=admin_with_students['class_id'])
+    initialize_as_teacher("chemistry_p1", client, client.application)
 
     response = client.get('/api/attendance/history')
 
@@ -87,11 +77,11 @@ def test_attendance_history_returns_records(client, admin_with_students):
     assert record['timestamp'].endswith('Z'), "Timestamp should end with 'Z' for UTC"
 
 
-def test_attendance_history_with_date_filters(client, admin_with_students):
+def test_DOM_ATT_001__attendance_history_with_date_filters(client, admin_with_students):
     """Test that date filters work correctly with UTC timestamps."""
     teacher = admin_with_students['teacher']
 
-    login_teacher(client, teacher, class_id=admin_with_students['class_id'])
+    initialize_as_teacher("chemistry_p1", client, client.application)
 
     event_ts = admin_with_students['tap_events'][0].started_at
     if event_ts.tzinfo is None:
@@ -110,19 +100,14 @@ def test_attendance_history_with_date_filters(client, admin_with_students):
     assert len(data['records']) > 0
 
 
-def test_attendance_history_tenant_scoping(client):
+def test_DOM_ATT_001__attendance_history_tenant_scoping(client):
     """Test that admins can only see their own students' attendance records."""
     with FEATContext("FEAT-IDEN-001", idempotency_key="attendance_history:tenant_scoping"):
-        admin1 = seed_canonical_admin('admin1').user
-        admin2 = seed_canonical_admin('admin2').user
-
-        class1 = create_class_scope(teacher_user=admin1, join_code="APIATN2A", display_name="Attendance A")
-        class2 = create_class_scope(teacher_user=admin2, join_code="APIATN2B", display_name="Attendance B")
-
-        teacher1 = Seat.query.filter_by(user_id=admin1.id, class_id=class1.class_id, role="teacher").first()
-
-        student1 = make_student_identity(class_id=class1.class_id, first_name='Student', last_name='1')
-        student2 = make_student_identity(class_id=class2.class_id, first_name='Student', last_name='2')
+        class1 = initialize("chemistry_p1", app)
+        class2 = initialize("biology_block_a")
+        teacher1 = class1.teacher_seat
+        student1 = class1.students[0].seat
+        student2 = class2.students[0].seat
 
         now_utc = datetime.now(timezone.utc)
 
@@ -139,7 +124,7 @@ def test_attendance_history_tenant_scoping(client):
         db.session.add_all([tap1, tap2])
         db.session.flush()
 
-    login_teacher(client, admin1, class_id=class1.class_id)
+    initialize_as_teacher("chemistry_p1", client, client.application)
 
     response = client.get('/api/attendance/history')
 
@@ -151,7 +136,7 @@ def test_attendance_history_tenant_scoping(client):
     assert len(data['records']) == 1
 
 
-def test_attendance_history_excludes_deleted_records(client, admin_with_students):
+def test_DOM_ATT_001__attendance_history_excludes_deleted_records(client, admin_with_students):
     """Test that deleted tap events do not appear in attendance history."""
     teacher = admin_with_students['teacher']
     now_utc = datetime.now(timezone.utc)
@@ -166,7 +151,7 @@ def test_attendance_history_excludes_deleted_records(client, admin_with_students
         db.session.add(deleted_tap)
         db.session.flush()
 
-    login_teacher(client, teacher, class_id=admin_with_students['class_id'])
+    initialize_as_teacher("chemistry_p1", client, client.application)
 
     response = client.get('/api/attendance/history')
 
@@ -178,7 +163,7 @@ def test_attendance_history_excludes_deleted_records(client, admin_with_students
     assert len(data['records']) == 2
 
 
-def test_attendance_history_dedupes_duplicate_daily_limit_tapouts(client, admin_with_students):
+def test_DOM_ATT_001__attendance_history_dedupes_duplicate_daily_limit_tapouts(client, admin_with_students):
     """Duplicate auto tap-outs with identical daily-limit payload should render once."""
     teacher = admin_with_students['teacher']
     now_utc = datetime.now(timezone.utc)
@@ -206,7 +191,7 @@ def test_attendance_history_dedupes_duplicate_daily_limit_tapouts(client, admin_
         ))
         db.session.flush()
 
-    login_teacher(client, teacher, class_id=admin_with_students['class_id'])
+    initialize_as_teacher("chemistry_p1", client, client.application)
 
     response = client.get('/api/attendance/history')
     assert response.status_code == 200

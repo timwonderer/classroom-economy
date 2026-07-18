@@ -1,37 +1,9 @@
-from tests.helpers.v2_fixtures import seed_canonical_admin, make_sysadmin
-
 from app import db
 from app.models import Seat, User, UserRole, Transaction, StoreItem, StoreItemVisibility, StorePurchase, IssueCategory, Issue, ClassFeature, ClassEconomy
 from app.feats.base import FEATContext
 from app.hash_utils import get_random_salt, hash_hmac
-from tests.helpers.admin_context import login_teacher
-from tests.helpers.class_scope import create_class_scope
-from tests.helpers.class_scope import make_student_identity
 from app.services.store_service import set_item_visibility
-
-
-def _create_admin(username: str) -> tuple[str]:
-    admin = seed_canonical_admin(username).user
-    db.session.commit()
-    return admin, "unused"
-
-
-def _create_student(teacher: User, first_name: str, block: str, join_code: str):
-    class_row = create_class_scope(teacher_user=teacher, join_code=join_code, section=block)
-    seat = make_student_identity(
-        class_id=class_row.class_id,
-        first_name=first_name,
-        last_name=first_name[0].upper(),
-        claimed=True,
-    )
-    db.session.commit()
-    return seat
-
-
-def _login_admin(client, admin: User, secret: str, *, class_id: str | None = None, seat_id: int | None = None):
-    if class_id is not None:
-        login_teacher(client, admin, class_id=class_id)
-    return None
+from tests.helpers.ledger import create_ledger_pending_transaction, provision_ledger_classroom, provision_ledger_teacher
 
 
 def _ensure_class_features(class_id: str, feature_names: list[str]):
@@ -48,26 +20,25 @@ def _ensure_class_features(class_id: str, feature_names: list[str]):
         db.session.add_all(missing)
 
 
-def test_delete_student_removes_transactions(client):
-    teacher, secret = _create_admin("teacher-archive-ledger")
-    student = _create_student(teacher, "Alice", "A", "ARCHIVE1")
+def test_DOM_LED_001__delete_student_removes_transactions(client, app):
+    classroom = provision_ledger_teacher("chemistry_p1", client, app)
+    teacher = classroom.teacher_user
+    student = classroom.students[0].seat
 
-    tx = Transaction(
-        seat_id=student.id,
-        user_id=student.user_id,
-        join_code="ARCHIVE1",
-        amount=50,
-        account_type="checking",
-        description="Seed ledger entry",
-    )
     with FEATContext("FEAT-LED-001", idempotency_key="join_code_deletion:archive_tx"):
-        db.session.add(tx)
-        db.session.flush()
+        tx = create_ledger_pending_transaction(
+            seat_id=student.id,
+            user_id=student.user_id,
+            class_id=student.class_id,
+            amount=50,
+            account_type="checking",
+            type="purchase",
+            description="Seed ledger entry",
+        )
     db.session.commit()
     tx_id = tx.id
     student_id = student.id
 
-    _login_admin(client, teacher, secret, class_id=student.class_id)
     response = client.post(
         "/admin/student/archive",
         data={"seat_id": student_id, "confirmation": "DELETE"},
@@ -82,9 +53,10 @@ def test_delete_student_removes_transactions(client):
     assert db.session.get(Transaction, tx_id) is None
 
 
-def test_deactivate_item_does_not_delete_transactions(client):
-    teacher, secret = _create_admin("teacher-item-ledger")
-    student = _create_student(teacher, "Bob", "A", "ITEMJC1")
+def test_DOM_LED_001__deactivate_item_does_not_delete_transactions(client, app):
+    classroom = provision_ledger_teacher("chemistry_p1", client, app)
+    teacher = classroom.teacher_user
+    student = classroom.students[0].seat
     with FEATContext("FEAT-STOR-001", idempotency_key="join_code_deletion:enable_store_item"):
         _ensure_class_features(student.class_id, ["store"])
 
@@ -101,22 +73,19 @@ def test_deactivate_item_does_not_delete_transactions(client):
         db.session.flush()
         set_item_visibility(item.id, [student.id])
 
-    tx = Transaction(
-        seat_id=student.id,
-        user_id=student.user_id,
-        join_code="ITEMJC1",
-        amount=-10,
-        account_type="checking",
-        type="purchase",
-        description="Purchase: Sticker",
-    )
     with FEATContext("FEAT-LED-001", idempotency_key="join_code_deletion:item_tx"):
-        db.session.add(tx)
-        db.session.flush()
+        tx = create_ledger_pending_transaction(
+            seat_id=student.id,
+            user_id=student.user_id,
+            class_id=student.class_id,
+            amount=-10,
+            account_type="checking",
+            type="purchase",
+            description="Purchase: Sticker",
+        )
     db.session.commit()
     tx_id = tx.id
 
-    _login_admin(client, teacher, secret, class_id=student.class_id)
     response = client.post(
         f"/admin/item/deactivate/{item.id}",
         data={"block": "A"},
@@ -130,18 +99,36 @@ def test_deactivate_item_does_not_delete_transactions(client):
     assert db.session.get(Transaction, tx_id) is not None
 
 
-def test_delete_class_removes_only_scoped_records(client):
-    teacher, secret = _create_admin("teacher-join-delete")
-    student_a = _create_student(teacher, "Cara", "A", "JCDEL1")
-    student_b = _create_student(teacher, "Dylan", "B", "JCKEEP2")
+def test_DOM_LED_001__delete_class_removes_only_scoped_records(client, app):
+    class_a = provision_ledger_teacher("chemistry_p1", client, app)
+    class_b = provision_ledger_classroom("biology_block_a", app)
+    teacher = class_a.teacher_user
+    student_a = class_a.students[0].seat
+    student_b = class_b.students[0].seat
+    join_code_a = class_a.join_code
+    join_code_b = class_b.join_code
     with FEATContext("FEAT-STOR-001", idempotency_key="join_code_deletion:enable_store_scope"):
         _ensure_class_features(student_a.class_id, ["store", "insurance", "payroll", "rent", "hall_pass"])
 
     with FEATContext("FEAT-LED-001", idempotency_key="join_code_deletion:seed_transactions"):
-        tx_a = Transaction(seat_id=student_a.id, user_id=student_a.user_id, join_code="JCDEL1", amount=20, account_type="checking")
-        tx_b = Transaction(seat_id=student_b.id, user_id=student_b.user_id, join_code="JCKEEP2", amount=30, account_type="checking")
-        db.session.add_all([tx_a, tx_b])
-        db.session.flush()
+        tx_a = create_ledger_pending_transaction(
+            seat_id=student_a.id,
+            user_id=student_a.user_id,
+            class_id=student_a.class_id,
+            amount=20,
+            account_type="checking",
+            type="purchase",
+            description="Class A transaction",
+        )
+        tx_b = create_ledger_pending_transaction(
+            seat_id=student_b.id,
+            user_id=student_b.user_id,
+            class_id=student_b.class_id,
+            amount=30,
+            account_type="checking",
+            type="purchase",
+            description="Class B transaction",
+        )
 
     category = IssueCategory(
         name=f"JoinDeleteCategory-{teacher.id}",
@@ -208,12 +195,11 @@ def test_delete_class_removes_only_scoped_records(client):
     item_a_id = item_a.id
     item_b_id = item_b.id
 
-    _login_admin(client, teacher, secret, class_id=student_a.class_id)
     response = client.post(
         "/admin/join-code/delete",
         json={
-            "join_code": "JCDEL1",
-            "gate_phrase": "DELETE JOIN CODE JCDEL1",
+            "join_code": join_code_a,
+            "gate_phrase": f"DELETE JOIN CODE {join_code_a}",
             "gate_countdown_seconds": 30,
             "gate_hold_seconds": 10,
         },

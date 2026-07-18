@@ -2,11 +2,10 @@ import pytest
 from app.extensions import db
 from app.models import User, UserRole
 from app.feats.base import FEATContextError, requires_feat_context, is_feat_active
-from tests.helpers.class_scope import create_class_scope, make_student_identity
-from tests.helpers.v2_fixtures import seed_canonical_admin
+from tests.helpers.classroom_initializer import initialize
 
 @pytest.mark.enforce_feat
-def test_commit_fails_outside_feat_context(app):
+def test_FEAT_CORE_000__commit_fails_outside_feat_context(app):
     """
     CONFIRM: No mutation until a FEAT context is established.
     This is the core architectural safeguard.
@@ -21,7 +20,7 @@ def test_commit_fails_outside_feat_context(app):
     db.session.rollback()
 
 @pytest.mark.enforce_feat
-def test_flush_fails_outside_feat_context(app):
+def test_FEAT_CORE_000__flush_fails_outside_feat_context(app):
     """
     CONFIRM: No SQL emission (flush) until a FEAT context is established.
     """
@@ -35,16 +34,21 @@ def test_flush_fails_outside_feat_context(app):
     db.session.rollback()
 
 @pytest.mark.enforce_feat
-def test_commit_succeeds_inside_feat_context(app):
+def test_FEAT_CORE_000__commit_succeeds_inside_feat_context(app):
     """
     CONFIRM: Mutations are permitted in FEAT context without direct commit.
     """
-    teacher = seed_canonical_admin("feat_test_teacher_unique").user
-    class_row = create_class_scope(teacher_user=teacher, join_code="FEAT-TEST-CLS")
+    classroom = initialize("chemistry_p1", app)
 
     @requires_feat_context("FEAT-TEST-001")
     def legal_mutation():
-        stu = make_student_identity(class_id=class_row.class_id, first_name="Legal", last_name="M")
+        from app.services.classroom_setup import create_student
+
+        stu, _seat, _profile = create_student(
+            classroom.class_id,
+            first_name="Legal",
+            last_name="M",
+        )
         db.session.flush()
         return stu
 
@@ -53,7 +57,7 @@ def test_commit_succeeds_inside_feat_context(app):
     assert is_feat_active() is False # Should be cleared after exit
 
 @pytest.mark.enforce_feat
-def test_nested_feat_context(app):
+def test_FEAT_CORE_000__nested_feat_context(app):
     """
     CONFIRM: Nested FEATs are tracked correctly without direct commit calls.
     """
@@ -75,7 +79,7 @@ def test_nested_feat_context(app):
 
 
 @pytest.mark.enforce_feat
-def test_direct_commit_inside_feat_context_is_blocked(app):
+def test_FEAT_CORE_000__direct_commit_inside_feat_context_is_blocked(app):
     """
     CONFIRM: Only FEAT orchestrator boundary can commit.
     """

@@ -9,42 +9,22 @@ from datetime import datetime, timezone, timedelta
 
 from app.extensions import db
 from app.feats.base import FEATContext
-from app.models import Seat, ClassEconomy, HallPassLog
-from tests.helpers.v2_fixtures import seed_canonical_admin
-from tests.helpers.class_scope import create_class_scope, make_student_identity
-from tests.helpers.canonical_session import set_canonical_context
+from app.models import HallPassLog
+from tests.helpers.classroom_initializer import initialize, initialize_as_teacher
 
 
-def _login_teacher(client, *, teacher, class_row: ClassEconomy) -> None:
-    teacher_seat = Seat.query.filter_by(class_id=class_row.class_id, role="teacher").first()
-    with client.session_transaction() as sess:
-        set_canonical_context(
-            sess,
-            user_id=teacher.id,
-            class_id=class_row.class_id,
-            seat_id=teacher_seat.id if teacher_seat else teacher.id,
-            role="teacher",
-        )
-
-
-def test_hall_pass_history_requires_admin_login(client):
+def test_DOM_ATT_001__hall_pass_history_requires_admin_login(client):
     """History endpoint requires an authenticated teacher session."""
     response = client.get("/api/hall-pass/history")
     assert response.status_code in [302, 401, 403]
 
 
-def test_hall_pass_history_scoped_to_class(client):
+def test_DOM_ATT_001__hall_pass_history_scoped_to_class(client):
     """Teacher logged into class A only sees class A hall pass history."""
-    teacher = seed_canonical_admin("hp_hist_t1").user
-    db.session.flush()
-
-    class_a = create_class_scope(teacher_user=teacher, join_code="HPHISTA")
-    class_b = create_class_scope(teacher_user=teacher, join_code="HPHISTB")
-    db.session.flush()
-
-    seat_a = make_student_identity(class_id=class_a.class_id, first_name="Alice", last_name="A")
-    seat_b = make_student_identity(class_id=class_b.class_id, first_name="Bob", last_name="B")
-    db.session.flush()
+    class_a = initialize("chemistry_p1")
+    class_b = initialize("ap_csp_p3")
+    seat_a = class_a.students[0].seat
+    seat_b = class_b.students[0].seat
 
     now = datetime.now(timezone.utc)
     with FEATContext("FEAT-ATTN-001", idempotency_key="hall_pass_history_scoping:seed"):
@@ -75,7 +55,7 @@ def test_hall_pass_history_scoped_to_class(client):
         db.session.add_all([pass_a, pass_b])
         db.session.flush()
 
-    _login_teacher(client, teacher=teacher, class_row=class_a)
+    initialize_as_teacher("chemistry_p1", client, client.application)
 
     response = client.get("/api/hall-pass/history")
     assert response.status_code == 200

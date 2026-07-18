@@ -10,42 +10,18 @@ from datetime import datetime, timezone, timedelta
 
 from app.extensions import db
 from app.feats.base import FEATContext
-from app.models import Seat, ClassEconomy, HallPassLog, HallPassSettings
-from tests.helpers.v2_fixtures import seed_canonical_admin
-from tests.helpers.class_scope import create_class_scope, make_student_identity
-from tests.helpers.canonical_session import set_canonical_context
-
-
-def _login_student(client, *, seat: Seat) -> None:
-    class_row = ClassEconomy.query.filter_by(class_id=seat.class_id).first()
-    with client.session_transaction() as sess:
-        set_canonical_context(
-            sess,
-            user_id=seat.user_id,
-            class_id=seat.class_id,
-            seat_id=seat.id,
-            role="student",
-        )
-
-
-def _login_teacher(client, *, teacher, class_row: ClassEconomy) -> None:
-    teacher_seat = Seat.query.filter_by(class_id=class_row.class_id, role="teacher").first()
-    with client.session_transaction() as sess:
-        set_canonical_context(
-            sess,
-            user_id=teacher.id,
-            class_id=class_row.class_id,
-            seat_id=teacher_seat.id if teacher_seat else teacher.id,
-            role="teacher",
-        )
+from app.models import HallPassLog, HallPassSettings, Seat
+from tests.helpers.classroom_initializer import initialize, initialize_as_student, initialize_as_teacher, login_student
 
 
 @pytest.fixture
 def hp_ctx(client):
     """Create teacher, class, settings, student seat, and an approved hall pass."""
     with FEATContext("FEAT-IDEN-001", idempotency_key="hall-pass-checkout:seed"):
-        teacher = seed_canonical_admin("hp_co_teacher1").user
-        class_row = create_class_scope(teacher_user=teacher, join_code="HPTEST1")
+        classroom = initialize("chemistry_p1", client.application)
+        teacher = classroom.teacher_user
+        class_row = classroom.economy
+        student = classroom.students[0]
 
         settings = HallPassSettings(
             class_id=class_row.class_id,
@@ -58,9 +34,7 @@ def hp_ctx(client):
         )
         db.session.add(settings)
 
-        student_seat = make_student_identity(
-            class_id=class_row.class_id, first_name="Alice", last_name="A"
-        )
+        student_seat = student.seat
 
         now = datetime.now(timezone.utc)
         hall_pass = HallPassLog(
@@ -79,12 +53,13 @@ def hp_ctx(client):
         "teacher": teacher,
         "class_row": class_row,
         "student_seat": student_seat,
+        "student": student,
         "hall_pass": hall_pass,
         "settings": settings,
     }
 
 
-def test_checkout_requires_authentication(client, hp_ctx):
+def test_DOM_ATT_001__checkout_requires_authentication(client, hp_ctx):
     """Checkout endpoint requires an authenticated student session."""
     hall_pass = hp_ctx["hall_pass"]
 
@@ -97,12 +72,12 @@ def test_checkout_requires_authentication(client, hp_ctx):
     assert response.status_code in [302, 401]
 
 
-def test_checkout_with_approved_pass(client, hp_ctx):
+def test_DOM_ATT_001__checkout_with_approved_pass(client, hp_ctx):
     """Student with an approved pass can check out; status becomes 'left'."""
     seat = hp_ctx["student_seat"]
     hall_pass = hp_ctx["hall_pass"]
 
-    _login_student(client, seat=seat)
+    login_student(client, hp_ctx["student"])
 
     response = client.post(
         "/api/hall-pass/checkout",
@@ -120,18 +95,15 @@ def test_checkout_with_approved_pass(client, hp_ctx):
     assert hall_pass.left_time is not None
 
 
-def test_checkout_rejects_wrong_student(client, hp_ctx):
+def test_DOM_ATT_001__checkout_rejects_wrong_student(client, hp_ctx):
     """A different student cannot check out another student's pass."""
     hall_pass = hp_ctx["hall_pass"]
     class_row = hp_ctx["class_row"]
 
     with FEATContext("FEAT-IDEN-001", idempotency_key="hall-pass-checkout:wrong-student"):
-        other_seat = make_student_identity(
-            class_id=class_row.class_id, first_name="Bob", last_name="B"
-        )
-        db.session.flush()
+        other_class, other_student = initialize_as_student("ap_csp_p3", client, client.application)
 
-    _login_student(client, seat=other_seat)
+    login_student(client, other_student)
 
     response = client.post(
         "/api/hall-pass/checkout",
@@ -145,7 +117,7 @@ def test_checkout_rejects_wrong_student(client, hp_ctx):
     assert "unauthorized" in json_data["message"].lower()
 
 
-def test_checkout_rejects_non_approved_pass(client, hp_ctx):
+def test_DOM_ATT_001__checkout_rejects_non_approved_pass(client, hp_ctx):
     """Checkout fails when the pass is in 'pending' (not approved) status."""
     seat = hp_ctx["student_seat"]
     hall_pass = hp_ctx["hall_pass"]
@@ -154,7 +126,7 @@ def test_checkout_rejects_non_approved_pass(client, hp_ctx):
         hall_pass.status = "pending"
         db.session.flush()
 
-    _login_student(client, seat=seat)
+    login_student(client, hp_ctx["student"])
 
     response = client.post(
         "/api/hall-pass/checkout",
@@ -168,7 +140,7 @@ def test_checkout_rejects_non_approved_pass(client, hp_ctx):
     assert "not approved" in json_data["message"].lower()
 
 
-def test_checkin_with_left_pass(client, hp_ctx):
+def test_DOM_ATT_001__checkin_with_left_pass(client, hp_ctx):
     """Student currently out ('left') can check back in; status becomes 'returned'."""
     seat = hp_ctx["student_seat"]
     hall_pass = hp_ctx["hall_pass"]
@@ -179,7 +151,7 @@ def test_checkin_with_left_pass(client, hp_ctx):
         hall_pass.left_time = now - timedelta(minutes=5)
         db.session.flush()
 
-    _login_student(client, seat=seat)
+    login_student(client, hp_ctx["student"])
 
     response = client.post(
         "/api/hall-pass/checkin",
@@ -197,14 +169,14 @@ def test_checkin_with_left_pass(client, hp_ctx):
     assert hall_pass.return_time is not None
 
 
-def test_checkin_rejects_non_left_pass(client, hp_ctx):
+def test_DOM_ATT_001__checkin_rejects_non_left_pass(client, hp_ctx):
     """Checkin fails when the pass is 'approved' (student has not left yet)."""
     seat = hp_ctx["student_seat"]
     hall_pass = hp_ctx["hall_pass"]
 
     assert hall_pass.status == "approved"
 
-    _login_student(client, seat=seat)
+    login_student(client, hp_ctx["student"])
 
     response = client.post(
         "/api/hall-pass/checkin",
@@ -218,7 +190,7 @@ def test_checkin_rejects_non_left_pass(client, hp_ctx):
     assert "not currently checked out" in json_data["message"].lower()
 
 
-def test_checkout_blocked_by_simultaneous_limit(client, hp_ctx):
+def test_DOM_ATT_001__checkout_blocked_by_simultaneous_limit(client, hp_ctx):
     """Checkout is blocked when the simultaneous limit for the pass type is reached."""
     seat = hp_ctx["student_seat"]
     hall_pass = hp_ctx["hall_pass"]
@@ -227,11 +199,8 @@ def test_checkout_blocked_by_simultaneous_limit(client, hp_ctx):
     now = datetime.now(timezone.utc)
     with FEATContext("FEAT-IDEN-001", idempotency_key="hall-pass-checkout:simultaneous-limit"):
         for i in range(2):
-            other_seat = make_student_identity(
-                class_id=class_row.class_id,
-                first_name=f"Other{i}",
-                last_name="S",
-            )
+            other_class, other_student = initialize_as_student("ap_csp_p3", client, client.application)
+            other_seat = other_student.seat
             other_pass = HallPassLog(
                 seat_id=other_seat.id,
                 class_id=class_row.class_id,
@@ -245,7 +214,7 @@ def test_checkout_blocked_by_simultaneous_limit(client, hp_ctx):
             db.session.add(other_pass)
         db.session.flush()
 
-    _login_student(client, seat=seat)
+    login_student(client, hp_ctx["student"])
 
     response = client.post(
         "/api/hall-pass/checkout",
@@ -262,7 +231,7 @@ def test_checkout_blocked_by_simultaneous_limit(client, hp_ctx):
     assert hall_pass.status == "approved"
 
 
-def test_approve_does_not_generate_pass_number(client, hp_ctx):
+def test_DOM_ATT_001__approve_does_not_generate_pass_number(client, hp_ctx):
     """Approving a hall pass does not return or create a pass_number field."""
     teacher = hp_ctx["teacher"]
     class_row = hp_ctx["class_row"]
@@ -274,7 +243,7 @@ def test_approve_does_not_generate_pass_number(client, hp_ctx):
         hall_pass.decision_time = None
         db.session.flush()
 
-    _login_teacher(client, teacher=teacher, class_row=class_row)
+    initialize_as_teacher("chemistry_p1", client, client.application)
 
     response = client.post(
         f"/api/hall-pass/{hall_pass.id}/approve",
@@ -290,21 +259,19 @@ def test_approve_does_not_generate_pass_number(client, hp_ctx):
     assert hall_pass.status == "approved"
 
 
-def test_checkout_rejects_mismatched_class_context(client, hp_ctx):
+def test_DOM_ATT_001__checkout_rejects_mismatched_class_context(client, hp_ctx):
     """Checkout fails when the student's active class context differs from the pass's class."""
     teacher = hp_ctx["teacher"]
     seat = hp_ctx["student_seat"]
     hall_pass = hp_ctx["hall_pass"]
 
     with FEATContext("FEAT-IDEN-001", idempotency_key="hall-pass-checkout:mismatched-context"):
-        class_b = create_class_scope(teacher_user=teacher, join_code="HPTEST2")
-        other_seat = make_student_identity(
-            class_id=class_b.class_id, first_name="Alice", last_name="A"
-        )
+        class_b = initialize("ap_csp_p3", client.application)
+        other_seat = class_b.students[0].seat
         other_seat.user_id = seat.user_id
         db.session.flush()
 
-    _login_student(client, seat=other_seat)
+    login_student(client, hp_ctx["student"])
 
     response = client.post(
         "/api/hall-pass/checkout",
@@ -317,7 +284,7 @@ def test_checkout_rejects_mismatched_class_context(client, hp_ctx):
     assert json_data["status"] == "error"
 
 
-def test_cancel_rejects_mismatched_class_context(client, hp_ctx):
+def test_DOM_ATT_001__cancel_rejects_mismatched_class_context(client, hp_ctx):
     """Cancel fails when the student's active class context differs from the pass's class."""
     teacher = hp_ctx["teacher"]
     seat = hp_ctx["student_seat"]
@@ -327,14 +294,12 @@ def test_cancel_rejects_mismatched_class_context(client, hp_ctx):
         hall_pass.status = "pending"
         hall_pass.decision_time = None
 
-        class_b = create_class_scope(teacher_user=teacher, join_code="HPTEST3")
-        other_seat = make_student_identity(
-            class_id=class_b.class_id, first_name="Alice", last_name="A"
-        )
+        class_b = initialize("ap_csp_p3", client.application)
+        other_seat = class_b.students[0].seat
         other_seat.user_id = seat.user_id
         db.session.flush()
 
-    _login_student(client, seat=other_seat)
+    login_student(client, hp_ctx["student"])
 
     response = client.post(
         f"/api/hall-pass/cancel/{hall_pass.id}",

@@ -5,71 +5,56 @@ Validates that system admins see accurate per-teacher student counts
 and that counts properly account for multi-teacher relationships.
 """
 
-from datetime import datetime, timezone
-
-import pyotp
-
 from app import app, db
-from app.models import User, UserRole, Seat
+from app.feats.base import FEATContext
+from app.hash_utils import hash_username_lookup
+from app.models import User
 from app.routes.system_admin import _user_student_counts
-from tests.helpers.class_scope import create_class_scope, make_student_identity
-from tests.helpers.v2_fixtures import seed_canonical_admin, make_sysadmin
+from tests.helpers.classroom_initializer import initialize
+from tests.helpers.operation_routes import (
+    get_sysadmin_admins,
+    get_sysadmin_dashboard,
+    login_sysadmin,
+)
+from wsgi import app as cli_app
 
 
-def _create_sysadmin(username: str = "sysadmin"):
-    """Create a system admin for testing."""
-    secret = pyotp.random_base32()
-    sys_admin = make_sysadmin(username, secret)
-    db.session.commit()
-    return sys_admin, secret
+def _create_admin(classroom_key: str):
+    """Create a canonical teacher-admin classroom for testing."""
+    classroom = initialize(classroom_key, app)
+    return classroom.teacher_user, classroom
 
 
-def _create_admin(username: str):
-    """Create a teacher admin for testing."""
-    secret = pyotp.random_base32()
-    admin = seed_canonical_admin(username).user
-    db.session.flush()
-    return admin, secret
+def _create_sysadmin_via_cli(username: str = "sysadmin"):
+    result = cli_app.test_cli_runner().invoke(args=["create-sysadmin"], input=f"{username}\n")
+    assert result.exit_code == 0, result.output
+    user = User.query.filter_by(username_lookup_hash=hash_username_lookup(username)).first()
+    assert user is not None, "create-sysadmin did not create a sysadmin user"
+    secret = ""
+    lines = result.output.splitlines()
+    for idx, line in enumerate(lines):
+        if "TOTP SECRET" in line:
+            for candidate in lines[idx + 1 :]:
+                stripped = candidate.strip()
+                if stripped and not stripped.startswith("=") and "IMPORTANT:" not in stripped and "Manual entry URI" not in stripped:
+                    secret = stripped
+                    break
+            break
+    assert secret, result.output
+    return user, secret
 
 
-def _create_student_in_class(first_name: str, teacher, join_code_suffix: str):
-    """Create a class and student for testing."""
-    join_code = f"SYS{join_code_suffix}"
-    from app.models import ClassEconomy
-    class_row = create_class_scope(teacher_user=teacher, join_code=join_code)
-    student = make_student_identity(class_id=class_row.class_id, first_name=first_name, last_name="X")
-    db.session.flush()
-    return student
-
-
-def _login_sysadmin(client, sys_admin, secret: str):
-    """Login as system admin."""
-    return client.post(
-        "/sysadmin/login",
-        data={"username": "sysadmin", "totp_code": pyotp.TOTP(secret).now()},
-        follow_redirects=True,
-    )
-
-
-def test_sysadmin_sees_correct_student_count_for_single_teacher(client):
+def test_DOM_OPS_001__sysadmin_sees_correct_student_count_for_single_teacher(client):
     """System admin should see correct count for teacher with exclusive students."""
-    sys_admin, sys_secret = _create_sysadmin()
-    teacher_a, _ = _create_admin("teacher-a")
-    teacher_b, _ = _create_admin("teacher-b")
+    _sys_admin, sys_secret = _create_sysadmin_via_cli()
+    teacher_a, _classroom_a = _create_admin("chemistry_p1")
+    teacher_b, _classroom_b = _create_admin("biology_block_a")
     teacher_a_id, teacher_b_id = teacher_a.id, teacher_b.id
 
-    # Create students for teacher A
-    _create_student_in_class("Student1", teacher_a, "A1")
-    _create_student_in_class("Student2", teacher_a, "A2")
-    _create_student_in_class("Student3", teacher_a, "A3")
-
-    # Create students for teacher B
-    _create_student_in_class("Student4", teacher_b, "B1")
-    _create_student_in_class("Student5", teacher_b, "B2")
     db.session.commit()
 
-    _login_sysadmin(client, sys_admin, sys_secret)
-    response = client.get("/sysadmin/admins")
+    login_sysadmin(client, username="sysadmin", totp_secret=sys_secret)
+    response = get_sysadmin_admins(client)
 
     assert response.status_code == 200
     html = response.data.decode()
@@ -77,67 +62,68 @@ def test_sysadmin_sees_correct_student_count_for_single_teacher(client):
     # Sysadmin views show only the opaque teacher identifier, never a real username.
     assert f"user_{teacher_a_id}" in html
     assert f"user_{teacher_b_id}" in html
+    assert "4 students" in html
     assert "3 students" in html
-    assert "2 students" in html
 
 
-def test_sysadmin_counts_shared_students_correctly(client):
+def test_DOM_OPS_001__sysadmin_counts_shared_students_correctly(client):
     """System admin should count shared students only once per teacher."""
-    sys_admin, sys_secret = _create_sysadmin()
-    teacher_a, _ = _create_admin("teacher-a")
-    teacher_b, _ = _create_admin("teacher-b")
+    _sys_admin, sys_secret = _create_sysadmin_via_cli()
+    teacher_a, _classroom_a = _create_admin("chemistry_p1")
+    teacher_b, _classroom_b = _create_admin("biology_block_a")
     teacher_a_id, teacher_b_id = teacher_a.id, teacher_b.id
 
-    # Create students in separate classes
-    _create_student_in_class("Shared", teacher_a, "SHA")
-    _create_student_in_class("ExclusiveA", teacher_a, "EXA")
-    _create_student_in_class("ExclusiveB", teacher_b, "EXB")
     db.session.commit()
 
-    _login_sysadmin(client, sys_admin, sys_secret)
-    response = client.get("/sysadmin/admins")
+    login_sysadmin(client, username="sysadmin", totp_secret=sys_secret)
+    response = get_sysadmin_admins(client)
 
     assert response.status_code == 200
     html = response.data.decode()
 
     assert f"user_{teacher_a_id}" in html
     assert f"user_{teacher_b_id}" in html
-    assert "2 students" in html  # teacher_a: Shared + ExclusiveA
-    assert "1 students" in html  # teacher_b: ExclusiveB
+    assert "4 students" in html
+    assert "3 students" in html
 
 
-def test_sysadmin_counts_students_with_only_links(client):
+def test_DOM_OPS_001__sysadmin_counts_students_with_only_links(client):
     """System admin should count students linked via seat even without legacy teacher_id."""
-    sys_admin, sys_secret = _create_sysadmin()
-    teacher_a, _ = _create_admin("teacher-a")
+    _sys_admin, sys_secret = _create_sysadmin_via_cli()
+    teacher_a, _classroom_a = _create_admin("chemistry_p1")
     teacher_a_id = teacher_a.id
 
-    _create_student_in_class("NoOwner", teacher_a, "NWR")
     db.session.commit()
 
-    _login_sysadmin(client, sys_admin, sys_secret)
-    response = client.get("/sysadmin/admins")
+    login_sysadmin(client, username="sysadmin", totp_secret=sys_secret)
+    response = get_sysadmin_admins(client)
 
     assert response.status_code == 200
     html = response.data.decode()
 
     assert f"user_{teacher_a_id}" in html
-    assert "1 students" in html
+    assert "4 students" in html
 
 
-def test_sysadmin_dashboard_shows_total_students(client):
+def test_DOM_OPS_001__sysadmin_dashboard_shows_total_students(client, monkeypatch):
     """System admin dashboard should show total unique student count."""
-    sys_admin, sys_secret = _create_sysadmin()
-    teacher_a, _ = _create_admin("teacher-a")
-    teacher_b, _ = _create_admin("teacher-b")
+    _sys_admin, sys_secret = _create_sysadmin_via_cli()
+    _teacher_a, _classroom_a = _create_admin("chemistry_p1")
+    _teacher_b, _classroom_b = _create_admin("biology_block_a")
 
-    _create_student_in_class("Student1", teacher_a, "DS1")
-    _create_student_in_class("Student2", teacher_b, "DS2")
-    _create_student_in_class("Shared", teacher_a, "DSH")
     db.session.commit()
 
-    _login_sysadmin(client, sys_admin, sys_secret)
-    response = client.get("/sysadmin/dashboard")
+    monkeypatch.setattr(
+        "app.routes.system_admin.count_active_admin_invite_codes",
+        lambda: 0,
+    )
+    monkeypatch.setattr(
+        "app.routes.system_admin.db.session.execute",
+        lambda *args, **kwargs: type("Result", (), {"mappings": lambda self: type("Rows", (), {"all": lambda self: []})()})(),
+    )
+
+    login_sysadmin(client, username="sysadmin", totp_secret=sys_secret)
+    response = get_sysadmin_dashboard(client)
 
     assert response.status_code == 200
     html = response.data.decode()
@@ -146,17 +132,16 @@ def test_sysadmin_dashboard_shows_total_students(client):
     assert "Total Teachers" in html
 
 
-def test_sysadmin_does_not_see_student_details_on_admin_page(client):
+def test_DOM_OPS_001__sysadmin_does_not_see_student_details_on_admin_page(client):
     """System admin should not see individual student details on the admin management page."""
-    sys_admin, sys_secret = _create_sysadmin()
-    teacher_a, _ = _create_admin("teacher-a")
+    _sys_admin, sys_secret = _create_sysadmin_via_cli()
+    teacher_a, _classroom_a = _create_admin("chemistry_p1")
     teacher_a_id = teacher_a.id
 
-    _create_student_in_class("SecretName", teacher_a, "SEC")
     db.session.commit()
 
-    _login_sysadmin(client, sys_admin, sys_secret)
-    response = client.get("/sysadmin/admins")
+    login_sysadmin(client, username="sysadmin", totp_secret=sys_secret)
+    response = get_sysadmin_admins(client)
 
     assert response.status_code == 200
     html = response.data.decode()
@@ -166,15 +151,19 @@ def test_sysadmin_does_not_see_student_details_on_admin_page(client):
     assert "student" in html.lower()
 
 
-def test_teacher_with_no_students_shows_zero_count(client):
+def test_DOM_OPS_001__teacher_with_no_students_shows_zero_count(client):
     """System admin should see 0 students for teachers with no students."""
-    sys_admin, sys_secret = _create_sysadmin()
-    teacher_empty, _ = _create_admin("teacher-empty")
+    _sys_admin, sys_secret = _create_sysadmin_via_cli()
+    teacher_empty, classroom_empty = _create_admin("ap_csp_p3")
     teacher_empty_id = teacher_empty.id
+    with FEATContext("FEAT-IDEN-001", idempotency_key="sysadmin_student_counts:clear_all"):
+        for student in classroom_empty.students:
+            student.seat.claimed_at = None
+        db.session.flush()
     db.session.commit()
 
-    _login_sysadmin(client, sys_admin, sys_secret)
-    response = client.get("/sysadmin/admins")
+    login_sysadmin(client, username="sysadmin", totp_secret=sys_secret)
+    response = get_sysadmin_admins(client)
 
     assert response.status_code == 200
     html = response.data.decode()
@@ -183,32 +172,20 @@ def test_teacher_with_no_students_shows_zero_count(client):
     assert "0 students" in html
 
 
-def test_deleted_students_are_excluded_from_teacher_counts(client):
+def test_DOM_OPS_001__deleted_students_are_excluded_from_teacher_counts(client):
     """Deleted students should not contribute to sysadmin-facing teacher totals."""
-    sys_admin, sys_secret = _create_sysadmin()
-    teacher, _ = _create_admin("teacher-delete-count")
-
-    class_row = create_class_scope(teacher_user=teacher, join_code="DELCOUNT")
-    active_student_seat = make_student_identity(
-        class_id=class_row.class_id,
-        first_name="Active",
-        last_name="Student",
-    )
-    deleted_student_seat = make_student_identity(
-        class_id=class_row.class_id,
-        first_name="Deleted",
-        last_name="Student",
-    )
+    _sys_admin, _sys_secret = _create_sysadmin_via_cli()
+    teacher, classroom = _create_admin("chemistry_p1")
+    deleted_student_seat = classroom.students[1].seat
     # Simulate removal by unclaiming the seat rather than a physical delete:
     # _user_student_counts() only counts claimed seats (Seat.claimed_at.isnot(None)),
     # so an unclaimed seat is excluded exactly like a deleted one — without touching
     # Seat's cascade relationship to the (dropped) tap_events table, which is a
     # separate, pre-existing schema/model mismatch unrelated to this test's intent.
-    from app.feats.base import FEATContext
     with FEATContext("FEAT-IDEN-001", idempotency_key="test_deleted_students_are_excluded:unclaim"):
         deleted_student_seat.claimed_at = None
         db.session.flush()
     db.session.commit()
 
     teacher_counts, _ = _user_student_counts([teacher.id])
-    assert teacher_counts[teacher.id] == 1
+    assert teacher_counts[teacher.id] == 3

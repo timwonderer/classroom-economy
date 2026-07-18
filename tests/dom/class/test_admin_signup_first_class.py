@@ -3,7 +3,7 @@ from app.models import ClassEconomy, Seat, User, UserRole
 from app.utils.auth_username import build_hashed_username_fields
 
 
-def test_admin_signup_provisions_initial_class(client, monkeypatch):
+def test_DOM_CLASS_001__admin_signup_provisions_initial_class(client, monkeypatch):
     monkeypatch.setattr("app.routes.admin.verify_turnstile_token", lambda *_args, **_kwargs: True)
     monkeypatch.setattr("app.routes.admin.pyotp.random_base32", lambda: "JBSWY3DPEHPK3PXP")
     monkeypatch.setattr("app.routes.admin.pyotp.TOTP.verify", lambda self, code: code == "123456")

@@ -1,14 +1,14 @@
 import os
 
 
-def test_health_allowed_during_maintenance(client, monkeypatch):
+def test_DOM_OPS_001__health_allowed_during_maintenance(client, monkeypatch):
     monkeypatch.setenv("MAINTENANCE_MODE", "1")
     response = client.get("/health")
     assert response.status_code == 200
     assert response.get_data(as_text=True) == "ok"
 
 
-def test_requests_show_maintenance_page(client, monkeypatch):
+def test_DOM_OPS_001__requests_show_maintenance_page(client, monkeypatch):
     monkeypatch.setenv("MAINTENANCE_MODE", "true")
     monkeypatch.setenv("MAINTENANCE_MESSAGE", "Routine upgrade in progress")
     monkeypatch.setenv("MAINTENANCE_EXPECTED_END", "Back at 2pm PT")
@@ -20,13 +20,13 @@ def test_requests_show_maintenance_page(client, monkeypatch):
     assert "Back at 2pm PT" in body
 
 
-def test_static_assets_not_blocked(client, monkeypatch):
+def test_DOM_OPS_001__static_assets_not_blocked(client, monkeypatch):
     monkeypatch.setenv("MAINTENANCE_MODE", "yes")
     response = client.get("/static/favicon.ico")
     assert response.status_code in {200, 404}
 
 
-def test_maintenance_badge_type_default(client, monkeypatch):
+def test_DOM_OPS_001__maintenance_badge_type_default(client, monkeypatch):
     """Test that badge_type defaults to 'maintenance' when not set."""
     monkeypatch.setenv("MAINTENANCE_MODE", "true")
     response = client.get("/")
@@ -36,7 +36,7 @@ def test_maintenance_badge_type_default(client, monkeypatch):
     assert 'const badgeType = "maintenance"' in body
 
 
-def test_maintenance_badge_type_bug(client, monkeypatch):
+def test_DOM_OPS_001__maintenance_badge_type_bug(client, monkeypatch):
     """Test that badge_type 'bug' is rendered correctly."""
     monkeypatch.setenv("MAINTENANCE_MODE", "true")
     monkeypatch.setenv("MAINTENANCE_BADGE_TYPE", "bug")
@@ -50,7 +50,7 @@ def test_maintenance_badge_type_bug(client, monkeypatch):
     assert "'BUG FIX IN PROGRESS'" in body or "BUG FIX IN PROGRESS" in body
 
 
-def test_maintenance_badge_type_security(client, monkeypatch):
+def test_DOM_OPS_001__maintenance_badge_type_security(client, monkeypatch):
     """Test that badge_type 'security' is rendered correctly."""
     monkeypatch.setenv("MAINTENANCE_MODE", "true")
     monkeypatch.setenv("MAINTENANCE_BADGE_TYPE", "security")
@@ -64,7 +64,7 @@ def test_maintenance_badge_type_security(client, monkeypatch):
     assert "'SECURITY PATCH'" in body or "SECURITY PATCH" in body
 
 
-def test_maintenance_badge_type_update(client, monkeypatch):
+def test_DOM_OPS_001__maintenance_badge_type_update(client, monkeypatch):
     """Test that badge_type 'update' is rendered correctly."""
     monkeypatch.setenv("MAINTENANCE_MODE", "true")
     monkeypatch.setenv("MAINTENANCE_BADGE_TYPE", "update")
@@ -78,7 +78,7 @@ def test_maintenance_badge_type_update(client, monkeypatch):
     assert "'SYSTEM UPDATE'" in body or "SYSTEM UPDATE" in body
 
 
-def test_maintenance_badge_type_feature(client, monkeypatch):
+def test_DOM_OPS_001__maintenance_badge_type_feature(client, monkeypatch):
     """Test that badge_type 'feature' is rendered correctly."""
     monkeypatch.setenv("MAINTENANCE_MODE", "true")
     monkeypatch.setenv("MAINTENANCE_BADGE_TYPE", "feature")
@@ -92,7 +92,7 @@ def test_maintenance_badge_type_feature(client, monkeypatch):
     assert "'NEW FEATURE DEPLOYMENT'" in body or "NEW FEATURE DEPLOYMENT" in body
 
 
-def test_maintenance_badge_type_unavailable(client, monkeypatch):
+def test_DOM_OPS_001__maintenance_badge_type_unavailable(client, monkeypatch):
     """Test that badge_type 'unavailable' is rendered correctly."""
     monkeypatch.setenv("MAINTENANCE_MODE", "true")
     monkeypatch.setenv("MAINTENANCE_BADGE_TYPE", "unavailable")
@@ -106,7 +106,7 @@ def test_maintenance_badge_type_unavailable(client, monkeypatch):
     assert "'SERVER UNAVAILABLE'" in body or "SERVER UNAVAILABLE" in body
 
 
-def test_maintenance_badge_type_error(client, monkeypatch):
+def test_DOM_OPS_001__maintenance_badge_type_error(client, monkeypatch):
     """Test that badge_type 'error' is rendered correctly."""
     monkeypatch.setenv("MAINTENANCE_MODE", "true")
     monkeypatch.setenv("MAINTENANCE_BADGE_TYPE", "error")
@@ -120,7 +120,7 @@ def test_maintenance_badge_type_error(client, monkeypatch):
     assert "'UNEXPECTED ERROR'" in body or "UNEXPECTED ERROR" in body
 
 
-def test_maintenance_badge_type_invalid_falls_back(client, monkeypatch):
+def test_DOM_OPS_001__maintenance_badge_type_invalid_falls_back(client, monkeypatch):
     """Test that an invalid badge_type falls back to maintenance config in JavaScript."""
     monkeypatch.setenv("MAINTENANCE_MODE", "true")
     monkeypatch.setenv("MAINTENANCE_BADGE_TYPE", "invalid_type")

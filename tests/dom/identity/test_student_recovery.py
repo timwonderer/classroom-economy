@@ -25,10 +25,13 @@ from app.utils.money_guard import check_financial_cooldown
 from app.utils.time import ensure_utc, utc_now
 from app.feats.base import FEATContext
 from app.hash_utils import hash_username_lookup
-from tests.helpers.v2_fixtures import seed_canonical_admin
-from tests.helpers.admin_context import login_teacher
-from tests.helpers.class_scope import create_class_scope, make_student_identity
-from tests.helpers.canonical_session import set_canonical_context
+from tests.helpers.classroom_initializer import initialize
+from tests.dom.identity.helpers import (
+    admin_generate_recovery_code,
+    student_create_username,
+    student_lookup_recovery_code,
+    student_setup_pin_passphrase,
+)
 
 
 # ----------------------------------------------------------------------
@@ -38,34 +41,22 @@ from tests.helpers.canonical_session import set_canonical_context
 @pytest.fixture
 def recovery_data(client):
     """Set up a teacher, class, and a claimed student for recovery tests."""
-    teacher = seed_canonical_admin("teacher_rec").user
+    class_row = initialize("chemistry_p1", client.application)
+    teacher = class_row.teacher_user
+    seat = class_row.students[0].seat
+    user = class_row.students[0].user
+    profile = class_row.students[0].profile
+    profile.first_name = "Original"
+    profile.last_name = "Student"
     db.session.flush()
-
-    join_code = "A123"
-    class_row = create_class_scope(
-        teacher_user=teacher,
-        join_code=join_code,
-        display_name="Recovery Class",
-    )
-    db.session.flush()
-
-    seat = make_student_identity(
-        class_id=class_row.class_id,
-        first_name="Original",
-        last_name="Student",
-        username="orig_student",
-        pin="1111",
-        claimed=True,
-    )
-    db.session.flush()
-
-    user = db.session.get(User, seat.user_id)
+    class_row.students[0].first_name = "Original"
+    class_row.students[0].last_name = "Student"
 
     return {
         "teacher": teacher,
         "user": user,
         "seat": seat,
-        "join_code": join_code,
+        "join_code": class_row.join_code,
         "class_id": class_row.class_id,
     }
 
@@ -74,17 +65,17 @@ def recovery_data(client):
 # Step 1 — Teacher Initiates Reset
 # ------------------------------------------------------------------
 
-def test_teacher_generates_reset_code(client, recovery_data):
+def test_DOM_IDEN_002__teacher_generates_reset_code(client, recovery_data):
     """Teacher posts to generate-code -> reset_code written to User."""
     teacher = recovery_data["teacher"]
     seat = recovery_data["seat"]
 
-    login_teacher(client, teacher, class_id=recovery_data["class_id"])
+    with client.session_transaction() as sess:
+        sess["user_id"] = teacher.id
+        sess["current_class_id"] = recovery_data["class_id"]
+        sess["current_seat_id"] = recovery_data["seat"].id
 
-    resp = client.post(
-        f"/recovery/admin/generate-code/{seat.id}",
-        follow_redirects=False,
-    )
+    resp = admin_generate_recovery_code(client, seat.id)
     # Redirects back to student detail on success
     assert resp.status_code == 302
 
@@ -95,19 +86,22 @@ def test_teacher_generates_reset_code(client, recovery_data):
     assert ensure_utc(linked_user.reset_code_expires_at) > utc_now()
 
 
-def test_multiple_resets_invalidate_prior_codes(client, recovery_data):
+def test_DOM_IDEN_002__multiple_resets_invalidate_prior_codes(client, recovery_data):
     """Multiple reset requests overwrite the previous reset code."""
     teacher = recovery_data["teacher"]
     seat = recovery_data["seat"]
 
-    login_teacher(client, teacher, class_id=recovery_data["class_id"])
+    with client.session_transaction() as sess:
+        sess["user_id"] = teacher.id
+        sess["current_class_id"] = recovery_data["class_id"]
+        sess["current_seat_id"] = recovery_data["seat"].id
 
-    client.post(f"/recovery/admin/generate-code/{seat.id}")
+    admin_generate_recovery_code(client, seat.id)
     linked_user = db.session.get(User, seat.user_id)
     db.session.refresh(linked_user)
     first_code = linked_user.reset_code
 
-    client.post(f"/recovery/admin/generate-code/{seat.id}")
+    admin_generate_recovery_code(client, seat.id)
     db.session.refresh(linked_user)
     second_code = linked_user.reset_code
 
@@ -119,7 +113,7 @@ def test_multiple_resets_invalidate_prior_codes(client, recovery_data):
 # Step 2 — Student Submits Reset Code
 # ------------------------------------------------------------------
 
-def test_student_lookup_success(client, recovery_data):
+def test_DOM_IDEN_002__student_lookup_success(client, recovery_data):
     """Valid reset_code -> credentials cleared, redirect to create-username."""
     user = recovery_data["user"]
 
@@ -129,9 +123,7 @@ def test_student_lookup_success(client, recovery_data):
     with FEATContext("FEAT-IDEN-002", idempotency_key="recovery:test_student_lookup_success"):
         db.session.flush()
 
-    resp = client.post("/recovery/lookup", data={
-        "reset_code": "RESET123",
-    }, follow_redirects=False)
+    resp = student_lookup_recovery_code(client, "RESET123", follow_redirects=False)
 
     assert resp.status_code == 302
     assert "/student/create-username" in resp.location
@@ -148,7 +140,7 @@ def test_student_lookup_success(client, recovery_data):
     assert user.reset_code_expires_at is None
 
 
-def test_student_lookup_expired_code(client, recovery_data):
+def test_DOM_IDEN_002__student_lookup_expired_code(client, recovery_data):
     """Expired reset_code -> generic error."""
     user = recovery_data["user"]
 
@@ -158,23 +150,19 @@ def test_student_lookup_expired_code(client, recovery_data):
     with FEATContext("FEAT-IDEN-002", idempotency_key="recovery:test_student_lookup_expired_code"):
         db.session.flush()
 
-    resp = client.post("/recovery/lookup", data={
-        "reset_code": "RESET123",
-    }, follow_redirects=True)
+    resp = student_lookup_recovery_code(client, "RESET123")
 
     assert b"Invalid or expired recovery code" in resp.data
 
 
-def test_student_lookup_nonexistent_code(client, recovery_data):
+def test_DOM_IDEN_002__student_lookup_nonexistent_code(client, recovery_data):
     """Completely invalid code -> generic error, no identity revealed."""
-    resp = client.post("/recovery/lookup", data={
-        "reset_code": "NOTEXIST",
-    }, follow_redirects=True)
+    resp = student_lookup_recovery_code(client, "NOTEXIST")
 
     assert b"Invalid or expired recovery code" in resp.data
 
 
-def test_recovery_does_not_create_new_user_row(client, recovery_data):
+def test_DOM_IDEN_002__recovery_does_not_create_new_user_row(client, recovery_data):
     """Recovering an account must not create a new User row."""
     user = recovery_data["user"]
     original_user_count = User.query.filter_by(user_role=UserRole.STUDENT).count()
@@ -185,14 +173,12 @@ def test_recovery_does_not_create_new_user_row(client, recovery_data):
     with FEATContext("FEAT-IDEN-002", idempotency_key="recovery:test_does_not_create_new_user_row"):
         db.session.flush()
 
-    client.post("/recovery/lookup", data={
-        "reset_code": "ROWTEST1",
-    }, follow_redirects=True)
+    student_lookup_recovery_code(client, "ROWTEST1")
 
     assert User.query.filter_by(user_role=UserRole.STUDENT).count() == original_user_count
 
 
-def test_recovery_preserves_seat_binding(client, recovery_data):
+def test_DOM_IDEN_002__recovery_preserves_seat_binding(client, recovery_data):
     """Recovery lookup must not disturb seat.user_id binding."""
     user = recovery_data["user"]
     seat = recovery_data["seat"]
@@ -203,16 +189,14 @@ def test_recovery_preserves_seat_binding(client, recovery_data):
     with FEATContext("FEAT-IDEN-002", idempotency_key="recovery:test_preserves_seat_binding"):
         db.session.flush()
 
-    client.post("/recovery/lookup", data={
-        "reset_code": "KEEPCLM1",
-    }, follow_redirects=False)
+    student_lookup_recovery_code(client, "KEEPCLM1", follow_redirects=False)
 
     db.session.refresh(seat)
     assert seat.user_id == user.id
     assert seat.claimed_at is not None
 
 
-def test_recovery_preserves_identity(client, recovery_data):
+def test_DOM_IDEN_002__recovery_preserves_identity(client, recovery_data):
     """Recovery lookup preserves IdentityProfile first_name/last_name."""
     user = recovery_data["user"]
     seat = recovery_data["seat"]
@@ -224,17 +208,11 @@ def test_recovery_preserves_identity(client, recovery_data):
         db.session.flush()
 
     with client.session_transaction() as sess:
-        set_canonical_context(
-            sess,
-            user_id=user.id,
-            class_id=seat.class_id,
-            seat_id=seat.id,
-            role="student",
-        )
+        sess["user_id"] = user.id
+        sess["current_class_id"] = seat.class_id
+        sess["current_seat_id"] = seat.id
 
-    client.post("/recovery/lookup", data={
-        "reset_code": "IDTEST01",
-    }, follow_redirects=True)
+    student_lookup_recovery_code(client, "IDTEST01")
 
     profile = IdentityProfile.query.filter_by(seat_id=seat.id).first()
     assert profile is not None
@@ -245,7 +223,7 @@ def test_recovery_preserves_identity(client, recovery_data):
 # Economic Invariance
 # ------------------------------------------------------------------
 
-def test_recovery_preserves_balance_and_transactions(client, recovery_data):
+def test_DOM_IDEN_002__recovery_preserves_balance_and_transactions(client, recovery_data):
     """Transaction count unchanged through recovery lookup."""
     user = recovery_data["user"]
     seat = recovery_data["seat"]
@@ -255,6 +233,9 @@ def test_recovery_preserves_balance_and_transactions(client, recovery_data):
         user_id=user.id,
         seat_id=seat.id,
         class_id=recovery_data["class_id"],
+        target_seat_id=seat.id,
+        actor_seat_id=seat.id,
+        mechanism="self",
         amount=200.0,
         type="deposit",
         description="Initial deposit",
@@ -274,17 +255,11 @@ def test_recovery_preserves_balance_and_transactions(client, recovery_data):
         db.session.flush()
 
     with client.session_transaction() as sess:
-        set_canonical_context(
-            sess,
-            user_id=user.id,
-            class_id=seat.class_id,
-            seat_id=seat.id,
-            role="student",
-        )
+        sess["user_id"] = user.id
+        sess["current_class_id"] = seat.class_id
+        sess["current_seat_id"] = seat.id
 
-    client.post("/recovery/lookup", data={
-        "reset_code": "PRESRV01",
-    }, follow_redirects=True)
+    student_lookup_recovery_code(client, "PRESRV01")
 
     tx_count_after = Transaction.query.filter_by(seat_id=seat.id, class_id=recovery_data["class_id"]).count()
     assert tx_count_after == tx_count_before
@@ -294,7 +269,7 @@ def test_recovery_preserves_balance_and_transactions(client, recovery_data):
 # Reset Code Security
 # ------------------------------------------------------------------
 
-def test_reset_code_invalid_after_credential_setup(client, recovery_data):
+def test_DOM_IDEN_002__reset_code_invalid_after_credential_setup(client, recovery_data):
     """Reset code is consumed and nulled after setup_pin_passphrase completes."""
     user = recovery_data["user"]
     join_code = recovery_data["join_code"]
@@ -309,20 +284,19 @@ def test_reset_code_invalid_after_credential_setup(client, recovery_data):
         db.session.flush()
 
     with client.session_transaction() as sess:
-        set_canonical_context(
-            sess,
-            user_id=user.id,
-            class_id=recovery_data["class_id"],
-            seat_id=recovery_data["seat"].id,
-            role="student",
-        )
+        sess["user_id"] = user.id
+        sess["current_class_id"] = recovery_data["class_id"]
+        sess["current_seat_id"] = recovery_data["seat"].id
 
-    client.post("/recovery/lookup", data={"reset_code": "ONETIME1"}, follow_redirects=True)
-    client.post("/student/create-username", data={"write_in_word": "planet"}, follow_redirects=True)
-    client.post("/student/setup-pin-passphrase", data={
-        "pin": "1234", "confirm_pin": "1234",
-        "passphrase": "updated-passphrase", "confirm_passphrase": "updated-passphrase",
-    }, follow_redirects=True)
+    student_lookup_recovery_code(client, "ONETIME1")
+    student_create_username(client, "planet")
+    student_setup_pin_passphrase(
+        client,
+        pin="1234",
+        confirm_pin="1234",
+        passphrase="updated-passphrase",
+        confirm_passphrase="updated-passphrase",
+    )
 
     db.session.refresh(user)
     assert user.reset_code is None
@@ -330,23 +304,26 @@ def test_reset_code_invalid_after_credential_setup(client, recovery_data):
     assert user.pin_hash is not None
 
     # Attempt reuse
-    resp = client.post("/recovery/lookup", data={"reset_code": "ONETIME1"}, follow_redirects=True)
+    resp = student_lookup_recovery_code(client, "ONETIME1")
     assert b"Invalid or expired recovery code" in resp.data
 
 
-def test_only_one_active_reset_code_per_user(client, recovery_data):
+def test_DOM_IDEN_002__only_one_active_reset_code_per_user(client, recovery_data):
     """Generating a second reset code overwrites the first on the User row."""
     teacher = recovery_data["teacher"]
     seat = recovery_data["seat"]
     user = recovery_data["user"]
 
-    login_teacher(client, teacher, class_id=recovery_data["class_id"])
+    with client.session_transaction() as sess:
+        sess["user_id"] = teacher.id
+        sess["current_class_id"] = recovery_data["class_id"]
+        sess["current_seat_id"] = recovery_data["seat"].id
 
-    client.post(f"/recovery/admin/generate-code/{seat.id}")
+    admin_generate_recovery_code(client, seat.id)
     db.session.refresh(user)
     first_code = user.reset_code
 
-    client.post(f"/recovery/admin/generate-code/{seat.id}")
+    admin_generate_recovery_code(client, seat.id)
     db.session.refresh(user)
 
     assert user.reset_code != first_code
@@ -359,7 +336,7 @@ def test_only_one_active_reset_code_per_user(client, recovery_data):
 # Edge Cases
 # ------------------------------------------------------------------
 
-def test_interrupting_reclaim_after_lookup(client, recovery_data):
+def test_DOM_IDEN_002__interrupting_reclaim_after_lookup(client, recovery_data):
     """After lookup, credentials cleared; identity profile preserved."""
     user = recovery_data["user"]
     seat = recovery_data["seat"]
@@ -373,7 +350,7 @@ def test_interrupting_reclaim_after_lookup(client, recovery_data):
         user.passphrase_hash = None
         db.session.flush()
 
-    resp = client.post("/recovery/lookup", data={"reset_code": "MIDFLOW1"}, follow_redirects=False)
+    resp = student_lookup_recovery_code(client, "MIDFLOW1", follow_redirects=False)
     assert resp.status_code == 302
 
     db.session.refresh(user)
@@ -390,7 +367,7 @@ def test_interrupting_reclaim_after_lookup(client, recovery_data):
     assert profile.first_name == "Original"
 
 
-def test_recovery_username_uses_random_segment(client, recovery_data, monkeypatch):
+def test_DOM_IDEN_002__recovery_username_uses_random_segment(client, recovery_data, monkeypatch):
     """Recovery username generation stores value in session."""
     user = recovery_data["user"]
     seat = recovery_data["seat"]
@@ -405,19 +382,15 @@ def test_recovery_username_uses_random_segment(client, recovery_data, monkeypatc
         db.session.flush()
 
     with client.session_transaction() as sess:
-        set_canonical_context(
-            sess,
-            user_id=user.id,
-            class_id=recovery_data["class_id"],
-            seat_id=seat.id,
-            role="student",
-        )
+        sess["user_id"] = user.id
+        sess["current_class_id"] = recovery_data["class_id"]
+        sess["current_seat_id"] = seat.id
 
-    client.post("/recovery/lookup", data={"reset_code": "RAND4001"}, follow_redirects=False)
+    student_lookup_recovery_code(client, "RAND4001", follow_redirects=False)
 
     monkeypatch.setattr("app.routes.student.random.randint", lambda _a, _b: 4242)
 
-    resp = client.post("/student/create-username", data={"write_in_word": "galaxy"}, follow_redirects=False)
+    resp = student_create_username(client, "galaxy", follow_redirects=False)
     assert resp.status_code == 302
 
     with client.session_transaction() as sess:
@@ -427,14 +400,8 @@ def test_recovery_username_uses_random_segment(client, recovery_data, monkeypatc
     assert "4242" in generated_username
 
 
-def test_claim_account_resolves_join_code_to_class_id(client):
-    teacher = seed_canonical_admin("claim_teacher").user
-    db.session.flush()
-    class_row = create_class_scope(
-        teacher_user=teacher,
-        join_code="CLAIM123",
-        display_name="Claim Class",
-    )
+def test_DOM_IDEN_006__claim_account_resolves_join_code_to_class_id(client):
+    class_row = initialize("chemistry_p1", client.application)
     from app.models import Seat, User, UserRole
     with FEATContext("FEAT-IDEN-001", idempotency_key="claim_account:test_unclaimed_seat"):
         student = User(user_role=UserRole.STUDENT, username_hash="claim-student")
@@ -464,7 +431,7 @@ def test_claim_account_resolves_join_code_to_class_id(client):
     resp = client.post(
         "/student/claim-account",
         data={
-            "join_code": "CLAIM123",
+            "join_code": class_row.join_code,
             "first_name": "First",
             "last_name": "Last",
         },
@@ -482,7 +449,7 @@ def test_claim_account_resolves_join_code_to_class_id(client):
 # Financial Cooldown Utility (money_guard.check_financial_cooldown)
 # ------------------------------------------------------------------
 
-def test_financial_cooldown_always_permits(recovery_data):
+def test_DOM_IDEN_002__financial_cooldown_always_permits(recovery_data):
     """check_financial_cooldown always returns (True, '') after field removal."""
     seat = recovery_data["seat"]
     allowed, msg = check_financial_cooldown(seat)
