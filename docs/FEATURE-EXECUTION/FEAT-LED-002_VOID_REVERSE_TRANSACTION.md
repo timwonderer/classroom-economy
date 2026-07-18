@@ -2,13 +2,15 @@
 
 | Reference Number | Version | Effective Date | Supersedes | Authority Level |
 | :--- | :--- | :--- | :--- | :--- |
-| FEAT-LED-002 | 1.0 | 2026-04-23 | N/A | Normative |
+| FEAT-LED-002 | 1.1 | 2026-07-18 | 1.0 | Normative |
 
 ---
 
 ## I. Purpose
 
 This FEAT is a **Core Orchestrator** (aliased as `FEAT-MONEY-VOID`). It is the high-integrity mechanism for reversing previous financial operations. It ensures that a void is not just a balance adjustment, but a traceable link in a transaction chain.
+
+The original transaction remains immutable. Voiding is represented by a new compensating ledger fact rather than mutation of the original row.
 
 ---
 
@@ -31,8 +33,8 @@ This FEAT is a **Core Orchestrator** (aliased as `FEAT-MONEY-VOID`). It is the h
 ### 1. Verification Phase (Read-Only)
 1. **State Validation**: Verify that the `original_transaction`:
     * Exists in `DOM-LED`.
-    * Has not already been voided (`voided_at` is NULL).
-    * Is not itself a `VOID` type transaction.
+    * Has not already been compensated by a later reversal transaction.
+    * Is not itself a terminal compensating transaction.
 2. **Authorization Guard**: Call `DOM-OPS.check_void_authorization(actor_id, original_transaction_id)`.
 3. **Linked State Identification**: Identify any downstream effects that must be reversed (e.g., linked `Entitlements` in `DOM-STORE` or `Obligation` status in `DOM-OBL`).
 
@@ -46,7 +48,7 @@ This FEAT is a **Core Orchestrator** (aliased as `FEAT-MONEY-VOID`). It is the h
         * `description`: `Reversal of [original_id]: [reason]`.
         * `correlation_id`: The current extended correlation chain.
 2. **Audit Finalization**:
-    * Update the `original_transaction` record: set `voided_at = NOW`, `voided_by = actor_id`.
+    * Record the compensation as a new immutable ledger transaction linked through `correlation_id` and transaction type.
 3. **Linked State Reversal**:
     * If linked to an `Entitlement`: Call `DOM-STORE` to set `status = REVOKED`.
     * If linked to an `Obligation`: Call `DOM-OBL` to set `status = VOIDED`.
@@ -58,8 +60,8 @@ This FEAT is a **Core Orchestrator** (aliased as `FEAT-MONEY-VOID`). It is the h
 ## IV. Invariants & Constraints
 
 1. **Exact Reversal**: A `VOID` operation MUST reverse the exact integer amount of the original. Partial voids are PROHIBITED; a partial correction MUST be handled as a `VOID` followed by a new `FEAT-LED-001` entry.
-2. **Chain Integrity**: A voided transaction record is permanent; it MUST NOT be deleted.
-3. **No Double-Void**: Idempotency MUST ensure that multiple void requests for the same transaction result in only one reversal.
+2. **Chain Integrity**: The original transaction record is permanent; it MUST NOT be updated to represent the reversal.
+3. **No Double-Void**: Idempotency MUST ensure that multiple void requests for the same transaction result in only one compensating reversal.
 
 ---
 

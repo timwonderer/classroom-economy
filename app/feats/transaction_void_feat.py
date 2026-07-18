@@ -111,6 +111,9 @@ def _void_purchase(tx: Transaction) -> None:
     ledger_service.create_pending_transaction(
         seat_id=tx.seat_id,
         class_id=tx.class_id,
+        target_seat_id=tx.seat_id,
+        actor_seat_id=tx.actor_seat_id or tx.seat_id,
+        mechanism=tx.mechanism.value if getattr(tx, "mechanism", None) else "system",
         user_id=tx.user_id,
         amount=Decimal('0.00'),
         account_type=tx.account_type or 'checking',

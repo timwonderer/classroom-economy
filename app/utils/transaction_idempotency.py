@@ -6,6 +6,7 @@ from app.models import Transaction
 
 IDEMPOTENT_TRANSACTION_TYPES = frozenset({
     "insurance_reimbursement",
+    "insurance_premium",
     "purchase",
     "refund",
     "overdraft_fee",
@@ -75,7 +76,8 @@ def get_idempotent_transaction(idempotency_key, class_id=None, seat_id=None, typ
 
 _TRANSACTION_AUDIT_FIELDS = [
     "amount", "account_type", "type", "status",
-    "class_id", "seat_id", "description", "correlation_id",
+    "class_id", "seat_id", "target_seat_id", "actor_seat_id",
+    "mechanism", "description", "correlation_id",
 ]
 
 
@@ -84,6 +86,9 @@ def create_idempotent_transaction(
     idempotency_key,
     seat_id,
     class_id,
+    target_seat_id,
+    actor_seat_id,
+    mechanism,
     user_id=None,
     amount,
     account_type,
@@ -109,7 +114,7 @@ def create_idempotent_transaction(
     existing = get_idempotent_transaction(
         idempotency_key,
         class_id=class_id,
-        seat_id=seat_id,
+        seat_id=target_seat_id,
         type=transaction_type,
         feat_code=feat_code,
     )
@@ -120,6 +125,9 @@ def create_idempotent_transaction(
         idempotency_key=idempotency_key,
         feat_code=feat_code,
         seat_id=seat_id,
+        target_seat_id=target_seat_id,
+        actor_seat_id=actor_seat_id,
+        mechanism=mechanism,
         class_id=class_id,
         user_id=user_id,
         amount=amount,
@@ -141,7 +149,7 @@ def create_idempotent_transaction(
             existing = get_idempotent_transaction(
                 idempotency_key,
                 class_id=class_id,
-                seat_id=seat_id,
+                seat_id=target_seat_id,
                 type=transaction_type,
                 feat_code=feat_code,
             )

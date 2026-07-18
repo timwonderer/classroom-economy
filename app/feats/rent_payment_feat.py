@@ -69,6 +69,9 @@ def execute_rent_payment(
     transaction = ledger_service.create_pending_transaction(
         seat_id=seat.id,
         class_id=class_id,
+        target_seat_id=seat.id,
+        actor_seat_id=seat.id,
+        mechanism="self",
         user_id=user_id,
         amount=-payment_amount,
         account_type='checking',

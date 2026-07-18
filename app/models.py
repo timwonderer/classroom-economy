@@ -89,6 +89,12 @@ class AccountType(str, enum.Enum):
     CHECKING = 'checking'
     SAVINGS = 'savings'
 
+
+class LedgerMechanism(str, enum.Enum):
+    SELF = 'self'
+    TEACHER = 'teacher'
+    SYSTEM = 'system'
+
 class UserRole(str, enum.Enum):
     STUDENT = 'student'
     TEACHER = 'teacher'
@@ -376,6 +382,8 @@ class Transaction(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     # seat_id is the canonical ledger anchor.
     seat_id = db.Column(db.Integer, db.ForeignKey('seats.id', ondelete='CASCADE'), nullable=False, index=True)
+    target_seat_id = db.Column(db.Integer, db.ForeignKey('seats.id', ondelete='CASCADE'), nullable=False, index=True)
+    actor_seat_id = db.Column(db.Integer, db.ForeignKey('seats.id', ondelete='CASCADE'), nullable=False, index=True)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
 
     # CRITICAL: class_id is the canonical anchor for class isolation.
@@ -383,6 +391,13 @@ class Transaction(db.Model):
     # at the boundary, but it is never the runtime authority.
     join_code = db.Column(db.String(20), nullable=True, index=True)
     class_id = db.Column(db.String(36), db.ForeignKey('classes.class_id', ondelete='CASCADE'), nullable=True, index=True)
+
+    mechanism = db.Column(
+        db.Enum(LedgerMechanism, values_callable=lambda x: [e.value for e in x], name='ledger_mechanism_enum'),
+        nullable=False,
+        default=LedgerMechanism.SELF,
+        server_default=LedgerMechanism.SELF.value,
+    )
 
     # CRITICAL: Use Numeric for exact decimal representation to avoid floating-point errors
     # Float causes bugs: -0.00 overdraft fees, unpayable rent balances
@@ -425,16 +440,19 @@ class Transaction(db.Model):
     lineage_token    = db.Column(db.String(64), nullable=True)
     lineage_version  = db.Column(db.Integer, nullable=True, default=1)
 
-    # Relationship to track which teacher created this transaction
+    # Relationship to track which actor and target seat the transaction binds to
     teacher = db.relationship('User', backref=db.backref('transactions', lazy='dynamic'))
-    seat = db.relationship('Seat', backref=db.backref('transactions', lazy='dynamic'))
+    seat = db.relationship('Seat', backref=db.backref('transactions', lazy='dynamic'), foreign_keys=[seat_id])
+    target_seat = db.relationship('Seat', foreign_keys=[target_seat_id], post_update=True)
+    actor_seat = db.relationship('Seat', foreign_keys=[actor_seat_id], post_update=True)
 
     __table_args__ = (
         db.Index('ix_transaction_seat_ledger', 'join_code', 'seat_id', 'status', 'account_type'),
+        db.Index('ix_transaction_class_scope', 'class_id', 'target_seat_id', 'actor_seat_id', 'account_type'),
         db.Index(
             'uq_transaction_idempotency_scope',
             'class_id',
-            'seat_id',
+            'target_seat_id',
             'feat_code',
             'idempotency_key',
             'type',
@@ -450,7 +468,7 @@ def _enforce_transaction_integrity(_mapper, _connection, target):
     """
     Enforce FEAT Constitutional Invariants on every ledger write.
     1. Synchronize amount_cents.
-    2. Auto-populate seat_id and class_id if possible.
+    2. Auto-populate canonical target/actor seat fields and class_id if possible.
     3. Assert correlation_id in Tier 1 paths.
     4. Auto-populate feat_code from active context.
     """
@@ -491,21 +509,21 @@ def _enforce_transaction_integrity(_mapper, _connection, target):
         from app.feats.base import FEATContextError
         raise FEATContextError("MANDATORY FEAT CONSTITUTIONAL VIOLATION: Ledger mutation outside of FEAT context.")
 
-    if not target.class_id and target.seat_id:
+    if not target.class_id and target.target_seat_id:
         seat_class_id = _connection.execute(
             sa.text("SELECT class_id FROM seats WHERE id = :seat_id LIMIT 1"),
-            {"seat_id": target.seat_id},
+            {"seat_id": target.target_seat_id},
         ).scalar()
         if seat_class_id:
             target.class_id = str(seat_class_id)
 
-    if not target.seat_id and getattr(target, "user_id", None) and target.class_id:
-        resolved_seat_id = _connection.execute(
-            sa.text("SELECT id FROM seats WHERE user_id = :user_id AND class_id = :class_id LIMIT 1"),
-            {"user_id": target.user_id, "class_id": target.class_id},
-        ).scalar()
-        if resolved_seat_id:
-            target.seat_id = int(resolved_seat_id)
+    if target.actor_seat_id and target.class_id:
+        actor_class_id = _connection.execute(
+            sa.text("SELECT class_id FROM seats WHERE id = :seat_id LIMIT 1"),
+            {"seat_id": target.actor_seat_id},
+            ).scalar()
+        if actor_class_id and str(actor_class_id) != str(target.class_id):
+            raise ValueError("FATAL: Actor seat is outside the transaction class scope.")
 
     # 5. Global Format Validation
     state = sa.inspect(target)
@@ -603,6 +621,7 @@ class AttendanceSession(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     seat_id = db.Column(db.Integer, db.ForeignKey('seats.id', ondelete='CASCADE'), nullable=False, index=True)
+    actor_seat_id = db.Column(db.Integer, db.ForeignKey('seats.id', ondelete='SET NULL'), nullable=True, index=True)
     class_id = db.Column(db.String(36), db.ForeignKey('classes.class_id', ondelete='CASCADE'), nullable=False, index=True)
 
     started_at = db.Column(db.DateTime(timezone=True), nullable=False, index=True)
@@ -621,6 +640,7 @@ class AttendanceSession(db.Model):
     deleted_by_seat_id = db.Column(db.Integer, db.ForeignKey('seats.id', ondelete='SET NULL'), nullable=True)
 
     seat = db.relationship("Seat", foreign_keys=[seat_id], backref=db.backref("attendance_sessions", passive_deletes=True))
+    actor_seat = db.relationship("Seat", foreign_keys=[actor_seat_id], post_update=True)
 
     @property
     def timestamp(self):

@@ -133,6 +133,7 @@ class BankingSetting(Base, TimestampMixin):
 class AttendanceSession(Base, TimestampMixin):
     __tablename__ = "attendance_sessions"
     id = sa.Column(sa.Integer, primary_key=True)
+    actor_seat_id = sa.Column(sa.Integer, sa.ForeignKey("seats.id", ondelete="SET NULL"), nullable=True, index=True)
 
 
 class HallPassLog(Base, TimestampMixin):

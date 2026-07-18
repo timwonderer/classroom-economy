@@ -8,6 +8,7 @@ import logging
 from datetime import datetime, timezone, timedelta
 from app.utils.time import get_class_cycle_start_utc, utc_now
 from app.feats.base import feat_shell
+from app.utils.insurance_billing import get_insurance_billing_snapshot
 
 
 @feat_shell("FEAT-ATTN-001")
@@ -246,6 +247,88 @@ def run_rent_cycle_scheduler(execution_time=None):
     return outcomes
 
 
+def _get_active_insurance_policy_version(class_id: str):
+    from app.models import PolicyVersion
+
+    return (
+        PolicyVersion.query.filter_by(class_id=class_id, domain="insurance", is_active=True)
+        .order_by(PolicyVersion.version_number.desc(), PolicyVersion.id.desc())
+        .first()
+    )
+
+
+@feat_shell("FEAT-OBL-003")
+def run_insurance_cycle_for_class(class_id: str, execution_time):
+    """Execute one insurance cycle for one class, evaluated per seat."""
+    from app.extensions import db
+    from app.models import ObligationAssessment, Seat
+    from app.feats.insurance_cycle_feat import execute_scheduled_insurance_charge
+
+    execution_time = execution_time or utc_now()
+    policy_version = _get_active_insurance_policy_version(class_id)
+    if not policy_version:
+        return {"status": "skipped", "reason": "insurance_disabled_or_missing", "class_id": class_id}
+
+    snapshot = get_insurance_billing_snapshot(policy_version)
+    seats = Seat.query.filter(
+        Seat.class_id == class_id,
+        Seat.role == "student",
+        Seat.claimed_at.is_not(None),
+    ).all()
+
+    charged = 0
+    skipped_existing = 0
+
+    for seat in seats:
+        idem_key = f"insurance_cycle:{class_id}:{seat.id}:{execution_time.isoformat()}"
+        existing = ObligationAssessment.query.filter_by(
+            class_id=class_id,
+            seat_id=seat.id,
+            cycle_idempotency_key=idem_key,
+            obligation_type="INSURANCE_PREMIUM",
+        ).first()
+        if existing:
+            skipped_existing += 1
+            continue
+
+        execute_scheduled_insurance_charge(
+            seat=seat,
+            policy_version=policy_version,
+            class_id=class_id,
+            execution_time=execution_time,
+            idempotency_key=idem_key,
+        )
+        charged += 1
+
+    db.session.flush()
+    return {
+        "status": "ok",
+        "class_id": class_id,
+        "charged": charged,
+        "skipped_existing": skipped_existing,
+        "cycle_length_days": snapshot["cycle_length_days"],
+    }
+
+
+def run_insurance_cycle_scheduler(execution_time=None):
+    """Iterate all insurance-enabled classes and execute one insurance cycle per class."""
+    from app.models import PolicyVersion
+
+    execution_time = execution_time or utc_now()
+    class_ids = [
+        class_id for (class_id,) in
+        PolicyVersion.query.filter_by(domain="insurance", is_active=True)
+        .with_entities(PolicyVersion.class_id)
+        .distinct()
+        .all()
+    ]
+
+    outcomes = []
+    for class_id in class_ids:
+        outcomes.append(run_insurance_cycle_for_class(class_id, execution_time))
+    return outcomes
+
+
 def run_audit_invariant_check_job():
     """Nightly audit chain integrity verification.
 
@@ -302,6 +385,10 @@ def init_scheduled_tasks(app):
         with app.app_context():
             run_rent_cycle_scheduler()
 
+    def run_scheduled_insurance_cycles():
+        with app.app_context():
+            run_insurance_cycle_scheduler()
+
     def run_audit_invariant_check():
         with app.app_context():
             run_audit_invariant_check_job()
@@ -341,6 +428,17 @@ def init_scheduled_tasks(app):
             max_instances=1
         )
 
+        scheduler.add_job(
+            func=run_scheduled_insurance_cycles,
+            trigger='cron',
+            hour='*',
+            minute=10,
+            id='run_insurance_cycles',
+            name='Run seat-scoped insurance cycles',
+            replace_existing=True,
+            max_instances=1
+        )
+
         # Nightly audit chain integrity check — runs at 3 AM UTC (after maintenance)
         scheduler.add_job(
             func=run_audit_invariant_check,
@@ -357,6 +455,7 @@ def init_scheduled_tasks(app):
         logger.info(
             "Scheduled tasks initialized: auto tap-out (hourly), "
             "database maintenance (2 AM UTC), rent cycles (hourly), "
+            "insurance cycles (hourly), "
             "audit invariant check (3 AM UTC)"
         )
     else:

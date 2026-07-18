@@ -12,7 +12,8 @@ from app.feats.base import feat_shell, audit_protected
 # Protected fields captured in the audit payload for every ledger write
 _TRANSACTION_AUDIT_FIELDS = [
     "amount", "account_type", "type", "status",
-    "class_id", "seat_id", "description", "correlation_id",
+    "class_id", "seat_id", "target_seat_id", "actor_seat_id",
+    "mechanism", "description", "correlation_id",
 ]
 
 
@@ -53,6 +54,21 @@ def _get_balance_cache(seat_id: int, class_id: str):
     if not class_id or not seat_id:
         raise ValueError("FATAL: Balance lookup requires class_id and seat_id.")
     return LedgerBalanceSnapshot.query.filter_by(seat_id=seat_id, class_id=class_id).first()
+
+
+def resolve_class_authority_seat_id(class_id: str) -> int:
+    """Resolve the class-level teacher seat that owns scheduled authority for a class."""
+    if not class_id:
+        raise ValueError("FATAL: class_id is required to resolve class authority.")
+    authority_seat = (
+        db.session.query(Seat)
+        .filter(Seat.class_id == class_id, Seat.role == "teacher")
+        .order_by(Seat.id.asc())
+        .first()
+    )
+    if authority_seat is None:
+        raise ValueError(f"FATAL: No teacher seat found for class_id={class_id}.")
+    return authority_seat.id
 
 
 def _get_posted_balance_fallback(seat_id: int, class_id: str, account_type: str) -> Decimal:
@@ -119,6 +135,9 @@ def create_pending_transaction(
     *,
     seat_id: int,
     class_id: str,
+    target_seat_id: int,
+    actor_seat_id: int,
+    mechanism: str,
     user_id: int | None = None,
     amount,
     account_type: str,
@@ -134,11 +153,14 @@ def create_pending_transaction(
 
     transaction = Transaction(  # FEAT-AUTHORIZED-DIRECT-TX
         seat_id=seat_id,
+        target_seat_id=target_seat_id,
+        actor_seat_id=actor_seat_id,
         class_id=class_id,
         user_id=user_id,
         amount=_quantize_currency(amount),
         account_type=account_type,
         status=TransactionStatus.PENDING,
+        mechanism=mechanism,
         type=type,
         description=description,
         original_transaction_id=original_transaction_id,
@@ -157,6 +179,9 @@ def create_pending_transaction_idempotent(
     idempotency_key: str,
     seat_id: int,
     class_id: str,
+    target_seat_id: int,
+    actor_seat_id: int,
+    mechanism: str,
     user_id: int | None = None,
     amount,
     account_type: str,
@@ -170,6 +195,9 @@ def create_pending_transaction_idempotent(
         idempotency_key=idempotency_key,
         seat_id=seat_id,
         class_id=class_id,
+        target_seat_id=target_seat_id,
+        actor_seat_id=actor_seat_id,
+        mechanism=mechanism,
         user_id=user_id,
         amount=_quantize_currency(amount),
         account_type=account_type,
@@ -202,6 +230,9 @@ def compensate_posted_transaction(
             idempotency_key=idempotency_key,
             seat_id=transaction.seat_id,
             class_id=transaction.class_id,
+            target_seat_id=transaction.target_seat_id,
+            actor_seat_id=transaction.actor_seat_id,
+            mechanism=transaction.mechanism,
             user_id=transaction.user_id,
             amount=compensation_amount,
             account_type=transaction.account_type or "checking",
@@ -214,6 +245,9 @@ def compensate_posted_transaction(
         reversal_tx = create_pending_transaction(
             seat_id=transaction.seat_id,
             class_id=transaction.class_id,
+            target_seat_id=transaction.target_seat_id,
+            actor_seat_id=transaction.actor_seat_id,
+            mechanism=transaction.mechanism,
             user_id=transaction.user_id,
             amount=compensation_amount,
             account_type=transaction.account_type or "checking",
@@ -246,6 +280,9 @@ def create_transfer_pair(
     withdraw_tx = create_pending_transaction(
         seat_id=seat_id,
         class_id=class_id,
+        target_seat_id=seat_id,
+        actor_seat_id=seat_id,
+        mechanism="self",
         user_id=user_id,
         amount=-quantized_amount,
         account_type=from_account,
@@ -255,6 +292,9 @@ def create_transfer_pair(
     deposit_tx = create_pending_transaction(
         seat_id=seat_id,
         class_id=class_id,
+        target_seat_id=seat_id,
+        actor_seat_id=seat_id,
+        mechanism="self",
         user_id=user_id,
         amount=quantized_amount,
         account_type=to_account,
@@ -376,6 +416,9 @@ def _apply_monthly_savings_interest(seat, *, annual_rate=Decimal("0.045")):
     return create_pending_transaction(
         seat_id=seat.id,
         class_id=seat.class_id,
+        target_seat_id=seat.id,
+        actor_seat_id=seat.id,
+        mechanism="self",
         user_id=seat.user_id,
         amount=interest,
         account_type="savings",

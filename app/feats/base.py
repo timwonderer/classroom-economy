@@ -111,6 +111,7 @@ FEAT_REGISTRY = {
     "FEAT-ADMN-001": {"domain": "Logistics", "blast_radius": "LOW", "desc": "Bulk administration"},
     "FEAT-OBL-001": {"domain": "Obligations", "blast_radius": "MED", "desc": "Rent Payment"},
     "FEAT-OBL-002": {"domain": "Obligations", "blast_radius": "MED", "desc": "Scheduled Rent Cycle"},
+    "FEAT-OBL-003": {"domain": "Obligations", "blast_radius": "MED", "desc": "Scheduled Insurance Cycle"},
     "FEAT-OPS-001": {"domain": "Operations", "blast_radius": "MED", "desc": "Maintenance/Cleanup Operations"},
     "FEAT-SUP-001": {"domain": "Support", "blast_radius": "LOW", "desc": "Issue Submission and Category Setup"},
 }

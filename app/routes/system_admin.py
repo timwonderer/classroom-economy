@@ -1943,6 +1943,9 @@ def resolve_escalated_issue(issue_ref):
             reward_transaction = ledger_service.create_pending_transaction(
                 seat_id=reward_seat.id,
                 class_id=reward_class.class_id if reward_class else None,
+                target_seat_id=reward_seat.id,
+                actor_seat_id=reward_seat.id,
+                mechanism="system",
                 user_id=reward_seat.user_id,
                 amount=reward_amount_value,
                 account_type='checking',

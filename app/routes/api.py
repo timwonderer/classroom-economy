@@ -812,6 +812,9 @@ def use_item():
             create_pending_transaction(
                 seat_id=student_item.seat_id,
                 class_id=student_item.class_id,
+                target_seat_id=student_item.seat_id,
+                actor_seat_id=student_item.seat_id,
+                mechanism="self",
                 amount=Decimal('0.00'),
                 account_type='checking',
                 type='redemption',
@@ -1968,6 +1971,7 @@ def handle_tap():
 
         feat_apply_standard_tap_mutations(
             seat_id=seat_id,
+            actor_seat_id=context.seat_id,
             class_id=class_id,
             normalized_action=normalized_action,
             reason=reason,
@@ -2278,8 +2282,11 @@ def set_timezone():
 @admin_required
 def get_block_tap_settings():
     """
-    Get tap_enabled settings for all students in a specific block.
-    Returns true if any student has tap enabled, false if all are disabled.
+    Get tap_enabled state for all claimed student seats in the active class.
+
+    The legacy ?block= parameter is accepted but ignored — seat.block was
+    dropped (migration 7c3d4e5f6a7b); scoping is by class_id only (DOM-IDEN-007).
+    Returns {"tap_enabled": true} if ANY seat has tap enabled; false if ALL are disabled.
     """
     context = getattr(g, "canonical_context", None)
     active_class_id = context.class_id if context else None
@@ -2293,48 +2300,28 @@ def get_block_tap_settings():
     has_class_scope = _admin_has_class_scope(context, active_class_id)
     if not has_class_scope:
         return jsonify({"error": "Unauthorized"}), 403
-    
-    section = request.args.get('block', '').strip().upper()
-    if not section:
-        return jsonify({"error": "Section parameter is required"}), 400
-    
-    from app.models import SeatAttendanceState
-    
-    class_id = active_class_id
 
-    # Get all claimed seats for this admin, section, and class
-    all_seats = Seat.query.filter(
-        Seat.class_id == class_id,
-        Seat.claimed_at.isnot(None)
+    # ?block param accepted for backwards-compat but not used for scoping (DOM-IDEN-007)
+
+    from app.models import SeatAttendanceState
+
+    seats = Seat.query.filter(
+        Seat.class_id == active_class_id,
+        Seat.role == 'student',
+        Seat.claimed_at.isnot(None),
     ).all()
-    
-    seats = [
-        s for s in all_seats
-        if section in [b.strip().upper() for b in (s.block or "").split(",") if b.strip()]
-    ]
 
     if not seats:
-        # No claimed seats in this section, default to enabled
-        return jsonify({"tap_enabled": True})
-    
-    # Check if tap is enabled for any seat in this section
-    any_enabled = False
-    for seat in seats:
-        state = SeatAttendanceState.query.filter_by(
-            seat_id=seat.id,
-            class_id=class_id,
-        ).first()
-        
-        if state:
-            if state.tap_enabled:
-                any_enabled = True
-                break
-        else:
-            # No SeatAttendanceState record means tap is enabled by default
-            any_enabled = True
-            break
-    
-    return jsonify({"tap_enabled": any_enabled})
+        return jsonify({"tap_enabled": True, "seat_count": 0})
+
+    # tap_enabled defaults to True when no SeatAttendanceState row exists
+    any_enabled = any(
+        (SeatAttendanceState.query.filter_by(seat_id=s.id, class_id=active_class_id).first() or
+         type("_", (), {"tap_enabled": True})()).tap_enabled
+        for s in seats
+    )
+
+    return jsonify({"tap_enabled": any_enabled, "seat_count": len(seats)})
 
 
 @api_bp.route('/admin/block-tap-settings', methods=['POST'])

@@ -47,6 +47,9 @@ def execute_insurance_purchase(
     premium_tx = ledger_service.create_pending_transaction(
         seat_id=seat.id,
         class_id=class_id,
+        target_seat_id=seat.id,
+        actor_seat_id=seat.id,
+        mechanism="self",
         user_id=user_id,
         amount=-policy.premium,
         account_type="checking",
