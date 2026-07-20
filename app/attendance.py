@@ -58,7 +58,7 @@ def calculate_period_attendance(seat_id, class_id, date):
     end_db = normalize_for_db(end_utc)
 
     sessions = AttendanceSession.query.filter(
-        AttendanceSession.seat_id == seat_id,
+        AttendanceSession.target_seat_id == seat_id,
         AttendanceSession.class_id == class_id,
         AttendanceSession.started_at < end_db,
         sa.or_(AttendanceSession.ended_at.is_(None), AttendanceSession.ended_at > start_db),
@@ -96,7 +96,7 @@ def calculate_period_attendance_utc_range(seat_id, class_id, start_utc, end_utc)
     end_db = normalize_for_db(end_utc)
 
     sessions = AttendanceSession.query.filter(
-        AttendanceSession.seat_id == seat_id,
+        AttendanceSession.target_seat_id == seat_id,
         AttendanceSession.class_id == class_id,
         AttendanceSession.started_at < end_db,
         sa.or_(AttendanceSession.ended_at.is_(None), AttendanceSession.ended_at > start_db),
@@ -118,7 +118,7 @@ def get_session_status(seat_id, class_id):
     Gets the current session status for a seat in a class.
     Returns a tuple of (is_active, done, duration).
     """
-    from app.models import SeatAttendanceState
+    
 
     if not seat_id or not class_id:
         raise ValueError("get_session_status requires seat_id and class_id.")
@@ -166,7 +166,7 @@ def get_batch_attendance_events(seat_ids, min_anchor, allowed_class_ids):
 
     min_anchor_utc = ensure_utc(min_anchor) if min_anchor else None
     query = AttendanceSession.query.filter(
-        AttendanceSession.seat_id.in_(seat_ids),
+        AttendanceSession.target_seat_id.in_(seat_ids),
         AttendanceSession.class_id.in_(allowed_class_ids),
     )
 
@@ -193,10 +193,10 @@ def get_batch_attendance_events(seat_ids, min_anchor, allowed_class_ids):
         else:
             active_at = start_time
 
-        key = (session.seat_id, session.class_id)
+        key = (session.target_seat_id, session.class_id)
         grouped.setdefault(key, []).append(
             SimpleNamespace(
-                seat_id=session.seat_id,
+                seat_id=session.target_seat_id,
                 class_id=session.class_id,
                 status="active",
                 timestamp=active_at,
@@ -206,7 +206,7 @@ def get_batch_attendance_events(seat_ids, min_anchor, allowed_class_ids):
         if end_time and (not min_anchor_utc or end_time > min_anchor_utc):
             grouped[key].append(
                 SimpleNamespace(
-                    seat_id=session.seat_id,
+                    seat_id=session.target_seat_id,
                     class_id=session.class_id,
                     status="inactive",
                     timestamp=end_time,
@@ -266,7 +266,7 @@ def batch_auto_tapout_students(user_id):
     Optimized version of auto-tapout that processes all students for an owner user in batch.
     Returns the count of students tapped out.
     """
-    from app.models import AttendanceReasonCode, SeatAttendanceState, PayrollSettings, Seat, ClassEconomy, IdentityProfile
+    from app.models import AttendanceReasonCode, PayrollSettings, Seat, ClassEconomy, IdentityProfile
     from app.extensions import db
 
     # 1. Get all students for this owner user via canonical class seats

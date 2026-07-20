@@ -167,9 +167,9 @@ def test_DOM_IDEN_006__attendance_history_api_filters_work_with_scoping(client):
         seat_a2 = Seat.query.filter_by(user_id=student_a2.user.id, class_id=class_a2.class_id).first()
         seat_b = Seat.query.filter_by(user_id=student_b.user.id, class_id=class_b.class_id).first()
         assert seat_a1 is not None and seat_a2 is not None and seat_b is not None
-        tap_a1 = AttendanceSession(seat_id=seat_a1.id, class_id=class_a1.class_id, started_at=datetime.now(timezone.utc))
-        tap_a2 = AttendanceSession(seat_id=seat_a2.id, class_id=class_a2.class_id, started_at=datetime.now(timezone.utc))
-        tap_b = AttendanceSession(seat_id=seat_b.id, class_id=class_b.class_id, started_at=datetime.now(timezone.utc))
+        tap_a1 = AttendanceSession(target_seat_id=seat_a1.id, class_id=class_a1.class_id, started_at=datetime.now(timezone.utc))
+        tap_a2 = AttendanceSession(target_seat_id=seat_a2.id, class_id=class_a2.class_id, started_at=datetime.now(timezone.utc))
+        tap_b = AttendanceSession(target_seat_id=seat_b.id, class_id=class_b.class_id, started_at=datetime.now(timezone.utc))
         db.session.add_all([tap_a1, tap_a2, tap_b])
         db.session.flush()
 

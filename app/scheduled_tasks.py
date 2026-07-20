@@ -18,7 +18,7 @@ def enforce_daily_limits_job():
     Runs hourly to ensure limits are enforced even if students close their browser.
     """
     # Import here to avoid circular imports
-    from app.models import AttendanceSession, SeatAttendanceState, AttendanceReasonCode, Seat, ClassEconomy
+    from app.models import AttendanceSession,  AttendanceReasonCode, Seat, ClassEconomy
     from app.feats.attendance import enforce_daily_limits as feat_enforce_daily_limits
     from app.extensions import db
 
@@ -41,7 +41,7 @@ def enforce_daily_limits_job():
                     before_daily_limit_count = (
                         AttendanceSession.query
                         .filter(
-                            AttendanceSession.seat_id == seat_id,
+                            AttendanceSession.target_seat_id == seat_id,
                             AttendanceSession.class_id == class_id,
                             AttendanceSession.end_reason_code == AttendanceReasonCode.DAILY_LIMIT,
                             AttendanceSession.ended_at.is_not(None),
@@ -54,7 +54,7 @@ def enforce_daily_limits_job():
                     after_daily_limit_count = (
                         AttendanceSession.query
                         .filter(
-                            AttendanceSession.seat_id == seat_id,
+                            AttendanceSession.target_seat_id == seat_id,
                             AttendanceSession.class_id == class_id,
                             AttendanceSession.end_reason_code == AttendanceReasonCode.DAILY_LIMIT,
                             AttendanceSession.ended_at.is_not(None),

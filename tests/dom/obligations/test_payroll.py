@@ -82,9 +82,9 @@ def test_FEAT_PAY_001__calculate_payroll_ignores_other_class_manual_payment_anch
     now = datetime.now(timezone.utc)
     with FEATContext("FEAT-LED-004", idempotency_key=f"payroll-multiclass-sessions:{class_a.class_id}:{class_b.class_id}:{student.user.id}"):
         db.session.add_all([
-            AttendanceSession(seat_id=seat_a.id, class_id=class_a.class_id, started_at=now - timedelta(minutes=50), ended_at=now - timedelta(minutes=40), duration_seconds=600),
-            AttendanceSession(seat_id=seat_a.id, class_id=class_a.class_id, started_at=now - timedelta(minutes=39), ended_at=now - timedelta(minutes=35), duration_seconds=240),
-            AttendanceSession(seat_id=seat_b.id, class_id=class_b.class_id, started_at=now - timedelta(minutes=30), ended_at=now - timedelta(minutes=15), duration_seconds=900),
+            AttendanceSession(target_seat_id=seat_a.id, class_id=class_a.class_id, started_at=now - timedelta(minutes=50), ended_at=now - timedelta(minutes=40), duration_seconds=600),
+            AttendanceSession(target_seat_id=seat_a.id, class_id=class_a.class_id, started_at=now - timedelta(minutes=39), ended_at=now - timedelta(minutes=35), duration_seconds=240),
+            AttendanceSession(target_seat_id=seat_b.id, class_id=class_b.class_id, started_at=now - timedelta(minutes=30), ended_at=now - timedelta(minutes=15), duration_seconds=900),
             Transaction(user_id=student.user.id, seat_id=seat_a.id, target_seat_id=seat_a.id, actor_seat_id=seat_a.id, mechanism="self", class_id=class_a.class_id, amount=3, type="manual_payment", timestamp=now - timedelta(minutes=5)),
         ])
     db.session.commit()
@@ -179,7 +179,7 @@ def test_FEAT_PAY_001__get_cached_payroll_with_meta(client, classroom):
 
     now = datetime.now(timezone.utc)
     with FEATContext("FEAT-LED-004", idempotency_key="payroll:cached-session-one"):
-        db.session.add(AttendanceSession(seat_id=seat.id, class_id=classroom.class_id, started_at=now - timedelta(hours=2), ended_at=now - timedelta(hours=1), duration_seconds=3600))
+        db.session.add(AttendanceSession(target_seat_id=seat.id, class_id=classroom.class_id, started_at=now - timedelta(hours=2), ended_at=now - timedelta(hours=1), duration_seconds=3600))
         db.session.flush()
 
     summary, updated_at = get_cached_payroll_with_meta(classroom.class_id, [seat.id], now - timedelta(days=1))
@@ -188,7 +188,7 @@ def test_FEAT_PAY_001__get_cached_payroll_with_meta(client, classroom):
     initial_amount = summary[seat.id]
 
     with FEATContext("FEAT-LED-004", idempotency_key="payroll:cached-session-two"):
-        db.session.add(AttendanceSession(seat_id=seat.id, class_id=classroom.class_id, started_at=now - timedelta(minutes=30), ended_at=now - timedelta(minutes=15), duration_seconds=900))
+        db.session.add(AttendanceSession(target_seat_id=seat.id, class_id=classroom.class_id, started_at=now - timedelta(minutes=30), ended_at=now - timedelta(minutes=15), duration_seconds=900))
         db.session.flush()
 
     summary_fresh, updated_at_fresh = get_cached_payroll_with_meta(classroom.class_id, [seat.id], now - timedelta(days=1))

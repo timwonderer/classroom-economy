@@ -3,7 +3,7 @@ from itsdangerous import URLSafeTimedSerializer
 
 from app import db
 from app.feats.base import FEATContext
-from app.models import AttendanceSession, ClassEconomy, PayrollSettings, Seat, SeatAttendanceState, Transaction, User
+from app.models import AttendanceSession, ClassEconomy, PayrollSettings, Seat, Transaction, User
 from tests.helpers.classroom_initializer import initialize
 from tests.dom.identity.helpers import admin_enforce_daily_limits, admin_get_students
 
@@ -235,7 +235,7 @@ def test_DOM_IDEN_001__enforce_daily_limits_taps_out_when_limit_reached_in_scope
     assert att_state.done_for_day_date is not None
 
     inactive_count = AttendanceSession.query.filter(
-        AttendanceSession.seat_id == seat.id,
+        AttendanceSession.target_seat_id == seat.id,
         AttendanceSession.class_id == class_scope.class_id,
         AttendanceSession.end_reason.ilike("Daily limit%"),
     ).count()

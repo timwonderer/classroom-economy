@@ -3,7 +3,7 @@ from __future__ import annotations
 from app.models import (
     AttendanceSession,
     HallPassLog,
-    SeatAttendanceState,
+    
     Seat,
 )
 from app.utils.time import ensure_utc, get_class_now
@@ -30,7 +30,7 @@ def calculate_unpaid_attendance_seconds(seat_id: int, class_id: str, last_payrol
     """Calculate unpaid attendance from a caller-supplied payroll anchor."""
     now_utc = get_class_now(class_id)
     canonical_rows = AttendanceSession.query.filter(
-        AttendanceSession.seat_id == seat_id,
+        AttendanceSession.target_seat_id == seat_id,
         AttendanceSession.class_id == class_id,
     ).order_by(AttendanceSession.started_at.asc()).all()
     return _calculate_unpaid_from_sessions(canonical_rows, now_utc, last_payroll_time)
@@ -80,7 +80,7 @@ def get_all_block_statuses(student, *, class_id: str, payroll_anchor_by_class_id
         )
 
         active_pass = HallPassLog.query.filter_by(
-            seat_id=seat_id,
+            requested_by_seat_id=seat_id,
             class_id=class_id,
         ).filter(
             HallPassLog.status.in_(["pending", "approved", "left", "rejected"])

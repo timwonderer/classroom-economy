@@ -13,7 +13,7 @@ def test_DOM_ATT_001__attendance_session_records_seat_id(client):
 
     with FEATContext("FEAT-ATTN-001", idempotency_key="attendance_seat_scope:records"):
         event = AttendanceSession(
-            seat_id=seat.id,
+            target_seat_id=seat.id,
             class_id=classroom.class_id,
             started_at=datetime.now(timezone.utc),
         )
@@ -21,7 +21,7 @@ def test_DOM_ATT_001__attendance_session_records_seat_id(client):
         db.session.flush()
 
     db.session.refresh(event)
-    assert event.seat_id == seat.id
+    assert event.target_seat_id == seat.id
 
 
 def test_DOM_ATT_001__attendance_session_requires_seat_id(client):
@@ -32,7 +32,7 @@ def test_DOM_ATT_001__attendance_session_requires_seat_id(client):
 
     with FEATContext("FEAT-ATTN-001", idempotency_key="attendance_seat_scope:requires"):
         event = AttendanceSession(
-            seat_id=None,
+            target_seat_id=None,
             class_id=classroom.class_id,
             started_at=datetime.now(timezone.utc),
         )

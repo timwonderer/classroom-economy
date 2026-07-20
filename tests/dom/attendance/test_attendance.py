@@ -10,7 +10,7 @@ from app.attendance import (
     get_session_status,
     get_all_block_statuses
 )
-from app.models import AttendanceSession, ClassEconomy, SeatAttendanceState, Seat
+from app.models import AttendanceSession, ClassEconomy,  Seat
 from datetime import datetime, timedelta, timezone
 
 

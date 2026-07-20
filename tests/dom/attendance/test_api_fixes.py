@@ -6,7 +6,7 @@ Tests for API fixes:
 import pytest
 from app.feats.base import FEATContext
 from app import db
-from app.models import SeatAttendanceState
+
 from tests.helpers.classroom_initializer import initialize_as_student, initialize_as_teacher
 
 

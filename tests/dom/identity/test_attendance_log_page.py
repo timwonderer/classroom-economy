@@ -22,7 +22,7 @@ def admin_with_data(client):
     seat2 = classroom.students[1].seat
 
     with FEATContext("FEAT-IDEN-001", idempotency_key="attendance_log_page:admin_data"):
-        tap1 = AttendanceSession(seat_id=seat1.id, class_id=classroom.class_id, started_at=datetime.now(timezone.utc))
+        tap1 = AttendanceSession(target_seat_id=seat1.id, class_id=classroom.class_id, started_at=datetime.now(timezone.utc))
         tap2 = AttendanceSession(
             seat_id=seat1.id,
             class_id=classroom.class_id,
@@ -30,7 +30,7 @@ def admin_with_data(client):
             ended_at=datetime.now(timezone.utc),
             duration_seconds=0,
         )
-        tap3 = AttendanceSession(seat_id=seat2.id, class_id=classroom.class_id, started_at=datetime.now(timezone.utc))
+        tap3 = AttendanceSession(target_seat_id=seat2.id, class_id=classroom.class_id, started_at=datetime.now(timezone.utc))
         db.session.add_all([tap1, tap2, tap3])
         db.session.flush()
 
@@ -85,8 +85,8 @@ def test_DOM_IDEN_006__attendance_log_tenant_scoping(client):
     seat2 = class2.students[0].seat
 
     with FEATContext("FEAT-IDEN-001", idempotency_key="attendance_log_page:tenant_scoping"):
-        tap1 = AttendanceSession(seat_id=seat1.id, class_id=class1.class_id, started_at=datetime.now(timezone.utc))
-        tap2 = AttendanceSession(seat_id=seat2.id, class_id=class2.class_id, started_at=datetime.now(timezone.utc))
+        tap1 = AttendanceSession(target_seat_id=seat1.id, class_id=class1.class_id, started_at=datetime.now(timezone.utc))
+        tap2 = AttendanceSession(target_seat_id=seat2.id, class_id=class2.class_id, started_at=datetime.now(timezone.utc))
         db.session.add_all([tap1, tap2])
         db.session.flush()
 

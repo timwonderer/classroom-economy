@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 from app import db
-from app.models import AttendanceSession, SeatAttendanceState
+from app.models import AttendanceSession
 from app.attendance import get_all_block_statuses
 from app.feats.base import FEATContext
 from tests.helpers.classroom_initializer import initialize

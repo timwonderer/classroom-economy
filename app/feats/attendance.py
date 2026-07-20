@@ -13,7 +13,6 @@ from app.models import (
     HallPassLog,
     HallPassSettings,
     Seat,
-    SeatAttendanceState,
     AttendanceReasonCode,
 )
 from app.services.entitlement_service import consume_hall_pass, get_hall_pass_balance
@@ -84,7 +83,7 @@ def student_tap(
 
     if status == "active":
         session = AttendanceSession(
-            seat_id=seat_id,
+            target_seat_id=seat_id,
             actor_seat_id=actor_seat_id,
             class_id=class_id,
             started_at=event_time,
@@ -116,7 +115,7 @@ def student_tap(
     if not open_session:
         open_session = (
             AttendanceSession.query.filter_by(
-                seat_id=seat_id,
+                target_seat_id=seat_id,
                 class_id=class_id,
                 ended_at=None,
             )
@@ -135,7 +134,7 @@ def student_tap(
         session = open_session
     else:
         session = AttendanceSession(
-            seat_id=seat_id,
+            target_seat_id=seat_id,
             actor_seat_id=actor_seat_id,
             class_id=class_id,
             started_at=event_time,
@@ -177,7 +176,7 @@ def request_hall_pass(
     """Create a canonical hall-pass request row."""
     entry = HallPassLog(
         student_id=student.id,
-        seat_id=seat_id,
+        requested_by_seat_id=seat_id,
         class_id=class_id,
         reason=reason,
         status="pending",
@@ -235,7 +234,7 @@ def apply_standard_tap_mutations(
 
     if normalized_action == "start_work":
         active_hall_pass = HallPassLog.query.filter_by(
-            seat_id=seat_id,
+            requested_by_seat_id=seat_id,
             class_id=class_id,
             status="left",
         ).order_by(HallPassLog.request_time.desc()).first()
@@ -289,7 +288,7 @@ def approve_hall_pass(*, log_entry: HallPassLog, now_utc=None) -> HallPassMutati
 
     should_deduct = (log_entry.reason or "").lower() not in HALL_PASS_FREE_REASONS
     if should_deduct:
-        balance = get_hall_pass_balance(log_entry.seat_id, log_entry.class_id)
+        balance = get_hall_pass_balance(log_entry.requested_by_seat_id, log_entry.class_id)
         if balance <= 0:
             raise ValueError("Student has no hall passes left.")
 
@@ -298,7 +297,7 @@ def approve_hall_pass(*, log_entry: HallPassLog, now_utc=None) -> HallPassMutati
 
     if should_deduct:
         consume_hall_pass(
-            log_entry.seat_id,
+            log_entry.requested_by_seat_id,
             log_entry.class_id,
             trigger_id=f"hall_pass_approve_{log_entry.id}",
         )
@@ -323,8 +322,8 @@ def leave_hall_pass(*, log_entry: HallPassLog, now_utc=None) -> HallPassMutation
     log_entry.status = "left"
     log_entry.left_time = now
     student_tap(
-        seat_id=log_entry.seat_id,
-        actor_seat_id=log_entry.seat_id,
+        seat_id=log_entry.requested_by_seat_id,
+        actor_seat_id=log_entry.requested_by_seat_id,
         class_id=log_entry.class_id,
         status="inactive",
         reason=log_entry.reason,
@@ -341,8 +340,8 @@ def return_hall_pass(*, log_entry: HallPassLog, now_utc=None) -> HallPassMutatio
     log_entry.status = "returned"
     log_entry.return_time = now
     student_tap(
-        seat_id=log_entry.seat_id,
-        actor_seat_id=log_entry.seat_id,
+        seat_id=log_entry.requested_by_seat_id,
+        actor_seat_id=log_entry.requested_by_seat_id,
         class_id=log_entry.class_id,
         status="active",
         reason="Return from hall pass",
@@ -366,7 +365,7 @@ def checkout_hall_pass(*, student, log_entry: HallPassLog, now_utc=None) -> Hall
     if log_entry.status != "approved":
         raise ValueError(f"Pass is not approved. Current status: {log_entry.status}")
 
-    resolved_seat_id, resolved_class_id = log_entry.seat_id, log_entry.class_id
+    resolved_seat_id, resolved_class_id = log_entry.requested_by_seat_id, log_entry.class_id
     if not student.id or not resolved_class_id or not resolved_seat_id:
         raise PermissionError("Missing class/seat context for hall pass checkout.")
 
@@ -395,7 +394,7 @@ def checkin_hall_pass(*, student, log_entry: HallPassLog, now_utc=None) -> HallP
     if log_entry.status != "left":
         raise ValueError(f"You are not currently checked out. Status: {log_entry.status}")
 
-    resolved_seat_id, resolved_class_id = log_entry.seat_id, log_entry.class_id
+    resolved_seat_id, resolved_class_id = log_entry.requested_by_seat_id, log_entry.class_id
     if not student.id or not resolved_class_id or not resolved_seat_id:
         raise PermissionError("Missing class/seat context for hall pass checkin.")
 
@@ -628,7 +627,7 @@ def enforce_daily_limits(*, seat_id: int, class_id: str, commit: bool = True, lo
     hours_limit = daily_limit / 3600.0
 
     existing_limit_tapout = AttendanceSession.query.filter(
-        AttendanceSession.seat_id == seat_id,
+        AttendanceSession.target_seat_id == seat_id,
         AttendanceSession.class_id == class_id,
         AttendanceSession.ended_at >= start_of_day_utc,
         AttendanceSession.ended_at < end_of_day_utc,
