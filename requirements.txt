@@ -59,12 +59,9 @@ redis==7.4.0
 passwordless==2.0.0
 requests==2.34.2
 opentelemetry-api==1.44.0
-opentelemetry-sdk==1.43.0
-opentelemetry-exporter-otlp-proto-http==1.43.0
-opentelemetry-semantic-conventions==0.65b0
-opentelemetry-instrumentation-flask==0.64b0
-opentelemetry-instrumentation-requests==0.65b0
+opentelemetry-sdk==1.44.0
+opentelemetry-exporter-otlp-proto-http==1.44.0
 opentelemetry-semantic-conventions==0.65b0
 opentelemetry-instrumentation-flask==0.65b0
 opentelemetry-instrumentation-requests==0.65b0
-opentelemetry-instrumentation-sqlalchemy==0.64b0
+opentelemetry-instrumentation-sqlalchemy==0.65b0
