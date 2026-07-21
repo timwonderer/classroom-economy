@@ -53,11 +53,15 @@ def test_FEAT_PROD_001__records_attendance_session(app):
 
     session = db.session.get(AttendanceSession, result.session.id)
     assert session is not None
-    assert session.seat_id == ctx.seat_id
+    assert session.target_seat_id == ctx.seat_id
+    assert session.actor_seat_id == ctx.seat_id
+    assert session.target_user_id == ctx.user_id
     assert session.class_id == ctx.class_id
     assert session.hall_pass_id == "HP-001"
-    assert session.end_reason_code.value == "hall_pass"
-    assert session.ended_at == now
+    assert session.status == "inactive"
+    assert session.reason_code == "hall_pass"
+    assert session.timestamp == now
+    assert session.mechanism == "self"
 
 
 def test_FEAT_PROD_002__records_hall_pass_and_consumes_entitlement(app):
@@ -81,10 +85,12 @@ def test_FEAT_PROD_002__records_hall_pass_and_consumes_entitlement(app):
 
     log = db.session.get(HallPassLog, result.hall_pass_log.id)
     assert log is not None
-    assert log.status == "approved"
     assert log.correlation_id == "corr-hp-002"
     assert log.hall_pass_id == "HP-002"
     assert log.destination == "Office"
+    assert log.class_id == classroom.class_id
+    assert log.requested_by_seat_id == student.seat.id
+    assert log.approved_by_seat_id == classroom.teacher_seat.id
     assert get_hall_pass_balance(student.seat.id, classroom.class_id) == 0
 
 
@@ -94,20 +100,17 @@ def test_FEAT_PROD_003__records_payroll_event_and_reversal(app):
     ctx = _teacher_ctx(classroom)
     now = datetime(2026, 7, 19, 15, 30, tzinfo=timezone.utc)
 
-    with FEATContext("FEAT-BYPASS-LEGACY", correlation_id="bypass_test_payroll_seed"):
-        db.session.add(
-            AttendanceSession(
-                seat_id=student.seat.id,
-                actor_seat_id=student.seat.id,
-                class_id=classroom.class_id,
-                started_at=now - timedelta(minutes=10),
-                ended_at=now,
-                duration_seconds=600,
-                start_reason="Start Work",
-                end_reason="Stop Work",
-            )
-        )
-        db.session.flush()
+    record_attendance_session(
+        ctx=_student_ctx(classroom),
+        status="active",
+        reference_time_utc=now - timedelta(minutes=10),
+    )
+    record_attendance_session(
+        ctx=_student_ctx(classroom),
+        status="inactive",
+        reason="done_for_day",
+        reference_time_utc=now,
+    )
 
     payroll = record_payroll_event(
         ctx=ctx,
