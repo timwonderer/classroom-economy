@@ -104,8 +104,8 @@
                     </div>
                     <div class="sidebar-scope-context">{{ current_class_context.class_identifier }}</div>
                     <div class="sidebar-scope-meta">{{ current_class_context.join_code }}</div>
-                    {% elif student %}
-                    <div class="sidebar-scope-name">{{ student.display_first_name|upper }}</div>
+                    {% elif student_display_first_name %}
+                    <div class="sidebar-scope-name">{{ student_display_first_name|upper }}</div>
                     <div class="sidebar-scope-context">No classes available yet</div>
                     {% endif %}
                 </div>
