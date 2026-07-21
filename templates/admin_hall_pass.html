@@ -16,20 +16,20 @@
         <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Close"></button>
     </div>
     <div class="offcanvas-body">
-        <p>Approve requests, manage the queue, and track who is out of class.</p>
+        <p>Track issued hall passes and who is currently out of class.</p>
         <div class="accordion mt-4 mb-4" id="hallPassGuideAccordion">
             <div class="accordion-item">
                 <h2 class="accordion-header" id="hallPassGuideHeadingQueue">
                     <button class="accordion-button collapsed bg-secondary text-muted" type="button" data-bs-toggle="collapse" data-bs-target="#hallPassGuideQueue" aria-expanded="false" aria-controls="hallPassGuideQueue">
                         <span class="material-symbols-outlined me-2" style="font-size:25pt; vertical-align:middle;">settings</span>
-                        <strong>Queue Settings</strong>
+                        <strong>Hall Pass Limits</strong>
                     </button>
                 </h2>
                 <div id="hallPassGuideQueue" class="accordion-collapse collapse mt-2" aria-labelledby="hallPassGuideHeadingQueue" data-bs-parent="#hallPassGuideAccordion">
                     <div class="accordion-body">
-                        <p>Turn the queue system on or off and set a limit for how many students can be out at once.</p>
+                        <p>Turn hall-pass granting on or off and set the limit for how many students may be out at once.</p>
                         <div class="alert alert-info mb-0">
-                            <strong>Tip:</strong> When the queue is disabled, students cannot submit new pass requests.
+                            <strong>Tip:</strong> When granting is disabled, no new hall passes may be issued.
                         </div>
                     </div>
                 </div>
@@ -44,11 +44,11 @@
                 <div id="hallPassGuideSettingsBreakdown" class="accordion-collapse collapse mt-2" aria-labelledby="hallPassGuideHeadingSettingsBreakdown" data-bs-parent="#hallPassGuideAccordion">
                     <div class="accordion-body">
                         <ul class="mb-0">
-                            <li><strong>Queue toggle:</strong> enables or disables all new pass requests.</li>
-                            <li><strong>Queue limit:</strong> caps how many students can be out at the same time.</li>
+                            <li><strong>Granting toggle:</strong> enables or disables new hall-pass issuance.</li>
+                            <li><strong>Out-of-class limit:</strong> caps how many students can be out at the same time.</li>
                             <li><strong>Verification display:</strong> shows the active pass list for hallway checks.</li>
                             <li><strong>Terminal:</strong> student-facing kiosk to request passes.</li>
-                            <li><strong>Queue display:</strong> screen showing the live queue order.</li>
+                            <li><strong>Verification display:</strong> screen showing currently issued and active passes.</li>
                         </ul>
                         <div class="alert alert-warning mt-3 mb-0">
                             <strong>Side effects:</strong> Lowering the limit can block new approvals until slots open.
@@ -60,12 +60,12 @@
                 <h2 class="accordion-header" id="hallPassGuideHeadingApprove">
                     <button class="accordion-button collapsed bg-secondary text-muted" type="button" data-bs-toggle="collapse" data-bs-target="#hallPassGuideApprove" aria-expanded="false" aria-controls="hallPassGuideApprove">
                         <span class="material-symbols-outlined me-2" style="font-size:25pt; vertical-align:middle;">check_circle</span>
-                        <strong>Approve or Reject Requests</strong>
+                        <strong>Issue and Track Passes</strong>
                     </button>
                 </h2>
                 <div id="hallPassGuideApprove" class="accordion-collapse collapse mt-2" aria-labelledby="hallPassGuideHeadingApprove" data-bs-parent="#hallPassGuideAccordion">
                     <div class="accordion-body">
-                        <p>Use the Pending tab to approve or reject requests. Approved students move into the queue.</p>
+                        <p>Issued passes appear in the Issued tab until the student leaves class.</p>
                     </div>
                 </div>
             </div>
@@ -78,9 +78,9 @@
                 </h2>
                 <div id="hallPassGuideTrack" class="accordion-collapse collapse mt-2" aria-labelledby="hallPassGuideHeadingTrack" data-bs-parent="#hallPassGuideAccordion">
                     <div class="accordion-body">
-                        <p>Use the Approved and Out tabs to track who is waiting and who has left the room.</p>
+                        <p>Use the Issued and Out tabs to track who is waiting and who has left the room.</p>
                         <div class="alert alert-warning mb-0">
-                            <strong>Reminder:</strong> Mark students as returned to keep the queue accurate.
+                            <strong>Reminder:</strong> Mark students as returned to keep active pass state accurate.
                         </div>
                     </div>
                 </div>
@@ -130,14 +130,14 @@
                         <div class="form-check form-switch mb-0">
                             <input class="form-check-input" type="checkbox" id="queueEnabledSwitch" style="cursor: pointer; width: 2.5em; height: 1.25em;">
                             <label class="form-check-label ms-2 mb-0" for="queueEnabledSwitch" style="cursor: pointer;">
-                                <strong id="queueStatusLabel">Queue System</strong>
+                                <strong id="queueStatusLabel">Hall Pass Granting</strong>
                             </label>
                         </div>
                     </div>
                 </div>
                 <div class="col-md-3">
                     <div class="d-flex align-items-center">
-                        <label for="queueLimitInput" class="form-label mb-0 me-2 fw-bold" style="white-space: nowrap;">Limit:</label>
+                        <label for="queueLimitInput" class="form-label mb-0 me-2 fw-bold" style="white-space: nowrap;">Out Limit:</label>
                         <input type="number" class="form-control form-control-sm" id="queueLimitInput" min="1" max="50" value="10" style="width: 70px;">
                         <span class="ms-2 text-muted small">students</span>
                     </div>
@@ -171,9 +171,9 @@
                 <li class="nav-item" role="presentation">
                     <button class="nav-link d-flex align-items-center" id="approved-tab" data-bs-toggle="tab" data-bs-target="#approved" type="button" role="tab" aria-controls="approved" aria-selected="false">
                         <span class="material-symbols-outlined me-2" style="font-size: 1.25rem;">check_circle</span>
-                        <span class="fw-bold">Approved</span>
-                        {% if approved_queue %}
-                            <span class="badge bg-info ms-2">{{ approved_queue|length }}</span>
+                        <span class="fw-bold">Issued</span>
+                        {% if issued_passes %}
+                            <span class="badge bg-info ms-2">{{ issued_passes|length }}</span>
                         {% endif %}
                     </button>
                 </li>
@@ -203,14 +203,14 @@
                             {% for req in pending_requests %}
                                 <div class="list-group-item d-flex justify-content-between align-items-center">
                                     <div>
-                                        <strong>{{ req.student.full_name }}</strong> - {{ req.reason }}
+                                        <strong>{{ req.student_name }}</strong> - {{ req.reason }}
                                         <small class="d-block text-muted">Requested: {{ req.request_time | format_datetime }} | Period: {{ req.period }}</small>
                                     </div>
-                                    <div class="btn-group" role="group">
-                                        <button class="btn btn-sm btn-success" onclick="handlePassAction({{ req.id }}, 'approve')">
+                                    <div class="btn-group btn-group-sm" role="group" aria-label="Hall pass request actions">
+                                        <button class="btn btn-success" onclick="handlePendingPassAction('{{ req.id }}', 'approve')">
                                             <span class="material-symbols-outlined" style="font-size: 1rem;">check</span> Approve
                                         </button>
-                                        <button class="btn btn-sm btn-danger" onclick="handlePassAction({{ req.id }}, 'reject')">
+                                        <button class="btn btn-outline-danger" onclick="handlePendingPassAction('{{ req.id }}', 'reject')">
                                             <span class="material-symbols-outlined" style="font-size: 1rem;">close</span> Reject
                                         </button>
                                     </div>
@@ -225,15 +225,15 @@
                     {% endif %}
                 </div>
 
-                <!-- Approved Queue Tab -->
+                <!-- Issued Passes Tab -->
                 <div class="tab-pane fade" id="approved" role="tabpanel" aria-labelledby="approved-tab">
-                    {% if approved_queue %}
+                    {% if issued_passes %}
                         <div class="list-group">
-                            {% for req in approved_queue %}
+                            {% for req in issued_passes %}
                                 <div class="list-group-item d-flex justify-content-between align-items-center">
                                     <div>
-                                        <strong>{{ req.student.full_name }}</strong> - {{ req.reason }}
-                                        <small class="d-block text-muted">Approved: {{ req.decision_time | format_datetime }} | Period: {{ req.period }}</small>
+                                        <strong>{{ req.student_name }}</strong> - {{ req.reason }}
+                                        <small class="d-block text-muted">Issued: {{ req.decision_time | format_datetime }} | Period: {{ req.period }}</small>
                                     </div>
                                     <button class="btn btn-sm btn-primary" onclick="handlePassAction({{ req.id }}, 'leave')" {% if out_of_class %}disabled{% endif %}>
                                         <span class="material-symbols-outlined" style="font-size: 1rem;">logout</span> Left Class
@@ -244,7 +244,7 @@
                     {% else %}
                         <div class="text-center py-5 text-muted">
                             <span class="material-symbols-outlined d-block mb-2" style="font-size: 3rem; opacity: 0.3;">check_circle</span>
-                            <p class="mb-0">Queue is empty</p>
+                            <p class="mb-0">No issued passes are waiting</p>
                         </div>
                     {% endif %}
                 </div>
@@ -256,7 +256,7 @@
                             {% for req in out_of_class %}
                                 <div class="list-group-item d-flex justify-content-between align-items-center">
                                     <div>
-                                        <strong>{{ req.student.full_name }}</strong> - {{ req.reason }}
+                                        <strong>{{ req.student_name }}</strong> - {{ req.reason }}
                                         <small class="d-block text-muted">Left: {{ req.left_time | format_datetime }} | Period: {{ req.period }}</small>
                                     </div>
                                     <button class="btn btn-sm btn-secondary" onclick="handlePassAction({{ req.id }}, 'return')">
@@ -349,6 +349,11 @@
 <script>
 function handlePassAction(passId, action) {
     const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+    if (!['leave', 'return'].includes(action)) {
+        alert('Unsupported hall pass action.');
+        return;
+    }
+
     fetch(`/api/hall-pass/${passId}/${action}`, {
         method: 'POST',
         headers: {
@@ -367,6 +372,34 @@ function handlePassAction(passId, action) {
     })
     .catch(error => {
         console.error('Hall pass action error:', error);
+        alert('An unexpected error occurred.');
+    });
+}
+
+function handlePendingPassAction(requestId, action) {
+    const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+    if (!['approve', 'reject'].includes(action)) {
+        alert('Unsupported hall pass action.');
+        return;
+    }
+
+    fetch(`/api/hall-pass/request/${requestId}/${action}`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': csrfToken
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'success') {
+            window.location.reload();
+        } else {
+            alert('Error: ' + data.message);
+        }
+    })
+    .catch(error => {
+        console.error('Pending hall pass action error:', error);
         alert('An unexpected error occurred.');
     });
 }
@@ -401,7 +434,7 @@ function loadQueueSettings() {
 
 // Update the status label text based on queue state
 function updateQueueStatusLabel(enabled) {
-    queueStatusLabel.textContent = enabled ? 'Queue System' : 'Queue System';
+    queueStatusLabel.textContent = 'Hall Pass Granting';
     queueStatusLabel.style.color = enabled ? 'var(--success)' : 'var(--danger)';
 }
 
@@ -514,20 +547,14 @@ function renderHistoryTable(records) {
 
         let statusBadge = '';
         switch (record.status) {
-            case 'pending':
-                statusBadge = '<span class="badge bg-warning text-dark">Pending</span>';
-                break;
             case 'approved':
-                statusBadge = '<span class="badge bg-info">Approved</span>';
+                statusBadge = '<span class="badge bg-info">Issued</span>';
                 break;
             case 'left':
                 statusBadge = '<span class="badge bg-primary">Out</span>';
                 break;
             case 'returned':
                 statusBadge = '<span class="badge bg-success">Returned</span>';
-                break;
-            case 'rejected':
-                statusBadge = '<span class="badge bg-danger">Rejected</span>';
                 break;
             default:
                 statusBadge = `<span class="badge bg-secondary">${record.status}</span>`;

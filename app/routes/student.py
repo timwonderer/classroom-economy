@@ -28,7 +28,7 @@ from app.models import (
     # StoreItemBlock removed — store_item_blocks unauthorized; use store_item_visibility (DOM-STORE-001)
     RentSettings,
     BankingSettings, FeatureSettings, Issue, Seat, User, UserRole,
-    ClassEconomy, IdentityProfile, _quantize_currency
+    ClassEconomy, IdentityProfile, PayrollEvent, _quantize_currency
 )
 from app.auth import (
     admin_required,
@@ -75,7 +75,10 @@ from app.services.ledger_service import (
     get_available_balances,
 )
 from app.services import access_policy_service, store_service
-from app.services.entitlement_service import reconcile_rent_hall_pass_top_off as _reconcile_rent_hall_pass_top_off
+from app.services.entitlement_service import (
+    get_hall_pass_balance,
+    reconcile_rent_hall_pass_top_off as _reconcile_rent_hall_pass_top_off,
+)
 from app.services.recovery_service import (
     dismiss_recovery_code as dismiss_recovery_code_row,
     get_pending_recovery_code_for_seat,
@@ -101,6 +104,10 @@ from app.utils.time import (
     get_class_month_start_utc,
     get_class_week_range_utc,
     get_class_now,
+)
+from app.utils.canonical_temporal_resolver import (
+    CLASS_LEVEL_EVALUATION,
+    canonical_temporal_resolver,
 )
 from app.utils.seat_scope import transaction_scope_filter, seat_scoped_filter
 from app.utils.insurance_eligibility import (
@@ -265,8 +272,6 @@ def _get_canonical_student_from_context() -> Seat | None:
     if not context or not getattr(context, "seat_id", None):
         return None
     return db.session.get(Seat, context.seat_id)
-
-
 
 
 def _get_total_earnings_for_seat(seat_id: int | None, *, class_id: str | None = None) -> Decimal:
@@ -887,7 +892,7 @@ def dashboard():
 
     # FIX: Only show tap in/out status for CURRENT class, not all classes
     # Get status for only the current block (not all blocks)
-    period_states = get_all_block_statuses(student, class_id=scope.class_id)
+    period_states = get_all_block_statuses(student, class_id=scope.class_id, ctx=scope)
     # Filter to only current class block
     current_block_key = current_block.upper() if current_block else ""
     period_states = {current_block_key: period_states.get(current_block_key, {})} if current_block_key else {}
@@ -915,8 +920,6 @@ def dashboard():
     hours, remainder = divmod(total_unpaid_seconds, 3600)
     minutes, seconds = divmod(remainder, 60)
     total_unpaid_elapsed = f"{int(hours):02}:{int(minutes):02}:{int(seconds):02}"
-    student_name = (student.identity_profile.full_name if student.identity_profile else str(student.id))
-
     # Compute most recent deposit and insurance paid flag
     recent_deposit = student.recent_deposits[0] if student.recent_deposits else None
 
@@ -1001,8 +1004,13 @@ def dashboard():
             'is_preview': is_preview_period
         }
 
-    tz = get_timezone()
-    local_now = utc_now().astimezone(tz)
+    dashboard_time = canonical_temporal_resolver(
+        CLASS_LEVEL_EVALUATION,
+        canonical_execution_context=scope,
+        primitive="current_time",
+    )
+    local_now = dashboard_time.canonical_now
+    now_utc = dashboard_time.canonical_now_utc
     # --- DASHBOARD DEBUG LOGGING ---
     current_app.logger.info(f"DASHBOARD DEBUG: Student {student.id} - Block states:")
     for blk, blk_state in period_states.items():
@@ -1025,55 +1033,89 @@ def dashboard():
 
     # --- Calculate weekly/monthly analytics ---
     from app.models import AttendanceSession as _AttSession
-    now_utc = utc_now()
-    if class_id:
-        class_now_utc = get_class_now(class_id, reference_time_utc=now_utc).astimezone(timezone.utc)
-        week_start, week_end = get_class_week_range_utc(class_id, reference_time_utc=class_now_utc)
-        month_start = get_class_month_start_utc(class_id, reference_time=class_now_utc)
-    else:
-        week_start, week_end = get_class_week_range_utc(
-            context.class_id,
-            reference_time_utc=now_utc,
-        ) if context.class_id else (now_utc, now_utc + timedelta(days=7))
-        month_start = get_class_month_start_utc(
-            context.class_id,
-            reference_time=now_utc,
-        ) if context.class_id else now_utc
+    week_bounds = canonical_temporal_resolver(
+        CLASS_LEVEL_EVALUATION,
+        canonical_execution_context=scope,
+        primitive="evaluation_period_boundaries",
+        reference_time_utc=now_utc,
+        period="week",
+    )
+    month_bounds = canonical_temporal_resolver(
+        CLASS_LEVEL_EVALUATION,
+        canonical_execution_context=scope,
+        primitive="evaluation_period_boundaries",
+        reference_time_utc=now_utc,
+        period="month",
+    )
+    week_start = week_bounds.boundary_start_utc
+    week_end = week_bounds.boundary_end_utc
+    month_start = month_bounds.boundary_start_utc
 
-    effective_class_id = class_id or context.class_id
+    effective_class_id = class_id
     sessions_this_week = _AttSession.query.filter(
-        _AttSession.seat_id == student.id,
+        _AttSession.target_seat_id == student.id,
         _AttSession.class_id == effective_class_id,
-        _AttSession.started_at >= week_start,
-        _AttSession.started_at < week_end,
-        _AttSession.is_deleted.is_(False),
-    ).all()
+        _AttSession.timestamp >= week_start,
+        _AttSession.timestamp < week_end,
+    ).order_by(_AttSession.timestamp.asc(), _AttSession.id.asc()).all()
 
     unique_days_tapped = len(
-        {ensure_utc(s.started_at).astimezone(tz).date() for s in sessions_this_week}
+        {
+            canonical_temporal_resolver(
+                CLASS_LEVEL_EVALUATION,
+                canonical_execution_context=scope,
+                primitive="current_evaluation_day",
+                reference_time_utc=s.timestamp,
+            ).evaluation_date
+            for s in sessions_this_week
+        }
     )
 
+    weekly_intervals = []
+    active_start = None
+    for event in sessions_this_week:
+        event_time = event.timestamp
+        if event.status == "active":
+            active_start = event_time
+        elif event.status == "inactive" and active_start is not None:
+            weekly_intervals.append((active_start, event_time))
+            active_start = None
+    if active_start is not None:
+        weekly_intervals.append((active_start, now_utc))
     total_minutes_this_week = 0
-    for s in sessions_this_week:
-        if s.duration_seconds is not None:
-            total_minutes_this_week += s.duration_seconds / 60
-        elif s.ended_at is None:
-            total_minutes_this_week += (now_utc - ensure_utc(s.started_at)).total_seconds() / 60
+    if weekly_intervals:
+        weekly_elapsed = canonical_temporal_resolver(
+            CLASS_LEVEL_EVALUATION,
+            canonical_execution_context=scope,
+            primitive="elapsed_duration",
+            intervals=weekly_intervals,
+        )
+        total_minutes_this_week = weekly_elapsed.elapsed_seconds / 60
 
-    def _occurred_after(ts, start):
-        ts_utc = ensure_utc(ts)
-        return ts_utc is not None and ts_utc >= start
+    def _occurred_in_period(ts, *, start, end):
+        if ts is None:
+            return False
+        evaluation = canonical_temporal_resolver(
+            CLASS_LEVEL_EVALUATION,
+            canonical_execution_context=scope,
+            primitive="between_boundaries",
+            reference_time_utc=now_utc,
+            candidate=ts,
+            start_boundary=start,
+            end_boundary=end,
+        )
+        return evaluation.is_between
 
     # Earnings this week/month
     # FIX: Add null check to prevent decimal.InvalidOperation on corrupted data
     earnings_this_week = sum(
         (tx.amount for tx in transactions
-        if tx.amount is not None and tx.amount > Decimal('0') and _occurred_after(tx.timestamp, week_start) and not tx.is_void),
+        if tx.amount is not None and tx.amount > Decimal('0') and _occurred_in_period(tx.timestamp, start=week_start, end=week_end) and not tx.is_void),
         Decimal('0.00')
     )
     earnings_this_month = sum(
         (tx.amount for tx in transactions
-        if tx.amount is not None and tx.amount > Decimal('0') and _occurred_after(tx.timestamp, month_start) and not tx.is_void),
+        if tx.amount is not None and tx.amount > Decimal('0') and _occurred_in_period(tx.timestamp, start=month_start, end=now_utc) and not tx.is_void),
         Decimal('0.00')
     )
 
@@ -1081,12 +1123,12 @@ def dashboard():
     # FIX: Add null check to prevent decimal.InvalidOperation on corrupted data
     spending_this_week = abs(sum(
         (tx.amount for tx in transactions
-        if tx.amount is not None and tx.amount < Decimal('0') and _occurred_after(tx.timestamp, week_start) and not tx.is_void),
+        if tx.amount is not None and tx.amount < Decimal('0') and _occurred_in_period(tx.timestamp, start=week_start, end=week_end) and not tx.is_void),
         Decimal('0.00')
     ))
     spending_this_month = abs(sum(
         (tx.amount for tx in transactions
-        if tx.amount is not None and tx.amount < Decimal('0') and _occurred_after(tx.timestamp, month_start) and not tx.is_void),
+        if tx.amount is not None and tx.amount < Decimal('0') and _occurred_in_period(tx.timestamp, start=month_start, end=now_utc) and not tx.is_void),
         Decimal('0.00')
     ))
 
@@ -1131,7 +1173,6 @@ def dashboard():
         rent_status=rent_status,
         unpaid_seconds_per_block=unpaid_seconds_per_block,
         projected_pay_per_block={blk: float(pay or 0) for blk, pay in projected_pay_per_block.items()},
-        student_name=student_name,
         total_unpaid_elapsed=total_unpaid_elapsed,
         feature_settings=feature_settings,
         # FIX: Pass scoped balances to template instead of using unscoped properties
@@ -1149,6 +1190,7 @@ def dashboard():
         announcements=announcements,
         current_class_id=class_id,
         scoped_total_earnings=_get_total_earnings_for_seat(student.id, class_id=class_id),
+        hall_pass_balance=get_hall_pass_balance(student.id, class_id),
     )
 
 
@@ -1176,7 +1218,7 @@ def payroll():
 
     current_block = seat.class_economy.section.upper() if seat and seat.class_economy and seat.class_economy.section else ""
     join_code = get_display_join_code(context.class_id)
-    period_states = get_all_block_statuses(student, class_id=class_id)
+    period_states = get_all_block_statuses(student, class_id=class_id, ctx=context)
 
     # Scope dashboard data to the selected class context only
     period_states = {current_block: period_states.get(current_block, {})}
@@ -1202,18 +1244,33 @@ def payroll():
     from app.models import AttendanceSession as _AttSession
 
     att_query = _AttSession.query.filter(
-        _AttSession.seat_id == student.id,
+        _AttSession.target_seat_id == student.id,
         _AttSession.class_id == effective_class_id,
-        _AttSession.is_deleted.is_(False),
     )
-    recent_sessions = att_query.order_by(_AttSession.started_at.desc()).limit(20).all()
-    all_tap_events = recent_sessions
-    tap_events_by_block = {}
-    for sess in recent_sessions:
-        sess.action = 'start_work' if sess.ended_at is None else 'stop_work'
-        if sess.period not in tap_events_by_block:
-            tap_events_by_block[sess.period] = []
-        tap_events_by_block[sess.period].append(sess)
+    recent_sessions = att_query.order_by(_AttSession.timestamp.desc(), _AttSession.id.desc()).limit(20).all()
+    attendance_events = recent_sessions
+    attendance_events_by_block = {current_block: recent_sessions}
+    attendance_start_count = sum(1 for sess in recent_sessions if sess.status == "active")
+    attendance_inactive_count = sum(1 for sess in recent_sessions if sess.status == "inactive")
+
+    last_payroll_event = (
+        PayrollEvent.query.filter(
+            PayrollEvent.class_id == effective_class_id,
+            PayrollEvent.target_seat_id == student.id,
+            PayrollEvent.payroll_event_type == "payroll",
+        )
+        .order_by(PayrollEvent.recorded_at.desc(), PayrollEvent.id.desc())
+        .first()
+    )
+    days_since_last_payroll = None
+    if last_payroll_event:
+        elapsed = canonical_temporal_resolver(
+            CLASS_LEVEL_EVALUATION,
+            canonical_execution_context=context,
+            primitive="time_since",
+            start=last_payroll_event.recorded_at,
+        )
+        days_since_last_payroll = elapsed.elapsed_seconds // 86400
 
     return render_template(
         'student_payroll.html',
@@ -1222,8 +1279,10 @@ def payroll():
         unpaid_seconds_per_block=unpaid_seconds_per_block,
         projected_pay_per_block=projected_pay_per_block,
         period_states=period_states,
-        all_tap_events=all_tap_events,
-        tap_events_by_block=tap_events_by_block,
+        attendance_events=attendance_events,
+        attendance_events_by_block=attendance_events_by_block,
+        attendance_start_count=attendance_start_count,
+        attendance_inactive_count=attendance_inactive_count,
         pay_rate_per_minute=pay_rate_per_minute,
         pay_rate_table=[
             ("1 minute", pay_rate_per_minute),
@@ -1233,8 +1292,10 @@ def payroll():
             ("2 hours", round(pay_rate_per_minute * 120, 2)),
             ("4 hours", round(pay_rate_per_minute * 240, 2)),
         ],
-        now=utc_now(),
         scoped_total_earnings=_get_total_earnings_for_seat(student.id, class_id=effective_class_id),
+        last_payroll_event=last_payroll_event,
+        days_since_last_payroll=days_since_last_payroll,
+        feature_settings=get_feature_settings_for_student(),
     )
 
 
@@ -3335,10 +3396,10 @@ def report_tap_event_issue(tap_event_id):
         flash("Please select a class first.", "warning")
         return redirect(url_for('student.dashboard'))
 
-    # Get the tap event and verify it belongs to this student and class
+    # Get the attendance event and verify it belongs to this seat and class.
     tap_event = AttendanceSession.query.filter_by(
         id=tap_event_id,
-        seat_id=student.id,
+        target_seat_id=student.id,
         class_id=class_context.class_id,
     ).first_or_404()
 
@@ -3362,7 +3423,7 @@ def report_tap_event_issue(tap_event_id):
                 explanation=form.explanation.data,
                 expected_outcome=form.expected_outcome.data,
                 related_transaction_id=None,  # No transaction for tap events
-                related_record_type='tap_event',
+                related_record_type='attendance_session',
                 related_record_id=tap_event_id,
                 include_recent_error=include_recent_error,
             )

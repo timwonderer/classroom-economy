@@ -18,8 +18,8 @@ from app.services.attendance_service import (
     get_all_block_statuses as _get_all_block_statuses,
 )
 from app.services.ledger_service import get_last_payroll_time as _get_last_payroll_time
-from app.models import AttendanceSession
-from app.feats.base import feat_shell
+from app.models import AttendanceReasonCode, AttendanceSession
+from app.utils.canonical_temporal_resolver import CLASS_LEVEL_EVALUATION, canonical_temporal_resolver
 
 def get_last_payroll_time(*, seat_id: int, class_id: str):
     """Return the latest payroll/manual payment anchor for one canonical seat/class scope."""
@@ -118,20 +118,36 @@ def get_session_status(seat_id, class_id):
     Gets the current session status for a seat in a class.
     Returns a tuple of (is_active, done, duration).
     """
-    
-
     if not seat_id or not class_id:
         raise ValueError("get_session_status requires seat_id and class_id.")
-    latest_state = SeatAttendanceState.query.filter_by(
-        seat_id=seat_id,
-        class_id=class_id,
-    ).order_by(SeatAttendanceState.updated_at.desc()).first()
-    is_active = latest_state.is_active if latest_state else False
 
-    today_local = get_class_now(class_id).date()
-    done = False
-    if latest_state and latest_state.done_for_day_date == today_local:
-        done = True
+    latest_event = (
+        AttendanceSession.query.filter_by(
+            target_seat_id=seat_id,
+            class_id=class_id,
+        )
+        .order_by(AttendanceSession.timestamp.desc(), AttendanceSession.id.desc())
+        .first()
+    )
+    is_active = bool(latest_event and latest_event.status == "active")
+
+    day_bounds = canonical_temporal_resolver(
+        CLASS_LEVEL_EVALUATION,
+        canonical_execution_context=SimpleNamespace(class_id=class_id),
+        primitive="evaluation_day_boundaries",
+    )
+    done = (
+        AttendanceSession.query.filter(
+            AttendanceSession.target_seat_id == seat_id,
+            AttendanceSession.class_id == class_id,
+            AttendanceSession.status == "inactive",
+            AttendanceSession.reason_code == AttendanceReasonCode.DONE_FOR_DAY.value,
+            AttendanceSession.timestamp >= day_bounds.boundary_start_utc,
+            AttendanceSession.timestamp < day_bounds.boundary_end_utc,
+        )
+        .first()
+        is not None
+    )
 
     # Calculate unpaid duration
     last_payroll_time = get_last_payroll_time(seat_id=seat_id, class_id=class_id)
@@ -140,11 +156,11 @@ def get_session_status(seat_id, class_id):
     return is_active, done, duration
 
 
-def get_all_block_statuses(student, *, class_id: str):
+def get_all_block_statuses(student, *, class_id: str, ctx):
     """Return block statuses within one canonical class scope."""
     if not class_id:
         raise ValueError("get_all_block_statuses requires class_id.")
-    return _get_all_block_statuses(student, class_id=class_id)
+    return _get_all_block_statuses(student, class_id=class_id, ctx=ctx)
 
 # -------------------------------------------------------------------
 # BATCH OPTIMIZATION HELPERS
@@ -259,170 +275,3 @@ def calculate_seconds_in_memory(events, anchor):
         total_seconds += (now - in_time).total_seconds()
 
     return int(total_seconds)
-
-@feat_shell("FEAT-ATTN-001")
-def batch_auto_tapout_students(user_id):
-    """
-    Optimized version of auto-tapout that processes all students for an owner user in batch.
-    Returns the count of students tapped out.
-    """
-    from app.models import AttendanceReasonCode, PayrollSettings, Seat, ClassEconomy, IdentityProfile
-    from app.extensions import db
-
-    # 1. Get all students for this owner user via canonical class seats
-    student_ids = [
-        row[0] for row in db.session.query(Seat.user_id)
-        .join(ClassEconomy, ClassEconomy.class_id == Seat.class_id)
-        .filter(ClassEconomy.user_id == user_id, Seat.user_id.isnot(None))
-        .distinct()
-        .all()
-    ]
-
-    if not student_ids:
-        return 0
-
-    # 1b. SECURITY: Fetch only class scopes owned by this owner user.
-    admin_class_ids = [
-        row[0] for row in db.session.query(ClassEconomy.class_id).filter(
-        ClassEconomy.user_id == user_id,
-        ClassEconomy.class_id.isnot(None),
-    ).distinct().all()
-    ]
-
-    if not admin_class_ids:
-        return 0
-
-    now_utc = utc_now()
-    class_day_start_by_class_id = {}
-    class_today_by_class_id = {}
-    for class_id in admin_class_ids:
-        day_start_utc, _ = get_class_today_range(class_id, reference_time_utc=now_utc)
-        class_day_start_by_class_id[class_id] = day_start_utc
-        class_today_by_class_id[class_id] = get_class_now(class_id, reference_time_utc=now_utc).date()
-
-    if class_day_start_by_class_id:
-        start_of_day_utc = min(class_day_start_by_class_id.values())
-    else:
-        start_of_day_utc, _ = local_date_range_utc(
-            class_date(timezone_name="America/Los_Angeles", timestamp_utc=now_utc),
-            timezone_name="America/Los_Angeles",
-        )
-    default_today_local = class_date(timestamp_utc=now_utc)
-
-    claimed_seats = Seat.query.filter(
-        Seat.class_id.in_(admin_class_ids),
-        Seat.user_id.in_(student_ids),
-        Seat.claimed_at.isnot(None),
-    ).all()
-    if not claimed_seats:
-        return 0
-    seat_ids = [seat.id for seat in claimed_seats]
-
-    # 3. Batch fetch events for today, scoped to this admin's class_ids only.
-    # events_map: (seat_id, class_id) -> list[event-like]
-    events_map = get_batch_attendance_events(seat_ids, start_of_day_utc, allowed_class_ids=admin_class_ids)
-
-    # Lookup by canonical actor scope for fast iteration
-    seats_by_student_period = {}
-    for seat in claimed_seats:
-        blk = (seat.class_economy.section if seat.class_economy else "").strip().upper()
-        if not blk:
-            continue
-        seats_by_student_period.setdefault(seat.user_id, {}).setdefault(blk, []).append(seat)
-
-    # 4. Batch fetch PayrollSettings
-    payroll_settings = PayrollSettings.query.filter(
-        PayrollSettings.class_id.in_(admin_class_ids),
-        PayrollSettings.is_active == True
-    ).all()
-    limits_map = {}
-
-    def get_limit(setting):
-        if not setting: return None
-        if setting.settings_mode == 'simple' and setting.daily_limit_hours:
-            return int(setting.daily_limit_hours * 3600)
-        elif setting.settings_mode == 'advanced' and setting.max_time_per_day:
-            multiplier = {'seconds': 1, 'minutes': 60, 'hours': 3600, 'days': 86400}.get(setting.max_time_per_day_unit, 3600)
-            return int(setting.max_time_per_day * multiplier)
-        return None
-
-    global_setting = next((s for s in payroll_settings if s.block is None), None)
-    global_limit = get_limit(global_setting)
-
-    for s in payroll_settings:
-        if s.block:
-            limit = get_limit(s)
-            if limit is not None:
-                limits_map[s.block.upper()] = limit
-
-    # 5. Batch fetch Students to get their blocks
-    students = Seat.query.filter(Seat.user_id.in_(student_ids)).all()
-
-    # 6. Iterate and check
-    tapped_out_count = 0
-
-    for student in students:
-        student_blocks = [b.strip().upper() for b in (student.block or "").split(',') if b.strip()]
-
-        for period in student_blocks:
-            seat_rows = seats_by_student_period.get(student.user_id, {}).get(period, [])
-            for seat_row in seat_rows:
-                class_id = seat_row.class_id
-                resolved_seat_id = seat_row.id
-                events = events_map.get((resolved_seat_id, class_id), [])
-                if not events:
-                    continue
-
-                last_event = events[-1]
-                if last_event.status != 'active':
-                    continue
-
-                # Calculate duration today
-                duration = calculate_seconds_in_memory(events, start_of_day_utc)
-
-                # Get limit
-                limit = limits_map.get(period, global_limit)
-
-                if limit and duration >= limit:
-                    # Limit reached. Tap out.
-                    hours_limit = limit / 3600.0
-                    overage = duration - limit
-                    # Timestamp backdated to when limit was reached
-                    tapout_ts = now_utc - timedelta(seconds=max(0, overage))
-                    if tapout_ts > now_utc: tapout_ts = now_utc
-
-                    if not class_id or not resolved_seat_id:
-                        continue
-                    student_tap(
-                        seat_id=resolved_seat_id,
-                        class_id=class_id,
-                        status="inactive",
-                        reason=f"Daily limit ({hours_limit:.1f}h) reached",
-                        reason_code=AttendanceReasonCode.DAILY_LIMIT,
-                        timestamp_utc=tapout_ts,
-                    )
-                    tapped_out_count += 1
-
-                    # Lock student
-                    state = SeatAttendanceState.query.filter_by(
-                        seat_id=resolved_seat_id,
-                        class_id=class_id,
-                    ).first()
-                    if not state:
-                        state = SeatAttendanceState(
-                            seat_id=resolved_seat_id,
-                            class_id=class_id,
-                            tap_enabled=True,
-                        )
-                        db.session.add(state)
-                    state.done_for_day_date = class_today_by_class_id.get(class_id, default_today_local)
-
-    if tapped_out_count > 0:
-        try:
-            db.session.flush()  # FEAT-AUTHORIZED-SHELL
-        except Exception as e:
-            db.session.rollback()
-            current_app.logger.error(f"Error committing batch auto-tapout: {e}", exc_info=True)
-            return 0
-
-    return tapped_out_count

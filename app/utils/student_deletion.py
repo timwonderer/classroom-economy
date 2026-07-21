@@ -13,7 +13,6 @@ from app.models import (
     RedemptionEvent,
     StorePurchase,
     AttendanceSession,
-    SeatAttendanceState,
     Transaction,
     Seat,
     IdentityProfile,
@@ -133,7 +132,6 @@ def _delete_student_scoped_rows(student_id, store_purchase_ids, issue_ids, tx_id
     if tx_ids:
         Transaction.query.filter(Transaction.id.in_(tx_ids)).delete(synchronize_session=False)
     if seat_ids_for_student:
-        SeatAttendanceState.query.filter(SeatAttendanceState.seat_id.in_(seat_ids_for_student)).delete(synchronize_session=False)
         AttendanceSession.query.filter(AttendanceSession.seat_id.in_(seat_ids_for_student)).delete(synchronize_session=False)
     if seat_ids_for_student:
         HallPassLog.query.filter(HallPassLog.seat_id.in_(seat_ids_for_student)).delete(synchronize_session=False)

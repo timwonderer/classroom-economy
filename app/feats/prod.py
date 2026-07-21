@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 from datetime import datetime
 
-from sqlalchemy import func, or_
+from sqlalchemy import func
 
 from app.extensions import db
 from app.feats.base import feat_shell, get_correlation_id
@@ -13,6 +13,7 @@ from app.models import (
     AttendanceSession,
     ClassEconomy,
     HallPassLog,
+    HallPassSettings,
     PayrollEvent,
     PayrollSettings,
     Seat,
@@ -21,12 +22,10 @@ from app.models import (
 from app.services.context_resolver import CanonicalContext
 from app.services.entitlement_service import consume_hall_pass, get_hall_pass_balance
 from app.services.ledger_service import create_pending_transaction
-from app.utils.temporal import (
+from app.utils.canonical_temporal_resolver import (
     CLASS_LEVEL_EVALUATION,
-    SYSTEM_LEVEL_EVALUATION,
-    resolve_canonical_temporal_evaluation,
+    canonical_temporal_resolver,
 )
-from app.utils.time import ensure_utc, utc_now
 
 
 @dataclass(frozen=True)
@@ -76,6 +75,79 @@ def _resolve_pay_rate_per_second(class_id: str, *, block: str | None = None) -> 
     return Decimal("0.25") / Decimal("60")
 
 
+def _latest_hall_pass_attendance_state(log: HallPassLog) -> str:
+    rows = (
+        AttendanceSession.query.filter_by(
+            class_id=log.class_id,
+            target_seat_id=log.requested_by_seat_id,
+            hall_pass_id=log.hall_pass_id,
+        )
+        .order_by(AttendanceSession.timestamp.asc(), AttendanceSession.id.asc())
+        .all()
+    )
+    left_seen = False
+    for row in rows:
+        if row.status == "inactive" and row.reason_code == AttendanceReasonCode.HALL_PASS.value:
+            left_seen = True
+        elif left_seen and row.status == "active":
+            return "returned"
+    return "left" if left_seen else "approved"
+
+
+def _enforce_hall_pass_settings(
+    *,
+    ctx: CanonicalContext,
+    destination: str,
+    reference_time_utc,
+) -> None:
+    settings = HallPassSettings.query.filter_by(class_id=ctx.class_id).first()
+    pass_types = settings.get_pass_types() if settings else HallPassSettings.get_default_pass_types()
+    normalized_destination = (destination or "").strip().lower()
+    pass_type = next(
+        (
+            item for item in pass_types
+            if (item.get("name") or "").strip().lower() == normalized_destination
+        ),
+        None,
+    )
+    if pass_type is not None and not pass_type.get("enabled", True):
+        raise ValueError("Hall-pass destination is disabled.")
+
+    day_bounds = canonical_temporal_resolver(
+        CLASS_LEVEL_EVALUATION,
+        canonical_execution_context=ctx,
+        primitive="evaluation_day_boundaries",
+        reference_time_utc=reference_time_utc,
+    )
+    todays_logs = (
+        HallPassLog.query.filter(
+            HallPassLog.class_id == ctx.class_id,
+            HallPassLog.timestamp >= day_bounds.boundary_start_utc,
+            HallPassLog.timestamp < day_bounds.boundary_end_utc,
+        )
+        .order_by(HallPassLog.timestamp.asc(), HallPassLog.id.asc())
+        .all()
+    )
+    currently_out = [
+        log for log in todays_logs
+        if _latest_hall_pass_attendance_state(log) == "left"
+    ]
+
+    queue_limit = getattr(settings, "queue_limit", None) if settings else None
+    queue_enabled = getattr(settings, "queue_enabled", True) if settings else True
+    if queue_enabled and queue_limit is not None and len(currently_out) >= int(queue_limit):
+        raise ValueError("Hall-pass queue limit reached.")
+
+    simultaneous_limit = pass_type.get("simultaneous_limit") if pass_type else None
+    if simultaneous_limit is not None:
+        destination_out = [
+            log for log in currently_out
+            if (log.destination or "").strip().lower() == normalized_destination
+        ]
+        if len(destination_out) >= int(simultaneous_limit):
+            raise ValueError("Hall-pass destination limit reached.")
+
+
 def _last_payroll_event_time(*, seat_id: int, class_id: str) -> datetime | None:
     event = (
         PayrollEvent.query.filter(
@@ -86,17 +158,23 @@ def _last_payroll_event_time(*, seat_id: int, class_id: str) -> datetime | None:
         .order_by(PayrollEvent.recorded_at.desc(), PayrollEvent.id.desc())
         .first()
     )
-    return ensure_utc(event.recorded_at) if event else None
+    return event.recorded_at if event else None
 
 
-def _calculate_attendance_seconds_since(*, seat_id: int, class_id: str, since_utc) -> int:
+def _calculate_attendance_seconds_since(
+    *,
+    ctx: CanonicalContext,
+    seat_id: int,
+    class_id: str,
+    since_utc,
+    current_time_utc,
+) -> int:
     """Calculate attendance seconds from the append-only timeline.
 
     Each ``status='active'`` row marks a start; the next ``status='inactive'``
-    row for the same target_seat_id+class_id marks the end.  If no inactive row
-    follows, current time is used.
+    row for the same target_seat_id+class_id marks the end. If no inactive row
+    follows, the current payroll evaluation timestamp is used.
     """
-    since_utc = ensure_utc(since_utc) if since_utc else None
     query = AttendanceSession.query.filter(
         AttendanceSession.target_seat_id == seat_id,
         AttendanceSession.class_id == class_id,
@@ -105,21 +183,30 @@ def _calculate_attendance_seconds_since(*, seat_id: int, class_id: str, since_ut
         query = query.filter(AttendanceSession.timestamp >= since_utc)
     rows = query.order_by(AttendanceSession.timestamp.asc(), AttendanceSession.id.asc()).all()
 
-    total_seconds = 0
-    now = utc_now()
+    intervals = []
     active_start = None
     for row in rows:
-        ts = ensure_utc(row.timestamp)
+        ts = row.timestamp
         if since_utc and ts < since_utc:
             continue
         if row.status == "active":
             active_start = ts
         elif row.status == "inactive" and active_start is not None:
-            total_seconds += int((ts - active_start).total_seconds())
+            intervals.append((active_start, ts))
             active_start = None
     if active_start is not None:
-        total_seconds += int((now - active_start).total_seconds())
-    return total_seconds
+        intervals.append((active_start, current_time_utc))
+    if not intervals:
+        return 0
+
+    evaluation = canonical_temporal_resolver(
+        CLASS_LEVEL_EVALUATION,
+        canonical_execution_context=ctx,
+        primitive="elapsed_duration",
+        reference_time_utc=current_time_utc,
+        intervals=intervals,
+    )
+    return evaluation.elapsed_seconds
 
 
 @feat_shell("FEAT-PROD-001")
@@ -127,6 +214,9 @@ def record_attendance_session(
     *,
     ctx: CanonicalContext,
     status: str,
+    target_seat_id: int | None = None,
+    actor_seat_id: int | None = None,
+    mechanism: str = "self",
     reason: str | None = None,
     reason_code: AttendanceReasonCode | None = None,
     hall_pass_id: str | None = None,
@@ -135,13 +225,16 @@ def record_attendance_session(
     reference_time_utc=None,
 ) -> AttendanceSessionResult:
     ctx = _require_context(ctx)
-    evaluation = resolve_canonical_temporal_evaluation(
+    evaluation = canonical_temporal_resolver(
         CLASS_LEVEL_EVALUATION,
-        class_id=ctx.class_id,
         canonical_execution_context=ctx,
+        primitive="current_time",
         reference_time_utc=reference_time_utc,
     )
     event_time = evaluation.canonical_now_utc
+
+    if status not in {"active", "inactive"}:
+        raise ValueError("Attendance status must be 'active' or 'inactive'.")
 
     # Resolve reason_code for inactive status
     if status == "inactive" and reason_code is None and reason:
@@ -150,12 +243,24 @@ def record_attendance_session(
             reason_code = AttendanceReasonCode.HALL_PASS
         elif normalized_reason == "done_for_day":
             reason_code = AttendanceReasonCode.DONE_FOR_DAY
-        elif normalized_reason == "daily_limit":
-            reason_code = AttendanceReasonCode.DAILY_LIMIT
+    if status == "inactive" and reason_code is None:
+        raise ValueError("Inactive attendance sessions require a reason_code.")
+    if status == "inactive" and reason_code == AttendanceReasonCode.HALL_PASS and not hall_pass_id:
+        raise ValueError("Hall-pass attendance sessions require hall_pass_id.")
 
-    # Resolve target_user_id from the seat
-    seat = db.session.get(Seat, ctx.seat_id)
-    target_user_id = seat.user_id if seat else None
+    resolved_actor_seat_id = actor_seat_id or ctx.seat_id
+    resolved_target_seat_id = target_seat_id or ctx.seat_id
+    if mechanism not in {"self", "teacher", "system"}:
+        raise ValueError("Attendance mechanism must be 'self', 'teacher', or 'system'.")
+
+    target_seat = db.session.get(Seat, resolved_target_seat_id)
+    if target_seat is None or target_seat.class_id != ctx.class_id:
+        raise ValueError("Attendance target seat must belong to the canonical class.")
+    if resolved_actor_seat_id:
+        actor_seat = db.session.get(Seat, resolved_actor_seat_id)
+        if actor_seat is None or actor_seat.class_id != ctx.class_id:
+            raise ValueError("Attendance actor seat must belong to the canonical class.")
+    target_user_id = target_seat.user_id
 
     resolved_reason_code = (
         reason_code.value if reason_code else AttendanceReasonCode.START_WORK.value
@@ -164,14 +269,14 @@ def record_attendance_session(
     )
 
     session = AttendanceSession(
-        target_seat_id=ctx.seat_id,
-        actor_seat_id=ctx.seat_id,
+        target_seat_id=resolved_target_seat_id,
+        actor_seat_id=resolved_actor_seat_id,
         class_id=ctx.class_id,
         target_user_id=target_user_id,
         status=status,
         reason_code=resolved_reason_code,
         timestamp=event_time,
-        mechanism="self",
+        mechanism=mechanism,
         hall_pass_id=hall_pass_id,
     )
     db.session.add(session)
@@ -193,13 +298,18 @@ def record_hall_pass_log(
     reference_time_utc=None,
 ) -> HallPassLogResult:
     ctx = _require_context(ctx)
-    evaluation = resolve_canonical_temporal_evaluation(
+    evaluation = canonical_temporal_resolver(
         CLASS_LEVEL_EVALUATION,
-        class_id=ctx.class_id,
         canonical_execution_context=ctx,
+        primitive="current_time",
         reference_time_utc=reference_time_utc,
     )
     now = evaluation.canonical_now_utc
+    _enforce_hall_pass_settings(
+        ctx=ctx,
+        destination=destination,
+        reference_time_utc=now,
+    )
 
     log = HallPassLog(
         requested_by_seat_id=requested_by_seat_id,
@@ -237,10 +347,10 @@ def _record_payroll_event_impl(
     amount: Decimal | None = None,
 ) -> PayrollEventResult:
     ctx = _require_context(ctx)
-    evaluation = resolve_canonical_temporal_evaluation(
+    evaluation = canonical_temporal_resolver(
         CLASS_LEVEL_EVALUATION,
-        class_id=ctx.class_id,
         canonical_execution_context=ctx,
+        primitive="current_time",
         reference_time_utc=reference_time_utc,
     )
     recorded_at = evaluation.canonical_now_utc
@@ -250,9 +360,11 @@ def _record_payroll_event_impl(
     if payroll_event_type == "payroll" and amount is None:
         last_payroll_time = _last_payroll_event_time(seat_id=target_seat_id, class_id=ctx.class_id)
         attendance_seconds = _calculate_attendance_seconds_since(
+            ctx=ctx,
             seat_id=target_seat_id,
             class_id=ctx.class_id,
             since_utc=last_payroll_time,
+            current_time_utc=recorded_at,
         )
         rate_per_second = _resolve_pay_rate_per_second(ctx.class_id, block=section)
         amount = (Decimal(attendance_seconds) * rate_per_second).quantize(Decimal("0.01"))

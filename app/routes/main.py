@@ -6,15 +6,16 @@ debug endpoints, and public hall pass verification.
 """
 
 import unicodedata
-from datetime import timezone
+from types import SimpleNamespace
 from flask import Blueprint, redirect, url_for, jsonify, current_app, session, request
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.extensions import db, limiter
-from app.models import User, UserRole
+from app.models import User
+from app.hash_utils import hash_username_lookup
 from app.utils.helpers import render_template_with_fallback as render_template, is_safe_url
-from app.utils.time import utc_now, ensure_utc, normalize_for_db, get_timezone
+from app.utils.canonical_temporal_resolver import CLASS_LEVEL_EVALUATION, canonical_temporal_resolver
 
 # Create blueprint
 main_bp = Blueprint('main', __name__)
@@ -196,11 +197,6 @@ def service_worker():
 
 # -------------------- HALL PASS PUBLIC VERIFICATION (NO AUTH REQUIRED) --------------------
 
-def _get_school_timezone():
-    """Return the configured school timezone or fall back to Pacific Time."""
-    return get_timezone(current_app.config.get('DEFAULT_TIMEZONE'))
-
-
 def _normalize_first_name(value):
     """Normalize first name: strip, NFKC, lowercase."""
     if not value:
@@ -231,12 +227,10 @@ def verify_hall_pass(teacher_public_token):
     - Non-enumerable (token-based)
     - Rotatable
     """
-    from app.models import ClassEconomy, HallPassLog
+    from app.models import AttendanceReasonCode, AttendanceSession, ClassEconomy, HallPassLog, IdentityProfile, Seat
 
     _GENERIC_UNAVAILABLE = "Verification page not available."
 
-    # Look up teacher directly via canonical User token
-    from app.models import User, UserRole
     teacher_user = User.query.filter_by(hall_pass_verify_token=teacher_public_token).first()
 
     if not teacher_user:
@@ -253,13 +247,15 @@ def verify_hall_pass(teacher_public_token):
         .order_by(ClassEconomy.display_name)
         .all()
     )
-    # Build list: [{"join_code": ..., "class_id": ..., "label": ...}, ...]
+    def _class_display_label(class_row):
+        label_parts = [part for part in (class_row.section, class_row.display_name) if part]
+        return " - ".join(label_parts) if label_parts else class_row.class_id
+
     classes = []
     for c in classes_rows:
         classes.append({
-            "join_code": c.join_code,
             "class_id": c.class_id,
-            "label": c.display_name or c.join_code
+            "label": _class_display_label(c),
         })
 
     if request.method == 'GET':
@@ -289,6 +285,9 @@ def verify_hall_pass(teacher_public_token):
             result={'outcome': 'no_match'}
         )
 
+    first_name_hash = hash_username_lookup(first_name_norm)
+    last_name_hash = hash_username_lookup(last_name_norm)
+
     # Validate selected class directly under the teacher's ownership boundary.
     selected_class_row = ClassEconomy.query.filter_by(
         class_id=selected_class_id,
@@ -303,38 +302,40 @@ def verify_hall_pass(teacher_public_token):
             result={'outcome': 'no_match'}
         )
 
-    # Determine today's date range in school timezone
-    school_tz = _get_school_timezone()
-    now_school = utc_now().astimezone(school_tz)
-    today_start = now_school.replace(hour=0, minute=0, second=0, microsecond=0)
-    today_end = today_start.replace(hour=23, minute=59, second=59, microsecond=999999)
-
-    today_start_utc = today_start.astimezone(timezone.utc)
-    today_end_utc = today_end.astimezone(timezone.utc)
-
-    # Normalize for DB comparison (handles SQLite naive datetime storage)
-    today_start_db = normalize_for_db(today_start_utc)
-    today_end_db = normalize_for_db(today_end_utc)
+    public_temporal_context = SimpleNamespace(class_id=selected_class_id)
+    day_bounds = canonical_temporal_resolver(
+        CLASS_LEVEL_EVALUATION,
+        canonical_execution_context=public_temporal_context,
+        primitive="evaluation_day_boundaries",
+    )
+    now_evaluation = canonical_temporal_resolver(
+        CLASS_LEVEL_EVALUATION,
+        canonical_execution_context=public_temporal_context,
+        primitive="current_time",
+    )
 
     # Query today's hall pass records for this class scope.
-    # Only include actionable statuses (not pending/rejected).
     passes_query = HallPassLog.query.filter(
         HallPassLog.class_id == selected_class_id,
-        HallPassLog.request_time >= today_start_db,
-        HallPassLog.request_time <= today_end_db,
-        HallPassLog.status.in_(['approved', 'left', 'returned'])
-    ).order_by(HallPassLog.request_time.desc())
+        HallPassLog.timestamp >= day_bounds.boundary_start_utc,
+        HallPassLog.timestamp < day_bounds.boundary_end_utc,
+    ).order_by(HallPassLog.timestamp.desc(), HallPassLog.id.desc())
 
-    # Filter in Python (first_name is PII-encrypted, can't filter in DB).
+    # Filter via canonical seat claim hashes. IdentityProfile is display-only.
     # Stop at 2 matches: enough to distinguish unique vs ambiguous.
     matched = []
     for entry in passes_query.yield_per(100):
-        seat = entry.seat
-        if not seat or not seat.identity_profile:
+        seat = Seat.query.filter_by(
+            id=entry.requested_by_seat_id,
+            class_id=entry.class_id,
+            role="student",
+        ).first()
+        if not seat:
             continue
-        stored_norm = _normalize_first_name((seat.identity_profile.first_name if seat.identity_profile else ""))
-        stored_last_name = _normalize_last_name(seat.identity_profile.last_name if seat.identity_profile else "")
-        if stored_norm == first_name_norm and stored_last_name == last_name_norm:
+        if (
+            seat.claim_first_name_hash == first_name_hash
+            and seat.claim_last_name_hash == last_name_hash
+        ):
             matched.append(entry)
         if len(matched) >= 2:
             # Ambiguous — stop early
@@ -346,33 +347,68 @@ def verify_hall_pass(teacher_public_token):
         result = {'outcome': 'ambiguous'}
     else:
         entry = matched[0]
-        class_label = selected_class_row.display_name or selected_class_row.join_code
-
-        # Format time_out in school timezone
+        class_label = _class_display_label(selected_class_row)
+        profile = IdentityProfile.query.filter_by(
+            seat_id=entry.requested_by_seat_id,
+            class_id=entry.class_id,
+        ).first()
+        attendance_rows = (
+            AttendanceSession.query.filter_by(
+                class_id=entry.class_id,
+                target_seat_id=entry.requested_by_seat_id,
+                hall_pass_id=entry.hall_pass_id,
+            )
+            .order_by(AttendanceSession.timestamp.asc(), AttendanceSession.id.asc())
+            .all()
+        )
+        left_row = next(
+            (
+                row for row in attendance_rows
+                if row.status == "inactive"
+                and row.reason_code == AttendanceReasonCode.HALL_PASS.value
+            ),
+            None,
+        )
+        return_row = next(
+            (
+                row for row in attendance_rows
+                if left_row is not None
+                and row.status == "active"
+                and row.timestamp >= left_row.timestamp
+            ),
+            None,
+        )
+        status = "returned" if return_row else "left" if left_row else "approved"
         time_out_str = None
         elapsed_mins = None
-        if entry.left_time:
-            left_utc = ensure_utc(entry.left_time)
-            left_local = left_utc.astimezone(school_tz)
-            time_out_str = left_local.strftime('%I:%M %p').lstrip('0')
-
-            # Compute elapsed minutes only for currently-out passes
-            if entry.status == 'left':
-                elapsed_mins = int((utc_now() - left_utc).total_seconds() // 60)
+        if left_row:
+            time_out_str = left_row.timestamp.isoformat().replace('+00:00', 'Z')
+            if status == "left":
+                elapsed = canonical_temporal_resolver(
+                    CLASS_LEVEL_EVALUATION,
+                    canonical_execution_context=public_temporal_context,
+                    primitive="time_since",
+                    reference_time_utc=now_evaluation.canonical_now_utc,
+                    start=left_row.timestamp,
+                )
+                elapsed_mins = elapsed.elapsed_seconds // 60
 
         return_time_str = None
-        if entry.return_time:
-            returned_utc = ensure_utc(entry.return_time)
-            returned_local = returned_utc.astimezone(school_tz)
-            return_time_str = returned_local.strftime('%I:%M %p').lstrip('0')
+        if return_row:
+            return_time_str = return_row.timestamp.isoformat().replace('+00:00', 'Z')
 
         result = {
             'outcome': 'match',
-            'student_display': (entry.seat.identity_profile.full_name if entry.seat and entry.seat.identity_profile else ""),
+            'student_display': " ".join(
+                part for part in [
+                    getattr(profile, "first_name", None),
+                    getattr(profile, "last_name", None),
+                ] if part
+            ).strip(),
             'class_label': class_label,
-            'destination': entry.reason,
+            'destination': entry.destination,
             'time_out': time_out_str,
-            'status': entry.status,
+            'status': status,
             'elapsed_mins': elapsed_mins,
             'return_time': return_time_str,
         }

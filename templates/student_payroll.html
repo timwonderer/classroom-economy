@@ -56,8 +56,8 @@
                         </div>
                     </div>
 
-                    <!-- Tap Events for this block -->
-                    {% set block_events = tap_events_by_block[blk] if blk in tap_events_by_block else [] %}
+                    <!-- Attendance events for this block -->
+                    {% set block_events = attendance_events_by_block[blk] if blk in attendance_events_by_block else [] %}
                     {% if block_events %}
                     <div class="table-responsive">
                         <table class="table table-sm table-hover">
@@ -82,7 +82,7 @@
                                     <td>
                                         {% set is_tap_in = event.status == 'active' %}
                                         <span class="badge {% if is_tap_in %}bg-success{% else %}bg-danger{% endif %}">
-                                            {{ 'Start Work' if is_tap_in else 'Break / Done' }}
+                                            {{ 'Start Work' if is_tap_in else 'Break' }}
                                         </span>
                                     </td>
                                     <td>
@@ -208,24 +208,24 @@
                 <span class="material-symbols-outlined">history</span> Attendance History
             </div>
             <div class="card-body">
-                {% if all_tap_events %}
+                {% if attendance_events %}
                 <div class="row mb-3">
                     <div class="col-md-4">
                         <div class="text-center p-3 bg-light rounded">
                             <h6 class="text-muted mb-1">Total Events</h6>
-                            <h3 class="mb-0">{{ all_tap_events|length }}</h3>
+                            <h3 class="mb-0">{{ attendance_events|length }}</h3>
                         </div>
                     </div>
                     <div class="col-md-4">
                         <div class="text-center p-3 bg-light rounded">
                             <h6 class="text-muted mb-1">Start Work</h6>
-                            <h3 class="mb-0 text-success">{{ all_tap_events|selectattr('action', 'equalto', 'start_work')|list|length }}</h3>
+                            <h3 class="mb-0 text-success">{{ attendance_start_count }}</h3>
                         </div>
                     </div>
                     <div class="col-md-4">
                         <div class="text-center p-3 bg-light rounded">
-                            <h6 class="text-muted mb-1">Break / Done</h6>
-                            <h3 class="mb-0 text-danger">{{ all_tap_events|selectattr('action', 'equalto', 'stop_work')|list|length }}</h3>
+                            <h6 class="text-muted mb-1">Break</h6>
+                            <h3 class="mb-0 text-danger">{{ attendance_inactive_count }}</h3>
                         </div>
                     </div>
                 </div>
@@ -308,7 +308,7 @@
                             </table>
                         </div>
                         <div class="alert alert-warning mt-3">
-                            <span class="material-symbols-outlined">schedule</span> <strong>Remember:</strong> Time is tracked when you Start Work and Break / Done. Make sure to Start Work when you begin working!
+                            <span class="material-symbols-outlined">schedule</span> <strong>Remember:</strong> Time is tracked when you Start Work and Break. Make sure to Start Work when you begin working!
                         </div>
                     </div>
                 </div>
@@ -316,7 +316,7 @@
         </div>
 
         <!-- Last Payroll Information -->
-        {% if student.last_payroll %}
+        {% if last_payroll_event %}
         <div class="card">
             <div class="card-header">
                 <span class="material-symbols-outlined">history</span> Last Payroll Processed
@@ -326,13 +326,13 @@
                     <div class="col-md-4">
                         <div class="text-center p-3 bg-light rounded">
                             <h6 class="text-muted mb-1">Last Payment Date</h6>
-                            <h5 class="mb-0">{{ student.last_payroll.strftime('%b %d, %Y') }}</h5>
+                            <h5 class="mb-0">{{ last_payroll_event.recorded_at.strftime('%b %d, %Y') }}</h5>
                         </div>
                     </div>
                     <div class="col-md-4">
                         <div class="text-center p-3 bg-light rounded">
                             <h6 class="text-muted mb-1">Time Since Last Payroll</h6>
-                            <h5 class="mb-0">{{ ((now - student.last_payroll).days) }} days</h5>
+                            <h5 class="mb-0">{{ days_since_last_payroll }} days</h5>
                         </div>
                     </div>
                     <div class="col-md-4">

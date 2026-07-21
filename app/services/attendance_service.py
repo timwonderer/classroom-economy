@@ -1,45 +1,148 @@
 from __future__ import annotations
 
 from app.models import (
+    AttendanceReasonCode,
     AttendanceSession,
     HallPassLog,
-    
     Seat,
 )
-from app.utils.time import ensure_utc, get_class_now
+from app.services.hall_pass_request_queue import list_pending_hall_pass_requests_for_class
+from app.utils.canonical_temporal_resolver import (
+    CLASS_LEVEL_EVALUATION,
+    canonical_temporal_resolver,
+)
 
 
-def _calculate_unpaid_from_sessions(session_rows, now_utc, last_payroll_time):
-    last_anchor = ensure_utc(last_payroll_time) if last_payroll_time else None
-    total_seconds = 0
-    for session in session_rows:
-        start = ensure_utc(session.started_at)
-        end = ensure_utc(session.ended_at) if session.ended_at else now_utc
-        if end < start:
-            end = start
-        if last_anchor:
-            if end <= last_anchor:
+def _current_evaluation_day_bounds(ctx):
+    evaluation = canonical_temporal_resolver(
+        CLASS_LEVEL_EVALUATION,
+        canonical_execution_context=ctx,
+        primitive="evaluation_day_boundaries",
+    )
+    return evaluation.boundary_start_utc, evaluation.boundary_end_utc
+
+
+def _elapsed_seconds(ctx, intervals):
+    if not intervals:
+        return 0
+    evaluation = canonical_temporal_resolver(
+        CLASS_LEVEL_EVALUATION,
+        canonical_execution_context=ctx,
+        primitive="elapsed_duration",
+        intervals=intervals,
+    )
+    return evaluation.elapsed_seconds
+
+
+def _pair_active_intervals(rows, *, end_boundary, start_boundary=None):
+    intervals = []
+    active_start = None
+    for row in rows:
+        timestamp = row.timestamp
+        if row.status == "active":
+            active_start = timestamp
+            continue
+        if row.status == "inactive" and active_start is not None:
+            interval_start = active_start
+            interval_end = timestamp
+            if start_boundary and interval_end <= start_boundary:
+                active_start = None
                 continue
-            start = max(start, last_anchor)
-        if end > start:
-            total_seconds += (end - start).total_seconds()
-    return int(max(0, total_seconds))
+            if start_boundary and interval_start < start_boundary:
+                interval_start = start_boundary
+            if interval_end > end_boundary:
+                interval_end = end_boundary
+            if interval_end >= interval_start:
+                intervals.append((interval_start, interval_end))
+            active_start = None
+    if active_start is not None:
+        interval_start = active_start
+        interval_end = end_boundary
+        if start_boundary and interval_start < start_boundary:
+            interval_start = start_boundary
+        if interval_end >= interval_start:
+            intervals.append((interval_start, interval_end))
+    return intervals
 
 
-def calculate_unpaid_attendance_seconds(seat_id: int, class_id: str, last_payroll_time):
+def _derive_hall_pass_state(seat_id: int, class_id: str):
+    """Return the latest non-returned hall-pass display state for a seat/class."""
+    pending_requests = [
+        request for request in list_pending_hall_pass_requests_for_class(class_id)
+        if request.requested_by_seat_id == seat_id
+    ]
+    if pending_requests:
+        latest_pending = pending_requests[-1]
+        return {
+            "id": latest_pending.request_id,
+            "status": "pending",
+            "reason": latest_pending.destination,
+        }
+
+    latest_pass = HallPassLog.query.filter_by(
+        requested_by_seat_id=seat_id,
+        class_id=class_id,
+    ).order_by(HallPassLog.timestamp.desc(), HallPassLog.id.desc()).first()
+    if latest_pass is None:
+        return None
+
+    rows = AttendanceSession.query.filter_by(
+        target_seat_id=seat_id,
+        class_id=class_id,
+        hall_pass_id=latest_pass.hall_pass_id,
+    ).order_by(AttendanceSession.timestamp.asc(), AttendanceSession.id.asc()).all()
+    left_row = next(
+        (
+            row for row in rows
+            if row.status == "inactive"
+            and row.reason_code == AttendanceReasonCode.HALL_PASS.value
+        ),
+        None,
+    )
+    return_row = next(
+        (
+            row for row in rows
+            if left_row is not None
+            and row.status == "active"
+            and row.timestamp >= left_row.timestamp
+        ),
+        None,
+    )
+    if return_row is not None:
+        return None
+    status = "left" if left_row is not None else "approved"
+    return {
+        "id": latest_pass.id,
+        "status": status,
+        "reason": latest_pass.destination,
+    }
+
+
+def calculate_unpaid_attendance_seconds(seat_id: int, class_id: str, last_payroll_time, *, ctx):
     """Calculate unpaid attendance from a caller-supplied payroll anchor."""
-    now_utc = get_class_now(class_id)
     canonical_rows = AttendanceSession.query.filter(
         AttendanceSession.target_seat_id == seat_id,
         AttendanceSession.class_id == class_id,
-    ).order_by(AttendanceSession.started_at.asc()).all()
-    return _calculate_unpaid_from_sessions(canonical_rows, now_utc, last_payroll_time)
+    ).order_by(AttendanceSession.timestamp.asc(), AttendanceSession.id.asc()).all()
+    now_evaluation = canonical_temporal_resolver(
+        CLASS_LEVEL_EVALUATION,
+        canonical_execution_context=ctx,
+        primitive="current_time",
+    )
+    intervals = _pair_active_intervals(
+        canonical_rows,
+        start_boundary=last_payroll_time,
+        end_boundary=now_evaluation.canonical_now_utc,
+    )
+    return _elapsed_seconds(ctx, intervals)
 
 
-def get_all_block_statuses(student, *, class_id: str, payroll_anchor_by_class_id=None):
+def get_all_block_statuses(student, *, class_id: str, payroll_anchor_by_class_id=None, ctx=None):
     """Return attendance facts for one canonical class scope only."""
     if not class_id:
         raise ValueError("get_all_block_statuses requires class_id.")
+    if ctx is None:
+        raise ValueError("get_all_block_statuses requires CanonicalContext.")
 
     student_user_id = getattr(student, "user_id", None)
     if student_user_id is None:
@@ -63,32 +166,28 @@ def get_all_block_statuses(student, *, class_id: str, payroll_anchor_by_class_id
             continue
         seat_id = seat.id
 
-        state = SeatAttendanceState.query.filter_by(
-            seat_id=seat_id,
-            class_id=class_id,
-        ).first()
-        is_active = state.is_active if state else False
+        rows = AttendanceSession.query.filter(
+            AttendanceSession.target_seat_id == seat_id,
+            AttendanceSession.class_id == class_id,
+        ).order_by(AttendanceSession.timestamp.asc(), AttendanceSession.id.asc()).all()
+        latest = rows[-1] if rows else None
+        is_active = bool(latest and latest.status == "active")
 
-        today_local = get_class_now(class_id).date()
-        done = False
-        if state and state.done_for_day_date == today_local:
-            done = True
+        day_start_utc, day_end_utc = _current_evaluation_day_bounds(ctx)
+        done = any(
+            row.status == "inactive"
+            and row.reason_code == AttendanceReasonCode.DONE_FOR_DAY.value
+            and day_start_utc <= row.timestamp < day_end_utc
+            for row in rows
+        )
         duration = calculate_unpaid_attendance_seconds(
             seat_id,
             class_id,
             payroll_anchor_by_class_id.get(class_id),
+            ctx=ctx,
         )
 
-        active_pass = HallPassLog.query.filter_by(
-            requested_by_seat_id=seat_id,
-            class_id=class_id,
-        ).filter(
-            HallPassLog.status.in_(["pending", "approved", "left", "rejected"])
-        ).order_by(HallPassLog.request_time.desc()).first()
-
-        hall_pass = None
-        if active_pass:
-            hall_pass = {"id": active_pass.id, "status": active_pass.status, "reason": active_pass.reason}
+        hall_pass = _derive_hall_pass_state(seat_id, class_id)
 
         period_states[blk] = {
             "active": is_active,

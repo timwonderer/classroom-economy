@@ -6,8 +6,6 @@ function createToast(message, isError = false) {
 }
 
 document.addEventListener("DOMContentLoaded", () => {
-  const hallPassModal = new bootstrap.Modal(document.getElementById('hallPassModal'));
-
   // Apply initial server-rendered state (for hall passes + timers) before polling kicks in
   const serverStateEl = document.getElementById('serverState');
   if (serverStateEl && serverStateEl.textContent) {
@@ -27,55 +25,60 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
-  // Handle Tap In and Tap Out button clicks
-  document.querySelectorAll(".tap-btn").forEach(button => {
+  // Handle contextual productivity actions.
+  document.querySelectorAll(".attendance-action-btn").forEach(button => {
     button.addEventListener("click", () => {
       const period = button.dataset.period;
       const action = button.dataset.action;
 
-      if (action === 'tap_out') {
-        // Show the modal for tap out (Break / Done)
-        document.getElementById('hallPassPeriod').value = period;
-        document.getElementById('hallPassForm').reset(); // Clear previous entries
-        hallPassModal.show();
-      } else {
-        // Keep the simple PIN prompt for tap in (Start Work)
+      if (action === 'start_work') {
         const pin = prompt("Enter your PIN to Start Work:");
         if (!pin) return;
         performTap(period, action, pin);
+        return;
+      }
+
+      if (action === 'break') {
+        const buttonState = button.dataset.state || 'break';
+        const state = getPeriodState(period);
+        const hallPass = state ? state.hall_pass : null;
+        if (buttonState === 'leave' && hallPass && hallPass.status === 'approved') {
+          checkOutHallPass(hallPass.id, period);
+          return;
+        }
+        if (buttonState === 'return' && hallPass && hallPass.status === 'left') {
+          checkInHallPass(hallPass.id, period);
+          return;
+        }
+        if (buttonState === 'pending') {
+          createToast("Your hall pass request is pending approval.", true);
+          return;
+        }
+        openBreakChoiceModal(period);
+        return;
       }
     });
   });
-
-  // Handle the hall pass request from the modal
-  document.getElementById('confirmHallPassBtn').addEventListener('click', () => {
-    const period = document.getElementById('hallPassPeriod').value;
-    const reason = document.getElementById('hallPassReason').value;
-    const pin = document.getElementById('hallPassPin').value;
-    const action = 'tap_out'; // This maps to stop_work in backend logic
-
-    if (!reason) {
-      createToast("Please select a reason.", true);
-      return;
-    }
-    if (!pin) {
-      createToast("Please enter your PIN.", true);
-      return;
-    }
-
-    performTap(period, action, pin, reason);
-    hallPassModal.hide();
-  });
 });
 
+const periodStateCache = {};
+let selectedBreakPeriod = null;
+
+function rememberPeriodState(period, state) {
+  periodStateCache[period] = state || {};
+}
+
+function getPeriodState(period) {
+  return periodStateCache[period] || {};
+}
+
 function performTap(period, action, pin, reason = null) {
-  const tapButton = document.querySelector(`.tap-btn[data-period='${period}'][data-action='${action}']`);
+  const tapButton = document.querySelector(`.attendance-action-btn[data-period='${period}'][data-action='${action}']`);
   if (tapButton) tapButton.disabled = true;
 
   // Map old action names to new API values
   let apiAction = action;
-  if (action === 'tap_in') apiAction = 'start_work';
-  if (action === 'tap_out') apiAction = 'stop_work';
+  if (action === 'break') apiAction = 'stop_work';
 
   const payload = { period, action: apiAction, pin };
   if (reason) {
@@ -98,11 +101,10 @@ function performTap(period, action, pin, reason = null) {
     .then(data => {
       if (!data) return; // Session expired, already redirecting
       if (data.status === "ok") {
-        updateBlockUI(period, data.active, data.duration, data.projected_pay, data.hall_pass);
-        let message = `${action === "tap_in" ? "Start Work" : "Break / Done"} successful`;
-        if (action === 'tap_out' && reason && reason.toLowerCase() !== 'done for the day' && reason.toLowerCase() !== 'done') {
-          message = "Hall pass request submitted!";
-        }
+        const state = { active: data.active, duration: data.duration, projected_pay: data.projected_pay, hall_pass: data.hall_pass };
+        rememberPeriodState(period, state);
+        updateBlockUI(period, state.active, state.duration, state.projected_pay, state.hall_pass);
+        let message = `${action === "start_work" ? "Start Work" : "Break"} successful`;
         createToast(message);
       } else {
         createToast("Request failed: " + (data.error || "Unknown error"), true);
@@ -116,17 +118,9 @@ function performTap(period, action, pin, reason = null) {
     });
 }
 
-function reconcileStudentStatus() {
-  return window.AppCore.csrfFetch("/api/student-status/reconcile", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: "{}"
-  }).catch(() => null);
-}
-
 // Poll the server every 10 seconds to refresh block status
 setInterval(() => {
-  reconcileStudentStatus().then(() => fetch("/api/student-status"))
+  fetch("/api/student-status")
     .then(r => {
       // If session expired, redirect to login
       if (r.status === 401) {
@@ -140,6 +134,7 @@ setInterval(() => {
       if (data.status === 'ok' && data.periods) {
         Object.keys(data.periods).forEach(period => {
           const periodData = data.periods[period];
+          rememberPeriodState(period, periodData);
           updateBlockUI(period, periodData.active, periodData.duration, periodData.projected_pay, periodData.hall_pass);
         });
       }
@@ -155,8 +150,10 @@ function updateBlockUI(period, isActive, duration, projectedPay, hallPass = null
   const statusCell = row.querySelector(".block-status");
   const durationCell = row.querySelector(".block-duration");
   const payCell = row.querySelector(`.block-pay[data-period="${period}"]`);
-  const tapInBtn = row.querySelector(`#tapIn-${period}`);
-  const tapOutBtn = row.querySelector(`#tapOut-${period}`);
+  const startWorkBtn = row.querySelector(`#startWork-${period}`);
+  const breakWorkBtn = row.querySelector(`#breakWork-${period}`);
+
+  rememberPeriodState(period, { active: isActive, duration, projected_pay: projectedPay, hall_pass: hallPass });
 
   statusCell.textContent = isActive ? "Active" : "Inactive";
   statusCell.classList.toggle("text-success", isActive);
@@ -168,12 +165,132 @@ function updateBlockUI(period, isActive, duration, projectedPay, hallPass = null
     payCell.textContent = projectedPay.toFixed(2);
   }
 
-  if (tapInBtn) tapInBtn.disabled = isActive;
-  if (tapOutBtn) tapOutBtn.disabled = !isActive;
+  if (startWorkBtn) startWorkBtn.disabled = isActive;
+  configureBreakButton(breakWorkBtn, isActive, hallPass);
 
   // Handle hall pass overlay
   updateHallPassOverlay(period, hallPass);
 }
+
+function configureBreakButton(button, isActive, hallPass) {
+  if (!button) return;
+  button.disabled = !isActive;
+  button.classList.remove('btn-warning', 'btn-danger', 'btn-primary', 'btn-outline-warning');
+
+  if (!isActive) {
+    button.dataset.state = 'break';
+    button.classList.add('btn-warning');
+    button.innerHTML = '<span class="material-symbols-outlined align-bottom me-1">pause_circle</span> Break';
+    return;
+  }
+
+  if (hallPass && hallPass.status === 'approved') {
+    button.dataset.state = 'leave';
+    button.classList.add('btn-danger');
+    button.innerHTML = '<span class="material-symbols-outlined align-bottom me-1">logout</span> Leave';
+    return;
+  }
+
+  if (hallPass && hallPass.status === 'left') {
+    button.dataset.state = 'return';
+    button.classList.add('btn-primary');
+    button.innerHTML = '<span class="material-symbols-outlined align-bottom me-1">login</span> Return';
+    return;
+  }
+
+  if (hallPass && hallPass.status === 'pending') {
+    button.dataset.state = 'pending';
+    button.classList.add('btn-outline-warning');
+    button.innerHTML = '<span class="material-symbols-outlined align-bottom me-1">hourglass_top</span> Pending';
+    return;
+  }
+
+  button.dataset.state = 'break';
+  button.classList.add('btn-warning');
+  button.innerHTML = '<span class="material-symbols-outlined align-bottom me-1">pause_circle</span> Break';
+}
+
+function openBreakChoiceModal(period) {
+  selectedBreakPeriod = period;
+  renderBreakDestinations([]);
+
+  const modalEl = document.getElementById('breakChoiceModal');
+  if (modalEl && window.bootstrap) {
+    bootstrap.Modal.getOrCreateInstance(modalEl).show();
+  }
+
+  fetch('/api/hall-pass/available-types')
+    .then(r => r.json())
+    .then(data => {
+      if (data.status === 'success') {
+        renderBreakDestinations(data.pass_types || []);
+      } else {
+        renderBreakDestinationError(data.message || 'Unable to load hall-pass destinations.');
+      }
+    })
+    .catch(err => {
+      console.error('Hall pass destination load error:', err);
+      renderBreakDestinationError('Unable to load hall-pass destinations.');
+    });
+}
+
+function closeBreakChoiceModal() {
+  const modalEl = document.getElementById('breakChoiceModal');
+  if (modalEl && window.bootstrap) {
+    bootstrap.Modal.getOrCreateInstance(modalEl).hide();
+  }
+}
+
+function renderBreakDestinations(passTypes) {
+  const list = document.getElementById('hallPassDestinationList');
+  if (!list) return;
+  list.textContent = '';
+
+  if (!Array.isArray(passTypes) || passTypes.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'text-muted small';
+    empty.textContent = 'No hall-pass destinations are currently available.';
+    list.appendChild(empty);
+    return;
+  }
+
+  passTypes.forEach(passType => {
+    const destination = (passType && passType.name) ? String(passType.name) : '';
+    if (!destination) return;
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'btn btn-outline-primary text-start';
+    button.textContent = destination;
+    button.addEventListener('click', () => {
+      if (!selectedBreakPeriod) return;
+      requestHallPass(selectedBreakPeriod, destination);
+      closeBreakChoiceModal();
+    });
+    list.appendChild(button);
+  });
+}
+
+function renderBreakDestinationError(message) {
+  const list = document.getElementById('hallPassDestinationList');
+  if (!list) return;
+  list.textContent = '';
+  const alert = document.createElement('div');
+  alert.className = 'alert alert-danger mb-0';
+  alert.textContent = message;
+  list.appendChild(alert);
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  const doneBtn = document.getElementById('doneForDayBreakBtn');
+  if (!doneBtn) return;
+  doneBtn.addEventListener('click', () => {
+    if (!selectedBreakPeriod) return;
+    const pin = prompt("Enter your PIN to mark done for the day:");
+    if (!pin) return;
+    closeBreakChoiceModal();
+    performTap(selectedBreakPeriod, 'break', pin, "Done for the day");
+  });
+});
 
 function updateHallPassOverlay(period, hallPass) {
   const passInfoDisplay = document.getElementById(`hallPassInfo-${period}`);
@@ -230,13 +347,6 @@ function updateHallPassOverlay(period, hallPass) {
       alertDiv.appendChild(small);
       alertDiv.appendChild(document.createElement('br'));
 
-      // Add checkout button
-      const checkoutBtn = document.createElement('button');
-      checkoutBtn.className = 'btn btn-sm btn-primary mt-2';
-      checkoutBtn.innerHTML = '<span class="material-symbols-outlined align-bottom fs-6 me-1">logout</span> Check Out';
-      checkoutBtn.onclick = function () { checkOutHallPass(hallPass.id, period); };
-      alertDiv.appendChild(checkoutBtn);
-
       passInfoDisplay.appendChild(alertDiv);
     } else if (hallPass.status === 'left') {
       const alertDiv = document.createElement('div');
@@ -249,13 +359,6 @@ function updateHallPassOverlay(period, hallPass) {
       small.textContent = 'Destination: ' + (hallPass.reason || 'N/A');
       alertDiv.appendChild(small);
       alertDiv.appendChild(document.createElement('br'));
-
-      // Add checkin button
-      const checkinBtn = document.createElement('button');
-      checkinBtn.className = 'btn btn-sm btn-warning mt-2';
-      checkinBtn.innerHTML = '<span class="material-symbols-outlined align-bottom fs-6 me-1">login</span> Check In';
-      checkinBtn.onclick = function () { checkInHallPass(hallPass.id, period); };
-      alertDiv.appendChild(checkinBtn);
 
       passInfoDisplay.appendChild(alertDiv);
     } else if (hallPass.status === 'rejected') {
@@ -276,19 +379,16 @@ function updateHallPassOverlay(period, hallPass) {
   }
 }
 
-function refreshUi(period, refreshQueue = false) {
-  reconcileStudentStatus().then(() => fetch("/api/student-status"))
+function refreshUi(period) {
+  fetch("/api/student-status")
     .then(r => r.json())
     .then(statusData => {
       if (statusData.status === 'ok' && statusData.periods && statusData.periods[period]) {
         const periodData = statusData.periods[period];
+        rememberPeriodState(period, periodData);
         updateBlockUI(period, periodData.active, periodData.duration, periodData.projected_pay, periodData.hall_pass);
       }
     });
-
-  if (refreshQueue) {
-    updateQueueStatus();
-  }
 }
 
 function cancelHallPass(passId, period) {
@@ -296,7 +396,7 @@ function cancelHallPass(passId, period) {
     return;
   }
 
-  window.AppCore.csrfFetch(`/api/hall-pass/cancel/${passId}`, {
+  window.AppCore.csrfFetch(`/api/hall-pass/request/${passId}/cancel`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' }
   })
@@ -311,6 +411,31 @@ function cancelHallPass(passId, period) {
     })
     .catch(err => {
       console.error('Cancel error:', err);
+      createToast('Network error. Try again.', true);
+    });
+}
+
+function requestHallPass(period, destination) {
+  if (!destination || !destination.trim()) {
+    return;
+  }
+
+  window.AppCore.csrfFetch('/api/hall-pass/request', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ destination: destination.trim() })
+  })
+    .then(r => r.json())
+    .then(data => {
+      if (data.status === 'success') {
+        createToast('Hall pass request sent.');
+        refreshUi(period, true);
+      } else {
+        createToast(data.message || 'Failed to request hall pass.', true);
+      }
+    })
+    .catch(err => {
+      console.error('Hall pass request error:', err);
       createToast('Network error. Try again.', true);
     });
 }
