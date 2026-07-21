@@ -71,6 +71,9 @@ All documents are classified into one of three tiers. See [SOP-DOC-000 Section V
 - **[Canonical Monetary Resolution](FEATURE-EXECUTION/FEAT-LED-000_CANONICAL_MONETARY_RESOLUTION_WORKFLOW.md)** — intended plan / resolved plan workflow before posting
 - **[Canonical Schema Definition](DOMAIN/DOM-CORE-002_CANONICAL_SCHEMA_DEFINITION.md)** — Runtime schema, table ownership, and structural constraints
 - **[Class Scope Normalization](MAP/MAP-CLASS-002_CLASS_SCOPE_NORMALIZATION_TARGET.md)** — Long-term class_id scoping model
+- **[Canonical Domain Reconstruction Workflow](STANDARD_OPERATING_PROCEDURES/DEVOPS/SOP-DEV-002_CANONICAL_DOMAIN_RECONSTRUCTION_WORKFLOW.md)** — Repeatable truth-to-interface workflow for rebuilding domains and rewiring surfaces
+- **[Template to FEAT Wiring Map](MAP/MAP-UI-001_TEMPLATE_TO_FEAT_WIRING_MAP.md)** — Template audit findings mapped to route, context, FEAT, domain, persistence, and read-model obligations
+- **[Request Context and View Model Pipeline](MAP/MAP-UI-002_REQUEST_CONTEXT_AND_VIEW_MODEL_PIPELINE.md)** — Four-question request pipeline for authority, time, display metadata, and page view models
 - **[Documentation Standard](STANDARD_OPERATING_PROCEDURES/SOP-DOC-000_DOCUMENTATION_STANDARD.md)** — Tier classification, taxonomy, naming, authoring rules
 - **[Documentation Index](STANDARD_OPERATING_PROCEDURES/SOP-DOC-002_DOCUMENTATION_INDEX.md)** — Complete list of tracked documents
 
