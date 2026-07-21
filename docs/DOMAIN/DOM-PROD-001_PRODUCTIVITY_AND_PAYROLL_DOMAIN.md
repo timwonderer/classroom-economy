@@ -105,6 +105,8 @@ Append-only productivity timeline facts. Each row records a single tap-in or tap
 
 Current attendance state, accumulated daily minutes, and hall-pass elapsed time are derived from this timeline and are not stored on this table.
 
+Once written, an `attendance_sessions` row is permanent. It SHALL NOT be edited, deleted, soft-deleted, marked as deleted, hidden from payroll, or corrected in place.
+
 Inactive attendance records must include a reason:
 
 - `hall_pass`
@@ -136,7 +138,7 @@ The presence of a row indicates the pass is approved and consumed.
 
 Hall-pass approval consumes an entitlement. The Entitlement domain records granting or purchasing hall pass.
 
-### 4. `payroll_events`
+### 3. `payroll_events`
 
 Canonical append-only table for positive ledger credit events.
 
@@ -172,12 +174,17 @@ Use cases:
 Rules:
 
 - MUST be append-only
+- MUST treat every written attendance row as immutable and permanent
 - MUST require `class_id` and `seat_id`
 - MUST set `status` to `active` or `inactive`
 - MUST set `reason_code` when writing an inactive row
 - MUST set `hall_pass_id` when `reason_code = hall_pass`
 - MUST not store current attendance state, accumulated daily minutes, hall-pass destination, or payroll amount
 - MUST not infer or mutate hall-pass entitlement state
+- MUST NOT provide delete, soft-delete, mark-deleted, edit, or correction-in-place behavior for attendance rows
+- MUST NOT correct payroll outcomes by mutating attendance history
+
+If a teacher believes an attendance row produced an incorrect payroll outcome, the correction path is a payroll reversal through `FEAT-PROD-003`, not mutation of the attendance row.
 
 ### 2. `record_hall_pass_log(...)`
 
@@ -194,6 +201,8 @@ Use cases:
 Rules:
 
 - MUST require `class_id`, `requested_by_seat_id`, `approved_by_seat_id`, `hall_pass_id`, and `destination`
+- MUST read class-scoped `hall_pass_settings` before granting the pass
+- MUST fail closed when class-scoped hall-pass settings prohibit the requested destination or limit
 - MUST set `correlation_id` to the entitlement consumption event
 - MUST be the authoritative approved hall-pass instruction
 - MUST not record exit time or return time
@@ -260,6 +269,7 @@ Rules:
 
 - **INV-PROD-001: Seat-Scoped Isolation**. All productivity and payroll state shall be anchored to a `seat_id` and `class_id`. No cross-class leakage is permitted.
 - **INV-PROD-002: Append-Only Facts**. Productivity sessions and payroll events must be recorded append-only. Corrections require new events or records, not mutation of the original fact.
+- **INV-PROD-002A: Attendance Immutability**. Attendance session rows are forever facts after insertion. They may not be deleted, soft-deleted, edited, marked as deleted, excluded from payroll by mutation, or otherwise corrected in place.
 - **INV-PROD-003: Business Truth Ownership**. This domain owns the business truth for productivity-based earning and payroll settlement. Ledger does not own payroll meaning.
 - **INV-PROD-004: Payroll Settlement Requires Authority**. A payroll monetary posting may only occur after this domain has established that the underlying productivity record and payroll event authorize it.
 - **INV-PROD-005: No Hidden Payroll State**. Payroll status, payroll eligibility, and reversal permission must be explicit domain state or derived from authoritative domain records. They may not be reconstructed from ledger rows alone.
@@ -291,6 +301,9 @@ Rules:
 
 - `attendance_sessions` is append-only.
 - Rows are never edited after creation.
+- Rows are never deleted or marked as deleted after creation.
+- There is no canonical attendance-row deletion, soft-deletion, or correction API.
+- Teacher correction of an already-paid attendance outcome is performed by reversing the affected payroll event, not by changing attendance history.
 - Every session is scoped to exactly one `class_id`.
 - At most one active session may exist for a given `target_user_id` without a corresponding inactive event.
 - The platform SHALL execute the following state transition automatically:
@@ -362,6 +375,7 @@ Rules:
 - **Payroll FEAT ownership**: The payroll FEAT is a coordinator, not the authority over payroll meaning. It consumes productivity facts from this domain and posts monetary facts through Ledger.
 - **Ledger coordination**: All payroll monetary effects must go through `FEAT-LED-000` and `FEAT-LED-001`.
 - **Class Configuration coordination**: Wage rate, frequency, and payroll policy inputs are owned by Class Configuration.
+- **Hall-pass settings coordination**: `hall_pass_settings` is owned and mutated by Class Configuration. `FEAT-PROD-002` reads it before granting a hall pass because those settings constrain whether a PROD hall-pass event may be written.
 - **Obligations coordination**: Hall-pass entitlement quotas remain owned by Obligations, and fine/debit manual deductions belong there rather than in `DOM-PROD`.
 - **Store coordination**: Store-owned entitlements and redemption state remain separate from productivity and payroll history.
 - **Reversal coordination**: Reversal of a payroll-originated monetary fact must consult this domain's authoritative business record before the reversal may proceed.
@@ -381,6 +395,7 @@ Rules:
 - MUST require `class_id` and `seat_id`
 - MUST be append-only
 - MUST not mutate prior session rows
+- MUST not delete, soft-delete, mark-delete, or correct prior session rows
 - MUST use class-local temporal evaluation for any boundary-sensitive values
 
 ### 2. `record_hall_pass_event(...)`

@@ -13,7 +13,7 @@ This FEAT is the sole lawful mutation path for `attendance_sessions`.
 It records attendance-session rows for the Productivity and Payroll domain and
 replaces any other FEAT or route path that would otherwise write to that table.
 
-This FEAT uses `CanonicalContext` for live request authority and `resolve_canonical_temporal_evaluation("CLE", ...)` from `app/utils/temporal.py` for class-local time evaluation.
+This FEAT uses `CanonicalContext` for live request authority and `canonical_temporal_resolver("CLE", primitive="current_time", ...)` from `app/utils/canonical_temporal_resolver.py` for class-local time evaluation.
 
 ---
 
@@ -61,6 +61,7 @@ Canonical business actions:
 Rules:
 
 - MUST require `class_id` and `seat_id`
+- MUST treat every written attendance row as immutable and permanent
 - MUST require `actor_seat_id`, `target_seat_id`, `target_user_id`, and `mechanism`
 - MUST use class-local canonical time for the timestamp
 - MUST set `status` to `active` or `inactive`
@@ -80,11 +81,19 @@ Rules:
 - MUST not store accumulated daily minutes
 - MUST not store hall-pass destination
 - MUST not store payroll amount
+- MUST NOT delete, soft-delete, edit, mark as deleted, hide, or correct an existing `attendance_sessions` row
+- MUST NOT provide a teacher-facing attendance-row deletion or correction endpoint
+- MUST NOT use attendance-row mutation to correct a payroll outcome
+
+Correction rule:
+
+- If a written attendance row contributes to an incorrect payroll result, the lawful correction path is `FEAT-PROD-003` payroll reversal.
+- The original attendance row remains part of the immutable productivity timeline.
 
 Execution steps:
 
 1. Resolve `CanonicalContext` and confirm the request is lawful for the seat and class.
-2. Resolve `CLE` with `resolve_canonical_temporal_evaluation("CLE", canonical_execution_context=ctx, reference_time_utc=reference_time_utc)`.
+2. Resolve `CLE` with `canonical_temporal_resolver("CLE", primitive="current_time", canonical_execution_context=ctx, reference_time_utc=reference_time_utc)`.
 3. Derive the canonical request timestamp in class-local time and normalize it to UTC for persistence.
 4. Determine the correct canonical row shape for the requested attendance action.
 5. Populate `actor_seat_id`, `target_seat_id`, `target_user_id`, and `mechanism`.
@@ -98,6 +107,7 @@ Failure conditions:
 - missing seat context
 - invalid hall-pass correlation
 - attempt to mutate prior attendance state instead of appending a new row
+- attempt to delete, soft-delete, mark-delete, or correct an existing attendance row
 - attempt to write `attendance_sessions` outside this FEAT
 
 ---
@@ -125,10 +135,13 @@ All other attendance-related behavior MUST delegate to this FEAT.
 ## VI. Invariants
 
 1. Attendance writes are append-only.
-2. Hall-pass attendance rows must correlate to `hall_pass_logs` via `hall_pass_id`.
-3. The FEAT must fail closed if `ctx.class_id` or `ctx.seat_id` cannot be established.
-4. The FEAT must not mutate hall-pass entitlement state.
-5. The FEAT must be the only writer to `attendance_sessions`.
+2. Attendance rows are immutable and permanent after insertion.
+3. There is no delete, soft-delete, mark-deleted, or correction-in-place attendance path.
+4. Payroll correction is handled through payroll reversal, not attendance mutation.
+5. Hall-pass attendance rows must correlate to `hall_pass_logs` via `hall_pass_id`.
+6. The FEAT must fail closed if `ctx.class_id` or `ctx.seat_id` cannot be established.
+7. The FEAT must not mutate hall-pass entitlement state.
+8. The FEAT must be the only writer to `attendance_sessions`.
 
 ---
 
@@ -137,4 +150,5 @@ All other attendance-related behavior MUST delegate to this FEAT.
 - `docs/DOMAIN/DOM-PROD-001_PRODUCTIVITY_AND_PAYROLL_DOMAIN.md`
 - `docs/FEATURE-EXECUTION/FEAT-CORE-000_FEATURE_EXECUTION_CONSTITUTIONAL_DIRECTIVE.md`
 - `app/services/context_resolver.py`
-- `app/utils/temporal.py`
+- `docs/SPEC/SPEC-TIME-001_CANONICAL_TEMPORAL_RESOLVER.md`
+- `app/utils/canonical_temporal_resolver.py`

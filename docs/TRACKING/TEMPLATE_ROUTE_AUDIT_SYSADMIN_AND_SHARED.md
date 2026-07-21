@@ -1,6 +1,6 @@
 # System Admin and Shared Template & Route Audit
 
-**Last Updated:** 2026-07-19  
+**Last Updated:** 2026-07-21
 **Scope:** System admin templates (sysadmin blueprint) + error pages + public pages  
 **Total Templates Audited:** 38  
 
@@ -12,7 +12,7 @@
 
 | Issue | Count | Status |
 |-------|-------|--------|
-| Orphan templates (no route) | 2 | Mark for deletion |
+| Orphan templates (no route) | 1 | Mark for deletion |
 | Variable name mismatches | 1 | Fix in progress |
 | Inline DB queries in templates | 1 | Refactor needed |
 
@@ -20,7 +20,7 @@
 
 #### Orphan Templates
 - `system_admin_username_migration.html` — No route renders; marked for deletion
-- `hall_pass_verification.html` — No route renders; marked for deletion
+- `hall_pass_verification.html` — Removed 2026-07-21 after public verification rewired to `hall_pass_verify.html`
 
 #### Variable Name Mismatches
 - `system_admin_dashboard.html` **LINE 17:** Template uses `{{ total_teachers }}` but route passes `total_admins`
@@ -410,15 +410,26 @@ Line	Expression	Expects	Supplied By
 ---
 
 ### ❌ hall_pass_verification.html
-**Status:** ORPHAN — **Mark for deletion**  
+**Status:** REMOVED — deleted 2026-07-21 after public verification rewired to `hall_pass_verify.html`
 **Route(s):** No route renders this template  
-**Note:** Deprecated in favor of `hall_pass_verify.html`
+**Note:** Deprecated legacy public history page collapsed into `hall_pass_verify.html` plus token-scoped API read model
 
 ---
 
 ### hall_pass_verify.html
 **Extends:** None (standalone HTML document)  
 **Route(s):** `main.verify_hall_pass` — GET|POST `/verify/hallpass/<teacher_public_token>` — [app/routes/main.py:222](app/routes/main.py#L222)
+
+**Checklist Status:** `REWIRED_READ`
+
+**Template contract:**
+
+| Surface | Jinja / Form Contract | Current v2 Interface | Status |
+|---|---|---|---|
+| Class dropdown | `{% for cls in classes %}` with `<option value="{{ cls.class_id }}">{{ cls.label }}</option>` | Route resolves teacher by public `User.hall_pass_verify_token`, lists that teacher's `ClassEconomy` rows, and exposes display label from `section` + class display name while submitting backend `class_id` | `VALID` |
+| Student query | `first_name`, `last_name`, `class_id` POST fields | Route validates selected `class_id` under the teacher user boundary and matches against `Seat.claim_first_name_hash` + `Seat.claim_last_name_hash` | `VALID` |
+| Result display | `result.student_display`, `class_label`, `destination`, `time_out`, `status`, `elapsed_mins`, `return_time` | Route reads current-day `hall_pass_logs`, derives left/returned state from `attendance_sessions` using the canonical temporal resolver, and uses `IdentityProfile` only after a unique match for display metadata | `VALID` |
+| Public capability | URL token in `/verify/hallpass/<teacher_public_token>` | Token is a public capability stored on teacher `User`; no live actor `CanonicalContext` is required for this read-only public surface | `VALID` |
 
 ---
 

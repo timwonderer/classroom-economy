@@ -229,13 +229,14 @@ admin_edit_insurance_policy.html
 ### admin_hall_pass.html
 **Extends:** `layout_admin.html`  
 **Route(s):** `admin.hall_pass` — GET `/admin/hall-pass` — [app/routes/admin.py:6896](app/routes/admin.py#L6896)
+**PROD status:** REWIRED — Resolved 2026-07-21. Issued-pass and out-of-class read models are derived from canonical `hall_pass_logs` plus `attendance_sessions`. Pending hall-pass requests are operational, process-local workflow state; reject/cancel discards the request without a PROD write, while approve commits by calling `FEAT-PROD-002`, writing `hall_pass_logs`, and consuming entitlement.
 
 **Variables from route:**
 
 | Variable | Type | Purpose |
 |----------|------|---------|
-| pending_requests | list[HallPassLog] | Pending hall pass requests |
-| approved_queue | list[HallPassLog] | Approved passes waiting |
+| pending_requests | list | Ephemeral pending hall-pass requests from operational queue |
+| issued_passes | list[HallPassLog] | Issued passes waiting for leave |
 | out_of_class | list[HallPassLog] | Students currently out |
 | current_page | str | Nav highlight ("hall_pass") |
 | verify_url | str / None | Hall pass verification URL |
@@ -245,8 +246,9 @@ admin_edit_insurance_policy.html
 | Line | Expression | Expects | Supplied By |
 |------|-----------|---------|-------------|
 | 108-111 | `{% if verify_url %}, {{ verify_url }}` | str or None | Route var |
-| 166-167 | `{{ pending_requests\|length }}` | int | Route var |
-| 203-207 | Loop: `{{ req.student.full_name }}, {{ req.reason }}` | HallPassLog attrs | Loop var |
+| 166-207 | `pending_requests` tab and rows | pending request rows | REWIRED — route reads process-local operational pending queue; Approve calls `/api/hall-pass/request/<request_id>/approve` and commits through `FEAT-PROD-002`; Reject calls `/api/hall-pass/request/<request_id>/reject` and performs no PROD write |
+| 166-176 | `{{ issued_passes\|length }}`, `{{ out_of_class\|length }}` | int | Route vars |
+| 203-262 | Loop: `{{ req.student_name }}, {{ req.reason }}` | route display row attrs | Resolved 2026-07-21: GET route builds display rows from `HallPassLog` + `IdentityProfile`; reachable leave/return buttons call `FEAT-PROD-001` attendance writes |
 
 ---
 

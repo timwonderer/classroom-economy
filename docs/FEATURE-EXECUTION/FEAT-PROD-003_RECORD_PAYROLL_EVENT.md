@@ -70,7 +70,7 @@ Rules:
 Execution steps:
 
 1. Resolve `CanonicalContext` and confirm the actor is lawful for the class.
-2. Resolve `CLE` with `resolve_canonical_temporal_evaluation("CLE", canonical_execution_context=ctx, reference_time_utc=reference_time_utc)`.
+2. Resolve `CLE` with `canonical_temporal_resolver("CLE", primitive="current_time", canonical_execution_context=ctx, reference_time_utc=reference_time_utc)`.
 3. Identify the target seat and the payroll policy version in effect.
 4. Compute the payroll amount from authoritative productivity facts or manual credit intent.
 5. Write the append-only `payroll_event` row with the immutable correlation ID.
@@ -123,4 +123,5 @@ Rules:
 - `docs/DOMAIN/DOM-LED-001_LEDGER_DOMAIN.md`
 - `docs/DOMAIN/DOM-CLASS-001_CLASS_CONFIGURATION_DOMAIN.md`
 - `app/services/context_resolver.py`
-- `app/utils/temporal.py`
+- `docs/SPEC/SPEC-TIME-001_CANONICAL_TEMPORAL_RESOLVER.md`
+- `app/utils/canonical_temporal_resolver.py`
