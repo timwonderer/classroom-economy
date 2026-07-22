@@ -81,6 +81,7 @@ correlation.
 | Hall-pass leave/return | `REWIRED` | Leave/return append `attendance_sessions` rows through `FEAT-PROD-001`; `hall_pass_logs` are not mutated for lifecycle state. |
 | Attendance helper regression tests | `REWIRED_TEST` | `tests/dom/attendance/test_attendance.py` now uses current DOM-PROD `AttendanceSession` and `PayrollEvent` shapes, writes attendance rows through `FEAT-PROD-001`, and verifies payroll anchors from `payroll_event` rather than legacy Ledger `Transaction.type`; focused test now passes. |
 | Hall-pass checkout/checkin route tests | `REWIRED_TEST` | `tests/dom/attendance/test_hall_pass_checkout.py` now uses current DOM-PROD `HallPassLog` and `AttendanceSession` shapes: approval/issuance is represented by row existence in `hall_pass_logs`, leave/return append immutable attendance rows, pending requests are not committed rows, and hall-pass consumption reuses the entitlement grant `correlation_id`. |
+| Hall-pass history scoping tests | `REWIRED_TEST` | `tests/dom/attendance/test_hall_pass_history_scoping.py` now seeds issued hall passes through entitlement grants plus `FEAT-PROD-002`, then verifies `/api/hall-pass/history` returns only the active canonical class scope. |
 | Public hall-pass verification | `REWIRED_READ` | Public token resolves teacher-scoped read authority; class dropdown submits `class_id`; name lookup checks seat hashed names and displays `IdentityProfile` only after unique match. |
 | Admin attendance log | `REWIRED_READ` | `/api/attendance/history` reads append-only `AttendanceSession` fields and uses `canonical_temporal_resolver` for class-local filters. |
 | Admin roster bulk Start Work / Break | `REWIRED` | `admin.tap_in_students` / `admin.tap_out_students` call `record_attendance_session` and submit only `seat_ids`; no block or period scope is submitted. |
@@ -126,7 +127,7 @@ correlation.
 | Live schema proof | `VERIFIED` | Local PostgreSQL at Alembic head `f6a7b8c9d0e2` exposes only `attendance_sessions`, `hall_pass_logs`, and `payroll_event` for the PROD table set; `seat_attendance_state` and `tap_events` are absent. |
 | PROD FEAT targeted test proof | `VERIFIED` | `pytest -q tests/dom/prod/test_feat_prod.py` passed 3 tests on 2026-07-22 after fresh migration-chain blockers were removed. |
 | Journey/render verification | `PARTIAL_BLOCKED_BY_STALE_TEST_AUTH` | Existing `student_detail` identity render tests currently redirect at auth setup before template render; add route render checks and journeys for start work, hall-pass request/approve/leave/return, run payroll, payroll history, student detail, and public verification. |
-| Tests still encoding old shapes | `KNOWN_RESIDUE` | Continue modernizing direct `AttendanceSession` and `HallPassLog` test setup under the current DOM-PROD schema. `tests/dom/attendance/test_hall_pass_verify.py`, `tests/dom/attendance/test_hall_pass_history_scoping.py`, `tests/dom/attendance/test_api_attendance_history.py`, and related attendance API tests still encode legacy PROD predecessor shapes. |
+| Tests still encoding old shapes | `KNOWN_RESIDUE` | Continue modernizing direct `AttendanceSession` and `HallPassLog` test setup under the current DOM-PROD schema. `tests/dom/attendance/test_hall_pass_verify.py`, `tests/dom/attendance/test_api_attendance_history.py`, and related attendance API tests still encode legacy PROD predecessor shapes. |
 | Residual non-template cleanup | `REWIRED` | Class destruction no longer references `SeatAttendanceState` or stale `TapEvent` cleanup; dropped PROD predecessor tables are not part of live runtime cleanup. |
 | Route-local view assembly | `ACCEPTED_TEMPORARILY` | Several canonical read models are still assembled in routes; extract page view builders after checklist stability. |
 | Rent / obligation surfaces | `OUT_OF_SCOPE_FOR_PROD` | Rent payment and obligation satisfaction are OBL-owned. Entitlement grants produced by obligation satisfaction are entitlement-domain business; PROD reads only approved hall-pass consumption via `hall_pass_logs` and related attendance changes. Approved hall-pass consumption reuses the consumed entitlement grant's `correlation_id`. |
@@ -258,6 +259,18 @@ rg -n "set_hall_passes|bulk-update-hall-passes|adjust_hall_passes|Set New Balanc
 pytest -q tests/dom/prod/test_feat_prod.py tests/dom/attendance/test_hall_pass_checkout.py
 # 11 passed in 47.21s
 # summary: pytest_result/20260722_pytest_test_feat_prod_summary_33.md
+```
+
+Hall-pass history scoping test proof refreshed on 2026-07-22:
+
+```bash
+python3 -m py_compile tests/dom/attendance/test_hall_pass_history_scoping.py app/routes/api.py app/feats/prod.py app/services/entitlement_service.py
+rg -n "DOM_ATT|FEAT-ATTN|HallPassLog\\(|status=|request_time|decision_time|period|left_time|return_time|join_code|started_at|ended_at|duration_seconds" tests/dom/attendance/test_hall_pass_history_scoping.py
+# no legacy matches
+
+pytest -q tests/dom/attendance/test_hall_pass_history_scoping.py tests/dom/prod/test_feat_prod.py
+# 6 passed in 26.35s
+# summary: pytest_result/20260722_pytest_test_hall_pass_history_scoping_summary.md
 ```
 
 Live schema proof added on 2026-07-22:
