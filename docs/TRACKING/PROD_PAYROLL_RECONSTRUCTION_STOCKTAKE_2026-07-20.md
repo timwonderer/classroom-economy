@@ -71,6 +71,7 @@ This document tracks:
 | Admin attendance log | `REWIRED_READ` | `/api/attendance/history` reads append-only `AttendanceSession` fields and uses `canonical_temporal_resolver` for class-local filters. |
 | Admin roster bulk Start Work / Break | `REWIRED` | `admin.tap_in_students` / `admin.tap_out_students` call `record_attendance_session` and submit only `seat_ids`; no block or period scope is submitted. |
 | Student detail PROD sections | `REWIRED_READ` | Attendance summary/history, hall-pass balance, join-code display, and Payroll tab are rewired; Payroll tab reads `payroll_event` rows plus Ledger amount lookup by `correlation_id`, not legacy `Transaction.type` filters. |
+| Admin payroll page class-scope contract | `REWIRED_READ_WRITE` | `admin_payroll.html` no longer exposes block-shaped template filters or reads `Seat.block`; history and manual-credit selection use canonical `class_id` view rows while Run Payroll and manual credit remain wired through `FEAT-PROD-*`. |
 
 ---
 
@@ -115,7 +116,7 @@ Targeted PROD FEAT proof added on 2026-07-22:
 
 ```bash
 pytest -q tests/dom/prod/test_feat_prod.py
-# 3 passed in 14.26s
+# 3 passed in 14.51s
 ```
 
 This run also proved that the fresh migration chain reaches Alembic head `f6a7b8c9d0e2` after removing stale migration dependencies on the retired `TapEventReasonCode` enum and already-deleted `student_blocks` table.
@@ -129,6 +130,15 @@ rg -n "payroll_event_history|PayrollEvent.query|join_codes\\[class_display_label
 ```
 
 The template-specific scan no longer finds `student.block`, block-labelled join-code rendering, legacy payroll/bonus transaction filters, or deleted tap-management endpoint references in `templates/student_detail.html`. The positive scan shows `student_detail_public` now supplies `payroll_event_history` from `PayrollEvent` and current-class join-code display from `ClassEconomy`; the route no longer supplies a `blocks` variable to this template. Existing `tests/dom/identity/test_admin_tenancy.py` student-detail render checks were run but failed with `302` before template rendering because their auth/session setup is stale; no template error was reached.
+
+Admin-payroll template contract check added on 2026-07-22:
+
+```bash
+rg -n "\\bblocks\\b|data-block|student\\.block|historyBlockFilter|studentBlockFilter|total_blocks|join_codes_by_block|student-period-label|Block Filter" templates/admin_payroll.html -S
+rg -n "payroll_class_options|total_classes|data-class-id|student\\.class_id|student\\.class_label|student\\.public_id|student\\.full_name" app/routes/admin.py templates/admin_payroll.html -S
+```
+
+The negative template scan no longer finds block-shaped filter variables, `Seat.block` template access, or `data-block` attributes in `admin_payroll.html`. The positive scan shows canonical `class_id` filters and student stat view rows. `PayrollSettings.block` remains a lower-level settings persistence detail to collapse in the class-configuration/settings pass, not a surviving template scope contract.
 
 Live schema proof added on 2026-07-22:
 

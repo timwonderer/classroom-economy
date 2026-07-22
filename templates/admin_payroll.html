@@ -295,7 +295,7 @@
                 <small class="text-muted">Average Payout</small>
               </div>
               <div class="col-6">
-                <h3 class="text-warning">{{ total_blocks|default(0) }}</h3>
+                <h3 class="text-warning">{{ total_classes|default(0) }}</h3>
                 <small class="text-muted">Active Classes</small>
               </div>
             </div>
@@ -367,11 +367,11 @@
         <!-- Filter and Actions -->
         <div class="row mb-3">
           <div class="col-md-4">
-            <label for="historyBlockFilter" class="form-label fw-bold">Class:</label>
-            <select id="historyBlockFilter" class="form-select">
+            <label for="historyClassFilter" class="form-label fw-bold">Class:</label>
+            <select id="historyClassFilter" class="form-select">
               <option value="">All Classes</option>
-              {% for block in blocks %}
-              <option value="{{ block }}">{{ class_labels_by_block.get(block, block) }}</option>
+              {% for class_option in payroll_class_options %}
+              <option value="{{ class_option.class_id }}">{{ class_option.label }}</option>
               {% endfor %}
             </select>
           </div>
@@ -393,7 +393,7 @@
             <tbody>
               {% if payroll_history %}
               {% for entry in payroll_history %}
-              <tr data-block="{{ entry.block }}" data-payroll-event-id="{{ entry.payroll_event_id }}"
+              <tr data-class-id="{{ entry.class_id }}" data-payroll-event-id="{{ entry.payroll_event_id }}"
                 class="{% if entry.is_reversal %}table-secondary text-muted{% endif %}">
                 <td>
                   {% if entry.timestamp %}
@@ -500,9 +500,9 @@
               <div class="mt-2">
                 <strong>Per-Class Settings:</strong>
                 <ul class="mb-0 mt-1 small">
-                  {% for block, setting in settings_by_block.items() %}
+                  {% for setting_key, setting in settings_by_block.items() %}
                   <li>
-                    <strong>{{ class_labels_by_block.get(block, block) }}:</strong>
+                    <strong>{{ class_labels_by_block.get(setting_key, setting_key) }}:</strong>
                     {% if setting.settings_mode == 'simple' %}
                     ${{ "%.2f"|format(setting.pay_rate * 60) }}/hour, {{ setting.pay_schedule_type }}
                     {% else %}
@@ -605,12 +605,11 @@
                     <label class="form-check-label" for="simpleApplySelected">Selected Classes:</label>
                   </div>
                   <div id="simpleBlockCheckboxes" class="ms-4 mt-2" style="display:none;">
-                    {% for block in blocks %}
+                    {% for class_option in payroll_class_options %}
                     <div class="form-check">
                       <input class="form-check-input simple-block-checkbox" type="checkbox" name="simple_blocks[]"
-                        value="{{ block }}" id="simple_block_{{ block }}">
-                      <label class="form-check-label" for="simple_block_{{ block }}">{{ class_labels_by_block.get(block,
-                        block) }}</label>
+                        value="{{ class_option.settings_key }}" id="simple_class_{{ class_option.class_id }}">
+                      <label class="form-check-label" for="simple_class_{{ class_option.class_id }}">{{ class_option.label }}</label>
                     </div>
                     {% endfor %}
                   </div>
@@ -813,12 +812,11 @@
                     <label class="form-check-label" for="advApplySelected">Selected Classes:</label>
                   </div>
                   <div id="advBlockCheckboxes" class="ms-4 mt-2" style="display:none;">
-                    {% for block in blocks %}
+                    {% for class_option in payroll_class_options %}
                     <div class="form-check">
                       <input class="form-check-input adv-block-checkbox" type="checkbox" name="adv_blocks[]"
-                        value="{{ block }}" id="adv_block_{{ block }}">
-                      <label class="form-check-label" for="adv_block_{{ block }}">{{ class_labels_by_block.get(block,
-                        block) }}</label>
+                        value="{{ class_option.settings_key }}" id="adv_class_{{ class_option.class_id }}">
+                      <label class="form-check-label" for="adv_class_{{ class_option.class_id }}">{{ class_option.label }}</label>
                     </div>
                     {% endfor %}
                   </div>
@@ -913,11 +911,11 @@
           <div class="card-body">
             <!-- Class Filter -->
             <div class="mb-3">
-              <label for="studentBlockFilter" class="form-label fw-bold">Filter by Class:</label>
-              <select id="studentBlockFilter" class="form-select">
+              <label for="studentClassFilter" class="form-label fw-bold">Filter by Class:</label>
+              <select id="studentClassFilter" class="form-select">
                 <option value="">All Classes</option>
-                {% for block in blocks %}
-                <option value="{{ block }}">{{ class_labels_by_block.get(block, block) }}</option>
+                {% for class_option in payroll_class_options %}
+                <option value="{{ class_option.class_id }}">{{ class_option.label }}</option>
                 {% endfor %}
               </select>
             </div>
@@ -938,30 +936,14 @@
                 <tbody>
                   {% if all_students %}
                   {% for student in all_students %}
-                  <tr class="student-row" data-blocks="{{ student.block }}" data-student-id="{{ student.public_id }}">
+                  <tr class="student-row" data-class-id="{{ student.class_id }}" data-student-id="{{ student.public_id }}">
                     <td>
                       <input class="form-check-input student-checkbox" type="checkbox" value="{{ student.public_id }}"
-                        data-blocks="{{ student.block }}">
+                        data-class-id="{{ student.class_id }}">
                     </td>
                     <td>
                       <strong>{{ student.full_name }}</strong><br>
-                      <small class="text-muted student-period-label">
-                        {% if student.block %}
-                        {% set blocks = student.block.split(',') %}
-                        {% if blocks|length > 1 %}
-                        {% set ns = namespace(labels=[]) %}
-                        {% for b in blocks %}
-                        {% set trimmed_block = b.strip() %}
-                        {% set ns.labels = ns.labels + [class_labels_by_block.get(trimmed_block, trimmed_block)] %}
-                        {% endfor %}
-                        {{ ns.labels | join(', ') }}
-                        {% else %}
-                        {{ class_labels_by_block.get(student.block, student.block) }}
-                        {% endif %}
-                        {% else %}
-                        N/A
-                        {% endif %}
-                      </small>
+                      <small class="text-muted student-class-label">{{ student.class_label }}</small>
                     </td>
                     <td class="text-end">${{ "%.2f"|format(scoped_balances_by_student.get(student.id, {}).get('checking', 0)) }}</td>
                     <td class="text-end">${{ "%.2f"|format(scoped_balances_by_student.get(student.id, {}).get('savings', 0)) }}</td>
@@ -1073,50 +1055,33 @@
 
     // Timestamp conversion handled by timezone-utils.js
 
-    // Manual Payment Tab: Block Filter for Students
-    const studentBlockFilter = document.getElementById('studentBlockFilter');
+    // Manual Payment Tab: Class Filter for Students
+    const studentClassFilter = document.getElementById('studentClassFilter');
     const studentRows = document.querySelectorAll('.student-row');
     const selectAllCheckbox = document.getElementById('selectAllStudents');
     const selectedCountEl = document.getElementById('selectedCount');
 
-    // Set default block (first option after "All Periods")
-    if (studentBlockFilter && studentBlockFilter.options.length > 1) {
-      studentBlockFilter.selectedIndex = 1; // Select first actual block
-      studentBlockFilter.dispatchEvent(new Event('change')); // Trigger filter
+    // Set default class (first option after "All Classes")
+    if (studentClassFilter && studentClassFilter.options.length > 1) {
+      studentClassFilter.selectedIndex = 1;
+      studentClassFilter.dispatchEvent(new Event('change'));
     }
 
-    if (studentBlockFilter) {
-      studentBlockFilter.addEventListener('change', function () {
-        const selectedBlock = this.value;
-        const classLabels = {{ class_labels_by_block| tojson
-      }};
+    if (studentClassFilter) {
+      studentClassFilter.addEventListener('change', function () {
+        const selectedClassId = this.value;
 
-    studentRows.forEach(row => {
-      const studentBlocks = row.dataset.blocks.split(',').map(b => b.trim());
-      const periodLabel = row.querySelector('.student-period-label');
-
-      if (!selectedBlock) {
-        // Show all blocks when no filter is selected
-        row.style.display = '';
-        if (periodLabel) {
-          const allLabels = studentBlocks.map(b => classLabels[b] || b).join(', ');
-          periodLabel.textContent = allLabels;
-        }
-      } else if (studentBlocks.includes(selectedBlock)) {
-        // Show only the selected period when filter is active
-        row.style.display = '';
-        if (periodLabel) {
-          periodLabel.textContent = classLabels[selectedBlock] || selectedBlock;
-        }
-      } else {
-        row.style.display = 'none';
-        // Uncheck hidden students
-        row.querySelector('.student-checkbox').checked = false;
-      }
-    });
-    selectAllCheckbox.checked = false;
-    updateSelectedCount();
-  });
+        studentRows.forEach(row => {
+          if (!selectedClassId || row.dataset.classId === selectedClassId) {
+            row.style.display = '';
+          } else {
+            row.style.display = 'none';
+            row.querySelector('.student-checkbox').checked = false;
+          }
+        });
+        selectAllCheckbox.checked = false;
+        updateSelectedCount();
+      });
     }
 
   if (selectAllCheckbox) {
@@ -1181,15 +1146,15 @@
     });
   }
 
-  // History Tab: Block Filter
-  const historyBlockFilter = document.getElementById('historyBlockFilter');
-  if (historyBlockFilter) {
-    historyBlockFilter.addEventListener('change', function () {
-      const selectedBlock = this.value;
-      const historyRows = document.querySelectorAll('#payrollHistoryTable tbody tr[data-block]');
+  // History Tab: Class Filter
+  const historyClassFilter = document.getElementById('historyClassFilter');
+  if (historyClassFilter) {
+    historyClassFilter.addEventListener('change', function () {
+      const selectedClassId = this.value;
+      const historyRows = document.querySelectorAll('#payrollHistoryTable tbody tr[data-class-id]');
       historyRows.forEach(row => {
-        const rowBlock = row.dataset.block;
-        if (!selectedBlock || rowBlock === selectedBlock) {
+        const rowClassId = row.dataset.classId;
+        if (!selectedClassId || rowClassId === selectedClassId) {
           row.style.display = '';
         } else {
           row.style.display = 'none';

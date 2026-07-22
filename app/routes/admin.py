@@ -7356,7 +7356,11 @@ def payroll():
             if ((seat.class_economy.section if seat and seat.class_economy else '').strip().upper() == selected_block_upper)
         ]
     students = seats
-    blocks = [selected_block] if selected_block else []
+    payroll_class_options = [{
+        "class_id": selected_class_id,
+        "label": class_label,
+        "settings_key": selected_block,
+    }]
     # Check if payroll settings exist for the selected class scope
     has_settings = (
         PayrollSettings.query.filter_by(class_id=selected_class_id, block=selected_block)
@@ -7437,20 +7441,20 @@ def payroll():
 
     class_labels_by_block = {selected_block: class_label} if selected_block else {}
 
-    # Next payroll by block
+    # Next payroll by canonical class scope.
     next_payroll_by_block = []
-    for block in blocks:
-        block_students = [s for s in students if block in [b.strip() for b in (s.block or '').split(',')]]
-        class_id = class_ids_by_block.get(block)
+    for class_option in payroll_class_options:
+        class_id = class_option["class_id"]
+        block_students = [s for s in students if s.class_id == class_id]
         block_estimate = sum(
             payroll_summary_by_class_id.get(class_id, {}).get(s.id, Decimal("0.00"))
             for s in block_students
         ) if class_id else Decimal("0.00")
-        setting = settings_by_block.get(block, default_setting)
+        setting = settings_by_block.get(class_option["settings_key"], default_setting)
         block_next_payroll = _compute_next_pay_date(setting, now_utc)
         next_payroll_by_block.append({
-            'block': block,
-            'class_label': class_labels_by_block.get(block, block),
+            'class_id': class_id,
+            'class_label': class_option["label"],
             'next_date': block_next_payroll,  # Keep in UTC
             'next_date_iso': format_utc_iso(block_next_payroll),
             'estimate': block_estimate
@@ -7507,14 +7511,13 @@ def payroll():
 
     events_map_by_class_id = {}
     seat_ids_by_class_id = defaultdict(set)
-    seat_id_by_student_block_class = {}
+    seat_id_by_user_class = {}
     for seat_row in seats:
         if seat_row.class_id not in my_class_ids:
             continue
-        seat_block = ((seat_row.class_economy.section if seat_row and seat_row.class_economy and seat_row.class_economy.section else "")).strip().upper()
         seat_ids_by_class_id[seat_row.class_id].add(seat_row.id)
-        seat_id_by_student_block_class.setdefault(
-            (seat_row.user_id, seat_block, seat_row.class_id),
+        seat_id_by_user_class.setdefault(
+            (seat_row.user_id, seat_row.class_id),
             seat_row.id,
         )
 
@@ -7531,21 +7534,15 @@ def payroll():
         )
 
     for student in students:
-        # Calculate unpaid minutes across all blocks
+        # Calculate unpaid minutes in the canonical class scope.
         unpaid_seconds = 0
-        student_blocks = [b.strip() for b in (student.block or "").split(',') if b.strip()]
-        for block in student_blocks:
-            block_upper = block.upper()
-            class_id = class_ids_by_block.get(block)
-            if not class_id:
-                continue
-            seat_id = seat_id_by_student_block_class.get((student.id, block_upper, class_id))
-            if not seat_id:
-                continue
-            key = (seat_id, block_upper, class_id)
+        class_id = student.class_id
+        seat_id = seat_id_by_user_class.get((student.user_id, class_id))
+        if seat_id:
+            key = (seat_id, class_id)
             events = events_map_by_class_id.get(class_id, {}).get(key, [])
             if events:
-                unpaid_seconds += calculate_seconds_in_memory(
+                unpaid_seconds = calculate_seconds_in_memory(
                     events,
                     payroll_anchor_by_class_id.get(class_id),
                 )
@@ -7554,10 +7551,13 @@ def payroll():
         estimated_payout = payroll_summary.get(student.id, 0)
 
         student_stats.append({
+            'id': student.id,
             'student_id': student.id,
+            'public_id': student.public_id,
+            'full_name': (student.identity_profile.full_name if student.identity_profile else str(student.id)),
             'student_name': (student.identity_profile.full_name if student.identity_profile else str(student.id)),
-            'block': student.block,
-            'class_label': class_labels_by_block.get(student.block, student.block) if student.block else 'Unknown',
+            'class_id': student.class_id,
+            'class_label': class_label,
             'unpaid_minutes': int(unpaid_minutes),
             'estimated_payout': estimated_payout,
             'last_payroll_date': last_payroll_map.get(student.id),
@@ -7588,7 +7588,7 @@ def payroll():
         payroll_events=payroll_history_events,
         class_label=class_label,
     )
-    join_codes_by_block = _get_join_codes_by_block(g.canonical_context, blocks)
+    join_codes_by_class_id = {selected_class_id: selected_join_code}
 
     # CWI Configuration - Get selected block from query param
     cwi_block = selected_block
@@ -7609,14 +7609,14 @@ def payroll():
         # Overview tab
         recent_payrolls=recent_payrolls,
         join_code_to_label=join_code_to_label, # Pass lookup map
-        join_codes_by_block=join_codes_by_block, # Pass block to class-scope map
+        join_codes_by_class_id=join_codes_by_class_id,
         next_payroll_date=next_pay_date_utc,  # Pass UTC timestamp
         next_payroll_by_block=next_payroll_by_block,
         total_payroll_estimate=total_payroll_estimate,
         payroll_updated_at=payroll_updated_at,
         total_students=len(students),
         avg_payout=avg_payout,
-        total_blocks=len(blocks),
+        total_classes=len(payroll_class_options),
         # Settings tab
         settings_form=settings_form,
         block_settings=block_settings,
@@ -7629,14 +7629,14 @@ def payroll():
         scoped_balances_by_student=scoped_balances_by_student,
         # Manual Payment tab
         manual_payment_form=manual_payment_form,
-        all_students=students,
+        all_students=student_stats,
         # History tab
         payroll_history=payroll_history,
         # CWI Configuration
         cwi_block=cwi_block,
         cwi_setting=cwi_setting,
         # General
-        blocks=blocks,
+        payroll_class_options=payroll_class_options,
         class_labels_by_block=class_labels_by_block,
         current_page="payroll",
         format_utc_iso=format_utc_iso,

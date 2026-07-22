@@ -350,11 +350,11 @@ admin_edit_insurance_policy.html
 | Variable | Type | Purpose |
 |----------|------|---------|
 | recent_payrolls | list[dict] | Recent payroll transactions |
-| next_payroll_by_block | list[dict] | Per-block next payroll info |
+| next_payroll_by_block | list[dict] | Per-class next payroll info |
 | total_payroll_estimate | float | Total estimated payout |
 | all_students | list | All students |
 | payroll_history | list[dict] | Historical payroll entries |
-| blocks | list | All available blocks |
+| payroll_class_options | list[dict] | Canonical class filter/options for this page |
 | current_page | str | Nav highlight ("payroll") |
 
 **Jinja expressions (representative, complex template):**
@@ -363,8 +363,11 @@ admin_edit_insurance_policy.html
 |------|-----------|---------|-------------|
 | 14 | `{{ static_url('js/economy-balance.js') }}` | str | [CTX:static_url] |
 | 246-257 | Loop: `{{ block_info.class_label }}, {{ block_info.estimate }}` | dict attrs | Loop var |
-| 975-1003 | Loop: `{{ student.full_name }}, {{ student.public_id }}` | model attrs | Loop var |
+| 367-399, 913-948 | Class filters and student rows | `payroll_class_options`, `entry.class_id`, `student.class_id`, `student.class_label` | REWIRED_READ from canonical `class_id` page view rows; removed `blocks`, `student.block`, `data-block`, and `data-blocks` template contract |
+| 975-1003 | Loop: `{{ student.full_name }}, {{ student.public_id }}` | view-row attrs | Route-provided student stat rows |
 | 1667 | `{{ url_for("admin.run_payroll") }}` | URL | [FLASK] |
+
+**PROD disposition:** REWIRED_READ/WRITE — Resolved 2026-07-22. The payroll page no longer exposes block-shaped template filters or reads `Seat.block`; history and manual-credit student selection filter by canonical `class_id`. Run Payroll remains `FEAT-PROD-003`; manual teacher-to-student money send remains `manual_credit`. Payroll settings persistence still carries a legacy `PayrollSettings.block` implementation detail and should be collapsed in the class-configuration/settings pass, but `admin_payroll.html` no longer uses block as a template scope contract.
 
 ---
 
