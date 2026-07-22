@@ -70,7 +70,7 @@ All documents are classified into one of three tiers. See [SOP-DOC-000 Section V
 - **[FEAT Constitutional Directive](FEATURE-EXECUTION/FEAT-CORE-000_FEATURE_EXECUTION_CONSTITUTIONAL_DIRECTIVE.md)** — FEAT execution rules
 - **[Canonical Monetary Resolution](FEATURE-EXECUTION/FEAT-LED-000_CANONICAL_MONETARY_RESOLUTION_WORKFLOW.md)** — intended plan / resolved plan workflow before posting
 - **[Canonical Temporal Resolver](SPEC/SPEC-TIME-001_CANONICAL_TEMPORAL_RESOLVER.md)** — normative build spec for SLE/CLE temporal authority, primitives, elapsed-duration evaluation, and browser display timezone
-- **[Display Identity Metadata Resolver](SPEC/SPEC-DISPLAY-001_DISPLAY_IDENTITY_METADATA_RESOLVER.md)** — normative build spec for display-only identity/class metadata derived from canonical context
+- **[Display Metadata Resolver](SPEC/SPEC-DISPLAY-001_DISPLAY_IDENTITY_METADATA_RESOLVER.md)** — normative build spec for display-only identity, class, and page-context metadata derived from canonical context
 - **[Canonical Schema Definition](DOMAIN/DOM-CORE-002_CANONICAL_SCHEMA_DEFINITION.md)** — Runtime schema, table ownership, and structural constraints
 - **[Class Scope Normalization](MAP/MAP-CLASS-002_CLASS_SCOPE_NORMALIZATION_TARGET.md)** — Long-term class_id scoping model
 - **[Canonical Domain Reconstruction Workflow](STANDARD_OPERATING_PROCEDURES/DEVOPS/SOP-DEV-002_CANONICAL_DOMAIN_RECONSTRUCTION_WORKFLOW.md)** — Repeatable truth-to-interface workflow for rebuilding domains and rewiring surfaces

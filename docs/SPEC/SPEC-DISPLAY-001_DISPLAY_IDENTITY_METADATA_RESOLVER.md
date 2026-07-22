@@ -1,4 +1,4 @@
-# SPEC-DISPLAY-001: Display Identity Metadata Resolver
+# SPEC-DISPLAY-001: Display Metadata Resolver
 
 | Reference Number | Version | Effective Date | Supersedes | Authority Level |
 |------------------|---------|----------------|------------|-----------------|
@@ -8,9 +8,9 @@
 
 ## I. Purpose
 
-This document is the normative build specification for the Display Identity Metadata Resolver.
+This document is the normative build specification for the Display Metadata Resolver.
 
-The resolver creates a request/session-safe display object from canonical identity and class references so templates and route view builders can render names, class labels, join codes, teacher notes, and other display-only artifacts without re-deriving them independently on every page.
+The resolver creates a request/session-safe display object from canonical identity and class references so templates and route view builders can render names, class labels, join codes, teacher notes, class timezone, section labels, and other display-only artifacts without re-deriving them independently on every page.
 
 This resolver does not establish authority. It does not answer whether an actor may do something. Authorization, scope, and actor identity remain the responsibility of Canonical Context resolution and capability evaluation.
 
@@ -32,7 +32,7 @@ If this document conflicts with a higher-level invariant or domain document, the
 
 ## III. Core Principle
 
-The Display Identity Metadata Resolver answers one question:
+The Display Metadata Resolver answers one question:
 
 > How should this canonical actor and class be presented here?
 
@@ -78,7 +78,7 @@ The resolver may read display metadata from these canonical owners only:
 
 | Source | Owned Display Facts |
 |---|---|
-| `ClassEconomy` | `class_id`, `join_code`, class display name, class timezone, section/class label, teacher owner user reference |
+| `ClassEconomy` | `class_id`, `join_code`, class display name, class timezone, section label, teacher owner user reference |
 | `Seat` | classroom-local operational identity reference used to locate display profile |
 | `IdentityProfile` | first name, last name, teacher notes, user-facing display metadata |
 
@@ -110,7 +110,7 @@ Minimum fields:
 | `class_display_name` | User-facing class label |
 | `class_identifier` | Template-compatible class label |
 | `class_timezone` | Class timezone for display/page context |
-| `section` | Class section/display grouping label from `ClassEconomy` |
+| `section` | Class section label from `ClassEconomy` |
 | `actor_first_name` | Actor first name from `IdentityProfile` |
 | `actor_last_name` | Actor last name from `IdentityProfile` |
 | `actor_full_name` | Actor display full name |
@@ -122,14 +122,7 @@ Minimum fields:
 | `teacher_display_name` | Teacher display full name |
 | `teacher_note` | Display note from actor `IdentityProfile` |
 
-Compatibility-shaped fields may exist only as display aliases during template cutover.
-
-Examples:
-
-- `block`
-- `block_display`
-
-These fields must not become scope, authority, query, or mutation inputs. They exist only to keep audited templates rendering while canonical page contracts are being collapsed.
+The return object must not expose `block`, `block_display`, `period`, or any block-shaped alias. Those names are not valid v2 template contract fields. Templates that still require them must be rewired to `section`, `class_display_name`, or a page-specific view-model field documented by the relevant template audit row.
 
 ---
 
@@ -202,7 +195,8 @@ The following are prohibited:
 - Calling a join-code helper instead of reading `ClassEconomy.join_code`.
 - Duplicating display names onto unrelated domain tables.
 - Querying `IdentityProfile` by `IdentityProfile.id` as an application identifier.
-- Using `block` as scope, route authority, capability input, or query authority.
+- Exposing `block`, `block_display`, `period`, or block-shaped display aliases from the resolver.
+- Using `block`, `block_display`, or `period` as scope, route authority, capability input, query authority, or template contract.
 - Letting templates independently query display metadata.
 - Letting Jinja call database-backed helpers for display identity.
 
@@ -241,7 +235,7 @@ Targeted tests should prove:
 6. Session cache is reused only when context key matches.
 7. Session cache is ignored when `user_id`, `seat_id`, `class_id`, or `actor_role` changes.
 8. Clearing the cache removes display metadata from session.
-9. Display aliases such as `block` cannot be used by tested domain or FEAT code as scope.
+9. Resolver output does not expose `block`, `block_display`, `period`, or block-shaped aliases.
 
 Recommended test file:
 
@@ -264,6 +258,7 @@ tests/dom/identity/test_SPEC_DISPLAY_001__display_identity_metadata_resolver.py
 - route/template display contracts use the resolver or page view models derived from it;
 - no FEAT, domain service, or authorization path uses display metadata as authority;
 - no display resolver path calls legacy join-code helpers or legacy identity identifiers.
+- no resolver output includes `block`, `block_display`, `period`, or block-shaped aliases.
 
 ---
 
