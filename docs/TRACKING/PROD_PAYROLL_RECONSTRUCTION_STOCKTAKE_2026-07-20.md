@@ -87,6 +87,7 @@ correlation.
 | Student removal PROD cleanup | `REWIRED_DELETE` | Teacher-scoped student removal deletes PROD rows by target `seat_id` constrained to the seat's `class_id`; whole-class deletion remains scoped by `class_id` only. Cleanup targets `attendance_sessions.target_seat_id`, `hall_pass_logs.requested_by_seat_id`, and `payroll_event.target_seat_id`. |
 | Class destruction PROD cleanup | `REWIRED_DELETE` | Whole-class deletion deletes the full PROD table set by `class_id`: `attendance_sessions`, `hall_pass_logs`, and `payroll_event`. Stale `TapEvent` cleanup is removed from the class-collapse path. |
 | Hall-pass model transition hook | `REMOVED` | The obsolete `HallPassLog` listener that tried to populate legacy `student_id`/`seat_id` transition fields was removed; v2 writes must provide `requested_by_seat_id`, `approved_by_seat_id`, `class_id`, and `correlation_id` directly through `FEAT-PROD-002`. |
+| API FEAT boundary labels for hall-pass/productivity surfaces | `REWIRED` | Live API surfaces no longer expose `FEAT-ATTN-*` wrappers or `student_tap` idempotency prefixes. Hall-pass settings mutation is explicitly labeled as Class Configuration through `FEAT-SETTINGS-001`; PROD attendance and hall-pass writes continue through `FEAT-PROD-*` command helpers. |
 
 ---
 
@@ -97,6 +98,8 @@ correlation.
 - Removed old hall-pass lifecycle helpers from `app/feats/attendance.py`.
 - Removed the stale `/api/hall-pass/cancel/<id>` endpoint.
 - Removed route-level `FEAT-ATTN-002` wrappers from hall-pass checkout/checkin.
+- Removed remaining route-level `FEAT-ATTN-*` wrappers from hall-pass settings/token API surfaces; those are Class Configuration settings writes, not PROD writes.
+- Removed the legacy `student_tap` idempotency prefix from the student dashboard attendance command surface.
 - Removed old direct attendance writer helpers, soft-delete helper, and state-table helper paths from `app/feats/attendance.py`.
 - Removed obsolete `batch_auto_tapout_students(...)` from `app/attendance.py`.
 - Removed `Seat.block` fallback from `/api/tap`; class section is the only display-period source in that route.
@@ -260,6 +263,8 @@ Stale-pattern scans were also run for the touched surfaces. They no longer find:
 - `student_tap`;
 - attendance soft-delete helper;
 - `seat_attendance_state` usage in the touched template-facing PROD surfaces.
+
+Current runtime scans are also clean for `FEAT-ATTN-*` and `student_tap`; remaining mentions in this document are historical evidence from this checkpoint.
 
 The former `SeatAttendanceState` class-destruction cleanup reference has been removed from live runtime code.
 Class destruction now explicitly deletes `attendance_sessions`, `hall_pass_logs`,

@@ -31,7 +31,7 @@ from app.feats.base import feat_shell
 from app.models import (
     Seat, PasskeyCredential,
     Transaction, TransactionStatus, HallPassLog,
-    # TapEvent removed — tap_events unauthorized; use attendance_sessions (DOM-ATT-001)
+    # Legacy tap models are unauthorized; use attendance_sessions (DOM-PROD-001).
     FeatureSettings, RentSettings, BankingSettings,
     HallPassSettings, ClassEconomy, User, UserRole,
     PayrollSettings, StoreItem, Announcement, Issue, IssueStatusHistory, IssueResolutionAction

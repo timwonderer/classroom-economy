@@ -23,8 +23,7 @@ from app.extensions import db, limiter
 from app.models import (
     StoreItem, StorePurchase, Transaction, TransactionStatus, AttendanceSession,
     AttendanceReasonCode, HallPassLog, HallPassSettings, BankingSettings,
-    # TapEvent removed — tap_events unauthorized; use attendance_sessions (DOM-ATT-001)
-    # TapEventReasonCode removed — enum for dropped TapEvent
+    # Legacy tap models are unauthorized; use attendance_sessions (DOM-PROD-001).
     # StoreItemBlock removed — store_item_blocks unauthorized; use store_item_visibility (DOM-STORE-001)
     StoreItemVisibility, User,
     RedemptionEvent, RedemptionEventAction, RedemptionEventSource, _quantize_currency,
@@ -1170,7 +1169,7 @@ def checkout_hall_pass():
     
     log_entry = db.get_or_404(HallPassLog, pass_id)
     current_app.logger.info(
-        "HALL_PASS_CHECKOUT_DEBUG: student_id=%s pass_id=%s pass_requested_by_seat_id=%s pass_class_id=%s session_class_id=%s",
+        "HALL_PASS_CHECKOUT_DEBUG: seat_id=%s pass_id=%s pass_requested_by_seat_id=%s pass_class_id=%s session_class_id=%s",
         getattr(student, "id", None),
         pass_id,
         log_entry.requested_by_seat_id,
@@ -1218,7 +1217,7 @@ def checkout_hall_pass():
         })
     except PermissionError as exc:
         current_app.logger.error(
-            "HALL_PASS_CHECKOUT_IDENTITY_MISSING: student_id=%s pass_id=%s message=%s",
+            "HALL_PASS_CHECKOUT_IDENTITY_MISSING: seat_id=%s pass_id=%s message=%s",
             getattr(student, "id", None),
             pass_id,
             str(exc),
@@ -1254,7 +1253,7 @@ def checkin_hall_pass():
     
     log_entry = db.get_or_404(HallPassLog, pass_id)
     current_app.logger.info(
-        "HALL_PASS_CHECKIN_DEBUG: student_id=%s pass_id=%s pass_requested_by_seat_id=%s pass_class_id=%s session_class_id=%s",
+        "HALL_PASS_CHECKIN_DEBUG: seat_id=%s pass_id=%s pass_requested_by_seat_id=%s pass_class_id=%s session_class_id=%s",
         getattr(student, "id", None),
         pass_id,
         log_entry.requested_by_seat_id,
@@ -1295,7 +1294,7 @@ def checkin_hall_pass():
         })
     except PermissionError as exc:
         current_app.logger.error(
-            "HALL_PASS_CHECKIN_IDENTITY_MISSING: student_id=%s pass_id=%s message=%s",
+            "HALL_PASS_CHECKIN_IDENTITY_MISSING: seat_id=%s pass_id=%s message=%s",
             getattr(student, "id", None),
             pass_id,
             str(exc),
@@ -1341,7 +1340,7 @@ def hall_pass_settings():
 
 @api_bp.route('/hall-pass/settings', methods=['POST'])
 @admin_required
-@feat_shell("FEAT-ATTN-001")
+@feat_shell("FEAT-SETTINGS-001")
 def update_hall_pass_settings():
     """Update hall pass queue settings (admin only)."""
     context = getattr(g, "canonical_context", None)
@@ -1556,7 +1555,7 @@ def get_hall_pass_setup():
 
 @api_bp.route('/hall-pass/setup', methods=['POST'])
 @admin_required
-@feat_shell("FEAT-ATTN-001")
+@feat_shell("FEAT-SETTINGS-001")
 def save_hall_pass_setup():
     """Save teacher's hall pass configuration"""
     user_id = g.canonical_context.user_id
@@ -1639,7 +1638,7 @@ def save_hall_pass_setup():
 
 @api_bp.route('/hall-pass/verify-token/rotate', methods=['POST'])
 @admin_required
-@feat_shell("FEAT-ATTN-001")
+@feat_shell("FEAT-SETTINGS-001")
 def rotate_hall_pass_verify_token():
     """
     Rotate the teacher's hall pass public verification token.
@@ -1999,7 +1998,7 @@ def handle_tap():
     context = resolve_canonical_context()
     class_id = context.class_id if context else None
     if not class_id:
-        current_app.logger.warning("TAP ERROR: Missing class_id context for student_id=%s", student_user.id)
+        current_app.logger.warning("ATTENDANCE ERROR: Missing class_id context for user_id=%s", student_user.id)
         return jsonify({"error": "Unable to resolve class context for this period."}), 400
 
     action = data.get("action")
@@ -2057,7 +2056,7 @@ def handle_tap():
             status=status,
             reason=reason,
             reason_code=reason_code,
-            idempotency_key=f"student_tap:{class_id}:{seat_id}:{normalized_action}:{secrets.token_hex(12)}",
+            idempotency_key=f"prod_attendance:{class_id}:{seat_id}:{normalized_action}:{secrets.token_hex(12)}",
         )
         current_app.logger.info("TAP success - seat %s class_id=%s action=%s", seat_id, class_id, action)
     except SQLAlchemyError as e:
