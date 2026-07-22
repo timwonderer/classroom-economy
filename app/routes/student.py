@@ -1216,30 +1216,28 @@ def payroll():
         return redirect(url_for('student.dashboard'))
     effective_class_id = class_id or context.class_id
 
-    current_block = seat.class_economy.section.upper() if seat and seat.class_economy and seat.class_economy.section else ""
-    join_code = get_display_join_code(context.class_id)
+    class_row = seat.class_economy if seat and seat.class_economy else None
+    current_section = class_row.section.upper() if class_row and class_row.section else ""
+    class_label = (
+        (class_row.display_name or class_row.section or class_row.join_code or class_row.class_id)
+        if class_row
+        else effective_class_id
+    )
     period_states = get_all_block_statuses(student, class_id=class_id, ctx=context)
 
-    # Scope dashboard data to the selected class context only
-    period_states = {current_block: period_states.get(current_block, {})}
-    student_blocks = [current_block]
+    # Scope payroll display data to the selected class context only.
+    payroll_state = period_states.get(current_section, {})
 
-    # Determine the pay rate for the current block (per minute)
+    # Existing PayrollSettings persistence is still keyed by section; the page
+    # contract remains canonical class_id/class_label only.
     pay_rate_per_second = get_pay_rate_for_block(
-        current_block,
+        current_section,
         class_id=class_id,
     )
     pay_rate_per_minute = round(pay_rate_per_second * 60, 2)
 
-    unpaid_seconds_per_block = {
-        blk: state.get("duration", 0)
-        for blk, state in period_states.items()
-    }
-
-    projected_pay_per_block = {
-        blk: round((state.get("projected_pay") or 0), 2)
-        for blk, state in period_states.items()
-    }
+    unpaid_seconds = int(payroll_state.get("duration", 0) or 0)
+    projected_pay = round((payroll_state.get("projected_pay") or 0), 2)
 
     from app.models import AttendanceSession as _AttSession
 
@@ -1249,7 +1247,6 @@ def payroll():
     )
     recent_sessions = att_query.order_by(_AttSession.timestamp.desc(), _AttSession.id.desc()).limit(20).all()
     attendance_events = recent_sessions
-    attendance_events_by_block = {current_block: recent_sessions}
     attendance_start_count = sum(1 for sess in recent_sessions if sess.status == "active")
     attendance_inactive_count = sum(1 for sess in recent_sessions if sess.status == "inactive")
 
@@ -1275,12 +1272,11 @@ def payroll():
     return render_template(
         'student_payroll.html',
         student=student,
-        student_blocks=student_blocks,
-        unpaid_seconds_per_block=unpaid_seconds_per_block,
-        projected_pay_per_block=projected_pay_per_block,
-        period_states=period_states,
+        class_label=class_label,
+        payroll_state=payroll_state,
+        unpaid_seconds=unpaid_seconds,
+        projected_pay=projected_pay,
         attendance_events=attendance_events,
-        attendance_events_by_block=attendance_events_by_block,
         attendance_start_count=attendance_start_count,
         attendance_inactive_count=attendance_inactive_count,
         pay_rate_per_minute=pay_rate_per_minute,

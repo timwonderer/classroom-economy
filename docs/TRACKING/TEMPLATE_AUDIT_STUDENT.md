@@ -155,11 +155,11 @@
 | Variable | Type | Purpose |
 |----------|------|---------|
 | student | Seat | Current seat |
-| student_blocks | list[str] | Block identifiers |
-| unpaid_seconds_per_block | dict[str, int] | Unpaid seconds per block |
-| projected_pay_per_block | dict[str, float] | Projected pay per block |
+| class_label | str | Display label for the active canonical class |
+| payroll_state | dict | Current class-scoped productivity/payroll state |
+| unpaid_seconds | int | Unpaid seconds for the active canonical class |
+| projected_pay | float | Projected pay for the active canonical class |
 | attendance_events | list[AttendanceSession] | Recent canonical attendance events |
-| attendance_events_by_block | dict[str, list] | Attendance events grouped by block |
 | attendance_start_count | int | Recent active/start count |
 | attendance_inactive_count | int | Recent inactive/break/done count |
 | pay_rate_per_minute | float | Pay rate per minute |
@@ -170,10 +170,13 @@
 
 | Line | Expression | Expects | Supplied By |
 |------|-----------|---------|-------------|
-| 40 | `{{ blk\|upper }}` | str | loop var |
-| 60 | `{% set block_events = attendance_events_by_block[blk] %}` | list | route — REWIRED_READ from canonical `attendance_sessions` |
-| 138 | `{{ unpaid_seconds_per_block.values()\|sum }}` | int | route |
+| 38 | `{{ class_label }}` | str | route — REWIRED_READ from canonical `ClassEconomy` display fields |
+| 41-54 | `payroll_state.get(...)`, `unpaid_seconds` | dict/int | route — REWIRED_READ from canonical `attendance_sessions` state projection for active `class_id` |
+| 60-108 | `attendance_events[:20]` | list | route — REWIRED_READ from canonical `attendance_sessions` scoped by `target_seat_id + class_id` |
+| 138 | `{{ unpaid_seconds }}` | int | route |
 | 301 | `{% for label, value in pay_rate_table %}` | tuple | route |
+
+**PROD disposition:** REWIRED_READ — Resolved 2026-07-22. `student_payroll.html` no longer receives or renders block-keyed template contracts (`student_blocks`, `period_states`, `unpaid_seconds_per_block`, `projected_pay_per_block`, `attendance_events_by_block`). It renders one active canonical class using `class_label`, `payroll_state`, `unpaid_seconds`, `projected_pay`, and direct canonical `attendance_events`.
 
 ---
 
@@ -614,12 +617,11 @@ Variables from route:
 
 Variable	Type	Purpose
 student	Seat	Current seat
-student_blocks	list[str]	Block identifiers
-unpaid_seconds_per_block	dict[str, int]	Unpaid seconds per block
-projected_pay_per_block	dict[str, float]	Projected pay per block
-period_states	dict	Per-block status
+class_label	str	Display label for the active canonical class
+payroll_state	dict	Current class-scoped productivity/payroll state
+unpaid_seconds	int	Unpaid seconds for the active canonical class
+projected_pay	float	Projected pay for the active canonical class
 attendance_events	list[AttendanceSession]	Recent canonical attendance events
-attendance_events_by_block	dict[str, list]	Events grouped by block
 attendance_start_count	int	Recent active/start event count
 attendance_inactive_count	int	Recent inactive/break/done event count
 pay_rate_per_minute	float	Pay rate per minute
@@ -628,14 +630,14 @@ scoped_total_earnings	float	Lifetime earnings in class
 Jinja expressions:
 
 Line	Expression	Expects	Supplied By
-40	{{ blk|upper }}	str	loop var
-41	{% set state = period_states[blk] %}	dict	route
-54	{{ (unpaid_seconds_per_block[blk] // 3600)|string + ... }}	str	route
-60	{% set block_events = attendance_events_by_block[blk] ... %}	list	route — REWIRED_READ from canonical attendance_sessions
+38	{{ class_label }}	str	route — REWIRED_READ from canonical ClassEconomy display fields
+41	{{ payroll_state.get(...) }}	dict	route — REWIRED_READ from canonical attendance_sessions state projection
+54	{{ (unpaid_seconds // 3600)|string + ... }}	str	route
+60	{% for event in attendance_events[:20] %}	list	route — REWIRED_READ from canonical attendance_sessions
 77	{{ format_utc_iso(event.timestamp) }}	str	[GLOBAL]
 96	{{ url_for('student.report_attendance_session_issue', attendance_session_id=event.id) }}	str	[FLASK] — REWIRED to canonical AttendanceSession lookup by `target_seat_id + class_id`
-138	{{ unpaid_seconds_per_block.values()|sum }}	int	route
-148	{{ "%.2f"|format(projected_pay_per_block.values()|sum) }}	str	route
+138	{{ unpaid_seconds }}	int	route
+148	{{ "%.2f"|format(projected_pay) }}	str	route
 154	{{ "%.2f"|format(scoped_total_earnings) }}	str	route
 222	{{ attendance_start_count }}	int	route — REWIRED_READ from canonical attendance_sessions
 228	{{ attendance_inactive_count }}	int	route — REWIRED_READ from canonical attendance_sessions

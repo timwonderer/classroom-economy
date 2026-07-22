@@ -72,6 +72,7 @@ This document tracks:
 | Admin roster bulk Start Work / Break | `REWIRED` | `admin.tap_in_students` / `admin.tap_out_students` call `record_attendance_session` and submit only `seat_ids`; no block or period scope is submitted. |
 | Student detail PROD sections | `REWIRED_READ` | Attendance summary/history, hall-pass balance, join-code display, and Payroll tab are rewired; Payroll tab reads `payroll_event` rows plus Ledger amount lookup by `correlation_id`, not legacy `Transaction.type` filters. |
 | Admin payroll page class-scope contract | `REWIRED_READ_WRITE` | `admin_payroll.html` no longer exposes block-shaped template filters or reads `Seat.block`; history and manual-credit selection use canonical `class_id` view rows while Run Payroll and manual credit remain wired through `FEAT-PROD-*`. |
+| Student payroll page class-scope contract | `REWIRED_READ` | `student_payroll.html` no longer receives block-keyed maps; it renders the active canonical class through `class_label`, `payroll_state`, `unpaid_seconds`, `projected_pay`, and canonical `attendance_events`. |
 
 ---
 
@@ -116,7 +117,7 @@ Targeted PROD FEAT proof added on 2026-07-22:
 
 ```bash
 pytest -q tests/dom/prod/test_feat_prod.py
-# 3 passed in 14.51s
+# 3 passed in 21.17s
 ```
 
 This run also proved that the fresh migration chain reaches Alembic head `f6a7b8c9d0e2` after removing stale migration dependencies on the retired `TapEventReasonCode` enum and already-deleted `student_blocks` table.
@@ -139,6 +140,15 @@ rg -n "payroll_class_options|total_classes|data-class-id|student\\.class_id|stud
 ```
 
 The negative template scan no longer finds block-shaped filter variables, `Seat.block` template access, or `data-block` attributes in `admin_payroll.html`. The positive scan shows canonical `class_id` filters and student stat view rows. `PayrollSettings.block` remains a lower-level settings persistence detail to collapse in the class-configuration/settings pass, not a surviving template scope contract.
+
+Student-payroll template contract check added on 2026-07-22:
+
+```bash
+rg -n "student_blocks|period_states|unpaid_seconds_per_block|projected_pay_per_block|attendance_events_by_block|block_events|Block \\{\\{|No blocks assigned|Breakdown by Block|Per-Block|Active Blocks|loop\\.last" templates/student_payroll.html -S
+rg -n "class_label|payroll_state|unpaid_seconds|projected_pay|attendance_events\\[:20\\]|last_payroll_event|days_since_last_payroll" templates/student_payroll.html app/routes/student.py -S
+```
+
+The negative template scan no longer finds block-keyed payroll variables or block-labelled payroll UI in `student_payroll.html`. The positive scan shows a class-scoped view contract backed by canonical `attendance_sessions` and `payroll_event` reads.
 
 Live schema proof added on 2026-07-22:
 

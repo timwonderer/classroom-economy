@@ -33,32 +33,27 @@
                 <span class="material-symbols-outlined" style="vertical-align: middle;">schedule</span> Attendance Overview
             </div>
             <div class="card-body">
-                {% if student_blocks %}
-                <!-- Per-Block Attendance -->
-                {% for blk in student_blocks %}
+                {% if class_label %}
                 <div class="mb-4">
-                    <h5 class="mb-3">Block {{ blk|upper }}</h5>
-                    {% set state = period_states[blk] %}
+                    <h5 class="mb-3">{{ class_label }}</h5>
                     <div class="row mb-3">
                         <div class="col-md-6">
                             <div class="p-3 bg-light rounded">
                                 <strong>Current Status:</strong>
-                                <span class="badge {% if state['active'] and not state['done'] %}bg-success{% else %}bg-secondary{% endif %} ms-2">
-                                    {{ 'Active' if state['active'] and not state['done'] else 'Inactive' }}
+                                <span class="badge {% if payroll_state.get('active') and not payroll_state.get('done') %}bg-success{% else %}bg-secondary{% endif %} ms-2">
+                                    {{ 'Active' if payroll_state.get('active') and not payroll_state.get('done') else 'Inactive' }}
                                 </span>
                             </div>
                         </div>
                         <div class="col-md-6">
                             <div class="p-3 bg-light rounded">
                                 <strong>Unpaid Time:</strong>
-                                <span class="text-primary ms-2">{{ (unpaid_seconds_per_block[blk] // 3600)|string + 'h ' + ((unpaid_seconds_per_block[blk] % 3600) // 60)|string + 'm ' + (unpaid_seconds_per_block[blk] % 60)|string + 's' }}</span>
+                                <span class="text-primary ms-2">{{ (unpaid_seconds // 3600)|string + 'h ' + ((unpaid_seconds % 3600) // 60)|string + 'm ' + (unpaid_seconds % 60)|string + 's' }}</span>
                             </div>
                         </div>
                     </div>
 
-                    <!-- Attendance events for this block -->
-                    {% set block_events = attendance_events_by_block[blk] if blk in attendance_events_by_block else [] %}
-                    {% if block_events %}
+                    {% if attendance_events %}
                     <div class="table-responsive">
                         <table class="table table-sm table-hover">
                             <thead>
@@ -70,7 +65,7 @@
                                 </tr>
                             </thead>
                             <tbody>
-                                {% for event in block_events[:20] %}
+                                {% for event in attendance_events[:20] %}
                                 <tr>
                                     <td>
                                         {% if event.timestamp %}
@@ -105,20 +100,18 @@
                             </tbody>
                         </table>
                     </div>
-                    {% if block_events|length > 20 %}
+                    {% if attendance_events|length > 20 %}
                     <p class="text-muted text-center small">Showing most recent 20 events</p>
                     {% endif %}
                     {% else %}
                     <div class="alert alert-info">
-                        <span class="material-symbols-outlined">info</span> No attendance events recorded for this block yet.
+                        <span class="material-symbols-outlined">info</span> No attendance events recorded for this class yet.
                     </div>
                     {% endif %}
                 </div>
-                {% if not loop.last %}<hr>{% endif %}
-                {% endfor %}
                 {% else %}
                 <div class="alert alert-info">
-                    <span class="material-symbols-outlined">info</span> No blocks assigned.
+                    <span class="material-symbols-outlined">info</span> No class selected.
                 </div>
                 {% endif %}
             </div>
@@ -135,17 +128,16 @@
                         <span class="material-symbols-outlined">trending_up</span> Overall Productivity
                     </div>
                     <div class="card-body">
-                        {% set total_unpaid = unpaid_seconds_per_block.values()|sum %}
                         <div class="mb-3 pb-3 border-bottom">
                             <div class="d-flex justify-content-between align-items-center">
                                 <span class="text-muted">Total Unpaid Time</span>
-                                <h5 class="mb-0 text-primary">{{ (total_unpaid // 3600)|int }}h {{ ((total_unpaid % 3600) // 60)|int }}m</h5>
+                                <h5 class="mb-0 text-primary">{{ (unpaid_seconds // 3600)|int }}h {{ ((unpaid_seconds % 3600) // 60)|int }}m</h5>
                             </div>
                         </div>
                         <div class="mb-3 pb-3 border-bottom">
                             <div class="d-flex justify-content-between align-items-center">
                                 <span class="text-muted">Total Projected Earnings</span>
-                                <h5 class="mb-0 text-success">${{ "%.2f"|format(projected_pay_per_block.values()|sum) }}</h5>
+                                <h5 class="mb-0 text-success">${{ "%.2f"|format(projected_pay) }}</h5>
                             </div>
                         </div>
                         <div class="mb-3 pb-3 border-bottom">
@@ -156,45 +148,43 @@
                         </div>
                         <div>
                             <div class="d-flex justify-content-between align-items-center">
-                                <span class="text-muted">Active Blocks</span>
-                                <h5 class="mb-0">{{ student_blocks|length }}</h5>
+                                <span class="text-muted">Active Classes</span>
+                                <h5 class="mb-0">{{ 1 if class_label else 0 }}</h5>
                             </div>
                         </div>
                     </div>
                 </div>
             </div>
 
-            <!-- Per-Block Breakdown -->
+            <!-- Class Breakdown -->
             <div class="col-md-6 mb-4">
                 <div class="card">
                     <div class="card-header">
-                        <span class="material-symbols-outlined">view_module</span> Per-Block Breakdown
+                        <span class="material-symbols-outlined">view_module</span> Class Breakdown
                     </div>
                     <div class="card-body">
-                        {% if student_blocks %}
+                        {% if class_label %}
                         <div class="table-responsive">
                             <table class="table table-sm">
                                 <thead>
                                     <tr>
-                                        <th>Block</th>
+                                        <th>Class</th>
                                         <th>Unpaid Time</th>
                                         <th>Projected</th>
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {% for blk in student_blocks %}
                                     <tr>
-                                        <td><strong>{{ blk|upper }}</strong></td>
-                                        <td>{{ (unpaid_seconds_per_block[blk] // 3600)|string + 'h ' + ((unpaid_seconds_per_block[blk] % 3600) // 60)|string + 'm' }}</td>
-                                        <td class="text-success">${{ "%.2f"|format(projected_pay_per_block[blk]) }}</td>
+                                        <td><strong>{{ class_label }}</strong></td>
+                                        <td>{{ (unpaid_seconds // 3600)|string + 'h ' + ((unpaid_seconds % 3600) // 60)|string + 'm' }}</td>
+                                        <td class="text-success">${{ "%.2f"|format(projected_pay) }}</td>
                                     </tr>
-                                    {% endfor %}
                                 </tbody>
                             </table>
                         </div>
                         {% else %}
                         <div class="alert alert-info">
-                            <span class="material-symbols-outlined">info</span> No blocks assigned.
+                            <span class="material-symbols-outlined">info</span> No class selected.
                         </div>
                         {% endif %}
                     </div>
@@ -250,28 +240,26 @@
                     <div class="card-body">
                         <div class="text-center mb-4">
                             <h6 class="text-muted text-uppercase mb-2">Total Projected Earnings</h6>
-                            <h1 class="display-4 text-success mb-0">${{ "%.2f"|format(projected_pay_per_block.values()|sum) }}</h1>
+                            <h1 class="display-4 text-success mb-0">${{ "%.2f"|format(projected_pay) }}</h1>
                             <small class="text-muted">Based on current unpaid time</small>
                         </div>
                         <hr>
-                        <h6 class="mb-3">Breakdown by Block:</h6>
-                        {% if student_blocks %}
-                        {% for blk in student_blocks %}
-                        <div class="mb-3 pb-3 {% if not loop.last %}border-bottom{% endif %}">
+                        <h6 class="mb-3">Breakdown by Class:</h6>
+                        {% if class_label %}
+                        <div class="mb-3 pb-3 border-bottom">
                             <div class="d-flex justify-content-between align-items-center">
                                 <div>
-                                    <strong>Block {{ blk|upper }}</strong>
+                                    <strong>{{ class_label }}</strong>
                                     <div class="small text-muted">
-                                        {{ (unpaid_seconds_per_block[blk] // 3600)|string + 'h ' + ((unpaid_seconds_per_block[blk] % 3600) // 60)|string + 'm ' + (unpaid_seconds_per_block[blk] % 60)|string + 's' }}
+                                        {{ (unpaid_seconds // 3600)|string + 'h ' + ((unpaid_seconds % 3600) // 60)|string + 'm ' + (unpaid_seconds % 60)|string + 's' }}
                                     </div>
                                 </div>
-                                <h5 class="mb-0 text-success">${{ "%.2f"|format(projected_pay_per_block[blk]) }}</h5>
+                                <h5 class="mb-0 text-success">${{ "%.2f"|format(projected_pay) }}</h5>
                             </div>
                         </div>
-                        {% endfor %}
                         {% else %}
                         <div class="alert alert-info">
-                            <span class="material-symbols-outlined">info</span> No blocks assigned.
+                            <span class="material-symbols-outlined">info</span> No class selected.
                         </div>
                         {% endif %}
                     </div>
