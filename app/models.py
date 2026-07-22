@@ -76,7 +76,7 @@ class AttendanceReasonCode(str, enum.Enum):
     START_WORK = 'start_work'
 
 
-# TapEventReasonCode removed — TapEvent table unauthorized; attendance expressed via attendance_sessions (DOM-ATT-001)
+# Legacy tap reason enum removed; attendance is expressed through attendance_sessions (DOM-PROD-001).
 
 
 
@@ -640,7 +640,7 @@ class AttendanceSession(db.Model):
     )
 
 
-# TapEvent removed — tap_events unauthorized; canonical replacement: attendance_sessions (DOM-PROD-001)
+# Legacy tap table removed; canonical replacement: attendance_sessions (DOM-PROD-001).
 
 
 # ---- Hall Pass Log Model ----
@@ -1001,27 +1001,6 @@ def _sync_rent_settings_scope(mapper, connection, target):
 
 
 # Rent waiver state is expressed through obligation satisfaction
-
-@sa.event.listens_for(HallPassLog, "before_insert")
-@sa.event.listens_for(HallPassLog, "before_update")
-def _sync_hall_pass_seat(_mapper, connection, target):
-    """Synchronize hall_pass_logs.seat_id during the transition."""
-    student_id = getattr(target, "student_id", None)
-    class_id = getattr(target, "class_id", None)
-
-    if not getattr(target, "seat_id", None):
-        seat_id = _resolve_seat_id(connection, student_id, class_id=class_id)
-        if seat_id:
-            target.seat_id = seat_id
-
-    if not getattr(target, "class_id", None) and getattr(target, "seat_id", None):
-        seat_class_id = connection.execute(
-            sa.text("SELECT class_id FROM seats WHERE id = :seat_id LIMIT 1"),
-            {"seat_id": target.seat_id},
-        ).scalar()
-        if seat_class_id:
-            target.class_id = str(seat_class_id)
-
 
 # Rent store state is now canonical
 

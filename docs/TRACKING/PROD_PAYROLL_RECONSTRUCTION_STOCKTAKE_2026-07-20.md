@@ -86,6 +86,7 @@ correlation.
 | Analytics participation PROD read | `REWIRED_READ` | `AnalyticsEngine.calculate_participation_rate` now reads canonical `AttendanceSession.target_seat_id` and `timestamp`; legacy `seat_id`, `started_at`, and `is_deleted` assumptions were removed. |
 | Student removal PROD cleanup | `REWIRED_DELETE` | Teacher-scoped student removal deletes PROD rows by target `seat_id` constrained to the seat's `class_id`; whole-class deletion remains scoped by `class_id` only. Cleanup targets `attendance_sessions.target_seat_id`, `hall_pass_logs.requested_by_seat_id`, and `payroll_event.target_seat_id`. |
 | Class destruction PROD cleanup | `REWIRED_DELETE` | Whole-class deletion deletes the full PROD table set by `class_id`: `attendance_sessions`, `hall_pass_logs`, and `payroll_event`. Stale `TapEvent` cleanup is removed from the class-collapse path. |
+| Hall-pass model transition hook | `REMOVED` | The obsolete `HallPassLog` listener that tried to populate legacy `student_id`/`seat_id` transition fields was removed; v2 writes must provide `requested_by_seat_id`, `approved_by_seat_id`, `class_id`, and `correlation_id` directly through `FEAT-PROD-002`. |
 
 ---
 
@@ -100,6 +101,7 @@ correlation.
 - Removed obsolete `batch_auto_tapout_students(...)` from `app/attendance.py`.
 - Removed `Seat.block` fallback from `/api/tap`; class section is the only display-period source in that route.
 - Removed legacy seat-level tap settings and attendance-row delete/edit UI from audited templates.
+- Removed the obsolete `HallPassLog` transition listener that attempted to infer old `seat_id`/`student_id` fields instead of requiring the canonical PROD hall-pass contract.
 
 ---
 
@@ -111,7 +113,7 @@ correlation.
 | Live schema proof | `VERIFIED` | Local PostgreSQL at Alembic head `f6a7b8c9d0e2` exposes only `attendance_sessions`, `hall_pass_logs`, and `payroll_event` for the PROD table set; `seat_attendance_state` and `tap_events` are absent. |
 | PROD FEAT targeted test proof | `VERIFIED` | `pytest -q tests/dom/prod/test_feat_prod.py` passed 3 tests on 2026-07-22 after fresh migration-chain blockers were removed. |
 | Journey/render verification | `PARTIAL_BLOCKED_BY_STALE_TEST_AUTH` | Existing `student_detail` identity render tests currently redirect at auth setup before template render; add route render checks and journeys for start work, hall-pass request/approve/leave/return, run payroll, payroll history, student detail, and public verification. |
-| Tests still encoding old shapes | `KNOWN_RESIDUE` | Modernize direct `AttendanceSession` test setup under the current DOM-PROD schema. |
+| Tests still encoding old shapes | `KNOWN_RESIDUE` | Modernize direct `AttendanceSession` and `HallPassLog` test setup under the current DOM-PROD schema. `tests/dom/attendance/test_hall_pass_checkout.py` still constructs legacy `HallPassLog(seat_id, status, request_time, decision_time, period)` rows and fails before exercising the route. |
 | Residual non-template cleanup | `REWIRED` | Class destruction no longer references `SeatAttendanceState` or stale `TapEvent` cleanup; dropped PROD predecessor tables are not part of live runtime cleanup. |
 | Route-local view assembly | `ACCEPTED_TEMPORARILY` | Several canonical read models are still assembled in routes; extract page view builders after checklist stability. |
 | Rent / obligation surfaces | `OUT_OF_SCOPE_FOR_PROD` | Rent payment and obligation satisfaction are OBL-owned. Entitlement grants produced by obligation satisfaction are entitlement-domain business; PROD reads only approved hall-pass consumption via `hall_pass_logs` and related attendance changes. Approved hall-pass consumption reuses the consumed entitlement grant's `correlation_id`. |
@@ -185,11 +187,17 @@ rg -n "from app\\.utils\\.time|utc_now\\(|datetime\\.now|datetime\\.utcnow|total
 rg -n "TapEvent|tap_events|SeatAttendanceState|seat_attendance_state|DOM-ATT" app/routes/admin.py app/utils/deletion.py app/utils/student_deletion.py
 # no matches
 
+rg -n "HallPassLog.*before_insert|HallPassLog.*before_update|_sync_hall_pass_seat|hall_pass_logs\\.seat_id|target\\.student_id|target\\.requested_by_seat_id|target\\.approved_by_seat_id" app/models.py app/feats/prod.py app/routes/api.py app/routes/admin.py
+# no matches
+
 python3 -m py_compile app/attendance.py app/utils/analytics_engine.py app/utils/student_deletion.py
 python3 -m py_compile app/routes/admin.py app/utils/deletion.py app/utils/student_deletion.py
 
 pytest -q tests/dom/prod/test_feat_prod.py
-# 3 passed in 13.82s
+# 3 passed in 15.62s
+
+pytest -q tests/dom/attendance/test_hall_pass_checkout.py
+# known stale-test residue: fixture constructs legacy HallPassLog(seat_id/status/request_time/decision_time/period)
 ```
 
 The older attendance-domain test module still imports deleted legacy helpers and
