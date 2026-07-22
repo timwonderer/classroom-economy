@@ -23,11 +23,9 @@ This FEAT uses `CanonicalContext` for live request authority and the canonical t
 ### 1. Required Inputs
 
 - `ctx`: `CanonicalContext`
-- `hall_pass_id`: external hall-pass identifier
 - `destination`: teacher-prescribed hall-pass destination
 - `requested_by_seat_id`: seat requesting the pass
 - `approved_by_seat_id`: seat approving the pass
-- `correlation_id`: linkage to the entitlement consumption event
 - `reference_time_utc`: optional explicit timestamp for deterministic evaluation
 
 ### 2. Canonical Authority
@@ -53,13 +51,15 @@ Typical use cases:
 
 Rules:
 
-- MUST require `class_id`, `requested_by_seat_id`, `approved_by_seat_id`, `hall_pass_id`, `destination`, and `correlation_id`
+- MUST require `class_id`, `requested_by_seat_id`, `approved_by_seat_id`, and `destination`
 - MUST evaluate class-scoped `hall_pass_settings` before writing the approved pass
 - MUST NOT mutate `hall_pass_settings`; mutation of that table belongs to Class Configuration
 - MUST fail closed if settings disable the requested destination
 - MUST fail closed if queue or simultaneous limits are reached
 - MUST record the request timestamp in class canonical time
 - MUST represent approval and entitlement consumption together
+- MUST set `hall_pass_logs.hall_pass_id` to the consumed entitlement instance `entitlement_id`
+- MUST set `hall_pass_logs.correlation_id` to the consumed entitlement's source `correlation_id`
 - MUST not record exit time
 - MUST not record return time
 - MUST not record hall-pass elapsed time
@@ -69,16 +69,16 @@ Execution steps:
 
 1. Resolve `CanonicalContext` and confirm the approving actor is lawful for the class.
 2. Resolve `CLE` with `canonical_temporal_resolver("CLE", primitive="current_time", canonical_execution_context=ctx, reference_time_utc=reference_time_utc)`.
-3. Validate the requested seat, approving seat, hall-pass identifier, and destination.
+3. Validate the requested seat, approving seat, and destination.
 4. Read Class Configuration's `hall_pass_settings` for the class and evaluate pass-type enablement plus queue/simultaneous limits.
-5. Record the approved hall-pass row in `hall_pass_logs` with the shared `correlation_id`.
-6. Record the same correlation in the entitlement consumption event owned by Obligations.
+5. Consume one available entitlement instance through the entitlement service.
+6. Record the approved hall-pass row in `hall_pass_logs` with the consumed entitlement's `entitlement_id` in `hall_pass_id` and its source `correlation_id`.
 7. Return the approved hall-pass instruction as the lawful source for later attendance-session exit/return evidence.
 
 Failure conditions:
 
 - missing approval authority
-- missing or duplicate hall-pass identifier
+- missing entitlement grant identity
 - invalid class or seat boundary
 - hall-pass settings prohibit the requested pass
 - queue or simultaneous limits are reached
@@ -97,10 +97,11 @@ Failure conditions:
 ## V. Invariants
 
 1. Hall-pass approval consumes entitlement.
-2. The correlation ID links the hall-pass log to the entitlement consumption event.
-3. If the pass was purchased from Store, the upstream ledger entry uses the same correlation ID.
-4. The FEAT must fail closed if approval authority cannot be established.
-5. `hall_pass_settings` is a Class Configuration-owned input to the PROD grant decision and must be evaluated before writing `hall_pass_logs`.
+2. `hall_pass_id` links the hall-pass log to the specific consumed entitlement instance.
+3. The correlation ID links the hall-pass log to the entitlement source event.
+4. If the pass was purchased from Store, the upstream ledger entry uses the same correlation ID.
+5. The FEAT must fail closed if approval authority cannot be established.
+6. `hall_pass_settings` is a Class Configuration-owned input to the PROD grant decision and must be evaluated before writing `hall_pass_logs`.
 
 ---
 

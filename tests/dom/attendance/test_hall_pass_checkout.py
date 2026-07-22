@@ -52,13 +52,20 @@ def hp_ctx(client):
         ctx=_teacher_ctx(classroom),
         requested_by_seat_id=student.seat.id,
         approved_by_seat_id=classroom.teacher_seat.id,
-        hall_pass_id="HP-CHECKOUT-001",
         destination="Bathroom",
         reason="teacher_approved",
         idempotency_key="hall-pass-checkout:issued-pass",
         reference_time_utc=datetime(2026, 7, 19, 15, 0, tzinfo=timezone.utc),
     ).hall_pass_log
     db.session.flush()
+    consume_event = EntitlementEvent.query.filter_by(
+        seat_id=student.seat.id,
+        class_id=classroom.class_id,
+        quantity_delta=-1,
+        event_type="CONSUME",
+    ).one()
+    assert hall_pass.correlation_id == consume_event.correlation_id
+    assert hall_pass.hall_pass_id == consume_event.entitlement_id
 
     return {
         "classroom": classroom,

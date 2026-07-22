@@ -290,7 +290,6 @@ def record_hall_pass_log(
     ctx: CanonicalContext,
     requested_by_seat_id: int,
     approved_by_seat_id: int,
-    hall_pass_id: str,
     destination: str,
     reason: str,
     idempotency_key: str | None = None,
@@ -315,17 +314,19 @@ def record_hall_pass_log(
     consume_event, _balance = consume_hall_pass(
         requested_by_seat_id,
         ctx.class_id,
-        trigger_id=f"hall_pass_log:{hall_pass_id}",
+        trigger_id=idempotency_key or f"hall_pass_log:{ctx.class_id}:{requested_by_seat_id}:{now.isoformat()}",
     )
     if not consume_event.correlation_id:
         raise ValueError("Hall-pass entitlement consumption missing correlation_id")
+    if not consume_event.entitlement_id:
+        raise ValueError("Hall-pass entitlement consumption missing entitlement_id")
 
     log = HallPassLog(
         requested_by_seat_id=requested_by_seat_id,
         approved_by_seat_id=approved_by_seat_id,
         class_id=ctx.class_id,
         timestamp=now,
-        hall_pass_id=hall_pass_id,
+        hall_pass_id=consume_event.entitlement_id,
         correlation_id=consume_event.correlation_id,
         destination=destination,
     )

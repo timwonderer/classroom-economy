@@ -19,7 +19,7 @@ This FEAT exists because hall-pass availability is derived from append-only enti
 This FEAT owns only the entitlement adjustment facts:
 
 - granting additional hall-pass entitlement quantity;
-- removing available hall-pass entitlement quantity by appending REVOCATION rows against unconsumed grant correlations.
+- removing available hall-pass entitlement quantity by appending REVOCATION rows against unconsumed entitlement instances.
 
 It does not own:
 
@@ -37,24 +37,26 @@ PROD consumption remains governed by `FEAT-PROD-002`, which consumes an availabl
 
 ### Add Hall Passes
 
-Adding hall passes creates new positive entitlement grant events.
+Adding hall passes creates one positive entitlement grant event per individual hall pass.
 
 Rules:
 
 - quantity must be positive;
+- each granted hall pass must receive a unique `entitlement_id`;
+- all hall passes produced by the same grant/purchase/perk event may share the same source `correlation_id`;
 - target `seat_id` must be scoped to the teacher's active `class_id`;
 - the resulting balance remains a derived projection over entitlement events;
 - no seat-level hall-pass counter may be written.
 
 ### Remove Hall Passes
 
-Removing hall passes appends negative REVOCATION events against existing unconsumed grant correlations.
+Removing hall passes appends negative REVOCATION events against existing unconsumed entitlement instances.
 
 Rules:
 
 - quantity must be positive;
 - removal must fail if requested quantity exceeds the current derived available balance;
-- each REVOCATION row must reuse the grant `correlation_id` it reverses;
+- each REVOCATION row must reuse both the grant `correlation_id` and the specific `entitlement_id` it reverses;
 - removal must not create uncorrelated negative rows;
 - removal must not mutate or delete prior entitlement events.
 
@@ -66,7 +68,7 @@ The following are prohibited:
 
 - setting hall-pass balance to an arbitrary number;
 - calculating a delta from desired balance and writing that delta;
-- writing negative entitlement rows without an existing unconsumed grant correlation;
+- writing negative entitlement rows without an existing unconsumed entitlement instance;
 - using `student.hall_passes` or any seat-level hall-pass counter;
 - using PROD `hall_pass_logs` as the entitlement balance source.
 
@@ -96,5 +98,5 @@ This FEAT is implemented when:
 - admin student-detail hall-pass controls call add/remove entitlement operations only;
 - admin roster bulk hall-pass controls call add/remove entitlement operations only;
 - no runtime route or template can set a derived hall-pass balance directly;
-- removal appends REVOCATION rows tied to existing grant `correlation_id` values;
-- targeted tests prove correlation-preserving removal.
+- removal appends REVOCATION rows tied to existing grant `correlation_id` and `entitlement_id` values;
+- targeted tests prove correlation-preserving, entitlement-specific removal.

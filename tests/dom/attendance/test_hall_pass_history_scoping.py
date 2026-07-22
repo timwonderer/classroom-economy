@@ -47,7 +47,6 @@ def _issue_hall_pass(classroom, *, hall_pass_id: str, correlation_id: str):
         ctx=_teacher_ctx(classroom),
         requested_by_seat_id=student.seat.id,
         approved_by_seat_id=classroom.teacher_seat.id,
-        hall_pass_id=hall_pass_id,
         destination="Bathroom",
         reason="teacher_approved",
         idempotency_key=f"hall-pass-history:{hall_pass_id}",

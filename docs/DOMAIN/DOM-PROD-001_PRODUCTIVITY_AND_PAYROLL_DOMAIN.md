@@ -128,8 +128,8 @@ Fields:
 - `class_id`
 - `requested_by_seat_id`
 - `approved_by_seat_id`
-- `correlation_id` — linkage to the consumed hall-pass entitlement grant; if the pass was purchased from the Store domain, the same correlation ID is also carried by the upstream ledger entry
-- `hall_pass_id` — external hall-pass identifier
+- `correlation_id` — source event/provenance linkage for the consumed hall-pass entitlement; if the pass was purchased from the Store domain, the same correlation ID is also carried by the upstream ledger entry
+- `hall_pass_id` — FK-style reference to the specific consumed entitlement instance's `entitlement_id`
 - `destination` — preset by teacher
 
 This table does not own actual exit time or return time. Those are logged by `attendance_sessions`.
@@ -200,10 +200,11 @@ Use cases:
 
 Rules:
 
-- MUST require `class_id`, `requested_by_seat_id`, `approved_by_seat_id`, `hall_pass_id`, and `destination`
+- MUST require `class_id`, `requested_by_seat_id`, `approved_by_seat_id`, and `destination`
 - MUST read class-scoped `hall_pass_settings` before granting the pass
 - MUST fail closed when class-scoped hall-pass settings prohibit the requested destination or limit
 - MUST set `correlation_id` to the consumed entitlement grant's `correlation_id`
+- MUST set `hall_pass_id` to the consumed entitlement instance's `entitlement_id`
 - MUST be the authoritative approved hall-pass instruction
 - MUST not record exit time or return time
 - MUST not record hall-pass elapsed time
@@ -325,8 +326,8 @@ Key fields:
 - `class_id` — FK to `classes`
 - `requested_by_seat_id` — FK to `seats`
 - `approved_by_seat_id` — FK to `seats`
-- `correlation_id` — internal domain linkage
-- `hall_pass_id` — external hall-pass identifier
+- `correlation_id` — source event/provenance linkage for the consumed hall-pass entitlement
+- `hall_pass_id` — FK-style reference to the specific consumed entitlement instance's `entitlement_id`
 - `destination` — preset by teacher
 
 Rules:

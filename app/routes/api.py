@@ -1034,13 +1034,11 @@ def handle_pending_hall_pass_request(request_id, action):
     if not requested_seat or requested_seat.class_id != ctx.class_id:
         return jsonify({"status": "error", "message": "Pending request not found."}), 404
 
-    hall_pass_id = f"hp_{secrets.token_urlsafe(16)}"
     try:
         record_hall_pass_log(
             ctx=ctx,
             requested_by_seat_id=requested_seat.id,
             approved_by_seat_id=ctx.seat_id,
-            hall_pass_id=hall_pass_id,
             destination=pending_request.destination,
             reason="teacher_approved",
             idempotency_key=f"hall_pass_approve:{ctx.class_id}:{request_id}",
@@ -1110,6 +1108,7 @@ def handle_hall_pass_action(pass_id, action):
                 mechanism="teacher",
                 status="active",
                 reason="Return from hall pass",
+                hall_pass_id=log_entry.hall_pass_id,
                 idempotency_key=f"hall_pass_return:{log_entry.class_id}:{log_entry.id}:{secrets.token_hex(12)}",
             )
             return jsonify({"status": "success", "message": "Student has returned."})
@@ -1286,6 +1285,7 @@ def checkin_hall_pass():
             mechanism="self",
             status="active",
             reason="Return from hall pass",
+            hall_pass_id=log_entry.hall_pass_id,
             idempotency_key=f"student_hall_pass_checkin:{log_entry.class_id}:{log_entry.id}:{secrets.token_hex(12)}",
         )
         return jsonify({

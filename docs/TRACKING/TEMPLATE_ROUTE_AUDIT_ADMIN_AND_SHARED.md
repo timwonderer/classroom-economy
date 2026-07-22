@@ -646,5 +646,5 @@
 | 567-607 | `attendance_events|sort(...)` and `format_utc_iso(tap.timestamp)` | route / `[GLOBAL] format_utc_iso` | REWIRED_READ from canonical `attendance_sessions` display rows |
 | 619-668 | rent section fields (`student.rent_last_paid`, `student.rent_due_date`, `student.rent_overdue`) | route |
 | 679-732 | earnings summary and `payroll_event_history` rows | REWIRED_READ from canonical `payroll_event` plus Ledger amount lookup by `correlation_id`; no legacy `Transaction.type == payroll/bonus` filters |
-| 748-857 | hall-pass entitlement form / student edit modal | route; hall-pass balance uses `hall_pass_balance`, not `student.hall_passes`; form can add grants or remove unconsumed grant correlations, not set an arbitrary balance |
+| 748-857 | hall-pass entitlement form / student edit modal | route; hall-pass balance uses `hall_pass_balance`, not `student.hall_passes`; form can add grant rows or remove unconsumed entitlement instances, not set an arbitrary balance |
 | 980 | `student.id` in JS | route |

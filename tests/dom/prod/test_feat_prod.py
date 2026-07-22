@@ -95,7 +95,6 @@ def test_FEAT_PROD_002__records_hall_pass_and_consumes_entitlement(app):
         ctx=ctx,
         requested_by_seat_id=student.seat.id,
         approved_by_seat_id=classroom.teacher_seat.id,
-        hall_pass_id="HP-002",
         destination="Office",
         reason="office",
         idempotency_key="feat:prod:hallpass:002",
@@ -105,7 +104,6 @@ def test_FEAT_PROD_002__records_hall_pass_and_consumes_entitlement(app):
     log = db.session.get(HallPassLog, result.hall_pass_log.id)
     assert log is not None
     assert log.correlation_id == "corr-hall-pass-grant-001"
-    assert log.hall_pass_id == "HP-002"
     assert log.destination == "Office"
     assert log.class_id == classroom.class_id
     assert log.requested_by_seat_id == student.seat.id
@@ -116,10 +114,18 @@ def test_FEAT_PROD_002__records_hall_pass_and_consumes_entitlement(app):
         quantity_delta=-1,
     ).one()
     assert consume_event.correlation_id == log.correlation_id
+    assert consume_event.entitlement_id == log.hall_pass_id
+    grant_event = EntitlementEvent.query.filter_by(
+        seat_id=student.seat.id,
+        class_id=classroom.class_id,
+        quantity_delta=1,
+    ).one()
+    assert grant_event.entitlement_id == log.hall_pass_id
+    assert grant_event.correlation_id == log.correlation_id
     assert get_hall_pass_balance(student.seat.id, classroom.class_id) == 0
 
 
-def test_FEAT_PROD_002__removes_hall_passes_by_reversing_grant_correlation(app):
+def test_FEAT_PROD_002__removes_hall_passes_by_reversing_entitlement_identity(app):
     classroom = initialize("chemistry_p1", app)
     student = classroom.students[0]
     with FEATContext("FEAT-BYPASS-LEGACY", correlation_id="bypass_test_hall_pass_remove_seed"):
@@ -133,14 +139,26 @@ def test_FEAT_PROD_002__removes_hall_passes_by_reversing_grant_correlation(app):
         new_balance = remove_hall_passes(student.seat, 2)
 
     assert new_balance == 1
-    reversal = EntitlementEvent.query.filter_by(
+    grants = EntitlementEvent.query.filter_by(
         seat_id=student.seat.id,
         class_id=classroom.class_id,
-        quantity_delta=-2,
+        quantity_delta=1,
+        event_type="GRANT",
+    ).all()
+    reversals = EntitlementEvent.query.filter_by(
+        seat_id=student.seat.id,
+        class_id=classroom.class_id,
+        quantity_delta=-1,
         event_type="REVOCATION",
-    ).one()
-    assert reversal.correlation_id == "corr-hall-pass-removal-grant-001"
-    assert reversal.trigger_id == reversal.correlation_id
+    ).all()
+    assert len(grants) == 3
+    assert len({grant.entitlement_id for grant in grants}) == 3
+    assert len(reversals) == 2
+    assert {reversal.correlation_id for reversal in reversals} == {"corr-hall-pass-removal-grant-001"}
+    assert {reversal.entitlement_id for reversal in reversals}.issubset(
+        {grant.entitlement_id for grant in grants}
+    )
+    assert all(reversal.trigger_id == reversal.entitlement_id for reversal in reversals)
 
 
 def test_FEAT_PROD_003__records_payroll_event_and_reversal(app):

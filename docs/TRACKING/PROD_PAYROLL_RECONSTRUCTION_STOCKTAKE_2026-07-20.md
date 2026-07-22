@@ -26,8 +26,9 @@ item, that grant is entitlement-domain business; PROD only participates later
 when an approved hall pass is consumed into `hall_pass_logs` or when
 `attendance_sessions` changes. When PROD records approved hall-pass
 consumption, `hall_pass_logs.correlation_id` must reuse the consumed entitlement
-grant's `correlation_id`; PROD must not generate a new unrelated hall-pass
-correlation.
+grant's `correlation_id`, and `hall_pass_logs.hall_pass_id` must reference the
+specific consumed entitlement instance's `entitlement_id`; PROD must not generate
+a new unrelated hall-pass correlation or external pass identifier.
 
 ---
 
@@ -80,20 +81,20 @@ correlation.
 | Scheduled daily-limit enforcement | `REWIRED` | Scheduler-only `enforce_daily_limits_job` reads active `attendance_sessions`, groups by `class_id`, resolves class daily limit, closes sessions through `FEAT-PROD-001` with teacher authority and `mechanism=system`, and uses `canonical_temporal_resolver` for elapsed-duration and exact close timestamp calculation. |
 | Hall-pass leave/return | `REWIRED` | Leave/return append `attendance_sessions` rows through `FEAT-PROD-001`; `hall_pass_logs` are not mutated for lifecycle state. |
 | Attendance helper regression tests | `REWIRED_TEST` | `tests/dom/attendance/test_attendance.py` now uses current DOM-PROD `AttendanceSession` and `PayrollEvent` shapes, writes attendance rows through `FEAT-PROD-001`, and verifies payroll anchors from `payroll_event` rather than legacy Ledger `Transaction.type`; focused test now passes. |
-| Hall-pass checkout/checkin route tests | `REWIRED_TEST` | `tests/dom/attendance/test_hall_pass_checkout.py` now uses current DOM-PROD `HallPassLog` and `AttendanceSession` shapes: approval/issuance is represented by row existence in `hall_pass_logs`, leave/return append immutable attendance rows, pending requests are not committed rows, and hall-pass consumption reuses the entitlement grant `correlation_id`. |
+| Hall-pass checkout/checkin route tests | `REWIRED_TEST` | `tests/dom/attendance/test_hall_pass_checkout.py` now uses current DOM-PROD `HallPassLog` and `AttendanceSession` shapes: approval/issuance is represented by row existence in `hall_pass_logs`, leave/return append immutable attendance rows, pending requests are not committed rows, and hall-pass consumption reuses the entitlement grant `correlation_id` plus selected `entitlement_id`. |
 | Hall-pass history scoping tests | `REWIRED_TEST` | `tests/dom/attendance/test_hall_pass_history_scoping.py` now seeds issued hall passes through entitlement grants plus `FEAT-PROD-002`, then verifies `/api/hall-pass/history` returns only the active canonical class scope. |
 | Public hall-pass verification | `REWIRED_READ` | Public token resolves teacher-scoped read authority; class dropdown submits `class_id`; name lookup checks seat hashed names and displays `IdentityProfile` only after unique match. |
 | Admin attendance log | `REWIRED_READ` | `/api/attendance/history` reads append-only `AttendanceSession` fields and uses `canonical_temporal_resolver` for class-local filters. |
 | Admin roster bulk Start Work / Break | `REWIRED` | `admin.tap_in_students` / `admin.tap_out_students` call `record_attendance_session` and submit only `seat_ids`; no block or period scope is submitted. |
-| Admin roster bulk hall-pass entitlement controls | `REWIRED_WRITE` | The former set/add/subtract prompt is reduced to add/remove only. Add writes new entitlement grant events; remove reverses available grant correlations. No route or template can set a derived hall-pass balance directly. |
+| Admin roster bulk hall-pass entitlement controls | `REWIRED_WRITE` | The former set/add/subtract prompt is reduced to add/remove only. Add writes one entitlement grant event per pass; remove reverses available entitlement instances while preserving each source correlation. No route or template can set a derived hall-pass balance directly. |
 | Student detail PROD sections | `REWIRED_READ` | Attendance summary/history, hall-pass balance, join-code display, and Payroll tab are rewired; Payroll tab reads `payroll_event` rows plus Ledger amount lookup by `correlation_id`, not legacy `Transaction.type` filters. |
-| Student detail hall-pass entitlement controls | `REWIRED_WRITE` | The former set-balance form is removed. The page now grants new hall-pass entitlement rows or removes passes by appending REVOCATION rows against existing unconsumed grant correlations. |
+| Student detail hall-pass entitlement controls | `REWIRED_WRITE` | The former set-balance form is removed. The page now grants one entitlement row per hall pass or removes passes by appending REVOCATION rows against existing unconsumed entitlement ids. |
 | Admin payroll page class-scope contract | `REWIRED_READ_WRITE` | `admin_payroll.html` no longer exposes block-shaped template filters or reads `Seat.block`; history and manual-credit selection use canonical `class_id` view rows while Run Payroll and manual credit remain wired through `FEAT-PROD-*`. |
 | Student payroll page class-scope contract | `REWIRED_READ` | `student_payroll.html` no longer receives block-keyed maps; it renders the active canonical class through `class_label`, `payroll_state`, `unpaid_seconds`, `projected_pay`, and canonical `attendance_events`. |
 | Analytics participation PROD read | `REWIRED_READ` | `AnalyticsEngine.calculate_participation_rate` now reads canonical `AttendanceSession.target_seat_id` and `timestamp`; legacy `seat_id`, `started_at`, and `is_deleted` assumptions were removed. |
 | Student removal PROD cleanup | `REWIRED_DELETE` | Teacher-scoped student removal deletes PROD rows by target `seat_id` constrained to the seat's `class_id`; whole-class deletion remains scoped by `class_id` only. Cleanup targets `attendance_sessions.target_seat_id`, `hall_pass_logs.requested_by_seat_id`, and `payroll_event.target_seat_id`. |
 | Class destruction PROD cleanup | `REWIRED_DELETE` | Whole-class deletion deletes the full PROD table set by `class_id`: `attendance_sessions`, `hall_pass_logs`, and `payroll_event`. Stale `TapEvent` cleanup is removed from the class-collapse path. |
-| Hall-pass model transition hook | `REMOVED` | The obsolete `HallPassLog` listener that tried to populate legacy `student_id`/`seat_id` transition fields was removed; v2 writes must provide `requested_by_seat_id`, `approved_by_seat_id`, `class_id`, and `correlation_id` directly through `FEAT-PROD-002`. |
+| Hall-pass model transition hook | `REMOVED` | The obsolete `HallPassLog` listener that tried to populate legacy `student_id`/`seat_id` transition fields was removed; v2 writes must provide `requested_by_seat_id`, `approved_by_seat_id`, and `class_id` directly through `FEAT-PROD-002`; `correlation_id` and `hall_pass_id` come from the consumed entitlement event. |
 | API FEAT boundary labels for hall-pass/productivity surfaces | `REWIRED` | Live API surfaces no longer expose `FEAT-ATTN-*` wrappers or `student_tap` idempotency prefixes. Hall-pass settings mutation is explicitly labeled as Class Configuration through `FEAT-SETTINGS-001`; PROD attendance and hall-pass writes continue through `FEAT-PROD-*` command helpers. |
 
 ---

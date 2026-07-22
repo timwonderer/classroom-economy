@@ -6,6 +6,8 @@ No seat-level counter column exists; every read is a live aggregate.
 
 from __future__ import annotations
 
+import secrets
+
 import sqlalchemy as sa
 
 from app.extensions import db
@@ -35,6 +37,10 @@ def get_hall_pass_balance(seat_id: int, class_id: str) -> int:
     )
 
 
+def _generate_entitlement_id() -> str:
+    return f"hpent_{secrets.token_urlsafe(16)}"
+
+
 def grant_hall_passes(
     seat: Seat,
     quantity: int,
@@ -43,19 +49,26 @@ def grant_hall_passes(
     correlation_id: str | None = None,
     event_type: str = "GRANT",
 ) -> int:
-    """Grant hall passes by appending an EntitlementEvent. Returns new balance."""
+    """Grant hall passes by appending one EntitlementEvent per pass."""
+    grant_quantity = int(quantity)
+    if grant_quantity <= 0:
+        raise ValueError("Hall-pass grant quantity must be positive")
+
     now = _current_utc()
     grant_correlation_id = correlation_id or generate_correlation_id()
-    event = EntitlementEvent(
-        seat_id=seat.id,
-        class_id=seat.class_id,
-        quantity_delta=int(quantity),
-        event_type=event_type,
-        trigger_id=trigger_id or grant_correlation_id,
-        correlation_id=grant_correlation_id,
-        occurred_at=now,
-    )
-    db.session.add(event)
+    for index in range(grant_quantity):
+        entitlement_id = _generate_entitlement_id()
+        event = EntitlementEvent(
+            seat_id=seat.id,
+            class_id=seat.class_id,
+            quantity_delta=1,
+            event_type=event_type,
+            trigger_id=f"{trigger_id}:{index + 1}" if trigger_id else entitlement_id,
+            correlation_id=grant_correlation_id,
+            entitlement_id=entitlement_id,
+            occurred_at=now,
+        )
+        db.session.add(event)
     db.session.flush()
     return get_hall_pass_balance(seat.id, seat.class_id)
 
@@ -64,10 +77,10 @@ def remove_hall_passes(
     seat: Seat,
     quantity: int,
 ) -> int:
-    """Remove available hall passes by reversing unconsumed grant correlations.
+    """Remove available hall passes by reversing unconsumed entitlement instances.
 
     Removal is not a balance overwrite. It appends REVOCATION events against
-    existing grant correlations that still have unconsumed quantity.
+    existing entitlement ids that still have unconsumed quantity.
     """
     quantity_to_remove = int(quantity or 0)
     if quantity_to_remove <= 0:
@@ -79,50 +92,26 @@ def remove_hall_passes(
 
     now = _current_utc()
     remaining = quantity_to_remove
-    grants = (
-        EntitlementEvent.query
-        .filter(
-            EntitlementEvent.seat_id == seat.id,
-            EntitlementEvent.class_id == seat.class_id,
-            EntitlementEvent.quantity_delta > 0,
-            EntitlementEvent.correlation_id.isnot(None),
-        )
-        .order_by(EntitlementEvent.occurred_at.asc(), EntitlementEvent.id.asc())
-        .all()
-    )
-
-    for grant in grants:
-        available_for_correlation = (
-            db.session.query(sa.func.coalesce(sa.func.sum(EntitlementEvent.quantity_delta), 0))
-            .filter(
-                EntitlementEvent.seat_id == seat.id,
-                EntitlementEvent.class_id == seat.class_id,
-                EntitlementEvent.correlation_id == grant.correlation_id,
-            )
-            .scalar()
-            or 0
-        )
-        available_for_correlation = int(available_for_correlation)
-        if available_for_correlation <= 0:
-            continue
-
-        reversal_quantity = min(remaining, available_for_correlation)
+    while remaining:
+        grant = _available_hall_pass_grant(seat.id, seat.class_id)
+        if grant is None:
+            break
         event = EntitlementEvent(
             seat_id=seat.id,
             class_id=seat.class_id,
-            quantity_delta=-reversal_quantity,
+            quantity_delta=-1,
             event_type="REVOCATION",
-            trigger_id=grant.correlation_id,
+            trigger_id=grant.entitlement_id,
             correlation_id=grant.correlation_id,
+            entitlement_id=grant.entitlement_id,
             occurred_at=now,
         )
         db.session.add(event)
-        remaining -= reversal_quantity
-        if remaining == 0:
-            break
+        db.session.flush()
+        remaining -= 1
 
     if remaining:
-        raise ValueError("Unable to find enough unconsumed hall-pass grant correlations to reverse")
+        raise ValueError("Unable to find enough unconsumed hall-pass entitlements to reverse")
 
     db.session.flush()
     return get_hall_pass_balance(seat.id, seat.class_id)
@@ -136,23 +125,23 @@ def _available_hall_pass_grant(seat_id: int, class_id: str) -> EntitlementEvent 
             EntitlementEvent.class_id == class_id,
             EntitlementEvent.quantity_delta > 0,
             EntitlementEvent.correlation_id.isnot(None),
+            EntitlementEvent.entitlement_id.isnot(None),
         )
         .order_by(EntitlementEvent.occurred_at.asc(), EntitlementEvent.id.asc())
         .all()
     )
     for grant in grants:
-        consumed = (
+        entitlement_balance = (
             db.session.query(sa.func.coalesce(sa.func.sum(EntitlementEvent.quantity_delta), 0))
             .filter(
                 EntitlementEvent.seat_id == seat_id,
                 EntitlementEvent.class_id == class_id,
-                EntitlementEvent.correlation_id == grant.correlation_id,
-                EntitlementEvent.quantity_delta < 0,
+                EntitlementEvent.entitlement_id == grant.entitlement_id,
             )
             .scalar()
             or 0
         )
-        if int(grant.quantity_delta) + int(consumed) > 0:
+        if int(entitlement_balance) > 0:
             return grant
     return None
 
@@ -176,6 +165,7 @@ def consume_hall_pass(
         event_type="CONSUME",
         trigger_id=trigger_id,
         correlation_id=grant.correlation_id,
+        entitlement_id=grant.entitlement_id,
         occurred_at=now,
     )
     db.session.add(event)
