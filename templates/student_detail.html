@@ -1,6 +1,6 @@
 {% extends "layout_admin.html" %}
-{% set page_title = student.full_name ~ " - Student Detail" %}
-{% block title %}{{ student.full_name }} - Detail{% endblock %}
+{% set page_title = student_full_name ~ " - Student Detail" %}
+{% block title %}{{ student_full_name }} - Detail{% endblock %}
 {% block page_icon %}person{% endblock %}
 
 {% block extra_styles %}
@@ -34,13 +34,7 @@
             <span class="material-symbols-outlined me-1">arrow_back</span> Back to Students
         </a>
         <h2 class="mb-0">
-            <span class="material-symbols-outlined me-2">account_circle</span>{{ student.full_name }}
-            {% if student.is_teacher_shadow %}
-            <span class="badge ms-1" style="background-color:#6d28d9;" title="This is your teacher shadow account">
-                <span class="material-symbols-outlined align-middle" style="font-size:0.9rem">manage_accounts</span>
-                Teacher-Shadow
-            </span>
-            {% endif %}
+            <span class="material-symbols-outlined me-2">account_circle</span>{{ student_full_name }}
         </h2>
     </div>
     <div>
@@ -187,12 +181,12 @@
                         <table class="table table-borderless mb-0">
                             <tr>
                                 <td class="fw-bold">Name:</td>
-                                <td>{{ student.full_name }}</td>
+                                <td>{{ student_full_name }}</td>
                             </tr>
                             <tr>
                                 <td class="fw-bold">Setup Status:</td>
                                 <td>
-                                    {% if student.has_completed_setup %}
+                                    {% if student_has_completed_setup %}
                                     <span class="badge bg-success">Complete</span>
                                     {% else %}
                                     <span class="badge bg-warning text-dark">Pending</span>
@@ -248,7 +242,7 @@
                                     <div class="col-12">
                                         <div class="small text-muted text-uppercase fw-bold">Reset Code</div>
                                         <div class="font-monospace fs-4 fw-bold text-danger user-select-all">{{
-                                            student.reset_code }}</div>
+                                            reset_code }}</div>
                                     </div>
                                     <div class="col-12">
                                         <div class="small text-muted text-uppercase fw-bold">Join Code(s)</div>
@@ -263,9 +257,9 @@
                                         <div class="small text-muted fst-italic">
                                             <span class="material-symbols-outlined me-1">schedule</span>Code expires at
                                             <span class="utc-timestamp"
-                                                data-utc="{{ student.reset_code_expires_at.isoformat() if student.reset_code_expires_at else '' }}">
-                                                {{ student.reset_code_expires_at.strftime('%I:%M %p') if
-                                                student.reset_code_expires_at else 'N/A' }}
+                                                data-utc="{{ reset_code_expires_at.isoformat() if reset_code_expires_at else '' }}">
+                                                {{ reset_code_expires_at.strftime('%I:%M %p') if
+                                                reset_code_expires_at else 'N/A' }}
                                             </span>.
                                             Student must go to the login page and click <strong>"I can't log into my
                                                 account"</strong>.
@@ -277,7 +271,7 @@
                         {% endif %}
 
                         <!-- Account Recovery / Setup Information -->
-                        {% if not student.has_completed_setup and student.recovery_status != 'to_be_claimed' %}
+                        {% if not student_has_completed_setup %}
                         <div class="alert alert-warning mt-3 border-warning shadow-sm">
                             <h6 class="alert-heading fw-bold">
                                 <span class="material-symbols-outlined me-2">warning</span>Account Recovery / Setup
@@ -287,7 +281,7 @@
                                 <div class="row g-2">
                                     <div class="col-12">
                                         <div class="small text-muted text-uppercase fw-bold">Name</div>
-                                        <div class="fs-5 fw-bold">{{ student.full_name }}
+                                        <div class="fs-5 fw-bold">{{ student_full_name }}
                                         </div>
                                     </div>
                                     <div class="col-12">
@@ -750,15 +744,20 @@
                                 <div class="col-md-6 mb-3">
                                     <label for="edit_first_name" class="form-label fw-bold">First Name</label>
                                     <input type="text" class="form-control" id="edit_first_name" name="first_name"
-                                        value="{{ student.display_first_name }}" required>
+                                        value="{{ student_first_name }}" required>
                                     <div class="form-text">Used for account claim process</div>
                                 </div>
                                 <div class="col-md-6 mb-3">
                                     <label for="edit_last_name" class="form-label fw-bold">Last Name</label>
                                     <input type="text" class="form-control" id="edit_last_name" name="last_name"
-                                        value="{{ student.display_last_name or '' }}" required>
+                                        value="{{ student_last_name or '' }}" required>
                                     <div class="form-text">Stored as the student's encrypted full last name</div>
                                 </div>
+                            </div>
+                            <div class="mb-0">
+                                <label for="edit_notes" class="form-label fw-bold">Teacher Notes</label>
+                                <textarea class="form-control" id="edit_notes" name="notes" rows="3">{{ student_notes or '' }}</textarea>
+                                <div class="form-text">Display-only teacher notes stored on the student's identity profile.</div>
                             </div>
                         </div>
                     </div>

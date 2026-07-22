@@ -130,6 +130,7 @@ a new unrelated hall-pass correlation or external pass identifier.
 | Journey/render verification | `PARTIAL_BLOCKED_BY_STALE_TEST_AUTH` | Existing `student_detail` identity render tests currently redirect at auth setup before template render; add route render checks and journeys for start work, hall-pass request/approve/leave/return, run payroll, payroll history, student detail, and public verification. |
 | Tests still encoding old shapes | `KNOWN_RESIDUE` | Continue modernizing direct `AttendanceSession` and `HallPassLog` test setup under the current DOM-PROD schema. `tests/dom/attendance/test_hall_pass_verify.py`, `tests/dom/attendance/test_api_attendance_history.py`, and related attendance API tests still encode legacy PROD predecessor shapes. |
 | Residual non-template cleanup | `REWIRED` | Class destruction no longer references `SeatAttendanceState` or stale `TapEvent` cleanup; dropped PROD predecessor tables are not part of live runtime cleanup. |
+| Student detail PROD sections | `REWIRED` | `student_detail.html` no longer dereferences legacy `Student` display/setup/recovery/tap-event attributes; the route supplies explicit IdentityProfile/User fields and canonical `attendance_events` while hall-pass balance remains an entitlement projection. |
 | Route-local view assembly | `ACCEPTED_TEMPORARILY` | Several canonical read models are still assembled in routes; extract page view builders after checklist stability. |
 | Rent / obligation surfaces | `OUT_OF_SCOPE_FOR_PROD` | Rent payment and obligation satisfaction are OBL-owned. Entitlement grants produced by obligation satisfaction are entitlement-domain business; PROD reads only approved hall-pass consumption via `hall_pass_logs` and related attendance changes. Approved hall-pass consumption reuses the consumed entitlement grant's `correlation_id`. |
 
@@ -162,6 +163,17 @@ rg -n "payroll_event_history|PayrollEvent.query|join_codes\\[class_display_label
 ```
 
 The template-specific scan no longer finds `student.block`, block-labelled join-code rendering, legacy payroll/bonus transaction filters, or deleted tap-management endpoint references in `templates/student_detail.html`. The positive scan shows `student_detail_public` now supplies `payroll_event_history` from `PayrollEvent` and current-class join-code display from `ClassEconomy`; the route no longer supplies a `blocks` variable to this template. Existing `tests/dom/identity/test_admin_tenancy.py` student-detail render checks were run but failed with `302` before template rendering because their auth/session setup is stale; no template error was reached.
+
+Student-detail display-contract check added on 2026-07-22:
+
+```bash
+python3 -m py_compile app/routes/admin.py
+rg -n "student\.(full_name|is_teacher_shadow|has_completed_setup|recovery_status|reset_code|reset_code_expires_at|display_first_name|display_last_name|tap_events)|tap_events|student_full_name|student_first_name|student_last_name|student_notes" templates/student_detail.html app/routes/admin.py
+pytest -q tests/dom/prod/test_feat_prod.py tests/dom/attendance/test_hall_pass_checkout.py
+# 11 passed in 64.67s
+```
+
+The remaining `tests/dom/identity/test_admin_tenancy.py -k student_detail` failures still return `302`/route-contract responses before proving template rendering; that is tracked as stale identity/auth test setup rather than a PROD template dependency failure.
 
 Admin-payroll template contract check added on 2026-07-22:
 

@@ -26,16 +26,16 @@
 
 | # | Line(s) | Jinja Code | Root Cause |
 |---|---------|-----------|------------|
-| 1 | 2,3,37,190,290,804 | `student.full_name` | Seat has no `full_name` (it is on IdentityProfile). Should be `student.identity_profile.full_name` |
-| 2 | 804 | `student.display_first_name` | Not on Seat |
-| 3 | 810 | `student.display_last_name` | Not on Seat |
-| 4 | 38 | `student.is_teacher_shadow` | Not on Seat |
+| 1 | 2,3,37,190,290,804 | `student.full_name` | Resolved 2026-07-22: route now supplies `student_full_name` from `IdentityProfile.full_name` |
+| 2 | 804 | `student.display_first_name` | Resolved 2026-07-22: route now supplies `student_first_name` from `IdentityProfile.first_name` |
+| 3 | 810 | `student.display_last_name` | Resolved 2026-07-22: route now supplies `student_last_name` from `IdentityProfile.last_name` |
+| 4 | 38 | `student.is_teacher_shadow` | Resolved 2026-07-22: teacher-shadow badge removed from this v2 student-detail contract |
 | 5 | 91,748 | `student.hall_passes` | Resolved 2026-07-21: student detail now receives route-supplied `hall_pass_balance` from entitlement projection |
-| 6 | 195 | `student.has_completed_setup` | Not on Seat |
-| 7 | 280 | `student.recovery_status` | Not on Seat |
-| 8 | 251 | `student.reset_code` | On User, not Seat. Should be `student.user.reset_code` |
-| 9 | 266-267 | `student.reset_code_expires_at` | On User, not Seat |
-| 10 | 567 | `student.tap_events` | No relationship on Seat. Raises `AttributeError` when `tap_events` table exists |
+| 6 | 195 | `student.has_completed_setup` | Resolved 2026-07-22: route now supplies `student_has_completed_setup` from the bound `User` |
+| 7 | 280 | `student.recovery_status` | Resolved 2026-07-22: stale recovery-status branch removed from this v2 student-detail contract |
+| 8 | 251 | `student.reset_code` | Resolved 2026-07-22: route now supplies `reset_code` from the bound `User` |
+| 9 | 266-267 | `student.reset_code_expires_at` | Resolved 2026-07-22: route now supplies `reset_code_expires_at` from the bound `User` |
+| 10 | 567 | `student.tap_events` | Resolved 2026-07-22: template consumes route-supplied canonical `attendance_events`; no `tap_events` relationship remains |
 
 ### Seat/Student attribute mismatch (other student templates)
 
@@ -255,7 +255,7 @@ The dominant pattern: routes now pass `Seat` objects where templates still expec
 
 ### Critical -- will crash; fix first
 
-- [ ] **`student_detail.html`** -- Replace remaining `student.X` legacy attrs with Seat/IdentityProfile/User equivalents: `full_name`, `display_first_name`, `display_last_name`, `is_teacher_shadow`, `has_completed_setup`, `recovery_status`, `reset_code`, `reset_code_expires_at`, `tap_events`; hall-pass balance is already route-supplied
+- [x] **`student_detail.html`** -- Resolved 2026-07-22: route supplies explicit Seat/IdentityProfile/User display/account fields (`student_full_name`, `student_first_name`, `student_last_name`, `student_notes`, `student_has_completed_setup`, `reset_code`, `reset_code_expires_at`); template no longer dereferences legacy Student full/display/setup/recovery/tap-event attributes; hall-pass balance remains route-supplied from entitlement projection
 - [x] **`student_dashboard.html`** -- Replace `student.display_first_name`, `student.hall_passes` with Seat-compatible accessors
 - [x] **`student_dashboard.html`** (`/api/tap` standard start/done path) -- Resolved 2026-07-21: student Start Work and Done for the Day path now writes append-only `AttendanceSession` rows through `FEAT-PROD-001`; hall-pass request flow remains a separate PROD command surface
 - [x] **`layout_student.html`** -- Replace `student.display_first_name` fallback path

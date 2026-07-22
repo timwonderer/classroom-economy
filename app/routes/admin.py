@@ -4381,9 +4381,24 @@ def student_detail_public(actor_public_id):
         and _student_user.reset_code_expires_at
         and ensure_utc(_student_user.reset_code_expires_at) >= utc_now()
     )
+    student_profile = student.identity_profile
+    student_full_name = student_profile.full_name if student_profile else str(student.id)
+    student_first_name = student_profile.first_name if student_profile else ""
+    student_last_name = student_profile.last_name if student_profile else ""
+    student_notes = student_profile.notes if student_profile else ""
+    student_has_completed_setup = bool(_student_user and _student_user.username_hash)
+    reset_code = _student_user.reset_code if _student_user else None
+    reset_code_expires_at = _student_user.reset_code_expires_at if _student_user else None
 
     return render_template('student_detail.html',
                          student=student,
+                         student_full_name=student_full_name,
+                         student_first_name=student_first_name,
+                         student_last_name=student_last_name,
+                         student_notes=student_notes,
+                         student_has_completed_setup=student_has_completed_setup,
+                         reset_code=reset_code,
+                         reset_code_expires_at=reset_code_expires_at,
                          reset_code_is_active=reset_code_is_active,
                          join_codes=join_codes,
                          transactions=transactions,
