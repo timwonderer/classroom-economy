@@ -1233,7 +1233,7 @@ class Issue(db.Model):
 
     # Context attachment (transaction/record-specific issues)
     related_transaction_id = db.Column(db.Integer, db.ForeignKey('ledger_transaction.id'), nullable=True)
-    related_record_type = db.Column(db.String(50), nullable=True)  # 'transaction', 'tap_event', 'rent_payment', etc.
+    related_record_type = db.Column(db.String(50), nullable=True)  # 'transaction', 'attendance_session', etc.
     related_record_id = db.Column(db.Integer, nullable=True)  # Generic ID for other record types
 
     # System context snapshot (automatic, immutable)

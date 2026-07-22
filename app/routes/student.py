@@ -3381,10 +3381,10 @@ def report_transaction_issue(transaction_id):
                          show_recent_error_option=show_recent_error_option)
 
 
-@student_bp.route('/help-support/tap-event/<int:tap_event_id>/report', methods=['GET', 'POST'])
+@student_bp.route('/help-support/attendance-session/<int:attendance_session_id>/report', methods=['GET', 'POST'])
 @login_required
-def report_tap_event_issue(tap_event_id):
-    """Report an issue with a specific tap event (clock in/out record)."""
+def report_attendance_session_issue(attendance_session_id):
+    """Report an issue with a specific attendance session record."""
     from app.utils.issue_categories import get_active_categories
     from app.utils.issue_helpers import create_issue
     from app.forms import StudentIssueSubmissionForm
@@ -3396,9 +3396,8 @@ def report_tap_event_issue(tap_event_id):
         flash("Please select a class first.", "warning")
         return redirect(url_for('student.dashboard'))
 
-    # Get the attendance event and verify it belongs to this seat and class.
-    tap_event = AttendanceSession.query.filter_by(
-        id=tap_event_id,
+    attendance_session = AttendanceSession.query.filter_by(
+        id=attendance_session_id,
         target_seat_id=student.id,
         class_id=class_context.class_id,
     ).first_or_404()
@@ -3422,9 +3421,9 @@ def report_tap_event_issue(tap_event_id):
                 category_id=form.category_id.data,
                 explanation=form.explanation.data,
                 expected_outcome=form.expected_outcome.data,
-                related_transaction_id=None,  # No transaction for tap events
+                related_transaction_id=None,
                 related_record_type='attendance_session',
-                related_record_id=tap_event_id,
+                related_record_id=attendance_session_id,
                 include_recent_error=include_recent_error,
             )
 
@@ -3433,7 +3432,7 @@ def report_tap_event_issue(tap_event_id):
 
         except Exception as e:
             db.session.rollback()
-            current_app.logger.error(f"Error submitting tap event issue: {str(e)}")
+            current_app.logger.error(f"Error submitting attendance session issue: {str(e)}")
             flash("An error occurred while submitting your issue. Please try again.", "error")
 
     return render_template('student_submit_issue.html',
@@ -3441,7 +3440,7 @@ def report_tap_event_issue(tap_event_id):
                          page_title='Report Attendance Issue',
                          form=form,
                          issue_type='attendance',
-                         tap_event=tap_event,
+                         attendance_session=attendance_session,
                          show_recent_error_option=show_recent_error_option)
 
 

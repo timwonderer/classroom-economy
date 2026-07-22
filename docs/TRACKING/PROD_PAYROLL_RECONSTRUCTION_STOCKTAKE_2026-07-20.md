@@ -92,7 +92,7 @@ This document tracks:
 
 | Gap | Status | Required Disposition |
 |---|---|---|
-| Student support attendance issue naming | `NEEDS_REWIRE` | Route/template still expose `tap_event`; rename or intentionally alias to attendance-session terminology. |
+| Student support attendance issue naming | `REWIRED` | Route/template now expose `attendance_session`; legacy `tap_event` URL/endpoint terminology was removed rather than aliased. |
 | Live schema proof | `UNVERIFIED` | Inspect migrated DB columns for `attendance_sessions`, `hall_pass_logs`, and `payroll_event` before claiming schema completion. |
 | Journey/render verification | `NOT_RUN` | Add route render checks and journeys for start work, hall-pass request/approve/leave/return, run payroll, payroll history, and public verification. |
 | Tests still encoding old shapes | `KNOWN_RESIDUE` | Modernize direct `AttendanceSession` test setup under the current DOM-PROD schema. |

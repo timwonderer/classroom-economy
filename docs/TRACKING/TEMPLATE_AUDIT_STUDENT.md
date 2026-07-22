@@ -366,7 +366,7 @@
 **Route(s):**
 - `student.submit_general_issue` — GET|POST `/student/help-support/submit-issue` — [app/routes/student.py:3207](app/routes/student.py#L3207)
 - `student.report_transaction_issue` — GET|POST `/student/help-support/transaction/<int:transaction_id>/report` — [app/routes/student.py:3262](app/routes/student.py#L3262)
-- `student.report_tap_event_issue` — GET|POST `/student/help-support/tap-event/<int:tap_event_id>/report` — [app/routes/student.py:3325](app/routes/student.py#L3325)
+- `student.report_attendance_session_issue` — GET|POST `/student/help-support/attendance-session/<int:attendance_session_id>/report` — [app/routes/student.py](app/routes/student.py)
 
 **Variables from route:**
 
@@ -375,7 +375,7 @@
 | current_page | str | "help" |
 | page_title | str | "Report an Issue" or similar |
 | form | StudentIssueSubmissionForm | WTForms issue form |
-| issue_type | str | "general", "transaction", or "tap_event" |
+| issue_type | str | "general", "transaction", or "attendance" |
 | transaction | Transaction / None | Related transaction (if transaction type) |
 
 **Jinja expressions (representative):**
@@ -633,7 +633,7 @@ Line	Expression	Expects	Supplied By
 54	{{ (unpaid_seconds_per_block[blk] // 3600)|string + ... }}	str	route
 60	{% set block_events = attendance_events_by_block[blk] ... %}	list	route — REWIRED_READ from canonical attendance_sessions
 77	{{ format_utc_iso(event.timestamp) }}	str	[GLOBAL]
-96	{{ url_for('student.report_tap_event_issue', tap_event_id=event.id) }}	str	[FLASK] — REWIRED to canonical AttendanceSession lookup by `target_seat_id + class_id`
+96	{{ url_for('student.report_attendance_session_issue', attendance_session_id=event.id) }}	str	[FLASK] — REWIRED to canonical AttendanceSession lookup by `target_seat_id + class_id`
 138	{{ unpaid_seconds_per_block.values()|sum }}	int	route
 148	{{ "%.2f"|format(projected_pay_per_block.values()|sum) }}	str	route
 154	{{ "%.2f"|format(scoped_total_earnings) }}	str	route
@@ -961,14 +961,14 @@ Route(s):
 
 student.submit_general_issue — GET|POST /student/help-support/submit-issue — app/routes/student.py:3207
 student.report_transaction_issue — GET|POST /student/help-support/transaction/<int:transaction_id>/report — app/routes/student.py:3262
-student.report_tap_event_issue — GET|POST /student/help-support/tap-event/<int:tap_event_id>/report — app/routes/student.py:3325 — REWIRED to canonical AttendanceSession lookup by `target_seat_id + class_id`
+student.report_attendance_session_issue — GET|POST /student/help-support/attendance-session/<int:attendance_session_id>/report — app/routes/student.py — REWIRED to canonical AttendanceSession lookup by `target_seat_id + class_id`; legacy `tap_event` route terminology removed
 Variables from route:
 
 Variable	Type	Purpose
 current_page	str	"help"
 page_title	str	"Report an Issue" or similar
 form	StudentIssueSubmissionForm	WTForms issue form
-issue_type	str	"general", "transaction", or "tap_event"
+issue_type	str	"general", "transaction", or "attendance"
 transaction	`Transaction	None`	Related transaction (if transaction type)
 show_recent_error_option	bool	Whether to show "include recent error" checkbox
 Jinja expressions:

@@ -58,7 +58,7 @@ def create_context_snapshot(actor, class_id, related_transaction_id=None, relate
         actor: Seat or legacy student-like instance with an identity_profile->seat path
         class_id: Canonical class ID (UUID)
         related_transaction_id: Optional transaction ID for transaction-specific issues
-        related_record_type: Optional record type ('transaction', 'tap_event', etc.)
+        related_record_type: Optional record type ('transaction', 'attendance_session', etc.)
         related_record_id: Optional record ID
 
     Returns:
