@@ -1875,11 +1875,13 @@ def _link_student_to_admin(
         return
     user_id = canonical_context.user_id
 
-    target_block = (block or student.block or "").strip().upper()
+    # v2: block is display metadata only; class_id is the canonical scope
+    # Require explicit class_id or block parameter (don't fall back to student.block)
+    target_block = (block or "").strip().upper() if block else None
 
-    if not target_block:
+    if not class_id and not target_block:
         current_app.logger.warning(
-            "Selected student has no block assigned, skipping Seat creation"
+            "Cannot link student: requires explicit class_id or block parameter"
         )
         return
 

@@ -770,6 +770,21 @@ Audit FAILS if any of:
 - [ ] Debug output in routes
 - [ ] Templates still using block/period state
 
+Audit also FAILS if it fails to falsify ALL of the following claims:
+AttendanceSession is append-only.
+
+PayrollEvent is append-only.
+
+HallPassLog only records approved passes.
+
+Every PROD mutation occurs through a FEAT.
+
+Every PROD read is class-scoped.
+
+No PROD surface bypasses canonical temporal evaluation.
+
+No legacy implementation path remains.
+
 ---
 
 ## Audit Report Template

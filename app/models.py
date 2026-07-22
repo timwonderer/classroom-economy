@@ -668,8 +668,9 @@ class PayrollEvent(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     class_id = db.Column(db.String(36), db.ForeignKey('classes.class_id', ondelete='CASCADE'), nullable=False, index=True)
-    actor_seat_id = db.Column(db.Integer, db.ForeignKey('seats.id', ondelete='SET NULL'), nullable=False, index=True)
     target_seat_id = db.Column(db.Integer, db.ForeignKey('seats.id', ondelete='CASCADE'), nullable=False, index=True)
+    target_user_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'), nullable=False, index=True)
+    actor_seat_id = db.Column(db.Integer, db.ForeignKey('seats.id', ondelete='SET NULL'), nullable=False, index=True)
     correlation_id = db.Column(db.String(100), nullable=False, index=True)
     idempotency_key = db.Column(db.String(255), nullable=False, index=True)
     policy_version_id = db.Column(db.Integer, db.ForeignKey('policy_versions.id', ondelete='RESTRICT'), nullable=False, index=True)

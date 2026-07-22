@@ -799,22 +799,14 @@ def add_class():
                 return redirect(_get_return_target())
             matched_seat = dedupe_matches[0]
 
-        current_blocks = [b.strip().upper() for b in student.block.split(',') if b.strip()]
-        new_block_check = matched_seat.class_economy.section.strip().upper() if matched_seat.class_economy and matched_seat.class_economy.section else ""
-        if new_block_check in current_blocks:
-            flash(f"You are already enrolled in Block {new_block_check}.", "warning")
+        # Check if student already has a Seat in this ClassEconomy (v2 canonical scoping)
+        if matched_seat.user_id is not None:
+            flash(f"This seat is already claimed. Contact your teacher.", "warning")
             return redirect(_get_return_target())
 
         # Bind this new seat to the authenticated user (student already has a User row).
         matched_seat.user_id = student.user_id
         matched_seat.claimed_at = utc_now()
-        # Update student's block to include the new block if not already there
-        current_blocks = [b.strip().upper() for b in student.block.split(',') if b.strip()]
-        new_block = matched_seat.class_economy.section.strip().upper() if matched_seat.class_economy and matched_seat.class_economy.section else ""
-
-        if new_block not in current_blocks:
-            current_blocks.append(new_block)
-            student.block = ','.join(sorted(current_blocks))
 
         try:
             flash(f"Successfully added to Block {new_block}! You can now access this class from your dashboard.", "success")
@@ -937,8 +929,6 @@ def dashboard():
         rent_is_active = timeline['rent_is_active']
         is_preview_period = timeline['is_preview_period_candidate']
 
-        rent_blocks = [b.strip().upper() for b in student.block.split(',') if b.strip()]
-
         # Calculate coverage period for pre-paid system
         if is_preview_period:
             coverage_month = upcoming_due_date.month
@@ -951,27 +941,23 @@ def dashboard():
 
         from app.services.obligations_service import get_paid_rent_assessments_for_cycle
         seat_ids = [scope.seat_id]
-        all_paid = True
-        for period in rent_blocks:
-            payments = get_paid_rent_assessments_for_cycle(
-                class_id,
-                coverage_month,
-                coverage_year,
-                seat_ids=seat_ids,
-            )
-            payments = [payment for payment in payments if payment.satisfaction is not None]
 
-            total_paid = sum((p.satisfaction.amount_paid for p in payments), Decimal('0.00'))
-            paid_by_grace = _total_paid_by_grace(payments, grace_end_date_for_status)
-            late_fee = Decimal('0.00')
-            if rent_is_active and now > grace_end_date_for_status and paid_by_grace < rent_settings.rent_amount:
-                late_fee = rent_settings.late_fee
-            total_due = rent_settings.rent_amount + late_fee if rent_is_active else Decimal('0.00')
-            is_paid = total_paid >= total_due if rent_is_active else False
+        # Check rent for current class only (v2 canonical scoping via class_id)
+        payments = get_paid_rent_assessments_for_cycle(
+            class_id,
+            coverage_month,
+            coverage_year,
+            seat_ids=seat_ids,
+        )
+        payments = [payment for payment in payments if payment.satisfaction is not None]
 
-            if rent_is_active and not is_paid:
-                all_paid = False
-                break
+        total_paid = sum((p.satisfaction.amount_paid for p in payments), Decimal('0.00'))
+        paid_by_grace = _total_paid_by_grace(payments, grace_end_date_for_status)
+        late_fee = Decimal('0.00')
+        if rent_is_active and now > grace_end_date_for_status and paid_by_grace < rent_settings.rent_amount:
+            late_fee = rent_settings.late_fee
+        total_due = rent_settings.rent_amount + late_fee if rent_is_active else Decimal('0.00')
+        all_paid = total_paid >= total_due if rent_is_active else False
 
         rent_status = {
             'is_active': rent_is_active,

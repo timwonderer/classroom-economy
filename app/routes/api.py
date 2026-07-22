@@ -1381,8 +1381,7 @@ def hall_pass_history():
         page = int(request.args.get('page', 1))
         page_size = min(int(request.args.get('page_size', 25)), 100)  # Max 100 per page
 
-        # Get filter parameters
-        period = request.args.get('period', '').strip()
+        # Get filter parameters (no client-supplied period per C2 canonical scoping)
         pass_type = request.args.get('type', '').strip()
         start_date = request.args.get('start_date', '').strip()
         end_date = request.args.get('end_date', '').strip()
@@ -1392,11 +1391,10 @@ def hall_pass_history():
         if not current_class_id:
             return jsonify({"status": "error", "message": "Class context required"}), 400
 
-        # Enforce single-class context for admin history views.
+        # Enforce single-class context for admin history views (v2 canonical scoping).
         query = HallPassLog.query.filter(HallPassLog.class_id == current_class_id)
 
         # Apply filters
-        # period is display metadata only; HallPassLog is already scoped by class_id.
 
         if pass_type:
             query = query.filter(HallPassLog.destination == pass_type)

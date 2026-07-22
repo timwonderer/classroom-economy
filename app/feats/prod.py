@@ -402,10 +402,17 @@ def _record_payroll_event_impl(
                 raise LookupError("Unable to establish original ledger transaction for reversal.")
             amount = -(Decimal(linked.amount or Decimal("0.00")))
 
+    # Look up target_seat to get user_id (required by schema for traceability)
+    target_seat = Seat.query.filter_by(id=target_seat_id).first()
+    if target_seat is None:
+        raise LookupError(f"Seat {target_seat_id} not found.")
+    target_user_id = target_seat.user_id
+
     event = PayrollEvent(
         class_id=ctx.class_id,
         actor_seat_id=ctx.seat_id,
         target_seat_id=target_seat_id,
+        target_user_id=target_user_id,
         correlation_id=correlation_id,
         idempotency_key=idempotency_key,
         policy_version_id=policy_version_id,

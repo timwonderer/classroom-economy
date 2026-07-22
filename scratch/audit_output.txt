@@ -1,0 +1,381 @@
+A1: Table Structure Validation
+      tablename      
+---------------------
+ attendance_sessions
+ hall_pass_logs
+ payroll_event
+(3 rows)
+
+A2: AttendanceSession Column Validation
+  column_name   |        data_type         | is_nullable 
+----------------+--------------------------+-------------
+ id             | integer                  | NO
+ target_seat_id | integer                  | NO
+ class_id       | character varying        | NO
+ target_user_id | integer                  | NO
+ actor_seat_id  | integer                  | NO
+ mechanism      | character varying        | NO
+ status         | character varying        | NO
+ reason_code    | character varying        | NO
+ hall_pass_id   | character varying        | YES
+ timestamp      | timestamp with time zone | NO
+ seat_id        | integer                  | YES
+(11 rows)
+
+A3: HallPassLog Column Validation
+     column_name      |        data_type         | is_nullable 
+----------------------+--------------------------+-------------
+ id                   | integer                  | NO
+ requested_by_seat_id | integer                  | NO
+ approved_by_seat_id  | integer                  | NO
+ correlation_id       | character varying        | NO
+ hall_pass_id         | character varying        | NO
+ destination          | character varying        | YES
+ class_id             | character varying        | NO
+ timestamp            | timestamp with time zone | NO
+(8 rows)
+
+A4: PayrollEvent Column Validation
+    column_name     |        data_type         | is_nullable 
+--------------------+--------------------------+-------------
+ id                 | integer                  | NO
+ class_id           | character varying        | NO
+ actor_seat_id      | integer                  | NO
+ target_seat_id     | integer                  | NO
+ correlation_id     | character varying        | NO
+ idempotency_key    | character varying        | NO
+ policy_version_id  | integer                  | NO
+ mechanism          | character varying        | NO
+ payroll_event_type | character varying        | NO
+ recorded_at        | timestamp with time zone | NO
+ summary_json       | json                     | YES
+(11 rows)
+
+B1: FEAT-PROD-001 (record_attendance_session)
+B3: FEAT-PROD-002 (record_hall_pass_log)
+B5: FEAT-PROD-003 (record_payroll_event)
+C1: Student Dashboard Template
+E1: Class Scoping Verification
+AttendanceSession queries:
+app/scheduled_tasks.py:            AttendanceSession.query
+app/feats/prod.py:        AttendanceSession.query.filter_by(
+app/feats/prod.py:    query = AttendanceSession.query.filter(
+app/attendance.py:        AttendanceSession.query.filter(
+app/attendance.py:        AttendanceSession.query.filter_by(
+app/attendance.py:        AttendanceSession.query.filter(
+app/attendance.py:    query = AttendanceSession.query.filter(
+app/utils/student_deletion.py:        attendance_query = AttendanceSession.query.filter(
+app/utils/deletion.py:        AttendanceSession.query.filter_by(class_id=class_id).delete(synchronize_session=False)
+app/utils/analytics_engine.py:            AttendanceSession.query.with_entities(AttendanceSession.target_seat_id)
+app/routes/api.py:        AttendanceSession.query.filter_by(
+app/routes/api.py:                AttendanceSession.query.filter_by(
+app/routes/api.py:                AttendanceSession.query.filter_by(
+app/routes/api.py:            AttendanceSession.query.filter_by(
+app/routes/api.py:            AttendanceSession.query.filter_by(
+app/routes/api.py:                AttendanceSession.query.filter_by(
+app/routes/api.py:            AttendanceSession.query.filter_by(
+app/routes/api.py:        query = AttendanceSession.query.filter(
+app/routes/api.py:        AttendanceSession.query.filter_by(
+app/routes/api.py:        AttendanceSession.query.filter_by(
+app/routes/admin.py:    AttendanceSession.query.filter(AttendanceSession.class_id == class_id).delete(synchronize_session=False)
+app/routes/admin.py:        AttendanceSession.query.filter(att_scope)
+app/routes/admin.py:        AttendanceSession.query
+app/routes/admin.py:    query = AttendanceSession.query.filter(AttendanceSession.class_id == class_id)
+app/routes/student.py:    attendance_session = AttendanceSession.query.filter_by(
+app/routes/main.py:            AttendanceSession.query.filter_by(
+app/services/attendance_service.py:    rows = AttendanceSession.query.filter_by(
+app/services/attendance_service.py:    canonical_rows = AttendanceSession.query.filter(
+app/services/attendance_service.py:    rows = AttendanceSession.query.filter(
+HallPassLog queries:
+app/feats/prod.py:        HallPassLog.query.filter(
+app/utils/student_deletion.py:        hall_pass_query = HallPassLog.query.filter(
+app/utils/deletion.py:        HallPassLog.query.filter_by(class_id=class_id).delete(synchronize_session=False)
+app/routes/api.py:        query = HallPassLog.query.filter(HallPassLog.class_id == current_class_id)
+app/routes/api.py:            HallPassLog.query
+app/routes/admin.py:    HallPassLog.query.filter(HallPassLog.class_id == class_id).delete(synchronize_session=False)
+app/routes/admin.py:        HallPassLog.query
+app/routes/main.py:    passes_query = HallPassLog.query.filter(
+PayrollEvent queries:
+app/feats/prod.py:        PayrollEvent.query.filter(
+app/feats/prod.py:            PayrollEvent.query.filter(
+app/attendance.py:        PayrollEvent.query.filter(
+app/utils/student_deletion.py:        payroll_query = PayrollEvent.query.filter(
+app/utils/deletion.py:        PayrollEvent.query.filter_by(class_id=class_id).delete(synchronize_session=False)
+app/routes/api.py:        PayrollEvent.query.filter_by(
+app/routes/admin.py:            PayrollEvent.query
+app/routes/admin.py:    PayrollEvent.query.filter(PayrollEvent.class_id == class_id).delete(synchronize_session=False)
+app/routes/admin.py:        PayrollEvent.query
+app/routes/admin.py:    query = PayrollEvent.query.filter(PayrollEvent.class_id == ctx.class_id)
+app/routes/admin.py:        PayrollEvent.query
+app/routes/admin.py:        PayrollEvent.query
+app/routes/admin.py:        PayrollEvent.query
+app/routes/student.py:        PayrollEvent.query.filter(
+E2: Verify No Teacher-Only Scoping
+E3: Block/Period Rejection
+app/routes/system_admin.py:    period_rows = (
+app/routes/system_admin.py:            user_students.c.block,
+app/routes/system_admin.py:        .group_by(user_students.c.user_id, user_students.c.block)
+app/routes/system_admin.py:    periods: dict[int, dict[str, int]] = {}
+app/routes/system_admin.py:        periods.setdefault(user_id, {})[block] = count
+app/routes/system_admin.py:    user_student_counts, user_periods = _user_student_counts(list(user_ids_by_admin_id.values()))
+app/routes/system_admin.py:        periods = user_periods.get(user_id, {}) if user_id else {}
+app/routes/system_admin.py:    user_student_counts, user_periods = _user_student_counts(list(user_ids_by_admin_id.values()))
+app/routes/system_admin.py:        periods = user_periods.get(user_id, {}) if user_id else {}
+app/routes/system_admin.py:@sysadmin_bp.route('/delete-period/<int:user_id>/<string:period>', methods=['POST'])
+app/routes/api.py:        period = request.args.get('period', '').strip()
+app/routes/admin.py:    policy.waiting_period_days = form.waiting_period_days.data
+app/routes/admin.py:    policy.max_claims_period = FREQUENCY_TO_CLAIM_PERIOD.get(form.charge_frequency.data, 'month')
+app/routes/admin.py:    policy.max_payout_per_period = None if is_non_monetary else form.max_payout_per_period.data
+app/routes/admin.py:    policy.set_blocks(form.blocks.data if form.blocks.data else [])
+app/routes/admin.py:    target_block = (block or student.block or "").strip().upper()
+app/routes/admin.py:        .order_by(desc(PayrollSettings.block.isnot(None)))
+app/routes/admin.py:        .order_by(desc(BankingSettings.block.isnot(None)))
+app/routes/admin.py:    all_payroll_settings = payroll_query.order_by(PayrollSettings.block.asc()).all()
+app/routes/admin.py:    settings_by_block = {s.block: s for s in all_payroll_settings if s.block}
+app/routes/admin.py:    dashboard_blocks = sorted({b.strip() for s in seats for b in (s.block or "").split(',') if b.strip()})
+app/routes/admin.py:            grace_period_days=row.grace_period_days,
+app/routes/admin.py:        per_period_items = frozen_items_by_class_id.get(block_class_id, [])
+app/routes/admin.py:    form.blocks.choices = [(block, f"Period {block}") for block in blocks]
+app/routes/admin.py:        submitted_blocks = {block.strip().upper() for block in (form.blocks.data or []) if block}
+app/routes/admin.py:            if form.blocks.data:
+app/routes/admin.py:                new_item.set_blocks(form.blocks.data)
+app/routes/admin.py:        if not item.blocks_list or selected_block in {b.strip().upper() for b in item.blocks_list if b}
+app/routes/admin.py:            if item.blocks_list:
+app/routes/admin.py:                    if block in {b.strip().upper() for b in item.blocks_list if b}
+app/routes/admin.py:    if item.blocks_list and selected_scope['block'] not in {b.strip().upper() for b in item.blocks_list if b}:
+app/routes/admin.py:    form.blocks.choices = [(block, f"Period {block}") for block in blocks]
+app/routes/admin.py:        form.blocks.data = item.blocks_list
+app/routes/admin.py:        submitted_blocks = {block.strip().upper() for block in (form.blocks.data or []) if block}
+app/routes/admin.py:            item.set_blocks(form.blocks.data if form.blocks.data else [])
+app/routes/admin.py:    if item.blocks_list and selected_scope['block'] not in {b.strip().upper() for b in item.blocks_list if b}:
+app/routes/admin.py:    if item.blocks_list and selected_scope['block'] not in {b.strip().upper() for b in item.blocks_list if b}:
+app/routes/admin.py:        desired_blocks = {block.strip().upper() for block in store_item.blocks_list if block}
+app/routes/admin.py:                block_settings.grace_period_days = int(request.form.get('grace_period_days', 3))
+app/routes/admin.py:                mid_period_locked = False
+app/routes/admin.py:                        mid_period_locked = True
+app/routes/admin.py:                if mid_period_locked and block == class_id:
+app/routes/admin.py:            periods_count=_count_rent_waiver_periods(rent_settings, waiver),
+app/routes/admin.py:    rent_active_for_period = False
+app/routes/admin.py:    current_period_start = None
+app/routes/admin.py:    current_period_end = None
+app/routes/admin.py:            current_period_start = selected_coverage_due + timedelta(days=1)
+app/routes/admin.py:            current_period_end = selected_next_due
+app/routes/admin.py:            rent_active_for_period = True
+app/routes/admin.py:            period_delta = _get_rent_period_delta(block_settings)
+app/routes/admin.py:            period_label = "Day"
+app/routes/admin.py:            period_label = "Week"
+app/routes/admin.py:            period_label = "Month"
+app/routes/admin.py:                    period_label = "Day"
+app/routes/admin.py:                    period_label = f"{settings.custom_frequency_value} Days"
+app/routes/admin.py:                    period_label = "Week"
+app/routes/admin.py:                    period_label = f"{settings.custom_frequency_value} Weeks"
+app/routes/admin.py:                    period_label = "Month"
+app/routes/admin.py:                    period_label = f"{settings.custom_frequency_value} Months"
+app/routes/admin.py:                          rent_active_for_period=rent_active_for_period,
+app/routes/admin.py:                          period_label=period_label,
+app/routes/admin.py:                          current_period_start=current_period_start,
+app/routes/admin.py:                          current_period_end=current_period_end,
+app/routes/admin.py:    future_periods_count = 1
+app/routes/admin.py:        raw_future_periods = request.form.get('future_periods_count', '') or ''
+app/routes/admin.py:            future_periods_count = max(1, int(raw_future_periods))
+app/routes/admin.py:    period_delta = _get_rent_period_delta(settings)
+app/routes/admin.py:                periods_count=periods_count,
+app/routes/admin.py:        available_periods=periods,
+app/routes/admin.py:        if setting.block:
+app/routes/admin.py:            settings_by_block[setting.block] = setting
+app/routes/admin.py:            periods_since_first = elapsed_days // freq_days
+app/routes/admin.py:    settings_form.block.choices = (
+app/routes/admin.py:            overtime_period = request.form.get('adv_overtime_period')
+app/routes/admin.py:                        PayrollSettings.block.in_(enabled_blocks),
+app/routes/admin.py:    periods = _get_teacher_blocks(g.canonical_context)
+app/routes/admin.py:        periods=periods,
+app/routes/admin.py:    blocks = sorted(set(s.block for s in students))
+app/routes/admin.py:    periods = _get_teacher_blocks(g.canonical_context)
+app/routes/admin.py:    join_codes_by_period = _get_join_codes_by_block(g.canonical_context, periods)
+app/routes/admin.py:    class_id_by_period = {
+app/routes/admin.py:    period_settings = {}
+app/routes/admin.py:        period_settings[period] = scoped_features["features"] if scoped_features else FeatureSettings.get_defaults()
+app/routes/admin.py:        periods=periods,
+app/routes/admin.py:        period_settings=period_settings,
+app/routes/admin.py:        join_codes_by_period=join_codes_by_period,
+app/routes/admin.py:@admin_bp.route('/feature-settings/period/<period>', methods=['POST'])
+app/routes/admin.py:        period = period.strip().upper()
+app/routes/admin.py:            json.dumps({"period": period, "data": data}, sort_keys=True, default=str).encode("utf-8")
+app/routes/admin.py:        source_period = data.get('source_period', '').strip().upper()
+app/routes/admin.py:        target_periods = [p.strip().upper() for p in data.get('target_periods', [])]
+app/routes/admin.py:                if period == source_period:
+app/routes/admin.py:            .order_by(desc(PayrollSettings.block.isnot(None)))
+app/routes/analytics.py:        .order_by(desc(PayrollSettings.block.isnot(None)))
+app/routes/student.py:    period_delta = _get_rent_period_delta(settings)
+app/routes/student.py:        scoped = base_query.filter(func.upper(BankingSettings.block) == current_block).first()
+app/routes/student.py:    return base_query.filter(BankingSettings.block.is_(None)).first()
+app/routes/student.py:        current_blocks = [b.strip().upper() for b in student.block.split(',') if b.strip()]
+app/routes/student.py:        current_blocks = [b.strip().upper() for b in student.block.split(',') if b.strip()]
+app/routes/student.py:            student.block = ','.join(sorted(current_blocks))
+app/routes/student.py:        'block': scope.block,
+app/routes/student.py:        is_preview_period = timeline['is_preview_period_candidate']
+app/routes/student.py:        rent_blocks = [b.strip().upper() for b in student.block.split(',') if b.strip()]
+app/routes/student.py:        period="week",
+app/routes/student.py:        period="month",
+app/routes/student.py:        if tx.amount is not None and tx.amount > Decimal('0') and _occurred_in_period(tx.timestamp, start=week_start, end=week_end) and not tx.is_void),
+app/routes/student.py:        if tx.amount is not None and tx.amount > Decimal('0') and _occurred_in_period(tx.timestamp, start=month_start, end=now_utc) and not tx.is_void),
+app/routes/student.py:        if tx.amount is not None and tx.amount < Decimal('0') and _occurred_in_period(tx.timestamp, start=week_start, end=week_end) and not tx.is_void),
+app/routes/student.py:        if tx.amount is not None and tx.amount < Decimal('0') and _occurred_in_period(tx.timestamp, start=month_start, end=now_utc) and not tx.is_void),
+app/routes/student.py:            periods_per_month = Decimal('30')
+app/routes/student.py:            rate_per_period = annual_rate / Decimal('365')
+app/routes/student.py:            periods_per_month = Decimal('4.33')
+app/routes/student.py:            rate_per_period = annual_rate / Decimal('52')
+app/routes/student.py:                    periods = Decimal('30')
+app/routes/student.py:                    periods = Decimal('4.33')
+app/routes/student.py:    per_period_rent_item_ids = set()
+app/routes/student.py:            per_period_rent_item_ids = set()
+app/routes/student.py:                per_period_rent_item_ids = {
+app/routes/student.py:                         has_paid_rent=has_paid_rent, per_period_rent_item_ids=per_period_rent_item_ids,
+app/routes/student.py:                    periods = months_diff // settings.custom_frequency_value
+app/routes/student.py:                periods = time_diff // freq_delta
+app/routes/student.py:    period_delta = _get_rent_period_delta(settings)
+app/routes/student.py:    is_preview_period_candidate = False
+app/routes/student.py:        is_preview_period_candidate = True
+app/routes/student.py:    is_preview_period_candidate = timeline['is_preview_period_candidate']
+app/routes/student.py:    is_preview_period = is_preview_period_candidate and current_coverage_paid
+app/routes/student.py:    period_status = {}
+app/routes/student.py:    period_status[current_block] = {
+app/routes/student.py:                          period_status=period_status,
+app/routes/student.py:@student_bp.route('/rent/pay/<period>', methods=['POST'])
+app/routes/student.py:    period = (period or '').strip().upper()
+app/routes/student.py:    if period != current_block:
+app/routes/student.py:            "rent_pay exit: period mismatch period=%s current_block=%s seat_id=%s class_id=%s",
+app/routes/student.py:    is_preview_period = (
+app/routes/student.py:        "rent_pay before execute: seat_id=%s class_id=%s period=%s amount=%s",
+app/routes/student.py:        period=period,
+app/routes/student.py:@student_bp.route('/switch-period/<int:user_id>', methods=['POST'])
+app/routes/student.py:        "Disabled student switch-period route called for user_id=%s",
+app/services/obligations_service.py:    period_key = f"{coverage_year}-{coverage_month:02d}" if coverage_year is not None and coverage_month is not None else None
+app/services/obligations_service.py:        period=period,
+app/services/obligations_service.py:        period_key=period_key,
+app/services/obligations_service.py:        period_month=period_month,
+app/services/obligations_service.py:        period_year=period_year,
+F1: Student Dashboard Template matches
+<div id="serverState" style="display:none;">{{ attendance_state_json|safe }}</div>
+                {{ hall_pass_balance }} Passes Left
+    const CURRENT_CLASS_ID = {{ current_class_id|tojson }};
+F2: Student Payroll Template
+                {% if class_label %}
+                    <h5 class="mb-3">{{ class_label }}</h5>
+                                <span class="badge {% if payroll_state.get('active') and not payroll_state.get('done') %}bg-success{% else %}bg-secondary{% endif %} ms-2">
+                                    {{ 'Active' if payroll_state.get('active') and not payroll_state.get('done') else 'Inactive' }}
+                                <span class="text-primary ms-2">{{ (unpaid_seconds // 3600)|string + 'h ' + ((unpaid_seconds % 3600) // 60)|string + 'm ' + (unpaid_seconds % 60)|string + 's' }}</span>
+                    {% if attendance_events %}
+                                {% for event in attendance_events[:20] %}
+                    {% if attendance_events|length > 20 %}
+                                <h5 class="mb-0 text-primary">{{ (unpaid_seconds // 3600)|int }}h {{ ((unpaid_seconds % 3600) // 60)|int }}m</h5>
+                                <h5 class="mb-0">{{ 1 if class_label else 0 }}</h5>
+                        {% if class_label %}
+                                        <td><strong>{{ class_label }}</strong></td>
+                                        <td>{{ (unpaid_seconds // 3600)|string + 'h ' + ((unpaid_seconds % 3600) // 60)|string + 'm' }}</td>
+                {% if attendance_events %}
+                            <h3 class="mb-0">{{ attendance_events|length }}</h3>
+                        {% if class_label %}
+                                    <strong>{{ class_label }}</strong>
+                                        {{ (unpaid_seconds // 3600)|string + 'h ' + ((unpaid_seconds % 3600) // 60)|string + 'm ' + (unpaid_seconds % 60)|string + 's' }}
+F3: Admin Payroll Template
+                      <input class="form-check-input simple-block-checkbox" type="checkbox" name="simple_blocks[]"
+                      <input class="form-check-input adv-block-checkbox" type="checkbox" name="adv_blocks[]"
+              {% for class_option in payroll_class_options %}
+              <option value="{{ class_option.class_id }}">{{ class_option.label }}</option>
+              <tr data-class-id="{{ entry.class_id }}" data-payroll-event-id="{{ entry.payroll_event_id }}"
+                    {% for class_option in payroll_class_options %}
+                        value="{{ class_option.settings_key }}" id="simple_class_{{ class_option.class_id }}">
+                      <label class="form-check-label" for="simple_class_{{ class_option.class_id }}">{{ class_option.label }}</label>
+                    {% for class_option in payroll_class_options %}
+                        value="{{ class_option.settings_key }}" id="adv_class_{{ class_option.class_id }}">
+                      <label class="form-check-label" for="adv_class_{{ class_option.class_id }}">{{ class_option.label }}</label>
+                {% for class_option in payroll_class_options %}
+                <option value="{{ class_option.class_id }}">{{ class_option.label }}</option>
+                  <tr class="student-row" data-class-id="{{ student.class_id }}" data-student-id="{{ student.public_id }}">
+                        data-class-id="{{ student.class_id }}">
+      const historyRows = document.querySelectorAll('#payrollHistoryTable tbody tr[data-class-id]');
+F4: Hall-Pass Template
+F5: Student Detail Template
+                                        value="{{ student_first_name }}" required>
+                    {{ hall_pass_balance }}
+                {% set sorted_attendance_events = attendance_events|sort(attribute='timestamp', reverse=True) %}
+                {% if sorted_attendance_events %}
+                            {% for tap in sorted_attendance_events[:50] %}
+                {% if sorted_attendance_events|length > 50 %}
+                <p class="text-muted text-center mb-0">Showing most recent 50 records out of {{ sorted_attendance_events|length }}
+                        <h3 class="text-info">{{ payroll_event_history|selectattr('type', 'equalto', 'payroll')|list|length }}
+                        <h3 class="text-primary">{{ payroll_event_history|selectattr('type', 'equalto', 'manual_credit')|list|length }}
+                {% if payroll_event_history %}
+                            {% for event in payroll_event_history[:20] %}
+                        <p><strong>Current Balance:</strong> <span class="badge bg-primary fs-5">{{ hall_pass_balance }}</span></p>
+G1: Test Suite Status
+..................................                                       [100%]pytest CSV artifact: pytest_result/20260722_pytest_specific_results_6.csv
+pytest summary artifact: pytest_result/20260722_pytest_specific_summary_6.md
+pytest failure log artifact: pytest_result/20260722_pytest_specific_failures_6.log
+
+34 passed in 130.61s (0:02:10)
+G3: Stale Test Cleanup Verification
+tests/dom/attendance/test_attendance.py
+tests/dom/attendance/test_hall_pass_checkout.py
+tests/dom/attendance/test_hall_pass_history_scoping.py
+tests/dom/attendance/test_hall_pass_verify.py
+I1: Search for Deleted Models
+I2: Search for Deleted Functions
+I3: Search for Deleted Fields
+app/routes/admin.py:                IdentityProfile.seat_id == AttendanceSession.target_seat_id,
+I4: Search for Block/Period Scoping
+app/routes/system_admin.py:            user_students.c.block,
+app/routes/system_admin.py:        .group_by(user_students.c.user_id, user_students.c.block)
+app/routes/admin.py:    policy.set_blocks(form.blocks.data if form.blocks.data else [])
+app/routes/admin.py:    target_block = (block or student.block or "").strip().upper()
+app/routes/admin.py:        .order_by(desc(PayrollSettings.block.isnot(None)))
+app/routes/admin.py:        .order_by(desc(BankingSettings.block.isnot(None)))
+app/routes/admin.py:def _filter_economy_health_warnings(analysis, rent_settings, insurance_policies, fines, store_items, *, selected_block=None):
+app/routes/admin.py:    all_payroll_settings = payroll_query.order_by(PayrollSettings.block.asc()).all()
+app/routes/admin.py:    settings_by_block = {s.block: s for s in all_payroll_settings if s.block}
+app/routes/admin.py:    dashboard_blocks = sorted({b.strip() for s in seats for b in (s.block or "").split(',') if b.strip()})
+app/routes/admin.py:    form.blocks.choices = [(block, f"Period {block}") for block in blocks]
+app/routes/admin.py:        submitted_blocks = {block.strip().upper() for block in (form.blocks.data or []) if block}
+app/routes/admin.py:            if form.blocks.data:
+app/routes/admin.py:                new_item.set_blocks(form.blocks.data)
+app/routes/admin.py:        if not item.blocks_list or selected_block in {b.strip().upper() for b in item.blocks_list if b}
+app/routes/admin.py:            if item.blocks_list:
+app/routes/admin.py:                    if block in {b.strip().upper() for b in item.blocks_list if b}
+app/routes/admin.py:    if item.blocks_list and selected_scope['block'] not in {b.strip().upper() for b in item.blocks_list if b}:
+app/routes/admin.py:    form.blocks.choices = [(block, f"Period {block}") for block in blocks]
+app/routes/admin.py:        form.blocks.data = item.blocks_list
+app/routes/admin.py:        submitted_blocks = {block.strip().upper() for block in (form.blocks.data or []) if block}
+app/routes/admin.py:            item.set_blocks(form.blocks.data if form.blocks.data else [])
+app/routes/admin.py:    if item.blocks_list and selected_scope['block'] not in {b.strip().upper() for b in item.blocks_list if b}:
+app/routes/admin.py:    if item.blocks_list and selected_scope['block'] not in {b.strip().upper() for b in item.blocks_list if b}:
+app/routes/admin.py:        desired_blocks = {block.strip().upper() for block in store_item.blocks_list if block}
+app/routes/admin.py:                block_settings = RentSettings.query.filter_by(class_id=block).first()
+app/routes/admin.py:                block_settings = RentSettings.query.filter_by(class_id=block).first()
+app/routes/admin.py:        flash("No valid waiver periods could be determined. Check that rent is configured and a scope was selected.", "danger")
+app/routes/admin.py:        PayrollSettings.query.filter_by(class_id=selected_class_id, block=selected_block)
+app/routes/admin.py:        if setting.block:
+app/routes/admin.py:            settings_by_block[setting.block] = setting
+app/routes/admin.py:    settings_form.block.choices = (
+app/routes/admin.py:                        PayrollSettings.block.in_(enabled_blocks),
+app/routes/admin.py:                block_setting = PayrollSettings.query.filter_by(class_id=class_id, block=cwi_block).first()
+app/routes/admin.py:    blocks = sorted(set(s.block for s in students))
+app/routes/admin.py:        period_settings[period] = scoped_features["features"] if scoped_features else FeatureSettings.get_defaults()
+app/routes/admin.py:            .order_by(desc(PayrollSettings.block.isnot(None)))
+app/routes/analytics.py:        .order_by(desc(PayrollSettings.block.isnot(None)))
+app/routes/student.py:        scoped = base_query.filter(func.upper(BankingSettings.block) == current_block).first()
+app/routes/student.py:    return base_query.filter(BankingSettings.block.is_(None)).first()
+app/routes/student.py:        current_blocks = [b.strip().upper() for b in student.block.split(',') if b.strip()]
+app/routes/student.py:        current_blocks = [b.strip().upper() for b in student.block.split(',') if b.strip()]
+app/routes/student.py:            student.block = ','.join(sorted(current_blocks))
+app/routes/student.py:        'block': scope.block,
+app/routes/student.py:        rent_blocks = [b.strip().upper() for b in student.block.split(',') if b.strip()]
+app/services/payroll_settings_service.py:        setting = PayrollSettings.query.filter_by(class_id=class_id, block=block_value).first()
+app/services/payroll_settings_service.py:        setting = PayrollSettings.query.filter_by(class_id=class_id, block=block_value).first()
+K2: Risk Zones Counts
+canonical_temporal_resolver calls:
+app/feats/prod.py:7
+app/routes/admin.py:6
+app/routes/api.py:7
+class_id scoping:
+Immutability check:
