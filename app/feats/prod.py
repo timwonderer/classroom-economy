@@ -340,13 +340,15 @@ def _record_payroll_event_impl(
     payroll_event_type: str,
     correlation_id: str,
     idempotency_key: str,
-    policy_version_id: int | None,
+    policy_version_id: int,
     mechanism: str,
     summary_json: dict | None = None,
     reference_time_utc=None,
     amount: Decimal | None = None,
 ) -> PayrollEventResult:
     ctx = _require_context(ctx)
+    if policy_version_id is None:
+        raise ValueError("FEAT-PROD-003 requires a payroll policy_version_id.")
     evaluation = canonical_temporal_resolver(
         CLASS_LEVEL_EVALUATION,
         canonical_execution_context=ctx,
@@ -439,7 +441,7 @@ def record_payroll_event(
     payroll_event_type: str,
     correlation_id: str,
     idempotency_key: str,
-    policy_version_id: int | None,
+    policy_version_id: int,
     mechanism: str,
     summary_json: dict | None = None,
     reference_time_utc=None,
@@ -466,7 +468,7 @@ def record_payroll_reversal(
     target_seat_id: int,
     correlation_id: str,
     idempotency_key: str,
-    policy_version_id: int | None,
+    policy_version_id: int,
     mechanism: str,
     summary_json: dict | None = None,
     reference_time_utc=None,

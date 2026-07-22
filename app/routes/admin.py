@@ -71,7 +71,7 @@ from app.models import (
     Announcement, RedemptionEvent, RedemptionEventAction, RedemptionEventSource, Issue, IssueCategory, IssueStatusHistory, IssueResolutionAction, Seat,
     LedgerBalanceSnapshot, ClassEconomy, User, UserRole, _quantize_currency,
     ObligationAssessment, ObligationSatisfaction,
-    AttendanceReasonCode, IdentityProfile, PayrollEvent,
+    AttendanceReasonCode, IdentityProfile, PayrollEvent, PolicyVersion,
 )
 from app.auth import (
     admin_required,
@@ -1146,6 +1146,18 @@ def _require_payroll_feature_scope_from_request(
         'teacher_seat': canonical_seat,
         'enabled': enabled,
     }
+
+
+def _require_active_payroll_policy_version_id(class_id: str) -> int:
+    """Return the active class-owned payroll policy version or fail closed."""
+    policy_version = (
+        PolicyVersion.query.filter_by(class_id=class_id, domain="payroll", is_active=True)
+        .order_by(PolicyVersion.version_number.desc(), PolicyVersion.id.desc())
+        .first()
+    )
+    if policy_version is None:
+        raise InvariantViolation("No active payroll policy version exists for this class.")
+    return policy_version.id
 
 
 
@@ -7240,6 +7252,7 @@ def _run_payroll():
         selected_scope = _require_payroll_feature_scope_from_request()
 
         class_id = selected_scope['class_id']
+        policy_version_id = _require_active_payroll_policy_version_id(class_id)
         seats = Seat.query.filter_by(class_id=class_id, role='student').all()
 
         evaluation = canonical_temporal_resolver(
@@ -7259,7 +7272,7 @@ def _run_payroll():
                 payroll_event_type="payroll",
                 correlation_id=generate_correlation_id(),
                 idempotency_key=f"payroll_run:{class_id}:{seat.id}:{request_nonce}",
-                policy_version_id=None,
+                policy_version_id=policy_version_id,
                 mechanism="TEACHER",
                 summary_json={
                     "source": "admin_run_payroll",
@@ -8057,6 +8070,7 @@ def payroll_manual_payment():
 
             selected_scope = _require_payroll_feature_scope_from_request()
             selected_class_id = selected_scope['class_id']
+            policy_version_id = _require_active_payroll_policy_version_id(selected_class_id)
 
             # Save Template Logic
             if save_action in ['save_only', 'save_and_apply']:
@@ -8078,7 +8092,7 @@ def payroll_manual_payment():
                     payroll_event_type="manual_credit",
                     correlation_id=generate_correlation_id(),
                     idempotency_key=f"manual_credit:{selected_class_id}:{student.id}:{request_nonce}",
-                    policy_version_id=None,
+                    policy_version_id=policy_version_id,
                     mechanism="TEACHER",
                     summary_json={
                         "description": f"Manual Credit: {description}",

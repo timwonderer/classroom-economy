@@ -670,7 +670,7 @@ class PayrollEvent(db.Model):
     target_seat_id = db.Column(db.Integer, db.ForeignKey('seats.id', ondelete='CASCADE'), nullable=False, index=True)
     correlation_id = db.Column(db.String(100), nullable=False, index=True)
     idempotency_key = db.Column(db.String(255), nullable=False, index=True)
-    policy_version_id = db.Column(db.Integer, db.ForeignKey('policy_versions.id', ondelete='SET NULL'), nullable=True, index=True)
+    policy_version_id = db.Column(db.Integer, db.ForeignKey('policy_versions.id', ondelete='RESTRICT'), nullable=False, index=True)
     mechanism = db.Column(db.String(20), nullable=False, default="TEACHER")
     payroll_event_type = db.Column(db.String(20), nullable=False)
     recorded_at = db.Column(db.DateTime(timezone=True), default=utc_now, nullable=False, index=True)

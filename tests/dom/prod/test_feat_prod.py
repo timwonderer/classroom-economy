@@ -11,7 +11,7 @@ from app.feats.prod import (
     record_payroll_event,
     record_payroll_reversal,
 )
-from app.models import AttendanceSession, HallPassLog, PayrollEvent, Transaction
+from app.models import AttendanceSession, HallPassLog, PayrollEvent, PolicyVersion, Transaction
 from app.services.context_resolver import CanonicalContext
 from app.services.entitlement_service import grant_hall_passes, get_hall_pass_balance
 from tests.helpers.classroom_initializer import initialize
@@ -34,6 +34,21 @@ def _student_ctx(classroom, index: int = 0) -> CanonicalContext:
         seat_id=student.seat.id,
         actor_role="student",
     )
+
+
+def _active_payroll_policy_version(classroom) -> PolicyVersion:
+    with FEATContext("FEAT-BYPASS-LEGACY", correlation_id="bypass_test_payroll_policy_seed"):
+        policy = PolicyVersion(
+            class_id=classroom.class_id,
+            domain="payroll",
+            version_number=1,
+            policy_payload_json='{"source":"test"}',
+            activated_at=datetime(2026, 7, 19, 15, 0, tzinfo=timezone.utc),
+            is_active=True,
+        )
+        db.session.add(policy)
+        db.session.flush()
+    return policy
 
 
 def test_FEAT_PROD_001__records_attendance_session(app):
@@ -99,6 +114,7 @@ def test_FEAT_PROD_003__records_payroll_event_and_reversal(app):
     student = classroom.students[0]
     ctx = _teacher_ctx(classroom)
     now = datetime(2026, 7, 19, 15, 30, tzinfo=timezone.utc)
+    policy_version = _active_payroll_policy_version(classroom)
 
     record_attendance_session(
         ctx=_student_ctx(classroom),
@@ -118,7 +134,7 @@ def test_FEAT_PROD_003__records_payroll_event_and_reversal(app):
         payroll_event_type="payroll",
         correlation_id="corr-pay-001",
         idempotency_key="feat:prod:payroll:001",
-        policy_version_id=None,
+        policy_version_id=policy_version.id,
         mechanism="TEACHER",
         summary_json={"description": "attendance-based payroll"},
         reference_time_utc=now,
@@ -136,7 +152,7 @@ def test_FEAT_PROD_003__records_payroll_event_and_reversal(app):
         target_seat_id=student.seat.id,
         correlation_id="corr-pay-001",
         idempotency_key="feat:prod:payroll:001:reversal",
-        policy_version_id=None,
+        policy_version_id=policy_version.id,
         mechanism="TEACHER",
         summary_json={"description": "payroll reversal"},
         reference_time_utc=now + timedelta(minutes=5),

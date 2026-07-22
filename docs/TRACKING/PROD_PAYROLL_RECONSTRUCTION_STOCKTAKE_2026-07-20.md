@@ -93,7 +93,8 @@ This document tracks:
 | Gap | Status | Required Disposition |
 |---|---|---|
 | Student support attendance issue naming | `REWIRED` | Route/template now expose `attendance_session`; legacy `tap_event` URL/endpoint terminology was removed rather than aliased. |
-| Live schema proof | `UNVERIFIED` | Inspect migrated DB columns for `attendance_sessions`, `hall_pass_logs`, and `payroll_event` before claiming schema completion. |
+| Live schema proof | `VERIFIED` | Local PostgreSQL at Alembic head `f6a7b8c9d0e2` exposes only `attendance_sessions`, `hall_pass_logs`, and `payroll_event` for the PROD table set; `seat_attendance_state` and `tap_events` are absent. |
+| PROD FEAT targeted test proof | `VERIFIED` | `pytest -q tests/dom/prod/test_feat_prod.py` passed 3 tests on 2026-07-22 after fresh migration-chain blockers were removed. |
 | Journey/render verification | `NOT_RUN` | Add route render checks and journeys for start work, hall-pass request/approve/leave/return, run payroll, payroll history, and public verification. |
 | Tests still encoding old shapes | `KNOWN_RESIDUE` | Modernize direct `AttendanceSession` test setup under the current DOM-PROD schema. |
 | Residual non-template cleanup | `REWIRED` | Class destruction no longer references `SeatAttendanceState`; the dropped state table is not part of live PROD runtime cleanup. |
@@ -108,6 +109,36 @@ Focused checks run for this checkpoint:
 ```bash
 python3 -m py_compile app/attendance.py app/feats/attendance.py app/feats/base.py app/feats/prod.py app/routes/api.py app/routes/admin.py app/services/attendance_service.py app/services/hall_pass_request_queue.py app/scheduled_tasks.py
 git diff --check
+```
+
+Targeted PROD FEAT proof added on 2026-07-22:
+
+```bash
+pytest -q tests/dom/prod/test_feat_prod.py
+# 3 passed in 14.62s
+```
+
+This run also proved that the fresh migration chain reaches Alembic head `f6a7b8c9d0e2` after removing stale migration dependencies on the retired `TapEventReasonCode` enum and already-deleted `student_blocks` table.
+
+Live schema proof added on 2026-07-22:
+
+```bash
+flask db current
+# f6a7b8c9d0e2 (head)
+
+psql postgresql://postgres:postgres@localhost:5432/classroom_economy -c "SELECT table_name FROM information_schema.tables WHERE table_schema='public' AND table_name IN ('attendance_sessions','hall_pass_logs','payroll_event','seat_attendance_state','tap_events') ORDER BY table_name;"
+# attendance_sessions
+# hall_pass_logs
+# payroll_event
+
+psql postgresql://postgres:postgres@localhost:5432/classroom_economy -c "SELECT table_name, column_name, data_type, is_nullable FROM information_schema.columns WHERE table_schema='public' AND table_name IN ('attendance_sessions','hall_pass_logs','payroll_event','seat_attendance_state') ORDER BY table_name, ordinal_position;"
+# verified DOM-PROD columns and nullability for attendance_sessions, hall_pass_logs, and payroll_event
+
+psql postgresql://postgres:postgres@localhost:5432/classroom_economy -c "SELECT tablename, indexname FROM pg_indexes WHERE schemaname='public' AND tablename IN ('attendance_sessions','hall_pass_logs','payroll_event') ORDER BY tablename, indexname;"
+# verified ORM-declared PROD indexes, including payroll_event policy/version and replay-guard indexes
+
+psql postgresql://postgres:postgres@localhost:5432/classroom_economy -c "SELECT conname, confdeltype FROM pg_constraint WHERE conrelid = 'payroll_event'::regclass AND contype = 'f' AND conkey = ARRAY[(SELECT attnum FROM pg_attribute WHERE attrelid = 'payroll_event'::regclass AND attname = 'policy_version_id')]::smallint[];"
+# fk_payroll_event_policy_version_id | r
 ```
 
 Stale-pattern scans were also run for the touched surfaces. They no longer find:
