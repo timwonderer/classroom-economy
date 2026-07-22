@@ -2,8 +2,7 @@ from types import SimpleNamespace
 from app.services.attendance_service import (
     calculate_unpaid_attendance_seconds as _calculate_unpaid_attendance_seconds,
 )
-from app.services.ledger_service import get_last_payroll_time as _get_last_payroll_time
-from app.models import AttendanceReasonCode, AttendanceSession
+from app.models import AttendanceReasonCode, AttendanceSession, PayrollEvent
 from app.utils.canonical_temporal_resolver import (
     CLASS_LEVEL_EVALUATION,
     SYSTEM_LEVEL_EVALUATION,
@@ -22,10 +21,19 @@ def _ensure_utc_timestamp(timestamp):
     return evaluation.canonical_now_utc
 
 def get_last_payroll_time(*, seat_id: int, class_id: str):
-    """Return the latest payroll/manual payment anchor for one canonical seat/class scope."""
+    """Return the latest payroll settlement anchor for one canonical seat/class scope."""
     if not seat_id or not class_id:
         raise ValueError("get_last_payroll_time requires seat_id and class_id.")
-    return _get_last_payroll_time(seat_id=seat_id, class_id=class_id)
+    last_payroll = (
+        PayrollEvent.query.filter(
+            PayrollEvent.target_seat_id == seat_id,
+            PayrollEvent.class_id == class_id,
+            PayrollEvent.payroll_event_type == "payroll",
+        )
+        .order_by(PayrollEvent.recorded_at.desc(), PayrollEvent.id.desc())
+        .first()
+    )
+    return _ensure_utc_timestamp(last_payroll.recorded_at) if last_payroll else None
 
 
 
@@ -37,6 +45,7 @@ def calculate_unpaid_attendance_seconds(seat_id, class_id, last_payroll_time):
         seat_id,
         class_id,
         last_payroll_time,
+        ctx=SimpleNamespace(class_id=class_id),
     )
 
 
