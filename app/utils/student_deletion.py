@@ -107,7 +107,15 @@ def _clear_cross_transaction_refs(tx_ids):
     )
 
 
-def _delete_student_scoped_rows(student_id, store_purchase_ids, issue_ids, tx_ids, seat_ids, seat_ids_for_student=None):
+def _delete_student_scoped_rows(
+    student_id,
+    store_purchase_ids,
+    issue_ids,
+    tx_ids,
+    seat_ids,
+    seat_ids_for_student=None,
+    scoped_class_id=None,
+):
     """Delete records that are scoped directly to the student being removed."""
     if store_purchase_ids:
         RedemptionEvent.query.filter(
@@ -142,15 +150,22 @@ def _delete_student_scoped_rows(student_id, store_purchase_ids, issue_ids, tx_id
     if tx_ids:
         Transaction.query.filter(Transaction.id.in_(tx_ids)).delete(synchronize_session=False)
     if seat_ids_for_student:
-        AttendanceSession.query.filter(
+        attendance_query = AttendanceSession.query.filter(
             AttendanceSession.target_seat_id.in_(seat_ids_for_student)
-        ).delete(synchronize_session=False)
-        HallPassLog.query.filter(
+        )
+        hall_pass_query = HallPassLog.query.filter(
             HallPassLog.requested_by_seat_id.in_(seat_ids_for_student)
-        ).delete(synchronize_session=False)
-        PayrollEvent.query.filter(
+        )
+        payroll_query = PayrollEvent.query.filter(
             PayrollEvent.target_seat_id.in_(seat_ids_for_student)
-        ).delete(synchronize_session=False)
+        )
+        if scoped_class_id:
+            attendance_query = attendance_query.filter(AttendanceSession.class_id == scoped_class_id)
+            hall_pass_query = hall_pass_query.filter(HallPassLog.class_id == scoped_class_id)
+            payroll_query = payroll_query.filter(PayrollEvent.class_id == scoped_class_id)
+        attendance_query.delete(synchronize_session=False)
+        hall_pass_query.delete(synchronize_session=False)
+        payroll_query.delete(synchronize_session=False)
     if seat_ids:
         LedgerBalanceSnapshot.query.filter(LedgerBalanceSnapshot.seat_id.in_(seat_ids)).delete(synchronize_session=False)
 
@@ -208,6 +223,7 @@ def remove_student_from_teacher_scope(seat_id, user_id):
             scoped_tx_ids,
             scoped_seat_ids,
             seat_ids_for_student=scoped_seat_ids,
+            scoped_class_id=seat.class_id,
         )
         return False
 

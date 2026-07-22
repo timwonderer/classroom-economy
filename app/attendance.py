@@ -1,24 +1,26 @@
 from datetime import datetime, timezone, timedelta
 from types import SimpleNamespace
-from app.utils.time import (
-    utc_now,
-    ensure_utc,
-    normalize_for_db,
-    class_date,
-    get_class_now,
-    get_class_today_range,
-    local_date_range_utc,
-)
-import sqlalchemy as sa
-from flask import current_app
-from app.extensions import db
-import pytz
 from app.services.attendance_service import (
     calculate_unpaid_attendance_seconds as _calculate_unpaid_attendance_seconds,
 )
 from app.services.ledger_service import get_last_payroll_time as _get_last_payroll_time
 from app.models import AttendanceReasonCode, AttendanceSession
-from app.utils.canonical_temporal_resolver import CLASS_LEVEL_EVALUATION, canonical_temporal_resolver
+from app.utils.canonical_temporal_resolver import (
+    CLASS_LEVEL_EVALUATION,
+    SYSTEM_LEVEL_EVALUATION,
+    canonical_temporal_resolver,
+)
+
+
+def _ensure_utc_timestamp(timestamp):
+    if timestamp is None:
+        return None
+    evaluation = canonical_temporal_resolver(
+        SYSTEM_LEVEL_EVALUATION,
+        primitive="current_time",
+        reference_time_utc=timestamp,
+    )
+    return evaluation.canonical_now_utc
 
 def get_last_payroll_time(*, seat_id: int, class_id: str):
     """Return the latest payroll/manual payment anchor for one canonical seat/class scope."""
@@ -59,7 +61,7 @@ def _calculate_active_seconds_for_range(*, seat_id, class_id, start_utc, end_utc
     intervals = []
     active_start = None
     for row in rows:
-        timestamp = ensure_utc(row.timestamp)
+        timestamp = _ensure_utc_timestamp(row.timestamp)
         if row.status == "active":
             active_start = timestamp
             continue
@@ -131,8 +133,8 @@ def calculate_period_attendance_utc_range(seat_id, class_id, start_utc, end_utc)
     return _calculate_active_seconds_for_range(
         seat_id=seat_id,
         class_id=class_id,
-        start_utc=ensure_utc(start_utc),
-        end_utc=ensure_utc(end_utc),
+        start_utc=_ensure_utc_timestamp(start_utc),
+        end_utc=_ensure_utc_timestamp(end_utc),
     )
 
 
@@ -197,7 +199,7 @@ def get_batch_attendance_events(seat_ids, min_anchor, allowed_class_ids):
     if not allowed_class_ids:
         return {}
 
-    min_anchor_utc = ensure_utc(min_anchor) if min_anchor else None
+    min_anchor_utc = _ensure_utc_timestamp(min_anchor) if min_anchor else None
     query = AttendanceSession.query.filter(
         AttendanceSession.target_seat_id.in_(seat_ids),
         AttendanceSession.class_id.in_(allowed_class_ids),
@@ -213,12 +215,12 @@ def get_batch_attendance_events(seat_ids, min_anchor, allowed_class_ids):
                 seat_id=session.target_seat_id,
                 class_id=session.class_id,
                 status=session.status,
-                timestamp=ensure_utc(session.timestamp),
+                timestamp=_ensure_utc_timestamp(session.timestamp),
             )
         )
 
     for events in grouped.values():
-        events.sort(key=lambda event: (ensure_utc(event.timestamp), 0 if event.status == "active" else 1))
+        events.sort(key=lambda event: (_ensure_utc_timestamp(event.timestamp), 0 if event.status == "active" else 1))
 
     return grouped
 
@@ -226,13 +228,14 @@ def calculate_seconds_in_memory(events, anchor):
     """
     Calculate unpaid seconds from a sorted list of events, strictly after anchor.
     """
-    total_seconds = 0
     in_time = None
+    intervals = []
+    class_id = getattr(events[0], "class_id", None) if events else None
 
-    anchor = ensure_utc(anchor)
+    anchor = _ensure_utc_timestamp(anchor)
 
     for event in events:
-        event_time = ensure_utc(event.timestamp)
+        event_time = _ensure_utc_timestamp(event.timestamp)
 
         # Skip events before specific anchor
         if anchor and event_time <= anchor:
@@ -251,7 +254,7 @@ def calculate_seconds_in_memory(events, anchor):
             if in_time is None:
                 in_time = event_time
         elif event.status == 'inactive' and in_time:
-            total_seconds += (event_time - in_time).total_seconds()
+            intervals.append((in_time, event_time))
             in_time = None
 
     # If still active at "now"
@@ -259,7 +262,20 @@ def calculate_seconds_in_memory(events, anchor):
         if anchor and in_time < anchor:
             in_time = anchor
 
-        now = utc_now()
-        total_seconds += (now - in_time).total_seconds()
+        now_evaluation = canonical_temporal_resolver(
+            CLASS_LEVEL_EVALUATION,
+            canonical_execution_context=SimpleNamespace(class_id=class_id),
+            primitive="current_time",
+        )
+        intervals.append((in_time, now_evaluation.canonical_now_utc))
 
-    return int(total_seconds)
+    if not intervals:
+        return 0
+
+    evaluation = canonical_temporal_resolver(
+        CLASS_LEVEL_EVALUATION,
+        canonical_execution_context=SimpleNamespace(class_id=class_id),
+        primitive="elapsed_duration",
+        intervals=intervals,
+    )
+    return int(evaluation.elapsed_seconds)
