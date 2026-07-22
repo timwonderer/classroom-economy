@@ -92,6 +92,7 @@ a new unrelated hall-pass correlation or external pass identifier.
 | Admin payroll page class-scope contract | `REWIRED_READ_WRITE` | `admin_payroll.html` no longer exposes block-shaped template filters or reads `Seat.block`; history and manual-credit selection use canonical `class_id` view rows while Run Payroll and manual credit remain wired through `FEAT-PROD-*`. |
 | Student payroll page class-scope contract | `REWIRED_READ` | `student_payroll.html` no longer receives block-keyed maps; it renders the active canonical class through `class_label`, `payroll_state`, `unpaid_seconds`, `projected_pay`, and canonical `attendance_events`. |
 | Analytics participation PROD read | `REWIRED_READ` | `AnalyticsEngine.calculate_participation_rate` now reads canonical `AttendanceSession.target_seat_id` and `timestamp`; legacy `seat_id`, `started_at`, and `is_deleted` assumptions were removed. |
+| Admin analytics student detail template contract | `REWIRED_READ` | `admin_analytics_student_detail.html` now reads explicit `student_name` and route-built transaction display rows; Ledger history is scoped by canonical `target_seat_id + class_id`, and the 30-day cutoff is derived through `canonical_temporal_resolver`. |
 | Student removal PROD cleanup | `REWIRED_DELETE` | Teacher-scoped student removal deletes PROD rows by target `seat_id` constrained to the seat's `class_id`; whole-class deletion remains scoped by `class_id` only. Cleanup targets `attendance_sessions.target_seat_id`, `hall_pass_logs.requested_by_seat_id`, and `payroll_event.target_seat_id`. |
 | Class destruction PROD cleanup | `REWIRED_DELETE` | Whole-class deletion deletes the full PROD table set by `class_id`: `attendance_sessions`, `hall_pass_logs`, and `payroll_event`. Stale `TapEvent` cleanup is removed from the class-collapse path. |
 | Hall-pass model transition hook | `REMOVED` | The obsolete `HallPassLog` listener that tried to populate legacy `student_id`/`seat_id` transition fields was removed; v2 writes must provide `requested_by_seat_id`, `approved_by_seat_id`, and `class_id` directly through `FEAT-PROD-002`; `correlation_id` and `hall_pass_id` come from the consumed entitlement event. |
@@ -174,6 +175,17 @@ pytest -q tests/dom/prod/test_feat_prod.py tests/dom/attendance/test_hall_pass_c
 ```
 
 The remaining `tests/dom/identity/test_admin_tenancy.py -k student_detail` failures still return `302`/route-contract responses before proving template rendering; that is tracked as stale identity/auth test setup rather than a PROD template dependency failure.
+
+Admin-analytics student-detail template contract check added on 2026-07-22:
+
+```bash
+python3 -m py_compile app/routes/analytics.py
+rg -n "student\.name|balance_after_transaction|get_display_join_code\(class_row\.class_id\)|utc_now\(\) - timedelta\(days=30\)|Transaction\.seat_id == seat\.id" app/routes/analytics.py templates/admin_analytics_student_detail.html
+pytest -q tests/dom/prod/test_feat_prod.py
+# 4 passed in 17.39s
+```
+
+The template no longer reads nonexistent `Seat.name`; recent transaction rows are route-built display dictionaries with derived `balance_after_transaction`; the analytics detail route now filters Ledger rows by `Transaction.target_seat_id + class_id` and derives its rolling 30-day cutoff through `canonical_temporal_resolver`.
 
 Admin-payroll template contract check added on 2026-07-22:
 

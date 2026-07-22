@@ -26,6 +26,10 @@ from app.models import Transaction
 from app.models import AuditEvent
 from app.services.ledger_service import get_available_balance
 from app.utils.join_code import get_display_join_code
+from app.utils.canonical_temporal_resolver import (
+    CLASS_LEVEL_EVALUATION,
+    canonical_temporal_resolver,
+)
 
 # Define allowed window types constant
 ALLOWED_WINDOW_TYPES = {'week', 'month', 'pay_cycle', 'rent_cycle'}
@@ -449,7 +453,7 @@ def student_drill_down(student_id):
     if not class_row:
         flash('Class period not found.', 'warning')
         return redirect(url_for('admin.students'))
-    join_code = get_display_join_code(class_row.class_id)
+    join_code = class_row.join_code
 
     # Get student with scoping
     student = Seat.query.filter(
@@ -459,6 +463,12 @@ def student_drill_down(student_id):
     if student is None:
         flash('Student not found for this class period.', 'warning')
         return redirect(url_for('admin.students'))
+    now_evaluation = canonical_temporal_resolver(
+        CLASS_LEVEL_EVALUATION,
+        canonical_execution_context=g.canonical_context,
+        primitive="current_time",
+    )
+    now_utc = now_evaluation.canonical_now_utc
     # Use actual enrollment duration when possible; fall back to 18 weeks if unknown
     weeks_enrolled = 18  # default/fallback for legacy behavior
 
@@ -473,7 +483,6 @@ def student_drill_down(student_id):
         enrollment_start = student.created_at
 
     if enrollment_start is not None:
-        now_utc = utc_now()
         # Ensure timezone-aware arithmetic
         enrollment_start_utc = ensure_utc(enrollment_start)
 
@@ -506,18 +515,38 @@ def student_drill_down(student_id):
         deviation = 0
     
     # Get recent transactions (last 30 days)
-    thirty_days_ago = utc_now() - timedelta(days=30)
-    recent_transactions = Transaction.query.filter(
-        Transaction.seat_id == seat.id,
+    thirty_days_ago = canonical_temporal_resolver(
+        CLASS_LEVEL_EVALUATION,
+        canonical_execution_context=g.canonical_context,
+        primitive="shift_timestamp",
+        reference_time_utc=now_utc,
+        timestamp=now_utc,
+        elapsed_seconds=-(30 * 24 * 60 * 60),
+    ).shifted_timestamp_utc
+    transaction_rows = Transaction.query.filter(
+        Transaction.target_seat_id == seat.id,
         Transaction.class_id == class_id,
         Transaction.timestamp >= thirty_days_ago,
         Transaction.is_void.is_(False)
     ).order_by(Transaction.timestamp.desc()).limit(50).all()
+    student_profile = seat.identity_profile
+    student_name = student_profile.full_name if student_profile else f"Seat {seat.id}"
+    running_balance = current_balance
+    recent_transactions = []
+    for transaction in transaction_rows:
+        recent_transactions.append({
+            "timestamp": transaction.timestamp,
+            "description": transaction.description,
+            "amount": transaction.amount,
+            "balance_after_transaction": running_balance,
+        })
+        running_balance = running_balance - transaction.amount
     
     try:
         return render_template(
             'admin_analytics_student_detail.html',
             student=student,
+            student_name=student_name,
             current_balance=current_balance,
             expected_balance=expected_balance,
             deviation=deviation,
@@ -530,18 +559,19 @@ def student_drill_down(student_id):
         return jsonify({
             'error': 'Template not found',
             'student_id': student.id,
-            'student_name': student.name,
-            'current_balance': current_balance,
-            'expected_balance': expected_balance,
+            'student_name': student_name,
+            'current_balance': float(current_balance),
+            'expected_balance': float(expected_balance),
             'deviation': deviation,
             'cwi': cwi,
             'recent_transactions': [
                 {
-                    'id': t.id,
-                    'timestamp': t.timestamp.isoformat(),
-                    'amount': t.amount,
-                    'description': t.description
-                } for t in recent_transactions
+                    'timestamp': row["timestamp"].isoformat() if row["timestamp"] else None,
+                    'amount': float(row["amount"]),
+                    'description': row["description"],
+                    'balance_after_transaction': float(row["balance_after_transaction"]),
+                }
+                for row in recent_transactions
             ],
             'join_code': join_code
         }), 404

@@ -104,8 +104,8 @@
 | 31 | `admin_analytics_dashboard.html` | `event.event_date`, `.event_type`, `.description`, `.old_value`, `.new_value` | AuditEvent has different column names (`created_at_utc`, `operation`, `table_name`) |
 | 32 | `admin_analytics_events.html` | `class_option.block`, `.label` | Route dicts only have `class_id`/`join_code` |
 | 33 | `admin_analytics_events.html` | `event.event_type`, `.description`, `.event_date` etc. | Same AuditEvent mismatch |
-| 34 | `admin_analytics_student_detail.html` | `student.name` | Seat has no `name` property |
-| 35 | `admin_analytics_student_detail.html` | `txn.balance_after_transaction` | Not on Transaction model |
+| 34 | `admin_analytics_student_detail.html` | `student.name` | Resolved 2026-07-22: route now supplies explicit `student_name` from the selected seat's `IdentityProfile` |
+| 35 | `admin_analytics_student_detail.html` | `txn.balance_after_transaction` | Resolved 2026-07-22: route now supplies recent-transaction view rows with derived `balance_after_transaction` |
 
 ### System admin dashboard variable mismatch
 
@@ -207,7 +207,7 @@ These templates will raise exceptions during rendering:
 | `admin_view_issue.html` | Any render -- `issue.class_label` | `AttributeError` on Issue |
 | `admin_analytics_dashboard.html` | When audit events exist -- `event.event_date` | `AttributeError` on AuditEvent |
 | `admin_analytics_events.html` | When events exist -- same AuditEvent attrs | `AttributeError` |
-| `admin_analytics_student_detail.html` | Any render -- `student.name` on Seat | `AttributeError` |
+| `admin_analytics_student_detail.html` | Any render -- `student.name` on Seat | Resolved 2026-07-22: template reads route-supplied `student_name` |
 | `sysadmin_view_escalated_issue.html` | Any render -- `issue.teacher.get_sysadmin_display_name()` | `AttributeError` |
 | `sysadmin_user_report_detail.html` | Any render -- `report.anonymous_code[:16]` | `UndefinedError` |
 | `admin_announcement_form.html` | Edit path -- `teacher_block.block` on string | `AttributeError` |
@@ -268,7 +268,7 @@ The dominant pattern: routes now pass `Seat` objects where templates still expec
 - [ ] **`admin_view_issue.html`** -- Same as issues_queue
 - [ ] **`admin_analytics_dashboard.html`** -- Map AuditEvent columns to template expectations
 - [ ] **`admin_analytics_events.html`** -- Same AuditEvent fix plus fix `class_option` dict keys
-- [ ] **`admin_analytics_student_detail.html`** -- Replace `student.name` with Seat-compatible; remove `txn.balance_after_transaction`
+- [x] **`admin_analytics_student_detail.html`** -- Resolved 2026-07-22: template reads explicit `student_name`; route supplies transaction view rows with derived `balance_after_transaction`
 - [ ] **`admin_announcement_form.html`** (edit path) -- Fix `teacher_block` to be an object or restructure template; pass `active_join_code`/`active_class_label`
 - [ ] **`system_admin_dashboard.html`** -- Rename `total_admins` to `total_teachers`, `recent_admins` to `recent_teachers` (or vice versa); fix error card attributes
 - [ ] **`sysadmin_view_escalated_issue.html`** -- Replace `issue.teacher.get_sysadmin_display_name()`, `issue.class_label`
@@ -292,7 +292,7 @@ The dominant pattern: routes now pass `Seat` objects where templates still expec
 - [ ] Delete `student_help_support.html`
 - [ ] Delete `student/recovery/reset_form.html`
 - [ ] Delete `student/recovery/identity_update.html`
-- [ ] Delete `hall_pass_verification.html`
+- [x] Delete `hall_pass_verification.html` -- Resolved 2026-07-22: legacy orphan template is absent; public verification is consolidated on `hall_pass_verify.html`
 - [ ] Delete `system_admin_username_migration.html`
 - [ ] Register error handlers for `error_400.html`, `error_401.html`, `error_403.html`, `error_404.html`, `error_503.html` -- or delete them
 - [ ] Evaluate insurance templates behind abort(404): `admin_insurance.html`, `admin_edit_insurance_policy.html`, `admin_process_claim.html`, `admin_view_student_policy.html`, `student_insurance_marketplace.html`, `student_file_claim.html`, `student_view_policy.html` -- delete or restore

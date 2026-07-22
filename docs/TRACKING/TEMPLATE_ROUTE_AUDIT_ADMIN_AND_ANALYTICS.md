@@ -135,30 +135,33 @@
 | Variable | Type | Purpose |
 |---|---|---|
 | `student` | seat/student object | Selected student |
+| `student_name` | str | Display name resolved from the selected seat's `IdentityProfile` |
 | `current_balance` | `number` | Current balance metric |
 | `expected_balance` | `number` | Expected balance metric |
 | `deviation` | `number` | Percent deviation |
 | `cwi` | `number` | Composite Weekly Income |
-| `recent_transactions` | `list` | Recent transactions |
+| `recent_transactions` | `list[dict]` | Recent transaction display rows with derived `balance_after_transaction` |
 | `join_code` | `str` | Current class display code |
 
 **Jinja expressions:**
 
 | Line | Expression | Expects | Supplied By |
 |---|---|---|---|
-| 2 | `{{ student.name }}` | `student.name: str` | Route kwarg `student` |
+| 2 | `{{ student_name }}` | Student display name string | Route kwarg `student_name` |
 | 6 | `{{ url_for('analytics.dashboard') }}` | Endpoint `analytics.dashboard` | [FLASK] `url_for()` |
-| 18 | `{{ student.name | e }}` | Student name | `student` |
+| 18 | `{{ student_name | e }}` | Student name | Route kwarg `student_name` |
 | 31-32 | `{% if current_balance >= 0 %}...{% endif %}` / `{{ "%.2f"|format(current_balance) }}` | Numeric balance | Route kwarg `current_balance` |
 | 45 | `{{ "%.2f"|format(expected_balance) }}` | Numeric balance | Route kwarg `expected_balance` |
 | 57-61 | `{% if deviation|abs <= ... %}` / `{{ "%.1f"|format(deviation) }}%` | Numeric deviation | Route kwarg `deviation` |
 | 61 | `{% if deviation > 0 %}Above{% elif deviation < 0 %}Below{% else %}At{% endif %}` | Numeric deviation | Route kwarg `deviation` |
 | 71-103 | `deviation`-based conditional blocks | Numeric deviation | Route kwarg `deviation` |
-| 80, 85, 95 | `{{ student.name | e }}` | Student name | `student` |
+| 80, 85, 95 | `{{ student_name | e }}` | Student name | Route kwarg `student_name` |
 | 119 | `{{ "%.2f"|format(cwi) }}/week` | Numeric CWI | Route kwarg `cwi` |
 | 130 | `{% if recent_transactions %}` | Transaction list | Route kwarg `recent_transactions` |
-| 150-161 | `txn.*` expressions (`timestamp`, `description`, `amount`, `balance_after_transaction`) | Transaction attrs | Route kwarg `recent_transactions` |
+| 150-161 | `txn.*` expressions (`timestamp`, `description`, `amount`, `balance_after_transaction`) | Transaction display-row attrs | Route kwarg `recent_transactions`; `balance_after_transaction` is derived by the route view model |
 | 153-154 | `{{ txn.timestamp|format_datetime('%b %d, %Y') }}` / `{{ txn.timestamp|format_datetime('%I:%M %p') }}` | Datetime | `txn.timestamp` |
+
+**Interface status:** VALID — Resolved 2026-07-22. The template no longer reads nonexistent `Seat.name`, and it no longer expects raw Ledger `Transaction` rows to expose `balance_after_transaction`. The route supplies explicit display name and transaction view rows while scoping Ledger reads by canonical `target_seat_id + class_id`.
 
 ---
 
