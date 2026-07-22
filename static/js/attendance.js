@@ -11,15 +11,12 @@ document.addEventListener("DOMContentLoaded", () => {
   if (serverStateEl && serverStateEl.textContent) {
     try {
       const initialState = JSON.parse(serverStateEl.textContent);
-      Object.entries(initialState || {}).forEach(([period, state]) => {
-        updateBlockUI(
-          period,
-          state.active,
-          state.duration,
-          state.projected_pay,
-          state.hall_pass
-        );
-      });
+      updateAttendanceUI(
+        initialState.active,
+        initialState.duration,
+        initialState.projected_pay,
+        initialState.hall_pass
+      );
     } catch (e) {
       console.error('Failed to parse initial attendance state', e);
     }
@@ -28,59 +25,57 @@ document.addEventListener("DOMContentLoaded", () => {
   // Handle contextual productivity actions.
   document.querySelectorAll(".attendance-action-btn").forEach(button => {
     button.addEventListener("click", () => {
-      const period = button.dataset.period;
       const action = button.dataset.action;
 
       if (action === 'start_work') {
         const pin = prompt("Enter your PIN to Start Work:");
         if (!pin) return;
-        performTap(period, action, pin);
+        performTap(action, pin);
         return;
       }
 
       if (action === 'break') {
         const buttonState = button.dataset.state || 'break';
-        const state = getPeriodState(period);
+        const state = getAttendanceState();
         const hallPass = state ? state.hall_pass : null;
         if (buttonState === 'leave' && hallPass && hallPass.status === 'approved') {
-          checkOutHallPass(hallPass.id, period);
+          checkOutHallPass(hallPass.id);
           return;
         }
         if (buttonState === 'return' && hallPass && hallPass.status === 'left') {
-          checkInHallPass(hallPass.id, period);
+          checkInHallPass(hallPass.id);
           return;
         }
         if (buttonState === 'pending') {
           createToast("Your hall pass request is pending approval.", true);
           return;
         }
-        openBreakChoiceModal(period);
+        openBreakChoiceModal();
         return;
       }
     });
   });
 });
 
-const periodStateCache = {};
-let selectedBreakPeriod = null;
+let attendanceStateCache = {};
 
-function rememberPeriodState(period, state) {
-  periodStateCache[period] = state || {};
+function rememberAttendanceState(state) {
+  attendanceStateCache = state || {};
 }
 
-function getPeriodState(period) {
-  return periodStateCache[period] || {};
+function getAttendanceState() {
+  return attendanceStateCache || {};
 }
 
-function performTap(period, action, pin, reason = null) {
-  const tapButton = document.querySelector(`.attendance-action-btn[data-period='${period}'][data-action='${action}']`);
+function performTap(action, pin, reason = null) {
+  const tapButton = document.querySelector(`.attendance-action-btn[data-action='${action}']`);
   if (tapButton) tapButton.disabled = true;
 
   // Map old action names to new API values
   let apiAction = action;
   if (action === 'break') apiAction = 'stop_work';
 
-  const payload = { period, action: apiAction, pin };
+  const payload = { action: apiAction, pin };
   if (reason) {
     payload.reason = reason;
   }
@@ -102,8 +97,8 @@ function performTap(period, action, pin, reason = null) {
       if (!data) return; // Session expired, already redirecting
       if (data.status === "ok") {
         const state = { active: data.active, duration: data.duration, projected_pay: data.projected_pay, hall_pass: data.hall_pass };
-        rememberPeriodState(period, state);
-        updateBlockUI(period, state.active, state.duration, state.projected_pay, state.hall_pass);
+        rememberAttendanceState(state);
+        updateAttendanceUI(state.active, state.duration, state.projected_pay, state.hall_pass);
         let message = `${action === "start_work" ? "Start Work" : "Break"} successful`;
         createToast(message);
       } else {
@@ -118,7 +113,7 @@ function performTap(period, action, pin, reason = null) {
     });
 }
 
-// Poll the server every 10 seconds to refresh block status
+// Poll the server every 10 seconds to refresh class-scoped PROD status.
 setInterval(() => {
   fetch("/api/student-status")
     .then(r => {
@@ -131,29 +126,27 @@ setInterval(() => {
     })
     .then(data => {
       if (!data) return; // Session expired, already redirecting
-      if (data.status === 'ok' && data.periods) {
-        Object.keys(data.periods).forEach(period => {
-          const periodData = data.periods[period];
-          rememberPeriodState(period, periodData);
-          updateBlockUI(period, periodData.active, periodData.duration, periodData.projected_pay, periodData.hall_pass);
-        });
+      if (data.status === 'ok' && data.attendance_state) {
+        const state = data.attendance_state;
+        rememberAttendanceState(state);
+        updateAttendanceUI(state.active, state.duration, state.projected_pay, state.hall_pass);
       }
     })
     .catch(err => console.error("Status polling error:", err));
 
 }, 10000);
 
-function updateBlockUI(period, isActive, duration, projectedPay, hallPass = null) {
-  const row = document.querySelector(`[data-block-row="${period}"]`);
+function updateAttendanceUI(isActive, duration, projectedPay, hallPass = null) {
+  const row = document.querySelector(".attendance-state-row");
   if (!row) return;
 
-  const statusCell = row.querySelector(".block-status");
-  const durationCell = row.querySelector(".block-duration");
-  const payCell = row.querySelector(`.block-pay[data-period="${period}"]`);
-  const startWorkBtn = row.querySelector(`#startWork-${period}`);
-  const breakWorkBtn = row.querySelector(`#breakWork-${period}`);
+  const statusCell = row.querySelector(".attendance-status");
+  const durationCell = row.querySelector(".attendance-duration");
+  const payCell = row.querySelector(".attendance-pay");
+  const startWorkBtn = row.querySelector("#startWork");
+  const breakWorkBtn = row.querySelector("#breakWork");
 
-  rememberPeriodState(period, { active: isActive, duration, projected_pay: projectedPay, hall_pass: hallPass });
+  rememberAttendanceState({ active: isActive, duration, projected_pay: projectedPay, hall_pass: hallPass });
 
   statusCell.textContent = isActive ? "Active" : "Inactive";
   statusCell.classList.toggle("text-success", isActive);
@@ -162,14 +155,14 @@ function updateBlockUI(period, isActive, duration, projectedPay, hallPass = null
 
   durationCell.textContent = formatDuration(duration);
   if (payCell) {
-    payCell.textContent = projectedPay.toFixed(2);
+    payCell.textContent = Number(projectedPay || 0).toFixed(2);
   }
 
   if (startWorkBtn) startWorkBtn.disabled = isActive;
   configureBreakButton(breakWorkBtn, isActive, hallPass);
 
   // Handle hall pass overlay
-  updateHallPassOverlay(period, hallPass);
+  updateHallPassOverlay(hallPass);
 }
 
 function configureBreakButton(button, isActive, hallPass) {
@@ -210,8 +203,7 @@ function configureBreakButton(button, isActive, hallPass) {
   button.innerHTML = '<span class="material-symbols-outlined align-bottom me-1">pause_circle</span> Break';
 }
 
-function openBreakChoiceModal(period) {
-  selectedBreakPeriod = period;
+function openBreakChoiceModal() {
   renderBreakDestinations([]);
 
   const modalEl = document.getElementById('breakChoiceModal');
@@ -262,8 +254,7 @@ function renderBreakDestinations(passTypes) {
     button.className = 'btn btn-outline-primary text-start';
     button.textContent = destination;
     button.addEventListener('click', () => {
-      if (!selectedBreakPeriod) return;
-      requestHallPass(selectedBreakPeriod, destination);
+      requestHallPass(destination);
       closeBreakChoiceModal();
     });
     list.appendChild(button);
@@ -284,16 +275,15 @@ document.addEventListener('DOMContentLoaded', () => {
   const doneBtn = document.getElementById('doneForDayBreakBtn');
   if (!doneBtn) return;
   doneBtn.addEventListener('click', () => {
-    if (!selectedBreakPeriod) return;
     const pin = prompt("Enter your PIN to mark done for the day:");
     if (!pin) return;
     closeBreakChoiceModal();
-    performTap(selectedBreakPeriod, 'break', pin, "Done for the day");
+    performTap('break', pin, "Done for the day");
   });
 });
 
-function updateHallPassOverlay(period, hallPass) {
-  const passInfoDisplay = document.getElementById(`hallPassInfo-${period}`);
+function updateHallPassOverlay(hallPass) {
+  const passInfoDisplay = document.getElementById('hallPassInfo');
 
   if (!hallPass || hallPass.status === 'returned') {
     // No active hall pass - hide pass info
@@ -331,7 +321,7 @@ function updateHallPassOverlay(period, hallPass) {
       const button = document.createElement('button');
       button.className = 'btn btn-sm btn-danger mt-1';
       button.textContent = 'Cancel';
-      button.onclick = function () { cancelHallPass(hallPass.id, period); };
+      button.onclick = function () { cancelHallPass(hallPass.id); };
       alertDiv.appendChild(button);
 
       passInfoDisplay.appendChild(alertDiv);
@@ -379,19 +369,19 @@ function updateHallPassOverlay(period, hallPass) {
   }
 }
 
-function refreshUi(period) {
+function refreshUi() {
   fetch("/api/student-status")
     .then(r => r.json())
     .then(statusData => {
-      if (statusData.status === 'ok' && statusData.periods && statusData.periods[period]) {
-        const periodData = statusData.periods[period];
-        rememberPeriodState(period, periodData);
-        updateBlockUI(period, periodData.active, periodData.duration, periodData.projected_pay, periodData.hall_pass);
+      if (statusData.status === 'ok' && statusData.attendance_state) {
+        const state = statusData.attendance_state;
+        rememberAttendanceState(state);
+        updateAttendanceUI(state.active, state.duration, state.projected_pay, state.hall_pass);
       }
     });
 }
 
-function cancelHallPass(passId, period) {
+function cancelHallPass(passId) {
   if (!confirm('Are you sure you want to cancel this hall pass request?')) {
     return;
   }
@@ -404,7 +394,7 @@ function cancelHallPass(passId, period) {
     .then(data => {
       if (data.status === 'success') {
         createToast('Hall pass request cancelled.');
-        refreshUi(period);
+        refreshUi();
       } else {
         createToast(data.message || 'Failed to cancel request.', true);
       }
@@ -415,7 +405,7 @@ function cancelHallPass(passId, period) {
     });
 }
 
-function requestHallPass(period, destination) {
+function requestHallPass(destination) {
   if (!destination || !destination.trim()) {
     return;
   }
@@ -429,7 +419,7 @@ function requestHallPass(period, destination) {
     .then(data => {
       if (data.status === 'success') {
         createToast('Hall pass request sent.');
-        refreshUi(period, true);
+        refreshUi();
       } else {
         createToast(data.message || 'Failed to request hall pass.', true);
       }
@@ -440,7 +430,7 @@ function requestHallPass(period, destination) {
     });
 }
 
-function checkOutHallPass(passId, period) {
+function checkOutHallPass(passId) {
   if (!confirm('Ready to check out? This will mark you as leaving the classroom.')) {
     return;
   }
@@ -454,7 +444,7 @@ function checkOutHallPass(passId, period) {
     .then(data => {
       if (data.status === 'success') {
         createToast(`Checked out for ${data.destination}. Have a safe trip!`);
-        refreshUi(period, true);
+        refreshUi();
       } else {
         createToast(data.message || 'Failed to check out.', true);
       }
@@ -465,7 +455,7 @@ function checkOutHallPass(passId, period) {
     });
 }
 
-function checkInHallPass(passId, period) {
+function checkInHallPass(passId) {
   if (!confirm('Ready to check in? This will mark you as returned to class.')) {
     return;
   }
@@ -479,7 +469,7 @@ function checkInHallPass(passId, period) {
     .then(data => {
       if (data.status === 'success') {
         createToast('Welcome back! You have been checked in.');
-        refreshUi(period, true);
+        refreshUi();
       } else {
         createToast(data.message || 'Failed to check in.', true);
       }

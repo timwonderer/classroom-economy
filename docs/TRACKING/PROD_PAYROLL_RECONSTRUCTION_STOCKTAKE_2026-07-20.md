@@ -150,6 +150,15 @@ rg -n "class_label|payroll_state|unpaid_seconds|projected_pay|attendance_events\
 
 The negative template scan no longer finds block-keyed payroll variables or block-labelled payroll UI in `student_payroll.html`. The positive scan shows a class-scoped view contract backed by canonical `attendance_sessions` and `payroll_event` reads.
 
+Student-dashboard attendance contract check added on 2026-07-22:
+
+```bash
+rg -n "get_all_block_statuses|student_blocks|period_states|period_states_json|unpaid_seconds_per_block|projected_pay_per_block|data-period|data-block-row|block-status|block-duration|block-pay|updateBlockUI|periodStateCache|selectedBreakPeriod|data\\.periods|\\\"periods\\\"" app/routes/student.py app/routes/api.py app/services/attendance_service.py templates/student_dashboard.html static/js/attendance.js app/attendance.py
+rg -n "attendance_state|attendance_state_json|data-action|student-status|api/tap" app/routes/student.py app/routes/api.py templates/student_dashboard.html static/js/attendance.js
+```
+
+The dashboard-specific negative scan no longer finds block/period-shaped attendance state in `student.dashboard`, `/api/tap`, `/api/student-status`, `templates/student_dashboard.html`, `static/js/attendance.js`, or the PROD attendance service. The same broad scan still reports `student_blocks` in the separate student-rent route; that is a different template-audit row and remains outside this dashboard disposition. The positive scan shows the dashboard now receives one `attendance_state` object for the active canonical class; `/api/tap` no longer accepts a client-supplied period; `/api/student-status` returns `attendance_state`; and `get_all_block_statuses` was removed from live PROD service code in favor of `get_class_attendance_status`.
+
 Live schema proof added on 2026-07-22:
 
 ```bash

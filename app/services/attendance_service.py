@@ -137,64 +137,51 @@ def calculate_unpaid_attendance_seconds(seat_id: int, class_id: str, last_payrol
     return _elapsed_seconds(ctx, intervals)
 
 
-def get_all_block_statuses(student, *, class_id: str, payroll_anchor_by_class_id=None, ctx=None):
-    """Return attendance facts for one canonical class scope only."""
+def get_class_attendance_status(student, *, class_id: str, payroll_anchor_utc=None, ctx=None):
+    """Return PROD attendance facts for one canonical class scope."""
     if not class_id:
-        raise ValueError("get_all_block_statuses requires class_id.")
+        raise ValueError("get_class_attendance_status requires class_id.")
     if ctx is None:
-        raise ValueError("get_all_block_statuses requires CanonicalContext.")
+        raise ValueError("get_class_attendance_status requires CanonicalContext.")
 
-    student_user_id = getattr(student, "user_id", None)
-    if student_user_id is None:
-        student_user_id = getattr(student, "id", None)
+    seat_id = getattr(ctx, "seat_id", None) or getattr(student, "id", None)
+    if not seat_id:
+        raise ValueError("get_class_attendance_status requires seat_id.")
 
-    claimed_seats = Seat.query.filter(
-        Seat.user_id == student_user_id,
+    seat = Seat.query.filter(
+        Seat.id == seat_id,
         Seat.class_id == class_id,
         Seat.role == 'student',
         Seat.claimed_at.isnot(None),
-    ).all()
-    student_blocks = [seat.class_economy.section.strip() for seat in claimed_seats if seat.class_economy and seat.class_economy.section]
+    ).first()
+    if seat is None:
+        raise ValueError("Seat is not claimed in the requested class scope.")
 
-    period_states = {}
-    payroll_anchor_by_class_id = payroll_anchor_by_class_id or {}
+    rows = AttendanceSession.query.filter(
+        AttendanceSession.target_seat_id == seat.id,
+        AttendanceSession.class_id == class_id,
+    ).order_by(AttendanceSession.timestamp.asc(), AttendanceSession.id.asc()).all()
+    latest = rows[-1] if rows else None
+    is_active = bool(latest and latest.status == "active")
 
-    for block_original in student_blocks:
-        blk = block_original.upper()
-        seat = next((row for row in claimed_seats if row.class_economy and (row.class_economy.section or "").strip().upper() == blk), None)
-        if not seat:
-            continue
-        seat_id = seat.id
+    day_start_utc, day_end_utc = _current_evaluation_day_bounds(ctx)
+    done = any(
+        row.status == "inactive"
+        and row.reason_code == AttendanceReasonCode.DONE_FOR_DAY.value
+        and day_start_utc <= row.timestamp < day_end_utc
+        for row in rows
+    )
+    duration = calculate_unpaid_attendance_seconds(
+        seat.id,
+        class_id,
+        payroll_anchor_utc,
+        ctx=ctx,
+    )
 
-        rows = AttendanceSession.query.filter(
-            AttendanceSession.target_seat_id == seat_id,
-            AttendanceSession.class_id == class_id,
-        ).order_by(AttendanceSession.timestamp.asc(), AttendanceSession.id.asc()).all()
-        latest = rows[-1] if rows else None
-        is_active = bool(latest and latest.status == "active")
-
-        day_start_utc, day_end_utc = _current_evaluation_day_bounds(ctx)
-        done = any(
-            row.status == "inactive"
-            and row.reason_code == AttendanceReasonCode.DONE_FOR_DAY.value
-            and day_start_utc <= row.timestamp < day_end_utc
-            for row in rows
-        )
-        duration = calculate_unpaid_attendance_seconds(
-            seat_id,
-            class_id,
-            payroll_anchor_by_class_id.get(class_id),
-            ctx=ctx,
-        )
-
-        hall_pass = _derive_hall_pass_state(seat_id, class_id)
-
-        period_states[blk] = {
-            "active": is_active,
-            "done": done,
-            "duration": duration,
-            "projected_pay": None,
-            "hall_pass": hall_pass,
-        }
-
-    return period_states
+    return {
+        "active": is_active,
+        "done": done,
+        "duration": duration,
+        "projected_pay": None,
+        "hall_pass": _derive_hall_pass_state(seat.id, class_id),
+    }

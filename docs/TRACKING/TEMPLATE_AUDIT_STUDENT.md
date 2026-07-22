@@ -69,8 +69,8 @@
 | Variable | Type | Purpose |
 |----------|------|---------|
 | student | Seat | Current student/seat object |
-| student_blocks | list[str] | Class display labels for the current class context |
-| period_states | dict | Per-block tap/attendance state |
+| attendance_state | dict | Class-scoped PROD attendance state projection |
+| attendance_state_json | str | JSON-serialized class-scoped attendance state for `attendance.js` |
 | checking_balance | float | Scoped checking balance |
 | savings_balance | float | Scoped savings balance |
 | recent_transactions | list[Transaction] | Last 5 transactions |
@@ -84,11 +84,13 @@
 |------|-----------|---------|-------------|
 | 2 | `{% import "macros/help.html" as help %}` | macro | [MACRO:help] |
 | 11 | `{{ student_display_first_name }}` | str | route display metadata |
-| 36 | `{{ period_states_json\|safe }}` | str | route (JSON) — REWIRED_READ from canonical `attendance_sessions` state projection |
+| 36 | `{{ attendance_state_json\|safe }}` | str | route (JSON) — REWIRED_READ from canonical class-scoped `attendance_sessions` state projection |
 | 157 | `{{ hall_pass_balance }}` | int | Entitlement projection: grants/purchases minus consumed approved `hall_pass_logs` |
-| 189-221 | `Start Work` and contextual `Break` button + break modal | contextual controls | REWIRED — `Break` opens teacher-configured hall-pass destinations from `HallPassSettings`; destination selection creates ephemeral pending request; `Done for the day` writes `inactive/done_for_day` through `FEAT-PROD-001`; after approval the same button becomes `Leave`, then `Return` after checkout |
+| 189-221 | `Start Work` and contextual `Break` button + break modal | contextual controls | REWIRED — button state is driven by one class-scoped `attendance_state`; `Break` opens teacher-configured hall-pass destinations from `HallPassSettings`; destination selection creates ephemeral pending request; `Done for the day` writes `inactive/done_for_day` through `FEAT-PROD-001`; after approval the same button becomes `Leave`, then `Return` after checkout |
 | 220 | `{{ "%.2f"\|format(checking_balance) }}` | str | route |
 | 359 | `{{ current_class_id\|tojson }}` | JSON str | route + Jinja |
+
+**PROD disposition:** REWIRED_READ_WRITE — Resolved 2026-07-22. `student_dashboard.html`, `student.dashboard`, `/api/tap`, `/api/student-status`, and `static/js/attendance.js` no longer use block/period-shaped attendance keys (`student_blocks`, `period_states`, `period_states_json`, `data-period`, `periods`). The dashboard receives one `attendance_state` object for the active canonical `class_id`; `/api/tap` relies on canonical context instead of a client-supplied period; `/api/student-status` returns `attendance_state`; and the deleted `get_all_block_statuses` service projection was replaced by `get_class_attendance_status`.
 
 ---
 
@@ -496,10 +498,9 @@ Route(s): student.dashboard — GET /student/dashboard — app/routes/student.py
 Variables from route:
 
 Variable	Type	Purpose
-student	Seat (legacy Student compat)	Current student/seat object
-student_blocks	list[str]	Period/block identifiers
-period_states	dict	Per-block tap/attendance state
-period_states_json	str (JSON)	JSON-serialized period states for JS
+student	Seat	Current student/seat object
+attendance_state	dict	Class-scoped PROD attendance state projection
+attendance_state_json	str (JSON)	JSON-serialized class-scoped attendance state for JS
 checking_balance	float	Scoped checking balance
 savings_balance	float	Scoped savings balance
 forecast_interest	float	Projected monthly interest
@@ -518,7 +519,7 @@ Jinja expressions:
 Line	Expression	Expects	Supplied By
 2	{% import "macros/help.html" as help %}	macro module	[MACRO:help]
 11	{{ student_display_first_name }}	str	route display metadata — REWIRED, no `student.display_first_name` dereference
-36	{{ period_states_json|safe }}	str	route — REWIRED_READ from canonical attendance state projection
+36	{{ attendance_state_json|safe }}	str	route — REWIRED_READ from canonical class-scoped attendance state projection
 39	{% if pending_recovery_code %}	truthy	route
 49	{{ pending_recovery_code.recovery_request.expires_at.strftime(...) }}	str	route
 52	{{ url_for('student.verify_recovery', code_id=pending_recovery_code.id) }}	str	[FLASK]
@@ -542,7 +543,7 @@ Line	Expression	Expects	Supplied By
 293	{{ format_utc_iso(t.timestamp) }}	str	[GLOBAL]
 303	{{ url_for('student.report_transaction_issue', transaction_id=t.id) }}	str	[FLASK]
 359	{{ current_class_id|tojson }}	JSON str	route + Jinja builtin
-405	{{ static_url('js/attendance.js') }}	str	[GLOBAL] — REWIRED_CLIENT_JS: contextual `Start Work`, `Break`, `Leave`, and `Return`; no deleted `/api/student-status/reconcile` call
+405	{{ static_url('js/attendance.js') }}	str	[GLOBAL] — REWIRED_CLIENT_JS: contextual `Start Work`, `Break`, `Leave`, and `Return`; no client-supplied period, no deleted `/api/student-status/reconcile` call
 student_shop.html
 Extends: layout_student.html ([LAYOUT:student])
 Route(s): student.shop — GET /student/shop — app/routes/student.py:1519

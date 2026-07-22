@@ -91,7 +91,7 @@ from app.utils.time import (
 )
 
 # Import external modules
-from app.services.attendance_service import calculate_unpaid_attendance_seconds, get_all_block_statuses
+from app.services.attendance_service import calculate_unpaid_attendance_seconds, get_class_attendance_status
 from app.services.ledger_service import (
     create_pending_transaction,
     create_pending_transaction_idempotent,
@@ -2003,16 +2003,9 @@ def handle_tap():
         current_app.logger.warning("TAP ERROR: Missing class_id context for student_id=%s", student_user.id)
         return jsonify({"error": "Unable to resolve class context for this period."}), 400
 
-    class_row = db.session.get(ClassEconomy, class_id)
-    class_periods = []
-    if class_row and isinstance(class_row.section, str) and class_row.section.strip():
-        class_periods = [part.strip() for part in class_row.section.split(",") if part.strip()]
-    block_lookup = {b.upper(): b for b in class_periods}
-    valid_periods = list(block_lookup.keys())
-    period = data.get("period", "").upper()
     action = data.get("action")
 
-    current_app.logger.info(f"TAP DEBUG: valid_periods={valid_periods}, period={period}, action={action}")
+    current_app.logger.info("TAP DEBUG: class_id=%s action=%s", class_id, action)
 
     # Support both old and new action names
     action_map = {
@@ -2022,21 +2015,15 @@ def handle_tap():
         "stop_work": "stop_work"
     }
 
-    if period not in valid_periods or action not in action_map:
-        current_app.logger.warning(f"TAP ERROR: Invalid period or action: period={period}, valid_periods={valid_periods}, action={action}")
-        return jsonify({"error": "Invalid period or action"}), 400
+    if action not in action_map:
+        current_app.logger.warning("TAP ERROR: Invalid action: action=%s", action)
+        return jsonify({"error": "Invalid action"}), 400
 
     normalized_action = action_map[action]
 
     seat_id = student_seat.id if student_seat and student_seat.class_id == class_id else None
     if not seat_id:
         return jsonify({"error": "No seat assigned in this class."}), 403
-
-    seat_row = db.session.get(Seat, seat_id)
-    if seat_row and seat_row.class_economy and seat_row.class_economy.section:
-        seat_period = seat_row.class_economy.section.upper()
-        if seat_period and period != seat_period:
-            return jsonify({"error": "Invalid period or action"}), 400
 
     latest_event = (
         AttendanceSession.query.filter_by(
@@ -2073,7 +2060,7 @@ def handle_tap():
             reason_code=reason_code,
             idempotency_key=f"student_tap:{class_id}:{seat_id}:{normalized_action}:{secrets.token_hex(12)}",
         )
-        current_app.logger.info(f"TAP success - seat {seat_id} {period} {action}")
+        current_app.logger.info("TAP success - seat %s class_id=%s action=%s", seat_id, class_id, action)
     except SQLAlchemyError as e:
         db.session.rollback()
         current_app.logger.error(f"TAP failed for seat {seat_id}: {e}", exc_info=True)
@@ -2104,7 +2091,9 @@ def handle_tap():
         ctx=context,
     )
 
-    rate_per_second = get_pay_rate_for_block(block_lookup.get(period, period), class_id=class_id)
+    class_row = db.session.get(ClassEconomy, class_id)
+    settings_section = class_row.section if class_row and class_row.section else None
+    rate_per_second = get_pay_rate_for_block(settings_section, class_id=class_id)
     projected_pay = duration * rate_per_second
 
     return jsonify({
@@ -2130,16 +2119,13 @@ def student_status():
     if not class_id:
         return jsonify({"status": "error", "message": "Class context unavailable."}), 400
 
-    period_states = get_all_block_statuses(student, class_id=class_id, ctx=context)
-
-    # Convert Decimal values to float for JSON serialization
-    for state in period_states.values():
-        if 'projected_pay' in state and state['projected_pay'] is not None:
-            state['projected_pay'] = float(state['projected_pay'])
+    attendance_state = get_class_attendance_status(student, class_id=class_id, ctx=context)
+    if 'projected_pay' in attendance_state and attendance_state['projected_pay'] is not None:
+        attendance_state['projected_pay'] = float(attendance_state['projected_pay'])
 
     return jsonify({
         "status": "ok",
-        "periods": period_states
+        "attendance_state": attendance_state
     })
 
 

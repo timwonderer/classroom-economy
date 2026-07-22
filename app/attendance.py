@@ -15,7 +15,6 @@ from app.extensions import db
 import pytz
 from app.services.attendance_service import (
     calculate_unpaid_attendance_seconds as _calculate_unpaid_attendance_seconds,
-    get_all_block_statuses as _get_all_block_statuses,
 )
 from app.services.ledger_service import get_last_payroll_time as _get_last_payroll_time
 from app.models import AttendanceReasonCode, AttendanceSession
@@ -155,12 +154,6 @@ def get_session_status(seat_id, class_id):
 
     return is_active, done, duration
 
-
-def get_all_block_statuses(student, *, class_id: str, ctx):
-    """Return block statuses within one canonical class scope."""
-    if not class_id:
-        raise ValueError("get_all_block_statuses requires class_id.")
-    return _get_all_block_statuses(student, class_id=class_id, ctx=ctx)
 
 # -------------------------------------------------------------------
 # BATCH OPTIMIZATION HELPERS

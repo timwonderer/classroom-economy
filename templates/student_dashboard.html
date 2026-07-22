@@ -33,7 +33,7 @@
 <div id="toast-container" class="toast-container position-fixed top-0 end-0 p-3" style="z-index: 1050;"></div>
 
 <!-- Server State for JS -->
-<div id="serverState" style="display:none;">{{ period_states_json|safe }}</div>
+<div id="serverState" style="display:none;">{{ attendance_state_json|safe }}</div>
 
 <!-- Account Recovery Request -->
 {% if pending_recovery_code %}
@@ -143,7 +143,6 @@
 </div>
 
 <!-- Attendance Card -->
-{% if student_blocks %}
 <div class="card border-0 shadow-sm mb-4">
     <div class="card-body p-4">
         <div class="d-flex justify-content-between align-items-center mb-3">
@@ -169,39 +168,36 @@
         </div>
         <div id="queuePreview" class="small text-muted mb-3" style="display: none !important;"></div>
 
-        {% for period in student_blocks %}
-        <div class="block-row" data-block-row="{{ period }}">
+        <div class="attendance-state-row">
             <div class="d-flex justify-content-between align-items-center mb-3 bg-light rounded p-3">
                 <div>
-                    <div class="small text-muted text-uppercase fw-bold mb-1">Period {{ period }}</div>
-                    <span class="block-status badge" style="background-color: #6c757d; color: #ffffff;">Inactive</span>
+                    <div class="small text-muted text-uppercase fw-bold mb-1">Current Class</div>
+                    <span class="attendance-status badge" style="background-color: #6c757d; color: #ffffff;">Inactive</span>
                 </div>
                 <div class="text-end">
                     <small class="text-muted d-block mb-1">Time Today</small>
-                    <span class="block-duration fw-bold fs-5 font-monospace">0h 0m 0s</span>
+                    <span class="attendance-duration fw-bold fs-5 font-monospace">0h 0m 0s</span>
                 </div>
             </div>
 
             <!-- Hall Pass Info Display (Inline) -->
-            <div id="hallPassInfo-{{ period }}" style="display:none;" class="mb-3"></div>
+            <div id="hallPassInfo" style="display:none;" class="mb-3"></div>
 
             <div class="d-grid gap-2 d-flex flex-wrap">
-                <button id="startWork-{{ period }}" class="btn btn-success flex-grow-1 attendance-action-btn py-2 fw-bold"
-                    data-period="{{ period }}" data-action="start_work">
+                <button id="startWork" class="btn btn-success flex-grow-1 attendance-action-btn py-2 fw-bold"
+                    data-action="start_work">
                     <span class="material-symbols-outlined align-bottom me-1">login</span> Start Work
                 </button>
-                <button id="breakWork-{{ period }}" class="btn btn-warning flex-grow-1 attendance-action-btn py-2 fw-bold"
-                    data-period="{{ period }}" data-action="break" disabled>
+                <button id="breakWork" class="btn btn-warning flex-grow-1 attendance-action-btn py-2 fw-bold"
+                    data-action="break" disabled>
                     <span class="material-symbols-outlined align-bottom me-1">pause_circle</span> Break
                 </button>
             </div>
             <!-- Hidden pay cell for JS compatibility -->
-            <span class="block-pay" data-period="{{ period }}" style="display:none;">0.00</span>
+            <span class="attendance-pay" style="display:none;">0.00</span>
         </div>
-        {% endfor %}
     </div>
 </div>
-{% endif %}
 
 <div class="modal fade" id="breakChoiceModal" tabindex="-1" aria-labelledby="breakChoiceModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">

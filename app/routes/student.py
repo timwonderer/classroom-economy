@@ -69,7 +69,7 @@ from app.access import (
     resolve_scope,
     resolve_student_class_switch_scope,
 )
-from app.services.attendance_service import get_all_block_statuses
+from app.services.attendance_service import get_class_attendance_status
 from app.services.ledger_service import (
     apply_monthly_savings_interest as post_monthly_savings_interest,
     get_available_balances,
@@ -853,11 +853,6 @@ def dashboard():
         flash(exc.message, "error")
         return redirect(url_for('student.login'))
 
-    join_code = scope.join_code
-    current_block = (
-        (getattr(scope, "section", None) or "")
-        or (getattr(scope, "block", None) or "")
-    ).strip()
     if not scope.class_id:
         flash("Class context unavailable. Please select a class and retry.", "error")
         return redirect(url_for("student.select_class_context"))
@@ -890,33 +885,13 @@ def dashboard():
     # Calculate forecast interest using Decimal
     forecast_interest = _quantize_currency(savings_balance * Decimal('0.045') / Decimal('12'))
 
-    # FIX: Only show tap in/out status for CURRENT class, not all classes
-    # Get status for only the current block (not all blocks)
-    period_states = get_all_block_statuses(student, class_id=scope.class_id, ctx=scope)
-    # Filter to only current class block
-    current_block_key = current_block.upper() if current_block else ""
-    period_states = {current_block_key: period_states.get(current_block_key, {})} if current_block_key else {}
-    student_blocks = [current_block_key] if current_block_key else []  # Only current block
-
-    # Convert Decimal values to float for JSON serialization
-    for state in period_states.values():
-        if 'projected_pay' in state and state['projected_pay'] is not None:
-            state['projected_pay'] = float(state['projected_pay'])
-
-    period_states_json = json.dumps(period_states, separators=(',', ':'))
-
-    unpaid_seconds_per_block = {
-        blk: state.get("duration", 0)
-        for blk, state in period_states.items()
-    }
-
-    projected_pay_per_block = {
-        blk: (state.get("projected_pay") or 0)
-        for blk, state in period_states.items()
-    }
+    attendance_state = get_class_attendance_status(student, class_id=scope.class_id, ctx=scope)
+    if 'projected_pay' in attendance_state and attendance_state['projected_pay'] is not None:
+        attendance_state['projected_pay'] = float(attendance_state['projected_pay'])
+    attendance_state_json = json.dumps(attendance_state, separators=(',', ':'))
 
     # Compute total unpaid seconds and format as HH:MM:SS for display
-    total_unpaid_seconds = sum(unpaid_seconds_per_block.values())
+    total_unpaid_seconds = attendance_state.get("duration", 0)
     hours, remainder = divmod(total_unpaid_seconds, 3600)
     minutes, seconds = divmod(remainder, 60)
     total_unpaid_elapsed = f"{int(hours):02}:{int(minutes):02}:{int(seconds):02}"
@@ -1012,12 +987,14 @@ def dashboard():
     local_now = dashboard_time.canonical_now
     now_utc = dashboard_time.canonical_now_utc
     # --- DASHBOARD DEBUG LOGGING ---
-    current_app.logger.info(f"DASHBOARD DEBUG: Student {student.id} - Block states:")
-    for blk, blk_state in period_states.items():
-        active = blk_state.get("active")
-        done = blk_state.get("done")
-        seconds = blk_state.get("duration")
-        current_app.logger.info(f"Block {blk} => DB Active={active}, Done={done}, Seconds (today)={seconds}, Total Unpaid Seconds={unpaid_seconds_per_block.get(blk, 0)}")
+    current_app.logger.info(
+        "DASHBOARD DEBUG: Student %s class_id=%s active=%s done=%s seconds=%s",
+        student.id,
+        scope.class_id,
+        attendance_state.get("active"),
+        attendance_state.get("done"),
+        attendance_state.get("duration"),
+    )
 
 
     # --- Calculate remaining session time for frontend timer ---
@@ -1159,9 +1136,8 @@ def dashboard():
         'student_dashboard.html',
         student=student,
         session_remaining_seconds=session_remaining_seconds,
-        student_blocks=student_blocks,
-        period_states=period_states,
-        period_states_json=period_states_json,
+        attendance_state=attendance_state,
+        attendance_state_json=attendance_state_json,
         checking_transactions=checking_transactions,
         savings_transactions=savings_transactions,
         student_items=student_items,
@@ -1171,8 +1147,8 @@ def dashboard():
         recent_deposit=recent_deposit,
         active_insurance=active_insurance,
         rent_status=rent_status,
-        unpaid_seconds_per_block=unpaid_seconds_per_block,
-        projected_pay_per_block={blk: float(pay or 0) for blk, pay in projected_pay_per_block.items()},
+        unpaid_seconds=total_unpaid_seconds,
+        projected_pay=float(attendance_state.get("projected_pay") or 0),
         total_unpaid_elapsed=total_unpaid_elapsed,
         feature_settings=feature_settings,
         # FIX: Pass scoped balances to template instead of using unscoped properties
@@ -1223,10 +1199,8 @@ def payroll():
         if class_row
         else effective_class_id
     )
-    period_states = get_all_block_statuses(student, class_id=class_id, ctx=context)
-
     # Scope payroll display data to the selected class context only.
-    payroll_state = period_states.get(current_section, {})
+    payroll_state = get_class_attendance_status(student, class_id=class_id, ctx=context)
 
     # Existing PayrollSettings persistence is still keyed by section; the page
     # contract remains canonical class_id/class_label only.
