@@ -65,13 +65,14 @@ All domains listed below are bound by the following structural rules:
 - **Key Transitions**: `Update Policy`, `Toggle Feature`.
 - **Primary Schema**: `payroll_settings`, `rent_settings`, `hall_pass_settings`, `banking_settings`, `class_features`.
 
-### 3. Attendance & Hall Passes (`DOM-ATT-001`)
-- **Authority**: Sovereign over time-tracking facts and mobility execution.
+### 3. Productivity & Payroll (`DOM-PROD-001`)
+- **Authority**: Sovereign over productivity facts, hall-pass consumption records, and payroll business events.
 - **State Classification**:
-  - `attendance_sessions`: Authoritative Fact (Tap Log).
-  - `seat_attendance_state`: Operational State (Single-active guard and done-for-day gate).
-- **Key Transitions**: `Tap In/Out`, `Request Pass` (Trigger).
-- **Primary Schema**: `attendance_sessions`, `hall_pass_logs`, `seat_attendance_state`.
+  - `attendance_sessions`: Authoritative append-only productivity fact timeline.
+  - `hall_pass_logs`: Authoritative approved hall-pass consumption records.
+  - `payroll_event`: Authoritative append-only payroll business event records.
+- **Key Transitions**: `Start Work`, `Break`, `Leave`, `Return`, `Approve Hall Pass`, `Run Payroll`, `Manual Credit`, `Reverse Payroll Event`.
+- **Primary Schema**: `attendance_sessions`, `hall_pass_logs`, `payroll_event`.
 
 ### 4. Obligations & Assessments (`DOM-OBL-001`)
 - **Authority**: Sovereign over seat-scoped debt lifecycles and linked entitlements.

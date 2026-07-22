@@ -1276,7 +1276,6 @@ def _hard_delete_class_scope(class_id, canonical_context):
     if sa.inspect(db.engine).has_table("tap_events"):
         TapEvent.query.filter(TapEvent.class_id == class_id).delete(synchronize_session=False)
     HallPassLog.query.filter(HallPassLog.class_id == class_id).delete(synchronize_session=False)
-    SeatAttendanceState.query.filter(SeatAttendanceState.class_id == class_id).delete(synchronize_session=False)
     LedgerBalanceSnapshot.query.filter(LedgerBalanceSnapshot.class_id == class_id).delete(synchronize_session=False)
     Announcement.query.filter(
         Announcement.user_id == user_id,

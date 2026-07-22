@@ -193,15 +193,15 @@ authority in v2 and must not be treated as canonical schema surfaces.
 
 ---
 
-### 3. Attendance & Mobility (DOM-ATT-001)
+### 3. Productivity & Payroll (DOM-PROD-001)
 
-**Purpose:** Record time-based participation and movement.
+**Purpose:** Record productivity participation facts, approved hall-pass consumption, and payroll business events.
 
 **Tables:**
 
 - `attendance_sessions`
 - `hall_pass_logs`
-- `seat_attendance_state`
+- `payroll_event`
 
 ---
 

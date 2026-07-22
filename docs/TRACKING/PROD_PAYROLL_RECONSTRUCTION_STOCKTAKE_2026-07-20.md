@@ -96,7 +96,7 @@ This document tracks:
 | Live schema proof | `UNVERIFIED` | Inspect migrated DB columns for `attendance_sessions`, `hall_pass_logs`, and `payroll_event` before claiming schema completion. |
 | Journey/render verification | `NOT_RUN` | Add route render checks and journeys for start work, hall-pass request/approve/leave/return, run payroll, payroll history, and public verification. |
 | Tests still encoding old shapes | `KNOWN_RESIDUE` | Modernize direct `AttendanceSession` test setup under the current DOM-PROD schema. |
-| Residual non-template cleanup | `KNOWN_RESIDUE` | Class destruction still contains `SeatAttendanceState` cleanup; handle as cleanup, not compatibility. |
+| Residual non-template cleanup | `REWIRED` | Class destruction no longer references `SeatAttendanceState`; the dropped state table is not part of live PROD runtime cleanup. |
 | Route-local view assembly | `ACCEPTED_TEMPORARILY` | Several canonical read models are still assembled in routes; extract page view builders after checklist stability. |
 
 ---
@@ -118,7 +118,7 @@ Stale-pattern scans were also run for the touched surfaces. They no longer find:
 - attendance soft-delete helper;
 - `seat_attendance_state` usage in the touched template-facing PROD surfaces.
 
-One `SeatAttendanceState` reference remains in class destruction cleanup and is tracked as residual cleanup outside this wiring slice.
+The former `SeatAttendanceState` class-destruction cleanup reference has been removed from live runtime code.
 
 ---
 

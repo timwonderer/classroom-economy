@@ -141,11 +141,6 @@ class HallPassLog(Base, TimestampMixin):
     id = sa.Column(sa.Integer, primary_key=True)
 
 
-class SeatAttendanceState(Base, TimestampMixin):
-    __tablename__ = "seat_attendance_state"
-    id = sa.Column(sa.Integer, primary_key=True)
-
-
 class AssessmentEvent(Base, TimestampMixin):
     __tablename__ = "assessment_events"
     id = sa.Column(sa.Integer, primary_key=True)
@@ -301,7 +296,6 @@ __all__ = [
     "BankingSetting",
     "AttendanceSession",
     "HallPassLog",
-    "SeatAttendanceState",
     "AssessmentEvent",
     "ObligationLifecycle",
     "ObligationSatisfaction",
