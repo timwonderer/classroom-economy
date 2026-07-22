@@ -141,6 +141,7 @@ Append-only stream of obligation-linked perks (e.g., hall pass quota).
 - `id` (PK)
 - `seat_id` (FK to seats)
 - `assessment_id` (FK; Nullable)
+- `correlation_id` (String; Nullable - links grants, consumptions, revocations, and downstream consumption records)
 - `trigger_id` (String; Nullable - for consumption idempotency)
 - `quantity_delta` (Integer: +N for Grant, -N for Consumption/Revocation)
 - `type` (Enum: `GRANT`, `CONSUMPTION`, `REVOCATION`)
@@ -152,6 +153,13 @@ Append-only stream of obligation-linked perks (e.g., hall pass quota).
 - **Entitlement Sovereignty**: Obligations owns **obligation-linked** entitlements (e.g., rent-linked hall passes). Store owns **store-purchased** items.
 - **Canonical Business Operations**: Granting, consuming, revoking, adjusting, and evaluating obligation-linked entitlements SHALL occur exclusively through the canonical business operations owned by this domain. FEATs, routes, jobs, migrations, and tests SHALL consume these operations rather than manipulating persistence or deriving business state independently.
 - **Consumption Flow**: Attendance emits `ConsumptionIntent`. Obligations validates against the active grant and records the `CONSUMPTION` event.
+- **Hall-Pass Consumption Linkage**: When a hall-pass entitlement is consumed by
+  PROD, the resulting `hall_pass_logs.correlation_id` SHALL reuse the consumed
+  entitlement grant's `correlation_id`. PROD must not generate a new unrelated
+  correlation for the approved hall-pass row.
+- **Trigger ID Residue**: `trigger_id` currently represents legacy consumption
+  idempotency/source metadata. It is not a substitute for `correlation_id` and
+  must not be used as the cross-domain hall-pass linkage value.
 - **Ledger Coordination**: All assessment and satisfaction events shall emit `PostingRequests` to Ledger via FEAT. Obligations does not own ledger rows.
 
 ## XI. Operational Boundary Authority

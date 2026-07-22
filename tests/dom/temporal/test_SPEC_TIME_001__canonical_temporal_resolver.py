@@ -1,7 +1,7 @@
 """
 Tests for SPEC-TIME-001: Canonical Temporal Resolver.
 
-Covers all 18 required assertions from §XIV of the spec.
+Covers the required assertions from §XIV of the spec.
 """
 
 from datetime import date, datetime, timedelta, timezone
@@ -343,7 +343,26 @@ def test_elapsed_duration_rejects_overlapping():
 
 
 # ---------------------------------------------------------------------------
-# §XIV-16: Payroll-style rounding is NOT performed
+# §XIV-16: shift_timestamp returns authority-local and UTC forms
+# ---------------------------------------------------------------------------
+
+def test_shift_timestamp_returns_local_and_utc_forms():
+    timestamp = _utc(2026, 7, 20, 13, 15, 0)
+    ev = canonical_temporal_resolver(
+        CLASS_LEVEL_EVALUATION,
+        canonical_execution_context=FakeContext("cls-1"),
+        primitive="shift_timestamp",
+        reference_time_utc=REF,
+        timestamp=timestamp,
+        elapsed_seconds=90,
+    )
+
+    assert ev.shifted_timestamp.tzinfo.zone == EASTERN
+    assert ev.shifted_timestamp_utc == _utc(2026, 7, 20, 13, 16, 30)
+
+
+# ---------------------------------------------------------------------------
+# §XIV-18: Payroll-style rounding is NOT performed
 # ---------------------------------------------------------------------------
 
 def test_no_payroll_rounding():

@@ -164,6 +164,7 @@ class ObligationReversal(Base, TimestampMixin):
 class EntitlementEvent(Base, TimestampMixin):
     __tablename__ = "entitlement_events"
     id = sa.Column(sa.Integer, primary_key=True)
+    correlation_id = sa.Column(sa.String(100), nullable=True, index=True)
 
 
 class LedgerTransaction(Base, TimestampMixin):

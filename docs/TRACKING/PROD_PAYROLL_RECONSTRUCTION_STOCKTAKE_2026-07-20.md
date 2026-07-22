@@ -19,6 +19,16 @@ This document tracks:
 - what remains before PROD can be considered complete;
 - what evidence currently supports the checkpoint.
 
+PROD scope is limited to productivity sessions, hall-pass consumption/approval
+records, and payroll business events. Obligation satisfaction, including rent,
+remains OBL-owned. If satisfying an obligation grants a hall pass or another
+item, that grant is entitlement-domain business; PROD only participates later
+when an approved hall pass is consumed into `hall_pass_logs` or when
+`attendance_sessions` changes. When PROD records approved hall-pass
+consumption, `hall_pass_logs.correlation_id` must reuse the consumed entitlement
+grant's `correlation_id`; PROD must not generate a new unrelated hall-pass
+correlation.
+
 ---
 
 ## II. Authoritative Inputs
@@ -101,6 +111,7 @@ This document tracks:
 | Tests still encoding old shapes | `KNOWN_RESIDUE` | Modernize direct `AttendanceSession` test setup under the current DOM-PROD schema. |
 | Residual non-template cleanup | `REWIRED` | Class destruction no longer references `SeatAttendanceState`; the dropped state table is not part of live PROD runtime cleanup. |
 | Route-local view assembly | `ACCEPTED_TEMPORARILY` | Several canonical read models are still assembled in routes; extract page view builders after checklist stability. |
+| Rent / obligation surfaces | `OUT_OF_SCOPE_FOR_PROD` | Rent payment and obligation satisfaction are OBL-owned. Entitlement grants produced by obligation satisfaction are entitlement-domain business; PROD reads only approved hall-pass consumption via `hall_pass_logs` and related attendance changes. Approved hall-pass consumption reuses the consumed entitlement grant's `correlation_id`. |
 
 ---
 
@@ -166,6 +177,26 @@ rg -n "admin_payroll_history|payroll-history|_build_payroll_event_display_rows|P
 ```
 
 The route reads canonical `payroll_event` rows scoped by active `ctx.class_id`, applies class-local date filters through `canonical_temporal_resolver`, and builds display rows through `_build_payroll_event_display_rows`, which resolves Ledger amounts by `correlation_id + target_seat_id`. `admin_payroll_history.html` now guards student-detail links so missing historical seat references render as text instead of generating an ambiguous roster fallback link.
+
+Temporal resolver and PROD FEAT proof refreshed on 2026-07-22 after confirming
+the scheduled daily-limit job depends on `shift_timestamp`:
+
+```bash
+pytest -q tests/dom/temporal/test_SPEC_TIME_001__canonical_temporal_resolver.py
+# 26 passed in 0.55s
+# summary: pytest_result/20260722_pytest_test_SPEC_TIME_001__canonical_temporal_resolver_summary.md
+
+pytest -q tests/dom/prod/test_feat_prod.py
+# 3 passed in 13.59s
+# summary: pytest_result/20260722_pytest_test_feat_prod_summary_15.md
+
+git diff --check
+```
+
+This proof includes `shift_timestamp`, the resolver primitive used by the
+scheduled daily-limit job to write the exact `inactive/done_for_day`
+`AttendanceSession` timestamp through `FEAT-PROD-001` once the class limit is
+reached.
 
 Live schema proof added on 2026-07-22:
 

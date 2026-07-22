@@ -11,7 +11,7 @@ from app.feats.prod import (
     record_payroll_event,
     record_payroll_reversal,
 )
-from app.models import AttendanceSession, HallPassLog, PayrollEvent, PolicyVersion, Transaction
+from app.models import AttendanceSession, EntitlementEvent, HallPassLog, PayrollEvent, PolicyVersion, Transaction
 from app.services.context_resolver import CanonicalContext
 from app.services.entitlement_service import grant_hall_passes, get_hall_pass_balance
 from tests.helpers.classroom_initializer import initialize
@@ -84,7 +84,12 @@ def test_FEAT_PROD_002__records_hall_pass_and_consumes_entitlement(app):
     student = classroom.students[0]
     ctx = _teacher_ctx(classroom)
     with FEATContext("FEAT-BYPASS-LEGACY", correlation_id="bypass_test_hall_pass_seed"):
-        grant_hall_passes(student.seat, 1, trigger_id="seed:hall-pass")
+        grant_hall_passes(
+            student.seat,
+            1,
+            trigger_id="seed:hall-pass",
+            correlation_id="corr-hall-pass-grant-001",
+        )
 
     result = record_hall_pass_log(
         ctx=ctx,
@@ -92,7 +97,6 @@ def test_FEAT_PROD_002__records_hall_pass_and_consumes_entitlement(app):
         approved_by_seat_id=classroom.teacher_seat.id,
         hall_pass_id="HP-002",
         destination="Office",
-        correlation_id="corr-hp-002",
         reason="office",
         idempotency_key="feat:prod:hallpass:002",
         reference_time_utc=datetime(2026, 7, 19, 15, 15, tzinfo=timezone.utc),
@@ -100,12 +104,18 @@ def test_FEAT_PROD_002__records_hall_pass_and_consumes_entitlement(app):
 
     log = db.session.get(HallPassLog, result.hall_pass_log.id)
     assert log is not None
-    assert log.correlation_id == "corr-hp-002"
+    assert log.correlation_id == "corr-hall-pass-grant-001"
     assert log.hall_pass_id == "HP-002"
     assert log.destination == "Office"
     assert log.class_id == classroom.class_id
     assert log.requested_by_seat_id == student.seat.id
     assert log.approved_by_seat_id == classroom.teacher_seat.id
+    consume_event = EntitlementEvent.query.filter_by(
+        seat_id=student.seat.id,
+        class_id=classroom.class_id,
+        quantity_delta=-1,
+    ).one()
+    assert consume_event.correlation_id == log.correlation_id
     assert get_hall_pass_balance(student.seat.id, classroom.class_id) == 0
 
 

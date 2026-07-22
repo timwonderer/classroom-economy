@@ -41,7 +41,7 @@ from app.auth import (
 )
 from app.access import AccessScopeDenied, resolve_scope
 from app.services.context_resolver import ContextResolutionError, resolve_canonical_context
-from app.feats.base import feat_shell, generate_correlation_id
+from app.feats.base import feat_shell
 from app.feats.attendance import (
     rotate_teacher_hall_pass_verify_token as feat_rotate_teacher_hall_pass_verify_token,
     save_hall_pass_setup_config as feat_save_hall_pass_setup_config,
@@ -1043,7 +1043,6 @@ def handle_pending_hall_pass_request(request_id, action):
             approved_by_seat_id=ctx.seat_id,
             hall_pass_id=hall_pass_id,
             destination=pending_request.destination,
-            correlation_id=generate_correlation_id(),
             reason="teacher_approved",
             idempotency_key=f"hall_pass_approve:{ctx.class_id}:{request_id}",
         )

@@ -128,7 +128,7 @@ Fields:
 - `class_id`
 - `requested_by_seat_id`
 - `approved_by_seat_id`
-- `correlation_id` — internal linkage to the entitlement consumption event; if the pass was purchased from the Store domain, the same correlation ID is also carried by the upstream ledger entry
+- `correlation_id` — linkage to the consumed hall-pass entitlement grant; if the pass was purchased from the Store domain, the same correlation ID is also carried by the upstream ledger entry
 - `hall_pass_id` — external hall-pass identifier
 - `destination` — preset by teacher
 
@@ -203,7 +203,7 @@ Rules:
 - MUST require `class_id`, `requested_by_seat_id`, `approved_by_seat_id`, `hall_pass_id`, and `destination`
 - MUST read class-scoped `hall_pass_settings` before granting the pass
 - MUST fail closed when class-scoped hall-pass settings prohibit the requested destination or limit
-- MUST set `correlation_id` to the entitlement consumption event
+- MUST set `correlation_id` to the consumed entitlement grant's `correlation_id`
 - MUST be the authoritative approved hall-pass instruction
 - MUST not record exit time or return time
 - MUST not record hall-pass elapsed time

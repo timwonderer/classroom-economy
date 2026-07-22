@@ -292,7 +292,6 @@ def record_hall_pass_log(
     approved_by_seat_id: int,
     hall_pass_id: str,
     destination: str,
-    correlation_id: str,
     reason: str,
     idempotency_key: str | None = None,
     reference_time_utc=None,
@@ -311,24 +310,27 @@ def record_hall_pass_log(
         reference_time_utc=now,
     )
 
+    if not requested_by_seat_id or not ctx.class_id:
+        raise ValueError("Hall-pass consumption requires requested_by_seat_id and class_id")
+    consume_event, _balance = consume_hall_pass(
+        requested_by_seat_id,
+        ctx.class_id,
+        trigger_id=f"hall_pass_log:{hall_pass_id}",
+    )
+    if not consume_event.correlation_id:
+        raise ValueError("Hall-pass entitlement consumption missing correlation_id")
+
     log = HallPassLog(
         requested_by_seat_id=requested_by_seat_id,
         approved_by_seat_id=approved_by_seat_id,
         class_id=ctx.class_id,
         timestamp=now,
         hall_pass_id=hall_pass_id,
-        correlation_id=correlation_id,
+        correlation_id=consume_event.correlation_id,
         destination=destination,
     )
     db.session.add(log)
     db.session.flush()
-
-    if requested_by_seat_id and ctx.class_id:
-        consume_hall_pass(
-            requested_by_seat_id,
-            ctx.class_id,
-            trigger_id=f"hall_pass_log:{hall_pass_id}",
-        )
 
     return HallPassLogResult(hall_pass_log=log)
 

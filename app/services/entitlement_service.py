@@ -10,7 +10,18 @@ import sqlalchemy as sa
 
 from app.extensions import db
 from app.models import EntitlementEvent, Seat
-from app.utils.time import utc_now
+from app.feats.base import generate_correlation_id
+from app.utils.canonical_temporal_resolver import (
+    SYSTEM_LEVEL_EVALUATION,
+    canonical_temporal_resolver,
+)
+
+
+def _current_utc():
+    return canonical_temporal_resolver(
+        SYSTEM_LEVEL_EVALUATION,
+        primitive="current_time",
+    ).canonical_now_utc
 
 
 def get_hall_pass_balance(seat_id: int, class_id: str) -> int:
@@ -29,16 +40,19 @@ def grant_hall_passes(
     quantity: int,
     *,
     trigger_id: str | None = None,
+    correlation_id: str | None = None,
     event_type: str = "GRANT",
 ) -> int:
     """Grant hall passes by appending an EntitlementEvent. Returns new balance."""
-    now = utc_now()
+    now = _current_utc()
+    grant_correlation_id = correlation_id or generate_correlation_id()
     event = EntitlementEvent(
         seat_id=seat.id,
         class_id=seat.class_id,
         quantity_delta=int(quantity),
         event_type=event_type,
         trigger_id=trigger_id or f"grant_{seat.id}_{now.isoformat()}",
+        correlation_id=grant_correlation_id,
         occurred_at=now,
     )
     db.session.add(event)
@@ -46,20 +60,59 @@ def grant_hall_passes(
     return get_hall_pass_balance(seat.id, seat.class_id)
 
 
-def consume_hall_pass(seat_id: int, class_id: str, *, trigger_id: str) -> int:
-    """Deduct one hall pass by appending a CONSUME EntitlementEvent. Returns new balance."""
-    now = utc_now()
+def _available_hall_pass_grant(seat_id: int, class_id: str) -> EntitlementEvent | None:
+    grants = (
+        EntitlementEvent.query
+        .filter(
+            EntitlementEvent.seat_id == seat_id,
+            EntitlementEvent.class_id == class_id,
+            EntitlementEvent.quantity_delta > 0,
+            EntitlementEvent.correlation_id.isnot(None),
+        )
+        .order_by(EntitlementEvent.occurred_at.asc(), EntitlementEvent.id.asc())
+        .all()
+    )
+    for grant in grants:
+        consumed = (
+            db.session.query(sa.func.coalesce(sa.func.sum(EntitlementEvent.quantity_delta), 0))
+            .filter(
+                EntitlementEvent.seat_id == seat_id,
+                EntitlementEvent.class_id == class_id,
+                EntitlementEvent.correlation_id == grant.correlation_id,
+                EntitlementEvent.quantity_delta < 0,
+            )
+            .scalar()
+            or 0
+        )
+        if int(grant.quantity_delta) + int(consumed) > 0:
+            return grant
+    return None
+
+
+def consume_hall_pass(
+    seat_id: int,
+    class_id: str,
+    *,
+    trigger_id: str,
+) -> tuple[EntitlementEvent, int]:
+    """Consume one hall pass from an existing grant and return (event, balance)."""
+    grant = _available_hall_pass_grant(seat_id, class_id)
+    if grant is None:
+        raise ValueError("No available hall-pass entitlement grant to consume")
+
+    now = _current_utc()
     event = EntitlementEvent(
         seat_id=seat_id,
         class_id=class_id,
         quantity_delta=-1,
         event_type="CONSUME",
         trigger_id=trigger_id,
+        correlation_id=grant.correlation_id,
         occurred_at=now,
     )
     db.session.add(event)
     db.session.flush()
-    return get_hall_pass_balance(seat_id, class_id)
+    return event, get_hall_pass_balance(seat_id, class_id)
 
 
 def adjust_hall_passes(
@@ -74,13 +127,14 @@ def adjust_hall_passes(
     """
     if delta == 0:
         return get_hall_pass_balance(seat.id, seat.class_id)
-    now = utc_now()
+    now = _current_utc()
     event = EntitlementEvent(
         seat_id=seat.id,
         class_id=seat.class_id,
         quantity_delta=int(delta),
         event_type="GRANT" if delta > 0 else "REVOCATION",
         trigger_id=trigger_id or f"adjust_{seat.id}_{now.isoformat()}",
+        correlation_id=generate_correlation_id() if delta > 0 else None,
         occurred_at=now,
     )
     db.session.add(event)
@@ -120,7 +174,7 @@ def reconcile_rent_hall_pass_top_off(
 
     passes_awarded = max(0, delta)
     passes_revoked = max(0, -delta)
-    now = utc_now()
+    now = _current_utc()
 
     event = EntitlementEvent(
         seat_id=seat.id,
@@ -128,6 +182,7 @@ def reconcile_rent_hall_pass_top_off(
         quantity_delta=delta,
         event_type="GRANT" if delta > 0 else "REVOCATION",
         trigger_id=f"rent_top_off_{seat.id}_{now.isoformat()}",
+        correlation_id=generate_correlation_id() if delta > 0 else None,
         occurred_at=now,
     )
     db.session.add(event)

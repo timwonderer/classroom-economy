@@ -149,7 +149,12 @@ def execute_store_purchase(
     created_purchase_ids: list[int] = []
 
     if item.item_type == 'hall_pass':
-        hall_pass_balance = grant_hall_passes(seat, quantity, trigger_id=f"store_purchase_{seat.id}_{purchase_tx.id}")
+        hall_pass_balance = grant_hall_passes(
+            seat,
+            quantity,
+            trigger_id=f"store_purchase_{seat.id}_{purchase_tx.id}",
+            correlation_id=purchase_tx.correlation_id,
+        )
     else:
         created_purchase_ids = store_service.record_standard_purchase_items(
             seat=seat,

@@ -3,6 +3,7 @@ from __future__ import annotations
 from decimal import Decimal
 
 from app.extensions import db
+from app.feats.base import generate_correlation_id
 from app.models import (
     EntitlementEvent,
     ObligationAssessment,
@@ -618,6 +619,7 @@ def record_entitlement_grant(
     class_id: str,
     quantity: int,
     trigger_id: str | None = None,
+    correlation_id: str | None = None,
     assessment_id: int | None = None,
 ) -> EntitlementEvent:
     """Record a GRANT entitlement event for obligation-linked perks (e.g., hall passes from rent)."""
@@ -626,6 +628,7 @@ def record_entitlement_grant(
         class_id=class_id,
         assessment_id=assessment_id,
         trigger_id=trigger_id,
+        correlation_id=correlation_id or generate_correlation_id(),
         quantity_delta=quantity,
         event_type="GRANT",
         occurred_at=utc_now(),

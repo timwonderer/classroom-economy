@@ -1128,6 +1128,7 @@ class EntitlementEvent(db.Model):
     class_id = db.Column(db.String(36), db.ForeignKey('classes.class_id', ondelete='CASCADE'), nullable=False, index=True)
     assessment_id = db.Column(db.Integer, db.ForeignKey('assessment_events.id', ondelete='SET NULL'), nullable=True, index=True)
     trigger_id = db.Column(db.String(200), nullable=True, index=True)  # Idempotency key (INV-OBL-003)
+    correlation_id = db.Column(db.String(100), nullable=True, index=True)
     quantity_delta = db.Column(db.Integer, nullable=False)  # +N grant, -N consumption/revocation
     event_type = db.Column(db.String(20), nullable=False)  # GRANT, CONSUMPTION, REVOCATION
     occurred_at = db.Column(db.DateTime(timezone=True), default=utc_now, nullable=False)
