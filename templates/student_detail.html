@@ -223,9 +223,9 @@
                             <tr>
                                 <td class="fw-bold">Join Code(s):</td>
                                 <td>
-                                    {% for block, code in join_codes.items() %}
+                                    {% for class_label, code in join_codes.items() %}
                                     <div class="mb-1">
-                                        <span class="badge bg-secondary me-1">{{ block }}</span>
+                                        <span class="badge bg-secondary me-1">{{ class_label }}</span>
                                         <span
                                             class="font-monospace fw-bold text-dark bg-light px-2 py-1 rounded border">{{
                                             code }}</span>
@@ -252,9 +252,9 @@
                                     </div>
                                     <div class="col-12">
                                         <div class="small text-muted text-uppercase fw-bold">Join Code(s)</div>
-                                        {% for block, code in join_codes.items() %}
+                                        {% for class_label, code in join_codes.items() %}
                                         <div class="d-flex align-items-center mt-1">
-                                            <span class="badge bg-primary me-2">Block {{ block }}</span>
+                                            <span class="badge bg-primary me-2">{{ class_label }}</span>
                                             <span class="font-monospace fs-5 user-select-all">{{ code }}</span>
                                         </div>
                                         {% endfor %}
@@ -292,9 +292,9 @@
                                     </div>
                                     <div class="col-12">
                                         <div class="small text-muted text-uppercase fw-bold">Join Code(s)</div>
-                                        {% for block, code in join_codes.items() %}
+                                        {% for class_label, code in join_codes.items() %}
                                         <div class="d-flex align-items-center mt-1">
-                                            <span class="badge bg-primary me-2">Block {{ block }}</span>
+                                            <span class="badge bg-primary me-2">{{ class_label }}</span>
                                             <span class="font-monospace fs-5 user-select-all">{{ code }}</span>
                                         </div>
                                         {% endfor %}
@@ -624,20 +624,19 @@
                         <p class="text-muted">Total Earnings</p>
                     </div>
                     <div class="col-md-4 text-center">
-                        <h3 class="text-info">{{ transactions|selectattr('type', 'equalto', 'payroll')|list|length }}
+                        <h3 class="text-info">{{ payroll_event_history|selectattr('type', 'equalto', 'payroll')|list|length }}
                         </h3>
                         <p class="text-muted">Payroll Deposits</p>
                     </div>
                     <div class="col-md-4 text-center">
-                        <h3 class="text-primary">{{ transactions|selectattr('type', 'equalto', 'bonus')|list|length }}
+                        <h3 class="text-primary">{{ payroll_event_history|selectattr('type', 'equalto', 'manual_credit')|list|length }}
                         </h3>
-                        <p class="text-muted">Bonuses Received</p>
+                        <p class="text-muted">Manual Credits</p>
                     </div>
                 </div>
 
                 <h6 class="mb-3">Recent Earnings</h6>
-                {% set earnings = transactions|selectattr('amount', 'gt', 0)|list %}
-                {% if earnings %}
+                {% if payroll_event_history %}
                 <div class="table-responsive">
                     <table class="table table-striped js-sortable">
                         <thead class="table-dark">
@@ -649,21 +648,23 @@
                             </tr>
                         </thead>
                         <tbody>
-                            {% for tx in earnings[:20] %}
+                            {% for event in payroll_event_history[:20] %}
                             <tr>
                                 <td>
-                                    {% if tx.timestamp %}
+                                    {% if event.timestamp %}
                                     <span class="local-timestamp"
-                                        data-timestamp="{{ format_utc_iso(tx.timestamp) }}"></span>
+                                        data-timestamp="{{ format_utc_iso(event.timestamp) }}"></span>
                                     {% else %}
                                     <span class="text-muted">N/A</span>
                                     {% endif %}
                                 </td>
                                 <td>
-                                    <span class="badge bg-info">{{ tx.type|title if tx.type else 'Deposit' }}</span>
+                                    <span class="badge bg-info">{{ event.type|replace('_', ' ')|title if event.type else 'Payroll Event' }}</span>
                                 </td>
-                                <td class="text-success">${{ "%.2f"|format(tx.amount) }}</td>
-                                <td>{{ tx.description or 'N/A' }}</td>
+                                <td class="{% if event.amount < 0 %}text-danger{% else %}text-success{% endif %}">
+                                    ${{ "%.2f"|format(event.amount) }}
+                                </td>
+                                <td>{{ event.notes or 'N/A' }}</td>
                             </tr>
                             {% endfor %}
                         </tbody>

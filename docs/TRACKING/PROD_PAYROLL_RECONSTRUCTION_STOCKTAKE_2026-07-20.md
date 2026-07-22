@@ -70,7 +70,7 @@ This document tracks:
 | Public hall-pass verification | `REWIRED_READ` | Public token resolves teacher-scoped read authority; class dropdown submits `class_id`; name lookup checks seat hashed names and displays `IdentityProfile` only after unique match. |
 | Admin attendance log | `REWIRED_READ` | `/api/attendance/history` reads append-only `AttendanceSession` fields and uses `canonical_temporal_resolver` for class-local filters. |
 | Admin roster bulk Start Work / Break | `REWIRED` | `admin.tap_in_students` / `admin.tap_out_students` call `record_attendance_session` and submit only `seat_ids`; no block or period scope is submitted. |
-| Student detail PROD sections | `PARTIAL` | Attendance summary/history and hall-pass balance are rewired; remaining non-PROD sections are outside this checkpoint. |
+| Student detail PROD sections | `REWIRED_READ` | Attendance summary/history, hall-pass balance, join-code display, and Payroll tab are rewired; Payroll tab reads `payroll_event` rows plus Ledger amount lookup by `correlation_id`, not legacy `Transaction.type` filters. |
 
 ---
 
@@ -95,7 +95,7 @@ This document tracks:
 | Student support attendance issue naming | `REWIRED` | Route/template now expose `attendance_session`; legacy `tap_event` URL/endpoint terminology was removed rather than aliased. |
 | Live schema proof | `VERIFIED` | Local PostgreSQL at Alembic head `f6a7b8c9d0e2` exposes only `attendance_sessions`, `hall_pass_logs`, and `payroll_event` for the PROD table set; `seat_attendance_state` and `tap_events` are absent. |
 | PROD FEAT targeted test proof | `VERIFIED` | `pytest -q tests/dom/prod/test_feat_prod.py` passed 3 tests on 2026-07-22 after fresh migration-chain blockers were removed. |
-| Journey/render verification | `NOT_RUN` | Add route render checks and journeys for start work, hall-pass request/approve/leave/return, run payroll, payroll history, and public verification. |
+| Journey/render verification | `PARTIAL_BLOCKED_BY_STALE_TEST_AUTH` | Existing `student_detail` identity render tests currently redirect at auth setup before template render; add route render checks and journeys for start work, hall-pass request/approve/leave/return, run payroll, payroll history, student detail, and public verification. |
 | Tests still encoding old shapes | `KNOWN_RESIDUE` | Modernize direct `AttendanceSession` test setup under the current DOM-PROD schema. |
 | Residual non-template cleanup | `REWIRED` | Class destruction no longer references `SeatAttendanceState`; the dropped state table is not part of live PROD runtime cleanup. |
 | Route-local view assembly | `ACCEPTED_TEMPORARILY` | Several canonical read models are still assembled in routes; extract page view builders after checklist stability. |
@@ -115,10 +115,20 @@ Targeted PROD FEAT proof added on 2026-07-22:
 
 ```bash
 pytest -q tests/dom/prod/test_feat_prod.py
-# 3 passed in 14.62s
+# 3 passed in 14.26s
 ```
 
 This run also proved that the fresh migration chain reaches Alembic head `f6a7b8c9d0e2` after removing stale migration dependencies on the retired `TapEventReasonCode` enum and already-deleted `student_blocks` table.
+
+Student-detail targeted check added on 2026-07-22:
+
+```bash
+python3 -c "import pathlib; compile(pathlib.Path('app/routes/admin.py').read_text(), 'app/routes/admin.py', 'exec')"
+rg -n "student\\.block|Block \\{\\{|transactions\\|selectattr\\('type', 'equalto', 'payroll'|transactions\\|selectattr\\('type', 'equalto', 'bonus'|student_blocks_settings|tap-entries|block-tap-settings|student-block-settings" templates/student_detail.html -S
+rg -n "payroll_event_history|PayrollEvent.query|join_codes\\[class_display_label\\]" app/routes/admin.py templates/student_detail.html -S
+```
+
+The template-specific scan no longer finds `student.block`, block-labelled join-code rendering, legacy payroll/bonus transaction filters, or deleted tap-management endpoint references in `templates/student_detail.html`. The positive scan shows `student_detail_public` now supplies `payroll_event_history` from `PayrollEvent` and current-class join-code display from `ClassEconomy`; the route no longer supplies a `blocks` variable to this template. Existing `tests/dom/identity/test_admin_tenancy.py` student-detail render checks were run but failed with `302` before template rendering because their auth/session setup is stale; no template error was reached.
 
 Live schema proof added on 2026-07-22:
 

@@ -4324,10 +4324,6 @@ def student_detail_public(actor_public_id):
     # Removed legacy insurance enrollment lookup.
     active_insurance = None
 
-    # Get all blocks for the edit modal
-    all_students = Seat.query.filter(Seat.class_id == class_id).join(IdentityProfile, IdentityProfile.seat_id == Seat.id).all()
-    blocks = sorted({b.strip() for s in all_students for b in (s.block or "").split(',') if b.strip()})
-
     # CRITICAL: Get scoped balances for current class_id + seat_id only.
     scoped_checking_balance = 0
     scoped_savings_balance = 0
@@ -4337,16 +4333,6 @@ def student_detail_public(actor_public_id):
         from app.services.ledger_service import get_available_balance
         scoped_checking_balance = get_available_balance(scoped_seat.id, class_id, 'checking')
         scoped_savings_balance = get_available_balance(scoped_seat.id, class_id, 'savings')
-        scoped_total_earnings = float(
-            db.session.query(sa.func.coalesce(sa.func.sum(Transaction.amount), 0))
-            .filter(
-                Transaction.class_id == class_id,
-                Transaction.amount > 0,
-                Transaction.is_void.is_(False),
-                ~Transaction.description.startswith("Transfer"),
-            )
-            .scalar() or 0
-        )
     else:
         current_app.logger.warning(
             "Missing canonical class/seat scope for student_detail student=%s class_id=%s.",
@@ -4358,22 +4344,39 @@ def student_detail_public(actor_public_id):
     rent_privileges = _get_rent_privileges_for_student(student, class_id, None)
     hall_pass_balance = get_hall_pass_balance(student.id, class_id)
 
-    # CRITICAL: Fetch Join Codes for student's blocks (for Account Recovery display)
+    class_row = scoped_seat.class_economy if scoped_seat and scoped_seat.class_economy else None
+    class_display_label = (
+        (class_row.section or class_row.display_name or class_row.class_id)
+        if class_row
+        else "Current Class"
+    )
+
+    payroll_events = (
+        PayrollEvent.query
+        .filter(
+            PayrollEvent.class_id == class_id,
+            PayrollEvent.target_seat_id == seat_id,
+        )
+        .order_by(PayrollEvent.recorded_at.desc(), PayrollEvent.id.desc())
+        .limit(50)
+        .all()
+    )
+    payroll_event_history = _build_payroll_event_display_rows(
+        ctx=g.canonical_context,
+        payroll_events=payroll_events,
+        class_label=class_display_label,
+    )
+    scoped_total_earnings = float(
+        sum(
+            Decimal(row.get("amount") or 0)
+            for row in payroll_event_history
+        )
+    )
+
+    # CRITICAL: Fetch current class Join Code for Account Recovery display.
     join_codes = {}
-    if student.block:
-        block_parts = [b.strip().upper() for b in student.block.split(',') if b.strip()]
-        if block_parts:
-            class_rows = ClassEconomy.query.filter(
-                ClassEconomy.user_id == user_id,
-                ClassEconomy.class_id.in_(
-                    [cid for cid in _get_class_ids_by_block(g.canonical_context, block_parts).values() if cid]
-                ),
-            ).all()
-            for class_row in class_rows:
-                if class_row.section:
-                    display_join_code = class_row.join_code
-                    if display_join_code:
-                        join_codes[class_row.section] = display_join_code
+    if class_row and class_row.join_code:
+        join_codes[class_display_label] = class_row.join_code
 
     _student_user = db.session.get(User, student.user_id) if student.user_id else None
     reset_code_is_active = bool(
@@ -4392,10 +4395,10 @@ def student_detail_public(actor_public_id):
                          latest_attendance_event=latest_attendance_event,
                          attendance_events=attendance_display_rows,
                          active_insurance=active_insurance,
-                         blocks=blocks,
                          scoped_checking_balance=scoped_checking_balance,
                          scoped_savings_balance=scoped_savings_balance,
                          scoped_total_earnings=scoped_total_earnings,
+                         payroll_event_history=payroll_event_history,
                          hall_pass_balance=hall_pass_balance,
                          current_join_code=None,
                          current_class_id=class_id,

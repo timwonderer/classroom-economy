@@ -590,7 +590,7 @@
 **Extends:** `layout_admin.html`  
 **Route(s):** `admin.student_detail_public` - GET `/admin/students/<actor_public_id>` - [app/routes/admin.py:4211](/Users/timothychang/Documents/GitHub/classroom-economy/app/routes/admin.py:4211), rendered at [app/routes/admin.py:4394](/Users/timothychang/Documents/GitHub/classroom-economy/app/routes/admin.py:4394)
 
-**PROD status:** PARTIAL
+**PROD status:** REWIRED_READ
 
 - Recent attendance summary and history are rewired to canonical `attendance_sessions` display rows.
 - Hall-pass balance display is rewired to the derived entitlement projection (`entitlement` grants/purchases minus consumed approved `hall_pass_logs`) through `hall_pass_balance`; the template no longer dereferences `student.hall_passes`.
@@ -598,6 +598,8 @@
 - Legacy tap-entry management UI was removed; v2 attendance rows are immutable forever facts and have no delete, soft-delete, mark-deleted, or edit/correction surface.
 - If a teacher needs to correct an already-paid attendance outcome, the canonical correction path is payroll reversal, not attendance-row mutation.
 - Legacy `/api/admin/tap-entries/*`, `/api/admin/student-block-settings`, and `/api/admin/block-tap-settings` API paths were deleted after this template stopped referencing them.
+- Resolved 2026-07-22: Payroll tab now reads canonical `payroll_event` rows and Ledger amounts by `correlation_id` through the shared payroll-event display builder instead of filtering legacy `Transaction.type` values.
+- Resolved 2026-07-22: Join-code display now uses the current class label plus `ClassEconomy.join_code`; it no longer derives account-recovery join-code display from `student.block`.
 
 **Variables from route:**
 
@@ -610,11 +612,11 @@
 | `student_items` | `list[StorePurchase]` | Store purchase history |
 | `latest_attendance_event` | object\|None | Attendance summary from canonical `attendance_sessions` |
 | `attendance_events` | `list` | Attendance history display rows from canonical `attendance_sessions` |
+| `payroll_event_history` | `list[dict]` | Payroll event display rows from canonical `payroll_event` plus Ledger amount lookup by `correlation_id` |
 | `active_insurance` | object\|None | Insurance summary |
-| `blocks` | `list[str]` | Class periods for tabs |
 | `scoped_checking_balance` | number | Current checking balance |
 | `scoped_savings_balance` | number | Current savings balance |
-| `scoped_total_earnings` | number | Current total earnings |
+| `scoped_total_earnings` | number | Net total from `payroll_event_history` amounts |
 | `hall_pass_balance` | number | Derived hall-pass entitlement balance |
 | `current_join_code` | `None` | Present for layout consistency |
 | `current_class_id` | `str` | Active class scope |
@@ -632,7 +634,7 @@
 | 99-124 | `rent_privileges` iteration | list | route |
 | 138, 144 | `transactions|length`, `student_items|length` | int | route |
 | 153, 215, 619 | `global_rent_enabled and student.is_rent_enabled` | bool | route/template globals |
-| 190-236, 255-300 | `join_codes.items()` | dict | route |
+| 190-236, 255-300 | `join_codes.items()` | dict | REWIRED_READ from current `ClassEconomy.join_code` keyed by class display label; no `student.block` derivation |
 | 240-277 | `reset_code_is_active`, `student.reset_code`, `student.reset_code_expires_at` | object fields | route |
 | 280-312 | `student.has_completed_setup`, `student.recovery_status` | object fields | route |
 | 325-356 | `latest_attendance_event.*` and `format_utc_iso(...)` | object + `[GLOBAL] format_utc_iso` | REWIRED_READ from canonical `attendance_sessions` display row |
@@ -642,6 +644,6 @@
 | removed | former Manage Tap Entries UI and delete/load actions | Removed UI | COLLAPSED — attendance rows are immutable in v2; correction after payroll is handled by payroll reversal |
 | 567-607 | `attendance_events|sort(...)` and `format_utc_iso(tap.timestamp)` | route / `[GLOBAL] format_utc_iso` | REWIRED_READ from canonical `attendance_sessions` display rows |
 | 619-668 | rent section fields (`student.rent_last_paid`, `student.rent_due_date`, `student.rent_overdue`) | route |
-| 679-732 | earnings summary and filtered transaction lists | route |
+| 679-732 | earnings summary and `payroll_event_history` rows | REWIRED_READ from canonical `payroll_event` plus Ledger amount lookup by `correlation_id`; no legacy `Transaction.type == payroll/bonus` filters |
 | 748-857 | hall-pass edit form / student edit modal | route; hall-pass balance uses `hall_pass_balance`, not `student.hall_passes` |
 | 980 | `student.id` in JS | route |
