@@ -195,7 +195,7 @@ from app.services.balance_service import get_batch_balances_by_class_seat
 from app.services.attendance_service import calculate_unpaid_attendance_seconds as calculate_prod_attendance_seconds
 from app.services.hall_pass_request_queue import list_pending_hall_pass_requests_for_class
 from app.services import access_policy_service, ledger_service, obligations_service
-from app.services.entitlement_service import adjust_hall_passes, get_hall_pass_balance, grant_hall_passes
+from app.services.entitlement_service import get_hall_pass_balance, grant_hall_passes, remove_hall_passes
 from app.services import operational_event_service
 from app.services.ledger_service import get_available_balances
 from app.services.admin_identity_service import (
@@ -4401,23 +4401,39 @@ def student_detail_public(actor_public_id):
                          rent_privileges=rent_privileges)
 
 
-@admin_bp.route('/student/<int:seat_id>/set-hall-passes', methods=['POST'])
+@admin_bp.route('/student/<int:seat_id>/adjust-hall-pass-entitlements', methods=['POST'])
 @admin_required
-def set_hall_passes(seat_id):
-    """Set hall pass balance for a student."""
+@feat_shell("FEAT-ENT-001")
+def adjust_hall_pass_entitlements(seat_id):
+    """Grant or remove hall-pass entitlements for a student."""
     student = db.session.get(Seat, seat_id)
     if not student:
         abort(404)
     if not ClassEconomy.query.filter_by(class_id=student.class_id, user_id=g.canonical_context.user_id).first():
         abort(404)
-    new_balance = request.form.get('hall_passes', type=int)
+    action = (request.form.get('hall_pass_action') or '').strip().lower()
+    quantity = request.form.get('hall_pass_quantity', type=int)
 
-    if new_balance is not None and new_balance >= 0:
-        current = get_hall_pass_balance(student.id, student.class_id)
-        adjust_hall_passes(student, new_balance - current, trigger_id=f"admin_set_{student.id}")
-        flash(f"Successfully updated {(student.identity_profile.full_name if student.identity_profile else str(student.id))}'s hall pass balance to {new_balance}.", "success")
-    else:
-        flash("Invalid hall pass balance provided.", "error")
+    if quantity is None or quantity <= 0 or action not in {"add", "remove"}:
+        flash("Choose Add or Remove and enter a positive hall-pass quantity.", "error")
+        return _redirect_to_student_detail(student.public_id)
+
+    student_name = student.identity_profile.full_name if student.identity_profile else str(student.id)
+    try:
+        if action == "add":
+            new_balance = grant_hall_passes(
+                student,
+                quantity,
+            )
+            flash(f"Granted {quantity} hall pass(es) to {student_name}. New balance: {new_balance}.", "success")
+        else:
+            new_balance = remove_hall_passes(
+                student,
+                quantity,
+            )
+            flash(f"Removed {quantity} hall pass(es) from {student_name}. New balance: {new_balance}.", "success")
+    except ValueError as exc:
+        flash(str(exc), "error")
 
     return _redirect_to_student_detail(student.public_id)
 
@@ -8923,30 +8939,28 @@ def tap_in_students():
         }), 500
 
 
-@admin_bp.route('/students/bulk-update-hall-passes', methods=['POST'])
+@admin_bp.route('/students/bulk-adjust-hall-pass-entitlements', methods=['POST'])
 @admin_required
-def bulk_update_hall_passes():
-    """
-    Admin endpoint to bulk update hall passes for selected students.
-    Supports set, add, and subtract operations.
-    """
+@feat_shell("FEAT-ENT-001")
+def bulk_adjust_hall_pass_entitlements():
+    """Bulk grant or remove hall-pass entitlements for selected students."""
     data = request.get_json()
 
     # Get parameters
     student_ids = data.get('student_ids', [])
-    update_type = data.get('update_type', 'set')  # 'set', 'add', or 'subtract'
+    update_type = data.get('update_type')
     value = data.get('value', 0)
 
     if not student_ids:
         return jsonify({"status": "error", "message": "student_ids must be provided."}), 400
 
-    if update_type not in ['set', 'add', 'subtract']:
-        return jsonify({"status": "error", "message": "update_type must be 'set', 'add', or 'subtract'."}), 400
+    if update_type not in ['add', 'remove']:
+        return jsonify({"status": "error", "message": "update_type must be 'add' or 'remove'."}), 400
 
     try:
         value = int(value)
-        if value < 0:
-            return jsonify({"status": "error", "message": "Value must be non-negative."}), 400
+        if value <= 0:
+            return jsonify({"status": "error", "message": "Value must be positive."}), 400
     except (ValueError, TypeError):
         return jsonify({"status": "error", "message": "Value must be a valid integer."}), 400
 
@@ -8962,33 +8976,39 @@ def bulk_update_hall_passes():
                 errors.append(f"Student {seat_id} not found")
                 continue
 
-            # Update hall passes based on operation type
-            current = get_hall_pass_balance(student.id, student.class_id)
-            if update_type == 'set':
-                delta = value - current
-            elif update_type == 'add':
-                delta = value
-            else:  # subtract
-                delta = -min(value, current)
+            if not ClassEconomy.query.filter_by(class_id=student.class_id, user_id=g.canonical_context.user_id).first():
+                errors.append(f"Student {seat_id} not found")
+                continue
 
-            if delta != 0:
-                adjust_hall_passes(student, delta, trigger_id=f"admin_bulk_{student.id}")
+            if update_type == 'add':
+                grant_hall_passes(
+                    student,
+                    value,
+                )
+            else:
+                try:
+                    remove_hall_passes(
+                        student,
+                        value,
+                    )
+                except ValueError as exc:
+                    errors.append(f"Student {student.id}: {exc}")
+                    continue
 
             updated.append(student.identity_profile.full_name if student.identity_profile else str(student.id))
             new_value = get_hall_pass_balance(student.id, student.class_id)
             current_app.logger.info(
-                f"Admin updated hall passes for student {student.id} ({student.identity_profile.full_name if student.identity_profile else 'unknown'}): {update_type} {value}, new value: {new_value}"
+                f"Admin adjusted hall pass entitlements for student {student.id} ({student.identity_profile.full_name if student.identity_profile else 'unknown'}): {update_type} {value}, new value: {new_value}"
             )
 
         # Commit all updates
         # Build response message
         action_text = {
-            'set': f'set to {value}',
-            'add': f'increased by {value}',
-            'subtract': f'decreased by {value}'
+            'add': f'granted {value}',
+            'remove': f'removed {value}'
         }
 
-        message = f"Successfully updated hall passes for {len(updated)} student(s) ({action_text[update_type]})"
+        message = f"Successfully adjusted hall-pass entitlements for {len(updated)} student(s) ({action_text[update_type]})"
         if errors:
             message += f". {len(errors)} error(s) occurred"
 

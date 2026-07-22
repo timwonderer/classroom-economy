@@ -470,7 +470,7 @@
                             <a class="dropdown-item" href="#"
                               onclick="bulkUpdateHallPass(); return false;">
                               <span class="material-symbols-outlined align-middle fs-6 me-1">confirmation_number</span>
-                              Update Hall Passes
+                              Adjust Hall-Pass Entitlements
                             </a>
                           </li>
                           <li>
@@ -1456,11 +1456,10 @@
 
     const count = studentIds.length;
     const action = prompt(
-      `Update hall passes for ${count} student(s):\n\n` +
+      `Adjust hall-pass entitlements for ${count} student(s):\n\n` +
       `Enter:\n` +
-      `• A number to SET hall passes to that amount (e.g., "5")\n` +
-      `• +N to ADD passes (e.g., "+3")\n` +
-      `• -N to SUBTRACT passes (e.g., "-2")`
+      `• +N to ADD new hall-pass grant events (e.g., "+3")\n` +
+      `• -N to REMOVE passes by reversing unconsumed grant correlations (e.g., "-2")`
     );
 
     if (!action) return;
@@ -1472,20 +1471,20 @@
       updateType = 'add';
       value = parseInt(trimmedAction.substring(1));
     } else if (trimmedAction.startsWith('-')) {
-      updateType = 'subtract';
+      updateType = 'remove';
       value = parseInt(trimmedAction.substring(1));
     } else {
-      updateType = 'set';
-      value = parseInt(trimmedAction);
+      alert('Enter +N to add passes or -N to remove passes. Setting a balance directly is not supported.');
+      return;
     }
 
-    if (isNaN(value) || value < 0) {
-      alert('Invalid input. Please enter a valid number.');
+    if (isNaN(value) || value <= 0) {
+      alert('Invalid input. Please enter a positive number.');
       return;
     }
 
     // Send bulk update request
-    fetch('/admin/students/bulk-update-hall-passes', {
+    fetch('/admin/students/bulk-adjust-hall-pass-entitlements', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -1508,7 +1507,7 @@
       })
       .catch(error => {
         console.error('Error:', error);
-        alert('Network error occurred while updating hall passes.');
+        alert('Network error occurred while adjusting hall-pass entitlements.');
       });
   }
 

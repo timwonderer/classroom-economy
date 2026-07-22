@@ -443,6 +443,7 @@
 | 712, 745, 829, 954 | `csrf_token()` | `str` | `[FLASK]` |
 | 465, 477, 596 | `student_detail_url(student.public_id)` | `str` | `[GLOBAL] student_detail_url` |
 | 609 | `student_hall_pass_balances_by_seat_id.get(student.id, 0)` | number | REWIRED_READ from entitlement projection minus consumed `hall_pass_logs`; scoped by canonical `seat_id`, not block |
+| roster bulk hall-pass action | `bulkUpdateHallPass()` → `/admin/students/bulk-adjust-hall-pass-entitlements` | API action | REWIRED_WRITE to entitlement add/remove semantics only; `set balance` was removed because available hall-pass count is derived from append-only entitlement and consumption events |
 | 526-531, 1614-1690 | Bulk Start Work / Break actions | API POST body with `seat_ids` | REWIRED_WRITE to `admin.tap_in_students` / `admin.tap_out_students`, which call `FEAT-PROD-001`; no block or period scope is submitted |
 | roster/edit rows | `student.identity_profile.first_name`, `.last_name`, `.notes`, `.full_name` | `IdentityProfile` on each current-class `Seat` | route query joins `IdentityProfile`; edit route writes only first name, last name, notes, reset code, and seat claim-name hashes |
 | roster context | `class_display_label`, `current_class_join_code`, `claimed_students`, `unclaimed_seats`, `student_balances_by_seat_id`, `student_rent_privileges_by_seat_id`, `student_hall_pass_balances_by_seat_id`, `timezone_choices`, `pending_class_timezone_confirmations` | route | route |
@@ -645,5 +646,5 @@
 | 567-607 | `attendance_events|sort(...)` and `format_utc_iso(tap.timestamp)` | route / `[GLOBAL] format_utc_iso` | REWIRED_READ from canonical `attendance_sessions` display rows |
 | 619-668 | rent section fields (`student.rent_last_paid`, `student.rent_due_date`, `student.rent_overdue`) | route |
 | 679-732 | earnings summary and `payroll_event_history` rows | REWIRED_READ from canonical `payroll_event` plus Ledger amount lookup by `correlation_id`; no legacy `Transaction.type == payroll/bonus` filters |
-| 748-857 | hall-pass edit form / student edit modal | route; hall-pass balance uses `hall_pass_balance`, not `student.hall_passes` |
+| 748-857 | hall-pass entitlement form / student edit modal | route; hall-pass balance uses `hall_pass_balance`, not `student.hall_passes`; form can add grants or remove unconsumed grant correlations, not set an arbitrary balance |
 | 980 | `student.id` in JS | route |

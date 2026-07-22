@@ -13,7 +13,7 @@ from app.feats.prod import (
 )
 from app.models import AttendanceSession, EntitlementEvent, HallPassLog, PayrollEvent, PolicyVersion, Transaction
 from app.services.context_resolver import CanonicalContext
-from app.services.entitlement_service import grant_hall_passes, get_hall_pass_balance
+from app.services.entitlement_service import grant_hall_passes, get_hall_pass_balance, remove_hall_passes
 from tests.helpers.classroom_initializer import initialize
 
 
@@ -117,6 +117,30 @@ def test_FEAT_PROD_002__records_hall_pass_and_consumes_entitlement(app):
     ).one()
     assert consume_event.correlation_id == log.correlation_id
     assert get_hall_pass_balance(student.seat.id, classroom.class_id) == 0
+
+
+def test_FEAT_PROD_002__removes_hall_passes_by_reversing_grant_correlation(app):
+    classroom = initialize("chemistry_p1", app)
+    student = classroom.students[0]
+    with FEATContext("FEAT-BYPASS-LEGACY", correlation_id="bypass_test_hall_pass_remove_seed"):
+        grant_hall_passes(
+            student.seat,
+            3,
+            correlation_id="corr-hall-pass-removal-grant-001",
+        )
+
+    with FEATContext("FEAT-ENT-001", idempotency_key="feat:ent:hallpass:remove:001"):
+        new_balance = remove_hall_passes(student.seat, 2)
+
+    assert new_balance == 1
+    reversal = EntitlementEvent.query.filter_by(
+        seat_id=student.seat.id,
+        class_id=classroom.class_id,
+        quantity_delta=-2,
+        event_type="REVOCATION",
+    ).one()
+    assert reversal.correlation_id == "corr-hall-pass-removal-grant-001"
+    assert reversal.trigger_id == reversal.correlation_id
 
 
 def test_FEAT_PROD_003__records_payroll_event_and_reversal(app):

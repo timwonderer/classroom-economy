@@ -51,11 +51,79 @@ def grant_hall_passes(
         class_id=seat.class_id,
         quantity_delta=int(quantity),
         event_type=event_type,
-        trigger_id=trigger_id or f"grant_{seat.id}_{now.isoformat()}",
+        trigger_id=trigger_id or grant_correlation_id,
         correlation_id=grant_correlation_id,
         occurred_at=now,
     )
     db.session.add(event)
+    db.session.flush()
+    return get_hall_pass_balance(seat.id, seat.class_id)
+
+
+def remove_hall_passes(
+    seat: Seat,
+    quantity: int,
+) -> int:
+    """Remove available hall passes by reversing unconsumed grant correlations.
+
+    Removal is not a balance overwrite. It appends REVOCATION events against
+    existing grant correlations that still have unconsumed quantity.
+    """
+    quantity_to_remove = int(quantity or 0)
+    if quantity_to_remove <= 0:
+        raise ValueError("Hall-pass removal quantity must be positive")
+
+    current_balance = get_hall_pass_balance(seat.id, seat.class_id)
+    if quantity_to_remove > current_balance:
+        raise ValueError("Cannot remove more hall passes than the current available balance")
+
+    now = _current_utc()
+    remaining = quantity_to_remove
+    grants = (
+        EntitlementEvent.query
+        .filter(
+            EntitlementEvent.seat_id == seat.id,
+            EntitlementEvent.class_id == seat.class_id,
+            EntitlementEvent.quantity_delta > 0,
+            EntitlementEvent.correlation_id.isnot(None),
+        )
+        .order_by(EntitlementEvent.occurred_at.asc(), EntitlementEvent.id.asc())
+        .all()
+    )
+
+    for grant in grants:
+        available_for_correlation = (
+            db.session.query(sa.func.coalesce(sa.func.sum(EntitlementEvent.quantity_delta), 0))
+            .filter(
+                EntitlementEvent.seat_id == seat.id,
+                EntitlementEvent.class_id == seat.class_id,
+                EntitlementEvent.correlation_id == grant.correlation_id,
+            )
+            .scalar()
+            or 0
+        )
+        available_for_correlation = int(available_for_correlation)
+        if available_for_correlation <= 0:
+            continue
+
+        reversal_quantity = min(remaining, available_for_correlation)
+        event = EntitlementEvent(
+            seat_id=seat.id,
+            class_id=seat.class_id,
+            quantity_delta=-reversal_quantity,
+            event_type="REVOCATION",
+            trigger_id=grant.correlation_id,
+            correlation_id=grant.correlation_id,
+            occurred_at=now,
+        )
+        db.session.add(event)
+        remaining -= reversal_quantity
+        if remaining == 0:
+            break
+
+    if remaining:
+        raise ValueError("Unable to find enough unconsumed hall-pass grant correlations to reverse")
+
     db.session.flush()
     return get_hall_pass_balance(seat.id, seat.class_id)
 
@@ -113,33 +181,6 @@ def consume_hall_pass(
     db.session.add(event)
     db.session.flush()
     return event, get_hall_pass_balance(seat_id, class_id)
-
-
-def adjust_hall_passes(
-    seat: Seat,
-    delta: int,
-    *,
-    trigger_id: str | None = None,
-) -> int:
-    """Apply a signed delta (positive = grant, negative = revoke). Returns new balance.
-
-    Used by admin set/add/subtract operations.
-    """
-    if delta == 0:
-        return get_hall_pass_balance(seat.id, seat.class_id)
-    now = _current_utc()
-    event = EntitlementEvent(
-        seat_id=seat.id,
-        class_id=seat.class_id,
-        quantity_delta=int(delta),
-        event_type="GRANT" if delta > 0 else "REVOCATION",
-        trigger_id=trigger_id or f"adjust_{seat.id}_{now.isoformat()}",
-        correlation_id=generate_correlation_id() if delta > 0 else None,
-        occurred_at=now,
-    )
-    db.session.add(event)
-    db.session.flush()
-    return get_hall_pass_balance(seat.id, seat.class_id)
 
 
 def reconcile_rent_hall_pass_top_off(

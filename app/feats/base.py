@@ -111,6 +111,7 @@ FEAT_REGISTRY = {
     "FEAT-SETTINGS-001": {"domain": "Class Configuration", "blast_radius": "MED", "desc": "Class Settings Update"},
     "FEAT-ANLY-001": {"domain": "Analytics", "blast_radius": "LOW", "desc": "Analytics Alert Acknowledgement"},
     "FEAT-ADMN-001": {"domain": "Logistics", "blast_radius": "LOW", "desc": "Bulk administration"},
+    "FEAT-ENT-001": {"domain": "Entitlements", "blast_radius": "MED", "desc": "Hall Pass Entitlement Adjustment"},
     "FEAT-OBL-001": {"domain": "Obligations", "blast_radius": "MED", "desc": "Rent Payment"},
     "FEAT-OBL-002": {"domain": "Obligations", "blast_radius": "MED", "desc": "Scheduled Rent Cycle"},
     "FEAT-OBL-003": {"domain": "Obligations", "blast_radius": "MED", "desc": "Scheduled Insurance Cycle"},

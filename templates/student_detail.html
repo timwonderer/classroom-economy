@@ -691,24 +691,29 @@
                     </div>
                     <div class="card-body">
                         <p><strong>Current Balance:</strong> <span class="badge bg-primary fs-5">{{ hall_pass_balance }}</span></p>
-                        <form action="{{ url_for('admin.set_hall_passes', seat_id=student.id) }}" method="post"
+                        <form action="{{ url_for('admin.adjust_hall_pass_entitlements', seat_id=student.id) }}" method="post"
                             class="row g-3 align-items-end">
                             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                            <div class="col-md-6">
-                                <label for="hall_passes" class="form-label fw-bold">Set New Balance</label>
-                                <input type="number" class="form-control form-control-lg" name="hall_passes"
-                                    id="hall_passes" value="{{ hall_pass_balance }}" min="0" required>
+                            <div class="col-md-4">
+                                <label for="hall_pass_action" class="form-label fw-bold">Action</label>
+                                <select class="form-select form-select-lg" name="hall_pass_action" id="hall_pass_action" required>
+                                    <option value="add">Add Passes</option>
+                                    <option value="remove">Remove Passes</option>
+                                </select>
                             </div>
-                            <div class="col-md-6">
+                            <div class="col-md-4">
+                                <label for="hall_pass_quantity" class="form-label fw-bold">Quantity</label>
+                                <input type="number" class="form-control form-control-lg" name="hall_pass_quantity"
+                                    id="hall_pass_quantity" value="1" min="1" required>
+                            </div>
+                            <div class="col-md-4">
                                 <button type="submit" class="btn btn-warning btn-lg w-100">
-                                    <span class="material-symbols-outlined me-1">check_circle</span>Update Hall Passes
+                                    <span class="material-symbols-outlined me-1">check_circle</span>Apply
                                 </button>
                             </div>
                         </form>
                         <div class="alert alert-info mt-3 mb-0">
-                            <small><span class="material-symbols-outlined me-2">info</span>Other settings can be changed
-                                via the "Edit
-                                Student" button at the top of the page.</small>
+                            <small><span class="material-symbols-outlined me-2">info</span>Hall passes are entitlement events. Add creates new grant events; remove appends reversals against unconsumed grant correlations.</small>
                         </div>
                     </div>
                 </div>
