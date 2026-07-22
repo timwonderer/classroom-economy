@@ -4203,7 +4203,6 @@ def student_detail_public(actor_public_id):
     """View detailed information for a specific student via public-id URL."""
     user_id = g.canonical_context.user_id
     current_class_id = g.canonical_context.class_id
-    print(f"DEBUG: student_detail_public called with {actor_public_id}, user_id={user_id}, current_class_id={current_class_id}")
     nav_payload = _read_student_detail_nav_token(request.args.get('nav', ''))
     if not nav_payload:
         abort(404)
@@ -4227,10 +4226,8 @@ def student_detail_public(actor_public_id):
         .first()
     )
     if not scoped_seat or not scoped_seat.user_id:
-        print(f"DEBUG ABORT: scoped_seat={scoped_seat} user_id={scoped_seat.user_id if scoped_seat else None}")
         abort(404)
     if expected_class_id and str(scoped_seat.class_id or "") != expected_class_id:
-        print(f"DEBUG ABORT: scoped_seat.class_id {scoped_seat.class_id} != expected_class_id {expected_class_id}")
         abort(404)
 
     student = scoped_seat
