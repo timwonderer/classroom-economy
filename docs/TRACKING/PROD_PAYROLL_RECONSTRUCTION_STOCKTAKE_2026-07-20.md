@@ -128,7 +128,7 @@ a new unrelated hall-pass correlation or external pass identifier.
 | Student support attendance issue naming | `REWIRED` | Route/template now expose `attendance_session`; legacy `tap_event` URL/endpoint terminology was removed rather than aliased. |
 | Live schema proof | `VERIFIED` | Local PostgreSQL at Alembic head `f6a7b8c9d0e2` exposes only `attendance_sessions`, `hall_pass_logs`, and `payroll_event` for the PROD table set; `seat_attendance_state` and `tap_events` are absent. |
 | PROD FEAT targeted test proof | `VERIFIED` | `pytest -q tests/dom/prod/test_feat_prod.py` passed 3 tests on 2026-07-22 after fresh migration-chain blockers were removed. |
-| Journey/render verification | `PARTIAL_BLOCKED_BY_STALE_TEST_AUTH` | Existing `student_detail` identity render tests currently redirect at auth setup before template render; add route render checks and journeys for start work, hall-pass request/approve/leave/return, run payroll, payroll history, student detail, and public verification. |
+| Journey/render verification | `PARTIAL` | `student_detail` render/access checks now pass under canonical session setup; add route render checks and journeys for start work, hall-pass request/approve/leave/return, run payroll, payroll history, and public verification. |
 | Tests still encoding old shapes | `KNOWN_RESIDUE` | Continue modernizing direct `AttendanceSession` and `HallPassLog` test setup under the current DOM-PROD schema. `tests/dom/attendance/test_hall_pass_verify.py`, `tests/dom/attendance/test_api_attendance_history.py`, and related attendance API tests still encode legacy PROD predecessor shapes. |
 | Residual non-template cleanup | `REWIRED` | Class destruction no longer references `SeatAttendanceState` or stale `TapEvent` cleanup; dropped PROD predecessor tables are not part of live runtime cleanup. |
 | Student detail PROD sections | `REWIRED` | `student_detail.html` no longer dereferences legacy `Student` display/setup/recovery/tap-event attributes; the route supplies explicit IdentityProfile/User fields and canonical `attendance_events` while hall-pass balance remains an entitlement projection. |
@@ -174,7 +174,14 @@ pytest -q tests/dom/prod/test_feat_prod.py tests/dom/attendance/test_hall_pass_c
 # 11 passed in 64.67s
 ```
 
-The remaining `tests/dom/identity/test_admin_tenancy.py -k student_detail` failures still return `302`/route-contract responses before proving template rendering; that is tracked as stale identity/auth test setup rather than a PROD template dependency failure.
+Student-detail render/access proof added on 2026-07-22:
+
+```bash
+pytest -q tests/dom/identity/test_admin_tenancy.py -k student_detail
+# 4 passed, 4 deselected in 18.38s
+```
+
+The student-detail tests now use canonical session setup and current public-id navigation tokens, so this slice reaches the route/template contract instead of failing at stale auth setup.
 
 Admin-analytics student-detail template contract check added on 2026-07-22:
 
@@ -242,6 +249,39 @@ pytest -q tests/dom/attendance/test_hall_pass_checkout.py
 The older attendance-domain test module still imports deleted legacy helpers and
 fails during collection before exercising these paths. That stale test residue
 is tracked separately from the PROD runtime cleanup.
+
+Hall-pass entitlement identity contract proof added on 2026-07-22:
+
+```bash
+git diff --check
+# (no output - passes)
+
+pytest -q tests/dom/prod/test_feat_prod.py -k hall_pass
+# 3 passed, 2 deselected in 12.09s
+# summary: pytest_result/20260722_pytest_test_feat_prod_summary_39.md
+```
+
+This proof validates:
+- Multiple granted passes from one grant event share one `correlation_id`
+- Each entitlement grant within that event has a unique `entitlement_id`
+- An approved hall-pass log stores one specific consumed `entitlement_id`
+- `hall_pass_logs.hall_pass_id` is the consumed entitlement instance ID, not `correlation_id`
+
+Scheduled daily-limit enforcement test rewrite proof added on 2026-07-22:
+
+```bash
+pytest -q tests/dom/identity/test_admin_tenancy.py -k "student_detail or enforce_daily_limits"
+# 7 passed, 2 deselected in 28.91s
+# summary: pytest_result/20260722_pytest_test_admin_tenancy_summary_6.md
+```
+
+This proof validates:
+- Daily-limit tests no longer call removed `/admin/enforce-daily-limits` helper endpoint
+- Tests call `enforce_daily_limits_job()` directly from `app/scheduled_tasks.py`
+- Active attendance rows are seeded through `record_attendance_session` FEAT
+- Scheduler closure is verified as an immutable inactive `AttendanceSession` row
+- Closure row has `mechanism="system"` and teacher class authority
+- Student-detail render tests now pass with canonical session setup
 
 Admin-payroll-history template contract check added on 2026-07-22:
 

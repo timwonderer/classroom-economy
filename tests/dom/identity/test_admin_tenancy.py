@@ -3,9 +3,46 @@ from itsdangerous import URLSafeTimedSerializer
 
 from app import db
 from app.feats.base import FEATContext
-from app.models import AttendanceSession, ClassEconomy, PayrollSettings, Seat, Transaction, User
+from app.feats.prod import record_attendance_session
+from app.models import AttendanceReasonCode, AttendanceSession, ClassEconomy, PayrollSettings, Seat, Transaction, User
+from app.scheduled_tasks import enforce_daily_limits_job
+from app.services.context_resolver import CanonicalContext
 from tests.helpers.classroom_initializer import initialize
-from tests.dom.identity.helpers import admin_enforce_daily_limits, admin_get_students
+from tests.helpers.canonical_session import set_canonical_context
+from tests.dom.identity.helpers import admin_get_students
+
+
+def _set_admin_context(client, *, teacher_user: User, class_id: str, teacher_seat_id: int) -> None:
+    with client.session_transaction() as sess:
+        set_canonical_context(
+            sess,
+            user_id=teacher_user.id,
+            class_id=class_id,
+            seat_id=teacher_seat_id,
+            role="admin",
+        )
+
+
+def _teacher_context(classroom) -> CanonicalContext:
+    return CanonicalContext(
+        user_id=classroom.teacher_user.id,
+        class_id=classroom.class_id,
+        seat_id=classroom.teacher_seat.id,
+        actor_role="teacher",
+    )
+
+
+def _seed_active_attendance(classroom, seat: Seat, *, started_at: datetime) -> AttendanceSession:
+    result = record_attendance_session(
+        ctx=_teacher_context(classroom),
+        target_seat_id=seat.id,
+        actor_seat_id=classroom.teacher_seat.id,
+        mechanism="teacher",
+        status="active",
+        idempotency_key=f"admin_tenancy:active_seed:{classroom.class_id}:{seat.id}",
+        reference_time_utc=started_at,
+    )
+    return result.session
 
 
 def _build_student_detail_public_url(client, teacher_user: User, student_user: User, *, class_id: str) -> str:
@@ -37,11 +74,12 @@ def test_DOM_IDEN_006__student_listing_scoped_to_teacher(client):
     teacher_a = class_a.teacher_user
     seat_a = class_a.students[0].seat
 
-    with client.session_transaction() as sess:
-        sess["user_id"] = teacher_a.id
-        sess["current_class_id"] = class_a.class_id
-        sess["current_seat_id"] = class_a.teacher_seat.id
-        sess["role"] = "admin"
+    _set_admin_context(
+        client,
+        teacher_user=teacher_a,
+        class_id=class_a.class_id,
+        teacher_seat_id=class_a.teacher_seat.id,
+    )
     response = admin_get_students(client)
     body = response.get_data(as_text=True)
 
@@ -57,12 +95,13 @@ def test_DOM_IDEN_006__student_detail_forbids_cross_tenant_access(client):
     teacher_a = class_a.teacher_user
     seat_b = class_b.students[0].seat
 
-    with client.session_transaction() as sess:
-        sess["user_id"] = teacher_a.id
-        sess["current_class_id"] = class_a.class_id
-        sess["current_seat_id"] = class_a.teacher_seat.id
-        sess["role"] = "admin"
-    response = client.get(f"/admin/students/{seat_b.id}")
+    _set_admin_context(
+        client,
+        teacher_user=teacher_a,
+        class_id=class_a.class_id,
+        teacher_seat_id=class_a.teacher_seat.id,
+    )
+    response = client.get(_build_student_detail_public_url(client, class_b.teacher_user, class_b.students[0].user, class_id=class_b.class_id))
     assert response.status_code == 404
 
 
@@ -79,11 +118,12 @@ def test_DOM_IDEN_007__shared_student_accessible_to_multiple_teachers(client):
     assert shared_seat is not None
     assert seat_b is not None
 
-    with client.session_transaction() as sess:
-        sess["user_id"] = teacher_b.id
-        sess["current_class_id"] = class_b.class_id
-        sess["current_seat_id"] = class_b.teacher_seat.id
-        sess["role"] = "admin"
+    _set_admin_context(
+        client,
+        teacher_user=teacher_b,
+        class_id=class_b.class_id,
+        teacher_seat_id=class_b.teacher_seat.id,
+    )
     list_response = admin_get_students(client)
 
     assert list_response.status_code == 200
@@ -92,7 +132,7 @@ def test_DOM_IDEN_007__shared_student_accessible_to_multiple_teachers(client):
 
 def test_DOM_IDEN_006__student_detail_recovers_from_stale_class_context(client):
     class_a = initialize("chemistry_p1", client.application)
-    class_b = initialize("ap_csp_p3", client.application)
+    class_b = initialize("biology_block_a", client.application)
 
     teacher = class_a.teacher_user
     seat_a = class_a.students[0].seat
@@ -116,11 +156,12 @@ def test_DOM_IDEN_006__student_detail_recovers_from_stale_class_context(client):
         db.session.flush()
 
     db.session.commit()
-    with client.session_transaction() as sess:
-        sess["user_id"] = teacher.id
-        sess["current_class_id"] = class_a.class_id
-        sess["current_seat_id"] = class_a.teacher_seat.id
-        sess["role"] = "admin"
+    _set_admin_context(
+        client,
+        teacher_user=teacher,
+        class_id=class_a.class_id,
+        teacher_seat_id=class_a.teacher_seat.id,
+    )
 
     with FEATContext("FEAT-IDEN-001", idempotency_key="admin_tenancy:stale_class_context"):
         teacher.last_active_class_id = class_b.class_id
@@ -141,105 +182,108 @@ def test_DOM_IDEN_006__student_detail_recovers_from_stale_class_context(client):
 def test_DOM_IDEN_001__enforce_daily_limits_ignores_other_class_activity(client):
     class_a = initialize("chemistry_p1", client.application)
     class_b = initialize("biology_block_a", client.application)
-    teacher_a = class_a.teacher_user
     shared_seat_b = class_b.students[0].seat
+    started_at = datetime.now(timezone.utc) - timedelta(hours=2)
 
     with FEATContext("FEAT-ADMN-001", idempotency_key="admin_tenancy:daily_limit_seed"):
-        db.session.add_all([
-            PayrollSettings(
-                class_id=class_a.class_id,
-                block="A",
-                is_active=True,
-                settings_mode="simple",
-                daily_limit_hours=0.001,
-                pay_rate=0.25,
-                payroll_frequency_days=14,
-            ),
-            AttendanceSession(
-                seat_id=shared_seat_b.id,
-                class_id=class_b.class_id,
-                started_at=datetime.now(timezone.utc) - timedelta(hours=2),
-                start_reason="Start work",
-            ),
-            SeatAttendanceState(
-                seat_id=shared_seat_b.id,
-                class_id=class_b.class_id,
-                is_active=True,
-                last_event_at=datetime.now(timezone.utc) - timedelta(hours=2),
-            ),
-        ])
+        db.session.add(PayrollSettings(
+            class_id=class_a.class_id,
+            block=None,
+            is_active=True,
+            settings_mode="simple",
+            daily_limit_hours=0.001,
+            pay_rate=0.25,
+            payroll_frequency_days=14,
+        ))
         db.session.flush()
+    _seed_active_attendance(class_b, shared_seat_b, started_at=started_at)
     db.session.commit()
 
-    with client.session_transaction() as sess:
-        sess["user_id"] = teacher_a.id
-        sess["current_class_id"] = class_a.class_id
-        sess["current_seat_id"] = class_a.teacher_seat.id
-        sess["role"] = "admin"
-    response = admin_enforce_daily_limits(client)
-    payload = response.get_json()
+    enforce_daily_limits_job()
 
-    assert response.status_code == 200
-    assert payload["status"] == "success"
-    assert payload["checked"] == 0
-    assert payload["tapped_out"] == []
+    rows = AttendanceSession.query.filter_by(
+        target_seat_id=shared_seat_b.id,
+        class_id=class_b.class_id,
+    ).order_by(AttendanceSession.timestamp.asc(), AttendanceSession.id.asc()).all()
+
+    assert len(rows) == 1
+    assert rows[0].status == "active"
+    assert rows[0].timestamp == started_at
+    assert AttendanceSession.query.filter_by(
+        target_seat_id=shared_seat_b.id,
+        class_id=class_b.class_id,
+        status="inactive",
+    ).count() == 0
 
 
 def test_DOM_IDEN_001__enforce_daily_limits_taps_out_when_limit_reached_in_scope(client):
     class_scope = initialize("chemistry_p1", client.application)
-    teacher = class_scope.teacher_user
     seat = class_scope.students[0].seat
+    started_at = datetime.now(timezone.utc) - timedelta(hours=2)
+    daily_limit_hours = 0.001
+    expected_limit_seconds = int(daily_limit_hours * 3600)
 
     with FEATContext("FEAT-ADMN-001", idempotency_key="admin_tenancy:limit_seed"):
-        db.session.add_all([
-            PayrollSettings(
-                class_id=class_scope.class_id,
-                block="A",
-                is_active=True,
-                settings_mode="simple",
-                daily_limit_hours=0.001,
-                pay_rate=0.25,
-                payroll_frequency_days=14,
-            ),
-            AttendanceSession(
-                seat_id=seat.id,
-                class_id=class_scope.class_id,
-                started_at=datetime.now(timezone.utc) - timedelta(hours=2),
-                start_reason="Start work",
-            ),
-            SeatAttendanceState(
-                seat_id=seat.id,
-                class_id=class_scope.class_id,
-                is_active=True,
-                last_event_at=datetime.now(timezone.utc) - timedelta(hours=2),
-            ),
-        ])
+        db.session.add(PayrollSettings(
+            class_id=class_scope.class_id,
+            block=None,
+            is_active=True,
+            settings_mode="simple",
+            daily_limit_hours=daily_limit_hours,
+            pay_rate=0.25,
+            payroll_frequency_days=14,
+        ))
         db.session.flush()
+    _seed_active_attendance(class_scope, seat, started_at=started_at)
     db.session.commit()
 
-    with client.session_transaction() as sess:
-        sess["user_id"] = teacher.id
-        sess["current_class_id"] = class_scope.class_id
-        sess["current_seat_id"] = class_scope.teacher_seat.id
-        sess["role"] = "admin"
-    response = admin_enforce_daily_limits(client)
-    payload = response.get_json()
+    enforce_daily_limits_job()
 
-    assert response.status_code == 200
-    assert payload["status"] == "success"
-    assert payload["checked"] >= 1
-    assert len(payload["tapped_out"]) >= 1
+    rows = AttendanceSession.query.filter_by(
+        target_seat_id=seat.id,
+        class_id=class_scope.class_id,
+    ).order_by(AttendanceSession.timestamp.asc(), AttendanceSession.id.asc()).all()
 
-    att_state = SeatAttendanceState.query.filter_by(seat_id=seat.id, class_id=class_scope.class_id).first()
-    assert att_state is not None
-    assert att_state.done_for_day_date is not None
+    assert len(rows) == 2
+    active_row, inactive_row = rows
+    assert active_row.status == "active"
+    assert inactive_row.status == "inactive"
+    assert inactive_row.actor_seat_id == class_scope.teacher_seat.id
+    assert inactive_row.mechanism == "system"
+    assert inactive_row.reason_code == AttendanceReasonCode.DONE_FOR_DAY.value
+    assert inactive_row.timestamp == started_at + timedelta(seconds=expected_limit_seconds)
 
-    inactive_count = AttendanceSession.query.filter(
-        AttendanceSession.target_seat_id == seat.id,
-        AttendanceSession.class_id == class_scope.class_id,
-        AttendanceSession.end_reason.ilike("Daily limit%"),
-    ).count()
-    assert inactive_count == 1
+
+def test_DOM_IDEN_001__enforce_daily_limits_does_not_duplicate_closed_session(client):
+    class_scope = initialize("chemistry_p1", client.application)
+    seat = class_scope.students[0].seat
+    started_at = datetime.now(timezone.utc) - timedelta(hours=2)
+    daily_limit_hours = 0.001
+
+    with FEATContext("FEAT-ADMN-001", idempotency_key="admin_tenancy:limit_idempotency_seed"):
+        db.session.add(PayrollSettings(
+            class_id=class_scope.class_id,
+            block=None,
+            is_active=True,
+            settings_mode="simple",
+            daily_limit_hours=daily_limit_hours,
+            pay_rate=0.25,
+            payroll_frequency_days=14,
+        ))
+        db.session.flush()
+    _seed_active_attendance(class_scope, seat, started_at=started_at)
+    db.session.commit()
+
+    enforce_daily_limits_job()
+    enforce_daily_limits_job()
+
+    assert AttendanceSession.query.filter_by(
+        target_seat_id=seat.id,
+        class_id=class_scope.class_id,
+        status="inactive",
+        mechanism="system",
+        reason_code=AttendanceReasonCode.DONE_FOR_DAY.value,
+    ).count() == 1
 
 
 def test_DOM_IDEN_006__student_detail_public_url_requires_nav_token(client):
@@ -248,11 +292,12 @@ def test_DOM_IDEN_006__student_detail_public_url_requires_nav_token(client):
     student_user = class_row.students[0].user
     db.session.commit()
 
-    with client.session_transaction() as sess:
-        sess["user_id"] = teacher.id
-        sess["current_class_id"] = class_row.class_id
-        sess["current_seat_id"] = class_row.teacher_seat.id
-        sess["role"] = "admin"
+    _set_admin_context(
+        client,
+        teacher_user=teacher,
+        class_id=class_row.class_id,
+        teacher_seat_id=class_row.teacher_seat.id,
+    )
 
     nav_url = _build_student_detail_public_url(client, teacher, student_user, class_id=class_row.class_id)
     ok = client.get(nav_url, follow_redirects=False)
@@ -277,11 +322,12 @@ def test_DOM_IDEN_007__student_detail_public_id_is_seat_scoped_for_shared_studen
     assert seat_b is not None
     assert seat_a.public_id != seat_b.public_id
 
-    with client.session_transaction() as sess:
-        sess["user_id"] = teacher_a.id
-        sess["current_class_id"] = class_a.class_id
-        sess["current_seat_id"] = class_a.teacher_seat.id
-        sess["role"] = "admin"
+    _set_admin_context(
+        client,
+        teacher_user=teacher_a,
+        class_id=class_a.class_id,
+        teacher_seat_id=class_a.teacher_seat.id,
+    )
     own_detail_url = _build_student_detail_public_url(client, teacher_a, shared_student_user, class_id=class_a.class_id)
     assert f"/admin/students/{seat_a.public_id}?" in own_detail_url
     assert client.get(own_detail_url, follow_redirects=False).status_code == 200
