@@ -159,6 +159,14 @@ rg -n "attendance_state|attendance_state_json|data-action|student-status|api/tap
 
 The dashboard-specific negative scan no longer finds block/period-shaped attendance state in `student.dashboard`, `/api/tap`, `/api/student-status`, `templates/student_dashboard.html`, `static/js/attendance.js`, or the PROD attendance service. The same broad scan still reports `student_blocks` in the separate student-rent route; that is a different template-audit row and remains outside this dashboard disposition. The positive scan shows the dashboard now receives one `attendance_state` object for the active canonical class; `/api/tap` no longer accepts a client-supplied period; `/api/student-status` returns `attendance_state`; and `get_all_block_statuses` was removed from live PROD service code in favor of `get_class_attendance_status`.
 
+Admin-payroll-history template contract check added on 2026-07-22:
+
+```bash
+rg -n "admin_payroll_history|payroll-history|_build_payroll_event_display_rows|PayrollEvent.query.filter\\(PayrollEvent.class_id == ctx.class_id\\)|Transaction\\.type == ['\\\"]payroll|manual_payment|bonus" tests app/routes/admin.py templates/admin_payroll_history.html
+```
+
+The route reads canonical `payroll_event` rows scoped by active `ctx.class_id`, applies class-local date filters through `canonical_temporal_resolver`, and builds display rows through `_build_payroll_event_display_rows`, which resolves Ledger amounts by `correlation_id + target_seat_id`. `admin_payroll_history.html` now guards student-detail links so missing historical seat references render as text instead of generating an ambiguous roster fallback link.
+
 Live schema proof added on 2026-07-22:
 
 ```bash

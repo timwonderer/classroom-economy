@@ -374,6 +374,7 @@ admin_edit_insurance_policy.html
 ### admin_payroll_history.html
 **Extends:** `layout_admin.html`  
 **Route(s):** `admin.payroll_history` — GET `/admin/payroll-history` — [app/routes/admin.py:7293](app/routes/admin.py#L7293)
+**PROD disposition:** REWIRED_READ — Resolved 2026-07-22. The route reads canonical `payroll_event` rows scoped by active `ctx.class_id`, uses `canonical_temporal_resolver` for class-local date filters, and builds template rows through `_build_payroll_event_display_rows`, which joins Ledger amounts by `correlation_id + target_seat_id`. The template no longer depends on legacy transaction type filters for payroll history.
 
 **Variables from route:**
 
@@ -390,6 +391,7 @@ admin_edit_insurance_policy.html
 | 12 | `{{ selected_class_id }}` | str | Route var |
 | 40 | `{% for entry in payroll_history %}` | list[dict] | Route var |
 | 44 | `{{ format_utc_iso(entry.timestamp) }}` | str | [GLOBAL] + loop var |
+| 50 | `{{ student_detail_url(entry.actor_public_id) }}` | str | guarded by `entry.actor_public_id`; missing historical seat references render as plain text |
 
 ---
 
