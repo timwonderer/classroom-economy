@@ -628,6 +628,7 @@ class AttendanceSession(db.Model):
     mechanism = db.Column(db.String(20), nullable=False, default="self")
     status = db.Column(db.String(20), nullable=False, default="active")
     reason_code = db.Column(db.String(32), nullable=False, index=True)
+    # Hall-pass rows carry the consumed entitlement instance id, not the log row id.
     hall_pass_id = db.Column(db.String(100), nullable=True, index=True)
     timestamp = db.Column(db.DateTime(timezone=True), default=utc_now, nullable=False, index=True)
 
@@ -650,6 +651,7 @@ class HallPassLog(db.Model):
     requested_by_seat_id = db.Column(db.Integer, db.ForeignKey('seats.id', ondelete='SET NULL'), nullable=False, index=True)
     approved_by_seat_id = db.Column(db.Integer, db.ForeignKey('seats.id', ondelete='SET NULL'), nullable=False, index=True)
     correlation_id = db.Column(db.String(100), nullable=False, index=True)
+    # FK-style reference to EntitlementEvent.entitlement_id for the consumed pass.
     hall_pass_id = db.Column(db.String(100), nullable=False, unique=False, index=True)
     destination = db.Column(db.String(255), nullable=True)
 

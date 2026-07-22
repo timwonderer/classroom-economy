@@ -125,6 +125,47 @@ def test_FEAT_PROD_002__records_hall_pass_and_consumes_entitlement(app):
     assert get_hall_pass_balance(student.seat.id, classroom.class_id) == 0
 
 
+def test_FEAT_PROD_002__uses_entitlement_identity_not_correlation_as_hall_pass_id(app):
+    classroom = initialize("chemistry_p1", app)
+    student = classroom.students[0]
+    ctx = _teacher_ctx(classroom)
+    source_correlation_id = "corr-hall-pass-bundle-purchase-001"
+    with FEATContext("FEAT-BYPASS-LEGACY", correlation_id="bypass_test_hall_pass_bundle_seed"):
+        grant_hall_passes(
+            student.seat,
+            2,
+            trigger_id="seed:hall-pass-bundle",
+            correlation_id=source_correlation_id,
+        )
+
+    result = record_hall_pass_log(
+        ctx=ctx,
+        requested_by_seat_id=student.seat.id,
+        approved_by_seat_id=classroom.teacher_seat.id,
+        destination="Office",
+        reason="office",
+        idempotency_key="feat:prod:hallpass:bundle:001",
+        reference_time_utc=datetime(2026, 7, 19, 15, 20, tzinfo=timezone.utc),
+    )
+
+    log = db.session.get(HallPassLog, result.hall_pass_log.id)
+    grant_entitlement_ids = {
+        event.entitlement_id
+        for event in EntitlementEvent.query.filter_by(
+            seat_id=student.seat.id,
+            class_id=classroom.class_id,
+            quantity_delta=1,
+            event_type="GRANT",
+        ).all()
+    }
+    assert len(grant_entitlement_ids) == 2
+    assert log is not None
+    assert log.correlation_id == source_correlation_id
+    assert log.hall_pass_id in grant_entitlement_ids
+    assert log.hall_pass_id != source_correlation_id
+    assert get_hall_pass_balance(student.seat.id, classroom.class_id) == 1
+
+
 def test_FEAT_PROD_002__removes_hall_passes_by_reversing_entitlement_identity(app):
     classroom = initialize("chemistry_p1", app)
     student = classroom.students[0]

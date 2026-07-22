@@ -97,7 +97,7 @@ Execution steps:
 3. Derive the canonical request timestamp in class-local time and normalize it to UTC for persistence.
 4. Determine the correct canonical row shape for the requested attendance action.
 5. Populate `actor_seat_id`, `target_seat_id`, `target_user_id`, and `mechanism`.
-6. If the row is hall-pass-related, require the correlated `hall_pass_id`.
+6. If the row is hall-pass-related, require `hall_pass_id` to reference the consumed entitlement instance's `entitlement_id`.
 7. If end-of-day cleanup finds a dangling hall pass, emit `active/start_work` and then `inactive/done_for_day` at the same timestamp.
 8. Persist the append-only row or row sequence to `attendance_sessions`.
 
@@ -138,7 +138,7 @@ All other attendance-related behavior MUST delegate to this FEAT.
 2. Attendance rows are immutable and permanent after insertion.
 3. There is no delete, soft-delete, mark-deleted, or correction-in-place attendance path.
 4. Payroll correction is handled through payroll reversal, not attendance mutation.
-5. Hall-pass attendance rows must correlate to `hall_pass_logs` via `hall_pass_id`.
+5. Hall-pass attendance rows must carry the same consumed entitlement instance `entitlement_id` recorded as `hall_pass_logs.hall_pass_id`.
 6. The FEAT must fail closed if `ctx.class_id` or `ctx.seat_id` cannot be established.
 7. The FEAT must not mutate hall-pass entitlement state.
 8. The FEAT must be the only writer to `attendance_sessions`.

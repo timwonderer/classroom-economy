@@ -113,7 +113,7 @@ Inactive attendance records must include a reason:
 - `done_for_day`
 - `daily_limit`
 
-If the inactive reason is `hall_pass`, the row must carry the hall-pass identifier that correlates to `hall_pass_logs`.
+If the inactive reason is `hall_pass`, the row must carry the specific consumed entitlement instance identifier. This is the same value stored in `hall_pass_logs.hall_pass_id`.
 
 This table does not store hall-pass destination or payroll amount.
 
@@ -295,7 +295,7 @@ Key fields:
 - `status` — `active` | `inactive`
 - `timestamp` — UTC
 - `reason_code` — enumerated: `hall_pass` | `done_for_day` | `start_work`
-- `hall_pass_id` — FK to `hall_pass_logs`, required when `reason_code = hall_pass`
+- `hall_pass_id` — FK-style reference to the specific consumed entitlement instance's `entitlement_id`, required when `reason_code = hall_pass`
 
 
 Rules:
