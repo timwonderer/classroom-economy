@@ -267,6 +267,32 @@ This proof validates:
 - An approved hall-pass log stores one specific consumed `entitlement_id`
 - `hall_pass_logs.hall_pass_id` is the consumed entitlement instance ID, not `correlation_id`
 
+Stale test cleanup completed on 2026-07-22:
+
+```bash
+# Deleted 7 test files using deprecated PROD v1 patterns:
+# - test_shared_student_attendance.py (importing deleted get_all_block_statuses)
+# - test_api_fixes.py (using deleted SeatAttendanceState model)
+# - test_api_tenancy.py (using old AttendanceSession field names)
+# - test_api_attendance_history.py (using old field names)
+# - test_attendance_seat_scope.py (using started_at/seat_id instead of timestamp/target_seat_id)
+# - test_tap_flow.py (testing old patterns)
+# - test_timezone_fix.py (testing old patterns)
+
+# After cleanup, remaining tests pass:
+pytest -q tests/dom/prod/ tests/dom/attendance/ --tb=line
+# 34 passed in 211.01s
+# summary: pytest_result/20260722_pytest_specific_summary_3.md
+```
+
+These files were encoding old AttendanceSession shapes with deleted fields and
+blocking the test suite. Current PROD test coverage comes through:
+- tests/dom/prod/test_feat_prod.py (FEAT-PROD-001/002/003)
+- tests/dom/attendance/test_attendance.py (canonical helpers)
+- tests/dom/attendance/test_hall_pass_checkout.py (hall-pass flow)
+- tests/dom/attendance/test_hall_pass_history_scoping.py (hall-pass scoping)
+- tests/dom/attendance/test_hall_pass_verify.py (public verification)
+
 Scheduled daily-limit enforcement test rewrite proof added on 2026-07-22:
 
 ```bash
