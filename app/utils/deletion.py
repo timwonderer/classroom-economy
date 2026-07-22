@@ -8,6 +8,7 @@ from app.extensions import db
 from app.models import (
     ClassEconomy, Seat, Transaction,
     AttendanceSession, HallPassLog, StorePurchase, RedemptionEvent,
+    PayrollEvent,
     Issue, IssueResolutionAction, Announcement, StoreItem, StoreItemVisibility,
     # RedemptionAuditLog removed — redemption_audit_logs unauthorized; use redemption_events (DOM-STORE-001)
     # StoreItemBlock removed — store_item_blocks unauthorized; use store_item_visibility (DOM-STORE-001)
@@ -25,7 +26,9 @@ def _raise_invariant_violation(message: str) -> None:
 def _assert_class_scope_integrity(class_id: str) -> None:
     scoped_models = (
         ("ledger_transaction", Transaction),
+        ("attendance_sessions", AttendanceSession),
         ("hall_pass_logs", HallPassLog),
+        ("payroll_event", PayrollEvent),
         ("store_purchases", StorePurchase),
         ("redemption_events", RedemptionEvent),
         ("issues", Issue),
@@ -97,7 +100,9 @@ def collapse_universe(class_id: str, reason: str, actor_membership_id: Optional[
         # We explicitly delete the others or things that require manual cleanup first.
 
         # 2. Activity / State Logs & Records (Not all have ON DELETE CASCADE yet)
+        AttendanceSession.query.filter_by(class_id=class_id).delete(synchronize_session=False)
         HallPassLog.query.filter_by(class_id=class_id).delete(synchronize_session=False)
+        PayrollEvent.query.filter_by(class_id=class_id).delete(synchronize_session=False)
         Announcement.query.filter_by(class_id=class_id).delete(synchronize_session=False)
 
         # 3. Issue Data

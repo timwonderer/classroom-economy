@@ -59,11 +59,11 @@ from app.access.scope import Scope
 from app.access import AccessScopeDenied, resolve_scope
 from app.models import (
     ClassEconomy, Transaction, TransactionStatus, AttendanceSession, StoreItem, StorePurchase, StoreItemVisibility,
-    # TapEvent removed — tap_events unauthorized; use attendance_sessions (DOM-ATT-001)
+    # Legacy tap table removed; use attendance_sessions (DOM-PROD-001).
     # StudentItem removed — student_items unauthorized; use store_purchases + redemption_events (DOM-STORE-001)
     # StoreItemBlock removed — store_item_blocks unauthorized; use store_item_visibility (DOM-STORE-001)
     # RedemptionAuditLog / RedemptionAuditAction / RedemptionAuditSource removed — use redemption_events (DOM-STORE-001)
-    # TapEventReasonCode removed — enum for dropped TapEvent
+    # Legacy tap reason enum removed with the legacy tap table.
     RentSettings,
     HallPassLog, HallPassSettings, PayrollSettings,
     BankingSettings,
@@ -1225,7 +1225,9 @@ def _hard_delete_class_scope(class_id, canonical_context):
     invalid_scope_rows = []
     scoped_models = (
         ("ledger_transaction", Transaction),
+        ("attendance_sessions", AttendanceSession),
         ("hall_pass_logs", HallPassLog),
+        ("payroll_event", PayrollEvent),
         ("student_items", StorePurchase),
         ("issues", Issue),
         ("announcements", Announcement),
@@ -1240,12 +1242,6 @@ def _hard_delete_class_scope(class_id, canonical_context):
             ).count()
         if count:
             invalid_scope_rows.append(f"{label}={count}")
-    if sa.inspect(db.engine).has_table("tap_events"):
-        count = db.session.query(TapEvent).filter(
-            TapEvent.class_id.is_(None),
-        ).count()
-        if count:
-            invalid_scope_rows.append(f"tap_events={count}")
     if invalid_scope_rows:
         message = (
             f"class_id NULL rows detected for class_id={class_id}: {', '.join(invalid_scope_rows)}"
@@ -1285,9 +1281,9 @@ def _hard_delete_class_scope(class_id, canonical_context):
         RedemptionEvent.purchase_id.in_(sa.select(store_purchase_ids_subq))
     ).delete(synchronize_session=False)
     StorePurchase.query.filter(StorePurchase.class_id == class_id).delete(synchronize_session=False)
-    if sa.inspect(db.engine).has_table("tap_events"):
-        TapEvent.query.filter(TapEvent.class_id == class_id).delete(synchronize_session=False)
+    AttendanceSession.query.filter(AttendanceSession.class_id == class_id).delete(synchronize_session=False)
     HallPassLog.query.filter(HallPassLog.class_id == class_id).delete(synchronize_session=False)
+    PayrollEvent.query.filter(PayrollEvent.class_id == class_id).delete(synchronize_session=False)
     LedgerBalanceSnapshot.query.filter(LedgerBalanceSnapshot.class_id == class_id).delete(synchronize_session=False)
     Announcement.query.filter(
         Announcement.user_id == user_id,
@@ -4249,7 +4245,7 @@ def student_detail_public(actor_public_id):
         AttendanceSession.class_id == class_id,
     )
 
-    # Attendance context (replaces deprecated TapEvent backend).
+    # Attendance context uses the canonical PROD session backend.
     # Fetch last rent payment
     rent_query = Transaction.query.filter(tx_scope, Transaction.type == "rent")
     latest_rent = rent_query.order_by(Transaction.timestamp.desc()).first()

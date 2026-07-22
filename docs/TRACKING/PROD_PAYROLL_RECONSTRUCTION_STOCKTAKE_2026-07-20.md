@@ -85,6 +85,7 @@ correlation.
 | Student payroll page class-scope contract | `REWIRED_READ` | `student_payroll.html` no longer receives block-keyed maps; it renders the active canonical class through `class_label`, `payroll_state`, `unpaid_seconds`, `projected_pay`, and canonical `attendance_events`. |
 | Analytics participation PROD read | `REWIRED_READ` | `AnalyticsEngine.calculate_participation_rate` now reads canonical `AttendanceSession.target_seat_id` and `timestamp`; legacy `seat_id`, `started_at`, and `is_deleted` assumptions were removed. |
 | Student removal PROD cleanup | `REWIRED_DELETE` | Teacher-scoped student removal deletes PROD rows by target `seat_id` constrained to the seat's `class_id`; whole-class deletion remains scoped by `class_id` only. Cleanup targets `attendance_sessions.target_seat_id`, `hall_pass_logs.requested_by_seat_id`, and `payroll_event.target_seat_id`. |
+| Class destruction PROD cleanup | `REWIRED_DELETE` | Whole-class deletion deletes the full PROD table set by `class_id`: `attendance_sessions`, `hall_pass_logs`, and `payroll_event`. Stale `TapEvent` cleanup is removed from the class-collapse path. |
 
 ---
 
@@ -111,7 +112,7 @@ correlation.
 | PROD FEAT targeted test proof | `VERIFIED` | `pytest -q tests/dom/prod/test_feat_prod.py` passed 3 tests on 2026-07-22 after fresh migration-chain blockers were removed. |
 | Journey/render verification | `PARTIAL_BLOCKED_BY_STALE_TEST_AUTH` | Existing `student_detail` identity render tests currently redirect at auth setup before template render; add route render checks and journeys for start work, hall-pass request/approve/leave/return, run payroll, payroll history, student detail, and public verification. |
 | Tests still encoding old shapes | `KNOWN_RESIDUE` | Modernize direct `AttendanceSession` test setup under the current DOM-PROD schema. |
-| Residual non-template cleanup | `REWIRED` | Class destruction no longer references `SeatAttendanceState`; the dropped state table is not part of live PROD runtime cleanup. |
+| Residual non-template cleanup | `REWIRED` | Class destruction no longer references `SeatAttendanceState` or stale `TapEvent` cleanup; dropped PROD predecessor tables are not part of live runtime cleanup. |
 | Route-local view assembly | `ACCEPTED_TEMPORARILY` | Several canonical read models are still assembled in routes; extract page view builders after checklist stability. |
 | Rent / obligation surfaces | `OUT_OF_SCOPE_FOR_PROD` | Rent payment and obligation satisfaction are OBL-owned. Entitlement grants produced by obligation satisfaction are entitlement-domain business; PROD reads only approved hall-pass consumption via `hall_pass_logs` and related attendance changes. Approved hall-pass consumption reuses the consumed entitlement grant's `correlation_id`. |
 
@@ -181,10 +182,14 @@ rg -n "AttendanceSession\\.seat_id|HallPassLog\\.seat_id|PayrollEvent\\.seat_id|
 rg -n "from app\\.utils\\.time|utc_now\\(|datetime\\.now|datetime\\.utcnow|total_seconds\\(" app/attendance.py
 # no matches
 
+rg -n "TapEvent|tap_events|SeatAttendanceState|seat_attendance_state|DOM-ATT" app/routes/admin.py app/utils/deletion.py app/utils/student_deletion.py
+# no matches
+
 python3 -m py_compile app/attendance.py app/utils/analytics_engine.py app/utils/student_deletion.py
+python3 -m py_compile app/routes/admin.py app/utils/deletion.py app/utils/student_deletion.py
 
 pytest -q tests/dom/prod/test_feat_prod.py
-# 3 passed in 13.81s
+# 3 passed in 13.82s
 ```
 
 The older attendance-domain test module still imports deleted legacy helpers and
@@ -249,6 +254,9 @@ Stale-pattern scans were also run for the touched surfaces. They no longer find:
 - `seat_attendance_state` usage in the touched template-facing PROD surfaces.
 
 The former `SeatAttendanceState` class-destruction cleanup reference has been removed from live runtime code.
+Class destruction now explicitly deletes `attendance_sessions`, `hall_pass_logs`,
+and `payroll_event` by `class_id`; teacher-scoped student removal remains
+target-seat scoped inside the relevant class.
 
 ---
 
