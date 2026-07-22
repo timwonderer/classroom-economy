@@ -39,6 +39,56 @@ def calculate_unpaid_attendance_seconds(seat_id, class_id, last_payroll_time):
     )
 
 
+def _calculate_active_seconds_for_range(*, seat_id, class_id, start_utc, end_utc):
+    """Derive active intervals from append-only attendance rows and measure them."""
+    rows = (
+        AttendanceSession.query.filter(
+            AttendanceSession.target_seat_id == seat_id,
+            AttendanceSession.class_id == class_id,
+            AttendanceSession.timestamp < end_utc,
+        )
+        .order_by(AttendanceSession.timestamp.asc(), AttendanceSession.id.asc())
+        .all()
+    )
+    now_evaluation = canonical_temporal_resolver(
+        CLASS_LEVEL_EVALUATION,
+        canonical_execution_context=SimpleNamespace(class_id=class_id),
+        primitive="current_time",
+    )
+    now_utc = min(now_evaluation.canonical_now_utc, end_utc)
+    intervals = []
+    active_start = None
+    for row in rows:
+        timestamp = ensure_utc(row.timestamp)
+        if row.status == "active":
+            active_start = timestamp
+            continue
+        if row.status == "inactive" and active_start is not None:
+            interval_start = max(active_start, start_utc)
+            interval_end = min(timestamp, end_utc)
+            if interval_end >= interval_start:
+                intervals.append((interval_start, interval_end))
+            active_start = None
+
+    if active_start is not None and now_utc >= start_utc:
+        interval_start = max(active_start, start_utc)
+        interval_end = min(now_utc, end_utc)
+        if interval_end >= interval_start:
+            intervals.append((interval_start, interval_end))
+
+    if not intervals:
+        return 0
+
+    evaluation = canonical_temporal_resolver(
+        CLASS_LEVEL_EVALUATION,
+        canonical_execution_context=SimpleNamespace(class_id=class_id),
+        primitive="elapsed_duration",
+        intervals=intervals,
+        reference_time_utc=now_utc,
+    )
+    return int(evaluation.elapsed_seconds)
+
+
 def calculate_period_attendance(seat_id, class_id, date):
     """
     Calculates total attendance seconds for a seat in a class
@@ -53,25 +103,12 @@ def calculate_period_attendance(seat_id, class_id, date):
     start_utc = datetime.combine(date, datetime.min.time(), tzinfo=timezone.utc)
     end_utc = start_utc + timedelta(days=1)
 
-    start_db = normalize_for_db(start_utc)
-    end_db = normalize_for_db(end_utc)
-
-    sessions = AttendanceSession.query.filter(
-        AttendanceSession.target_seat_id == seat_id,
-        AttendanceSession.class_id == class_id,
-        AttendanceSession.started_at < end_db,
-        sa.or_(AttendanceSession.ended_at.is_(None), AttendanceSession.ended_at > start_db),
-    ).all()
-
-    total_seconds = 0
-    now_utc = utc_now()
-    for session in sessions:
-        start_time = max(ensure_utc(session.started_at), start_utc)
-        end_time = ensure_utc(session.ended_at) if session.ended_at else now_utc
-        end_time = min(end_time, end_utc)
-        if end_time > start_time:
-            total_seconds += (end_time - start_time).total_seconds()
-    return int(total_seconds)
+    return _calculate_active_seconds_for_range(
+        seat_id=seat_id,
+        class_id=class_id,
+        start_utc=start_utc,
+        end_utc=end_utc,
+    )
 
 
 def calculate_period_attendance_utc_range(seat_id, class_id, start_utc, end_utc):
@@ -91,25 +128,12 @@ def calculate_period_attendance_utc_range(seat_id, class_id, start_utc, end_utc)
     if not seat_id or not class_id:
         raise ValueError("calculate_period_attendance_utc_range requires seat_id and class_id.")
 
-    start_db = normalize_for_db(start_utc)
-    end_db = normalize_for_db(end_utc)
-
-    sessions = AttendanceSession.query.filter(
-        AttendanceSession.target_seat_id == seat_id,
-        AttendanceSession.class_id == class_id,
-        AttendanceSession.started_at < end_db,
-        sa.or_(AttendanceSession.ended_at.is_(None), AttendanceSession.ended_at > start_db),
-    ).all()
-
-    total_seconds = 0
-    now_utc = utc_now()
-    for session in sessions:
-        start_time = max(ensure_utc(session.started_at), start_utc)
-        end_time = ensure_utc(session.ended_at) if session.ended_at else now_utc
-        end_time = min(end_time, end_utc)
-        if end_time > start_time:
-            total_seconds += (end_time - start_time).total_seconds()
-    return int(total_seconds)
+    return _calculate_active_seconds_for_range(
+        seat_id=seat_id,
+        class_id=class_id,
+        start_utc=ensure_utc(start_utc),
+        end_utc=ensure_utc(end_utc),
+    )
 
 
 def get_session_status(seat_id, class_id):
@@ -179,48 +203,19 @@ def get_batch_attendance_events(seat_ids, min_anchor, allowed_class_ids):
         AttendanceSession.class_id.in_(allowed_class_ids),
     )
 
-    if min_anchor_utc:
-        query = query.filter(
-            sa.or_(
-                AttendanceSession.started_at > min_anchor_utc,
-                AttendanceSession.ended_at.is_(None),
-                AttendanceSession.ended_at > min_anchor_utc,
-            )
-        )
-
-    sessions = query.order_by(AttendanceSession.started_at.asc(), AttendanceSession.id.asc()).all()
+    sessions = query.order_by(AttendanceSession.timestamp.asc(), AttendanceSession.id.asc()).all()
 
     grouped = {}
     for session in sessions:
-        start_time = ensure_utc(session.started_at)
-        end_time = ensure_utc(session.ended_at) if session.ended_at else None
-
-        if min_anchor_utc:
-            if end_time is not None and end_time <= min_anchor_utc:
-                continue
-            active_at = max(start_time, min_anchor_utc)
-        else:
-            active_at = start_time
-
         key = (session.target_seat_id, session.class_id)
         grouped.setdefault(key, []).append(
             SimpleNamespace(
                 seat_id=session.target_seat_id,
                 class_id=session.class_id,
-                status="active",
-                timestamp=active_at,
+                status=session.status,
+                timestamp=ensure_utc(session.timestamp),
             )
         )
-
-        if end_time and (not min_anchor_utc or end_time > min_anchor_utc):
-            grouped[key].append(
-                SimpleNamespace(
-                    seat_id=session.target_seat_id,
-                    class_id=session.class_id,
-                    status="inactive",
-                    timestamp=end_time,
-                )
-            )
 
     for events in grouped.values():
         events.sort(key=lambda event: (ensure_utc(event.timestamp), 0 if event.status == "active" else 1))

@@ -83,6 +83,8 @@ correlation.
 | Student detail PROD sections | `REWIRED_READ` | Attendance summary/history, hall-pass balance, join-code display, and Payroll tab are rewired; Payroll tab reads `payroll_event` rows plus Ledger amount lookup by `correlation_id`, not legacy `Transaction.type` filters. |
 | Admin payroll page class-scope contract | `REWIRED_READ_WRITE` | `admin_payroll.html` no longer exposes block-shaped template filters or reads `Seat.block`; history and manual-credit selection use canonical `class_id` view rows while Run Payroll and manual credit remain wired through `FEAT-PROD-*`. |
 | Student payroll page class-scope contract | `REWIRED_READ` | `student_payroll.html` no longer receives block-keyed maps; it renders the active canonical class through `class_label`, `payroll_state`, `unpaid_seconds`, `projected_pay`, and canonical `attendance_events`. |
+| Analytics participation PROD read | `REWIRED_READ` | `AnalyticsEngine.calculate_participation_rate` now reads canonical `AttendanceSession.target_seat_id` and `timestamp`; legacy `seat_id`, `started_at`, and `is_deleted` assumptions were removed. |
+| Student removal PROD cleanup | `REWIRED_DELETE` | Teacher-scoped student removal deletes PROD rows by the target seat in that class; whole-class deletion remains scoped by `class_id`. Seat-scoped cleanup targets `attendance_sessions.target_seat_id`, `hall_pass_logs.requested_by_seat_id`, and `payroll_event.target_seat_id`. |
 
 ---
 
@@ -169,6 +171,22 @@ rg -n "attendance_state|attendance_state_json|data-action|student-status|api/tap
 ```
 
 The dashboard-specific negative scan no longer finds block/period-shaped attendance state in `student.dashboard`, `/api/tap`, `/api/student-status`, `templates/student_dashboard.html`, `static/js/attendance.js`, or the PROD attendance service. The same broad scan still reports `student_blocks` in the separate student-rent route; that is a different template-audit row and remains outside this dashboard disposition. The positive scan shows the dashboard now receives one `attendance_state` object for the active canonical class; `/api/tap` no longer accepts a client-supplied period; `/api/student-status` returns `attendance_state`; and `get_all_block_statuses` was removed from live PROD service code in favor of `get_class_attendance_status`.
+
+PROD runtime cleanup proof added on 2026-07-22:
+
+```bash
+rg -n "AttendanceSession\\.seat_id|HallPassLog\\.seat_id|PayrollEvent\\.seat_id|AttendanceSession\\.started_at|AttendanceSession\\.ended_at|AttendanceSession\\.is_deleted" app/attendance.py app/utils/analytics_engine.py app/utils/student_deletion.py app/payroll.py app/routes/admin.py app/routes/api.py app/routes/student.py
+# no matches
+
+python3 -m py_compile app/attendance.py app/utils/analytics_engine.py app/utils/student_deletion.py
+
+pytest -q tests/dom/prod/test_feat_prod.py
+# 3 passed in 13.71s
+```
+
+The older attendance-domain test module still imports deleted legacy helpers and
+fails during collection before exercising these paths. That stale test residue
+is tracked separately from the PROD runtime cleanup.
 
 Admin-payroll-history template contract check added on 2026-07-22:
 

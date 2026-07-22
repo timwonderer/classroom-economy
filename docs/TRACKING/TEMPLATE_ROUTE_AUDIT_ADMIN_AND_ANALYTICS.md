@@ -65,7 +65,7 @@
 | 68-77 | `{% for alert in alerts %} ... {% if alert.alert_key == ... %}` | Alert collection | Route kwarg `alerts` |
 | 108 | `{% if snapshot.participation_rate >= 70 %}...{% endif %}` | Numeric rate | `snapshot` |
 | 109 | `{{ "%.1f"|format(snapshot.participation_rate) }}%` | Numeric rate | `snapshot` |
-| 111 | `{{ snapshot.active_students }} of {{ snapshot.total_students }}` | Counts | `snapshot` |
+| 111 | `{{ snapshot.active_students }} of {{ snapshot.total_students }}` | Counts | `snapshot` — REWIRED_READ from canonical `AttendanceSession.target_seat_id` + `timestamp`; no legacy `seat_id`, `started_at`, or soft-delete attendance fields |
 | 114-127 | `{% if snapshot.participation_trend %}...{% endif %}` | Trend string | `snapshot` |
 | 132-167 | `alert_lookup.participation.*` expressions | Alert attrs (`why_it_matters`, `severity`, `what_changed`, `acknowledged_at`, `suggested_action`, `id`) | Derived from `alerts` |
 | 146 | `{{ url_for('analytics.acknowledge_alert', alert_id=alert_lookup.participation.id) }}` | Endpoint `analytics.acknowledge_alert` | [FLASK] `url_for()` |

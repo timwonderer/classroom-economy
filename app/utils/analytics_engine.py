@@ -204,12 +204,11 @@ class AnalyticsEngine:
                 active_seat_ids.add(seat_id)
         
         att_seat_rows = (
-            AttendanceSession.query.with_entities(AttendanceSession.seat_id)
+            AttendanceSession.query.with_entities(AttendanceSession.target_seat_id)
             .filter(
                 AttendanceSession.class_id == self.class_id,
-                AttendanceSession.started_at >= window_start,
-                AttendanceSession.started_at < window_end,
-                AttendanceSession.is_deleted.is_(False),
+                AttendanceSession.timestamp >= window_start,
+                AttendanceSession.timestamp < window_end,
             )
             .distinct()
             .all()

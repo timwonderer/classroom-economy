@@ -13,6 +13,7 @@ from app.models import (
     RedemptionEvent,
     StorePurchase,
     AttendanceSession,
+    PayrollEvent,
     Transaction,
     Seat,
     IdentityProfile,
@@ -20,16 +21,12 @@ from app.models import (
 from app.services.recovery_service import delete_recovery_codes_for_seat
 
 
-def _collect_related_ids(student_id):
+def _collect_related_ids_for_seats(seat_ids_for_student):
     """Materialize dependent record IDs once for downstream delete/update queries."""
-    seat_ids_for_student = [
-        row[0]
-        for row in (
-            db.session.query(Seat.id)
-            .filter(Seat.user_id == student_id)
-            .all()
-        )
-    ]
+    seat_ids_for_student = list(seat_ids_for_student or [])
+    if not seat_ids_for_student:
+        return [], [], [], []
+
     store_purchase_ids = [
         row[0]
         for row in (
@@ -53,6 +50,19 @@ def _collect_related_ids(student_id):
         .all()
     ]
     return store_purchase_ids, issue_ids, tx_ids, seat_ids_for_student
+
+
+def _collect_related_ids(student_id):
+    """Materialize dependent record IDs once for downstream delete/update queries."""
+    seat_ids_for_student = [
+        row[0]
+        for row in (
+            db.session.query(Seat.id)
+            .filter(Seat.user_id == student_id)
+            .all()
+        )
+    ]
+    return _collect_related_ids_for_seats(seat_ids_for_student)
 
 
 def _unclaim_all_seats_for_student(student_id):
@@ -132,9 +142,15 @@ def _delete_student_scoped_rows(student_id, store_purchase_ids, issue_ids, tx_id
     if tx_ids:
         Transaction.query.filter(Transaction.id.in_(tx_ids)).delete(synchronize_session=False)
     if seat_ids_for_student:
-        AttendanceSession.query.filter(AttendanceSession.seat_id.in_(seat_ids_for_student)).delete(synchronize_session=False)
-    if seat_ids_for_student:
-        HallPassLog.query.filter(HallPassLog.seat_id.in_(seat_ids_for_student)).delete(synchronize_session=False)
+        AttendanceSession.query.filter(
+            AttendanceSession.target_seat_id.in_(seat_ids_for_student)
+        ).delete(synchronize_session=False)
+        HallPassLog.query.filter(
+            HallPassLog.requested_by_seat_id.in_(seat_ids_for_student)
+        ).delete(synchronize_session=False)
+        PayrollEvent.query.filter(
+            PayrollEvent.target_seat_id.in_(seat_ids_for_student)
+        ).delete(synchronize_session=False)
     if seat_ids:
         LedgerBalanceSnapshot.query.filter(LedgerBalanceSnapshot.seat_id.in_(seat_ids)).delete(synchronize_session=False)
 
@@ -168,7 +184,9 @@ def remove_student_from_teacher_scope(seat_id, user_id):
         return False
 
     student_user_id = seat.user_id
-    store_purchase_ids, issue_ids, tx_ids, seat_ids = _collect_related_ids(student_user_id)
+    scoped_store_purchase_ids, scoped_issue_ids, scoped_tx_ids, scoped_seat_ids = (
+        _collect_related_ids_for_seats([seat_id])
+    )
     teacher_class_ids = sa.select(ClassEconomy.class_id).where(ClassEconomy.user_id == user_id)
     Seat.query.filter(
         Seat.id == seat_id,
@@ -182,8 +200,18 @@ def remove_student_from_teacher_scope(seat_id, user_id):
     )
     remaining_links = db.session.query(Seat.id).filter(Seat.user_id == student_user_id).all()
     if remaining_links:
+        _clear_cross_transaction_refs(scoped_tx_ids)
+        _delete_student_scoped_rows(
+            student_user_id,
+            scoped_store_purchase_ids,
+            scoped_issue_ids,
+            scoped_tx_ids,
+            scoped_seat_ids,
+            seat_ids_for_student=scoped_seat_ids,
+        )
         return False
 
+    store_purchase_ids, issue_ids, tx_ids, seat_ids = _collect_related_ids_for_seats(scoped_seat_ids)
     _clear_cross_transaction_refs(tx_ids)
     _delete_student_scoped_rows(
         student_user_id,
