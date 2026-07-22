@@ -30,7 +30,7 @@ def enforce_daily_limits_job():
     )
 
     logger = logging.getLogger('scheduled_tasks')
-    logger.info("Starting scheduled auto tap-out enforcement job")
+    logger.info("Starting scheduled daily-limit enforcement job")
 
     try:
         events = (
@@ -50,7 +50,7 @@ def enforce_daily_limits_job():
             rows_by_scope.setdefault((event.class_id, event.target_seat_id), []).append(event)
 
         checked_count = 0
-        tapped_out_count = 0
+        closed_count = 0
 
         def _active_intervals_for_day(rows, *, day_start_utc, now_utc):
             intervals = []
@@ -190,9 +190,9 @@ def enforce_daily_limits_job():
                             reference_time_utc=close_at_utc,
                         )
 
-                        tapped_out_count += 1
+                        closed_count += 1
                         logger.info(
-                            "Auto-tapped out seat %s in class %s at %s",
+                            "Closed daily-limit attendance session for seat %s in class %s at %s",
                             seat_id,
                             class_id,
                             close_at_utc,
@@ -206,11 +206,15 @@ def enforce_daily_limits_job():
                         exc_info=True,
                     )
                     continue
-        logger.info(f"Auto tap-out job completed. Checked {checked_count} active seats, tapped out {tapped_out_count}")
+        logger.info(
+            "Daily-limit enforcement job completed. Checked %s active seats, closed %s sessions",
+            checked_count,
+            closed_count,
+        )
 
     except Exception as e:
         db.session.rollback()
-        logger.error(f"Auto tap-out job failed: {e}", exc_info=True)
+        logger.error(f"Daily-limit enforcement job failed: {e}", exc_info=True)
 
 
 @feat_shell("FEAT-OPS-001")
@@ -543,7 +547,7 @@ def init_scheduled_tasks(app):
             run_audit_invariant_check_job()
 
     if not scheduler.running:
-        # Add the auto tap-out enforcement job to run every hour
+        # Add the daily-limit enforcement job to run every hour
         scheduler.add_job(
             func=run_enforce_daily_limits,
             trigger='interval',
@@ -602,7 +606,7 @@ def init_scheduled_tasks(app):
 
         scheduler.start()
         logger.info(
-            "Scheduled tasks initialized: auto tap-out (hourly), "
+            "Scheduled tasks initialized: daily-limit enforcement (hourly), "
             "database maintenance (2 AM UTC), rent cycles (hourly), "
             "insurance cycles (hourly), "
             "audit invariant check (3 AM UTC)"

@@ -1,4 +1,3 @@
-from datetime import datetime, timezone, timedelta
 from types import SimpleNamespace
 from app.services.attendance_service import (
     calculate_unpaid_attendance_seconds as _calculate_unpaid_attendance_seconds,
@@ -101,15 +100,17 @@ def calculate_period_attendance(seat_id, class_id, date):
     if not seat_id or not class_id:
         raise ValueError("calculate_period_attendance requires seat_id and class_id.")
 
-    # Build UTC range for the specified date
-    start_utc = datetime.combine(date, datetime.min.time(), tzinfo=timezone.utc)
-    end_utc = start_utc + timedelta(days=1)
+    bounds = canonical_temporal_resolver(
+        SYSTEM_LEVEL_EVALUATION,
+        primitive="evaluation_day_boundaries",
+        evaluation_date=date,
+    )
 
     return _calculate_active_seconds_for_range(
         seat_id=seat_id,
         class_id=class_id,
-        start_utc=start_utc,
-        end_utc=end_utc,
+        start_utc=bounds.boundary_start_utc,
+        end_utc=bounds.boundary_end_utc,
     )
 
 

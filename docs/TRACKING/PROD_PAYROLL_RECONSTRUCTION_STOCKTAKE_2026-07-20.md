@@ -76,6 +76,7 @@ correlation.
 | Admin payroll history | `REWIRED` | Route reads `PayrollEvent`, derives class-local filters through the canonical temporal resolver, and template consumes dict rows. |
 | Admin hall-pass page | `REWIRED` | Pending rows come from the ephemeral queue; approval writes `hall_pass_logs`; issued/out state derives from `hall_pass_logs` plus latest `attendance_sessions`. |
 | Admin dashboard pending hall-pass panel | `REWIRED_READ` | Pending pass count/list now read from the ephemeral queue, not `hall_pass_logs`. |
+| Scheduled daily-limit enforcement | `REWIRED` | Scheduler-only `enforce_daily_limits_job` reads active `attendance_sessions`, groups by `class_id`, resolves class daily limit, closes sessions through `FEAT-PROD-001` with teacher authority and `mechanism=system`, and uses `canonical_temporal_resolver` for elapsed-duration and exact close timestamp calculation. |
 | Hall-pass leave/return | `REWIRED` | Leave/return append `attendance_sessions` rows through `FEAT-PROD-001`; `hall_pass_logs` are not mutated for lifecycle state. |
 | Public hall-pass verification | `REWIRED_READ` | Public token resolves teacher-scoped read authority; class dropdown submits `class_id`; name lookup checks seat hashed names and displays `IdentityProfile` only after unique match. |
 | Admin attendance log | `REWIRED_READ` | `/api/attendance/history` reads append-only `AttendanceSession` fields and uses `canonical_temporal_resolver` for class-local filters. |
@@ -100,6 +101,8 @@ correlation.
 - Removed route-level `FEAT-ATTN-002` wrappers from hall-pass checkout/checkin.
 - Removed remaining route-level `FEAT-ATTN-*` wrappers from hall-pass settings/token API surfaces; those are Class Configuration settings writes, not PROD writes.
 - Removed the legacy `student_tap` idempotency prefix from the student dashboard attendance command surface.
+- Removed legacy auto tap-out wording from the scheduled daily-limit enforcement job.
+- Removed direct UTC day-boundary construction from `app/attendance.py`; period attendance now derives day boundaries through `canonical_temporal_resolver`.
 - Removed old direct attendance writer helpers, soft-delete helper, and state-table helper paths from `app/feats/attendance.py`.
 - Removed obsolete `batch_auto_tapout_students(...)` from `app/attendance.py`.
 - Removed `Seat.block` fallback from `/api/tap`; class section is the only display-period source in that route.
@@ -116,7 +119,7 @@ correlation.
 | Live schema proof | `VERIFIED` | Local PostgreSQL at Alembic head `f6a7b8c9d0e2` exposes only `attendance_sessions`, `hall_pass_logs`, and `payroll_event` for the PROD table set; `seat_attendance_state` and `tap_events` are absent. |
 | PROD FEAT targeted test proof | `VERIFIED` | `pytest -q tests/dom/prod/test_feat_prod.py` passed 3 tests on 2026-07-22 after fresh migration-chain blockers were removed. |
 | Journey/render verification | `PARTIAL_BLOCKED_BY_STALE_TEST_AUTH` | Existing `student_detail` identity render tests currently redirect at auth setup before template render; add route render checks and journeys for start work, hall-pass request/approve/leave/return, run payroll, payroll history, student detail, and public verification. |
-| Tests still encoding old shapes | `KNOWN_RESIDUE` | Modernize direct `AttendanceSession` and `HallPassLog` test setup under the current DOM-PROD schema. `tests/dom/attendance/test_hall_pass_checkout.py` still constructs legacy `HallPassLog(seat_id, status, request_time, decision_time, period)` rows and fails before exercising the route. |
+| Tests still encoding old shapes | `KNOWN_RESIDUE` | Modernize direct `AttendanceSession` and `HallPassLog` test setup under the current DOM-PROD schema. `tests/dom/attendance/test_hall_pass_checkout.py` still constructs legacy `HallPassLog(seat_id, status, request_time, decision_time, period)` rows and fails before exercising the route. `tests/dom/attendance/test_attendance.py` still imports deleted `get_all_block_statuses` and fails during collection before exercising `calculate_period_attendance`. |
 | Residual non-template cleanup | `REWIRED` | Class destruction no longer references `SeatAttendanceState` or stale `TapEvent` cleanup; dropped PROD predecessor tables are not part of live runtime cleanup. |
 | Route-local view assembly | `ACCEPTED_TEMPORARILY` | Several canonical read models are still assembled in routes; extract page view builders after checklist stability. |
 | Rent / obligation surfaces | `OUT_OF_SCOPE_FOR_PROD` | Rent payment and obligation satisfaction are OBL-owned. Entitlement grants produced by obligation satisfaction are entitlement-domain business; PROD reads only approved hall-pass consumption via `hall_pass_logs` and related attendance changes. Approved hall-pass consumption reuses the consumed entitlement grant's `correlation_id`. |
