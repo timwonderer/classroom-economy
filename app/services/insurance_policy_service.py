@@ -113,3 +113,92 @@ def schedule_policy_deletion(
         status="pending",
         correlation_id=f"policy-delete:{class_id}:{source_version.id}",
     )
+
+
+def _iter_policy_lineage_version_ids(start_version_id: int) -> list[int]:
+    """Return every policy-version id in the connected insurance lineage."""
+    lineage_ids: list[int] = []
+    seen: set[int] = set()
+    stack = [start_version_id]
+
+    while stack:
+        version_id = stack.pop()
+        if version_id in seen:
+            continue
+        seen.add(version_id)
+        lineage_ids.append(version_id)
+
+        outgoing = (
+            db.session.query(PolicyTransition.source_policy_version_id, PolicyTransition.target_policy_version_id)
+            .filter(
+                PolicyTransition.domain == INSURANCE_DOMAIN,
+                PolicyTransition.source_policy_version_id == version_id,
+            )
+            .all()
+        )
+        incoming = (
+            db.session.query(PolicyTransition.source_policy_version_id, PolicyTransition.target_policy_version_id)
+            .filter(
+                PolicyTransition.domain == INSURANCE_DOMAIN,
+                PolicyTransition.target_policy_version_id == version_id,
+            )
+            .all()
+        )
+        for source_id, target_id in outgoing:
+            if target_id not in seen:
+                stack.append(target_id)
+        for source_id, target_id in incoming:
+            if source_id and source_id not in seen:
+                stack.append(source_id)
+
+    return lineage_ids
+
+
+def delete_policy_lineage(*, class_id: str, version_id: int) -> None:
+    """Hard-delete all insurance policy lineage rows for one class lineage."""
+    lineage_ids = _iter_policy_lineage_version_ids(version_id)
+    if not lineage_ids:
+        return
+
+    db.session.query(PolicyTransition).filter(
+        PolicyTransition.class_id == class_id,
+        PolicyTransition.domain == INSURANCE_DOMAIN,
+        (
+            PolicyTransition.source_policy_version_id.in_(lineage_ids)
+            | PolicyTransition.target_policy_version_id.in_(lineage_ids)
+        ),
+    ).delete(synchronize_session=False)
+    db.session.query(PolicyVersion).filter(
+        PolicyVersion.class_id == class_id,
+        PolicyVersion.domain == INSURANCE_DOMAIN,
+        PolicyVersion.id.in_(lineage_ids),
+    ).delete(synchronize_session=False)
+    db.session.flush()
+
+
+def delete_due_policy_lineages(*, execution_time=None) -> list[int]:
+    """Delete any scheduled insurance policy lineage whose boundary has arrived."""
+    now = ensure_utc(execution_time or utc_now())
+    due_versions = (
+        PolicyVersion.query.filter_by(domain=INSURANCE_DOMAIN)
+        .order_by(PolicyVersion.class_id.asc(), PolicyVersion.version_number.asc(), PolicyVersion.id.asc())
+        .all()
+    )
+    deleted_ids: list[int] = []
+    for version in due_versions:
+        payload = _load_payload(version)
+        if not payload.get("deletion_pending"):
+            continue
+        deletion_at = payload.get("deletion_at")
+        if not deletion_at:
+            continue
+        try:
+            deletion_boundary = datetime.fromisoformat(deletion_at)
+            if ensure_utc(deletion_boundary) > now:
+                continue
+        except (TypeError, ValueError):
+            continue
+        delete_policy_lineage(class_id=version.class_id, version_id=version.id)
+        deleted_ids.append(version.id)
+
+    return deleted_ids

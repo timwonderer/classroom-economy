@@ -79,8 +79,8 @@
 <!-- Announcements Section -->
 {% if announcements %}
 {% for announcement in announcements %}
-<div class="alert {{ announcement.get_priority_class() }} d-flex align-items-start mb-3 border-0 shadow-sm"
-    role="alert">
+<div class="alert {{ announcement.get_priority_class() }} d-flex align-items-start mb-3 border-0 shadow-sm policy-announcement"
+    role="alert" data-announcement-id="{{ announcement.id }}">
     <span class="material-symbols-outlined me-3 fs-4">{{ announcement.get_priority_icon() }}</span>
     <div class="flex-grow-1">
         <h3 class="alert-heading h6 fw-bold mb-2">{{ announcement.title }}</h3>
@@ -92,10 +92,34 @@
         </small>
         {% endif %}
     </div>
-    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    <button type="button" class="btn-close policy-announcement-dismiss" aria-label="Dismiss"></button>
 </div>
 {% endfor %}
 {% endif %}
+
+<script>
+    (function () {
+        const storagePrefix = 'dismissed-policy-announcement-';
+        document.querySelectorAll('.policy-announcement').forEach((el) => {
+            const announcementId = el.dataset.announcementId;
+            if (!announcementId) {
+                return;
+            }
+            if (window.localStorage.getItem(storagePrefix + announcementId) === '1') {
+                el.remove();
+                return;
+            }
+            const button = el.querySelector('.policy-announcement-dismiss');
+            if (!button) {
+                return;
+            }
+            button.addEventListener('click', () => {
+                window.localStorage.setItem(storagePrefix + announcementId, '1');
+                el.remove();
+            });
+        });
+    })();
+</script>
 
 <!-- Weekly Analytics Card -->
 <div class="card border-0 shadow-sm mb-4">
