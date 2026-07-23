@@ -41,6 +41,15 @@ This domain is the sole schema and mutation authority over:
 Policy-defined insurance offerings are class-configuration objects. Their prospective terms, version lineage, bundle eligibility, and withdrawal scheduling are owned here and coordinated by FEAT-CLASS-003. Downstream entitlement, obligation, and ledger records preserve different facts and SHALL NOT be rewritten to represent class configuration changes.
 Each insurance policy lineage MUST also carry the configured `entitlement_item_id` used to mint the purchasable insurance entitlement through FEAT-STOR-001. That mapping is class configuration authority; the resulting entitlement row remains Store-and-Entitlements authority.
 
+Insurance configuration rules:
+
+- policy edits create a new prospective version rather than mutating the prior version in place;
+- policy switching is only valid within the same tier group;
+- if a bundle references a tiered policy, any tier in that group satisfies the bundle slot;
+- policy deletion is a class-configuration wipe that removes only class-owned insurance lineage rows;
+- deletion scheduling SHALL be derived from the end boundary of the last currently enforced entitlement;
+- student-facing policy changes SHALL be surfaced as persistent banners until dismissed.
+
 It returns persisted settings only. FEAT or the owning operational domain interprets them.
 
 ## VI. Owned Tables
