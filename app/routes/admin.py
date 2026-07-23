@@ -5314,7 +5314,7 @@ def store_management():
     pending_redemptions = [
         SimpleNamespace(
             id=event.purchase_id,
-            seat=SimpleNamespace(id=event.seat_id),
+            seat=db.session.get(Seat, event.seat_id) or SimpleNamespace(id=event.seat_id),
             store_item=db.session.get(StoreItem, event.purchase.store_item_id) if event.purchase else None,
             class_id=event.class_id,
             purchased_at=event.timestamp,
@@ -5337,9 +5337,10 @@ def store_management():
     )
     for entitlement in recent_entitlements:
         item = db.session.get(StoreItem, entitlement.entitlement_item_id)
+        seat = db.session.get(Seat, entitlement.target_seat_id)
         recent_purchases.append(SimpleNamespace(
             id=entitlement.entitlement_id,
-            seat_id=entitlement.target_seat_id,
+            seat=seat or SimpleNamespace(id=entitlement.target_seat_id),
             class_id=entitlement.class_id,
             store_item=item,
             status='purchased',
