@@ -78,6 +78,7 @@ from app.services.store_entitlement_service import (
     list_insurance_claims,
 )
 from app.services.insurance_policy_service import list_insurance_policy_versions
+from app.services.insurance_policy_service import get_insurance_entitlement_item_id
 from app.services.ledger_service import (
     apply_monthly_savings_interest as post_monthly_savings_interest,
     get_available_balances,
@@ -1619,7 +1620,11 @@ def purchase_insurance(policy_id):
         premium=Decimal(str(snapshot["premium"] or "0.00")),
         waiting_period_days=int(snapshot["waiting_period_days"] or 0),
         charge_frequency=snapshot["charge_frequency"],
+        entitlement_item_id=get_insurance_entitlement_item_id(policy_version),
     )
+    if policy.entitlement_item_id is None:
+        flash("This insurance policy is missing its entitlement mapping.", "error")
+        return redirect(url_for('student.student_insurance'))
     seat = db.session.get(Seat, context.seat_id)
     banking_settings = BankingSettings.query.filter_by(class_id=context.class_id).first()
     execute_insurance_purchase(

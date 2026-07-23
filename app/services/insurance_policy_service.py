@@ -18,6 +18,15 @@ def _load_payload(version: PolicyVersion) -> dict:
         return {}
 
 
+def get_insurance_entitlement_item_id(version: PolicyVersion) -> int | None:
+    payload = _load_payload(version)
+    raw_item_id = payload.get("entitlement_item_id")
+    try:
+        return int(raw_item_id) if raw_item_id is not None and raw_item_id != "" else None
+    except (TypeError, ValueError):
+        return None
+
+
 def list_insurance_policy_versions(class_id: str) -> list[PolicyVersion]:
     return (
         PolicyVersion.query.filter_by(class_id=class_id, domain=INSURANCE_DOMAIN)

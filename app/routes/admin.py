@@ -6677,12 +6677,22 @@ def edit_insurance_policy(policy_id):
     if version is None:
         abort(404)
     payload = json.loads(version.policy_payload_json or "{}")
+    store_items = (
+        StoreItem.query.filter_by(class_id=class_id)
+        .order_by(StoreItem.title.asc(), StoreItem.id.asc())
+        .all()
+    )
     if request.method == "POST":
         action = request.form.get("action", "save")
         title = (request.form.get("title") or payload.get("title") or "").strip()
         if not title:
             flash("Policy title is required.", "danger")
             return redirect(url_for("admin.edit_insurance_policy", policy_id=policy_id))
+        entitlement_item_id = request.form.get("entitlement_item_id") or payload.get("entitlement_item_id")
+        try:
+            entitlement_item_id = int(entitlement_item_id) if entitlement_item_id not in (None, "") else None
+        except (TypeError, ValueError):
+            entitlement_item_id = None
         payload.update(
             {
                 "title": title,
@@ -6704,6 +6714,7 @@ def edit_insurance_policy(policy_id):
                 "bundle_discount_percent": request.form.get("bundle_discount_percent", payload.get("bundle_discount_percent")),
                 "bundle_discount_amount": request.form.get("bundle_discount_amount", payload.get("bundle_discount_amount")),
                 "is_active": request.form.get("is_active") == "on",
+                "entitlement_item_id": entitlement_item_id,
             }
         )
         version = create_policy_version(
@@ -6737,6 +6748,7 @@ def edit_insurance_policy(policy_id):
         policy_version=version,
         payload=payload,
         current_page="insurance",
+        store_items=store_items,
         available_versions=[
             SimpleNamespace(
                 id=v.id,

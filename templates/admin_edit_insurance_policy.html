@@ -39,6 +39,16 @@
                 <input class="form-control" id="title" name="title" value="{{ payload.title or '' }}" required>
               </div>
               <div class="col-md-4">
+                <label class="form-label fw-bold" for="entitlement_item_id">Entitlement Item</label>
+                <select class="form-select" id="entitlement_item_id" name="entitlement_item_id" required>
+                  <option value="">Select store item</option>
+                  {% for item in store_items or [] %}
+                  <option value="{{ item.id }}" {% if (payload.entitlement_item_id|string) == (item.id|string) %}selected{% endif %}>{{ item.title }} #{{ item.id }}</option>
+                  {% endfor %}
+                </select>
+                <small class="text-muted">This store item is the class-configured capability FEAT-STOR-001 grants when the policy is purchased.</small>
+              </div>
+              <div class="col-md-4">
                 <label class="form-label fw-bold" for="claim_type">Claim Type</label>
                 <select class="form-select" id="claim_type" name="claim_type">
                   {% for value, label in [('transaction_monetary','Transaction-Linked Reimbursement'), ('non_monetary','Non-Monetary'), ('legacy_monetary','Variable Monetary')] %}

@@ -57,6 +57,7 @@ Each change that materially alters policy terms SHALL create a new prospective v
 The canonical policy lineage SHALL capture, at minimum:
 
 - policy identity within the class;
+- `entitlement_item_id` mapping to the configured Store-and-Entitlements offering used for purchase grant;
 - group identity for tier-switch eligibility;
 - version number;
 - pricing and waiting-period terms;
@@ -75,8 +76,9 @@ Policy creation SHALL:
 1. create a new class-scoped insurance policy lineage row;
 2. initialize the first version for that policy;
 3. record its prospective enrollment rules;
-4. expose the policy to class reads if it is active;
-5. create a student-visible notice that a new policy is available, when the product is meant to be discoverable by students.
+4. bind the policy to the configured entitlement item used by FEAT-STOR-001 to grant the purchased insurance entitlement;
+5. expose the policy to class reads if it is active;
+6. create a student-visible notice that a new policy is available, when the product is meant to be discoverable by students.
 
 ## VI. Edit Policy
 
@@ -99,6 +101,7 @@ The following are versioned policy terms:
 - bundle definitions;
 - tier-group assignment;
 - tier label and display color;
+- configured entitlement item binding;
 - active/inactive offering state.
 
 When an edit materially changes terms, the FEAT SHALL:

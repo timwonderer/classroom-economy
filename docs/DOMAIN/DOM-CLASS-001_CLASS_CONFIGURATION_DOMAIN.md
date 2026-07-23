@@ -39,6 +39,7 @@ This domain is the sole schema and mutation authority over:
 - `policy_transitions`
 
 Policy-defined insurance offerings are class-configuration objects. Their prospective terms, version lineage, bundle eligibility, and withdrawal scheduling are owned here and coordinated by FEAT-CLASS-003. Downstream entitlement, obligation, and ledger records preserve different facts and SHALL NOT be rewritten to represent class configuration changes.
+Each insurance policy lineage MUST also carry the configured `entitlement_item_id` used to mint the purchasable insurance entitlement through FEAT-STOR-001. That mapping is class configuration authority; the resulting entitlement row remains Store-and-Entitlements authority.
 
 It returns persisted settings only. FEAT or the owning operational domain interprets them.
 
@@ -363,7 +364,7 @@ The following fields in `feature_settings` are retired by the policy transition 
 
 ### 12. Insurance policy lifecycle note
 
-Insurance policy creation, edit, inactivation, switching, bundle eligibility, and deletion scheduling are class-configuration behaviors. A policy edit SHALL create a new prospective version when the terms change. A deletion request SHALL only schedule removal of the class-owned insurance lineage rows after the last enforced entitlement boundary for the class has elapsed. Entitlement, obligation, and Ledger tables SHALL remain unchanged by the configuration delete operation.
+Insurance policy creation, edit, inactivation, switching, bundle eligibility, and deletion scheduling are class-configuration behaviors. A policy edit SHALL create a new prospective version when the terms change. A deletion request SHALL only schedule removal of the class-owned insurance lineage rows after the last enforced entitlement boundary for the class has elapsed. Entitlement, obligation, and Ledger tables SHALL remain unchanged by the configuration delete operation. Student-facing notices for insurance changes SHALL be persistent banners until dismissed.
 
 ## X. Amendment
 

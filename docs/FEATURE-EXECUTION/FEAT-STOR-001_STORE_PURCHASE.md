@@ -119,7 +119,7 @@ Validate, as applicable:
 - seat-specific visibility or eligibility directives permit purchase;
 - configured inventory or purchase limits permit the requested purchase;
 - activation or collective-goal rules are valid;
-- insurance configuration is valid when the configured offering is insurance;
+- insurance configuration is valid when the configured offering is insurance, including the class-owned policy lineage mapping that resolves the configured `entitlement_item_id`;
 - the offering has not been prospectively cancelled or disabled for new acquisition.
 
 The FEAT SHALL NOT copy Class Configuration state into Store and Entitlements persistence merely to make later reads convenient.
