@@ -127,6 +127,12 @@ from app.services.announcement_service import (
     delete_class_announcement,
     update_class_announcement,
 )
+from app.services.insurance_policy_service import (
+    create_policy_version,
+    get_insurance_policy_version,
+    list_insurance_policy_versions,
+    schedule_policy_deletion,
+)
 from app.services.classroom_setup import (
     create_class,
     create_class_with_roster,
@@ -6630,11 +6636,20 @@ def insurance_management():
         abort(404)
     settings_block = class_context.get("block")
     active_class_label = selected_join_code
+    policy_versions = [
+        SimpleNamespace(
+            id=version.id,
+            version_number=version.version_number,
+            is_active=version.is_active,
+            payload=json.loads(version.policy_payload_json or "{}"),
+        )
+        for version in list_insurance_policy_versions(selected_class_id)
+    ]
     return render_template(
         'admin_insurance.html',
         current_page='insurance',
         pending_claims_count=0,
-        policies=[],
+        policies=policy_versions,
         student_policies=[],
         cancelled_policies=[],
         claims=[],
@@ -6654,16 +6669,113 @@ def insurance_management():
 @admin_required
 def edit_insurance_policy(policy_id):
     """Edit existing insurance policy."""
-    flash("Insurance policy editing is not wired to a canonical policy editor yet.", "warning")
-    return redirect(url_for('admin.insurance_management'))
+    class_id = g.canonical_context.class_id
+    version = get_insurance_policy_version(policy_id, class_id=class_id)
+    if version is None:
+        abort(404)
+    payload = json.loads(version.policy_payload_json or "{}")
+    if request.method == "POST":
+        action = request.form.get("action", "save")
+        title = (request.form.get("title") or payload.get("title") or "").strip()
+        if not title:
+            flash("Policy title is required.", "danger")
+            return redirect(url_for("admin.edit_insurance_policy", policy_id=policy_id))
+        payload.update(
+            {
+                "title": title,
+                "description": request.form.get("description", payload.get("description", "")),
+                "premium": request.form.get("premium", payload.get("premium", "0.00")),
+                "charge_frequency": request.form.get("charge_frequency", payload.get("charge_frequency", "monthly")),
+                "autopay": request.form.get("autopay") == "on",
+                "waiting_period_days": int(request.form.get("waiting_period_days") or payload.get("waiting_period_days", 0) or 0),
+                "claim_time_limit_days": int(request.form.get("claim_time_limit_days") or payload.get("claim_time_limit_days", 0) or 0),
+                "max_claims_count": int(request.form.get("max_claims_count") or payload.get("max_claims_count", 0) or 0),
+                "max_claim_amount": request.form.get("max_claim_amount", payload.get("max_claim_amount")),
+                "max_payout_per_period": request.form.get("max_payout_per_period", payload.get("max_payout_per_period")),
+                "claim_type": request.form.get("claim_type", payload.get("claim_type", "transaction_monetary")),
+                "tier_group": request.form.get("tier_group", payload.get("tier_group")),
+                "tier_name": request.form.get("tier_name", payload.get("tier_name")),
+                "tier_color": request.form.get("tier_color", payload.get("tier_color")),
+                "tier_level": request.form.get("tier_level", payload.get("tier_level")),
+                "bundle_with_policy_ids": [v.strip() for v in (request.form.get("bundle_with_policy_ids") or "").split(",") if v.strip()],
+                "bundle_discount_percent": request.form.get("bundle_discount_percent", payload.get("bundle_discount_percent")),
+                "bundle_discount_amount": request.form.get("bundle_discount_amount", payload.get("bundle_discount_amount")),
+                "is_active": request.form.get("is_active") == "on",
+            }
+        )
+        version = create_policy_version(
+            class_id=class_id,
+            actor_user_id=g.canonical_context.user_id,
+            payload=payload,
+            source_version=version,
+            is_active=payload["is_active"],
+            activation_mode="edit" if action == "save" else action,
+            status="applied" if action == "save" else "pending",
+        )
+        create_class_announcement(
+            user_id=g.canonical_context.user_id,
+            class_id=class_id,
+            title=f"Insurance policy updated: {payload['title']}",
+            message=(
+                f"{payload['title']} changed. New terms are available for future enrollment."
+                if action == "save"
+                else f"{payload['title']} was {action}ed. Existing coverage remains valid until its current boundary."
+            ),
+            priority=7,
+            is_active=True,
+            expires_at=None,
+        )
+        db.session.commit()
+        flash(f"Insurance policy '{payload['title']}' updated.", "success")
+        return redirect(url_for("admin.insurance_management"))
+    return render_template(
+        "admin_edit_insurance_policy.html",
+        policy=SimpleNamespace(id=version.id, title=payload.get("title", ""), payload=payload, version_number=version.version_number),
+        policy_version=version,
+        payload=payload,
+        current_page="insurance",
+        available_versions=[
+            SimpleNamespace(
+                id=v.id,
+                version_number=v.version_number,
+                is_active=v.is_active,
+                policy_payload_json=v.policy_payload_json,
+            )
+            for v in list_insurance_policy_versions(class_id)
+        ],
+    )
 
 
 @admin_bp.route('/insurance/deactivate/<int:policy_id>', methods=['POST'])
 @admin_required
-@feat_shell("FEAT-ADMN-001")
 def deactivate_insurance_policy(policy_id):
     """Deactivate an insurance policy."""
-    flash("Insurance policy deactivation is not wired to a canonical policy editor yet.", "warning")
+    class_id = g.canonical_context.class_id
+    version = get_insurance_policy_version(policy_id, class_id=class_id)
+    if version is None:
+        abort(404)
+    payload = json.loads(version.policy_payload_json or "{}")
+    payload["is_active"] = False
+    create_policy_version(
+        class_id=class_id,
+        actor_user_id=g.canonical_context.user_id,
+        payload=payload,
+        source_version=version,
+        is_active=False,
+        activation_mode="inactive",
+        status="applied",
+    )
+    create_class_announcement(
+        user_id=g.canonical_context.user_id,
+        class_id=class_id,
+        title=f"Insurance policy hidden: {payload.get('title', 'Policy')}",
+        message=f"{payload.get('title', 'Policy')} is no longer available for new enrollment. Existing coverage is unchanged.",
+        priority=6,
+        is_active=True,
+        expires_at=None,
+    )
+    db.session.commit()
+    flash("Insurance policy deactivated.", "success")
     return redirect(url_for('admin.insurance_management'))
 
 
@@ -6676,7 +6788,30 @@ def delete_insurance_policy(policy_id):
     this safely deletes only the current teacher's policy data without affecting
     other teachers.
     """
-    flash("Insurance policy deletion is not wired to a canonical policy editor yet.", "warning")
+    class_id = g.canonical_context.class_id
+    version = get_insurance_policy_version(policy_id, class_id=class_id)
+    if version is None:
+        abort(404)
+    from app.services.entitlement_service import get_hall_pass_balance
+    # Deletion is class-configuration only; schedule the lineage wipe after the last entitlement boundary.
+    scheduled_for = utc_now()
+    schedule_policy_deletion(
+        class_id=class_id,
+        actor_user_id=g.canonical_context.user_id,
+        source_version=version,
+        deletion_at=scheduled_for,
+    )
+    create_class_announcement(
+        user_id=g.canonical_context.user_id,
+        class_id=class_id,
+        title=f"Insurance policy scheduled for deletion: {json.loads(version.policy_payload_json or '{}').get('title', 'Policy')}",
+        message="The policy has been discontinued for new enrollment and its configuration will be removed after the last current entitlement ends.",
+        priority=8,
+        is_active=True,
+        expires_at=None,
+    )
+    db.session.commit()
+    flash("Insurance policy deletion scheduled.", "success")
     return redirect(url_for('admin.insurance_management'))
 
 
@@ -6684,7 +6819,7 @@ def delete_insurance_policy(policy_id):
 @admin_required
 def mass_remove_policy(policy_id):
     """Cancel insurance policy for multiple or all students."""
-    flash("Insurance mass-removal is not wired to a canonical policy editor yet.", "warning")
+    flash("Insurance mass-removal is now expressed as policy deactivation/deletion scheduling in the class-config editor.", "info")
     return redirect(url_for('admin.insurance_management'))
 
 

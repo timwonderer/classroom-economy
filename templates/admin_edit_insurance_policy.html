@@ -1,852 +1,160 @@
 {% extends "layout_admin.html" %}
 {% set page_title = "Edit Insurance Policy" %}
 {% set current_page = "insurance" %}
-{% block title %}Edit Policy{% endblock %}
-
-{% block extra_head %}
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/easymde/dist/easymde.min.css">
-<script src="{{ static_url('js/economy-balance.js') }}"></script>
-<script src="{{ static_url('js/insurance-badge-select.js') }}"></script>
-<style>
-  .EasyMDEContainer .CodeMirror {
-    min-height: 150px;
-  }
-
-  .editor-toolbar {
-    border-radius: 4px 4px 0 0;
-  }
-
-  .CodeMirror {
-    border-radius: 0 0 4px 4px;
-  }
-</style>
-{% endblock %}
+{% block title %}Edit Insurance Policy{% endblock %}
 
 {% block content %}
-
 <div class="container-fluid">
   <div class="row mb-3">
     <div class="col">
       <nav aria-label="breadcrumb">
         <ol class="breadcrumb">
           <li class="breadcrumb-item"><a href="{{ url_for('admin.insurance_management') }}">Insurance</a></li>
-          <li class="breadcrumb-item active">Edit Policy: {{ policy.title }}</li>
+          <li class="breadcrumb-item active">Policy v{{ policy_version.version_number }}: {{ policy.title }}</li>
         </ol>
       </nav>
     </div>
   </div>
 
-  <form method="POST" action="{{ url_for('admin.edit_insurance_policy', policy_id=policy.id) }}">
-    {{ form.hidden_tag() }}
-
-    <div class="row">
-      <!-- Main Form Section -->
-      <div class="col-lg-8 mb-4">
-
-        <!-- Basic Information Card -->
-        <div class="card shadow-sm mb-3">
-          <div class="card-header bg-primary text-white">
-            <h6 class="mb-0"><span class="material-symbols-outlined me-2">info</span>Basic Information</h6>
+  <div class="row g-4">
+    <div class="col-lg-8">
+      <div class="card shadow-sm mb-4">
+        <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+          <div>
+            <h2 class="h5 mb-0">{{ policy.title }}</h2>
+            <small class="opacity-75">Version {{ policy_version.version_number }} · Policy lineage management</small>
           </div>
-          <div class="card-body">
-            <div class="row">
-              <div class="col-md-6 mb-3">
-                {{ form.title.label(class="form-label fw-bold") }}
-                {{ form.title(class="form-control", placeholder="e.g., Basic Health Coverage") }}
-                <small class="text-muted">Policy name shown to students</small>
-              </div>
-              <div class="col-md-6 mb-3">
-                {{ form.marketing_badge.label(class="form-label fw-bold") }}
-                {{ form.marketing_badge(class="form-select", id="edit_marketing_badge") }}
-                <small class="text-muted">Add a fun marketing badge to attract students</small>
-              </div>
-            </div>
-            <div class="mb-3">
-              {{ form.description.label(class="form-label fw-bold") }}
-              {{ form.description(class="form-control", rows=6, placeholder="Describe what this policy covers...") }}
-              <small class="text-muted">Clear description of coverage and benefits</small>
-            </div>
-            <div class="mb-0">
-              {{ form.claim_type.label(class="form-label fw-bold") }}
-              {{ form.claim_type(class="form-select", id="edit_claim_type", **{'data-economy-trigger': '#edit_premium'})
-              }}
-              <div class="alert alert-light border mt-2 mb-0">
-                <small>
-                  <strong>Transactions-based:</strong> Link claims to a specific student transaction.<br>
-                  <strong>Non-monetary:</strong> Approval-only workflow, no reimbursements.<br>
-                  <strong>Custom monetary reimbursement:</strong> Manual claim amounts (backward compatible).
-                </small>
-              </div>
-            </div>
-          </div>
+          {% if payload.is_active %}
+          <span class="badge bg-success">Active</span>
+          {% else %}
+          <span class="badge bg-secondary">Inactive</span>
+          {% endif %}
         </div>
-
-        <!-- Pricing & Payment Card -->
-        <div class="card shadow-sm mb-3">
-          <div class="card-header bg-success text-white">
-            <h6 class="mb-0"><span class="material-symbols-outlined me-2">attach_money</span>Pricing & Payment</h6>
-          </div>
-          <div class="card-body">
-            <!-- Economy Balance Check -->
-            <div id="cwi-info" class="mb-3"></div>
-            <div class="form-check mb-3">
-              {{ form.bypass_cwi_warnings(class="form-check-input", id="bypass_cwi_warnings") }}
-              {{ form.bypass_cwi_warnings.label(class="form-check-label fw-bold") }}
-              <small class="d-block text-muted">Hide this policy from Economy Health and suppress live CWI warnings for premium guidance.</small>
-            </div>
-
-            <div class="row">
-              <div class="col-md-6 mb-3">
-                {{ form.premium.label(class="form-label fw-bold") }}
-                <div class="input-group">
-                  <span class="input-group-text">$</span>
-                  {{ form.premium(class="form-control", placeholder="0.00", id="edit_premium", **{
-                  'data-economy-validate': 'insurance',
-                  'data-economy-coverage-target': '#edit_max_claim_amount',
-                  'data-economy-period-target': '#edit_max_payout_per_period',
-                  'data-economy-claim-type-target': '#edit_claim_type'
-                  }) }}
-                </div>
-                <small class="text-muted">Cost per cycle</small>
+        <div class="card-body">
+          <form method="POST" action="{{ url_for('admin.edit_insurance_policy', policy_id=policy.id) }}">
+            <input type="hidden" name="action" value="save">
+            <div class="row g-3">
+              <div class="col-md-8">
+                <label class="form-label fw-bold" for="title">Policy Title</label>
+                <input class="form-control" id="title" name="title" value="{{ payload.title or '' }}" required>
               </div>
-              <div class="col-md-6 mb-3">
-                {{ form.charge_frequency.label(class="form-label fw-bold") }}
-                {{ form.charge_frequency(class="form-select", **{'data-economy-frequency-field': 'true'}) }}
-                <small class="text-muted">Billing frequency</small>
+              <div class="col-md-4">
+                <label class="form-label fw-bold" for="claim_type">Claim Type</label>
+                <select class="form-select" id="claim_type" name="claim_type">
+                  {% for value, label in [('transaction_monetary','Transaction-Linked Reimbursement'), ('non_monetary','Non-Monetary'), ('legacy_monetary','Variable Monetary')] %}
+                  <option value="{{ value }}" {% if (payload.claim_type or 'transaction_monetary') == value %}selected{% endif %}>{{ label }}</option>
+                  {% endfor %}
+                </select>
               </div>
-            </div>
-
-            <!-- Economy Balance Warnings -->
-            <div id="economy-warnings"></div>
-
-            <div class="row">
-              <div class="col-md-6 mb-3">
-                <div class="form-check form-switch">
-                  {{ form.autopay(class="form-check-input", role="switch") }}
-                  {{ form.autopay.label(class="form-check-label fw-bold") }}
-                </div>
-                <small class="text-muted">Auto-deduct premiums from student accounts</small>
+              <div class="col-12">
+                <label class="form-label fw-bold" for="description">Description</label>
+                <textarea class="form-control" id="description" name="description" rows="4">{{ payload.description or '' }}</textarea>
               </div>
-              <div class="col-md-6 mb-0">
-                {{ form.auto_cancel_nonpay_days.label(class="form-label fw-bold") }}
-                <div class="input-group">
-                  {{ form.auto_cancel_nonpay_days(class="form-control", placeholder="0") }}
-                  <span class="input-group-text">days</span>
-                </div>
-                <small class="text-muted">Cancel if unpaid (0 = never)</small>
+              <div class="col-md-3">
+                <label class="form-label fw-bold" for="premium">Premium</label>
+                <input class="form-control" id="premium" name="premium" value="{{ payload.premium or '0.00' }}">
               </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Accordion for Advanced Settings -->
-        <div class="accordion mb-3" id="advancedSettingsAccordion">
-
-          <!-- Coverage & Claims Section -->
-          <div class="accordion-item">
-            <h2 class="accordion-header" id="headingCoverage">
-              <button class="accordion-button" type="button" data-bs-toggle="collapse"
-                data-bs-target="#collapseCoverage" aria-expanded="true" aria-controls="collapseCoverage">
-                <span class="material-symbols-outlined me-2">verified_user</span><strong>Coverage & Claims</strong>
-              </button>
-            </h2>
-            <div id="collapseCoverage" class="accordion-collapse collapse show" aria-labelledby="headingCoverage"
-              data-bs-parent="#advancedSettingsAccordion">
-              <div class="accordion-body">
-                <div class="row">
-                  <div class="col-md-6 mb-3">
-                    {{ form.waiting_period_days.label(class="form-label fw-bold") }}
-                    <div class="input-group">
-                      {{ form.waiting_period_days(class="form-control", placeholder="0") }}
-                      <span class="input-group-text">days</span>
-                    </div>
-                    <small class="text-muted">Before coverage starts</small>
-                  </div>
-                  <div class="col-md-6 mb-3">
-                    {{ form.claim_time_limit_days.label(class="form-label fw-bold") }}
-                    <div class="input-group">
-                      {{ form.claim_time_limit_days(class="form-control", placeholder="0") }}
-                      <span class="input-group-text">days</span>
-                    </div>
-                    <small class="text-muted">To file after incident</small>
-                  </div>
-                </div>
-                <div class="row">
-                  <div class="col-md-6 mb-3">
-                    {{ form.max_claims_count.label(class="form-label fw-bold") }}
-                    {{ form.max_claims_count(class="form-control", placeholder="0") }}
-                    <small class="text-muted">Max per charge period (0 = ∞)</small>
-                  </div>
-                </div>
-                <div class="row">
-                  <div class="col-md-6 mb-3" id="editMaxClaimAmountGroup">
-                    {{ form.max_claim_amount.label(class="form-label fw-bold") }}
-                    <div class="input-group">
-                      <span class="input-group-text">$</span>
-                      {{ form.max_claim_amount(class="form-control", placeholder="0.00", id="edit_max_claim_amount",
-                      **{'data-economy-trigger': '#edit_premium'}) }}
-                    </div>
-                    <small class="text-muted">Max payout per claim (0 = ∞)</small>
-                  </div>
-                  <div class="col-md-6 mb-0" id="editMaxPayoutPerPeriodGroup">
-                    {{ form.max_payout_per_period.label(class="form-label fw-bold") }}
-                    <div class="input-group">
-                      <span class="input-group-text">$</span>
-                      {{ form.max_payout_per_period(class="form-control", placeholder="0.00",
-                      id="edit_max_payout_per_period", **{'data-economy-trigger': '#edit_premium'}) }}
-                    </div>
-                    <small class="text-muted">Max total payout per period (0 = ∞)</small>
-                  </div>
-                </div>
+              <div class="col-md-3">
+                <label class="form-label fw-bold" for="charge_frequency">Charge Frequency</label>
+                <select class="form-select" id="charge_frequency" name="charge_frequency">
+                  {% for value in ['weekly', 'biweekly', 'monthly', 'semester'] %}
+                  <option value="{{ value }}" {% if (payload.charge_frequency or 'monthly') == value %}selected{% endif %}>{{ value|title }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+              <div class="col-md-3">
+                <label class="form-label fw-bold" for="waiting_period_days">Waiting Period</label>
+                <input class="form-control" id="waiting_period_days" name="waiting_period_days" type="number" min="0" value="{{ payload.waiting_period_days or 0 }}">
+              </div>
+              <div class="col-md-3">
+                <label class="form-label fw-bold" for="claim_time_limit_days">Claim Filing Window</label>
+                <input class="form-control" id="claim_time_limit_days" name="claim_time_limit_days" type="number" min="0" value="{{ payload.claim_time_limit_days or 0 }}">
+              </div>
+              <div class="col-md-3">
+                <label class="form-label fw-bold" for="max_claims_count">Max Claims</label>
+                <input class="form-control" id="max_claims_count" name="max_claims_count" type="number" min="0" value="{{ payload.max_claims_count or 0 }}">
+              </div>
+              <div class="col-md-3">
+                <label class="form-label fw-bold" for="max_claim_amount">Max Claim Amount</label>
+                <input class="form-control" id="max_claim_amount" name="max_claim_amount" value="{{ payload.max_claim_amount or '' }}">
+              </div>
+              <div class="col-md-3">
+                <label class="form-label fw-bold" for="max_payout_per_period">Max Period Payout</label>
+                <input class="form-control" id="max_payout_per_period" name="max_payout_per_period" value="{{ payload.max_payout_per_period or '' }}">
+              </div>
+              <div class="col-md-3">
+                <label class="form-label fw-bold" for="bundle_discount_percent">Bundle Discount %</label>
+                <input class="form-control" id="bundle_discount_percent" name="bundle_discount_percent" value="{{ payload.bundle_discount_percent or '' }}">
+              </div>
+              <div class="col-12">
+                <label class="form-label fw-bold" for="bundle_with_policy_ids">Bundle With Policy IDs</label>
+                <input class="form-control" id="bundle_with_policy_ids" name="bundle_with_policy_ids" value="{{ (payload.bundle_with_policy_ids or [])|join(', ') }}">
+                <small class="text-muted">Comma-separated policy IDs. If one bundled policy belongs to a tier group, any tier in that group satisfies the slot.</small>
+              </div>
+              <div class="col-md-4">
+                <label class="form-label fw-bold" for="tier_group">Tier Group</label>
+                <input class="form-control" id="tier_group" name="tier_group" value="{{ payload.tier_group or '' }}">
+              </div>
+              <div class="col-md-4">
+                <label class="form-label fw-bold" for="tier_name">Tier Name</label>
+                <input class="form-control" id="tier_name" name="tier_name" value="{{ payload.tier_name or '' }}">
+              </div>
+              <div class="col-md-4">
+                <label class="form-label fw-bold" for="tier_level">Tier Level</label>
+                <input class="form-control" id="tier_level" name="tier_level" value="{{ payload.tier_level or '' }}">
               </div>
             </div>
-          </div>
 
-          <!-- Repurchase Restrictions Section -->
-          <div class="accordion-item">
-            <h2 class="accordion-header" id="headingRepurchase">
-              <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse"
-                data-bs-target="#collapseRepurchase" aria-expanded="false" aria-controls="collapseRepurchase">
-                <span class="material-symbols-outlined me-2">block</span><strong>Repurchase Restrictions</strong>
-                <span class="badge bg-warning text-dark ms-2 repurchase-badge" style="display:none;">Active</span>
-              </button>
-            </h2>
-            <div id="collapseRepurchase" class="accordion-collapse collapse" aria-labelledby="headingRepurchase"
-              data-bs-parent="#advancedSettingsAccordion">
-              <div class="accordion-body">
-                <!-- Permanent Block -->
-                <div class="form-check form-switch mb-2">
-                  {{ form.no_repurchase_after_cancel(class="form-check-input", role="switch", id="permanentBlockToggle")
-                  }}
-                  {{ form.no_repurchase_after_cancel.label(class="form-check-label fw-bold") }}
-                </div>
-                <small class="text-muted d-block mb-3">Students can NEVER repurchase after canceling</small>
-
-                <!-- Cooldown Period -->
-                <div id="cooldownSection">
-                  <div class="form-check form-switch mb-2">
-                    {{ form.enable_repurchase_cooldown(class="form-check-input", role="switch", id="cooldownToggle") }}
-                    {{ form.enable_repurchase_cooldown.label(class="form-check-label fw-bold") }}
-                  </div>
-                  <small class="text-muted d-block mb-2">Students must wait before repurchasing</small>
-
-                  <div id="cooldownDays" style="display: none;">
-                    {{ form.repurchase_wait_days.label(class="form-label fw-bold small") }}
-                    <div class="input-group input-group-sm">
-                      {{ form.repurchase_wait_days(class="form-control", placeholder="30") }}
-                      <span class="input-group-text">days</span>
-                    </div>
-                    <small class="text-muted">Cooldown period for repurchase</small>
-                  </div>
-                </div>
-              </div>
+            <div class="form-check form-switch mt-4">
+              <input class="form-check-input" type="checkbox" id="is_active" name="is_active" {% if payload.is_active %}checked{% endif %}>
+              <label class="form-check-label fw-bold" for="is_active">Available for new enrollment</label>
             </div>
-          </div>
 
-          <!-- Bundle Discounts Section -->
-          <div class="accordion-item">
-            <h2 class="accordion-header" id="headingBundle">
-              <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse"
-                data-bs-target="#collapseBundle" aria-expanded="false" aria-controls="collapseBundle">
-                <span class="material-symbols-outlined me-2">inventory</span><strong>Bundle Discounts</strong>
-                <span class="badge bg-success ms-2 bundle-badge" style="display:none;">Active</span>
-              </button>
-            </h2>
-            <div id="collapseBundle" class="accordion-collapse collapse" aria-labelledby="headingBundle"
-              data-bs-parent="#advancedSettingsAccordion">
-              <div class="accordion-body">
-                <!-- Policy Selection -->
-                <div class="mb-3">
-                  <label class="form-label fw-bold">Bundle With Policies</label>
-                  <div class="border rounded p-2"
-                    style="max-height: 180px; overflow-y: auto; background-color: var(--surface);">
-                    {% if available_policies %}
-                    {% for avail_policy in available_policies %}
-                    <div class="form-check">
-                      <input class="form-check-input bundle-policy-checkbox" type="checkbox"
-                        value="{{ avail_policy.id }}" id="bundle_{{ avail_policy.id }}" {% if
-                        policy.bundle_with_policy_ids and (avail_policy.id|string in
-                        policy.bundle_with_policy_ids.split(',')) %}checked{% endif %}>
-                      <label class="form-check-label" for="bundle_{{ avail_policy.id }}">
-                        {{ avail_policy.title }} (${{ avail_policy.premium }})
-                      </label>
-                    </div>
-                    {% endfor %}
-                    {% else %}
-                    <small class="text-muted">No other active policies available</small>
-                    {% endif %}
-                  </div>
-                  {{ form.bundle_with_policy_ids(class="form-control d-none", id="bundlePolicyIds") }}
-                  <small class="text-muted">Select policies that can be bundled together</small>
-                </div>
-
-                <!-- Discount Options -->
-                <div class="row">
-                  <div class="col-md-6">
-                    {{ form.bundle_discount_percent.label(class="form-label fw-bold") }}
-                    <div class="input-group">
-                      {{ form.bundle_discount_percent(class="form-control", placeholder="0") }}
-                      <span class="input-group-text">%</span>
-                    </div>
-                    <small class="text-muted">Percentage discount</small>
-                  </div>
-                  <div class="col-md-6">
-                    {{ form.bundle_discount_amount.label(class="form-label fw-bold") }}
-                    <div class="input-group">
-                      <span class="input-group-text">$</span>
-                      {{ form.bundle_discount_amount(class="form-control", placeholder="0.00") }}
-                    </div>
-                    <small class="text-muted">Fixed dollar discount</small>
-                  </div>
-                </div>
-              </div>
+            <div class="d-flex gap-2 mt-4">
+              <button class="btn btn-primary" type="submit">Save Version</button>
+              <a class="btn btn-outline-secondary" href="{{ url_for('admin.insurance_management') }}">Back</a>
             </div>
-          </div>
-
-          <!-- Grouped Insurance Section -->
-          <div class="accordion-item">
-            <h2 class="accordion-header" id="headingGrouped">
-              <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse"
-                data-bs-target="#collapseGrouped" aria-expanded="false" aria-controls="collapseGrouped">
-                <span class="material-symbols-outlined me-2">layers</span><strong>Grouped Insurance</strong>
-                <span class="badge bg-info ms-2 grouped-badge" style="display:none;">Grouped</span>
-              </button>
-            </h2>
-            <div id="collapseGrouped" class="accordion-collapse collapse" aria-labelledby="headingGrouped"
-              data-bs-parent="#advancedSettingsAccordion">
-              <div class="accordion-body">
-                <div class="alert alert-info mb-3">
-                  <span class="material-symbols-outlined me-2">info</span>
-                  <small>Grouped insurance policies are mutually exclusive—students choose only <strong>one policy per
-                      group</strong>.</small>
-                </div>
-
-                <div class="form-check form-switch mb-3">
-                  <input class="form-check-input" type="checkbox" id="tierToggleEdit" {% if form.tier_category_id.data
-                    %}checked{% endif %}>
-                  <label class="form-check-label fw-bold" for="tierToggleEdit">Enable grouping for this
-                    insurance</label>
-                </div>
-
-                {% if form.tier_level is defined %}
-                <div id="tierSelectionEdit" style="{% if not form.tier_category_id.data %}display:none;{% endif %}">
-
-                  <div
-                    class="alert alert-success py-2 px-3 mb-3 {% if not form.tier_category_id.data %}d-none{% endif %}"
-                    id="tierSummaryEdit">
-                    {% if form.tier_category_id.data %}
-                    Currently grouped in <strong>{{ form.tier_name.data or ('Group ' ~ form.tier_category_id.data)
-                      }}</strong> · select one only
-                    {% endif %}
-                  </div>
-
-                  <div class="mb-3">
-                    {{ form.tier_level.label(class="form-label fw-bold") }}
-                    {{ form.tier_level(class="form-select", id="tier_level") }}
-                    <small class="text-muted">Label this plan's tier (e.g., Basic, Premium, Max) for student
-                      guidance</small>
-                  </div>
-
-                  <div class="mb-3" id="tierActionsEdit" {% if not form.tier_category_id.data %}style="display:none;" {%
-                    endif %}>
-                    <button type="button" class="btn btn-outline-danger btn-sm" id="removeGroupBtn">
-                      <span class="material-symbols-outlined me-1">cancel</span>Remove from group
-                    </button>
-                  </div>
-
-                  {% if tier_groups %}
-                  <h6 class="fw-bold mb-3">Existing Groups</h6>
-                  <div class="row g-3 mb-3">
-                    {% for group in tier_groups %}
-                    <div class="col-lg-6">
-                      <div class="card border-{{ group.color }} h-100">
-                        <div class="card-body">
-                          <div class="d-flex justify-content-between align-items-start mb-2">
-                            <span class="badge bg-{{ group.color }} text-white">{{ group.name }}</span>
-                            <button type="button" class="btn btn-outline-primary btn-sm select-tier-btn-edit"
-                              data-tier-id="{{ group.id }}" data-tier-name="{{ group.name }}"
-                              data-tier-color="{{ group.color }}">
-                              Join Group
-                            </button>
-                          </div>
-                          <small class="text-muted d-block mb-2">{{ group.policies|length }} polic{{ 'ies' if
-                            group.policies|length != 1 else 'y' }}</small>
-                          {% if group.policies %}
-                          <ul class="list-unstyled small mb-0">
-                            {% for policy_info in group.policies %}
-                            <li class="d-flex align-items-center gap-2 mb-1">
-                              <span class="material-symbols-outlined text-{{ group.color }}">verified_user</span>
-                              <span>{{ policy_info.title }}</span>
-                              {% if policy_info.level %}
-                              <span
-                                class="badge rounded-pill bg-light border border-{{ group.color }} text-{{ group.color }} text-uppercase"
-                                style="font-size: 0.6rem;">
-                                {{ policy_info.level.replace('_', ' ') }}
-                              </span>
-                              {% endif %}
-                            </li>
-                            {% endfor %}
-                          </ul>
-                          {% endif %}
-                        </div>
-                      </div>
-                    </div>
-                    {% endfor %}
-                  </div>
-                  <div class="mb-3">
-                    <button type="button" class="btn btn-outline-secondary btn-sm" id="startNewGroupBtnEdit">
-                      <span class="material-symbols-outlined me-1">add_circle</span>Create a new group
-                    </button>
-                  </div>
-                  {% else %}
-                  <div class="alert alert-warning mb-3">
-                    <span class="material-symbols-outlined me-2">info</span>
-                    No grouped insurance exists yet. Create your first group below.
-                  </div>
-                  {% endif %}
-
-                  <div id="newGroupFieldsEdit"
-                    class="card bg-light {% if not form.tier_category_id.data and tier_groups %}d-none{% endif %}">
-                    <div class="card-body">
-                      <h6 class="fw-bold mb-3">Create New Group</h6>
-                      <div class="row g-3">
-                        <div class="col-md-8">
-                          {{ form.tier_name.label(class="form-label fw-bold") }}
-                          {{ form.tier_name(class="form-control", id="tier_name", placeholder="e.g., Paycheck
-                          Protection") }}
-                          <small class="text-muted">Group name shown to students</small>
-                        </div>
-                        <div class="col-md-4">
-                          {{ form.tier_color.label(class="form-label fw-bold") }}
-                          {{ form.tier_color(class="form-select", id="tier_color") }}
-                          <small class="text-muted">Visual identifier</small>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <div class="d-none">
-                  {{ form.tier_category_id(id="tier_category_id") }}
-                </div>
-                {% else %}
-                <div class="alert alert-warning mb-0">
-                  Tier grouping controls are temporarily unavailable. Reload the page to enable grouping.
-                </div>
-                {% endif %}
-              </div>
-            </div>
-          </div>
-
-        </div>
-        <!-- End Accordion -->
-
-      </div>
-
-      <!-- Right Sidebar -->
-      <div class="col-lg-4">
-        <!-- Status Card -->
-        <div class="card shadow-sm mb-4 border-{{ 'success' if policy.is_active else 'danger' }}">
-          <div class="card-header bg-{{ 'success' if policy.is_active else 'danger' }} text-white">
-            <h6 class="mb-0"><span class="material-symbols-outlined me-2">{{ 'toggle_on' if policy.is_active else 'toggle_off' }}</span>Policy Status
-            </h6>
-          </div>
-          <div class="card-body">
-            <div class="form-check form-switch mb-3">
-              {{ form.is_active(class="form-check-input", role="switch", style="width: 3rem; height: 1.5rem;") }}
-              {{ form.is_active.label(class="form-check-label fw-bold fs-5 ms-2") }}
-            </div>
-            <div class="alert alert-{{ 'success' if policy.is_active else 'warning' }} mb-0">
-              <small>
-                {% if policy.is_active %}
-                <span class="material-symbols-outlined">check_circle</span> Visible and available for purchase
-                {% else %}
-                <span class="material-symbols-outlined">cancel</span> Hidden from students
-                {% endif %}
-              </small>
-            </div>
-          </div>
-        </div>
-
-        <!-- Statistics Card -->
-        <div class="card shadow-sm mb-4">
-          <div class="card-header bg-dark text-white">
-            <h6 class="mb-0"><span class="material-symbols-outlined me-2">trending_up</span>Statistics</h6>
-          </div>
-          <div class="card-body p-3">
-            <div class="d-flex justify-content-between align-items-center mb-3 pb-3 border-bottom">
-              <div>
-                <div class="text-muted small mb-1">Active Students</div>
-                <h3 class="mb-0 text-primary">{{ policy.student_policies.filter_by(status='active').count() }}</h3>
-              </div>
-              <div class="text-end">
-                <span class="material-symbols-outlined text-primary" style="font-size: 2.5rem; opacity: 0.2;">groups</span>
-              </div>
-            </div>
-            <div class="d-flex justify-content-between align-items-center mb-3 pb-3 border-bottom">
-              <div>
-                <div class="text-muted small mb-1">Total Claims</div>
-                <h3 class="mb-0 text-info">{{ policy.claims.count() }}</h3>
-              </div>
-              <div class="text-end">
-                <span class="material-symbols-outlined text-info" style="font-size: 2.5rem; opacity: 0.2;">description</span>
-              </div>
-            </div>
-            <div class="d-flex justify-content-between align-items-center">
-              <div>
-                <div class="text-muted small mb-1">Created</div>
-                <div class="fw-bold">{{ policy.created_at.strftime('%b %d, %Y') }}</div>
-              </div>
-              <div class="text-end">
-                <span class="material-symbols-outlined text-secondary" style="font-size: 2rem; opacity: 0.2;">event_available</span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Quick Tips Card -->
-        <div class="card shadow-sm mb-4 bg-light">
-          <div class="card-header border-0 bg-transparent">
-            <h6 class="mb-0 text-primary"><span class="material-symbols-outlined me-2">lightbulb</span>Quick Tips</h6>
-          </div>
-          <div class="card-body pt-0">
-            <ul class="small mb-0 ps-3" style="line-height: 1.8;" id="insurance-quick-tips">
-              <li><strong>Price with CWI in mind:</strong> <span class="tip-pricing">{% if insurance_recommendation %}Keep {{ insurance_recommendation.frequency }} premium costs in the ${{ '%.2f'|format(insurance_recommendation.min) }}-${{ '%.2f'|format(insurance_recommendation.max) }} range. Ideal target: ${{ '%.2f'|format(insurance_recommendation.recommended) }} based on the current CWI of ${{ '%.2f'|format(insurance_recommendation.cwi) }}/week.{% else %}Configure payroll first to get premium recommendations.{% endif %}</span></li>
-              <li><strong>Waiting periods:</strong> 3-7 days prevents immediate claims after purchase while remaining
-                student-friendly</li>
-              <li><strong>Bundle discounts:</strong> 10-20% off encourages students to buy multiple policies together
-              </li>
-              <li><strong>Balance coverage:</strong> Set max claim amounts 3-5x the premium, and period caps 6-10x the
-                premium</li>
-              <li><strong>Enable autopay:</strong> Auto-deduction reduces payment friction and improves participation
-                rates</li>
-              <li><strong>Monitor claims:</strong> Review claim patterns monthly to adjust coverage limits and identify
-                abuse</li>
-            </ul>
-          </div>
-        </div>
-
-        <!-- Action Buttons -->
-        <div class="d-grid gap-2">
-          {{ form.submit(class="btn btn-primary btn-lg", value="Save Changes") }}
-          <a href="{{ url_for('admin.insurance_management') }}" class="btn btn-outline-secondary">Cancel</a>
+          </form>
         </div>
       </div>
     </div>
-  </form>
+
+    <div class="col-lg-4">
+      <div class="card shadow-sm mb-4">
+        <div class="card-header bg-dark text-white">
+          <h3 class="h6 mb-0">Policy Controls</h3>
+        </div>
+        <div class="card-body">
+          <form method="POST" action="{{ url_for('admin.deactivate_insurance_policy', policy_id=policy.id) }}" class="mb-2">
+            <button class="btn btn-warning w-100" type="submit">Make Inactive</button>
+          </form>
+          <form method="POST" action="{{ url_for('admin.delete_insurance_policy', policy_id=policy.id) }}" class="mb-2">
+            <button class="btn btn-danger w-100" type="submit">Schedule Deletion</button>
+          </form>
+          <div class="alert alert-info mb-0">
+            Deletion is deferred until the last enforced entitlement boundary for this policy lineage ends.
+          </div>
+        </div>
+      </div>
+
+      <div class="card shadow-sm">
+        <div class="card-header bg-light">
+          <h3 class="h6 mb-0">Policy Lineage</h3>
+        </div>
+        <div class="list-group list-group-flush">
+          {% for version in available_versions %}
+          {% set version_payload = version.policy_payload_json|tojson %}
+          <a class="list-group-item list-group-item-action {% if version.id == policy.id %}active{% endif %}" href="{{ url_for('admin.edit_insurance_policy', policy_id=version.id) }}">
+            <div class="d-flex justify-content-between">
+              <strong>v{{ version.version_number }}</strong>
+              {% if version.is_active %}<span class="badge bg-success">Active</span>{% endif %}
+            </div>
+            <small>{{ version.policy_payload_json[:80] }}{% if version.policy_payload_json|length > 80 %}…{% endif %}</small>
+          </a>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  </div>
 </div>
-
-<script>
-  // Update hidden field with selected bundle policies
-  document.addEventListener('DOMContentLoaded', function () {
-    const checkboxes = document.querySelectorAll('.bundle-policy-checkbox');
-    const hiddenField = document.getElementById('bundlePolicyIds');
-    const bundleBadge = document.querySelector('.bundle-badge');
-
-    function updateBundleIds() {
-      const selectedIds = Array.from(checkboxes)
-        .filter(cb => cb.checked)
-        .map(cb => cb.value);
-      hiddenField.value = selectedIds.join(',');
-
-      // Show/hide bundle badge
-      if (bundleBadge && selectedIds.length > 0) {
-        bundleBadge.style.display = 'inline-block';
-      } else if (bundleBadge) {
-        bundleBadge.style.display = 'none';
-      }
-    }
-
-    checkboxes.forEach(cb => {
-      cb.addEventListener('change', updateBundleIds);
-    });
-
-    // Initialize on load
-    updateBundleIds();
-
-    // Initialize Economy Balance Checker
-    if (typeof EconomyBalanceChecker !== 'undefined') {
-      const economyChecker = new EconomyBalanceChecker({
-        warningsContainer: '#economy-warnings',
-        expectedWeeklyHours: {{ (payroll_settings.expected_weekly_hours if payroll_settings and payroll_settings.expected_weekly_hours is not none else 5.0) | float }}
-    });
-
-  // Display CWI info if payroll is configured
-  economyChecker.analyzeEconomy().then(analysis => {
-    economyChecker.displayCWIInfo(analysis, '#cwi-info');
-  }).catch(err => {
-    console.log('Payroll not configured yet, skipping CWI display');
-  });
-
-  // Update frequency data attribute when frequency field changes
-  const frequencyField = document.querySelector('[data-economy-frequency-field]');
-  const premiumField = document.querySelector('[data-economy-validate="insurance"]');
-  if (frequencyField && premiumField) {
-    frequencyField.addEventListener('change', function () {
-      premiumField.setAttribute('data-economy-frequency', this.value);
-      // Trigger validation
-      premiumField.dispatchEvent(new Event('input'));
-    });
-    // Set initial frequency
-    premiumField.setAttribute('data-economy-frequency', frequencyField.value);
-  }
-  }
-
-  // Handle mutually exclusive repurchase restrictions
-  const permanentBlockToggle = document.getElementById('permanentBlockToggle');
-  const cooldownToggle = document.getElementById('cooldownToggle');
-  const cooldownSection = document.getElementById('cooldownSection');
-  const cooldownDays = document.getElementById('cooldownDays');
-  const repurchaseBadge = document.querySelector('.repurchase-badge');
-  const editClaimType = document.getElementById('edit_claim_type');
-  const editMaxClaimAmountGroup = document.getElementById('editMaxClaimAmountGroup');
-  const editMaxPayoutPerPeriodGroup = document.getElementById('editMaxPayoutPerPeriodGroup');
-  const editMaxClaimAmountInput = document.getElementById('edit_max_claim_amount');
-  const editMaxPayoutInput = document.getElementById('edit_max_payout_per_period');
-
-  function updateRepurchaseRestrictions() {
-    if (permanentBlockToggle.checked) {
-      // Permanent block is ON - disable and hide cooldown section
-      cooldownSection.style.opacity = '0.5';
-      cooldownSection.style.pointerEvents = 'none';
-      cooldownToggle.checked = false;
-      cooldownToggle.disabled = true;
-      cooldownDays.style.display = 'none';
-    } else {
-      // Permanent block is OFF - enable cooldown section
-      cooldownSection.style.opacity = '1';
-      cooldownSection.style.pointerEvents = 'auto';
-      cooldownToggle.disabled = false;
-
-      // Show/hide days field based on cooldown toggle
-      if (cooldownToggle.checked) {
-        cooldownDays.style.display = 'block';
-      } else {
-        cooldownDays.style.display = 'none';
-      }
-    }
-
-    // Show/hide repurchase badge
-    if (repurchaseBadge) {
-      if (permanentBlockToggle.checked || cooldownToggle.checked) {
-        repurchaseBadge.style.display = 'inline-block';
-      } else {
-        repurchaseBadge.style.display = 'none';
-      }
-    }
-  }
-
-  if (permanentBlockToggle && cooldownToggle) {
-    permanentBlockToggle.addEventListener('change', updateRepurchaseRestrictions);
-    cooldownToggle.addEventListener('change', updateRepurchaseRestrictions);
-    updateRepurchaseRestrictions(); // Initialize on load
-  }
-
-  function setEditMonetaryFieldsVisibility() {
-    if (!editClaimType) return;
-    const isNonMonetary = editClaimType.value === 'non_monetary';
-
-    if (editMaxClaimAmountGroup) {
-      editMaxClaimAmountGroup.style.display = isNonMonetary ? 'none' : '';
-    }
-    if (editMaxPayoutPerPeriodGroup) {
-      editMaxPayoutPerPeriodGroup.style.display = isNonMonetary ? 'none' : '';
-    }
-
-    if (isNonMonetary) {
-      if (editMaxClaimAmountInput) {
-        editMaxClaimAmountInput.value = '';
-        editMaxClaimAmountInput.disabled = true;
-      }
-      if (editMaxPayoutInput) {
-        editMaxPayoutInput.value = '';
-        editMaxPayoutInput.disabled = true;
-      }
-    } else {
-      if (editMaxClaimAmountInput) editMaxClaimAmountInput.disabled = false;
-      if (editMaxPayoutInput) editMaxPayoutInput.disabled = false;
-    }
-  }
-  if (editClaimType) {
-    editClaimType.addEventListener('change', setEditMonetaryFieldsVisibility);
-    setEditMonetaryFieldsVisibility();
-  }
-
-  // Tier grouping flow (edit mode)
-  const tierToggleEdit = document.getElementById('tierToggleEdit');
-  const tierSelectionEdit = document.getElementById('tierSelectionEdit');
-  const tierCategoryInput = document.getElementById('tier_category_id');
-  const tierNameInput = document.getElementById('tier_name');
-  const tierColorInput = document.getElementById('tier_color');
-  const tierLevelInput = document.getElementById('tier_level');
-  const tierSummaryEdit = document.getElementById('tierSummaryEdit');
-  const newGroupFieldsEdit = document.getElementById('newGroupFieldsEdit');
-  const startNewGroupBtnEdit = document.getElementById('startNewGroupBtnEdit');
-  const selectTierButtonsEdit = document.querySelectorAll('.select-tier-btn-edit');
-  const removeGroupBtn = document.getElementById('removeGroupBtn');
-  const tierActionsEdit = document.getElementById('tierActionsEdit');
-  const groupedBadge = document.querySelector('.grouped-badge');
-
-  function clearTierFields() {
-    if (tierCategoryInput) tierCategoryInput.value = '';
-    if (tierNameInput) tierNameInput.value = '';
-    if (tierColorInput) {
-      tierColorInput.value = '';
-      tierColorInput.dispatchEvent(new Event('change'));
-    }
-    if (tierLevelInput) tierLevelInput.value = '';
-  }
-
-  function showTierSelection() {
-    if (tierSelectionEdit) tierSelectionEdit.style.display = 'block';
-    if (groupedBadge) groupedBadge.style.display = 'inline-block';
-  }
-
-  function hideTierSelection() {
-    if (tierSelectionEdit) tierSelectionEdit.style.display = 'none';
-    if (tierSummaryEdit) tierSummaryEdit.classList.add('d-none');
-    if (tierActionsEdit) tierActionsEdit.style.display = 'none';
-    if (newGroupFieldsEdit) newGroupFieldsEdit.classList.add('d-none');
-    if (groupedBadge) groupedBadge.style.display = 'none';
-    clearTierFields();
-  }
-
-  // Escapes &, <, >, ", and ' for HTML usage
-  function escapeHtml(str) {
-    return String(str)
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#39;');
-  }
-
-  function updateTierSummary() {
-    if (!tierSummaryEdit) return;
-    const levelLabel = (tierLevelInput && tierLevelInput.value)
-      ? ` · ${tierLevelInput.options[tierLevelInput.selectedIndex].text}`
-      : '';
-    const groupLabel = tierNameInput && tierNameInput.value ? tierNameInput.value : 'Untitled Group';
-    tierSummaryEdit.innerHTML = `<strong>Grouped:</strong> ${escapeHtml(groupLabel)} · select one only${levelLabel}`;
-    tierSummaryEdit.classList.remove('d-none');
-  }
-
-  function setTierValues(tier) {
-    if (tierCategoryInput) tierCategoryInput.value = tier.id;
-    if (tierNameInput) tierNameInput.value = tier.name || '';
-    if (tierColorInput) {
-      tierColorInput.value = tier.color || 'primary';
-      tierColorInput.dispatchEvent(new Event('change'));
-    }
-    updateTierSummary();
-    if (tierActionsEdit) tierActionsEdit.style.display = 'flex';
-    if (newGroupFieldsEdit) newGroupFieldsEdit.classList.remove('d-none');
-  }
-
-  function startNewGroup() {
-    showTierSelection();
-    if (tierCategoryInput) tierCategoryInput.value = '';
-    if (tierSummaryEdit) tierSummaryEdit.classList.add('d-none');
-    if (tierActionsEdit) tierActionsEdit.style.display = 'flex';
-    if (newGroupFieldsEdit) newGroupFieldsEdit.classList.remove('d-none');
-    if (tierColorInput && !tierColorInput.value) {
-      tierColorInput.value = 'primary';
-      tierColorInput.dispatchEvent(new Event('change'));
-    }
-  }
-
-  selectTierButtonsEdit.forEach(btn => {
-    btn.addEventListener('click', () => {
-      if (tierToggleEdit) tierToggleEdit.checked = true;
-      showTierSelection();
-      setTierValues({
-        id: btn.dataset.tierId,
-        name: btn.dataset.tierName,
-        color: btn.dataset.tierColor
-      });
-    });
-  });
-
-  if (startNewGroupBtnEdit) {
-    startNewGroupBtnEdit.addEventListener('click', () => {
-      if (tierToggleEdit) tierToggleEdit.checked = true;
-      startNewGroup();
-    });
-  }
-
-  if (removeGroupBtn) {
-    removeGroupBtn.addEventListener('click', () => {
-      hideTierSelection();
-      if (tierToggleEdit) tierToggleEdit.checked = false;
-    });
-  }
-
-  if (tierToggleEdit) {
-    tierToggleEdit.addEventListener('change', () => {
-      if (tierToggleEdit.checked) {
-        showTierSelection();
-        if (!selectTierButtonsEdit.length) {
-          startNewGroup();
-        } else if (tierCategoryInput && tierCategoryInput.value) {
-          setTierValues({
-            id: tierCategoryInput.value,
-            name: tierNameInput ? tierNameInput.value : '',
-            color: tierColorInput ? tierColorInput.value : 'primary'
-          });
-        }
-      } else {
-        hideTierSelection();
-      }
-    });
-  }
-
-  if (tierLevelInput) {
-    tierLevelInput.addEventListener('change', () => {
-      if (tierToggleEdit && tierToggleEdit.checked && tierCategoryInput && tierCategoryInput.value) {
-        updateTierSummary();
-      }
-    });
-  }
-
-  // Initialize selection if already grouped
-  if (tierCategoryInput && tierCategoryInput.value) {
-    if (tierToggleEdit) tierToggleEdit.checked = true;
-    showTierSelection();
-    setTierValues({
-      id: tierCategoryInput.value,
-      name: tierNameInput ? tierNameInput.value : '',
-      color: tierColorInput ? tierColorInput.value : 'primary'
-    });
-  }
-
-  // Enable tooltips for grouped insurance info
-  const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
-  tooltipTriggerList.map(function (tooltipTriggerEl) {
-    return new bootstrap.Tooltip(tooltipTriggerEl);
-  });
-
-  window.renderBadgeLikeSelect('edit_marketing_badge', 'marketing');
-  window.renderBadgeLikeSelect('tier_color', 'tier');
-});
-</script>
-
-<script src="https://cdn.jsdelivr.net/npm/easymde/dist/easymde.min.js"></script>
-<script>
-  // Initialize markdown editor for policy description
-  document.addEventListener('DOMContentLoaded', function () {
-    const descriptionField = document.getElementById('description');
-
-    if (descriptionField) {
-      new EasyMDE({
-        element: descriptionField,
-        spellChecker: false,
-        autoDownloadFontAwesome: false,
-        toolbar: ["bold", "italic", "heading", "|", "unordered-list", "ordered-list", "|", "link", "quote", "|", "preview", "side-by-side", "fullscreen", "|", "guide"],
-        status: false,
-        placeholder: "Describe what this policy covers (Markdown supported)...",
-      });
-    }
-  });
-</script>
-
 {% endblock %}
