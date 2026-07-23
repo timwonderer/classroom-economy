@@ -1511,25 +1511,29 @@ def insurance_marketplace():
 
     class_identifier = get_display_join_code(context.class_id) if context.class_id else ""
     policy_versions = list_insurance_policy_versions(context.class_id)
-    available_policies = [
-        SimpleNamespace(
-            id=policy.id,
-            title=(json.loads(policy.policy_payload_json or "{}").get("title") or f"Policy v{policy.version_number}"),
-            description=json.loads(policy.policy_payload_json or "{}").get("description", ""),
-            premium=Decimal(str(json.loads(policy.policy_payload_json or "{}").get("premium", "0.00"))),
-            charge_frequency=json.loads(policy.policy_payload_json or "{}").get("charge_frequency", "monthly"),
-            waiting_period_days=int(json.loads(policy.policy_payload_json or "{}").get("waiting_period_days", 0) or 0),
-            max_claims_count=json.loads(policy.policy_payload_json or "{}").get("max_claims_count"),
-            claim_type=json.loads(policy.policy_payload_json or "{}").get("claim_type", "transaction_monetary"),
-            marketing_badge=json.loads(policy.policy_payload_json or "{}").get("marketing_badge"),
-            tier_group=json.loads(policy.policy_payload_json or "{}").get("tier_group"),
-            tier_name=json.loads(policy.policy_payload_json or "{}").get("tier_name"),
-            tier_color=json.loads(policy.policy_payload_json or "{}").get("tier_color", "secondary"),
-            tier_level=json.loads(policy.policy_payload_json or "{}").get("tier_level"),
-            is_active=policy.is_active,
+    available_policies = []
+    for policy in policy_versions:
+        payload = json.loads(policy.policy_payload_json or "{}")
+        available_policies.append(
+            SimpleNamespace(
+                id=policy.id,
+                title=(payload.get("title") or f"Policy v{policy.version_number}"),
+                description=payload.get("description", ""),
+                premium=Decimal(str(payload.get("premium", "0.00"))),
+                charge_frequency=payload.get("charge_frequency", "monthly"),
+                waiting_period_days=int(payload.get("waiting_period_days", 0) or 0),
+                max_claims_count=payload.get("max_claims_count"),
+                claim_type=payload.get("claim_type", "transaction_monetary"),
+                marketing_badge=payload.get("marketing_badge"),
+                tier_group=payload.get("tier_group"),
+                tier_name=payload.get("tier_name"),
+                tier_color=payload.get("tier_color", "secondary"),
+                tier_level=payload.get("tier_level"),
+                is_active=policy.is_active,
+                payload=payload,
+                version_number=policy.version_number,
+            )
         )
-        for policy in policy_versions
-    ]
     tier_groups = defaultdict(lambda: {"name": "", "color": "secondary", "policies": []})
     for policy in available_policies:
         if policy.tier_group:
@@ -1652,20 +1656,26 @@ def file_claim(policy_id):
         context.identity_profile.full_name
         if getattr(context, "identity_profile", None) else ""
     )
+    policy_version = db.session.get(PolicyVersion, policy_id)
+    if policy_version is None or policy_version.class_id != context.class_id or policy_version.domain != "insurance":
+        flash("That insurance policy is not available for this class.", "error")
+        return redirect(url_for('student.student_insurance'))
+    payload = json.loads(policy_version.policy_payload_json or "{}")
     placeholder_policy = SimpleNamespace(
-        id=policy_id,
-        title="Insurance",
-        description="",
-        premium=Decimal("0.00"),
-        charge_frequency="monthly",
-        waiting_period_days=0,
-        max_claims_count=None,
-        claim_type="transaction_monetary",
+        id=policy_version.id,
+        title=payload.get("title") or f"Policy v{policy_version.version_number}",
+        description=payload.get("description", ""),
+        premium=Decimal(str(payload.get("premium", "0.00"))),
+        charge_frequency=payload.get("charge_frequency", "monthly"),
+        waiting_period_days=int(payload.get("waiting_period_days", 0) or 0),
+        max_claims_count=payload.get("max_claims_count"),
+        claim_type=payload.get("claim_type", "transaction_monetary"),
+        policy_version=policy_version,
+        payload=payload,
     )
     policy_claims = list_insurance_claims(
         class_id=context.class_id,
         target_seat_id=context.seat_id,
-        entitlement_id=None,
     )
     enrollment = SimpleNamespace(
         id=policy_id,
@@ -1726,17 +1736,23 @@ def view_policy(enrollment_id):
         context.identity_profile.full_name
         if getattr(context, "identity_profile", None) else ""
     )
+    policy_version = db.session.get(PolicyVersion, enrollment_id)
+    if policy_version is None or policy_version.class_id != context.class_id or policy_version.domain != "insurance":
+        flash("That insurance policy is not available for this class.", "error")
+        return redirect(url_for('student.student_insurance'))
+    payload = json.loads(policy_version.policy_payload_json or "{}")
     placeholder_policy = SimpleNamespace(
-        id=enrollment_id,
-        title="Insurance",
-        description="",
-        premium=Decimal("0.00"),
-        charge_frequency="monthly",
-        waiting_period_days=0,
-        max_claims_count=None,
-        claim_type="transaction_monetary",
-        autopay=False,
-        auto_cancel_nonpay_days=0,
+        id=policy_version.id,
+        title=payload.get("title") or f"Policy v{policy_version.version_number}",
+        description=payload.get("description", ""),
+        premium=Decimal(str(payload.get("premium", "0.00"))),
+        charge_frequency=payload.get("charge_frequency", "monthly"),
+        waiting_period_days=int(payload.get("waiting_period_days", 0) or 0),
+        max_claims_count=payload.get("max_claims_count"),
+        claim_type=payload.get("claim_type", "transaction_monetary"),
+        autopay=bool(payload.get("autopay", False)),
+        auto_cancel_nonpay_days=int(payload.get("auto_cancel_nonpay_days", 0) or 0),
+        payload=payload,
     )
     enrollment = SimpleNamespace(
         id=enrollment_id,
