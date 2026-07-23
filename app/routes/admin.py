@@ -5198,7 +5198,7 @@ def store_management():
         idempotency_key = f"feat:store:item-create:{selected_scope['class_id']}:{payload_hash}"
 
         db.session.rollback()
-        with FEATContext("FEAT-SETTINGS-001", idempotency_key=idempotency_key):
+        with FEATContext("FEAT-CLASS-003", idempotency_key=idempotency_key):
             new_item = StoreItem(
                 user_id=user_id,
                 class_id=selected_scope['class_id'],
@@ -5606,7 +5606,7 @@ def edit_store_item(item_id):
         idempotency_key = f"feat:store:item-edit:{selected_scope['class_id']}:{item.id}:{payload_hash}"
 
         db.session.rollback()
-        with FEATContext("FEAT-SETTINGS-001", idempotency_key=idempotency_key):
+        with FEATContext("FEAT-CLASS-003", idempotency_key=idempotency_key):
             item = StoreItem.query.filter_by(id=item_id, class_id=selected_scope['class_id']).first_or_404()
             was_active = item.is_active
 
@@ -5653,7 +5653,7 @@ def delete_store_item(item_id):
     # For active collective items, refund any pending purchases before deactivating
     # so students are not left with purchased but unredeemable items.
     idempotency_key = f"feat:store:item-deactivate:{selected_scope['class_id']}:{item.id}"
-    with FEATContext("FEAT-SETTINGS-001", idempotency_key=idempotency_key):
+    with FEATContext("FEAT-CLASS-003", idempotency_key=idempotency_key):
         item = StoreItem.query.filter_by(id=item_id, class_id=selected_scope['class_id']).first_or_404()
         refunded = 0
         if item.item_type == 'collective' and item.is_active:
