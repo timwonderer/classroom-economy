@@ -134,6 +134,8 @@ from app.services.insurance_policy_service import (
     list_insurance_policy_versions,
     schedule_policy_deletion,
 )
+from app.feats.insurance_claim_feat import execute_claim_approval, execute_claim_rejection
+from app.services.store_entitlement_service import get_insurance_claim
 from app.services.classroom_setup import (
     create_class,
     create_class_with_roster,
@@ -6867,6 +6869,12 @@ def view_student_policy(enrollment_id):
         contract_max_claims_count=None,
         contract_max_claims_period="period",
     )
+    if claims:
+        first_claim = claims[0]
+        entitlement_item = getattr(getattr(first_claim, "entitlement", None), "store_item", None)
+        if entitlement_item is not None:
+            placeholder_policy.title = getattr(entitlement_item, "title", placeholder_policy.title)
+            placeholder_policy.description = getattr(entitlement_item, "description", placeholder_policy.description)
     return render_template(
         'admin_view_student_policy.html',
         current_page='insurance',
@@ -6879,36 +6887,19 @@ def view_student_policy(enrollment_id):
 
 
 @admin_bp.route('/insurance/claim/<int:claim_id>', methods=['GET', 'POST'])
-@feat_shell("FEAT-ADMN-001")
 @admin_required
 def process_claim(claim_id):
     """Process insurance claim with auto-deposit for monetary claims."""
     claim = get_insurance_claim(claim_id=str(claim_id))
     if claim is None:
-        claim = SimpleNamespace(
-            id=claim_id,
-            claim_id=str(claim_id),
-            target_seat=SimpleNamespace(full_name=""),
-            transaction=None,
-            submitted_at=utc_now(),
-            decided_at=None,
-            claimed_dates=[],
-            status=SimpleNamespace(value="SUBMITTED"),
-            entitlement=SimpleNamespace(
-                entitlement_item=SimpleNamespace(
-                    title="Insurance",
-                    description="",
-                )
-            ),
-            description="",
-            comments="",
-            rejection_reason="",
-            teacher_notes="",
-        )
+        abort(404)
+    form = AdminClaimProcessForm()
+    if request.method == 'GET':
+        form.status.data = getattr(claim.status, "value", claim.status)
     claims = list_insurance_claims(class_id=g.canonical_context.class_id)
     placeholder_policy = SimpleNamespace(
-        title="Insurance",
-        description="",
+        title=getattr(getattr(claim.entitlement, "store_item", None), "title", "Insurance"),
+        description=getattr(getattr(claim.entitlement, "store_item", None), "description", ""),
         premium=Decimal("0.00"),
         charge_frequency="monthly",
         waiting_period_days=0,
@@ -6923,13 +6914,51 @@ def process_claim(claim_id):
         payment_current=True,
         days_unpaid=0,
     )
+    claim_view = SimpleNamespace(
+        id=claim.id,
+        claim_id=claim.claim_id,
+        student=SimpleNamespace(full_name=getattr(claim.target_seat, "public_id", "")),
+        target_seat=claim.target_seat,
+        transaction=getattr(claim, "referenced_transaction", None),
+        submitted_at=claim.submitted_at,
+        decided_at=claim.decided_at,
+        claimed_dates=claim.claimed_dates or [],
+        status=getattr(claim.status, "value", claim.status),
+        entitlement=claim.entitlement,
+        description="",
+        comments="",
+        rejection_reason="",
+        teacher_notes="",
+        incident_date=claim.submitted_at,
+        filed_date=claim.submitted_at,
+        claim_amount=None,
+        claim_item=None,
+    )
+    if form.validate_on_submit():
+        decision = (form.status.data or "").strip().lower()
+        if decision == "approved":
+            execute_claim_approval(
+                claim_id=claim.claim_id,
+                decided_by_seat_id=g.canonical_context.seat_id,
+            )
+            flash("Claim approved.", "success")
+            db.session.commit()
+            return redirect(url_for("admin.insurance_management"))
+        if decision == "rejected":
+            execute_claim_rejection(
+                claim_id=claim.claim_id,
+                decided_by_seat_id=g.canonical_context.seat_id,
+            )
+            flash("Claim rejected.", "info")
+            db.session.commit()
+            return redirect(url_for("admin.insurance_management"))
     return render_template(
         'admin_process_claim.html',
         current_page='insurance',
-        claim=claim,
+        claim=claim_view,
         claim_type='transaction_monetary',
-        contract_title='Insurance',
-        contract_description='',
+        contract_title=placeholder_policy.title,
+        contract_description=placeholder_policy.description,
         contract_claim_time_limit_days=0,
         contract_max_claim_amount=None,
         remaining_period_cap=None,
@@ -6945,7 +6974,7 @@ def process_claim(claim_id):
         ),
         enrollment=enrollment,
         policy=placeholder_policy,
-        form=SimpleNamespace(hidden_tag=lambda: ""),
+        form=form,
     )
 
 
