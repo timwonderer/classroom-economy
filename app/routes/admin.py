@@ -5345,8 +5345,6 @@ def store_management():
             status='purchased',
             purchased_at=entitlement.granted_at,
             purchase_date=entitlement.granted_at,
-            uses_remaining=None,
-            bundle_remaining=None,
             is_from_bundle=False,
         ))
 

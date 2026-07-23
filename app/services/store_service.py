@@ -16,6 +16,7 @@ from app.models import (
     ClassEconomy,
     GrantType,
 )
+from app.services.store_entitlement_service import grant_entitlement, list_available_entitlements
 from app.utils.time import utc_now
 
 
@@ -201,7 +202,7 @@ def get_frozen_store_linked_items(settings: RentSettings) -> list[dict]:
 def grant_rent_per_use_items_from_settings(
     *, seat, settings: RentSettings, calculate_due_dates_fn,
 ) -> int:
-    """Store-owned mutation for rent-derived per-use entitlements."""
+    """Grant rent-derived per-use entitlements as canonical entitlement rows."""
     per_use_items = [
         item for item in _get_rent_linked_store_items(settings.class_id)
         if item.limit_per_student is not None
@@ -212,38 +213,21 @@ def grant_rent_per_use_items_from_settings(
 
     for pu_item in per_use_items:
         store_item_id = pu_item.id
-        use_limit = pu_item.limit_per_student
-
-        existing = StorePurchase.query.filter(
-            StorePurchase.seat_id == seat.id,
-            StorePurchase.store_item_id == store_item_id,
-            db.or_(StorePurchase.uses_remaining > 0, StorePurchase.uses_remaining == -1),
-            db.or_(StorePurchase.expiry_date.is_(None), StorePurchase.expiry_date > now),
-        ).first()
-
+        existing = list_available_entitlements(
+            target_seat_id=seat.id,
+            class_id=seat.class_id,
+            entitlement_item_id=store_item_id,
+        )
         if existing:
-            existing.uses_remaining = use_limit if use_limit else -1
             continue
 
-        expiry_date = None
-        if settings and getattr(settings, 'first_rent_due_date', None):
-            _, next_due = calculate_due_dates_fn(settings, now)
-            if next_due:
-                expiry_date = next_due
-
-        db.session.add(StorePurchase(
-            seat_id=seat.id,
+        grant_entitlement(
+            entitlement_item_id=store_item_id,
+            target_seat_id=seat.id,
+            actor_seat_id=seat.id,
             class_id=seat.class_id,
-            store_item_id=store_item_id,
-            quantity=1,
-            price_at_purchase=Decimal('0.00'),
-            total_price=Decimal('0.00'),
-            status='purchased',
-            purchased_at=now,
-            expiry_date=expiry_date,
-            is_from_bundle=False,
-            uses_remaining=use_limit if use_limit else -1,
-        ))
+            grant_type=GrantType.OBLIGATION,
+        )
         granted += 1
 
     return granted
@@ -271,32 +255,23 @@ def ensure_active_rent_per_use_grant(
     now=None,
     expiry_date=None,
 ):
-    """Store-owned mutation for ensuring a current rent grant row exists."""
+    """Ensure a current rent-linked entitlement exists."""
     now = now or utc_now()
-    existing = StorePurchase.query.filter(
-        StorePurchase.seat_id == seat.id,
-        StorePurchase.store_item_id == store_item_id,
-        db.or_(StorePurchase.uses_remaining > 0, StorePurchase.uses_remaining == -1),
-        db.or_(StorePurchase.expiry_date.is_(None), StorePurchase.expiry_date > now),
-    ).first()
-    if existing:
-        return existing
-
-    granted_item = StorePurchase(
-        seat_id=seat.id,
+    existing = list_available_entitlements(
+        target_seat_id=seat.id,
         class_id=seat.class_id,
-        store_item_id=store_item_id,
-        quantity=1,
-        price_at_purchase=Decimal('0.00'),
-        total_price=Decimal('0.00'),
-        status='purchased',
-        purchased_at=now,
-        expiry_date=expiry_date,
-        is_from_bundle=False,
-        uses_remaining=use_limit if use_limit else -1,
+        entitlement_item_id=store_item_id,
     )
-    db.session.add(granted_item)
-    return granted_item
+    if existing:
+        return existing[0]
+
+    return grant_entitlement(
+        entitlement_item_id=store_item_id,
+        target_seat_id=seat.id,
+        actor_seat_id=seat.id,
+        class_id=seat.class_id,
+        grant_type=GrantType.OBLIGATION,
+    )
 
 
 def record_rent_perk_purchase(
@@ -308,29 +283,15 @@ def record_rent_perk_purchase(
     now,
 ):
     """Store-owned mutation for a zero-cost rent-perk purchase."""
-    if active_rent_item and active_rent_item.uses_remaining != -1:
-        active_rent_item.uses_remaining -= 1
-
-    expiry_date = None
-    if item.item_type == 'delayed' and item.auto_expiry_days:
-        expiry_date = now + timedelta(days=item.auto_expiry_days)
-
-    purchase = StorePurchase(
-        seat_id=seat.id,
+    _ = active_rent_item
+    return grant_entitlement(
+        entitlement_item_id=item.id,
+        target_seat_id=seat.id,
+        actor_seat_id=seat.id,
         class_id=seat.class_id,
-        store_item_id=item.id,
-        quantity=1,
-        price_at_purchase=Decimal('0.00'),
-        total_price=Decimal('0.00'),
-        status='purchased',
-        ledger_tx_id=purchase_tx_id,
-        purchased_at=now,
-        expiry_date=expiry_date,
-        is_from_bundle=False,
-        uses_remaining=None,
+        grant_type=GrantType.OBLIGATION,
+        correlation_id=f"rent-perk:{seat.id}:{seat.class_id}:{item.id}:{purchase_tx_id}",
     )
-    db.session.add(purchase)
-    return purchase
 
 
 def record_standard_purchase_items(
@@ -361,8 +322,6 @@ def record_standard_purchase_items(
             purchased_at=utc_now(),
             expiry_date=expiry_date,
             is_from_bundle=True,
-            bundle_remaining=None,
-            uses_remaining=None,
             collective_goal_instance_code=item.collective_goal_instance_code if item.item_type == 'collective' else None,
         )
         db.session.add(purchase)
@@ -384,7 +343,6 @@ def record_standard_purchase_items(
             purchased_at=utc_now(),
             expiry_date=expiry_date,
             is_from_bundle=False,
-            uses_remaining=None,
             collective_goal_instance_code=item.collective_goal_instance_code if item.item_type == 'collective' else None,
         )
         db.session.add(purchase)

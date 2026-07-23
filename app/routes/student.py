@@ -884,8 +884,6 @@ def dashboard():
             store_item=item,
             status=terminal.disposition.value.lower() if terminal else "purchased",
             purchased_at=ent.granted_at,
-            uses_remaining=None,
-            bundle_remaining=None,
         ))
 
     checking_transactions = [tx for tx in transactions if tx.account_type == 'checking']
@@ -1913,8 +1911,6 @@ def shop():
             ),
             purchase_date=entitlement.granted_at,
             expiry_date=None,
-            uses_remaining=None,
-            bundle_remaining=None,
             is_from_bundle=False,
         ))
 
@@ -1974,13 +1970,13 @@ def shop():
                     fp['store_item_id'] for fp in frozen_privileges if fp.get('store_item_id')
                 }
 
-    # Build free uses remaining map for rent-linked per-use items
-    rent_free_uses = {}  # {store_item_id: uses_remaining or -1 for unlimited}
+    # Build rent-perk availability map for rent-linked per-use items.
+    rent_free_entitlement_counts = {}  # {store_item_id: available_units or -1 for unlimited}
     if seat:
         active_entitlements = list_entitlements_for_seat(target_seat_id=seat.id, class_id=class_id)
         for entitlement in active_entitlements:
             if entitlement.entitlement_item_id:
-                rent_free_uses[entitlement.entitlement_item_id] = -1
+                rent_free_entitlement_counts[entitlement.entitlement_item_id] = -1
 
         # Backfill UI for paid-rent students who are entitled to per-use perks
         # but are missing grant rows (edge-state). Do not override items
@@ -1993,8 +1989,8 @@ def shop():
             }
 
             for store_item_id, granted_uses in per_use_limit_by_store_id.items():
-                if store_item_id not in existing_per_use_ids and store_item_id not in rent_free_uses:
-                    rent_free_uses[store_item_id] = granted_uses
+                if store_item_id not in existing_per_use_ids and store_item_id not in rent_free_entitlement_counts:
+                    rent_free_entitlement_counts[store_item_id] = granted_uses
 
     # Calculate class size for collective goals (count unique students in this class)
     from app.models import Seat
@@ -2060,7 +2056,7 @@ def shop():
     return render_template('student_shop.html', student=student_display, current_class_context=current_class_context, items=items, student_items=student_items,
                          has_paid_rent=has_paid_rent, per_period_rent_item_ids=per_period_rent_item_ids,
                          rent_item_types_by_store_id=rent_item_types_by_store_id,
-                         rent_free_uses=rent_free_uses,
+                         rent_free_entitlement_counts=rent_free_entitlement_counts,
                          class_size=class_size, current_block=current_block,
                          collective_progress=collective_progress)
 
