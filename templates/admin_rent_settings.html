@@ -866,7 +866,7 @@
           <div class="card-body">
             <p class="mb-3">
               If the rent rate was changed mid-cycle, students who paid the original rate on time
-              may have been incorrectly charged late fees. This refunds those late fees and
+              may have been incorrectly charged late fees. This reverses those late fees and
               keeps the current cycle locked to the <strong>first payer's rate</strong>.
             </p>
             <p class="text-muted small mb-3">
@@ -874,7 +874,7 @@
               continues to apply on the next cycle.
             </p>
             <form method="POST" action="{{ url_for('admin.reverse_cycle_penalties') }}"
-                  onsubmit="return confirm('Reverse misapplied late fees for the current cycle? This creates refund transactions for affected students.');">
+                  onsubmit="return confirm('Reverse misapplied late fees for the current cycle? This updates the current-cycle late fee records for affected students.');">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
               <button type="submit" class="btn btn-warning w-100">
                 <span class="material-symbols-outlined me-2">payments</span>Reverse Misapplied Late Fees
