@@ -77,6 +77,7 @@ from app.services.store_entitlement_service import (
     list_available_entitlements,
     list_insurance_claims,
 )
+from app.services.insurance_policy_service import list_insurance_policy_versions
 from app.services.ledger_service import (
     apply_monthly_savings_interest as post_monthly_savings_interest,
     get_available_balances,
@@ -1509,6 +1510,32 @@ def insurance_marketplace():
         return redirect(url_for('student.dashboard'))
 
     class_identifier = get_display_join_code(context.class_id) if context.class_id else ""
+    policy_versions = list_insurance_policy_versions(context.class_id)
+    available_policies = [
+        SimpleNamespace(
+            id=policy.id,
+            title=(json.loads(policy.policy_payload_json or "{}").get("title") or f"Policy v{policy.version_number}"),
+            description=json.loads(policy.policy_payload_json or "{}").get("description", ""),
+            premium=Decimal(str(json.loads(policy.policy_payload_json or "{}").get("premium", "0.00"))),
+            charge_frequency=json.loads(policy.policy_payload_json or "{}").get("charge_frequency", "monthly"),
+            waiting_period_days=int(json.loads(policy.policy_payload_json or "{}").get("waiting_period_days", 0) or 0),
+            max_claims_count=json.loads(policy.policy_payload_json or "{}").get("max_claims_count"),
+            claim_type=json.loads(policy.policy_payload_json or "{}").get("claim_type", "transaction_monetary"),
+            marketing_badge=json.loads(policy.policy_payload_json or "{}").get("marketing_badge"),
+            tier_group=json.loads(policy.policy_payload_json or "{}").get("tier_group"),
+            tier_name=json.loads(policy.policy_payload_json or "{}").get("tier_name"),
+            tier_color=json.loads(policy.policy_payload_json or "{}").get("tier_color", "secondary"),
+            tier_level=json.loads(policy.policy_payload_json or "{}").get("tier_level"),
+            is_active=policy.is_active,
+        )
+        for policy in policy_versions
+    ]
+    tier_groups = defaultdict(lambda: {"name": "", "color": "secondary", "policies": []})
+    for policy in available_policies:
+        if policy.tier_group:
+            tier_groups[policy.tier_group]["name"] = policy.tier_name or f"Group {policy.tier_group}"
+            tier_groups[policy.tier_group]["color"] = policy.tier_color or "secondary"
+            tier_groups[policy.tier_group]["policies"].append(policy)
     current_class_context = SimpleNamespace(
         teacher_name="",
         block_display=class_identifier,
@@ -1528,11 +1555,11 @@ def insurance_marketplace():
         ),
         current_class_context=current_class_context,
         my_policies=[],
-        my_claims=[],
-        available_policies=[],
-        tier_groups={},
+        my_claims=list_insurance_claims(class_id=context.class_id, target_seat_id=context.seat_id),
+        available_policies=available_policies,
+        tier_groups=dict(tier_groups),
         enrolled_tiers=[],
-        can_purchase={},
+        can_purchase={policy.id: bool(policy.is_active) for policy in available_policies},
         repurchase_blocks=set(),
         claims_this_period=[],
         now=utc_now(),
@@ -1635,6 +1662,11 @@ def file_claim(policy_id):
         max_claims_count=None,
         claim_type="transaction_monetary",
     )
+    policy_claims = list_insurance_claims(
+        class_id=context.class_id,
+        target_seat_id=context.seat_id,
+        entitlement_id=None,
+    )
     enrollment = SimpleNamespace(
         id=policy_id,
         policy=placeholder_policy,
@@ -1675,10 +1707,7 @@ def file_claim(policy_id):
         contract_max_claims_count=None,
         contract_max_claims_period="period",
         eligible_transactions=[],
-        claims_this_period=list_insurance_claims(
-            class_id=context.class_id,
-            target_seat_id=context.seat_id,
-        ),
+        claims_this_period=policy_claims,
         now=utc_now(),
     )
 

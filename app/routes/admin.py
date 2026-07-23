@@ -73,6 +73,7 @@ from app.models import (
     LedgerBalanceSnapshot, ClassEconomy, User, UserRole, _quantize_currency,
     ObligationAssessment, ObligationSatisfaction,
     AttendanceReasonCode, IdentityProfile, PayrollEvent, PolicyVersion,
+    ObligationAssessment,
 )
 from app.auth import (
     admin_required,
@@ -6792,9 +6793,16 @@ def delete_insurance_policy(policy_id):
     version = get_insurance_policy_version(policy_id, class_id=class_id)
     if version is None:
         abort(404)
-    from app.services.entitlement_service import get_hall_pass_balance
-    # Deletion is class-configuration only; schedule the lineage wipe after the last entitlement boundary.
-    scheduled_for = utc_now()
+    current_coverages = (
+        db.session.query(sa.func.max(ObligationAssessment.coverage_end_time))
+        .filter(
+            ObligationAssessment.class_id == class_id,
+            ObligationAssessment.policy_version_id == version.id,
+            ObligationAssessment.coverage_end_time.isnot(None),
+        )
+        .scalar()
+    )
+    scheduled_for = current_coverages or utc_now()
     schedule_policy_deletion(
         class_id=class_id,
         actor_user_id=g.canonical_context.user_id,
