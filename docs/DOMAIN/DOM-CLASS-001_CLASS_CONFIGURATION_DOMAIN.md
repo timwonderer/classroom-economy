@@ -2,7 +2,7 @@
 
 | Reference Number | Version | Effective Date | Supersedes | Authority Level |
 |------------------|---------|----------------|------------|-----------------|
-| DOM-CLASS-001 | 2.3 | 2026-07-10 | 2.2 | Constitutional |
+| DOM-CLASS-001 | 2.4 | 2026-07-23 | 2.3 | Constitutional |
 
 ## III. Authority Level
 
@@ -37,6 +37,8 @@ This domain is the sole schema and mutation authority over:
 - `banking_settings`
 - `policy_versions`
 - `policy_transitions`
+
+Policy-defined insurance offerings are class-configuration objects. Their prospective terms, version lineage, bundle eligibility, and withdrawal scheduling are owned here and coordinated by FEAT-CLASS-003. Downstream entitlement, obligation, and ledger records preserve different facts and SHALL NOT be rewritten to represent class configuration changes.
 
 It returns persisted settings only. FEAT or the owning operational domain interprets them.
 
@@ -358,6 +360,10 @@ The following fields in `feature_settings` are retired by the policy transition 
 - FEAT orchestrates lawful activation and projection updates but does not own policy truth.
 - Class identity (`classes.class_id`, `classes.join_code`) is owned by Identity.
   This domain reads `class_id` as a FK but does not own the class record.
+
+### 12. Insurance policy lifecycle note
+
+Insurance policy creation, edit, inactivation, switching, bundle eligibility, and deletion scheduling are class-configuration behaviors. A policy edit SHALL create a new prospective version when the terms change. A deletion request SHALL only schedule removal of the class-owned insurance lineage rows after the last enforced entitlement boundary for the class has elapsed. Entitlement, obligation, and Ledger tables SHALL remain unchanged by the configuration delete operation.
 
 ## X. Amendment
 
