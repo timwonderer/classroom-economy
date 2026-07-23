@@ -71,6 +71,34 @@ A complete rewiring of the Store and Entitlements domain from v1/v2 legacy (Stor
 
 ## What Is NOT Done (Remaining Work)
 
+### Current Blocker: Insurance policy editing has no canonical contract
+
+The current store/entitlement rewiring can move forward on the purchase, redemption, and claim flows, but it cannot truthfully complete the insurance policy editor surface yet.
+
+What is missing:
+- A FEAT-layer specification for the insurance policy management/editor flow
+- A canonical form contract for `admin_edit_insurance_policy.html`
+- A domain-approved authoritative field list for insurance policy create/update
+- A route-level owner for policy editing that defines validation and persistence rules
+
+What needs to be clarified:
+- Is insurance policy editing in scope for this slice, or should it remain read-only for now?
+- If it is in scope, which doc is authoritative for:
+  - editable fields
+  - create vs update semantics
+  - activation/deactivation behavior
+  - autopay, cancellation, waiting-period, and claim-limit rules
+  - bundle/tier configuration
+- Whether the admin insurance page should be a real CRUD surface or only a management/read-only view
+
+Why this blocks progress:
+- The template already expects a large form surface, but there is no canonical backing contract in the form layer or FEAT docs.
+- Implementing the editor without that contract would invent behavior, which violates the docs-first rule for this repository.
+
+Decision required:
+1. Provide the authoritative insurance policy editor spec and form contract, then continue implementation.
+2. Explicitly exclude insurance policy editing from this handoff slice and treat the admin page as read-only until a later domain spec exists.
+
 ### A. Rewrite `app/feats/redemption_disposition_feat.py` as FEAT-STOR-002
 
 **Current state:** Still references old v1 patterns — `StorePurchase.status` mutation, `RedemptionEvent` creation, `utc_now()` from deprecated `app/utils/time.py`, refund via `store_purchase_refund_key`. Decorated as `@requires_feat_context("FEAT-STOR-006")`.
