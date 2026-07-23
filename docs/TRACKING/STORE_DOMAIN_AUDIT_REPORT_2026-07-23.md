@@ -20,7 +20,7 @@ This report is based on the current repository state, the route/template audit m
 
 ### Repository State
 
-- Working tree was clean at the time of report creation.
+- The repository was otherwise clean aside from this report artifact while it was being created.
 - The active branch was already pushed with the current checkpointed state.
 - The audit-plan file and this report file are both located in `docs/TRACKING/`.
 
