@@ -67,17 +67,12 @@ def get_purchase_count(seat_id: int, class_id: str, store_item_id: int) -> int:
 
 def get_active_rent_grant(seat_id: int, class_id: str, store_item_id: int):
     """Find an active rent-derived entitlement for a seat and item."""
-    terminal_ids = (
-        db.session.query(EntitlementConsumption.entitlement_id)
-        .filter(EntitlementConsumption.class_id == class_id)
-        .subquery()
+    active_entitlements = list_available_entitlements(
+        target_seat_id=seat_id,
+        class_id=class_id,
+        entitlement_item_id=store_item_id,
     )
-    return Entitlement.query.filter(
-        Entitlement.target_seat_id == seat_id,
-        Entitlement.class_id == class_id,
-        Entitlement.entitlement_item_id == store_item_id,
-        ~Entitlement.entitlement_id.in_(db.select(terminal_ids.c.entitlement_id)),
-    ).order_by(Entitlement.granted_at.desc(), Entitlement.id.desc()).first()
+    return active_entitlements[0] if active_entitlements else None
 
 
 def create_store_item(*, user_id: int, class_id: str, **fields) -> StoreItem:
