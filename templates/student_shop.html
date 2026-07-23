@@ -225,21 +225,6 @@
                             {% endif %}
                         </p>
 
-                        {% if student_item.uses_remaining is not none %}
-                        <p class="text-muted small mb-2">
-                            <strong>Remaining Uses:</strong> 
-                            {% if student_item.uses_remaining == -1 %}
-                                <span class="badge bg-success">Unlimited</span>
-                            {% else %}
-                                {{ student_item.uses_remaining }}
-                            {% endif %}
-                        </p>
-                        {% elif student_item.is_from_bundle and student_item.bundle_remaining is not none %}
-                        <p class="text-muted small mb-2">
-                            <strong>Remaining Uses:</strong> {{ student_item.bundle_remaining }}
-                        </p>
-                        {% endif %}
-
                         {% if student_item.expiry_date %}
                         <p class="text-muted small mb-2">
                             <strong>Expires:</strong> {{ student_item.expiry_date.strftime('%m/%d/%y') }}

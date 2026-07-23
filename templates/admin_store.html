@@ -701,7 +701,6 @@
                 <th>Purchase Date</th>
                 <th>Status</th>
                 <th>Quantity</th>
-                <th>Bundle</th>
               </tr>
             </thead>
             <tbody>
@@ -720,19 +719,6 @@
                     </td>
                     <td><span class="badge bg-{{ 'success' if student_item.status == 'completed' else 'warning' }}">{{ student_item.status|title }}</span></td>
                     <td>{{ student_item.quantity }}</td>
-                    <td>
-                      {% if student_item.is_from_bundle %}
-                        <span class="badge bg-warning text-dark">
-                          {% if student_item.bundle_remaining %}
-                            {{ student_item.bundle_remaining }} left
-                          {% else %}
-                            Used
-                          {% endif %}
-                        </span>
-                      {% else %}
-                        <span class="text-muted">-</span>
-                      {% endif %}
-                    </td>
                   </tr>
                   {% endfor %}
                 {% endfor %}
