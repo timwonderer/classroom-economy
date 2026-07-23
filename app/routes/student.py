@@ -1782,6 +1782,17 @@ def view_policy(enrollment_id):
         flash("That insurance policy is not available for this class.", "error")
         return redirect(url_for('student.student_insurance'))
     payload = json.loads(policy_version.policy_payload_json or "{}")
+    entitlement_item_id = get_insurance_entitlement_item_id(policy_version)
+    entitlement = None
+    if entitlement_item_id is not None:
+        active_entitlements = list_available_entitlements(
+            target_seat_id=context.seat_id,
+            class_id=context.class_id,
+            entitlement_item_id=entitlement_item_id,
+        )
+        entitlement = active_entitlements[0] if active_entitlements else None
+    if entitlement is None:
+        flash("You do not have an active insurance entitlement for this policy.", "warning")
     placeholder_policy = SimpleNamespace(
         id=policy_version.id,
         title=payload.get("title") or f"Policy v{policy_version.version_number}",
@@ -1793,20 +1804,34 @@ def view_policy(enrollment_id):
         claim_type=payload.get("claim_type", "transaction_monetary"),
         autopay=bool(payload.get("autopay", False)),
         auto_cancel_nonpay_days=int(payload.get("auto_cancel_nonpay_days", 0) or 0),
+        entitlement_item_id=entitlement_item_id,
         payload=payload,
     )
+    coverage_start_date = None
+    if entitlement is not None:
+        from app.models import ObligationAssessment
+        coverage_row = (
+            ObligationAssessment.query.filter_by(
+                class_id=context.class_id,
+                seat_id=context.seat_id,
+                policy_version_id=policy_version.id,
+            )
+            .order_by(ObligationAssessment.assessed_at.desc(), ObligationAssessment.id.desc())
+            .first()
+        )
+        coverage_start_date = getattr(coverage_row, "coverage_start_time", None)
     enrollment = SimpleNamespace(
         id=enrollment_id,
         policy=placeholder_policy,
         contract_title=placeholder_policy.title,
         contract_description=placeholder_policy.description,
         purchase_date=utc_now(),
-        coverage_start_date=None,
-        payment_current=True,
+        coverage_start_date=coverage_start_date,
+        payment_current=entitlement is not None,
         days_unpaid=0,
-        status="active",
+        status="active" if entitlement is not None else "inactive",
         next_payment_due=None,
-        contract_claim_time_limit_days=0,
+        contract_claim_time_limit_days=int(payload.get("claim_time_limit_days", 0) or 0),
         contract_max_claim_amount=None,
         contract_max_claims_count=None,
         contract_max_claims_period="period",
@@ -1826,6 +1851,7 @@ def view_policy(enrollment_id):
         claims=list_insurance_claims(
             class_id=context.class_id,
             target_seat_id=context.seat_id,
+            entitlement_id=getattr(entitlement, "entitlement_id", None),
         ),
         now=utc_now(),
     )
