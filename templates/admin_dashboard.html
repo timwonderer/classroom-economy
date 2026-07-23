@@ -563,7 +563,7 @@
     // Handle redemption rejection
     document.querySelectorAll(".reject-redemption-btn").forEach(button => {
         button.addEventListener("click", () => {
-            if (!confirm("Are you sure you want to reject this redemption? The item will be removed and the student will be refunded.")) {
+            if (!confirm("Are you sure you want to reject this redemption? The request will be removed and the student will keep the entitlement.")) {
                 return;
             }
 
@@ -593,7 +593,7 @@
                         setTimeout(() => {
                             listItem.remove();
                             updatePendingCounters('redemptions');
-                            showToast('Redemption rejected and refunded.', 'success');
+                            showToast('Redemption rejected.', 'success');
 
                         }, 300);
                     } else {

@@ -184,7 +184,7 @@ from app.utils.student_deletion import (
     remove_student_from_teacher_scope,
 )
 from app.utils.seat_scope import seat_scoped_filter, transaction_scope_filter
-from app.utils.transaction_idempotency import create_idempotent_transaction, void_refund_key
+from app.utils.transaction_idempotency import purchase_transaction_key
 from app.feats.admin_adjustment_feat import execute_admin_adjustments
 from app.feats.prod import record_attendance_session, record_payroll_event
 # execute_insurance_claim_resolution removed — insurance_claim_feat.py deleted; insurance feature broken pending DOM-OBL-001 migration

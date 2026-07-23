@@ -619,7 +619,6 @@ def purchase_item():
             purchase_description += f" [{item.bulk_discount_percentage}% bulk discount]"
         expiry_date = None
         from app.models import RentSettings
-        uses_remaining = None
         if item.is_rent_linked:
             rent_setting = RentSettings.query.filter_by(class_id=class_id).first()
             if rent_setting:

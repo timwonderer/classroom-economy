@@ -644,7 +644,7 @@
                   <div class="mb-3">
                     {{ form.collective_goal_expires_at.label(class="form-label fw-bold") }}
                     {{ form.collective_goal_expires_at(class="form-control") }}
-                    <small class="text-muted">If set, the goal expires at end of this date. Students who purchased will be automatically refunded if the goal is not reached. The item deactivates and must be reactivated to start fresh.</small>
+                    <small class="text-muted">If set, the goal expires at end of this date. If the goal is not reached, the item deactivates and must be reactivated to start fresh.</small>
                   </div>
                 </div>
               </div>
@@ -1036,7 +1036,7 @@
   // Reject redemption requests from overview tab
   document.querySelectorAll(".reject-redemption-btn").forEach(button => {
     button.addEventListener("click", () => {
-      if (!confirm("Are you sure you want to reject this redemption? The item will be removed and the student will be refunded.")) {
+      if (!confirm("Are you sure you want to reject this redemption? The request will be removed and the student will keep the entitlement.")) {
         return;
       }
 
@@ -1062,7 +1062,7 @@
           row.style.transition = 'opacity 0.3s';
           row.style.opacity = '0';
           setTimeout(() => row.remove(), 300);
-          showToast('Redemption rejected and refunded.', 'success');
+          showToast('Redemption rejected.', 'success');
         } else {
           showToast('Rejection failed: ' + data.message, 'danger');
           button.disabled = false;
