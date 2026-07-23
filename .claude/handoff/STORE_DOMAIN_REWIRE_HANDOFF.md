@@ -99,6 +99,24 @@ Decision required:
 1. Provide the authoritative insurance policy editor spec and form contract, then continue implementation.
 2. Explicitly exclude insurance policy editing from this handoff slice and treat the admin page as read-only until a later domain spec exists.
 
+### Current Blocker: Insurance claims still need an entitlement-backed purchase path
+
+The student-facing insurance claim surface is now aligned to the claim FEAT contract and policy-version reads, but the current runtime still does not create a canonical insurance entitlement on purchase.
+
+What is missing:
+- A lawful insurance purchase path that produces an `entitlements` row for the purchased coverage
+- A stable mapping from insurance policy lineage/version to the entitlement item that claim submission will reference
+- A completed student claim submission handler that can submit against that entitlement and preserve the coverage boundary rules
+
+Why this blocks end-to-end completion:
+- `FEAT-STOR-003` requires `insurance_claims.entitlement_id`
+- The current purchase path still records insurance as an `ObligationAssessment` instead of an entitlement grant
+- Without that entitlement record, claim submission cannot be completed honestly without inventing a cross-domain shortcut
+
+Decision required:
+1. Authorize the insurance purchase path to create the canonical entitlement record needed for claim submission, then finish the student claim flow.
+2. Or explicitly defer insurance claim submission from this rewire slice and keep the student claim page read-only until the entitlement-backed purchase contract is written.
+
 ### A. Rewrite `app/feats/redemption_disposition_feat.py` as FEAT-STOR-002
 
 **Current state:** Still references old v1 patterns — `StorePurchase.status` mutation, `RedemptionEvent` creation, `utc_now()` from deprecated `app/utils/time.py`, refund via `store_purchase_refund_key`. Decorated as `@requires_feat_context("FEAT-STOR-006")`.
