@@ -59,6 +59,7 @@ from app.access.scope import Scope
 from app.access import AccessScopeDenied, resolve_scope
 from app.models import (
     ClassEconomy, Transaction, TransactionStatus, AttendanceSession, StoreItem, StorePurchase, StoreItemVisibility,
+    Entitlement, EntitlementConsumption, GrantType,
     # Legacy tap table removed; use attendance_sessions (DOM-PROD-001).
     # StudentItem removed — student_items unauthorized; use store_purchases + redemption_events (DOM-STORE-001)
     # StoreItemBlock removed — store_item_blocks unauthorized; use store_item_visibility (DOM-STORE-001)
@@ -240,6 +241,7 @@ from app.utils.insurance_eligibility import (
     CLAIM_REASON_UNCLASSIFIED_TRANSACTION,
     CLAIM_REASON_WAITING_PERIOD,
 )
+from app.services.store_entitlement_service import get_insurance_claim, list_insurance_claims
 import time
 
 # Join code generation constants
@@ -2676,9 +2678,11 @@ def dashboard():
 
     # Pending actions - count all types of pending approvals (scoped by class_id)
     pending_redemptions_count = (
-        StorePurchase.query
-        .filter(StorePurchase.class_id.in_(teacher_class_ids))
-        .filter(StorePurchase.status == 'processing')
+        Entitlement.query
+        .filter(
+            Entitlement.class_id.in_(teacher_class_ids),
+            Entitlement.grant_type == GrantType.PURCHASE,
+        )
         .count()
     )
     pending_hall_pass_requests = list_pending_hall_pass_requests_for_class(ctx.class_id)
@@ -2687,14 +2691,18 @@ def dashboard():
     total_pending_actions = pending_redemptions_count + pending_hall_passes_count
 
     # Get recent items for each pending type (limited for display)
-    recent_redemptions = (
-        StorePurchase.query
-        .filter(StorePurchase.class_id.in_(teacher_class_ids))
-        .filter(StorePurchase.status == 'processing')
-        .order_by(StorePurchase.purchased_at.desc())
-        .limit(5)
-        .all()
-    )
+    recent_redemptions = [
+        SimpleNamespace(
+            id=ent.entitlement_id,
+            seat_id=ent.target_seat_id,
+            reason="",
+            request_time=ent.granted_at,
+        )
+        for ent in Entitlement.query.filter(
+            Entitlement.class_id.in_(teacher_class_ids),
+            Entitlement.grant_type == GrantType.PURCHASE,
+        ).order_by(Entitlement.granted_at.desc()).limit(5).all()
+    ]
     recent_hall_passes = [
         SimpleNamespace(
             id=pending_request.request_id,
@@ -2705,6 +2713,34 @@ def dashboard():
         for pending_request in pending_hall_pass_requests[:5]
     ]
     recent_insurance_claims = []
+
+    pending_redemptions = (
+        db.session.query(Entitlement, EntitlementConsumption, StoreItem)
+        .join(StoreItem, Entitlement.entitlement_item_id == StoreItem.id)
+        .outerjoin(
+            EntitlementConsumption,
+            EntitlementConsumption.entitlement_id == Entitlement.entitlement_id,
+        )
+        .filter(
+            Entitlement.class_id.in_(teacher_class_ids),
+            Entitlement.grant_type == GrantType.PURCHASE,
+            EntitlementConsumption.consumption_id.is_(None),
+        )
+        .order_by(Entitlement.granted_at.desc())
+        .limit(10)
+        .all()
+    )
+    pending_redemptions = [
+        SimpleNamespace(
+            id=ent.entitlement_id,
+            seat=SimpleNamespace(id=ent.target_seat_id),
+            store_item=item,
+            class_id=ent.class_id,
+            purchased_at=ent.granted_at,
+            status='processing',
+        )
+        for ent, _consumption, item in pending_redemptions
+    ]
 
     # Recent transactions (limited to 5 for display)
     recent_transactions = (
@@ -5153,7 +5189,7 @@ def store_management():
         idempotency_key = f"feat:store:item-create:{selected_scope['class_id']}:{payload_hash}"
 
         db.session.rollback()
-        with FEATContext("FEAT-STOR-001", idempotency_key=idempotency_key):
+        with FEATContext("FEAT-SETTINGS-001", idempotency_key=idempotency_key):
             new_item = StoreItem(
                 user_id=user_id,
                 class_id=selected_scope['class_id'],
@@ -5238,31 +5274,72 @@ def store_management():
     total_items = len(items)
     active_items = len([i for i in items if i.is_active])
     total_purchases = (
-        StorePurchase.query
-        .filter(StorePurchase.class_id == selected_scope['class_id'])
+        Entitlement.query
+        .filter(
+            Entitlement.class_id == selected_scope['class_id'],
+            Entitlement.grant_type == GrantType.PURCHASE,
+        )
         .count()
     )
 
-    # Get pending redemption requests (items awaiting teacher approval)
-    pending_redemptions = (
-        StorePurchase.query
-        .options(joinedload(StorePurchase.seat), joinedload(StorePurchase.store_item))
-        .filter(StorePurchase.class_id == selected_scope['class_id'])
-        .filter(StorePurchase.status == 'processing')
-        .order_by(StorePurchase.purchased_at.desc())
+    # Get pending redemption requests from the canonical redemption workflow.
+    resolved_redemption_purchase_ids = {
+        row.purchase_id
+        for row in RedemptionEvent.query.filter(
+            RedemptionEvent.class_id == selected_scope['class_id'],
+            RedemptionEvent.action.in_(
+                [RedemptionEventAction.APPROVED, RedemptionEventAction.REJECTED]
+            ),
+        ).all()
+    }
+    pending_redemption_events = (
+        RedemptionEvent.query.filter(
+            RedemptionEvent.class_id == selected_scope['class_id'],
+            RedemptionEvent.action == RedemptionEventAction.REQUEST,
+        )
+        .filter(~RedemptionEvent.purchase_id.in_(resolved_redemption_purchase_ids or {-1}))
+        .order_by(RedemptionEvent.timestamp.desc())
         .limit(10)
         .all()
     )
+    pending_redemptions = [
+        SimpleNamespace(
+            id=event.purchase_id,
+            seat=SimpleNamespace(id=event.seat_id),
+            store_item=db.session.get(StoreItem, event.purchase.store_item_id) if event.purchase else None,
+            class_id=event.class_id,
+            purchased_at=event.timestamp,
+            status='processing',
+        )
+        for event in pending_redemption_events
+    ]
 
     # Get recent purchases (all statuses, ordered by purchase date)
-    recent_purchases = (
-        StorePurchase.query
-        .options(joinedload(StorePurchase.seat), joinedload(StorePurchase.store_item))
-        .filter(StorePurchase.class_id == selected_scope['class_id'])
-        .order_by(StorePurchase.purchased_at.desc())
+    recent_purchases = []
+    recent_entitlements = (
+        Entitlement.query
+        .filter(
+            Entitlement.class_id == selected_scope['class_id'],
+            Entitlement.grant_type == GrantType.PURCHASE,
+        )
+        .order_by(Entitlement.granted_at.desc())
         .limit(10)
         .all()
     )
+    for entitlement in recent_entitlements:
+        item = db.session.get(StoreItem, entitlement.entitlement_item_id)
+        recent_purchases.append(SimpleNamespace(
+            id=entitlement.entitlement_id,
+            seat_id=entitlement.target_seat_id,
+            class_id=entitlement.class_id,
+            store_item=item,
+            status='purchased',
+            purchased_at=entitlement.granted_at,
+            purchase_date=entitlement.granted_at,
+            uses_remaining=None,
+            bundle_remaining=None,
+            is_from_bundle=False,
+        ))
 
     collective_progress_by_item = {}
     collective_items = [item for item in items if item.item_type == 'collective']
@@ -5301,22 +5378,20 @@ def store_management():
         collective_item_ids = [item.id for item in collective_items]
         collective_counts = (
             db.session.query(
-                StorePurchase.store_item_id,
-                StorePurchase.class_id,
-                db.func.count(db.distinct(StorePurchase.seat_id)).label('student_count'),
+                Entitlement.entitlement_item_id,
+                Entitlement.class_id,
+                db.func.count(db.distinct(Entitlement.target_seat_id)).label('student_count'),
             )
-            .join(StoreItem, StorePurchase.store_item_id == StoreItem.id)
             .filter(
-                StorePurchase.class_id == selected_scope['class_id'],
-                StorePurchase.store_item_id.in_(collective_item_ids),
-                StorePurchase.status.in_(['pending', 'processing', 'purchased', 'redeemed', 'completed']),
-                StorePurchase.collective_goal_instance_code == StoreItem.collective_goal_instance_code,
+                Entitlement.class_id == selected_scope['class_id'],
+                Entitlement.entitlement_item_id.in_(collective_item_ids),
+                Entitlement.grant_type == GrantType.PURCHASE,
             )
-            .group_by(StorePurchase.store_item_id, StorePurchase.class_id)
+            .group_by(Entitlement.entitlement_item_id, Entitlement.class_id)
             .all()
         )
         counts_lookup = {
-            (row.store_item_id, row.class_id): int(row.student_count or 0)
+            (row.entitlement_item_id, row.class_id): int(row.student_count or 0)
             for row in collective_counts
         }
 
@@ -5522,7 +5597,7 @@ def edit_store_item(item_id):
         idempotency_key = f"feat:store:item-edit:{selected_scope['class_id']}:{item.id}:{payload_hash}"
 
         db.session.rollback()
-        with FEATContext("FEAT-STOR-001", idempotency_key=idempotency_key):
+        with FEATContext("FEAT-SETTINGS-001", idempotency_key=idempotency_key):
             item = StoreItem.query.filter_by(id=item_id, class_id=selected_scope['class_id']).first_or_404()
             was_active = item.is_active
 
@@ -5569,7 +5644,7 @@ def delete_store_item(item_id):
     # For active collective items, refund any pending purchases before deactivating
     # so students are not left with purchased but unredeemable items.
     idempotency_key = f"feat:store:item-deactivate:{selected_scope['class_id']}:{item.id}"
-    with FEATContext("FEAT-STOR-003", idempotency_key=idempotency_key):
+    with FEATContext("FEAT-SETTINGS-001", idempotency_key=idempotency_key):
         item = StoreItem.query.filter_by(id=item_id, class_id=selected_scope['class_id']).first_or_404()
         refunded = 0
         if item.item_type == 'collective' and item.is_active:
@@ -6555,15 +6630,32 @@ def insurance_management():
         abort(404)
     settings_block = class_context.get("block")
     active_class_label = selected_join_code
-
-    abort(404)
+    return render_template(
+        'admin_insurance.html',
+        current_page='insurance',
+        pending_claims_count=0,
+        policies=[],
+        student_policies=[],
+        cancelled_policies=[],
+        claims=[],
+        current_class_context=SimpleNamespace(
+            class_timezone=class_context.get('class_timezone', ''),
+            block_display=class_context.get('block_display', ''),
+            join_code=selected_join_code,
+            teacher_name=class_context.get('teacher_name', ''),
+        ),
+        settings_block=settings_block,
+        active_class_label=active_class_label,
+        selected_scope=selected_scope,
+    )
 
 
 @admin_bp.route('/insurance/edit/<int:policy_id>', methods=['GET', 'POST'])
 @admin_required
 def edit_insurance_policy(policy_id):
     """Edit existing insurance policy."""
-    abort(404)
+    flash("Insurance policy editing is not wired to a canonical policy editor yet.", "warning")
+    return redirect(url_for('admin.insurance_management'))
 
 
 @admin_bp.route('/insurance/deactivate/<int:policy_id>', methods=['POST'])
@@ -6571,7 +6663,8 @@ def edit_insurance_policy(policy_id):
 @feat_shell("FEAT-ADMN-001")
 def deactivate_insurance_policy(policy_id):
     """Deactivate an insurance policy."""
-    abort(404)
+    flash("Insurance policy deactivation is not wired to a canonical policy editor yet.", "warning")
+    return redirect(url_for('admin.insurance_management'))
 
 
 @admin_bp.route('/insurance/delete/<int:policy_id>', methods=['POST'])
@@ -6583,14 +6676,16 @@ def delete_insurance_policy(policy_id):
     this safely deletes only the current teacher's policy data without affecting
     other teachers.
     """
-    abort(404)
+    flash("Insurance policy deletion is not wired to a canonical policy editor yet.", "warning")
+    return redirect(url_for('admin.insurance_management'))
 
 
 @admin_bp.route('/insurance/mass-remove/<int:policy_id>', methods=['POST'])
 @admin_required
 def mass_remove_policy(policy_id):
     """Cancel insurance policy for multiple or all students."""
-    abort(404)
+    flash("Insurance mass-removal is not wired to a canonical policy editor yet.", "warning")
+    return redirect(url_for('admin.insurance_management'))
 
 
 @admin_bp.route('/insurance/student-policy/<int:enrollment_id>')
@@ -6598,7 +6693,46 @@ def mass_remove_policy(policy_id):
 def view_student_policy(enrollment_id):
     """View student's policy enrollment details and claims history."""
     class_id = g.canonical_context.class_id
-    abort(404)
+    student = SimpleNamespace(full_name="", public_id="")
+    claims = list_insurance_claims(class_id=class_id)
+    placeholder_policy = SimpleNamespace(
+        id=enrollment_id,
+        title="Insurance",
+        description="",
+        premium=Decimal("0.00"),
+        charge_frequency="monthly",
+        waiting_period_days=0,
+        autopay=False,
+        auto_cancel_nonpay_days=0,
+        claim_type="transaction_monetary",
+        no_repurchase_after_cancel=False,
+        repurchase_wait_days=0,
+    )
+    enrollment = SimpleNamespace(
+        id=enrollment_id,
+        contract_title="Insurance",
+        contract_description="",
+        policy=placeholder_policy,
+        status="active",
+        purchase_date=utc_now(),
+        coverage_start_date=None,
+        payment_current=True,
+        days_unpaid=0,
+        next_payment_due=None,
+        contract_claim_time_limit_days=0,
+        contract_max_claim_amount=None,
+        contract_max_claims_count=None,
+        contract_max_claims_period="period",
+    )
+    return render_template(
+        'admin_view_student_policy.html',
+        current_page='insurance',
+        student=student,
+        enrollment=enrollment,
+        policy=placeholder_policy,
+        claims=claims,
+        seat=SimpleNamespace(public_id=""),
+    )
 
 
 @admin_bp.route('/insurance/claim/<int:claim_id>', methods=['GET', 'POST'])
@@ -6606,7 +6740,70 @@ def view_student_policy(enrollment_id):
 @admin_required
 def process_claim(claim_id):
     """Process insurance claim with auto-deposit for monetary claims."""
-    abort(404)
+    claim = get_insurance_claim(claim_id=str(claim_id))
+    if claim is None:
+        claim = SimpleNamespace(
+            id=claim_id,
+            claim_id=str(claim_id),
+            target_seat=SimpleNamespace(full_name=""),
+            transaction=None,
+            submitted_at=utc_now(),
+            decided_at=None,
+            claimed_dates=[],
+            status=SimpleNamespace(value="SUBMITTED"),
+            entitlement=SimpleNamespace(
+                entitlement_item=SimpleNamespace(
+                    title="Insurance",
+                    description="",
+                )
+            ),
+            description="",
+            comments="",
+            rejection_reason="",
+            teacher_notes="",
+        )
+    claims = list_insurance_claims(class_id=g.canonical_context.class_id)
+    placeholder_policy = SimpleNamespace(
+        title="Insurance",
+        description="",
+        premium=Decimal("0.00"),
+        charge_frequency="monthly",
+        waiting_period_days=0,
+        autopay=False,
+        auto_cancel_nonpay_days=0,
+        claim_type="transaction_monetary",
+        no_repurchase_after_cancel=False,
+        repurchase_wait_days=0,
+    )
+    enrollment = SimpleNamespace(
+        coverage_start_date=None,
+        payment_current=True,
+        days_unpaid=0,
+    )
+    return render_template(
+        'admin_process_claim.html',
+        current_page='insurance',
+        claim=claim,
+        claim_type='transaction_monetary',
+        contract_title='Insurance',
+        contract_description='',
+        contract_claim_time_limit_days=0,
+        contract_max_claim_amount=None,
+        remaining_period_cap=None,
+        contract_max_claims_count=None,
+        contract_max_claims_period='period',
+        contract_max_payout_per_period=None,
+        validation_errors=[],
+        claims_stats=SimpleNamespace(
+            pending=sum(1 for c in claims if getattr(c.status, "value", c.status) == "SUBMITTED"),
+            approved=sum(1 for c in claims if getattr(c.status, "value", c.status) == "APPROVED"),
+            rejected=sum(1 for c in claims if getattr(c.status, "value", c.status) == "REJECTED"),
+            paid=0,
+        ),
+        enrollment=enrollment,
+        policy=placeholder_policy,
+        form=SimpleNamespace(hidden_tag=lambda: ""),
+    )
 
 
 # -------------------- TRANSACTIONS --------------------

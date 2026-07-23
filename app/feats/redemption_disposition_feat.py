@@ -1,33 +1,22 @@
 """
-FEAT-STOR-006: Redemption Disposition
+FEAT-STOR-002: Entitlement Terminal Lifecycle
 
-Owns the canonical mutation path for resolving a pending redemption request.
-The canonical store object is StorePurchase; the live audit trail is
-RedemptionEvent.
+Canonical Store-owned terminal lifecycle orchestration for entitlements.
+This module preserves the legacy route entrypoints while routing all actual
+mutation through the v3 entitlement primitives.
 """
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass
-from decimal import Decimal
 from typing import Optional
 from uuid import uuid4
 
-from flask import current_app
-
 from app.extensions import db
 from app.feats.base import requires_feat_context
-from app.models import (
-    RedemptionEvent,
-    RedemptionEventAction,
-    RedemptionEventSource,
-    StorePurchase,
-    Transaction,
-)
-from app.services.ledger_service import create_pending_transaction_idempotent
-from app.utils.time import ensure_utc, utc_now, UTC_MIN
-from app.utils.transaction_idempotency import store_purchase_refund_key
+from app.models import Entitlement, EntitlementConsumption, Disposition, RedemptionEvent, RedemptionEventAction, RedemptionEventSource, StorePurchase
+from app.services.store_entitlement_service import consume_entitlement
+from app.utils.canonical_temporal_resolver import SYSTEM_LEVEL_EVALUATION, canonical_temporal_resolver
 
 
 @dataclass
@@ -35,8 +24,6 @@ class RedemptionDispositionResult:
     disposition: str
     purchase_id: int
     redemption_event_id: str
-    refund_transaction_id: Optional[int] = None
-    refund_amount: Optional[Decimal] = None
     message: str = ""
 
 
@@ -44,40 +31,18 @@ class RedemptionDispositionError(Exception):
     pass
 
 
+def _now_utc():
+    return canonical_temporal_resolver(SYSTEM_LEVEL_EVALUATION, primitive="current_time").canonical_now_utc
+
+
 def _resolve_class_display_label(class_id, fallback_block):
     from app.models import ClassEconomy
+
     if class_id:
         economy = ClassEconomy.query.filter_by(class_id=class_id).first()
         if economy:
             return economy.display_name or economy.join_code
     return fallback_block or "Unknown Class"
-
-
-def _write_event(*, purchase: StorePurchase, actor_user_id: int, action: str, notes: Optional[str]) -> str:
-    action_map = {
-        "approved": RedemptionEventAction.APPROVED,
-        "rejected": RedemptionEventAction.REJECTED,
-    }
-    if action not in action_map:
-        raise RedemptionDispositionError(f"Unsupported disposition action: {action}")
-
-    label = _resolve_class_display_label(purchase.class_id, None)
-    event = RedemptionEvent(
-        id=str(uuid4()),
-        purchase_id=purchase.id,
-        seat_id=purchase.seat_id,
-        class_id=purchase.class_id,
-        action=action_map[action],
-        source=RedemptionEventSource.LIVE,
-        initiated_by_user_id=actor_user_id,
-        seat_display_name=(purchase.seat.identity_profile.full_name if purchase.seat and purchase.seat.identity_profile else "Unknown Seat"),
-        class_display_label=label,
-        notes=notes if notes else None,
-        timestamp=utc_now(),
-    )
-    db.session.add(event)
-    db.session.flush()
-    return event.id
 
 
 def record_live_redemption_event(
@@ -91,7 +56,6 @@ def record_live_redemption_event(
     class_display_label: str,
     notes: Optional[str] = None,
 ) -> str:
-    """Persist a live redemption audit event through the canonical FEAT-owned path."""
     event = RedemptionEvent(
         id=str(uuid4()),
         purchase_id=purchase_id,
@@ -103,61 +67,31 @@ def record_live_redemption_event(
         seat_display_name=seat_display_name,
         class_display_label=class_display_label,
         notes=notes if notes else None,
-        timestamp=utc_now(),
+        timestamp=_now_utc(),
     )
     db.session.add(event)
     db.session.flush()
     return event.id
 
 
-def _find_original_purchase_tx(purchase: StorePurchase):
-    item_name = purchase.store_item.name if purchase.store_item else None
-    if not item_name:
-        return None
-
-    candidates = (
-        Transaction.query.filter_by(
-            seat_id=purchase.seat_id,
+def _resolve_entitlement_for_purchase(purchase: StorePurchase) -> Entitlement | None:
+    return (
+        Entitlement.query.filter_by(
+            target_seat_id=purchase.seat_id,
             class_id=purchase.class_id,
-            type="purchase",
+            entitlement_item_id=purchase.store_item_id,
         )
-        .filter(Transaction.description.like(f"Purchase: {item_name}%"))
-        .all()
+        .outerjoin(
+            EntitlementConsumption,
+            EntitlementConsumption.entitlement_id == Entitlement.entitlement_id,
+        )
+        .filter(EntitlementConsumption.consumption_id.is_(None))
+        .order_by(Entitlement.granted_at.desc(), Entitlement.id.desc())
+        .first()
     )
-    if not candidates:
-        return None
-
-    if purchase.purchased_at:
-        target_ts = ensure_utc(purchase.purchased_at)
-
-        def _distance(tx):
-            if not tx.timestamp:
-                return float("inf")
-            return abs((ensure_utc(tx.timestamp) - target_ts).total_seconds())
-
-        return min(candidates, key=_distance)
-
-    return max(candidates, key=lambda tx: ensure_utc(tx.timestamp) if tx.timestamp else UTC_MIN)
 
 
-def _compute_refund_amount(purchase: StorePurchase, purchase_tx) -> Decimal:
-    if purchase_tx and purchase_tx.amount is not None:
-        total_amount = abs(purchase_tx.amount)
-        quantity = purchase.quantity or 1
-        if purchase_tx.description:
-            match = re.search(r"\(x(\d+)\)", purchase_tx.description)
-            if match:
-                try:
-                    parsed = int(match.group(1))
-                    if parsed > 0:
-                        quantity = parsed
-                except ValueError:
-                    pass
-        return total_amount / quantity
-    return purchase.price_at_purchase
-
-
-@requires_feat_context("FEAT-STOR-006")
+@requires_feat_context("FEAT-STOR-002")
 def execute_redemption_approval(
     *,
     purchase: StorePurchase,
@@ -169,25 +103,27 @@ def execute_redemption_approval(
             f"StorePurchase {purchase.id} is not in 'processing' state; cannot approve."
         )
 
-    event_id = _write_event(
-        purchase=purchase,
-        actor_user_id=actor_user_id,
-        action="approved",
+    entitlement = _resolve_entitlement_for_purchase(purchase)
+    if entitlement is None:
+        raise RedemptionDispositionError("No available entitlement exists for this redemption.")
+
+    event_id = record_live_redemption_event(
+        purchase_id=purchase.id,
+        seat_id=purchase.seat_id,
+        class_id=purchase.class_id,
+        action=RedemptionEventAction.APPROVED,
+        initiated_by_user_id=actor_user_id,
+        seat_display_name=purchase.seat.identity_profile.full_name if purchase.seat and purchase.seat.identity_profile else "Unknown Seat",
+        class_display_label=_resolve_class_display_label(purchase.class_id, None),
         notes=notes,
     )
-    purchase.status = "completed"
-    redemption_tx = (
-        Transaction.query.filter_by(
-            seat_id=purchase.seat_id,
-            class_id=purchase.class_id,
-            type="redemption",
-        )
-        .order_by(Transaction.timestamp.desc())
-        .first()
+    consume_entitlement(
+        entitlement_id=entitlement.entitlement_id,
+        class_id=purchase.class_id,
+        target_seat_id=purchase.seat_id,
+        actor_seat_id=purchase.seat_id,
+        correlation_id=entitlement.correlation_id,
     )
-    if redemption_tx and purchase.store_item:
-        redemption_tx.description = f"Redeemed: {purchase.store_item.name}"
-
     db.session.flush()
     return RedemptionDispositionResult(
         disposition="approved",
@@ -197,7 +133,7 @@ def execute_redemption_approval(
     )
 
 
-@requires_feat_context("FEAT-STOR-006")
+@requires_feat_context("FEAT-STOR-002")
 def execute_redemption_rejection(
     *,
     purchase: StorePurchase,
@@ -208,43 +144,21 @@ def execute_redemption_rejection(
         raise RedemptionDispositionError(
             f"StorePurchase {purchase.id} is not in 'processing' state; cannot reject."
         )
-    if not purchase.class_id:
-        current_app.logger.error("StorePurchase %s missing class_id during refund.", purchase.id)
-        raise RedemptionDispositionError("Unable to resolve class for refund.")
 
-    event_id = _write_event(
-        purchase=purchase,
-        actor_user_id=actor_user_id,
-        action="rejected",
-        notes=notes,
-    )
-    purchase_tx = _find_original_purchase_tx(purchase)
-    refund_amount = _compute_refund_amount(purchase, purchase_tx)
-    refund_tx, _created = create_pending_transaction_idempotent(
-        idempotency_key=store_purchase_refund_key(purchase.id, "redemption-rejected"),
+    event_id = record_live_redemption_event(
+        purchase_id=purchase.id,
         seat_id=purchase.seat_id,
         class_id=purchase.class_id,
-        target_seat_id=purchase.seat_id,
-        actor_seat_id=purchase.seat_id,
-        mechanism="teacher",
-        user_id=purchase.seat.user_id if purchase.seat else actor_user_id,
-        amount=refund_amount,
-        account_type="checking",
-        type="refund",
-        original_transaction_id=purchase_tx.id if purchase_tx else None,
-        description=f"Refund: {purchase.store_item.name if purchase.store_item else 'Store Item'} (Redemption Rejected)",
+        action=RedemptionEventAction.REJECTED,
+        initiated_by_user_id=actor_user_id,
+        seat_display_name=purchase.seat.identity_profile.full_name if purchase.seat and purchase.seat.identity_profile else "Unknown Seat",
+        class_display_label=_resolve_class_display_label(purchase.class_id, None),
+        notes=notes,
     )
-    if purchase_tx:
-        purchase_tx.reversal_transaction_id = refund_tx.id
-
-    purchase.status = "rejected"
     db.session.flush()
-
     return RedemptionDispositionResult(
         disposition="rejected",
         purchase_id=purchase.id,
         redemption_event_id=event_id,
-        refund_transaction_id=refund_tx.id,
-        refund_amount=refund_amount,
-        message="Redemption rejected and refunded.",
+        message="Redemption rejected. The entitlement remains available.",
     )

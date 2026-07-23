@@ -242,13 +242,9 @@
               <tr>
                 <td>{{ student_item.seat.identity_profile.full_name if student_item.seat and student_item.seat.identity_profile else 'Unknown' }}</td>
                 <td>{{ student_item.store_item.name }}</td>
-                <td><small class="text-muted local-timestamp" data-timestamp="{{ format_utc_iso(student_item.redemption_date) }}"></small></td>
+                <td><small class="text-muted local-timestamp" data-timestamp="{{ format_utc_iso(student_item.purchased_at) }}"></small></td>
                 <td>
-                  {% if student_item.redemption_details %}
-                    <div class="text-muted small">{{ student_item.redemption_details | markdown | safe }}</div>
-                  {% else %}
-                    <small class="text-muted">-</small>
-                  {% endif %}
+                  <small class="text-muted">-</small>
                 </td>
                 <td>
                   <div class="d-flex gap-2">
@@ -303,7 +299,7 @@
                 <td>{{ student_item.seat.identity_profile.full_name if student_item.seat and student_item.seat.identity_profile else 'Unknown' }}</td>
                 <td>{{ student_item.store_item.name }}</td>
                 <td>${{ "%.2f"|format(student_item.store_item.price) }}</td>
-                <td><small class="text-muted local-timestamp" data-timestamp="{{ format_utc_iso(student_item.purchase_date) }}"></small></td>
+                <td><small class="text-muted local-timestamp" data-timestamp="{{ format_utc_iso(student_item.purchased_at) }}"></small></td>
                 <td>
                   {% if student_item.status == 'purchased' %}
                     <span class="badge bg-success">Purchased</span>

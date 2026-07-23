@@ -56,9 +56,10 @@ from app.routes.student import (
     _ensure_rent_hall_pass_top_off,
 )
 from app.services.context_resolver import resolve_canonical_context, ContextResolutionError
-from app.feats.store_purchase_feat import execute_rent_perk_purchase, execute_store_purchase
+from app.feats.store_purchase_feat import execute_store_purchase
 from app.feats.ledger_resolution_feat import build_intended_ledger_plan, resolve_intended_ledger_plan, apply_resolved_ledger_plan
 from app.services.store_service import get_active_rent_grant, get_purchase_count
+from app.services.store_entitlement_service import list_entitlement_history
 from app.feats.redemption_disposition_feat import (
     RedemptionDispositionError,
     execute_redemption_approval,
@@ -203,9 +204,9 @@ def _append_redemption_audit_log(*, student_item, student, user_id, action, note
         raise RuntimeError("Duplicate redemption audit insertion attempt in single request path")
 
     action_map = {
-        'request': RedemptionEventAction.REQUEST,
-        'approved': RedemptionEventAction.APPROVED,
-        'rejected': RedemptionEventAction.REJECTED,
+        'REQUEST': RedemptionEventAction.REQUEST,
+        'APPROVED': RedemptionEventAction.APPROVED,
+        'REJECTED': RedemptionEventAction.REJECTED,
     }
     if action not in action_map:
         raise ValueError(f"Unsupported redemption audit action: {action}")
@@ -354,7 +355,7 @@ def get_tips(user_type):
 # -------------------- STORE API --------------------
 @api_bp.route('/purchase-item', methods=['POST'])
 @login_required
-@feat_shell("FEAT-STOR-002")
+@feat_shell("FEAT-STOR-001")
 def purchase_item():
     try:
         context = getattr(g, "canonical_context", None)
@@ -518,23 +519,18 @@ def purchase_item():
         )
 
         if active_rent_item or needs_rent_grant:
-            result = execute_rent_perk_purchase(
+            result = execute_store_purchase(
                 ctx=context,
                 seat=seat,
                 item=item,
-                active_rent_item=active_rent_item,
-                ensure_active_grant=needs_rent_grant,
-                rent_grant_use_limit=per_use_rent_item.use_limit if per_use_rent_item else None,
+                quantity=1,
+                total_price=Decimal("0.00"),
+                purchase_description=f"Purchase: {item.name}",
                 banking_settings=None,
-                purchase_idempotency_key=purchase_idempotency_key,
+                idempotency_key=purchase_idempotency_key,
+                is_instant_use=False,
             )
-            # No manual commit here; feat_shell owns it
-            remaining = result.rent_uses_remaining
-            if remaining == -1:
-                return jsonify({"status": "success", "message": f"{result.success_message} Unlimited free purchases remaining this period."})
-            if remaining > 0:
-                return jsonify({"status": "success", "message": f"{result.success_message} {remaining} free purchase(s) remaining this period."})
-            return jsonify({"status": "success", "message": f"{result.success_message} No free purchases remaining this period."})
+            return jsonify({"status": "success", "message": result.success_message})
 
     # Calculate price (with bulk discount if applicable)
     unit_price = item.price
@@ -656,10 +652,8 @@ def purchase_item():
             total_price=total_price,
             purchase_description=purchase_description,
             banking_settings=banking_settings,
-            purchase_idempotency_key=purchase_idempotency_key,
-            expiry_date=expiry_date,
-            uses_remaining=uses_remaining,
-            purchase_status=student_item_status,
+            idempotency_key=purchase_idempotency_key,
+            is_instant_use=(item.item_type == 'immediate'),
         )
         # No manual commit here; feat_shell owns it
 
@@ -679,7 +673,7 @@ def purchase_item():
 
 @api_bp.route('/use-item', methods=['POST'])
 @login_required
-@feat_shell("FEAT-STOR-005")
+@feat_shell("FEAT-STOR-002")
 def use_item():
     context = getattr(g, "canonical_context", None)
     if not context:
@@ -709,6 +703,14 @@ def use_item():
     if not student_item or student_item.seat_id != student.id:
         return jsonify({"status": "error", "message": "Invalid item."}), 404
 
+    entitlement = None
+    for entry in list_entitlement_history(target_seat_id=student.id, class_id=student_item.class_id, entitlement_item_id=student_item.store_item_id):
+        if entry["terminal_event"] is None:
+            entitlement = entry["entitlement"]
+            break
+    if entitlement is None:
+        return jsonify({"status": "error", "message": "This item is not available for redemption."}), 400
+
     # Special handling for hall_pass items in inventory (bundle or standalone)
     if student_item.store_item.item_type == 'hall_pass':
         qty = student_item.quantity or 1
@@ -716,15 +718,9 @@ def use_item():
         student_item.status = 'redeemed'
         return jsonify({"status": "success", "message": f"Added {qty} hall pass(es) to your balance!"})
 
-    # Validate the item can be used
-    if student_item.is_from_bundle:
-        # For bundle items, check bundle_remaining
-        if student_item.bundle_remaining is None or student_item.bundle_remaining <= 0:
-            return jsonify({"status": "error", "message": "All uses from this bundle have been consumed."}), 400
-    else:
-        # For regular items, check status
-        if student_item.status not in ['purchased', 'pending']:
-            return jsonify({"status": "error", "message": "This item has already been used or is not available."}), 400
+    # Delayed items remain request-based in the canonical model.
+    if student_item.status not in ['purchased', 'pending', 'processing']:
+        return jsonify({"status": "error", "message": "This item is not available for redemption."}), 400
 
     # Check expiry
     if student_item.expiry_date and utc_now() > student_item.expiry_date:
@@ -743,84 +739,23 @@ def use_item():
     fallback_block = None
 
 
-    # Request action happens when item transitions into admin approval workflow.
-    will_create_request = (
-        not student_item.is_from_bundle and (
-            student_item.uses_remaining is None or
-            (student_item.uses_remaining != -1 and student_item.uses_remaining <= 1)
-        )
-    )
-
-    # 3. Mark as processing and create redemption transaction
+    # 3. Record the redemption request and create the audit transaction.
     try:
         audit_guard = {'inserted': False}
-        if will_create_request:
-            _append_redemption_audit_log(
-                student_item=student_item,
-                student=student,
-                user_id=user_id_for_audit,
-                action='request',
-                notes=details,
-                guard_state=audit_guard,
-                fallback_block=fallback_block,
-            )
+        _append_redemption_audit_log(
+            student_item=student_item,
+            student=student,
+            user_id=user_id_for_audit,
+            action='REQUEST',
+            notes=details,
+            guard_state=audit_guard,
+            fallback_block=fallback_block,
+        )
 
-        # Handle bundle items differently
-        if student_item.is_from_bundle:
-            # Decrement bundle_remaining
-            student_item.bundle_remaining -= 1
-            if student_item.bundle_remaining == 0:
-                student_item.status = 'redeemed'  # All uses consumed
-            # StorePurchase no longer tracks redemption detail fields.
-        elif student_item.uses_remaining is not None:
-            # Multi-use item (Rent Per-Use with limit > 1) or unlimited (-1)
-            # Don't decrement if unlimited
-            if student_item.uses_remaining != -1:
-                student_item.uses_remaining -= 1
-                if student_item.uses_remaining <= 0:
-                    # Last use - mark as processing (if requires approval) or completed/redeemed
-                    # Assuming rent per-use items are 'delayed' type (request redemption)
-                    student_item.status = 'processing'
-                else:
-                    # Still has uses remaining - keep status as 'purchased' so it remains in "My Items"
-                    pass
+        student_item.status = 'processing'
 
-            if student_item.uses_remaining == -1:
-                uses_msg = "unlimited uses remaining"
-            else:
-                uses_msg = f"{student_item.uses_remaining} uses remaining"
-            
-            pass
-        else:
-            # Regular item - mark as processing
-            student_item.status = 'processing'
-
-        # Log the redemption event through Ledger without changing monetary balance.
-        if student_item.class_id:
-            create_pending_transaction(
-                seat_id=student_item.seat_id,
-                class_id=student_item.class_id,
-                target_seat_id=student_item.seat_id,
-                actor_seat_id=student_item.seat_id,
-                mechanism="self",
-                amount=Decimal('0.00'),
-                account_type='checking',
-                type='redemption',
-                description=f"Used: {student_item.store_item.name if student_item.store_item else 'Unknown Item'}" + (f" (bundle: {student_item.bundle_remaining} remaining)" if student_item.is_from_bundle and student_item.store_item else "")
-            )
         # FEAT wrapper owns commit/rollback boundaries; keep mutations in the open transaction.
-
-        if student_item.is_from_bundle:
-            return jsonify({"status": "success", "message": f"You have used 1 from your bundle of {student_item.store_item.name if student_item.store_item else 'item'}. {student_item.bundle_remaining} uses remaining."})
-        elif student_item.uses_remaining is not None:
-            if student_item.uses_remaining == -1:
-                return jsonify({"status": "success", "message": f"You have used {student_item.store_item.name if student_item.store_item else 'item'}. Unlimited uses remaining."})
-            elif student_item.uses_remaining > 0:
-                return jsonify({"status": "success", "message": f"You have used {student_item.store_item.name if student_item.store_item else 'item'}. {student_item.uses_remaining} uses remaining."})
-            else:
-                return jsonify({"status": "success", "message": f"You have requested to use {student_item.store_item.name if student_item.store_item else 'item'}. Awaiting admin approval."})
-        else:
-            return jsonify({"status": "success", "message": f"You have requested to use {student_item.store_item.name if student_item.store_item else 'item'}. Awaiting admin approval."})
+        return jsonify({"status": "success", "message": f"You have requested to use {student_item.store_item.name if student_item.store_item else 'item'}. Awaiting admin approval."})
 
     except (SQLAlchemyError, RuntimeError, ValueError) as e:
         db.session.rollback()
@@ -830,13 +765,13 @@ def use_item():
 
 @api_bp.route('/approve-redemption', methods=['POST'])
 @admin_required
-@feat_shell("FEAT-STOR-006")
+@feat_shell("FEAT-STOR-002")
 def approve_redemption():
     """
     Approve a pending redemption request.
 
     Validation and scope checks run as pure reads in the route body; the actual
-    state mutation is delegated to FEAT-STOR-006. The FEAT shell owns the
+    state mutation is delegated to FEAT-STOR-002. The FEAT shell owns the
     transaction boundary — any exception raised below this point (other than
     the explicitly caught RedemptionDispositionError business error) will
     trigger a rollback at the shell. Infrastructure errors are NOT swallowed
@@ -886,17 +821,9 @@ def approve_redemption():
 
 @api_bp.route('/reject-redemption', methods=['POST'])
 @admin_required
-@feat_shell("FEAT-STOR-006")
+@feat_shell("FEAT-STOR-002")
 def reject_redemption():
-    """
-    Reject a pending redemption request and refund the student.
-
-    Validation and scope checks run as pure reads in the route body; the actual
-    state mutation (audit log, refund transaction, item status change) is
-    delegated to FEAT-STOR-006. The FEAT shell owns the transaction boundary
-    and rollback semantics. RedemptionDispositionError is the only exception
-    converted into a structured response; infrastructure errors propagate.
-    """
+    """Reject a pending redemption request without terminating the entitlement."""
     data = request.get_json(silent=True) or {}
     student_item_id = data.get('student_item_id')
 

@@ -14,6 +14,7 @@ from calendar import monthrange
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 from urllib.parse import urlparse
+from types import SimpleNamespace
 
 from flask import Blueprint, redirect, url_for, flash, request, session, jsonify, current_app, has_app_context, abort
 from sqlalchemy import or_, func, select, and_
@@ -28,7 +29,7 @@ from app.models import (
     # StoreItemBlock removed — store_item_blocks unauthorized; use store_item_visibility (DOM-STORE-001)
     RentSettings,
     BankingSettings, FeatureSettings, Issue, Seat, User, UserRole,
-    ClassEconomy, IdentityProfile, PayrollEvent, _quantize_currency
+    ClassEconomy, IdentityProfile, PayrollEvent, PolicyVersion, _quantize_currency
 )
 from app.auth import (
     admin_required,
@@ -70,6 +71,12 @@ from app.access import (
     resolve_student_class_switch_scope,
 )
 from app.services.attendance_service import get_class_attendance_status
+from app.services.store_entitlement_service import (
+    list_entitlement_history,
+    list_entitlements_for_seat,
+    list_available_entitlements,
+    list_insurance_claims,
+)
 from app.services.ledger_service import (
     apply_monthly_savings_interest as post_monthly_savings_interest,
     get_available_balances,
@@ -116,6 +123,7 @@ from app.utils.insurance_eligibility import (
     collect_reimbursed_source_tx_ids,
     resolve_claim_type,
 )
+from app.utils.insurance_billing import get_insurance_billing_snapshot
 
 
 def _get_identity_bound_seat_options(user_id: int):
@@ -859,16 +867,23 @@ def dashboard():
     ).order_by(Transaction.timestamp.desc()).all()
 
     # Canonical store purchases scoped to the active seat/class.
-    student_items = (
-        StorePurchase.query
-        .filter(
-            StorePurchase.class_id == scope.class_id,
-            StorePurchase.seat_id == scope.seat_id,
-            StorePurchase.status.in_(['purchased', 'pending', 'processing', 'redeemed', 'completed', 'expired']),
-        )
-        .order_by(StorePurchase.purchased_at.desc())
-        .all()
-    )
+    student_items = []
+    for entitlement in list_entitlement_history(target_seat_id=scope.seat_id, class_id=scope.class_id):
+        ent = entitlement["entitlement"]
+        item = db.session.get(StoreItem, ent.entitlement_item_id)
+        if item is None:
+            continue
+        terminal = entitlement["terminal_event"]
+        student_items.append(SimpleNamespace(
+            id=ent.entitlement_id,
+            seat_id=ent.target_seat_id,
+            class_id=ent.class_id,
+            store_item=item,
+            status=terminal.disposition.value.lower() if terminal else "purchased",
+            purchased_at=ent.granted_at,
+            uses_remaining=None,
+            bundle_remaining=None,
+        ))
 
     checking_transactions = [tx for tx in transactions if tx.account_type == 'checking']
     savings_transactions = [tx for tx in transactions if tx.account_type == 'savings']
@@ -1488,16 +1503,103 @@ def apply_savings_interest(student, annual_rate=Decimal('0.045')):
 @login_required
 def insurance_marketplace():
     """Insurance marketplace - browse and manage policies."""
+    context = resolve_canonical_context()
+    if not context:
+        flash("No class selected. Please select a class to continue.", "error")
+        return redirect(url_for('student.dashboard'))
 
-
-    abort(404)
+    class_identifier = get_display_join_code(context.class_id) if context.class_id else ""
+    current_class_context = SimpleNamespace(
+        teacher_name="",
+        block_display=class_identifier,
+        class_timezone=getattr(context, "class_timezone", ""),
+        student_full_name=(
+            context.identity_profile.full_name
+            if getattr(context, "identity_profile", None) else ""
+        ),
+        join_code=class_identifier,
+        class_identifier=class_identifier,
+    )
+    return render_template(
+        'student_insurance_marketplace.html',
+        student=(
+            context.identity_profile.full_name
+            if getattr(context, "identity_profile", None) else ""
+        ),
+        current_class_context=current_class_context,
+        my_policies=[],
+        my_claims=[],
+        available_policies=[],
+        tier_groups={},
+        enrolled_tiers=[],
+        can_purchase={},
+        repurchase_blocks=set(),
+        claims_this_period=[],
+        now=utc_now(),
+        claim_type="transaction_monetary",
+        contract_title="Insurance",
+        contract_description="",
+        contract_claim_time_limit_days=0,
+        contract_max_claim_amount=None,
+        remaining_period_cap=None,
+        contract_max_claims_count=None,
+        contract_max_claims_period="period",
+        policy=SimpleNamespace(waiting_period_days=0, charge_frequency="", autopay=False, auto_cancel_nonpay_days=0),
+        enrollment=SimpleNamespace(
+            contract_title="Insurance",
+            contract_description="",
+            status="inactive",
+            purchase_date=utc_now(),
+            coverage_start_date=None,
+            payment_current=False,
+            days_unpaid=0,
+            next_payment_due=None,
+            policy=SimpleNamespace(waiting_period_days=0, charge_frequency="", autopay=False, auto_cancel_nonpay_days=0, no_repurchase_after_cancel=False, repurchase_wait_days=0),
+            contract_claim_time_limit_days=0,
+            contract_max_claim_amount=None,
+            contract_max_claims_count=None,
+            contract_max_claims_period="period",
+        ),
+    )
 
 
 @student_bp.route('/insurance/purchase/<int:policy_id>', methods=['POST'])
 @login_required
 def purchase_insurance(policy_id):
     """Purchase insurance policy."""
-    abort(404)
+    context = resolve_canonical_context()
+    if not context:
+        flash("No class selected. Please select a class to continue.", "error")
+        return redirect(url_for('student.student_insurance'))
+
+    policy_version = db.session.get(PolicyVersion, policy_id)
+    if (
+        policy_version is None
+        or policy_version.class_id != context.class_id
+        or policy_version.domain != "insurance"
+    ):
+        flash("That insurance policy is not available for this class.", "error")
+        return redirect(url_for('student.student_insurance'))
+
+    snapshot = get_insurance_billing_snapshot(policy_version)
+    policy = SimpleNamespace(
+        id=policy_version.id,
+        title=f"Insurance Policy {policy_version.version_number}",
+        premium=Decimal(str(snapshot["premium"] or "0.00")),
+        waiting_period_days=int(snapshot["waiting_period_days"] or 0),
+        charge_frequency=snapshot["charge_frequency"],
+    )
+    seat = db.session.get(Seat, context.seat_id)
+    banking_settings = BankingSettings.query.filter_by(class_id=context.class_id).first()
+    execute_insurance_purchase(
+        seat=seat,
+        user_id=context.user_id,
+        class_id=context.class_id,
+        policy=policy,
+        banking_settings=banking_settings,
+    )
+    flash("Insurance purchase recorded.", "success")
+    return redirect(url_for('student.student_insurance'))
 
 
 @student_bp.route('/insurance/cancel/<int:enrollment_id>', methods=['POST'])
@@ -1505,28 +1607,142 @@ def purchase_insurance(policy_id):
 @feat_shell("FEAT-OBL-001")
 def cancel_insurance(enrollment_id):
     """Cancel insurance policy."""
-    abort(404)
+    flash("Insurance cancellation is not available from the current policy surface.", "warning")
+    return redirect(url_for('student.student_insurance'))
 
 
 @student_bp.route('/insurance/claim/<int:policy_id>', methods=['GET', 'POST'])
 @login_required
 def file_claim(policy_id):
     """File insurance claim."""
-    abort(404)
+    context = resolve_canonical_context()
+    if not context:
+        flash("No class selected. Please select a class to continue.", "error")
+        return redirect(url_for('student.dashboard'))
+
+    class_identifier = get_display_join_code(context.class_id) if context.class_id else ""
+    student_name = (
+        context.identity_profile.full_name
+        if getattr(context, "identity_profile", None) else ""
+    )
+    placeholder_policy = SimpleNamespace(
+        id=policy_id,
+        title="Insurance",
+        description="",
+        premium=Decimal("0.00"),
+        charge_frequency="monthly",
+        waiting_period_days=0,
+        max_claims_count=None,
+        claim_type="transaction_monetary",
+    )
+    enrollment = SimpleNamespace(
+        id=policy_id,
+        policy=placeholder_policy,
+        contract_title=placeholder_policy.title,
+        contract_description=placeholder_policy.description,
+        purchase_date=utc_now(),
+        coverage_start_date=None,
+        payment_current=True,
+        days_unpaid=0,
+        status="active",
+        next_payment_due=None,
+        contract_claim_time_limit_days=0,
+        contract_max_claim_amount=None,
+        contract_max_claims_count=None,
+        contract_max_claims_period="period",
+    )
+    return render_template(
+        'student_file_claim.html',
+        student=student_name,
+        current_class_context=SimpleNamespace(
+            teacher_name="",
+            block_display=class_identifier,
+            class_timezone=getattr(context, "class_timezone", ""),
+            student_full_name=student_name,
+            join_code=class_identifier,
+            class_identifier=class_identifier,
+        ),
+        policy=placeholder_policy,
+        enrollment=enrollment,
+        form=SimpleNamespace(hidden_tag=lambda: ""),
+        errors=[],
+        claim_type="transaction_monetary",
+        contract_title=placeholder_policy.title,
+        contract_description=placeholder_policy.description,
+        contract_claim_time_limit_days=0,
+        contract_max_claim_amount=None,
+        remaining_period_cap=None,
+        contract_max_claims_count=None,
+        contract_max_claims_period="period",
+        eligible_transactions=[],
+        claims_this_period=list_insurance_claims(
+            class_id=context.class_id,
+            target_seat_id=context.seat_id,
+        ),
+        now=utc_now(),
+    )
 
 
 @student_bp.route('/insurance/policy/<int:enrollment_id>')
 @login_required
 def view_policy(enrollment_id):
     """View policy details and claims history."""
-    abort(404)
+    context = resolve_canonical_context()
+    if not context:
+        flash("No class selected. Please select a class to continue.", "error")
+        return redirect(url_for('student.dashboard'))
 
-    return render_template('student_view_policy.html',
-                          student=student,
-                          enrollment=enrollment,
-                          policy=enrollment.policy,
-                          claims=claims,
-                          now=now_utc)
+    class_identifier = get_display_join_code(context.class_id) if context.class_id else ""
+    student_name = (
+        context.identity_profile.full_name
+        if getattr(context, "identity_profile", None) else ""
+    )
+    placeholder_policy = SimpleNamespace(
+        id=enrollment_id,
+        title="Insurance",
+        description="",
+        premium=Decimal("0.00"),
+        charge_frequency="monthly",
+        waiting_period_days=0,
+        max_claims_count=None,
+        claim_type="transaction_monetary",
+        autopay=False,
+        auto_cancel_nonpay_days=0,
+    )
+    enrollment = SimpleNamespace(
+        id=enrollment_id,
+        policy=placeholder_policy,
+        contract_title=placeholder_policy.title,
+        contract_description=placeholder_policy.description,
+        purchase_date=utc_now(),
+        coverage_start_date=None,
+        payment_current=True,
+        days_unpaid=0,
+        status="active",
+        next_payment_due=None,
+        contract_claim_time_limit_days=0,
+        contract_max_claim_amount=None,
+        contract_max_claims_count=None,
+        contract_max_claims_period="period",
+    )
+    return render_template(
+        'student_view_policy.html',
+        student=student_name,
+        current_class_context=SimpleNamespace(
+            teacher_name="",
+            block_display=class_identifier,
+            class_timezone=getattr(context, "class_timezone", ""),
+            student_full_name=student_name,
+            join_code=class_identifier,
+            class_identifier=class_identifier,
+        ),
+        enrollment=enrollment,
+        claims=list_insurance_claims(
+            class_id=context.class_id,
+            target_seat_id=context.seat_id,
+        ),
+        now=utc_now(),
+    )
 
 
 # -------------------- SHOPPING --------------------
@@ -1566,16 +1782,29 @@ def shop():
         if store_service.is_item_visible_to_seat(item.id, seat.id)
     ]
 
-    student_items = (
-        StorePurchase.query
-        .filter(
-            StorePurchase.class_id == class_id,
-            StorePurchase.seat_id == seat.id,
-            StorePurchase.status.in_(['purchased', 'pending', 'processing', 'redeemed', 'completed', 'expired']),
-        )
-        .order_by(StorePurchase.purchased_at.desc())
-        .all()
-    )
+    student_items = []
+    for entry in list_entitlement_history(target_seat_id=seat.id, class_id=class_id):
+        entitlement = entry["entitlement"]
+        terminal_event = entry["terminal_event"]
+        item = db.session.get(StoreItem, entitlement.entitlement_item_id)
+        if item is None:
+            continue
+        student_items.append(SimpleNamespace(
+            id=entitlement.entitlement_id,
+            seat_id=entitlement.target_seat_id,
+            class_id=entitlement.class_id,
+            store_item=item,
+            status=(
+                terminal_event.disposition.value.lower()
+                if terminal_event is not None and getattr(terminal_event.disposition, "value", None)
+                else "purchased"
+            ),
+            purchase_date=entitlement.granted_at,
+            expiry_date=None,
+            uses_remaining=None,
+            bundle_remaining=None,
+            is_from_bundle=False,
+        ))
 
     # Check if student has paid rent this month using canonical rent settings only.
     from app.models import RentSettings
@@ -1636,38 +1865,20 @@ def shop():
     # Build free uses remaining map for rent-linked per-use items
     rent_free_uses = {}  # {store_item_id: uses_remaining or -1 for unlimited}
     if seat:
-        now_utc = utc_now()
-        rent_linked_items_query = StorePurchase.query.filter(
-            StorePurchase.seat_id == seat.id,
-            StorePurchase.uses_remaining != None,
-            db.or_(
-                StorePurchase.uses_remaining > 0,
-                StorePurchase.uses_remaining == -1
-            ),
-            db.or_(
-                StorePurchase.expiry_date.is_(None),
-                StorePurchase.expiry_date > now_utc
-            )
-        )
-        rent_linked_items = rent_linked_items_query.all()
-        for si in rent_linked_items:
-            if si.store_item_id:
-                rent_free_uses[si.store_item_id] = si.uses_remaining
+        active_entitlements = list_entitlements_for_seat(target_seat_id=seat.id, class_id=class_id)
+        for entitlement in active_entitlements:
+            if entitlement.entitlement_item_id:
+                rent_free_uses[entitlement.entitlement_item_id] = -1
 
         # Backfill UI for paid-rent students who are entitled to per-use perks
         # but are missing grant rows (edge-state). Do not override items
         # that already have an explicit grant record (including exhausted = 0).
         if has_paid_rent and per_use_limit_by_store_id:
-            existing_per_use_rows = StorePurchase.query.filter(
-                StorePurchase.seat_id == seat.id,
-                StorePurchase.store_item_id.in_(list(per_use_limit_by_store_id.keys())),
-                StorePurchase.uses_remaining.isnot(None),
-                db.or_(
-                    StorePurchase.expiry_date.is_(None),
-                    StorePurchase.expiry_date > now_utc
-                )
-            ).all()
-            existing_per_use_ids = {row.store_item_id for row in existing_per_use_rows if row.store_item_id}
+            existing_per_use_ids = {
+                entitlement.entitlement_item_id
+                for entitlement in active_entitlements
+                if entitlement.entitlement_item_id in per_use_limit_by_store_id
+            }
 
             for store_item_id, granted_uses in per_use_limit_by_store_id.items():
                 if store_item_id not in existing_per_use_ids and store_item_id not in rent_free_uses:
@@ -1693,22 +1904,17 @@ def shop():
     if collective_item_ids and class_id:
         progress_rows = (
             db.session.query(
-                StorePurchase.store_item_id,
-                db.func.count(db.distinct(StorePurchase.seat_id)).label('student_count'),
+                Entitlement.entitlement_item_id,
+                db.func.count(db.distinct(Entitlement.target_seat_id)).label('student_count'),
             )
-            .join(Seat, StorePurchase.seat_id == Seat.id)
-            .join(StoreItem, StorePurchase.store_item_id == StoreItem.id)
             .filter(
-                StorePurchase.store_item_id.in_(collective_item_ids),
-                StorePurchase.class_id == class_id,
-                StorePurchase.status.in_(['pending', 'processing', 'purchased', 'redeemed', 'completed']),
-                Seat.role == "student",  # Exclude teacher purchases from progress
-                StorePurchase.collective_goal_instance_code == StoreItem.collective_goal_instance_code,
+                Entitlement.entitlement_item_id.in_(collective_item_ids),
+                Entitlement.class_id == class_id,
             )
-            .group_by(StorePurchase.store_item_id)
+            .group_by(Entitlement.entitlement_item_id)
             .all()
         )
-        progress_counts = {row.store_item_id: int(row.student_count or 0) for row in progress_rows}
+        progress_counts = {row.entitlement_item_id: int(row.student_count or 0) for row in progress_rows}
 
         for item in collective_items:
             if item.collective_goal_type == 'whole_class':
@@ -1727,7 +1933,18 @@ def shop():
             }
 
     current_block = seat.class_economy.section.strip().upper() if seat and seat.class_economy and seat.class_economy.section else ""
-    return render_template('student_shop.html', student=seat, items=items, student_items=student_items,
+    student_display_name = (
+        seat.identity_profile.full_name
+        if seat and seat.identity_profile
+        else ""
+    )
+    current_class_context = SimpleNamespace(
+        student_full_name=student_display_name,
+        class_identifier=join_code or class_id,
+        join_code=join_code,
+        class_timezone=getattr(context, "class_timezone", ""),
+    )
+    return render_template('student_shop.html', student=student_display_name, current_class_context=current_class_context, items=items, student_items=student_items,
                          has_paid_rent=has_paid_rent, per_period_rent_item_ids=per_period_rent_item_ids,
                          rent_item_types_by_store_id=rent_item_types_by_store_id,
                          rent_free_uses=rent_free_uses,

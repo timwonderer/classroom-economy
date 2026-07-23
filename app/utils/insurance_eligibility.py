@@ -8,7 +8,8 @@ from typing import Optional, Set, Tuple
 
 from sqlalchemy import and_
 
-from app.models import RedemptionEvent, RedemptionEventAction, StoreItem, StorePurchase, Transaction, TransactionStatus
+from app.models import RedemptionEvent, RedemptionEventAction, StoreItem, Transaction, TransactionStatus
+from app.services.store_entitlement_service import list_entitlement_history
 from app.utils.time import ensure_utc, get_class_now, to_class_time
 
 CLAIM_TYPE_TRANSACTION_MONETARY = "transaction_monetary"
@@ -151,24 +152,14 @@ def _check_delay_use_rule(tx: Transaction, *, class_id: str, now_class: datetime
     if store_item.item_type != "delayed":
         return None
 
-    tx_ts = ensure_utc(tx.timestamp)
-    tolerance = timedelta(minutes=5)
-    item_query = StorePurchase.query.filter(
-        StorePurchase.seat_id == tx.seat_id,
-        StorePurchase.store_item_id == store_item.id,
-        and_(
-            StorePurchase.purchased_at >= tx_ts - tolerance,
-            StorePurchase.purchased_at <= tx_ts + tolerance,
-        ),
-    )
-    item_row = item_query.order_by(StorePurchase.id.desc()).first()
-    if not item_row:
-        # Fallback for historical rows with slight timestamp drift.
-        fallback_query = StorePurchase.query.filter(
-            StorePurchase.seat_id == tx.seat_id,
-            StorePurchase.store_item_id == store_item.id,
-        )
-        item_row = fallback_query.order_by(StorePurchase.purchased_at.desc()).first()
+    item_row = None
+    for entry in list_entitlement_history(target_seat_id=tx.seat_id, class_id=class_id, entitlement_item_id=store_item.id):
+        ent = entry["entitlement"]
+        terminal = entry["terminal_event"]
+        if terminal is not None:
+            continue
+        item_row = ent
+        break
     if not item_row:
         # Legacy data may not have a matching canonical store row.
         return None
@@ -181,10 +172,10 @@ def _check_delay_use_rule(tx: Transaction, *, class_id: str, now_class: datetime
     if not used_at:
         return CLAIM_REASON_DELAY_USE_NOT_USED
 
-    expiry_at = ensure_utc(item_row.expiry_date) if item_row.expiry_date else None
-    if expiry_at and used_at > expiry_at:
-        return CLAIM_REASON_DELAY_USE_EXPIRED
-    if expiry_at and not used_at and now_class > to_class_time(expiry_at, class_id):
+    grant_at = ensure_utc(item_row.granted_at) if item_row.granted_at else None
+    if grant_at and used_at < grant_at:
+        return CLAIM_REASON_DELAY_USE_NOT_USED
+    if grant_at and now_class and used_at > now_class:
         return CLAIM_REASON_DELAY_USE_EXPIRED
     return None
 

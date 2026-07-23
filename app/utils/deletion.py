@@ -8,6 +8,7 @@ from app.extensions import db
 from app.models import (
     ClassEconomy, Seat, Transaction,
     AttendanceSession, HallPassLog, StorePurchase, RedemptionEvent,
+    Entitlement, EntitlementConsumption,
     PayrollEvent,
     Issue, IssueResolutionAction, Announcement, StoreItem, StoreItemVisibility,
     # RedemptionAuditLog removed — redemption_audit_logs unauthorized; use redemption_events (DOM-STORE-001)
@@ -114,6 +115,11 @@ def collapse_universe(class_id: str, reason: str, actor_membership_id: Optional[
 
         # 4. Inventory / Store Data
         store_purchase_ids_subq = select(StorePurchase.id).filter_by(class_id=class_id).subquery()
+        entitlement_ids_subq = select(Entitlement.entitlement_id).filter_by(class_id=class_id).subquery()
+        EntitlementConsumption.query.filter(
+            EntitlementConsumption.entitlement_id.in_(select(entitlement_ids_subq))
+        ).delete(synchronize_session=False)
+        Entitlement.query.filter_by(class_id=class_id).delete(synchronize_session=False)
         RedemptionEvent.query.filter(
             RedemptionEvent.purchase_id.in_(select(store_purchase_ids_subq))
         ).delete(synchronize_session=False)
@@ -134,6 +140,15 @@ def collapse_universe(class_id: str, reason: str, actor_membership_id: Optional[
             )
             .subquery()
         )
+        class_item_entitlement_ids = select(Entitlement.entitlement_id).filter(
+            Entitlement.entitlement_item_id.in_(select(deletable_store_items))
+        ).subquery()
+        EntitlementConsumption.query.filter(
+            EntitlementConsumption.entitlement_id.in_(select(class_item_entitlement_ids))
+        ).delete(synchronize_session=False)
+        Entitlement.query.filter(
+            Entitlement.entitlement_item_id.in_(select(deletable_store_items))
+        ).delete(synchronize_session=False)
         StoreItem.query.filter(StoreItem.id.in_(select(deletable_store_items))).delete(synchronize_session=False)
 
         # 5. Delete Seats for this class (also handled by FK cascade on ClassEconomy deletion)

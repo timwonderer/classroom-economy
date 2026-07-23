@@ -6,12 +6,15 @@ from decimal import Decimal
 from app.extensions import db
 from app.models import (
     IdentityProfile,
+    Entitlement,
+    EntitlementConsumption,
     RentSettings,
     Seat,
     StorePurchase,
     StoreItem,
     StoreItemVisibility,
     ClassEconomy,
+    GrantType,
 )
 from app.utils.time import utc_now
 
@@ -52,25 +55,28 @@ def set_item_visibility(store_item_id: int, seat_ids: list[int]) -> None:
 
 
 def get_purchase_count(seat_id: int, class_id: str, store_item_id: int) -> int:
-    """Count non-voided purchases of an item by a seat in a class."""
-    return StorePurchase.query.filter(
-        StorePurchase.seat_id == seat_id,
-        StorePurchase.class_id == class_id,
-        StorePurchase.store_item_id == store_item_id,
-        StorePurchase.status.notin_(['voided', 'rejected']),
+    """Count canonical purchase entitlements for an item by a seat in a class."""
+    return Entitlement.query.filter(
+        Entitlement.target_seat_id == seat_id,
+        Entitlement.class_id == class_id,
+        Entitlement.entitlement_item_id == store_item_id,
+        Entitlement.grant_type == GrantType.PURCHASE,
     ).count()
 
 
 def get_active_rent_grant(seat_id: int, class_id: str, store_item_id: int):
-    """Find an active rent-derived purchase with remaining uses."""
-    now = utc_now()
-    return StorePurchase.query.filter(
-        StorePurchase.seat_id == seat_id,
-        StorePurchase.class_id == class_id,
-        StorePurchase.store_item_id == store_item_id,
-        db.or_(StorePurchase.uses_remaining > 0, StorePurchase.uses_remaining == -1),
-        db.or_(StorePurchase.expiry_date.is_(None), StorePurchase.expiry_date > now),
-    ).first()
+    """Find an active rent-derived entitlement for a seat and item."""
+    terminal_ids = (
+        db.session.query(EntitlementConsumption.entitlement_id)
+        .filter(EntitlementConsumption.class_id == class_id)
+        .subquery()
+    )
+    return Entitlement.query.filter(
+        Entitlement.target_seat_id == seat_id,
+        Entitlement.class_id == class_id,
+        Entitlement.entitlement_item_id == store_item_id,
+        ~Entitlement.entitlement_id.in_(db.select(terminal_ids.c.entitlement_id)),
+    ).order_by(Entitlement.granted_at.desc(), Entitlement.id.desc()).first()
 
 
 def create_store_item(*, user_id: int, class_id: str, **fields) -> StoreItem:
@@ -336,7 +342,6 @@ def record_standard_purchase_items(
     total_price: Decimal,
     expiry_date,
     purchase_status: str,
-    uses_remaining,
     idempotency_key: str | None = None,
 ):
     """Store-owned mutation for standard StorePurchase issuance."""
@@ -356,8 +361,8 @@ def record_standard_purchase_items(
             purchased_at=utc_now(),
             expiry_date=expiry_date,
             is_from_bundle=True,
-            bundle_remaining=item.bundle_quantity * quantity,
-            uses_remaining=uses_remaining,
+            bundle_remaining=None,
+            uses_remaining=None,
             collective_goal_instance_code=item.collective_goal_instance_code if item.item_type == 'collective' else None,
         )
         db.session.add(purchase)
@@ -379,7 +384,7 @@ def record_standard_purchase_items(
             purchased_at=utc_now(),
             expiry_date=expiry_date,
             is_from_bundle=False,
-            uses_remaining=uses_remaining,
+            uses_remaining=None,
             collective_goal_instance_code=item.collective_goal_instance_code if item.item_type == 'collective' else None,
         )
         db.session.add(purchase)
@@ -403,20 +408,23 @@ def unlock_collective_goal_if_ready(*, item, class_id: str) -> None:
         Seat.claimed_at.isnot(None),
     ).scalar() or 0
 
-    purchased_count = StorePurchase.query.filter(
-        StorePurchase.store_item_id == item.id,
-        StorePurchase.class_id == class_id,
-        StorePurchase.status.in_(['pending', 'processing', 'purchased', 'redeemed', 'completed']),
-        StorePurchase.collective_goal_instance_code == item.collective_goal_instance_code,
-    ).with_entities(db.func.count(db.func.distinct(StorePurchase.seat_id))).scalar() or 0
+    terminal_ids = (
+        db.session.query(EntitlementConsumption.entitlement_id)
+        .filter(EntitlementConsumption.class_id == class_id)
+        .subquery()
+    )
+    purchased_count = (
+        db.session.query(db.func.count(db.func.distinct(Entitlement.target_seat_id)))
+        .filter(
+            Entitlement.entitlement_item_id == item.id,
+            Entitlement.class_id == class_id,
+            Entitlement.grant_type == GrantType.PURCHASE,
+            ~Entitlement.entitlement_id.in_(db.select(terminal_ids.c.entitlement_id)),
+        )
+        .scalar()
+        or 0
+    )
 
     target = int(item.collective_goal_target or 0) if item.collective_goal_type == 'fixed' else class_size
     if target > 0 and purchased_count >= target:
-        pending_purchases = StorePurchase.query.filter(
-            StorePurchase.store_item_id == item.id,
-            StorePurchase.class_id == class_id,
-            StorePurchase.status == 'pending',
-            StorePurchase.collective_goal_instance_code == item.collective_goal_instance_code,
-        ).all()
-        for p in pending_purchases:
-            p.status = "processing"
+        return

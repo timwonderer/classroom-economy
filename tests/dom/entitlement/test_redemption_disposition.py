@@ -1,5 +1,5 @@
 """
-FEAT-STOR-006: Redemption Disposition — enforcement-active tests.
+FEAT-STOR-002: Entitlement Terminal Lifecycle — enforcement-active tests.
 
 These tests are marked `enforce_feat` so the conftest does NOT wrap them in
 the global FEATBypass. That means the FEAT constitutional enforcement
@@ -19,6 +19,10 @@ import pytest
 from app.extensions import db
 from app.feats.base import FEATContext
 from app.models import (
+    Entitlement,
+    EntitlementConsumption,
+    Disposition,
+    GrantType,
     RedemptionEvent,
     RedemptionEventAction,
     StoreItem,
@@ -34,8 +38,9 @@ from app.services.classroom_setup import create_class, create_student
 def _seed_redemption_scenario(*, username: str, join_code: str, item_price: Decimal):
     """
     Seed a realistic redemption scenario: one teacher (with canonical User),
-    one student, one seat, one store item, and one StorePurchase in 'processing'
-    state with a matching purchase transaction.
+    one student, one seat, one store item, one entitlement, and one
+    StorePurchase bridge row in 'processing' state with a matching purchase
+    transaction.
 
     All seeding occurs inside FEATContext so the same production mutation
     path is used as the routes under test.
@@ -43,7 +48,7 @@ def _seed_redemption_scenario(*, username: str, join_code: str, item_price: Deci
     Returns a dict of primary-key IDs (not detached ORM objects) so callers
     can rehydrate after a route call.
     """
-    with FEATContext("FEAT-STOR-006", idempotency_key=f"redemption-seed:{username}"):
+    with FEATContext("FEAT-STOR-002", idempotency_key=f"redemption-seed:{username}"):
         teacher = make_teacher(username)
         economy = create_class(
             teacher.id,
@@ -102,6 +107,17 @@ def _seed_redemption_scenario(*, username: str, join_code: str, item_price: Deci
         db.session.add(redemption_tx)
         db.session.flush()
 
+        entitlement = Entitlement(
+            entitlement_item_id=item.id,
+            target_seat_id=student_seat.id,
+            actor_seat_id=student_seat.id,
+            class_id=economy.class_id,
+            grant_type=GrantType.PURCHASE,
+            correlation_id=f"redemption-seed:{username}",
+        )
+        db.session.add(entitlement)
+        db.session.flush()
+
         purchase = StorePurchase(
             seat_id=student_seat.id,
             class_id=economy.class_id,
@@ -124,6 +140,7 @@ def _seed_redemption_scenario(*, username: str, join_code: str, item_price: Deci
             "seat_id": student_seat.id,
             "student_seat_id": student_seat.id,
             "item_id": item.id,
+            "entitlement_id": entitlement.entitlement_id,
             "student_item_id": purchase.id,
             "purchase_tx_id": purchase_tx.id,
             "redemption_tx_id": redemption_tx.id,
@@ -138,7 +155,7 @@ def _login_canonical_admin(client, *, user_id: int):
     user = db.session.get(User, user_id)
     nonce = f"nonce-{user_id}"
     if user is not None:
-        with FEATContext("FEAT-STOR-006", idempotency_key=f"redemption:login:{user_id}"):
+        with FEATContext("FEAT-STOR-002", idempotency_key=f"redemption:login:{user_id}"):
             user.current_session_nonce = nonce
             db.session.flush()
     with client.session_transaction() as sess:
@@ -155,9 +172,9 @@ def _login_canonical_admin(client, *, user_id: int):
 def test_DOM_STORE_001__approve_redemption_succeeds_under_feat_enforcement(client):
     """
     With FEAT enforcement ACTIVE (no global FEATBypass), POST /api/approve-redemption
-    must succeed end-to-end: 200 response, audit row written, item status flipped.
+    must succeed end-to-end: 200 response, audit row written, entitlement consumed.
 
-    Before FEAT-STOR-006 was added, this exact path raised FEATContextError → 500.
+    Before FEAT-STOR-002 was added, this exact path raised FEATContextError → 500.
     """
     ids = _seed_redemption_scenario(
         username="approver_enforced",
@@ -183,21 +200,19 @@ def test_DOM_STORE_001__approve_redemption_succeeds_under_feat_enforcement(clien
     assert event_rows[0].initiated_by_user_id == ids["owner_user_id"]
     assert event_rows[0].class_id == ids["class_id"]
 
-    # Item state advanced
-    refetched_item = db.session.get(StorePurchase, ids["student_item_id"])
-    assert refetched_item.status == "completed"
+    terminal_rows = EntitlementConsumption.query.filter_by(
+        entitlement_id=ids["entitlement_id"],
+        disposition=Disposition.CONSUMED,
+    ).all()
+    assert len(terminal_rows) == 1
 
-    # Redemption transaction description rewritten
-    refetched_tx = db.session.get(Transaction, ids["redemption_tx_id"])
-    assert refetched_tx.description.startswith("Redeemed:")
+    refetched_item = db.session.get(StorePurchase, ids["student_item_id"])
+    assert refetched_item.status == "processing"
 
 
 @pytest.mark.enforce_feat
 def test_DOM_STORE_001__reject_redemption_succeeds_and_creates_refund_under_enforcement(client):
-    """
-    POST /api/reject-redemption under live enforcement: 200, audit row, refund Tx,
-    item status set to 'rejected'.
-    """
+    """POST /api/reject-redemption under live enforcement: 200, audit row, no refund."""
     ids = _seed_redemption_scenario(
         username="rejecter_enforced",
         join_code="ENF002",
@@ -220,22 +235,15 @@ def test_DOM_STORE_001__reject_redemption_succeeds_and_creates_refund_under_enfo
     ).all()
     assert len(event_rows) == 1
 
-    # Item is in terminal rejected state
-    refetched_item = db.session.get(StorePurchase, ids["student_item_id"])
-    assert refetched_item.status == "rejected"
-
-    # Refund transaction created with positive amount equal to item price
-    refund_txs = Transaction.query.filter_by(
-        seat_id=ids["seat_id"],
-        class_id=ids["class_id"],
-        type="refund",
+    # Entitlement remains available after rejection
+    terminal_rows = EntitlementConsumption.query.filter_by(
+        entitlement_id=ids["entitlement_id"],
     ).all()
-    assert len(refund_txs) == 1
-    assert refund_txs[0].amount == Decimal("15.00")
+    assert terminal_rows == []
 
-    # Original purchase tx now points at the refund as its reversal
-    purchase_tx = db.session.get(Transaction, ids["purchase_tx_id"])
-    assert purchase_tx.reversal_transaction_id == refund_txs[0].id
+    # Item bridge row remains processing; entitlement terminal truth is canonical.
+    refetched_item = db.session.get(StorePurchase, ids["student_item_id"])
+    assert refetched_item.status == "processing"
 
 
 @pytest.mark.enforce_feat
@@ -252,7 +260,7 @@ def test_DOM_STORE_001__approve_rejects_non_processing_item_with_409(client):
     )
 
     # Advance item to a terminal state before the route call
-    with FEATContext("FEAT-STOR-006", idempotency_key="redemption:advance_item"):
+    with FEATContext("FEAT-STOR-002", idempotency_key="redemption:advance_item"):
         purchase = db.session.get(StorePurchase, ids["student_item_id"])
         purchase.status = "completed"
 
@@ -293,7 +301,7 @@ def test_DOM_STORE_001__approve_redemption_rejects_intruder_admin_with_403(clien
     )
 
     # Build a separate canonical admin who has NO membership in owner's class
-    with FEATContext("FEAT-STOR-006", idempotency_key="redemption:intruder"):
+    with FEATContext("FEAT-STOR-002", idempotency_key="redemption:intruder"):
         intruder_user = make_teacher("intruder_isolation")
         intruder_class = create_class(
             intruder_user.id,
