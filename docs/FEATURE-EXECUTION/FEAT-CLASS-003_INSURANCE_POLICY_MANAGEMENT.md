@@ -171,6 +171,11 @@ If a target policy is withdrawn before its effective start, the pending switch S
 
 Bundle discounts are class-configuration rules.
 
+The bundle eligibility rule SHALL operate in one of two ways:
+
+1. concurrent enrollment in the specified standalone non-grouped policies; or
+2. concurrent enrollment in one policy from the referenced tiered group plus the other specified policy.
+
 A bundle definition MAY reference:
 
 - standalone non-grouped policies; or

@@ -4461,7 +4461,7 @@ def student_detail_public(actor_public_id):
 
 @admin_bp.route('/student/<int:seat_id>/adjust-hall-pass-entitlements', methods=['POST'])
 @admin_required
-@feat_shell("FEAT-ENT-001")
+@feat_shell("FEAT-STOR-001")
 def adjust_hall_pass_entitlements(seat_id):
     """Grant or remove hall-pass entitlements for a student."""
     student = db.session.get(Seat, seat_id)
@@ -9322,7 +9322,7 @@ def tap_in_students():
 
 @admin_bp.route('/students/bulk-adjust-hall-pass-entitlements', methods=['POST'])
 @admin_required
-@feat_shell("FEAT-ENT-001")
+@feat_shell("FEAT-STOR-001")
 def bulk_adjust_hall_pass_entitlements():
     """Bulk grant or remove hall-pass entitlements for selected students."""
     data = request.get_json()
