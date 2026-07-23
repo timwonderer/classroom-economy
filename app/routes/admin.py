@@ -90,7 +90,6 @@ from app.forms import (
 # Import utility functions
 from app.utils.helpers import is_safe_url, format_utc_iso, generate_anonymous_code, render_template_with_fallback as render_template
 from app.utils.canonical_temporal_resolver import CLASS_LEVEL_EVALUATION, canonical_temporal_resolver
-from app.utils.store import refund_pending_collective_purchases
 from app.utils.join_code import generate_join_code, get_display_join_code
 from app.utils.economy_balance import EconomyBalanceChecker
 from app.utils.economy_policy import (
@@ -5651,25 +5650,11 @@ def delete_store_item(item_id):
     if _block_rent_linked_store_item(item):
         return redirect(url_for('admin.store_management'))
 
-    # For active collective items, refund any pending purchases before deactivating
-    # so students are not left with purchased but unredeemable items.
     idempotency_key = f"feat:store:item-deactivate:{selected_scope['class_id']}:{item.id}"
     with FEATContext("FEAT-CLASS-003", idempotency_key=idempotency_key):
         item = StoreItem.query.filter_by(id=item_id, class_id=selected_scope['class_id']).first_or_404()
-        refunded = 0
-        if item.item_type == 'collective' and item.is_active:
-            refunded = refund_pending_collective_purchases(item, description_suffix="Item Removed by Teacher")
-
-        # To preserve history, we'll just deactivate it instead of a hard delete
-        # A hard delete would be: db.session.delete(item)
         deactivate_store_item(item)
-
-    if refunded:
-        flash(
-            f"{refunded} pending purchase(s) for '{item.name}' have been refunded automatically.",
-            "info",
-        )
-    flash(f"'{item.name}' has been deactivated and removed from the store.", "success")
+    flash(f"'{item.name}' has been deactivated and hidden from new purchases.", "success")
     return redirect(url_for('admin.store_management'))
 
 
