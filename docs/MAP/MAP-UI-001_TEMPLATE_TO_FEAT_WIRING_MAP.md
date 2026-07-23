@@ -2,7 +2,7 @@
 
 | Reference Number | Version | Effective Date | Supersedes | Authority Level |
 |------------------|---------|----------------|------------|-----------------|
-| MAP-UI-001 | 0.1 | 2026-07-20 | N/A | Informative |
+| MAP-UI-001 | 0.2 | 2026-07-22 | 0.1 | Informative |
 
 ---
 
@@ -26,7 +26,12 @@ Authority order:
 4. `FEAT-PROD-001_RECORD_ATTENDANCE_SESSION.md`
 5. `FEAT-PROD-002_RECORD_HALL_PASS_LOG.md`
 6. `FEAT-PROD-003_RECORD_PAYROLL_EVENT.md`
-7. `SOP-DEV-002_CANONICAL_DOMAIN_RECONSTRUCTION_WORKFLOW.md`
+7. `DOM-STORE-001_STORE_AND_ENTITLEMENTS_DOMAIN.md`
+8. `FEAT-STOR-001_STORE_PURCHASE.md`
+9. `FEAT-STOR-002_ENTITLEMENT_TERMINAL_LIFECYCLE.md`
+10. `FEAT-STOR-003_INSURANCE_CLAIM_LIFECYCLE.md`
+11. `SOP-DEV-002_CANONICAL_DOMAIN_RECONSTRUCTION_WORKFLOW.md`
+12. `MAP-UI-002_REQUEST_CONTEXT_AND_VIEW_MODEL_PIPELINE.md`
 
 Audit inputs:
 
@@ -86,11 +91,42 @@ Each row describes one user-visible capability, not one variable or one template
 
 ---
 
-## V. Issue and Project Shape
+## V. Store and Entitlements Slice
+
+### Summary
+
+| Status | Count | Meaning |
+|---|---:|---|
+| `NEEDS_REWIRE` | 16 | Route and/or template must be rewritten to match canonical FEAT, DOM-STORE-001 persistence, and cross-domain boundaries |
+
+### Capability Rows
+
+| Capability | Surface | Type | Context | FEAT / Domain | Persistence | View Contract | Current State | Rewire Status |
+|---|---|---|---|---|---|---|---|---|
+| Teacher views store dashboard: items, pending redemptions, recent purchases, audit log | `admin_store.html`; `admin.store_management` (`GET /admin/store`) | `OUTPUT` | Teacher `CanonicalContext`; selected `class_id` | Read-only `DOM-STORE`; Class Configuration for item catalog; Ledger for price display | Reads `store_items`, `store_purchases`, `redemption_events`, `store_item_visibility`; entitlement balance from `entitlement_events` | `items`, `pending_redemptions`, `recent_purchases`, `collective_progress_by_item`, `audit_rows`, `rent_managed_item_ids`, display metadata | Code reads correct canonical tables but template dereferences `student_item.redemption_date`, `student_item.purchase_date`, `student_item.redemption_details` which are not `StorePurchase` attributes per DOM-STORE-001; `student_hall_pass_balances_by_seat_id` read path already canonical; route uses legacy `FEATContext("FEAT-STOR-001")` for a GET which violates INV-ARC-007 (no GET side effects) | `NEEDS_REWIRE` |
+| Teacher creates store item | `admin_store.html`; `admin.store_management` (`POST /admin/store`) | `ACTION` | Teacher `CanonicalContext`; selected `class_id`; actor teacher seat | Class Configuration domain; `store_items` and `store_item_visibility` are catalog definition, not Store purchase or entitlement mutation | Writes `store_items`, `store_item_visibility` | Redirect to store dashboard; subsequent GET shows new item | Route calls `create_store_item()` service and `item.set_blocks()` for visibility under wrong FEAT label `FEATContext("FEAT-STOR-001")`; must be rewired to Class Configuration FEAT | `NEEDS_REWIRE` |
+| Teacher edits store item | `admin_edit_item.html`; `admin.edit_store_item` (`GET, POST /admin/store/edit/<item_id>`) | `ACTION` | Teacher `CanonicalContext`; selected `class_id`; actor teacher seat | Class Configuration domain; same as item creation | Writes `store_items`, `store_item_visibility` | `form`, `item`, `payroll_settings` | Route mutates `StoreItem` fields and visibility under wrong FEAT label `FEATContext("FEAT-STOR-001")`; must be rewired to Class Configuration FEAT | `NEEDS_REWIRE` |
+| Teacher deactivates store item | `admin_store.html`; `admin.delete_store_item` (`POST /admin/store/delete/<item_id>`, `/admin/item/deactivate/<item_id>`) | `ACTION` | Teacher `CanonicalContext`; selected `class_id`; actor teacher seat | Class Configuration domain for catalog mutation; refund of pending collective purchases requires coordinated Ledger FEAT for monetary reversal | Writes `store_items` (soft-delete); refunds pending collective `store_purchases` via `refund_pending_collective_purchases()` | Redirect to store dashboard | Route uses wrong FEAT label `FEATContext("FEAT-STOR-003")`; refund path writes `StorePurchase.status` and `Transaction` directly which crosses Ledger domain boundary — monetary reversal must go through lawful Ledger FEAT | `NEEDS_REWIRE` |
+| Student browses store catalog and views owned items | `student_shop.html`; `student.shop` (`GET /student/shop`) | `OUTPUT` | Student `CanonicalContext`; `class_id`; `seat_id` | Read-only `DOM-STORE`; Class Configuration for catalog; Ledger for balance display | Reads `store_items`, `store_purchases`, `store_item_visibility`, `rent_settings`; entitlement balance from `entitlement_events` | `items`, `student_items`, `has_paid_rent`, `per_period_rent_item_ids`, `rent_free_uses`, `class_size`, `collective_progress` | Template var `student_items` references legacy `StudentItem` naming convention; actual query reads `StorePurchase` but view contract uses wrong name; visibility check calls canonical `store_service.is_item_visible_to_seat()`; route passes `student` (Seat object) directly to template instead of identity display context per MAP-UI-002 | `NEEDS_REWIRE` |
+| Student purchases store item | `student_shop.html` (inline JS); `api.purchase_item` (`POST /api/purchase-item`) | `ACTION` | Student `CanonicalContext`; `class_id`; `seat_id`; passphrase verification | `FEAT-STOR-001` (`grant_type = PURCHASE`); Ledger posting through lawful Ledger FEAT | Writes `store_purchases`; writes one entitlement grant row per purchased unit with shared `correlation_id` (quantity 5 = 5 entitlement rows, per FEAT-STOR-001); Ledger `Transaction` with shared `correlation_id` | JSON `{status, message}`; subsequent GET reflects purchase in owned-items list | Code uses `@feat_shell("FEAT-STOR-002")` — wrong label, must be `FEAT-STOR-001`; `execute_store_purchase()` does not create per-unit entitlement grant rows; `StorePurchase.uses_remaining` and `bundle_remaining` are mutable counters that DOM-STORE-001 says must be derived; idempotency uses `client_purchase_id` mapped to `idempotency_key` — mechanism exists but contract needs verification against FEAT-STOR-001 replay semantics | `NEEDS_REWIRE` |
+| Student requests item redemption | `student_shop.html` (inline JS); `api.use_item` (`POST /api/use-item`) | `ACTION` | Student `CanonicalContext`; `class_id`; `seat_id`; passphrase verification | `FEAT-STOR-002` for instant-use items (`consume_entitlement` writes terminal `entitlement_consumptions`); `DOM-STORE` for delayed items (redemption request only, no terminal event yet) | Writes `redemption_events` (`action = REQUEST`) for delayed items; for instant-use writes `entitlement_consumptions` as authoritative terminal event; for hall-pass items writes `entitlement_events` | JSON `{status, message}`; subsequent GET shows item status change | Code uses `@feat_shell("FEAT-STOR-005")` — wrong label, must be `FEAT-STOR-002`; `_append_redemption_audit_log()` writes `RedemptionEvent` with lowercase `action` values (`request`) instead of canonical `REQUEST`; route creates pending `Transaction` directly which crosses Ledger domain boundary; `StorePurchase.uses_remaining` decremented as mutable counter instead of deriving from `entitlement_consumptions` | `NEEDS_REWIRE` |
+| Teacher approves redemption request | `admin_store.html` (inline JS); `api.approve_redemption` (`POST /api/approve-redemption`) | `ACTION` | Teacher `CanonicalContext`; `class_id`; actor teacher seat; target student seat | `FEAT-STOR-002` (`consume_entitlement`); approval writes authoritative terminal event to `entitlement_consumptions` | Writes `redemption_events` (`action = APPROVED`) as audit; writes `entitlement_consumptions` (`CONSUMED`) as authoritative terminal event | JSON `{status, message}`; subsequent GET removes item from pending list | Code uses `@feat_shell("FEAT-STOR-006")` — wrong label, must be `FEAT-STOR-002`; `execute_redemption_approval()` mutates `StorePurchase.status` directly as canonical state instead of writing `entitlement_consumptions` terminal event; no `entitlement_consumptions` row written at all | `NEEDS_REWIRE` |
+| Teacher rejects redemption request | `admin_store.html` (inline JS); `api.reject_redemption` (`POST /api/reject-redemption`) | `ACTION` | Teacher `CanonicalContext`; `class_id`; actor teacher seat; target student seat | `FEAT-STOR-002` for redemption workflow only; rejection does NOT terminate the entitlement — the student retains the entitlement and may request redemption again | Writes `redemption_events` (`action = REJECTED`) as audit; does NOT write `entitlement_consumptions`; no Ledger refund because the entitlement is still held | JSON `{status, message}`; subsequent GET returns item to redeemable state, not consumed or refunded | Code uses `@feat_shell("FEAT-STOR-006")` — wrong label, must be `FEAT-STOR-002`; `execute_redemption_rejection()` mutates `StorePurchase.status` to `rejected` as if terminal and issues a Ledger refund — both are wrong because rejection preserves the entitlement; refund creates `Transaction` directly in Store FEAT which crosses Ledger domain boundary | `NEEDS_REWIRE` |
+| Teacher adjusts hall-pass entitlements for a seat | `student_detail.html`; `admin.adjust_hall_pass_entitlements` (`POST /admin/student/<seat_id>/adjust-hall-pass-entitlements`) | `ACTION` | Teacher `CanonicalContext`; `class_id`; actor teacher seat; target student seat | `FEAT-STOR-001` (`grant_type = MANUAL_GRANT` for grants); `FEAT-STOR-002` (`revoke_entitlement` for removals) | Writes `entitlement_events` with signed `quantity_delta`; balance derived as `SUM(quantity_delta)` | Redirect to student detail page | Code uses `@feat_shell("FEAT-ENT-001")` — wrong label; `grant_hall_passes()` and `remove_hall_passes()` in `entitlement_service.py` write correct append-only events; no mutable counter; balance derivation is canonical | `NEEDS_REWIRE` |
+| Teacher bulk adjusts hall-pass entitlements | `admin_students.html` (inline JS); `admin.bulk_adjust_hall_pass_entitlements` (`POST /admin/students/bulk-adjust-hall-pass-entitlements`) | `ACTION` | Teacher `CanonicalContext`; `class_id`; actor teacher seat; multiple target student seats | `FEAT-STOR-001` (`grant_type = MANUAL_GRANT` for grants); `FEAT-STOR-002` (`revoke_entitlement` for removals) | Writes `entitlement_events` per seat with signed `quantity_delta` | JSON `{status, message, updated, errors}` | Code uses `@feat_shell("FEAT-ENT-001")` — wrong label; same canonical append-only mechanism as single-seat adjust; iteration over seat list is correct | `NEEDS_REWIRE` |
+| Teacher manages insurance catalog and policy configuration | `admin_insurance.html`, `admin_edit_insurance_policy.html`; `admin.insurance_management`, `admin.edit_insurance_policy`, `admin.deactivate_insurance_policy`, `admin.delete_insurance_policy`, `admin.mass_remove_policy` | `ACTION` | Teacher `CanonicalContext`; selected `class_id` | Class Configuration domain for insurance catalog definition (same as store item catalog); Obligations domain for renewal assessment schedule and satisfaction rules | Templates exist on disk; routes abort 404 | All 5 admin insurance routes abort 404 immediately; templates are unreachable; backing models use `ObligationAssessment` (Obligations domain) which is correct for renewal but incorrect for initial catalog definition; templates reference legacy `InsurancePolicy`/`InsuranceEnrollment` models not in canonical `models.py`; must be rewritten with Class Configuration for catalog and Obligations for renewal schedule | `NEEDS_REWIRE` |
+| Teacher processes insurance claim | `admin_process_claim.html`, `admin_view_student_policy.html`; `admin.process_claim`, `admin.view_student_policy` | `ACTION` | Teacher `CanonicalContext`; selected `class_id`; `actor_role = teacher` per FEAT-STOR-003 | `FEAT-STOR-003` for claim approval/rejection; transaction-insurance compensation through lawful Ledger FEAT; productivity-insurance compensation through `DOM-PROD` → `payroll_event` with `payroll_type = MANUAL_CREDIT` | Templates exist on disk; routes abort 404 | Routes abort 404; templates reference `InsuranceClaim`/`InsuranceEnrollment`/`InsurancePolicy` which are not in canonical `models.py`; FEAT-STOR-003 defines the complete target claim lifecycle (submit → approve/reject with type-specific compensation) but no implementation surface exists; must be built from FEAT-STOR-003 specification | `NEEDS_REWIRE` |
+| Student browses insurance marketplace and purchases initial coverage | `student_insurance_marketplace.html`; `student.insurance_marketplace`, `student.purchase_insurance` | `ACTION` | Student `CanonicalContext`; `class_id`; `seat_id` | `FEAT-STOR-001` for initial insurance acquisition (`grant_type = PURCHASE` with insurance capability); Obligations domain creates renewal assessment schedule upon purchase; obligation satisfaction causes `OBLIGATION` entitlement grant for ongoing coverage | Templates exist on disk; routes abort 404 | Routes abort 404; `insurance_purchase_feat.py` exists but writes `ObligationAssessment` for the purchase itself — initial acquisition must go through `FEAT-STOR-001` as a Store purchase; Obligations takes over only for renewal assessment/satisfaction after initial purchase | `NEEDS_REWIRE` |
+| Student files insurance claim | `student_file_claim.html`; `student.file_claim` | `ACTION` | Student `CanonicalContext`; `class_id`; `seat_id`; `actor_role = student` per FEAT-STOR-003 | `FEAT-STOR-003` for claim submission (`submit_insurance_claim()` → `status = SUBMITTED`); claim does not consume the insurance entitlement | Template exists on disk; route aborts 404 | Route aborts 404; FEAT-STOR-003 defines the complete submission contract but no implementation surface exists; must be built from FEAT-STOR-003 specification | `NEEDS_REWIRE` |
+| Student views insurance coverage and claim history | `student_view_policy.html`; `student.view_policy` | `OUTPUT` | Student `CanonicalContext`; `class_id`; `seat_id` | Read-only `DOM-STORE` for entitlement and coverage state; read-only Obligations for renewal status | Template exists on disk; route aborts 404 | Route aborts 404; template references `enrollment`, `policy`, `claims` which use legacy model names; must be rewritten with canonical entitlement reads for coverage state and Obligations reads for renewal status | `NEEDS_REWIRE` |
+
+---
+
+## VI. Issue and Project Shape
 
 GitHub issues should be generated from this map by capability group, not by template variable.
 
-Recommended issue groups for this slice:
+Recommended issue groups for the Productivity and Payroll slice:
 
 1. Student productivity read model: dashboard plus `student_payroll.html`
 2. Admin payroll read model: payroll dashboard plus history
@@ -98,6 +134,18 @@ Recommended issue groups for this slice:
 4. Hall-pass read and command path: queue, approval, verification
 5. Attendance session command path: student/API/admin tap routes through `FEAT-PROD-001`
 6. Attendance support issue terminology: resolved to canonical attendance-session route and related-record reference
+
+Recommended issue groups for the Store and Entitlements slice:
+
+1. Item catalog CRUD: rewire `admin.store_management` POST, `admin.edit_store_item`, `admin.delete_store_item` to Class Configuration domain FEAT; fix current wrong FEAT labels
+2. Store dashboard read model: `admin_store.html` GET — fix attribute mismatches on `StorePurchase`, remove GET-path FEAT wrapper, align view contract to MAP-UI-002 pipeline
+3. Student store read model: `student_shop.html` GET — rename `student_items` to canonical view contract, replace raw `Seat` object with identity display context
+4. Purchase command path: `api.purchase_item` through `FEAT-STOR-001` — fix FEAT label, create per-unit entitlement grant rows, eliminate `uses_remaining`/`bundle_remaining` mutable counters, verify idempotency replay
+5. Redemption command path: `api.use_item`, `api.approve_redemption`, `api.reject_redemption` through `FEAT-STOR-002` — fix FEAT labels, write `entitlement_consumptions` terminal events on approval only, fix rejection to preserve entitlement (no refund, no terminal event), resolve Ledger domain boundary
+6. Entitlement adjust command path: `adjust_hall_pass_entitlements` and `bulk_adjust_hall_pass_entitlements` — fix FEAT labels to `FEAT-STOR-001`/`FEAT-STOR-002`
+7. Insurance acquisition: restore `student.insurance_marketplace` and `student.purchase_insurance` against `FEAT-STOR-001` for initial purchase; wire Obligations for renewal assessment/satisfaction → `OBLIGATION` entitlement grant
+8. Insurance claims: restore `student.file_claim` against `FEAT-STOR-003` for submission; restore `admin.process_claim` and `admin.view_student_policy` for teacher approval/rejection with type-specific compensation (Ledger for transaction-insurance, `DOM-PROD` for productivity-insurance)
+9. Insurance catalog and policy read: restore `admin.insurance_management` and `admin.edit_insurance_policy` for Class Configuration catalog definition and Obligations renewal schedule; restore `student.view_policy` for entitlement/coverage read model
 
 Each issue should include:
 
@@ -112,14 +160,29 @@ Each issue should include:
 
 ---
 
-## VI. Resolved Decisions
+## VII. Resolved Decisions
+
+### Productivity and Payroll
 
 1. Student dashboard attendance controls must not be a generic tap-in/tap-out pair. The canonical contextual button set is `Start Work`, `Break`, `Leave`, and `Return`, derived from current productivity and hall-pass state.
 2. Public hall-pass verification remains outside live actor `CanonicalContext`. It uses a public capability token linked to the teacher's `user_id`; resolving that token grants read-only teacher-scoped hall-pass verification authority because a teacher may have one physical hall-pass verification surface shared among classes.
 3. Direct teacher-to-student money send is `manual_credit` under `FEAT-PROD-003`. Teacher clicking `Run Payroll` is `payroll`, even if manually triggered by the teacher.
 
+### Store and Entitlements
+
+4. Entitlement terminal truth lives in `entitlement_consumptions`, not in `redemption_events` or `StorePurchase.status`. `redemption_events` is an append-only audit log of the redemption workflow (`REQUEST`, `APPROVED`, `REJECTED`); `entitlement_consumptions` holds the authoritative terminal events (`CONSUMED`, `EXPIRED`, `REVOKED`). `StorePurchase.status` may remain as a denormalized read cache only after the canonical derivation from `entitlement_consumptions` is proven.
+5. Rejected redemption does not terminate the entitlement. A teacher rejecting a redemption request means "I will not fulfill this now" — the student retains the entitlement and may request redemption again. Only approval writes a `CONSUMED` terminal event to `entitlement_consumptions`. The current code's behavior of marking `StorePurchase.status = rejected` and issuing a Ledger refund on rejection is wrong on both counts.
+6. FEAT-STOR-001 atomicity applies to entitlement grants, not `StorePurchase` rows. A quantity-5 purchase creates one `StorePurchase` record but five distinct entitlement grant rows with a shared `correlation_id`. The current code does not create per-unit entitlement grants.
+7. `StorePurchase.uses_remaining` and `bundle_remaining` are mutable counters prohibited by DOM-STORE-001. Remaining uses must be derived from entitlement grant count minus `entitlement_consumptions` terminal event count. These columns must be removed or deprecated.
+8. `RedemptionEvent.action` values must use uppercase enum values (`REQUEST`, `APPROVED`, `REJECTED`) matching DOM-STORE-001, not lowercase.
+9. Store FEATs must not create `Transaction` records directly. Ledger writes must go through lawful Ledger FEAT with a shared `correlation_id`. The current redemption rejection refund path in `redemption_disposition_feat.py` crosses this boundary — and is additionally wrong because rejection should not trigger a refund at all (see decision 5).
+10. Hall-pass entitlement grants by teacher are `MANUAL_GRANT` under `FEAT-STOR-001`; removals are `revoke_entitlement()` under `FEAT-STOR-002`. The current `FEAT-ENT-001` label does not exist in the canonical FEAT set and must be replaced.
+11. Store item catalog CRUD (create, edit, deactivate) is Class Configuration, not a Store FEAT. `store_items` and `store_item_visibility` are catalog definition tables. The current code's `FEATContext("FEAT-STOR-001")` and `FEATContext("FEAT-STOR-003")` labels on these routes are wrong.
+12. Insurance initial acquisition is a Store purchase through `FEAT-STOR-001`. Renewal assessment and satisfaction belong to the Obligations domain. When an obligation is satisfied (e.g., recurring premium paid), Obligations creates an `OBLIGATION` entitlement grant — Store does not own the renewal cycle. Insurance capabilities are surviving surfaces that must be rewired, not deleted.
+13. Insurance claim lifecycle is governed by `FEAT-STOR-003`. Claim activity does not consume the insurance entitlement. Transaction-insurance compensation goes through lawful Ledger FEAT; productivity-insurance compensation goes through `DOM-PROD` as a `payroll_event` with `payroll_type = MANUAL_CREDIT`. Store must not directly create payroll events or Ledger transactions for insurance compensation.
+
 ---
 
-## VII. Amendment
+## VIII. Amendment
 
 Revisions to this map must update the version, preserve the row contract, and cite any newly audited template-route source documents used to add rows.
