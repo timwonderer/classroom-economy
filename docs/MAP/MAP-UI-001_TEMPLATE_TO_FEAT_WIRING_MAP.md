@@ -97,7 +97,7 @@ Each row describes one user-visible capability, not one variable or one template
 
 | Status | Count | Meaning |
 |---|---:|---|
-| `NEEDS_REWIRE` | 14 | Route and/or template must be rewritten to match canonical FEAT, DOM-STORE-001 persistence, and cross-domain boundaries |
+| `NEEDS_REWIRE` | 0 | No unresolved STORE row remains in this map; template audits remain the final checklist |
 
 ### Capability Rows
 
