@@ -99,6 +99,7 @@ from app.feats.base import feat_shell
 from app.feats.rent_payment_feat import execute_rent_payment
 from app.feats.transfer_feat import execute_account_transfer
 from app.feats.insurance_purchase_feat import execute_insurance_purchase
+from app.feats.insurance_claim_feat import execute_claim_submission
 # execute_file_claim removed — insurance_claim_feat.py deleted; insurance feature broken pending DOM-OBL-001 migration
 from app.payroll import get_pay_rate_for_block
 from app.utils.join_code import get_display_join_code
@@ -1666,6 +1667,40 @@ def file_claim(policy_id):
         flash("That insurance policy is not available for this class.", "error")
         return redirect(url_for('student.student_insurance'))
     payload = json.loads(policy_version.policy_payload_json or "{}")
+    entitlement_item_id = get_insurance_entitlement_item_id(policy_version)
+    if entitlement_item_id is None:
+        flash("This insurance policy is missing its entitlement mapping.", "error")
+        return redirect(url_for('student.student_insurance'))
+    entitlement_rows = list_available_entitlements(
+        target_seat_id=context.seat_id,
+        class_id=context.class_id,
+        entitlement_item_id=entitlement_item_id,
+    )
+    active_entitlement = entitlement_rows[0] if entitlement_rows else None
+    if request.method == "POST":
+        if active_entitlement is None:
+            flash("You do not have an active insurance entitlement for this policy.", "error")
+            return redirect(url_for('student.student_insurance'))
+        transaction_id = request.form.get("transaction_id")
+        try:
+            transaction_id = int(transaction_id) if transaction_id not in (None, "") else None
+        except (TypeError, ValueError):
+            transaction_id = None
+        claimed_dates = None
+        incident_date = request.form.get("incident_date")
+        if incident_date:
+            claimed_dates = [incident_date]
+        result = execute_claim_submission(
+            entitlement_id=active_entitlement.entitlement_id,
+            target_seat_id=context.seat_id,
+            actor_seat_id=context.seat_id,
+            class_id=context.class_id,
+            transaction_id=transaction_id,
+            claimed_dates=claimed_dates,
+            policy_claim_type=payload.get("claim_type"),
+        )
+        flash(result.message, "success")
+        return redirect(url_for("student.student_insurance"))
     placeholder_policy = SimpleNamespace(
         id=policy_version.id,
         title=payload.get("title") or f"Policy v{policy_version.version_number}",
@@ -1681,6 +1716,7 @@ def file_claim(policy_id):
     policy_claims = list_insurance_claims(
         class_id=context.class_id,
         target_seat_id=context.seat_id,
+        entitlement_id=getattr(active_entitlement, "entitlement_id", None),
     )
     enrollment = SimpleNamespace(
         id=policy_id,
