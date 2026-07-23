@@ -26,6 +26,7 @@ from app.models import (
     GrantType,
     InsuranceClaim,
     InsuranceClaimStatus,
+    ObligationAssessment,
 )
 from app.utils.canonical_temporal_resolver import (
     SYSTEM_LEVEL_EVALUATION,
@@ -335,6 +336,23 @@ def list_entitlement_history(
             "terminal_event": terminal,
         })
     return result
+
+
+def get_last_entitlement_end_for_policy_version(
+    *,
+    class_id: str,
+    policy_version_id: int,
+):
+    """Return the latest end boundary currently enforced for a policy lineage."""
+    return (
+        db.session.query(sa.func.max(ObligationAssessment.coverage_end_time))
+        .filter(
+            ObligationAssessment.class_id == class_id,
+            ObligationAssessment.policy_version_id == policy_version_id,
+            ObligationAssessment.coverage_end_time.isnot(None),
+        )
+        .scalar()
+    )
 
 
 # ---------------------------------------------------------------------------
