@@ -2056,7 +2056,8 @@ def shop():
         join_code=join_code,
         class_timezone=getattr(context, "class_timezone", ""),
     )
-    return render_template('student_shop.html', student=student_display_name, current_class_context=current_class_context, items=items, student_items=student_items,
+    student_display = SimpleNamespace(full_name=student_display_name)
+    return render_template('student_shop.html', student=student_display, current_class_context=current_class_context, items=items, student_items=student_items,
                          has_paid_rent=has_paid_rent, per_period_rent_item_ids=per_period_rent_item_ids,
                          rent_item_types_by_store_id=rent_item_types_by_store_id,
                          rent_free_uses=rent_free_uses,
