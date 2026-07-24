@@ -2,15 +2,15 @@
 
 | Reference | Version | Date | Authority | Reviewer |
 |-----------|---------|------|-----------|----------|
-| AUDIT-STORE-001 | 2.0 | 2026-07-23 | QA/Review | Claude Opus 4.6 |
+| AUDIT-STORE-001 | 3.0 | 2026-07-24 | QA/Review | Claude Opus 4.6 |
 
 ---
 
 ## Result
 
-**AUDIT FAIL**
+**AUDIT FAIL** (conditional — 3 residual findings, 1 blocking)
 
-Re-audit conducted after partial remediation. 5 of 20 original findings were remediated. 15 remain open, including 6 critical findings. The MAP checklist marks all STORE rows as `REWIRED`, but the underlying code does not yet satisfy the contracts declared in those MAP rows.
+Third audit round after two remediation passes. 17 of 20 original findings are remediated. 3 remain open: 1 blocking (F7 route query crash), 2 structural debt (F19, F20).
 
 ---
 
@@ -33,200 +33,169 @@ Re-audit conducted after partial remediation. 5 of 20 original findings were rem
 
 ## Part A: Schema and Data Model
 
-Status: **PASS with concerns**
+Status: **PASS**
 
 ### A1: Canonical Store/Entitlement Tables
 
-- [x] `entitlements` — PASS. Append-only grant history at `models.py:948`. No mutable balance columns.
-- [x] `entitlement_consumptions` — PASS. Append-only terminal lifecycle at `models.py:981`. Unique constraint enforces one terminal event per entitlement per disposition.
-- [x] `insurance_claims` — PASS. Mutable claim workflow at `models.py:1013`.
-- [x] No `uses_remaining` / `bundle_remaining` anywhere — PASS.
-- [x] No purchase quantity as entitlement truth — PASS.
-- [x] No direct Store ownership of class configuration — PASS.
-- [x] No direct Ledger ownership leaks — PASS. `InsuranceClaim.transaction_id` is nullable cross-domain correlation (acceptable per INV-ARC-021).
+- [x] `entitlements` — append-only grant history, no mutable balance columns. `models.py:948`.
+- [x] `entitlement_consumptions` — append-only terminal lifecycle with unique constraint. `models.py:981`.
+- [x] `insurance_claims` — mutable claim workflow, not entitlement store. `models.py:1013`.
+- [x] No `uses_remaining` / `bundle_remaining` anywhere.
+- [x] No purchase quantity as entitlement truth.
+- [x] No direct Store ownership of class configuration.
+- [x] No direct Ledger ownership leaks.
 
 ### A2: Insurance Policy Configuration Tables
 
-- [x] `policy_versions` — PASS. At `models.py:1722`.
-- [x] `policy_transitions` — PASS. At `models.py:1753`.
-- [x] Versioned terms in `policy_payload_json` — PASS.
+- [x] `policy_versions` — versioned terms in `policy_payload_json`. `models.py:1722`.
+- [x] `policy_transitions` — with FK on `created_by` → `users.id` (F12 REMEDIATED). `models.py:1753`.
 
-### A-CONCERNS (open)
+### A3: Required Table Checks — all PASS.
 
-| # | Finding | Location | Severity |
-|---|---------|----------|----------|
-| F12 | `PolicyTransition.created_by` bare integer, no FK to `users` or `seats` | `models.py:1771` | Medium |
-| F19 | `RedemptionEvent` keys off `purchase_id` (FK→`store_purchases`) not `entitlement_id` | `models.py:905` | Low |
-| F20 | `PolicyVersion.is_active` mutable boolean on immutable version row | `models.py:1740` | Low |
+### Residual concerns
+
+| # | Finding | Severity |
+|---|---------|----------|
+| F19 | `RedemptionEvent` keys off `purchase_id` not `entitlement_id` | Low (structural debt) |
+| F20 | `PolicyVersion.is_active` mutable; `economy_rebalance.py:424` mutates `target_version.is_active = True` on existing rows | Low (structural debt) |
 
 ---
 
 ## Part B: FEAT Layer
 
-Status: **FAIL**
+Status: **PASS**
 
-### B1: FEAT-STOR-001 (Store Purchase) — PASS
+### B1: FEAT-STOR-001 — PASS
+- [x] One entitlement row per unit.
+- [x] Ledger through lawful boundary.
+- [x] Insurance purchase now has `@feat_shell("FEAT-STOR-001")` (F3 REMEDIATED).
 
-- [x] One entitlement row per unit via loop — PASS.
-- [x] Quantity not persisted as balance — PASS.
-- [x] Ledger through lawful boundary — PASS.
+### B2: FEAT-STOR-002 — PASS
+- [x] `revoke_entitlement` and `expire_entitlement` now have `@feat_shell("FEAT-STOR-002")` (F5 REMEDIATED).
+- [x] Insurance non-revocability guard present (F6 REMEDIATED).
+- [x] Insurance claims do not create terminal events.
+- [x] Hall-pass consumption owned by Productivity domain.
 
-### B2: FEAT-STOR-002 (Entitlement Terminal Lifecycle) — FAIL
+### B3: FEAT-STOR-003 — PASS
+- [x] Transaction claim approval now posts compensatory Ledger credit via `ledger_service.create_pending_transaction()` (F1 REMEDIATED).
+- [x] Productivity claim approval now coordinates `manual_credit` payroll event via `record_payroll_event()` (F2 REMEDIATED).
+- [x] Forward-only transitions enforced.
+- [x] Claim submission does not consume entitlement.
 
-| # | Check | Result | Evidence |
-|---|-------|--------|----------|
-| F5 | EXPIRED and REVOKED have FEAT gate | **STILL OPEN** | `expire_entitlement` and `revoke_entitlement` in `store_entitlement_service.py:176,195` are plain service functions with no `@requires_feat_context` |
-| F6 | Insurance non-revocability guard | **STILL OPEN** | `revoke_entitlement` has no check for insurance grant type |
-
-### B3: FEAT-STOR-003 (Insurance Claim Lifecycle) — FAIL
-
-| # | Check | Result | Evidence |
-|---|-------|--------|----------|
-| F1 | Transaction claim approval posts Ledger credit | **STILL OPEN** | `execute_claim_approval` (`insurance_claim_feat.py:90-92`) branches on claim type but only changes message string — no ledger credit call |
-| F2 | Productivity claim routes MANUAL_CREDIT via Payroll | **STILL OPEN** | `_resolve_claim_type` (line 42) rejects productivity type with `InsuranceClaimError("INVALID_CLAIM_TYPE")` — the type doesn't even reach approval |
-
-### B4: FEAT-CLASS-003 (Insurance Policy Management) — PARTIAL
-
-- [x] Store item CRUD correctly uses `FEATContext("FEAT-CLASS-003")` — PASS.
-- [x] Policy changes emit persistent student-visible banners — **REMEDIATED** (F15). `create_class_announcement()` called at `admin.py:6713-6724, 6767-6774`.
-- [ ] Insurance policy routes use FEAT-CLASS-003 — **STILL OPEN** (F4). See Part C.
+### B4: FEAT-CLASS-003 — PASS
+- [x] Store item CRUD uses `FEATContext("FEAT-CLASS-003")`.
+- [x] Insurance policy routes now use `@feat_shell("FEAT-CLASS-003")` (F4 REMEDIATED).
+- [x] Persistent student-visible banners via `create_class_announcement()` (F15 REMEDIATED).
+- [x] Class-config changes do not mutate entitlement/obligation/ledger tables.
 
 ---
 
 ## Part C: Route Wiring
 
-Status: **FAIL**
+Status: **PASS** (with 1 blocking issue in C6)
 
 ### C1: Store Dashboard Read Model — PASS
-
-- [x] Canonical read model, entitlement lineage, no GET side effects — all PASS.
+- [x] Canonical read model, entitlement lineage, no GET side effects.
 
 ### C2: Store Item Management — PASS
+- [x] Create/edit/deactivate use FEAT-CLASS-003.
 
-- [x] Create/edit/deactivate use FEAT-CLASS-003 — PASS.
-- [x] Dead orphan constructor removed — **REMEDIATED** (F16).
+### C3: Store Purchase and Redemption — PASS
+- [x] Purchase calls FEAT-STOR-001.
+- [x] Hall-pass path now calls `consume_entitlement` (F13 REMEDIATED).
+- [x] Approval writes terminal consumption.
+- [x] Rejection preserves entitlement.
 
-### C3: Store Purchase and Redemption — PARTIAL FAIL
+### C4: Insurance Marketplace and Purchase — PASS
+- [x] Class-scoped offerings.
+- [x] FEAT boundary present (F3 REMEDIATED).
 
-| # | Check | Result | Evidence |
-|---|-------|--------|----------|
-| — | Purchase calls FEAT-STOR-001 | PASS | `@feat_shell("FEAT-STOR-001")` on `api.purchase_item` |
-| — | Approval writes terminal consumption | PASS | `execute_redemption_approval` → `consume_entitlement` |
-| — | Rejection preserves entitlement | PASS | No terminal event on rejection |
-| F13 | Hall-pass early-exit bypasses `consume_entitlement` | **STILL OPEN** | `api.py:714-718` sets `student_item.status = 'redeemed'` directly without writing `EntitlementConsumption` |
+### C5: Insurance Claim and Policy Views — PASS
+- [x] Student claim submission uses FEAT-STOR-003.
+- [x] Teacher claim decision: bare commits removed (F14 REMEDIATED).
 
-### C4: Insurance Marketplace and Purchase — FAIL
+### C6: Insurance Policy Management — PASS (with blocking issue)
 
-| # | Check | Result | Evidence |
-|---|-------|--------|----------|
-| F3 | Insurance purchase has FEAT boundary | **STILL OPEN** | `student.purchase_insurance` has no `@feat_shell`; `execute_insurance_purchase` has no `@requires_feat_context` |
+- [x] All routes use `@feat_shell("FEAT-CLASS-003")` (F4 REMEDIATED).
+- [x] Edit creates new prospective version.
+- [x] Deactivate hides from new enrollment.
+- [x] Delete schedules at entitlement boundary.
+- [x] Persistent banners emitted (F15 REMEDIATED).
 
-### C5: Insurance Claim and Policy Views — PARTIAL FAIL
+**Blocking issue:**
 
-| # | Check | Result | Evidence |
-|---|-------|--------|----------|
-| — | Student claim submission uses FEAT-STOR-003 | PASS | Via `@requires_feat_context` on function |
-| F14 | Teacher claim decision has bare `db.session.commit()` | **STILL OPEN** | `admin.py:6935, 6943` commit outside FEAT boundary |
-
-### C6: Insurance Policy Management — PARTIAL
-
-| # | Check | Result | Evidence |
-|---|-------|--------|----------|
-| F4 | Insurance policy routes use FEAT-CLASS-003 | **STILL OPEN** | `edit_insurance_policy` (6657), `deactivate_insurance_policy` (6750), `delete_insurance_policy` (6783) all bypass FEAT — bare `db.session.commit()` |
-| — | Edit creates new prospective version | PASS | Calls `create_policy_version()` |
-| — | Deactivate hides from new enrollment | PASS | |
-| — | Delete schedules at entitlement boundary | PASS | `schedule_policy_deletion()` with coverage boundary |
-| F15 | Persistent student-visible banners | **REMEDIATED** | `create_class_announcement()` now called |
+| # | Finding | Location | Impact |
+|---|---------|----------|--------|
+| F7 | Route queries `StoreItem.title.asc()` — `StoreItem` has `name`, not `title` | `admin.py:6668` | `InvalidRequestError` crash on GET for insurance policy editor whenever store items exist. Template was fixed to `item.name` but route ordering was missed. |
 
 ---
 
 ## Part D: Template Audit
 
-Status: **FAIL**
+Status: **PASS**
 
-| Template | Result | Evidence |
-|----------|--------|----------|
-| `admin_store.html` | **PASS** | F10 REMEDIATED — `is_from_bundle`/`bundle_remaining` removed |
-| `admin_insurance.html` | PASS | No retired fields |
-| `admin_edit_insurance_policy.html` | **FAIL** (F7) | Line 46: `item.title` — `StoreItem` has `name` not `title`. Silently renders blank |
-| `student_shop.html` | **PASS** | F17 REMEDIATED — `uses_remaining`/`bundle_remaining` stubs removed |
-| `student_insurance_marketplace.html` | **FAIL** (F8) | Lines 472, 519: `claim.incident_date.strftime()` — field doesn't exist on `InsuranceClaim`; crashes when claims exist |
-| `student_file_claim.html` | **FAIL** (F9) | Lines 51-52: `form.transaction_id.label()` on stub `SimpleNamespace` — GET render crashes |
-| `student_view_policy.html` | **FAIL** (F8) | Lines 119, 157: `claim.incident_date.strftime()` / `claim.filed_date.strftime()` — crashes when claims exist |
-| `admin_process_claim.html` | **FAIL** (F18) | Line 32: `claim.student.full_name` renders seat `public_id` (UUID) instead of display name |
-| `admin_view_student_policy.html` | **FAIL** (F8) | Line 117: `claim.incident_date.strftime()` — crashes when claims exist |
+| Template | Result |
+|----------|--------|
+| `admin_store.html` | PASS (F10 remediated in round 1) |
+| `admin_insurance.html` | PASS |
+| `admin_edit_insurance_policy.html` | PASS — template uses `item.name` (F7 template side remediated) |
+| `student_shop.html` | PASS (F17 remediated in round 1) |
+| `student_insurance_marketplace.html` | PASS (F8 REMEDIATED — `incident_date`/`filed_date` refs removed) |
+| `student_file_claim.html` | PASS (F9 REMEDIATED — `_DummyField` stubs prevent crash) |
+| `student_view_policy.html` | PASS (F8 REMEDIATED) |
+| `admin_process_claim.html` | PASS (F18 REMEDIATED — `IdentityProfile.full_name` resolved) |
+| `admin_view_student_policy.html` | PASS (F8 REMEDIATED) |
 
 ---
 
 ## Part E: Completion Criteria
 
-- [x] MAP checklist rows for STORE/insurance are all `REWIRED` — PASS (map-level).
-- [ ] Current code matches authority and persistence model — **FAIL**. 15 open findings.
-- [ ] No stale template row shapes — **FAIL**. 5 of 9 templates fail.
-- [ ] No domain boundary violations — **FAIL**. Insurance routes bypass FEAT; claim compensation not wired.
-- [x] All findings documented with file/route/template references — PASS.
+- [x] MAP checklist rows for STORE/insurance are all `REWIRED`.
+- [x] Current code matches authority and persistence model in canonical docs (with residual structural debt).
+- [x] No stale template row shapes remain on audited surfaces.
+- [ ] No direct domain boundary violations — **1 blocking route query crash** (F7 route side).
+- [x] All findings documented with exact file, route, and template references.
 
 ---
 
-## Remediation Tracker
+## Full Remediation Tracker
 
-### Remediated since v1.0 audit (5)
+### Remediated (17 of 20)
 
-| # | Finding | Status |
-|---|---------|--------|
-| F10 | `admin_store.html` `is_from_bundle`/`bundle_remaining` on `StorePurchase` | REMEDIATED |
-| F11 | `entitlement_item_id` not on policy tables (was misidentified — belongs on `Entitlement`, not policy) | REMEDIATED |
-| F15 | Policy changes emit only `flash()` — no persistent banners | REMEDIATED |
-| F16 | Dead orphan `StoreItem()` constructor | REMEDIATED |
-| F17 | `student_shop.html` stubbed `uses_remaining`/`bundle_remaining` | REMEDIATED |
+| # | Finding | Remediated In |
+|---|---------|---------------|
+| F1 | Claim approval now posts compensatory Ledger credit | Round 2 |
+| F2 | Productivity claim type accepted; payroll MANUAL_CREDIT coordinated | Round 2 |
+| F3 | `@feat_shell("FEAT-STOR-001")` on `execute_insurance_purchase` | Round 2 |
+| F4 | Insurance policy routes wrapped with `@feat_shell("FEAT-CLASS-003")` | Round 2 |
+| F5 | `@feat_shell("FEAT-STOR-002")` on `revoke_entitlement` and `expire_entitlement` | Round 2 |
+| F6 | Insurance non-revocability guard on revoke path | Round 2 |
+| F8 | `incident_date`/`filed_date` references removed from claim templates | Round 2 |
+| F9 | `_DummyField` stubs prevent GET crash on claim filing form | Round 2 |
+| F10 | `is_from_bundle`/`bundle_remaining` removed from `admin_store.html` | Round 1 |
+| F11 | `entitlement_item_id` correctly on `Entitlement` model | Round 1 |
+| F12 | `PolicyTransition.created_by` now FK to `users.id` | Round 2 |
+| F13 | Hall-pass path now calls `consume_entitlement` | Round 2 |
+| F14 | Bare `db.session.commit()` removed from `process_claim` | Round 2 |
+| F15 | Persistent student-visible banners via `create_class_announcement()` | Round 1 |
+| F16 | Dead orphan `StoreItem()` constructor removed | Round 1 |
+| F17 | `uses_remaining`/`bundle_remaining` stubs removed from `student_shop.html` | Round 1 |
+| F18 | `IdentityProfile.full_name` used for student display name | Round 2 |
 
-### Still open (15)
+### Still open (3 of 20)
 
-#### Critical (6) — domain contract violations
-
-| # | Finding | Location | Contract |
-|---|---------|----------|----------|
-| F1 | Claim approval posts no compensatory Ledger credit | `insurance_claim_feat.py:90-92` | FEAT-STOR-003 §IV.B |
-| F2 | Productivity claim type rejected before reaching approval | `insurance_claim_feat.py:42` | FEAT-STOR-003 §IV.C |
-| F3 | Insurance purchase has no FEAT boundary | `student.py:1597`, `insurance_purchase_feat.py:24` | FEAT-STOR-001 |
-| F4 | Insurance policy routes bypass FEAT-CLASS-003 | `admin.py:6657, 6750, 6783` | FEAT-CLASS-003 |
-| F5 | EXPIRED/REVOKED dispositions have no FEAT gate | `store_entitlement_service.py:176, 195` | FEAT-STOR-002 |
-| F6 | No insurance non-revocability guard | `store_entitlement_service.py:176` | DOM-STORE-001 §VII.D |
-
-#### High (4) — template crashes
-
-| # | Finding | Location |
-|---|---------|----------|
-| F7 | `item.title` on `StoreItem` (has `name`) — blank render | `admin_edit_insurance_policy.html:46` |
-| F8 | `claim.incident_date.strftime()` — crashes when claims exist | `student_insurance_marketplace.html:472`, `student_view_policy.html:119`, `admin_view_student_policy.html:117` |
-| F9 | `form.transaction_id` on stub SimpleNamespace — GET crashes | `student_file_claim.html:51` |
-| F18 | `claim.student.full_name` renders UUID instead of name | `admin_process_claim.html:32` |
-
-#### Medium (3) — contract gaps
-
-| # | Finding | Location |
-|---|---------|----------|
-| F12 | `PolicyTransition.created_by` bare integer, no FK | `models.py:1771` |
-| F13 | Hall-pass early-exit bypasses `consume_entitlement` | `api.py:714-718` |
-| F14 | Bare `db.session.commit()` in `process_claim` outside FEAT | `admin.py:6935, 6943` |
-
-#### Low (2) — structural debt
-
-| # | Finding | Location |
-|---|---------|----------|
-| F19 | `RedemptionEvent` keys off `purchase_id` not `entitlement_id` | `models.py:905` |
-| F20 | `PolicyVersion.is_active` mutable on immutable row | `models.py:1740` |
+| # | Finding | Severity | Location | Action needed |
+|---|---------|----------|----------|---------------|
+| F7 | Route queries `StoreItem.title.asc()` — column is `name` | **Blocking** | `admin.py:6668` | Change `.order_by(StoreItem.title.asc(), ...)` to `.order_by(StoreItem.name.asc(), ...)` |
+| F19 | `RedemptionEvent` keys off `purchase_id` not `entitlement_id` | Low | `models.py:905` | Structural debt — design decision deferred |
+| F20 | `PolicyVersion.is_active` mutable; `economy_rebalance.py:424` mutates existing version rows | Low | `models.py:1740`, `economy_rebalance.py:424` | Structural debt — immutability enforcement deferred |
 
 ---
 
 ## Conclusion
 
-The audit does not pass. While 5 findings were remediated (store template cleanup, persistent banners, dead code removal), the 6 critical findings (F1–F6) and 4 high-severity template crashes (F7–F9, F18) remain open.
+The audit is conditionally failing on 1 blocking issue: `admin.py:6668` queries `StoreItem.title` which does not exist (the column is `name`), causing the insurance policy editor GET to crash with `InvalidRequestError` whenever store items exist. This is a one-line fix.
 
-The MAP rows report `REWIRED` status, but the code behind those rows does not yet implement the contracts the MAP rows describe. The MAP should either be corrected to reflect the actual implementation state, or the code should be brought to match the declared contracts.
+The 2 remaining low-severity findings (F19, F20) are structural debt that do not cause runtime failures and can be deferred to a future migration wave.
 
-### Required for AUDIT PASS
-
-1. Remediate F1–F6 (critical FEAT/domain contract violations)
-2. Remediate F7–F9, F18 (template crashes on existing model shapes)
-3. Re-run this audit checklist
+**To achieve AUDIT PASS:** fix `StoreItem.title` → `StoreItem.name` at `admin.py:6668`.
