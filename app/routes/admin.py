@@ -184,7 +184,6 @@ from app.utils.student_deletion import (
     remove_student_from_teacher_scope,
 )
 from app.utils.seat_scope import seat_scoped_filter, transaction_scope_filter
-from app.utils.transaction_idempotency import purchase_transaction_key
 from app.feats.admin_adjustment_feat import execute_admin_adjustments
 from app.feats.prod import record_attendance_session, record_payroll_event
 # execute_insurance_claim_resolution removed — insurance_claim_feat.py deleted; insurance feature broken pending DOM-OBL-001 migration
@@ -4465,7 +4464,7 @@ def student_detail_public(actor_public_id):
                          reset_code_is_active=reset_code_is_active,
                          join_codes=join_codes,
                          transactions=transactions,
-                         student_items=store_purchases,
+                         entitlements=store_purchases,
                          latest_attendance_event=latest_attendance_event,
                          attendance_events=attendance_display_rows,
                          active_insurance=active_insurance,
@@ -5218,44 +5217,6 @@ def store_management():
 
         db.session.rollback()
         with FEATContext("FEAT-CLASS-003", idempotency_key=idempotency_key):
-            new_item = StoreItem(
-                user_id=user_id,
-                class_id=selected_scope['class_id'],
-                name=form.name.data,
-                description=form.description.data,
-                price=form.price.data,
-                tier=form.tier.data if form.tier.data else None,
-                item_type=form.item_type.data,
-                inventory=form.inventory.data,
-                limit_per_student=form.limit_per_student.data,
-                auto_delist_date=form.auto_delist_date.data,
-                auto_expiry_days=form.auto_expiry_days.data,
-                is_active=form.is_active.data,
-                is_long_term_goal=form.is_long_term_goal.data,
-                bypass_cwi_warnings=form.bypass_cwi_warnings.data,
-                # Bundle settings
-                is_bundle=form.is_bundle.data,
-                bundle_quantity=form.bundle_quantity.data if form.is_bundle.data else None,
-                # Bulk discount settings
-                bulk_discount_enabled=form.bulk_discount_enabled.data,
-                bulk_discount_quantity=form.bulk_discount_quantity.data if form.bulk_discount_enabled.data else None,
-                bulk_discount_percentage=form.bulk_discount_percentage.data if form.bulk_discount_enabled.data else None,
-                # Collective goal settings
-                collective_goal_type=form.collective_goal_type.data if form.item_type.data == 'collective' else None,
-                collective_goal_target=form.collective_goal_target.data if form.item_type.data == 'collective' else None,
-                collective_goal_expires_at=(
-                    _end_of_day_utc(form.collective_goal_expires_at.data)
-                    if form.item_type.data == 'collective'
-                    else None
-                ),
-                collective_goal_instance_code=(
-                    generate_collective_goal_instance_code()
-                    if form.item_type.data == 'collective' and form.is_active.data
-                    else None
-                ),
-                # Redemption prompt
-                redemption_prompt=form.redemption_prompt.data if form.redemption_prompt.data else None
-            )
             new_item = create_store_item(
                 user_id=user_id,
                 class_id=selected_scope['class_id'],

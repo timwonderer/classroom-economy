@@ -812,18 +812,9 @@ def approve_redemption():
     if not _admin_has_class_scope(g.canonical_context, store_item.class_id):
         return jsonify({"status": "error", "message": "Unauthorized."}), 403
 
-    # Bridge: execute_redemption_approval still requires StorePurchase
-    purchase = StorePurchase.query.filter_by(
-        seat_id=entitlement.target_seat_id,
-        store_item_id=entitlement.entitlement_item_id,
-        class_id=entitlement.class_id,
-    ).first()
-    if not purchase:
-        return jsonify({"status": "error", "message": "No matching purchase record found."}), 404
-
     try:
         result = execute_redemption_approval(
-            purchase=purchase,
+            entitlement=entitlement,
             actor_user_id=user_id,
             notes=None,
         )
@@ -869,18 +860,9 @@ def reject_redemption():
     if not _admin_has_class_scope(g.canonical_context, store_item.class_id):
         return jsonify({"status": "error", "message": "Unauthorized."}), 403
 
-    # Bridge: execute_redemption_rejection still requires StorePurchase
-    purchase = StorePurchase.query.filter_by(
-        seat_id=entitlement.target_seat_id,
-        store_item_id=entitlement.entitlement_item_id,
-        class_id=entitlement.class_id,
-    ).first()
-    if not purchase:
-        return jsonify({"status": "error", "message": "No matching purchase record found."}), 404
-
     try:
         result = execute_redemption_rejection(
-            purchase=purchase,
+            entitlement=entitlement,
             actor_user_id=user_id,
             notes=None,
         )

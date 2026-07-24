@@ -14,7 +14,7 @@ from uuid import uuid4
 
 from app.extensions import db
 from app.feats.base import requires_feat_context
-from app.models import Entitlement, EntitlementConsumption, Disposition, RedemptionEvent, RedemptionEventAction, RedemptionEventSource, StorePurchase
+from app.models import Entitlement, RedemptionEvent, RedemptionEventAction, RedemptionEventSource
 from app.services.store_entitlement_service import consume_entitlement
 from app.utils.canonical_temporal_resolver import SYSTEM_LEVEL_EVALUATION, canonical_temporal_resolver
 
@@ -74,54 +74,31 @@ def record_live_redemption_event(
     return event.id
 
 
-def _resolve_entitlement_for_purchase(purchase: StorePurchase) -> Entitlement | None:
-    return (
-        Entitlement.query.filter_by(
-            target_seat_id=purchase.seat_id,
-            class_id=purchase.class_id,
-            entitlement_item_id=purchase.store_item_id,
-        )
-        .outerjoin(
-            EntitlementConsumption,
-            EntitlementConsumption.entitlement_id == Entitlement.entitlement_id,
-        )
-        .filter(EntitlementConsumption.consumption_id.is_(None))
-        .order_by(Entitlement.granted_at.desc(), Entitlement.id.desc())
-        .first()
-    )
-
-
 @requires_feat_context("FEAT-STOR-002")
 def execute_redemption_approval(
     *,
-    purchase: StorePurchase,
+    entitlement: Entitlement,
     actor_user_id: int,
     notes: Optional[str] = None,
 ) -> RedemptionDispositionResult:
-    if purchase.status != "processing":
-        raise RedemptionDispositionError(
-            f"StorePurchase {purchase.id} is not in 'processing' state; cannot approve."
-        )
-
-    entitlement = _resolve_entitlement_for_purchase(purchase)
-    if entitlement is None:
-        raise RedemptionDispositionError("No available entitlement exists for this redemption.")
+    seat = entitlement.target_seat
+    seat_display = seat.identity_profile.full_name if seat and seat.identity_profile else "Unknown Seat"
 
     event_id = record_live_redemption_event(
         entitlement_id=entitlement.entitlement_id,
-        seat_id=purchase.seat_id,
-        class_id=purchase.class_id,
+        seat_id=entitlement.target_seat_id,
+        class_id=entitlement.class_id,
         action=RedemptionEventAction.APPROVED,
         initiated_by_user_id=actor_user_id,
-        seat_display_name=purchase.seat.identity_profile.full_name if purchase.seat and purchase.seat.identity_profile else "Unknown Seat",
-        class_display_label=_resolve_class_display_label(purchase.class_id, None),
+        seat_display_name=seat_display,
+        class_display_label=_resolve_class_display_label(entitlement.class_id, None),
         notes=notes,
     )
     consume_entitlement(
         entitlement_id=entitlement.entitlement_id,
-        class_id=purchase.class_id,
-        target_seat_id=purchase.seat_id,
-        actor_seat_id=purchase.seat_id,
+        class_id=entitlement.class_id,
+        target_seat_id=entitlement.target_seat_id,
+        actor_seat_id=entitlement.target_seat_id,
         correlation_id=entitlement.correlation_id,
     )
     db.session.flush()
@@ -136,26 +113,21 @@ def execute_redemption_approval(
 @requires_feat_context("FEAT-STOR-002")
 def execute_redemption_rejection(
     *,
-    purchase: StorePurchase,
+    entitlement: Entitlement,
     actor_user_id: int,
     notes: Optional[str] = None,
 ) -> RedemptionDispositionResult:
-    if purchase.status != "processing":
-        raise RedemptionDispositionError(
-            f"StorePurchase {purchase.id} is not in 'processing' state; cannot reject."
-        )
+    seat = entitlement.target_seat
+    seat_display = seat.identity_profile.full_name if seat and seat.identity_profile else "Unknown Seat"
 
-    entitlement = _resolve_entitlement_for_purchase(purchase)
-    if entitlement is None:
-        raise RedemptionDispositionError("No entitlement exists for this redemption; cannot record rejection event.")
     event_id = record_live_redemption_event(
         entitlement_id=entitlement.entitlement_id,
-        seat_id=purchase.seat_id,
-        class_id=purchase.class_id,
+        seat_id=entitlement.target_seat_id,
+        class_id=entitlement.class_id,
         action=RedemptionEventAction.REJECTED,
         initiated_by_user_id=actor_user_id,
-        seat_display_name=purchase.seat.identity_profile.full_name if purchase.seat and purchase.seat.identity_profile else "Unknown Seat",
-        class_display_label=_resolve_class_display_label(purchase.class_id, None),
+        seat_display_name=seat_display,
+        class_display_label=_resolve_class_display_label(entitlement.class_id, None),
         notes=notes,
     )
     db.session.flush()

@@ -238,22 +238,22 @@
               </tr>
             </thead>
             <tbody>
-              {% for student_item in pending_redemptions %}
+              {% for entitlement in pending_redemptions %}
               <tr>
-                <td>{{ student_item.seat.identity_profile.full_name if student_item.seat and student_item.seat.identity_profile else 'Unknown' }}</td>
-                <td>{{ student_item.store_item.name }}</td>
-                <td><small class="text-muted local-timestamp" data-timestamp="{{ format_utc_iso(student_item.purchased_at) }}"></small></td>
+                <td>{{ entitlement.seat.identity_profile.full_name if entitlement.seat and entitlement.seat.identity_profile else 'Unknown' }}</td>
+                <td>{{ entitlement.store_item.name }}</td>
+                <td><small class="text-muted local-timestamp" data-timestamp="{{ format_utc_iso(entitlement.purchased_at) }}"></small></td>
                 <td>
                   <small class="text-muted">-</small>
                 </td>
                 <td>
                   <div class="d-flex gap-2">
                     <button class="btn btn-sm btn-outline-danger reject-redemption-btn"
-                      data-entitlement-id="{{ student_item.id }}"
+                      data-entitlement-id="{{ entitlement.id }}"
                       title="Refund and remove" aria-label="Refund and remove">
                       <span class="material-symbols-outlined">cancel</span>
                     </button>
-                    <button class="btn btn-sm btn-success approve-redemption-btn" data-entitlement-id="{{ student_item.id }}">
+                    <button class="btn btn-sm btn-success approve-redemption-btn" data-entitlement-id="{{ entitlement.id }}">
                       <span class="material-symbols-outlined me-1">check_circle</span>Approve
                     </button>
                   </div>
@@ -294,29 +294,29 @@
               </tr>
             </thead>
             <tbody>
-              {% for student_item in recent_purchases %}
+              {% for entitlement in recent_purchases %}
               <tr>
-                <td>{{ student_item.seat.identity_profile.full_name if student_item.seat and student_item.seat.identity_profile else 'Unknown' }}</td>
-                <td>{{ student_item.store_item.name }}</td>
-                <td>${{ "%.2f"|format(student_item.store_item.price) }}</td>
-                <td><small class="text-muted local-timestamp" data-timestamp="{{ format_utc_iso(student_item.purchased_at) }}"></small></td>
+                <td>{{ entitlement.seat.identity_profile.full_name if entitlement.seat and entitlement.seat.identity_profile else 'Unknown' }}</td>
+                <td>{{ entitlement.store_item.name }}</td>
+                <td>${{ "%.2f"|format(entitlement.store_item.price) }}</td>
+                <td><small class="text-muted local-timestamp" data-timestamp="{{ format_utc_iso(entitlement.purchased_at) }}"></small></td>
                 <td>
-                  {% if student_item.status == 'purchased' %}
+                  {% if entitlement.status == 'purchased' %}
                     <span class="badge bg-success">Purchased</span>
-                  {% elif student_item.status == 'processing' %}
+                  {% elif entitlement.status == 'processing' %}
                     <span class="badge bg-warning text-dark">Processing</span>
-                  {% elif student_item.status == 'pending' %}
+                  {% elif entitlement.status == 'pending' %}
                     <span class="badge bg-secondary">Pending</span>
-                  {% elif student_item.status == 'redeemed' %}
+                  {% elif entitlement.status == 'redeemed' %}
                     <span class="badge bg-primary">Redeemed</span>
-                  {% elif student_item.status == 'completed' %}
+                  {% elif entitlement.status == 'completed' %}
                     <span class="badge bg-success">Completed</span>
-                  {% elif student_item.status == 'expired' %}
+                  {% elif entitlement.status == 'expired' %}
                     <span class="badge bg-danger">Expired</span>
-                  {% elif student_item.status == 'revoked' %}
+                  {% elif entitlement.status == 'revoked' %}
                     <span class="badge bg-dark">Revoked</span>
                   {% else %}
-                    <span class="badge bg-secondary">{{ student_item.status|title }}</span>
+                    <span class="badge bg-secondary">{{ entitlement.status|title }}</span>
                   {% endif %}
                 </td>
               </tr>
@@ -708,19 +708,19 @@
             <tbody>
               {% if items %}
                 {% for item in items %}
-                  {% for student_item in item.purchases %}
+                  {% for entitlement in item.purchases %}
                   <tr>
-                    <td>{{ student_item.seat.identity_profile.full_name if student_item.seat and student_item.seat.identity_profile else 'Unknown' }}</td>
+                    <td>{{ entitlement.seat.identity_profile.full_name if entitlement.seat and entitlement.seat.identity_profile else 'Unknown' }}</td>
                     <td>{{ item.name }}</td>
                     <td>
-                        {% if student_item.purchased_at %}
-                            <span class="local-timestamp" data-timestamp="{{ format_utc_iso(student_item.purchased_at) }}"></span>
+                        {% if entitlement.purchased_at %}
+                            <span class="local-timestamp" data-timestamp="{{ format_utc_iso(entitlement.purchased_at) }}"></span>
                         {% else %}
                             N/A
                         {% endif %}
                     </td>
-                    <td><span class="badge bg-{{ 'success' if student_item.status in ('redeemed', 'completed') else 'warning' }}">{{ student_item.status|title }}</span></td>
-                    <td>{{ student_item.quantity }}</td>
+                    <td><span class="badge bg-{{ 'success' if entitlement.status in ('redeemed', 'completed') else 'warning' }}">{{ entitlement.status|title }}</span></td>
+                    <td>{{ entitlement.quantity }}</td>
                   </tr>
                   {% endfor %}
                 {% endfor %}

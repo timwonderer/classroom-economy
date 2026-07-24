@@ -871,14 +871,14 @@ def dashboard():
     ).order_by(Transaction.timestamp.desc()).all()
 
     # Canonical store purchases scoped to the active seat/class.
-    student_items = []
+    entitlements = []
     for entitlement in list_entitlement_history(target_seat_id=scope.seat_id, class_id=scope.class_id):
         ent = entitlement["entitlement"]
         item = db.session.get(StoreItem, ent.entitlement_item_id)
         if item is None:
             continue
         terminal = entitlement["terminal_event"]
-        student_items.append(SimpleNamespace(
+        entitlements.append(SimpleNamespace(
             id=ent.entitlement_id,
             seat_id=ent.target_seat_id,
             class_id=ent.class_id,
@@ -1143,7 +1143,7 @@ def dashboard():
         attendance_state_json=attendance_state_json,
         checking_transactions=checking_transactions,
         savings_transactions=savings_transactions,
-        student_items=student_items,
+        entitlements=entitlements,
         recent_transactions=transactions[:5],  # Most recent 5 transactions
         now=local_now,
         forecast_interest=float(forecast_interest),
@@ -1968,14 +1968,14 @@ def shop():
         if store_service.is_item_visible_to_seat(item.id, seat.id)
     ]
 
-    student_items = []
+    entitlements = []
     for entry in list_entitlement_history(target_seat_id=seat.id, class_id=class_id):
         entitlement = entry["entitlement"]
         terminal_event = entry["terminal_event"]
         item = db.session.get(StoreItem, entitlement.entitlement_item_id)
         if item is None:
             continue
-        student_items.append(SimpleNamespace(
+        entitlements.append(SimpleNamespace(
             id=entitlement.entitlement_id,
             seat_id=entitlement.target_seat_id,
             class_id=entitlement.class_id,
@@ -2125,7 +2125,7 @@ def shop():
         class_timezone=getattr(context, "class_timezone", ""),
     )
     student_display = SimpleNamespace(full_name=student_display_name)
-    return render_template('student_shop.html', student=student_display, current_class_context=current_class_context, items=items, student_items=student_items,
+    return render_template('student_shop.html', student=student_display, current_class_context=current_class_context, items=items, entitlements=entitlements,
                          has_paid_rent=has_paid_rent, per_period_rent_item_ids=per_period_rent_item_ids,
                          rent_item_types_by_store_id=rent_item_types_by_store_id,
                          rent_free_entitlement_counts=rent_free_entitlement_counts,
