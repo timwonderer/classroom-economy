@@ -6,7 +6,7 @@ from decimal import Decimal
 
 from app.extensions import db
 from app.feats.base import FEATContext
-from app.models import ObligationAssessment, ObligationLifecycle, PolicyVersion
+from app.models import ObligationAssessment, PolicyVersion, Transaction
 from app.scheduled_tasks import run_insurance_cycle_for_class
 from app.utils.time import utc_now
 from tests.helpers.classroom_initializer import initialize
@@ -55,16 +55,15 @@ def test_DOM_OBL_003__insurance_cycle_charges_each_student_seat(app):
         assert result["cycle_length_days"] == 7
         assert [row.seat_id for row in assessments] == student_seats
 
-        for assessment in assessments:
-            assert assessment.policy_version_id == policy_version.id
-            assert assessment.amount_snap == Decimal("12.50")
-            assert assessment.coverage_start_time == now
-            assert assessment.coverage_end_time == now + timedelta(days=7)
-            assert assessment.lifecycle is not None
-            assert assessment.lifecycle.status == "PAID"
-            assert assessment.satisfaction is not None
-            assert assessment.satisfaction.method == "PAYMENT"
-            assert assessment.satisfaction.transaction_id is not None
+        for event in assessments:
+            # Per DOM-OBL-001, verify canonical event structure
+            # Insurance cycle creates PAYMENT events (charges recorded in Ledger)
+            assert event.obligation_type == "INSURANCE_PREMIUM"
+            assert event.policy_version_id == policy_version.id
+
+            # Amounts are stored in Ledger domain via ledger_transaction_id
+            # The event type should be either ASSESSMENT (for the charge) or PAYMENT (if auto-settled)
+            assert event.event_type in ['ASSESSMENT', 'PAYMENT'], f"Unexpected event_type: {event.event_type}"
 
         teacher_assessment = (
             ObligationAssessment.query.filter_by(

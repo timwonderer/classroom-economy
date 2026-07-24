@@ -1171,18 +1171,6 @@ class ObligationAssessment(db.Model):
     )
 
 
-class ObligationLifecycle(db.Model):
-    """Current derived lifecycle state for one canonical assessment event."""
-    __tablename__ = 'obligation_lifecycle'
-
-    id = db.Column(db.Integer, primary_key=True)
-    assessment_id = db.Column(db.Integer, db.ForeignKey('assessment_events.id', ondelete='CASCADE'), nullable=False, unique=True, index=True)
-    status = db.Column(db.String(20), nullable=False, index=True)
-    updated_at = db.Column(db.DateTime(timezone=True), default=utc_now, nullable=False)
-
-    assessment = db.relationship('ObligationAssessment', backref=db.backref('lifecycle', uselist=False))
-
-
 class BillCycle(db.Model):
     """Identity-blind recurring reminder state for obligation sources — DOM-OBL-001 Section VII.3.
 
