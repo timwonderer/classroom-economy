@@ -2932,15 +2932,23 @@ def rent():
     period_status = {}
 
     from app.services.obligations_service import get_paid_rent_assessments_for_cycle
+    from app.models import LedgerTransaction
     payments = get_paid_rent_assessments_for_cycle(
         class_id,
         coverage_month,
         coverage_year,
         seat_ids=[seat_id],
     )
-    payments = [payment for payment in payments if payment.satisfaction is not None]
+    payments = [payment for payment in payments if payment.satisfactions]  # Now satisfactions (plural) allowed per DOM-OBL-001
 
-    total_paid = sum((p.satisfaction.amount_paid for p in payments), Decimal('0.00'))
+    # DOM-OBL-001: Amounts come from Ledger, not from obligation_satisfaction
+    total_paid = Decimal('0.00')
+    for assessment in payments:
+        for satisfaction in assessment.satisfactions:
+            if satisfaction.ledger_transaction_id:
+                txn = db.session.get(LedgerTransaction, satisfaction.ledger_transaction_id)
+                if txn:
+                    total_paid += txn.amount if txn.type == 'credit' else Decimal('0.00')
 
     paid_by_grace = _total_paid_by_grace(payments, grace_end_date_for_status)
     late_fee = Decimal('0.00')
@@ -2955,13 +2963,13 @@ def rent():
 
     period_status[current_block] = {
         'is_paid': is_paid,
-        'is_waived': bool(active_waiver and total_paid <= Decimal('0.00')),
+        'is_waived': bool(active_waiver),  # Derived from waiver satisfaction events
         'is_late': is_late,
         'payments': payments,
         'total_paid': total_paid,
         'total_due': total_due,
         'remaining_amount': remaining_amount,
-        'late_fee': late_fee,
+        'late_fee': Decimal('0.00'),  # Derived later if needed; not stored per DOM-OBL-001
         'rent_is_active': rent_is_active,
         'is_preview_period': is_preview_period,
         'waiver': active_waiver,
@@ -2983,15 +2991,30 @@ def rent():
 
     payment_history_rows = []
     for payment in payment_history:
+        # DOM-OBL-001: Get amount from Ledger transaction, not from satisfaction row
+        amount_paid = Decimal('0.00')
+        occurred_at = payment.assessed_at
+        status_text = "Pending"
+
+        if payment.satisfactions:
+            for satisfaction in payment.satisfactions:
+                occurred_at = satisfaction.occurred_at or payment.assessed_at
+                if satisfaction.ledger_transaction_id:
+                    txn = db.session.get(LedgerTransaction, satisfaction.ledger_transaction_id)
+                    if txn:
+                        amount_paid += txn.amount if txn.type == 'credit' else Decimal('0.00')
+                        # Status is derived from: was payment on time? (compare occurred_at to due date)
+                        is_late = satisfaction.occurred_at > (payment.due_at or payment.assessed_at) if satisfaction.occurred_at and payment.due_at else False
+                        status_text = "Paid Late" if is_late else "On Time"
+                elif satisfaction.method == 'WAIVED':
+                    status_text = "Waived"
+
         payment_history_rows.append({
             'period_month': payment.period_month,
             'period_year': payment.period_year,
-            'amount_paid': payment.satisfaction.amount_paid if payment.satisfaction else Decimal('0.00'),
-            'recorded_at': payment.satisfaction.satisfied_at if payment.satisfaction else payment.assessed_at,
-            'status_text': (
-                f"Paid late with fee of ${payment.satisfaction.late_fee_charged:.2f}"
-                if payment.satisfaction and payment.satisfaction.was_late else "On Time"
-            ),
+            'amount_paid': amount_paid,
+            'recorded_at': occurred_at,
+            'status_text': status_text,
             'entry_type': 'payment',
         })
 

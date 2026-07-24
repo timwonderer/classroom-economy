@@ -40,28 +40,33 @@ Use the audited template routes as the scope source. Do not invent new endpoints
 File: `templates/student_rent.html`
 Route: `student.rent` - `GET /student/rent`
 
-- [ ] route supplies canonical obligations view model
-- [ ] template no longer depends on legacy rent-payment row shapes
-- [ ] rent status is derived from assessments plus satisfactions
-- [ ] bill-cycle facts are rendered from obligations-owned reminder state
-- [ ] waivers are shown only as rent satisfaction facts
-- [ ] temporal fields come from the canonical temporal context, not route-local derivation
+**Phase 7 Audit Result: NEEDS_REWIRE (Critical)**
 
-Required route variables:
+Issues Found:
+- ❌ Route accesses removed schema fields: `amount_paid`, `was_late`, `late_fee_charged`, `satisfied_at`
+- ❌ Route must derive amounts from Ledger transactions (via `ledger_transaction_id`), not from satisfaction row
+- ✅ All 13 required variables are passed to template
+- ✅ Route calls `obligations_service` functions (canonical read layer)
 
-- [ ] `student`
-- [ ] `settings`
-- [ ] `student_blocks`
-- [ ] `period_status`
-- [ ] `current_block`
-- [ ] `checking_balance`
-- [ ] `savings_balance`
-- [ ] `payment_due_date`
-- [ ] `grace_end_date`
-- [ ] `grace_end_date_for_status`
-- [ ] `payment_history`
-- [ ] `rent_items`
-- [ ] `days_until_due`
+Canonical Requirements:
+- [ ] Fix lines 2943, 2989-2993 to read amounts from Ledger via correlation_id
+- [ ] Verify `payment_history` derives from assessments + satisfactions + ledger joins
+- [ ] Ensure `period_status` reflects derived state (satisfied/outstanding) not mutable flags
+
+Required route variables (all present):
+- [x] `student` ✅
+- [x] `settings` ✅
+- [x] `student_blocks` ✅
+- [x] `period_status` ✅
+- [x] `current_block` ✅
+- [x] `checking_balance` ✅
+- [x] `savings_balance` ✅
+- [x] `payment_due_date` ✅
+- [x] `grace_end_date` ✅
+- [x] `grace_end_date_for_status` ✅
+- [x] `payment_history` ✅ (but needs schema fix)
+- [x] `rent_items` ✅
+- [x] `days_until_due` ✅
 
 ### A2: Admin Rent Settings Surface
 
