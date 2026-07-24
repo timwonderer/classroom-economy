@@ -112,10 +112,10 @@ def _void_purchase(tx: Transaction) -> None:
 
     if any(
         RedemptionEvent.query.filter_by(
-            purchase_id=purchase.id,
+            entitlement_id=ent.entitlement_id,
             action=RedemptionEventAction.APPROVED,
         ).first()
-        for purchase in selected_items
+        for ent in selected_items
     ):
         raise UsedDelayedPurchaseNotVoidable
 

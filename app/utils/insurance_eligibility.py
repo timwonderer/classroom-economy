@@ -166,7 +166,7 @@ def _check_delay_use_rule(tx: Transaction, *, class_id: str, now_class: datetime
         return None
 
     redemption_event = RedemptionEvent.query.filter_by(
-        purchase_id=item_row.id,
+        entitlement_id=item_row.entitlement_id,
         action=RedemptionEventAction.APPROVED,
     ).first()
     used_at = ensure_utc(redemption_event.timestamp) if redemption_event else None

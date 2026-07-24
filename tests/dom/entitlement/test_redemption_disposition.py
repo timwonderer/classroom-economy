@@ -193,7 +193,7 @@ def test_DOM_STORE_001__approve_redemption_succeeds_under_feat_enforcement(clien
 
     # Canonical redemption event persisted
     event_rows = RedemptionEvent.query.filter_by(
-        purchase_id=ids["student_item_id"],
+        entitlement_id=ids["entitlement_id"],
         action=RedemptionEventAction.APPROVED,
     ).all()
     assert len(event_rows) == 1
@@ -230,7 +230,7 @@ def test_DOM_STORE_001__reject_redemption_succeeds_and_creates_refund_under_enfo
 
     # Audit row persisted
     event_rows = RedemptionEvent.query.filter_by(
-        purchase_id=ids["student_item_id"],
+        entitlement_id=ids["entitlement_id"],
         action=RedemptionEventAction.REJECTED,
     ).all()
     assert len(event_rows) == 1
@@ -321,4 +321,4 @@ def test_DOM_STORE_001__approve_redemption_rejects_intruder_admin_with_403(clien
     # And state was NOT mutated
     refetched = db.session.get(StorePurchase, owner["student_item_id"])
     assert refetched.status == "processing"
-    assert RedemptionEvent.query.filter_by(purchase_id=owner["student_item_id"]).count() == 0
+    assert RedemptionEvent.query.filter_by(entitlement_id=owner["entitlement_id"]).count() == 0

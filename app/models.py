@@ -902,8 +902,7 @@ class RedemptionEventSource(enum.Enum):
 class RedemptionEvent(db.Model):
     __tablename__ = 'redemption_events'
     id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    purchase_id = db.Column(db.Integer, db.ForeignKey('store_purchases.id', ondelete='CASCADE'), nullable=False, index=True)
-    entitlement_id = db.Column(db.String(36), db.ForeignKey('entitlements.entitlement_id'), nullable=True, index=True)
+    entitlement_id = db.Column(db.String(36), db.ForeignKey('entitlements.entitlement_id'), nullable=False, index=True)
     seat_id = db.Column(db.Integer, db.ForeignKey('seats.id', ondelete='SET NULL'), nullable=True, index=True)
     class_id = db.Column(db.String(36), db.ForeignKey('classes.class_id', ondelete='CASCADE'), nullable=True, index=True)
     action = db.Column(
@@ -930,7 +929,6 @@ class RedemptionEvent(db.Model):
     notes = db.Column(db.Text, nullable=True)
     timestamp = db.Column(db.DateTime(timezone=True), nullable=False, default=utc_now, index=True)
 
-    purchase = db.relationship('StorePurchase', backref=db.backref('redemption_events', lazy='dynamic'))
     entitlement = db.relationship('Entitlement', backref=db.backref('redemption_events', lazy='dynamic'))
     initiated_by = db.relationship('User', backref=db.backref('initiated_redemption_events', lazy='dynamic'))
 

@@ -5463,7 +5463,6 @@ def store_management():
     live_query = (
         db.session.query(
             RedemptionEvent.id.label("id"),
-            RedemptionEvent.purchase_id.label("purchase_id"),
             RedemptionEvent.entitlement_id.label("entitlement_id"),
             RedemptionEvent.seat_display_name.label("student_display_name"),
             RedemptionEvent.class_display_label.label("class_display_label"),

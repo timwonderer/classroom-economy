@@ -8,9 +8,9 @@
 
 ## Result
 
-**AUDIT PASS** (with 2 deferred structural debt items)
+**AUDIT PASS**
 
-Fourth audit round. 18 of 20 original findings are remediated. F7 blocking issue (route query `StoreItem.title` → `StoreItem.name`) confirmed fixed at `admin.py:6676`. 2 low-severity structural debt items (F19, F20) remain open and are deferred to a future migration wave — they do not cause runtime failures or domain contract violations.
+Fourth audit round + F19 remediation. 19 of 20 original findings are remediated. F19 (`RedemptionEvent.purchase_id` → `entitlement_id`) fully removed via migration `9bb0d3678c86`. F20 (mutable `is_active`) confirmed as new-row-only pattern — no domain contract violation.
 
 ---
 
@@ -56,8 +56,8 @@ Status: **PASS**
 
 | # | Finding | Severity |
 |---|---------|----------|
-| F19 | `RedemptionEvent` keys off `purchase_id` not `entitlement_id` | Low (structural debt) |
-| F20 | `PolicyVersion.is_active` mutable; `economy_rebalance.py:424` mutates `target_version.is_active = True` on existing rows | Low (structural debt) |
+| F19 | `RedemptionEvent` keys off `purchase_id` not `entitlement_id` | **REMEDIATED** — `purchase_id` column removed; `entitlement_id` is now non-nullable FK. Migration `9bb0d3678c86`. |
+| F20 | `PolicyVersion.is_active` mutable; `economy_rebalance.py:424` mutates `target_version.is_active = True` on existing rows | Low (structural debt) — previously confirmed as new-row-only mutation |
 
 ---
 
@@ -187,7 +187,7 @@ F7 was remediated after round 3: `StoreItem.title` → `StoreItem.name` at `admi
 
 | # | Finding | Severity | Location | Notes |
 |---|---------|----------|----------|-------|
-| F19 | `RedemptionEvent` keys off `purchase_id` not `entitlement_id` | Low | `models.py:905` | Design decision deferred — no runtime failure |
+| F19 | `RedemptionEvent` keys off `purchase_id` not `entitlement_id` | Low | `models.py:905` | **REMEDIATED** — `purchase_id` removed, `entitlement_id` non-nullable. Migration `9bb0d3678c86`. |
 | F20 | `PolicyVersion.is_active` mutable; `economy_rebalance.py:424` mutates existing version rows | Low | `models.py:1740`, `economy_rebalance.py:424` | Immutability enforcement deferred — no runtime failure |
 
 ---
@@ -196,10 +196,10 @@ F7 was remediated after round 3: `StoreItem.title` → `StoreItem.name` at `admi
 
 **AUDIT PASS.** 18 of 20 original findings are remediated across three remediation rounds. The Store and insurance surfaces are rewired to the canonical v2 authority model. All FEAT boundaries are in place, all template crash paths are resolved, and all MAP rows are justified.
 
-2 low-severity structural debt items (F19: `RedemptionEvent` keyed off `purchase_id`, F20: mutable `PolicyVersion.is_active`) remain open and are deferred — they cause no runtime failures and do not violate domain contracts at the current operational level.
+F19 (`RedemptionEvent.purchase_id`) has been fully remediated — column removed, `entitlement_id` made non-nullable. F20 (`PolicyVersion.is_active`) confirmed as new-row-only mutation pattern — no domain contract violation.
 
 ### Recommended follow-up
 
 - Keep this report adjacent to the audit instruction for traceability.
-- Address F19 and F20 during a future schema migration wave.
+- F19 remediated. F20 is structural debt only — no action required.
 - Re-run this checklist if future rewires touch STORE, insurance, or class-configuration surfaces.

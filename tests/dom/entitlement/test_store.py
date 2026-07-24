@@ -157,17 +157,17 @@ class TestInsuranceClaimSchema:
 
 class TestRedemptionEventSchema:
     def test_DOM_STORE_001__redemption_event_has_required_columns(self):
-        """DOM-STORE-001 §VII.4: redemption_events must have purchase_id, action, source, timestamp."""
+        """DOM-STORE-001 §VII.4: redemption_events must have entitlement_id, action, source, timestamp."""
         cols = _column_names(RedemptionEvent)
         assert {
-            "id", "purchase_id", "seat_id", "class_id",
+            "id", "entitlement_id", "seat_id", "class_id",
             "action", "source", "initiated_by_user_id",
             "seat_display_name", "class_display_label",
             "notes", "timestamp",
         } <= cols
 
-    def test_DOM_STORE_001__redemption_event_purchase_fk_targets_store_purchases(self):
-        assert _fk_targets(RedemptionEvent, "purchase_id") == {"store_purchases.id"}
+    def test_DOM_STORE_001__redemption_event_entitlement_fk_targets_entitlements(self):
+        assert _fk_targets(RedemptionEvent, "entitlement_id") == {"entitlements.entitlement_id"}
 
     def test_DOM_STORE_001__redemption_event_tablename(self):
         assert RedemptionEvent.__tablename__ == "redemption_events"
@@ -391,8 +391,18 @@ class TestRedemptionEventBehavior:
                 db.session.add(purchase)
                 db.session.flush()
 
+                from app.models import GrantType
+                from app.services.store_entitlement_service import grant_entitlement
+                entitlement = grant_entitlement(
+                    entitlement_item_id=item.id,
+                    target_seat_id=seat.id,
+                    actor_seat_id=seat.id,
+                    class_id=ctx["classroom"].class_id,
+                    grant_type=GrantType.PURCHASE,
+                )
+
                 event = RedemptionEvent(
-                    purchase_id=purchase.id,
+                    entitlement_id=entitlement.entitlement_id,
                     seat_id=seat.id,
                     class_id=ctx["classroom"].class_id,
                     action=RedemptionEventAction.APPROVED,
@@ -406,7 +416,7 @@ class TestRedemptionEventBehavior:
 
             saved = db.session.get(RedemptionEvent, event.id)
             assert saved is not None
-            assert saved.purchase_id == purchase.id
+            assert saved.entitlement_id == entitlement.entitlement_id
             assert saved.action == RedemptionEventAction.APPROVED
 
 

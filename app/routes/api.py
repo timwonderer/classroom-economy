@@ -228,9 +228,10 @@ def _append_redemption_audit_log(*, student_item, entitlement, student, user_id,
     else:
         student_display_name = 'Unknown'
 
+    if entitlement is None:
+        raise ValueError("Cannot record redemption event without a resolved entitlement.")
     record_live_redemption_event(
-        purchase_id=student_item.id,
-        entitlement_id=getattr(entitlement, "entitlement_id", None),
+        entitlement_id=entitlement.entitlement_id,
         seat_id=getattr(student_item, 'seat_id', None),
         class_id=class_id,
         action=action_map[action],

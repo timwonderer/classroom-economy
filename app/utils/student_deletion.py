@@ -128,10 +128,8 @@ def _delete_student_scoped_rows(
     scoped_class_id=None,
 ):
     """Delete records that are scoped directly to the student being removed."""
-    if store_purchase_ids:
-        RedemptionEvent.query.filter(
-            RedemptionEvent.purchase_id.in_(store_purchase_ids)
-        ).delete(synchronize_session=False)
+    if scoped_class_id:
+        RedemptionEvent.query.filter_by(class_id=scoped_class_id).delete(synchronize_session=False)
     if entitlement_ids:
         EntitlementConsumption.query.filter(
             EntitlementConsumption.entitlement_id.in_(entitlement_ids)

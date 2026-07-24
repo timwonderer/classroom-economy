@@ -120,9 +120,7 @@ def collapse_universe(class_id: str, reason: str, actor_membership_id: Optional[
             EntitlementConsumption.entitlement_id.in_(select(entitlement_ids_subq))
         ).delete(synchronize_session=False)
         Entitlement.query.filter_by(class_id=class_id).delete(synchronize_session=False)
-        RedemptionEvent.query.filter(
-            RedemptionEvent.purchase_id.in_(select(store_purchase_ids_subq))
-        ).delete(synchronize_session=False)
+        RedemptionEvent.query.filter_by(class_id=class_id).delete(synchronize_session=False)
         StorePurchase.query.filter_by(class_id=class_id).delete(synchronize_session=False)
 
         # 4b. Seat-level store visibility rows for this class

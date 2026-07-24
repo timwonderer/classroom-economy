@@ -47,8 +47,7 @@ def _resolve_class_display_label(class_id, fallback_block):
 
 def record_live_redemption_event(
     *,
-    purchase_id: int,
-    entitlement_id: str | None,
+    entitlement_id: str,
     seat_id: int | None,
     class_id: str | None,
     action: RedemptionEventAction,
@@ -59,7 +58,6 @@ def record_live_redemption_event(
 ) -> str:
     event = RedemptionEvent(
         id=str(uuid4()),
-        purchase_id=purchase_id,
         entitlement_id=entitlement_id,
         seat_id=seat_id,
         class_id=class_id,
@@ -110,7 +108,6 @@ def execute_redemption_approval(
         raise RedemptionDispositionError("No available entitlement exists for this redemption.")
 
     event_id = record_live_redemption_event(
-        purchase_id=purchase.id,
         entitlement_id=entitlement.entitlement_id,
         seat_id=purchase.seat_id,
         class_id=purchase.class_id,
@@ -149,9 +146,10 @@ def execute_redemption_rejection(
         )
 
     entitlement = _resolve_entitlement_for_purchase(purchase)
+    if entitlement is None:
+        raise RedemptionDispositionError("No entitlement exists for this redemption; cannot record rejection event.")
     event_id = record_live_redemption_event(
-        purchase_id=purchase.id,
-        entitlement_id=entitlement.entitlement_id if entitlement else None,
+        entitlement_id=entitlement.entitlement_id,
         seat_id=purchase.seat_id,
         class_id=purchase.class_id,
         action=RedemptionEventAction.REJECTED,
