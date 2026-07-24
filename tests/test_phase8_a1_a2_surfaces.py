@@ -6,7 +6,7 @@ Tests that verify:
 - A2: Admin Rent Settings surface (GET|POST /admin/rent-settings) functions correctly
 
 Both tests verify:
-- Routes use event_type discriminator (ASSESSMENT, PAYMENT, WAIVED, REVERSED)
+- Routes use event_type discriminator (ASSESSMENT, PAYMENT, WAIVED per DOM-OBL-001)
 - Amounts are read from Ledger (DOM-LED-001), not stored in obligations
 - Multi-tenancy scoping by class_id is enforced
 """

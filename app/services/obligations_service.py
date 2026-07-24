@@ -7,7 +7,6 @@ from app.feats.base import generate_correlation_id
 from app.models import (
     EntitlementEvent,
     ObligationAssessment,
-    ObligationLifecycle,
     RentSettings,
     Seat,
 )
@@ -57,13 +56,6 @@ def _create_claim_assessment(
     )
     db.session.add(assessment)
     db.session.flush()
-    db.session.add(
-        ObligationLifecycle(
-            assessment_id=assessment.id,
-            status="DUE",
-            updated_at=assessed_at,
-        )
-    )
     return assessment
 
 
@@ -74,20 +66,6 @@ def _require_claim_assessment(claim_id: int, seat_id: int, class_id: str) -> Obl
         raise ValueError(f"Missing canonical claim assessment for insurance claim {claim_id}")
     return assessment
 
-
-def _set_assessment_lifecycle(assessment: ObligationAssessment, *, status: str, updated_at):
-    lifecycle = assessment.lifecycle
-    if lifecycle is None:
-        lifecycle = ObligationLifecycle(
-            assessment_id=assessment.id,
-            status=status,
-            updated_at=updated_at,
-        )
-        db.session.add(lifecycle)
-        return lifecycle
-    lifecycle.status = status
-    lifecycle.updated_at = updated_at
-    return lifecycle
 
 
 # ---------------------------------------------------------------------------
@@ -143,14 +121,6 @@ def record_rent_payment(
     )
     db.session.add(payment_event)
     db.session.flush()
-
-    db.session.add(
-        ObligationLifecycle(
-            assessment_id=payment_event.id,
-            status="PAID",
-            updated_at=now,
-        )
-    )
     return payment_event
 
 
@@ -161,7 +131,6 @@ def record_rent_waiver(
     waiver_start_date,
     waiver_end_date,
     periods_count: int,
-    reason: str | None = None,
     created_by_seat_id: int | None = None,
     created_by_user_id: int | None = None,
 ) -> ObligationAssessment:
@@ -197,21 +166,11 @@ def record_rent_waiver(
         coverage_start_time=waiver_start_date,
         coverage_end_time=waiver_end_date,
         cycle_idempotency_key=f"rent-waiver:{seat_id}:{class_id}:{waiver_start_date.isoformat()}",
-        reason=reason,
-        reversed_by_seat_id=created_by_seat_id,
         internal_ref=f"rent:{class_id}:waiver",
         correlation_id=generate_correlation_id(),
     )
     db.session.add(waiver_event)
     db.session.flush()
-
-    db.session.add(
-        ObligationLifecycle(
-            assessment_id=waiver_event.id,
-            status="WAIVED",
-            updated_at=now,
-        )
-    )
     return waiver_event
 
 
@@ -245,13 +204,6 @@ def record_insurance_enrollment(
     )
     db.session.add(assessment)
     db.session.flush()
-    db.session.add(
-        ObligationLifecycle(
-            assessment_id=assessment.id,
-            status="DUE",
-            updated_at=now,
-        )
-    )
     return assessment
 
 
@@ -286,14 +238,6 @@ def record_insurance_premium_payment(
     )
     db.session.add(payment_event)
     db.session.flush()
-
-    db.session.add(
-        ObligationLifecycle(
-            assessment_id=payment_event.id,
-            status="PAID",
-            updated_at=now,
-        )
-    )
     return payment_event
 
 
@@ -342,40 +286,8 @@ def record_insurance_claim_payment(
     )
     db.session.add(payment_event)
     db.session.flush()
-
-    _set_assessment_lifecycle(payment_event, status="PAID", updated_at=now)
     return payment_event
 
-
-def record_insurance_reversal(
-    *,
-    seat_id: int,
-    class_id: str,
-    claim_id: int,
-    reason: str | None = None,
-    reversed_by_seat_id: int | None = None,
-) -> ObligationAssessment:
-    """Record insurance claim reversal as REVERSED event."""
-    now = utc_now()
-    assessment = _require_claim_assessment(claim_id, seat_id, class_id)
-
-    reversal_event = ObligationAssessment(
-        seat_id=seat_id,
-        class_id=class_id,
-        obligation_type="INSURANCE_CLAIM",
-        event_type='REVERSED',
-        assessed_at=now,
-        reason=reason,
-        reversed_by_seat_id=reversed_by_seat_id,
-        cycle_idempotency_key=f"insurance-claim-reversal:{claim_id}",
-        internal_ref=_claim_assessment_key(claim_id),
-        correlation_id=generate_correlation_id(),
-    )
-    db.session.add(reversal_event)
-    db.session.flush()
-
-    _set_assessment_lifecycle(reversal_event, status="REVERSED", updated_at=now)
-    return reversal_event
 
 
 # ---------------------------------------------------------------------------
@@ -476,7 +388,7 @@ def get_rent_payment_history(
     class_id: str,
     limit: int = 24,
 ) -> list[tuple[ObligationAssessment, list[ObligationAssessment]]]:
-    """Get payment history for a seat: list of (ASSESSMENT event, [PAYMENT/WAIVED/REVERSED events]).
+    """Get payment history for a seat: list of (ASSESSMENT event, [PAYMENT/WAIVED events]).
 
     Returns pairs of (assessment_event, state_change_events) in reverse chronological order.
     Limit defaults to 24 most recent assessment cycles.
@@ -504,7 +416,7 @@ def get_rent_payment_history(
             class_id=class_id,
             obligation_type='RENT',
             internal_ref=assessment.internal_ref,
-        ).filter(ObligationAssessment.event_type.in_(['PAYMENT', 'WAIVED', 'REVERSED'])).all()
+        ).filter(ObligationAssessment.event_type.in_(['PAYMENT', 'WAIVED'])).all()
 
         history.append((assessment, state_events))
 

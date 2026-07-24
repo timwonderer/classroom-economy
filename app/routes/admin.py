@@ -6094,7 +6094,6 @@ def rent_settings():
             waiver_start_date=waiver.coverage_start_time,
             waiver_end_date=waiver.coverage_end_time,
             periods_count=_count_rent_waiver_periods(rent_settings, waiver),
-            reason=waiver.reversal.reason if waiver.reversal else None,
             created_at=waiver.assessed_at,
         )
         for waiver in obligations_service.get_active_rent_waivers_for_class(
@@ -6543,7 +6542,6 @@ def add_rent_waiver():
                 waiver_start_date=waiver_start,
                 waiver_end_date=waiver_end,
                 periods_count=periods_count,
-                reason=reason,
                 created_by_seat_id=teacher_seat.id,
                 created_by_user_id=user_id,
             )

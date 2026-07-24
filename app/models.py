@@ -1120,7 +1120,7 @@ def _sync_rent_settings_scope(mapper, connection, target):
 # ---- Canonical Obligations Domain (DOM-OBL-001) ----
 
 class ObligationAssessment(db.Model):
-    """Immutable fact record for all obligation events (assessment, payment, waiver, reversal) — DOM-OBL-001 §VII."""
+    """Immutable fact record for all obligation events (ASSESSMENT, PAYMENT, WAIVED) — DOM-OBL-001 §VII."""
     __tablename__ = 'assessment_events'
 
     id = db.Column(db.Integer, primary_key=True)
@@ -1130,7 +1130,7 @@ class ObligationAssessment(db.Model):
     # Canonical identity fields — DOM-OBL-001 §VII.1
     internal_ref = db.Column(db.String(200), nullable=False)  # Stable lineage key for recurring relationship
     correlation_id = db.Column(db.String(200), nullable=False, unique=True, index=True)  # Unique ID for this individual liability
-    event_type = db.Column(db.String(20), nullable=False, index=True)  # ASSESSMENT | PAYMENT | WAIVED | REVERSED
+    event_type = db.Column(db.String(20), nullable=False, index=True)  # ASSESSMENT | PAYMENT | WAIVED (per DOM-OBL-001)
 
     obligation_type = db.Column(db.String(30), nullable=False, index=True)  # RENT, INSURANCE_PREMIUM
     policy_version_id = db.Column(db.Integer, db.ForeignKey('policy_versions.id'), nullable=True, index=True)
@@ -1146,10 +1146,6 @@ class ObligationAssessment(db.Model):
 
     # Ledger linkage — required for PAYMENT events, NULL for others (per DOM-OBL-001 §VII.1)
     ledger_transaction_id = db.Column(db.Integer, db.ForeignKey('ledger_transaction.id', ondelete='SET NULL'), nullable=True, index=True)
-
-    # Reversal metadata — only populated for REVERSED events
-    reason = db.Column(db.Text, nullable=True)
-    reversed_by_seat_id = db.Column(db.Integer, db.ForeignKey('seats.id', ondelete='SET NULL'), nullable=True, index=True)
 
     # Legacy fields (bridge period, will be removed in future)
     join_code = db.Column(db.String(20), nullable=True, index=True)
@@ -1167,7 +1163,6 @@ class ObligationAssessment(db.Model):
     entitlement_events = db.relationship('EntitlementEvent', backref='assessment')
     policy_version = db.relationship('PolicyVersion', backref=db.backref('assessments', lazy='dynamic'))
     bill_cycle = db.relationship('BillCycle', backref=db.backref('assessments', passive_deletes=True))
-    reversed_by = db.relationship('Seat', foreign_keys=[reversed_by_seat_id])
 
     __table_args__ = (
         db.UniqueConstraint('seat_id', 'class_id', 'cycle_idempotency_key', name='uq_assessment_events_idempotency'),

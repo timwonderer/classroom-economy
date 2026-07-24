@@ -187,8 +187,8 @@ class TestObligationsSurfaces:
             for event in events:
                 # NEW CANONICAL FIELDS (should exist)
                 assert hasattr(event, 'event_type'), "event_type should exist"
-                assert event.event_type in ['ASSESSMENT', 'PAYMENT', 'WAIVED', 'REVERSED'], \
-                    f"event_type should be one of ASSESSMENT|PAYMENT|WAIVED|REVERSED, got {event.event_type}"
+                assert event.event_type in ['ASSESSMENT', 'PAYMENT', 'WAIVED'], \
+                    f"event_type should be one of ASSESSMENT|PAYMENT|WAIVED (per DOM-OBL-001), got {event.event_type}"
                 assert hasattr(event, 'internal_ref'), "internal_ref should exist"
                 assert hasattr(event, 'correlation_id'), "correlation_id should exist"
 

@@ -2717,7 +2717,6 @@ def _expand_rent_waiver_history(settings, waivers, *, now=None):
                 'status_label': status_label,
                 'is_cancellable': cancellable,
                 'created_at': ensure_utc(getattr(waiver, "assessed_at", None)) if getattr(waiver, "assessed_at", None) else None,
-                'reason': waiver.reversal.reason if getattr(waiver, "reversal", None) else None,
             })
 
     status_rank = {'current': 0, 'upcoming': 1, 'used': 2}
@@ -3036,7 +3035,6 @@ def rent():
         # Track all events for this assessment
         payment_events = [e for e in state_events if e.event_type == 'PAYMENT']
         waived_events = [e for e in state_events if e.event_type == 'WAIVED']
-        reversed_events = [e for e in state_events if e.event_type == 'REVERSED']
 
         if payment_events:
             # Sum amounts from all PAYMENT events (via Ledger)
@@ -3079,18 +3077,6 @@ def rent():
                     'recorded_at': waived_event.assessed_at,
                     'status_text': 'Waived',
                     'entry_type': 'waiver',
-                })
-
-        if reversed_events:
-            # Add reversal entries
-            for reversed_event in reversed_events:
-                payment_history_rows.append({
-                    'period_month': assessment.period_month,
-                    'period_year': assessment.period_year,
-                    'amount_paid': None,
-                    'recorded_at': reversed_event.assessed_at,
-                    'status_text': f'Reversed: {reversed_event.reason or "No reason"}',
-                    'entry_type': 'reversal',
                 })
 
     payment_history_rows.sort(
