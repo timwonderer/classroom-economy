@@ -46,29 +46,39 @@ Read these in order before starting the audit:
 ## Part A: Schema and Data Model Audit
 
 ### A1: Canonical Obligation Tables
-Verify the domain owns the current canonical tables and no retired persistence is treated as authority.
+Verify the domain owns ONLY the two canonical tables per DOM-OBL-001 §VI and no retired persistence is treated as authority.
 
+**Canonical (owned):**
 - [ ] `assessment_events` (immutable obligation event log)
-- [ ] `bill_cycles` (recurring reminder state)
-- [ ] `obligation_lifecycle` (status progression tracking)
+- [ ] `bill_cycles` (recurring reminder state, identity-blind)
+
+**Not canonical (do not own):**
+- [ ] `obligation_lifecycle` is NOT a canonical domain table (may exist for status caching but is not authority)
+- [ ] No separate `obligation_satisfaction` table (events in assessment_events only)
+- [ ] No separate `obligation_reversal` table (reversal is not authorized per contract)
 
 Check for retired or forbidden authority-bearing fields/patterns:
 
 - [ ] no `paid_amount` column on assessment_events
 - [ ] no `satisfied` mutable flag on assessment_events
 - [ ] no `lifecycle_status` field duplicating derived state
-- [ ] no `obligation_satisfaction` separate table (collapsed into assessment_events)
-- [ ] no `obligation_reversal` separate table (events in assessment_events)
 - [ ] no direct store of assessment amount (read from Ledger via ledger_transaction_id)
 
 ### A2: Event-Type Discriminator Schema
-Verify event_type correctly discriminates obligation event types.
+Verify event_type correctly discriminates obligation event types per DOM-OBL-001 §VII.
 
-- [ ] `ASSESSMENT` events only (one per individual liability)
-- [ ] `PAYMENT` events (multiple allowed, linked to Ledger via ledger_transaction_id)
+**Authorized event types:**
+- [ ] `ASSESSMENT` events only (exactly one per individual liability)
+- [ ] `PAYMENT` events (multiple allowed per assessment, linked to Ledger via ledger_transaction_id)
 - [ ] `WAIVED` events (rent-only, no Ledger movement)
-- [ ] `REVERSED` events (if applicable, immutable state change)
+
+**Not authorized:**
+- [ ] `REVERSED` events do NOT exist (reversal is not part of domain contract)
+- [ ] No other event_type values
+
+Check for derived state only (no flags):
 - [ ] No mutable status flags; all state derived from event sequence
+- [ ] No cached `paid`, `satisfied`, or `overdue` columns
 
 ### A3: Class Configuration Integration
 Verify Class Configuration domain owns rent/insurance policy terms.
@@ -87,12 +97,14 @@ Verify Ledger (Financial domain) owns amounts and Obligations only references.
 - [ ] get_total_paid_for_assessment() sums from Ledger, not obligation fields
 
 ### A5: Required Table Checks
-Use schema inspection against the current database to confirm:
+Use schema inspection against the current database to confirm the two canonical tables:
 
-- [ ] `assessment_events` is append-only event history
-- [ ] `bill_cycles` contains only temporal reminder state (no seat/class identity, no amount, no business meaning)
-- [ ] `obligation_lifecycle` tracks status only, not financial or coverage facts
-- [ ] `rent_settings` is class-scoped configuration (not per-seat)
+- [ ] `assessment_events` is append-only event history (event_type: ASSESSMENT|PAYMENT|WAIVED only)
+- [ ] `bill_cycles` contains ONLY temporal reminder state (no seat/class identity, no amount, no business meaning)
+- [ ] `rent_settings` is class-scoped configuration (not per-seat; owned by Class Configuration domain)
+
+**DO NOT verify:**
+- [ ] `obligation_lifecycle` is NOT a canonical domain authority table (if it exists, it's a cache, not authority)
 
 ---
 
@@ -236,7 +248,7 @@ Verify canonical query helpers implement DOM-OBL-001 correctly.
 ### E4: get_rent_payment_history()
 - [ ] Returns (assessment, state_events) tuples
 - [ ] Scoped by seat_id and class_id
-- [ ] State events include PAYMENT, WAIVED, REVERSED
+- [ ] State events include PAYMENT and WAIVED only (no REVERSED)
 - [ ] Ordered by coverage period (descending)
 
 ### E5: get_rent_waivers_for_seat()
@@ -255,7 +267,7 @@ The audit passes only if all of the following are true:
 - [ ] the current code matches the authority and persistence model in DOM-OBL-001
 - [ ] no stale template field access remains on audited surfaces
 - [ ] no direct domain boundary violations remain in the audited paths
-- [ ] all event_type discriminator usage is correct (ASSESSMENT|PAYMENT|WAIVED|REVERSED only)
+- [ ] all event_type discriminator usage is correct (ASSESSMENT|PAYMENT|WAIVED only; NO REVERSED)
 - [ ] all amount reads use Ledger via ledger_transaction_id, never obligation fields
 - [ ] all FEAT mutation boundaries are enforced (FEATContext required)
 - [ ] get_rent_payment_history() or equivalent helper used for complex reads
