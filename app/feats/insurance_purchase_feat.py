@@ -5,19 +5,24 @@ from decimal import Decimal
 from datetime import timedelta
 
 from app.extensions import db
+from app.feats.base import feat_shell
 from app.services import ledger_service, obligations_service
 from app.feats.ledger_resolution_feat import build_intended_ledger_plan, resolve_intended_ledger_plan, apply_resolved_ledger_plan
+from app.services.store_entitlement_service import grant_entitlement
 from app.utils.time import utc_now
 from app.utils.insurance_eligibility import compute_coverage_start_utc_from_purchase
+from app.models import GrantType
 
 
 @dataclass
 class InsurancePurchaseResult:
     enrollment_id: int
     premium_transaction_id: int
+    entitlement_id: str | None
     overdraft_transfer_applied: bool
 
 
+@feat_shell("FEAT-STOR-001")
 def execute_insurance_purchase(
     *,
     seat,
@@ -43,6 +48,18 @@ def execute_insurance_purchase(
         next_payment_due=purchase_utc + timedelta(days=30),
         coverage_start_date=coverage_start_utc,
     )
+
+    entitlement = None
+    entitlement_item_id = getattr(policy, "entitlement_item_id", None)
+    if entitlement_item_id is not None:
+        entitlement = grant_entitlement(
+            entitlement_item_id=entitlement_item_id,
+            target_seat_id=seat.id,
+            actor_seat_id=seat.id,
+            class_id=class_id,
+            grant_type=GrantType.PURCHASE,
+            correlation_id=f"insurance:{seat.id}:{class_id}:{policy.id}",
+        )
 
     premium_tx = ledger_service.create_pending_transaction(
         seat_id=seat.id,
@@ -86,5 +103,6 @@ def execute_insurance_purchase(
     return InsurancePurchaseResult(
         enrollment_id=enrollment.id,
         premium_transaction_id=premium_tx.id,
+        entitlement_id=getattr(entitlement, "entitlement_id", None),
         overdraft_transfer_applied=overdraft_transfer_applied,
     )

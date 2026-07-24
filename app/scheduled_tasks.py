@@ -7,6 +7,7 @@ Contains periodic tasks that run in the background to maintain system state.
 import logging
 import secrets
 from app.feats.base import feat_shell
+from app.services.insurance_policy_service import delete_due_policy_lineages
 from app.utils.insurance_billing import get_insurance_billing_snapshot
 
 
@@ -479,6 +480,7 @@ def run_insurance_cycle_scheduler(execution_time=None):
     outcomes = []
     for class_id in class_ids:
         outcomes.append(run_insurance_cycle_for_class(class_id, execution_time))
+    delete_due_policy_lineages(execution_time=execution_time)
     return outcomes
 
 

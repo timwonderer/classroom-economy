@@ -235,8 +235,32 @@ def record_insurance_enrollment(
     next_payment_due,
     coverage_start_date,
 ) -> ObligationAssessment:
-    """Legacy insurance enrollment mutation is no longer supported."""
-    raise NotImplementedError("Insurance enrollment rows have been removed")
+    """Record the canonical insurance enrollment as an assessment event."""
+    now = utc_now()
+    amount_snap = getattr(policy, "premium", None)
+    if amount_snap is None:
+        amount_snap = 0
+    assessment = ObligationAssessment(
+        seat_id=seat_id,
+        class_id=class_id,
+        obligation_type="INSURANCE_PREMIUM",
+        amount_snap=amount_snap,
+        due_at=next_payment_due,
+        assessed_at=now,
+        policy_version_id=getattr(policy, "id", None),
+        coverage_start_time=coverage_start_date,
+        cycle_idempotency_key=f"insurance-enrollment:{seat_id}:{class_id}:{getattr(policy, 'id', 'unknown')}",
+    )
+    db.session.add(assessment)
+    db.session.flush()
+    db.session.add(
+        ObligationLifecycle(
+            assessment_id=assessment.id,
+            status="DUE",
+            updated_at=now,
+        )
+    )
+    return assessment
 
 
 def record_insurance_premium_payment(

@@ -90,6 +90,11 @@ Identify:
 - the constraining `INV-*` documents
 - the relevant `FEAT-*` documents or missing FEAT gaps
 - adjacent domains that must be read from or coordinated with
+- a cross-domain contract identifying:
+  - domains this domain owns
+  - domains it consumes through lawful reads
+  - domains it mutates through FEAT coordination
+  - interfaces this domain exposes to other domains
 
 Deliverable:
 
@@ -299,6 +304,40 @@ Deliverable:
 
 - deletion patch with targeted regression evidence and updated tracking docs
 
+### Phase 10: Certification Audit
+
+Perform an independent audit of the reconstructed domain.
+
+The audit should attempt to falsify the claim that the domain has been successfully reconstructed.
+
+Required audit categories include, as applicable:
+
+- canonical domain authority
+- persistence correctness
+- lawful FEAT mutation boundaries
+- read model correctness
+- application surface rewiring
+- template contract compliance
+- accessibility requirements
+- journey workflows
+- legacy implementation leakage
+- documentation synchronization
+- cross-domain coordination
+- targeted regression evidence
+
+Rules:
+
+- The audit should independently verify the implementation rather than relying on implementation assumptions.
+- Documentation must accurately describe the implemented behavior.
+- False positives discovered during audit should result in refinement of the audit methodology rather than unnecessary code changes.
+- Findings must either be resolved or explicitly tracked before certification.
+
+Deliverable:
+
+- completed domain audit report
+- disposition of all findings
+- certification evidence
+
 ---
 
 ## VII. Required Status Vocabulary
@@ -348,6 +387,29 @@ Do not delete a legacy path until:
 - every known surviving caller has been rewired, removed, collapsed, or verified
 - targeted validation covers the replacement surface
 - the deletion itself is included in the verification scope
+
+---
+
+### Domain Completion Gate
+
+A domain reconstruction is considered complete only when:
+
+- canonical domain authority is fully documented
+- persistence contract is complete
+- primitive operations are defined
+- every lawful mutation enters through FEAT
+- read models are documented
+- every inventoried application surface is marked:
+  - REWIRED
+  - REMOVED
+  - COLLAPSED
+  - VERIFIED
+- targeted validation has passed
+- documentation reflects the implemented architecture
+- certification audit has completed with no unresolved blocking findings
+- remaining issues, if any, are explicitly tracked and do not violate governing INV, DOM, or FEAT authority
+
+Completion represents architectural certification of the reconstructed domain rather than implementation progress alone.
 
 ---
 

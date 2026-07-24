@@ -135,7 +135,7 @@
     <li class="nav-item" role="presentation">
         <button class="nav-link" id="items-tab" data-bs-toggle="tab" data-bs-target="#items" type="button" role="tab">
             <span class="material-symbols-outlined me-1">shopping_bag</span>Items
-            <span class="badge bg-secondary">{{ student_items|length }}</span>
+            <span class="badge bg-secondary">{{ entitlements|length }}</span>
         </button>
     </li>
     <li class="nav-item" role="presentation">
@@ -437,7 +437,7 @@
                 <h5 class="mb-0"><span class="material-symbols-outlined me-2">shopping_bag</span>Purchased Items</h5>
             </div>
             <div class="card-body">
-                {% if student_items %}
+                {% if entitlements %}
                 <div class="table-responsive">
                     <table class="table table-striped table-hover js-sortable">
                         <thead class="table-dark">
@@ -450,36 +450,42 @@
                             </tr>
                         </thead>
                         <tbody>
-                            {% for s_item in student_items %}
+                            {% for ent in entitlements %}
                             <tr>
                                 <td>
-                                    <strong>{{ s_item.store_item.name }}</strong>
+                                    <strong>{{ ent.store_item.name }}</strong>
                                 </td>
                                 <td>
-                                    {% if s_item.purchase_date %}
+                                    {% if ent.purchase_date %}
                                     <span class="local-timestamp"
-                                        data-timestamp="{{ format_utc_iso(s_item.purchase_date) }}"></span>
+                                        data-timestamp="{{ format_utc_iso(ent.purchase_date) }}"></span>
                                     {% else %}
                                     <span class="text-muted">N/A</span>
                                     {% endif %}
                                 </td>
                                 <td>
-                                    {% if s_item.status == 'purchased' %}
+                                    {% if ent.status == 'purchased' %}
                                     <span class="badge bg-primary">Purchased</span>
-                                    {% elif s_item.status == 'processing' %}
+                                    {% elif ent.status == 'processing' %}
                                     <span class="badge bg-warning text-dark">Processing</span>
-                                    {% elif s_item.status == 'used' %}
+                                    {% elif ent.status == 'redeemed' %}
+                                    <span class="badge bg-success">Redeemed</span>
+                                    {% elif ent.status == 'expired' %}
+                                    <span class="badge bg-danger">Expired</span>
+                                    {% elif ent.status == 'revoked' %}
+                                    <span class="badge bg-dark">Revoked</span>
+                                    {% elif ent.status == 'used' %}
                                     <span class="badge bg-success">Used</span>
-                                    {% elif s_item.status == 'approved' %}
+                                    {% elif ent.status == 'approved' %}
                                     <span class="badge bg-success">Approved</span>
                                     {% else %}
-                                    <span class="badge bg-secondary">{{ s_item.status|title }}</span>
+                                    <span class="badge bg-secondary">{{ ent.status|title }}</span>
                                     {% endif %}
                                 </td>
                                 <td>
-                                    <span class="badge bg-info">{{ s_item.store_item.item_type|title }}</span>
+                                    <span class="badge bg-info">{{ ent.store_item.item_type|title }}</span>
                                 </td>
-                                <td>{{ s_item.redemption_details or 'N/A' }}</td>
+                                <td>{{ ent.redemption_details or 'N/A' }}</td>
                             </tr>
                             {% endfor %}
                         </tbody>

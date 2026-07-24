@@ -757,7 +757,7 @@ class StoreItem(db.Model):
     # Collective goal settings (only for item_type='collective')
     collective_goal_type = db.Column(db.String(20), nullable=True)  # 'fixed' or 'whole_class'
     collective_goal_target = db.Column(db.Integer, nullable=True)  # Fixed number of purchases needed (used when type='fixed')
-    collective_goal_expires_at = db.Column(db.DateTime(timezone=True), nullable=True)  # Optional deadline; unmet goals are auto-refunded on expiration
+    collective_goal_expires_at = db.Column(db.DateTime(timezone=True), nullable=True)  # Optional deadline; unmet goals deactivate the item on expiration
     collective_goal_instance_code = db.Column(db.String(36), nullable=True, index=True)
 
     # Redemption prompt (for delayed use items)
@@ -878,9 +878,6 @@ class StorePurchase(db.Model):
     ledger_tx_id = db.Column(db.Integer, db.ForeignKey('ledger_transaction.id'), nullable=True, index=True)
     purchased_at = db.Column(db.DateTime(timezone=True), nullable=False, default=utc_now)
     expiry_date = db.Column(db.DateTime(timezone=True), nullable=True)
-    is_from_bundle = db.Column(db.Boolean, default=False, nullable=False)
-    bundle_remaining = db.Column(db.Integer, nullable=True)
-    uses_remaining = db.Column(db.Integer, nullable=True)
     collective_goal_instance_code = db.Column(db.String(36), nullable=True, index=True)
 
     seat = db.relationship('Seat', backref=db.backref('store_purchases', lazy='dynamic'))
@@ -893,9 +890,9 @@ class StorePurchase(db.Model):
 
 
 class RedemptionEventAction(enum.Enum):
-    REQUEST = 'request'
-    APPROVED = 'approved'
-    REJECTED = 'rejected'
+    REQUEST = 'REQUEST'
+    APPROVED = 'APPROVED'
+    REJECTED = 'REJECTED'
 
 
 class RedemptionEventSource(enum.Enum):
@@ -905,7 +902,7 @@ class RedemptionEventSource(enum.Enum):
 class RedemptionEvent(db.Model):
     __tablename__ = 'redemption_events'
     id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    purchase_id = db.Column(db.Integer, db.ForeignKey('store_purchases.id', ondelete='CASCADE'), nullable=False, index=True)
+    entitlement_id = db.Column(db.String(36), db.ForeignKey('entitlements.entitlement_id'), nullable=False, index=True)
     seat_id = db.Column(db.Integer, db.ForeignKey('seats.id', ondelete='SET NULL'), nullable=True, index=True)
     class_id = db.Column(db.String(36), db.ForeignKey('classes.class_id', ondelete='CASCADE'), nullable=True, index=True)
     action = db.Column(
@@ -932,11 +929,117 @@ class RedemptionEvent(db.Model):
     notes = db.Column(db.Text, nullable=True)
     timestamp = db.Column(db.DateTime(timezone=True), nullable=False, default=utc_now, index=True)
 
-    purchase = db.relationship('StorePurchase', backref=db.backref('redemption_events', lazy='dynamic'))
+    entitlement = db.relationship('Entitlement', backref=db.backref('redemption_events', lazy='dynamic'))
     initiated_by = db.relationship('User', backref=db.backref('initiated_redemption_events', lazy='dynamic'))
 
     __table_args__ = (
         db.Index('ix_redemption_events_initiated_by_timestamp', 'initiated_by_user_id', 'timestamp'),
+    )
+
+
+# -------------------- ENTITLEMENT GRANT AND TERMINAL LIFECYCLE (DOM-STORE-001 v3.0 §VII) --------------------
+
+class GrantType(enum.Enum):
+    PURCHASE = 'PURCHASE'
+    MANUAL_GRANT = 'MANUAL_GRANT'
+    OBLIGATION = 'OBLIGATION'
+
+
+class Entitlement(db.Model):
+    """One row per atomic entitlement — DOM-STORE-001 v3.0 §VII.A."""
+    __tablename__ = 'entitlements'
+
+    id = db.Column(db.Integer, primary_key=True)
+    entitlement_id = db.Column(db.String(36), nullable=False, unique=True, index=True, default=lambda: str(uuid.uuid4()))
+    entitlement_item_id = db.Column(db.Integer, db.ForeignKey('store_items.id'), nullable=False, index=True)
+    target_seat_id = db.Column(db.Integer, db.ForeignKey('seats.id', ondelete='CASCADE'), nullable=False, index=True)
+    actor_seat_id = db.Column(db.Integer, db.ForeignKey('seats.id', ondelete='CASCADE'), nullable=False, index=True)
+    class_id = db.Column(db.String(36), db.ForeignKey('classes.class_id', ondelete='CASCADE'), nullable=False, index=True)
+    grant_type = db.Column(
+        db.Enum(GrantType, values_callable=lambda x: [e.value for e in x], name='grant_type_enum'),
+        nullable=False,
+    )
+    correlation_id = db.Column(db.String(100), nullable=True, index=True)
+    granted_at = db.Column(db.DateTime(timezone=True), nullable=False, default=utc_now)
+
+    target_seat = db.relationship('Seat', foreign_keys=[target_seat_id], backref=db.backref('entitlements', passive_deletes=True))
+    actor_seat = db.relationship('Seat', foreign_keys=[actor_seat_id])
+    store_item = db.relationship('StoreItem', backref=db.backref('entitlements', lazy='dynamic'))
+
+    __table_args__ = (
+        db.Index('ix_entitlements_target_class', 'target_seat_id', 'class_id'),
+        db.Index('ix_entitlements_item_class', 'entitlement_item_id', 'class_id'),
+    )
+
+
+class Disposition(enum.Enum):
+    CONSUMED = 'CONSUMED'
+    EXPIRED = 'EXPIRED'
+    REVOKED = 'REVOKED'
+
+
+class EntitlementConsumption(db.Model):
+    """Store-owned terminal lifecycle fact — DOM-STORE-001 v3.0 §VII.B."""
+    __tablename__ = 'entitlement_consumptions'
+
+    id = db.Column(db.Integer, primary_key=True)
+    consumption_id = db.Column(db.String(36), nullable=False, unique=True, index=True, default=lambda: str(uuid.uuid4()))
+    entitlement_id = db.Column(db.String(36), db.ForeignKey('entitlements.entitlement_id'), nullable=False, index=True)
+    class_id = db.Column(db.String(36), db.ForeignKey('classes.class_id', ondelete='CASCADE'), nullable=False, index=True)
+    target_seat_id = db.Column(db.Integer, db.ForeignKey('seats.id', ondelete='CASCADE'), nullable=False, index=True)
+    actor_seat_id = db.Column(db.Integer, db.ForeignKey('seats.id', ondelete='CASCADE'), nullable=True, index=True)
+    disposition = db.Column(
+        db.Enum(Disposition, values_callable=lambda x: [e.value for e in x], name='disposition_enum'),
+        nullable=False,
+    )
+    correlation_id = db.Column(db.String(100), nullable=True, index=True)
+    timestamp = db.Column(db.DateTime(timezone=True), nullable=False, default=utc_now)
+
+    entitlement = db.relationship('Entitlement', backref=db.backref('consumptions', lazy='dynamic'))
+    target_seat = db.relationship('Seat', foreign_keys=[target_seat_id])
+    actor_seat = db.relationship('Seat', foreign_keys=[actor_seat_id])
+
+    __table_args__ = (
+        db.UniqueConstraint('entitlement_id', 'disposition', name='uq_entitlement_terminal_event'),
+    )
+
+
+class InsuranceClaimStatus(enum.Enum):
+    SUBMITTED = 'SUBMITTED'
+    APPROVED = 'APPROVED'
+    REJECTED = 'REJECTED'
+
+
+class InsuranceClaim(db.Model):
+    """Insurance claim workflow — DOM-STORE-001 v3.0 §VII.C."""
+    __tablename__ = 'insurance_claims'
+
+    id = db.Column(db.Integer, primary_key=True)
+    claim_id = db.Column(db.String(36), nullable=False, unique=True, index=True, default=lambda: str(uuid.uuid4()))
+    class_id = db.Column(db.String(36), db.ForeignKey('classes.class_id', ondelete='CASCADE'), nullable=False, index=True)
+    entitlement_id = db.Column(db.String(36), db.ForeignKey('entitlements.entitlement_id'), nullable=False, index=True)
+    target_seat_id = db.Column(db.Integer, db.ForeignKey('seats.id', ondelete='CASCADE'), nullable=False, index=True)
+    actor_seat_id = db.Column(db.Integer, db.ForeignKey('seats.id', ondelete='CASCADE'), nullable=False, index=True)
+    transaction_id = db.Column(db.Integer, db.ForeignKey('ledger_transaction.id'), nullable=True, index=True)
+    claimed_dates = db.Column(db.JSON, nullable=True)
+    status = db.Column(
+        db.Enum(InsuranceClaimStatus, values_callable=lambda x: [e.value for e in x], name='insurance_claim_status_enum'),
+        nullable=False,
+        default=InsuranceClaimStatus.SUBMITTED,
+    )
+    submitted_at = db.Column(db.DateTime(timezone=True), nullable=False, default=utc_now)
+    decided_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    decided_by_seat_id = db.Column(db.Integer, db.ForeignKey('seats.id', ondelete='SET NULL'), nullable=True, index=True)
+    correlation_id = db.Column(db.String(100), nullable=True, index=True)
+
+    entitlement = db.relationship('Entitlement', backref=db.backref('insurance_claims', lazy='dynamic'))
+    target_seat = db.relationship('Seat', foreign_keys=[target_seat_id], backref=db.backref('insurance_claims', passive_deletes=True))
+    actor_seat = db.relationship('Seat', foreign_keys=[actor_seat_id])
+    decided_by_seat = db.relationship('Seat', foreign_keys=[decided_by_seat_id])
+    referenced_transaction = db.relationship('Transaction', backref=db.backref('insurance_claims', lazy='dynamic'))
+
+    __table_args__ = (
+        db.Index('ix_insurance_claims_entitlement_class', 'entitlement_id', 'class_id'),
     )
 
 
@@ -1665,7 +1768,7 @@ class PolicyTransition(db.Model):
     activation_mode = db.Column(db.String(32), nullable=False)
     status = db.Column(db.String(32), nullable=False, default='pending')
     created_at = db.Column(db.DateTime(timezone=True), default=utc_now, nullable=False)
-    created_by = db.Column(db.Integer, nullable=True)
+    created_by = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
     applied_at = db.Column(db.DateTime(timezone=True), nullable=True)
     correlation_id = db.Column(db.String(64), nullable=True, index=True)
     superseded_by_transition_id = db.Column(db.Integer, db.ForeignKey('policy_transitions.id'), nullable=True)

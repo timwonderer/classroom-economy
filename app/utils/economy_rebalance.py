@@ -196,8 +196,6 @@ def _create_policy_transition(
     target_version.created_by_transition_id = transition.id
 
     if status == POLICY_TRANSITION_STATUS_APPLIED:
-        if source_version:
-            source_version.is_active = False
         _supersede_pending_transitions(
             class_id,
             domain,
@@ -353,6 +351,26 @@ def _apply_change_list(user_id, settings_row, changes, activation_mode, *, refer
     return applied_labels, applied_changes
 
 
+def _activate_pending_policy_version(transition: PolicyTransition, *, reference_time: datetime) -> PolicyVersion | None:
+    pending_version = db.session.get(PolicyVersion, transition.target_policy_version_id)
+    if not pending_version:
+        return None
+
+    activated_version = PolicyVersion(
+        class_id=pending_version.class_id,
+        domain=pending_version.domain,
+        version_number=_next_policy_version_number(pending_version.class_id, pending_version.domain),
+        policy_payload_json=pending_version.policy_payload_json,
+        created_at=reference_time,
+        activated_at=reference_time,
+        created_by_transition_id=transition.id,
+        is_active=True,
+    )
+    db.session.add(activated_version)
+    db.session.flush()
+    return activated_version
+
+
 def apply_rebalance_changes(user_id, settings_row, change_plan, activation_mode, *, reference_time=None):
     reference_time = ensure_utc(reference_time) if reference_time else utc_now()
     applied_labels, applied_changes = _apply_change_list(
@@ -423,15 +441,9 @@ def activate_due_rebalances(user_id, *, class_id=None, reference_time=None):
                     reference_time=reference_time,
                 )
                 if applied_changes:
-                    source_version = (
-                        db.session.get(PolicyVersion, transition.source_policy_version_id)
-                        if transition.source_policy_version_id
-                        else None
-                    )
-                    if source_version:
-                        source_version.is_active = False
-                    target_version.is_active = True
-                    target_version.activated_at = reference_time
+                    activated_version = _activate_pending_policy_version(transition, reference_time=reference_time)
+                    if activated_version is not None:
+                        transition.target_policy_version_id = activated_version.id
                     transition.status = POLICY_TRANSITION_STATUS_APPLIED
                     transition.applied_at = reference_time
                     _supersede_pending_transitions(

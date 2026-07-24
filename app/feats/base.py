@@ -99,19 +99,20 @@ FEAT_REGISTRY = {
     "FEAT-LED-004": {"domain": "Ledger", "blast_radius": "HIGH", "desc": "Payroll Execution"},
     "FEAT-IDEN-001": {"domain": "Identity", "blast_radius": "LOW", "desc": "Teacher management"},
     "FEAT-IDEN-002": {"domain": "Identity", "blast_radius": "HIGH", "desc": "Account Recovery"},
-    "FEAT-STOR-001": {"domain": "Store", "blast_radius": "MED", "desc": "Inventory Management"},
-    "FEAT-STOR-002": {"domain": "Store", "blast_radius": "MED", "desc": "Store Purchase"},
-    "FEAT-STOR-003": {"domain": "Store", "blast_radius": "MED", "desc": "Purchase Void/Refund"},
-    "FEAT-STOR-004": {"domain": "Store", "blast_radius": "MED", "desc": "Rent Perk Purchase ($0)"},
-    "FEAT-STOR-005": {"domain": "Store", "blast_radius": "LOW", "desc": "Redeem Item"},
-    "FEAT-STOR-006": {"domain": "Store", "blast_radius": "MED", "desc": "Redemption Disposition"},
+    "FEAT-STOR-001": {"domain": "Store", "blast_radius": "MED", "desc": "Store Purchase and Entitlement Grant"},
+    "FEAT-STOR-002": {"domain": "Store", "blast_radius": "MED", "desc": "Entitlement Terminal Lifecycle"},
+    "FEAT-STOR-003": {"domain": "Store", "blast_radius": "MED", "desc": "Insurance Claim Lifecycle"},
+    # Bridge aliases — retired FEAT codes kept until all call-sites are migrated
+    "FEAT-STOR-004": {"domain": "Store", "blast_radius": "MED", "desc": "[RETIRED → FEAT-STOR-001] Rent Perk Purchase"},
+    "FEAT-STOR-005": {"domain": "Store", "blast_radius": "LOW", "desc": "[RETIRED → FEAT-STOR-002] Redeem Item"},
+    "FEAT-STOR-006": {"domain": "Store", "blast_radius": "MED", "desc": "[RETIRED → FEAT-STOR-002] Redemption Disposition"},
+    "FEAT-ENT-001": {"domain": "Store", "blast_radius": "MED", "desc": "[RETIRED → FEAT-STOR-001] Hall Pass Entitlement Adjustment"},
     "FEAT-PROD-001": {"domain": "Productivity", "blast_radius": "MED", "desc": "Record Attendance Session"},
     "FEAT-PROD-002": {"domain": "Productivity", "blast_radius": "MED", "desc": "Record Hall Pass Log"},
     "FEAT-PROD-003": {"domain": "Productivity", "blast_radius": "HIGH", "desc": "Record Payroll Event"},
     "FEAT-SETTINGS-001": {"domain": "Class Configuration", "blast_radius": "MED", "desc": "Class Settings Update"},
     "FEAT-ANLY-001": {"domain": "Analytics", "blast_radius": "LOW", "desc": "Analytics Alert Acknowledgement"},
     "FEAT-ADMN-001": {"domain": "Logistics", "blast_radius": "LOW", "desc": "Bulk administration"},
-    "FEAT-ENT-001": {"domain": "Entitlements", "blast_radius": "MED", "desc": "Hall Pass Entitlement Adjustment"},
     "FEAT-OBL-001": {"domain": "Obligations", "blast_radius": "MED", "desc": "Rent Payment"},
     "FEAT-OBL-002": {"domain": "Obligations", "blast_radius": "MED", "desc": "Scheduled Rent Cycle"},
     "FEAT-OBL-003": {"domain": "Obligations", "blast_radius": "MED", "desc": "Scheduled Insurance Cycle"},
@@ -431,7 +432,7 @@ def feat_shell(feat_name: str):
                 except Exception:
                     g = None
                     request = None
-                if feat_name == "FEAT-STOR-002" and request is not None:
+                if feat_name == "FEAT-STOR-001" and request is not None:
                     payload = request.get_json(silent=True) or {}
                     class_id = getattr(getattr(g, "canonical_context", None), "class_id", None) or "NOCLASS"
                     seat_id = getattr(getattr(g, "canonical_context", None), "seat_id", None) or "NOSEAT"

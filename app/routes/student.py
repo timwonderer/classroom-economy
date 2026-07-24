@@ -14,6 +14,7 @@ from calendar import monthrange
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 from urllib.parse import urlparse
+from types import SimpleNamespace
 
 from flask import Blueprint, redirect, url_for, flash, request, session, jsonify, current_app, has_app_context, abort
 from sqlalchemy import or_, func, select, and_
@@ -28,7 +29,7 @@ from app.models import (
     # StoreItemBlock removed — store_item_blocks unauthorized; use store_item_visibility (DOM-STORE-001)
     RentSettings,
     BankingSettings, FeatureSettings, Issue, Seat, User, UserRole,
-    ClassEconomy, IdentityProfile, PayrollEvent, _quantize_currency
+    ClassEconomy, IdentityProfile, PayrollEvent, PolicyVersion, _quantize_currency
 )
 from app.auth import (
     admin_required,
@@ -70,6 +71,15 @@ from app.access import (
     resolve_student_class_switch_scope,
 )
 from app.services.attendance_service import get_class_attendance_status
+from app.services.store_entitlement_service import (
+    list_entitlement_history,
+    list_entitlements_for_seat,
+    list_available_entitlements,
+    list_insurance_claims,
+    derive_display_status,
+)
+from app.services.insurance_policy_service import list_insurance_policy_versions
+from app.services.insurance_policy_service import get_insurance_entitlement_item_id
 from app.services.ledger_service import (
     apply_monthly_savings_interest as post_monthly_savings_interest,
     get_available_balances,
@@ -90,6 +100,7 @@ from app.feats.base import feat_shell
 from app.feats.rent_payment_feat import execute_rent_payment
 from app.feats.transfer_feat import execute_account_transfer
 from app.feats.insurance_purchase_feat import execute_insurance_purchase
+from app.feats.insurance_claim_feat import execute_claim_submission
 # execute_file_claim removed — insurance_claim_feat.py deleted; insurance feature broken pending DOM-OBL-001 migration
 from app.payroll import get_pay_rate_for_block
 from app.utils.join_code import get_display_join_code
@@ -116,6 +127,7 @@ from app.utils.insurance_eligibility import (
     collect_reimbursed_source_tx_ids,
     resolve_claim_type,
 )
+from app.utils.insurance_billing import get_insurance_billing_snapshot
 
 
 def _get_identity_bound_seat_options(user_id: int):
@@ -859,16 +871,21 @@ def dashboard():
     ).order_by(Transaction.timestamp.desc()).all()
 
     # Canonical store purchases scoped to the active seat/class.
-    student_items = (
-        StorePurchase.query
-        .filter(
-            StorePurchase.class_id == scope.class_id,
-            StorePurchase.seat_id == scope.seat_id,
-            StorePurchase.status.in_(['purchased', 'pending', 'processing', 'redeemed', 'completed', 'expired']),
-        )
-        .order_by(StorePurchase.purchased_at.desc())
-        .all()
-    )
+    entitlements = []
+    for entitlement in list_entitlement_history(target_seat_id=scope.seat_id, class_id=scope.class_id):
+        ent = entitlement["entitlement"]
+        item = db.session.get(StoreItem, ent.entitlement_item_id)
+        if item is None:
+            continue
+        terminal = entitlement["terminal_event"]
+        entitlements.append(SimpleNamespace(
+            id=ent.entitlement_id,
+            seat_id=ent.target_seat_id,
+            class_id=ent.class_id,
+            store_item=item,
+            status=terminal.disposition.value.lower() if terminal else "purchased",
+            purchased_at=ent.granted_at,
+        ))
 
     checking_transactions = [tx for tx in transactions if tx.account_type == 'checking']
     savings_transactions = [tx for tx in transactions if tx.account_type == 'savings']
@@ -1126,7 +1143,7 @@ def dashboard():
         attendance_state_json=attendance_state_json,
         checking_transactions=checking_transactions,
         savings_transactions=savings_transactions,
-        student_items=student_items,
+        entitlements=entitlements,
         recent_transactions=transactions[:5],  # Most recent 5 transactions
         now=local_now,
         forecast_interest=float(forecast_interest),
@@ -1488,16 +1505,161 @@ def apply_savings_interest(student, annual_rate=Decimal('0.045')):
 @login_required
 def insurance_marketplace():
     """Insurance marketplace - browse and manage policies."""
+    context = resolve_canonical_context()
+    if not context:
+        flash("No class selected. Please select a class to continue.", "error")
+        return redirect(url_for('student.dashboard'))
 
-
-    abort(404)
+    class_identifier = get_display_join_code(context.class_id) if context.class_id else ""
+    policy_versions = list_insurance_policy_versions(context.class_id)
+    available_policies = []
+    for policy in policy_versions:
+        payload = json.loads(policy.policy_payload_json or "{}")
+        available_policies.append(
+            SimpleNamespace(
+                id=policy.id,
+                title=(payload.get("title") or f"Policy v{policy.version_number}"),
+                description=payload.get("description", ""),
+                premium=Decimal(str(payload.get("premium", "0.00"))),
+                charge_frequency=payload.get("charge_frequency", "monthly"),
+                waiting_period_days=int(payload.get("waiting_period_days", 0) or 0),
+                max_claims_count=payload.get("max_claims_count"),
+                claim_type=payload.get("claim_type", "transaction_monetary"),
+                marketing_badge=payload.get("marketing_badge"),
+                tier_group=payload.get("tier_group"),
+                tier_name=payload.get("tier_name"),
+                tier_color=payload.get("tier_color", "secondary"),
+                tier_level=payload.get("tier_level"),
+                is_active=policy.is_active,
+                payload=payload,
+                version_number=policy.version_number,
+            )
+        )
+    def _claim_display_row(claim):
+        raw_incident = (claim.claimed_dates or [None])[0] if getattr(claim, "claimed_dates", None) else None
+        if isinstance(raw_incident, str):
+            try:
+                incident_dt = datetime.fromisoformat(raw_incident)
+            except ValueError:
+                incident_dt = claim.submitted_at
+        elif raw_incident is not None:
+            incident_dt = raw_incident
+        else:
+            incident_dt = claim.submitted_at
+        return SimpleNamespace(
+            id=claim.id,
+            claim_id=claim.claim_id,
+            policy=getattr(claim, "policy", SimpleNamespace(title="Insurance")),
+            status=getattr(claim.status, "value", claim.status),
+            approved_amount=getattr(claim, "approved_amount", None),
+            claim_amount=getattr(claim, "claim_amount", None),
+            rejection_reason=getattr(claim, "rejection_reason", None),
+            description=getattr(claim, "description", ""),
+            teacher_notes=getattr(claim, "teacher_notes", None),
+            incident_date=incident_dt,
+            filed_date=claim.submitted_at,
+        )
+    tier_groups = defaultdict(lambda: {"name": "", "color": "secondary", "policies": []})
+    for policy in available_policies:
+        if policy.tier_group:
+            tier_groups[policy.tier_group]["name"] = policy.tier_name or f"Group {policy.tier_group}"
+            tier_groups[policy.tier_group]["color"] = policy.tier_color or "secondary"
+            tier_groups[policy.tier_group]["policies"].append(policy)
+    current_class_context = SimpleNamespace(
+        teacher_name="",
+        block_display=class_identifier,
+        class_timezone=getattr(context, "class_timezone", ""),
+        student_full_name=(
+            context.identity_profile.full_name
+            if getattr(context, "identity_profile", None) else ""
+        ),
+        join_code=class_identifier,
+        class_identifier=class_identifier,
+    )
+    return render_template(
+        'student_insurance_marketplace.html',
+        student=(
+            context.identity_profile.full_name
+            if getattr(context, "identity_profile", None) else ""
+        ),
+        current_class_context=current_class_context,
+        my_policies=[],
+        my_claims=[_claim_display_row(claim) for claim in list_insurance_claims(class_id=context.class_id, target_seat_id=context.seat_id)],
+        available_policies=available_policies,
+        tier_groups=dict(tier_groups),
+        enrolled_tiers=[],
+        can_purchase={policy.id: bool(policy.is_active) for policy in available_policies},
+        repurchase_blocks=set(),
+        claims_this_period=[],
+        now=utc_now(),
+        claim_type="transaction_monetary",
+        contract_title="Insurance",
+        contract_description="",
+        contract_claim_time_limit_days=0,
+        contract_max_claim_amount=None,
+        remaining_period_cap=None,
+        contract_max_claims_count=None,
+        contract_max_claims_period="period",
+        policy=SimpleNamespace(waiting_period_days=0, charge_frequency="", autopay=False, auto_cancel_nonpay_days=0),
+        enrollment=SimpleNamespace(
+            contract_title="Insurance",
+            contract_description="",
+            status="inactive",
+            purchase_date=utc_now(),
+            coverage_start_date=None,
+            payment_current=False,
+            days_unpaid=0,
+            next_payment_due=None,
+            policy=SimpleNamespace(waiting_period_days=0, charge_frequency="", autopay=False, auto_cancel_nonpay_days=0, no_repurchase_after_cancel=False, repurchase_wait_days=0),
+            contract_claim_time_limit_days=0,
+            contract_max_claim_amount=None,
+            contract_max_claims_count=None,
+            contract_max_claims_period="period",
+        ),
+    )
 
 
 @student_bp.route('/insurance/purchase/<int:policy_id>', methods=['POST'])
 @login_required
 def purchase_insurance(policy_id):
     """Purchase insurance policy."""
-    abort(404)
+    context = resolve_canonical_context()
+    if not context:
+        flash("No class selected. Please select a class to continue.", "error")
+        return redirect(url_for('student.student_insurance'))
+
+    policy_version = db.session.get(PolicyVersion, policy_id)
+    if (
+        policy_version is None
+        or policy_version.class_id != context.class_id
+        or policy_version.domain != "insurance"
+    ):
+        flash("That insurance policy is not available for this class.", "error")
+        return redirect(url_for('student.student_insurance'))
+
+    snapshot = get_insurance_billing_snapshot(policy_version)
+    policy = SimpleNamespace(
+        id=policy_version.id,
+        title=f"Insurance Policy {policy_version.version_number}",
+        premium=Decimal(str(snapshot["premium"] or "0.00")),
+        waiting_period_days=int(snapshot["waiting_period_days"] or 0),
+        charge_frequency=snapshot["charge_frequency"],
+        entitlement_item_id=get_insurance_entitlement_item_id(policy_version),
+    )
+    if policy.entitlement_item_id is None:
+        flash("This insurance policy is missing its entitlement mapping.", "error")
+        return redirect(url_for('student.student_insurance'))
+    seat = db.session.get(Seat, context.seat_id)
+    banking_settings = BankingSettings.query.filter_by(class_id=context.class_id).first()
+    execute_insurance_purchase(
+        seat=seat,
+        user_id=context.user_id,
+        class_id=context.class_id,
+        policy=policy,
+        banking_settings=banking_settings,
+    )
+    flash("Insurance purchase recorded.", "success")
+    return redirect(url_for('student.student_insurance'))
 
 
 @student_bp.route('/insurance/cancel/<int:enrollment_id>', methods=['POST'])
@@ -1505,28 +1667,268 @@ def purchase_insurance(policy_id):
 @feat_shell("FEAT-OBL-001")
 def cancel_insurance(enrollment_id):
     """Cancel insurance policy."""
-    abort(404)
+    flash("Insurance cancellation is not available from the current policy surface.", "warning")
+    return redirect(url_for('student.student_insurance'))
 
 
 @student_bp.route('/insurance/claim/<int:policy_id>', methods=['GET', 'POST'])
 @login_required
+@feat_shell("FEAT-STOR-003")
 def file_claim(policy_id):
     """File insurance claim."""
-    abort(404)
+    context = resolve_canonical_context()
+    if not context:
+        flash("No class selected. Please select a class to continue.", "error")
+        return redirect(url_for('student.dashboard'))
+
+    class_identifier = get_display_join_code(context.class_id) if context.class_id else ""
+    student_name = (
+        context.identity_profile.full_name
+        if getattr(context, "identity_profile", None) else ""
+    )
+    policy_version = db.session.get(PolicyVersion, policy_id)
+    if policy_version is None or policy_version.class_id != context.class_id or policy_version.domain != "insurance":
+        flash("That insurance policy is not available for this class.", "error")
+        return redirect(url_for('student.student_insurance'))
+    payload = json.loads(policy_version.policy_payload_json or "{}")
+    entitlement_item_id = get_insurance_entitlement_item_id(policy_version)
+    if entitlement_item_id is None:
+        flash("This insurance policy is missing its entitlement mapping.", "error")
+        return redirect(url_for('student.student_insurance'))
+    entitlement_rows = list_available_entitlements(
+        target_seat_id=context.seat_id,
+        class_id=context.class_id,
+        entitlement_item_id=entitlement_item_id,
+    )
+    active_entitlement = entitlement_rows[0] if entitlement_rows else None
+    if request.method == "POST":
+        if active_entitlement is None:
+            flash("You do not have an active insurance entitlement for this policy.", "error")
+            return redirect(url_for('student.student_insurance'))
+        transaction_id = request.form.get("transaction_id")
+        try:
+            transaction_id = int(transaction_id) if transaction_id not in (None, "") else None
+        except (TypeError, ValueError):
+            transaction_id = None
+        claimed_dates = None
+        incident_date = request.form.get("incident_date")
+        if incident_date:
+            claimed_dates = [incident_date]
+        result = execute_claim_submission(
+            entitlement_id=active_entitlement.entitlement_id,
+            target_seat_id=context.seat_id,
+            actor_seat_id=context.seat_id,
+            class_id=context.class_id,
+            transaction_id=transaction_id,
+            claimed_dates=claimed_dates,
+            policy_claim_type=payload.get("claim_type"),
+        )
+        flash(result.message, "success")
+        return redirect(url_for("student.student_insurance"))
+    placeholder_policy = SimpleNamespace(
+        id=policy_version.id,
+        title=payload.get("title") or f"Policy v{policy_version.version_number}",
+        description=payload.get("description", ""),
+        premium=Decimal(str(payload.get("premium", "0.00"))),
+        charge_frequency=payload.get("charge_frequency", "monthly"),
+        waiting_period_days=int(payload.get("waiting_period_days", 0) or 0),
+        max_claims_count=payload.get("max_claims_count"),
+        claim_type=payload.get("claim_type", "transaction_monetary"),
+        policy_version=policy_version,
+        payload=payload,
+    )
+    policy_claims = list_insurance_claims(
+        class_id=context.class_id,
+        target_seat_id=context.seat_id,
+        entitlement_id=getattr(active_entitlement, "entitlement_id", None),
+    )
+    enrollment = SimpleNamespace(
+        id=policy_id,
+        policy=placeholder_policy,
+        contract_title=placeholder_policy.title,
+        contract_description=placeholder_policy.description,
+        purchase_date=utc_now(),
+        coverage_start_date=None,
+        payment_current=True,
+        days_unpaid=0,
+        status="active",
+        next_payment_due=None,
+        contract_claim_time_limit_days=0,
+        contract_max_claim_amount=None,
+        contract_max_claims_count=None,
+        contract_max_claims_period="period",
+    )
+    class _DummyLabel:
+        def __init__(self, text: str):
+            self.text = text
+        def __call__(self, *args, **kwargs):
+            return self.text
+
+    class _DummyField:
+        def __init__(self, label: str, value=""):
+            self.label = _DummyLabel(label)
+            self.data = value
+        def __call__(self, *args, **kwargs):
+            return ""
+
+    form = SimpleNamespace(
+        hidden_tag=lambda: "",
+        transaction_id=_DummyField("Transaction"),
+        incident_date=_DummyField("Incident Date"),
+        description=_DummyField("Description"),
+        comments=_DummyField("Comments"),
+        claim_item=_DummyField("Claim Item"),
+        claim_amount=_DummyField("Claim Amount"),
+        submit=_DummyField("Submit"),
+    )
+    return render_template(
+        'student_file_claim.html',
+        student=student_name,
+        current_class_context=SimpleNamespace(
+            teacher_name="",
+            block_display=class_identifier,
+            class_timezone=getattr(context, "class_timezone", ""),
+            student_full_name=student_name,
+            join_code=class_identifier,
+            class_identifier=class_identifier,
+        ),
+        policy=placeholder_policy,
+        enrollment=enrollment,
+        form=form,
+        errors=[],
+        claim_type="transaction_monetary",
+        contract_title=placeholder_policy.title,
+        contract_description=placeholder_policy.description,
+        contract_claim_time_limit_days=0,
+        contract_max_claim_amount=None,
+        remaining_period_cap=None,
+        contract_max_claims_count=None,
+        contract_max_claims_period="period",
+        eligible_transactions=[],
+        claims_this_period=policy_claims,
+        now=utc_now(),
+    )
 
 
 @student_bp.route('/insurance/policy/<int:enrollment_id>')
 @login_required
 def view_policy(enrollment_id):
     """View policy details and claims history."""
-    abort(404)
+    context = resolve_canonical_context()
+    if not context:
+        flash("No class selected. Please select a class to continue.", "error")
+        return redirect(url_for('student.dashboard'))
 
-    return render_template('student_view_policy.html',
-                          student=student,
-                          enrollment=enrollment,
-                          policy=enrollment.policy,
-                          claims=claims,
-                          now=now_utc)
+    class_identifier = get_display_join_code(context.class_id) if context.class_id else ""
+    student_name = (
+        context.identity_profile.full_name
+        if getattr(context, "identity_profile", None) else ""
+    )
+    policy_version = db.session.get(PolicyVersion, enrollment_id)
+    if policy_version is None or policy_version.class_id != context.class_id or policy_version.domain != "insurance":
+        flash("That insurance policy is not available for this class.", "error")
+        return redirect(url_for('student.student_insurance'))
+    payload = json.loads(policy_version.policy_payload_json or "{}")
+    entitlement_item_id = get_insurance_entitlement_item_id(policy_version)
+    entitlement = None
+    if entitlement_item_id is not None:
+        active_entitlements = list_available_entitlements(
+            target_seat_id=context.seat_id,
+            class_id=context.class_id,
+            entitlement_item_id=entitlement_item_id,
+        )
+        entitlement = active_entitlements[0] if active_entitlements else None
+    if entitlement is None:
+        flash("You do not have an active insurance entitlement for this policy.", "warning")
+    def _claim_display_row(claim):
+        raw_incident = (claim.claimed_dates or [None])[0] if getattr(claim, "claimed_dates", None) else None
+        if isinstance(raw_incident, str):
+            try:
+                incident_dt = datetime.fromisoformat(raw_incident)
+            except ValueError:
+                incident_dt = claim.submitted_at
+        elif raw_incident is not None:
+            incident_dt = raw_incident
+        else:
+            incident_dt = claim.submitted_at
+        return SimpleNamespace(
+            id=claim.id,
+            claim_id=claim.claim_id,
+            policy=getattr(claim, "policy", SimpleNamespace(title="Insurance")),
+            status=getattr(claim.status, "value", claim.status),
+            approved_amount=getattr(claim, "approved_amount", None),
+            claim_amount=getattr(claim, "claim_amount", None),
+            rejection_reason=getattr(claim, "rejection_reason", None),
+            description=getattr(claim, "description", ""),
+            teacher_notes=getattr(claim, "teacher_notes", None),
+            incident_date=incident_dt,
+            filed_date=claim.submitted_at,
+        )
+    placeholder_policy = SimpleNamespace(
+        id=policy_version.id,
+        title=payload.get("title") or f"Policy v{policy_version.version_number}",
+        description=payload.get("description", ""),
+        premium=Decimal(str(payload.get("premium", "0.00"))),
+        charge_frequency=payload.get("charge_frequency", "monthly"),
+        waiting_period_days=int(payload.get("waiting_period_days", 0) or 0),
+        max_claims_count=payload.get("max_claims_count"),
+        claim_type=payload.get("claim_type", "transaction_monetary"),
+        autopay=bool(payload.get("autopay", False)),
+        auto_cancel_nonpay_days=int(payload.get("auto_cancel_nonpay_days", 0) or 0),
+        entitlement_item_id=entitlement_item_id,
+        payload=payload,
+    )
+    coverage_start_date = None
+    if entitlement is not None:
+        from app.models import ObligationAssessment
+        coverage_row = (
+            ObligationAssessment.query.filter_by(
+                class_id=context.class_id,
+                seat_id=context.seat_id,
+                policy_version_id=policy_version.id,
+            )
+            .order_by(ObligationAssessment.assessed_at.desc(), ObligationAssessment.id.desc())
+            .first()
+        )
+        coverage_start_date = getattr(coverage_row, "coverage_start_time", None)
+    enrollment = SimpleNamespace(
+        id=enrollment_id,
+        policy=placeholder_policy,
+        contract_title=placeholder_policy.title,
+        contract_description=placeholder_policy.description,
+        purchase_date=utc_now(),
+        coverage_start_date=coverage_start_date,
+        payment_current=entitlement is not None,
+        days_unpaid=0,
+        status="active" if entitlement is not None else "inactive",
+        next_payment_due=None,
+        contract_claim_time_limit_days=int(payload.get("claim_time_limit_days", 0) or 0),
+        contract_max_claim_amount=None,
+        contract_max_claims_count=None,
+        contract_max_claims_period="period",
+    )
+    return render_template(
+        'student_view_policy.html',
+        student=student_name,
+        current_class_context=SimpleNamespace(
+            teacher_name="",
+            block_display=class_identifier,
+            class_timezone=getattr(context, "class_timezone", ""),
+            student_full_name=student_name,
+            join_code=class_identifier,
+            class_identifier=class_identifier,
+        ),
+        enrollment=enrollment,
+        claims=[
+            _claim_display_row(claim)
+            for claim in list_insurance_claims(
+                class_id=context.class_id,
+                target_seat_id=context.seat_id,
+                entitlement_id=getattr(entitlement, "entitlement_id", None),
+            )
+        ],
+        now=utc_now(),
+    )
 
 
 # -------------------- SHOPPING --------------------
@@ -1566,16 +1968,23 @@ def shop():
         if store_service.is_item_visible_to_seat(item.id, seat.id)
     ]
 
-    student_items = (
-        StorePurchase.query
-        .filter(
-            StorePurchase.class_id == class_id,
-            StorePurchase.seat_id == seat.id,
-            StorePurchase.status.in_(['purchased', 'pending', 'processing', 'redeemed', 'completed', 'expired']),
-        )
-        .order_by(StorePurchase.purchased_at.desc())
-        .all()
-    )
+    entitlements = []
+    for entry in list_entitlement_history(target_seat_id=seat.id, class_id=class_id):
+        entitlement = entry["entitlement"]
+        terminal_event = entry["terminal_event"]
+        item = db.session.get(StoreItem, entitlement.entitlement_item_id)
+        if item is None:
+            continue
+        entitlements.append(SimpleNamespace(
+            id=entitlement.entitlement_id,
+            seat_id=entitlement.target_seat_id,
+            class_id=entitlement.class_id,
+            store_item=item,
+            status=derive_display_status(entitlement.entitlement_id),
+            purchase_date=entitlement.granted_at,
+            expiry_date=None,
+            is_from_bundle=False,
+        ))
 
     # Check if student has paid rent this month using canonical rent settings only.
     from app.models import RentSettings
@@ -1633,45 +2042,27 @@ def shop():
                     fp['store_item_id'] for fp in frozen_privileges if fp.get('store_item_id')
                 }
 
-    # Build free uses remaining map for rent-linked per-use items
-    rent_free_uses = {}  # {store_item_id: uses_remaining or -1 for unlimited}
+    # Build rent-perk availability map for rent-linked per-use items.
+    rent_free_entitlement_counts = {}  # {store_item_id: available_units or -1 for unlimited}
     if seat:
-        now_utc = utc_now()
-        rent_linked_items_query = StorePurchase.query.filter(
-            StorePurchase.seat_id == seat.id,
-            StorePurchase.uses_remaining != None,
-            db.or_(
-                StorePurchase.uses_remaining > 0,
-                StorePurchase.uses_remaining == -1
-            ),
-            db.or_(
-                StorePurchase.expiry_date.is_(None),
-                StorePurchase.expiry_date > now_utc
-            )
-        )
-        rent_linked_items = rent_linked_items_query.all()
-        for si in rent_linked_items:
-            if si.store_item_id:
-                rent_free_uses[si.store_item_id] = si.uses_remaining
+        active_entitlements = list_entitlements_for_seat(target_seat_id=seat.id, class_id=class_id)
+        for entitlement in active_entitlements:
+            if entitlement.entitlement_item_id:
+                rent_free_entitlement_counts[entitlement.entitlement_item_id] = -1
 
         # Backfill UI for paid-rent students who are entitled to per-use perks
         # but are missing grant rows (edge-state). Do not override items
         # that already have an explicit grant record (including exhausted = 0).
         if has_paid_rent and per_use_limit_by_store_id:
-            existing_per_use_rows = StorePurchase.query.filter(
-                StorePurchase.seat_id == seat.id,
-                StorePurchase.store_item_id.in_(list(per_use_limit_by_store_id.keys())),
-                StorePurchase.uses_remaining.isnot(None),
-                db.or_(
-                    StorePurchase.expiry_date.is_(None),
-                    StorePurchase.expiry_date > now_utc
-                )
-            ).all()
-            existing_per_use_ids = {row.store_item_id for row in existing_per_use_rows if row.store_item_id}
+            existing_per_use_ids = {
+                entitlement.entitlement_item_id
+                for entitlement in active_entitlements
+                if entitlement.entitlement_item_id in per_use_limit_by_store_id
+            }
 
             for store_item_id, granted_uses in per_use_limit_by_store_id.items():
-                if store_item_id not in existing_per_use_ids and store_item_id not in rent_free_uses:
-                    rent_free_uses[store_item_id] = granted_uses
+                if store_item_id not in existing_per_use_ids and store_item_id not in rent_free_entitlement_counts:
+                    rent_free_entitlement_counts[store_item_id] = granted_uses
 
     # Calculate class size for collective goals (count unique students in this class)
     from app.models import Seat
@@ -1693,22 +2084,17 @@ def shop():
     if collective_item_ids and class_id:
         progress_rows = (
             db.session.query(
-                StorePurchase.store_item_id,
-                db.func.count(db.distinct(StorePurchase.seat_id)).label('student_count'),
+                Entitlement.entitlement_item_id,
+                db.func.count(db.distinct(Entitlement.target_seat_id)).label('student_count'),
             )
-            .join(Seat, StorePurchase.seat_id == Seat.id)
-            .join(StoreItem, StorePurchase.store_item_id == StoreItem.id)
             .filter(
-                StorePurchase.store_item_id.in_(collective_item_ids),
-                StorePurchase.class_id == class_id,
-                StorePurchase.status.in_(['pending', 'processing', 'purchased', 'redeemed', 'completed']),
-                Seat.role == "student",  # Exclude teacher purchases from progress
-                StorePurchase.collective_goal_instance_code == StoreItem.collective_goal_instance_code,
+                Entitlement.entitlement_item_id.in_(collective_item_ids),
+                Entitlement.class_id == class_id,
             )
-            .group_by(StorePurchase.store_item_id)
+            .group_by(Entitlement.entitlement_item_id)
             .all()
         )
-        progress_counts = {row.store_item_id: int(row.student_count or 0) for row in progress_rows}
+        progress_counts = {row.entitlement_item_id: int(row.student_count or 0) for row in progress_rows}
 
         for item in collective_items:
             if item.collective_goal_type == 'whole_class':
@@ -1727,10 +2113,22 @@ def shop():
             }
 
     current_block = seat.class_economy.section.strip().upper() if seat and seat.class_economy and seat.class_economy.section else ""
-    return render_template('student_shop.html', student=seat, items=items, student_items=student_items,
+    student_display_name = (
+        seat.identity_profile.full_name
+        if seat and seat.identity_profile
+        else ""
+    )
+    current_class_context = SimpleNamespace(
+        student_full_name=student_display_name,
+        class_identifier=join_code or class_id,
+        join_code=join_code,
+        class_timezone=getattr(context, "class_timezone", ""),
+    )
+    student_display = SimpleNamespace(full_name=student_display_name)
+    return render_template('student_shop.html', student=student_display, current_class_context=current_class_context, items=items, entitlements=entitlements,
                          has_paid_rent=has_paid_rent, per_period_rent_item_ids=per_period_rent_item_ids,
                          rent_item_types_by_store_id=rent_item_types_by_store_id,
-                         rent_free_uses=rent_free_uses,
+                         rent_free_entitlement_counts=rent_free_entitlement_counts,
                          class_size=class_size, current_block=current_block,
                          collective_progress=collective_progress)
 

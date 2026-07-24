@@ -264,12 +264,12 @@
                             </div>
                             <div class="d-flex gap-2">
                                 <button class="btn btn-sm btn-outline-danger reject-redemption-btn"
-                                    data-student-item-id="{{ req.id }}" data-bs-toggle="tooltip"
+                                    data-entitlement-id="{{ req.id }}" data-bs-toggle="tooltip"
                                     title="Refund and remove" aria-label="Refund and remove">
                                     <span class="material-symbols-outlined">cancel</span>
                                 </button>
                                 <button class="btn btn-sm btn-success approve-redemption-btn"
-                                    data-student-item-id="{{ req.id }}">
+                                    data-entitlement-id="{{ req.id }}">
                                     <span class="material-symbols-outlined me-1">check_circle</span>Approve
                                 </button>
                             </div>
@@ -563,11 +563,11 @@
     // Handle redemption rejection
     document.querySelectorAll(".reject-redemption-btn").forEach(button => {
         button.addEventListener("click", () => {
-            if (!confirm("Are you sure you want to reject this redemption? The item will be removed and the student will be refunded.")) {
+            if (!confirm("Are you sure you want to reject this redemption? The request will be removed and the student will keep the entitlement.")) {
                 return;
             }
 
-            const studentItemId = button.dataset.studentItemId;
+            const studentItemId = button.dataset.entitlementId;
             const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
             const icon = button.innerHTML;
 
@@ -581,7 +581,7 @@
                     'Content-Type': 'application/json',
                     'X-CSRFToken': csrfToken
                 },
-                body: JSON.stringify({ student_item_id: studentItemId })
+                body: JSON.stringify({ entitlement_id: studentItemId })
             })
                 .then(response => response.json())
                 .then(data => {
@@ -593,7 +593,7 @@
                         setTimeout(() => {
                             listItem.remove();
                             updatePendingCounters('redemptions');
-                            showToast('Redemption rejected and refunded.', 'success');
+                            showToast('Redemption rejected.', 'success');
 
                         }, 300);
                     } else {
@@ -614,7 +614,7 @@
     // Handle redemption approval
     document.querySelectorAll(".approve-redemption-btn").forEach(button => {
         button.addEventListener("click", () => {
-            const studentItemId = button.dataset.studentItemId;
+            const studentItemId = button.dataset.entitlementId;
             const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
 
             // Disable button and show loading state
@@ -627,7 +627,7 @@
                     'Content-Type': 'application/json',
                     'X-CSRFToken': csrfToken
                 },
-                body: JSON.stringify({ student_item_id: studentItemId })
+                body: JSON.stringify({ entitlement_id: studentItemId })
             })
                 .then(response => response.json())
                 .then(data => {

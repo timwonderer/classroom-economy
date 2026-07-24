@@ -469,8 +469,8 @@
                     {% for claim in my_claims %}
                     <tr>
                         <td>{{ claim.policy.title }}</td>
-                        <td>{{ claim.incident_date.strftime('%b %d, %Y') }}</td>
-                        <td>{{ claim.filed_date.strftime('%b %d, %Y') }}</td>
+                        <td>{{ (claim.claimed_dates[0] if claim.claimed_dates else claim.submitted_at).strftime('%b %d, %Y') }}</td>
+                        <td>{{ claim.submitted_at.strftime('%b %d, %Y') }}</td>
                         <td>
                             {% if claim.approved_amount %}
                             ${{ "%.2f"|format(claim.approved_amount) }}
@@ -516,7 +516,7 @@
                                 </div>
                                 <div class="modal-body">
                                     <p><strong>Policy:</strong> {{ claim.policy.title }}</p>
-                                    <p><strong>Incident Date:</strong> {{ claim.incident_date.strftime('%B %d, %Y') }}
+                                    <p><strong>Incident Date:</strong> {{ (claim.claimed_dates[0] if claim.claimed_dates else claim.submitted_at).strftime('%B %d, %Y') }}
                                     </p>
                                     <hr>
                                     <p class="mb-0">{{ claim.rejection_reason }}</p>
