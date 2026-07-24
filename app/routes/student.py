@@ -2365,16 +2365,21 @@ def _calculate_rent_timeline(settings, now):
 
 
 def _total_paid_by_grace(assessments, grace_end_date):
-    """Sum satisfaction amounts for assessments satisfied on or before the grace end date."""
+    """Sum Ledger amounts for satisfactions occurred on or before the grace end date — DOM-OBL-001."""
     if not assessments or not grace_end_date:
         return Decimal('0.00')
     grace_end_date = ensure_utc(grace_end_date)
-    return sum(
-        (a.satisfaction.amount_paid for a in assessments
-         if a.satisfaction and a.satisfaction.satisfied_at
-         and ensure_utc(a.satisfaction.satisfied_at) <= grace_end_date),
-        Decimal('0.00')
-    )
+
+    total = Decimal('0.00')
+    for assessment in assessments:
+        if assessment.satisfactions:
+            for satisfaction in assessment.satisfactions:
+                if satisfaction.occurred_at and ensure_utc(satisfaction.occurred_at) <= grace_end_date:
+                    if satisfaction.ledger_transaction_id:
+                        txn = db.session.get(LedgerTransaction, satisfaction.ledger_transaction_id)
+                        if txn and txn.type == 'credit':
+                            total += txn.amount
+    return total
 
 
 def _get_locked_rent_amount_for_class_cycle(class_id, coverage_due_date):
