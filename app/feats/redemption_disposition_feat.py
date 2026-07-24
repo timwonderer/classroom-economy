@@ -22,7 +22,7 @@ from app.utils.canonical_temporal_resolver import SYSTEM_LEVEL_EVALUATION, canon
 @dataclass
 class RedemptionDispositionResult:
     disposition: str
-    purchase_id: int
+    entitlement_id: str
     redemption_event_id: str
     message: str = ""
 
@@ -127,7 +127,7 @@ def execute_redemption_approval(
     db.session.flush()
     return RedemptionDispositionResult(
         disposition="approved",
-        purchase_id=purchase.id,
+        entitlement_id=entitlement.entitlement_id,
         redemption_event_id=event_id,
         message="Redemption approved.",
     )
@@ -161,7 +161,7 @@ def execute_redemption_rejection(
     db.session.flush()
     return RedemptionDispositionResult(
         disposition="rejected",
-        purchase_id=purchase.id,
+        entitlement_id=entitlement.entitlement_id,
         redemption_event_id=event_id,
         message="Redemption rejected. The entitlement remains available.",
     )

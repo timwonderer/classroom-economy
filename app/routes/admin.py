@@ -134,7 +134,7 @@ from app.services.insurance_policy_service import (
     schedule_policy_deletion,
 )
 from app.feats.insurance_claim_feat import execute_claim_approval, execute_claim_rejection
-from app.services.store_entitlement_service import get_insurance_claim, get_last_entitlement_end_for_policy_version
+from app.services.store_entitlement_service import get_insurance_claim, get_last_entitlement_end_for_policy_version, derive_display_status
 from app.services.classroom_setup import (
     create_class,
     create_class_with_roster,
@@ -4327,15 +4327,28 @@ def student_detail_public(actor_public_id):
     transactions_query = Transaction.query.filter(tx_scope)
 
     transactions = transactions_query.order_by(Transaction.timestamp.desc()).all()
-    store_purchases = (
-        StorePurchase.query
-        .join(Seat, StorePurchase.seat_id == Seat.id)
-        .join(IdentityProfile, IdentityProfile.seat_id == Seat.id)
-        .filter(IdentityProfile.id == student.identity_profile.id)
+    _entitlement_query = (
+        Entitlement.query
+        .filter(Entitlement.target_seat_id == seat_id)
     )
     if class_id:
-        store_purchases = store_purchases.filter(StorePurchase.class_id == class_id)
-    store_purchases = store_purchases.order_by(StorePurchase.purchased_at.desc()).all()
+        _entitlement_query = _entitlement_query.filter(Entitlement.class_id == class_id)
+    _entitlements_raw = _entitlement_query.order_by(Entitlement.granted_at.desc()).all()
+    store_purchases = [
+        SimpleNamespace(
+            id=ent.entitlement_id,
+            seat_id=ent.target_seat_id,
+            class_id=ent.class_id,
+            store_item=db.session.get(StoreItem, ent.entitlement_item_id),
+            store_item_id=ent.entitlement_item_id,
+            status=derive_display_status(ent.entitlement_id),
+            purchased_at=ent.granted_at,
+            purchase_date=ent.granted_at,
+            expiry_date=None,
+            quantity=1,
+        )
+        for ent in _entitlements_raw
+    ]
     attendance_rows = (
         AttendanceSession.query.filter(att_scope)
         .order_by(AttendanceSession.timestamp.desc(), AttendanceSession.id.desc())
@@ -5322,7 +5335,7 @@ def store_management():
         SimpleNamespace(
             id=event.entitlement_id,
             seat=db.session.get(Seat, event.seat_id) or SimpleNamespace(id=event.seat_id),
-            store_item=db.session.get(StoreItem, event.purchase.store_item_id) if event.purchase else None,
+            store_item=db.session.get(StoreItem, event.entitlement.entitlement_item_id) if event.entitlement else None,
             class_id=event.class_id,
             purchased_at=event.timestamp,
             status='processing',
@@ -5350,7 +5363,7 @@ def store_management():
             seat=seat or SimpleNamespace(id=entitlement.target_seat_id),
             class_id=entitlement.class_id,
             store_item=item,
-            status='purchased',
+            status=derive_display_status(entitlement.entitlement_id),
             purchased_at=entitlement.granted_at,
             purchase_date=entitlement.granted_at,
             is_from_bundle=False,

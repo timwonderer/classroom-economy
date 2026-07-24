@@ -29,6 +29,8 @@ from app.models import (
     InsuranceClaimStatus,
     ObligationAssessment,
     PolicyVersion,
+    RedemptionEvent,
+    RedemptionEventAction,
 )
 from app.utils.canonical_temporal_resolver import (
     SYSTEM_LEVEL_EVALUATION,
@@ -486,3 +488,50 @@ def list_insurance_claims(
     if status is not None:
         q = q.filter(InsuranceClaim.status == status)
     return q.order_by(InsuranceClaim.submitted_at.desc()).all()
+
+
+# ---------------------------------------------------------------------------
+# Display status derivation (shared helper)
+# ---------------------------------------------------------------------------
+
+def derive_display_status(entitlement_id: str) -> str:
+    """Derive a human-readable display status for an entitlement.
+
+    Resolution order:
+      1. Terminal consumption event (CONSUMED/EXPIRED/REVOKED)
+      2. Unresolved redemption REQUEST (no APPROVED/REJECTED follow-up)
+      3. Default: "purchased" (granted, available)
+    """
+    consumption = EntitlementConsumption.query.filter_by(
+        entitlement_id=entitlement_id,
+    ).first()
+    if consumption is not None:
+        disposition_map = {
+            Disposition.CONSUMED: "redeemed",
+            Disposition.EXPIRED: "expired",
+            Disposition.REVOKED: "revoked",
+        }
+        return disposition_map.get(consumption.disposition, "purchased")
+
+    # Check for an unresolved REQUEST (no APPROVED or REJECTED event exists).
+    has_request = db.session.query(
+        RedemptionEvent.query.filter(
+            RedemptionEvent.entitlement_id == entitlement_id,
+            RedemptionEvent.action == RedemptionEventAction.REQUEST,
+        ).exists()
+    ).scalar()
+
+    if has_request:
+        has_resolution = db.session.query(
+            RedemptionEvent.query.filter(
+                RedemptionEvent.entitlement_id == entitlement_id,
+                RedemptionEvent.action.in_([
+                    RedemptionEventAction.APPROVED,
+                    RedemptionEventAction.REJECTED,
+                ]),
+            ).exists()
+        ).scalar()
+        if not has_resolution:
+            return "processing"
+
+    return "purchased"

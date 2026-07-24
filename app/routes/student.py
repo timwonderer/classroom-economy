@@ -76,6 +76,7 @@ from app.services.store_entitlement_service import (
     list_entitlements_for_seat,
     list_available_entitlements,
     list_insurance_claims,
+    derive_display_status,
 )
 from app.services.insurance_policy_service import list_insurance_policy_versions
 from app.services.insurance_policy_service import get_insurance_entitlement_item_id
@@ -1672,6 +1673,7 @@ def cancel_insurance(enrollment_id):
 
 @student_bp.route('/insurance/claim/<int:policy_id>', methods=['GET', 'POST'])
 @login_required
+@feat_shell("FEAT-STOR-003")
 def file_claim(policy_id):
     """File insurance claim."""
     context = resolve_canonical_context()
@@ -1978,11 +1980,7 @@ def shop():
             seat_id=entitlement.target_seat_id,
             class_id=entitlement.class_id,
             store_item=item,
-            status=(
-                terminal_event.disposition.value.lower()
-                if terminal_event is not None and getattr(terminal_event.disposition, "value", None)
-                else "purchased"
-            ),
+            status=derive_display_status(entitlement.entitlement_id),
             purchase_date=entitlement.granted_at,
             expiry_date=None,
             is_from_bundle=False,

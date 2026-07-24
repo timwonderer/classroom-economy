@@ -25,6 +25,7 @@ from app.models import (
     GrantType,
     RedemptionEvent,
     RedemptionEventAction,
+    RedemptionEventSource,
     StoreItem,
     StorePurchase,
     Transaction,
@@ -130,6 +131,20 @@ def _seed_redemption_scenario(*, username: str, join_code: str, item_price: Deci
         db.session.add(purchase)
         db.session.flush()
 
+        # Create the canonical REQUEST event so derive_display_status returns "processing"
+        request_event = RedemptionEvent(
+            entitlement_id=entitlement.entitlement_id,
+            seat_id=student_seat.id,
+            class_id=economy.class_id,
+            action=RedemptionEventAction.REQUEST,
+            source=RedemptionEventSource.LIVE,
+            initiated_by_user_id=student_user.id,
+            seat_display_name=username,
+            class_display_label=join_code,
+        )
+        db.session.add(request_event)
+        db.session.flush()
+
         # Snapshot all IDs BEFORE commit; SQLAlchemy expires attributes on commit
         # and we don't want to re-read them through a closed transaction.
         snapshot = {
@@ -185,7 +200,7 @@ def test_DOM_STORE_001__approve_redemption_succeeds_under_feat_enforcement(clien
 
     resp = client.post(
         "/api/approve-redemption",
-        json={"student_item_id": ids["student_item_id"]},
+        json={"entitlement_id": ids["entitlement_id"]},
     )
 
     assert resp.status_code == 200, f"expected 200 under enforcement, got {resp.status_code}: {resp.data!r}"
@@ -222,7 +237,7 @@ def test_DOM_STORE_001__reject_redemption_succeeds_and_creates_refund_under_enfo
 
     resp = client.post(
         "/api/reject-redemption",
-        json={"student_item_id": ids["student_item_id"]},
+        json={"entitlement_id": ids["entitlement_id"]},
     )
 
     assert resp.status_code == 200, f"expected 200 under enforcement, got {resp.status_code}: {resp.data!r}"
@@ -259,18 +274,23 @@ def test_DOM_STORE_001__approve_rejects_non_processing_item_with_409(client):
         item_price=Decimal("5.00"),
     )
 
-    # Advance item to a terminal state before the route call
+    # Advance entitlement to a terminal state before the route call
     with FEATContext("FEAT-STOR-002", idempotency_key="redemption:advance_item"):
-        purchase = db.session.get(StorePurchase, ids["student_item_id"])
-        purchase.status = "completed"
+        from app.services.store_entitlement_service import consume_entitlement
+        consume_entitlement(
+            entitlement_id=ids["entitlement_id"],
+            target_seat_id=ids["seat_id"],
+            actor_seat_id=ids["seat_id"],
+            class_id=ids["class_id"],
+        )
 
     _login_canonical_admin(client, user_id=ids["owner_user_id"])
     resp = client.post(
         "/api/approve-redemption",
-        json={"student_item_id": ids["student_item_id"]},
+        json={"entitlement_id": ids["entitlement_id"]},
     )
 
-    # The route's pre-FEAT validation also catches this (returns 404 "already processed").
+    # The route's pre-FEAT validation catches this (returns 404 "already processed").
     # The point of this test is: under enforcement, the route does not 500.
     assert resp.status_code in (404, 409), f"got {resp.status_code}: {resp.data!r}"
     assert resp.status_code != 500
@@ -314,11 +334,14 @@ def test_DOM_STORE_001__approve_redemption_rejects_intruder_admin_with_403(clien
 
     resp = client.post(
         "/api/approve-redemption",
-        json={"student_item_id": owner["student_item_id"]},
+        json={"entitlement_id": owner["entitlement_id"]},
     )
     assert resp.status_code == 403 or resp.status_code == 404
 
-    # And state was NOT mutated
-    refetched = db.session.get(StorePurchase, owner["student_item_id"])
-    assert refetched.status == "processing"
-    assert RedemptionEvent.query.filter_by(entitlement_id=owner["entitlement_id"]).count() == 0
+    # And state was NOT mutated — entitlement still has only the seed REQUEST, no terminal consumption
+    terminal = EntitlementConsumption.query.filter_by(entitlement_id=owner["entitlement_id"]).first()
+    assert terminal is None
+    # Only the seed REQUEST event should exist — no APPROVED/REJECTED from the intruder
+    events = RedemptionEvent.query.filter_by(entitlement_id=owner["entitlement_id"]).all()
+    assert len(events) == 1
+    assert events[0].action == RedemptionEventAction.REQUEST

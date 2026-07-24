@@ -249,11 +249,11 @@
                 <td>
                   <div class="d-flex gap-2">
                     <button class="btn btn-sm btn-outline-danger reject-redemption-btn"
-                      data-student-item-id="{{ student_item.id }}"
+                      data-entitlement-id="{{ student_item.id }}"
                       title="Refund and remove" aria-label="Refund and remove">
                       <span class="material-symbols-outlined">cancel</span>
                     </button>
-                    <button class="btn btn-sm btn-success approve-redemption-btn" data-student-item-id="{{ student_item.id }}">
+                    <button class="btn btn-sm btn-success approve-redemption-btn" data-entitlement-id="{{ student_item.id }}">
                       <span class="material-symbols-outlined me-1">check_circle</span>Approve
                     </button>
                   </div>
@@ -313,6 +313,8 @@
                     <span class="badge bg-success">Completed</span>
                   {% elif student_item.status == 'expired' %}
                     <span class="badge bg-danger">Expired</span>
+                  {% elif student_item.status == 'revoked' %}
+                    <span class="badge bg-dark">Revoked</span>
                   {% else %}
                     <span class="badge bg-secondary">{{ student_item.status|title }}</span>
                   {% endif %}
@@ -717,7 +719,7 @@
                             N/A
                         {% endif %}
                     </td>
-                    <td><span class="badge bg-{{ 'success' if student_item.status == 'completed' else 'warning' }}">{{ student_item.status|title }}</span></td>
+                    <td><span class="badge bg-{{ 'success' if student_item.status in ('redeemed', 'completed') else 'warning' }}">{{ student_item.status|title }}</span></td>
                     <td>{{ student_item.quantity }}</td>
                   </tr>
                   {% endfor %}
@@ -1040,7 +1042,7 @@
         return;
       }
 
-      const studentItemId = button.dataset.studentItemId;
+      const studentItemId = button.dataset.entitlementId;
       const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
 
       button.disabled = true;
@@ -1053,7 +1055,7 @@
           'Content-Type': 'application/json',
           'X-CSRFToken': csrfToken
         },
-        body: JSON.stringify({ student_item_id: studentItemId })
+        body: JSON.stringify({ entitlement_id: studentItemId })
       })
       .then(response => response.json())
       .then(data => {
@@ -1081,7 +1083,7 @@
   // Approve redemption requests from overview tab
   document.querySelectorAll(".approve-redemption-btn").forEach(button => {
     button.addEventListener("click", () => {
-      const studentItemId = button.dataset.studentItemId;
+      const studentItemId = button.dataset.entitlementId;
       const csrfToken = document.querySelector('meta[name=\"csrf-token\"]').getAttribute('content');
 
       // Disable button and show loading state
@@ -1095,7 +1097,7 @@
           'Content-Type': 'application/json',
           'X-CSRFToken': csrfToken
         },
-        body: JSON.stringify({ student_item_id: studentItemId })
+        body: JSON.stringify({ entitlement_id: studentItemId })
       })
       .then(response => response.json())
       .then(data => {

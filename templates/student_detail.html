@@ -468,6 +468,12 @@
                                     <span class="badge bg-primary">Purchased</span>
                                     {% elif s_item.status == 'processing' %}
                                     <span class="badge bg-warning text-dark">Processing</span>
+                                    {% elif s_item.status == 'redeemed' %}
+                                    <span class="badge bg-success">Redeemed</span>
+                                    {% elif s_item.status == 'expired' %}
+                                    <span class="badge bg-danger">Expired</span>
+                                    {% elif s_item.status == 'revoked' %}
+                                    <span class="badge bg-dark">Revoked</span>
                                     {% elif s_item.status == 'used' %}
                                     <span class="badge bg-success">Used</span>
                                     {% elif s_item.status == 'approved' %}
