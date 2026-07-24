@@ -6330,6 +6330,19 @@ def rent_settings():
                 coverage_label = datetime(
                     payment.period_year, payment.period_month, 1
                 ).strftime('%b %Y')
+            # DOM-OBL-001: Get amount from Ledger transaction, not from satisfaction row
+            amount_paid = Decimal('0.00')
+            payment_date = payment.assessed_at
+
+            if payment.satisfactions:
+                for satisfaction in payment.satisfactions:
+                    payment_date = satisfaction.occurred_at or payment.assessed_at
+                    if satisfaction.ledger_transaction_id:
+                        from app.models import LedgerTransaction
+                        txn = db.session.get(LedgerTransaction, satisfaction.ledger_transaction_id)
+                        if txn:
+                            amount_paid += txn.amount if txn.type == 'credit' else Decimal('0.00')
+
             payment_log.append({
                 'student': payment.seat.user if payment.seat and payment.seat.user else None,
                 'actor_public_id': payment.seat.public_id if payment.seat else None,
@@ -6337,8 +6350,8 @@ def rent_settings():
                 'class_label': class_label_by_class_id.get(payment_class_id, payment.period),
                 'block': payment_block,
                 'coverage_label': coverage_label,
-                'amount_paid': payment.satisfaction.amount_paid if payment.satisfaction else Decimal('0.00'),
-                'payment_date': payment.satisfaction.satisfied_at if payment.satisfaction else payment.assessed_at,
+                'amount_paid': amount_paid,
+                'payment_date': payment_date,
             })
 
     student_past_due_json = {}
