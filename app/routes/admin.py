@@ -1265,9 +1265,12 @@ def _hard_delete_class_scope(class_id, canonical_context):
         .distinct()
         .all()
     ]
-    store_purchase_ids_subq = (
-        db.session.query(StorePurchase.id)
-        .filter(StorePurchase.class_id == class_id)
+    store_purchase_entitlement_ids_subq = (
+        db.session.query(Entitlement.entitlement_id)
+        .filter(
+            Entitlement.class_id == class_id,
+            Entitlement.grant_type == GrantType.PURCHASE,
+        )
         .subquery()
     )
     tx_ids_subq = (
@@ -1288,7 +1291,7 @@ def _hard_delete_class_scope(class_id, canonical_context):
 
     # Class-scoped records
     RedemptionEvent.query.filter(
-        RedemptionEvent.purchase_id.in_(sa.select(store_purchase_ids_subq))
+        RedemptionEvent.entitlement_id.in_(sa.select(store_purchase_entitlement_ids_subq))
     ).delete(synchronize_session=False)
     StorePurchase.query.filter(StorePurchase.class_id == class_id).delete(synchronize_session=False)
     AttendanceSession.query.filter(AttendanceSession.class_id == class_id).delete(synchronize_session=False)
@@ -1330,13 +1333,17 @@ def _hard_delete_class_scope(class_id, canonical_context):
             .filter(StoreItemVisibility.store_item_id.is_(None))
             .subquery()
         )
-        class_item_purchase_ids = (
-            db.session.query(StorePurchase.id)
-            .filter(StorePurchase.store_item_id.in_(sa.select(deletable_store_item_ids)))
+        class_item_entitlement_ids = (
+            db.session.query(Entitlement.entitlement_id)
+            .filter(
+                Entitlement.entitlement_item_id.in_(sa.select(deletable_store_item_ids)),
+                Entitlement.class_id == class_id,
+                Entitlement.grant_type == GrantType.PURCHASE,
+            )
             .subquery()
         )
         RedemptionEvent.query.filter(
-            RedemptionEvent.purchase_id.in_(sa.select(class_item_purchase_ids))
+            RedemptionEvent.entitlement_id.in_(sa.select(class_item_entitlement_ids))
         ).delete(synchronize_session=False)
         StorePurchase.query.filter(
             StorePurchase.store_item_id.in_(sa.select(deletable_store_item_ids))
@@ -5291,28 +5298,29 @@ def store_management():
     )
 
     # Get pending redemption requests from the canonical redemption workflow.
-    resolved_redemption_purchase_ids = {
-        row.purchase_id
+    resolved_redemption_entitlement_ids = {
+        row.entitlement_id
         for row in RedemptionEvent.query.filter(
             RedemptionEvent.class_id == selected_scope['class_id'],
             RedemptionEvent.action.in_(
                 [RedemptionEventAction.APPROVED, RedemptionEventAction.REJECTED]
             ),
         ).all()
+        if row.entitlement_id
     }
     pending_redemption_events = (
         RedemptionEvent.query.filter(
             RedemptionEvent.class_id == selected_scope['class_id'],
             RedemptionEvent.action == RedemptionEventAction.REQUEST,
         )
-        .filter(~RedemptionEvent.purchase_id.in_(resolved_redemption_purchase_ids or {-1}))
+        .filter(~RedemptionEvent.entitlement_id.in_(resolved_redemption_entitlement_ids or {"-1"}))
         .order_by(RedemptionEvent.timestamp.desc())
         .limit(10)
         .all()
     )
     pending_redemptions = [
         SimpleNamespace(
-            id=event.purchase_id,
+            id=event.entitlement_id,
             seat=db.session.get(Seat, event.seat_id) or SimpleNamespace(id=event.seat_id),
             store_item=db.session.get(StoreItem, event.purchase.store_item_id) if event.purchase else None,
             class_id=event.class_id,
@@ -5456,6 +5464,7 @@ def store_management():
         db.session.query(
             RedemptionEvent.id.label("id"),
             RedemptionEvent.purchase_id.label("purchase_id"),
+            RedemptionEvent.entitlement_id.label("entitlement_id"),
             RedemptionEvent.seat_display_name.label("student_display_name"),
             RedemptionEvent.class_display_label.label("class_display_label"),
             RedemptionEvent.action.label("action"),
@@ -5507,7 +5516,7 @@ def store_management():
     inferred_rows = []
 
     live_serialized = [{
-        'student_item_id': row.purchase_id,
+        'student_item_id': row.entitlement_id,
         'student_display_name': row.student_display_name or "Unknown",
         'class_display_label': row.class_display_label,
         'action': row.action.value if hasattr(row.action, 'value') else row.action,
@@ -6654,6 +6663,7 @@ def insurance_management():
 
 @admin_bp.route('/insurance/edit/<int:policy_id>', methods=['GET', 'POST'])
 @admin_required
+@feat_shell("FEAT-CLASS-003")
 def edit_insurance_policy(policy_id):
     """Edit existing insurance policy."""
     class_id = g.canonical_context.class_id
@@ -6663,7 +6673,7 @@ def edit_insurance_policy(policy_id):
     payload = json.loads(version.policy_payload_json or "{}")
     store_items = (
         StoreItem.query.filter_by(class_id=class_id)
-        .order_by(StoreItem.title.asc(), StoreItem.id.asc())
+        .order_by(StoreItem.name.asc(), StoreItem.id.asc())
         .all()
     )
     if request.method == "POST":
@@ -6747,6 +6757,7 @@ def edit_insurance_policy(policy_id):
 
 @admin_bp.route('/insurance/deactivate/<int:policy_id>', methods=['POST'])
 @admin_required
+@feat_shell("FEAT-CLASS-003")
 def deactivate_insurance_policy(policy_id):
     """Deactivate an insurance policy."""
     class_id = g.canonical_context.class_id
@@ -6780,6 +6791,7 @@ def deactivate_insurance_policy(policy_id):
 
 @admin_bp.route('/insurance/delete/<int:policy_id>', methods=['POST'])
 @admin_required
+@feat_shell("FEAT-CLASS-003")
 def delete_insurance_policy(policy_id):
     """Delete an insurance policy and all associated data.
 
@@ -6817,6 +6829,7 @@ def delete_insurance_policy(policy_id):
 
 @admin_bp.route('/insurance/mass-remove/<int:policy_id>', methods=['POST'])
 @admin_required
+@feat_shell("FEAT-CLASS-003")
 def mass_remove_policy(policy_id):
     """Cancel insurance policy for multiple or all students."""
     flash("Insurance mass-removal is now expressed as policy deactivation/deletion scheduling in the class-config editor.", "info")
@@ -6859,11 +6872,35 @@ def view_student_policy(enrollment_id):
         contract_max_claims_count=None,
         contract_max_claims_period="period",
     )
+    def _claim_display_row(claim):
+        raw_incident = (claim.claimed_dates or [None])[0] if getattr(claim, "claimed_dates", None) else None
+        if isinstance(raw_incident, str):
+            try:
+                incident_dt = datetime.fromisoformat(raw_incident)
+            except ValueError:
+                incident_dt = claim.submitted_at
+        elif raw_incident is not None:
+            incident_dt = raw_incident
+        else:
+            incident_dt = claim.submitted_at
+        return SimpleNamespace(
+            id=claim.id,
+            claim_id=claim.claim_id,
+            policy=SimpleNamespace(title=getattr(getattr(claim.entitlement, "store_item", None), "name", "Insurance")),
+            status=getattr(claim.status, "value", claim.status),
+            approved_amount=getattr(claim, "approved_amount", None),
+            claim_amount=getattr(claim, "claim_amount", None),
+            rejection_reason=getattr(claim, "rejection_reason", None),
+            description=getattr(claim, "description", ""),
+            teacher_notes=getattr(claim, "teacher_notes", None),
+            incident_date=incident_dt,
+            filed_date=claim.submitted_at,
+        )
     if claims:
         first_claim = claims[0]
         entitlement_item = getattr(getattr(first_claim, "entitlement", None), "store_item", None)
         if entitlement_item is not None:
-            placeholder_policy.title = getattr(entitlement_item, "title", placeholder_policy.title)
+            placeholder_policy.title = getattr(entitlement_item, "name", placeholder_policy.title)
             placeholder_policy.description = getattr(entitlement_item, "description", placeholder_policy.description)
     return render_template(
         'admin_view_student_policy.html',
@@ -6871,7 +6908,7 @@ def view_student_policy(enrollment_id):
         student=student,
         enrollment=enrollment,
         policy=placeholder_policy,
-        claims=claims,
+        claims=[_claim_display_row(claim) for claim in claims],
         seat=SimpleNamespace(public_id=""),
     )
 
@@ -6907,7 +6944,14 @@ def process_claim(claim_id):
     claim_view = SimpleNamespace(
         id=claim.id,
         claim_id=claim.claim_id,
-        student=SimpleNamespace(full_name=getattr(claim.target_seat, "public_id", "")),
+        student=SimpleNamespace(
+            full_name=(
+                (lambda profile: profile.full_name if profile else getattr(claim.target_seat, "public_id", ""))(
+                    IdentityProfile.query.filter_by(seat_id=claim.target_seat_id).first()
+                )
+                if claim.target_seat_id else getattr(claim.target_seat, "public_id", "")
+            )
+        ),
         target_seat=claim.target_seat,
         transaction=getattr(claim, "referenced_transaction", None),
         submitted_at=claim.submitted_at,
@@ -6930,9 +6974,9 @@ def process_claim(claim_id):
             execute_claim_approval(
                 claim_id=claim.claim_id,
                 decided_by_seat_id=g.canonical_context.seat_id,
+                ctx=g.canonical_context,
             )
             flash("Claim approved.", "success")
-            db.session.commit()
             return redirect(url_for("admin.insurance_management"))
         if decision == "rejected":
             execute_claim_rejection(
@@ -6940,7 +6984,6 @@ def process_claim(claim_id):
                 decided_by_seat_id=g.canonical_context.seat_id,
             )
             flash("Claim rejected.", "info")
-            db.session.commit()
             return redirect(url_for("admin.insurance_management"))
     return render_template(
         'admin_process_claim.html',

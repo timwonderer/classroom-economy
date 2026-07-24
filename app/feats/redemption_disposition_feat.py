@@ -48,6 +48,7 @@ def _resolve_class_display_label(class_id, fallback_block):
 def record_live_redemption_event(
     *,
     purchase_id: int,
+    entitlement_id: str | None,
     seat_id: int | None,
     class_id: str | None,
     action: RedemptionEventAction,
@@ -59,6 +60,7 @@ def record_live_redemption_event(
     event = RedemptionEvent(
         id=str(uuid4()),
         purchase_id=purchase_id,
+        entitlement_id=entitlement_id,
         seat_id=seat_id,
         class_id=class_id,
         action=action,
@@ -109,6 +111,7 @@ def execute_redemption_approval(
 
     event_id = record_live_redemption_event(
         purchase_id=purchase.id,
+        entitlement_id=entitlement.entitlement_id,
         seat_id=purchase.seat_id,
         class_id=purchase.class_id,
         action=RedemptionEventAction.APPROVED,
@@ -145,8 +148,10 @@ def execute_redemption_rejection(
             f"StorePurchase {purchase.id} is not in 'processing' state; cannot reject."
         )
 
+    entitlement = _resolve_entitlement_for_purchase(purchase)
     event_id = record_live_redemption_event(
         purchase_id=purchase.id,
+        entitlement_id=entitlement.entitlement_id if entitlement else None,
         seat_id=purchase.seat_id,
         class_id=purchase.class_id,
         action=RedemptionEventAction.REJECTED,

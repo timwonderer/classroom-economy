@@ -13,6 +13,7 @@ from app.services.store_entitlement_service import list_entitlement_history
 from app.utils.time import ensure_utc, get_class_now, to_class_time
 
 CLAIM_TYPE_TRANSACTION_MONETARY = "transaction_monetary"
+CLAIM_TYPE_PRODUCTIVITY = "productivity"
 CLAIM_TYPE_NON_MONETARY = "non_monetary"
 
 CLAIM_REASON_HARD_DENY_CATEGORY = "HARD_DENY_CATEGORY"
@@ -316,6 +317,7 @@ def resolve_claim_type(*, claim=None, policy_claim_type: Optional[str] = None) -
     """Canonical claim type resolution used across admin/student claim flows."""
     if policy_claim_type in {
         CLAIM_TYPE_TRANSACTION_MONETARY,
+        CLAIM_TYPE_PRODUCTIVITY,
         CLAIM_TYPE_NON_MONETARY,
     }:
         return policy_claim_type

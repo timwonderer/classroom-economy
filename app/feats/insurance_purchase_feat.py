@@ -5,6 +5,7 @@ from decimal import Decimal
 from datetime import timedelta
 
 from app.extensions import db
+from app.feats.base import feat_shell
 from app.services import ledger_service, obligations_service
 from app.feats.ledger_resolution_feat import build_intended_ledger_plan, resolve_intended_ledger_plan, apply_resolved_ledger_plan
 from app.services.store_entitlement_service import grant_entitlement
@@ -21,6 +22,7 @@ class InsurancePurchaseResult:
     overdraft_transfer_applied: bool
 
 
+@feat_shell("FEAT-STOR-001")
 def execute_insurance_purchase(
     *,
     seat,

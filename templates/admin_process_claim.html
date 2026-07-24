@@ -46,12 +46,12 @@
           </dd>
 
           <dt class="col-sm-4">Incident Date:</dt>
-          <dd class="col-sm-8">{{ claim.incident_date.strftime('%B %d, %Y') }}</dd>
+          <dd class="col-sm-8">{{ (claim.claimed_dates[0] if claim.claimed_dates else claim.submitted_at).strftime('%B %d, %Y') }}</dd>
 
           <dt class="col-sm-4">Filed Date:</dt>
           <dd class="col-sm-8">
             {% if claim.filed_date %}
-              <span class="local-timestamp" data-timestamp="{{ format_utc_iso(claim.filed_date) }}"></span>
+              <span class="local-timestamp" data-timestamp="{{ format_utc_iso(claim.submitted_at) }}"></span>
             {% else %}
               N/A
             {% endif %}

@@ -903,6 +903,7 @@ class RedemptionEvent(db.Model):
     __tablename__ = 'redemption_events'
     id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     purchase_id = db.Column(db.Integer, db.ForeignKey('store_purchases.id', ondelete='CASCADE'), nullable=False, index=True)
+    entitlement_id = db.Column(db.String(36), db.ForeignKey('entitlements.entitlement_id'), nullable=True, index=True)
     seat_id = db.Column(db.Integer, db.ForeignKey('seats.id', ondelete='SET NULL'), nullable=True, index=True)
     class_id = db.Column(db.String(36), db.ForeignKey('classes.class_id', ondelete='CASCADE'), nullable=True, index=True)
     action = db.Column(
@@ -930,6 +931,7 @@ class RedemptionEvent(db.Model):
     timestamp = db.Column(db.DateTime(timezone=True), nullable=False, default=utc_now, index=True)
 
     purchase = db.relationship('StorePurchase', backref=db.backref('redemption_events', lazy='dynamic'))
+    entitlement = db.relationship('Entitlement', backref=db.backref('redemption_events', lazy='dynamic'))
     initiated_by = db.relationship('User', backref=db.backref('initiated_redemption_events', lazy='dynamic'))
 
     __table_args__ = (
@@ -1768,7 +1770,7 @@ class PolicyTransition(db.Model):
     activation_mode = db.Column(db.String(32), nullable=False)
     status = db.Column(db.String(32), nullable=False, default='pending')
     created_at = db.Column(db.DateTime(timezone=True), default=utc_now, nullable=False)
-    created_by = db.Column(db.Integer, nullable=True)
+    created_by = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
     applied_at = db.Column(db.DateTime(timezone=True), nullable=True)
     correlation_id = db.Column(db.String(64), nullable=True, index=True)
     superseded_by_transition_id = db.Column(db.Integer, db.ForeignKey('policy_transitions.id'), nullable=True)

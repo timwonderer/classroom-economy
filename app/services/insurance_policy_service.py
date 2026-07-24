@@ -87,8 +87,6 @@ def create_policy_version(
     db.session.add(transition)
     db.session.flush()
     version.created_by_transition_id = transition.id
-    if source_version and is_active:
-        source_version.is_active = False
     return version
 
 

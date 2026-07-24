@@ -13,6 +13,7 @@ All identity comes from CanonicalContext via context_resolver.
 from __future__ import annotations
 
 import uuid
+import json
 from typing import Literal
 
 import sqlalchemy as sa
@@ -27,6 +28,7 @@ from app.models import (
     InsuranceClaim,
     InsuranceClaimStatus,
     ObligationAssessment,
+    PolicyVersion,
 )
 from app.utils.canonical_temporal_resolver import (
     SYSTEM_LEVEL_EVALUATION,
@@ -48,6 +50,13 @@ def _now_utc():
 
 def _new_id() -> str:
     return str(uuid.uuid4())
+
+
+def _load_policy_payload(version: PolicyVersion) -> dict:
+    try:
+        return json.loads(version.policy_payload_json or "{}")
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return {}
 
 
 # ---------------------------------------------------------------------------
@@ -173,6 +182,20 @@ def consume_entitlement(
     )
 
 
+from app.feats.base import feat_shell
+
+
+def _is_insurance_entitlement(entitlement: Entitlement) -> bool:
+    if entitlement is None:
+        return False
+    versions = PolicyVersion.query.filter_by(class_id=entitlement.class_id, domain="insurance").all()
+    return any(
+        _load_policy_payload(version).get("entitlement_item_id") == entitlement.entitlement_item_id
+        for version in versions
+    )
+
+
+@feat_shell("FEAT-STOR-002")
 def revoke_entitlement(
     *,
     entitlement_id: str,
@@ -182,6 +205,11 @@ def revoke_entitlement(
     correlation_id: str | None = None,
 ) -> EntitlementConsumption:
     """Mark an entitlement as REVOKED (provenance-aware, see §XIII.B)."""
+    entitlement = Entitlement.query.filter_by(entitlement_id=entitlement_id).first()
+    if entitlement is None:
+        raise ValueError(f"Entitlement {entitlement_id} not found")
+    if _is_insurance_entitlement(entitlement):
+        raise ValueError("Insurance entitlements cannot be revoked through FEAT-STOR-002")
     return _write_terminal_event(
         entitlement_id=entitlement_id,
         disposition=Disposition.REVOKED,
@@ -192,6 +220,7 @@ def revoke_entitlement(
     )
 
 
+@feat_shell("FEAT-STOR-002")
 def expire_entitlement(
     *,
     entitlement_id: str,

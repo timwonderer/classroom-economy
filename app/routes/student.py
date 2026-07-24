@@ -1534,6 +1534,30 @@ def insurance_marketplace():
                 version_number=policy.version_number,
             )
         )
+    def _claim_display_row(claim):
+        raw_incident = (claim.claimed_dates or [None])[0] if getattr(claim, "claimed_dates", None) else None
+        if isinstance(raw_incident, str):
+            try:
+                incident_dt = datetime.fromisoformat(raw_incident)
+            except ValueError:
+                incident_dt = claim.submitted_at
+        elif raw_incident is not None:
+            incident_dt = raw_incident
+        else:
+            incident_dt = claim.submitted_at
+        return SimpleNamespace(
+            id=claim.id,
+            claim_id=claim.claim_id,
+            policy=getattr(claim, "policy", SimpleNamespace(title="Insurance")),
+            status=getattr(claim.status, "value", claim.status),
+            approved_amount=getattr(claim, "approved_amount", None),
+            claim_amount=getattr(claim, "claim_amount", None),
+            rejection_reason=getattr(claim, "rejection_reason", None),
+            description=getattr(claim, "description", ""),
+            teacher_notes=getattr(claim, "teacher_notes", None),
+            incident_date=incident_dt,
+            filed_date=claim.submitted_at,
+        )
     tier_groups = defaultdict(lambda: {"name": "", "color": "secondary", "policies": []})
     for policy in available_policies:
         if policy.tier_group:
@@ -1559,7 +1583,7 @@ def insurance_marketplace():
         ),
         current_class_context=current_class_context,
         my_policies=[],
-        my_claims=list_insurance_claims(class_id=context.class_id, target_seat_id=context.seat_id),
+        my_claims=[_claim_display_row(claim) for claim in list_insurance_claims(class_id=context.class_id, target_seat_id=context.seat_id)],
         available_policies=available_policies,
         tier_groups=dict(tier_groups),
         enrolled_tiers=[],
@@ -1732,6 +1756,29 @@ def file_claim(policy_id):
         contract_max_claims_count=None,
         contract_max_claims_period="period",
     )
+    class _DummyLabel:
+        def __init__(self, text: str):
+            self.text = text
+        def __call__(self, *args, **kwargs):
+            return self.text
+
+    class _DummyField:
+        def __init__(self, label: str, value=""):
+            self.label = _DummyLabel(label)
+            self.data = value
+        def __call__(self, *args, **kwargs):
+            return ""
+
+    form = SimpleNamespace(
+        hidden_tag=lambda: "",
+        transaction_id=_DummyField("Transaction"),
+        incident_date=_DummyField("Incident Date"),
+        description=_DummyField("Description"),
+        comments=_DummyField("Comments"),
+        claim_item=_DummyField("Claim Item"),
+        claim_amount=_DummyField("Claim Amount"),
+        submit=_DummyField("Submit"),
+    )
     return render_template(
         'student_file_claim.html',
         student=student_name,
@@ -1745,7 +1792,7 @@ def file_claim(policy_id):
         ),
         policy=placeholder_policy,
         enrollment=enrollment,
-        form=SimpleNamespace(hidden_tag=lambda: ""),
+        form=form,
         errors=[],
         claim_type="transaction_monetary",
         contract_title=placeholder_policy.title,
@@ -1791,6 +1838,30 @@ def view_policy(enrollment_id):
         entitlement = active_entitlements[0] if active_entitlements else None
     if entitlement is None:
         flash("You do not have an active insurance entitlement for this policy.", "warning")
+    def _claim_display_row(claim):
+        raw_incident = (claim.claimed_dates or [None])[0] if getattr(claim, "claimed_dates", None) else None
+        if isinstance(raw_incident, str):
+            try:
+                incident_dt = datetime.fromisoformat(raw_incident)
+            except ValueError:
+                incident_dt = claim.submitted_at
+        elif raw_incident is not None:
+            incident_dt = raw_incident
+        else:
+            incident_dt = claim.submitted_at
+        return SimpleNamespace(
+            id=claim.id,
+            claim_id=claim.claim_id,
+            policy=getattr(claim, "policy", SimpleNamespace(title="Insurance")),
+            status=getattr(claim.status, "value", claim.status),
+            approved_amount=getattr(claim, "approved_amount", None),
+            claim_amount=getattr(claim, "claim_amount", None),
+            rejection_reason=getattr(claim, "rejection_reason", None),
+            description=getattr(claim, "description", ""),
+            teacher_notes=getattr(claim, "teacher_notes", None),
+            incident_date=incident_dt,
+            filed_date=claim.submitted_at,
+        )
     placeholder_policy = SimpleNamespace(
         id=policy_version.id,
         title=payload.get("title") or f"Policy v{policy_version.version_number}",
@@ -1846,11 +1917,14 @@ def view_policy(enrollment_id):
             class_identifier=class_identifier,
         ),
         enrollment=enrollment,
-        claims=list_insurance_claims(
-            class_id=context.class_id,
-            target_seat_id=context.seat_id,
-            entitlement_id=getattr(entitlement, "entitlement_id", None),
-        ),
+        claims=[
+            _claim_display_row(claim)
+            for claim in list_insurance_claims(
+                class_id=context.class_id,
+                target_seat_id=context.seat_id,
+                entitlement_id=getattr(entitlement, "entitlement_id", None),
+            )
+        ],
         now=utc_now(),
     )
 

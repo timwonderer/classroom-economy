@@ -59,7 +59,7 @@ from app.services.context_resolver import resolve_canonical_context, ContextReso
 from app.feats.store_purchase_feat import execute_store_purchase
 from app.feats.ledger_resolution_feat import build_intended_ledger_plan, resolve_intended_ledger_plan, apply_resolved_ledger_plan
 from app.services.store_service import get_active_rent_grant, get_purchase_count
-from app.services.store_entitlement_service import list_entitlement_history
+from app.services.store_entitlement_service import consume_entitlement, list_entitlement_history
 from app.feats.redemption_disposition_feat import (
     RedemptionDispositionError,
     execute_redemption_approval,
@@ -198,7 +198,7 @@ def _resolve_class_display_label(class_id, fallback_block=None):
     return fallback_block or "Unknown Class"
 
 
-def _append_redemption_audit_log(*, student_item, student, user_id, action, notes, guard_state, fallback_block=None):
+def _append_redemption_audit_log(*, student_item, entitlement, student, user_id, action, notes, guard_state, fallback_block=None):
     """Append exactly one live redemption event row for this request path."""
     if guard_state.get('inserted'):
         raise RuntimeError("Duplicate redemption audit insertion attempt in single request path")
@@ -230,6 +230,7 @@ def _append_redemption_audit_log(*, student_item, student, user_id, action, note
 
     record_live_redemption_event(
         purchase_id=student_item.id,
+        entitlement_id=getattr(entitlement, "entitlement_id", None),
         seat_id=getattr(student_item, 'seat_id', None),
         class_id=class_id,
         action=action_map[action],
@@ -714,6 +715,13 @@ def use_item():
     if student_item.store_item.item_type == 'hall_pass':
         qty = student_item.quantity or 1
         grant_hall_passes(student, qty, trigger_id=f"inventory_redeem_{student_item.id}")
+        consume_entitlement(
+            entitlement_id=entitlement.entitlement_id,
+            class_id=student_item.class_id,
+            target_seat_id=student.id,
+            actor_seat_id=student.id,
+            correlation_id=f"inventory_redeem_{student_item.id}",
+        )
         student_item.status = 'redeemed'
         return jsonify({"status": "success", "message": f"Added {qty} hall pass(es) to your balance!"})
 
@@ -743,6 +751,7 @@ def use_item():
         audit_guard = {'inserted': False}
         _append_redemption_audit_log(
             student_item=student_item,
+            entitlement=entitlement,
             student=student,
             user_id=user_id_for_audit,
             action='REQUEST',

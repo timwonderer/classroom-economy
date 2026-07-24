@@ -116,8 +116,8 @@
                         <tbody>
                             {% for claim in claims %}
                             <tr>
-                                <td>{{ claim.incident_date.strftime('%Y-%m-%d') }}</td>
-                                <td>{{ claim.filed_date.strftime('%Y-%m-%d') }}</td>
+                                <td>{{ (claim.claimed_dates[0] if claim.claimed_dates else claim.submitted_at).strftime('%Y-%m-%d') }}</td>
+                                <td>{{ claim.submitted_at.strftime('%Y-%m-%d') }}</td>
                                 <td>
                                     {% if claim.approved_amount %}
                                     ${{ "%.2f"|format(claim.approved_amount) }}
@@ -154,8 +154,7 @@
                                             <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                                         </div>
                                         <div class="modal-body">
-                                            <p><strong>Incident Date:</strong> {{ claim.incident_date.strftime('%B %d,
-                                                %Y') }}</p>
+                                            <p><strong>Incident Date:</strong> {{ (claim.claimed_dates[0] if claim.claimed_dates else claim.submitted_at).strftime('%B %d, %Y') }}</p>
                                             <p><strong>Description:</strong></p>
                                             <p class="bg-light p-3 rounded">{{ claim.description }}</p>
 
