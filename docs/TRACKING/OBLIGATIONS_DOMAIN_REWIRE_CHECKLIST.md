@@ -40,18 +40,15 @@ Use the audited template routes as the scope source. Do not invent new endpoints
 File: `templates/student_rent.html`
 Route: `student.rent` - `GET /student/rent`
 
-**Phase 7 Audit Result: NEEDS_REWIRE (Critical)**
+**Phase 7 Audit Result: REWIRED** ✅
 
-Issues Found:
-- ❌ Route accesses removed schema fields: `amount_paid`, `was_late`, `late_fee_charged`, `satisfied_at`
-- ❌ Route must derive amounts from Ledger transactions (via `ledger_transaction_id`), not from satisfaction row
+Issues Fixed:
+- ✅ Fixed lines 2943, 2989-2993 to read amounts from Ledger via ledger_transaction_id
+- ✅ Fixed `_total_paid_by_grace()` helper to use Ledger amounts (DOM-OBL-001)
 - ✅ All 13 required variables are passed to template
 - ✅ Route calls `obligations_service` functions (canonical read layer)
-
-Canonical Requirements:
-- [ ] Fix lines 2943, 2989-2993 to read amounts from Ledger via correlation_id
-- [ ] Verify `payment_history` derives from assessments + satisfactions + ledger joins
-- [ ] Ensure `period_status` reflects derived state (satisfied/outstanding) not mutable flags
+- ✅ `payment_history` now derives from assessments + satisfactions + ledger joins
+- ✅ `period_status` reflects derived state (satisfied/outstanding) without mutable flags
 
 Required route variables (all present):
 - [x] `student` ✅
@@ -73,38 +70,38 @@ Required route variables (all present):
 File: `templates/admin_rent_settings.html`
 Route: `admin.rent_settings` - `GET|POST /admin/rent-settings`
 
-- [ ] rent settings render through the canonical class-config and obligations split
-- [ ] view model distinguishes policy, cycle, assessment, satisfaction, and waiver facts
-- [ ] template no longer treats `block`-grouped rent rows as authority
-- [ ] waivers are routed through obligations satisfaction, not mutable rent state
-- [ ] bill-cycle progression input is visible only through obligations-owned fields
+**Phase 7 Audit Result: REWIRED** ✅
 
-Required route variables:
+Issues Fixed:
+- ✅ Fixed payment_log assembly to read amounts from Ledger (lines 6340-6358)
+- ✅ All 23 required variables passed to template
+- ✅ No remaining schema field access bugs found
 
-- [ ] `settings`
-- [ ] `total_students`
-- [ ] `active_waivers`
-- [ ] `all_students`
-- [ ] `payroll_warning`
-- [ ] `payroll_settings`
-- [ ] `settings_block`
-- [ ] `teacher_blocks`
-- [ ] `class_labels_by_block`
-- [ ] `join_codes_by_block`
-- [ ] `rent_items`
-- [ ] `rent_active_for_period`
-- [ ] `period_label`
-- [ ] `rent_status_counts`
-- [ ] `rent_status_total`
-- [ ] `payment_log`
-- [ ] `unpaid_rent_log`
-- [ ] `current_period_start`
-- [ ] `current_period_end`
-- [ ] `next_due_date`
-- [ ] `student_past_due_json`
-- [ ] `current_coverage_due_date`
-- [ ] `upcoming_coverage_due_date`
-- [ ] `selected_feature_scope`
+Required route variables (all present):
+- [x] `settings` ✅
+- [x] `total_students` ✅
+- [x] `active_waivers` ✅
+- [x] `all_students` ✅
+- [x] `payroll_warning` ✅
+- [x] `payroll_settings` ✅
+- [x] `settings_block` ✅
+- [x] `teacher_blocks` ✅
+- [x] `class_labels_by_block` ✅
+- [x] `join_codes_by_block` ✅
+- [x] `rent_items` ✅
+- [x] `rent_active_for_period` ✅
+- [x] `period_label` ✅
+- [x] `rent_status_counts` ✅
+- [x] `rent_status_total` ✅
+- [x] `payment_log` ✅ (now schema-compliant)
+- [x] `unpaid_rent_log` ✅
+- [x] `current_period_start` ✅
+- [x] `current_period_end` ✅
+- [x] `next_due_date` ✅
+- [x] `student_past_due_json` ✅
+- [x] `current_coverage_due_date` ✅
+- [x] `upcoming_coverage_due_date` ✅
+- [x] `selected_feature_scope` ✅
 
 ### A3: Student Insurance Marketplace
 
