@@ -1120,30 +1120,33 @@ def _sync_rent_settings_scope(mapper, connection, target):
 # ---- Canonical Obligations Domain (DOM-OBL-001) ----
 
 class ObligationAssessment(db.Model):
-    """Authoritative record of a seat becoming liable for a policy-defined charge."""
+    """Authoritative record of a seat becoming liable for a policy-defined charge — DOM-OBL-001."""
     __tablename__ = 'assessment_events'
 
     id = db.Column(db.Integer, primary_key=True)
     seat_id = db.Column(db.Integer, db.ForeignKey('seats.id', ondelete='CASCADE'), nullable=False, index=True)
     class_id = db.Column(db.String(36), db.ForeignKey('classes.class_id', ondelete='CASCADE'), nullable=False, index=True)
-    join_code = db.Column(db.String(20), nullable=True, index=True)
-    period = db.Column(db.String(10), nullable=True, index=True)
+
+    # Canonical identity fields — DOM-OBL-001 Section VII.1
+    internal_ref = db.Column(db.String(200), nullable=False, index=True)  # Stable lineage key for recurring relationship
+    correlation_id = db.Column(db.String(200), nullable=False, unique=True, index=True)  # Unique ID for this individual liability
 
     obligation_type = db.Column(db.String(30), nullable=False, index=True)  # RENT, INSURANCE_PREMIUM
+    policy_version_id = db.Column(db.Integer, db.ForeignKey('policy_versions.id'), nullable=True, index=True)
 
-    # Policy snapshot at assessment time — INV-OBL-009
-    amount_snap = db.Column(db.Numeric(precision=12, scale=2), nullable=False)
+    # Temporal fields — DOM-OBL-001 Section VII.1
     due_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    viewable_at = db.Column(db.DateTime(timezone=True), nullable=True)
     assessed_at = db.Column(db.DateTime(timezone=True), default=utc_now, nullable=False)
+    created_at = db.Column(db.DateTime(timezone=True), default=utc_now, nullable=False)
 
-    policy_version_id = db.Column(
-        db.Integer,
-        db.ForeignKey('policy_versions.id'),
-        nullable=True,
-        index=True,
-    )
+    # Bill cycle linkage — DOM-OBL-001 Section VII.1
+    bill_cycle_id = db.Column(db.Integer, db.ForeignKey('bill_cycles.id', ondelete='SET NULL'), nullable=True, index=True)
 
-    # Rent-cycle fields — preserved from prepay coverage-window model (INV-ARC-015)
+    # Legacy fields (bridge period, will be removed in future)
+    join_code = db.Column(db.String(20), nullable=True, index=True)
+    period = db.Column(db.String(10), nullable=True, index=True)
+    amount_snap = db.Column(db.Numeric(precision=12, scale=2), nullable=True)  # Legacy — amounts not stored per DOM-OBL-001
     period_key = db.Column(db.String(20), nullable=True)
     coverage_start_time = db.Column(db.DateTime(timezone=True), nullable=True, index=True)
     coverage_end_time = db.Column(db.DateTime(timezone=True), nullable=True, index=True)
@@ -1154,13 +1157,16 @@ class ObligationAssessment(db.Model):
     coverage_year = db.Column(db.Integer, nullable=True)
 
     seat = db.relationship('Seat', backref=db.backref('obligation_assessments', passive_deletes=True))
-    satisfaction = db.relationship('ObligationSatisfaction', uselist=False, backref='assessment')
+    satisfactions = db.relationship('ObligationSatisfaction', backref='assessment', passive_deletes=True)  # Multiple satisfactions allowed
     reversal = db.relationship('ObligationReversal', uselist=False, backref='assessment')
     entitlement_events = db.relationship('EntitlementEvent', backref='assessment')
     policy_version = db.relationship('PolicyVersion', backref=db.backref('assessments', lazy='dynamic'))
+    bill_cycle = db.relationship('BillCycle', backref=db.backref('assessments', passive_deletes=True))
+
     __table_args__ = (
         db.UniqueConstraint('seat_id', 'class_id', 'cycle_idempotency_key', name='uq_assessment_events_idempotency'),
         db.Index('ix_assessment_events_seat_class', 'seat_id', 'class_id'),
+        db.Index('ix_assessment_events_internal_ref', 'internal_ref'),
     )
 
 
@@ -1177,17 +1183,45 @@ class ObligationLifecycle(db.Model):
 
 
 class ObligationSatisfaction(db.Model):
-    """Immutable record of how a valid debt was resolved — INV-OBL-004."""
+    """Immutable record of lawful obligation resolution — DOM-OBL-001 Section VII.2.
+
+    Multiple PAYMENT events may exist for one assessment (partial payment). WAIVED is rent-only.
+    Amount information comes from referenced Ledger transaction, not stored here per DOM-OBL-001.
+    """
     __tablename__ = 'obligation_satisfaction'
 
     id = db.Column(db.Integer, primary_key=True)
-    assessment_id = db.Column(db.Integer, db.ForeignKey('assessment_events.id', ondelete='CASCADE'), nullable=False, unique=True, index=True)
+    assessment_id = db.Column(db.Integer, db.ForeignKey('assessment_events.id', ondelete='CASCADE'), nullable=False, index=True)
     method = db.Column(db.String(20), nullable=False)  # PAYMENT, WAIVER
-    amount_paid = db.Column(db.Numeric(precision=12, scale=2), nullable=True)
-    was_late = db.Column(db.Boolean, default=False, nullable=False)
-    late_fee_charged = db.Column(db.Numeric(precision=12, scale=2), nullable=True)
-    transaction_id = db.Column(db.Integer, db.ForeignKey('ledger_transaction.id', ondelete='SET NULL'), nullable=True, index=True)
-    satisfied_at = db.Column(db.DateTime(timezone=True), default=utc_now, nullable=False)
+    ledger_transaction_id = db.Column(db.Integer, db.ForeignKey('ledger_transaction.id', ondelete='SET NULL'), nullable=True, index=True)
+    occurred_at = db.Column(db.DateTime(timezone=True), default=utc_now, nullable=False)
+    created_at = db.Column(db.DateTime(timezone=True), default=utc_now, nullable=False)
+
+    __table_args__ = (
+        db.Index('ix_obligation_satisfaction_assessment', 'assessment_id'),
+    )
+
+
+class BillCycle(db.Model):
+    """Identity-blind recurring reminder state for obligation sources — DOM-OBL-001 Section VII.3.
+
+    Records the next temporal reminder for a continuing internal reference.
+    Does not encode business meaning, amount, seat, class, product, or renewal legality.
+    """
+    __tablename__ = 'bill_cycles'
+
+    id = db.Column(db.Integer, primary_key=True)
+    internal_ref = db.Column(db.String(200), nullable=False, index=True)  # Stable lineage key
+    cycle_number = db.Column(db.Integer, nullable=False)
+    source_version_id = db.Column(db.String(200), nullable=True)  # Lawful version snapshot reference
+    cycle_boundary_at = db.Column(db.DateTime(timezone=True), nullable=False)
+    next_assessment_at = db.Column(db.DateTime(timezone=True), nullable=False)
+    created_at = db.Column(db.DateTime(timezone=True), default=utc_now, nullable=False)
+
+    __table_args__ = (
+        db.Index('ix_bill_cycles_internal_ref', 'internal_ref'),
+        db.UniqueConstraint('internal_ref', 'cycle_number', name='uq_bill_cycles_ref_cycle'),
+    )
 
 
 class ObligationReversal(db.Model):
