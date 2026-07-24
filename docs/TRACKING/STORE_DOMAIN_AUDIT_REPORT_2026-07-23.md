@@ -2,15 +2,15 @@
 
 | Reference | Version | Date | Authority | Reviewer |
 |-----------|---------|------|-----------|----------|
-| AUDIT-STORE-001 | 3.0 | 2026-07-24 | QA/Review | Claude Opus 4.6 |
+| AUDIT-STORE-001 | 4.0 | 2026-07-24 | QA/Review | Claude Opus 4.6 |
 
 ---
 
 ## Result
 
-**AUDIT FAIL** (conditional — 3 residual findings, 1 blocking)
+**AUDIT PASS** (with 2 deferred structural debt items)
 
-Third audit round after two remediation passes. 17 of 20 original findings are remediated. 3 remain open: 1 blocking (F7 route query crash), 2 structural debt (F19, F20).
+Fourth audit round. 18 of 20 original findings are remediated. F7 blocking issue (route query `StoreItem.title` → `StoreItem.name`) confirmed fixed at `admin.py:6676`. 2 low-severity structural debt items (F19, F20) remain open and are deferred to a future migration wave — they do not cause runtime failures or domain contract violations.
 
 ---
 
@@ -122,11 +122,7 @@ Status: **PASS** (with 1 blocking issue in C6)
 - [x] Delete schedules at entitlement boundary.
 - [x] Persistent banners emitted (F15 REMEDIATED).
 
-**Blocking issue:**
-
-| # | Finding | Location | Impact |
-|---|---------|----------|--------|
-| F7 | Route queries `StoreItem.title.asc()` — `StoreItem` has `name`, not `title` | `admin.py:6668` | `InvalidRequestError` crash on GET for insurance policy editor whenever store items exist. Template was fixed to `item.name` but route ordering was missed. |
+No blocking issues remain. F7 route-side fix confirmed at `admin.py:6676`.
 
 ---
 
@@ -153,7 +149,7 @@ Status: **PASS**
 - [x] MAP checklist rows for STORE/insurance are all `REWIRED`.
 - [x] Current code matches authority and persistence model in canonical docs (with residual structural debt).
 - [x] No stale template row shapes remain on audited surfaces.
-- [ ] No direct domain boundary violations — **1 blocking route query crash** (F7 route side).
+- [x] No direct domain boundary violations in audited paths.
 - [x] All findings documented with exact file, route, and template references.
 
 ---
@@ -181,21 +177,29 @@ Status: **PASS**
 | F16 | Dead orphan `StoreItem()` constructor removed | Round 1 |
 | F17 | `uses_remaining`/`bundle_remaining` stubs removed from `student_shop.html` | Round 1 |
 | F18 | `IdentityProfile.full_name` used for student display name | Round 2 |
+| F7 | `StoreItem.title` → `StoreItem.name` in route and template | Round 3 |
 
-### Still open (3 of 20)
+### Remediated (18 of 20)
 
-| # | Finding | Severity | Location | Action needed |
-|---|---------|----------|----------|---------------|
-| F7 | Route queries `StoreItem.title.asc()` — column is `name` | **Blocking** | `admin.py:6668` | Change `.order_by(StoreItem.title.asc(), ...)` to `.order_by(StoreItem.name.asc(), ...)` |
-| F19 | `RedemptionEvent` keys off `purchase_id` not `entitlement_id` | Low | `models.py:905` | Structural debt — design decision deferred |
-| F20 | `PolicyVersion.is_active` mutable; `economy_rebalance.py:424` mutates existing version rows | Low | `models.py:1740`, `economy_rebalance.py:424` | Structural debt — immutability enforcement deferred |
+F7 was remediated after round 3: `StoreItem.title` → `StoreItem.name` at `admin.py:6676`.
+
+### Deferred structural debt (2 of 20)
+
+| # | Finding | Severity | Location | Notes |
+|---|---------|----------|----------|-------|
+| F19 | `RedemptionEvent` keys off `purchase_id` not `entitlement_id` | Low | `models.py:905` | Design decision deferred — no runtime failure |
+| F20 | `PolicyVersion.is_active` mutable; `economy_rebalance.py:424` mutates existing version rows | Low | `models.py:1740`, `economy_rebalance.py:424` | Immutability enforcement deferred — no runtime failure |
 
 ---
 
 ## Conclusion
 
-The audit is conditionally failing on 1 blocking issue: `admin.py:6668` queries `StoreItem.title` which does not exist (the column is `name`), causing the insurance policy editor GET to crash with `InvalidRequestError` whenever store items exist. This is a one-line fix.
+**AUDIT PASS.** 18 of 20 original findings are remediated across three remediation rounds. The Store and insurance surfaces are rewired to the canonical v2 authority model. All FEAT boundaries are in place, all template crash paths are resolved, and all MAP rows are justified.
 
-The 2 remaining low-severity findings (F19, F20) are structural debt that do not cause runtime failures and can be deferred to a future migration wave.
+2 low-severity structural debt items (F19: `RedemptionEvent` keyed off `purchase_id`, F20: mutable `PolicyVersion.is_active`) remain open and are deferred — they cause no runtime failures and do not violate domain contracts at the current operational level.
 
-**To achieve AUDIT PASS:** fix `StoreItem.title` → `StoreItem.name` at `admin.py:6668`.
+### Recommended follow-up
+
+- Keep this report adjacent to the audit instruction for traceability.
+- Address F19 and F20 during a future schema migration wave.
+- Re-run this checklist if future rewires touch STORE, insurance, or class-configuration surfaces.
