@@ -204,13 +204,9 @@ These tables exist in the database but have no explicit permission in DOM-CORE-0
 | §7 (Operations) | `audit_log` → `audit_events` + `chain_heads` |
 | §9 (Support) | `ticket_correlation_packs` → `ticket_correlation_pack` (singular) |
 
-### models_canonical.py
+### Canonical model reference
 
-| Change | Detail |
-|---|---|
-| `AuditLog` → `AuditEvent` | Class renamed, `__tablename__` → `audit_events` |
-| New: `ChainHead` | `__tablename__` = `chain_heads`, PK = `chain_scope` |
-| `TicketCorrelationPack` | `__tablename__` → `ticket_correlation_pack` (singular), PK → `issue_id`, removed `TimestampMixin` |
+The historical canonical ORM reference was folded back into the live model layer. The active ORM authority is now `app/models.py`; the old standalone canonical module has been removed.
 
 ### Migrations
 

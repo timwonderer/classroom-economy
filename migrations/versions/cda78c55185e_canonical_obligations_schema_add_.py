@@ -1,7 +1,7 @@
 """Canonical obligations schema: add internal_ref, correlation_id, viewable_at, bill_cycle_id; create bill_cycles table; fix satisfaction uniqueness
 
 Revision ID: cda78c55185e
-Revises: 9bb0d3678c86
+Revises: 0006
 Create Date: 2026-07-24 07:04:16.372841
 
 """
@@ -72,6 +72,7 @@ def get_foreign_keys_by_column(table_name, column_name):
 # revision identifiers, used by Alembic.
 revision = 'cda78c55185e'
 down_revision = '9bb0d3678c86'
+# Note: This migration follows 9bb0d3678c86 (redemption_events cleanup)
 branch_labels = None
 depends_on = None
 
@@ -158,54 +159,59 @@ def upgrade():
     # ========================================================================
     # OBLIGATION SATISFACTION SCHEMA MIGRATION
     # ========================================================================
+    # Note: obligation_satisfaction is now optional - may not exist if migration 0006+ skipped creating it
+    # All these changes will be skipped if the table doesn't exist (will be handled by migration 0008)
 
-    # 6. Fix obligation_satisfaction to allow multiple PAYMENT events
-    # Remove unique constraint on assessment_id and add it back as non-unique index
-    if index_exists('obligation_satisfaction', 'ix_obligation_satisfaction_assessment_id') and \
-       'ix_obligation_satisfaction_assessment_id' in [
-           idx['name'] for idx in sa.inspect(op.get_bind()).get_indexes('obligation_satisfaction')
-           if idx.get('unique')
-       ]:
-        # The old index is unique; need to drop and recreate as non-unique
-        op.drop_index(op.f('ix_obligation_satisfaction_assessment_id'), table_name='obligation_satisfaction')
-        op.create_index(op.f('ix_obligation_satisfaction_assessment_id'), 'obligation_satisfaction', ['assessment_id'], unique=False)
-        print("✅ Changed ix_obligation_satisfaction_assessment_id from unique to non-unique")
+    if table_exists('obligation_satisfaction'):
+        # 6. Fix obligation_satisfaction to allow multiple PAYMENT events
+        # Remove unique constraint on assessment_id and add it back as non-unique index
+        if index_exists('obligation_satisfaction', 'ix_obligation_satisfaction_assessment_id') and \
+           'ix_obligation_satisfaction_assessment_id' in [
+               idx['name'] for idx in sa.inspect(op.get_bind()).get_indexes('obligation_satisfaction')
+               if idx.get('unique')
+           ]:
+            # The old index is unique; need to drop and recreate as non-unique
+            op.drop_index(op.f('ix_obligation_satisfaction_assessment_id'), table_name='obligation_satisfaction')
+            op.create_index(op.f('ix_obligation_satisfaction_assessment_id'), 'obligation_satisfaction', ['assessment_id'], unique=False)
+            print("✅ Changed ix_obligation_satisfaction_assessment_id from unique to non-unique")
 
-    # 7. Add canonical satisfaction fields
-    if not column_exists('obligation_satisfaction', 'ledger_transaction_id'):
-        op.add_column('obligation_satisfaction', sa.Column('ledger_transaction_id', sa.Integer(), nullable=True))
-        print("✅ Added ledger_transaction_id to obligation_satisfaction")
+        # 7. Add canonical satisfaction fields
+        if not column_exists('obligation_satisfaction', 'ledger_transaction_id'):
+            op.add_column('obligation_satisfaction', sa.Column('ledger_transaction_id', sa.Integer(), nullable=True))
+            print("✅ Added ledger_transaction_id to obligation_satisfaction")
+        else:
+            print("⚠️  ledger_transaction_id already exists on obligation_satisfaction, skipping...")
+
+        if not column_exists('obligation_satisfaction', 'occurred_at'):
+            op.add_column('obligation_satisfaction', sa.Column('occurred_at', sa.DateTime(timezone=True), nullable=False))
+            print("✅ Added occurred_at to obligation_satisfaction")
+        else:
+            print("⚠️  occurred_at already exists on obligation_satisfaction, skipping...")
+
+        if not column_exists('obligation_satisfaction', 'created_at'):
+            op.add_column('obligation_satisfaction', sa.Column('created_at', sa.DateTime(timezone=True), nullable=False))
+            print("✅ Added created_at to obligation_satisfaction")
+        else:
+            print("⚠️  created_at already exists on obligation_satisfaction, skipping...")
+
+        # 8. Remove legacy derived fields (per DOM-OBL-001 Section VIII)
+        legacy_cols = ['amount_paid', 'was_late', 'late_fee_charged', 'satisfied_at', 'transaction_id']
+        for col_name in legacy_cols:
+            if column_exists('obligation_satisfaction', col_name):
+                op.drop_column('obligation_satisfaction', col_name)
+                print(f"✅ Dropped legacy column {col_name} from obligation_satisfaction")
+
+        # 9. Create/fix indexes on satisfaction table
+        if not index_exists('obligation_satisfaction', 'ix_obligation_satisfaction_ledger_transaction_id'):
+            op.create_index(op.f('ix_obligation_satisfaction_ledger_transaction_id'), 'obligation_satisfaction', ['ledger_transaction_id'], unique=False)
+            print("✅ Created ix_obligation_satisfaction_ledger_transaction_id")
+
+        # 10. Create FK from satisfaction to ledger
+        if not foreign_key_exists('obligation_satisfaction', 'obligation_satisfaction_ledger_transaction_id_fkey'):
+            op.create_foreign_key(None, 'obligation_satisfaction', 'ledger_transaction', ['ledger_transaction_id'], ['id'], ondelete='SET NULL')
+            print("✅ Created FK: obligation_satisfaction.ledger_transaction_id → ledger_transaction.id")
     else:
-        print("⚠️  ledger_transaction_id already exists on obligation_satisfaction, skipping...")
-
-    if not column_exists('obligation_satisfaction', 'occurred_at'):
-        op.add_column('obligation_satisfaction', sa.Column('occurred_at', sa.DateTime(timezone=True), nullable=False))
-        print("✅ Added occurred_at to obligation_satisfaction")
-    else:
-        print("⚠️  occurred_at already exists on obligation_satisfaction, skipping...")
-
-    if not column_exists('obligation_satisfaction', 'created_at'):
-        op.add_column('obligation_satisfaction', sa.Column('created_at', sa.DateTime(timezone=True), nullable=False))
-        print("✅ Added created_at to obligation_satisfaction")
-    else:
-        print("⚠️  created_at already exists on obligation_satisfaction, skipping...")
-
-    # 8. Remove legacy derived fields (per DOM-OBL-001 Section VIII)
-    legacy_cols = ['amount_paid', 'was_late', 'late_fee_charged', 'satisfied_at', 'transaction_id']
-    for col_name in legacy_cols:
-        if column_exists('obligation_satisfaction', col_name):
-            op.drop_column('obligation_satisfaction', col_name)
-            print(f"✅ Dropped legacy column {col_name} from obligation_satisfaction")
-
-    # 9. Create/fix indexes on satisfaction table
-    if not index_exists('obligation_satisfaction', 'ix_obligation_satisfaction_ledger_transaction_id'):
-        op.create_index(op.f('ix_obligation_satisfaction_ledger_transaction_id'), 'obligation_satisfaction', ['ledger_transaction_id'], unique=False)
-        print("✅ Created ix_obligation_satisfaction_ledger_transaction_id")
-
-    # 10. Create FK from satisfaction to ledger
-    if not foreign_key_exists('obligation_satisfaction', 'obligation_satisfaction_ledger_transaction_id_fkey'):
-        op.create_foreign_key(None, 'obligation_satisfaction', 'ledger_transaction', ['ledger_transaction_id'], ['id'], ondelete='SET NULL')
-        print("✅ Created FK: obligation_satisfaction.ledger_transaction_id → ledger_transaction.id")
+        print("⏭️  obligation_satisfaction table does not exist (will be handled by migration 0008)")
 
     # Note: Other Alembic-detected changes are handled separately in other migrations.
     # This migration focuses exclusively on canonical obligations schema evolution.

@@ -8,8 +8,6 @@ from app.models import (
     EntitlementEvent,
     ObligationAssessment,
     ObligationLifecycle,
-    ObligationReversal,
-    ObligationSatisfaction,
     RentSettings,
     Seat,
 )
@@ -30,6 +28,7 @@ def _get_claim_assessment(assessment_key: str, seat_id: int, class_id: str) -> O
             seat_id=seat_id,
             class_id=class_id,
             cycle_idempotency_key=assessment_key,
+            event_type='ASSESSMENT',
         )
         .order_by(ObligationAssessment.id.desc())
         .first()
@@ -49,10 +48,12 @@ def _create_claim_assessment(
         seat_id=seat_id,
         class_id=class_id,
         obligation_type="INSURANCE_CLAIM",
-        amount_snap=claim_amount,
+        event_type='ASSESSMENT',
         due_at=incident_date,
         assessed_at=assessed_at,
         cycle_idempotency_key=_claim_assessment_key(claim_id),
+        internal_ref=_claim_assessment_key(claim_id),
+        correlation_id=generate_correlation_id(),
     )
     db.session.add(assessment)
     db.session.flush()
@@ -110,7 +111,9 @@ def record_rent_payment(
     cycle_idempotency_key: str | None = None,
     transaction_id: int | None = None,
 ) -> ObligationAssessment:
-    """Record a rent payment as a canonical assessment + satisfaction.
+    """Record a rent payment as a canonical PAYMENT event in assessment_events (DOM-OBL-001).
+
+    Creates a PAYMENT event linked to the assessment correlation, with Ledger transaction reference.
     """
     now = utc_now()
     period_key = f"{coverage_year}-{coverage_month:02d}" if coverage_year is not None and coverage_month is not None else None
@@ -118,13 +121,15 @@ def record_rent_payment(
     if rent_settings is None:
         raise ValueError(f"RentSettings for class {class_id} not found")
 
-    assessment = ObligationAssessment(
+    # Create PAYMENT event
+    payment_event = ObligationAssessment(
         seat_id=seat_id,
         class_id=class_id,
         period=period,
+        event_type='PAYMENT',
         obligation_type="RENT",
-        amount_snap=rent_settings.rent_amount,
         assessed_at=now,
+        ledger_transaction_id=transaction_id,
         period_key=period_key,
         coverage_start_time=coverage_start_time,
         coverage_end_time=coverage_end_time,
@@ -133,29 +138,20 @@ def record_rent_payment(
         period_year=period_year,
         coverage_month=coverage_month,
         coverage_year=coverage_year,
+        internal_ref=f"rent:{class_id}:{period_key}" if period_key else f"rent:{class_id}",
+        correlation_id=generate_correlation_id(),
     )
-    db.session.add(assessment)
+    db.session.add(payment_event)
     db.session.flush()
 
     db.session.add(
         ObligationLifecycle(
-            assessment_id=assessment.id,
+            assessment_id=payment_event.id,
             status="PAID",
             updated_at=now,
         )
     )
-    db.session.add(
-        ObligationSatisfaction(
-            assessment_id=assessment.id,
-            method="PAYMENT",
-            amount_paid=amount_paid,
-            was_late=was_late,
-            late_fee_charged=late_fee_charged,
-            transaction_id=transaction_id,
-            satisfied_at=now,
-        )
-    )
-    return assessment
+    return payment_event
 
 
 def record_rent_waiver(
@@ -169,7 +165,7 @@ def record_rent_waiver(
     created_by_seat_id: int | None = None,
     created_by_user_id: int | None = None,
 ) -> ObligationAssessment:
-    """Record a rent waiver as a canonical assessment + reversal."""
+    """Record a rent waiver as a canonical WAIVED event in assessment_events (DOM-OBL-001)."""
     now = utc_now()
     if created_by_seat_id is None and created_by_user_id is not None:
         created_by_seat_id = (
@@ -190,36 +186,33 @@ def record_rent_waiver(
             f"No teacher seat found for class {class_id}. A valid teacher seat is required to record a rent waiver."
         )
 
-    assessment = ObligationAssessment(
+    # Create WAIVED event
+    waiver_event = ObligationAssessment(
         seat_id=seat_id,
         class_id=class_id,
-        obligation_type="RENT_WAIVER",
-        amount_snap=Decimal("0.00"),
+        obligation_type="RENT",
+        event_type='WAIVED',
         due_at=waiver_start_date,
         assessed_at=now,
         coverage_start_time=waiver_start_date,
         coverage_end_time=waiver_end_date,
         cycle_idempotency_key=f"rent-waiver:{seat_id}:{class_id}:{waiver_start_date.isoformat()}",
+        reason=reason,
+        reversed_by_seat_id=created_by_seat_id,
+        internal_ref=f"rent:{class_id}:waiver",
+        correlation_id=generate_correlation_id(),
     )
-    db.session.add(assessment)
+    db.session.add(waiver_event)
     db.session.flush()
 
     db.session.add(
         ObligationLifecycle(
-            assessment_id=assessment.id,
-            status="REVERSED",
+            assessment_id=waiver_event.id,
+            status="WAIVED",
             updated_at=now,
         )
     )
-    db.session.add(
-        ObligationReversal(
-            assessment_id=assessment.id,
-            reason=reason,
-            reversed_at=now,
-            reversed_by_seat_id=created_by_seat_id,
-        )
-    )
-    return assessment
+    return waiver_event
 
 
 # ---------------------------------------------------------------------------
@@ -235,21 +228,20 @@ def record_insurance_enrollment(
     next_payment_due,
     coverage_start_date,
 ) -> ObligationAssessment:
-    """Record the canonical insurance enrollment as an assessment event."""
+    """Record the canonical insurance enrollment as an ASSESSMENT event."""
     now = utc_now()
-    amount_snap = getattr(policy, "premium", None)
-    if amount_snap is None:
-        amount_snap = 0
     assessment = ObligationAssessment(
         seat_id=seat_id,
         class_id=class_id,
         obligation_type="INSURANCE_PREMIUM",
-        amount_snap=amount_snap,
+        event_type='ASSESSMENT',
         due_at=next_payment_due,
         assessed_at=now,
         policy_version_id=getattr(policy, "id", None),
         coverage_start_time=coverage_start_date,
         cycle_idempotency_key=f"insurance-enrollment:{seat_id}:{class_id}:{getattr(policy, 'id', 'unknown')}",
+        internal_ref=f"insurance:{class_id}:{getattr(policy, 'id', 'unknown')}",
+        correlation_id=generate_correlation_id(),
     )
     db.session.add(assessment)
     db.session.flush()
@@ -275,387 +267,258 @@ def record_insurance_premium_payment(
     cycle_idempotency_key: str | None = None,
     transaction_id: int | None = None,
 ) -> ObligationAssessment:
-    """Record a seat-scoped recurring insurance premium as a canonical assessment + satisfaction."""
+    """Record a seat-scoped recurring insurance premium as a PAYMENT event (DOM-OBL-001)."""
     now = utc_now()
-    assessment = ObligationAssessment(
+    payment_event = ObligationAssessment(
         seat_id=seat_id,
         class_id=class_id,
         obligation_type="INSURANCE_PREMIUM",
-        amount_snap=amount_paid,
+        event_type='PAYMENT',
         due_at=due_at,
         assessed_at=now,
         coverage_start_time=coverage_start_time,
         coverage_end_time=coverage_end_time,
         cycle_idempotency_key=cycle_idempotency_key,
         policy_version_id=policy_version_id,
+        ledger_transaction_id=transaction_id,
+        internal_ref=f"insurance:{class_id}:{policy_version_id}",
+        correlation_id=generate_correlation_id(),
     )
-    db.session.add(assessment)
+    db.session.add(payment_event)
     db.session.flush()
 
     db.session.add(
         ObligationLifecycle(
-            assessment_id=assessment.id,
+            assessment_id=payment_event.id,
             status="PAID",
             updated_at=now,
         )
     )
-    db.session.add(
-        ObligationSatisfaction(
-            assessment_id=assessment.id,
-            method="PAYMENT",
-            amount_paid=amount_paid,
-            was_late=False,
-            late_fee_charged=Decimal("0.00"),
-            transaction_id=transaction_id,
-            satisfied_at=now,
-        )
+    return payment_event
+
+
+def record_insurance_claim_assessment(
+    *,
+    seat_id: int,
+    class_id: str,
+    claim_id: int,
+    claim_amount,
+    incident_date,
+) -> ObligationAssessment:
+    """Record insurance claim as ASSESSMENT event."""
+    assessment = _create_claim_assessment(
+        seat_id=seat_id,
+        class_id=class_id,
+        claim_id=claim_id,
+        claim_amount=claim_amount,
+        incident_date=incident_date,
+        assessed_at=utc_now(),
     )
     return assessment
 
 
-def record_insurance_claim(
+def record_insurance_claim_payment(
     *,
-    enrollment_id: int,
-    policy_id: int,
     seat_id: int,
     class_id: str,
-    incident_date,
-    description: str,
-    claim_amount,
-    claim_item: str | None,
-    comments: str | None,
-    transaction_id: int | None,
+    claim_id: int,
+    payment_amount,
+    transaction_id: int | None = None,
 ) -> ObligationAssessment:
-    """Legacy insurance claim mutation is no longer supported."""
-    raise NotImplementedError("Insurance claim rows have been removed")
+    """Record insurance claim payment as PAYMENT event."""
+    now = utc_now()
+    assessment = _require_claim_assessment(claim_id, seat_id, class_id)
+
+    payment_event = ObligationAssessment(
+        seat_id=seat_id,
+        class_id=class_id,
+        obligation_type="INSURANCE_CLAIM",
+        event_type='PAYMENT',
+        assessed_at=now,
+        ledger_transaction_id=transaction_id,
+        cycle_idempotency_key=f"insurance-claim-payment:{claim_id}",
+        internal_ref=_claim_assessment_key(claim_id),
+        correlation_id=generate_correlation_id(),
+    )
+    db.session.add(payment_event)
+    db.session.flush()
+
+    _set_assessment_lifecycle(payment_event, status="PAID", updated_at=now)
+    return payment_event
 
 
-def apply_claim_resolution(
-    claim: ObligationAssessment,
+def record_insurance_reversal(
     *,
-    status: str,
-    teacher_notes: str | None,
-    rejection_reason: str | None,
-    processed_by_user_id: int | None,
-    processed_at,
-    approved_amount=None,
-    processed_by_seat_id: int | None = None,
-):
-    """Legacy insurance claim resolution is no longer supported."""
-    raise NotImplementedError("Insurance claim resolution rows have been removed")
-
-
-# ---------------------------------------------------------------------------
-# Canonical read helpers
-# ---------------------------------------------------------------------------
-
-def has_rent_coverage(
     seat_id: int,
     class_id: str,
-    coverage_month: int,
-    coverage_year: int,
-) -> bool:
-    """Check whether a seat has a PAID rent assessment for the given cycle."""
-    return (
-        db.session.query(ObligationAssessment.id)
-        .join(ObligationLifecycle, ObligationLifecycle.assessment_id == ObligationAssessment.id)
-        .filter(
-            ObligationAssessment.seat_id == seat_id,
-            ObligationAssessment.class_id == class_id,
-            ObligationAssessment.obligation_type == "RENT",
-            ObligationAssessment.coverage_month == coverage_month,
-            ObligationAssessment.coverage_year == coverage_year,
-            ObligationLifecycle.status == "PAID",
-        )
-        .first()
-    ) is not None
+    claim_id: int,
+    reason: str | None = None,
+    reversed_by_seat_id: int | None = None,
+) -> ObligationAssessment:
+    """Record insurance claim reversal as REVERSED event."""
+    now = utc_now()
+    assessment = _require_claim_assessment(claim_id, seat_id, class_id)
 
-
-def get_rent_payments_for_cycle(
-    class_id: str,
-    coverage_month: int,
-    coverage_year: int,
-) -> list[ObligationAssessment]:
-    """Return all PAID rent assessments for a class + cycle."""
-    return (
-        ObligationAssessment.query
-        .join(ObligationLifecycle, ObligationLifecycle.assessment_id == ObligationAssessment.id)
-        .filter(
-            ObligationAssessment.class_id == class_id,
-            ObligationAssessment.obligation_type == "RENT",
-            ObligationAssessment.coverage_month == coverage_month,
-            ObligationAssessment.coverage_year == coverage_year,
-            ObligationLifecycle.status == "PAID",
-        )
-        .order_by(ObligationAssessment.assessed_at.asc())
-        .all()
+    reversal_event = ObligationAssessment(
+        seat_id=seat_id,
+        class_id=class_id,
+        obligation_type="INSURANCE_CLAIM",
+        event_type='REVERSED',
+        assessed_at=now,
+        reason=reason,
+        reversed_by_seat_id=reversed_by_seat_id,
+        cycle_idempotency_key=f"insurance-claim-reversal:{claim_id}",
+        internal_ref=_claim_assessment_key(claim_id),
+        correlation_id=generate_correlation_id(),
     )
+    db.session.add(reversal_event)
+    db.session.flush()
+
+    _set_assessment_lifecycle(reversal_event, status="REVERSED", updated_at=now)
+    return reversal_event
+
+
+# ---------------------------------------------------------------------------
+# Rent Assessment Queries (v2 schema - event_type discriminator)
+# ---------------------------------------------------------------------------
+
+def get_rent_assessments_for_cycle(
+    class_id: str,
+    month: int,
+    year: int,
+    seat_ids: list[int] | None = None,
+) -> list[ObligationAssessment]:
+    """Get all ASSESSMENT events for a rent cycle (month/year).
+
+    Returns only ASSESSMENT events (event_type='ASSESSMENT') for the given month/year.
+    Optionally filter by seat_ids.
+    """
+    query = ObligationAssessment.query.filter_by(
+        class_id=class_id,
+        obligation_type='RENT',
+        event_type='ASSESSMENT',
+        period_month=month,
+        period_year=year,
+    )
+
+    if seat_ids:
+        query = query.filter(ObligationAssessment.seat_id.in_(seat_ids))
+
+    return query.all()
+
+
+def get_payment_events_for_assessment(
+    assessment_id: int,
+    class_id: str,
+) -> list[ObligationAssessment]:
+    """Get all PAYMENT events linked to an assessment (via internal_ref).
+
+    ASSESSMENT events have an internal_ref (e.g., 'rent:class-id:2026-01').
+    PAYMENT events for the same ref represent payments against that assessment.
+    """
+    assessment = ObligationAssessment.query.get(assessment_id)
+    if not assessment or not assessment.internal_ref:
+        return []
+
+    return ObligationAssessment.query.filter_by(
+        class_id=class_id,
+        obligation_type='RENT',
+        event_type='PAYMENT',
+        internal_ref=assessment.internal_ref,
+    ).all()
+
+
+def get_total_paid_for_assessment(
+    assessment_id: int,
+    class_id: str,
+) -> Decimal:
+    """Sum amounts from all PAYMENT events for an assessment (via Ledger).
+
+    Per DOM-OBL-001, amounts are stored in Ledger, not in obligations.
+    Each PAYMENT event has a ledger_transaction_id pointing to the transaction.
+    """
+    from app.models import Transaction
+
+    payment_events = get_payment_events_for_assessment(assessment_id, class_id)
+    total = Decimal('0.00')
+
+    for payment in payment_events:
+        if payment.ledger_transaction_id:
+            txn = db.session.get(Transaction, payment.ledger_transaction_id)
+            if txn and txn.type == 'credit':
+                total += txn.amount
+
+    return total
+
+
+def get_waived_event_for_assessment(
+    assessment_id: int,
+    class_id: str,
+) -> ObligationAssessment | None:
+    """Get the WAIVED event for an assessment (if any).
+
+    Returns the WAIVED event (event_type='WAIVED') for this assessment's internal_ref.
+    """
+    assessment = ObligationAssessment.query.get(assessment_id)
+    if not assessment or not assessment.internal_ref:
+        return None
+
+    return ObligationAssessment.query.filter_by(
+        class_id=class_id,
+        obligation_type='RENT',
+        event_type='WAIVED',
+        internal_ref=assessment.internal_ref,
+    ).first()
 
 
 def get_rent_payment_history(
     seat_id: int,
     class_id: str,
-    *,
-    limit: int | None = None,
-) -> list[ObligationAssessment]:
-    """Return rent assessments for a seat, newest first."""
-    q = (
-        ObligationAssessment.query
-        .filter(
-            ObligationAssessment.seat_id == seat_id,
-            ObligationAssessment.class_id == class_id,
-            ObligationAssessment.obligation_type == "RENT",
-        )
-        .order_by(ObligationAssessment.assessed_at.desc())
-    )
-    if limit is not None:
-        q = q.limit(limit)
-    return q.all()
+    limit: int = 24,
+) -> list[tuple[ObligationAssessment, list[ObligationAssessment]]]:
+    """Get payment history for a seat: list of (ASSESSMENT event, [PAYMENT/WAIVED/REVERSED events]).
 
-
-def has_active_rent_waiver(
-    seat_id: int,
-    class_id: str,
-    coverage_date,
-) -> bool:
-    """Check whether a seat has a canonical rent waiver covering the given date."""
-    return (
-        db.session.query(ObligationAssessment.id)
-        .join(ObligationReversal, ObligationReversal.assessment_id == ObligationAssessment.id)
-        .filter(
-            ObligationAssessment.seat_id == seat_id,
-            ObligationAssessment.class_id == class_id,
-            ObligationAssessment.obligation_type == "RENT_WAIVER",
-            ObligationAssessment.coverage_start_time <= coverage_date,
-            ObligationAssessment.coverage_end_time >= coverage_date,
-        )
-        .first()
-    ) is not None
-
-
-def get_claim_status(claim_id: int) -> str | None:
-    """Return the canonical lifecycle status for an insurance claim."""
-    assessment = (
-        ObligationAssessment.query
-        .filter_by(
-            obligation_type="INSURANCE_CLAIM",
-            cycle_idempotency_key=_claim_assessment_key(claim_id),
-        )
-        .first()
-    )
-    if assessment is None:
-        return None
-    return assessment.lifecycle.status if assessment.lifecycle else None
-
-
-# ---------------------------------------------------------------------------
-# Rent read helpers for canonical obligation assessments
-# ---------------------------------------------------------------------------
-
-def get_paid_rent_assessments_for_cycle(
-    class_id: str,
-    coverage_month: int,
-    coverage_year: int,
-    *,
-    seat_ids: list[int] | None = None,
-) -> list[ObligationAssessment]:
-    """Return PAID rent assessments for a class + cycle, optionally filtered by seats.
-
-    Each returned assessment has a loaded `satisfaction` relationship with
-    `amount_paid`, `was_late`, `late_fee_charged`, `transaction_id`, and
-    `satisfied_at` (the canonical equivalent of ``payment_date``).
+    Returns pairs of (assessment_event, state_change_events) in reverse chronological order.
+    Limit defaults to 24 most recent assessment cycles.
     """
-    from app.models import Transaction
-
-    q = (
-        ObligationAssessment.query
-        .join(ObligationLifecycle, ObligationLifecycle.assessment_id == ObligationAssessment.id)
-        .outerjoin(ObligationSatisfaction, ObligationSatisfaction.assessment_id == ObligationAssessment.id)
-        .outerjoin(Transaction, Transaction.id == ObligationSatisfaction.transaction_id)
-        .filter(
-            ObligationAssessment.class_id == class_id,
-            ObligationAssessment.obligation_type == "RENT",
-            ObligationAssessment.coverage_month == coverage_month,
-            ObligationAssessment.coverage_year == coverage_year,
-            ObligationLifecycle.status == "PAID",
+    # Get all ASSESSMENT events for this seat/class, ordered by coverage period
+    assessments = (
+        ObligationAssessment.query.filter_by(
+            seat_id=seat_id,
+            class_id=class_id,
+            obligation_type='RENT',
+            event_type='ASSESSMENT',
         )
-    )
-    if seat_ids is not None:
-        q = q.filter(ObligationAssessment.seat_id.in_(seat_ids))
-    # Exclude assessments whose backing ledger transaction was voided
-    q = q.filter(
-        db.or_(
-            ObligationSatisfaction.transaction_id.is_(None),
-            Transaction.is_void.is_(False),
+        .order_by(
+            ObligationAssessment.period_year.desc(),
+            ObligationAssessment.period_month.desc(),
         )
-    )
-    return q.order_by(ObligationAssessment.assessed_at.asc()).all()
-
-
-def get_waived_seat_ids_for_cycle(
-    class_id: str,
-    coverage_date,
-    seat_ids: list[int],
-) -> set[int]:
-    """Return the set of seat_ids that have a canonical rent waiver covering ``coverage_date``."""
-    rows = (
-        db.session.query(ObligationAssessment.seat_id)
-        .join(ObligationReversal, ObligationReversal.assessment_id == ObligationAssessment.id)
-        .filter(
-            ObligationAssessment.class_id == class_id,
-            ObligationAssessment.obligation_type == "RENT_WAIVER",
-            ObligationAssessment.seat_id.in_(seat_ids),
-            ObligationAssessment.coverage_start_time <= coverage_date,
-            ObligationAssessment.coverage_end_time >= coverage_date,
-        )
+        .limit(limit)
         .all()
     )
-    return {r[0] for r in rows}
 
+    history = []
+    for assessment in assessments:
+        # Get all state-change events for this assessment's internal_ref
+        state_events = ObligationAssessment.query.filter_by(
+            class_id=class_id,
+            obligation_type='RENT',
+            internal_ref=assessment.internal_ref,
+        ).filter(ObligationAssessment.event_type.in_(['PAYMENT', 'WAIVED', 'REVERSED'])).all()
 
-def get_rent_waiver_for_seat(
-    seat_id: int,
-    class_id: str,
-    coverage_date,
-) -> ObligationAssessment | None:
-    """Return the canonical rent waiver assessment covering ``coverage_date``, if any."""
-    return (
-        ObligationAssessment.query
-        .join(ObligationReversal, ObligationReversal.assessment_id == ObligationAssessment.id)
-        .filter(
-            ObligationAssessment.seat_id == seat_id,
-            ObligationAssessment.class_id == class_id,
-            ObligationAssessment.obligation_type == "RENT_WAIVER",
-            ObligationAssessment.coverage_start_time <= coverage_date,
-            ObligationAssessment.coverage_end_time >= coverage_date,
-        )
-        .order_by(ObligationAssessment.assessed_at.desc())
-        .first()
-    )
+        history.append((assessment, state_events))
+
+    return history
 
 
 def get_rent_waivers_for_seat(
     seat_id: int,
     class_id: str,
 ) -> list[ObligationAssessment]:
-    """Return all rent waiver assessments for a seat, newest first."""
-    return (
-        ObligationAssessment.query
-        .join(ObligationReversal, ObligationReversal.assessment_id == ObligationAssessment.id)
-        .filter(
-            ObligationAssessment.seat_id == seat_id,
-            ObligationAssessment.class_id == class_id,
-            ObligationAssessment.obligation_type == "RENT_WAIVER",
-        )
-        .order_by(ObligationAssessment.assessed_at.desc())
-        .all()
-    )
-
-
-def get_active_rent_waivers_for_class(
-    class_id: str,
-    *,
-    coverage_date=None,
-    seat_ids: list[int] | None = None,
-) -> list[ObligationAssessment]:
-    """Return active rent-waiver assessments for a class at a point in time."""
-    if coverage_date is None:
-        coverage_date = utc_now()
-    q = (
-        ObligationAssessment.query
-        .join(ObligationReversal, ObligationReversal.assessment_id == ObligationAssessment.id)
-        .filter(
-            ObligationAssessment.class_id == class_id,
-            ObligationAssessment.obligation_type == "RENT_WAIVER",
-            ObligationAssessment.coverage_start_time <= coverage_date,
-            ObligationAssessment.coverage_end_time >= coverage_date,
-        )
-    )
-    if seat_ids is not None:
-        q = q.filter(ObligationAssessment.seat_id.in_(seat_ids))
-    return q.order_by(ObligationAssessment.assessed_at.desc()).all()
-
-
-def remove_rent_waiver_assessment(assessment_id: int) -> ObligationAssessment | None:
-    """Delete a canonical rent-waiver assessment and its derived rows."""
-    assessment = db.session.get(ObligationAssessment, assessment_id)
-    if assessment is None or assessment.obligation_type != "RENT_WAIVER":
-        return None
-
-    if assessment.reversal is not None:
-        db.session.delete(assessment.reversal)
-    if assessment.satisfaction is not None:
-        db.session.delete(assessment.satisfaction)
-    if assessment.lifecycle is not None:
-        db.session.delete(assessment.lifecycle)
-    db.session.delete(assessment)
-    return assessment
-
-
-def remove_rent_payment_assessment(assessment_id: int) -> ObligationAssessment | None:
-    """Delete a canonical rent-payment assessment and its derived rows."""
-    assessment = db.session.get(ObligationAssessment, assessment_id)
-    if assessment is None or assessment.obligation_type != "RENT":
-        return None
-
-    if assessment.satisfaction is not None:
-        db.session.delete(assessment.satisfaction)
-    if assessment.reversal is not None:
-        db.session.delete(assessment.reversal)
-    if assessment.lifecycle is not None:
-        db.session.delete(assessment.lifecycle)
-    db.session.delete(assessment)
-    return assessment
-
-
-def get_cycle_rent_amount(
-    class_id: str,
-    coverage_month: int,
-    coverage_year: int,
-) -> "Decimal | None":
-    """Return the policy-defined rent amount for a cycle."""
-    return get_cycle_rent_amount_from_version(class_id, coverage_month, coverage_year)
-
-
-# ---------------------------------------------------------------------------
-# Rent helpers
-# ---------------------------------------------------------------------------
-
-def get_cycle_rent_amount_from_version(
-    class_id: str,
-    coverage_month: int,
-    coverage_year: int,
-) -> "Decimal | None":
-    """Return the canonical rent amount for a cycle from RentSettings."""
-    settings = RentSettings.query.filter_by(class_id=class_id).first()
-    if settings is None:
-        return None
-    return settings.rent_amount
-
-
-# ---------------------------------------------------------------------------
-# Entitlement mutations
-# ---------------------------------------------------------------------------
-
-def record_entitlement_grant(
-    *,
-    seat_id: int,
-    class_id: str,
-    quantity: int,
-    trigger_id: str | None = None,
-    correlation_id: str | None = None,
-    assessment_id: int | None = None,
-) -> EntitlementEvent:
-    """Record a GRANT entitlement event for obligation-linked perks (e.g., hall passes from rent)."""
-    event = EntitlementEvent(
+    """Get all WAIVED events for a seat."""
+    return ObligationAssessment.query.filter_by(
         seat_id=seat_id,
         class_id=class_id,
-        assessment_id=assessment_id,
-        trigger_id=trigger_id,
-        correlation_id=correlation_id or generate_correlation_id(),
-        quantity_delta=quantity,
-        event_type="GRANT",
-        occurred_at=utc_now(),
-    )
-    db.session.add(event)
-    return event
+        obligation_type='RENT',
+        event_type='WAIVED',
+    ).order_by(ObligationAssessment.assessed_at.desc()).all()

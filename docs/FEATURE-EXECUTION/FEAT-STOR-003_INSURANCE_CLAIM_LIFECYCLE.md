@@ -21,6 +21,8 @@ This FEAT coordinates:
 
 Claim activity does not consume the insurance entitlement.
 
+This FEAT does not create or satisfy debt. If an insurance product requires premium assessment or renewal settlement, that work belongs to Obligations and Ledger through the canonical debt lifecycle.
+
 ## II. Authority
 
 Store and Entitlements owns:
@@ -57,6 +59,8 @@ Required canonical context:
 - `actor_role = student`
 
 The submitting seat SHALL be the target seat covered by the referenced insurance entitlement unless another explicitly documented workflow permits teacher-assisted submission.
+
+The FEAT SHALL NOT assume that claim submission itself creates an obligation event.
 
 ### Teacher decision
 
@@ -100,7 +104,8 @@ Submission SHALL NOT:
 - create `EXPIRED`;
 - alter the insurance entitlement;
 - move money;
-- create payroll.
+- create payroll;
+- create or satisfy an obligation.
 
 The claim SHALL reference the insurance `entitlement_id`.
 

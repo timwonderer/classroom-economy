@@ -94,9 +94,9 @@ def upgrade():
     import app.models as legacy_models
     _create_tables_if_missing(legacy_models.db.Model.metadata, bind)
 
-    # Section B: canonical DOM-CORE-002 tables
-    from app.models_canonical import Base as canonical_base
-    _create_tables_if_missing(canonical_base.metadata, bind)
+    # Section B: canonical DOM-CORE-002 tables now live in the active ORM layer.
+    from app import models as canonical_models
+    _create_tables_if_missing(canonical_models.db.Model.metadata, bind)
 
 
 def downgrade():

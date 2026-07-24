@@ -144,7 +144,7 @@ def upgrade():
 
     # ------------------------------------------------------------------ #
     # Step 0: drop the canonical-stub `classes` table that was created by  #
-    # the bootstrap migration (models_canonical.py Class_ placeholder).    #
+    # the bootstrap migration (Class_ placeholder in the canonical docs). #
     # It has no FKs pointing at it and no data; safe to drop.             #
     # ------------------------------------------------------------------ #
     if table_exists("classes"):
@@ -251,7 +251,7 @@ def downgrade():
 
     # ------------------------------------------------------------------ #
     # Step 5: recreate the canonical-stub `classes` table that was dropped  #
-    # during upgrade (mirrors models_canonical.py Class_).                 #
+    # during upgrade (mirrors the canonical Class_ mapping).              #
     # ------------------------------------------------------------------ #
     if not table_exists("classes"):
         op.create_table(

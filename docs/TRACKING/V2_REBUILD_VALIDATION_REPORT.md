@@ -157,7 +157,7 @@
   separate from actor identity.
 - Validation:
   - `git diff --check` -> pass
-  - `python -m py_compile app/models_canonical.py app/models.py app/routes/admin.py tests/test_admin_tenancy.py` -> pass
+  - `python -m py_compile app/models.py app/routes/admin.py tests/test_admin_tenancy.py` -> pass
   - focused admin-tenancy suite -> `5 passed, 10 deselected`
 
 ### Post-Report Update (2026-06-01, `codex/v2.0`) — Admin Student Detail Seat-Public-ID Scope Closure
@@ -523,14 +523,14 @@ The first validation report's characterization of "0 of 44 canonical tables writ
 
 | Deliverable | Status | Notes |
 |---|---|---|
-| `app/models_canonical.py` with 44 ORM classes | ✅ EXISTS — 46 classes | `PolicyVersion` + `PolicyTransition` added in Wave 4; justified |
-| `tests/domain/test_smoke.py` | ✅ EXISTS | Tests 44 hardcoded classes; does not include Wave 4 additions |
+| `app/models.py` canonical ORM coverage | ✅ EXISTS — live runtime model layer | Canonical shape is now carried by the active model layer and the domain docs |
+| `tests/domain/test_smoke.py` | ✅ EXISTS | Historical smoke test coverage; no standalone canonical module remains |
 | `docs/archive/v1-development/tracking/V2_SCHEMA_GAP_AUDIT.md` | ✅ EXISTS | Complete table-by-table mapping |
 
 ### Gaps
 
 - `test_smoke.py` asserts `len(models) == 44` against a hardcoded list that excludes `PolicyVersion` and `PolicyTransition`. The assertion passes but these two classes are not exercised.
-- `models_canonical.py` canonical class bodies are minimal stubs (`id = sa.Column(sa.Integer, primary_key=True)`). This is correct for Wave 1 (reference definitions), but should be fully populated when each domain wave executes.
+- The old standalone canonical model module has been removed; the active model layer now carries the canonical ORM definitions and must stay aligned to the domain docs.
 
 ---
 
@@ -621,7 +621,7 @@ All 13 claimed deliverables verified:
 | `get_feature_settings_row_for_class(class_id)` | ✅ `economy_policy.py:565` |
 | Analytics activity queries by `Transaction.class_id`, `TapEvent.class_id` | ✅ Multiple lines in `analytics_engine.py` |
 | `Student.get_checking/savings_balance()` require `class_id + seat_id` (ValueError on missing) | ✅ `models.py:491, 498` |
-| `PolicyVersion` + `PolicyTransition` in `models.py` + `models_canonical.py` | ✅ `models.py:2997–3054`; `models_canonical.py:64–71` |
+| `PolicyVersion` + `PolicyTransition` in the active ORM layer | ✅ `models.py:2997–3054` |
 | Migration `c4e36a4ab2f1_add_policy_lineage_tables.py` | ✅ Idempotent; correct FK wiring |
 | `FeatureSettings.economy_pending_rebalance_json` dropped + migration `d2f9f1d9be2e` | ✅ Column absent; migration present |
 | `FeatureSettings.teacher_id`, `.join_code`, `.block` dropped + migration `a91cf11e8b2d` | ✅ Columns absent; migration present |
@@ -660,7 +660,7 @@ The first validation report characterized this as "NOT STARTED." The deeper anal
 | Check | Status |
 |---|---|
 | Full end-to-end `flask db upgrade` on local redteam DB | ✅ PASS through `b1c2d3e4f5a6 (head)` after Revision 13 migration fix |
-| Canonical stub models in `models_canonical.py` as runtime source | ❌ NOT APPLICABLE YET — runtime still uses `app/models.py` as the active ORM surface in this rebuild phase |
+| Canonical stub models as runtime source | ❌ NOT APPLICABLE YET — runtime uses `app/models.py` as the active ORM surface in this rebuild phase |
 | `ClassEconomy` import in `ledger_service.py` | ⚠️ — functional alias to `classes`, but naming remains semantically noisy |
 
 **Assessment:** Wave 5 table rename/consolidation is implemented in code and migration form, and local migration-chain validation now reaches `b1c2d3e4f5a6 (head)` cleanly.
@@ -743,7 +743,7 @@ The first validation report characterized this as "NOT STARTED." The deeper anal
 | Check | Status |
 |---|---|
 | `store_service.py` | ❌ Still imports `RentItem, Student, StudentItem, TeacherBlock` (legacy tables) |
-| `StorePurchase`, `RedemptionEvent`, `StoreItemVisibility` used at runtime | ❌ Stub-only in `models_canonical.py` |
+| `StorePurchase`, `RedemptionEvent`, `StoreItemVisibility` used at runtime | ❌ Not stub-only; active model layer owns runtime behavior |
 | `StoreItem.teacher_id` dropped | ❌ Still `NOT NULL` — mandatory legacy scope anchor |
 | `store_purchase_feat.py` writes to canonical tables | ❌ Writes to legacy `student_items` via `store_service` |
 | Wave 8 migration (`0007_store_domain.py`) | ❌ DOES NOT EXIST |
@@ -804,7 +804,7 @@ surface until a seat-scoped analytics schema replaces it.
 | `announcement` table legacy columns | ❌ Not audited in this pass; likely similar |
 | Wave 10 migration (`0010_support_domain.py`) | ❌ DOES NOT EXIST |
 
-**Canonical support classes in `models_canonical.py`** map to the same table names as legacy models — there's no actual divergence to reconcile, only column cleanup needed.
+**Canonical support classes** map to the same table names as legacy models — there's no actual divergence to reconcile, only column cleanup needed.
 
 ---
 

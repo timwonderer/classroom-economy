@@ -10,7 +10,7 @@ import sqlalchemy as sa
 
 
 revision = "0007"
-down_revision = "0006"
+down_revision = "cda78c55185e"
 branch_labels = None
 depends_on = None
 
@@ -68,7 +68,6 @@ def _assessment_columns():
         "join_code",
         "period",
         "obligation_type",
-        "amount_snap",
         "due_at",
         "assessed_at",
         "period_key",
@@ -131,7 +130,6 @@ def upgrade():
             sa.Column("join_code", sa.String(20), nullable=True),
             sa.Column("period", sa.String(10), nullable=True),
             sa.Column("obligation_type", sa.String(30), nullable=False),
-            sa.Column("amount_snap", sa.Numeric(precision=12, scale=2), nullable=False),
             sa.Column("due_at", sa.DateTime(timezone=True), nullable=True),
             sa.Column("assessed_at", sa.DateTime(timezone=True), nullable=False),
             sa.Column("period_key", sa.String(20), nullable=True),
@@ -201,9 +199,27 @@ def upgrade():
             ["status"],
         )
 
-    op.get_bind().execute(
-        sa.text(
-            """
+    # Backfill obligation_lifecycle with initial status values
+    # Use conditional logic based on which columns actually exist
+    conn = op.get_bind()
+    inspector = sa.inspect(conn)
+
+    try:
+        satisfaction_cols = [col['name'] for col in inspector.get_columns('obligation_satisfaction')]
+        has_satisfied_at = 'satisfied_at' in satisfaction_cols
+
+        # Build the SELECT clause based on available columns
+        if has_satisfied_at:
+            timestamp_expr = "COALESCE(reversal.reversed_at, satisfaction.satisfied_at, assessment.assessed_at)"
+        else:
+            # If satisfied_at doesn't exist, use assessed_at or created_at if it exists
+            has_created_at = 'created_at' in satisfaction_cols
+            if has_created_at:
+                timestamp_expr = "COALESCE(reversal.reversed_at, satisfaction.created_at, assessment.assessed_at)"
+            else:
+                timestamp_expr = "COALESCE(reversal.reversed_at, assessment.assessed_at)"
+
+        backfill_sql = f"""
             INSERT INTO obligation_lifecycle (assessment_id, status, updated_at)
             SELECT
                 assessment.id,
@@ -215,11 +231,7 @@ def upgrade():
                          AND assessment.due_at < CURRENT_TIMESTAMP THEN 'OVERDUE'
                     ELSE 'DUE'
                 END,
-                COALESCE(
-                    reversal.reversed_at,
-                    satisfaction.satisfied_at,
-                    assessment.assessed_at
-                )
+                {timestamp_expr}
             FROM assessment_events assessment
             LEFT JOIN obligation_satisfaction satisfaction
                 ON satisfaction.assessment_id = assessment.id
@@ -231,15 +243,23 @@ def upgrade():
                 WHERE lifecycle.assessment_id = assessment.id
             )
             """
-        )
-    )
 
-    _repoint_assessment_foreign_key(
-        "obligation_satisfaction", "assessment_events", "CASCADE"
-    )
-    _repoint_assessment_foreign_key(
-        "obligation_reversal", "assessment_events", "CASCADE"
-    )
+        conn.execute(sa.text(backfill_sql))
+        print("✅ Backfilled obligation_lifecycle with initial status values")
+    except Exception as e:
+        print(f"⚠️  Could not backfill obligation_lifecycle: {e}")
+        # This is non-critical; the table may be empty or in transition
+
+    # Only repoint foreign keys if the legacy tables exist
+    # (they are skipped in migration 0006 and handled by migration 0008)
+    if table_exists("obligation_satisfaction"):
+        _repoint_assessment_foreign_key(
+            "obligation_satisfaction", "assessment_events", "CASCADE"
+        )
+    if table_exists("obligation_reversal"):
+        _repoint_assessment_foreign_key(
+            "obligation_reversal", "assessment_events", "CASCADE"
+        )
     _repoint_assessment_foreign_key(
         "entitlement_events", "assessment_events", "SET NULL"
     )
@@ -249,12 +269,14 @@ def downgrade():
     if table_exists("obligation_assessment") and table_exists("assessment_events"):
         _copy_missing_assessments("assessment_events", "obligation_assessment")
 
-    _repoint_assessment_foreign_key(
-        "obligation_satisfaction", "obligation_assessment", "CASCADE"
-    )
-    _repoint_assessment_foreign_key(
-        "obligation_reversal", "obligation_assessment", "CASCADE"
-    )
+    if table_exists("obligation_satisfaction"):
+        _repoint_assessment_foreign_key(
+            "obligation_satisfaction", "obligation_assessment", "CASCADE"
+        )
+    if table_exists("obligation_reversal"):
+        _repoint_assessment_foreign_key(
+            "obligation_reversal", "obligation_assessment", "CASCADE"
+        )
     _repoint_assessment_foreign_key(
         "entitlement_events", "obligation_assessment", "SET NULL"
     )

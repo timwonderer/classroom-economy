@@ -71,9 +71,8 @@ from app.models import (
     FeatureSettings,
     Announcement, RedemptionEvent, RedemptionEventAction, RedemptionEventSource, Issue, IssueCategory, IssueStatusHistory, IssueResolutionAction, Seat,
     LedgerBalanceSnapshot, ClassEconomy, User, UserRole, _quantize_currency,
-    ObligationAssessment, ObligationSatisfaction,
-    AttendanceReasonCode, IdentityProfile, PayrollEvent, PolicyVersion,
     ObligationAssessment,
+    AttendanceReasonCode, IdentityProfile, PayrollEvent, PolicyVersion,
 )
 from app.auth import (
     admin_required,
@@ -6006,12 +6005,11 @@ def rent_settings():
                 if coverage_due:
                     paid_count = (
                         db.session.query(ObligationAssessment)
-                        .join(ObligationSatisfaction,
-                              ObligationSatisfaction.assessment_id == ObligationAssessment.id)
                         .filter(
                             ObligationAssessment.class_id == block_settings.class_id,
                             ObligationAssessment.coverage_month == coverage_due.month,
                             ObligationAssessment.coverage_year == coverage_due.year,
+                            ObligationAssessment.event_type.in_(['PAYMENT', 'WAIVED']),
                         )
                         .count()
                     )
@@ -6305,54 +6303,61 @@ def rent_settings():
                     }
                     unpaid_rent_log.append(item)
 
-        from app.services.obligations_service import get_paid_rent_assessments_for_cycle
-        payment_query = []
-        for class_id, info in classes_by_class_id.items():
-            if not class_id:
-                continue
-            for assessment in get_paid_rent_assessments_for_cycle(
-                class_id,
-                coverage_due_date.month,
-                coverage_due_date.year,
-            ):
-                if assessment.seat and assessment.seat.user_id in (info.get('student_ids') or set()):
-                    payment_query.append(assessment)
+        # DOM-OBL-001: Get payment history using canonical query helpers
+        # Read amounts from Ledger (Transaction), not from obligation fields
+        from app.services.obligations_service import get_rent_payment_history
+        from app.models import Transaction
+
         class_label_by_class_id = {
             class_id: info['class_label']
             for class_id, info in classes_by_class_id.items()
         }
-        for payment in payment_query:
-            payment_class_id = payment.seat.class_id if payment.seat else ''
-            payment_join = get_display_join_code(payment_class_id) if payment_class_id else ''
-            payment_block = payment.seat.class_economy.section if payment.seat and payment.seat.class_economy else ''
-            coverage_label = "Unknown"
-            if payment.period_year and payment.period_month:
-                coverage_label = datetime(
-                    payment.period_year, payment.period_month, 1
-                ).strftime('%b %Y')
-            # DOM-OBL-001: Get amount from Ledger transaction, not from satisfaction row
-            amount_paid = Decimal('0.00')
-            payment_date = payment.assessed_at
 
-            if payment.satisfactions:
-                for satisfaction in payment.satisfactions:
-                    payment_date = satisfaction.occurred_at or payment.assessed_at
-                    if satisfaction.ledger_transaction_id:
-                        from app.models import LedgerTransaction
-                        txn = db.session.get(LedgerTransaction, satisfaction.ledger_transaction_id)
-                        if txn:
-                            amount_paid += txn.amount if txn.type == 'credit' else Decimal('0.00')
+        for class_id, info in classes_by_class_id.items():
+            if not class_id:
+                continue
 
-            payment_log.append({
-                'student': payment.seat.user if payment.seat and payment.seat.user else None,
-                'actor_public_id': payment.seat.public_id if payment.seat else None,
-                'join_code': payment_join,
-                'class_label': class_label_by_class_id.get(payment_class_id, payment.period),
-                'block': payment_block,
-                'coverage_label': coverage_label,
-                'amount_paid': amount_paid,
-                'payment_date': payment_date,
-            })
+            # Get all seats in this class that are students
+            class_students = Seat.query.filter(
+                Seat.class_id == class_id,
+                Seat.role == 'student'
+            ).all()
+
+            for student_seat in class_students:
+                # Get payment history for this seat (up to 24 cycles)
+                payment_history = get_rent_payment_history(student_seat.id, class_id, limit=24)
+
+                # payment_history is list of (assessment, state_change_events)
+                for assessment, state_events in payment_history:
+                    # Find PAYMENT events in state_events
+                    for payment_event in state_events:
+                        if payment_event.event_type != 'PAYMENT':
+                            continue
+
+                        # Get amount from Ledger transaction
+                        amount_paid = Decimal('0.00')
+                        if payment_event.ledger_transaction_id:
+                            txn = db.session.get(Transaction, payment_event.ledger_transaction_id)
+                            if txn and txn.type == 'credit':
+                                amount_paid = txn.amount
+
+                        # Build coverage label from assessment period
+                        coverage_label = "Unknown"
+                        if assessment.period_year and assessment.period_month:
+                            coverage_label = datetime(
+                                assessment.period_year, assessment.period_month, 1
+                            ).strftime('%b %Y')
+
+                        payment_log.append({
+                            'student': student_seat.user if student_seat.user else None,
+                            'actor_public_id': student_seat.public_id if student_seat else None,
+                            'join_code': get_display_join_code(class_id),
+                            'class_label': class_label_by_class_id.get(class_id, ''),
+                            'block': student_seat.class_economy.section if student_seat.class_economy else '',
+                            'coverage_label': coverage_label,
+                            'amount_paid': amount_paid,
+                            'payment_date': payment_event.assessed_at,
+                        })
 
     student_past_due_json = {}
     current_coverage_due_date = None

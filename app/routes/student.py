@@ -2365,20 +2365,47 @@ def _calculate_rent_timeline(settings, now):
 
 
 def _total_paid_by_grace(assessments, grace_end_date):
-    """Sum Ledger amounts for satisfactions occurred on or before the grace end date — DOM-OBL-001."""
+    """DEPRECATED: Use _total_paid_by_grace_v2 for new event_type discriminator schema."""
+    # This function is kept for backwards compatibility but should not be used
+    # with the new schema. Call _total_paid_by_grace_v2 instead.
+    return Decimal('0.00')
+
+
+def _total_paid_by_grace_v2(assessments, grace_end_date):
+    """Sum Ledger amounts for PAYMENT events on or before grace end date — DOM-OBL-001.
+
+    Args:
+        assessments: List of ASSESSMENT events (from get_rent_assessments_for_cycle)
+        grace_end_date: Datetime boundary for on-time payments
+
+    Returns:
+        Total amount paid on time (sum of PAYMENT event ledger amounts)
+    """
+    from app.models import Transaction
+
     if not assessments or not grace_end_date:
         return Decimal('0.00')
     grace_end_date = ensure_utc(grace_end_date)
 
     total = Decimal('0.00')
+
     for assessment in assessments:
-        if assessment.satisfactions:
-            for satisfaction in assessment.satisfactions:
-                if satisfaction.occurred_at and ensure_utc(satisfaction.occurred_at) <= grace_end_date:
-                    if satisfaction.ledger_transaction_id:
-                        txn = db.session.get(LedgerTransaction, satisfaction.ledger_transaction_id)
-                        if txn and txn.type == 'credit':
-                            total += txn.amount
+        if not assessment.internal_ref:
+            continue
+
+        # Get all PAYMENT events for this assessment
+        from app.services.obligations_service import get_payment_events_for_assessment
+
+        payment_events = get_payment_events_for_assessment(assessment.id, assessment.class_id)
+
+        for payment_event in payment_events:
+            # Only count payments made by grace end date
+            if payment_event.assessed_at and ensure_utc(payment_event.assessed_at) <= grace_end_date:
+                if payment_event.ledger_transaction_id:
+                    txn = db.session.get(Transaction, payment_event.ledger_transaction_id)
+                    if txn and txn.type == 'credit':
+                        total += txn.amount
+
     return total
 
 
@@ -2608,11 +2635,20 @@ def _is_coverage_period_paid(
 
 def _get_active_rent_waiver_v2(seat_id, class_id, coverage_due_date):
     """Return the canonical waiver assessment covering the given coverage period, if any."""
-    from app.services.obligations_service import get_rent_waiver_for_seat
+    from app.services.obligations_service import get_rent_waivers_for_seat
 
     if not seat_id or not class_id or not coverage_due_date:
         return None
-    return get_rent_waiver_for_seat(seat_id, class_id, coverage_due_date)
+
+    # Get all waivers for this seat and find one that covers the due date
+    waivers = get_rent_waivers_for_seat(seat_id, class_id)
+    for waiver in waivers:
+        # Check if waiver covers the due date (coverage window)
+        if waiver.coverage_start_time and waiver.coverage_end_time:
+            if waiver.coverage_start_time <= coverage_due_date <= waiver.coverage_end_time:
+                return waiver
+
+    return None
 
 
 def _has_active_rent_waiver_v2(seat_id, class_id, coverage_due_date):
@@ -2936,26 +2972,26 @@ def rent():
 
     period_status = {}
 
-    from app.services.obligations_service import get_paid_rent_assessments_for_cycle
-    from app.models import LedgerTransaction
-    payments = get_paid_rent_assessments_for_cycle(
+    from app.services.obligations_service import (
+        get_rent_assessments_for_cycle,
+        get_total_paid_for_assessment,
+    )
+
+    # Get all ASSESSMENT events for this rent cycle
+    assessments = get_rent_assessments_for_cycle(
         class_id,
         coverage_month,
         coverage_year,
         seat_ids=[seat_id],
     )
-    payments = [payment for payment in payments if payment.satisfactions]  # Now satisfactions (plural) allowed per DOM-OBL-001
 
-    # DOM-OBL-001: Amounts come from Ledger, not from obligation_satisfaction
+    # Calculate total paid by summing all PAYMENT events (amounts from Ledger)
     total_paid = Decimal('0.00')
-    for assessment in payments:
-        for satisfaction in assessment.satisfactions:
-            if satisfaction.ledger_transaction_id:
-                txn = db.session.get(LedgerTransaction, satisfaction.ledger_transaction_id)
-                if txn:
-                    total_paid += txn.amount if txn.type == 'credit' else Decimal('0.00')
+    for assessment in assessments:
+        total_paid += get_total_paid_for_assessment(assessment.id, class_id)
 
-    paid_by_grace = _total_paid_by_grace(payments, grace_end_date_for_status)
+    # Calculate paid by grace end date
+    paid_by_grace = _total_paid_by_grace_v2(assessments, grace_end_date_for_status)
     late_fee = Decimal('0.00')
     if rent_is_active and now > grace_end_date_for_status and paid_by_grace < settings.rent_amount:
         late_fee = settings.late_fee
@@ -2968,13 +3004,13 @@ def rent():
 
     period_status[current_block] = {
         'is_paid': is_paid,
-        'is_waived': bool(active_waiver),  # Derived from waiver satisfaction events
+        'is_waived': bool(active_waiver),  # Derived from WAIVED events
         'is_late': is_late,
-        'payments': payments,
+        'assessments': assessments,  # ASSESSMENT events for this cycle
         'total_paid': total_paid,
         'total_due': total_due,
         'remaining_amount': remaining_amount,
-        'late_fee': Decimal('0.00'),  # Derived later if needed; not stored per DOM-OBL-001
+        'late_fee': Decimal('0.00'),  # Derived; not stored per DOM-OBL-001
         'rent_is_active': rent_is_active,
         'is_preview_period': is_preview_period,
         'waiver': active_waiver,
@@ -2983,55 +3019,79 @@ def rent():
     # Get scoped balances for this class only
     checking_balance, savings_balance = get_available_balances(seat_id, class_id)
 
-    # Get payment history for the current class only
-    from app.services.obligations_service import get_rent_payment_history
+    # Get payment history for the current class only (ASSESSMENT + state events)
+    from app.services.obligations_service import (
+        get_rent_payment_history,
+        get_rent_waivers_for_seat,
+    )
+    from app.models import Transaction
+
     payment_history = get_rent_payment_history(seat_id, class_id, limit=24)
-
-    waiver_history = []
-    if settings:
-        from app.services.obligations_service import get_rent_waivers_for_seat
-
-        waiver_rows = get_rent_waivers_for_seat(seat_id, class_id)
-        waiver_history = _expand_rent_waiver_history(settings, waiver_rows, now=now)
+    waiver_rows = get_rent_waivers_for_seat(seat_id, class_id)
 
     payment_history_rows = []
-    for payment in payment_history:
-        # DOM-OBL-001: Get amount from Ledger transaction, not from satisfaction row
-        amount_paid = Decimal('0.00')
-        occurred_at = payment.assessed_at
-        status_text = "Pending"
 
-        if payment.satisfactions:
-            for satisfaction in payment.satisfactions:
-                occurred_at = satisfaction.occurred_at or payment.assessed_at
-                if satisfaction.ledger_transaction_id:
-                    txn = db.session.get(LedgerTransaction, satisfaction.ledger_transaction_id)
-                    if txn:
-                        amount_paid += txn.amount if txn.type == 'credit' else Decimal('0.00')
-                        # Status is derived from: was payment on time? (compare occurred_at to due date)
-                        is_late = satisfaction.occurred_at > (payment.due_at or payment.assessed_at) if satisfaction.occurred_at and payment.due_at else False
+    # Process each assessment cycle (ASSESSMENT event + related state events)
+    for assessment, state_events in payment_history:
+        # Track all events for this assessment
+        payment_events = [e for e in state_events if e.event_type == 'PAYMENT']
+        waived_events = [e for e in state_events if e.event_type == 'WAIVED']
+        reversed_events = [e for e in state_events if e.event_type == 'REVERSED']
+
+        if payment_events:
+            # Sum amounts from all PAYMENT events (via Ledger)
+            for payment_event in payment_events:
+                amount_paid = Decimal('0.00')
+                occurred_at = payment_event.assessed_at
+
+                if payment_event.ledger_transaction_id:
+                    txn = db.session.get(Transaction, payment_event.ledger_transaction_id)
+                    if txn and txn.type == 'credit':
+                        amount_paid = txn.amount
+                        # Determine if payment was late (compared to assessment due_at)
+                        is_late = (
+                            payment_event.assessed_at > assessment.due_at
+                            if payment_event.assessed_at and assessment.due_at
+                            else False
+                        )
                         status_text = "Paid Late" if is_late else "On Time"
-                elif satisfaction.method == 'WAIVED':
-                    status_text = "Waived"
+                    else:
+                        status_text = "Pending"
+                else:
+                    status_text = "Pending"
 
-        payment_history_rows.append({
-            'period_month': payment.period_month,
-            'period_year': payment.period_year,
-            'amount_paid': amount_paid,
-            'recorded_at': occurred_at,
-            'status_text': status_text,
-            'entry_type': 'payment',
-        })
+                payment_history_rows.append({
+                    'period_month': assessment.period_month,
+                    'period_year': assessment.period_year,
+                    'amount_paid': amount_paid,
+                    'recorded_at': occurred_at,
+                    'status_text': status_text,
+                    'entry_type': 'payment',
+                })
 
-    for waiver_entry in waiver_history:
-        payment_history_rows.append({
-            'period_month': waiver_entry['coverage_due_date'].month,
-            'period_year': waiver_entry['coverage_due_date'].year,
-            'amount_paid': None,
-            'recorded_at': waiver_entry['created_at'] or waiver_entry['coverage_due_date'],
-            'status_text': waiver_entry['status_label'],
-            'entry_type': 'waiver',
-        })
+        if waived_events:
+            # Add waiver entries
+            for waived_event in waived_events:
+                payment_history_rows.append({
+                    'period_month': assessment.period_month,
+                    'period_year': assessment.period_year,
+                    'amount_paid': None,
+                    'recorded_at': waived_event.assessed_at,
+                    'status_text': 'Waived',
+                    'entry_type': 'waiver',
+                })
+
+        if reversed_events:
+            # Add reversal entries
+            for reversed_event in reversed_events:
+                payment_history_rows.append({
+                    'period_month': assessment.period_month,
+                    'period_year': assessment.period_year,
+                    'amount_paid': None,
+                    'recorded_at': reversed_event.assessed_at,
+                    'status_text': f'Reversed: {reversed_event.reason or "No reason"}',
+                    'entry_type': 'reversal',
+                })
 
     payment_history_rows.sort(
         key=lambda row: ensure_utc(row['recorded_at']) if row.get('recorded_at') else now,

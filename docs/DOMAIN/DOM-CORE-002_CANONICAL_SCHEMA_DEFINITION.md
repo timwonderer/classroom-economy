@@ -207,15 +207,13 @@ authority in v2 and must not be treated as canonical schema surfaces.
 
 ### 4. Obligations & Entitlements (DOM-OBL-001)
 
-**Purpose:** Manage seat-scoped debt lifecycle and benefits.
+**Purpose:** Manage seat-scoped debt lifecycle and recurring reminder state.
 
 **Tables:**
 
+- `bill_cycles`
 - `assessment_events`
-- `obligation_lifecycle`
 - `obligation_satisfaction`
-- `obligation_reversal`
-- `entitlement_events`
 
 ---
 

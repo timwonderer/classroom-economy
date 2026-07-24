@@ -30,8 +30,7 @@ Obligations does not own:
 
 This domain governs:
 
-- obligation assessment facts;
-- obligation satisfaction facts;
+- obligation event facts;
 - recurring bill-cycle reminder state;
 - derived obligation projections such as satisfied, outstanding, visible, and past due.
 
@@ -159,15 +158,12 @@ Bill cycle only remembers that the same internal reference is due again at a law
 This domain is the sole schema and mutation authority over:
 
 - `assessment_events`
-- `obligation_satisfaction`
 - `bill_cycles`
 
 `DOM-CORE-002_CANONICAL_SCHEMA_DEFINITION.md` is authoritative for the exact target table set. This document defines the obligations-side meaning of those tables.
 
 This domain does **not** own:
 
-- `obligation_lifecycle`
-- `obligation_reversal`
 - any mutable paid/overdue/reversed scalar state
 - insurance entitlement state
 - Ledger transactions
@@ -178,7 +174,7 @@ This domain does **not** own:
 
 ### 1. `assessment_events`
 
-Records the historical fact of a seat becoming liable for an assessment.
+Records the historical fact of obligation events.
 
 Key fields:
 
@@ -187,9 +183,11 @@ Key fields:
 - `class_id` - FK to `classes`
 - `internal_ref` - stable lineage key for the continuing obligation-producing relationship
 - `correlation_id` - identifier for this individual liability instance
+- `event_type` - `ASSESSMENT` | `PAYMENT` | `WAIVED`
 - `obligation_type` - closed enum of lawful assessment categories
 - `policy_version_id` - lawful version or source snapshot reference
 - `bill_cycle_id` - nullable FK to `bill_cycles`
+- `ledger_transaction_id` - nullable FK to `ledger_transaction`; required for `PAYMENT`
 - `due_at`
 - `viewable_at`
 - `assessed_at`
@@ -198,30 +196,13 @@ Key fields:
 Rules:
 
 - exactly one `ASSESSMENT` exists per individual liability instance;
+- `PAYMENT` may occur multiple times for the same assessment;
+- `WAIVED` is rent-only;
 - no amount is persisted here;
 - no paid/unpaid/overdue/satisfied/reversed flag is persisted here;
 - an assessment is immutable once lawfully written.
 
-### 2. `obligation_satisfaction`
-
-Records how an assessed liability was lawfully resolved.
-
-Key fields:
-
-- `id`
-- `assessment_id` - FK to `assessment_events`
-- `method` - `PAYMENT` or `WAIVED`
-- `ledger_transaction_id` - nullable FK to `ledger_transaction`; required for `PAYMENT`
-- `occurred_at`
-
-Rules:
-
-- `PAYMENT` may occur multiple times for the same assessment;
-- `WAIVED` is rent-only;
-- `WAIVED` carries no monetary amount and creates no Ledger transaction;
-- satisfaction rows are immutable historical facts.
-
-### 3. `bill_cycles`
+### 2. `bill_cycles`
 
 Records recurring temporal progression for an internal reference.
 

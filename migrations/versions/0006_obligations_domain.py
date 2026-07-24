@@ -117,52 +117,13 @@ def upgrade():
     if not index_exists('obligation_assessment', 'ix_obligation_assessment_seat_class'):
         op.create_index('ix_obligation_assessment_seat_class', 'obligation_assessment', ['seat_id', 'class_id'])
 
-    # 2. obligation_satisfaction — immutable payment/waiver record
-    if not table_exists('obligation_satisfaction'):
-        op.create_table(
-            'obligation_satisfaction',
-            sa.Column('id', sa.Integer(), nullable=False),
-            sa.Column('assessment_id', sa.Integer(), nullable=False),
-            sa.Column('method', sa.String(20), nullable=False),
-            sa.Column('amount_paid', sa.Numeric(precision=12, scale=2), nullable=True),
-            sa.Column('was_late', sa.Boolean(), nullable=False, server_default='false'),
-            sa.Column('late_fee_charged', sa.Numeric(precision=12, scale=2), nullable=True),
-            sa.Column('transaction_id', sa.Integer(), nullable=True),
-            sa.Column('satisfied_at', sa.DateTime(timezone=True), nullable=False),
-            sa.ForeignKeyConstraint(['assessment_id'], ['obligation_assessment.id'], ondelete='CASCADE'),
-            sa.ForeignKeyConstraint(['transaction_id'], ['ledger_transaction.id'], ondelete='SET NULL'),
-            sa.PrimaryKeyConstraint('id'),
-            sa.UniqueConstraint('assessment_id', name='uq_obligation_satisfaction_assessment'),
-        )
-        print("✅ Created obligation_satisfaction")
-    else:
-        print("⚠️  Table 'obligation_satisfaction' already exists, skipping create...")
+    # 2. obligation_satisfaction — DEPRECATED (will be collapsed into assessment_events via migration 0008)
+    # Skipped: will be handled by migration 0008 which uses event_type discriminator
+    print("⏭️  obligation_satisfaction table skipped (will be created/managed by migration 0008)")
 
-    if not index_exists('obligation_satisfaction', 'ix_obligation_satisfaction_assessment_id'):
-        op.create_index('ix_obligation_satisfaction_assessment_id', 'obligation_satisfaction', ['assessment_id'])
-    if not index_exists('obligation_satisfaction', 'ix_obligation_satisfaction_transaction_id'):
-        op.create_index('ix_obligation_satisfaction_transaction_id', 'obligation_satisfaction', ['transaction_id'])
-
-    # 3. obligation_reversal — immutable nullification record
-    if not table_exists('obligation_reversal'):
-        op.create_table(
-            'obligation_reversal',
-            sa.Column('id', sa.Integer(), nullable=False),
-            sa.Column('assessment_id', sa.Integer(), nullable=False),
-            sa.Column('reason', sa.Text(), nullable=True),
-            sa.Column('reversed_at', sa.DateTime(timezone=True), nullable=False),
-            sa.Column('reversed_by_teacher_id', sa.Integer(), nullable=True),
-            sa.ForeignKeyConstraint(['assessment_id'], ['obligation_assessment.id'], ondelete='CASCADE'),
-            sa.ForeignKeyConstraint(['reversed_by_teacher_id'], ['teachers.id'], ondelete='SET NULL'),
-            sa.PrimaryKeyConstraint('id'),
-            sa.UniqueConstraint('assessment_id', name='uq_obligation_reversal_assessment'),
-        )
-        print("✅ Created obligation_reversal")
-    else:
-        print("⚠️  Table 'obligation_reversal' already exists, skipping create...")
-
-    if not index_exists('obligation_reversal', 'ix_obligation_reversal_assessment_id'):
-        op.create_index('ix_obligation_reversal_assessment_id', 'obligation_reversal', ['assessment_id'])
+    # 3. obligation_reversal — DEPRECATED (will be collapsed into assessment_events via migration 0008)
+    # Skipped: will be handled by migration 0008 which uses event_type discriminator
+    print("⏭️  obligation_reversal table skipped (will be created/managed by migration 0008)")
 
     # 4. insurance_enrollments was removed in the v2 cutover.
     # The historical table is intentionally not recreated in the baseline.
@@ -203,9 +164,6 @@ def upgrade():
 def downgrade():
     for table in [
         'entitlement_events',
-        'insurance_enrollments',
-        'obligation_reversal',
-        'obligation_satisfaction',
         'obligation_assessment',
     ]:
         if table_exists(table):

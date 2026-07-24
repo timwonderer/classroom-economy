@@ -26,12 +26,16 @@ Authority order:
 4. `FEAT-PROD-001_RECORD_ATTENDANCE_SESSION.md`
 5. `FEAT-PROD-002_RECORD_HALL_PASS_LOG.md`
 6. `FEAT-PROD-003_RECORD_PAYROLL_EVENT.md`
-7. `DOM-STORE-001_STORE_AND_ENTITLEMENTS_DOMAIN.md`
-8. `FEAT-STOR-001_STORE_PURCHASE.md`
-9. `FEAT-STOR-002_ENTITLEMENT_TERMINAL_LIFECYCLE.md`
-10. `FEAT-STOR-003_INSURANCE_CLAIM_LIFECYCLE.md`
-11. `SOP-DEV-002_CANONICAL_DOMAIN_RECONSTRUCTION_WORKFLOW.md`
-12. `MAP-UI-002_REQUEST_CONTEXT_AND_VIEW_MODEL_PIPELINE.md`
+7. `DOM-OBL-001_OBLIGATIONS_DOMAIN.md`
+8. `FEAT-OBLI-001_ASSESS_OBLIGATION.md`
+9. `FEAT-OBL-002_ADVANCE_BILL_CYCLE.md`
+10. `FEAT-OBL-003_SATISFY_OBLIGATION.md`
+11. `DOM-STORE-001_STORE_AND_ENTITLEMENTS_DOMAIN.md`
+12. `FEAT-STOR-001_STORE_PURCHASE.md`
+13. `FEAT-STOR-002_ENTITLEMENT_TERMINAL_LIFECYCLE.md`
+14. `FEAT-STOR-003_INSURANCE_CLAIM_LIFECYCLE.md`
+15. `SOP-DEV-002_CANONICAL_DOMAIN_RECONSTRUCTION_WORKFLOW.md`
+16. `MAP-UI-002_REQUEST_CONTEXT_AND_VIEW_MODEL_PIPELINE.md`
 
 Audit inputs:
 
@@ -122,7 +126,53 @@ Each row describes one user-visible capability, not one variable or one template
 
 ---
 
-## VI. Issue and Project Shape
+## VI. Obligations Slice
+
+### Summary
+
+| Status | Count | Meaning |
+|---|---:|---|
+| `NEEDS_REWIRE` | 0 | No unresolved OBL row remains in this map; template audits remain the final checklist |
+
+### Capability Rows
+
+| Capability | Surface | Type | Context | FEAT / Domain | Persistence | View Contract | Current State | Rewire Status |
+|---|---|---|---|---|---|---|---|---|
+| Student views rent obligations and payment status | `student_rent.html`; `student.rent` (`GET /student/rent`) | `OUTPUT` | Student `CanonicalContext`; `class_id`; `seat_id`; class-local temporal context | Read-only `DOM-OBL`; rent source terms from Class Configuration; payment truth from Ledger | Reads `assessment_events` (including `PAYMENT` and `WAIVED` event rows), `bill_cycles`, `ledger_transaction` | `rent_items`, `active_waivers`, `current_period_start`, `current_period_end`, `current_coverage_due_date`, `rent_status_counts`, `rent_status_total`, `unpaid_rent_log` | Route and template currently expose rent status, waivers, and current period facts; this surface must be normalized to canonical obligation events and bill cycles rather than legacy rent-payment rows | `NEEDS_REWIRE` |
+| Teacher manages rent configuration and waiver controls | `admin_rent_settings.html`; `admin.rent_settings` (`GET|POST /admin/rent-settings`) | `ACTION` | Teacher `CanonicalContext`; selected `class_id`; actor teacher seat; class-local temporal context | `FEAT-OBL-002` for bill-cycle progression inputs and `FEAT-OBL-003` for rent waiver actions; Class Configuration for rent policy definition | Reads `rent_settings`; reads and writes `assessment_events` (including `PAYMENT`/`WAIVED` rows), `bill_cycles`; ledger only for payment-backed satisfaction | `settings`, `rent_items`, `all_students`, `active_waivers`, `current_period_start`, `current_period_end`, `current_coverage_due_date`, `rent_status_counts`, `rent_status_total`, `unpaid_rent_log` | Admin rent surface is still wired to legacy waiver/payment semantics in the current checkout; it needs explicit obligations FEAT boundaries and a canonical view model split for policy, cycle, assessment, and event history | `NEEDS_REWIRE` |
+| Student files insurance claim against active coverage | `student_file_claim.html`; `student.file_claim` (`GET|POST /student/insurance/claim/<int:policy_id>`) | `ACTION` | Student `CanonicalContext`; `class_id`; `seat_id` | `FEAT-STOR-003`; renewal/source coordination may consult `DOM-OBL` for premium settlement lineage | Reads `insurance_claims`, `entitlements`, and obligation renewal lineage only | `policy`, `enrollment`, `claims_this_period`, `eligible_transactions`, `form`, `errors` | Already audited as an insurance claim surface; claim submission must remain separated from obligation event creation even when the underlying premium lifecycle is obligations-backed | `REWIRED` |
+| Student views insurance coverage and policy status | `student_view_policy.html`; `student.view_policy` (`GET /student/insurance/policy/<...>`) | `OUTPUT` | Student `CanonicalContext`; `class_id`; `seat_id` | Read-only `DOM-STORE` for entitlement lifecycle; read-only `DOM-OBL` for renewal/premium status | Reads `entitlements`, `insurance_claims`, and obligation renewal lineage | `enrollment`, `policy`, `claims`, `now` | The insurance view model remains entitlement-led, but its renewal/read status must reflect obligations-owned bill-cycle and assessment facts | `REWIRED_READ` |
+| Teacher reviews insurance claim lifecycle | `admin_process_claim.html`, `admin_view_student_policy.html`; `admin.process_claim`, `admin.view_student_policy` | `ACTION` | Teacher `CanonicalContext`; selected `class_id`; actor teacher seat | `FEAT-STOR-003`; compensation path may coordinate Ledger or Payroll, but never obligation event mutation directly | Reads `insurance_claims`, `entitlements`, and claim lineage; writes claim decision only | `claim`, `policy`, `enrollment`, `claims`, `decision_form` | Existing claim workflow remains the consumer of obligation-backed coverage history rather than an obligation writer | `REWIRED` |
+
+---
+
+## VII. Obligations Inventory
+
+This inventory is the full obligations-facing template set surfaced by the audit docs in `docs/TRACKING/`. It includes both live routes and currently aborted surfaces so the rewiring plan can close the entire branch of work without rediscovering endpoints later.
+
+| Template | Route | Current Status | Route Variables / View Contract | Obligations Role | Audit Source |
+|---|---|---|---|---|---|
+| `student_rent.html` | `student.rent` (`GET /student/rent`) | Live, legacy view model | `student`, `settings`, `student_blocks`, `period_status`, `current_block`, `checking_balance`, `savings_balance`, `payment_due_date`, `grace_end_date`, `grace_end_date_for_status`, `payment_history`, `rent_items`, `days_until_due`; Jinja reads `feature_settings.rent_enabled`, `current_class_context.teacher_name`, `current_class_context.block_display`, `current_block|upper`, `settings.rent_amount`, `settings.due_day_of_month`, `payment_history`, `csrf_token()` | Rent obligation read surface; must derive assessments, satisfactions, bill cycles, due state, and waivers from `DOM-OBL` | `docs/TRACKING/TEMPLATE_AUDIT_STUDENT.md` |
+| `admin_rent_settings.html` | `admin.rent_settings` (`GET|POST /admin/rent-settings`) | Live, legacy view model | `settings`, `total_students`, `active_waivers`, `all_students`, `payroll_warning`, `payroll_settings`, `settings_block`, `teacher_blocks`, `class_labels_by_block`, `join_codes_by_block`, `rent_items`, `rent_active_for_period`, `period_label`, `rent_status_counts`, `rent_status_total`, `payment_log`, `unpaid_rent_log`, `current_period_start`, `current_period_end`, `next_due_date`, `student_past_due_json`, `current_coverage_due_date`, `upcoming_coverage_due_date`, `selected_feature_scope`; Jinja reads `settings.is_enabled`, `settings.rent_amount`, `settings.frequency_type`, `settings.late_penalty_amount`, `settings.late_penalty_type`, `settings.late_penalty_frequency_days`, `payment_log`, `unpaid_rent_log`, `format_utc_iso(waiver.waiver_start_date/end_date)`, `student_past_due_json`, `selected_feature_scope.block`, `rent_items|length` | Rent configuration and waiver controls; must orchestrate `FEAT-OBL-002` / `FEAT-OBL-003` and surface canonical bill-cycle and satisfaction facts | `docs/TRACKING/TEMPLATE_ROUTE_AUDIT_ADMIN_AND_SHARED.md` |
+| `student_insurance_marketplace.html` | `student.student_insurance` (`GET /student/insurance`) | Aborted route in current checkout | `my_policies`, `available_policies`, `tier_groups`, `my_claims`, `can_purchase`, `enrolled_tiers`, `repurchase_blocks`, `now`; Jinja reads `feature_settings.rent_enabled and feature_settings.insurance_enabled`, `current_class_context.teacher_name`, `current_class_context.block_display`, `my_policies|length`, `my_claims|length`, `enrollment.policy.description`, `enrollment.policy.premium`, `enrollment.coverage_start_date > now`, `url_for('student.file_claim')`, `url_for('student.view_policy')`, `url_for('student.cancel_insurance')`, `csrf_token()`, `policy.description`, `url_for('student.purchase_insurance')` | Insurance purchase entry point; renewal timing must remain obligations-backed without making the marketplace an obligation writer | `docs/TRACKING/TEMPLATE_AUDIT_STUDENT.md` |
+| `student_file_claim.html` | `student.file_claim` (`GET|POST /student/insurance/claim/<int:policy_id>`) | Aborted route in current checkout | `form`, `policy`, `enrollment`, `contract_title`, `contract_description`, `claim_type`, `contract_claim_time_limit_days`, `contract_max_claim_amount`, `contract_max_claims_count`, `contract_max_claims_period`, `eligible_transactions`, `claims_this_period`, `remaining_period_cap`, `errors`, `now`; Jinja reads `contract_title`, `url_for('student.file_claim')`, `form.hidden_tag()`, `claim_type == 'transaction_monetary'`, `form.transaction_id`, `form.description`, `url_for('student.student_insurance')`, `contract_description | markdown`, `enrollment.coverage_start_date.strftime(...)` | Claim submission surface; must remain separated from obligation creation/satisfaction | `docs/TRACKING/TEMPLATE_AUDIT_STUDENT.md` |
+| `student_view_policy.html` | `student.view_policy` (`GET /student/insurance/policy/<int:enrollment_id>`) | Aborted route in current checkout | `student`, `enrollment`, `claims`, `now`; Jinja reads `enrollment.contract_title`, `enrollment.contract_description`, `enrollment.policy.premium`, `enrollment.policy.autopay`, `enrollment.purchase_date`, `enrollment.contract_max_claim_amount`, `enrollment.next_payment_due`, `claim.incident_date`, waiting-period logic, `url_for('student.file_claim')`, `url_for('student.cancel_insurance')`, `csrf_token()` | Insurance coverage and claim history read surface; should reflect obligations-owned renewal lineage | `docs/TRACKING/TEMPLATE_AUDIT_STUDENT.md` |
+| `admin_insurance.html` | `admin.insurance_management` (`GET|POST /admin/insurance`) | Aborted route in current checkout | Audit-listed as aborted; route currently aborts before render | Teacher insurance catalog and policy management surface; downstream obligations truth must not be mutated directly | `docs/TRACKING/TEMPLATE_AUDIT_ADMIN_E-P.md` |
+| `admin_edit_insurance_policy.html` | `admin.edit_insurance_policy` (`GET|POST /admin/insurance/edit/<int:policy_id>`) | Aborted route in current checkout | `policy`, `form`, `available_policies`, `tier_groups`, `payroll_settings`, `insurance_recommendation`; Jinja reads `policy.title`, `form.hidden_tag()`, `form.*` WTForm fields, `policy.student_policies.filter_by(...)`, `policy.claims.count()`, `policy.created_at.strftime(...)`, `insurance_recommendation.*`, `url_for('admin.insurance_management')`, `url_for('admin.edit_insurance_policy')` | Insurance policy edit surface; class-config authority only, but it is part of the obligations/insurance rewiring boundary because renewal reads depend on it | `docs/TRACKING/TEMPLATE_AUDIT_ADMIN_E-P.md` |
+| `admin_process_claim.html` | `admin.process_claim` (`GET|POST /admin/insurance/claim/<int:claim_id>`) | Abort-orphaned in current checkout | Audit-listed as an aborted route; approval/rejection template still exists on disk | Teacher claim decision surface; coordinates claim approval/rejection and downstream compensation without mutating obligations directly | `docs/TRACKING/TEMPLATE_AUDIT_ADMIN_E-P.md` |
+| `admin_view_student_policy.html` | `admin.view_student_policy` (`GET /admin/insurance/student-policy/<enrollment_id>`) | Route currently aborts 404 before render | Audit-listed as a would-be route/template pair; claims table links to `admin.process_claim` and `admin.insurance_management` | Teacher insurance policy review surface; read-only consumer of obligations-backed renewal/coverage state | `docs/TRACKING/TEMPLATE_ROUTE_AUDIT_ADMIN_AND_SHARED.md` |
+| `admin_dashboard.html` | `admin.dashboard` (`GET /admin/`) | Live summary surface | `system_announcements`, `show_recovery_setup`, `total_students`, `total_balance`, `avg_balance`, `total_pending_actions`, `pending_redemptions_count`, `pending_hall_passes_count`, `pending_insurance_claims_count`, `total_transactions_today`, `total_payroll_estimate`, `payroll_updated_at`, `next_payroll_date`, `recent_redemptions`, `recent_hall_passes`, `recent_insurance_claims`, `recent_transactions`, `recent_logs`, `seat_profiles`, `show_insurance_tier_prompt`, `current_page`; Jinja reads pending insurance counts and claim rows | Pending insurance claims count is a cross-domain summary that should remain read-only and trace back to claim lineage, not mutate obligations | `docs/TRACKING/TEMPLATE_ROUTE_AUDIT_ADMIN_AND_ANALYTICS.md` |
+| `admin_economy_health.html` | `admin.economy_health` (`GET /admin/economy-health`) | Live summary surface | `current_page`, `blocks`, `selected_block`, `payroll_settings`, `has_payroll_settings`, `cwi_calc`, `expected_hours`, `pay_rate_per_minute`, `rent_settings`, `insurance_count`, `store_item_count`, `fine_count`, `banking_settings`, `banking_summary`, `analysis`, `warnings_by_level`, `warnings_by_feature`, `actionable_warning_count`, `health_warning_summary`, `recommendations`, `snapshot`, `analysis_schedule`, `policy_modes`, `policy_summary`, `pending_rebalance_effective_at`, `rebalance_preview`, `show_rebalance_review`, `feature_links`, `payroll_link`, `banking_link`, `rent_link`, `insurance_link`, `store_link`; Jinja reads rent and insurance recommendations and policy summary fields | Shows rent and insurance policy summaries; it is not an obligations writer, but it must not invent debt state outside canonical reads | `docs/TRACKING/TEMPLATE_AUDIT_ADMIN_E-P.md` |
+
+Notes:
+
+- `student_account_claim.html` is not obligations-owned; it is identity recovery / onboarding and remains outside this inventory.
+- `admin_help_support.html` is orphaned and not part of the obligations rewrite surface.
+- Insurance template rows are included because their current read/write paths depend on obligations-backed renewal and satisfaction even though claim ownership remains in Store and Entitlements.
+
+---
+
+## VIII. Issue and Project Shape
 
 GitHub issues should be generated from this map by capability group, not by template variable.
 
@@ -134,6 +184,17 @@ Recommended issue groups for the Productivity and Payroll slice:
 4. Hall-pass read and command path: queue, approval, verification
 5. Attendance session command path: student/API/admin tap routes through `FEAT-PROD-001`
 6. Attendance support issue terminology: resolved to canonical attendance-session route and related-record reference
+
+Recommended issue groups for the Obligations slice:
+
+1. Student rent read model: `student_rent.html` GET — canonical assessments, satisfactions, bill cycles, and overdue projection
+2. Admin rent configuration and waiver control: `admin.rent_settings` GET|POST — policy, cycle progression, assessment, and satisfaction split
+3. Insurance marketplace read model: `student.student_insurance` GET — canonical entitlement plus obligations-backed renewal status
+4. Insurance claim submission: `student.file_claim` GET|POST — preserve claim workflow separation from obligation mutation
+5. Insurance policy detail read: `student.view_policy` GET — claim history plus obligations-backed renewal status
+6. Insurance catalog edit: `admin.insurance_management` and `admin.edit_insurance_policy` — class-config authority with obligations-aware downstream reads
+7. Insurance claim decision: `admin.process_claim` and `admin.view_student_policy` — claim review surface over obligations-backed coverage state
+8. Summary surfaces: `admin.dashboard` and `admin.economy_health` — obligations counts and policy summaries as read-only projections
 
 Recommended issue groups for the Store and Entitlements slice:
 
@@ -160,7 +221,7 @@ Each issue should include:
 
 ---
 
-## VII. Resolved Decisions
+## IX. Resolved Decisions
 
 ### Productivity and Payroll
 
@@ -183,6 +244,6 @@ Each issue should include:
 
 ---
 
-## VIII. Amendment
+## X. Amendment
 
 Revisions to this map must update the version, preserve the row contract, and cite any newly audited template-route source documents used to add rows.

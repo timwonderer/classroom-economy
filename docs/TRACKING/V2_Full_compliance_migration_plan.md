@@ -233,7 +233,7 @@ pytest                                 # full suite; fail count must not increas
 
 Each domain wave (3–10) follows this exact sequence:
 1. **Create canonical tables** (migration with `table_exists` guards)
-2. **Port models** in `models.py` / `models_canonical.py` to canonical ORM classes
+2. **Port models** in the active ORM layer to canonical ORM classes
 3. **Port services** for that domain to query canonical tables
 4. **Port feats** that touch that domain to write canonical tables
 5. **Port routes** that use that domain
@@ -343,7 +343,7 @@ All future migration work must preserve these contracts.
 
 ### Deliverables
 
-1. **`app/models_canonical.py`** (new file) — defines all 44 canonical ORM classes:
+1. **Canonical ORM coverage in the active model layer** — defines the canonical ORM classes:
    - Identity: `User`, `Seat`, `Class_` (table=`classes`), `IdentityProfile`, `UserInviteToken`, `UserRecoveryToken`
    - Class Config: canonical settings classes (no `teacher_id`/`join_code` columns — only `class_id`)
    - Attendance: `AttendanceSession`, `HallPassLog` (clean), `SeatAttendanceState`
@@ -360,13 +360,13 @@ All future migration work must preserve these contracts.
 
 ### Critical Files
 
-- `app/models_canonical.py` (create)
+- `app/models.py` (activate canonical coverage)
 - `docs/archive/v1-development/tracking/V2_SCHEMA_GAP_AUDIT.md` (historical artifact)
 - `tests/domain/test_smoke.py` (create)
 
 ### Verification
 
-- `python -c "from app.models_canonical import *"` — no errors
+- `python -c "from app.models import *"` — no errors
 - All 117 existing tests pass (zero regression — no code changes, only new file)
 
 ---
@@ -457,7 +457,7 @@ Operational note:
 
 - `app/auth.py`
 - `app/models.py` (remove legacy auth model classes)
-- `app/models_canonical.py` (activate identity classes)
+- `app/models.py` (activate identity classes)
 - `app/services/identity_service.py`
 - `app/routes/student.py` (login handler)
 - `app/routes/admin.py` (login handler)
@@ -506,7 +506,7 @@ Operational note:
 
 Focused validation:
 
-- `python -m py_compile app/models.py app/models_canonical.py migrations/versions/a6d9c2e4f1b7_add_canonical_identity_foundation.py`
+- `python -m py_compile app/models.py migrations/versions/a6d9c2e4f1b7_add_canonical_identity_foundation.py`
 - `python scripts/lint_migrations.py migrations/versions/a6d9c2e4f1b7_add_canonical_identity_foundation.py`
 - `flask db upgrade`
 - `flask db downgrade 4e85bf5c5594`
@@ -1312,7 +1312,7 @@ Focused validation:
   class scope for `hall_pass_verify_token` remain open.
 - Validation:
   - `git diff --check` -> pass
-  - `python -m py_compile app/models_canonical.py app/models.py app/routes/admin.py tests/test_admin_tenancy.py` -> pass
+  - `python -m py_compile app/models.py app/routes/admin.py tests/test_admin_tenancy.py` -> pass
   - focused admin-tenancy suite -> `5 passed, 10 deselected`
 
 ### Status Update (2026-06-02): Teacher-Seat Public Lookup Runtime Reduction
@@ -1517,7 +1517,7 @@ Focused validation:
   - `app/models.py`
     - introduced `PolicyVersion` (`policy_versions`) and `PolicyTransition` (`policy_transitions`) ORM classes
     - class-scoped ownership via `class_id` FK, unique `(class_id, domain, version_number)` lineage key, and class/domain/state indexes
-  - `app/models_canonical.py`
+  - `app/models.py`
     - added canonical model stubs for `policy_versions` and `policy_transitions`
   - `migrations/versions/c4e36a4ab2f1_add_policy_lineage_tables.py`
     - idempotent creation of both tables, FK wiring, and supporting indexes
@@ -1525,7 +1525,7 @@ Focused validation:
 - Scope note:
   - This slice is schema/model scaffolding only. Runtime rebalance execution remains on transitional `FeatureSettings` fields until FEAT cutover slices land.
 - Validation:
-  - `python3 -m py_compile app/models.py app/models_canonical.py migrations/versions/c4e36a4ab2f1_add_policy_lineage_tables.py` → pass
+  - `python3 -m py_compile app/models.py migrations/versions/c4e36a4ab2f1_add_policy_lineage_tables.py` → pass
   - `python3 scripts/lint_migrations.py migrations/versions/c4e36a4ab2f1_add_policy_lineage_tables.py` → pass (0 warnings)
   - `flask db upgrade` → pass
   - `flask db downgrade 8357d4036478` → pass
@@ -2530,7 +2530,7 @@ Completed a bulk refactoring pass across ~60 test files to replace `TeacherBlock
    - No `student_id`/`teacher_id` column references in query filters (only allowed in identity resolution layer)
    - No `join_code` used as internal scope key (only as user-facing input → immediately resolved to `class_id`)
 
-3. **`app/models.py`** becomes a one-liner re-export: `from app.models_canonical import *`; no model class definitions of its own
+3. **`app/models.py`** remains the active runtime model layer; no separate canonical module is imported
 
 4. **`app/auth.py`** — all v1 fallback bridges removed; clean `User`/`Seat` path only
 

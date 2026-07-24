@@ -194,12 +194,7 @@ Historical note: the legacy helper has since been removed from `app/`. This sect
 
 ### 2.6 Dual `Base` Registration Issue
 
-`models_canonical.py` uses `declarative_base()` (standalone SQLAlchemy Base), while `models.py` uses `db.Model` (Flask-SQLAlchemy). This means:
-
-- `models_canonical.Class_` targets table `classes` — a different Base from the Flask app
-- `models.ClassEconomy` targets table `class_economies` — the Flask app's Base
-- Both cannot coexist pointing at the same table without one being a mirror/alias
-- The canonical models will need to be moved to `db.Model` before activation
+The old standalone canonical model module has been removed. The live ORM authority is `app/models.py`, so any identity-domain risk analysis should be performed against the active model layer and the governing docs rather than a separate canonical mirror.
 
 ---
 
@@ -389,7 +384,7 @@ Only after Waves 4–10 have each removed their `teacher_id`/`student_id` column
 - [ ] Triage all 123 failing tests — classify which are fixed by Wave 3 vs need rewrite
 - [ ] Build complete FK graph for `class_economies.class_id` (automated, not manual)
 - [ ] Audit all `sa.text()` strings in `models.py` for `class_economies` references
-- [ ] Verify `models_canonical.py` Base unification plan (Flask-SQLAlchemy vs standalone)
+- [ ] Verify the live ORM base unification plan against `app/models.py` and the domain docs
 - [ ] Map all Jinja2 template references to `Student`/`Admin` properties
 - [ ] Design session key migration strategy (dual-key period vs atomic cutover)
 - [ ] Write `0002_identity_domain.py` migration skeleton with FK drop/recreate for rename

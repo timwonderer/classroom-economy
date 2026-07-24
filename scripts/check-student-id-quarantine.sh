@@ -12,7 +12,6 @@ echo "Running student_id quarantine check..."
 # These will be removed wave-by-wave as we sever legacy dependencies.
 ALLOWED_FILES=(
     "app/models.py"
-    "app/models_canonical.py"
     "app/routes/student.py"
     "app/routes/analytics.py"
     "app/routes/recovery.py"

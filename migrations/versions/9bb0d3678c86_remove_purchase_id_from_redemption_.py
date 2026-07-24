@@ -1,7 +1,7 @@
 """Remove purchase_id from redemption_events make entitlement_id non-nullable
 
 Revision ID: 9bb0d3678c86
-Revises: 2c3d4e5f6a7b
+Revises: 0006
 Create Date: 2026-07-24 02:49:46.185761
 
 """
@@ -66,7 +66,7 @@ def get_foreign_keys_by_column(table_name, column_name):
 
 # revision identifiers, used by Alembic.
 revision = '9bb0d3678c86'
-down_revision = '2c3d4e5f6a7b'
+down_revision = '0006'
 branch_labels = None
 depends_on = None
 

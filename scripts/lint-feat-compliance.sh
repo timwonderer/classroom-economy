@@ -26,7 +26,7 @@ VIOLATIONS=$(grep -r "db.session.commit()" app --exclude-dir=$EXCLUDE_DIR -n | g
 COUNT=$(echo "$VIOLATIONS" | grep -v "^$" | wc -l | xargs)
 
 # Grep for direct Transaction instantiation (must use create_idempotent_transaction)
-DIRECT_TX=$(grep -rE "\\bTransaction\\(" app --exclude-dir="$EXCLUDE_DIR" --exclude="models.py" --exclude="models_canonical.py" -n | grep -v "app/utils/transaction_idempotency.py" | grep -v "# FEAT-AUTHORIZED-DIRECT-TX" || true)
+DIRECT_TX=$(grep -rE "\\bTransaction\\(" app --exclude-dir="$EXCLUDE_DIR" --exclude="models.py" -n | grep -v "app/utils/transaction_idempotency.py" | grep -v "# FEAT-AUTHORIZED-DIRECT-TX" || true)
 TX_COUNT=$(echo "$DIRECT_TX" | grep -v "^$" | wc -l | xargs)
 
 COUNT=$((COUNT + TX_COUNT))
