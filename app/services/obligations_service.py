@@ -253,57 +253,6 @@ def get_assessments_for_bill_cycle(
     return query.order_by(ObligationAssessment.timestamp.asc()).all()
 
 
-def get_rent_assessments_for_cycle(
-    class_id: str,
-    coverage_month: int,
-    coverage_year: int,
-    seat_ids: list[int] | None = None,
-) -> list[ObligationAssessment]:
-    """
-    DEPRECATED: Use get_assessments_for_bill_cycle() instead.
-
-    This function tries to extract month/year from due_at, which no longer exists
-    on assessment_events per DOM-OBL-001 v2.5.
-
-    Retrieve ASSESSMENT events for rent during a coverage cycle by matching against
-    bill_cycles that cover the specified month/year.
-
-    Returns events in creation order.
-    """
-    # Query bill_cycles that cover the specified month/year, then get their assessments
-    from datetime import datetime, date
-    from sqlalchemy import extract
-
-    # Find bill_cycles where cycle_boundary_at falls in the coverage month/year
-    matching_bill_cycles = (
-        db.session.query(BillCycle)
-        .filter(
-            extract('month', BillCycle.cycle_boundary_at) == coverage_month,
-            extract('year', BillCycle.cycle_boundary_at) == coverage_year,
-        )
-        .all()
-    )
-
-    if not matching_bill_cycles:
-        return []
-
-    bill_cycle_ids = [bc.id for bc in matching_bill_cycles]
-
-    # Get assessments for these bill cycles
-    query = (
-        db.session.query(ObligationAssessment)
-        .filter(
-            ObligationAssessment.class_id == class_id,
-            ObligationAssessment.obligation_type == 'RENT',
-            ObligationAssessment.event_type == 'ASSESSMENT',
-            ObligationAssessment.bill_cycle_id.in_(bill_cycle_ids),
-        )
-    )
-
-    if seat_ids:
-        query = query.filter(ObligationAssessment.seat_id.in_(seat_ids))
-
-    return query.order_by(ObligationAssessment.timestamp.asc()).all()
 
 
 def get_payment_events_for_assessment(
@@ -352,66 +301,6 @@ def get_waived_seats_for_bill_cycle(
     )
 
     return set(row[0] for row in query.all())
-
-
-def get_waived_seat_ids_for_cycle(
-    class_id: str,
-    coverage_due_date: datetime,
-    seat_ids: list[int] | None = None,
-) -> set[int]:
-    """
-    DEPRECATED: Use get_waived_seats_for_bill_cycle() instead.
-
-    Retrieve seat IDs where rent was waived for a coverage cycle.
-
-    Per DOM-OBL-001 §VI: WAIVED is rent-only and closes outstanding remainder.
-    Returns set of seat IDs that have active waivers for the coverage period.
-
-    Translates month/year to bill_cycle matching for backward compatibility.
-    """
-    from sqlalchemy import extract
-
-    # Find bill_cycles matching the coverage month/year
-    matching_bill_cycles = (
-        db.session.query(BillCycle)
-        .filter(
-            extract('month', BillCycle.cycle_boundary_at) == coverage_due_date.month,
-            extract('year', BillCycle.cycle_boundary_at) == coverage_due_date.year,
-        )
-        .all()
-    )
-
-    if not matching_bill_cycles:
-        return set()
-
-    waived_sets = []
-    for cycle in matching_bill_cycles:
-        waived_sets.append(get_waived_seats_for_bill_cycle(cycle.id))
-
-    # Return union of all waived seats across matching cycles
-    result = set()
-    for s in waived_sets:
-        result.update(s)
-
-    if seat_ids:
-        result = result.intersection(set(seat_ids))
-
-    return result
-
-
-def get_paid_rent_assessments_for_cycle(
-    class_id: str,
-    coverage_month: int,
-    coverage_year: int,
-    seat_ids: list[int] | None = None,
-) -> list[ObligationAssessment]:
-    """Alias for get_rent_assessments_for_cycle() for backward compatibility."""
-    return get_rent_assessments_for_cycle(
-        class_id,
-        coverage_month,
-        coverage_year,
-        seat_ids=seat_ids,
-    )
 
 
 def get_rent_payment_history(

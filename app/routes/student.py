@@ -957,21 +957,27 @@ def dashboard():
             grace_end_date_for_status = (coverage_due_date + timedelta(days=rent_settings.grace_period_days)) if coverage_due_date else grace_end_date
 
         from app.services.obligations_service import (
-            get_rent_assessments_for_cycle,
-            get_payment_events_for_assessment,
+            get_assessment_events_for_seat_class,
+            get_satisfaction_events,
         )
         from app.services.obligation_view_model import get_total_paid_for_obligation
 
         seat_ids = [scope.seat_id]
 
         # Check rent for current class only (v2 canonical scoping via class_id)
-        # Per DOM-OBL-001, use ASSESSMENT events (canonical liability records)
-        assessments = get_rent_assessments_for_cycle(
+        # Per DOM-OBL-001, get all RENT ASSESSMENT events for this seat
+        all_assessments = get_assessment_events_for_seat_class(
+            scope.seat_id,
             class_id,
-            coverage_month,
-            coverage_year,
-            seat_ids=seat_ids,
+            obligation_type='RENT',
         )
+
+        # Filter to only unsatisfied assessments (no PAYMENT or WAIVED)
+        assessments = []
+        for assessment in all_assessments:
+            satisfaction = get_satisfaction_events(assessment.correlation_id)
+            if not satisfaction:  # No PAYMENT or WAIVED = unsatisfied
+                assessments.append(assessment)
 
         # Calculate total paid from PAYMENT events via Ledger (canonical amounts source)
         total_paid = Decimal('0.00')
@@ -2380,7 +2386,7 @@ def _total_paid_by_grace(assessments, grace_end_date):
     """Sum Ledger amounts for PAYMENT events on or before grace end date — DOM-OBL-001.
 
     Args:
-        assessments: List of ASSESSMENT events (from get_rent_assessments_for_cycle)
+        assessments: List of ASSESSMENT events (from get_assessment_events_for_seat_class)
         grace_end_date: Datetime boundary for on-time payments
 
     Returns:
@@ -2512,8 +2518,8 @@ def _build_rent_coverage_context(
     Use get_total_paid_for_obligation() from obligation_view_model to calculate paid amounts for each assessment.
     """
     from app.services.obligations_service import (
-        get_paid_rent_assessments_for_cycle,
-        get_waived_seat_ids_for_cycle,
+        get_assessment_events_for_seat_class,
+        get_satisfaction_events,
     )
 
     if not settings or not class_id or not coverage_due_date or not seat_ids:
@@ -2528,18 +2534,25 @@ def _build_rent_coverage_context(
     if not valid_seat_ids:
         return None
 
+    # Get all RENT assessments for valid seats
     waived_seat_ids = set()
-    if include_waivers:
-        waived_seat_ids = get_waived_seat_ids_for_cycle(
-            class_id, coverage_due_date, valid_seat_ids,
+    assessments = []
+    for seat_id in valid_seat_ids:
+        seat_assessments = get_assessment_events_for_seat_class(
+            seat_id,
+            class_id,
+            obligation_type='RENT',
         )
-
-    assessments = get_paid_rent_assessments_for_cycle(
-        class_id,
-        coverage_due_date.month,
-        coverage_due_date.year,
-        seat_ids=valid_seat_ids,
-    )
+        for assessment in seat_assessments:
+            satisfaction = get_satisfaction_events(assessment.correlation_id)
+            # Check if waived
+            if include_waivers:
+                for event in satisfaction:
+                    if event.event_type == 'WAIVED':
+                        waived_seat_ids.add(seat_id)
+                        break
+            # Include all assessments (satisfied or not)
+            assessments.append(assessment)
 
     assessments_by_seat: dict[int, list] = defaultdict(list)
     for a in assessments:
@@ -2745,13 +2758,20 @@ def _is_student_coverage_period_paid(
     if context_applies:
         assessments = (coverage_context.get("valid_payments_by_seat") or {}).get(seat_id, [])
     else:
-        from app.services.obligations_service import get_paid_rent_assessments_for_cycle
-        assessments = get_paid_rent_assessments_for_cycle(
-            class_id,
-            coverage_due_date.month,
-            coverage_due_date.year,
-            seat_ids=[seat_id],
+        from app.services.obligations_service import (
+            get_assessment_events_for_seat_class,
+            get_satisfaction_events,
         )
+        all_assessments = get_assessment_events_for_seat_class(
+            seat_id,
+            class_id,
+            obligation_type='RENT',
+        )
+        assessments = []
+        for assessment in all_assessments:
+            satisfaction = get_satisfaction_events(assessment.correlation_id)
+            if not satisfaction:
+                assessments.append(assessment)
     return _is_coverage_period_paid(
         settings,
         assessments,
@@ -3162,16 +3182,21 @@ def rent_pay(period):
     checking_balance, savings_balance = get_available_balances(seat_id, class_id)
 
     from app.services.obligations_service import (
-        get_paid_rent_assessments_for_cycle,
+        get_assessment_events_for_seat_class,
+        get_satisfaction_events,
     )
     from app.services.obligation_view_model import get_total_paid_for_obligation
 
-    existing_payments = get_paid_rent_assessments_for_cycle(
+    all_assessments = get_assessment_events_for_seat_class(
+        seat_id,
         class_id,
-        coverage_month,
-        coverage_year,
-        seat_ids=[seat_id],
+        obligation_type='RENT',
     )
+    existing_payments = []
+    for assessment in all_assessments:
+        satisfaction = get_satisfaction_events(assessment.correlation_id)
+        if not satisfaction:
+            existing_payments.append(assessment)
 
     # Per DOM-OBL-001, calculate total paid from PAYMENT events via Ledger
     total_paid_so_far = Decimal('0.00')

@@ -81,17 +81,46 @@ def upgrade():
             print("⚠️  Column 'timestamp' already exists on 'assessment_events', skipping...")
 
         # Step 2: Backfill timestamp from created_at or assessed_at
-        if column_exists('assessment_events', 'created_at') and column_exists('assessment_events', 'timestamp'):
-            op.execute("""
-                UPDATE assessment_events
-                SET timestamp = COALESCE(created_at, assessed_at, NOW())
-                WHERE timestamp IS NULL
-            """)
-            print("✅ Backfilled 'timestamp' from created_at/assessed_at")
+        if column_exists('assessment_events', 'timestamp'):
+            has_created_at = column_exists('assessment_events', 'created_at')
+            has_assessed_at = column_exists('assessment_events', 'assessed_at')
 
-        # Step 3: Make timestamp NOT NULL
-        op.alter_column('assessment_events', 'timestamp', nullable=False)
-        print("✅ Made 'timestamp' NOT NULL")
+            if has_created_at and has_assessed_at:
+                op.execute("""
+                    UPDATE assessment_events
+                    SET timestamp = COALESCE(created_at, assessed_at, NOW())
+                    WHERE timestamp IS NULL
+                """)
+                print("✅ Backfilled 'timestamp' from created_at/assessed_at")
+            elif has_created_at:
+                op.execute("""
+                    UPDATE assessment_events
+                    SET timestamp = COALESCE(created_at, NOW())
+                    WHERE timestamp IS NULL
+                """)
+                print("✅ Backfilled 'timestamp' from created_at")
+            elif has_assessed_at:
+                op.execute("""
+                    UPDATE assessment_events
+                    SET timestamp = COALESCE(assessed_at, NOW())
+                    WHERE timestamp IS NULL
+                """)
+                print("✅ Backfilled 'timestamp' from assessed_at")
+            else:
+                print("⚠️  Neither created_at nor assessed_at exists; timestamp already set or migration ran before")
+
+        # Step 3: Make timestamp NOT NULL (if not already)
+        if column_exists('assessment_events', 'timestamp'):
+            # Check if there are any NULL timestamp values
+            conn = op.get_bind()
+            result = conn.execute(sa.text("SELECT COUNT(*) FROM assessment_events WHERE timestamp IS NULL"))
+            null_count = result.scalar()
+
+            if null_count == 0:
+                op.alter_column('assessment_events', 'timestamp', nullable=False)
+                print("✅ Made 'timestamp' NOT NULL")
+            else:
+                print(f"⚠️  {null_count} rows have NULL timestamp; skipping NOT NULL constraint")
 
         # Step 4: Remove obsolete columns (per DOM-OBL-001 v2.5)
         if column_exists('assessment_events', 'due_at'):

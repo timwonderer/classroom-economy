@@ -18,7 +18,8 @@ from app.models import ObligationAssessment, RentSettings, Transaction
 from app.utils.time import utc_now
 from app.feats.base import FEATContext
 from app.services.obligations_service import (
-    get_rent_assessments_for_cycle,
+    get_assessment_events_for_seat_class,
+    get_satisfaction_events,
 )
 from app.services.obligation_view_model import get_total_paid_for_obligation
 from tests.helpers.classroom_initializer import initialize_as_student, initialize_as_teacher
@@ -69,11 +70,12 @@ class TestA1StudentRentSurface:
 
     def test_a1_query_helpers_work_with_event_discriminator(self, app):
         """
-        A1.2: Query helpers retrieve ASSESSMENT events correctly using event_type discriminator.
+        A1.2: Canonical query functions retrieve ASSESSMENT events correctly using event_type discriminator.
 
         Verifies that obligations_service functions work with the canonical schema:
-        - get_rent_assessments_for_cycle() filters by event_type='ASSESSMENT'
-        - Returns only ASSESSMENT events for the specified cycle
+        - get_assessment_events_for_seat_class() retrieves all assessments for a seat/class
+        - get_satisfaction_events() retrieves PAYMENT/WAIVED events for a liability
+        - Returns events with correct event_type discriminators
         """
         # Provision classroom DB-only (no session)
         from tests.helpers.classroom_initializer import initialize
@@ -97,18 +99,30 @@ class TestA1StudentRentSurface:
 
                 now = utc_now()
 
+                # Create BillCycle for January 2026 (DOM-OBL-001 §VII.3)
+                from datetime import datetime
+                from app.models import BillCycle
+                cycle_boundary = datetime(2026, 1, 31, 23, 59, 59, tzinfo=utc_now().tzinfo)
+                bill_cycle = BillCycle(
+                    internal_ref=f"rent:{class_id}:2026-01",
+                    cycle_number=1,
+                    cycle_boundary_at=cycle_boundary,
+                    next_assessment_at=cycle_boundary,
+                )
+                db.session.add(bill_cycle)
+                db.session.flush()
+
                 # Create ASSESSMENT event (DOM-OBL-001 authority)
+                correlation_id = "test-rent-liability-001"
                 assessment = ObligationAssessment(
                     seat_id=seat_id,
                     class_id=class_id,
                     obligation_type='RENT',
                     event_type='ASSESSMENT',  # Event-type discriminator
                     internal_ref=f"rent:{class_id}:2026-01",
-                    correlation_id="test-rent-assess-001",
-                    period_month=1,
-                    period_year=2026,
-                    due_at=now,
-                    assessed_at=now,
+                    correlation_id=correlation_id,  # Per DOM-OBL-001: unique per liability
+                    timestamp=now,  # Canonical timestamp per DOM-OBL-001 v2.5
+                    bill_cycle_id=bill_cycle.id,  # Link to bill cycle
                 )
                 db.session.add(assessment)
                 db.session.flush()
@@ -127,16 +141,15 @@ class TestA1StudentRentSurface:
                 db.session.add(txn)
                 db.session.flush()
 
+                # Per DOM-OBL-001: PAYMENT events share same correlation_id as ASSESSMENT
                 payment_event = ObligationAssessment(
                     seat_id=seat_id,
                     class_id=class_id,
                     obligation_type='RENT',
                     event_type='PAYMENT',  # Event-type discriminator
                     internal_ref=f"rent:{class_id}:2026-01",
-                    correlation_id="test-rent-payment-001",
-                    period_month=1,
-                    period_year=2026,
-                    assessed_at=now,
+                    correlation_id=correlation_id,  # SAME as ASSESSMENT per DOM-OBL-001
+                    timestamp=now,  # Canonical timestamp per DOM-OBL-001 v2.5
                     ledger_transaction_id=txn.id,  # Links to Ledger
                 )
                 db.session.add(payment_event)
@@ -145,16 +158,24 @@ class TestA1StudentRentSurface:
             # Commit after FEAT context
             db.session.commit()
 
-            # Test query helper: get_rent_assessments_for_cycle
-            assessments = get_rent_assessments_for_cycle(
+            # Test canonical query: get_assessment_events_for_seat_class + get_satisfaction_events
+            all_rent_events = get_assessment_events_for_seat_class(
+                seat_id=seat_id,
                 class_id=class_id,
-                month=1,
-                year=2026,
-                seat_ids=[seat_id],
+                obligation_type='RENT',
             )
 
-            # Verify: should return only ASSESSMENT events
+            # Filter to only ASSESSMENT events (canonical liability records)
+            assessments = [e for e in all_rent_events if e.event_type == 'ASSESSMENT']
+
+            # Verify: should return exactly 1 ASSESSMENT event
             assert len(assessments) == 1, f"Expected 1 ASSESSMENT, got {len(assessments)}"
+            assert assessments[0].event_type == 'ASSESSMENT', "Should be ASSESSMENT type"
+
+            # Verify: assessment has a matching PAYMENT event
+            satisfaction = get_satisfaction_events(assessments[0].correlation_id)
+            assert len(satisfaction) == 1, f"Expected 1 PAYMENT event, got {len(satisfaction)}"
+            assert satisfaction[0].event_type == 'PAYMENT', "Should be PAYMENT type"
             assert assessments[0].event_type == 'ASSESSMENT', "Should be ASSESSMENT type"
             assert assessments[0].seat_id == seat_id, "Should be for student's seat"
 
@@ -200,10 +221,7 @@ class TestA1StudentRentSurface:
                     event_type='ASSESSMENT',
                     internal_ref=f"rent:{class_id}:2026-01",
                     correlation_id=correlation_id,
-                    period_month=1,
-                    period_year=2026,
-                    due_at=now,
-                    assessed_at=now,
+                    timestamp=now,  # Canonical timestamp per DOM-OBL-001 v2.5
                 )
                 db.session.add(assessment)
                 db.session.flush()
@@ -245,9 +263,7 @@ class TestA1StudentRentSurface:
                     event_type='PAYMENT',
                     internal_ref=f"rent:{class_id}:2026-01",
                     correlation_id=correlation_id,  # Same as ASSESSMENT
-                    period_month=1,
-                    period_year=2026,
-                    assessed_at=now,
+                    timestamp=now,  # Canonical timestamp per DOM-OBL-001 v2.5
                     ledger_transaction_id=txn1.id,
                 )
                 db.session.add(payment1)
@@ -259,9 +275,7 @@ class TestA1StudentRentSurface:
                     event_type='PAYMENT',
                     internal_ref=f"rent:{class_id}:2026-01",
                     correlation_id=correlation_id,  # Same as ASSESSMENT
-                    period_month=1,
-                    period_year=2026,
-                    assessed_at=now,
+                    timestamp=now,  # Canonical timestamp per DOM-OBL-001 v2.5
                     ledger_transaction_id=txn2.id,
                 )
                 db.session.add(payment2)
@@ -303,7 +317,7 @@ class TestA1StudentRentSurface:
                     event_type='ASSESSMENT',
                     internal_ref=f"rent:{class_id}:2026-01",
                     correlation_id="test-rent-assess-001",
-                    assessed_at=utc_now(),
+                    timestamp=utc_now(),  # Canonical timestamp per DOM-OBL-001 v2.5
                 )
                 db.session.add(assessment)
                 db.session.flush()
@@ -436,10 +450,7 @@ class TestA2AdminRentSettings:
                     event_type='ASSESSMENT',
                     internal_ref=f"rent:{class_id}:2026-01",
                     correlation_id="test-rent-assess-001",
-                    period_month=1,
-                    period_year=2026,
-                    due_at=now,
-                    assessed_at=now,
+                    timestamp=now,  # Canonical timestamp per DOM-OBL-001 v2.5
                 )
                 db.session.add(assessment)
                 db.session.flush()
