@@ -2603,18 +2603,21 @@ def _is_coverage_period_paid(
 
 
 def _get_active_rent_waiver_v2(seat_id, class_id, coverage_due_date):
-    """Return the canonical waiver assessment covering the given coverage period, if any."""
+    """Return the canonical WAIVED assessment for the given coverage period, if any."""
     from app.services.obligations_service import get_rent_waivers_for_seat
+    from sqlalchemy import extract
 
     if not seat_id or not class_id or not coverage_due_date:
         return None
 
-    # Get all waivers for this seat and find one that covers the due date
+    # Get all waivers for this seat and find one matching the coverage month/year
     waivers = get_rent_waivers_for_seat(seat_id, class_id)
     for waiver in waivers:
-        # Check if waiver covers the due date (coverage window)
-        if waiver.coverage_start_time and waiver.coverage_end_time:
-            if waiver.coverage_start_time <= coverage_due_date <= waiver.coverage_end_time:
+        # Per DOM-OBL-001: WAIVED event's due_at indicates which coverage period was waived
+        # Match by month/year
+        if waiver.due_at:
+            if (waiver.due_at.month == coverage_due_date.month and
+                waiver.due_at.year == coverage_due_date.year):
                 return waiver
 
     return None
