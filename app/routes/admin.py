@@ -6346,12 +6346,10 @@ def rent_settings():
                             if txn and txn.type == 'credit':
                                 amount_paid = txn.amount
 
-                        # Build coverage label from assessment period
+                        # Build coverage label from assessment due_at
                         coverage_label = "Unknown"
-                        if assessment.period_year and assessment.period_month:
-                            coverage_label = datetime(
-                                assessment.period_year, assessment.period_month, 1
-                            ).strftime('%b %Y')
+                        if assessment.due_at:
+                            coverage_label = assessment.due_at.strftime('%b %Y')
 
                         payment_log.append({
                             'student': student_seat.user if student_seat.user else None,
