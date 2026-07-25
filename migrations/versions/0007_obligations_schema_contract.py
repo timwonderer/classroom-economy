@@ -61,7 +61,9 @@ def get_foreign_keys_by_column(table_name, column_name):
 
 
 def _assessment_columns():
-    return [
+    """Get canonical assessment columns that exist in the target schema."""
+    # All possible legacy columns that might exist
+    all_columns = [
         "id",
         "seat_id",
         "class_id",
@@ -78,16 +80,33 @@ def _assessment_columns():
         "period_year",
         "coverage_month",
         "coverage_year",
+        "internal_ref",
+        "correlation_id",
+        "event_type",
+        "policy_version_id",
+        "viewable_at",
+        "created_at",
+        "bill_cycle_id",
+        "ledger_transaction_id",
     ]
+    return all_columns
 
 
 def _copy_missing_assessments(source_table, target_table):
-    columns = ", ".join(_assessment_columns())
+    """Copy missing assessments, only including columns that exist in target."""
+    # Get all columns from _assessment_columns and filter to only those that exist in target
+    all_columns = _assessment_columns()
+    existing_columns = [col for col in all_columns if column_exists(target_table, col)]
+
+    if not existing_columns:
+        return  # No columns to copy
+
+    columns_str = ", ".join(existing_columns)
     op.get_bind().execute(
         sa.text(
             f"""
-            INSERT INTO {target_table} ({columns})
-            SELECT {columns}
+            INSERT INTO {target_table} ({columns_str})
+            SELECT {columns_str}
             FROM {source_table} source
             WHERE NOT EXISTS (
                 SELECT 1 FROM {target_table} target WHERE target.id = source.id
