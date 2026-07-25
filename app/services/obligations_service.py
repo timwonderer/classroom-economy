@@ -405,3 +405,25 @@ def get_rent_waivers_for_seat(
         .order_by(ObligationAssessment.created_at.desc())
         .all()
     )
+
+
+def get_cycle_rent_amount(
+    class_id: str,
+    coverage_month: int,
+    coverage_year: int,
+) -> float | None:
+    """
+    Get the rent amount that should apply to a coverage cycle.
+
+    This reads from RentSettings (the authoritative rent policy).
+    In future, this may incorporate PolicyVersion lineage to handle
+    mid-cycle rate changes per CLASS CONFIGURATION.
+    """
+    from app.models import RentSettings
+    from decimal import Decimal
+
+    settings = RentSettings.query.filter_by(class_id=class_id).first()
+    if not settings:
+        return None
+
+    return Decimal(str(settings.rent_amount)) if settings.rent_amount else None
