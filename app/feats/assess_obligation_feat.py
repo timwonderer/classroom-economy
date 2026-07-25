@@ -62,7 +62,17 @@ def assess_obligation(
     # and pass both. Obligations domain only validates within assessment_events/bill_cycles
     # tables per DOM-OBL-001 §VI. Cross-domain Seat validation belongs to caller.
 
-    # Lineage validation: check idempotency
+    # Required input validation: per FEAT-OBLI-001 §IV
+    if not request.seat_id or not request.class_id:
+        raise ValueError("seat_id and class_id are required")
+    if not request.internal_ref or not request.correlation_id:
+        raise ValueError("internal_ref and correlation_id are required")
+    if not request.obligation_type:
+        raise ValueError("obligation_type is required")
+    if not request.due_at:
+        raise ValueError("due_at is required")
+
+    # Idempotency: per FEAT-OBLI-001 §V, check for replay safety
     if obligations_service.check_idempotency_assessment(
         request.internal_ref,
         request.correlation_id,
@@ -70,11 +80,6 @@ def assess_obligation(
         # Already exists; this is safe replay per FEAT-OBLI-001
         existing = obligations_service.get_assessment_for_correlation(request.correlation_id)
         return existing
-
-    # Temporal validation: upstream authority should have validated due_at
-    if request.due_at and request.viewable_at:
-        if request.viewable_at > request.due_at:
-            raise ValueError("viewable_at cannot be after due_at")
 
     # Phase 2: Mutation (atomic transaction)
 
