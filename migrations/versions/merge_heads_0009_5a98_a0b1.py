@@ -1,6 +1,6 @@
 """Merge parallel obligation rewiring branches
 
-Revision ID: merge_heads_5a98b288138c_a0b1c2d3e4f5
+Revision ID: merge_heads_0009_5a98_a0b1
 Revises: 5a98b288138c, a0b1c2d3e4f5
 Create Date: 2026-07-25 12:00:00.000000
 
@@ -11,7 +11,7 @@ Both modifications are idempotent schema-only changes on separate tables (no dat
 from alembic import op
 
 
-revision = 'merge_heads_5a98b288138c_a0b1c2d3e4f5'
+revision = 'merge_heads_0009_5a98_a0b1'
 down_revision = ('5a98b288138c', 'a0b1c2d3e4f5')
 branch_labels = None
 depends_on = None
