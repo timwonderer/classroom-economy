@@ -1147,20 +1147,12 @@ class ObligationAssessment(db.Model):
     # Ledger linkage — required for PAYMENT events, NULL for others (per DOM-OBL-001 §VII.1)
     ledger_transaction_id = db.Column(db.Integer, db.ForeignKey('ledger_transaction.id', ondelete='SET NULL'), nullable=True, index=True)
 
-    # Idempotency key for recurring assessments
-    cycle_idempotency_key = db.Column(db.String(160), nullable=True, index=True)
-
-    # Waiver period coverage — for WAIVED events only (DOM-OBL-001 §VII.2)
-    coverage_start_time = db.Column(db.DateTime(timezone=True), nullable=True)
-    coverage_end_time = db.Column(db.DateTime(timezone=True), nullable=True)
-
     seat = db.relationship('Seat', backref=db.backref('obligation_assessments', passive_deletes=True), foreign_keys=[seat_id])
     entitlement_events = db.relationship('EntitlementEvent', backref='assessment')
     policy_version = db.relationship('PolicyVersion', backref=db.backref('assessments', lazy='dynamic'))
     bill_cycle = db.relationship('BillCycle', backref=db.backref('assessments', passive_deletes=True))
 
     __table_args__ = (
-        db.UniqueConstraint('seat_id', 'class_id', 'cycle_idempotency_key', name='uq_assessment_events_idempotency'),
         db.Index('ix_assessment_events_seat_class', 'seat_id', 'class_id'),
         db.Index('ix_assessment_events_internal_ref', 'internal_ref'),
     )
