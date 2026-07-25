@@ -958,9 +958,10 @@ def dashboard():
 
         from app.services.obligations_service import (
             get_rent_assessments_for_cycle,
-            get_total_paid_for_assessment,
             get_payment_events_for_assessment,
         )
+        from app.services.obligation_view_model import get_total_paid_for_obligation
+
         seat_ids = [scope.seat_id]
 
         # Check rent for current class only (v2 canonical scoping via class_id)
@@ -975,8 +976,9 @@ def dashboard():
         # Calculate total paid from PAYMENT events via Ledger (canonical amounts source)
         total_paid = Decimal('0.00')
         for assessment in assessments:
-            paid = get_total_paid_for_assessment(assessment.id, class_id)
-            total_paid += paid
+            status = get_total_paid_for_obligation(assessment.correlation_id, class_id)
+            if status:
+                total_paid += status.total_paid
 
         # Use v2 version which correctly computes grace period payments from canonical PAYMENT events
         paid_by_grace = _total_paid_by_grace(assessments, grace_end_date_for_status)
@@ -2507,7 +2509,7 @@ def _build_rent_coverage_context(
 
     Returns canonical ``ObligationAssessment`` rows (ASSESSMENT events) grouped by seat.
     Payment amounts are derived from PAYMENT events via the Ledger domain (per DOM-OBL-001).
-    Use get_total_paid_for_assessment() to calculate paid amounts for each assessment.
+    Use get_total_paid_for_obligation() from obligation_view_model to calculate paid amounts for each assessment.
     """
     from app.services.obligations_service import (
         get_paid_rent_assessments_for_cycle,
@@ -2570,7 +2572,7 @@ def _is_coverage_period_paid(
     was not fully paid by grace. When False, this checks base-rent coverage
     only (used by hall-pass perk restoration).
     """
-    from app.services.obligations_service import get_total_paid_for_assessment
+    from app.services.obligation_view_model import get_total_paid_for_obligation
 
     if not settings or not coverage_due_date:
         return False
@@ -2589,7 +2591,9 @@ def _is_coverage_period_paid(
     # Calculate total paid from PAYMENT events via Ledger (canonical amounts source)
     total_paid = Decimal('0.00')
     for assessment in assessments:
-        total_paid += get_total_paid_for_assessment(assessment.id, class_id)
+        status = get_total_paid_for_obligation(assessment.correlation_id, class_id)
+        if status:
+            total_paid += status.total_paid
 
     grace_for_coverage = coverage_due_date + timedelta(days=settings.grace_period_days)
     # Use v2 version which works with canonical PAYMENT events from Ledger
@@ -2940,8 +2944,8 @@ def rent():
 
     from app.services.obligations_service import (
         get_rent_assessments_for_cycle,
-        get_total_paid_for_assessment,
     )
+    from app.services.obligation_view_model import get_total_paid_for_obligation
 
     # Get all ASSESSMENT events for this rent cycle
     assessments = get_rent_assessments_for_cycle(
@@ -2954,7 +2958,9 @@ def rent():
     # Calculate total paid by summing all PAYMENT events (amounts from Ledger)
     total_paid = Decimal('0.00')
     for assessment in assessments:
-        total_paid += get_total_paid_for_assessment(assessment.id, class_id)
+        status = get_total_paid_for_obligation(assessment.correlation_id, class_id)
+        if status:
+            total_paid += status.total_paid
 
     # Calculate paid by grace end date
     paid_by_grace = _total_paid_by_grace(assessments, grace_end_date_for_status)
@@ -3070,7 +3076,6 @@ def rent():
     # Iterate through all assessment events for this seat/class to compute derived state
     from app.services.obligations_service import (
         get_payment_events_for_assessment,
-        get_waived_event_for_assessment,
     )
 
     all_assessments = (
@@ -3104,10 +3109,17 @@ def rent():
         .all()
     )
 
+    from app.services.obligation_view_model import get_total_paid_for_obligation
+
     for assessment in all_class_assessments:
         # Derive status: SATISFIED, OUTSTANDING, or PAST_DUE per DOM-OBL-001 §VIII
-        paid_amount = get_total_paid_for_assessment(assessment.id, class_id)
-        has_waiver = get_waived_event_for_assessment(assessment.id, class_id) is not None
+        status = get_total_paid_for_obligation(assessment.correlation_id, class_id)
+        if status:
+            paid_amount = status.total_paid
+            has_waiver = status.amount_waived
+        else:
+            paid_amount = Decimal('0.00')
+            has_waiver = False
 
         assessed_amount = settings.rent_amount if settings else Decimal('0.00')
 
@@ -3288,8 +3300,9 @@ def rent_pay(period):
 
     from app.services.obligations_service import (
         get_paid_rent_assessments_for_cycle,
-        get_total_paid_for_assessment,
     )
+    from app.services.obligation_view_model import get_total_paid_for_obligation
+
     existing_payments = get_paid_rent_assessments_for_cycle(
         class_id,
         coverage_month,
@@ -3300,7 +3313,9 @@ def rent_pay(period):
     # Per DOM-OBL-001, calculate total paid from PAYMENT events via Ledger
     total_paid_so_far = Decimal('0.00')
     for assessment in existing_payments:
-        total_paid_so_far += get_total_paid_for_assessment(assessment.id, class_id)
+        status = get_total_paid_for_obligation(assessment.correlation_id, class_id)
+        if status:
+            total_paid_so_far += status.total_paid
 
     # Calculate if late and total amount due
     due_date, grace_end_date = _calculate_rent_deadlines(settings, now)

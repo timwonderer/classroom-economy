@@ -282,40 +282,6 @@ def get_payment_events_for_assessment(
     )
 
 
-def get_total_paid_for_assessment(
-    assessment_id: int,
-    class_id: str,
-) -> float:
-    """
-    Calculate total amount paid for an assessment.
-
-    Per DOM-OBL-001 §VIII, reads authoritative Ledger amounts referenced by
-    PAYMENT events and sums them. This is a cross-domain read into Ledger
-    domain to compute derived obligation status (per DOM-OBL-001 §XI).
-
-    Returns Decimal amount (0.00 if no PAYMENT events or assessment not found).
-    """
-    from decimal import Decimal
-    from app.models import Transaction
-
-    assessment = db.session.get(ObligationAssessment, assessment_id)
-    if not assessment:
-        return Decimal('0.00')
-
-    payment_events = get_payment_events_for_assessment(assessment_id, class_id)
-    if not payment_events:
-        return Decimal('0.00')
-
-    total_paid = Decimal('0.00')
-    for payment_event in payment_events:
-        if payment_event.ledger_transaction_id:
-            # CROSS-DOMAIN READ: Obligations computes derived status from Ledger
-            # truth (per DOM-OBL-001 §XI: Obligations consumes Ledger for settlement truth)
-            txn = db.session.get(Transaction, payment_event.ledger_transaction_id)
-            if txn and txn.status != 'void':  # Ignore void transactions
-                total_paid += Decimal(str(txn.amount))
-
-    return total_paid
 
 
 def get_waived_seat_ids_for_cycle(

@@ -1,3 +1,5 @@
+"""STUB: Insurance Purchase FEAT — Under construction."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -14,3 +16,12 @@ from app.utils.insurance_eligibility import compute_coverage_start_utc_from_purc
 from app.models import GrantType
 
 
+@dataclass
+class InsurancePurchaseResult:
+    """Result of insurance purchase."""
+    success: bool = False
+
+
+def execute_insurance_purchase(**kwargs) -> InsurancePurchaseResult:
+    """STUB: Execute insurance purchase."""
+    return InsurancePurchaseResult(success=False)
