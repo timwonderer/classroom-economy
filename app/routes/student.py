@@ -2858,10 +2858,13 @@ def rent():
     """View rent status and payment history (canonical obligation events).
 
     Per DOM-OBL-001 and MAP-UI-001:
-    - Reads immutable ASSESSMENT/PAYMENT/WAIVED events from Obligations domain
+    - Reads bill_cycles to identify period boundaries (cycle_boundary_at, next_assessment_at)
+    - Reads assessments to determine payment status for that period
     - Derives satisfaction state (satisfied, outstanding, past_due)
     - Builds chronological payment history
     - Uses canonical temporal resolver for time evaluation
+
+    CRITICAL ARCHITECTURE: Bill cycles define PERIODS/BOUNDARIES, assessments convey STATUS.
     """
     # Check if rent feature is enabled
     if not is_feature_enabled('rent'):
@@ -2886,9 +2889,9 @@ def rent():
         return redirect(url_for('student.dashboard'))
 
     # ========================================================================
-    # PHASE 5 CANONICAL READ MODEL: Use immutable obligation events
+    # BILL CYCLE READING: Periods defined by bill_cycles (DOM-OBL-001 §VII.3)
     # ========================================================================
-    from app.services.obligation_view_model import get_rent_status_projection
+    from app.services import obligations_service
     from app.utils.canonical_temporal_resolver import (
         canonical_temporal_resolver,
         CLASS_LEVEL_EVALUATION,
@@ -2907,73 +2910,120 @@ def rent():
     )
     now_utc = now_eval.canonical_now_utc
 
-    # Get complete rent status projection from canonical obligation events
-    rent_view = get_rent_status_projection(seat_id, class_id)
+    # CRITICAL: Read bill_cycles to identify the CURRENT PERIOD
+    # For now, assume internal_ref format is "rent:monthly" (may need configuration)
+    # Per DOM-OBL-001 §VII.3: bill_cycles are identity-blind, only track internal_ref progression
+    rent_internal_ref = "rent:monthly"  # TODO: Should this come from RentSettings.id or class config?
+    bill_cycles = obligations_service.get_bill_cycles_for_internal_ref(rent_internal_ref)
 
-    # Build template context from canonical view model
-    checking_balance, savings_balance = get_available_balances(seat_id, class_id)
-
-    # Determine current period for display (most recent assessment, or upcoming)
-    current_period_assessment = None
-    if rent_view.all_assessments:
-        # Find the assessment closest to now but not yet fully past
-        for assessment in reversed(rent_view.all_assessments):
-            if assessment.due_at and assessment.due_at >= now_utc:
-                current_period_assessment = assessment
+    current_bill_cycle = None
+    if bill_cycles:
+        # Find the current active cycle (most recent one with next_assessment_at >= now)
+        # Or use the latest one if all are in the past
+        for cycle in reversed(bill_cycles):
+            if cycle.next_assessment_at >= now_utc:
+                current_bill_cycle = cycle
                 break
-        # If all are past, use the most recent one
-        if not current_period_assessment:
-            current_period_assessment = rent_view.all_assessments[-1]
+        if not current_bill_cycle:
+            current_bill_cycle = bill_cycles[-1]
 
-    # Build template variables (simplified from legacy version)
-    from app.models import Seat, Transaction
-    student_seat = db.session.get(Seat, seat_id)
+    # ========================================================================
+    # ASSESSMENT READING: Status determined by assessments (DOM-OBL-001 §VIII)
+    # ========================================================================
+    from app.services.obligation_view_model import get_obligation_payment_status
 
+    current_period_assessment = None
     period_status = {}
     rent_items = []
     payment_history_rows = []
     current_block = ""
+    payment_due_date = None
 
-    if current_period_assessment:
+    if current_bill_cycle:
+        # For this bill_cycle, find the corresponding assessment
+        # The correlation_id should tie assessment to this cycle
+        # For now, we read all assessments and match by due_at proximity
+        all_assessments = obligations_service.get_assessment_events_for_seat_class(
+            seat_id=seat_id,
+            class_id=class_id,
+            obligation_type='RENT'
+        )
+
+        # Find assessment(s) for this cycle
+        # Heuristic: assessment with due_at == bill_cycle.next_assessment_at
+        for assessment in all_assessments:
+            if assessment.event_type == 'ASSESSMENT' and assessment.due_at == current_bill_cycle.next_assessment_at:
+                current_period_assessment = assessment
+                break
+
+        # If no exact match, use most recent assessment with due_at >= cycle_boundary_at
+        if not current_period_assessment:
+            for assessment in reversed(all_assessments):
+                if assessment.event_type == 'ASSESSMENT' and assessment.due_at >= current_bill_cycle.cycle_boundary_at:
+                    current_period_assessment = assessment
+                    break
+
+    # Build template variables from bill_cycle + assessment combination
+    from app.models import Seat, Transaction
+    student_seat = db.session.get(Seat, seat_id)
+
+    if current_period_assessment and current_bill_cycle:
         current_block = (
             student_seat.class_economy.section.strip().upper()
             if student_seat and student_seat.class_economy and student_seat.class_economy.section
             else ""
         )
 
-        period_status[current_block] = {
-            'is_satisfied': current_period_assessment.is_satisfied,
-            'is_outstanding': current_period_assessment.is_outstanding,
-            'is_past_due': current_period_assessment.is_past_due,
-            'assessed_amount': current_period_assessment.assessed_amount,
-            'total_paid': current_period_assessment.total_paid,
-            'due_at': current_period_assessment.due_at,
-            'waived': current_period_assessment.amount_waived,
-        }
+        # Derive payment status for this assessment (DOM-OBL-001 §VIII)
+        # The assessed_amount comes from RentSettings (Class Configuration authority)
+        from decimal import Decimal
+        assessed_amount = Decimal(str(settings.rent_amount)) if settings and settings.rent_amount else Decimal('0.00')
 
-        # Build payment history rows for template display
-        for event in current_period_assessment.payment_events:
-            if event.ledger_transaction_id:
-                txn = db.session.get(Transaction, event.ledger_transaction_id)
-                if txn and txn.status != 'void':
+        payment_status = get_obligation_payment_status(
+            correlation_id=current_period_assessment.correlation_id,
+            class_id=class_id,
+            assessed_amount=assessed_amount,
+        )
+
+        if payment_status:
+            period_status[current_block] = {
+                'is_satisfied': payment_status.is_satisfied,
+                'is_outstanding': payment_status.is_outstanding,
+                'is_past_due': payment_status.is_past_due,
+                'assessed_amount': assessed_amount,  # From RentSettings
+                'total_paid': payment_status.total_paid,
+                'due_at': current_bill_cycle.next_assessment_at,  # Use cycle due date, not assessment due_at
+                'waived': payment_status.amount_waived,
+            }
+
+            payment_due_date = current_bill_cycle.next_assessment_at
+
+            # Build payment history rows for template display
+            satisfaction_events = obligations_service.get_satisfaction_events(current_period_assessment.correlation_id)
+            for event in satisfaction_events:
+                if event.event_type == 'PAYMENT' and event.ledger_transaction_id:
+                    txn = db.session.get(Transaction, event.ledger_transaction_id)
+                    if txn and txn.status != 'void':
+                        payment_history_rows.append({
+                            'period_month': current_bill_cycle.next_assessment_at.month,
+                            'period_year': current_bill_cycle.next_assessment_at.year,
+                            'amount_paid': txn.amount,
+                            'recorded_at': event.created_at,
+                            'status_text': 'Paid' if event.created_at <= current_bill_cycle.next_assessment_at else 'Paid Late',
+                            'entry_type': 'payment',
+                        })
+                elif event.event_type == 'WAIVED':
                     payment_history_rows.append({
-                        'period_month': current_period_assessment.due_at.month,
-                        'period_year': current_period_assessment.due_at.year,
-                        'amount_paid': txn.amount,
+                        'period_month': current_bill_cycle.next_assessment_at.month,
+                        'period_year': current_bill_cycle.next_assessment_at.year,
+                        'amount_paid': None,
                         'recorded_at': event.created_at,
-                        'status_text': 'Paid' if event.created_at <= current_period_assessment.due_at else 'Paid Late',
-                        'entry_type': 'payment',
+                        'status_text': 'Waived',
+                        'entry_type': 'waiver',
                     })
 
-        if current_period_assessment.waiver_event:
-            payment_history_rows.append({
-                'period_month': current_period_assessment.due_at.month,
-                'period_year': current_period_assessment.due_at.year,
-                'amount_paid': None,
-                'recorded_at': current_period_assessment.waiver_event.created_at,
-                'status_text': 'Waived',
-                'entry_type': 'waiver',
-            })
+    # Build template context
+    checking_balance, savings_balance = get_available_balances(seat_id, class_id)
 
     # Render template with canonical view model
     return render_template(
@@ -2985,13 +3035,12 @@ def rent():
         savings_balance=savings_balance,
         payment_history=payment_history_rows,
         rent_items=rent_items,
-        payment_due_date=current_period_assessment.due_at if current_period_assessment else None,
+        payment_due_date=payment_due_date,
         current_block=list(period_status.keys())[0] if period_status else '',
         now=now_utc,
         feature_settings=g.get('feature_settings', {}),
         current_class_context=g.get('current_class_context', {}),
-        all_assessments=rent_view.all_assessments,
-        active_waivers=rent_view.active_waivers,
+        current_bill_cycle=current_bill_cycle,
     )
 
 

@@ -179,6 +179,7 @@ Records the historical fact of obligation events.
 Key fields:
 
 - `id`
+- `timestamp` - time when the row is created, which represents the time when the assessment took place.
 - `seat_id` - FK to `seats`
 - `class_id` - FK to `classes`
 - `internal_ref` - stable lineage key for the continuing obligation-producing relationship
@@ -188,10 +189,7 @@ Key fields:
 - `policy_version_id` - lawful version or source snapshot reference
 - `bill_cycle_id` - nullable FK to `bill_cycles`
 - `ledger_transaction_id` - nullable FK to `ledger_transaction`; required for `PAYMENT`
-- `due_at`
-- `viewable_at`
-- `assessed_at`
-- `created_at`
+
 
 Rules:
 
@@ -201,6 +199,7 @@ Rules:
 - no amount is persisted here;
 - no paid/unpaid/overdue/satisfied/reversed flag is persisted here;
 - an assessment is immutable once lawfully written.
+- no `due_at` (on `bill_cycles`), `viewable_at` (Class Configuration), `assessed_at` (covered by `timestamp`), or `created_at` (on Class Configuration)
 
 ### 2. `bill_cycles`
 
@@ -209,12 +208,12 @@ Records recurring temporal progression for an internal reference.
 Key fields:
 
 - `id`
-- `internal_ref`
-- `cycle_number`
+- `internal_ref` - for specific assessment_event referencing and advancement
+- `cycle_number` - for advancement tracking
 - `source_version_id` or equivalent lawful version snapshot reference
-- `cycle_boundary_at`
-- `next_assessment_at`
-- `created_at`
+- `cycle_boundary_at` - for due date derivation
+- `next_assessment_at` - for triggering the next assessment event
+- 
 
 Rules:
 
@@ -223,6 +222,7 @@ Rules:
 - bill cycles do not store business meaning for the reference;
 - bill cycles are only lawful when they point to a currently continuing relationship;
 - a terminated relationship produces no successor cycle.
+- `created_at` isn't stored here, when an recurring assessment event is written, a corresponding `bill_cycles` row is written simultaneously. The timestamp stored on `assessment_event` serves as the `created_at` reference.
 
 ---
 
