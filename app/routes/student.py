@@ -2517,10 +2517,6 @@ def _build_rent_coverage_context(
     if not settings or not class_id or not coverage_due_date or not seat_ids:
         return None
 
-    join_code = get_display_join_code(class_id)
-    if not join_code:
-        return None
-
     valid_seats = (
         db.session.query(Seat.id)
         .filter(Seat.class_id == class_id, Seat.id.in_(seat_ids))
@@ -2550,7 +2546,6 @@ def _build_rent_coverage_context(
     return {
         "class_id": class_id,
         "coverage_due_date": ensure_utc(coverage_due_date),
-        "join_code": join_code,
         "waived_seat_ids": waived_seat_ids,
         "valid_payments_by_seat": dict(assessments_by_seat),
         "locked_rent_amount": _get_locked_rent_amount_for_class_cycle(class_id, coverage_due_date),
