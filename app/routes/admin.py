@@ -6556,34 +6556,6 @@ def add_rent_waiver():
     return redirect(url_for('admin.rent_settings'))
 
 
-@admin_bp.route('/rent-waiver/<int:waiver_id>/remove', methods=['POST'])
-@admin_required
-@feat_shell("FEAT-ADMN-001")  # TODO: Waiver removal violates FEAT-OBL-003 immutability; needs redesign or removal
-def remove_rent_waiver(waiver_id):
-    """Remove a rent waiver.
-
-    WARNING: This operation violates FEAT-OBL-003 which requires satisfaction events to be immutable.
-    Per DOM-OBL-001, WAIVED events are immutable once recorded.
-
-    This route currently calls a non-existent function (obligations_service.remove_rent_waiver_assessment)
-    and is therefore broken. This needs to be redesigned or removed entirely.
-
-    Related issue: Need canonical waiver revocation semantics if this is a real requirement.
-    """
-    waiver = db.session.get(ObligationAssessment, waiver_id)
-    if waiver is None or waiver.obligation_type != "RENT_WAIVER":
-        abort(404)
-    seat = waiver.seat
-    if seat is None or not seat.identity_profile:
-        abort(404)
-    student_name = seat.identity_profile.full_name
-    # TODO: This function does not exist and cannot be implemented per FEAT-OBL-003 immutability constraint
-    # obligations_service.remove_rent_waiver_assessment(waiver.id)
-    # TODO(v2): Re-add a canonical analytics event once analytics_events is seat-scoped.
-    flash(f"Rent waiver removal not yet implemented (spec compliance pending).", "warning")
-    return redirect(url_for('admin.rent_settings'))
-
-
 # -------------------- INSURANCE MANAGEMENT --------------------
 
 
