@@ -44,12 +44,53 @@
 </div>
 {% endif %}
 
-{% set status = period_status[current_block] %}
-
 <div class="alert alert-info mb-4 student-rent-class-hint">
     <span class="material-symbols-outlined" style="vertical-align: middle;">arrow_circle_left</span> To see your bills
     from another class, use the <strong>Switch Classes</strong> menu on the left.
 </div>
+
+{# Canonical view model from DOM-OBL-001: Use derived state from immutable assessment events #}
+{% set status = period_status[current_block] %}
+
+{# Derive status display from canonical obligation state #}
+{% if status.is_paid %}
+    {% set card_border = "border-success" %}
+    {% set card_header_bg = "bg-success text-white" %}
+    {% set status_icon = "check_circle" %}
+    {% set status_text = "Waived" if status.is_waived else "Paid" %}
+{% elif status.is_late %}
+    {% set card_border = "border-dark" %}
+    {% set card_header_bg = "bg-dark text-white" %}
+    {% set status_icon = "cancel" %}
+    {% set status_text = "Past due, pay now" %}
+{% elif not status.rent_is_active %}
+    {% set card_border = "border-primary" %}
+    {% set card_header_bg = "bg-primary text-white" %}
+    {% set status_icon = "info" %}
+    {% set status_text = "No rent is due yet" %}
+{% elif days_until_due is not none %}
+    {% if days_until_due < 3 %}
+        {% set card_border = "border-danger" %}
+        {% set card_header_bg = "bg-danger text-white" %}
+        {% set status_icon = "warning" %}
+        {% set status_text = "Due, pay soon" %}
+    {% elif days_until_due <= 7 %}
+        {% set card_border = "border-danger" %}
+        {% set card_header_bg = "bg-danger-subtle text-danger" %}
+        {% set status_icon = "schedule" %}
+        {% set status_text = "Rent due in " ~ days_until_due ~ " days" %}
+    {% else %}
+        {% set card_border = "border-warning" %}
+        {% set card_header_bg = "bg-warning text-dark" %}
+        {% set status_icon = "calendar_today" %}
+        {% set status_text = "Rent will be due in " ~ days_until_due ~ " days" %}
+    {% endif %}
+{% else %}
+    {% set card_border = "border-warning" %}
+    {% set card_header_bg = "bg-warning text-dark" %}
+    {% set status_icon = "calendar_today" %}
+    {% set status_text = "Upcoming - Not Yet Paid" %}
+{% endif %}
 
 <div class="card mb-4">
     <div class="card-header">
@@ -75,27 +116,7 @@
     </div>
 </div>
 
-{# Determine rent status styling based on days until due and payment status #}
-{% if status.is_paid %}
-{% set card_border = "border-success" %}
-{% set card_header_bg = "bg-success text-white" %}
-{% set status_icon = "check_circle" %}
-{% set status_text = "Waived" if status.is_waived else "Paid" %}
-{% elif status.is_late or (days_until_due is not none and days_until_due < 0) %} {# Past due status: status.is_late is
-    authoritative (checks grace period), days_until_due < 0 is a fallback visual indicator for overdue bills #} {% set
-    card_border="border-dark" %} {% set card_header_bg="bg-dark text-white" %} {% set status_icon="cancel" %} {% set
-    status_text="Past due, pay now" %} {% elif not status.rent_is_active %} {% set card_border="border-primary" %} {%
-    set card_header_bg="bg-primary text-white" %} {% set status_icon="info" %} {% set status_text="No rent is due yet"
-    %} {% elif days_until_due is not none %} {% if days_until_due < 3 %} {# Due today or within 2 days - crimson
-    (danger) #} {% set card_border="border-danger" %} {% set card_header_bg="bg-danger text-white" %} {% set
-    status_icon="warning" %} {% set status_text="Due, pay soon" %} {% elif days_until_due <=7 %} {# 3-7 days - light red
-    (danger-subtle) #} {% set card_border="border-danger" %} {% set card_header_bg="bg-danger-subtle text-danger" %} {%
-    set status_icon="schedule" %} {% set status_text="Rent due in " ~ days_until_due ~ " days" %} {% else %} {# More
-    than 7 days - warning color #} {% set card_border="border-warning" %} {% set card_header_bg="bg-warning text-dark"
-    %} {% set status_icon="calendar_today" %} {% set status_text="Rent will be due in " ~ days_until_due ~ " days" %} {%
-    endif %} {% else %} {# Fallback #} {% set card_border="border-warning" %} {% set
-    card_header_bg="bg-warning text-dark" %} {% set status_icon="calendar_today" %} {% set
-    status_text="Upcoming - Not Yet Paid" %} {% endif %} <div class="card mb-4 {{ card_border }}">
+<div class="card mb-4 {{ card_border }}">
     <div class="card-header {{ card_header_bg }}">
         <h2 class="h6 mb-0 d-flex align-items-center justify-content-between">
             <span>Class: {{ current_block|upper }}</span>
@@ -139,9 +160,6 @@
                 </li>
                 {% endfor %}
             </ul>
-            {% if rent_items|selectattr('is_available_in_store')|list|length > 0 %}
-
-            {% endif %}
         </div>
         {% endif %}
 
@@ -167,25 +185,20 @@
             <br>Rent will be due starting {{ payment_due_date.strftime('%B %d, %Y') }}
         </div>
         {% else %}
-        {% if status.is_preview_period and not status.is_paid %}
-
-        {% endif %}
-
         {% if status.is_paid and status.is_waived %}
         <div class="alert alert-info mb-0">
             <strong>This rent period has been waived.</strong>
-            {% if status.waiver and status.waiver.reason %}
-            <br>{{ status.waiver.reason }}
+            {% if active_waivers and active_waivers|length > 0 %}
+                {% set current_waiver = active_waivers[0] %}
+                {% if current_waiver.reason %}
+                <br>{{ current_waiver.reason }}
+                {% endif %}
             {% endif %}
         </div>
         {% elif status.is_paid %}
         <div class="alert alert-success mb-0">
-            <strong>Great work, {{ student.display_first_name }}!</strong>
-            {% if status.payments %}
-            <br>You have paid your rent for <strong>Period {{ current_block|upper }}</strong> on <strong>{{
-                status.payments[-1].payment_date.strftime('%b %d, %Y') }}</strong>
-
-            {% endif %}
+            <strong>Great work!</strong>
+            <br>You have paid your rent for <strong>Period {{ current_block|upper }}</strong>.
         </div>
         {% elif status.total_paid > 0 %}
         <div class="alert alert-warning mb-3">
@@ -249,10 +262,10 @@
                 current_block|upper }}.
             </p>
             {% endif %}
-            {% endif %}
-            {% endif %}
+        {% endif %}
+        {% endif %}
     </div>
-    </div>
+</div>
 
     <div class="card bg-light mt-4 border-primary">
         <div class="card-header bg-primary text-white ">
@@ -300,20 +313,42 @@
         </div>
     </div>
 
-    <h2 class="h4 mt-5 mb-3">Payment History</h2>
-    {% if payment_history|length == 0 %}
-    <div class="alert alert-info">
-        No payment history yet for this class.
-    </div>
-    {% else %}
+    <h2 class="h4 mt-5 mb-3">Rent Obligation History</h2>
     <div class="card">
-        <div class="card-body p-0">
+        <div class="card-body">
+            {% if rent_status_counts.SATISFIED > 0 or rent_status_counts.OUTSTANDING > 0 or rent_status_counts.PAST_DUE > 0 %}
+            <div class="row mb-4">
+                <div class="col-md-4">
+                    <div class="text-center p-2 bg-success-subtle rounded">
+                        <div class="h4 text-success mb-1">{{ rent_status_counts.SATISFIED }}</div>
+                        <small class="text-muted">Paid/Waived</small>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="text-center p-2 bg-warning-subtle rounded">
+                        <div class="h4 text-warning mb-1">{{ rent_status_counts.OUTSTANDING }}</div>
+                        <small class="text-muted">Outstanding</small>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="text-center p-2 bg-danger-subtle rounded">
+                        <div class="h4 text-danger mb-1">{{ rent_status_counts.PAST_DUE }}</div>
+                        <small class="text-muted">Past Due</small>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+
+            {% if payment_history|length == 0 %}
+            <div class="alert alert-info mb-0">
+                No payment history yet for this class.
+            </div>
+            {% else %}
             <div class="table-responsive">
                 <table class="table table-striped mb-0">
                     <thead>
                         <tr>
-                            <th>Period</th>
-                            <th>Month/Year</th>
+                            <th>Period (Month/Year)</th>
                             <th>Amount</th>
                             <th>Recorded</th>
                             <th>Status</th>
@@ -322,7 +357,6 @@
                     <tbody>
                         {% for payment in payment_history %}
                         <tr>
-                            <td><strong>Period {{ payment.period|upper }}</strong></td>
                             <td>
                                 {{ ['', 'January', 'February', 'March', 'April', 'May', 'June',
                                 'July', 'August', 'September', 'October', 'November', 'December'][payment.period_month]
@@ -333,18 +367,22 @@
                                 {% if payment.entry_type == 'waiver' %}
                                 <span class="text-muted">Waived</span>
                                 {% else %}
-                                ${{ "%.2f"|format(payment.amount_paid) }}
+                                ${{ "%.2f"|format(payment.amount_paid) if payment.amount_paid else '-' }}
                                 {% endif %}
                             </td>
                             <td>{{ payment.recorded_at.strftime('%b %d, %Y') if payment.recorded_at else '-' }}</td>
-                            <td>{{ payment.status_text }}</td>
+                            <td>
+                                <span class="badge {% if payment.entry_type == 'waiver' %}bg-info{% elif payment.status_text == 'On Time' %}bg-success{% elif payment.status_text == 'Paid Late' %}bg-warning{% else %}bg-secondary{% endif %}">
+                                    {{ payment.status_text }}
+                                </span>
+                            </td>
                         </tr>
                         {% endfor %}
                     </tbody>
                 </table>
             </div>
+            {% endif %}
         </div>
     </div>
-    {% endif %}
 
     {% endblock %}

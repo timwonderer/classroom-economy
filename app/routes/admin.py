@@ -5852,7 +5852,10 @@ def rent_settings():
             f"feat:rent:settings-update:{selected_scope['class_id']}:{payload_hash}"
         )
 
-        with FEATContext("FEAT-ADMN-001", idempotency_key=idempotency_key):
+        # Per MAP-UI-001, rent policy configuration is Class Configuration domain (FEAT-CLASS-003),
+        # not admin action (FEAT-ADMN-001). Policy updates define the contractual terms that cause
+        # assessments to exist; this is Class Configuration authority, not Obligations mutation.
+        with FEATContext("FEAT-CLASS-003", idempotency_key=idempotency_key):
             for block in blocks_to_update:
                 # block IS a class_id; query directly — no label-based lookup (INV-ARC-014)
                 block_settings = RentSettings.query.filter_by(class_id=block).first()
