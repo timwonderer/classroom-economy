@@ -6444,7 +6444,7 @@ def rent_settings():
 
 @admin_bp.route('/rent-waiver/add', methods=['POST'])
 @admin_required
-@feat_shell("FEAT-ADMN-001")
+@feat_shell("FEAT-OBL-003")
 def add_rent_waiver():
     """Add rent waiver for selected students."""
     from app.routes.student import (
@@ -6558,7 +6558,7 @@ def add_rent_waiver():
 
 @admin_bp.route('/rent-waiver/<int:waiver_id>/remove', methods=['POST'])
 @admin_required
-@feat_shell("FEAT-ADMN-001")
+@feat_shell("FEAT-OBL-003")
 def remove_rent_waiver(waiver_id):
     """Remove a rent waiver."""
     waiver = db.session.get(ObligationAssessment, waiver_id)

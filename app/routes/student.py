@@ -2990,7 +2990,7 @@ def rent():
     from app.models import Transaction
 
     payment_history = get_rent_payment_history(seat_id, class_id, limit=24)
-    waiver_rows = get_rent_waivers_for_seat(seat_id, class_id)
+    active_waivers = get_rent_waivers_for_seat(seat_id, class_id)
 
     payment_history_rows = []
 
@@ -3058,6 +3058,87 @@ def rent():
     if reference_due_date:
         days_until_due = (reference_due_date - now).days
 
+    # Canonical view model (DOM-OBL-001): Build rent status counts and unpaid log
+    # Per MAP-UI-001, derive from immutable assessment events, not mutable status flags
+    rent_status_counts = {'SATISFIED': 0, 'OUTSTANDING': 0, 'PAST_DUE': 0}
+    rent_status_total = Decimal('0.00')
+    unpaid_rent_log = []
+
+    # Iterate through all assessment events for this seat/class to compute derived state
+    from app.services.obligations_service import (
+        get_payment_events_for_assessment,
+        get_waived_event_for_assessment,
+    )
+
+    all_assessments = (
+        db.session.query(
+            db.func.distinct(
+                db.cast(db.func.concat(
+                    db.cast(db.func.extract('year', db.func.COALESCE(
+                        getattr(db.func, 'timezone', lambda x, y: y)('UTC', db.column('due_at')),
+                        db.literal(datetime.now())
+                    )), db.Integer),
+                    '-',
+                    db.cast(db.func.extract('month', db.func.COALESCE(
+                        getattr(db.func, 'timezone', lambda x, y: y)('UTC', db.column('due_at')),
+                        db.literal(datetime.now())
+                    )), db.Integer)
+                ), db.String)
+            )
+        ).select_from(db.column('assessment_events')).all()
+    ) if False else None  # Placeholder; will use simpler approach below
+
+    # Query all ASSESSMENT events for this seat/class (all cycles)
+    from app.models import ObligationAssessment
+    all_class_assessments = (
+        ObligationAssessment.query.filter_by(
+            seat_id=seat_id,
+            class_id=class_id,
+            obligation_type='RENT',
+            event_type='ASSESSMENT',
+        )
+        .order_by(ObligationAssessment.due_at.desc())
+        .all()
+    )
+
+    for assessment in all_class_assessments:
+        # Derive status: SATISFIED, OUTSTANDING, or PAST_DUE per DOM-OBL-001 §VIII
+        paid_amount = get_total_paid_for_assessment(assessment.id, class_id)
+        has_waiver = get_waived_event_for_assessment(assessment.id, class_id) is not None
+
+        assessed_amount = settings.rent_amount if settings else Decimal('0.00')
+
+        if paid_amount >= assessed_amount or has_waiver:
+            status = 'SATISFIED'
+        elif assessment.due_at and now > assessment.due_at:
+            status = 'PAST_DUE'
+        else:
+            status = 'OUTSTANDING'
+
+        # Update counts
+        rent_status_counts[status] += 1
+
+        # Add to total and log if unpaid
+        if status in ('OUTSTANDING', 'PAST_DUE'):
+            remaining = max(Decimal('0.00'), assessed_amount - paid_amount)
+            rent_status_total += remaining
+
+            unpaid_rent_log.append({
+                'assessment_id': assessment.id,
+                'period_month': assessment.period_month,
+                'period_year': assessment.period_year,
+                'amount_owed': remaining,
+                'due_at': assessment.due_at,
+                'is_late': status == 'PAST_DUE',
+            })
+
+    # Calculate canonical period start/end (for the current assessment cycle being viewed)
+    current_period_start = datetime(coverage_year, coverage_month, 1, tzinfo=timezone.utc)
+    if coverage_month == 12:
+        current_period_end = datetime(coverage_year + 1, 1, 1, tzinfo=timezone.utc) - timedelta(seconds=1)
+    else:
+        current_period_end = datetime(coverage_year, coverage_month + 1, 1, tzinfo=timezone.utc) - timedelta(seconds=1)
+
     student_blocks = [current_block] if current_block else []
     return render_template('student_rent.html',
                           student=seat,
@@ -3074,7 +3155,15 @@ def rent():
                           preview_start_date=preview_start_date,
                           payment_history=payment_history_rows,
                           rent_items=rent_items,
-                          days_until_due=days_until_due)
+                          days_until_due=days_until_due,
+                          # Canonical view model per MAP-UI-001 (DOM-OBL-001 derived state)
+                          active_waivers=active_waivers,
+                          current_period_start=current_period_start,
+                          current_period_end=current_period_end,
+                          current_coverage_due_date=payment_due_date,
+                          rent_status_counts=rent_status_counts,
+                          rent_status_total=rent_status_total,
+                          unpaid_rent_log=unpaid_rent_log)
 
 
 @student_bp.route('/rent/pay/<period>', methods=['POST'])
