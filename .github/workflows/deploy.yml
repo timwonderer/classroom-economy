@@ -13,163 +13,140 @@ jobs:
     runs-on: ubuntu-latest
     environment: production
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v7
+      - name: Checkout code
+        uses: actions/checkout@v7
 
-    - name: Set up SSH
-      uses: webfactory/ssh-agent@v0.9.1
-      with:
-        ssh-private-key: ${{ secrets.DO_DEPLOY_KEY }}
+      - name: Set up SSH
+        uses: webfactory/ssh-agent@v0.9.1
+        with:
+          ssh-private-key: ${{ secrets.DO_DEPLOY_KEY }}
 
-    # SECURITY FIX: Add SSH host key verification to prevent MITM attacks
-    - name: Set up SSH host key verification
-      env:
-        KNOWN_HOSTS: ${{ secrets.KNOWN_HOSTS }}
-      run: |
-        mkdir -p ~/.ssh
-        chmod 700 ~/.ssh
-        printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
-        chmod 644 ~/.ssh/known_hosts
-        echo "✓ SSH host key verification enabled"
+      # SECURITY FIX: Add SSH host key verification to prevent MITM attacks
+      - name: Set up SSH host key verification
+        env:
+          KNOWN_HOSTS: ${{ secrets.KNOWN_HOSTS }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 644 ~/.ssh/known_hosts
+          echo "✓ SSH host key verification enabled"
 
-    - name: Deploy to DO Production Server
-      env:
-        PRODUCTION_SERVER_IP: ${{ secrets.PRODUCTION_SERVER_IP }}
-        TURNSTILE_SITE: ${{ secrets.TURNSTILE_SITE_KEY }}
-        TURNSTILE_SECRET: ${{ secrets.TURNSTILE_SECRET_KEY }}
-        PASSWORDLESS_API_KEY: ${{ secrets.PASSWORDLESS_API_KEY }}
-        PASSWORDLESS_API_PUBLIC: ${{ secrets.PASSWORDLESS_API_PUBLIC }}
-        DIGITALOCEAN_ACCESS_TOKEN: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
-      run: |
-        # Maintenance mode is managed exclusively by the toggle-maintenance workflow.
-        # This deploy workflow never touches MAINTENANCE_* variables in .env.
-        SSH_ENV_VARS="TURNSTILE_SITE=$(printf %q "$TURNSTILE_SITE") TURNSTILE_SECRET=$(printf %q "$TURNSTILE_SECRET") PASSWORDLESS_API_KEY=$(printf %q "$PASSWORDLESS_API_KEY") PASSWORDLESS_API_PUBLIC=$(printf %q "$PASSWORDLESS_API_PUBLIC") DIGITALOCEAN_ACCESS_TOKEN=$(printf %q "$DIGITALOCEAN_ACCESS_TOKEN")"
+      - name: Deploy to DO Production Server
+        env:
+          PRODUCTION_SERVER_IP: ${{ secrets.PRODUCTION_SERVER_IP }}
+          TURNSTILE_SITE: ${{ secrets.TURNSTILE_SITE_KEY }}
+          TURNSTILE_SECRET: ${{ secrets.TURNSTILE_SECRET_KEY }}
+          PASSWORDLESS_API_KEY: ${{ secrets.PASSWORDLESS_API_KEY }}
+          PASSWORDLESS_API_PUBLIC: ${{ secrets.PASSWORDLESS_API_PUBLIC }}
+          DIGITALOCEAN_ACCESS_TOKEN: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+        run: |
+          # Maintenance mode is managed exclusively by the toggle-maintenance workflow.
+          # This deploy workflow never touches MAINTENANCE_* variables in .env.
+          SSH_ENV_VARS="TURNSTILE_SITE=$(printf %q "$TURNSTILE_SITE") TURNSTILE_SECRET=$(printf %q "$TURNSTILE_SECRET") PASSWORDLESS_API_KEY=$(printf %q "$PASSWORDLESS_API_KEY") PASSWORDLESS_API_PUBLIC=$(printf %q "$PASSWORDLESS_API_PUBLIC") DIGITALOCEAN_ACCESS_TOKEN=$(printf %q "$DIGITALOCEAN_ACCESS_TOKEN")"
 
-        # Connect to the production server and deploy
-        ssh root@"$PRODUCTION_SERVER_IP" "export ${SSH_ENV_VARS}; bash -s" << 'EOF'
+          # Connect to the production server and deploy
+          ssh root@"$PRODUCTION_SERVER_IP" "export ${SSH_ENV_VARS}; bash -s" << 'EOF'
+            set -e  # Exit immediately if a command exits with a non-zero status
 
-          set -e  # Exit immediately if a command exits with a non-zero status
+            echo 'Navigating to project directory...'
+            cd ~/classroom-economy
 
-          echo 'Navigating to project directory...'
-          cd ~/classroom-economy
+            echo 'Fetching latest changes from main...'
+            git fetch origin main
 
-          echo 'Fetching latest changes from main...'
-          git fetch origin main
+            echo 'Resetting to match remote main branch...'
+            git reset --hard origin/main
 
-          echo 'Resetting to match remote main branch...'
-          git reset --hard origin/main
+            echo 'Activating virtual environment...'
+            source venv/bin/activate
 
-          echo 'Activating virtual environment...'
-          source venv/bin/activate
+            echo 'Updating environment variables (preserving maintenance state)...'
+            # SECURITY: Set restrictive file permissions before writing secrets
+            touch .env
+            chmod 600 .env
 
-          echo 'Updating environment variables (preserving maintenance state)...'
-          # SECURITY: Set restrictive file permissions before writing secrets
-          touch .env
-          chmod 600 .env
+            # Maintenance mode variables are NOT touched here.
+            # They are managed exclusively by the toggle-maintenance workflow
+            # so maintenance persists across deploys until manually toggled off.
 
-          # Maintenance mode variables are NOT touched here.
-          # They are managed exclusively by the toggle-maintenance workflow
-          # so maintenance persists across deploys until manually toggled off.
+            # Log current maintenance state for visibility
+            CURRENT_MAINT="$(grep -E '^MAINTENANCE_MODE=' .env | tail -1 | cut -d= -f2- || echo 'not set')"
+            echo "ℹ Current MAINTENANCE_MODE=${CURRENT_MAINT} (preserved, use toggle-maintenance workflow to change)"
 
-          # Log current maintenance state for visibility
-          CURRENT_MAINT="$(grep -E '^MAINTENANCE_MODE=' .env | tail -1 | cut -d= -f2- || echo 'not set')"
-          echo "ℹ Current MAINTENANCE_MODE=${CURRENT_MAINT} (preserved, use toggle-maintenance workflow to change)"
+            # Remove old non-maintenance variables before re-adding
+            sed -i '/^TURNSTILE_SITE_KEY=/d' .env 2>/dev/null || true
+            sed -i '/^TURNSTILE_SECRET_KEY=/d' .env 2>/dev/null || true
+            sed -i '/^PASSWORDLESS_API_KEY=/d' .env 2>/dev/null || true
+            sed -i '/^PASSWORDLESS_API_PUBLIC=/d' .env 2>/dev/null || true
+            sed -i '/^DIGITALOCEAN_ACCESS_TOKEN=/d' .env 2>/dev/null || true
 
-          # Remove old non-maintenance variables before re-adding
-          sed -i '/^TURNSTILE_SITE_KEY=/d' .env 2>/dev/null || true
-          sed -i '/^TURNSTILE_SECRET_KEY=/d' .env 2>/dev/null || true
-          sed -i '/^PASSWORDLESS_API_KEY=/d' .env 2>/dev/null || true
-          sed -i '/^PASSWORDLESS_API_PUBLIC=/d' .env 2>/dev/null || true
-          sed -i '/^DIGITALOCEAN_ACCESS_TOKEN=/d' .env 2>/dev/null || true
+            # Add Turnstile keys if provided
+            if [ -n "${TURNSTILE_SITE}" ]; then
+              echo "TURNSTILE_SITE_KEY=${TURNSTILE_SITE}" >> .env
+              echo "✓ Turnstile site key configured"
+            fi
+            if [ -n "${TURNSTILE_SECRET}" ]; then
+              echo "TURNSTILE_SECRET_KEY=${TURNSTILE_SECRET}" >> .env
+              echo "✓ Turnstile secret key configured"
+            fi
 
-          # Add Turnstile keys if provided
-          if [ -n "${TURNSTILE_SITE}" ]; then
-            echo "TURNSTILE_SITE_KEY=${TURNSTILE_SITE}" >> .env
-            echo "✓ Turnstile site key configured"
-          fi
-          if [ -n "${TURNSTILE_SECRET}" ]; then
-            echo "TURNSTILE_SECRET_KEY=${TURNSTILE_SECRET}" >> .env
-            echo "✓ Turnstile secret key configured"
-          fi
+            # Add Passwordless.dev keys if provided
+            if [ -n "${PASSWORDLESS_API_KEY}" ]; then
+              echo "PASSWORDLESS_API_KEY=${PASSWORDLESS_API_KEY}" >> .env
+              echo "✓ Passwordless.dev API key configured (length: ${#PASSWORDLESS_API_KEY})"
+            fi
+            if [ -n "${PASSWORDLESS_API_PUBLIC}" ]; then
+              echo "PASSWORDLESS_API_PUBLIC=${PASSWORDLESS_API_PUBLIC}" >> .env
+              echo "✓ Passwordless.dev public key configured (length: ${#PASSWORDLESS_API_PUBLIC})"
+            fi
 
-          # Add Passwordless.dev keys if provided
-          if [ -n "${PASSWORDLESS_API_KEY}" ]; then
-            echo "PASSWORDLESS_API_KEY=${PASSWORDLESS_API_KEY}" >> .env
-            echo "✓ Passwordless.dev API key configured (length: ${#PASSWORDLESS_API_KEY})"
-          fi
-          if [ -n "${PASSWORDLESS_API_PUBLIC}" ]; then
-            echo "PASSWORDLESS_API_PUBLIC=${PASSWORDLESS_API_PUBLIC}" >> .env
-            echo "✓ Passwordless.dev public key configured (length: ${#PASSWORDLESS_API_PUBLIC})"
-          fi
+            # Add DigitalOcean token if provided (for pydo scripts)
+            if [ -n "${DIGITALOCEAN_ACCESS_TOKEN}" ]; then
+              echo "DIGITALOCEAN_ACCESS_TOKEN=${DIGITALOCEAN_ACCESS_TOKEN}" >> .env
+              echo "✓ DigitalOcean access token configured (length: ${#DIGITALOCEAN_ACCESS_TOKEN})"
+            fi
 
-          # Add DigitalOcean token if provided (for pydo scripts)
-          if [ -n "${DIGITALOCEAN_ACCESS_TOKEN}" ]; then
-            echo "DIGITALOCEAN_ACCESS_TOKEN=${DIGITALOCEAN_ACCESS_TOKEN}" >> .env
-            echo "✓ DigitalOcean access token configured (length: ${#DIGITALOCEAN_ACCESS_TOKEN})"
-          fi
+            # Verify .env file contains the keys
+            echo "Verifying .env file contents..."
+            if grep -q "^PASSWORDLESS_API_KEY=" .env; then
+              echo "✓ PASSWORDLESS_API_KEY found in .env"
+            else
+              echo "⚠ PASSWORDLESS_API_KEY not found in .env"
+            fi
+            if grep -q "^PASSWORDLESS_API_PUBLIC=" .env; then
+              echo "✓ PASSWORDLESS_API_PUBLIC found in .env"
+            else
+              echo "⚠ PASSWORDLESS_API_PUBLIC not found in .env"
+            fi
+            if grep -q "^TURNSTILE_SITE_KEY=" .env; then
+              echo "✓ TURNSTILE_SITE_KEY found in .env"
+            else
+              echo "⚠ TURNSTILE_SITE_KEY not found in .env"
+            fi
+            if grep -q "^TURNSTILE_SECRET_KEY=" .env; then
+              echo "✓ TURNSTILE_SECRET_KEY found in .env"
+            else
+              echo "⚠ TURNSTILE_SECRET_KEY not found in .env"
+            fi
+            if grep -q "^DIGITALOCEAN_ACCESS_TOKEN=" .env; then
+              echo "✓ DIGITALOCEAN_ACCESS_TOKEN found in .env"
+            else
+              echo "⚠ DIGITALOCEAN_ACCESS_TOKEN not found in .env"
+            fi
 
-          # Verify .env file contains the keys
-          echo "Verifying .env file contents..."
-          if grep -q "^PASSWORDLESS_API_KEY=" .env; then
-            echo "✓ PASSWORDLESS_API_KEY found in .env"
-          else
-            echo "⚠ PASSWORDLESS_API_KEY not found in .env"
-          fi
-          if grep -q "^PASSWORDLESS_API_PUBLIC=" .env; then
-            echo "✓ PASSWORDLESS_API_PUBLIC found in .env"
-          else
-            echo "⚠ PASSWORDLESS_API_PUBLIC not found in .env"
-          fi
+            # Check maintenance state preservation
+            PRESERVED_MAINT="$(grep -E '^MAINTENANCE_MODE=' .env | tail -1 | cut -d= -f2- || echo 'not set')"
+            echo "ℹ Maintenance mode after deploy preparation: ${PRESERVED_MAINT}"
 
-          # SECURITY: Verify file permissions
-          ls -la .env | grep -q '^-rw-------' && echo "✓ Secure .env permissions (600)" || echo "⚠ Warning: .env permissions not set correctly"
+            # Restart application service
+            echo 'Restarting application service...'
+            sudo systemctl restart classroom-economy
+            sudo systemctl status classroom-economy --no-pager
 
-          echo 'Installing dependencies...'
-          pip install -r requirements.txt
+            # Clean up old logs
+            echo 'Cleaning up old logs...'
+            sudo journalctl --vacuum-time=7d
 
-          # Ensure DATABASE_URL is set for migrations
-          echo 'Exporting DATABASE_URL for production migrations...'
-
-          echo '🔍 Running migration safety checks...'
-          bash scripts/check-migrations.sh || {
-            echo "❌ Migration safety check failed - deployment aborted"
-            echo "This usually means there are multiple migration heads."
-            echo "Fix this by creating a merge migration locally and pushing to main."
-            exit 1
-          }
-
-          echo 'Running database migrations...'
-          flask db upgrade
-
-
-          echo 'Ensuring Gunicorn service has EnvironmentFile configured...'
-          # Check if EnvironmentFile is already in the service
-          if ! sudo grep -q "EnvironmentFile=/root/classroom-economy/.env" /etc/systemd/system/gunicorn.service 2>/dev/null; then
-            echo "⚠ Warning: Adding EnvironmentFile to gunicorn.service"
-            # Backup the service file
-            sudo cp /etc/systemd/system/gunicorn.service /etc/systemd/system/gunicorn.service.bak
-            # Add EnvironmentFile after [Service] section
-            sudo sed -i '/^\[Service\]/a EnvironmentFile=/root/classroom-economy/.env' /etc/systemd/system/gunicorn.service
-            sudo systemctl daemon-reload
-            echo "✓ EnvironmentFile added to gunicorn.service"
-          else
-            echo "✓ EnvironmentFile already configured"
-          fi
-
-          echo 'Restarting Gunicorn...'
-          sudo systemctl restart gunicorn
-
-          echo 'Verifying environment variables are loaded...'
-          # Check if gunicorn process has the environment variables
-          if sudo systemctl show gunicorn | grep -q "EnvironmentFile"; then
-            echo "✓ Gunicorn service has EnvironmentFile configured"
-          else
-            echo "⚠ Warning: EnvironmentFile not found in service configuration"
-          fi
-
-          # Verify the service file syntax
-          sudo systemctl cat gunicorn | grep -A 2 "EnvironmentFile" || echo "⚠ EnvironmentFile directive not found"
-
-          echo 'Deployment completed successfully.'
-
-        EOF
+            echo 'Deployment complete!'
+          EOF

@@ -26,116 +26,116 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v7
-      with:
-        fetch-depth: 0  # Full history needed for migration checks
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0  # Full history needed for migration checks
 
-    - name: Set up Python
-      uses: actions/setup-python@v6
-      with:
-        python-version: '3.11'
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
 
-    - name: Cache pip dependencies
-      uses: actions/cache@v6
-      with:
-        path: ~/.cache/pip
-        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
-        restore-keys: |
-          ${{ runner.os }}-pip-
+      - name: Cache pip dependencies
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
 
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install alembic flask-migrate
-        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install alembic flask-migrate
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
-    - name: Run Migration Validation Script
-      run: |
-        echo "🔍 Running comprehensive migration validation..."
-        python scripts/validate-migrations.py
+      - name: Run Migration Validation Script
+        run: |
+          echo "🔍 Running comprehensive migration validation..."
+          python scripts/validate-migrations.py
 
-    - name: Comment on PR (if check fails)
-      if: failure() && github.event_name == 'pull_request'
-      uses: actions/github-script@v8
-      with:
-        script: |
-          const { owner, repo } = context.repo;
-          const runId = context.runId;
+      - name: Comment on PR (if check fails)
+        if: failure() && github.event_name == 'pull_request'
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const runId = context.runId;
 
-          const jobs = await github.rest.actions.listJobsForWorkflowRun({
-            owner,
-            repo,
-            run_id: runId,
-            per_page: 100
-          });
+            const jobs = await github.rest.actions.listJobsForWorkflowRun({
+              owner,
+              repo,
+              run_id: runId,
+              per_page: 100
+            });
 
-          const failedConclusions = new Set(['failure', 'timed_out', 'cancelled', 'startup_failure', 'action_required']);
-          const allJobs = jobs.data.jobs || [];
+            const failedConclusions = new Set(['failure', 'timed_out', 'cancelled', 'startup_failure', 'action_required']);
+            const allJobs = jobs.data.jobs || [];
 
-          // Prefer selecting the migration job by name and completion status,
-          // with fallbacks when conclusions may still be null.
-          let migrationJob =
-            allJobs.find(
-              (job) =>
-                typeof job.name === 'string' &&
-                job.name.toLowerCase().includes('validate-migrations') &&
-                job.status === 'completed'
-            ) || null;
-
-          if (!migrationJob) {
-            const failedJobs = allJobs.filter((job) => failedConclusions.has(job.conclusion));
-            migrationJob =
-              failedJobs.find(
-                (job) =>
-                  typeof job.name === 'string' &&
-                  job.name.toLowerCase().includes('validate-migrations')
-              ) ||
-              failedJobs[0] ||
+            // Prefer selecting the migration job by name and completion status,
+            // with fallbacks when conclusions may still be null.
+            let migrationJob =
               allJobs.find(
                 (job) =>
                   typeof job.name === 'string' &&
-                  job.name.toLowerCase().includes('validate-migrations')
-              ) ||
-              allJobs[0] ||
-              null;
-          }
-          const failedSteps = (migrationJob?.steps || [])
-            .filter((step) => failedConclusions.has(step.conclusion))
-            .map((step) => `- ${step.name} (${step.conclusion})`);
+                  job.name.toLowerCase().includes('validate-migrations') &&
+                  job.status === 'completed'
+              ) || null;
 
-          const runUrl = `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${runId}`;
-          const jobUrl = migrationJob?.html_url || runUrl;
-          const failureSection = failedSteps.length
-            ? failedSteps.join('\n')
-            : '- Failure details unavailable from job metadata; open logs link below.';
+            if (!migrationJob) {
+              const failedJobs = allJobs.filter((job) => failedConclusions.has(job.conclusion));
+              migrationJob =
+                failedJobs.find(
+                  (job) =>
+                    typeof job.name === 'string' &&
+                    job.name.toLowerCase().includes('validate-migrations')
+                ) ||
+                failedJobs[0] ||
+                allJobs.find(
+                  (job) =>
+                    typeof job.name === 'string' &&
+                    job.name.toLowerCase().includes('validate-migrations')
+                ) ||
+                allJobs[0] ||
+                null;
+            }
+            const failedSteps = (migrationJob?.steps || [])
+              .filter((step) => failedConclusions.has(step.conclusion))
+              .map((step) => `- ${step.name} (${step.conclusion})`);
 
-          const marker = '<!-- migration-validation-failure-comment -->';
-          const body = `${marker}\n⚠️ **Migration Validation Failed**\n\nThe migration validation workflow failed.\n\n**Detected failure context**\n- Job conclusion: \`${migrationJob?.conclusion || 'failure'}\`\n- Failed step(s):\n${failureSection}\n\n**What this workflow validates**\n1. Continuous revision chain (no breaks/gaps)\n2. Single migration head\n3. Correct \`upgrade()\` and \`downgrade()\` functions\n4. Idempotency guards (for example around \`add_column\`)\n\n**Logs**\n- [Failed job logs](${jobUrl})\n- [Workflow run](${runUrl})`;
+            const runUrl = `${process.env.GITHUB_SERVER_URL}/${process.env.GITHUB_REPOSITORY}/actions/runs/${runId}`;
+            const jobUrl = migrationJob?.html_url || runUrl;
+            const failureSection = failedSteps.length
+              ? failedSteps.join('\n')
+              : '- Failure details unavailable from job metadata; open logs link below.';
 
-          const comments = await github.rest.issues.listComments({
-            owner,
-            repo,
-            issue_number: context.issue.number,
-            per_page: 100
-          });
-          const existing = comments.data.find((comment) => {
-            const isBot = comment.user?.type === 'Bot' || comment.user?.login?.includes('[bot]');
-            return isBot && typeof comment.body === 'string' && comment.body.includes(marker);
-          });
+            const marker = '<!-- migration-validation-failure-comment -->';
+            const body = `${marker}\n⚠️ **Migration Validation Failed**\n\nThe migration validation workflow failed.\n\n**Detected failure context**\n- Job conclusion: \`${migrationJob?.conclusion || 'failure'}\`\n- Failed step(s):\n${failureSection}\n\n**What this workflow validates**\n1. Continuous revision chain (no breaks/gaps)\n2. Single migration head\n3. Correct \`upgrade()\` and \`downgrade()\` functions\n4. Idempotency guards (for example around \`add_column\`)\n\n**Logs**\n- [Failed job logs](${jobUrl})\n- [Workflow run](${runUrl})`;
 
-          if (existing) {
-            await github.rest.issues.updateComment({
+            const comments = await github.rest.issues.listComments({
               owner,
               repo,
-              comment_id: existing.id,
-              body
-            });
-          } else {
-            await github.rest.issues.createComment({
               issue_number: context.issue.number,
-              owner,
-              repo,
-              body
+              per_page: 100
             });
-          }
+            const existing = comments.data.find((comment) => {
+              const isBot = comment.user?.type === 'Bot' || comment.user?.login?.includes('[bot]');
+              return isBot && typeof comment.body === 'string' && comment.body.includes(marker);
+            });
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner,
+                repo,
+                comment_id: existing.id,
+                body
+              });
+            } else {
+              await github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner,
+                repo,
+                body
+              });
+            }
