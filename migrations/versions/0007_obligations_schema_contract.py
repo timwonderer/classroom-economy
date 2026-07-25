@@ -93,13 +93,16 @@ def _assessment_columns():
 
 
 def _copy_missing_assessments(source_table, target_table):
-    """Copy missing assessments, only including columns that exist in target."""
-    # Get all columns from _assessment_columns and filter to only those that exist in target
+    """Copy missing assessments, only including columns that exist in both tables."""
+    # Get all columns from _assessment_columns and filter to only those that exist in BOTH source and target
     all_columns = _assessment_columns()
-    existing_columns = [col for col in all_columns if column_exists(target_table, col)]
+    existing_columns = [
+        col for col in all_columns
+        if column_exists(source_table, col) and column_exists(target_table, col)
+    ]
 
     if not existing_columns:
-        return  # No columns to copy
+        return  # No columns to copy (tables may be same or one may not have the columns)
 
     columns_str = ", ".join(existing_columns)
     op.get_bind().execute(
