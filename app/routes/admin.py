@@ -6449,11 +6449,90 @@ def rent_settings():
 @admin_required
 @feat_shell("FEAT-OBL-003")
 def add_rent_waiver():
-    """Add rent waiver for selected students."""
-    # Obligations-based rent waiver helper functions removed during demolition
+    """Add rent waiver for selected students (FEAT-OBL-003).
 
-    # Obligations-based rent waiver calculation and recording logic removed during demolition
-    flash("Rent waiver functionality has been updated.", "info")
+    Per DOM-OBL-001 §VI: WAIVED events close out outstanding remainder on RENT obligations.
+    """
+    from app.feats.satisfy_obligation_feat import execute_satisfy_obligation_waiver
+    from app.services import obligations_service
+
+    context = g.canonical_context
+    class_id = context.class_id
+    if not class_id:
+        abort(404)
+
+    # Get seat IDs from request (format: multiple seat_id_<n> form fields)
+    seat_ids_to_waive = []
+    for key in request.form.keys():
+        if key.startswith('seat_id_'):
+            try:
+                seat_id = int(request.form.get(key))
+                seat_ids_to_waive.append(seat_id)
+            except (ValueError, TypeError):
+                continue
+
+    if not seat_ids_to_waive:
+        flash("No students selected for waiver.", "warning")
+        return redirect(url_for('admin.rent_settings'))
+
+    # For each selected seat, find current rent assessment and waive it
+    waived_count = 0
+    failed_count = 0
+
+    for seat_id in seat_ids_to_waive:
+        try:
+            # Find the most recent ASSESSMENT event for this seat (current rent obligation)
+            assessment = (
+                db.session.query(ObligationAssessment)
+                .filter(
+                    ObligationAssessment.seat_id == seat_id,
+                    ObligationAssessment.class_id == class_id,
+                    ObligationAssessment.obligation_type == 'RENT',
+                    ObligationAssessment.event_type == 'ASSESSMENT',
+                )
+                .order_by(ObligationAssessment.created_at.desc())
+                .first()
+            )
+
+            if not assessment:
+                failed_count += 1
+                continue
+
+            # Check if already waived
+            existing_waiver = (
+                db.session.query(ObligationAssessment)
+                .filter(
+                    ObligationAssessment.correlation_id == assessment.correlation_id,
+                    ObligationAssessment.event_type == 'WAIVED',
+                )
+                .first()
+            )
+
+            if existing_waiver:
+                # Already waived, skip
+                continue
+
+            # Create WAIVED event via FEAT-OBL-003
+            execute_satisfy_obligation_waiver(
+                correlation_id=assessment.correlation_id,
+                class_id=class_id,
+                seat_id=seat_id,
+            )
+            waived_count += 1
+
+        except ValueError as e:
+            current_app.logger.warning(f"Failed to waive rent for seat {seat_id}: {e}")
+            failed_count += 1
+
+    db.session.commit()
+
+    if waived_count > 0:
+        flash(f"Waived rent for {waived_count} student(s).", "success")
+    if failed_count > 0:
+        flash(f"Failed to waive rent for {failed_count} student(s).", "warning")
+    if waived_count == 0 and failed_count == 0:
+        flash("No changes made.", "info")
+
     return redirect(url_for('admin.rent_settings'))
 
 
