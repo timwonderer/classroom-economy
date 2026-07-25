@@ -52,7 +52,7 @@ def get_satisfaction_events(correlation_id: str) -> list[ObligationAssessment]:
             ObligationAssessment.correlation_id == correlation_id,
             ObligationAssessment.event_type.in_(['PAYMENT', 'WAIVED'])
         )
-        .order_by(ObligationAssessment.created_at.asc())
+        .order_by(ObligationAssessment.timestamp.asc())
         .all()
     )
 
@@ -90,10 +90,14 @@ def get_obligation_status(correlation_id: str) -> ObligationStatus | None:
             has_waiver = True
 
     # Derive satisfaction per DOM-OBL-001 §VIII
-    # Note: past-due status is time-dependent and computed at presentation layer
-    is_satisfied = has_waiver or (amount_paid >= float(assessment.assessed_at or 0))
+    # Note: assessed_amount defaults to 0 (no amount stored in assessment_events per DOM-OBL-001 v2.5)
+    # Caller should use get_obligation_payment_status() from obligation_view_model.py to provide assessed_amount
+    assessed_amount = 0.0  # Default; caller should pass actual amount
+    is_satisfied = has_waiver or (amount_paid >= assessed_amount)
     is_outstanding = not is_satisfied
 
+    # Per DOM-OBL-001 v2.5: due_at should come from bill_cycles, not assessment_events
+    # This legacy function defaults to None; use get_obligation_payment_status() for complete status
     return ObligationStatus(
         correlation_id=correlation_id,
         seat_id=assessment.seat_id,
@@ -102,7 +106,7 @@ def get_obligation_status(correlation_id: str) -> ObligationStatus | None:
         event_type=assessment.event_type,
         is_satisfied=is_satisfied,
         is_outstanding=is_outstanding,
-        due_at=assessment.due_at,
+        due_at=None,  # Per DOM-OBL-001 v2.5: use bill_cycles for due dates
         amount_paid=amount_paid,
         amount_waived=has_waiver,
     )
@@ -126,7 +130,7 @@ def get_assessment_events_for_seat_class(
     if obligation_type:
         query = query.filter_by(obligation_type=obligation_type)
 
-    return query.order_by(ObligationAssessment.created_at.asc()).all()
+    return query.order_by(ObligationAssessment.timestamp.asc()).all()
 
 
 def get_bill_cycles_for_internal_ref(internal_ref: str) -> list[BillCycle]:
@@ -252,7 +256,7 @@ def get_rent_assessments_for_cycle(
             extract('year', ObligationAssessment.due_at) == coverage_year,
         )
 
-    return query.order_by(ObligationAssessment.created_at.asc()).all()
+    return query.order_by(ObligationAssessment.timestamp.asc()).all()
 
 
 def get_payment_events_for_assessment(
@@ -276,7 +280,7 @@ def get_payment_events_for_assessment(
             ObligationAssessment.class_id == class_id,
             ObligationAssessment.event_type == 'PAYMENT',
         )
-        .order_by(ObligationAssessment.created_at.asc())
+        .order_by(ObligationAssessment.timestamp.asc())
         .all()
     )
 
@@ -351,7 +355,7 @@ def get_rent_payment_history(
             ObligationAssessment.class_id == class_id,
             ObligationAssessment.obligation_type == 'RENT',
         )
-        .order_by(ObligationAssessment.created_at.desc())
+        .order_by(ObligationAssessment.timestamp.desc())
         .limit(limit)
         .all()
     )
@@ -370,7 +374,7 @@ def get_rent_waivers_for_seat(
             ObligationAssessment.obligation_type == 'RENT',
             ObligationAssessment.event_type == 'WAIVED',
         )
-        .order_by(ObligationAssessment.created_at.desc())
+        .order_by(ObligationAssessment.timestamp.desc())
         .all()
     )
 

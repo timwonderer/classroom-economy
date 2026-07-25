@@ -2941,8 +2941,8 @@ def rent():
 
     if current_bill_cycle:
         # For this bill_cycle, find the corresponding assessment
-        # The correlation_id should tie assessment to this cycle
-        # For now, we read all assessments and match by due_at proximity
+        # Per DOM-OBL-001 v2.5: assessments link to bill_cycles via bill_cycle_id FK
+        # or are matched by correlation_id/internal_ref lineage
         all_assessments = obligations_service.get_assessment_events_for_seat_class(
             seat_id=seat_id,
             class_id=class_id,
@@ -2950,16 +2950,16 @@ def rent():
         )
 
         # Find assessment(s) for this cycle
-        # Heuristic: assessment with due_at == bill_cycle.next_assessment_at
+        # Prefer: assessment with bill_cycle_id == current_bill_cycle.id
         for assessment in all_assessments:
-            if assessment.event_type == 'ASSESSMENT' and assessment.due_at == current_bill_cycle.next_assessment_at:
+            if assessment.event_type == 'ASSESSMENT' and assessment.bill_cycle_id == current_bill_cycle.id:
                 current_period_assessment = assessment
                 break
 
-        # If no exact match, use most recent assessment with due_at >= cycle_boundary_at
+        # If no FK match, use most recent ASSESSMENT event (fallback heuristic)
         if not current_period_assessment:
             for assessment in reversed(all_assessments):
-                if assessment.event_type == 'ASSESSMENT' and assessment.due_at >= current_bill_cycle.cycle_boundary_at:
+                if assessment.event_type == 'ASSESSMENT':
                     current_period_assessment = assessment
                     break
 
