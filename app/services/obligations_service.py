@@ -11,7 +11,7 @@ from datetime import datetime
 from dataclasses import dataclass
 
 from app.extensions import db
-from app.models import ObligationAssessment, BillCycle, Seat
+from app.models import ObligationAssessment, BillCycle
 from app.utils.time import utc_now
 
 
@@ -289,10 +289,11 @@ def get_total_paid_for_assessment(
     """
     Calculate total amount paid for an assessment.
 
-    Sums Ledger amounts from all PAYMENT events (via ledger_transaction_id FK).
-    Per DOM-OBL-001 §VIII, this is derived from immutable events, not stored.
+    Per DOM-OBL-001 §VIII, reads authoritative Ledger amounts referenced by
+    PAYMENT events and sums them. This is a cross-domain read into Ledger
+    domain to compute derived obligation status (per DOM-OBL-001 §XI).
 
-    Returns Decimal amount.
+    Returns Decimal amount (0.00 if no PAYMENT events or assessment not found).
     """
     from decimal import Decimal
     from app.models import Transaction
@@ -308,6 +309,8 @@ def get_total_paid_for_assessment(
     total_paid = Decimal('0.00')
     for payment_event in payment_events:
         if payment_event.ledger_transaction_id:
+            # CROSS-DOMAIN READ: Obligations computes derived status from Ledger
+            # truth (per DOM-OBL-001 §XI: Obligations consumes Ledger for settlement truth)
             txn = db.session.get(Transaction, payment_event.ledger_transaction_id)
             if txn and txn.status != 'void':  # Ignore void transactions
                 total_paid += Decimal(str(txn.amount))
@@ -413,17 +416,17 @@ def get_cycle_rent_amount(
     coverage_year: int,
 ) -> float | None:
     """
-    Get the rent amount that should apply to a coverage cycle.
+    STUB: Get rent amount for a cycle.
 
-    This reads from RentSettings (the authoritative rent policy).
-    In future, this may incorporate PolicyVersion lineage to handle
-    mid-cycle rate changes per CLASS CONFIGURATION.
+    This function DOES NOT BELONG in Obligations domain (violates DOM-OBL-001).
+    Rent amount is Class Configuration authority, not Obligations authority.
+
+    Obligations domain stores assessment amounts in policy_version_id references
+    to the upstream PolicyVersion, not in obligation tables.
+
+    Caller should fetch amount from Class Configuration, pass to assessment creator.
+
+    TODO: Remove this function. Rent amount should be determined upstream by
+    Class Configuration and passed to FEAT-OBLI-001 via correlation/policy_version_id.
     """
-    from app.models import RentSettings
-    from decimal import Decimal
-
-    settings = RentSettings.query.filter_by(class_id=class_id).first()
-    if not settings:
-        return None
-
-    return Decimal(str(settings.rent_amount)) if settings.rent_amount else None
+    return None

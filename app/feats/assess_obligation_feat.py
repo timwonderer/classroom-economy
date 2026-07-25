@@ -11,7 +11,7 @@ from datetime import datetime
 from dataclasses import dataclass
 
 from app.extensions import db
-from app.models import ObligationAssessment, Seat
+from app.models import ObligationAssessment
 from app.services import obligations_service
 from app.feats.base import feat_shell, FEATContext
 
@@ -58,10 +58,9 @@ def assess_obligation(
     """
     # Phase 1: Verification (read-only)
 
-    # Scope validation: seat must exist and match context
-    seat = db.session.get(Seat, request.seat_id)
-    if not seat or seat.class_id != request.class_id:
-        raise ValueError(f"Seat {request.seat_id} not in class {request.class_id}")
+    # Scope validation: caller MUST resolve seat_id and class_id via CanonicalContext
+    # and pass both. Obligations domain only validates within assessment_events/bill_cycles
+    # tables per DOM-OBL-001 §VI. Cross-domain Seat validation belongs to caller.
 
     # Lineage validation: check idempotency
     if obligations_service.check_idempotency_assessment(
