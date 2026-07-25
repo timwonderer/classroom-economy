@@ -12,7 +12,6 @@ from dataclasses import dataclass
 
 from app.extensions import db
 from app.models import ObligationAssessment, BillCycle
-from app.utils.time import utc_now
 
 
 @dataclass(frozen=True)
@@ -27,7 +26,7 @@ class ObligationStatus:
     # Derived facts (never persisted per DOM-OBL-001 §VIII)
     is_satisfied: bool
     is_outstanding: bool
-    is_past_due: bool
+    due_at: datetime | None  # Caller can compare against current time if needed
     amount_paid: float  # Sum of Ledger amounts from PAYMENT events
     amount_waived: bool  # True if any WAIVED event exists
 
@@ -91,9 +90,9 @@ def get_obligation_status(correlation_id: str) -> ObligationStatus | None:
             has_waiver = True
 
     # Derive satisfaction per DOM-OBL-001 §VIII
+    # Note: past-due status is time-dependent and computed at presentation layer
     is_satisfied = has_waiver or (amount_paid >= float(assessment.assessed_at or 0))
     is_outstanding = not is_satisfied
-    is_past_due = is_outstanding and (assessment.due_at and utc_now() > assessment.due_at)
 
     return ObligationStatus(
         correlation_id=correlation_id,
@@ -103,7 +102,7 @@ def get_obligation_status(correlation_id: str) -> ObligationStatus | None:
         event_type=assessment.event_type,
         is_satisfied=is_satisfied,
         is_outstanding=is_outstanding,
-        is_past_due=is_past_due or False,
+        due_at=assessment.due_at,
         amount_paid=amount_paid,
         amount_waived=has_waiver,
     )
