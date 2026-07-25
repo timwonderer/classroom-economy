@@ -374,13 +374,13 @@ def get_last_entitlement_end_for_policy_version(
     class_id: str,
     policy_version_id: int,
 ):
-    """Return the latest end boundary currently enforced for a policy lineage."""
+    """Return the latest due date (end boundary) currently enforced for a policy lineage."""
     return (
-        db.session.query(sa.func.max(ObligationAssessment.coverage_end_time))
+        db.session.query(sa.func.max(ObligationAssessment.due_at))
         .filter(
             ObligationAssessment.class_id == class_id,
             ObligationAssessment.policy_version_id == policy_version_id,
-            ObligationAssessment.coverage_end_time.isnot(None),
+            ObligationAssessment.due_at.isnot(None),
         )
         .scalar()
     )

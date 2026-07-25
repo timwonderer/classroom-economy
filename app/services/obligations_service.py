@@ -401,10 +401,7 @@ def get_rent_payment_history(
             obligation_type='RENT',
             event_type='ASSESSMENT',
         )
-        .order_by(
-            ObligationAssessment.period_year.desc(),
-            ObligationAssessment.period_month.desc(),
-        )
+        .order_by(ObligationAssessment.due_at.desc())
         .limit(limit)
         .all()
     )

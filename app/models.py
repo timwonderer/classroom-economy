@@ -1147,17 +1147,12 @@ class ObligationAssessment(db.Model):
     # Ledger linkage — required for PAYMENT events, NULL for others (per DOM-OBL-001 §VII.1)
     ledger_transaction_id = db.Column(db.Integer, db.ForeignKey('ledger_transaction.id', ondelete='SET NULL'), nullable=True, index=True)
 
-    # Legacy fields (bridge period, will be removed in future)
-    join_code = db.Column(db.String(20), nullable=True, index=True)
-    period = db.Column(db.String(10), nullable=True, index=True)
-    period_key = db.Column(db.String(20), nullable=True)
-    coverage_start_time = db.Column(db.DateTime(timezone=True), nullable=True, index=True)
-    coverage_end_time = db.Column(db.DateTime(timezone=True), nullable=True, index=True)
+    # Idempotency key for recurring assessments
     cycle_idempotency_key = db.Column(db.String(160), nullable=True, index=True)
-    period_month = db.Column(db.Integer, nullable=True)
-    period_year = db.Column(db.Integer, nullable=True)
-    coverage_month = db.Column(db.Integer, nullable=True)
-    coverage_year = db.Column(db.Integer, nullable=True)
+
+    # Waiver period coverage — for WAIVED events only (DOM-OBL-001 §VII.2)
+    coverage_start_time = db.Column(db.DateTime(timezone=True), nullable=True)
+    coverage_end_time = db.Column(db.DateTime(timezone=True), nullable=True)
 
     seat = db.relationship('Seat', backref=db.backref('obligation_assessments', passive_deletes=True), foreign_keys=[seat_id])
     entitlement_events = db.relationship('EntitlementEvent', backref='assessment')

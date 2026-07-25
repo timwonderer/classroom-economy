@@ -6003,12 +6003,18 @@ def rent_settings():
                 now = utc_now()
                 coverage_due = _calculate_rent_coverage_due_date(block_settings, now)
                 if coverage_due:
+                    from datetime import date
+                    month_start = coverage_due.replace(day=1)
+                    if coverage_due.month == 12:
+                        month_end = coverage_due.replace(year=coverage_due.year + 1, month=1, day=1)
+                    else:
+                        month_end = coverage_due.replace(month=coverage_due.month + 1, day=1)
                     paid_count = (
                         db.session.query(ObligationAssessment)
                         .filter(
                             ObligationAssessment.class_id == block_settings.class_id,
-                            ObligationAssessment.coverage_month == coverage_due.month,
-                            ObligationAssessment.coverage_year == coverage_due.year,
+                            ObligationAssessment.due_at >= month_start,
+                            ObligationAssessment.due_at < month_end,
                             ObligationAssessment.event_type.in_(['PAYMENT', 'WAIVED']),
                         )
                         .count()

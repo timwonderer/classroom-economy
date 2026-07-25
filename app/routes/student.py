@@ -3023,8 +3023,8 @@ def rent():
                     status_text = "Pending"
 
                 payment_history_rows.append({
-                    'period_month': assessment.period_month,
-                    'period_year': assessment.period_year,
+                    'period_month': assessment.due_at.month if assessment.due_at else None,
+                    'period_year': assessment.due_at.year if assessment.due_at else None,
                     'amount_paid': amount_paid,
                     'recorded_at': occurred_at,
                     'status_text': status_text,
@@ -3035,8 +3035,8 @@ def rent():
             # Add waiver entries
             for waived_event in waived_events:
                 payment_history_rows.append({
-                    'period_month': assessment.period_month,
-                    'period_year': assessment.period_year,
+                    'period_month': assessment.due_at.month if assessment.due_at else None,
+                    'period_year': assessment.due_at.year if assessment.due_at else None,
                     'amount_paid': None,
                     'recorded_at': waived_event.assessed_at,
                     'status_text': 'Waived',
