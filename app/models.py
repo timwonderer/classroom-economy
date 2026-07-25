@@ -1135,11 +1135,10 @@ class ObligationAssessment(db.Model):
     obligation_type = db.Column(db.String(30), nullable=False, index=True)  # RENT, INSURANCE_PREMIUM
     policy_version_id = db.Column(db.Integer, db.ForeignKey('policy_versions.id'), nullable=True, index=True)
 
-    # Temporal fields — DOM-OBL-001 §VII.1
-    due_at = db.Column(db.DateTime(timezone=True), nullable=True)
-    viewable_at = db.Column(db.DateTime(timezone=True), nullable=True)
-    assessed_at = db.Column(db.DateTime(timezone=True), default=utc_now, nullable=False)
-    created_at = db.Column(db.DateTime(timezone=True), default=utc_now, nullable=False)
+    # Canonical timestamp — DOM-OBL-001 §VII.1
+    # Single timestamp represents when the obligation event occurred (replaces created_at/assessed_at/viewable_at)
+    # Per DOM-OBL-001 v2.5: no due_at here (on bill_cycles), no viewable_at (Class Configuration), no separate created_at/assessed_at
+    timestamp = db.Column(db.DateTime(timezone=True), default=utc_now, nullable=False)
 
     # Bill cycle linkage — DOM-OBL-001 §VII.3
     bill_cycle_id = db.Column(db.Integer, db.ForeignKey('bill_cycles.id', ondelete='SET NULL'), nullable=True, index=True)
@@ -1172,7 +1171,9 @@ class BillCycle(db.Model):
     source_version_id = db.Column(db.String(200), nullable=True)  # Lawful version snapshot reference
     cycle_boundary_at = db.Column(db.DateTime(timezone=True), nullable=False)
     next_assessment_at = db.Column(db.DateTime(timezone=True), nullable=False)
-    created_at = db.Column(db.DateTime(timezone=True), default=utc_now, nullable=False)
+
+    # Per DOM-OBL-001 v2.5: no created_at on bill_cycles
+    # Use assessment_event.timestamp as reference (timestamp on the ASSESSMENT event for this cycle)
 
     __table_args__ = (
         db.Index('ix_bill_cycles_internal_ref', 'internal_ref'),
