@@ -1,5 +1,3 @@
-const routeMap = require("./route-map.json");
-
 function stripTrailingSlash(value) {
   return value.replace(/\/+$/, "");
 }
@@ -10,19 +8,10 @@ const docsSiteUrl = stripTrailingSlash(
 const appDocsOrigin = stripTrailingSlash(
   process.env.APP_DOCS_ORIGIN || "http://127.0.0.1:5000",
 );
-const publicRedirects = Object.entries(routeMap).map(([from, to]) => ({
-  from: `/${from}`,
-  to,
-}));
-
-// Docusaurus config for the external docs/blog site.
-// Route base path stays at the site root for migrated public docs.
-// Flask only redirects the subset of /docs paths that exist in route-map.json.
-
 /** @type {import('@docusaurus/types').Config} */
 const config = {
   title: "Classroom Token Hub",
-  tagline: "Internal v2 docs preview",
+  tagline: "Guides and reference for the current app",
   url: docsSiteUrl,
   baseUrl: "/",
   future: {
@@ -60,19 +49,12 @@ const config = {
       },
     ],
   ],
-  plugins: [
-    [
-      "@docusaurus/plugin-client-redirects",
-      {
-        redirects: publicRedirects,
-      },
-    ],
-  ],
   themeConfig: {
     navbar: {
       title: "Classroom Token Hub",
       items: [
-        {to: "/overview", label: "Preview", position: "left"},
+        {to: "/user-guides", label: "Guides", position: "left"},
+        {to: "/technical", label: "Reference", position: "left"},
         {to: "/blog", label: "Notes", position: "left"},
         {
           href: "https://github.com/timwonderer/classroom-economy",
@@ -85,10 +67,10 @@ const config = {
       style: "dark",
       links: [
         {
-          title: "Preview",
+          title: "Guides",
           items: [
-            {label: "Overview", to: "/overview"},
-            {label: "Migration Plan", to: "/technical/migration-plan"},
+            {label: "User Guides", to: "/user-guides"},
+            {label: "Technical Reference", to: "/technical"},
           ],
         },
         {

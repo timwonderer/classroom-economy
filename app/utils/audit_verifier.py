@@ -5,9 +5,7 @@ Provides:
   verify_row_lineage(table_name, pk, m)  — Spot-check a single row's payload digest
   run_full_invariant_check()             — Nightly sweep across all active chains
 
-These functions only READ from the DB. They never write except through the
-update_integrity_status() helper which updates IntegrityStatus under
-system_audit_authority.
+These functions only READ from the DB. They never write.
 """
 from __future__ import annotations
 
@@ -28,8 +26,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 PROTECTED_FIELDS_BY_TABLE: dict[str, list[str]] = {
-    # Keep both names during Wave 5 table rename transition so historical
-    # events emitted under the legacy table name remain verifiable.
+    # Keep both names during the Wave 5 table rename transition.
     "transaction": [
         "amount", "account_type", "type", "status",
         "class_id", "seat_id", "description", "correlation_id",
@@ -337,7 +334,7 @@ def run_full_invariant_check() -> list[VerificationResult]:
     """Sweep all active class chains and the system chain.
 
     Returns one VerificationResult per chain scope. Callers should check
-    any result with state != VERIFIED and update IntegrityStatus accordingly.
+    any result with state != VERIFIED and record the failure details.
     """
     from app.models import ChainHead
 
@@ -372,45 +369,15 @@ def run_full_invariant_check() -> list[VerificationResult]:
 
 
 # ---------------------------------------------------------------------------
-# IntegrityStatus updater (called by scheduled job after invariant check)
+# Verifier output recorder (called by scheduled job after invariant check)
 # ---------------------------------------------------------------------------
 
-def update_integrity_status(results: list[VerificationResult]) -> None:
-    """Write the aggregate verification outcome to IntegrityStatus.
-
-    Uses system_audit_authority because this is verifier infrastructure, not
-    a business mutation. IntegrityStatus is NOT itself lineage-protected.
-    """
-    from app.models import IntegrityStatus
-    from app.services.audit_service import system_audit_authority
-
-    passing = all(r.state == LineageState.VERIFIED for r in results)
-    now = utc_now()
-
+def record_integrity_verification(results: list[VerificationResult]) -> None:
+    """Record verifier output without writing to a removed status table."""
     failed = [
         {"scope": r.chain_scope, "type": r.failure_type, "detail": r.detail}
         for r in results
         if r.state != LineageState.VERIFIED
     ]
-    detail_json = json.dumps(failed) if failed else None
-
-    with system_audit_authority("nightly-invariant-check"):
-        status = IntegrityStatus.query.first()
-        if status is None:
-            status = IntegrityStatus(
-                passing=passing,
-                last_checked_utc=now,
-                failure_detail=detail_json,
-                degraded_since=now if not passing else None,
-            )
-            db.session.add(status)
-        else:
-            if not passing and status.passing:
-                # First failure — record when degradation began
-                status.degraded_since = now
-            elif passing:
-                status.degraded_since = None
-            status.passing = passing
-            status.last_checked_utc = now
-            status.failure_detail = detail_json
-        db.session.commit()  # FEAT-AUTHORIZED-SHELL
+    if failed:
+        logger.warning("Invariant check failures: %s", json.dumps(failed))

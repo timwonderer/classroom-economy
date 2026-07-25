@@ -2,7 +2,7 @@
 
 | Reference Number | Version | Effective Date | Supersedes | Authority Level |
 | :--- | :--- | :--- | :--- | :--- |
-| FEAT-LED-001 | 1.1 | 2026-06-13 | 1.0 | Normative |
+| FEAT-LED-001 | 1.2 | 2026-07-18 | 1.1 | Normative |
 
 ---
 
@@ -15,12 +15,19 @@ an intended ledger plan is valid, whether it must be transformed, or whether
 policy authorizes a recovery transfer or fee. That resolution boundary belongs
 to `FEAT-LED-000`.
 
+This FEAT writes immutable ledger facts only. It MUST NOT mutate lifecycle fields
+such as `posted_at`, `voided_at`, `is_void`, or `reversal_transaction_id`.
+Posted state is derived from the reconciliation snapshot contract.
+
 ---
 
 ## II. Execution Context
 
 ### 1. Required Inputs
 * `seat_id`: The execution context (actor).
+* `class_id`: The class boundary.
+* `target_seat_id`: The seat whose balance changes.
+* `actor_seat_id`: The seat authorizing the action.
 * `from_account`: `AccountType` Enum (e.g., `CHECKING`, `SAVINGS`, `RESERVE`).
 * `to_account`: `AccountType` Enum.
 * `amount_cents`: Positive **Integer** (Transaction value in cents).
@@ -30,7 +37,7 @@ to `FEAT-LED-000`.
 * `correlation_id`: **MANDATORY** link to the initiating FEAT or event.
 
 ### 2. Resolved Context
-* `class_id`: Resolved via `seat_id`.
+* `mechanism`: `SELF`, `TEACHER`, or `SYSTEM`.
 
 ---
 
@@ -46,7 +53,7 @@ to `FEAT-LED-000`.
 
 ### 2. Mutation Phase (Atomic Transaction)
 1. **Ledger Entry**:
-    * Create a `LedgerTransaction` record with all metadata (`type`, `description`, `correlation_id`).
+    * Create a `LedgerTransaction` record with immutable metadata (`class_id`, `target_seat_id`, `actor_seat_id`, `mechanism`, `type`, `description`, `correlation_id`, lineage fields).
 2. **Balance Update**:
     * Call `DOM-LED` to update the `LedgerBalanceSnapshot` for both accounts.
     * **Invariant**: The sum of all accounts in a `class_id` MUST remain consistent (Zero-sum for internal transfers).

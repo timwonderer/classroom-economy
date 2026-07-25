@@ -225,76 +225,14 @@ def _get_batch_last_payroll_times(seat_ids, allowed_class_ids):
 
 
 from app.feats.base import feat_shell
+from app.utils.time import utc_now
+
 
 @feat_shell("FEAT-LED-004")
-def get_cached_payroll_with_meta(*args, **kwargs):
-    """FEAT-Shell for payroll calculation cache management."""
-    res = _get_cached_payroll_with_meta_legacy(*args, **kwargs)
-    db.session.flush()  # Preserve FEAT orchestrator transaction ownership.
-    return res
-
-def _get_cached_payroll_with_meta_legacy(class_id, seat_ids, last_payroll_time):
-    """
-    Cached version of calculate_payroll_breakdown.
-    Requires explicit class_id boundary.
-    Returns (summary, last_updated_datetime).
-    """
-    from app.models import PayrollCache, ClassEconomy, Seat
-    from app.extensions import db
-    from app.utils.time import utc_now, ensure_utc
-    from datetime import timedelta
-    
+def get_cached_payroll_with_meta(class_id, seat_ids, last_payroll_time):
+    """Calculate payroll directly without persisted cache state."""
     if not class_id:
         raise ValueError("Class scope (class_id) must be explicitly provided.")
 
-    economy = ClassEconomy.query.filter_by(class_id=class_id).first()
-    if not economy:
-        raise ValueError(f"No class found for class_id {class_id}")
-
-    cache_entry = PayrollCache.query.filter_by(class_id=class_id).first()
-    now = utc_now()
-    cutoff = now - timedelta(hours=1)
- 
-    use_cache = False
-    if cache_entry and cache_entry.last_calculated_at and ensure_utc(cache_entry.last_calculated_at) > cutoff:
-        if cache_entry.cached_breakdown:
-            use_cache = True
- 
-    summary = {}
-    last_updated = now
- 
-    if use_cache:
-        raw_data = cache_entry.cached_breakdown
-        last_updated = ensure_utc(cache_entry.last_calculated_at)
- 
-        requested_ids = set(seat_ids)
- 
-        for s_id_str, amount_raw in raw_data.items():
-            s_id = int(s_id_str)
-            if s_id in requested_ids:
-                summary[s_id] = Decimal(str(amount_raw))
-    else:
-        # Fetch all seats in class to cache the whole class at once
-        all_seats = Seat.query.filter_by(class_id=class_id).all()
-        all_seat_ids = [s.id for s in all_seats]
- 
-        full_summary = calculate_payroll_breakdown(class_id, all_seat_ids, last_payroll_time)
-        cache_data = {str(k): str(v) for k, v in full_summary.items()}
- 
-        if not cache_entry:
-            cache_entry = PayrollCache(
-                class_id=class_id,
-            )
-            db.session.add(cache_entry)
-        else:
-            cache_entry.class_id = class_id
- 
-        cache_entry.cached_breakdown = cache_data
-        cache_entry.last_calculated_at = now
-        db.session.flush() # FEAT-LEGACY-WRAP: commit removed
- 
-        requested_ids = set(seat_ids)
-        summary = {k: v for k, v in full_summary.items() if k in requested_ids}
-        last_updated = now
- 
-    return summary, last_updated
+    summary = calculate_payroll_breakdown(class_id, seat_ids, last_payroll_time)
+    return summary, utc_now()

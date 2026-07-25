@@ -143,7 +143,6 @@
 
       <form method="post" action="{{ url_for('admin.update_economy_policy') }}" class="row g-3 align-items-stretch">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <input type="hidden" name="block" value="{{ selected_block or '' }}">
         {% for mode_key, mode in policy_modes.items() %}
         <div class="col-lg-4">
           <label class="border rounded p-3 h-100 d-block {% if policy_summary.mode == mode_key %}border-primary bg-light{% endif %}">
@@ -159,7 +158,7 @@
         <div class="col-12 d-flex flex-wrap gap-2 align-items-center">
           <button class="btn btn-primary" type="submit">Save Policy Mode</button>
           {% if payroll_settings %}
-          <a class="btn btn-outline-secondary" href="{{ url_for('admin.economy_health', block=selected_block, review_rebalance=1) }}">Review Recommended Rebalance</a>
+          <a class="btn btn-outline-secondary" href="{{ url_for('admin.economy_health', review_rebalance=1) }}">Review Recommended Rebalance</a>
           {% endif %}
           {% if policy_summary.has_pending_policy_transition %}
           <span class="badge bg-info text-dark">Economy Update Scheduled</span>
@@ -197,7 +196,6 @@
       {% if show_rebalance_review and rebalance_preview %}
       <form method="post" action="{{ url_for('admin.apply_economy_rebalance') }}" class="mt-4">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <input type="hidden" name="block" value="{{ selected_block or '' }}">
         <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
           <div>
             <h6 class="mb-1">Rebalance Preview</h6>
@@ -250,7 +248,7 @@
         </div>
         <div class="d-flex flex-wrap gap-2 mt-3">
           <button class="btn btn-primary" type="submit">Apply Selected Rebalance</button>
-          <a class="btn btn-outline-secondary" href="{{ url_for('admin.economy_health', block=selected_block) }}">Cancel</a>
+          <a class="btn btn-outline-secondary" href="{{ url_for('admin.economy_health') }}">Cancel</a>
         </div>
       </form>
       {% elif show_rebalance_review and payroll_settings %}
@@ -296,8 +294,6 @@
                 <div class="text-muted small">Expected Hours/Week</div>
                 <form method="post" action="{{ url_for('admin.update_expected_weekly_hours') }}">
                   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                  <input type="hidden" name="cwi_block" value="{{ selected_block }}">
-                  <input type="hidden" name="next" value="{{ url_for('admin.economy_health', block=selected_block) }}">
                   <div class="input-group">
                     <input type="number" step="0.25" min="0.25" max="80" name="expected_weekly_hours" class="form-control" value="{{ expected_hours }}">
                     <button class="btn btn-primary" type="submit">Update</button>

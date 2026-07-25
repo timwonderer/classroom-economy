@@ -98,7 +98,7 @@
           <div class="accordion-body">
             <p class="mb-2"><strong><span class="material-symbols-outlined me-1">settings</span>Basic Settings:</strong></p>
             <ul class="mb-3">
-              <li><strong>Class/Block selector:</strong> Configure settings independently for each class period.</li>
+              <li><strong>Active class context:</strong> Configure settings independently for the currently selected class period.</li>
               <li><strong>Savings APY:</strong> Annual percentage yield (e.g., 5% APY means about $0.42 earned per $100
                 saved monthly)</li>
               <li><strong>Interest Type:</strong>
@@ -311,17 +311,7 @@
         <!-- Filter Controls -->
         <form method="GET" action="{{ url_for('admin.banking') }}" class="mb-4">
           <div class="row g-3">
-            <div class="col-md-2">
-              <label for="block" class="form-label fw-bold">Class:</label>
-              <select name="block" id="block" class="form-select form-select-sm">
-                <option value="">All</option>
-                {% for block in blocks %}
-                <option value="{{ block }}" {% if request.args.get('block')==block %}selected{% endif %}>{{
-                  class_labels_by_block.get(block, block) }}</option>
-                {% endfor %}
-              </select>
-            </div>
-            <div class="col-md-2">
+            <div class="col-md-3">
               <label for="account" class="form-label fw-bold">Account:</label>
               <select name="account" id="account" class="form-select form-select-sm">
                 <option value="">All</option>
@@ -331,7 +321,7 @@
                 </option>
               </select>
             </div>
-            <div class="col-md-2">
+            <div class="col-md-3">
               <label for="type" class="form-label fw-bold">Type:</label>
               <select name="type" id="type" class="form-select form-select-sm">
                 <option value="">All</option>
@@ -450,7 +440,7 @@
             <!-- Previous Button -->
             <li class="page-item {% if page <= 1 %}disabled{% endif %}">
               <a class="page-link"
-                href="{{ url_for('admin.banking', page=page-1, student=request.args.get('student', ''), block=request.args.get('block', ''), account=request.args.get('account', ''), type=request.args.get('type', ''), start_date=request.args.get('start_date', ''), end_date=request.args.get('end_date', '')) }}">Previous</a>
+                href="{{ url_for('admin.banking', page=page-1, student=request.args.get('student', ''), account=request.args.get('account', ''), type=request.args.get('type', ''), start_date=request.args.get('start_date', ''), end_date=request.args.get('end_date', '')) }}">Previous</a>
             </li>
 
             <!-- Page Numbers -->
@@ -460,7 +450,7 @@
             {% if start_page > 1 %}
             <li class="page-item">
               <a class="page-link"
-                href="{{ url_for('admin.banking', page=1, student=request.args.get('student', ''), block=request.args.get('block', ''), account=request.args.get('account', ''), type=request.args.get('type', ''), start_date=request.args.get('start_date', ''), end_date=request.args.get('end_date', '')) }}">1</a>
+                href="{{ url_for('admin.banking', page=1, student=request.args.get('student', ''), account=request.args.get('account', ''), type=request.args.get('type', ''), start_date=request.args.get('start_date', ''), end_date=request.args.get('end_date', '')) }}">1</a>
             </li>
             {% if start_page > 2 %}
             <li class="page-item disabled"><span class="page-link">...</span></li>
@@ -470,26 +460,25 @@
             {% for p in range(start_page, end_page + 1) %}
             <li class="page-item {% if p == page %}active{% endif %}">
               <a class="page-link"
-                href="{{ url_for('admin.banking', page=p, student=request.args.get('student', ''), block=request.args.get('block', ''), account=request.args.get('account', ''), type=request.args.get('type', ''), start_date=request.args.get('start_date', ''), end_date=request.args.get('end_date', '')) }}">{{
-                p }}</a>
+                href="{{ url_for('admin.banking', page=p, student=request.args.get('student', ''), account=request.args.get('account', ''), type=request.args.get('type', ''), start_date=request.args.get('start_date', ''), end_date=request.args.get('end_date', '')) }}">{{ p }}</a>
             </li>
             {% endfor %}
 
-            {% if end_page < total_pages %} {% if end_page < total_pages - 1 %} <li class="page-item disabled"><span
-                class="page-link">...</span></li>
-              {% endif %}
-              <li class="page-item">
-                <a class="page-link"
-                  href="{{ url_for('admin.banking', page=total_pages, student=request.args.get('student', ''), block=request.args.get('block', ''), account=request.args.get('account', ''), type=request.args.get('type', ''), start_date=request.args.get('start_date', ''), end_date=request.args.get('end_date', '')) }}">{{
-                  total_pages }}</a>
-              </li>
-              {% endif %}
+            {% if end_page < total_pages %}
+            {% if end_page < total_pages - 1 %}
+            <li class="page-item disabled"><span class="page-link">...</span></li>
+            {% endif %}
+            <li class="page-item">
+              <a class="page-link"
+                href="{{ url_for('admin.banking', page=total_pages, student=request.args.get('student', ''), account=request.args.get('account', ''), type=request.args.get('type', ''), start_date=request.args.get('start_date', ''), end_date=request.args.get('end_date', '')) }}">{{ total_pages }}</a>
+            </li>
+            {% endif %}
 
-              <!-- Next Button -->
-              <li class="page-item {% if page >= total_pages %}disabled{% endif %}">
-                <a class="page-link"
-                  href="{{ url_for('admin.banking', page=page+1, student=request.args.get('student', ''), block=request.args.get('block', ''), account=request.args.get('account', ''), type=request.args.get('type', ''), start_date=request.args.get('start_date', ''), end_date=request.args.get('end_date', '')) }}">Next</a>
-              </li>
+            <!-- Next Button -->
+            <li class="page-item {% if page >= total_pages %}disabled{% endif %}">
+              <a class="page-link"
+                href="{{ url_for('admin.banking', page=page+1, student=request.args.get('student', ''), account=request.args.get('account', ''), type=request.args.get('type', ''), start_date=request.args.get('start_date', ''), end_date=request.args.get('end_date', '')) }}">Next</a>
+            </li>
           </ul>
         </nav>
         {% endif %}
@@ -501,25 +490,6 @@
   <div class="tab-pane fade" id="settings" role="tabpanel">
     <form method="POST" action="{{ url_for('admin.banking_settings_update') }}" id="bankingSettingsForm">
       {{ form.hidden_tag() }}
-      <input type="hidden" name="settings_block" value="{{ settings_block }}">
-      <input type="hidden" name="apply_to_all" id="apply_to_all_input" value="false">
-
-      <!-- Class Selector Banner -->
-      <div class="alert alert-primary d-flex align-items-center justify-content-between mb-4">
-        <div class="d-flex align-items-center gap-3">
-          <span class="material-symbols-outlined" style="font-size: 2rem;">school</span>
-          <div>
-            <h6 class="mb-1 fw-bold">Configuring Banking Settings For:</h6>
-            <div class="small text-muted">{{ selected_feature_scope.label }}</div>
-          </div>
-        </div>
-        <div class="form-check form-switch">
-          <input class="form-check-input" type="checkbox" id="apply_to_all_checkbox" role="switch">
-          <label class="form-check-label fw-bold" for="apply_to_all_checkbox">
-            Apply to All Classes
-          </label>
-        </div>
-      </div>
 
       <div class="row">
         <!-- Interest Settings Card -->
@@ -928,17 +898,6 @@
     compoundFrequencyField.style.display = calculationType.value === 'compound' ? 'block' : 'none';
   }
 
-  // -------------------- APPLY TO ALL --------------------
-  const applyToAllCheckbox = document.getElementById('apply_to_all_checkbox');
-  const applyToAllInput = document.getElementById('apply_to_all_input');
-
-  // Handle apply to all checkbox
-  if (applyToAllCheckbox && applyToAllInput) {
-    applyToAllCheckbox.addEventListener('change', function () {
-      applyToAllInput.value = this.checked ? 'true' : 'false';
-
-    });
-  }
 });
 
   // Void Transaction

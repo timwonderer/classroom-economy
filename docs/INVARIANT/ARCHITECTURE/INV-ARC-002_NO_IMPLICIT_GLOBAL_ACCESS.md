@@ -26,7 +26,8 @@ Foundational within `INV-ARC`. Derived from `INV-CORE-000` Section III.1, `` `cl
 
 No domain or feature logic may access global or unscoped data.
 
-All data access MUST be explicitly scoped using `join_code` or `class_id`.
+All data access MUST be explicitly scoped using `class_id`, or by a
+`join_code` that has already been resolved to `class_id` at the boundary ingress.
 
 ## VI. Rebuild Intent
 

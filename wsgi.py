@@ -34,6 +34,7 @@ import collections
 # Import and create the Flask application using the factory pattern
 from app import app
 from app.extensions import db, migrate, csrf
+from app.feats.base import FEATContext
 
 
 def maintenance_mode_enabled():
@@ -60,23 +61,15 @@ def get_validated_status_page_url():
 # -------------------- APPLICATION IMPORTS --------------------
 # Models
 from app.models import (
-    AdminInviteCode,
-    SystemAdmin,
     Transaction,
-    TapEvent,
+    # TapEvent removed — tap_events unauthorized; use attendance_sessions (DOM-ATT-001)
     HallPassLog,
     StoreItem,
-    StudentItem,
+    # StudentItem removed — student_items unauthorized; use store_purchases + redemption_events (DOM-STORE-001)
     RentSettings,
-    RentPayment,
-    InsurancePolicy,
-    InsuranceClaim,
-    ErrorLog,
-    Admin,
     User,
     UserRole,
     PayrollSettings,
-    SavedAdjustment
 )
 
 # Auth utilities (Stage 3)
@@ -181,7 +174,7 @@ def create_sysadmin():
         return
 
     lookup_hash = hash_username_lookup(username)
-    existing = SystemAdmin.query.filter_by(username_lookup_hash=lookup_hash).first()
+    existing = User.query.filter_by(username_lookup_hash=lookup_hash, user_role=UserRole.SYSADMIN).first()
     if existing:
         print(f"System admin '{username}' already exists.")
         return
@@ -198,21 +191,15 @@ def create_sysadmin():
     # Save to database with encrypted secret
     salt, username_hash, username_lookup_hash = build_hashed_username_fields(username)
     encrypted_totp_secret = encrypt_totp(totp_secret)
-    sysadmin = SystemAdmin(
-        username_hash=username_hash,
-        username_lookup_hash=username_lookup_hash,
-        salt=salt,
-        totp_secret=encrypted_totp_secret,
-    )
-    user = User(
-        user_role=UserRole.SYSADMIN,
-        username_hash=username_hash,
-        username_lookup_hash=username_lookup_hash,
-        totp_secret_encrypted=encrypted_totp_secret,
-        has_completed_setup=True,
-    )
-    db.session.add_all([sysadmin, user])
-    db.session.commit()
+    with FEATContext("FEAT-IDEN-001", idempotency_key=f"create-sysadmin:{username}"):
+        user = User(
+            user_role=UserRole.SYSADMIN,
+            username_hash=username_hash,
+            username_lookup_hash=username_lookup_hash,
+            totp_secret_encrypted=encrypted_totp_secret,
+        )
+        db.session.add(user)
+        db.session.commit()
 
     # Display results
     print(f"\nSystem admin '{username}' created successfully.")
@@ -358,23 +345,8 @@ def log_error_to_db(error_type=None, error_message=None, stack_trace=None, log_o
         if log_output is None:
             log_output = get_last_log_lines(50)
 
-        # Create error log entry
-        error_log = ErrorLog(
-            timestamp=datetime.now(timezone.utc),
-            error_type=error_type,
-            error_message=error_message,
-            request_path=request_path,
-            request_method=request_method,
-            user_agent=user_agent,
-            ip_address=ip_address,
-            log_output=log_output,
-            stack_trace=stack_trace
-        )
-
-        db.session.add(error_log)
-        db.session.commit()
-
-        return error_log.id
+        # Legacy database error logging has been removed.
+        return None
     except Exception as e:
         # Log to app logger but don't raise - we don't want error logging to cause more errors
         app.logger.error(f"Failed to log error to database: {str(e)}")
@@ -540,5 +512,5 @@ def service_unavailable_error(error):
 # - app/routes/main.py: Landing page, terms, privacy (no prefix)
 # - app/routes/api.py: API endpoints (/api)
 # - app/routes/student.py: Student routes (/student)
-# - app/routes/admin.py: Admin routes (/admin)
+# - app/routes/admin.py: teacher-facing admin routes (/admin)
 # - app/routes/system_admin.py: System admin routes (/sysadmin)

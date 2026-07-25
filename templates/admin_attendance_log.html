@@ -115,7 +115,7 @@
                         <div class="d-flex align-items-center">
                             <span class="material-symbols-outlined me-2 text-danger">logout</span>
                             <div>
-                                <div class="small text-muted">Break / Done</div>
+                                <div class="small text-muted">Break</div>
                                 <div class="fw-bold text-danger" id="tapOutCount">0</div>
                             </div>
                         </div>
@@ -126,27 +126,6 @@
                             <div>
                                 <div class="small text-muted">Showing</div>
                                 <div class="fw-bold" id="showingRange">—</div>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="col-md-3">
-                        <div class="d-flex align-items-center justify-content-md-end">
-                            <div class="text-end me-3">
-                                <div class="small text-muted">Attendance Toggle</div>
-                                <div class="fw-semibold">
-                                    {% if blocks %}
-                                        {{ class_labels_by_block.get(blocks[0], blocks[0]) }}
-                                    {% else %}
-                                        Current Class
-                                    {% endif %}
-                                </div>
-                            </div>
-                            <div class="form-check form-switch m-0">
-                                <input class="form-check-input block-tap-toggle" type="checkbox"
-                                    id="blockTapToggleTop"
-                                    data-block="{% if blocks %}{{ blocks[0]|upper }}{% else %}{% endif %}"
-                                    {% if not blocks %}disabled{% endif %}
-                                    checked>
                             </div>
                         </div>
                     </div>
@@ -176,7 +155,7 @@
                         <select class="form-select form-select-sm" id="filterStatus">
                             <option value="">All</option>
                             <option value="active">Start Work (Active)</option>
-                            <option value="inactive">Break / Done (Inactive)</option>
+                            <option value="inactive">Break (Inactive)</option>
                         </select>
                     </div>
                     <div class="col-md-4">
@@ -275,81 +254,13 @@
     // Use centralized timezone utility for timestamp formatting
     const formatTimestamp = window.TimezoneUtils.formatTimestamp;
 
-    function initTapToggles() {
-        document.querySelectorAll('.block-tap-toggle').forEach(function (toggle) {
-            const block = toggle.getAttribute('data-block');
-
-            fetch(`/api/admin/block-tap-settings?block=${block}`)
-                .then(response => response.json())
-                .then(data => {
-                    if (data.tap_enabled !== undefined) {
-                        toggle.checked = data.tap_enabled;
-                    }
-                })
-                .catch(error => console.error('Error loading tap settings:', error));
-
-            toggle.addEventListener('change', function () {
-                const isEnabled = this.checked;
-                fetch('/api/admin/block-tap-settings', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRFToken': document.querySelector('meta[name=\"csrf-token\"]')?.getAttribute('content')
-                    },
-                    body: JSON.stringify({
-                        block: block,
-                        tap_enabled: isEnabled
-                    })
-                })
-                    .then(response => response.json())
-                    .then(data => {
-                        if (data.status === 'ok') {
-                            const toast = document.createElement('div');
-                            toast.className = 'alert alert-success alert-dismissible fade show position-fixed top-0 start-50 translate-middle-x mt-3';
-                            toast.style.zIndex = '9999';
-
-                            // Create elements safely to prevent XSS
-                            const icon = document.createElement('span');
-                            icon.className = 'material-symbols-outlined me-2';
-                            icon.style.verticalAlign = 'middle';
-                            icon.textContent = 'check_circle';
-
-                            const message = document.createTextNode(
-                                isEnabled ? `Tap in/out enabled for Block ${block}` : `Tap in/out disabled for Block ${block}`
-                            );
-
-                            const closeBtn = document.createElement('button');
-                            closeBtn.type = 'button';
-                            closeBtn.className = 'btn-close';
-                            closeBtn.setAttribute('data-bs-dismiss', 'alert');
-
-                            toast.appendChild(icon);
-                            toast.appendChild(message);
-                            toast.appendChild(closeBtn);
-
-                            document.body.appendChild(toast);
-                            setTimeout(() => toast.remove(), 3000);
-                        } else {
-                            alert('Error updating tap settings: ' + (data.message || 'Unknown error'));
-                            toggle.checked = !isEnabled;
-                        }
-                    })
-                    .catch(error => {
-                        console.error('Error updating tap settings:', error);
-                        alert('Network error occurred while updating tap settings.');
-                        toggle.checked = !isEnabled;
-                    });
-            });
-        });
-    }
-
     // Get status badge HTML (status is validated server-side but we escape for defense in depth)
     function getStatusBadge(status) {
         const escapedStatus = escapeHtml(status);
         if (status === 'active') {
             return '<span class="badge bg-success"><span class="material-symbols-outlined" style="font-size: 0.875rem; vertical-align: text-bottom;">login</span> Start Work</span>';
         } else if (status === 'inactive') {
-            return '<span class="badge bg-danger"><span class="material-symbols-outlined" style="font-size: 0.875rem; vertical-align: text-bottom;">logout</span> Break / Done</span>';
+            return '<span class="badge bg-danger"><span class="material-symbols-outlined" style="font-size: 0.875rem; vertical-align: text-bottom;">logout</span> Break</span>';
         }
         return '<span class="badge bg-secondary">' + escapedStatus + '</span>';
     }
@@ -526,7 +437,6 @@
 
     // Load data on page load
     document.addEventListener('DOMContentLoaded', () => {
-        initTapToggles();
         loadAttendanceHistory(1);
     });
 </script>

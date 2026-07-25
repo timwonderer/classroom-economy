@@ -7,13 +7,17 @@ Create Date: 2026-06-30 03:49:40.056766
 """
 from alembic import op
 import sqlalchemy as sa
-from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
 revision = 'cb55646cb43e'
 down_revision = '042824e29710'
 branch_labels = None
 depends_on = None
+
+def table_exists(table_name):
+    conn = op.get_bind()
+    inspector = sa.inspect(conn)
+    return table_name in inspector.get_table_names()
 
 def column_exists(table_name, column_name):
     conn = op.get_bind()
@@ -24,6 +28,9 @@ def column_exists(table_name, column_name):
         return False
 
 def upgrade():
+    if not table_exists('seat_attendance_state'):
+        return
+
     if not column_exists('seat_attendance_state', 'tap_enabled'):
         # 1. Add tap_enabled to seat_attendance_state
         op.add_column(
@@ -31,8 +38,12 @@ def upgrade():
             sa.Column('tap_enabled', sa.Boolean(), server_default=sa.true(), nullable=False),
         )
 
+    if not table_exists('student_blocks'):
+        return
+
+    conn = op.get_bind()
+    if column_exists('student_blocks', 'tap_enabled'):
         # 2. Backfill tap_enabled from student_blocks
-        conn = op.get_bind()
         conn.execute(
             sa.text("""
                 UPDATE seat_attendance_state sas
@@ -43,6 +54,7 @@ def upgrade():
             """)
         )
 
+    if table_exists('entitlement_events') and column_exists('student_blocks', 'rent_hall_passes'):
         # 3. Insert GRANT events into entitlement_events for any rent_hall_passes
         # INV-OBL-002: Entitlement balances MUST NOT be stored as authoritative state
         conn.execute(
@@ -65,4 +77,5 @@ def upgrade():
         )
 
 def downgrade():
-    op.drop_column('seat_attendance_state', 'tap_enabled')
+    if column_exists('seat_attendance_state', 'tap_enabled'):
+        op.drop_column('seat_attendance_state', 'tap_enabled')

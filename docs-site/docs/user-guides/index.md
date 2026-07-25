@@ -3,11 +3,11 @@ title: User Guides
 slug: /user-guides
 ---
 
-Preview only: this section is a small pilot for the eventual v2 docs split. The stable source of truth is still the repo docs tree and product-integrated help flows.
+Use this guide hub for fast answers and step-by-step help for students and teachers.
 
-Pilot routes currently exposed here:
+Start here:
 
-- teacher diagnostics preview
-- student diagnostics preview
+- [Student Guide](student/index.md)
+- [Teacher Guide](teacher/index.md)
 
-Everything else should remain in Flask until the v2 docs rework defines the final canonical structure.
+If you need a deeper walkthrough, open the relevant classroom guide from the app or use the search box to jump straight to the topic you need.

@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 
 from app.extensions import db
+from app.services.context_resolver import CanonicalContext
 from app.services import ledger_service
 from app.feats.ledger_resolution_feat import build_intended_ledger_plan, resolve_intended_ledger_plan, apply_resolved_ledger_plan
 
@@ -15,7 +16,13 @@ class AdminAdjustmentResult:
     fee_count: int
 
 
-def execute_admin_adjustments(*, adjustments: list[dict], banking_settings=None) -> AdminAdjustmentResult:
+def execute_admin_adjustments(
+    *,
+    ctx: CanonicalContext,
+    adjustments: list[dict],
+    banking_settings=None,
+    actor_seat_id: int,
+) -> AdminAdjustmentResult:
     """Ledger-led FEAT for bulk admin-created adjustments."""
     applied_count = 0
     declined_count = 0
@@ -25,12 +32,14 @@ def execute_admin_adjustments(*, adjustments: list[dict], banking_settings=None)
         seat = adjustment.get("seat")
         if not seat:
             raise KeyError("Adjustment missing 'seat'. Bulk adjustments must be seat-bound.")
+        if seat.class_id != ctx.class_id:
+            raise ValueError("Adjustment seat must belong to the active canonical class context.")
 
         amount = Decimal(str(adjustment["amount"]))
         account_type = adjustment.get("account_type", "checking")
         user_id = adjustment["user_id"]
         class_id = seat.class_id
-
+        mechanism = "system" if ctx.actor_role == "sysadmin" else "teacher"
         shortfall = Decimal("0.00")
         if account_type == "checking" and amount < 0:
             intended_plan = build_intended_ledger_plan(
@@ -63,6 +72,9 @@ def execute_admin_adjustments(*, adjustments: list[dict], banking_settings=None)
         ledger_service.create_pending_transaction(
             seat_id=seat.id,
             class_id=class_id,
+            target_seat_id=seat.id,
+            actor_seat_id=actor_seat_id,
+            mechanism=mechanism,
             user_id=user_id,
             amount=amount,
             account_type=account_type,

@@ -177,11 +177,11 @@ def admin_required(f):
         try:
             ctx = resolve_canonical_context(require_class=False)
         except (ContextNotEstablished, ContextMismatch, ContextForbidden, ContextInvariantViolation):
-            flash("Admin session is invalid. Please log in again.")
+            flash("System admin session is invalid. Please log in again.")
             return redirect(url_for('admin.login'))
 
         if ctx.actor_role != 'teacher':
-            flash("Admin session is invalid. Please log in again.")
+            flash("System admin session is invalid. Please log in again.")
             return redirect(url_for('admin.login'))
 
         if isinstance(ctx, BoundaryContext):
@@ -197,7 +197,7 @@ def admin_required(f):
             last_activity = datetime.fromisoformat(last_activity)
             if (now - last_activity) > timedelta(minutes=SESSION_TIMEOUT_MINUTES):
                 session.clear()
-                flash("Admin session expired. Please log in again.")
+                flash("System admin session expired. Please log in again.")
                 return redirect(url_for('admin.login'))
 
         session['last_activity'] = now.isoformat()
@@ -359,6 +359,28 @@ def set_canonical_user_session(*, username_lookup_hash: str, expected_role: str)
         return None
     session["user_id"] = user.id
     return user
+
+
+def establish_teacher_session(user):
+    """Establish canonical teacher session keys."""
+    session["user_id"] = user.id
+    session["role"] = "admin"
+    session.permanent = True
+
+
+def establish_sysadmin_session(user):
+    """Establish canonical system-admin session keys."""
+    session["user_id"] = user.id
+    session["role"] = "sysadmin"
+    session.permanent = True
+
+
+def establish_student_session(user, *, class_id: str):
+    """Establish canonical student session keys."""
+    session["user_id"] = user.id
+    session["class_id"] = class_id
+    session["role"] = "student"
+    session.permanent = True
 
 
 def get_current_user():

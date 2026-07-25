@@ -97,20 +97,25 @@ FEAT_REGISTRY = {
     "FEAT-LED-002": {"domain": "Ledger", "blast_radius": "HIGH", "desc": "Void Transaction"},
     "FEAT-LED-003": {"domain": "Ledger", "blast_radius": "HIGH", "desc": "Settlement Sweep"},
     "FEAT-LED-004": {"domain": "Ledger", "blast_radius": "HIGH", "desc": "Payroll Execution"},
-    "FEAT-IDEN-001": {"domain": "Identity", "blast_radius": "LOW", "desc": "Admin Management"},
+    "FEAT-IDEN-001": {"domain": "Identity", "blast_radius": "LOW", "desc": "Teacher management"},
     "FEAT-IDEN-002": {"domain": "Identity", "blast_radius": "HIGH", "desc": "Account Recovery"},
-    "FEAT-STOR-001": {"domain": "Store", "blast_radius": "MED", "desc": "Inventory Management"},
-    "FEAT-STOR-002": {"domain": "Store", "blast_radius": "MED", "desc": "Store Purchase"},
-    "FEAT-STOR-003": {"domain": "Store", "blast_radius": "MED", "desc": "Purchase Void/Refund"},
-    "FEAT-STOR-004": {"domain": "Store", "blast_radius": "MED", "desc": "Rent Perk Purchase ($0)"},
-    "FEAT-STOR-005": {"domain": "Store", "blast_radius": "LOW", "desc": "Redeem Item"},
-    "FEAT-STOR-006": {"domain": "Store", "blast_radius": "MED", "desc": "Redemption Disposition"},
-    "FEAT-ATTN-001": {"domain": "Attendance", "blast_radius": "MED", "desc": "Session Management"},
-    "FEAT-ATTN-002": {"domain": "Attendance", "blast_radius": "LOW", "desc": "Individual Tap"},
+    "FEAT-STOR-001": {"domain": "Store", "blast_radius": "MED", "desc": "Store Purchase and Entitlement Grant"},
+    "FEAT-STOR-002": {"domain": "Store", "blast_radius": "MED", "desc": "Entitlement Terminal Lifecycle"},
+    "FEAT-STOR-003": {"domain": "Store", "blast_radius": "MED", "desc": "Insurance Claim Lifecycle"},
+    # Bridge aliases — retired FEAT codes kept until all call-sites are migrated
+    "FEAT-STOR-004": {"domain": "Store", "blast_radius": "MED", "desc": "[RETIRED → FEAT-STOR-001] Rent Perk Purchase"},
+    "FEAT-STOR-005": {"domain": "Store", "blast_radius": "LOW", "desc": "[RETIRED → FEAT-STOR-002] Redeem Item"},
+    "FEAT-STOR-006": {"domain": "Store", "blast_radius": "MED", "desc": "[RETIRED → FEAT-STOR-002] Redemption Disposition"},
+    "FEAT-ENT-001": {"domain": "Store", "blast_radius": "MED", "desc": "[RETIRED → FEAT-STOR-001] Hall Pass Entitlement Adjustment"},
+    "FEAT-PROD-001": {"domain": "Productivity", "blast_radius": "MED", "desc": "Record Attendance Session"},
+    "FEAT-PROD-002": {"domain": "Productivity", "blast_radius": "MED", "desc": "Record Hall Pass Log"},
+    "FEAT-PROD-003": {"domain": "Productivity", "blast_radius": "HIGH", "desc": "Record Payroll Event"},
+    "FEAT-SETTINGS-001": {"domain": "Class Configuration", "blast_radius": "MED", "desc": "Class Settings Update"},
     "FEAT-ANLY-001": {"domain": "Analytics", "blast_radius": "LOW", "desc": "Analytics Alert Acknowledgement"},
-    "FEAT-ADMN-001": {"domain": "Logistics", "blast_radius": "LOW", "desc": "Bulk Admin"},
+    "FEAT-ADMN-001": {"domain": "Logistics", "blast_radius": "LOW", "desc": "Bulk administration"},
     "FEAT-OBL-001": {"domain": "Obligations", "blast_radius": "MED", "desc": "Rent Payment"},
     "FEAT-OBL-002": {"domain": "Obligations", "blast_radius": "MED", "desc": "Scheduled Rent Cycle"},
+    "FEAT-OBL-003": {"domain": "Obligations", "blast_radius": "MED", "desc": "Scheduled Insurance Cycle"},
     "FEAT-OPS-001": {"domain": "Operations", "blast_radius": "MED", "desc": "Maintenance/Cleanup Operations"},
     "FEAT-SUP-001": {"domain": "Support", "blast_radius": "LOW", "desc": "Issue Submission and Category Setup"},
 }
@@ -183,6 +188,10 @@ class FEATContext:
     def __enter__(self):
         if not hasattr(_feat_context, "stack"):
             _feat_context.stack = []
+        elif getattr(_feat_context, "active_feat", None) is None and _feat_context.stack:
+            # A previous FEAT may have leaked stack state if teardown was interrupted.
+            # Clear it when starting a fresh top-level FEAT so the new context owns a clean boundary.
+            _feat_context.stack = []
         
         # Track nested FEATs
         active = getattr(_feat_context, "active_feat", None)
@@ -230,29 +239,36 @@ class FEATContext:
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         # Commit on success / rollback on failure for the whole FEAT transaction.
-        if self._owns_transaction and self._transaction_ctx is not None:
-            # Allow the single orchestrator commit path triggered by session.begin().__exit__.
-            db.session.info["feat_orchestrator_commit"] = True
-            try:
+        txn_error = None
+        try:
+            if self._owns_transaction and self._transaction_ctx is not None:
+                # Allow the single orchestrator commit path triggered by session.begin().__exit__.
+                db.session.info["feat_orchestrator_commit"] = True
                 self._transaction_ctx.__exit__(exc_type, exc_val, exc_tb)
-            finally:
-                db.session.info["feat_orchestrator_commit"] = False
+        except Exception as exc:  # noqa: BLE001
+            txn_error = exc
+        finally:
+            if hasattr(_feat_context, "stack") and _feat_context.stack:
+                prev = _feat_context.stack.pop()
+                _feat_context.active_feat = prev["name"]
+                _feat_context.correlation_id = prev["correlation_id"]
+                _feat_context.commit_count = prev["commit_count"]
+                _feat_context.flush_count = prev["flush_count"]
+                db.session.info["active_correlation_id"] = prev["correlation_id"]
+            else:
+                _feat_context.active_feat = None
+                _feat_context.correlation_id = None
+                _feat_context.commit_count = 0
+                _feat_context.flush_count = 0
+                db.session.info["feat_context_active"] = False
+                db.session.info["active_correlation_id"] = None
+                if hasattr(_feat_context, "stack"):
+                    _feat_context.stack = []
 
-        if hasattr(_feat_context, "stack") and _feat_context.stack:
-            prev = _feat_context.stack.pop()
-            _feat_context.active_feat = prev["name"]
-            _feat_context.correlation_id = prev["correlation_id"]
-            _feat_context.commit_count = prev["commit_count"]
-            _feat_context.flush_count = prev["flush_count"]
-            db.session.info["active_correlation_id"] = prev["correlation_id"]
-        else:
-            _feat_context.active_feat = None
-            _feat_context.correlation_id = None
-            _feat_context.commit_count = 0
-            _feat_context.flush_count = 0
-            db.session.info["feat_context_active"] = False
-            db.session.info["active_correlation_id"] = None
             db.session.info["feat_orchestrator_commit"] = False
+
+        if txn_error is not None:
+            raise txn_error
 
 def increment_commit_count():
     """Track number of commits in current FEAT and tripwire multiple commits."""
@@ -416,7 +432,7 @@ def feat_shell(feat_name: str):
                 except Exception:
                     g = None
                     request = None
-                if feat_name == "FEAT-STOR-002" and request is not None:
+                if feat_name == "FEAT-STOR-001" and request is not None:
                     payload = request.get_json(silent=True) or {}
                     class_id = getattr(getattr(g, "canonical_context", None), "class_id", None) or "NOCLASS"
                     seat_id = getattr(getattr(g, "canonical_context", None), "seat_id", None) or "NOSEAT"

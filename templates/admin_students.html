@@ -3,14 +3,9 @@
 {% block title %}Student Management{% endblock %}
 {% block page_icon %}school{% endblock %}
 
-{# Helper macro to display class label with fallback #}
-{% macro class_label(block) -%}
-{{ class_labels_by_block.get(block|upper, block|upper) }}
-{%- endmacro %}
-
 {% block extra_styles %}
 <style>
-  .block-tab-content {
+  .class-roster-content {
     min-height: 400px;
   }
 
@@ -196,7 +191,7 @@
           <div id="collapseEditClaim" class="accordion-collapse collapse mt-2" aria-labelledby="headingEditClaim"
             data-bs-parent="#helpAccordion">
             <div class="accordion-body">
-              <p><strong>What you can update:</strong> First name, last name, class section, and class assignment.</p>
+              <p><strong>What you can update:</strong> First name, last name, teacher notes, and account reset.</p>
 
               <p class="mb-2"><strong>How to update:</strong></p>
               <ol class="mb-3">
@@ -206,16 +201,9 @@
                 <li>Click <strong>Save</strong>. The changes take effect immediately</li>
               </ol>
 
-              <div class="alert alert-warning mb-3">
-                <strong><span class="material-symbols-outlined me-1">warning</span>Changing Class Assignment:</strong> If you
-                move a student to a different class period, you can choose to transfer their balance or start fresh at
-                $0.
-              </div>
-
               <div class="alert alert-info mb-0">
-                <strong><span class="material-symbols-outlined me-1">info</span>Important:</strong> If you change their name or date
-                of birth, the student will need these updated details to log in. Unclaimed students will use the new
-                info during account setup.
+                <strong><span class="material-symbols-outlined me-1">info</span>Important:</strong> If you change their name, the
+                student will need the updated first and last name when they claim or recover their account.
               </div>
             </div>
           </div>
@@ -261,8 +249,6 @@
               <div class="alert alert-danger">
                 <strong>Important:</strong> Removing a student is permanent and deletes their access to the class.
               </div>
-              <p class="mb-0">If you only need to move them, use <strong>Edit</strong> to change their class section
-                instead.</p>
             </div>
           </div>
         </div> <!-- Close fifth accordion-item -->
@@ -330,28 +316,21 @@
         </div>
       </div>
       <div class="card-body">
-        <!-- Class Content -->
-        <div class="tab-content block-tab-content" id="blockTabContent">
-          {% for block in blocks %}
-          <div class="tab-pane fade {% if loop.first %}show active{% endif %}" id="block-{{ block }}" role="tabpanel">
-            {% set block_students = students_by_block[block] %}
-
+        <!-- Current Class Content -->
+  <div class="tab-content class-roster-content" id="classRosterContent">
+          <div class="tab-pane fade show active" id="class-{{ current_class_id }}" role="tabpanel">
             <!-- Join Code Section -->
-            {% if block != "Unassigned" and join_codes_by_block.get(block|upper) %}
+            {% if current_class_join_code %}
             <div class="card border-success mb-3">
               <div class="card-header bg-success-subtle">
                 <div class="d-flex justify-content-between align-items-center">
                   <h3 class="mb-0 text-success h6 fs-4">
                     <span class="material-symbols-outlined me-2 align-middle">key</span>
-                    Join Code for {{ class_label(block) }}
+                    Join Code for {{ class_display_label }}
                   </h3>
-                  {% set block_students_list = students_by_block[block] if block in students_by_block else [] %}
-                  {% set unclaimed_students_in_block = block_students_list|rejectattr('username_hash')|list|length %}
-                  {% set unclaimed_seats_in_block = unclaimed_seats_by_block.get(block|upper, 0) %}
-                  {% set total_unclaimed_in_block = unclaimed_seats_in_block + unclaimed_students_in_block %}
-                  {% if total_unclaimed_in_block > 0 %}
+                  {% if unclaimed_seats|length > 0 %}
                   <span class="badge bg-warning text-dark">
-                    {{ total_unclaimed_in_block }} unclaimed seat(s)
+                    {{ unclaimed_seats|length }} unclaimed seat(s)
                   </span>
                   {% else %}
                   <span class="badge bg-success text-white">
@@ -366,13 +345,12 @@
                     <p class="mb-2"><strong>Students use this code to claim their accounts:</strong></p>
                     <div class="d-flex align-items-center gap-2">
                       <div class="input-group">
-                        <label for="join-code-{{ block }}" class="visually-hidden">Join code for {{ class_label(block)
-                          }}</label>
+                        <label for="join-code-current-class" class="visually-hidden">Join code for {{ class_display_label }}</label>
                         <input type="text" class="form-control form-control-lg font-monospace text-center fw-bold fs-3"
-                          id="join-code-{{ block }}" value="{{ join_codes_by_block[block|upper] }}" readonly
+                          id="join-code-current-class" value="{{ current_class_join_code }}" readonly
                           style="letter-spacing: 0.2em; background-color: white;">
                         <button class="btn btn-outline-success btn-lg join-code-copy-btn" type="button"
-                          data-block="{{ block }}" data-join-code="{{ join_codes_by_block[block|upper] }}">
+                          data-class-id="{{ current_class_id }}" data-join-code="{{ current_class_join_code }}">
                           <span class="material-symbols-outlined" style="vertical-align: middle;">content_copy</span>
                           Copy
                         </button>
@@ -396,27 +374,14 @@
             </div>
             {% endif %}
 
-            <!-- Unclaimed Seats Section - includes both TeacherBlock seats and students without username -->
-            {% set unclaimed_seats = unclaimed_seats_list_by_block.get(block|upper, []) %}
-            {% set unclaimed_students = [] %}
-            {% for student in block_students if not student.username_hash %}
-            {% set _ = unclaimed_students.append(student) %}
-            {% endfor %}
-            {% set total_unclaimed = unclaimed_seats|length + unclaimed_students|length %}
-            {% if block != "Unassigned" and total_unclaimed > 0 %}
+            <!-- Unclaimed Seats Section -->
+            {% if unclaimed_seats|length > 0 %}
             <div class="card border-warning mb-3">
               <div class="card-header bg-warning-subtle d-flex justify-content-between align-items-center">
                 <h3 class="mb-0 text-dark h6 fs-4">
                   <span class="material-symbols-outlined me-2 align-middle">pending</span>
-                  Unclaimed Seats ({{ total_unclaimed }})
+                  Unclaimed Seats ({{ unclaimed_seats|length }})
                 </h3>
-                {% if unclaimed_seats|length > 0 or unclaimed_students|length > 0 %}
-                <button type="button" class="btn btn-sm btn-outline-danger"
-                  onclick="deleteAllPendingInBlock('{{ block }}', {{ unclaimed_seats|length }}, {{ unclaimed_students|length }})">
-                  <span class="material-symbols-outlined me-1 align-middle fs-6">delete_sweep</span>
-                  Delete All Unclaimed
-                </button>
-                {% endif %}
               </div>
               <div class="card-body">
                 <p class="text-muted mb-3">These students are in your roster but haven't set up their username yet.
@@ -459,36 +424,6 @@
                         </td>
                       </tr>
                       {% endfor %}
-                      {% for student in unclaimed_students %}
-                      <tr>
-                        <td>
-                          <a href="{{ student_detail_url(student.public_id) }}"
-                            class="text-decoration-none">
-                            <span class="fw-bold">{{ student.full_name }}</span>
-                          </a>
-                        </td>
-                        <td>
-                          <small class="text-muted">-</small>
-                        </td>
-                        <td>
-                          <span class="badge bg-warning text-dark">Needs Username</span>
-                        </td>
-                        <td>
-                          <a href="{{ student_detail_url(student.public_id) }}"
-                            class="btn btn-sm btn-outline-primary"
-                            aria-label="View details for {{ student.full_name }}">
-                            <span class="material-symbols-outlined align-middle fs-6"
-                              aria-hidden="true">visibility</span>
-                          </a>
-                          <button type="button" class="btn btn-sm btn-outline-danger" data-bs-toggle="modal"
-                            data-bs-target="#deleteStudentModal" data-student-id="{{ student.public_id }}"
-                            data-student-name="{{ student.full_name }}"
-                            aria-label="Delete student {{ student.full_name }}">
-                            <span class="material-symbols-outlined align-middle fs-6" aria-hidden="true">delete</span>
-                          </button>
-                        </td>
-                      </tr>
-                      {% endfor %}
                     </tbody>
                   </table>
                 </div>
@@ -496,10 +431,6 @@
             </div>
             {% endif %}
 
-            {% set claimed_students = [] %}
-            {% for student in block_students if student.username_hash %}
-            {% set _ = claimed_students.append(student) %}
-            {% endfor %}
             {% if claimed_students %}
             <div class="card border-success mb-3">
               <div class="card-header bg-success-subtle">
@@ -510,7 +441,7 @@
               </div>
               <div class="card-body">
                 <!-- Bulk Actions Toolbar -->
-                <div class="bulk-actions-toolbar mb-3 p-3 bg-light border rounded d-none" id="bulk-toolbar-{{ block }}">
+                <div class="bulk-actions-toolbar mb-3 p-3 bg-light border rounded d-none" id="bulk-toolbar-current-class">
                   <div class="d-flex justify-content-between align-items-center">
                     <div>
                       <strong><span class="selected-count">0</span> students selected</strong>
@@ -518,18 +449,18 @@
                     <div class="d-flex gap-2">
                       <div class="dropdown">
                         <button class="btn btn-primary btn-sm dropdown-toggle" type="button"
-                          id="bulkActionsDropdown-{{ block }}" data-bs-toggle="dropdown" aria-expanded="false">
+                          id="bulkActionsDropdown-current-class" data-bs-toggle="dropdown" aria-expanded="false">
                           <span class="material-symbols-outlined align-middle fs-6">more_vert</span> Bulk Actions
                         </button>
-                        <ul class="dropdown-menu" aria-labelledby="bulkActionsDropdown-{{ block }}">
+                        <ul class="dropdown-menu" aria-labelledby="bulkActionsDropdown-current-class">
                           <li>
-                            <a class="dropdown-item" href="#" onclick="bulkTapIn('{{ block }}'); return false;">
-                              <span class="material-symbols-outlined align-middle fs-6 me-1">login</span> Tap In
+                            <a class="dropdown-item" href="#" onclick="bulkTapIn(); return false;">
+                              <span class="material-symbols-outlined align-middle fs-6 me-1">login</span> Start Work
                             </a>
                           </li>
                           <li>
-                            <a class="dropdown-item" href="#" onclick="bulkTapOut('{{ block }}'); return false;">
-                              <span class="material-symbols-outlined align-middle fs-6 me-1">logout</span> Tap Out
+                            <a class="dropdown-item" href="#" onclick="bulkTapOut(); return false;">
+                              <span class="material-symbols-outlined align-middle fs-6 me-1">logout</span> Break
                             </a>
                           </li>
                           <li>
@@ -537,9 +468,9 @@
                           </li>
                           <li>
                             <a class="dropdown-item" href="#"
-                              onclick="bulkUpdateHallPass('{{ block }}'); return false;">
+                              onclick="bulkUpdateHallPass(); return false;">
                               <span class="material-symbols-outlined align-middle fs-6 me-1">confirmation_number</span>
-                              Update Hall Passes
+                              Adjust Hall-Pass Entitlements
                             </a>
                           </li>
                           <li>
@@ -547,35 +478,27 @@
                           </li>
                           <li>
                             <a class="dropdown-item text-danger" href="#"
-                              onclick="bulkDeleteStudents('{{ block }}'); return false;">
+                              onclick="bulkDeleteStudents(); return false;">
                               <span class="material-symbols-outlined align-middle fs-6 me-1">delete</span> Delete
                               Students
                             </a>
                           </li>
                         </ul>
                       </div>
-                      <button type="button" class="btn btn-warning btn-sm" onclick="clearSelection('{{ block }}')">
+                      <button type="button" class="btn btn-warning btn-sm" onclick="clearSelection()">
                         <span class="material-symbols-outlined align-middle fs-6">cancel</span> Clear
                       </button>
                     </div>
                   </div>
                 </div>
 
-                <div class="mb-2">
-                  <button type="button" class="btn btn-sm btn-outline-danger me-2"
-                    onclick="deleteEntireBlock('{{ block }}')">
-                    <span class="material-symbols-outlined" style="vertical-align: middle;">delete_forever</span> Delete
-                    All Students in {{ class_label(block) }}
-                  </button>
-                </div>
-
                 <div class="table-responsive">
-                  <table class="table table-hover table-striped js-sortable" id="students-table-{{ block }}">
+                  <table class="table table-hover table-striped js-sortable" id="students-table-current-class">
                     <thead class="table-dark">
                       <tr>
                         <th style="width: 40px;" scope="col">
                           <input type="checkbox" class="form-check-input select-all-checkbox"
-                            onchange="toggleSelectAll('{{ block }}', this)" aria-label="Select all students">
+                            onchange="toggleSelectAll(this)" aria-label="Select all students">
                         </th>
                         <th scope="col">Name</th>
                         <th scope="col">Checking</th>
@@ -587,30 +510,32 @@
                     </thead>
                     <tbody>
                       {% for student in claimed_students %}
+                      {% set profile = student.identity_profile %}
+                      {% set student_display_name = profile.full_name if profile else student.public_id %}
                       <tr class="student-row" data-student-id="{{ student.public_id }}">
                         <td>
                           <input type="checkbox" class="form-check-input student-checkbox" value="{{ student.public_id }}"
-                            onchange="updateBulkToolbar('{{ block }}')" aria-label="Select {{ student.full_name }}">
+                            data-seat-id="{{ student.id }}"
+                            onchange="updateBulkToolbar()" aria-label="Select {{ student_display_name }}">
                         </td>
                         <td>
                           <a href="{{ student_detail_url(student.public_id) }}"
                             class="fw-bold text-decoration-none">
-                            {{ student.full_name }}
+                            {{ student_display_name }}
                           </a>
                         </td>
-                        {% set balance_key = (student.id, block) %}
-                        {% set balances = student_balances_by_block.get(balance_key, {'checking': 0, 'savings': 0,
+                        {% set balances = student_balances_by_seat_id.get(student.id, {'checking': 0, 'savings': 0,
                         'earnings': 0}) %}
                         <td class="{% if balances.checking < 0 %}text-danger fw-bold{% endif %}">
                           ${{ "%.2f"|format(balances.checking) }}
                         </td>
                         <td>${{ "%.2f"|format(balances.savings) }}</td>
                         <td class="text-center">
-                          <span class="badge bg-primary">{{ student.hall_passes }}</span>
+                          {% set hall_pass_balance = student_hall_pass_balances_by_seat_id.get(student.id, 0) %}
+                          <span class="badge bg-primary">{{ hall_pass_balance }}</span>
                         </td>
                         <td>
-                          {% set privilege_key = (student.id, block) %}
-                          {% set privileges = student_rent_privileges.get(privilege_key, []) %}
+                          {% set privileges = student_rent_privileges_by_seat_id.get(student.id, []) %}
                           {% if privileges %}
                           <div class="d-flex flex-wrap gap-1">
                             {% for privilege in privileges %}
@@ -629,14 +554,15 @@
                         <td>
                           <button class="btn btn-sm btn-outline-primary quick-action-btn me-1" data-bs-toggle="modal"
                             data-bs-target="#editStudentModal" data-student-id="{{ student.id }}"
-                            data-student-first-name="{{ student.display_first_name }}"
-                            data-student-last-name="{{ student.display_last_name or '' }}"
-                            data-student-block="{{ student.block }}">
+                            data-student-first-name="{{ profile.first_name if profile else '' }}"
+                            data-student-last-name="{{ profile.last_name if profile else '' }}"
+                            data-student-notes="{{ profile.notes if profile and profile.notes else '' }}"
+                            data-student-class-id="{{ student.class_id }}">
                             <span class="material-symbols-outlined" style="vertical-align: middle;">edit</span>
                           </button>
                           <button class="btn btn-sm btn-outline-danger quick-action-btn" data-bs-toggle="modal"
                             data-bs-target="#deleteStudentModal" data-student-id="{{ student.id }}"
-                            data-student-name="{{ student.full_name }}">
+                            data-student-name="{{ student_display_name }}">
                             <span class="material-symbols-outlined" style="vertical-align: middle;">delete</span>
                           </button>
                         </td>
@@ -650,11 +576,10 @@
             {% else %}
             <div class="alert alert-info">
               <span class="material-symbols-outlined me-2" style="vertical-align: middle;">info</span>No students have
-              claimed accounts in {{ class_label(block) }} yet.
+              claimed accounts in {{ class_display_label }} yet.
             </div>
             {% endif %}
           </div>
-          {% endfor %}
         </div>
       </div>
     </div>
@@ -764,25 +689,10 @@
                   </div>
                   <div class="row">
                     <div class="col-md-6 mb-3">
-                      <label for="block_select" class="form-label fw-bold">Class <span class="text-danger">*</span></label>
-                      <select class="form-select" id="block_select" name="block_select">
-                        <option value="">Select a block...</option>
-                        {% for block in blocks %}
-                        {% if block != "Unassigned" %}
-                        <option value="{{ block }}">{{ class_label(block) }}</option>
-                        {% endif %}
-                        {% endfor %}
-                        <option value="__CREATE_NEW__">Create New Class Section</option>
-                      </select>
-                      <input type="hidden" id="block" name="block" required>
-                      <div class="form-text">Select an existing class or create a new one</div>
-                      <div id="new_block_input" class="mt-2" style="display: none;">
-                        <input type="text" class="form-control" id="new_block_name"
-                          maxlength="10"
-                          placeholder="Enter new class section name (e.g., Period 1, Block A)"
-                          aria-label="New class section name">
-                        <div class="form-text">Enter a unique name for the new class section (10 characters max)</div>
-                      </div>
+                      <label class="form-label fw-bold">Class</label>
+                      <div class="form-control bg-light">{{ class_display_label }}</div>
+                      <input type="hidden" id="block_select" name="block_select" value="{{ current_class_section or current_class_id }}">
+                      <div class="form-text">Student will be added to the active class.</div>
                     </div>
                   </div>
                   <div class="row">
@@ -849,50 +759,10 @@
                   <div class="form-text">Stored as the student's encrypted full last name</div>
                 </div>
               </div>
-            </div>
-          </div>
-
-          <!-- Class Assignment -->
-          <div class="card border-primary mb-3">
-            <div class="card-header bg-primary-subtle text-primary">
-              <h3 class="mb-0 text-white h6"><span class="material-symbols-outlined me-2"
-                  style="vertical-align: middle;">calendar_today</span>Class Assignment</h3>
-            </div>
-            <div class="card-body">
-              <p class="text-muted small mb-2">Select all blocks this student attends (can select multiple):</p>
-              <div class="row">
-                {% for block in blocks %}
-                {% if block != "Unassigned" %}
-                <div class="col-6 col-md-4 mb-2">
-                  <div class="form-check">
-                    <input class="form-check-input block-checkbox" type="checkbox" name="blocks" value="{{ block }}"
-                      id="edit_block_{{ block }}">
-                    <label class="form-check-label" for="edit_block_{{ block }}">
-                      {{ class_label(block) }}
-                    </label>
-                  </div>
-                </div>
-                {% endif %}
-                {% endfor %}
-              </div>
-              <div class="form-text">At least one block must be selected (uncheck all to mark as unassigned)</div>
-
-              <!-- Balance Transfer Options (shown when blocks change) -->
-              <div id="balance_transfer_section" class="alert alert-info mt-3 mb-0" style="display: none;">
-                <h3 class="mb-2 h6"><span
-                    class="material-symbols-outlined align-middle me-1 fs-6">account_balance</span>Balance Transfer
-                  Options</h3>
-                <p class="mb-3 small">For each new class period, choose whether to transfer the student's existing
-                  balance or start fresh:</p>
-
-                <div id="new_periods_balance_options">
-                  <!-- Dynamically populated with balance transfer options for each new period -->
-                </div>
-
-                <div class="alert alert-warning mb-0 mt-2" style="font-size: 0.875rem;">
-                  <strong>Note:</strong> If transferring balance, transactions will be moved from the old period(s) to
-                  the selected new period.
-                </div>
+              <div class="mb-0">
+                <label for="edit_notes" class="form-label fw-bold">Notes</label>
+                <textarea class="form-control" id="edit_notes" name="notes" rows="3"
+                  placeholder="Optional teacher-facing note"></textarea>
               </div>
             </div>
           </div>
@@ -1122,25 +992,12 @@
         const studentId = button.getAttribute('data-student-id');
         const firstName = button.getAttribute('data-student-first-name');
         const lastName = button.getAttribute('data-student-last-name');
-        const blocksStr = button.getAttribute('data-student-block');
+        const notes = button.getAttribute('data-student-notes') || '';
         // Populate basic fields
         editModal.querySelector('#edit_student_id').value = studentId;
         editModal.querySelector('#edit_first_name').value = firstName;
         editModal.querySelector('#edit_last_name').value = lastName;
-
-        // Uncheck all blocks first
-        editModal.querySelectorAll('.block-checkbox').forEach(cb => cb.checked = false);
-
-        // Check the appropriate blocks (handle comma-separated list)
-        if (blocksStr) {
-          const blocks = blocksStr.split(',').map(b => b.trim().toUpperCase());
-          blocks.forEach(block => {
-            const checkbox = editModal.querySelector(`#edit_block_${block.toLowerCase()}`);
-            if (checkbox) {
-              checkbox.checked = true;
-            }
-          });
-        }
+        editModal.querySelector('#edit_notes').value = notes;
 
         // Reset login checkbox and warning
         const resetLoginCheckbox = editModal.querySelector('#edit_reset_login');
@@ -1152,15 +1009,6 @@
           }
         }
 
-        // Hide balance transfer section initially
-        const balanceTransferSection = editModal.querySelector('#balance_transfer_section');
-        if (balanceTransferSection) {
-          balanceTransferSection.style.display = 'none';
-        }
-
-        // Store original blocks for comparison
-        const originalBlocks = blocksStr ? blocksStr.split(',').map(b => b.trim().toUpperCase()) : [];
-        editModal.setAttribute('data-original-blocks', JSON.stringify(originalBlocks));
       });
 
       // Show/hide warning when reset login checkbox is toggled
@@ -1172,123 +1020,6 @@
         });
       }
 
-      // Monitor block checkbox changes for balance transfer options
-      const blockCheckboxes = editModal.querySelectorAll('.block-checkbox');
-      blockCheckboxes.forEach(checkbox => {
-        checkbox.addEventListener('change', function () {
-          updateBalanceTransferOptions();
-        });
-      });
-
-      function updateBalanceTransferOptions() {
-        const balanceTransferSection = editModal.querySelector('#balance_transfer_section');
-        const newPeriodsBalanceOptions = editModal.querySelector('#new_periods_balance_options');
-
-        if (!balanceTransferSection || !newPeriodsBalanceOptions) return;
-
-        // Get original blocks
-        const originalBlocksStr = editModal.getAttribute('data-original-blocks');
-        const originalBlocks = originalBlocksStr ? JSON.parse(originalBlocksStr) : [];
-
-        // Get currently selected blocks
-        const selectedBlocks = Array.from(editModal.querySelectorAll('.block-checkbox:checked'))
-          .map(cb => cb.value.toUpperCase());
-
-        // Determine added and removed blocks
-        const addedBlocks = selectedBlocks.filter(b => !originalBlocks.includes(b));
-        const removedBlocks = originalBlocks.filter(b => !selectedBlocks.includes(b));
-
-        // Show balance transfer section only if blocks are being added
-        if (addedBlocks.length > 0) {
-          // Clear any existing options
-          newPeriodsBalanceOptions.textContent = '';
-
-          // Build DOM elements for each new period's balance options
-          addedBlocks.forEach(block => {
-            const fromText = removedBlocks.length > 0
-              ? `from ${removedBlocks.join(', ')}`
-              : 'from existing period(s)';
-
-            const container = document.createElement('div');
-            container.className = 'mb-3 pb-3 border-bottom';
-
-            const strongEl = document.createElement('strong');
-            strongEl.className = 'd-block mb-2';
-
-            const iconSpan = document.createElement('span');
-            iconSpan.className = 'material-symbols-outlined align-middle me-1 fs-6';
-            iconSpan.textContent = 'folder';
-            strongEl.appendChild(iconSpan);
-
-            const blockTextNode = document.createTextNode(' ' + block);
-            strongEl.appendChild(blockTextNode);
-
-            container.appendChild(strongEl);
-
-            const startFreshDiv = document.createElement('div');
-            startFreshDiv.className = 'form-check mb-1';
-
-            const startFreshInput = document.createElement('input');
-            startFreshInput.className = 'form-check-input';
-            startFreshInput.type = 'radio';
-            startFreshInput.name = `balance_action_${block}`;
-            startFreshInput.id = `balance_start_fresh_${block}`;
-            startFreshInput.value = 'start_fresh';
-            startFreshInput.checked = true;
-
-            const startFreshLabel = document.createElement('label');
-            startFreshLabel.className = 'form-check-label';
-            startFreshLabel.htmlFor = `balance_start_fresh_${block}`;
-
-            const startFreshStrong = document.createElement('strong');
-            startFreshStrong.textContent = 'Start Fresh';
-            startFreshLabel.appendChild(startFreshStrong);
-
-            startFreshLabel.appendChild(
-              document.createTextNode(' — Student begins with $0 in this period (recommended)')
-            );
-
-            startFreshDiv.appendChild(startFreshInput);
-            startFreshDiv.appendChild(startFreshLabel);
-
-            container.appendChild(startFreshDiv);
-
-            const transferDiv = document.createElement('div');
-            transferDiv.className = 'form-check';
-
-            const transferInput = document.createElement('input');
-            transferInput.className = 'form-check-input';
-            transferInput.type = 'radio';
-            transferInput.name = `balance_action_${block}`;
-            transferInput.id = `balance_transfer_${block}`;
-            transferInput.value = 'transfer';
-
-            const transferLabel = document.createElement('label');
-            transferLabel.className = 'form-check-label';
-            transferLabel.htmlFor = `balance_transfer_${block}`;
-
-            const transferStrong = document.createElement('strong');
-            transferStrong.textContent = 'Transfer Balance';
-            transferLabel.appendChild(transferStrong);
-
-            transferLabel.appendChild(
-              document.createTextNode(` — Move all transactions ${fromText}`)
-            );
-
-            transferDiv.appendChild(transferInput);
-            transferDiv.appendChild(transferLabel);
-
-            container.appendChild(transferDiv);
-
-            newPeriodsBalanceOptions.appendChild(container);
-          });
-
-          balanceTransferSection.style.display = 'block';
-        } else {
-          balanceTransferSection.style.display = 'none';
-          newPeriodsBalanceOptions.textContent = '';
-        }
-      }
     }
 
     // Delete Student Modal
@@ -1535,17 +1266,21 @@
     });
   }
 
-  function toggleSelectAll(block, checkbox) {
-    const table = document.getElementById(`students-table-${block}`);
-    const checkboxes = table.querySelectorAll('.student-checkbox');
-    checkboxes.forEach(cb => cb.checked = checkbox.checked);
-    updateBulkToolbar(block);
+  function currentClassStudentTable() {
+    return document.getElementById('students-table-current-class');
   }
 
-  function updateBulkToolbar(block) {
-    const table = document.getElementById(`students-table-${block}`);
+  function toggleSelectAll(checkbox) {
+    const table = currentClassStudentTable();
+    const checkboxes = table.querySelectorAll('.student-checkbox');
+    checkboxes.forEach(cb => cb.checked = checkbox.checked);
+    updateBulkToolbar();
+  }
+
+  function updateBulkToolbar() {
+    const table = currentClassStudentTable();
     const checkboxes = table.querySelectorAll('.student-checkbox:checked');
-    const toolbar = document.getElementById(`bulk-toolbar-${block}`);
+    const toolbar = document.getElementById('bulk-toolbar-current-class');
     const count = checkboxes.length;
 
     if (count > 0) {
@@ -1556,16 +1291,16 @@
     }
   }
 
-  function clearSelection(block) {
-    const table = document.getElementById(`students-table-${block}`);
+  function clearSelection() {
+    const table = currentClassStudentTable();
     const checkboxes = table.querySelectorAll('.student-checkbox');
     checkboxes.forEach(cb => cb.checked = false);
     table.querySelector('.select-all-checkbox').checked = false;
-    updateBulkToolbar(block);
+    updateBulkToolbar();
   }
 
-  function bulkDeleteStudents(block) {
-    const table = document.getElementById(`students-table-${block}`);
+  function bulkDeleteStudents() {
+    const table = currentClassStudentTable();
     const checkboxes = table.querySelectorAll('.student-checkbox:checked');
     const studentIds = Array.from(checkboxes).map(cb => cb.value);
 
@@ -1611,19 +1346,19 @@
     });
   }
 
-  function bulkTapIn(block) {
-    const table = document.getElementById(`students-table-${block}`);
+  function bulkTapIn() {
+    const table = currentClassStudentTable();
     const checkboxes = table.querySelectorAll('.student-checkbox:checked');
-    const studentIds = Array.from(checkboxes).map(cb => parseInt(cb.value));
+    const seatIds = Array.from(checkboxes).map(cb => parseInt(cb.dataset.seatId)).filter(Number.isInteger);
 
-    if (studentIds.length === 0) {
+    if (seatIds.length === 0) {
       alert('Please select at least one student.');
       return;
     }
 
-    const count = studentIds.length;
+    const count = seatIds.length;
     const confirmation = confirm(
-      `Are you sure you want to tap in ${count} selected student(s) in Block ${block.toUpperCase()}?`
+      `Are you sure you want to start work for ${count} selected student(s)?`
     );
 
     if (!confirmation) return;
@@ -1636,15 +1371,14 @@
         'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content')
       },
       body: JSON.stringify({
-        student_ids: studentIds,
-        period: block.toUpperCase()
+        seat_ids: seatIds
       })
     })
       .then(response => response.json())
       .then(data => {
         if (data.status === 'success') {
-          alert(data.message || `Successfully tapped in ${count} student(s).`);
-          clearSelection(block);
+          alert(data.message || `Successfully started work for ${count} student(s).`);
+          clearSelection();
           // Reload the page so the student table reflects updated work status
           location.reload();
           window.location.reload();
@@ -1654,23 +1388,23 @@
       })
       .catch(error => {
         console.error('Error:', error);
-        alert('Network error occurred while tapping in students.');
+        alert('Network error occurred while starting work for students.');
       });
   }
 
-  function bulkTapOut(block) {
-    const table = document.getElementById(`students-table-${block}`);
+  function bulkTapOut() {
+    const table = currentClassStudentTable();
     const checkboxes = table.querySelectorAll('.student-checkbox:checked');
-    const studentIds = Array.from(checkboxes).map(cb => parseInt(cb.value));
+    const seatIds = Array.from(checkboxes).map(cb => parseInt(cb.dataset.seatId)).filter(Number.isInteger);
 
-    if (studentIds.length === 0) {
+    if (seatIds.length === 0) {
       alert('Please select at least one student.');
       return;
     }
 
-    const count = studentIds.length;
+    const count = seatIds.length;
     const confirmation = confirm(
-      `Are you sure you want to tap out ${count} selected student(s) in Block ${block.toUpperCase()}?`
+      `Are you sure you want to mark ${count} selected student(s) as on break?`
     );
 
     if (!confirmation) return;
@@ -1683,9 +1417,8 @@
         'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content')
       },
       body: JSON.stringify({
-        student_ids: studentIds,
-        period: block.toUpperCase(),
-        reason: 'Teacher bulk stop work'
+        seat_ids: seatIds,
+        reason: 'Teacher bulk break'
       })
     })
       .then(response => response.json())
@@ -1693,13 +1426,13 @@
         if (data.status === 'success') {
           let message = data.message;
           if (data.tapped_out && data.tapped_out.length > 0) {
-            message += '\n\nTapped out:\n' + data.tapped_out.join(', ');
+            message += '\n\nMarked on break:\n' + data.tapped_out.join(', ');
           }
           if (data.already_inactive && data.already_inactive.length > 0) {
             message += '\n\nAlready inactive:\n' + data.already_inactive.join(', ');
           }
           alert(message);
-          clearSelection(block);
+          clearSelection();
           window.location.reload();
         } else {
           alert('Error: ' + data.message);
@@ -1707,12 +1440,12 @@
       })
       .catch(error => {
         console.error('Error:', error);
-        alert('Network error occurred while tapping out students.');
+        alert('Network error occurred while marking students on break.');
       });
   }
 
-  function bulkUpdateHallPass(block) {
-    const table = document.getElementById(`students-table-${block}`);
+  function bulkUpdateHallPass() {
+    const table = currentClassStudentTable();
     const checkboxes = table.querySelectorAll('.student-checkbox:checked');
     const studentIds = Array.from(checkboxes).map(cb => parseInt(cb.value));
 
@@ -1723,11 +1456,10 @@
 
     const count = studentIds.length;
     const action = prompt(
-      `Update hall passes for ${count} student(s):\n\n` +
+      `Adjust hall-pass entitlements for ${count} student(s):\n\n` +
       `Enter:\n` +
-      `• A number to SET hall passes to that amount (e.g., "5")\n` +
-      `• +N to ADD passes (e.g., "+3")\n` +
-      `• -N to SUBTRACT passes (e.g., "-2")`
+      `• +N to ADD new hall-pass grant events (e.g., "+3")\n` +
+      `• -N to REMOVE passes by reversing unconsumed grant correlations (e.g., "-2")`
     );
 
     if (!action) return;
@@ -1739,20 +1471,20 @@
       updateType = 'add';
       value = parseInt(trimmedAction.substring(1));
     } else if (trimmedAction.startsWith('-')) {
-      updateType = 'subtract';
+      updateType = 'remove';
       value = parseInt(trimmedAction.substring(1));
     } else {
-      updateType = 'set';
-      value = parseInt(trimmedAction);
+      alert('Enter +N to add passes or -N to remove passes. Setting a balance directly is not supported.');
+      return;
     }
 
-    if (isNaN(value) || value < 0) {
-      alert('Invalid input. Please enter a valid number.');
+    if (isNaN(value) || value <= 0) {
+      alert('Invalid input. Please enter a positive number.');
       return;
     }
 
     // Send bulk update request
-    fetch('/admin/students/bulk-update-hall-passes', {
+    fetch('/admin/students/bulk-adjust-hall-pass-entitlements', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -1775,55 +1507,8 @@
       })
       .catch(error => {
         console.error('Error:', error);
-        alert('Network error occurred while updating hall passes.');
+        alert('Network error occurred while adjusting hall-pass entitlements.');
       });
-  }
-
-  function deleteEntireBlock(block) {
-    const table = document.getElementById(`students-table-${block}`);
-    const allRows = table.querySelectorAll('.student-row');
-    const count = allRows.length;
-
-    if (count === 0) {
-      alert('No students in this block to delete.');
-      return;
-    }
-
-    const upperBlock = String(block).toUpperCase();
-    const warning = `DANGER! YOU ARE ABOUT TO PERMANENTLY AND IRREVERSIBLY DELETE ALL ${count} STUDENTS IN A CLASS LABELED ${upperBlock} ALONG WITH ALL ASSOCIATED DATA.`;
-
-    showTimedDeleteGate({
-      title: `Confirm Class Deletion (${upperBlock})`,
-      warning,
-      expectedPhrase: `DELETE BLOCK ${upperBlock}`,
-    }).then(gatePayload => {
-      if (!gatePayload) return;
-
-      fetch('/admin/students/delete-block', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content')
-        },
-        body: JSON.stringify({
-          block: block,
-          ...gatePayload
-        })
-      })
-        .then(response => response.json())
-        .then(data => {
-          if (data.status === 'success') {
-            alert(data.message);
-            location.reload();
-          } else {
-            alert('Error: ' + data.message);
-          }
-        })
-        .catch(error => {
-          console.error('Error:', error);
-          alert('Network error occurred while deleting block.');
-        });
-    });
   }
 
   function deletePendingStudent(teacherBlockId, studentName) {
@@ -1859,158 +1544,7 @@
       });
   }
 
-  function deleteAllPendingInBlock(block, unclaimedSeatsCount, unclaimedStudentsCount) {
-    const totalCount = unclaimedSeatsCount + unclaimedStudentsCount;
-    const confirmation = confirm(
-      `WARNING: You are about to delete ALL ${totalCount} unclaimed roster entries in Block ${block.toUpperCase()}.\n\n` +
-      `This includes:\n` +
-      `• ${unclaimedSeatsCount} unclaimed seat(s) (TeacherBlock entries)\n` +
-      `• ${unclaimedStudentsCount} legacy unclaimed student(s) (Students without usernames)\n\n` +
-      `These are students who have been added to your roster but haven't claimed their accounts yet.\n\n` +
-      `Students who have already claimed their accounts will NOT be affected.\n\n` +
-      `This action CANNOT be undone!\n\n` +
-      `Are you sure you want to continue?`
-    );
-
-    if (!confirmation) return;
-
-    // Helper function to delete a type of unclaimed students
-    const deleteUnclaimedType = (endpoint, errorPrefix) => {
-      return fetch(endpoint, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content')
-        },
-        body: JSON.stringify({ block: block })
-      })
-        .then(response => response.json())
-        .then(data => {
-          if (data.status === 'success') {
-            return data.deleted_count;
-          } else {
-            throw new Error(`${errorPrefix}: ${data.message}`);
-          }
-        });
-    };
-
-    // Use Promise.all to delete both types in parallel
-    const promises = [];
-
-    // Delete pending TeacherBlock entries if any
-    if (unclaimedSeatsCount > 0) {
-      promises.push(deleteUnclaimedType('/admin/pending-students/bulk-delete', 'Pending students'));
-    }
-
-    // Delete legacy unclaimed students if any
-    if (unclaimedStudentsCount > 0) {
-      promises.push(deleteUnclaimedType('/admin/legacy-unclaimed-students/bulk-delete', 'Legacy unclaimed students'));
-    }
-
-    // Wait for all deletions to complete
-    Promise.all(promises)
-      .then(deletedCounts => {
-        const totalDeleted = deletedCounts.reduce((sum, count) => sum + count, 0);
-        alert(`Successfully deleted ${totalDeleted} unclaimed student(s) from Block ${block.toUpperCase()}`);
-        location.reload();
-      })
-      .catch(error => {
-        console.error('Error:', error);
-        alert('Error: ' + error.message);
-        location.reload(); // Reload anyway to show current state
-      });
-  }
-
-  function tapOutAllBlock(block) {
-    const table = document.getElementById(`students-table-${block}`);
-    const allRows = table.querySelectorAll('.student-row');
-    const count = allRows.length;
-
-    if (count === 0) {
-      alert('No students in this block to tap out.');
-      return;
-    }
-
-    const confirmation = confirm(
-      `Are you sure you want to tap out ALL active students in Block ${block.toUpperCase()}?\n\n` +
-      `This will mark all currently active students as inactive for this period.`
-    );
-
-    if (!confirmation) return;
-
-    // Call the tap-out API with tap_out_all flag
-    fetch('/admin/tap-out-students', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content')
-      },
-      body: JSON.stringify({
-        tap_out_all: true,
-        period: block.toUpperCase(),
-        reason: 'Teacher tap-out (entire block)'
-      })
-    })
-      .then(response => response.json())
-      .then(data => {
-        if (data.status === 'success') {
-          let message = data.message;
-          if (data.tapped_out && data.tapped_out.length > 0) {
-            message += '\n\nTapped out:\n' + data.tapped_out.join(', ');
-          }
-          if (data.already_inactive && data.already_inactive.length > 0) {
-            message += '\n\nAlready inactive:\n' + data.already_inactive.join(', ');
-          }
-          if (data.errors && data.errors.length > 0) {
-            message += '\n\nErrors:\n' + data.errors.join('\n');
-          }
-          alert(message);
-        } else {
-          alert('Error: ' + data.message);
-        }
-      })
-      .catch(error => {
-        console.error('Error:', error);
-        alert('Network error occurred while tapping out block.');
-      });
-  }
-
   // (Tap toggle controls moved to Attendance page)
-
-  // -------------------- CREATE NEW CLASS SECTION --------------------
-
-  document.addEventListener('DOMContentLoaded', function () {
-    const blockSelect = document.getElementById('block_select');
-    const blockHidden = document.getElementById('block');
-    const newBlockInput = document.getElementById('new_block_input');
-    const newBlockName = document.getElementById('new_block_name');
-
-    if (blockSelect && blockHidden && newBlockInput && newBlockName) {
-      blockSelect.addEventListener('change', function () {
-        const selectedValue = this.value;
-
-        if (selectedValue === '__CREATE_NEW__') {
-          // Show the new block input field
-          newBlockInput.style.display = 'block';
-          newBlockName.required = true;
-          blockHidden.value = ''; // Clear hidden field until user types
-
-          // Update hidden field as user types
-          newBlockName.addEventListener('input', function () {
-            blockHidden.value = this.value.trim().toUpperCase();
-          });
-        } else {
-          // Hide the new block input field
-          newBlockInput.style.display = 'none';
-          newBlockName.required = false;
-          newBlockName.value = '';
-
-          // Set hidden field to selected value
-          blockHidden.value = selectedValue.toUpperCase();
-        }
-      });
-    }
-  });
 
   document.addEventListener('DOMContentLoaded', function () {
     const modalEl = document.getElementById('classTimezoneModal');

@@ -3,7 +3,7 @@ import logging
 from flask import g
 from sqlalchemy.exc import IntegrityError
 from app import db
-from app.models import Transaction, TransactionStatus, BalanceCache, AccountType, ClassEconomy, Seat
+from app.models import Transaction, TransactionStatus, LedgerBalanceSnapshot, AccountType, ClassEconomy, Seat
 from app.utils.time import utc_now
 from app.utils.seat_scope import transaction_scope_filter
 
@@ -75,10 +75,10 @@ def settle_balances(seat_id: int, class_id: str) -> None:
     Raises RuntimeError if called during a read-only request (g.read_only=True).
 
     This function:
-    1. Locks the BalanceCache row for the seat/class context (creating if needed).
+    1. Locks the LedgerBalanceSnapshot row for the seat/class context (creating if needed).
     2. Fetches all PENDING transactions for this context.
     3. Aggregates their amounts by account type.
-    4. Updates the BalanceCache with the net changes.
+    4. Updates the LedgerBalanceSnapshot with the net changes.
     5. Transitions transactions to POSTED (or VOID if marked as void).
     
     Args:
@@ -106,16 +106,16 @@ def settle_balances(seat_id: int, class_id: str) -> None:
 
         scope_filter = transaction_scope_filter(Transaction, resolved_seat_id)
         cache_was_created = False
-        # 1. Lock (or Create) BalanceCache Row
+        # 1. Lock (or Create) LedgerBalanceSnapshot Row
         # ---------------------------------------------------------
         # We must lock the cache row to prevent concurrent settlements
         # or balance updates for the same seat/class.
         cache = None
         cache = (
-            BalanceCache.query
+            LedgerBalanceSnapshot.query
             .filter(
-                BalanceCache.class_id == canonical_class_id,
-                BalanceCache.seat_id == resolved_seat_id,
+                LedgerBalanceSnapshot.class_id == canonical_class_id,
+                LedgerBalanceSnapshot.seat_id == resolved_seat_id,
             )
             .with_for_update()
             .first()
@@ -123,7 +123,7 @@ def settle_balances(seat_id: int, class_id: str) -> None:
         if not cache:
             try:
                 with db.session.begin_nested():
-                    cache = BalanceCache(
+                    cache = LedgerBalanceSnapshot(
                         seat_id=resolved_seat_id,
                         class_id=canonical_class_id,
                     )
@@ -131,12 +131,12 @@ def settle_balances(seat_id: int, class_id: str) -> None:
                     db.session.flush()
                     cache_was_created = True
             except IntegrityError:
-                logger.warning("Race condition creating BalanceCache, retrying fetch")
+                logger.warning("Race condition creating LedgerBalanceSnapshot, retrying fetch")
                 cache = (
-                    BalanceCache.query
+                    LedgerBalanceSnapshot.query
                     .filter(
-                        BalanceCache.class_id == canonical_class_id,
-                        BalanceCache.seat_id == resolved_seat_id,
+                        LedgerBalanceSnapshot.class_id == canonical_class_id,
+                        LedgerBalanceSnapshot.seat_id == resolved_seat_id,
                     )
                     .with_for_update()
                     .first()

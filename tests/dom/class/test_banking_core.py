@@ -1,0 +1,252 @@
+
+from decimal import Decimal
+import importlib.util
+from pathlib import Path
+import pytest
+from app.feats.base import FEATContext
+from app.models import LedgerBalanceSnapshot as BalanceCache, Transaction, TransactionStatus
+from app.extensions import db
+from app.utils.banking import settle_balances, settle_pending_transaction_contexts
+from app.services.ledger_service import get_available_balances
+from tests.helpers.classroom_initializer import initialize
+
+
+def test_DOM_CLASS_001__ledger_flow_posts_pending_transaction(client, app):
+    """Test full flow: Create PENDING -> Settle -> Verify Cache."""
+    with FEATContext("FEAT-IDEN-001", idempotency_key="banking-core:test-ledger-flow"):
+        classroom = initialize("chemistry_p1", app)
+        economy = classroom.economy
+        seat = classroom.students[0].seat
+        student_user = classroom.students[0].user
+        class_id, seat_id = classroom.class_id, seat.id
+
+        tx = Transaction(
+            user_id=student_user.id,
+            class_id=class_id,
+            seat_id=seat.id,
+            target_seat_id=seat.id,
+            actor_seat_id=seat.id,
+            mechanism="self",
+            amount=Decimal("10.50"),
+            account_type="checking",
+            status=TransactionStatus.PENDING,
+            description="Initial deposit",
+        )
+        db.session.add(tx)
+        db.session.flush()
+
+        assert tx.status == TransactionStatus.PENDING
+        assert tx.posted_at is None
+
+        bal_checking, _ = get_available_balances(seat_id, class_id)
+        assert bal_checking == Decimal("10.50")
+
+        settle_balances(seat_id, class_id)
+        db.session.flush()
+
+        db.session.expire_all()
+        tx = db.session.get(Transaction, tx.id)
+        assert tx.status == TransactionStatus.POSTED
+        assert tx.posted_at is not None
+
+        cache = BalanceCache.query.filter_by(seat_id=seat_id, class_id=class_id).first()
+        assert cache is not None
+        assert cache.posted_checking_balance_cents == 1050
+        assert cache.last_settlement_at is not None
+
+def test_DOM_CLASS_001__void_pending_transaction_does_not_create_reversal(client, app):
+    """Test voiding a PENDING transaction (no reversal)."""
+    with FEATContext("FEAT-IDEN-001", idempotency_key="banking-core:test-void-pending"):
+        classroom = initialize("chemistry_p1", app)
+        economy = classroom.economy
+        seat = classroom.students[0].seat
+        student_user = classroom.students[0].user
+        class_id, seat_id = classroom.class_id, seat.id
+
+        tx = Transaction(
+            user_id=student_user.id,
+            class_id=class_id,
+            seat_id=seat.id,
+            target_seat_id=seat.id,
+            actor_seat_id=seat.id,
+            mechanism="self",
+            amount=Decimal("50.00"),
+            status=TransactionStatus.PENDING,
+        )
+        db.session.add(tx)
+        db.session.flush()
+
+        tx.is_void = True
+        db.session.flush()
+
+        bal, _ = get_available_balances(seat_id, class_id)
+        assert bal == Decimal("0.00")
+
+        settle_balances(seat_id, class_id)
+        db.session.flush()
+
+        reversals = Transaction.query.filter_by(original_transaction_id=tx.id).all()
+        assert len(reversals) == 0
+
+        db.session.expire_all()
+        tx = db.session.get(Transaction, tx.id)
+        assert tx.status == TransactionStatus.VOID
+        assert tx.voided_at is not None
+
+        cache = BalanceCache.query.filter_by(seat_id=seat_id, class_id=class_id).first()
+        if cache:
+            assert cache.posted_checking_balance_cents == 0
+
+def test_DOM_CLASS_001__void_posted_transaction_creates_reversal(client, app):
+    """Test voiding a POSTED transaction (creates reversal)."""
+    with FEATContext("FEAT-IDEN-001", idempotency_key="banking-core:test-void-posted"):
+        classroom = initialize("chemistry_p1", app)
+        economy = classroom.economy
+        seat = classroom.students[0].seat
+        student_user = classroom.students[0].user
+        class_id, seat_id = classroom.class_id, seat.id
+
+        tx = Transaction(
+            user_id=student_user.id,
+            class_id=class_id,
+            seat_id=seat.id,
+            target_seat_id=seat.id,
+            actor_seat_id=seat.id,
+            mechanism="self",
+            amount=Decimal("100.00"),
+            status=TransactionStatus.PENDING,
+        )
+        db.session.add(tx)
+        db.session.flush()
+
+        settle_balances(seat_id, class_id)
+        db.session.flush()
+
+        db.session.expire_all()
+        tx = db.session.get(Transaction, tx.id)
+        assert tx.status == TransactionStatus.POSTED
+
+        tx.is_void = True
+
+        reversal = Transaction(
+            user_id=student_user.id,
+            class_id=class_id,
+            seat_id=seat.id,
+            target_seat_id=seat.id,
+            actor_seat_id=seat.id,
+            mechanism="self",
+            amount=-tx.amount,
+            status=TransactionStatus.PENDING,
+            original_transaction_id=tx.id,
+        )
+        db.session.add(reversal)
+        db.session.flush()
+
+        bal_after_void, _ = get_available_balances(seat_id, class_id)
+        assert bal_after_void == Decimal("0.00")
+
+        settle_balances(seat_id, class_id)
+        db.session.flush()
+
+        db.session.expire_all()
+        reversal = db.session.get(Transaction, reversal.id)
+        assert reversal.status == TransactionStatus.POSTED
+
+        cache = BalanceCache.query.filter_by(seat_id=seat_id, class_id=class_id).first()
+        assert cache.posted_checking_balance_cents == 0
+
+
+def test_DOM_CLASS_001__settlement_sweep_processes_each_pending_context_once(client, app):
+    with FEATContext("FEAT-IDEN-001", idempotency_key="banking-core:test-settlement-sweep"):
+        student_one_class = initialize("chemistry_p1", app)
+        student_two_class = initialize("biology_block_a", app)
+        student_one_seat = student_one_class.students[0].seat
+        student_one_user = student_one_class.students[0].user
+        student_two_seat = student_two_class.students[0].seat
+        student_two_user = student_two_class.students[0].user
+        class_id_one = student_one_class.class_id
+        class_id_two = student_two_class.class_id
+
+        db.session.add_all([
+            Transaction(
+                user_id=student_one_user.id,
+                class_id=class_id_one,
+                seat_id=student_one_seat.id,
+                target_seat_id=student_one_seat.id,
+                actor_seat_id=student_one_seat.id,
+                mechanism="self",
+                amount=Decimal("12.34"),
+                account_type="checking",
+                status=TransactionStatus.PENDING,
+                type="deposit",
+                description="Pending A",
+            ),
+            Transaction(
+                user_id=student_one_user.id,
+                class_id=class_id_one,
+                seat_id=student_one_seat.id,
+                target_seat_id=student_one_seat.id,
+                actor_seat_id=student_one_seat.id,
+                mechanism="self",
+                amount=Decimal("1.66"),
+                account_type="savings",
+                status=TransactionStatus.PENDING,
+                type="deposit",
+                description="Pending A savings",
+            ),
+            Transaction(
+                user_id=student_two_user.id,
+                class_id=class_id_two,
+                seat_id=student_two_seat.id,
+                target_seat_id=student_two_seat.id,
+                actor_seat_id=student_two_seat.id,
+                mechanism="self",
+                amount=Decimal("9.99"),
+                account_type="checking",
+                status=TransactionStatus.PENDING,
+                type="deposit",
+                description="Pending B",
+            ),
+        ])
+        db.session.flush()
+
+        summary = settle_pending_transaction_contexts()
+
+        assert summary == {"settled_contexts": 0, "failed_contexts": 2}
+
+    posted_statuses = {
+        (tx.user_id, tx.class_id, tx.account_type): tx.status
+        for tx in Transaction.query.all()
+    }
+    assert posted_statuses[(student_one_user.id, class_id_one, "checking")] == TransactionStatus.PENDING
+    assert posted_statuses[(student_one_user.id, class_id_one, "savings")] == TransactionStatus.PENDING
+    assert posted_statuses[(student_two_user.id, class_id_two, "checking")] == TransactionStatus.PENDING
+
+
+def test_DOM_CLASS_001__settlement_script_returns_nonzero_when_failures(monkeypatch):
+    script_path = Path(__file__).resolve().parents[3] / "scripts" / "settle_pending_transactions.py"
+    spec = importlib.util.spec_from_file_location("settle_pending_transactions_script", script_path)
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+
+    class DummyAppContext:
+        def __enter__(self):
+            return None
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    class DummyApp:
+        def app_context(self):
+            return DummyAppContext()
+
+    monkeypatch.setattr(module, "create_app", lambda: DummyApp())
+    monkeypatch.setattr(
+        module,
+        "settle_pending_transaction_contexts",
+        lambda limit=None: {"settled_contexts": 1, "failed_contexts": 2},
+    )
+    monkeypatch.setattr(module, "parse_args", lambda: type("Args", (), {"limit": None})())
+
+    assert module.main() == 1

@@ -2,7 +2,7 @@
 
 | Reference Number | Version | Effective Date | Supersedes | Authority Level |
 |------------------|---------|----------------|------------|-----------------|
-| DOM-CORE-002     | 1.4     | 2026-07-10     | 1.3        | Constitutional |
+| DOM-CORE-002     | 1.6     | 2026-07-15     | 1.5        | Constitutional |
 
 ---
 
@@ -157,8 +157,15 @@ The system guarantees:
 identity. No separate `system_admins`, `admin_credentials`, or
 `system_admin_credentials` table may define identity authority.
 
-**Compatibility bridge rule:** During the v1-to-v2 runtime cutover, implementation
-tables such as `teacher_credentials` and `system_admin_credentials` SHALL be unified as one table `passkey_credentials` keyed by `user_id`. Any found instances that use the legacy split tables must be fixed in place before moving on.
+**Migration note:** Legacy split credential tables such as `teacher_credentials` and
+`system_admin_credentials` are migration artifacts only. They do not define runtime
+authority in v2 and must not be treated as canonical schema surfaces.
+
+**Recovery and authentication tables** (owned by DOM-IDEN-003):
+
+- `recovery_requests` — teacher credential recovery lifecycle; at most one pending per user
+- `student_recovery_codes` — per-student verification codes; child of `recovery_requests`, CASCADE-deleted
+- `passkey_credentials` — WebAuthn/FIDO2 credential bindings; owned by `users.id`
 
 ---
 
@@ -186,15 +193,15 @@ tables such as `teacher_credentials` and `system_admin_credentials` SHALL be uni
 
 ---
 
-### 3. Attendance & Mobility (DOM-ATT-001)
+### 3. Productivity & Payroll (DOM-PROD-001)
 
-**Purpose:** Record time-based participation and movement.
+**Purpose:** Record productivity participation facts, approved hall-pass consumption, and payroll business events.
 
 **Tables:**
 
 - `attendance_sessions`
 - `hall_pass_logs`
-- `seat_attendance_state`
+- `payroll_event`
 
 ---
 
@@ -250,7 +257,8 @@ tables such as `teacher_credentials` and `system_admin_credentials` SHALL be uni
 **Tables:**
 
 - `operational_events`
-- `audit_log`
+- `audit_events`
+- `chain_heads`
 - `incident_events`
 - `incident_summary`
 - `alert_events`
@@ -284,9 +292,20 @@ tables such as `teacher_credentials` and `system_admin_credentials` SHALL be uni
 - `issues`
 - `issue_status_history`
 - `issue_resolution_actions`
-- `ticket_correlation_packs`
+- `ticket_correlation_pack`
 - `announcements`
 - `issue_categories`
+
+---
+
+### 10. Economic Policy (DOM-ECON-003)
+
+**Purpose:** Record policy versioning and transition lifecycle.
+
+**Tables:**
+
+- `policy_versions`
+- `policy_transitions`
 
 ---
 

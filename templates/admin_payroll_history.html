@@ -3,20 +3,17 @@
 {% block title %}Detailed Payroll History{% endblock %}
 {% block content %}
 <div class="mt-4">
-
-
-
+    <div class="card shadow-sm mb-3">
+        <div class="card-body d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-3">
+            <div>
+                <div class="fw-semibold">Class Context</div>
+                <div class="text-muted small">Active class from the navigation context switcher.</div>
+            </div>
+            <div class="small text-muted">{{ selected_class_id }}</div>
+        </div>
+    </div>
 
     <form method="get" action="{{ url_for('admin.payroll_history') }}" class="form-inline mb-3">
-        <div class="form-group mr-2">
-            <label for="block">Class:</label>
-            <select name="block" id="block" class="form-control ml-2" style="width: 150px;">
-                <option value="">All</option>
-                {% for b in blocks %}
-                <option value="{{ b }}" {% if request.args.get('block') == b %}selected{% endif %}>{{ class_labels_by_block.get(b, b) }}</option>
-                {% endfor %}
-            </select>
-        </div>
         <div class="form-group mr-2">
             <label for="start">From:</label>
             <input type="date" name="start_date" class="form-control ml-2" style="width: 150px;" value="{{ request.args.get('start_date', '') }}">
@@ -50,7 +47,13 @@
                       {% endif %}
                     </td>
                     <td>{{ entry.class_label }}</td>
-                    <td><a href="{{ student_detail_url(entry.actor_public_id) }}">{{ entry.student.full_name if entry.student else entry.student_name }}</a></td>
+                    <td>
+                      {% if entry.actor_public_id %}
+                        <a href="{{ student_detail_url(entry.actor_public_id) }}">{{ entry.student_name }}</a>
+                      {% else %}
+                        {{ entry.student_name }}
+                      {% endif %}
+                    </td>
                     <td>${{ "%.2f"|format(entry.amount) }}</td>
                     <td>{{ entry.notes }}</td>
                 </tr>
@@ -61,8 +64,4 @@
         </tbody>
     </table>
 </div>
-
-<script>
-// Timestamp conversion handled by timezone-utils.js
-</script>
 {% endblock %}

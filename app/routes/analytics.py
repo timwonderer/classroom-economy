@@ -20,11 +20,16 @@ from app.extensions import db, limiter
 from app.feats.base import feat_shell
 from app.auth import admin_required
 from app.models import (
-    AnalyticsAlert, AnalyticsEvent,
     PayrollSettings, RentSettings, ClassEconomy, Seat
 )
 from app.models import Transaction
+from app.models import AuditEvent
+from app.services.ledger_service import get_available_balance
 from app.utils.join_code import get_display_join_code
+from app.utils.canonical_temporal_resolver import (
+    CLASS_LEVEL_EVALUATION,
+    canonical_temporal_resolver,
+)
 
 # Define allowed window types constant
 ALLOWED_WINDOW_TYPES = {'week', 'month', 'pay_cycle', 'rent_cycle'}
@@ -60,8 +65,8 @@ def get_teacher_class_options(user_id: int):
     return options
 
 
-def resolve_current_class_context(user_id: int):
-    """Resolve class context using class_id as authority; join_code is derived display metadata."""
+def resolve_current_class_context(user_id: int, class_id: str | None):
+    """Resolve the requested class context using explicit class_id authority."""
     available_classes = get_teacher_class_options(user_id)
     by_class_id = {
         (item.get('class_id') or ''): item
@@ -69,13 +74,7 @@ def resolve_current_class_context(user_id: int):
         if item.get('class_id')
     }
 
-    selected = None
-    session_class_id = (getattr(getattr(g, "canonical_context", None), "class_id", None) or '').strip()
-    if session_class_id:
-        selected = by_class_id.get(session_class_id)
-
-    if not selected and available_classes:
-        selected = available_classes[0]
+    selected = by_class_id.get((class_id or '').strip())
 
     if not selected:
         return None, available_classes
@@ -217,7 +216,7 @@ def dashboard():
         if not class_row:
             raise ContextResolutionError("Class not found")
         join_code = get_display_join_code(class_row.class_id)
-        selected_class, available_classes = resolve_current_class_context(user_id)
+        selected_class, available_classes = resolve_current_class_context(user_id, class_id)
         if not selected_class:
             raise ContextResolutionError("No class context available")
     except Exception as e:
@@ -241,26 +240,18 @@ def dashboard():
         else engine.get_or_create_snapshot(window_type, window_start, window_end)
     )
     
-    # Get active alerts
-    active_alerts = AnalyticsAlert.query.filter(
-        AnalyticsAlert.class_id == class_id,
-        AnalyticsAlert.window_type == window_type,
-        AnalyticsAlert.window_start == window_start,
-        AnalyticsAlert.window_end == window_end,
-        AnalyticsAlert.resolved_at.is_(None)
-    ).order_by(
-        # Sort by severity: critical, warning, info
-        desc(AnalyticsAlert.severity == 'critical'),
-        desc(AnalyticsAlert.severity == 'warning'),
-        AnalyticsAlert.created_at.desc()
-    ).all()
-    
-    # Get recent events for context
-    recent_events = AnalyticsEvent.query.filter(
-        AnalyticsEvent.class_id == class_id,
-        AnalyticsEvent.event_date >= window_start,
-        AnalyticsEvent.event_date <= window_end
-    ).order_by(AnalyticsEvent.event_date.desc()).limit(10).all()
+    active_alerts = []
+
+    recent_events = (
+        AuditEvent.query.filter(
+            AuditEvent.class_id == class_id,
+            AuditEvent.created_at_utc >= window_start,
+            AuditEvent.created_at_utc <= window_end,
+        )
+        .order_by(AuditEvent.created_at_utc.desc())
+        .limit(10)
+        .all()
+    )
     
     return render_template(
         'admin_analytics_dashboard.html',
@@ -290,13 +281,6 @@ def api_snapshot(window_type):
         from app.services.context_resolver import resolve_canonical_context
         context = resolve_canonical_context()
         class_id = context.class_id
-        
-        # Get join_code from ClassEconomy
-        from app.models import ClassEconomy
-        class_row = db.session.get(ClassEconomy, class_id)
-        if not class_row:
-            return jsonify({'error': 'No class period selected'}), 400
-        join_code = get_display_join_code(class_row.class_id)
     except Exception:
         return jsonify({'error': 'No class period selected'}), 400
 
@@ -364,42 +348,14 @@ def api_alerts():
         from app.services.context_resolver import resolve_canonical_context
         context = resolve_canonical_context()
         class_id = context.class_id
-        from app.models import ClassEconomy
-        class_row = db.session.get(ClassEconomy, class_id)
-        join_code = get_display_join_code(class_row.class_id) if class_row else None
     except Exception:
-        return jsonify({'error': 'No class period selected'}), 400
-    if not join_code:
         return jsonify({'error': 'No class period selected'}), 400
 
     requested_window_type = request.args.get('window', 'week')
     window_type = requested_window_type if requested_window_type in ALLOWED_WINDOW_TYPES else 'week'
     window_start, window_end = get_time_window(window_type, class_id)
     
-    active_alerts = AnalyticsAlert.query.filter(
-        AnalyticsAlert.class_id == class_id,
-        AnalyticsAlert.window_type == window_type,
-        AnalyticsAlert.window_start == window_start,
-        AnalyticsAlert.window_end == window_end,
-        AnalyticsAlert.resolved_at.is_(None)
-    ).order_by(
-        desc(AnalyticsAlert.severity == 'critical'),
-        desc(AnalyticsAlert.severity == 'warning'),
-        AnalyticsAlert.created_at.desc()
-    ).all()
-    
     alerts_data = []
-    for alert in active_alerts:
-        alerts_data.append({
-            'id': alert.id,
-            'alert_key': alert.alert_key,
-            'severity': alert.severity,
-            'what_changed': alert.what_changed,
-            'why_it_matters': alert.why_it_matters,
-            'suggested_action': alert.suggested_action,
-            'created_at': alert.created_at.isoformat(),
-            'acknowledged': alert.acknowledged_at is not None
-        })
     
     return jsonify({'alerts': alerts_data})
 
@@ -415,29 +371,10 @@ def acknowledge_alert(alert_id):
         from app.services.context_resolver import resolve_canonical_context
         context = resolve_canonical_context()
         class_id = context.class_id
-        from app.models import ClassEconomy
-        class_row = db.session.get(ClassEconomy, class_id)
-        join_code = get_display_join_code(class_row.class_id) if class_row else None
     except Exception:
         return jsonify({'error': 'No class period selected'}), 400
-    if not join_code:
-        flash('Alert not found.', 'danger')
-        return redirect(url_for('analytics.dashboard'))
     
-    alert = AnalyticsAlert.query.filter(
-        AnalyticsAlert.id == alert_id,
-        AnalyticsAlert.class_id == class_id,
-        AnalyticsAlert.resolved_at.is_(None)
-    ).first()
-    
-    if not alert:
-        flash('Alert not found.', 'danger')
-        return redirect(url_for('analytics.dashboard'))
-    
-    alert.acknowledge()
-    db.session.flush()
-    flash('Alert acknowledged.', 'success')
-    
+    flash('Alerts are no longer persisted in v2.', 'warning')
     return redirect(url_for('analytics.dashboard'))
 
 
@@ -466,9 +403,11 @@ def events():
         return redirect(url_for('admin.students'))
     
     # Get all events for this class
-    events_list = AnalyticsEvent.query.filter(
-        AnalyticsEvent.class_id == class_id
-    ).order_by(AnalyticsEvent.event_date.desc()).all()
+    events_list = (
+        AuditEvent.query.filter(AuditEvent.class_id == class_id)
+        .order_by(AuditEvent.created_at_utc.desc())
+        .all()
+    )
     
     try:
         return render_template(
@@ -483,10 +422,10 @@ def events():
         for event in events_list:
             events_data.append({
                 'id': event.id,
-                'event_type': event.event_type,
-                'description': event.description,
-                'event_date': event.event_date.isoformat(),
-                'affected_students': event.affected_students
+                'event_type': event.operation,
+                'description': f"{event.table_name}:{event.row_pk}",
+                'event_date': event.created_at_utc.isoformat(),
+                'affected_students': event.seat_id
             })
         return jsonify({'events': events_data, 'join_code': join_code})
 
@@ -503,17 +442,18 @@ def student_drill_down(student_id):
     - Must explain why the metric matters
     """
     user_id = g.canonical_context.user_id
-    selected_class, available_classes = resolve_current_class_context(user_id)
+    class_id = g.canonical_context.class_id
+    selected_class, available_classes = resolve_current_class_context(user_id, class_id)
     if not selected_class:
         flash('You need to set up class periods before viewing analytics.', 'warning')
         return redirect(url_for('admin.students'))
-    class_id = selected_class['class_id']
 
     # Get class economy row
     class_row = ClassEconomy.query.filter_by(class_id=class_id).first()
     if not class_row:
         flash('Class period not found.', 'warning')
         return redirect(url_for('admin.students'))
+    join_code = class_row.join_code
 
     # Get student with scoping
     student = Seat.query.filter(
@@ -523,6 +463,12 @@ def student_drill_down(student_id):
     if student is None:
         flash('Student not found for this class period.', 'warning')
         return redirect(url_for('admin.students'))
+    now_evaluation = canonical_temporal_resolver(
+        CLASS_LEVEL_EVALUATION,
+        canonical_execution_context=g.canonical_context,
+        primitive="current_time",
+    )
+    now_utc = now_evaluation.canonical_now_utc
     # Use actual enrollment duration when possible; fall back to 18 weeks if unknown
     weeks_enrolled = 18  # default/fallback for legacy behavior
 
@@ -537,7 +483,6 @@ def student_drill_down(student_id):
         enrollment_start = student.created_at
 
     if enrollment_start is not None:
-        now_utc = utc_now()
         # Ensure timezone-aware arithmetic
         enrollment_start_utc = ensure_utc(enrollment_start)
 
@@ -557,10 +502,7 @@ def student_drill_down(student_id):
         return jsonify({'error': 'Student has no canonical seat in selected class'}), 400
     
     # Get student balance
-    current_balance = student.get_checking_balance(
-        class_id=class_id,
-        seat_id=seat.id,
-    )
+    current_balance = get_available_balance(seat.id, class_id, "checking")
     
     # Calculate expected balance based on CWI
     # This is a simplified calculation - could be enhanced
@@ -573,18 +515,38 @@ def student_drill_down(student_id):
         deviation = 0
     
     # Get recent transactions (last 30 days)
-    thirty_days_ago = utc_now() - timedelta(days=30)
-    recent_transactions = Transaction.query.filter(
-        Transaction.seat_id == seat.id,
+    thirty_days_ago = canonical_temporal_resolver(
+        CLASS_LEVEL_EVALUATION,
+        canonical_execution_context=g.canonical_context,
+        primitive="shift_timestamp",
+        reference_time_utc=now_utc,
+        timestamp=now_utc,
+        elapsed_seconds=-(30 * 24 * 60 * 60),
+    ).shifted_timestamp_utc
+    transaction_rows = Transaction.query.filter(
+        Transaction.target_seat_id == seat.id,
         Transaction.class_id == class_id,
         Transaction.timestamp >= thirty_days_ago,
         Transaction.is_void.is_(False)
     ).order_by(Transaction.timestamp.desc()).limit(50).all()
+    student_profile = seat.identity_profile
+    student_name = student_profile.full_name if student_profile else f"Seat {seat.id}"
+    running_balance = current_balance
+    recent_transactions = []
+    for transaction in transaction_rows:
+        recent_transactions.append({
+            "timestamp": transaction.timestamp,
+            "description": transaction.description,
+            "amount": transaction.amount,
+            "balance_after_transaction": running_balance,
+        })
+        running_balance = running_balance - transaction.amount
     
     try:
         return render_template(
             'admin_analytics_student_detail.html',
             student=student,
+            student_name=student_name,
             current_balance=current_balance,
             expected_balance=expected_balance,
             deviation=deviation,
@@ -597,18 +559,19 @@ def student_drill_down(student_id):
         return jsonify({
             'error': 'Template not found',
             'student_id': student.id,
-            'student_name': student.name,
-            'current_balance': current_balance,
-            'expected_balance': expected_balance,
+            'student_name': student_name,
+            'current_balance': float(current_balance),
+            'expected_balance': float(expected_balance),
             'deviation': deviation,
             'cwi': cwi,
             'recent_transactions': [
                 {
-                    'id': t.id,
-                    'timestamp': t.timestamp.isoformat(),
-                    'amount': t.amount,
-                    'description': t.description
-                } for t in recent_transactions
+                    'timestamp': row["timestamp"].isoformat() if row["timestamp"] else None,
+                    'amount': float(row["amount"]),
+                    'description': row["description"],
+                    'balance_after_transaction': float(row["balance_after_transaction"]),
+                }
+                for row in recent_transactions
             ],
             'join_code': join_code
         }), 404

@@ -1,0 +1,292 @@
+"""
+Test for dynamic rent display with persistent itemized information.
+
+Tests the following features:
+1. Rent items display persistently (before and after bill is due)
+2. Dynamic color coding based on days until rent is due
+3. Status text changes based on payment status and due date proximity
+"""
+from datetime import datetime, timezone, timedelta
+from decimal import Decimal
+
+import pytest
+
+from app import db
+from app.feats.base import FEATContext
+from app.models import RentSettings, Transaction, TransactionStatus
+from app.utils.time import utc_now
+from tests.dom.obligations.helpers import rent_pay
+from tests.helpers.classroom_initializer import initialize_as_student
+
+
+@pytest.fixture
+def setup_rent_with_items(client):
+    """Create teacher, student, rent settings, and rent items."""
+    classroom, student = initialize_as_student("chemistry_p1", client, client.application)
+    with FEATContext("FEAT-OBL-001", idempotency_key="rent-display:setup"):
+        rent_settings = RentSettings(
+            class_id=classroom.class_id,
+            rent_amount=Decimal("50.00"),
+            first_rent_due_date=utc_now() + timedelta(days=10),
+            grace_period_days=3,
+            bill_preview_enabled=True,
+            bill_preview_days=5,
+        )
+        db.session.add(rent_settings)
+        db.session.flush()
+
+    return {
+        'student': student.seat,
+        'rent_settings': rent_settings,
+    }
+
+
+def test_DOM_OBL_001__rent_items_display_before_due_date(client, setup_rent_with_items):
+    """Test that rent items are visible even before the rent is due."""
+    data = setup_rent_with_items
+    
+    response = client.get('/student/rent')
+    assert response.status_code == 200
+    
+    assert b'Rent' in response.data
+
+
+def test_DOM_OBL_001__rent_items_display_after_due_date(client, setup_rent_with_items):
+    """Test that rent items are still visible after the rent is due."""
+    data = setup_rent_with_items
+    
+    # Update rent settings to have due date in the past.
+    now = utc_now()
+    with FEATContext("FEAT-OBL-001", idempotency_key="rent-display:after-due"):
+        data['rent_settings'].first_rent_due_date = now - timedelta(days=2)
+        db.session.flush()
+    
+    response = client.get('/student/rent')
+    assert response.status_code == 200
+    
+    assert b'Rent' in response.data
+
+
+def test_DOM_OBL_001__overdue_rent_payment_uses_coverage_month_in_transaction_description(client, setup_rent_with_items, monkeypatch):
+    """Overdue students should pay the oldest unpaid coverage month first."""
+    data = setup_rent_with_items
+    fixed_now = datetime(2026, 2, 17, 12, 0, tzinfo=timezone.utc)
+
+    # Make this mirror the reported scenario: due day 28, preview enabled.
+    with FEATContext("FEAT-OBL-001", idempotency_key="rent-display:overdue-payment"):
+        data['rent_settings'].first_rent_due_date = datetime(2026, 1, 28, tzinfo=timezone.utc)
+        data['rent_settings'].bill_preview_enabled = True
+        data['rent_settings'].bill_preview_days = 14
+        data['rent_settings'].late_penalty_amount = 20
+        data['rent_settings'].rent_amount = 570
+        db.session.add(
+            Transaction(
+                seat_id=data['student'].id,
+                target_seat_id=data['student'].id,
+                actor_seat_id=data['student'].id,
+                mechanism="self",
+                class_id=data['student'].class_id,
+                user_id=data['student'].user_id,
+                amount=1000,
+                account_type='checking',
+                status=TransactionStatus.POSTED,
+                type='Deposit',
+                description='Seed funds for rent test',
+            )
+        )
+        db.session.flush()
+
+    monkeypatch.setattr('app.routes.student.utc_now', lambda: fixed_now)
+
+    response = rent_pay(client, "A")
+    assert response.status_code == 302
+
+    rent_txn = Transaction.query.filter_by(
+        seat_id=data['student'].id,
+        class_id=data['student'].class_id,
+        type='Rent Payment',
+    ).order_by(Transaction.id.desc()).first()
+
+    assert rent_txn is not None
+    assert 'January 2026' in rent_txn.description
+    assert 'late fee' in rent_txn.description
+
+
+def test_DOM_OBL_001__overdue_current_period_does_not_show_future_due_countdown(client, setup_rent_with_items, monkeypatch):
+    """When current coverage is overdue, status should not count down to a future period."""
+    data = setup_rent_with_items
+    fixed_now = datetime(2026, 2, 18, 12, 0, tzinfo=timezone.utc)
+
+    with FEATContext("FEAT-OBL-001", idempotency_key="rent-display:overdue-countdown"):
+        data['rent_settings'].first_rent_due_date = datetime(2026, 1, 28, tzinfo=timezone.utc)
+        data['rent_settings'].bill_preview_enabled = True
+        data['rent_settings'].bill_preview_days = 20
+        data['rent_settings'].grace_period_days = 5  # Keep this within grace to isolate due-date selection
+        db.session.flush()
+
+    monkeypatch.setattr('app.routes.student.utc_now', lambda: fixed_now)
+
+    response = client.get('/student/rent')
+    assert response.status_code == 200
+    assert b'Past due, pay now' in response.data
+    assert b'Rent will be due in' not in response.data
+
+
+def test_DOM_OBL_001__days_until_due_calculation(client, setup_rent_with_items):
+    """Test that days_until_due is correctly calculated and passed to template."""
+    data = setup_rent_with_items
+    now = utc_now()
+    # Activate preview so the countdown is visible (due in 10 days, preview for 12)
+    with FEATContext("FEAT-OBL-001", idempotency_key="rent-display:days-until-due"):
+        data['rent_settings'].bill_preview_enabled = True
+        data['rent_settings'].bill_preview_days = 12
+        data['rent_settings'].first_rent_due_date = now + timedelta(days=10, hours=1)
+        db.session.flush()
+    
+    response = client.get('/student/rent')
+    assert response.status_code == 200
+    
+    # Since the rent is due in 10 days (from setup_rent_with_items)
+    # We should see some indication that it's more than 7 days away
+    # The status should show "Rent will be due in X days" (>7 days uses warning color)
+    assert b'Rent will be due in 10 days' in response.data
+
+
+def test_DOM_OBL_001__status_text_more_than_7_days(client, setup_rent_with_items):
+    """Test status text when rent is more than 7 days away."""
+    data = setup_rent_with_items
+    
+    # Set rent due date to 8 days from now (within preview period so it's active)
+    now = utc_now()
+    with FEATContext("FEAT-OBL-001", idempotency_key="rent-display:status-gt-7"):
+        data['rent_settings'].first_rent_due_date = now + timedelta(days=8, hours=1)
+        data['rent_settings'].bill_preview_enabled = True
+        data['rent_settings'].bill_preview_days = 9  # Activate preview before the due date
+        db.session.flush()
+    
+    response = client.get('/student/rent')
+    assert response.status_code == 200
+    
+    # Should display "Rent will be due in X days" with warning color
+    # Since we're 8 days before due, this should be active and show the countdown
+    assert b'Rent will be due in 8 days' in response.data
+
+
+def test_DOM_OBL_001__status_text_between_3_and_7_days(client, setup_rent_with_items):
+    """Test status text when rent is between 3 and 7 days away (inclusive)."""
+    data = setup_rent_with_items
+    
+    # Set rent due date to 3 days from now
+    now = utc_now()
+    with FEATContext("FEAT-OBL-001", idempotency_key="rent-display:status-3to7"):
+        data['rent_settings'].first_rent_due_date = now + timedelta(days=3, hours=1)
+        db.session.flush()
+    
+    response = client.get('/student/rent')
+    assert response.status_code == 200
+    
+    # Should display "Rent due in X days" with light red color
+    assert b'Rent due in 3 days' in response.data
+
+
+def test_DOM_OBL_001__status_text_within_2_days(client, setup_rent_with_items):
+    """Test status text when rent is within 2 days."""
+    data = setup_rent_with_items
+    
+    # Set rent due date to 2 days from now
+    now = utc_now()
+    with FEATContext("FEAT-OBL-001", idempotency_key="rent-display:status-2days"):
+        data['rent_settings'].first_rent_due_date = now + timedelta(days=2, hours=1)
+        db.session.flush()
+    
+    response = client.get('/student/rent')
+    assert response.status_code == 200
+    
+    # Should display "Due, pay soon" with crimson color
+    assert b'Due, pay soon' in response.data
+
+
+def test_DOM_OBL_001__status_text_past_due(client, setup_rent_with_items):
+    """Test status text when rent is past due."""
+    data = setup_rent_with_items
+    
+    # Set rent due date to 5 days ago (past grace period)
+    now = utc_now()
+    due_date = now - timedelta(days=5)
+    with FEATContext("FEAT-OBL-001", idempotency_key="rent-display:status-past-due"):
+        data['rent_settings'].first_rent_due_date = due_date
+        data['rent_settings'].grace_period_days = 0
+        db.session.flush()
+    
+    response = client.get('/student/rent')
+    assert response.status_code == 200
+    
+    # Should display "Past due, pay now" with black color
+    assert b'Past due, pay now' in response.data
+
+
+def test_DOM_OBL_001__status_text_due_today(client, setup_rent_with_items):
+    """Test status text when rent is due today."""
+    data = setup_rent_with_items
+    
+    now = utc_now()
+    with FEATContext("FEAT-OBL-001", idempotency_key="rent-display:status-due-today"):
+        data['rent_settings'].first_rent_due_date = now + timedelta(hours=1)
+        db.session.flush()
+    
+    response = client.get('/student/rent')
+    assert response.status_code == 200
+    
+    # Due today should show the urgent state
+    assert b'Due, pay soon' in response.data
+
+
+def test_DOM_OBL_001__status_text_no_rent_yet(client, setup_rent_with_items):
+    """Test status text when rent is not yet active (before first due date and preview period)."""
+    data = setup_rent_with_items
+    
+    # Set rent due date to 20 days from now with 5-day preview
+    # So we're more than 5 days before the due date
+    now = utc_now()
+    with FEATContext("FEAT-OBL-001", idempotency_key="rent-display:status-no-rent"):
+        data['rent_settings'].first_rent_due_date = now + timedelta(days=20)
+        data['rent_settings'].bill_preview_enabled = True
+        data['rent_settings'].bill_preview_days = 5
+        db.session.flush()
+    
+    response = client.get('/student/rent')
+    assert response.status_code == 200
+    
+    # Should display "No rent is due yet" with blue color
+    assert b'No rent is due yet' in response.data or b'Not yet due' in response.data
+
+
+def test_DOM_OBL_001__rent_items_show_store_availability(client, setup_rent_with_items):
+    """Test that rent items show store availability information."""
+    data = setup_rent_with_items
+    
+    response = client.get('/student/rent')
+    assert response.status_code == 200
+    
+    # Check that store availability info is shown
+    assert b'Available separately in store' in response.data
+    assert b'$15.00' in response.data  # Desk price
+    assert b'$20.00' in response.data  # Locker price
+    assert b'per use' in response.data
+    assert b'valid until next rent is due' in response.data
+
+
+def test_DOM_OBL_001__incremental_rent_form_shows_even_when_full_balance_is_short(client, setup_rent_with_items):
+    """Incremental mode should still render the payment form even if full amount isn't affordable."""
+    data = setup_rent_with_items
+
+    now = utc_now()
+    with FEATContext("FEAT-OBL-001", idempotency_key="rent-display:incremental"):
+        data['rent_settings'].first_rent_due_date = now - timedelta(days=1)
+        data['rent_settings'].allow_incremental_payment = True
+        db.session.flush()
+
+    response = client.get('/student/rent')
+    assert response.status_code == 200
+    assert b'Payment Amount' in response.data
+    assert b'Insufficient Funds' not in response.data

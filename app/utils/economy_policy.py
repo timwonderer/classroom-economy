@@ -426,7 +426,7 @@ def resolve_class_scope(
 
     from app.models import ClassEconomy
 
-    normalized_class_id = class_id.strip() if class_id else None
+    normalized_class_id = str(class_id).strip() if class_id else None
     if not normalized_class_id:
         return None
 

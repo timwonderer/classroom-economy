@@ -629,8 +629,7 @@ def classroom_context():
     """Create a fully-wired v2 classroom context.
 
     Returns a factory function. The context uses User/Seat/IdentityProfile
-    as the primary identity chain. Legacy Admin/Student rows are created
-    as hidden infrastructure for FK/auth compatibility only.
+    as the primary identity chain. No legacy bridge rows are created.
 
     Usage in tests:
         def test_something(classroom_context):

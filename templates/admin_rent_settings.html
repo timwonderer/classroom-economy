@@ -67,8 +67,8 @@
           data-bs-parent="#rentGuideAccordion">
           <div class="accordion-body">
             <ul class="mb-0">
-              <li><strong>Class/Block selector:</strong> switch between blocks to configure rent independently (e.g.,
-                enable for Period 1, disable for Period 2).</li>
+              <li><strong>Active class context:</strong> configure rent independently for the currently selected class
+                period (e.g., enable for Period 1, disable for Period 2).</li>
               <li><strong>Rent amount:</strong> the base charge students owe each rent period.</li>
               <li><strong>Frequency:</strong> daily, weekly, monthly, or custom intervals; controls how often rent
                 posts.</li>
@@ -430,25 +430,6 @@
   <div class="tab-pane fade" id="settings" role="tabpanel">
     <form method="POST" id="rentSettingsForm">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
-      <input type="hidden" name="settings_block" value="{{ settings_block }}">
-      <input type="hidden" name="apply_to_all" id="apply_to_all_input" value="false">
-
-      <!-- Class Selector Banner -->
-      <div class="alert alert-primary d-flex align-items-center justify-content-between mb-4">
-        <div class="d-flex align-items-center gap-3">
-          <span class="material-symbols-outlined" style="font-size: 2rem;">school</span>
-          <div>
-            <div class="mb-1 fw-bold h6">Configuring Rent Settings For:</div>
-            <div class="small text-muted">{{ selected_feature_scope.label }}</div>
-          </div>
-        </div>
-        <div class="form-check form-switch">
-          <input class="form-check-input" type="checkbox" id="apply_to_all_checkbox" role="switch">
-          <label class="form-check-label fw-bold" for="apply_to_all_checkbox">
-            Apply to All Classes
-          </label>
-        </div>
-      </div>
 
       <!-- Main Toggle Card -->
       <div class="card shadow mb-4">
@@ -885,7 +866,7 @@
           <div class="card-body">
             <p class="mb-3">
               If the rent rate was changed mid-cycle, students who paid the original rate on time
-              may have been incorrectly charged late fees. This refunds those late fees and
+              may have been incorrectly charged late fees. This reverses those late fees and
               keeps the current cycle locked to the <strong>first payer's rate</strong>.
             </p>
             <p class="text-muted small mb-3">
@@ -893,9 +874,8 @@
               continues to apply on the next cycle.
             </p>
             <form method="POST" action="{{ url_for('admin.reverse_cycle_penalties') }}"
-                  onsubmit="return confirm('Reverse misapplied late fees for the current cycle? This creates refund transactions for affected students.');">
+                  onsubmit="return confirm('Reverse misapplied late fees for the current cycle? This updates the current-cycle late fee records for affected students.');">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
-              <input type="hidden" name="settings_block" value="{{ settings.block if settings else '' }}" />
               <button type="submit" class="btn btn-warning w-100">
                 <span class="material-symbols-outlined me-2">payments</span>Reverse Misapplied Late Fees
               </button>
@@ -918,7 +898,6 @@
           <div class="card-body">
             <form method="POST" action="{{ url_for('admin.add_rent_waiver') }}" id="waiverForm">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
-              <input type="hidden" name="settings_block" value="{{ settings.block if settings else '' }}" />
 
               <div class="mb-3">
                 <label for="waiver_student_ids" class="form-label fw-bold">1. Select Students</label>
@@ -1261,8 +1240,8 @@
         expectedWeeklyHours: {{ (payroll_settings.expected_weekly_hours if payroll_settings and payroll_settings.expected_weekly_hours is not none else 5.0) | float }}
     });
 
-  // Display CWI info if payroll is configured
-  const currentBlock = '{{ settings_block }}';
+  // Display CWI info if payroll is configured.
+  const currentBlock = '{{ selected_feature_scope.block or "" }}';
   economyChecker.analyzeEconomy(null, currentBlock).then(analysis => {
     economyChecker.displayCWIInfo(analysis, '#cwi-info');
   }).catch(err => {
@@ -1288,18 +1267,6 @@
       }
     });
   }
-  }
-
-  // -------------------- APPLY TO ALL --------------------
-  const applyToAllCheckbox = document.getElementById('apply_to_all_checkbox');
-  const applyToAllInput = document.getElementById('apply_to_all_input');
-
-  // Handle apply to all checkbox
-  if (applyToAllCheckbox && applyToAllInput) {
-    applyToAllCheckbox.addEventListener('change', function () {
-      applyToAllInput.value = this.checked ? 'true' : 'false';
-
-    });
   }
 
   // -------------------- RENT ITEMIZATION FUNCTIONS --------------------

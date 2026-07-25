@@ -331,21 +331,24 @@ def upgrade():
     # 11. UserReport: _student_id → seat_id (if not already done)
     # ============================================================
     print("\n--- UserReport ---")
-    if column_exists('user_reports', '_student_id'):
+    if not table_exists('user_reports'):
+        print("  ⚠️  user_reports missing, skipping")
+    elif column_exists('user_reports', '_student_id'):
         drop_fks_for_column('user_reports', '_student_id')
         drop_indexes_for_column('user_reports', '_student_id')
         op.drop_column('user_reports', '_student_id')
         print("  ✅ Dropped user_reports._student_id")
-    if not column_exists('user_reports', 'seat_id'):
-        op.add_column('user_reports', sa.Column('seat_id', sa.Integer(), nullable=True))
-        op.create_foreign_key(
-            'fk_user_reports_seat_id_seats',
-            'user_reports', 'seats',
-            ['seat_id'], ['id'],
-            ondelete='SET NULL',
-        )
-        op.create_index('ix_user_reports_seat_id', 'user_reports', ['seat_id'])
-        print("  ✅ Added user_reports.seat_id → seats.id")
+    if table_exists('user_reports'):
+        if not column_exists('user_reports', 'seat_id'):
+            op.add_column('user_reports', sa.Column('seat_id', sa.Integer(), nullable=True))
+            op.create_foreign_key(
+                'fk_user_reports_seat_id_seats',
+                'user_reports', 'seats',
+                ['seat_id'], ['id'],
+                ondelete='SET NULL',
+            )
+            op.create_index('ix_user_reports_seat_id', 'user_reports', ['seat_id'])
+            print("  ✅ Added user_reports.seat_id → seats.id")
 
     # ============================================================
     # 12. Fix Issue index: student_id → seat_id
@@ -353,7 +356,7 @@ def upgrade():
     print("\n--- Issue indexes ---")
     if index_exists('issues', 'ix_issues_student_status'):
         op.drop_index('ix_issues_student_status', table_name='issues')
-    if not index_exists('issues', 'ix_issues_seat_status'):
+    if column_exists('issues', 'seat_id') and not index_exists('issues', 'ix_issues_seat_status'):
         op.create_index('ix_issues_seat_status', 'issues', ['seat_id', 'status'])
         print("  ✅ Created ix_issues_seat_status")
 

@@ -8,10 +8,12 @@ from typing import Optional, Set, Tuple
 
 from sqlalchemy import and_
 
-from app.models import InsuranceClaim, RedemptionEvent, RedemptionEventAction, RentItem, StoreItem, StorePurchase, Transaction, TransactionStatus
+from app.models import RedemptionEvent, RedemptionEventAction, StoreItem, Transaction, TransactionStatus
+from app.services.store_entitlement_service import list_entitlement_history
 from app.utils.time import ensure_utc, get_class_now, to_class_time
 
 CLAIM_TYPE_TRANSACTION_MONETARY = "transaction_monetary"
+CLAIM_TYPE_PRODUCTIVITY = "productivity"
 CLAIM_TYPE_NON_MONETARY = "non_monetary"
 
 CLAIM_REASON_HARD_DENY_CATEGORY = "HARD_DENY_CATEGORY"
@@ -151,40 +153,30 @@ def _check_delay_use_rule(tx: Transaction, *, class_id: str, now_class: datetime
     if store_item.item_type != "delayed":
         return None
 
-    tx_ts = ensure_utc(tx.timestamp)
-    tolerance = timedelta(minutes=5)
-    item_query = StorePurchase.query.filter(
-        StorePurchase.seat_id == tx.seat_id,
-        StorePurchase.store_item_id == store_item.id,
-        and_(
-            StorePurchase.purchased_at >= tx_ts - tolerance,
-            StorePurchase.purchased_at <= tx_ts + tolerance,
-        ),
-    )
-    item_row = item_query.order_by(StorePurchase.id.desc()).first()
-    if not item_row:
-        # Fallback for historical rows with slight timestamp drift.
-        fallback_query = StorePurchase.query.filter(
-            StorePurchase.seat_id == tx.seat_id,
-            StorePurchase.store_item_id == store_item.id,
-        )
-        item_row = fallback_query.order_by(StorePurchase.purchased_at.desc()).first()
+    item_row = None
+    for entry in list_entitlement_history(target_seat_id=tx.seat_id, class_id=class_id, entitlement_item_id=store_item.id):
+        ent = entry["entitlement"]
+        terminal = entry["terminal_event"]
+        if terminal is not None:
+            continue
+        item_row = ent
+        break
     if not item_row:
         # Legacy data may not have a matching canonical store row.
         return None
 
     redemption_event = RedemptionEvent.query.filter_by(
-        purchase_id=item_row.id,
+        entitlement_id=item_row.entitlement_id,
         action=RedemptionEventAction.APPROVED,
     ).first()
     used_at = ensure_utc(redemption_event.timestamp) if redemption_event else None
     if not used_at:
         return CLAIM_REASON_DELAY_USE_NOT_USED
 
-    expiry_at = ensure_utc(item_row.expiry_date) if item_row.expiry_date else None
-    if expiry_at and used_at > expiry_at:
-        return CLAIM_REASON_DELAY_USE_EXPIRED
-    if expiry_at and not used_at and now_class > to_class_time(expiry_at, class_id):
+    grant_at = ensure_utc(item_row.granted_at) if item_row.granted_at else None
+    if grant_at and used_at < grant_at:
+        return CLAIM_REASON_DELAY_USE_NOT_USED
+    if grant_at and now_class and used_at > now_class:
         return CLAIM_REASON_DELAY_USE_EXPIRED
     return None
 
@@ -208,9 +200,7 @@ def _is_rent_perk_or_privilege_purchase(tx: Transaction, *, class_id: str) -> bo
     store_item = item_query.order_by(StoreItem.id.desc()).first()
     if not store_item:
         return False
-
-    rent_item = RentItem.query.filter(RentItem.store_item_id == store_item.id).first()
-    return bool(rent_item and (rent_item.rent_item_type or "").lower() == "privilege")
+    return bool(getattr(store_item, "is_rent_linked", False))
 
 
 def evaluate_claim_transaction_eligibility(
@@ -221,7 +211,6 @@ def evaluate_claim_transaction_eligibility(
     claim_type: Optional[str] = None,
     claim_time_limit_days: Optional[int] = None,
     policy_id: Optional[int] = None,
-    enrollment_join_code: Optional[str] = None,
     claimed_tx_ids: Optional[Set[int]] = None,
     reimbursed_tx_ids: Optional[Set[int]] = None,
 ) -> Tuple[bool, Optional[str]]:
@@ -286,11 +275,7 @@ def evaluate_claim_transaction_eligibility(
     if getattr(tx, "class_id", None) and tx.class_id != class_id:
         return False, CLAIM_REASON_UNCLASSIFIED_TRANSACTION
 
-    if claimed_tx_ids is None:
-        existing_claim = InsuranceClaim.query.filter(InsuranceClaim.transaction_id == tx.id).first()
-        if existing_claim:
-            return False, CLAIM_REASON_ALREADY_CLAIMED
-    elif tx.id in claimed_tx_ids:
+    if claimed_tx_ids is not None and tx.id in claimed_tx_ids:
         return False, CLAIM_REASON_ALREADY_CLAIMED
 
     if reimbursed_tx_ids is None:
@@ -332,6 +317,7 @@ def resolve_claim_type(*, claim=None, policy_claim_type: Optional[str] = None) -
     """Canonical claim type resolution used across admin/student claim flows."""
     if policy_claim_type in {
         CLAIM_TYPE_TRANSACTION_MONETARY,
+        CLAIM_TYPE_PRODUCTIVITY,
         CLAIM_TYPE_NON_MONETARY,
     }:
         return policy_claim_type

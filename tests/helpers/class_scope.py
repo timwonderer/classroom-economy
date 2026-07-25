@@ -4,8 +4,12 @@ Only the V2 canonical identity model is supported:
   User (role=TEACHER) → ClassEconomy (class_id UUID) → Seat (role='teacher')
   User (role=STUDENT) → Seat (class_id, role='student') → IdentityProfile
 
-No Admin objects, no legacy bridge patterns.
+No authority bridge patterns.
 """
+
+from __future__ import annotations
+
+import uuid
 
 from app.extensions import db
 from app.feats.base import FEATContext
@@ -16,7 +20,7 @@ from werkzeug.security import generate_password_hash
 def create_class_scope(
     *,
     teacher_user: User,
-    join_code: str,
+    join_code: str | None = None,
     display_name: str | None = None,
     section: str | None = None,
     feature_names: list[str] | tuple[str, ...] | None = None,
@@ -28,7 +32,7 @@ def create_class_scope(
 
     Args:
         teacher_user: V2 canonical User with role=TEACHER.
-        join_code: user-facing alias; auto-generated UUID fragment if omitted.
+        join_code: user-facing alias supplied by the caller.
         display_name: display metadata only, not an identity anchor.
         section: display metadata only (e.g. "Period 1").
         student_first_name / student_last_name: if both provided, also
@@ -38,10 +42,11 @@ def create_class_scope(
     """
     from app.services.classroom_setup import create_class, create_student
 
+    resolved_join_code = join_code or f"AUTO{uuid.uuid4().hex[:8].upper()}"
     idempotency_key = "create_class_scope:" + ":".join(
         [
             str(teacher_user.id),
-            join_code,
+            resolved_join_code,
             display_name or "",
             section or "",
             student_first_name or "",
@@ -51,7 +56,7 @@ def create_class_scope(
     with FEATContext("FEAT-IDEN-001", idempotency_key=idempotency_key):
         class_row = create_class(
             teacher_user.id,
-            join_code=join_code,
+            join_code=resolved_join_code,
             display_name=display_name,
             section=section,
         )

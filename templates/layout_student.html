@@ -104,8 +104,8 @@
                     </div>
                     <div class="sidebar-scope-context">{{ current_class_context.class_identifier }}</div>
                     <div class="sidebar-scope-meta">{{ current_class_context.join_code }}</div>
-                    {% elif student %}
-                    <div class="sidebar-scope-name">{{ student.display_first_name|upper }}</div>
+                    {% elif student_display_first_name %}
+                    <div class="sidebar-scope-name">{{ student_display_first_name|upper }}</div>
                     <div class="sidebar-scope-context">No classes available yet</div>
                     {% endif %}
                 </div>
@@ -138,7 +138,7 @@
                     </a>
                     {% endif %}
                     <a href="{{ url_for('student.help_support') }}"
-                        class="{% if request.endpoint in ['student.help_support', 'student.submit_general_issue', 'student.report_transaction_issue', 'student.report_tap_event_issue'] %}active{% endif %}">
+                        class="{% if request.endpoint in ['student.help_support', 'student.submit_general_issue', 'student.report_transaction_issue', 'student.report_attendance_session_issue'] %}active{% endif %}">
                         <span class="material-symbols-outlined">support_agent</span> Help &amp; Support
                     </a>
                 </nav>

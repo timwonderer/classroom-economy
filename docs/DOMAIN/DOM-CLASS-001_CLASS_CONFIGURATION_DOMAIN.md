@@ -2,7 +2,7 @@
 
 | Reference Number | Version | Effective Date | Supersedes | Authority Level |
 |------------------|---------|----------------|------------|-----------------|
-| DOM-CLASS-001 | 2.3 | 2026-07-10 | 2.2 | Constitutional |
+| DOM-CLASS-001 | 2.4 | 2026-07-23 | 2.3 | Constitutional |
 
 ## III. Authority Level
 
@@ -37,6 +37,18 @@ This domain is the sole schema and mutation authority over:
 - `banking_settings`
 - `policy_versions`
 - `policy_transitions`
+
+Policy-defined insurance offerings are class-configuration objects. Their prospective terms, version lineage, bundle eligibility, and withdrawal scheduling are owned here and coordinated by FEAT-CLASS-003. Downstream entitlement, obligation, and ledger records preserve different facts and SHALL NOT be rewritten to represent class configuration changes.
+Each insurance policy lineage MUST also carry the configured `entitlement_item_id` used to mint the purchasable insurance entitlement through FEAT-STOR-001. That mapping is class configuration authority; the resulting entitlement row remains Store-and-Entitlements authority.
+
+Insurance configuration rules:
+
+- policy edits create a new prospective version rather than mutating the prior version in place;
+- policy switching is only valid within the same tier group;
+- if a bundle references a tiered policy, any tier in that group satisfies the bundle slot;
+- policy deletion is a class-configuration wipe that removes only class-owned insurance lineage rows;
+- deletion scheduling SHALL be derived from the end boundary of the last currently enforced entitlement;
+- student-facing policy changes SHALL be surfaced as persistent banners until dismissed.
 
 It returns persisted settings only. FEAT or the owning operational domain interprets them.
 
@@ -358,6 +370,10 @@ The following fields in `feature_settings` are retired by the policy transition 
 - FEAT orchestrates lawful activation and projection updates but does not own policy truth.
 - Class identity (`classes.class_id`, `classes.join_code`) is owned by Identity.
   This domain reads `class_id` as a FK but does not own the class record.
+
+### 12. Insurance policy lifecycle note
+
+Insurance policy creation, edit, inactivation, switching, bundle eligibility, and deletion scheduling are class-configuration behaviors. A policy edit SHALL create a new prospective version when the terms change. A deletion request SHALL only schedule removal of the class-owned insurance lineage rows after the last enforced entitlement boundary for the class has elapsed. Entitlement, obligation, and Ledger tables SHALL remain unchanged by the configuration delete operation. Student-facing notices for insurance changes SHALL be persistent banners until dismissed.
 
 ## X. Amendment
 

@@ -124,7 +124,7 @@ def upgrade():
 
     # Indexes for redemption_events
     if table_exists('redemption_events'):
-        if not index_exists('redemption_events', 'ix_redemption_events_purchase_id'):
+        if column_exists('redemption_events', 'purchase_id') and not index_exists('redemption_events', 'ix_redemption_events_purchase_id'):
             op.create_index('ix_redemption_events_purchase_id', 'redemption_events', ['purchase_id'])
         if not index_exists('redemption_events', 'ix_redemption_events_seat_id'):
             op.create_index('ix_redemption_events_seat_id', 'redemption_events', ['seat_id'])

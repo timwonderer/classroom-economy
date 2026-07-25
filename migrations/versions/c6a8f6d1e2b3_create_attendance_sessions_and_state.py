@@ -9,7 +9,6 @@ from datetime import timezone
 
 from alembic import op
 import sqlalchemy as sa
-from sqlalchemy.dialects import postgresql
 
 
 # revision identifiers, used by Alembic.
@@ -55,13 +54,8 @@ def _to_utc(dt_value):
 
 
 def _tap_reason_enum():
-    """Reference the existing TapEvent reason enum without re-creating the DB type."""
-    return postgresql.ENUM(
-        "daily_limit",
-        "auto_switch",
-        name="tapeventreasoncode",
-        create_type=False,
-    )
+    """Use plain text for retired transitional TapEvent reason values."""
+    return sa.String(length=32)
 
 
 def _class_timezone_map(conn):

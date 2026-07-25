@@ -4,8 +4,8 @@ Tests use the same production path as routes. If the service changes, tests
 automatically get the updated behavior.
 
 Usage:
-    ctx = ClassroomContextFactory(db).build()
-    ctx = ClassroomContextFactory(db, join_code="MATH-01").with_students(3).build()
+    ctx = ClassroomContextFactory(db, teacher_username="teacher_math01").build()
+    ctx = ClassroomContextFactory(db, join_code="MATH-01", teacher_username="teacher_math01").with_students(3).build()
 
     ctx.teacher_user    — User instance (role=TEACHER)
     ctx.economy         — ClassEconomy instance
@@ -118,12 +118,11 @@ class ClassroomContextFactory:
     path production routes use. Tests and routes stay in sync automatically.
     """
 
-    def __init__(self, db, *, join_code=None, class_id=None,
+    def __init__(self, db, *, join_code=None,
                  display_name=None, section=None, teacher_username=None,
                  feature_names=None):
         self._db = db
         self._join_code = join_code
-        self._class_id = class_id
         self._display_name = display_name
         self._section = section
         self._teacher_username = teacher_username
@@ -142,14 +141,17 @@ class ClassroomContextFactory:
     def build(self) -> ClassroomContext:
         from app.services.classroom_setup import create_teacher, create_class
 
+        if self._teacher_username is None:
+            raise TypeError("ClassroomContextFactory.build() requires explicit teacher_username")
         if self._join_code is None:
             raise TypeError("ClassroomContextFactory.build() requires explicit join_code")
-        username = self._teacher_username or f"teacher_{self._join_code.lower()}"
+        username = self._teacher_username
+        join_code = self._join_code
 
         idempotency_key = "classroom_context_build:" + ":".join(
             [
                 username,
-                self._join_code,
+                join_code,
                 self._display_name or "",
                 self._section or "",
                 str(len(self._student_specs)),
@@ -161,8 +163,8 @@ class ClassroomContextFactory:
 
             economy = create_class(
                 teacher_user.id,
-                join_code=self._join_code,
-                display_name=self._display_name or f"Test Class {self._join_code}",
+                join_code=join_code,
+                display_name=self._display_name or f"Test Class {join_code}",
                 section=self._section,
             )
 

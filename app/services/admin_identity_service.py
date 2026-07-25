@@ -289,6 +289,13 @@ def delete_admin_credentials_for_user(user_id: int) -> None:
     db.session.execute(sa.delete(credentials).where(credentials.c.user_id == user_id))
 
 
+def delete_admin_account_rows(admin_user, legacy_admin=None) -> None:
+    """Delete canonical and legacy admin rows after dependent cleanup completes."""
+    if legacy_admin is not None:
+        db.session.delete(legacy_admin)
+    db.session.delete(admin_user)
+
+
 def count_active_admin_invite_codes(*, now: datetime | None = None) -> int:
     _onboarding, _credentials, invites = _tables()
     effective_now = now or utc_now()

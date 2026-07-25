@@ -144,106 +144,6 @@ class AdminLoginForm(FlaskForm):
     submit = SubmitField('Log In')
 
 
-# -------------------- INSURANCE FORMS --------------------
-class InsurancePolicyForm(FlaskForm):
-    title = StringField('Policy Title', validators=[DataRequired()])
-    description = TextAreaField('Description')
-    premium = FloatField('Monthly Premium ($)', validators=[DataRequired()])
-    charge_frequency = SelectField('Charge Frequency', choices=[
-        ('monthly', 'Monthly'),
-        ('weekly', 'Weekly'),
-        ('semester', 'Per Semester')
-    ], default='monthly')
-    autopay = BooleanField('Enable Autopay', default=True)
-    claim_type = SelectField(
-        'Claim Type',
-        choices=[
-            ('transaction_monetary', 'Transaction-Linked Reimbursement'),
-            ('non_monetary', 'Non-Monetary'),
-        ],
-        default='transaction_monetary',
-    )
-    waiting_period_days = IntegerField('Waiting Period', default=7, validators=[DataRequired()])
-    max_claims_count = IntegerField('Claims per Coverage Period Limit', validators=[Optional()])
-    max_claim_amount = FloatField('Per Claim Limit', validators=[Optional()])
-    max_payout_per_period = FloatField('Per Coverage Period Limit', validators=[Optional()])
-    bypass_cwi_warnings = BooleanField('Bypass CWI Warnings', default=False)
-
-    # Special rules
-    no_repurchase_after_cancel = BooleanField('No Re-Enrollment', default=False)
-    enable_repurchase_cooldown = BooleanField('Enforce Cooldown Period', default=False)
-    repurchase_wait_days = IntegerField('Mandatory Cooldown Period', default=30)
-    auto_cancel_nonpay_days = IntegerField('Non-Payment Cancellation', default=7)
-    claim_time_limit_days = IntegerField('Claim Filing Period', default=30)
-
-    # Bundle settings
-    bundle_with_policy_ids = StringField('Bundle with Policies', validators=[Optional()])  # Comma-separated IDs
-    bundle_discount_percent = FloatField('Bundle Discount %', default=0, validators=[Optional()])
-    bundle_discount_amount = FloatField('Bundle Discount Amount ($)', default=0, validators=[Optional()])
-
-    # Marketing badge
-    marketing_badge = SelectField('Marketing Badge (optional)', choices=[
-        ('', 'None'),
-        ('best_value', 'Best Value!'),
-        ('most_popular', 'Most Popular'),
-        ('recommended', 'Recommended'),
-        ('premium', 'Premium Coverage'),
-        ('limited_time', 'Limited Time Offer'),
-        ('new', 'New!'),
-        ('fan_favorite', 'Fan Favorite'),
-        ('yolo', 'YOLO Protection'),
-        ('trust_me', 'Trust Me Bro'),
-        ('definitely_not_scam', 'Definitely Not a Scam'),
-        ('parents_approved', 'Your Parents Would Approve'),
-        ('as_seen_on_tv', 'As Seen on TV'),
-        ('industry_leading', 'Industry Leading*'),
-        ('chaos_insurance', 'Chaos Insurance'),
-        ('responsible_choice', 'The Responsible Choice™'),
-        ('your_friend_has_it', 'The One Your Friend Has')
-    ], validators=[Optional()])
-
-    # Tier/Category settings
-    tier_category_id = IntegerField('Tier Category ID (for grouping)', validators=[Optional()])
-    tier_name = StringField('Tier Name (e.g., "Paycheck Protection")', validators=[Optional()])
-    tier_color = SelectField('Tier Color Theme', choices=[
-        ('', 'None'),
-        ('primary', 'Advisor Teal (Primary)'),
-        ('student', 'Steward Blue'),
-        ('success', 'Protection Green'),
-        ('info', 'Sky Blue'),
-        ('warning', 'Responsibility Yellow'),
-        ('danger', 'Alert Red'),
-        ('secondary', 'Basic Gray'),
-        ('dark', 'Dark')
-    ], validators=[Optional()])
-    tier_level = SelectField('Tier Level within Group', choices=[
-        ('', 'Select level (optional)'),
-        ('basic', 'Minimum Coverage'),
-        ('mid', 'Regular Coverage'),
-        ('premium', 'Premium Coverage')
-    ], validators=[Optional()])
-
-    # Settings mode
-    settings_mode = SelectField('Settings Mode', choices=[
-        ('simple', 'Simple'),
-        ('advanced', 'Advanced')
-    ], default='advanced')
-
-    is_active = BooleanField('Policy is Active', default=True)
-    blocks = SelectMultipleField('Visible to Periods/Blocks (leave empty for all)', choices=[], validators=[Optional()])
-    submit = SubmitField('Save Policy')
-
-
-class InsuranceClaimForm(FlaskForm):
-    incident_date = DateField('Date of Incident', format='%Y-%m-%d', validators=[DataRequired()])
-    description = TextAreaField('Claim Description', validators=[DataRequired()])
-    claim_amount = FloatField('Claim Amount ($)', validators=[Optional()])
-    claim_item = StringField('What are you claiming?', validators=[Optional()])
-    transaction_id = SelectField('Transaction', coerce=int, validators=[Optional()])
-    comments = TextAreaField('Additional Comments (optional)', validators=[Optional()])
-    submit = SubmitField('Submit Claim')
-
-
 class AdminClaimProcessForm(FlaskForm):
     status = SelectField('Status', choices=[
         ('pending', 'Pending'),
@@ -336,8 +236,8 @@ class BankingSettingsForm(FlaskForm):
 class StudentAddClassForm(FlaskForm):
     """Form for logged-in students to add a new class by entering a join code.
 
-    Each join_code is an independent universe. Credentials entered here are
-    verified against the *new* class's own unclaimed roster seat.
+    join_code is ingress/display metadata only; the boundary must resolve it
+    to class_id before any class-scoped work proceeds.
     """
     join_code = StringField('Join Code (from your teacher)', validators=[DataRequired()])
     first_name = StringField('First Name', validators=[DataRequired(), Length(min=1, max=128)])

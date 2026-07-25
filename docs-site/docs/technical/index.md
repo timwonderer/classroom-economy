@@ -1,12 +1,12 @@
 ---
-title: Technical Docs
+title: Technical Reference
 slug: /technical
 ---
 
-Preview only: these technical pages are placeholders for local route and layout testing while the v2 documentation model is still being redesigned.
+These pages collect the current technical reference for the site and the app.
 
-Pilot routes currently exposed here:
+Current reference areas:
 
-- architecture preview
-- API preview
+- architecture
+- API reference
 - migration plan

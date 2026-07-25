@@ -24,8 +24,19 @@ from app.models import (
 )
 from app.utils.ip_handler import get_real_ip
 from app.services.tlcp import create_ticket_correlation_pack
+from app.services.ledger_service import get_available_balances
 from app.feats.base import feat_shell
-from app.utils.join_code import get_display_join_code
+
+
+def resolve_public_id_for_user(user_id, class_id):
+    """Resolve the seats.public_id for a user in a given class.
+
+    Used by callers who have internal identity (user_id, class_id) and need
+    to pass a public identifier to the external-facing support surface.
+    Returns None if no seat found.
+    """
+    seat = Seat.query.filter_by(user_id=user_id, class_id=class_id).first()
+    return seat.public_id if seat else None
 
 
 def _resolve_actor_seat(actor):
@@ -47,7 +58,7 @@ def create_context_snapshot(actor, class_id, related_transaction_id=None, relate
         actor: Seat or legacy student-like instance with an identity_profile->seat path
         class_id: Canonical class ID (UUID)
         related_transaction_id: Optional transaction ID for transaction-specific issues
-        related_record_type: Optional record type ('transaction', 'tap_event', etc.)
+        related_record_type: Optional record type ('transaction', 'attendance_session', etc.)
         related_record_id: Optional record ID
 
     Returns:
@@ -68,8 +79,7 @@ def create_context_snapshot(actor, class_id, related_transaction_id=None, relate
 
     # Get current balances (scoped by class_id + seat_id)
     # Convert Decimal to float for JSON serialization (db.JSON column)
-    checking_balance = seat.get_checking_balance(class_id=class_id, seat_id=seat.id)
-    savings_balance = seat.get_savings_balance(class_id=class_id, seat_id=seat.id)
+    checking_balance, savings_balance = get_available_balances(seat.id, class_id)
     snapshot['balances'] = {
         'checking': float(checking_balance),
         'savings': float(savings_balance),
@@ -138,10 +148,12 @@ def create_issue(actor, user_id, class_id, category_id, explanation, expected_ou
     if not category:
         raise ValueError("Invalid category")
 
-    # Resolve class label and join_code from ClassEconomy
+    # Resolve class public ID for external-facing storage.
     class_row = ClassEconomy.query.filter_by(class_id=class_id).first()
-    join_code = get_display_join_code(class_row.class_id) if class_row else None
-    class_label = (class_row.display_name if class_row and class_row.display_name else None) or join_code or class_id
+    if not class_row:
+        raise ValueError(f"Class not found for class_id={class_id}")
+    class_public_id = class_row.class_public_id
+
     canonical_seat = _resolve_actor_seat(actor)
     if not canonical_seat:
         raise ValueError("create_issue requires canonical seat public_id scope.")
@@ -158,12 +170,8 @@ def create_issue(actor, user_id, class_id, category_id, explanation, expected_ou
 
     # Create the issue
     issue = Issue(
-        seat_id=canonical_seat.id,
         actor_public_id=actor_public_id,
-        teacher_id=user_id,
-        class_id=class_id,
-        join_code=join_code,
-        class_label=class_label,
+        class_public_id=class_public_id,
         category_id=category_id,
         issue_type=category.category_type,
         student_explanation=explanation,
@@ -192,15 +200,15 @@ def create_issue(actor, user_id, class_id, category_id, explanation, expected_ou
         include_recent_error=include_recent_error,
     )
 
-    # Record status history
-    record_status_change(issue, None, Issue.STATUS_OPEN, 'student', canonical_seat.id)
+    # Record status history (use public ID for external-facing support surface)
+    record_status_change(issue, None, Issue.STATUS_OPEN, 'student', actor_public_id)
 
     db.session.flush()  # FEAT-AUTHORIZED-SHELL
 
     return issue
 
 
-def record_status_change(issue, previous_status, new_status, changed_by_type, changed_by_id, notes=None):
+def record_status_change(issue, previous_status, new_status, changed_by_type, changed_by_public_id, notes=None):
     """
     Record a status change in the issue history.
 
@@ -209,15 +217,16 @@ def record_status_change(issue, previous_status, new_status, changed_by_type, ch
         previous_status: Previous status (or None for initial submission)
         new_status: New status
         changed_by_type: Type of user making change ('student', 'teacher', 'sysadmin', 'system')
-        changed_by_id: ID of user making change
+        changed_by_public_id: Public ID (seats.public_id) of actor making change
         notes: Optional notes about the change
     """
     history = IssueStatusHistory(
         issue_id=issue.id,
+        class_public_id=issue.class_public_id,
         previous_status=previous_status,
         new_status=new_status,
         changed_by_type=changed_by_type,
-        changed_by_id=changed_by_id,
+        changed_by_public_id=changed_by_public_id,
         notes=notes,
         changed_at=utc_now()
     )
@@ -225,7 +234,7 @@ def record_status_change(issue, previous_status, new_status, changed_by_type, ch
     db.session.add(history)
 
 
-def record_resolution_action(issue, action_type, performed_by_type, performed_by_id,
+def record_resolution_action(issue, action_type, performed_by_type, performed_by_public_id,
                              action_description=None, related_transaction_id=None,
                              amount_changed=None, before_value=None, after_value=None):
     """
@@ -235,7 +244,7 @@ def record_resolution_action(issue, action_type, performed_by_type, performed_by
         issue: Issue model instance
         action_type: Type of action ('reverse_transaction', 'correct_amount', etc.)
         performed_by_type: Type of user ('teacher', 'sysadmin')
-        performed_by_id: ID of user performing action
+        performed_by_public_id: Public ID (seats.public_id) of performer
         action_description: Optional description of the action
         related_transaction_id: Optional transaction ID if action affects a transaction
         amount_changed: Optional amount that was changed
@@ -244,10 +253,11 @@ def record_resolution_action(issue, action_type, performed_by_type, performed_by
     """
     action = IssueResolutionAction(
         issue_id=issue.id,
+        class_public_id=issue.class_public_id,
         action_type=action_type,
         action_description=action_description,
         performed_by_type=performed_by_type,
-        performed_by_id=performed_by_id,
+        performed_by_public_id=performed_by_public_id,
         related_transaction_id=related_transaction_id,
         amount_changed=amount_changed,
         before_value=before_value,
@@ -258,7 +268,7 @@ def record_resolution_action(issue, action_type, performed_by_type, performed_by
     db.session.add(action)
 
 
-def update_issue_status(issue, new_status, changed_by_type, changed_by_id, notes=None):
+def update_issue_status(issue, new_status, changed_by_type, changed_by_public_id, notes=None):
     """
     Update issue status and record the change in history.
 
@@ -266,11 +276,11 @@ def update_issue_status(issue, new_status, changed_by_type, changed_by_id, notes
         issue: Issue model instance
         new_status: New status value
         changed_by_type: Type of user making change
-        changed_by_id: ID of user making change
+        changed_by_public_id: Public ID (seats.public_id) of actor making change
         notes: Optional notes about the change
     """
     previous_status = issue.status
     issue.status = new_status
     issue.updated_at = utc_now()
 
-    record_status_change(issue, previous_status, new_status, changed_by_type, changed_by_id, notes)
+    record_status_change(issue, previous_status, new_status, changed_by_type, changed_by_public_id, notes)

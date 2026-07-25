@@ -7,11 +7,12 @@ from sqlalchemy import func, or_, case, select
 from app.extensions import db
 from app.models import (
     ClassEconomy, Seat, Transaction,
-    AttendanceSession, HallPassLog, RedemptionAuditLog, StorePurchase, RedemptionEvent, AnalyticsEvent,
-    AnalyticsSnapshot, Issue, IssueResolutionAction, InsuranceClaim,
-    InsuranceEnrollment, RentPayment, Announcement, StoreItemBlock, StoreItem,
-    PayrollSettings, RentSettings,
-    InsurancePolicyBlock,
+    AttendanceSession, HallPassLog, StorePurchase, RedemptionEvent,
+    Entitlement, EntitlementConsumption,
+    PayrollEvent,
+    Issue, IssueResolutionAction, Announcement, StoreItem, StoreItemVisibility,
+    # RedemptionAuditLog removed — redemption_audit_logs unauthorized; use redemption_events (DOM-STORE-001)
+    # StoreItemBlock removed — store_item_blocks unauthorized; use store_item_visibility (DOM-STORE-001)
 )
 from app.feats.base import feat_shell, InvariantViolation
 
@@ -26,14 +27,12 @@ def _raise_invariant_violation(message: str) -> None:
 def _assert_class_scope_integrity(class_id: str) -> None:
     scoped_models = (
         ("ledger_transaction", Transaction),
+        ("attendance_sessions", AttendanceSession),
         ("hall_pass_logs", HallPassLog),
+        ("payroll_event", PayrollEvent),
         ("store_purchases", StorePurchase),
         ("redemption_events", RedemptionEvent),
-        ("analytics_events", AnalyticsEvent),
-        ("analytics_snapshots", AnalyticsSnapshot),
         ("issues", Issue),
-        ("insurance_enrollments", InsuranceEnrollment),
-        ("rent_payments", RentPayment),
         ("announcements", Announcement),
     )
     violations = []
@@ -98,52 +97,56 @@ def collapse_universe(class_id: str, reason: str, actor_membership_id: Optional[
         ]
         affected_student_ids = list(set(affected_student_ids_seat))
 
-        # Many tables are handled by ON DELETE CASCADE from ClassEconomy
-        # (e.g. BalanceCache, Transaction, AttendanceSession, RentPayment, ClassJoinCodeAlias)
-        # We explicitly delete the others or things that require manual cleanup first
+        # Many tables are handled by ON DELETE CASCADE from ClassEconomy.
+        # We explicitly delete the others or things that require manual cleanup first.
 
         # 2. Activity / State Logs & Records (Not all have ON DELETE CASCADE yet)
+        AttendanceSession.query.filter_by(class_id=class_id).delete(synchronize_session=False)
         HallPassLog.query.filter_by(class_id=class_id).delete(synchronize_session=False)
-        AnalyticsSnapshot.query.filter_by(class_id=class_id).delete(synchronize_session=False)
-        AnalyticsEvent.query.filter_by(class_id=class_id).delete(synchronize_session=False)
+        PayrollEvent.query.filter_by(class_id=class_id).delete(synchronize_session=False)
         Announcement.query.filter_by(class_id=class_id).delete(synchronize_session=False)
 
-        # 3. Insurance & Issue Data
+        # 3. Issue Data
         issue_ids_sel = select(Issue.id).filter_by(class_id=class_id)
         IssueResolutionAction.query.filter(
             IssueResolutionAction.issue_id.in_(issue_ids_sel)
         ).delete(synchronize_session=False)
         Issue.query.filter_by(class_id=class_id).delete(synchronize_session=False)
 
-        insurance_ids_sel = select(InsuranceEnrollment.id).filter_by(class_id=class_id)
-        tx_ids_sel = select(Transaction.id).filter_by(class_id=class_id)
-        InsuranceClaim.query.filter(
-            or_(
-                InsuranceClaim.enrollment_id.in_(insurance_ids_sel),
-                InsuranceClaim.transaction_id.in_(tx_ids_sel)
-            )
-        ).delete(synchronize_session=False)
-        InsuranceEnrollment.query.filter_by(class_id=class_id).delete(synchronize_session=False)
-
         # 4. Inventory / Store Data
         store_purchase_ids_subq = select(StorePurchase.id).filter_by(class_id=class_id).subquery()
-        RedemptionEvent.query.filter(
-            RedemptionEvent.purchase_id.in_(select(store_purchase_ids_subq))
+        entitlement_ids_subq = select(Entitlement.entitlement_id).filter_by(class_id=class_id).subquery()
+        EntitlementConsumption.query.filter(
+            EntitlementConsumption.entitlement_id.in_(select(entitlement_ids_subq))
         ).delete(synchronize_session=False)
+        Entitlement.query.filter_by(class_id=class_id).delete(synchronize_session=False)
+        RedemptionEvent.query.filter_by(class_id=class_id).delete(synchronize_session=False)
         StorePurchase.query.filter_by(class_id=class_id).delete(synchronize_session=False)
 
-        # 4b. StoreItemBlocks for this class (class-scoped; also handled by FK cascade on class deletion)
-        StoreItemBlock.query.filter_by(class_id=class_id).delete(synchronize_session=False)
-        # Delete StoreItems that now have NO remaining StoreItemBlock visibility entries for this class
+        # 4b. Seat-level store visibility rows for this class
+        seat_ids_subq = select(Seat.id).filter_by(class_id=class_id).subquery()
+        StoreItemVisibility.query.filter(
+            StoreItemVisibility.seat_id.in_(select(seat_ids_subq))
+        ).delete(synchronize_session=False)
+        # Delete StoreItems that now have NO remaining visibility entries for this class
         deletable_store_items = (
             db.session.query(StoreItem.id)
-            .outerjoin(StoreItemBlock, StoreItem.id == StoreItemBlock.store_item_id)
+            .outerjoin(StoreItemVisibility, StoreItem.id == StoreItemVisibility.store_item_id)
             .filter(
                 StoreItem.class_id == class_id,
-                StoreItemBlock.store_item_id.is_(None),
+                StoreItemVisibility.store_item_id.is_(None),
             )
             .subquery()
         )
+        class_item_entitlement_ids = select(Entitlement.entitlement_id).filter(
+            Entitlement.entitlement_item_id.in_(select(deletable_store_items))
+        ).subquery()
+        EntitlementConsumption.query.filter(
+            EntitlementConsumption.entitlement_id.in_(select(class_item_entitlement_ids))
+        ).delete(synchronize_session=False)
+        Entitlement.query.filter(
+            Entitlement.entitlement_item_id.in_(select(deletable_store_items))
+        ).delete(synchronize_session=False)
         StoreItem.query.filter(StoreItem.id.in_(select(deletable_store_items))).delete(synchronize_session=False)
 
         # 5. Delete Seats for this class (also handled by FK cascade on ClassEconomy deletion)
@@ -161,23 +164,6 @@ def collapse_universe(class_id: str, reason: str, actor_membership_id: Optional[
                 remaining_seats = db.session.query(Seat.id).filter(Seat.user_id == s_id).count()
                 if remaining_seats == 0:
                     logger.info(f"Seat erasure rule triggered for student_id={s_id}")
-
-        # 8. Post-collapse: Settings cleanup
-        # If no remaining seat exists for that section name in the current owner's other classes, delete insurance policy sections.
-        if affected_seat_blocks:
-            for block_name in affected_seat_blocks:
-                remaining = (
-                    db.session.query(Seat.id)
-                    .join(ClassEconomy, ClassEconomy.class_id == Seat.class_id)
-                    .filter(
-                        ClassEconomy.section == block_name,
-                        ClassEconomy.user_id == user_id,
-                    )
-                    .count()
-                )
-                if remaining == 0:
-                    logger.info(f"Settings Cleanup Rule triggered for section={block_name}, user_id={user_id}")
-                    InsurancePolicyBlock.query.filter_by(block=block_name).delete(synchronize_session=False)
 
         db.session.flush()  # FEAT-AUTHORIZED-SHELL
         return True

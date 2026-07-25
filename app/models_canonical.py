@@ -90,31 +90,6 @@ class IdentityProfile(Base, TimestampMixin):
     notes = sa.Column(sa.LargeBinary, nullable=True)
 
 
-class UserInviteToken(Base, TimestampMixin):
-    __tablename__ = "user_invite_tokens"
-    id = sa.Column(sa.Integer, primary_key=True)
-    token_hash = sa.Column(sa.String(128), unique=True, nullable=False, index=True)
-    user_role = sa.Column(
-        sa.Enum("student", "teacher", "sysadmin", name="user_role_enum"),
-        nullable=False,
-    )
-    issued_by_user_id = sa.Column(sa.Integer, sa.ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
-    expires_at = sa.Column(sa.DateTime(timezone=True), nullable=False, index=True)
-    used_at = sa.Column(sa.DateTime(timezone=True), nullable=True)
-    revoked_at = sa.Column(sa.DateTime(timezone=True), nullable=True)
-
-
-class UserRecoveryToken(Base, TimestampMixin):
-    __tablename__ = "user_recovery_tokens"
-    id = sa.Column(sa.Integer, primary_key=True)
-    user_id = sa.Column(sa.Integer, sa.ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
-    token_hash = sa.Column(sa.String(128), unique=True, nullable=False, index=True)
-    issued_by_user_id = sa.Column(sa.Integer, sa.ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
-    expires_at = sa.Column(sa.DateTime(timezone=True), nullable=False, index=True)
-    used_at = sa.Column(sa.DateTime(timezone=True), nullable=True)
-    revoked_at = sa.Column(sa.DateTime(timezone=True), nullable=True)
-
-
 class ClassFeature(Base, TimestampMixin):
     __tablename__ = "class_features"
     id = sa.Column(sa.Integer, primary_key=True)
@@ -150,11 +125,6 @@ class PayrollSetting(Base, TimestampMixin):
     id = sa.Column(sa.Integer, primary_key=True)
 
 
-class SavedAdjustment(Base, TimestampMixin):
-    __tablename__ = "saved_adjustments"
-    id = sa.Column(sa.Integer, primary_key=True)
-
-
 class BankingSetting(Base, TimestampMixin):
     __tablename__ = "banking_settings"
     id = sa.Column(sa.Integer, primary_key=True)
@@ -163,15 +133,11 @@ class BankingSetting(Base, TimestampMixin):
 class AttendanceSession(Base, TimestampMixin):
     __tablename__ = "attendance_sessions"
     id = sa.Column(sa.Integer, primary_key=True)
+    actor_seat_id = sa.Column(sa.Integer, sa.ForeignKey("seats.id", ondelete="SET NULL"), nullable=True, index=True)
 
 
 class HallPassLog(Base, TimestampMixin):
     __tablename__ = "hall_pass_logs"
-    id = sa.Column(sa.Integer, primary_key=True)
-
-
-class SeatAttendanceState(Base, TimestampMixin):
-    __tablename__ = "seat_attendance_state"
     id = sa.Column(sa.Integer, primary_key=True)
 
 
@@ -198,6 +164,7 @@ class ObligationReversal(Base, TimestampMixin):
 class EntitlementEvent(Base, TimestampMixin):
     __tablename__ = "entitlement_events"
     id = sa.Column(sa.Integer, primary_key=True)
+    correlation_id = sa.Column(sa.String(100), nullable=True, index=True)
 
 
 class LedgerTransaction(Base, TimestampMixin):
@@ -235,9 +202,14 @@ class OperationalEvent(Base, TimestampMixin):
     id = sa.Column(sa.Integer, primary_key=True)
 
 
-class AuditLog(Base, TimestampMixin):
-    __tablename__ = "audit_log"
+class AuditEvent(Base, TimestampMixin):
+    __tablename__ = "audit_events"
     id = sa.Column(sa.Integer, primary_key=True)
+
+
+class ChainHead(Base):
+    __tablename__ = "chain_heads"
+    chain_scope = sa.Column(sa.String(64), primary_key=True)
 
 
 class IncidentEvent(Base, TimestampMixin):
@@ -295,9 +267,9 @@ class IssueResolutionAction(Base, TimestampMixin):
     id = sa.Column(sa.Integer, primary_key=True)
 
 
-class TicketCorrelationPack(Base, TimestampMixin):
-    __tablename__ = "ticket_correlation_packs"
-    id = sa.Column(sa.Integer, primary_key=True)
+class TicketCorrelationPack(Base):
+    __tablename__ = "ticket_correlation_pack"
+    issue_id = sa.Column(sa.Integer, primary_key=True)
 
 
 class Announcement(Base, TimestampMixin):
@@ -315,8 +287,6 @@ __all__ = [
     "Seat",
     "Class_",
     "IdentityProfile",
-    "UserInviteToken",
-    "UserRecoveryToken",
     "ClassFeature",
     "FeatureSetting",
     "PolicyVersion",
@@ -324,11 +294,9 @@ __all__ = [
     "HallPassSetting",
     "RentSetting",
     "PayrollSetting",
-    "SavedAdjustment",
     "BankingSetting",
     "AttendanceSession",
     "HallPassLog",
-    "SeatAttendanceState",
     "AssessmentEvent",
     "ObligationLifecycle",
     "ObligationSatisfaction",
@@ -341,7 +309,8 @@ __all__ = [
     "StorePurchase",
     "RedemptionEvent",
     "OperationalEvent",
-    "AuditLog",
+    "AuditEvent",
+    "ChainHead",
     "IncidentEvent",
     "IncidentSummary",
     "AlertEvent",

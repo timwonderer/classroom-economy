@@ -331,9 +331,18 @@ The Pass 2 register undercounted by 8 sites. Corrected inventory below.
 
 ~151 domain-model queries correctly scope by `class_id` across the codebase, indicating the migration is majority-complete but the tail of violations is systematic.
 
+### Current App Surface
+
+As of the 2026-07-14 app grep pass, the remaining `join_code` references in `app/` are limited to:
+
+- `ClassEconomy` boundary resolution from user input
+- display metadata / labels derived from canonical `class_id`
+
+No downstream domain-model query in the app surface currently uses `join_code` as the authority key.
+
 ### Conclusion
 
-**The proof fails.** 48 domain-model queries use `join_code` instead of `class_id`. All are now registered. The violation surface is concentrated in `admin.py` (25 sites), `student.py` (8), `analytics.py` (5), with the remainder in utils and services.
+**Historical list retained for provenance.** The 48-site violation catalog below documents the original audit state, but the current app surface now reduces to allowed boundary-resolution and display-only uses.
 
 ---
 

@@ -6,15 +6,16 @@ debug endpoints, and public hall pass verification.
 """
 
 import unicodedata
-from datetime import timezone
+from types import SimpleNamespace
 from flask import Blueprint, redirect, url_for, jsonify, current_app, session, request
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.extensions import db, limiter
-from app.models import Admin
+from app.models import User
+from app.hash_utils import hash_username_lookup
 from app.utils.helpers import render_template_with_fallback as render_template, is_safe_url
-from app.utils.time import utc_now, ensure_utc, normalize_for_db, get_timezone
+from app.utils.canonical_temporal_resolver import CLASS_LEVEL_EVALUATION, canonical_temporal_resolver
 
 # Create blueprint
 main_bp = Blueprint('main', __name__)
@@ -27,7 +28,7 @@ def home():
     """
     Smart root route:
     - If logged in as student -> Student Dashboard
-    - If logged in as admin -> Admin Dashboard
+    - If logged in as system admin -> admin dashboard
     - If logged in as sysadmin -> Sysadmin Dashboard
     - If not logged in -> Redirect to Marketing Site (classroomtokenhub.com)
     """
@@ -69,7 +70,7 @@ def health_check_deep():
     Checks:
     - Database connectivity
     - Seat table accessibility
-    - Admin table accessibility
+    - Administrator table accessibility
     - Hall passes table accessibility (if accessible)
 
     Returns JSON with component status for detailed monitoring.
@@ -99,15 +100,14 @@ def health_check_deep():
         checks['seats_table'] = 'error'
         overall_status = 'degraded'
 
-    # Check if admin table is accessible
+    # Check if teacher user rows are accessible
     try:
-        with db.engine.connect() as conn:
-            admin_count = conn.execute(text('SELECT COUNT(*) FROM teachers')).scalar()
-        checks['admins_table'] = 'accessible'
-        checks['admin_count'] = admin_count
+        teacher_count = User.query.filter(User.user_role == UserRole.TEACHER).count()
+        checks['teachers_table'] = 'accessible'
+        checks['teacher_count'] = teacher_count
     except SQLAlchemyError as e:
-        current_app.logger.warning('Admins table check failed: %s', str(e))
-        checks['admins_table'] = 'error'
+        current_app.logger.warning('Teachers table check failed: %s', str(e))
+        checks['teachers_table'] = 'error'
         overall_status = 'degraded'
 
     # Check if hall pass logs table is accessible (may fail due to RLS/tenant context)
@@ -121,27 +121,26 @@ def health_check_deep():
         checks['hall_pass_logs_table'] = 'not_accessible'
         # Don't mark as degraded - this might be expected due to RLS
 
-    # Audit lineage integrity check (reads IntegrityStatus — never runs verifier inline)
+    # Audit lineage integrity check (reads operational_events — never runs verifier inline)
     try:
-        from app.models import IntegrityStatus
-        integrity = IntegrityStatus.query.first()
-        if integrity is None:
+        with db.engine.connect() as conn:
+            row = conn.execute(text("""
+                SELECT level, payload
+                FROM operational_events
+                WHERE level IN ('ERROR', 'CRITICAL')
+                ORDER BY created_at DESC, id DESC
+                LIMIT 1
+            """)).mappings().first()
+        if row is None:
             checks['audit_lineage'] = 'not_initialized'
             checks['audit_lineage_last_checked'] = None
-        elif integrity.passing:
-            checks['audit_lineage'] = 'passing'
-            checks['audit_lineage_last_checked'] = (
-                integrity.last_checked_utc.isoformat() if integrity.last_checked_utc else None
-            )
         else:
-            checks['audit_lineage'] = 'failing'
-            checks['audit_lineage_last_checked'] = (
-                integrity.last_checked_utc.isoformat() if integrity.last_checked_utc else None
-            )
-            checks['audit_lineage_degraded_since'] = (
-                integrity.degraded_since.isoformat() if integrity.degraded_since else None
-            )
-            overall_status = 'degraded'
+            checks['audit_lineage'] = 'passing'
+            checks['audit_lineage_last_checked'] = None
+            checks['audit_lineage_latest_level'] = row.get('level')
+            payload = row.get('payload') or {}
+            if isinstance(payload, dict):
+                checks['audit_lineage_latest_error_type'] = payload.get('error_type')
     except Exception:
         current_app.logger.exception('Audit lineage status check failed')
         checks['audit_lineage'] = 'error'
@@ -198,11 +197,6 @@ def service_worker():
 
 # -------------------- HALL PASS PUBLIC VERIFICATION (NO AUTH REQUIRED) --------------------
 
-def _get_school_timezone():
-    """Return the configured school timezone or fall back to Pacific Time."""
-    return get_timezone(current_app.config.get('DEFAULT_TIMEZONE'))
-
-
 def _normalize_first_name(value):
     """Normalize first name: strip, NFKC, lowercase."""
     if not value:
@@ -233,12 +227,10 @@ def verify_hall_pass(teacher_public_token):
     - Non-enumerable (token-based)
     - Rotatable
     """
-    from app.models import ClassEconomy, HallPassLog
+    from app.models import AttendanceReasonCode, AttendanceSession, ClassEconomy, HallPassLog, IdentityProfile, Seat
 
     _GENERIC_UNAVAILABLE = "Verification page not available."
 
-    # Look up teacher directly via canonical User token
-    from app.models import User, UserRole
     teacher_user = User.query.filter_by(hall_pass_verify_token=teacher_public_token).first()
 
     if not teacher_user:
@@ -248,19 +240,22 @@ def verify_hall_pass(teacher_public_token):
             message=_GENERIC_UNAVAILABLE
         ), 404
 
-    # Get teacher's active classes (display uses join_code, but POST should carry class_id)
+    # Build the display list from the teacher's classes; POST must still resolve
+    # the selected class directly by class_id.
     classes_rows = (
         ClassEconomy.query.filter_by(user_id=teacher_user.id)
         .order_by(ClassEconomy.display_name)
         .all()
     )
-    # Build list: [{"join_code": ..., "class_id": ..., "label": ...}, ...]
+    def _class_display_label(class_row):
+        label_parts = [part for part in (class_row.section, class_row.display_name) if part]
+        return " - ".join(label_parts) if label_parts else class_row.class_id
+
     classes = []
     for c in classes_rows:
         classes.append({
-            "join_code": c.join_code,
             "class_id": c.class_id,
-            "label": c.display_name or c.join_code
+            "label": _class_display_label(c),
         })
 
     if request.method == 'GET':
@@ -290,9 +285,15 @@ def verify_hall_pass(teacher_public_token):
             result={'outcome': 'no_match'}
         )
 
-    # Validate selected class belongs to this teacher.
-    selected_class = next((c for c in classes if c['class_id'] == selected_class_id), None)
-    if not selected_class:
+    first_name_hash = hash_username_lookup(first_name_norm)
+    last_name_hash = hash_username_lookup(last_name_norm)
+
+    # Validate selected class directly under the teacher's ownership boundary.
+    selected_class_row = ClassEconomy.query.filter_by(
+        class_id=selected_class_id,
+        user_id=teacher_user.id,
+    ).first()
+    if not selected_class_row:
         return render_template(
             'hall_pass_verify.html',
             unavailable=False,
@@ -301,38 +302,40 @@ def verify_hall_pass(teacher_public_token):
             result={'outcome': 'no_match'}
         )
 
-    # Determine today's date range in school timezone
-    school_tz = _get_school_timezone()
-    now_school = utc_now().astimezone(school_tz)
-    today_start = now_school.replace(hour=0, minute=0, second=0, microsecond=0)
-    today_end = today_start.replace(hour=23, minute=59, second=59, microsecond=999999)
-
-    today_start_utc = today_start.astimezone(timezone.utc)
-    today_end_utc = today_end.astimezone(timezone.utc)
-
-    # Normalize for DB comparison (handles SQLite naive datetime storage)
-    today_start_db = normalize_for_db(today_start_utc)
-    today_end_db = normalize_for_db(today_end_utc)
+    public_temporal_context = SimpleNamespace(class_id=selected_class_id)
+    day_bounds = canonical_temporal_resolver(
+        CLASS_LEVEL_EVALUATION,
+        canonical_execution_context=public_temporal_context,
+        primitive="evaluation_day_boundaries",
+    )
+    now_evaluation = canonical_temporal_resolver(
+        CLASS_LEVEL_EVALUATION,
+        canonical_execution_context=public_temporal_context,
+        primitive="current_time",
+    )
 
     # Query today's hall pass records for this class scope.
-    # Only include actionable statuses (not pending/rejected).
     passes_query = HallPassLog.query.filter(
         HallPassLog.class_id == selected_class_id,
-        HallPassLog.request_time >= today_start_db,
-        HallPassLog.request_time <= today_end_db,
-        HallPassLog.status.in_(['approved', 'left', 'returned'])
-    ).order_by(HallPassLog.request_time.desc())
+        HallPassLog.timestamp >= day_bounds.boundary_start_utc,
+        HallPassLog.timestamp < day_bounds.boundary_end_utc,
+    ).order_by(HallPassLog.timestamp.desc(), HallPassLog.id.desc())
 
-    # Filter in Python (first_name is PII-encrypted, can't filter in DB).
+    # Filter via canonical seat claim hashes. IdentityProfile is display-only.
     # Stop at 2 matches: enough to distinguish unique vs ambiguous.
     matched = []
     for entry in passes_query.yield_per(100):
-        seat = entry.seat
-        if not seat or not seat.identity_profile:
+        seat = Seat.query.filter_by(
+            id=entry.requested_by_seat_id,
+            class_id=entry.class_id,
+            role="student",
+        ).first()
+        if not seat:
             continue
-        stored_norm = _normalize_first_name((seat.identity_profile.first_name if seat.identity_profile else ""))
-        stored_last_name = _normalize_last_name(seat.identity_profile.last_name if seat.identity_profile else "")
-        if stored_norm == first_name_norm and stored_last_name == last_name_norm:
+        if (
+            seat.claim_first_name_hash == first_name_hash
+            and seat.claim_last_name_hash == last_name_hash
+        ):
             matched.append(entry)
         if len(matched) >= 2:
             # Ambiguous — stop early
@@ -344,33 +347,68 @@ def verify_hall_pass(teacher_public_token):
         result = {'outcome': 'ambiguous'}
     else:
         entry = matched[0]
-        class_label = selected_class['label']
-
-        # Format time_out in school timezone
+        class_label = _class_display_label(selected_class_row)
+        profile = IdentityProfile.query.filter_by(
+            seat_id=entry.requested_by_seat_id,
+            class_id=entry.class_id,
+        ).first()
+        attendance_rows = (
+            AttendanceSession.query.filter_by(
+                class_id=entry.class_id,
+                target_seat_id=entry.requested_by_seat_id,
+                hall_pass_id=entry.hall_pass_id,
+            )
+            .order_by(AttendanceSession.timestamp.asc(), AttendanceSession.id.asc())
+            .all()
+        )
+        left_row = next(
+            (
+                row for row in attendance_rows
+                if row.status == "inactive"
+                and row.reason_code == AttendanceReasonCode.HALL_PASS.value
+            ),
+            None,
+        )
+        return_row = next(
+            (
+                row for row in attendance_rows
+                if left_row is not None
+                and row.status == "active"
+                and row.timestamp >= left_row.timestamp
+            ),
+            None,
+        )
+        status = "returned" if return_row else "left" if left_row else "approved"
         time_out_str = None
         elapsed_mins = None
-        if entry.left_time:
-            left_utc = ensure_utc(entry.left_time)
-            left_local = left_utc.astimezone(school_tz)
-            time_out_str = left_local.strftime('%I:%M %p').lstrip('0')
-
-            # Compute elapsed minutes only for currently-out passes
-            if entry.status == 'left':
-                elapsed_mins = int((utc_now() - left_utc).total_seconds() // 60)
+        if left_row:
+            time_out_str = left_row.timestamp.isoformat().replace('+00:00', 'Z')
+            if status == "left":
+                elapsed = canonical_temporal_resolver(
+                    CLASS_LEVEL_EVALUATION,
+                    canonical_execution_context=public_temporal_context,
+                    primitive="time_since",
+                    reference_time_utc=now_evaluation.canonical_now_utc,
+                    start=left_row.timestamp,
+                )
+                elapsed_mins = elapsed.elapsed_seconds // 60
 
         return_time_str = None
-        if entry.return_time:
-            returned_utc = ensure_utc(entry.return_time)
-            returned_local = returned_utc.astimezone(school_tz)
-            return_time_str = returned_local.strftime('%I:%M %p').lstrip('0')
+        if return_row:
+            return_time_str = return_row.timestamp.isoformat().replace('+00:00', 'Z')
 
         result = {
             'outcome': 'match',
-            'student_display': (entry.seat.identity_profile.full_name if entry.seat and entry.seat.identity_profile else ""),
+            'student_display': " ".join(
+                part for part in [
+                    getattr(profile, "first_name", None),
+                    getattr(profile, "last_name", None),
+                ] if part
+            ).strip(),
             'class_label': class_label,
-            'destination': entry.reason,
+            'destination': entry.destination,
             'time_out': time_out_str,
-            'status': entry.status,
+            'status': status,
             'elapsed_mins': elapsed_mins,
             'return_time': return_time_str,
         }
@@ -415,7 +453,7 @@ def debug_admin_db_test():
     Temporary route to confirm admin and invite codes tables are accessible.
     """
     try:
-        admins = Admin.query.all()
+        admins = User.query.filter(User.user_role == UserRole.TEACHER).all()
         with db.engine.connect() as conn:
             invite_codes_count = conn.execute(text('SELECT COUNT(*) FROM teacher_invite_codes')).scalar()
         return jsonify({
@@ -424,5 +462,5 @@ def debug_admin_db_test():
             "status": "success"
         }), 200
     except Exception as e:
-        current_app.logger.exception("Admin DB test failed")
-        return jsonify({"status": "error", "message": "Admin DB test failed due to an internal error."}), 500
+        current_app.logger.exception("System admin DB test failed")
+        return jsonify({"status": "error", "message": "System admin DB test failed due to an internal error."}), 500

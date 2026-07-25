@@ -29,24 +29,22 @@ def execute_scheduled_rent_charge(
     """
     FEAT-wrapped scheduled rent charge for one seat + one class cycle.
     """
-    # Resolve the immutable policy version governing this cycle
-    active_version = obligations_service.resolve_active_rent_policy_version(class_id)
-    if active_version is None:
-        raise ValueError(f"No active rent policy version for class {class_id}")
-
     cycle_start = ensure_utc(execution_time) if execution_time else utc_now()
-    cycle_length_days = int(active_version.cycle_length_days or 30)
+    cycle_length_days = int(getattr(settings, "cycle_length_days", 30) or 30)
     cycle_end = cycle_start + timedelta(days=cycle_length_days)
     cycle_start_class = to_class_time(cycle_start, class_id)
 
     user_id = seat.class_economy.user_id if getattr(seat, "class_economy", None) else None
-    amount = Decimal(str(active_version.rent_amount or Decimal("0.00")))
+    amount = Decimal(str(getattr(settings, "rent_amount", Decimal("0.00")) or Decimal("0.00")))
     period = (seat.class_economy.section if getattr(seat, "class_economy", None) else "A").strip().upper()
 
     transaction, _created = ledger_service.create_pending_transaction_idempotent(
         idempotency_key=idempotency_key,
         seat_id=seat.id,
         class_id=class_id,
+        target_seat_id=seat.id,
+        actor_seat_id=ledger_service.resolve_class_authority_seat_id(class_id),
+        mechanism="system",
         user_id=user_id,
         amount=-amount,
         account_type="checking",
@@ -68,7 +66,6 @@ def execute_scheduled_rent_charge(
         cycle_idempotency_key=idempotency_key,
         was_late=False,
         late_fee_charged=Decimal("0.00"),
-        rent_policy_version_id=active_version.id,
     )
     db.session.flush()
 

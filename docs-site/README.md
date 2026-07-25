@@ -1,12 +1,12 @@
 # Docs Site Workspace
 
-This directory hosts a local-only internal preview site for Classroom Token Hub v2 docs work.
+This directory hosts the docs site for Classroom Token Hub.
 
 ## Why It Exists
 
-The Flask app still owns contextual in-product help, but this Docusaurus workspace gives us a safer place to preview a small subset of v2 docs and routing ideas without treating them as canonical.
+The Flask app still owns contextual in-product help, but this Docusaurus workspace is the place for the current student, teacher, and technical guides.
 
-This is not a public site. The intended usage is local development against a dev server. Until the v2 docs rework is complete, only the routes listed in `route-map.json` should be treated as intentionally handed off from Flask.
+This is not a public site. The intended usage is local development against a dev server. Only the routes listed in `route-map.json` are intentionally handed off from Flask.
 
 ## Local Development
 
@@ -25,12 +25,11 @@ npm run start
 
 ## Routing Assumption
 
-The Docusaurus docs plugin is mounted at the site root, but Flask only redirects the subset of public routes listed in `route-map.json`.
-The Docusaurus docs plugin is mounted at the site root, but Flask only redirects the subset of preview routes listed in `route-map.json`.
+The Docusaurus docs plugin is mounted at the site root, but Flask only redirects the subset of routes listed in `route-map.json`.
 
 That lets the migration move incrementally instead of breaking unmigrated docs.
 
-Mapped preview requests can move from:
+Mapped requests can move from:
 
 ```text
 /docs/<path>
@@ -41,5 +40,3 @@ to:
 ```text
 https://docs.example.com/<mapped-path>
 ```
-
-The preview site also uses Docusaurus client redirects for those legacy aliases.

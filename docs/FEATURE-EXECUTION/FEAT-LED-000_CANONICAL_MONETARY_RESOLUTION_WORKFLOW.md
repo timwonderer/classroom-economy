@@ -2,7 +2,7 @@
 
 | Reference Number | Version | Effective Date | Supersedes | Authority Level |
 | :--- | :--- | :--- | :--- | :--- |
-| FEAT-LED-000 | 0.1 | 2026-07-12 | N/A | Normative |
+| FEAT-LED-000 | 0.2 | 2026-07-18 | 0.1 | Normative |
 
 ---
 
@@ -18,6 +18,13 @@ It exists to separate:
 - ledger execution
 
 This FEAT does not define business meaning, translate business intent, or construct the initial ledger plan. It defines the canonical resolution workflow that every money-moving business FEAT must use before it delegates to `FEAT-LED-001`.
+
+The resolved plan MUST target the canonical ledger contract:
+
+- class-scoped transaction facts
+- immutable insert-only rows
+- reconciliation-derived posting state
+- snapshot-owned mutable settlement state
 
 ---
 
@@ -60,6 +67,23 @@ The set of read-only decisions returned by domain authorities that govern whethe
 The authoritative ledger plan after all required domain decisions have been applied.
 
 This object is the only plan eligible for posting by `FEAT-LED-001`.
+
+Resolved plans should carry the final ledger row shape, including:
+
+- `class_id`
+- `target_seat_id`
+- `actor_seat_id`
+- `mechanism`
+- `amount_cents`
+- `timestamp`
+- `account_type`
+- `description`
+- `correlation_id`
+- `feat_code`
+- `idempotency_key`
+- `policy_id`
+- `type`
+- lineage fields
 
 ---
 
