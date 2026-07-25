@@ -979,7 +979,7 @@ def dashboard():
             total_paid += paid
 
         # Use v2 version which correctly computes grace period payments from canonical PAYMENT events
-        paid_by_grace = _total_paid_by_grace_v2(assessments, grace_end_date_for_status)
+        paid_by_grace = _total_paid_by_grace(assessments, grace_end_date_for_status)
         late_fee = Decimal('0.00')
         if rent_is_active and now > grace_end_date_for_status and paid_by_grace < rent_settings.rent_amount:
             late_fee = rent_settings.late_fee
@@ -2375,13 +2375,6 @@ def _calculate_rent_timeline(settings, now):
 
 
 def _total_paid_by_grace(assessments, grace_end_date):
-    """DEPRECATED: Use _total_paid_by_grace_v2 for new event_type discriminator schema."""
-    # This function is kept for backwards compatibility but should not be used
-    # with the new schema. Call _total_paid_by_grace_v2 instead.
-    return Decimal('0.00')
-
-
-def _total_paid_by_grace_v2(assessments, grace_end_date):
     """Sum Ledger amounts for PAYMENT events on or before grace end date — DOM-OBL-001.
 
     Args:
@@ -2639,7 +2632,7 @@ def _is_coverage_period_paid(
 
     grace_for_coverage = coverage_due_date + timedelta(days=settings.grace_period_days)
     # Use v2 version which works with canonical PAYMENT events from Ledger
-    paid_by_grace = _total_paid_by_grace_v2(assessments, grace_for_coverage)
+    paid_by_grace = _total_paid_by_grace(assessments, grace_for_coverage)
 
     required_total = effective_rent_amount
     if include_late_fee and paid_by_grace < effective_rent_amount:
@@ -3005,7 +2998,7 @@ def rent():
         total_paid += get_total_paid_for_assessment(assessment.id, class_id)
 
     # Calculate paid by grace end date
-    paid_by_grace = _total_paid_by_grace_v2(assessments, grace_end_date_for_status)
+    paid_by_grace = _total_paid_by_grace(assessments, grace_end_date_for_status)
     late_fee = Decimal('0.00')
     if rent_is_active and now > grace_end_date_for_status and paid_by_grace < settings.rent_amount:
         late_fee = settings.late_fee
@@ -3267,7 +3260,7 @@ def rent_pay(period):
     if payment_due_date and payment_due_date != due_date:
         grace_end_date_for_payment = payment_due_date + timedelta(days=settings.grace_period_days)
     # Use v2 version which correctly computes grace period payments from canonical PAYMENT events
-    paid_by_grace = _total_paid_by_grace_v2(existing_payments, grace_end_date_for_payment)
+    paid_by_grace = _total_paid_by_grace(existing_payments, grace_end_date_for_payment)
     is_late = now > grace_end_date_for_payment and paid_by_grace < settings.rent_amount
 
     # Calculate late fee if applicable
