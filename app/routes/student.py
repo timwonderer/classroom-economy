@@ -2491,38 +2491,6 @@ def _match_valid_rent_payments(payments, candidate_txns):
     return valid_payments
 
 
-def _filter_valid_rent_payments(payments, student_id, class_id, seat_ids=None):
-    """Return payments that have a matching, non-void rent transaction."""
-    if not payments:
-        return []
-
-    payment_dates = [p.payment_date for p in payments if p.payment_date]
-    if not payment_dates:
-        return []
-
-    min_payment_date = min(payment_dates)
-    max_payment_date = max(payment_dates)
-    window_start = min_payment_date - timedelta(seconds=RENT_PAYMENT_MATCH_TOLERANCE_SECONDS)
-    window_end = max_payment_date + timedelta(seconds=RENT_PAYMENT_MATCH_TOLERANCE_SECONDS)
-
-    payment_amounts = {-(p.amount_paid) for p in payments}
-
-    txn_scope = transaction_scope_filter(Transaction, student_id, seat_ids or [])
-    txn_query = Transaction.query.filter(
-        txn_scope,
-        Transaction.type == 'Rent Payment',
-        Transaction.timestamp >= window_start,
-        Transaction.timestamp <= window_end,
-        Transaction.amount.in_(payment_amounts)
-    )
-    if not class_id:
-        return []
-    txn_query = txn_query.filter(Transaction.class_id == class_id)
-
-    candidate_txns = txn_query.all()
-    return _match_valid_rent_payments(payments, candidate_txns)
-
-
 def _build_rent_coverage_context(
     settings,
     *,
@@ -2554,12 +2522,11 @@ def _build_rent_coverage_context(
         return None
 
     valid_seats = (
-        db.session.query(Seat.id, Seat.user_id)
+        db.session.query(Seat.id)
         .filter(Seat.class_id == class_id, Seat.id.in_(seat_ids))
         .all()
     )
     valid_seat_ids = [s.id for s in valid_seats]
-    student_id_by_seat = {s.id: s.user_id for s in valid_seats}
     if not valid_seat_ids:
         return None
 
@@ -2584,7 +2551,6 @@ def _build_rent_coverage_context(
         "class_id": class_id,
         "coverage_due_date": ensure_utc(coverage_due_date),
         "join_code": join_code,
-        "student_id_by_seat": student_id_by_seat,
         "waived_seat_ids": waived_seat_ids,
         "valid_payments_by_seat": dict(assessments_by_seat),
         "locked_rent_amount": _get_locked_rent_amount_for_class_cycle(class_id, coverage_due_date),
@@ -2764,17 +2730,12 @@ def _is_student_coverage_period_paid(
             and context_coverage_due == ensure_utc(coverage_due_date)
         )
 
-    student_id = None
     locked_amount = None
     if context_applies:
-        student_id = (coverage_context.get("student_id_by_seat") or {}).get(seat_id)
         locked_amount = coverage_context.get("locked_rent_amount")
         if include_waivers and seat_id in (coverage_context.get("waived_seat_ids") or set()):
             return True
     else:
-        if seat_id:
-            seat = db.session.get(Seat, seat_id)
-            student_id = seat.user_id if seat else None
         if include_waivers:
             if _has_active_rent_waiver_v2(seat_id, class_id, coverage_due_date):
                 return True
