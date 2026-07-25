@@ -129,7 +129,9 @@ def _resolve_authority(evaluation_type: str, ctx) -> tuple[str, str | None]:
             "CLE requires canonical_execution_context with class_id"
         )
 
-    tz_name = get_class_timezone(class_id)
+    tz_obj = get_class_timezone(class_id)
+    # get_class_timezone returns a pytz object; extract the zone name string
+    tz_name = tz_obj.zone if hasattr(tz_obj, 'zone') else str(tz_obj)
     try:
         pytz.timezone(tz_name)
     except pytz.UnknownTimeZoneError:
