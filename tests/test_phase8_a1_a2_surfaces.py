@@ -19,8 +19,8 @@ from app.utils.time import utc_now
 from app.feats.base import FEATContext
 from app.services.obligations_service import (
     get_rent_assessments_for_cycle,
-    get_total_paid_for_assessment,
 )
+from app.services.obligation_view_model import get_total_paid_for_obligation
 from tests.helpers.classroom_initializer import initialize_as_student, initialize_as_teacher
 
 
@@ -168,7 +168,7 @@ class TestA1StudentRentSurface:
         "The obligation does not own the monetary amount itself."
         "paid_amount = sum(authoritative Ledger amounts referenced by PAYMENT events)"
 
-        Verifies get_total_paid_for_assessment() reads from ledger_transaction_id.
+        Verifies get_total_paid_for_obligation() reads from ledger_transaction_id.
         """
         from tests.helpers.classroom_initializer import initialize
         classroom = initialize("chemistry_p1", app)
@@ -191,14 +191,15 @@ class TestA1StudentRentSurface:
 
                 now = utc_now()
 
-                # Create ASSESSMENT
+                # Create ASSESSMENT (per DOM-OBL-001)
+                correlation_id = "test-rent-assess-001"
                 assessment = ObligationAssessment(
                     seat_id=seat_id,
                     class_id=class_id,
                     obligation_type='RENT',
                     event_type='ASSESSMENT',
                     internal_ref=f"rent:{class_id}:2026-01",
-                    correlation_id="test-rent-assess-001",
+                    correlation_id=correlation_id,
                     period_month=1,
                     period_year=2026,
                     due_at=now,
@@ -236,13 +237,14 @@ class TestA1StudentRentSurface:
                 db.session.flush()
 
                 # Create PAYMENT events linking to Ledger transactions
+                # Per DOM-OBL-001, PAYMENT events share same correlation_id as ASSESSMENT
                 payment1 = ObligationAssessment(
                     seat_id=seat_id,
                     class_id=class_id,
                     obligation_type='RENT',
                     event_type='PAYMENT',
                     internal_ref=f"rent:{class_id}:2026-01",
-                    correlation_id="test-rent-payment-001",
+                    correlation_id=correlation_id,  # Same as ASSESSMENT
                     period_month=1,
                     period_year=2026,
                     assessed_at=now,
@@ -256,7 +258,7 @@ class TestA1StudentRentSurface:
                     obligation_type='RENT',
                     event_type='PAYMENT',
                     internal_ref=f"rent:{class_id}:2026-01",
-                    correlation_id="test-rent-payment-002",
+                    correlation_id=correlation_id,  # Same as ASSESSMENT
                     period_month=1,
                     period_year=2026,
                     assessed_at=now,
@@ -268,7 +270,7 @@ class TestA1StudentRentSurface:
             db.session.commit()
 
             # Test: amounts should sum from Ledger, not from obligations
-            total_paid = get_total_paid_for_assessment(assessment_id, class_id)
+            total_paid = get_total_paid_for_obligation(correlation_id, class_id)
 
             # Should be 30 + 20 = 50 from Ledger
             assert total_paid == Decimal('50.00'), \
