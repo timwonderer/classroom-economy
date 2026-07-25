@@ -1,7 +1,7 @@
 """Drop ObligationLifecycle table per DOM-OBL-001
 
 Revision ID: 5a98b288138c
-Revises: merge_0008_2c3d4e5f6a7b
+Revises: merge_heads_0008_2c3d4e5f6a7b
 Create Date: 2026-07-24 21:55:44.282834
 
 """
@@ -71,7 +71,7 @@ def get_foreign_keys_by_column(table_name, column_name):
 
 # revision identifiers, used by Alembic.
 revision = '5a98b288138c'
-down_revision = 'merge_0008_2c3d4e5f6a7b'
+down_revision = 'merge_heads_0008_2c3d4e5f6a7b'
 branch_labels = None
 depends_on = None
 
