@@ -2855,330 +2855,144 @@ def _ensure_rent_hall_pass_top_off(student, context, settings=None, now=None):
 @student_bp.route('/rent')
 @login_required
 def rent():
-    """View rent status and payment history (per period)."""
+    """View rent status and payment history (canonical obligation events).
+
+    Per DOM-OBL-001 and MAP-UI-001:
+    - Reads immutable ASSESSMENT/PAYMENT/WAIVED events from Obligations domain
+    - Derives satisfaction state (satisfied, outstanding, past_due)
+    - Builds chronological payment history
+    - Uses canonical temporal resolver for time evaluation
+    """
     # Check if rent feature is enabled
     if not is_feature_enabled('rent'):
         abort(404)
 
-    class_id = get_current_class_id()
-    _ = get_current_user()
+    # Resolve canonical context (REQUIRED)
     context = resolve_canonical_context()
     if not context:
         flash("No class selected. Please choose a class to continue.", "error")
         return redirect(url_for('student.dashboard'))
 
     seat_id = context.seat_id
-    if not seat_id:
+    class_id = context.class_id
+    if not seat_id or not class_id:
         flash("No seat assigned in this class.", "error")
         return redirect(url_for('student.dashboard'))
 
-    from app.models import Seat
-    seat = db.session.get(Seat, seat_id)
-    if not seat:
-        flash("No seat assigned in this class.", "error")
-        return redirect(url_for('student.dashboard'))
-
-    class_id = class_id or context.class_id
-    current_block = (
-        seat.class_economy.section.strip().upper()
-        if seat and seat.class_economy and seat.class_economy.section
-        else ""
-    )
+    # Get rent settings (Class Configuration authority)
     settings = get_rent_settings_for_context(context)
-
-    if not settings:
+    if not settings or not settings.is_enabled:
         flash("Rent system is currently disabled.", "info")
         return redirect(url_for('student.dashboard'))
 
-    if not current_block:
-        flash("No class period found for this class.", "error")
-        return redirect(url_for('student.dashboard'))
-
-    if not class_id:
-        flash("No class context available.", "error")
-        return redirect(url_for('student.dashboard'))
-
-    # Calculate rent status for each period
-    now = utc_now()
-
-    timeline = _calculate_rent_timeline(settings, now)
-    due_date = timeline['due_date']
-    grace_end_date = timeline['grace_end_date']
-    coverage_due_date = timeline['coverage_due_date']
-    upcoming_due_date = timeline['upcoming_due_date']
-    preview_start_date = timeline['preview_start_date']
-    rent_is_active = timeline['rent_is_active']
-    is_preview_period_candidate = timeline['is_preview_period_candidate']
-
-    # CRITICAL FIX: Before allowing preview period, check if current coverage is paid
-    # Students must pay overdue periods before pre-paying for upcoming periods
-    current_coverage_paid = False
-    if is_preview_period_candidate and not coverage_due_date:
-        # No prior coverage period to settle; allow preview payments
-        current_coverage_paid = True
-    elif is_preview_period_candidate and coverage_due_date:
-        current_coverage_paid = _is_student_coverage_period_paid(
-            settings,
-            seat_id,
-            class_id,
-            coverage_due_date,
-        )
-
-    # Only allow preview period if current coverage is already paid
-    is_preview_period = is_preview_period_candidate and current_coverage_paid
-
-    # Calculate which coverage period we're checking for (pre-paid system)
-    # CRITICAL FIX: Determine which due date to show for payment (matches payment route logic)
-    if is_preview_period:
-        coverage_month = upcoming_due_date.month
-        coverage_year = upcoming_due_date.year
-        grace_end_date_for_status = upcoming_due_date + timedelta(days=settings.grace_period_days)
-        payment_due_date = upcoming_due_date  # Paying for upcoming period
-    else:
-        coverage_month = coverage_due_date.month if coverage_due_date else upcoming_due_date.month
-        coverage_year = coverage_due_date.year if coverage_due_date else upcoming_due_date.year
-        grace_end_date_for_status = (coverage_due_date + timedelta(days=settings.grace_period_days)) if coverage_due_date else grace_end_date
-        payment_due_date = coverage_due_date or upcoming_due_date  # Paying for overdue/current period
-
-    period_status = {}
-
-    from app.services.obligations_service import (
-        get_rent_assessments_for_cycle,
-    )
-    from app.services.obligation_view_model import get_total_paid_for_obligation
-
-    # Get all ASSESSMENT events for this rent cycle
-    assessments = get_rent_assessments_for_cycle(
-        class_id,
-        coverage_month,
-        coverage_year,
-        seat_ids=[seat_id],
+    # ========================================================================
+    # PHASE 5 CANONICAL READ MODEL: Use immutable obligation events
+    # ========================================================================
+    from app.services.obligation_view_model import get_rent_status_projection
+    from app.utils.canonical_temporal_resolver import (
+        canonical_temporal_resolver,
+        CLASS_LEVEL_EVALUATION,
     )
 
-    # Calculate total paid by summing all PAYMENT events (amounts from Ledger)
-    total_paid = Decimal('0.00')
-    for assessment in assessments:
-        status = get_total_paid_for_obligation(assessment.correlation_id, class_id)
-        if status:
-            total_paid += status.total_paid
+    # Get current time via canonical temporal resolver (SPEC-TIME-001)
+    class _TemporalContext:
+        def __init__(self, class_id: str):
+            self.class_id = class_id
 
-    # Calculate paid by grace end date
-    paid_by_grace = _total_paid_by_grace(assessments, grace_end_date_for_status)
-    late_fee = Decimal('0.00')
-    if rent_is_active and now > grace_end_date_for_status and paid_by_grace < settings.rent_amount:
-        late_fee = settings.late_fee
+    ctx = _TemporalContext(class_id=class_id)
+    now_eval = canonical_temporal_resolver(
+        CLASS_LEVEL_EVALUATION,
+        canonical_execution_context=ctx,
+        primitive="current_time",
+    )
+    now_utc = now_eval.canonical_now_utc
 
-    total_due = settings.rent_amount + late_fee if rent_is_active else Decimal('0.00')
-    active_waiver = _get_active_rent_waiver_v2(seat_id, class_id, payment_due_date) if payment_due_date else None
-    is_paid = total_paid >= total_due if rent_is_active else False
-    is_late = now > grace_end_date_for_status and not is_paid if rent_is_active else False
-    remaining_amount = max(Decimal('0.00'), total_due - total_paid) if rent_is_active else Decimal('0.00')
+    # Get complete rent status projection from canonical obligation events
+    rent_view = get_rent_status_projection(seat_id, class_id)
 
-    period_status[current_block] = {
-        'is_paid': is_paid,
-        'is_waived': bool(active_waiver),  # Derived from WAIVED events
-        'is_late': is_late,
-        'assessments': assessments,  # ASSESSMENT events for this cycle
-        'total_paid': total_paid,
-        'total_due': total_due,
-        'remaining_amount': remaining_amount,
-        'late_fee': Decimal('0.00'),  # Derived; not stored per DOM-OBL-001
-        'rent_is_active': rent_is_active,
-        'is_preview_period': is_preview_period,
-        'waiver': active_waiver,
-    }
-
-    # Get scoped balances for this class only
+    # Build template context from canonical view model
     checking_balance, savings_balance = get_available_balances(seat_id, class_id)
 
-    # Get payment history for the current class only (ASSESSMENT + state events)
-    from app.services.obligations_service import (
-        get_rent_payment_history,
-        get_rent_waivers_for_seat,
-    )
-    from app.models import Transaction
+    # Determine current period for display (most recent assessment, or upcoming)
+    current_period_assessment = None
+    if rent_view.all_assessments:
+        # Find the assessment closest to now but not yet fully past
+        for assessment in reversed(rent_view.all_assessments):
+            if assessment.due_at and assessment.due_at >= now_utc:
+                current_period_assessment = assessment
+                break
+        # If all are past, use the most recent one
+        if not current_period_assessment:
+            current_period_assessment = rent_view.all_assessments[-1]
 
-    payment_history = get_rent_payment_history(seat_id, class_id, limit=24)
-    active_waivers = get_rent_waivers_for_seat(seat_id, class_id)
+    # Build template variables (simplified from legacy version)
+    from app.models import Seat, Transaction
+    student_seat = db.session.get(Seat, seat_id)
 
-    payment_history_rows = []
-
-    # Process each assessment cycle (ASSESSMENT event + related state events)
-    for assessment, state_events in payment_history:
-        # Track all events for this assessment
-        payment_events = [e for e in state_events if e.event_type == 'PAYMENT']
-        waived_events = [e for e in state_events if e.event_type == 'WAIVED']
-
-        if payment_events:
-            # Sum amounts from all PAYMENT events (via Ledger)
-            for payment_event in payment_events:
-                amount_paid = Decimal('0.00')
-                occurred_at = payment_event.assessed_at
-
-                if payment_event.ledger_transaction_id:
-                    txn = db.session.get(Transaction, payment_event.ledger_transaction_id)
-                    if txn and txn.type == 'credit':
-                        amount_paid = txn.amount
-                        # Determine if payment was late (compared to assessment due_at)
-                        is_late = (
-                            payment_event.assessed_at > assessment.due_at
-                            if payment_event.assessed_at and assessment.due_at
-                            else False
-                        )
-                        status_text = "Paid Late" if is_late else "On Time"
-                    else:
-                        status_text = "Pending"
-                else:
-                    status_text = "Pending"
-
-                payment_history_rows.append({
-                    'period_month': assessment.due_at.month if assessment.due_at else None,
-                    'period_year': assessment.due_at.year if assessment.due_at else None,
-                    'amount_paid': amount_paid,
-                    'recorded_at': occurred_at,
-                    'status_text': status_text,
-                    'entry_type': 'payment',
-                })
-
-        if waived_events:
-            # Add waiver entries
-            for waived_event in waived_events:
-                payment_history_rows.append({
-                    'period_month': assessment.due_at.month if assessment.due_at else None,
-                    'period_year': assessment.due_at.year if assessment.due_at else None,
-                    'amount_paid': None,
-                    'recorded_at': waived_event.assessed_at,
-                    'status_text': 'Waived',
-                    'entry_type': 'waiver',
-                })
-
-    payment_history_rows.sort(
-        key=lambda row: ensure_utc(row['recorded_at']) if row.get('recorded_at') else now,
-        reverse=True,
-    )
-
-    # Rent item rows were removed in v2; the page now renders from rent settings
-    # and store-item linkage only.
+    period_status = {}
     rent_items = []
+    payment_history_rows = []
+    current_block = ""
 
-    # Calculate days until the currently payable due date for dynamic display
-    days_until_due = None
-    reference_due_date = payment_due_date or upcoming_due_date
-    if reference_due_date:
-        days_until_due = (reference_due_date - now).days
-
-    # Canonical view model (DOM-OBL-001): Build rent status counts and unpaid log
-    # Per MAP-UI-001, derive from immutable assessment events, not mutable status flags
-    rent_status_counts = {'SATISFIED': 0, 'OUTSTANDING': 0, 'PAST_DUE': 0}
-    rent_status_total = Decimal('0.00')
-    unpaid_rent_log = []
-
-    # Iterate through all assessment events for this seat/class to compute derived state
-    from app.services.obligations_service import (
-        get_payment_events_for_assessment,
-    )
-
-    all_assessments = (
-        db.session.query(
-            db.func.distinct(
-                db.cast(db.func.concat(
-                    db.cast(db.func.extract('year', db.func.COALESCE(
-                        getattr(db.func, 'timezone', lambda x, y: y)('UTC', db.column('due_at')),
-                        db.literal(datetime.now())
-                    )), db.Integer),
-                    '-',
-                    db.cast(db.func.extract('month', db.func.COALESCE(
-                        getattr(db.func, 'timezone', lambda x, y: y)('UTC', db.column('due_at')),
-                        db.literal(datetime.now())
-                    )), db.Integer)
-                ), db.String)
-            )
-        ).select_from(db.column('assessment_events')).all()
-    ) if False else None  # Placeholder; will use simpler approach below
-
-    # Query all ASSESSMENT events for this seat/class (all cycles)
-    from app.models import ObligationAssessment
-    all_class_assessments = (
-        ObligationAssessment.query.filter_by(
-            seat_id=seat_id,
-            class_id=class_id,
-            obligation_type='RENT',
-            event_type='ASSESSMENT',
+    if current_period_assessment:
+        current_block = (
+            student_seat.class_economy.section.strip().upper()
+            if student_seat and student_seat.class_economy and student_seat.class_economy.section
+            else ""
         )
-        .order_by(ObligationAssessment.due_at.desc())
-        .all()
-    )
 
-    from app.services.obligation_view_model import get_total_paid_for_obligation
+        period_status[current_block] = {
+            'is_satisfied': current_period_assessment.is_satisfied,
+            'is_outstanding': current_period_assessment.is_outstanding,
+            'is_past_due': current_period_assessment.is_past_due,
+            'assessed_amount': current_period_assessment.assessed_amount,
+            'total_paid': current_period_assessment.total_paid,
+            'due_at': current_period_assessment.due_at,
+            'waived': current_period_assessment.amount_waived,
+        }
 
-    for assessment in all_class_assessments:
-        # Derive status: SATISFIED, OUTSTANDING, or PAST_DUE per DOM-OBL-001 §VIII
-        status = get_total_paid_for_obligation(assessment.correlation_id, class_id)
-        if status:
-            paid_amount = status.total_paid
-            has_waiver = status.amount_waived
-        else:
-            paid_amount = Decimal('0.00')
-            has_waiver = False
+        # Build payment history rows for template display
+        for event in current_period_assessment.payment_events:
+            if event.ledger_transaction_id:
+                txn = db.session.get(Transaction, event.ledger_transaction_id)
+                if txn and txn.status != 'void':
+                    payment_history_rows.append({
+                        'period_month': current_period_assessment.due_at.month,
+                        'period_year': current_period_assessment.due_at.year,
+                        'amount_paid': txn.amount,
+                        'recorded_at': event.created_at,
+                        'status_text': 'Paid' if event.created_at <= current_period_assessment.due_at else 'Paid Late',
+                        'entry_type': 'payment',
+                    })
 
-        assessed_amount = settings.rent_amount if settings else Decimal('0.00')
-
-        if paid_amount >= assessed_amount or has_waiver:
-            status = 'SATISFIED'
-        elif assessment.due_at and now > assessment.due_at:
-            status = 'PAST_DUE'
-        else:
-            status = 'OUTSTANDING'
-
-        # Update counts
-        rent_status_counts[status] += 1
-
-        # Add to total and log if unpaid
-        if status in ('OUTSTANDING', 'PAST_DUE'):
-            remaining = max(Decimal('0.00'), assessed_amount - paid_amount)
-            rent_status_total += remaining
-
-            unpaid_rent_log.append({
-                'assessment_id': assessment.id,
-                'period_month': assessment.period_month,
-                'period_year': assessment.period_year,
-                'amount_owed': remaining,
-                'due_at': assessment.due_at,
-                'is_late': status == 'PAST_DUE',
+        if current_period_assessment.waiver_event:
+            payment_history_rows.append({
+                'period_month': current_period_assessment.due_at.month,
+                'period_year': current_period_assessment.due_at.year,
+                'amount_paid': None,
+                'recorded_at': current_period_assessment.waiver_event.created_at,
+                'status_text': 'Waived',
+                'entry_type': 'waiver',
             })
 
-    # Calculate canonical period start/end (for the current assessment cycle being viewed)
-    current_period_start = datetime(coverage_year, coverage_month, 1, tzinfo=timezone.utc)
-    if coverage_month == 12:
-        current_period_end = datetime(coverage_year + 1, 1, 1, tzinfo=timezone.utc) - timedelta(seconds=1)
-    else:
-        current_period_end = datetime(coverage_year, coverage_month + 1, 1, tzinfo=timezone.utc) - timedelta(seconds=1)
-
-    student_blocks = [current_block] if current_block else []
-    return render_template('student_rent.html',
-                          student=seat,
-                          settings=settings,
-                          student_blocks=student_blocks,
-                          period_status=period_status,
-                          current_block=current_block,
-                          checking_balance=checking_balance,
-                          savings_balance=savings_balance,
-                          due_date=due_date,
-                          payment_due_date=payment_due_date,  # CRITICAL FIX: Show correct period being paid for
-                          grace_end_date=grace_end_date,
-                          grace_end_date_for_status=grace_end_date_for_status,  # Add grace date for the payment period
-                          preview_start_date=preview_start_date,
-                          payment_history=payment_history_rows,
-                          rent_items=rent_items,
-                          days_until_due=days_until_due,
-                          # Canonical view model per MAP-UI-001 (DOM-OBL-001 derived state)
-                          active_waivers=active_waivers,
-                          current_period_start=current_period_start,
-                          current_period_end=current_period_end,
-                          current_coverage_due_date=payment_due_date,
-                          rent_status_counts=rent_status_counts,
-                          rent_status_total=rent_status_total,
-                          unpaid_rent_log=unpaid_rent_log)
+    # Render template with canonical view model
+    return render_template(
+        'student_rent.html',
+        student=student_seat,
+        settings=settings,
+        period_status=period_status,
+        checking_balance=checking_balance,
+        savings_balance=savings_balance,
+        payment_history=payment_history_rows,
+        rent_items=rent_items,
+        payment_due_date=current_period_assessment.due_at if current_period_assessment else None,
+        current_block=list(period_status.keys())[0] if period_status else '',
+        now=now_utc,
+        feature_settings=g.get('feature_settings', {}),
+        current_class_context=g.get('current_class_context', {}),
+        all_assessments=rent_view.all_assessments,
+        active_waivers=rent_view.active_waivers,
+    )
 
 
 @student_bp.route('/rent/pay/<period>', methods=['POST'])
