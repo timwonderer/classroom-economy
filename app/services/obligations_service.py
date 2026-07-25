@@ -434,3 +434,20 @@ def get_rent_waivers_for_seat(
         obligation_type='RENT',
         event_type='WAIVED',
     ).order_by(ObligationAssessment.assessed_at.desc()).all()
+
+
+def get_paid_rent_assessments_for_cycle(
+    class_id: str,
+    month: int,
+    year: int,
+    seat_ids: list[int] | None = None,
+) -> list[ObligationAssessment]:
+    """Get all ASSESSMENT events for a rent cycle (month/year).
+
+    Per DOM-OBL-001, returns only ASSESSMENT events (canonical liability records).
+    Routes should derive payment state from PAYMENT events via get_payment_events_for_assessment().
+
+    This function is maintained for backward compatibility with route code that expects
+    ASSESSMENT events in place of the removed satisfaction-based read model.
+    """
+    return get_rent_assessments_for_cycle(class_id, month, year, seat_ids)

@@ -956,20 +956,30 @@ def dashboard():
             coverage_year = coverage_due_date.year if coverage_due_date else upcoming_due_date.year
             grace_end_date_for_status = (coverage_due_date + timedelta(days=rent_settings.grace_period_days)) if coverage_due_date else grace_end_date
 
-        from app.services.obligations_service import get_paid_rent_assessments_for_cycle
+        from app.services.obligations_service import (
+            get_rent_assessments_for_cycle,
+            get_total_paid_for_assessment,
+            get_payment_events_for_assessment,
+        )
         seat_ids = [scope.seat_id]
 
         # Check rent for current class only (v2 canonical scoping via class_id)
-        payments = get_paid_rent_assessments_for_cycle(
+        # Per DOM-OBL-001, use ASSESSMENT events (canonical liability records)
+        assessments = get_rent_assessments_for_cycle(
             class_id,
             coverage_month,
             coverage_year,
             seat_ids=seat_ids,
         )
-        payments = [payment for payment in payments if payment.satisfaction is not None]
 
-        total_paid = sum((p.satisfaction.amount_paid for p in payments), Decimal('0.00'))
-        paid_by_grace = _total_paid_by_grace(payments, grace_end_date_for_status)
+        # Calculate total paid from PAYMENT events via Ledger (canonical amounts source)
+        total_paid = Decimal('0.00')
+        for assessment in assessments:
+            paid = get_total_paid_for_assessment(assessment.id, class_id)
+            total_paid += paid
+
+        # Use v2 version which correctly computes grace period payments from canonical PAYMENT events
+        paid_by_grace = _total_paid_by_grace_v2(assessments, grace_end_date_for_status)
         late_fee = Decimal('0.00')
         if rent_is_active and now > grace_end_date_for_status and paid_by_grace < rent_settings.rent_amount:
             late_fee = rent_settings.late_fee
@@ -2431,7 +2441,12 @@ def _get_effective_rent_amount_for_coverage_period(
     If the class rate changed mid-cycle, lock to the first valid payer's base
     amount for that class. As a fallback, keep a student's earlier paid
     base amount when the setting update happened after their first payment.
+
+    Per DOM-OBL-001, uses PAYMENT events (canonical payment records) instead of
+    removed satisfaction relationship.
     """
+    from app.services.obligations_service import get_payment_events_for_assessment
+
     current_amount = settings.rent_amount or Decimal('0.00')
 
     if locked_amount is None:
@@ -2442,21 +2457,17 @@ def _get_effective_rent_amount_for_coverage_period(
     if assessments:
         updated_at = getattr(settings, 'updated_at', None)
         if updated_at:
-            satisfied_dates = [
-                ensure_utc(a.satisfaction.satisfied_at)
-                for a in assessments
-                if a.satisfaction and a.satisfaction.satisfied_at
-            ]
-            if satisfied_dates:
-                earliest = min(satisfied_dates)
-                if ensure_utc(updated_at) > earliest:
-                    base_paid = sum(
-                        (a.satisfaction.amount_paid or Decimal('0.00'))
-                        - (a.satisfaction.late_fee_charged or Decimal('0.00'))
-                        for a in assessments if a.satisfaction
-                    )
-                    if base_paid > Decimal('0.00'):
-                        return base_paid
+            # Collect payment timestamps from PAYMENT events (canonical source)
+            payment_dates = []
+            for assessment in assessments:
+                payment_events = get_payment_events_for_assessment(assessment.id, class_id)
+                payment_dates.extend([p.assessed_at for p in payment_events if p.assessed_at])
+
+            if payment_dates:
+                earliest = min(payment_dates)
+                if ensure_utc(updated_at) > ensure_utc(earliest):
+                    # Settings changed after first payment; use current settings
+                    return current_amount
 
     return current_amount
 
@@ -2598,13 +2609,15 @@ def _is_coverage_period_paid(
     """
     Return True when a coverage period is fully paid.
 
-    ``assessments`` is a list of canonical ``ObligationAssessment`` rows
-    whose ``satisfaction`` relationship holds the payment details.
+    Per DOM-OBL-001, ``assessments`` is a list of canonical ``ObligationAssessment``
+    rows (ASSESSMENT events). Total paid is calculated from PAYMENT events via Ledger.
 
     When include_late_fee is True (default), late fee is required when rent
     was not fully paid by grace. When False, this checks base-rent coverage
     only (used by hall-pass perk restoration).
     """
+    from app.services.obligations_service import get_total_paid_for_assessment
+
     if not settings or not coverage_due_date:
         return False
     effective_rent_amount = _get_effective_rent_amount_for_coverage_period(
@@ -2619,12 +2632,14 @@ def _is_coverage_period_paid(
     if not assessments:
         return False
 
-    total_paid = sum(
-        (a.satisfaction.amount_paid for a in assessments if a.satisfaction),
-        Decimal('0.00'),
-    )
+    # Calculate total paid from PAYMENT events via Ledger (canonical amounts source)
+    total_paid = Decimal('0.00')
+    for assessment in assessments:
+        total_paid += get_total_paid_for_assessment(assessment.id, class_id)
+
     grace_for_coverage = coverage_due_date + timedelta(days=settings.grace_period_days)
-    paid_by_grace = _total_paid_by_grace(assessments, grace_for_coverage)
+    # Use v2 version which works with canonical PAYMENT events from Ledger
+    paid_by_grace = _total_paid_by_grace_v2(assessments, grace_for_coverage)
 
     required_total = effective_rent_amount
     if include_late_fee and paid_by_grace < effective_rent_amount:
@@ -3230,23 +3245,29 @@ def rent_pay(period):
 
     checking_balance, savings_balance = get_available_balances(seat_id, class_id)
 
-    from app.services.obligations_service import get_paid_rent_assessments_for_cycle
+    from app.services.obligations_service import (
+        get_paid_rent_assessments_for_cycle,
+        get_total_paid_for_assessment,
+    )
     existing_payments = get_paid_rent_assessments_for_cycle(
         class_id,
         coverage_month,
         coverage_year,
         seat_ids=[seat_id],
     )
-    existing_payments = [payment for payment in existing_payments if payment.satisfaction is not None]
 
-    total_paid_so_far = sum((p.satisfaction.amount_paid for p in existing_payments), Decimal('0.00'))
+    # Per DOM-OBL-001, calculate total paid from PAYMENT events via Ledger
+    total_paid_so_far = Decimal('0.00')
+    for assessment in existing_payments:
+        total_paid_so_far += get_total_paid_for_assessment(assessment.id, class_id)
 
     # Calculate if late and total amount due
     due_date, grace_end_date = _calculate_rent_deadlines(settings, now)
     grace_end_date_for_payment = grace_end_date
     if payment_due_date and payment_due_date != due_date:
         grace_end_date_for_payment = payment_due_date + timedelta(days=settings.grace_period_days)
-    paid_by_grace = _total_paid_by_grace(existing_payments, grace_end_date_for_payment)
+    # Use v2 version which correctly computes grace period payments from canonical PAYMENT events
+    paid_by_grace = _total_paid_by_grace_v2(existing_payments, grace_end_date_for_payment)
     is_late = now > grace_end_date_for_payment and paid_by_grace < settings.rent_amount
 
     # Calculate late fee if applicable
