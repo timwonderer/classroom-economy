@@ -3,6 +3,7 @@ from __future__ import annotations
 from decimal import Decimal
 
 from app.extensions import db
+from app.feats.base import generate_correlation_id
 from app.models import (
     EntitlementEvent,
     ObligationAssessment,
@@ -234,8 +235,32 @@ def record_insurance_enrollment(
     next_payment_due,
     coverage_start_date,
 ) -> ObligationAssessment:
-    """Legacy insurance enrollment mutation is no longer supported."""
-    raise NotImplementedError("Insurance enrollment rows have been removed")
+    """Record the canonical insurance enrollment as an assessment event."""
+    now = utc_now()
+    amount_snap = getattr(policy, "premium", None)
+    if amount_snap is None:
+        amount_snap = 0
+    assessment = ObligationAssessment(
+        seat_id=seat_id,
+        class_id=class_id,
+        obligation_type="INSURANCE_PREMIUM",
+        amount_snap=amount_snap,
+        due_at=next_payment_due,
+        assessed_at=now,
+        policy_version_id=getattr(policy, "id", None),
+        coverage_start_time=coverage_start_date,
+        cycle_idempotency_key=f"insurance-enrollment:{seat_id}:{class_id}:{getattr(policy, 'id', 'unknown')}",
+    )
+    db.session.add(assessment)
+    db.session.flush()
+    db.session.add(
+        ObligationLifecycle(
+            assessment_id=assessment.id,
+            status="DUE",
+            updated_at=now,
+        )
+    )
+    return assessment
 
 
 def record_insurance_premium_payment(
@@ -618,6 +643,7 @@ def record_entitlement_grant(
     class_id: str,
     quantity: int,
     trigger_id: str | None = None,
+    correlation_id: str | None = None,
     assessment_id: int | None = None,
 ) -> EntitlementEvent:
     """Record a GRANT entitlement event for obligation-linked perks (e.g., hall passes from rent)."""
@@ -626,6 +652,7 @@ def record_entitlement_grant(
         class_id=class_id,
         assessment_id=assessment_id,
         trigger_id=trigger_id,
+        correlation_id=correlation_id or generate_correlation_id(),
         quantity_delta=quantity,
         event_type="GRANT",
         occurred_at=utc_now(),

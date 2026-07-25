@@ -26,24 +26,24 @@
 
 | # | Line(s) | Jinja Code | Root Cause |
 |---|---------|-----------|------------|
-| 1 | 2,3,37,190,290,804 | `student.full_name` | Seat has no `full_name` (it is on IdentityProfile). Should be `student.identity_profile.full_name` |
-| 2 | 804 | `student.display_first_name` | Not on Seat |
-| 3 | 810 | `student.display_last_name` | Not on Seat |
-| 4 | 38 | `student.is_teacher_shadow` | Not on Seat |
-| 5 | 91,748 | `student.hall_passes` | Not on Seat |
-| 6 | 195 | `student.has_completed_setup` | Not on Seat |
-| 7 | 280 | `student.recovery_status` | Not on Seat |
-| 8 | 251 | `student.reset_code` | On User, not Seat. Should be `student.user.reset_code` |
-| 9 | 266-267 | `student.reset_code_expires_at` | On User, not Seat |
-| 10 | 567 | `student.tap_events` | No relationship on Seat. Raises `AttributeError` when `tap_events` table exists |
+| 1 | 2,3,37,190,290,804 | `student.full_name` | Resolved 2026-07-22: route now supplies `student_full_name` from `IdentityProfile.full_name` |
+| 2 | 804 | `student.display_first_name` | Resolved 2026-07-22: route now supplies `student_first_name` from `IdentityProfile.first_name` |
+| 3 | 810 | `student.display_last_name` | Resolved 2026-07-22: route now supplies `student_last_name` from `IdentityProfile.last_name` |
+| 4 | 38 | `student.is_teacher_shadow` | Resolved 2026-07-22: teacher-shadow badge removed from this v2 student-detail contract |
+| 5 | 91,748 | `student.hall_passes` | Resolved 2026-07-21: student detail now receives route-supplied `hall_pass_balance` from entitlement projection |
+| 6 | 195 | `student.has_completed_setup` | Resolved 2026-07-22: route now supplies `student_has_completed_setup` from the bound `User` |
+| 7 | 280 | `student.recovery_status` | Resolved 2026-07-22: stale recovery-status branch removed from this v2 student-detail contract |
+| 8 | 251 | `student.reset_code` | Resolved 2026-07-22: route now supplies `reset_code` from the bound `User` |
+| 9 | 266-267 | `student.reset_code_expires_at` | Resolved 2026-07-22: route now supplies `reset_code_expires_at` from the bound `User` |
+| 10 | 567 | `student.tap_events` | Resolved 2026-07-22: template consumes route-supplied canonical `attendance_events`; no `tap_events` relationship remains |
 
 ### Seat/Student attribute mismatch (other student templates)
 
 | # | Template | Line(s) | Jinja Code | Root Cause |
 |---|----------|---------|-----------|------------|
-| 11 | `student_dashboard.html` | 11 | `student.display_first_name` | Not on Seat |
-| 12 | `student_dashboard.html` | 157 | `student.hall_passes` | Not on Seat |
-| 13 | `layout_student.html` | 108 | `student.display_first_name\|upper` | Not on Seat (fallback path) |
+| 11 | `student_dashboard.html` | 11 | `student.display_first_name` | Resolved 2026-07-21: `display_metadata` context now supplies `student_display_first_name` from `IdentityProfile` |
+| 12 | `student_dashboard.html` | 157 | `student.hall_passes` | Resolved 2026-07-21: route now supplies `hall_pass_balance` from entitlement service |
+| 13 | `layout_student.html` | 108 | `student.display_first_name\|upper` | Resolved 2026-07-21: fallback now uses `student_display_first_name` from `display_metadata` |
 
 ### User/Admin attribute mismatch (admin_settings.html)
 
@@ -65,7 +65,7 @@
 
 | # | Line(s) | Jinja Code | Root Cause |
 |---|---------|-----------|------------|
-| 20 | 206,235,259 | `req.student.full_name` | HallPassLog has `.seat`, not `.student`. Raises `AttributeError` |
+| 20 | 206,235,259 | `req.student.full_name` | Resolved 2026-07-21: template now uses `req.student_name`; route supplies canonical display rows from `HallPassLog.requested_by_seat.identity_profile` |
 
 ### StorePurchase attribute mismatch (admin_store.html)
 
@@ -104,8 +104,8 @@
 | 31 | `admin_analytics_dashboard.html` | `event.event_date`, `.event_type`, `.description`, `.old_value`, `.new_value` | AuditEvent has different column names (`created_at_utc`, `operation`, `table_name`) |
 | 32 | `admin_analytics_events.html` | `class_option.block`, `.label` | Route dicts only have `class_id`/`join_code` |
 | 33 | `admin_analytics_events.html` | `event.event_type`, `.description`, `.event_date` etc. | Same AuditEvent mismatch |
-| 34 | `admin_analytics_student_detail.html` | `student.name` | Seat has no `name` property |
-| 35 | `admin_analytics_student_detail.html` | `txn.balance_after_transaction` | Not on Transaction model |
+| 34 | `admin_analytics_student_detail.html` | `student.name` | Resolved 2026-07-22: route now supplies explicit `student_name` from the selected seat's `IdentityProfile` |
+| 35 | `admin_analytics_student_detail.html` | `txn.balance_after_transaction` | Resolved 2026-07-22: route now supplies recent-transaction view rows with derived `balance_after_transaction` |
 
 ### System admin dashboard variable mismatch
 
@@ -136,7 +136,7 @@
 
 | # | Template | Jinja Code | Root Cause |
 |---|----------|-----------|------------|
-| 51 | `student_payroll.html` (route) | Route L1214: `sess.period` | AttendanceSession has no `period`. Route crashes before template renders |
+| 51 | `student_payroll.html` (route) | Route L1214: `sess.period` | Resolved 2026-07-21: route groups canonical `AttendanceSession` rows by current class block instead of `sess.period` |
 
 ---
 
@@ -145,7 +145,7 @@
 | # | Template | Line(s) | Jinja Code | Finding |
 |---|----------|---------|-----------|---------|
 | S1 | `admin_store.html` | 486 | `payroll_settings.expected_weekly_hours` | Not passed by store route; silently defaults to 5.0 |
-| S2 | `admin_payroll_history.html` | 50 | `entry.student` | Route builds dicts without `student` key; branch is dead code |
+| S2 | `admin_payroll_history.html` | 50 | `entry.student` | Resolved 2026-07-21: template now reads `entry.student_name`; route now builds detailed history from `PayrollEvent` business records with Ledger amount lookup by `correlation_id` |
 | S3 | `admin_issues_queue.html` | -- | `issue.category.name` | Lazy load may fail if no eager load configured |
 | S4 | `admin_view_issue.html` | -- | `issue.context_snapshot.transaction` | Depends on JSON shape at creation time |
 | S5 | `admin_analytics_dashboard.html` | -- | `snapshot.*` attributes | Unverified AnalyticsSnapshot schema |
@@ -200,18 +200,16 @@ These templates will raise exceptions during rendering:
 |----------|--------------|----------------|
 | `student_detail.html` | Any render -- `student.full_name` on line 2 | `AttributeError` on Seat |
 | `admin_settings.html` | Any render -- `admin.teacher_public_id` on line 38 | `AttributeError` on User |
-| `admin_hall_pass.html` | When pending/approved requests exist -- `req.student.full_name` | `AttributeError` (HallPassLog has `.seat` not `.student`) |
+| `admin_hall_pass.html` | When pending/approved requests exist -- `req.student.full_name` | Resolved 2026-07-21: canonical hall-pass rows now expose `student_name`; no template relationship dereference |
 | `admin_store.html` | Viewing redeemed items -- `student_item.redemption_date` | `AttributeError` on StorePurchase |
 | `admin_support_tickets.html` | Any render -- `class_scope_options` undefined | `UndefinedError` |
 | `admin_issues_queue.html` | When issues exist -- `issue.class_label` | `AttributeError` on Issue |
 | `admin_view_issue.html` | Any render -- `issue.class_label` | `AttributeError` on Issue |
 | `admin_analytics_dashboard.html` | When audit events exist -- `event.event_date` | `AttributeError` on AuditEvent |
 | `admin_analytics_events.html` | When events exist -- same AuditEvent attrs | `AttributeError` |
-| `admin_analytics_student_detail.html` | Any render -- `student.name` on Seat | `AttributeError` |
+| `admin_analytics_student_detail.html` | Any render -- `student.name` on Seat | Resolved 2026-07-22: template reads route-supplied `student_name` |
 | `sysadmin_view_escalated_issue.html` | Any render -- `issue.teacher.get_sysadmin_display_name()` | `AttributeError` |
 | `sysadmin_user_report_detail.html` | Any render -- `report.anonymous_code[:16]` | `UndefinedError` |
-| `student_payroll.html` | When attendance sessions exist -- route code `sess.period` | `AttributeError` in route |
-| `student_dashboard.html` | Any render -- `student.display_first_name` | `AttributeError` on Seat |
 | `admin_announcement_form.html` | Edit path -- `teacher_block.block` on string | `AttributeError` |
 
 ---
@@ -239,12 +237,12 @@ The dominant pattern: routes now pass `Seat` objects where templates still expec
 | `student.full_name` | student_detail, student_dashboard | `Student.full_name` property | Seat has no `full_name`; use `seat.identity_profile.full_name` |
 | `student.display_first_name` | student_detail, student_dashboard, layout_student | `Student.display_first_name` | Not on Seat; use `seat.identity_profile.first_name` |
 | `student.display_last_name` | student_detail | `Student.display_last_name` | Not on Seat |
-| `student.hall_passes` | student_detail, student_dashboard | `Student.hall_passes` column | Not on Seat; use `entitlement_service` |
+| `student.hall_passes` | student_detail, student_dashboard, admin_students | `Student.hall_passes` column | Resolved 2026-07-21: affected templates now use route-supplied entitlement projections (`hall_pass_balance` or `student_hall_pass_balances_by_seat_id`) |
 | `student.has_completed_setup` | student_detail | `Student.has_completed_setup` | Not on Seat |
 | `student.is_teacher_shadow` | student_detail | `Student.is_teacher_shadow` | Not on Seat |
 | `student.recovery_status` | student_detail | `Student.recovery_status` | Not on Seat |
 | `student.reset_code` / `.reset_code_expires_at` | student_detail | `Student.reset_code` | On `User`, not `Seat` |
-| `req.student.full_name` | admin_hall_pass | `HallPassLog.student` relationship | HallPassLog has `.seat`, not `.student` |
+| `req.student.full_name` | admin_hall_pass | `HallPassLog.student` relationship | Resolved 2026-07-21: replaced by route-supplied `student_name` from requested seat IdentityProfile |
 | `student_item.redemption_date` / `.purchase_date` | admin_store | `StudentItem` columns | `StorePurchase` has `purchased_at` |
 | `admin.get_display_name()` / `.teacher_public_id` / `.last_login` | admin_settings | Legacy `Admin` model methods | `User` model has different interface |
 | `teacher.get_sysadmin_display_name()` | sysadmin_dashboard, sysadmin_support_tickets, sysadmin_view_escalated_issue | Legacy method | `User` has `get_display_username()` |
@@ -257,26 +255,30 @@ The dominant pattern: routes now pass `Seat` objects where templates still expec
 
 ### Critical -- will crash; fix first
 
-- [ ] **`student_detail.html`** -- Replace all `student.X` legacy attrs with Seat/IdentityProfile/User equivalents: `full_name`, `display_first_name`, `display_last_name`, `is_teacher_shadow`, `hall_passes`, `has_completed_setup`, `recovery_status`, `reset_code`, `reset_code_expires_at`, `tap_events`
-- [ ] **`student_dashboard.html`** -- Replace `student.display_first_name`, `student.hall_passes` with Seat-compatible accessors
-- [ ] **`layout_student.html`** -- Replace `student.display_first_name` fallback path
+- [x] **`student_detail.html`** -- Resolved 2026-07-22: route supplies explicit Seat/IdentityProfile/User display/account fields (`student_full_name`, `student_first_name`, `student_last_name`, `student_notes`, `student_has_completed_setup`, `reset_code`, `reset_code_expires_at`); template no longer dereferences legacy Student full/display/setup/recovery/tap-event attributes; hall-pass balance remains route-supplied from entitlement projection
+- [x] **`student_dashboard.html`** -- Replace `student.display_first_name`, `student.hall_passes` with Seat-compatible accessors
+- [x] **`student_dashboard.html`** (`/api/tap` standard start/done path) -- Resolved 2026-07-21: student Start Work and Done for the Day path now writes append-only `AttendanceSession` rows through `FEAT-PROD-001`; hall-pass request flow remains a separate PROD command surface
+- [x] **`layout_student.html`** -- Replace `student.display_first_name` fallback path
 - [ ] **`admin_settings.html`** -- Replace `admin.teacher_public_id`, `admin.get_display_name()`, `admin.last_login`, `admin.display_name` with User equivalents; fix `blocks` iteration to unpack tuples instead of accessing `.block`/`.class_label`
 - [ ] **`admin_account_delete.html`** -- Fix JS `getElementById` to match actual form id `account-delete-form`
-- [ ] **`admin_hall_pass.html`** -- Replace `req.student.full_name` with `req.seat.identity_profile.full_name`
+- [x] **`admin_hall_pass.html`** -- Replace `req.student.full_name` with route-supplied canonical `student_name`
 - [ ] **`admin_store.html`** -- Replace `student_item.redemption_date` with `purchased_at`, remove `redemption_details`, replace `purchase_date` with `purchased_at`
 - [ ] **`admin_support_tickets.html`** -- Supply `class_scope_options` from route OR remove filter; fix `entry.scope_join_code` to `scope_class_id`
 - [ ] **`admin_issues_queue.html`** -- Add `class_label`/`student_display_name` to route context or template
 - [ ] **`admin_view_issue.html`** -- Same as issues_queue
 - [ ] **`admin_analytics_dashboard.html`** -- Map AuditEvent columns to template expectations
 - [ ] **`admin_analytics_events.html`** -- Same AuditEvent fix plus fix `class_option` dict keys
-- [ ] **`admin_analytics_student_detail.html`** -- Replace `student.name` with Seat-compatible; remove `txn.balance_after_transaction`
+- [x] **`admin_analytics_student_detail.html`** -- Resolved 2026-07-22: template reads explicit `student_name`; route supplies transaction view rows with derived `balance_after_transaction`
 - [ ] **`admin_announcement_form.html`** (edit path) -- Fix `teacher_block` to be an object or restructure template; pass `active_join_code`/`active_class_label`
 - [ ] **`system_admin_dashboard.html`** -- Rename `total_admins` to `total_teachers`, `recent_admins` to `recent_teachers` (or vice versa); fix error card attributes
 - [ ] **`sysadmin_view_escalated_issue.html`** -- Replace `issue.teacher.get_sysadmin_display_name()`, `issue.class_label`
 - [ ] **`sysadmin_support_tickets.html`** -- Replace `issue.teacher`, `issue.class_label`; fix `report_type` integer-vs-string
 - [ ] **`sysadmin_user_report_detail.html`** -- Wholesale rewrite: `anonymous_code` to `actor_public_id`, `title` to `student_expected_outcome`, `description` to `student_explanation`, `admin_notes` to `sysadmin_notes`, `reviewed_at` to `teacher_reviewed_at`, remove `ip_address`/`user_agent`
 - [ ] **`admin_username_migration.html`** -- Replace `legacy_username` with `current_username`
-- [ ] **`student_payroll.html`** (route) -- Fix `sess.period` in route code before template can render
+- [x] **`student_payroll.html`** (route) -- Fix `sess.period` in route code before template can render
+- [x] **`admin_payroll.html`** (GET read model) -- Resolved 2026-07-21: recent activity, history tab, last-payroll stats, and total earned now derive from `PayrollEvent` with Ledger amount lookup by `correlation_id`; legacy payroll void controls removed from this template surface
+- [x] **`admin_payroll.html`** (`admin.run_payroll`) -- Resolved 2026-07-21: attendance-based payroll action now records `payroll` rows through `FEAT-PROD-003`; route no longer uses `FEAT-LED-004`, ledger adjustment batching, or legacy payroll transaction history as the payroll boundary
+- [x] **`admin_payroll.html`** (`admin.payroll_manual_payment`) -- Resolved 2026-07-21: manual credit action now calls `FEAT-PROD-003`; template no longer exposes deduction or account-type controls because manual debits/fines belong to Obligations
 
 ### Housekeeping -- dead templates to remove
 
@@ -290,7 +292,7 @@ The dominant pattern: routes now pass `Seat` objects where templates still expec
 - [ ] Delete `student_help_support.html`
 - [ ] Delete `student/recovery/reset_form.html`
 - [ ] Delete `student/recovery/identity_update.html`
-- [ ] Delete `hall_pass_verification.html`
+- [x] Delete `hall_pass_verification.html` -- Resolved 2026-07-22: legacy orphan template is absent; public verification is consolidated on `hall_pass_verify.html`
 - [ ] Delete `system_admin_username_migration.html`
 - [ ] Register error handlers for `error_400.html`, `error_401.html`, `error_403.html`, `error_404.html`, `error_503.html` -- or delete them
 - [ ] Evaluate insurance templates behind abort(404): `admin_insurance.html`, `admin_edit_insurance_policy.html`, `admin_process_claim.html`, `admin_view_student_policy.html`, `student_insurance_marketplace.html`, `student_file_claim.html`, `student_view_policy.html` -- delete or restore
@@ -298,5 +300,5 @@ The dominant pattern: routes now pass `Seat` objects where templates still expec
 ### Low priority -- suspect / cosmetic
 
 - [ ] **`admin_store.html`** -- Pass `payroll_settings` from store route (currently defaults to 5.0)
-- [ ] **`admin_payroll_history.html`** -- Remove dead `entry.student` branch
+- [x] **`admin_payroll_history.html`** -- Remove dead `entry.student` branch
 - [ ] **`system_admin_manage_teachers.html`** -- Remove dead `teacher.teacher_public_id` branch

@@ -65,7 +65,7 @@
 | 68-77 | `{% for alert in alerts %} ... {% if alert.alert_key == ... %}` | Alert collection | Route kwarg `alerts` |
 | 108 | `{% if snapshot.participation_rate >= 70 %}...{% endif %}` | Numeric rate | `snapshot` |
 | 109 | `{{ "%.1f"|format(snapshot.participation_rate) }}%` | Numeric rate | `snapshot` |
-| 111 | `{{ snapshot.active_students }} of {{ snapshot.total_students }}` | Counts | `snapshot` |
+| 111 | `{{ snapshot.active_students }} of {{ snapshot.total_students }}` | Counts | `snapshot` — REWIRED_READ from canonical `AttendanceSession.target_seat_id` + `timestamp`; no legacy `seat_id`, `started_at`, or soft-delete attendance fields |
 | 114-127 | `{% if snapshot.participation_trend %}...{% endif %}` | Trend string | `snapshot` |
 | 132-167 | `alert_lookup.participation.*` expressions | Alert attrs (`why_it_matters`, `severity`, `what_changed`, `acknowledged_at`, `suggested_action`, `id`) | Derived from `alerts` |
 | 146 | `{{ url_for('analytics.acknowledge_alert', alert_id=alert_lookup.participation.id) }}` | Endpoint `analytics.acknowledge_alert` | [FLASK] `url_for()` |
@@ -135,30 +135,33 @@
 | Variable | Type | Purpose |
 |---|---|---|
 | `student` | seat/student object | Selected student |
+| `student_name` | str | Display name resolved from the selected seat's `IdentityProfile` |
 | `current_balance` | `number` | Current balance metric |
 | `expected_balance` | `number` | Expected balance metric |
 | `deviation` | `number` | Percent deviation |
 | `cwi` | `number` | Composite Weekly Income |
-| `recent_transactions` | `list` | Recent transactions |
+| `recent_transactions` | `list[dict]` | Recent transaction display rows with derived `balance_after_transaction` |
 | `join_code` | `str` | Current class display code |
 
 **Jinja expressions:**
 
 | Line | Expression | Expects | Supplied By |
 |---|---|---|---|
-| 2 | `{{ student.name }}` | `student.name: str` | Route kwarg `student` |
+| 2 | `{{ student_name }}` | Student display name string | Route kwarg `student_name` |
 | 6 | `{{ url_for('analytics.dashboard') }}` | Endpoint `analytics.dashboard` | [FLASK] `url_for()` |
-| 18 | `{{ student.name | e }}` | Student name | `student` |
+| 18 | `{{ student_name | e }}` | Student name | Route kwarg `student_name` |
 | 31-32 | `{% if current_balance >= 0 %}...{% endif %}` / `{{ "%.2f"|format(current_balance) }}` | Numeric balance | Route kwarg `current_balance` |
 | 45 | `{{ "%.2f"|format(expected_balance) }}` | Numeric balance | Route kwarg `expected_balance` |
 | 57-61 | `{% if deviation|abs <= ... %}` / `{{ "%.1f"|format(deviation) }}%` | Numeric deviation | Route kwarg `deviation` |
 | 61 | `{% if deviation > 0 %}Above{% elif deviation < 0 %}Below{% else %}At{% endif %}` | Numeric deviation | Route kwarg `deviation` |
 | 71-103 | `deviation`-based conditional blocks | Numeric deviation | Route kwarg `deviation` |
-| 80, 85, 95 | `{{ student.name | e }}` | Student name | `student` |
+| 80, 85, 95 | `{{ student_name | e }}` | Student name | Route kwarg `student_name` |
 | 119 | `{{ "%.2f"|format(cwi) }}/week` | Numeric CWI | Route kwarg `cwi` |
 | 130 | `{% if recent_transactions %}` | Transaction list | Route kwarg `recent_transactions` |
-| 150-161 | `txn.*` expressions (`timestamp`, `description`, `amount`, `balance_after_transaction`) | Transaction attrs | Route kwarg `recent_transactions` |
+| 150-161 | `txn.*` expressions (`timestamp`, `description`, `amount`, `balance_after_transaction`) | Transaction display-row attrs | Route kwarg `recent_transactions`; `balance_after_transaction` is derived by the route view model |
 | 153-154 | `{{ txn.timestamp|format_datetime('%b %d, %Y') }}` / `{{ txn.timestamp|format_datetime('%I:%M %p') }}` | Datetime | `txn.timestamp` |
+
+**Interface status:** VALID — Resolved 2026-07-22. The template no longer reads nonexistent `Seat.name`, and it no longer expects raw Ledger `Transaction` rows to expose `balance_after_transaction`. The route supplies explicit display name and transaction view rows while scoping Ledger reads by canonical `target_seat_id + class_id`.
 
 ---
 
@@ -247,12 +250,12 @@
 ### `admin_attendance_log.html`
 **Extends:** `layout_admin.html` ([LAYOUT:admin])  
 **Route(s):** `admin.attendance_log` — `GET /admin/attendance-log` — [`app/routes/admin.py:8236-8238`](/Users/timothychang/Documents/GitHub/classroom-economy/app/routes/admin.py#L8236-L8238)
+**PROD status:** REWIRED_READ — Resolved 2026-07-21. The page no longer calls legacy block tap-setting endpoints. `/api/attendance/history` reads canonical append-only `AttendanceSession` fields (`target_seat_id`, `timestamp`, `status`, `reason_code`) and uses `canonical_temporal_resolver` for class-local date filters.
 
 **Variables from route:**
 
 | Variable | Type | Purpose |
 |---|---|---|
-| `periods` | `list` | Attendance periods |
 | `blocks` | `list` | Block list |
 | `class_labels_by_block` | `dict` | Block-to-label lookup |
 | `current_page` | `str` | Layout/navigation state |
@@ -261,24 +264,9 @@
 
 | Line | Expression | Expects | Supplied By |
 |---|---|---|---|
-| 52 | `{{ periods|length }}` | Sequence | Route kwarg `periods` |
-| 54 | `{% for period in periods %}` | Period rows | Route kwarg `periods` |
-| 58 | `{% if period.attendance_count > 0 %}...{% endif %}` | Period attrs | Loop variable `period` |
-| 59 | `{{ period.block }}` | Block value | Loop variable `period` |
-| 60 | `{{ period.attendance_count }}` | Count | Loop variable `period` |
-| 74 | `{% if blocks %}` | Block list | Route kwarg `blocks` |
-| 76 | `{% for block in blocks %}` | Block values | Route kwarg `blocks` |
-| 82 | `{{ class_labels_by_block.get(block, block) }}` | Dict lookup | Route kwarg `class_labels_by_block`, loop var `block` |
-| 92 | `{% if blocks|length == 0 %}` | Sequence | Route kwarg `blocks` |
 | 104 | `{{ url_for('admin.students') }}` | Endpoint `admin.students` | [FLASK] `url_for()` |
 | 129 | `{{ url_for('admin.students') }}` | Endpoint `admin.students` | [FLASK] `url_for()` |
-| 144 | `{% for period in periods %}` | Period rows | Route kwarg `periods` |
-| 147 | `{{ period.date }}` | Date value | Loop variable `period` |
-| 148 | `{{ period.students_present }}` | Count | Loop variable `period` |
-| 150 | `{{ period.students_late }}` | Count | Loop variable `period` |
-| 151 | `{{ period.total_students }}` | Count | Loop variable `period` |
-| 153 | `{% if period.students_present > 0 %}` | Count | Loop variable `period` |
-| 154 | `{{ period.attendance_rate }}%` | Percentage | Loop variable `period` |
+| 381 | `fetch(\`/api/attendance/history?...`)` | JSON endpoint | [API] canonical attendance history |
 
 ---
 
@@ -452,6 +440,13 @@
 **Extends:** `layout_admin.html` ([LAYOUT:admin])  
 **Route(s):** `admin.dashboard` — `GET /admin/` — [`app/routes/admin.py:2573-2575`](/Users/timothychang/Documents/GitHub/classroom-economy/app/routes/admin.py#L2573-L2575)
 
+**PROD status:** REWIRED_READ
+
+- `recent_logs` is rewired to canonical `attendance_sessions` display rows.
+- Payroll estimate/update fields are rewired to PROD `attendance_sessions` + `payroll_events` read projection.
+- The former manual `admin.enforce_daily_limits` dashboard action has been intentionally removed from the template surface; daily-limit enforcement is scheduler-only, groups active PROD state by `class_id`, uses the class teacher seat as system actor, and writes the inactive row through `FEAT-PROD-001` at the exact timestamp where the daily limit is reached.
+- Pending hall-pass dashboard rows are wired from ephemeral operational workflow state, not `hall_pass_logs`; dashboard rows link to the dedicated hall-pass page where reject discards without a PROD write and approve commits through `FEAT-PROD-002`.
+
 **Variables from route:**
 
 | Variable | Type | Purpose |
@@ -493,11 +488,11 @@
 | 71 | `{{ total_students }}` | Count | Route kwarg `total_students` |
 | 90 | `{{ "{:,.0f}".format(total_balance) }}` | Number | Route kwarg `total_balance` |
 | 104 | `{{ total_pending_actions }}` | Count | Route kwarg `total_pending_actions` |
-| 105-117 | `pending_redemptions_count`, `pending_insurance_claims_count`, `pending_hall_passes_count` | Counts | Route kwargs |
-| 132 | `{{ format_utc_iso(next_payroll_date) }}` | Datetime helper | Shared [GLOBAL] `format_utc_iso` / route kwarg `next_payroll_date` |
-| 133 | `{{ next_payroll_date.strftime('%b %d') }}` | Datetime | Route kwarg `next_payroll_date` |
-| 136 | `{{ "{:,.0f}".format(total_payroll_estimate) }}` | Number | Route kwarg `total_payroll_estimate` |
-| 137-141 | `payroll_updated_at` and `format_utc_iso(payroll_updated_at)` | Datetime | Route kwarg `payroll_updated_at` |
+| 105-117 | `pending_redemptions_count`, `pending_insurance_claims_count`, `pending_hall_passes_count` | Counts | Route kwargs; `pending_hall_passes_count` is REWIRED_READ from the ephemeral pending hall-pass request queue |
+| 132 | `{{ format_utc_iso(next_payroll_date) }}` | Datetime helper | Shared [GLOBAL] `format_utc_iso` / route kwarg `next_payroll_date` — REWIRED_READ using canonical temporal resolver anchor |
+| 133 | `{{ next_payroll_date.strftime('%b %d') }}` | Datetime | Route kwarg `next_payroll_date` — REWIRED_READ using canonical temporal resolver anchor |
+| 136 | `{{ "{:,.0f}".format(total_payroll_estimate) }}` | Number | Route kwarg `total_payroll_estimate` — REWIRED_READ from PROD attendance/payroll projection |
+| 137-141 | `payroll_updated_at` and `format_utc_iso(payroll_updated_at)` | Datetime | Route kwarg `payroll_updated_at` — REWIRED_READ from latest `payroll_events` anchor |
 | 156 | `{{ url_for('admin.attendance_log') }}` | Endpoint `admin.attendance_log` | [FLASK] `url_for()` |
 | 163 | `{{ url_for('admin.payroll') }}` | Endpoint `admin.payroll` | [FLASK] `url_for()` |
 | 170 | `{{ url_for('admin.store_management') }}` | Endpoint `admin.store_management` | [FLASK] `url_for()` |
@@ -509,9 +504,9 @@
 | 264 | `seat_profiles.get(req.seat_id).first_name ~ ' ' ~ seat_profiles.get(req.seat_id).last_name if ...` | Profile dict values | Route kwarg `seat_profiles` |
 | 270 | `{{ req.redemption_details | markdown }}` | Markdown text | Route kwarg `recent_redemptions` |
 | 275 | `data-student-item-id="{{ req.id }}"` | Redemption id | Loop variable `req` |
-| 301-321 | `pass.*` expressions (`seat_id`, `request_time`) | Hall-pass attrs | Route kwarg `recent_hall_passes` |
-| 305 | `seat_profiles.get(pass.seat_id).first_name ~ ' ' ~ ...` | Profile dict values | Route kwarg `seat_profiles` |
-| 313 | `{{ format_utc_iso(pass.request_time) }}` | Datetime helper | Shared [GLOBAL] `format_utc_iso` |
+| 301-321 | `pass.*` expressions (`seat_id`, `request_time`) | Hall-pass attrs | REWIRED_READ from ephemeral pending-request projection, not `hall_pass_logs` |
+| 305 | `seat_profiles.get(pass.seat_id).first_name ~ ' ' ~ ...` | Profile dict values | REWIRED_READ via seat-id keyed `IdentityProfile` lookup |
+| 313 | `{{ format_utc_iso(pass.request_time) }}` | Datetime helper | REWIRED_READ from pending-request timestamp projection |
 | 338-357 | `claim.*` expressions (`seat_id`, `description`, `claim_amount`, `filed_date`) | Insurance claim attrs | Route kwarg `recent_insurance_claims` |
 | 342 | `seat_profiles.get(claim.seat_id).first_name ~ ' ' ~ ...` | Profile dict values | Route kwarg `seat_profiles` |
 | 345 | `{{ claim.description[:50] }}` | String slice | Loop variable `claim` |
@@ -522,12 +517,11 @@
 | 404 | `{% set profile = seat_profiles.get(tx.seat_id) %}` | Seat profile dict | Route kwarg `seat_profiles` |
 | 407 | `{{ profile.first_name ~ ' ' ~ profile.last_name if profile else 'Unknown' }}` | Profile object | `seat_profiles` |
 | 410 | `{{ format_utc_iso(tx.timestamp) }}` | Datetime helper | Shared [GLOBAL] `format_utc_iso` |
-| 446-478 | `recent_logs` loop and `log.*` expressions (`status`, `student_name`, `timestamp`, `period`) | Attendance log attrs | Route kwarg `recent_logs` |
+| 446-478 | `recent_logs` loop and `log.*` expressions (`status`, `student_name`, `timestamp`, `period`) | Attendance log attrs | Route kwarg `recent_logs` — REWIRED_READ from `attendance_sessions` |
 | 451 | `{% if log.status == 'active' %}` | Status string | Loop variable `log` |
 | 461 | `{{ log.student_name }}` | Student name string | Loop variable `log` |
 | 463 | `{{ format_utc_iso(log.timestamp) }}` | Datetime helper | Shared [GLOBAL] `format_utc_iso` |
 | 464 | `{{ log.timestamp.strftime('%H:%M') }}` | Datetime | Loop variable `log` |
 | 468 | `{{ log.status|title }} • Period {{ log.period }}` | Status/period | Loop variable `log` |
 | 480 | `{{ url_for('admin.attendance_log') }}` | Endpoint `admin.attendance_log` | [FLASK] `url_for()` |
-| 499 | `{{ url_for('admin.enforce_daily_limits') }}` | Endpoint `admin.enforce_daily_limits` | [FLASK] `url_for()` |
-| 503 | `{{ csrf_token() }}` | CSRF token | [FLASK] `csrf_token()` |
+| removed | former `{{ url_for('admin.enforce_daily_limits') }}` dashboard action | Removed user trigger | Daily-limit enforcement collapsed to scheduled `FEAT-PROD-001` task with exact limit-boundary close timestamp |

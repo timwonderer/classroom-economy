@@ -69,8 +69,8 @@
 | Variable | Type | Purpose |
 |----------|------|---------|
 | student | Seat | Current student/seat object |
-| student_blocks | list[str] | Period/block identifiers |
-| period_states | dict | Per-block tap/attendance state |
+| attendance_state | dict | Class-scoped PROD attendance state projection |
+| attendance_state_json | str | JSON-serialized class-scoped attendance state for `attendance.js` |
 | checking_balance | float | Scoped checking balance |
 | savings_balance | float | Scoped savings balance |
 | recent_transactions | list[Transaction] | Last 5 transactions |
@@ -83,10 +83,14 @@
 | Line | Expression | Expects | Supplied By |
 |------|-----------|---------|-------------|
 | 2 | `{% import "macros/help.html" as help %}` | macro | [MACRO:help] |
-| 11 | `{{ student.display_first_name }}` | str | route |
-| 36 | `{{ period_states_json\|safe }}` | str | route (JSON) |
+| 11 | `{{ student_display_first_name }}` | str | route display metadata |
+| 36 | `{{ attendance_state_json\|safe }}` | str | route (JSON) — REWIRED_READ from canonical class-scoped `attendance_sessions` state projection |
+| 157 | `{{ hall_pass_balance }}` | int | Entitlement projection: grants/purchases minus consumed approved `hall_pass_logs` |
+| 189-221 | `Start Work` and contextual `Break` button + break modal | contextual controls | REWIRED — button state is driven by one class-scoped `attendance_state`; `Break` opens teacher-configured hall-pass destinations from `HallPassSettings`; destination selection creates ephemeral pending request; `Done for the day` writes `inactive/done_for_day` through `FEAT-PROD-001`; after approval the same button becomes `Leave`, then `Return` after checkout |
 | 220 | `{{ "%.2f"\|format(checking_balance) }}` | str | route |
 | 359 | `{{ current_class_id\|tojson }}` | JSON str | route + Jinja |
+
+**PROD disposition:** REWIRED_READ_WRITE — Resolved 2026-07-22. `student_dashboard.html`, `student.dashboard`, `/api/tap`, `/api/student-status`, and `static/js/attendance.js` no longer use block/period-shaped attendance keys (`student_blocks`, `period_states`, `period_states_json`, `data-period`, `periods`). The dashboard receives one `attendance_state` object for the active canonical `class_id`; `/api/tap` relies on canonical context instead of a client-supplied period; `/api/student-status` returns `attendance_state`; and the deleted `get_all_block_statuses` service projection was replaced by `get_class_attendance_status`.
 
 ---
 
@@ -153,10 +157,13 @@
 | Variable | Type | Purpose |
 |----------|------|---------|
 | student | Seat | Current seat |
-| student_blocks | list[str] | Block identifiers |
-| unpaid_seconds_per_block | dict[str, int] | Unpaid seconds per block |
-| projected_pay_per_block | dict[str, float] | Projected pay per block |
-| all_tap_events | list[AttendanceSession] | All recent tap events |
+| class_label | str | Display label for the active canonical class |
+| payroll_state | dict | Current class-scoped productivity/payroll state |
+| unpaid_seconds | int | Unpaid seconds for the active canonical class |
+| projected_pay | float | Projected pay for the active canonical class |
+| attendance_events | list[AttendanceSession] | Recent canonical attendance events |
+| attendance_start_count | int | Recent active/start count |
+| attendance_inactive_count | int | Recent inactive/break/done count |
 | pay_rate_per_minute | float | Pay rate per minute |
 | pay_rate_table | list[tuple] | Time-to-earnings table |
 | scoped_total_earnings | float | Lifetime earnings in class |
@@ -165,10 +172,13 @@
 
 | Line | Expression | Expects | Supplied By |
 |------|-----------|---------|-------------|
-| 40 | `{{ blk\|upper }}` | str | loop var |
-| 60 | `{% set block_events = tap_events_by_block[blk] %}` | list | route |
-| 138 | `{{ unpaid_seconds_per_block.values()\|sum }}` | int | route |
+| 38 | `{{ class_label }}` | str | route — REWIRED_READ from canonical `ClassEconomy` display fields |
+| 41-54 | `payroll_state.get(...)`, `unpaid_seconds` | dict/int | route — REWIRED_READ from canonical `attendance_sessions` state projection for active `class_id` |
+| 60-108 | `attendance_events[:20]` | list | route — REWIRED_READ from canonical `attendance_sessions` scoped by `target_seat_id + class_id` |
+| 138 | `{{ unpaid_seconds }}` | int | route |
 | 301 | `{% for label, value in pay_rate_table %}` | tuple | route |
+
+**PROD disposition:** REWIRED_READ — Resolved 2026-07-22. `student_payroll.html` no longer receives or renders block-keyed template contracts (`student_blocks`, `period_states`, `unpaid_seconds_per_block`, `projected_pay_per_block`, `attendance_events_by_block`). It renders one active canonical class using `class_label`, `payroll_state`, `unpaid_seconds`, `projected_pay`, and direct canonical `attendance_events`.
 
 ---
 
@@ -361,7 +371,7 @@
 **Route(s):**
 - `student.submit_general_issue` — GET|POST `/student/help-support/submit-issue` — [app/routes/student.py:3207](app/routes/student.py#L3207)
 - `student.report_transaction_issue` — GET|POST `/student/help-support/transaction/<int:transaction_id>/report` — [app/routes/student.py:3262](app/routes/student.py#L3262)
-- `student.report_tap_event_issue` — GET|POST `/student/help-support/tap-event/<int:tap_event_id>/report` — [app/routes/student.py:3325](app/routes/student.py#L3325)
+- `student.report_attendance_session_issue` — GET|POST `/student/help-support/attendance-session/<int:attendance_session_id>/report` — [app/routes/student.py](app/routes/student.py)
 
 **Variables from route:**
 
@@ -370,7 +380,7 @@
 | current_page | str | "help" |
 | page_title | str | "Report an Issue" or similar |
 | form | StudentIssueSubmissionForm | WTForms issue form |
-| issue_type | str | "general", "transaction", or "tap_event" |
+| issue_type | str | "general", "transaction", or "attendance" |
 | transaction | Transaction / None | Related transaction (if transaction type) |
 
 **Jinja expressions (representative):**
@@ -488,10 +498,9 @@ Route(s): student.dashboard — GET /student/dashboard — app/routes/student.py
 Variables from route:
 
 Variable	Type	Purpose
-student	Seat (legacy Student compat)	Current student/seat object
-student_blocks	list[str]	Period/block identifiers
-period_states	dict	Per-block tap/attendance state
-period_states_json	str (JSON)	JSON-serialized period states for JS
+student	Seat	Current student/seat object
+attendance_state	dict	Class-scoped PROD attendance state projection
+attendance_state_json	str (JSON)	JSON-serialized class-scoped attendance state for JS
 checking_balance	float	Scoped checking balance
 savings_balance	float	Scoped savings balance
 forecast_interest	float	Projected monthly interest
@@ -509,8 +518,8 @@ Jinja expressions:
 
 Line	Expression	Expects	Supplied By
 2	{% import "macros/help.html" as help %}	macro module	[MACRO:help]
-11	{{ student.display_first_name }}	str	route (student)
-36	{{ period_states_json|safe }}	str	route
+11	{{ student_display_first_name }}	str	route display metadata — REWIRED, no `student.display_first_name` dereference
+36	{{ attendance_state_json|safe }}	str	route — REWIRED_READ from canonical class-scoped attendance state projection
 39	{% if pending_recovery_code %}	truthy	route
 49	{{ pending_recovery_code.recovery_request.expires_at.strftime(...) }}	str	route
 52	{{ url_for('student.verify_recovery', code_id=pending_recovery_code.id) }}	str	[FLASK]
@@ -525,7 +534,7 @@ Line	Expression	Expects	Supplied By
 121	{{ total_minutes_this_week }}	int	route
 128	{{ "%.0f"|format(earnings_this_week) }}	str	route
 136	{{ "%.0f"|format(spending_this_week) }}	str	route
-157	{{ student.hall_passes }}	int	route (student)
+157	{{ hall_pass_balance }}	int	route — REWIRED_READ from entitlement grant/purchase records minus approved `hall_pass_logs` consumption
 220	{{ "%.2f"|format(checking_balance) }}	str	route
 222	{{ url_for('student.transfer') }}	str	[FLASK]
 225	{{ url_for('student.payroll') }}	str	[FLASK]
@@ -534,7 +543,7 @@ Line	Expression	Expects	Supplied By
 293	{{ format_utc_iso(t.timestamp) }}	str	[GLOBAL]
 303	{{ url_for('student.report_transaction_issue', transaction_id=t.id) }}	str	[FLASK]
 359	{{ current_class_id|tojson }}	JSON str	route + Jinja builtin
-405	{{ static_url('js/attendance.js') }}	str	[GLOBAL]
+405	{{ static_url('js/attendance.js') }}	str	[GLOBAL] — REWIRED_CLIENT_JS: contextual `Start Work`, `Break`, `Leave`, and `Return`; no client-supplied period, no deleted `/api/student-status/reconcile` call
 student_shop.html
 Extends: layout_student.html ([LAYOUT:student])
 Route(s): student.shop — GET /student/shop — app/routes/student.py:1519
@@ -609,34 +618,35 @@ Variables from route:
 
 Variable	Type	Purpose
 student	Seat	Current seat
-student_blocks	list[str]	Block identifiers
-unpaid_seconds_per_block	dict[str, int]	Unpaid seconds per block
-projected_pay_per_block	dict[str, float]	Projected pay per block
-period_states	dict	Per-block status
-all_tap_events	list[AttendanceSession]	All recent tap events
-tap_events_by_block	dict[str, list]	Events grouped by block
+class_label	str	Display label for the active canonical class
+payroll_state	dict	Current class-scoped productivity/payroll state
+unpaid_seconds	int	Unpaid seconds for the active canonical class
+projected_pay	float	Projected pay for the active canonical class
+attendance_events	list[AttendanceSession]	Recent canonical attendance events
+attendance_start_count	int	Recent active/start event count
+attendance_inactive_count	int	Recent inactive/break/done event count
 pay_rate_per_minute	float	Pay rate per minute
 pay_rate_table	list[tuple[str, float]]	Time-to-earnings table
-now	datetime	Current UTC time
 scoped_total_earnings	float	Lifetime earnings in class
 Jinja expressions:
 
 Line	Expression	Expects	Supplied By
-40	{{ blk|upper }}	str	loop var
-41	{% set state = period_states[blk] %}	dict	route
-54	{{ (unpaid_seconds_per_block[blk] // 3600)|string + ... }}	str	route
-60	{% set block_events = tap_events_by_block[blk] ... %}	list	route
+38	{{ class_label }}	str	route — REWIRED_READ from canonical ClassEconomy display fields
+41	{{ payroll_state.get(...) }}	dict	route — REWIRED_READ from canonical attendance_sessions state projection
+54	{{ (unpaid_seconds // 3600)|string + ... }}	str	route
+60	{% for event in attendance_events[:20] %}	list	route — REWIRED_READ from canonical attendance_sessions
 77	{{ format_utc_iso(event.timestamp) }}	str	[GLOBAL]
-96	{{ url_for('student.report_tap_event_issue', tap_event_id=event.id) }}	str	[FLASK]
-138	{{ unpaid_seconds_per_block.values()|sum }}	int	route
-148	{{ "%.2f"|format(projected_pay_per_block.values()|sum) }}	str	route
+96	{{ url_for('student.report_attendance_session_issue', attendance_session_id=event.id) }}	str	[FLASK] — REWIRED to canonical AttendanceSession lookup by `target_seat_id + class_id`
+138	{{ unpaid_seconds }}	int	route
+148	{{ "%.2f"|format(projected_pay) }}	str	route
 154	{{ "%.2f"|format(scoped_total_earnings) }}	str	route
-222	{{ all_tap_events|selectattr('action', 'equalto', 'start_work')|list|length }}	int	route
+222	{{ attendance_start_count }}	int	route — REWIRED_READ from canonical attendance_sessions
+228	{{ attendance_inactive_count }}	int	route — REWIRED_READ from canonical attendance_sessions
 289	{{ "%.2f"|format(pay_rate_per_minute) }}	str	route
 301	{% for label, value in pay_rate_table %}	tuple	route
-319	{% if student.last_payroll %}	datetime/None	model
-329	{{ student.last_payroll.strftime(...) }}	str	model
-335	{{ ((now - student.last_payroll).days) }}	int	route + model
+319	{% if last_payroll_event %}	datetime/None	route — REWIRED_READ from payroll_events
+329	{{ last_payroll_event.recorded_at.strftime(...) }}	str	route — REWIRED_READ from payroll_events
+335	{{ days_since_last_payroll }}	int	route — computed through canonical_temporal_resolver
 student_rent.html
 Extends: layout_student.html ([LAYOUT:student])
 Route(s): student.rent — GET /student/rent — app/routes/student.py:2431
@@ -954,14 +964,14 @@ Route(s):
 
 student.submit_general_issue — GET|POST /student/help-support/submit-issue — app/routes/student.py:3207
 student.report_transaction_issue — GET|POST /student/help-support/transaction/<int:transaction_id>/report — app/routes/student.py:3262
-student.report_tap_event_issue — GET|POST /student/help-support/tap-event/<int:tap_event_id>/report — app/routes/student.py:3325
+student.report_attendance_session_issue — GET|POST /student/help-support/attendance-session/<int:attendance_session_id>/report — app/routes/student.py — REWIRED to canonical AttendanceSession lookup by `target_seat_id + class_id`; legacy `tap_event` route terminology removed
 Variables from route:
 
 Variable	Type	Purpose
 current_page	str	"help"
 page_title	str	"Report an Issue" or similar
 form	StudentIssueSubmissionForm	WTForms issue form
-issue_type	str	"general", "transaction", or "tap_event"
+issue_type	str	"general", "transaction", or "attendance"
 transaction	`Transaction	None`	Related transaction (if transaction type)
 show_recent_error_option	bool	Whether to show "include recent error" checkbox
 Jinja expressions:

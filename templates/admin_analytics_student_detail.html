@@ -1,5 +1,5 @@
 {% extends "layout_admin.html" %}
-{% block page_title %}Student Analytics - {{ student.name }}{% endblock %}
+{% block page_title %}Student Analytics - {{ student_name }}{% endblock %}
 {% block page_icon %}person_search{% endblock %}
 
 {% block page_header_actions %}
@@ -15,7 +15,7 @@
     <div class="col-12">
       <h2 class="h4 mb-3">
         <span class="material-symbols-outlined align-middle me-2">person</span>
-        {{ student.name | e }}
+        {{ student_name | e }}
         <small class="text-muted">— Individual Performance vs CWI</small>
       </h2>
     </div>
@@ -77,12 +77,12 @@
           {% if deviation|abs <= 20 %}
           <div class="alert alert-success mb-0">
             <span class="material-symbols-outlined me-2">check_circle</span>
-            <strong>On Track:</strong> {{ student.name | e }} is within ±20% of expected income (CWI). This suggests they are attending regularly and managing their budget effectively.
+            <strong>On Track:</strong> {{ student_name | e }} is within +/-20% of expected income (CWI). This suggests they are attending regularly and managing their budget effectively.
           </div>
           {% elif deviation > 20 %}
           <div class="alert alert-{% if deviation > 40 %}warning{% else %}info{% endif %} mb-0">
             <span class="material-symbols-outlined me-2">info</span>
-            <strong>Above Expected:</strong> {{ student.name | e }} has {{ "%.1f"|format(deviation) }}% more than expected. This could indicate:
+            <strong>Above Expected:</strong> {{ student_name | e }} has {{ "%.1f"|format(deviation) }}% more than expected. This could indicate:
             <ul class="mb-0 mt-2">
               <li>Excellent attendance and bonus earnings</li>
               <li>Conservative spending habits</li>
@@ -92,7 +92,7 @@
           {% else %}
           <div class="alert alert-{% if deviation < -40 %}danger{% else %}warning{% endif %} mb-0">
             <span class="material-symbols-outlined me-2">warning</span>
-            <strong>Below Expected:</strong> {{ student.name | e }} has {{ "%.1f"|format(deviation|abs) }}% less than expected. This could indicate:
+            <strong>Below Expected:</strong> {{ student_name | e }} has {{ "%.1f"|format(deviation|abs) }}% less than expected. This could indicate:
             <ul class="mb-0 mt-2">
               <li>Attendance challenges (absences reduce income)</li>
               <li>Higher expenses than typical</li>

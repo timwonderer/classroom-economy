@@ -696,73 +696,32 @@ def create_app():
     def inject_class_context():
         """Inject current class context and available classes for student navigation."""
         try:
-            from app.auth import get_current_seat, get_current_class_id, get_current_user
-            from app.models import Seat, User, UserRole, ClassEconomy
-            from app.utils.display_name_session import (
-                get_teacher_display_name_cache,
-                upsert_teacher_display_name_cache,
-            )
+            from app.auth import get_current_seat, get_current_user
+            from app.services.context_resolver import resolve_canonical_context
+            from app.utils.display_metadata import get_or_resolve_display_metadata
 
             current_seat_ctx = get_current_seat()
             current_user = get_current_user()
             if not current_seat_ctx or not current_user:
                 return {'current_class_context': None, 'available_classes': []}
 
-            class_id = current_seat_ctx.class_id
-            if not class_id:
+            context = resolve_canonical_context()
+            if not context or not getattr(context, "class_id", None):
                 return {'current_class_context': None, 'available_classes': []}
 
-            class_rows_by_class_id = {
-                row.class_id: row
-                for row in ClassEconomy.query.filter(ClassEconomy.class_id == class_id).all()
-            }
-
-            current_seat = current_seat_ctx
-
-            # Build list of available classes with teacher names.
-            user_ids = sorted({row.user_id for row in class_rows_by_class_id.values() if row.user_id})
-            teacher_name_cache = get_teacher_display_name_cache()
-            missing_ids = [uid for uid in user_ids if str(uid) not in teacher_name_cache]
-            if missing_ids:
-                cache_updates = {str(uid): "Teacher" for uid in missing_ids}
-                upsert_teacher_display_name_cache(cache_updates)
-                teacher_name_cache.update(cache_updates)
-
-            # Build current class context from cache.
-            current_class_row = class_rows_by_class_id.get(current_seat.class_id)
-            current_user_id = getattr(current_class_row, 'user_id', None)
-            current_class_label = (
-                current_class_row.display_name
-                if current_class_row and current_class_row.display_name
-                else (get_display_join_code(current_class_row.class_id) if current_class_row else None)
-            )
-            available_classes = [{
-                'join_code': get_display_join_code(current_class_row.class_id) if current_class_row else None,
-                'class_id': getattr(current_class_row, 'class_id', None),
-                'class_identifier': current_class_label,
-                'class_timezone': getattr(current_class_row, 'class_timezone', None),
-                'teacher_name': teacher_name_cache.get(str(current_user_id), 'Unknown') if current_user_id else 'Unknown',
-                'user_id': current_user_id,
-                'block': current_seat.class_economy.section if current_seat.class_economy else None,
-                'block_display': current_class_label,
-                'is_current': True,
-            }]
-            current_class_context = {
-                'join_code': get_display_join_code(current_class_row.class_id) if current_class_row else None,
-                'class_id': getattr(current_class_row, 'class_id', None),
-                'class_identifier': current_class_label,
-                'class_timezone': getattr(current_class_row, 'class_timezone', None),
-                'teacher_name': teacher_name_cache.get(str(current_user_id), 'Unknown') if current_user_id else 'Unknown',
-                'user_id': current_user_id,
-                'block': current_seat.class_economy.section if current_seat.class_economy else None,
-                'block_display': current_class_label,
-                'student_full_name': current_seat.identity_profile.full_name if current_seat.identity_profile else "",
-            }
+            display_metadata = get_or_resolve_display_metadata(context)
+            if display_metadata is None:
+                return {'current_class_context': None, 'available_classes': []}
+            current_class_context = display_metadata.to_class_context()
+            available_classes = [display_metadata.to_available_class_option()]
 
             return {
                 'current_class_context': current_class_context,
                 'available_classes': available_classes,
-                'current_seat': current_seat  # Add seat object for template access
+                'current_seat': current_seat_ctx,
+                'display_metadata': display_metadata,
+                'student_display_first_name': display_metadata.student_first_name,
+                'student_name': display_metadata.student_full_name,
             }
         except Exception as e:
             app.logger.warning(f"Could not load class context: {e}")
@@ -772,30 +731,27 @@ def create_app():
     def inject_admin_class_context():
         """Inject current class context and available classes for admin navigation."""
         try:
-            from app.models import ClassEconomy
-            from app.auth import get_current_user, get_current_class_id
+            from app.auth import get_current_user
+            from app.services.context_resolver import resolve_canonical_context
+            from app.utils.display_metadata import get_or_resolve_display_metadata
 
             current_user = get_current_user()
-            current_class_id = get_current_class_id()
-            if not current_user or getattr(current_user.user_role, "value", current_user.user_role) != "teacher" or not current_class_id:
+            if not current_user or getattr(current_user.user_role, "value", current_user.user_role) != "teacher":
                 return {'admin_current_class_context': None, 'admin_available_classes': []}
 
-            class_row = ClassEconomy.query.filter_by(class_id=current_class_id).first()
-            if not class_row:
+            context = resolve_canonical_context()
+            if not context or not getattr(context, "class_id", None):
                 return {'admin_current_class_context': None, 'admin_available_classes': []}
 
-            admin_current_class_context = {
-                'join_code': get_display_join_code(class_row.class_id),
-                'class_id': class_row.class_id,
-                'class_identifier': class_row.display_name or get_display_join_code(class_row.class_id),
-                'class_timezone': class_row.class_timezone,
-                'block': class_row.section,
-                'block_display': class_row.display_name or get_display_join_code(class_row.class_id),
-            }
+            display_metadata = get_or_resolve_display_metadata(context)
+            if display_metadata is None:
+                return {'admin_current_class_context': None, 'admin_available_classes': []}
+            admin_current_class_context = display_metadata.to_class_context()
 
             return {
                 'admin_current_class_context': admin_current_class_context,
                 'admin_available_classes': [admin_current_class_context],
+                'display_metadata': display_metadata,
             }
         except Exception as e:
             app.logger.warning(f"Could not load admin class context: {e}")

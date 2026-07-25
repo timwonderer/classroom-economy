@@ -295,7 +295,7 @@
                 <small class="text-muted">Average Payout</small>
               </div>
               <div class="col-6">
-                <h3 class="text-warning">{{ total_blocks|default(0) }}</h3>
+                <h3 class="text-warning">{{ total_classes|default(0) }}</h3>
                 <small class="text-muted">Active Classes</small>
               </div>
             </div>
@@ -336,23 +336,13 @@
                   {% endif %}
                 </td>
                 <td>
-                  {% if record.student %}
-                  <a
-                    href="{{ student_detail_url(record.actor_public_id) }}">
-                    {{ record.student.full_name }}
-                  </a>
+                  {% if record.actor_public_id %}
+                  <a href="{{ student_detail_url(record.actor_public_id) }}">{{ record.student_name }}</a>
                   {% else %}
-                  <em>Unknown</em>
+                  <em>{{ record.student_name }}</em>
                   {% endif %}
                 </td>
-                <td>
-                  {% if record.join_code and join_code_to_label %}
-                  {{ join_code_to_label.get(record.join_code, record.join_code) }}
-                  {% else %}
-                  {{ class_labels_by_block.get(record.student.block, record.student.block) if record.student and
-                  record.student.block else "N/A" }}
-                  {% endif %}
-                </td>
+                <td>{{ record.class_label }}</td>
                 <td class="text-success fw-bold">${{ "%.2f"|format(record.amount) }}</td>
                 <td><span class="badge bg-secondary">{{ record.account_type|title }}</span></td>
               </tr>
@@ -377,18 +367,13 @@
         <!-- Filter and Actions -->
         <div class="row mb-3">
           <div class="col-md-4">
-            <label for="historyBlockFilter" class="form-label fw-bold">Class:</label>
-            <select id="historyBlockFilter" class="form-select">
+            <label for="historyClassFilter" class="form-label fw-bold">Class:</label>
+            <select id="historyClassFilter" class="form-select">
               <option value="">All Classes</option>
-              {% for block in blocks %}
-              <option value="{{ block }}">{{ class_labels_by_block.get(block, block) }}</option>
+              {% for class_option in payroll_class_options %}
+              <option value="{{ class_option.class_id }}">{{ class_option.label }}</option>
               {% endfor %}
             </select>
-          </div>
-          <div class="col-md-8 text-end">
-            <button id="voidSelectedBtn" class="btn btn-danger" disabled>
-              <span class="material-symbols-outlined me-2">cancel</span>Void Selected (<span id="voidCount">0</span>)
-            </button>
           </div>
         </div>
 
@@ -397,28 +382,19 @@
           <table class="table table-striped table-hover" id="payrollHistoryTable">
             <thead>
               <tr>
-                <th width="40">
-                  <input type="checkbox" id="selectAllHistory" class="form-check-input">
-                </th>
                 <th>Date</th>
                 <th>Type</th>
                 <th>Class</th>
                 <th>Student</th>
                 <th>Amount</th>
                 <th>Notes</th>
-                <th width="100">Actions</th>
               </tr>
             </thead>
             <tbody>
               {% if payroll_history %}
               {% for entry in payroll_history %}
-              <tr data-block="{{ entry.block }}" data-transaction-id="{{ entry.transaction_id }}"
-                class="{% if entry.is_void %}table-secondary text-muted{% endif %}">
-                <td>
-                  {% if not entry.is_void %}
-                  <input type="checkbox" class="form-check-input history-checkbox" value="{{ entry.transaction_id }}">
-                  {% endif %}
-                </td>
+              <tr data-class-id="{{ entry.class_id }}" data-payroll-event-id="{{ entry.payroll_event_id }}"
+                class="{% if entry.is_reversal %}table-secondary text-muted{% endif %}">
                 <td>
                   {% if entry.timestamp %}
                   <span class="local-timestamp" data-timestamp="{{ format_utc_iso(entry.timestamp) }}"></span>
@@ -434,36 +410,24 @@
                 </td>
                 <td>{{ entry.class_label }}</td>
                 <td>
-                  {% if entry.student %}
-                  <a
-                    href="{{ student_detail_url(entry.actor_public_id) }}">
-                    {{ entry.student_name }}
-                  </a>
+                  {% if entry.actor_public_id %}
+                  <a href="{{ student_detail_url(entry.actor_public_id) }}">{{ entry.student_name }}</a>
                   {% else %}
                   {{ entry.student_name }}
                   {% endif %}
                 </td>
                 <td class="{% if entry.amount > 0 %}text-success{% else %}text-danger{% endif %} fw-bold">
                   ${{ "%.2f"|format(entry.amount) }}
-                  {% if entry.is_void %}
-                  <span class="badge bg-secondary ms-1">VOID</span>
+                  {% if entry.is_reversal %}
+                  <span class="badge bg-secondary ms-1">REVERSAL</span>
                   {% endif %}
                 </td>
                 <td>{{ entry.notes }}</td>
-                <td>
-                  {% if not entry.is_void %}
-                  <button class="btn btn-sm btn-outline-danger" onclick="voidTransaction({{ entry.transaction_id }})">
-                    <span class="material-symbols-outlined">cancel</span> Void
-                  </button>
-                  {% else %}
-                  <span class="text-muted small">Voided</span>
-                  {% endif %}
-                </td>
               </tr>
               {% endfor %}
               {% else %}
               <tr>
-                <td colspan="8" class="text-center text-muted">No payroll records found.</td>
+                <td colspan="6" class="text-center text-muted">No payroll records found.</td>
               </tr>
               {% endif %}
             </tbody>
@@ -536,9 +500,9 @@
               <div class="mt-2">
                 <strong>Per-Class Settings:</strong>
                 <ul class="mb-0 mt-1 small">
-                  {% for block, setting in settings_by_block.items() %}
+                  {% for setting_key, setting in settings_by_block.items() %}
                   <li>
-                    <strong>{{ class_labels_by_block.get(block, block) }}:</strong>
+                    <strong>{{ class_labels_by_block.get(setting_key, setting_key) }}:</strong>
                     {% if setting.settings_mode == 'simple' %}
                     ${{ "%.2f"|format(setting.pay_rate * 60) }}/hour, {{ setting.pay_schedule_type }}
                     {% else %}
@@ -641,12 +605,11 @@
                     <label class="form-check-label" for="simpleApplySelected">Selected Classes:</label>
                   </div>
                   <div id="simpleBlockCheckboxes" class="ms-4 mt-2" style="display:none;">
-                    {% for block in blocks %}
+                    {% for class_option in payroll_class_options %}
                     <div class="form-check">
                       <input class="form-check-input simple-block-checkbox" type="checkbox" name="simple_blocks[]"
-                        value="{{ block }}" id="simple_block_{{ block }}">
-                      <label class="form-check-label" for="simple_block_{{ block }}">{{ class_labels_by_block.get(block,
-                        block) }}</label>
+                        value="{{ class_option.settings_key }}" id="simple_class_{{ class_option.class_id }}">
+                      <label class="form-check-label" for="simple_class_{{ class_option.class_id }}">{{ class_option.label }}</label>
                     </div>
                     {% endfor %}
                   </div>
@@ -849,12 +812,11 @@
                     <label class="form-check-label" for="advApplySelected">Selected Classes:</label>
                   </div>
                   <div id="advBlockCheckboxes" class="ms-4 mt-2" style="display:none;">
-                    {% for block in blocks %}
+                    {% for class_option in payroll_class_options %}
                     <div class="form-check">
                       <input class="form-check-input adv-block-checkbox" type="checkbox" name="adv_blocks[]"
-                        value="{{ block }}" id="adv_block_{{ block }}">
-                      <label class="form-check-label" for="adv_block_{{ block }}">{{ class_labels_by_block.get(block,
-                        block) }}</label>
+                        value="{{ class_option.settings_key }}" id="adv_class_{{ class_option.class_id }}">
+                      <label class="form-check-label" for="adv_class_{{ class_option.class_id }}">{{ class_option.label }}</label>
                     </div>
                     {% endfor %}
                   </div>
@@ -949,11 +911,11 @@
           <div class="card-body">
             <!-- Class Filter -->
             <div class="mb-3">
-              <label for="studentBlockFilter" class="form-label fw-bold">Filter by Class:</label>
-              <select id="studentBlockFilter" class="form-select">
+              <label for="studentClassFilter" class="form-label fw-bold">Filter by Class:</label>
+              <select id="studentClassFilter" class="form-select">
                 <option value="">All Classes</option>
-                {% for block in blocks %}
-                <option value="{{ block }}">{{ class_labels_by_block.get(block, block) }}</option>
+                {% for class_option in payroll_class_options %}
+                <option value="{{ class_option.class_id }}">{{ class_option.label }}</option>
                 {% endfor %}
               </select>
             </div>
@@ -974,30 +936,14 @@
                 <tbody>
                   {% if all_students %}
                   {% for student in all_students %}
-                  <tr class="student-row" data-blocks="{{ student.block }}" data-student-id="{{ student.public_id }}">
+                  <tr class="student-row" data-class-id="{{ student.class_id }}" data-student-id="{{ student.public_id }}">
                     <td>
                       <input class="form-check-input student-checkbox" type="checkbox" value="{{ student.public_id }}"
-                        data-blocks="{{ student.block }}">
+                        data-class-id="{{ student.class_id }}">
                     </td>
                     <td>
                       <strong>{{ student.full_name }}</strong><br>
-                      <small class="text-muted student-period-label">
-                        {% if student.block %}
-                        {% set blocks = student.block.split(',') %}
-                        {% if blocks|length > 1 %}
-                        {% set ns = namespace(labels=[]) %}
-                        {% for b in blocks %}
-                        {% set trimmed_block = b.strip() %}
-                        {% set ns.labels = ns.labels + [class_labels_by_block.get(trimmed_block, trimmed_block)] %}
-                        {% endfor %}
-                        {{ ns.labels | join(', ') }}
-                        {% else %}
-                        {{ class_labels_by_block.get(student.block, student.block) }}
-                        {% endif %}
-                        {% else %}
-                        N/A
-                        {% endif %}
-                      </small>
+                      <small class="text-muted student-class-label">{{ student.class_label }}</small>
                     </td>
                     <td class="text-end">${{ "%.2f"|format(scoped_balances_by_student.get(student.id, {}).get('checking', 0)) }}</td>
                     <td class="text-end">${{ "%.2f"|format(scoped_balances_by_student.get(student.id, {}).get('savings', 0)) }}</td>
@@ -1033,26 +979,18 @@
               <!-- Description -->
               <div class="mb-3">
                 {{ manual_payment_form.description.label(class="form-label fw-bold") }}
-                {{ manual_payment_form.description(class="form-control form-control-lg", id="manualDescription", placeholder="What shows up in the ledger") }}
+                {{ manual_payment_form.description(class="form-control form-control-lg", id="manualDescription", placeholder="Manual credit note") }}
               </div>
 
-              <!-- Action Type (Deposit / Deduction) -->
+              <!-- Payroll owns positive compensation only. Manual debits/fines belong to Obligations. -->
               <div class="mb-3">
                 <label class="form-label fw-bold">Action:</label>
-                <div class="d-flex gap-3">
-                  <div class="form-check form-check-inline">
-                    <input class="form-check-input payment-type-radio" type="radio" name="payment_type" id="typeDeposit" value="deposit" checked>
-                    <label class="form-check-label text-success fw-bold" for="typeDeposit">
-                      <span class="material-symbols-outlined align-text-bottom fs-5">add_circle</span> Deposit
-                    </label>
-                  </div>
-                  <div class="form-check form-check-inline">
-                    <input class="form-check-input payment-type-radio" type="radio" name="payment_type" id="typeDeduction" value="deduction">
-                    <label class="form-check-label text-danger fw-bold" for="typeDeduction">
-                      <span class="material-symbols-outlined align-text-bottom fs-5">do_not_disturb_on</span> Deduction
-                    </label>
-                  </div>
+                <div class="alert alert-success d-flex align-items-center mb-0">
+                  <span class="material-symbols-outlined me-2">add_circle</span>
+                  Manual Credit
                 </div>
+                <input type="hidden" name="payment_type" value="deposit">
+                <input type="hidden" name="account_type" value="checking">
               </div>
 
               <!-- Amount -->
@@ -1063,12 +1001,6 @@
                   <span class="input-group-text">$</span>
                   {{ manual_payment_form.amount(class="form-control fw-bold", id="manualAmount", placeholder="0.00", step="0.01") }}
                 </div>
-              </div>
-
-              <!-- Account Type -->
-              <div class="mb-4">
-                {{ manual_payment_form.account_type.label(class="form-label fw-bold") }}
-                {{ manual_payment_form.account_type(class="form-select") }}
               </div>
 
               <hr>
@@ -1123,50 +1055,33 @@
 
     // Timestamp conversion handled by timezone-utils.js
 
-    // Manual Payment Tab: Block Filter for Students
-    const studentBlockFilter = document.getElementById('studentBlockFilter');
+    // Manual Payment Tab: Class Filter for Students
+    const studentClassFilter = document.getElementById('studentClassFilter');
     const studentRows = document.querySelectorAll('.student-row');
     const selectAllCheckbox = document.getElementById('selectAllStudents');
     const selectedCountEl = document.getElementById('selectedCount');
 
-    // Set default block (first option after "All Periods")
-    if (studentBlockFilter && studentBlockFilter.options.length > 1) {
-      studentBlockFilter.selectedIndex = 1; // Select first actual block
-      studentBlockFilter.dispatchEvent(new Event('change')); // Trigger filter
+    // Set default class (first option after "All Classes")
+    if (studentClassFilter && studentClassFilter.options.length > 1) {
+      studentClassFilter.selectedIndex = 1;
+      studentClassFilter.dispatchEvent(new Event('change'));
     }
 
-    if (studentBlockFilter) {
-      studentBlockFilter.addEventListener('change', function () {
-        const selectedBlock = this.value;
-        const classLabels = {{ class_labels_by_block| tojson
-      }};
+    if (studentClassFilter) {
+      studentClassFilter.addEventListener('change', function () {
+        const selectedClassId = this.value;
 
-    studentRows.forEach(row => {
-      const studentBlocks = row.dataset.blocks.split(',').map(b => b.trim());
-      const periodLabel = row.querySelector('.student-period-label');
-
-      if (!selectedBlock) {
-        // Show all blocks when no filter is selected
-        row.style.display = '';
-        if (periodLabel) {
-          const allLabels = studentBlocks.map(b => classLabels[b] || b).join(', ');
-          periodLabel.textContent = allLabels;
-        }
-      } else if (studentBlocks.includes(selectedBlock)) {
-        // Show only the selected period when filter is active
-        row.style.display = '';
-        if (periodLabel) {
-          periodLabel.textContent = classLabels[selectedBlock] || selectedBlock;
-        }
-      } else {
-        row.style.display = 'none';
-        // Uncheck hidden students
-        row.querySelector('.student-checkbox').checked = false;
-      }
-    });
-    selectAllCheckbox.checked = false;
-    updateSelectedCount();
-  });
+        studentRows.forEach(row => {
+          if (!selectedClassId || row.dataset.classId === selectedClassId) {
+            row.style.display = '';
+          } else {
+            row.style.display = 'none';
+            row.querySelector('.student-checkbox').checked = false;
+          }
+        });
+        selectAllCheckbox.checked = false;
+        updateSelectedCount();
+      });
     }
 
   if (selectAllCheckbox) {
@@ -1197,44 +1112,28 @@
   const presetSelector = document.getElementById('presetSelector');
   const manualDescription = document.getElementById('manualDescription');
   const manualAmount = document.getElementById('manualAmount');
-  const typeDepositRadio = document.getElementById('typeDeposit');
-  const typeDeductionRadio = document.getElementById('typeDeduction');
   const amountSignSymbol = document.getElementById('amountSignSymbol');
   const clearFormBtn = document.getElementById('clearFormBtn');
 
-  // Toggle the visual sign and color based on payment type
-  function updateAmountSign() {
-    if (typeDepositRadio && typeDepositRadio.checked) {
-      amountSignSymbol.textContent = '+';
-      amountSignSymbol.style.color = 'var(--bs-success)';
-    } else {
-      amountSignSymbol.textContent = '-';
-      amountSignSymbol.style.color = 'var(--bs-danger)';
-    }
-  }
-
-  if (typeDepositRadio && typeDeductionRadio) {
-    typeDepositRadio.addEventListener('change', updateAmountSign);
-    typeDeductionRadio.addEventListener('change', updateAmountSign);
+  if (amountSignSymbol) {
+    amountSignSymbol.textContent = '+';
+    amountSignSymbol.style.color = 'var(--bs-success)';
   }
 
   if (presetSelector) {
     presetSelector.addEventListener('change', function () {
       const selectedOption = this.options[this.selectedIndex];
       if (selectedOption.value) {
+        if (selectedOption.dataset.type && selectedOption.dataset.type !== 'deposit') {
+          alert('Manual deductions belong to Obligations and cannot be applied from Payroll.');
+          this.value = '';
+          return;
+        }
         const description = selectedOption.dataset.description;
         const amount = selectedOption.dataset.amount;
-        const type = selectedOption.dataset.type; // 'deposit' or 'deduction'
 
         if (manualDescription) manualDescription.value = description;
         if (manualAmount) manualAmount.value = Math.abs(parseFloat(amount)).toFixed(2);
-
-        if (type === 'deposit') {
-            typeDepositRadio.checked = true;
-        } else if (type === 'deduction') {
-            typeDeductionRadio.checked = true;
-        }
-        updateAmountSign();
       }
     });
   }
@@ -1244,62 +1143,24 @@
         if (presetSelector) presetSelector.value = '';
         if (manualDescription) manualDescription.value = '';
         if (manualAmount) manualAmount.value = '';
-        if (typeDepositRadio) {
-            typeDepositRadio.checked = true;
-            updateAmountSign();
-        }
     });
   }
 
-  // History Tab: Block Filter
-  const historyBlockFilter = document.getElementById('historyBlockFilter');
-  if (historyBlockFilter) {
-    historyBlockFilter.addEventListener('change', function () {
-      const selectedBlock = this.value;
-      const historyRows = document.querySelectorAll('#payrollHistoryTable tbody tr[data-block]');
+  // History Tab: Class Filter
+  const historyClassFilter = document.getElementById('historyClassFilter');
+  if (historyClassFilter) {
+    historyClassFilter.addEventListener('change', function () {
+      const selectedClassId = this.value;
+      const historyRows = document.querySelectorAll('#payrollHistoryTable tbody tr[data-class-id]');
       historyRows.forEach(row => {
-        const rowBlock = row.dataset.block;
-        if (!selectedBlock || rowBlock === selectedBlock) {
+        const rowClassId = row.dataset.classId;
+        if (!selectedClassId || rowClassId === selectedClassId) {
           row.style.display = '';
         } else {
           row.style.display = 'none';
         }
       });
     });
-  }
-
-  // History Tab: Select All Checkbox
-  const selectAllHistory = document.getElementById('selectAllHistory');
-  const historyCheckboxes = document.querySelectorAll('.history-checkbox');
-  const voidCountEl = document.getElementById('voidCount');
-  const voidSelectedBtn = document.getElementById('voidSelectedBtn');
-
-  if (selectAllHistory) {
-    selectAllHistory.addEventListener('change', function () {
-      const visibleCheckboxes = Array.from(historyCheckboxes).filter(cb => {
-        const row = cb.closest('tr');
-        return row && row.style.display !== 'none';
-      });
-      visibleCheckboxes.forEach(cb => cb.checked = this.checked);
-      updateVoidCount();
-    });
-  }
-
-  historyCheckboxes.forEach(cb => {
-    cb.addEventListener('change', updateVoidCount);
-  });
-
-  function updateVoidCount() {
-    const count = Array.from(historyCheckboxes).filter(cb => cb.checked).length;
-    if (voidCountEl) voidCountEl.textContent = count;
-    if (voidSelectedBtn) voidSelectedBtn.disabled = count === 0;
-  }
-
-  updateVoidCount();
-
-  // Void Selected Button
-  if (voidSelectedBtn) {
-    voidSelectedBtn.addEventListener('click', voidSelectedTransactions);
   }
 
   // SETTINGS TAB: Mode Toggle
@@ -1829,8 +1690,8 @@
 
     const description = document.getElementById('manualDescription').value;
     const amount = document.getElementById('manualAmount').value;
-    const accountType = document.querySelector('select[name="account_type"]').value;
-    const paymentType = document.getElementById('typeDeposit')?.checked ? 'deposit' : 'deduction';
+    const accountType = 'checking';
+    const paymentType = 'deposit';
 
     if (!description || !amount) {
       alert('Please fill in the description and amount.');
@@ -1897,68 +1758,6 @@
       }
     } catch (err) {
       showToast('Error applying payment', 'error');
-    }
-  }
-
-  // Void Single Transaction
-  async function voidTransaction(transactionId) {
-    if (!confirm('Are you sure you want to void this transaction? This cannot be undone.')) return;
-
-    const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
-
-    try {
-      const resp = await fetch(`/admin/payroll/transactions/${transactionId}/void`, {
-        method: 'POST',
-        headers: {
-          'X-CSRFToken': csrfToken,
-          'Content-Type': 'application/json'
-        }
-      });
-
-      const data = await resp.json();
-      if (data.success) {
-        showToast('Transaction voided successfully', 'success');
-        setTimeout(() => location.reload(), 1000);
-      } else {
-        showToast(data.message || 'Failed to void transaction', 'error');
-      }
-    } catch (err) {
-      showToast('Error voiding transaction', 'error');
-    }
-  }
-
-  // Void Selected Transactions
-  async function voidSelectedTransactions() {
-    const selectedIds = Array.from(document.querySelectorAll('.history-checkbox:checked')).map(cb => cb.value);
-
-    if (selectedIds.length === 0) {
-      alert('Please select at least one transaction to void.');
-      return;
-    }
-
-    if (!confirm(`Are you sure you want to void ${selectedIds.length} transaction(s)? This cannot be undone.`)) return;
-
-    const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
-
-    try {
-      const resp = await fetch('/admin/payroll/transactions/void-bulk', {
-        method: 'POST',
-        headers: {
-          'X-CSRFToken': csrfToken,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ transaction_ids: selectedIds })
-      });
-
-      const data = await resp.json();
-      if (data.success) {
-        showToast(`${selectedIds.length} transaction(s) voided successfully`, 'success');
-        setTimeout(() => location.reload(), 1000);
-      } else {
-        showToast(data.message || 'Failed to void transactions', 'error');
-      }
-    } catch (err) {
-      showToast('Error voiding transactions', 'error');
     }
   }
 

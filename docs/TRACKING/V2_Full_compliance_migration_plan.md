@@ -149,7 +149,7 @@ This file is the single active tracker for v2 migration execution. All prior tra
 - [ ] Wave 12 final schema/code/test validation gate (exact 44 tables, zero v1 runtime artifacts, clean suite, **zero `legacy_bypass` markers, zero dead-route xfails**)
 
 #### Deferred-but-tracked architecture items
-- [ ] TemporalContext full architecture rebuild (`V2_Temporal_Architecture_Rebuild_Plan.md`)
+- [ ] Canonical Temporal Resolver implementation (`SPEC-TIME-001_CANONICAL_TEMPORAL_RESOLVER.md`)
 - [ ] Backwards compatibility cleanup execution (`V2_BACKWARDS_COMPATIBILITY_CLEANUP.md` scope, when explicitly re-opened)
 - [ ] Remaining docs-platform migration phases from `V2_DOCS_PLATFORM_SPLIT.md` (Phases 2–4)
 
@@ -160,31 +160,31 @@ This file is the single active tracker for v2 migration execution. All prior tra
 - [ ] Wave 8-9 (Store + Interpretation): align store tier pricing and aggregate economy-health analytics/drift metrics to DOM-ECON-000 formulas
 - [ ] Verification gates: add invariant tests proving deterministic shared calculations and no duplicated formula paths across validators/recommenders/analytics
 
-### Build Specs Index (Authoritative Specs in `docs/SPECS/`)
+### Build Specs Index (Authoritative Specs in `docs/SPEC/`)
 
-- [V2_ADMIN_ROUTE_REFACTOR.md](../specs/V2_ADMIN_ROUTE_REFACTOR.md)
-- [V2_AUTHORITY_EXTRACTION_PLAN.md](../specs/V2_AUTHORITY_EXTRACTION_PLAN.md)
-- [V2_BANKING_LEDGER_SETTLEMENT_PLAN.md](../specs/V2_BANKING_LEDGER_SETTLEMENT_PLAN.md)
-- [V2_BALANCE_SCOPE_AND_SETTLEMENT_CONTRACT.md](../specs/V2_BALANCE_SCOPE_AND_SETTLEMENT_CONTRACT.md)
-- [V2_CANONICAL_AUTH_RUNTIME_CUTOVER.md](../specs/V2_CANONICAL_AUTH_RUNTIME_CUTOVER.md)
-- [V2_CAPABILITY-BASED_ARCHITECTURE_REBUILD.md](../specs/V2_CAPABILITY-BASED_ARCHITECTURE_REBUILD.md)
-- [V2_CLASS_ID_INVARIANT_BACKLOG.md](../specs/V2_CLASS_ID_INVARIANT_BACKLOG.md)
+- [V2_ADMIN_ROUTE_REFACTOR.md](../SPEC/V2_ADMIN_ROUTE_REFACTOR.md)
+- [V2_AUTHORITY_EXTRACTION_PLAN.md](../SPEC/V2_AUTHORITY_EXTRACTION_PLAN.md)
+- [V2_BANKING_LEDGER_SETTLEMENT_PLAN.md](../SPEC/V2_BANKING_LEDGER_SETTLEMENT_PLAN.md)
+- [V2_BALANCE_SCOPE_AND_SETTLEMENT_CONTRACT.md](../SPEC/V2_BALANCE_SCOPE_AND_SETTLEMENT_CONTRACT.md)
+- [V2_CANONICAL_AUTH_RUNTIME_CUTOVER.md](../SPEC/V2_CANONICAL_AUTH_RUNTIME_CUTOVER.md)
+- [V2_CAPABILITY-BASED_ARCHITECTURE_REBUILD.md](../SPEC/V2_CAPABILITY-BASED_ARCHITECTURE_REBUILD.md)
+- [V2_CLASS_ID_INVARIANT_BACKLOG.md](../SPEC/V2_CLASS_ID_INVARIANT_BACKLOG.md)
 - [MAP-CLASS-002_CLASS_SCOPE_NORMALIZATION_TARGET.md](../MAP/MAP-CLASS-002_CLASS_SCOPE_NORMALIZATION_TARGET.md)
 - [DOM-ECON-000_ECONOMY_GOVERNANCE_FOUNDATION.md](../DOMAIN/DOM-ECON-000_ECONOMY_GOVERNANCE_FOUNDATION.md)
-- [V2_DOCS_PLATFORM_SPLIT.md](../specs/V2_DOCS_PLATFORM_SPLIT.md)
+- [V2_DOCS_PLATFORM_SPLIT.md](../SPEC/V2_DOCS_PLATFORM_SPLIT.md)
 - [INV-ARC-019_IDENTITY_AND_OWNERSHIP_MODEL.md](../INVARIANT/ARCHITECTURE/INV-ARC-019_IDENTITY_AND_OWNERSHIP_MODEL.md)
 - [INV-ARC-017_GENERAL_TESTING_INVARIANTS.md](../INVARIANT/ARCHITECTURE/INV-ARC-017_GENERAL_TESTING_INVARIANTS.md)
 - [INV-ARC-020_ACCESSIBILITY_REQUIREMENTS_AND_TEMPLATE_CONTRACT.md](../INVARIANT/ARCHITECTURE/INV-ARC-020_ACCESSIBILITY_REQUIREMENTS_AND_TEMPLATE_CONTRACT.md)
 - [SOP-TEST-001_Validation_Execution_And_Reporting.md](../TESTING/SOP-TEST-001_Validation_Execution_And_Reporting.md)
 - [SOP-TEST-002_Accessibility_Validation_And_PR_Gate.md](../TESTING/SOP-TEST-002_Accessibility_Validation_And_PR_Gate.md)
-- [V2_SESSION_MUTATION_SAFETY.md](../specs/V2_SESSION_MUTATION_SAFETY.md)
-- [V2_STUDENT_BLOCKS_REDESIGN_NOTE.md](../specs/V2_STUDENT_BLOCKS_REDESIGN_NOTE.md)
-- [V2_STUDENT_IDENTITY_ARCHITECTURE.md](../specs/V2_STUDENT_IDENTITY_ARCHITECTURE.md)
-- [V2_TEACHER_IDENTITY_ARCHITECTURE.md](../specs/V2_TEACHER_IDENTITY_ARCHITECTURE.md)
+- [V2_SESSION_MUTATION_SAFETY.md](../SPEC/V2_SESSION_MUTATION_SAFETY.md)
+- [V2_STUDENT_BLOCKS_REDESIGN_NOTE.md](../SPEC/V2_STUDENT_BLOCKS_REDESIGN_NOTE.md)
+- [V2_STUDENT_IDENTITY_ARCHITECTURE.md](../SPEC/V2_STUDENT_IDENTITY_ARCHITECTURE.md)
+- [V2_TEACHER_IDENTITY_ARCHITECTURE.md](../SPEC/V2_TEACHER_IDENTITY_ARCHITECTURE.md)
 - [SOP-TEST-003_Test_Creation.md](../TESTING/SOP-TEST-003_Test_Creation.md)
 - [INV-ARC-017_GENERAL_TESTING_INVARIANTS.md](../INVARIANT/ARCHITECTURE/INV-ARC-017_GENERAL_TESTING_INVARIANTS.md)
-- [V2_Temporal_Architecture_Rebuild_Plan.md](../specs/V2_Temporal_Architecture_Rebuild_Plan.md)
-- [V2_WAVE_3_IDENTITY_DOMAIN_RISK_AND_DEPENDENCY.md](../specs/V2_WAVE_3_IDENTITY_DOMAIN_RISK_AND_DEPENDENCY.md)
+- [SPEC-TIME-001_CANONICAL_TEMPORAL_RESOLVER.md](../SPEC/SPEC-TIME-001_CANONICAL_TEMPORAL_RESOLVER.md)
+- [V2_WAVE_3_IDENTITY_DOMAIN_RISK_AND_DEPENDENCY.md](../SPEC/V2_WAVE_3_IDENTITY_DOMAIN_RISK_AND_DEPENDENCY.md)
 
 ---
 
@@ -2582,7 +2582,7 @@ grep -r "\.student_id" app/routes/            # 0 results (outside identity_serv
 | FEAT constitution | `docs/FEATURE-EXECUTION/FEAT-CORE-000_FEATURE_EXECUTION_CONSTITUTIONAL_DIRECTIVE.md` |
 | Core invariants | `docs/INVARIANT/CORE/INV-CORE-000_CORE_INVARIANTS.md` |
 | Archived tracker history | `docs/archive/v1-development/tracking/` |
-| Current build specs | `docs/SPECS/` |
+| Current build specs | `docs/SPEC/` |
 | Migration template | `migrations/migration_template.py.mako` |
 | Migration linter | `scripts/lint_migrations.py` |
 | Current models | `app/models.py` (3261+ lines) |

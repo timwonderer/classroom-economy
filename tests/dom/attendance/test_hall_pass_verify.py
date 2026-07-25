@@ -1,407 +1,411 @@
-"""
-Tests for the new Hall Pass Public Verification endpoint.
+"""Public hall-pass verification route tests for the v2 PROD model."""
 
-Validates the privacy-respecting single-student verification per spec v1.0:
-- Token-based access (not teacher_id)
-- No roster exposure
-- No multi-day history
-- Today-only scoping
-- Input normalization
-- Correct outcomes (no_match, ambiguous, match)
-- Rate limiting not tested here (requires integration harness)
-"""
+from __future__ import annotations
+
+from datetime import timedelta
 
 import pytest
-from datetime import datetime, timezone, timedelta
 
-from app import app, db
+from app.extensions import db
 from app.feats.base import FEATContext
-from app.models import User, HallPassLog
-from tests.helpers.classroom_initializer import initialize
+from app.feats.prod import record_attendance_session, record_hall_pass_log
+from app.models import AttendanceReasonCode, HallPassSettings, User
+from app.services.context_resolver import CanonicalContext
+from app.services.entitlement_service import grant_hall_passes
+from app.utils.canonical_temporal_resolver import SYSTEM_LEVEL_EVALUATION, canonical_temporal_resolver
+from tests.helpers.classroom_initializer import initialize, initialize_as_teacher
 
 
-# ---------------------------------------------------------------------------
-# Fixtures
-# ---------------------------------------------------------------------------
-
-@pytest.fixture
-def hp_teacher(client):
-    """Create a teacher with a hall pass verify token."""
-    with FEATContext("FEAT-IDEN-001", idempotency_key="hall_pass_verify:teacher"):
-        teacher = initialize("chemistry_p1").teacher_user
-        teacher.hall_pass_verify_token = User.generate_verify_token()
-        db.session.flush()
-    return teacher
+def _current_utc():
+    return canonical_temporal_resolver(
+        SYSTEM_LEVEL_EVALUATION,
+        primitive="current_time",
+    ).canonical_now_utc
 
 
-@pytest.fixture
-def hp_class(client, hp_teacher):
-    """Create a class for hp_teacher."""
-    with FEATContext("FEAT-IDEN-001", idempotency_key="hall_pass_verify:class"):
-        class_row = initialize("chemistry_p1", app)
-        db.session.flush()
-    return class_row
+def _teacher_ctx(classroom) -> CanonicalContext:
+    return CanonicalContext(
+        user_id=classroom.teacher_user.id,
+        class_id=classroom.class_id,
+        seat_id=classroom.teacher_seat.id,
+        actor_role="teacher",
+    )
 
 
-@pytest.fixture
-def hp_student(client, hp_teacher, hp_class):
-    """Create a student in hp_class."""
-    with FEATContext("FEAT-IDEN-001", idempotency_key="hall_pass_verify:student"):
-        student = hp_class.students[0].seat
-        db.session.flush()
-    return student
+def _student_ctx(classroom, index: int = 0) -> CanonicalContext:
+    student = classroom.students[index]
+    return CanonicalContext(
+        user_id=student.user.id,
+        class_id=classroom.class_id,
+        seat_id=student.seat.id,
+        actor_role="student",
+    )
 
 
-@pytest.fixture
-def hp_pass_today(client, hp_student, hp_class):
-    """Create a 'left' hall pass for today for Maria G."""
-    with FEATContext("FEAT-IDEN-001", idempotency_key="hall_pass_verify:pass_today"):
-        now = datetime.now(timezone.utc)
-        log = HallPassLog(
-            seat_id=hp_student.id,
-            class_id=hp_class.class_id,
-            reason="Bathroom",
-            status="left",
-            join_code="jc_chem3",
-            period="Period3",
-            request_time=now - timedelta(minutes=15),
-            decision_time=now - timedelta(minutes=14),
-            left_time=now - timedelta(minutes=9),
+def _seed_hall_pass_settings(classroom) -> None:
+    db.session.add(
+        HallPassSettings(
+            class_id=classroom.class_id,
+            queue_enabled=True,
+            queue_limit=50,
+            pass_types=[
+                {"name": "Bathroom", "simultaneous_limit": None, "enabled": True},
+                {"name": "Office", "simultaneous_limit": None, "enabled": True},
+            ],
         )
-        db.session.add(log)
+    )
+    db.session.flush()
+
+
+def _set_verify_token(classroom) -> str:
+    with FEATContext("FEAT-IDEN-001", idempotency_key=f"hall-pass-verify:token:{classroom.class_id}"):
+        classroom.teacher_user.hall_pass_verify_token = User.generate_verify_token()
         db.session.flush()
-    return log
+    return classroom.teacher_user.hall_pass_verify_token
 
 
-# ---------------------------------------------------------------------------
-# GET: page rendering
-# ---------------------------------------------------------------------------
+def _issue_hall_pass(
+    classroom,
+    *,
+    student_index: int = 0,
+    hall_pass_id: str,
+    destination: str = "Bathroom",
+    issued_at=None,
+):
+    student = classroom.students[student_index]
+    correlation_id = f"corr-{hall_pass_id.lower()}"
+    with FEATContext("FEAT-BYPASS-LEGACY", correlation_id=f"bypass:{correlation_id}"):
+        grant_hall_passes(
+            student.seat,
+            1,
+            correlation_id=correlation_id,
+        )
 
-def test_DOM_ATT_001__get_verify_page_valid_token(client, hp_teacher, hp_student):
+    return record_hall_pass_log(
+        ctx=_teacher_ctx(classroom),
+        requested_by_seat_id=student.seat.id,
+        approved_by_seat_id=classroom.teacher_seat.id,
+        destination=destination,
+        reason="teacher_approved",
+        idempotency_key=f"hall-pass-verify:{hall_pass_id}",
+        reference_time_utc=issued_at or _current_utc(),
+    ).hall_pass_log
+
+
+def _mark_left(classroom, log, *, student_index: int = 0, at_time=None):
+    return record_attendance_session(
+        ctx=_student_ctx(classroom, student_index),
+        target_seat_id=classroom.students[student_index].seat.id,
+        actor_seat_id=classroom.students[student_index].seat.id,
+        mechanism="self",
+        status="inactive",
+        reason=log.destination,
+        reason_code=AttendanceReasonCode.HALL_PASS,
+        hall_pass_id=log.hall_pass_id,
+        idempotency_key=f"hall-pass-verify:left:{log.hall_pass_id}",
+        reference_time_utc=at_time or _current_utc(),
+    ).session
+
+
+def _mark_returned(classroom, log, *, student_index: int = 0, at_time=None):
+    return record_attendance_session(
+        ctx=_student_ctx(classroom, student_index),
+        target_seat_id=classroom.students[student_index].seat.id,
+        actor_seat_id=classroom.students[student_index].seat.id,
+        mechanism="self",
+        status="active",
+        reason="Return from hall pass",
+        hall_pass_id=log.hall_pass_id,
+        idempotency_key=f"hall-pass-verify:return:{log.hall_pass_id}",
+        reference_time_utc=at_time or _current_utc(),
+    ).session
+
+
+@pytest.fixture
+def verification_context(client):
+    classroom = initialize("chemistry_p1", client.application)
+    with FEATContext("FEAT-IDEN-001", idempotency_key="hall-pass-verify:settings"):
+        _seed_hall_pass_settings(classroom)
+    token = _set_verify_token(classroom)
+    return {
+        "classroom": classroom,
+        "teacher": classroom.teacher_user,
+        "token": token,
+    }
+
+
+def _post_verify(client, token: str, classroom, *, first_name: str = "Ava", last_name: str = "Chen"):
+    return client.post(
+        f"/verify/hallpass/{token}",
+        data={
+            "class_id": classroom.class_id,
+            "first_name": first_name,
+            "last_name": last_name,
+        },
+    )
+
+
+def test_DOM_PROD_002__get_verify_page_valid_token(client, verification_context):
     """GET with a valid token renders the verification form."""
-    resp = client.get(f"/verify/hallpass/{hp_teacher.hall_pass_verify_token}")
-    assert resp.status_code == 200
-    html = resp.data.decode()
+    teacher = verification_context["teacher"]
+    response = client.get(f"/verify/hallpass/{verification_context['token']}")
+
+    assert response.status_code == 200
+    html = response.data.decode()
     assert "Hall Pass Verification" in html
     assert "Verify" in html
-    # Should not expose teacher_id as a query parameter or attribute
-    assert f"teacher_id={hp_teacher.id}" not in html
+    assert f"teacher_id={teacher.id}" not in html
 
 
-def test_DOM_ATT_001__get_verify_page_invalid_token(client):
+def test_DOM_PROD_002__get_verify_page_invalid_token(client):
     """GET with an invalid token returns a generic unavailable response."""
-    resp = client.get("/verify/hallpass/deadbeef1234deadbeef1234deadbeef1234deadbeef1234deadbeef1234dead")
-    assert resp.status_code == 404
-    html = resp.data.decode()
+    response = client.get("/verify/hallpass/deadbeef1234deadbeef1234deadbeef1234deadbeef1234deadbeef1234dead")
+
+    assert response.status_code == 404
+    html = response.data.decode()
     assert "Verification page not available" in html
-    # Must not expose any teacher info
     assert "teacher_id" not in html.lower()
 
 
-def test_DOM_ATT_001__get_verify_page_rejects_null_token_teacher(client):
+def test_DOM_PROD_002__get_verify_page_rejects_null_token_teacher(client):
     """Teacher records with null token must not be publicly reachable."""
-    with FEATContext("FEAT-IDEN-001", idempotency_key="hall_pass_verify:null_token"):
-        teacher = initialize("ap_csp_p3").teacher_user
-        teacher.hall_pass_verify_token = None
+    with FEATContext("FEAT-IDEN-001", idempotency_key="hall-pass-verify:null-token"):
+        classroom = initialize("biology_block_a", client.application)
+        classroom.teacher_user.hall_pass_verify_token = None
         db.session.flush()
 
-    # URL token 'None' must not resolve to the null token row.
-    resp = client.get("/verify/hallpass/None")
-    assert resp.status_code == 404
-    html = resp.data.decode()
-    assert "Verification page not available" in html
+    response = client.get("/verify/hallpass/None")
+
+    assert response.status_code == 404
+    assert "Verification page not available" in response.data.decode()
 
 
-# ---------------------------------------------------------------------------
-# POST: verification outcomes
-# ---------------------------------------------------------------------------
-
-def test_DOM_ATT_001__post_verify_no_match(client, hp_teacher, hp_student, hp_class):
+def test_DOM_PROD_002__post_verify_no_match(client, verification_context):
     """POST with a name that does not match any pass returns no_match."""
-    resp = client.post(
-        f"/verify/hallpass/{hp_teacher.hall_pass_verify_token}",
-        data={
-            "class_id": hp_class.class_id,
-            "first_name": "Nonexistent",
-            "last_name": "Zimmer",
-        },
+    response = _post_verify(
+        client,
+        verification_context["token"],
+        verification_context["classroom"],
+        first_name="Nonexistent",
+        last_name="Zimmer",
     )
-    assert resp.status_code == 200
-    html = resp.data.decode()
-    assert "No hall pass record found" in html
+
+    assert response.status_code == 200
+    assert "No hall pass record found" in response.data.decode()
 
 
-def test_DOM_ATT_001__post_verify_match_left(client, hp_teacher, hp_student, hp_pass_today, hp_class):
+def test_DOM_PROD_002__post_verify_match_left(client, verification_context):
     """POST with a matching student who is currently out returns match with status."""
-    resp = client.post(
-        f"/verify/hallpass/{hp_teacher.hall_pass_verify_token}",
-        data={
-            "class_id": hp_class.class_id,
-            "first_name": "Maria",
-            "last_name": "Garcia",
-        },
+    classroom = verification_context["classroom"]
+    now = _current_utc()
+    log = _issue_hall_pass(
+        classroom,
+        hall_pass_id="HP-VERIFY-LEFT",
+        issued_at=now - timedelta(minutes=15),
     )
-    assert resp.status_code == 200
-    html = resp.data.decode()
-    assert "Maria Garcia" in html
+    _mark_left(classroom, log, at_time=now - timedelta(minutes=9))
+
+    response = _post_verify(client, verification_context["token"], classroom)
+
+    assert response.status_code == 200
+    html = response.data.decode()
+    assert "Ava Chen" in html
     assert "Currently Out" in html
     assert "No hall pass record" not in html
-    # Must not expose internal pass ID in URL-style patterns
-    assert f"pass_id={hp_pass_today.id}" not in html
-    assert f"/hall-pass/{hp_pass_today.id}" not in html
+    assert f"pass_id={log.id}" not in html
+    assert f"/hall-pass/{log.id}" not in html
 
 
-def test_DOM_ATT_001__post_verify_match_returned(client, hp_teacher, hp_student, hp_class):
+def test_DOM_PROD_002__post_verify_match_returned(client, verification_context):
     """POST matching a student who has returned shows returned status."""
-    now = datetime.now(timezone.utc)
-    log = HallPassLog(
-        seat_id=hp_student.id,
-        class_id=hp_student.class_id,
-        reason="Office",
-        status="returned",
-        join_code="jc_chem3",
-        period="Period3",
-        request_time=now - timedelta(minutes=30),
-        decision_time=now - timedelta(minutes=29),
-        left_time=now - timedelta(minutes=25),
-        return_time=now - timedelta(minutes=10),
+    classroom = verification_context["classroom"]
+    now = _current_utc()
+    log = _issue_hall_pass(
+        classroom,
+        hall_pass_id="HP-VERIFY-RETURNED",
+        destination="Office",
+        issued_at=now - timedelta(minutes=30),
     )
-    with FEATContext("FEAT-IDEN-001", idempotency_key="hall_pass_verify:return_log"):
-        db.session.add(log)
-        db.session.flush()
+    _mark_left(classroom, log, at_time=now - timedelta(minutes=25))
+    _mark_returned(classroom, log, at_time=now - timedelta(minutes=10))
 
-    resp = client.post(
-        f"/verify/hallpass/{hp_teacher.hall_pass_verify_token}",
-        data={
-            "class_id": hp_class.class_id,
-            "first_name": "Maria",
-            "last_name": "Garcia",
-        },
-    )
-    assert resp.status_code == 200
-    html = resp.data.decode()
-    assert "Maria Garcia" in html
+    response = _post_verify(client, verification_context["token"], classroom)
+
+    assert response.status_code == 200
+    html = response.data.decode()
+    assert "Ava Chen" in html
     assert "Returned" in html
 
 
-def test_DOM_ATT_001__post_verify_ambiguous(client, hp_teacher, hp_student, hp_class):
+def test_DOM_PROD_002__post_verify_ambiguous(client):
     """POST matching multiple students returns ambiguous response."""
-    with FEATContext("FEAT-IDEN-001", idempotency_key="hall_pass_verify:ambiguous"):
-        student2 = initialize("ap_csp_p3").students[0].seat
-        now = datetime.now(timezone.utc)
-        for s in [hp_student, student2]:
-            db.session.add(HallPassLog(
-                seat_id=s.id,
-                class_id=hp_student.class_id,
-                reason="Bathroom",
-                status="left",
-                join_code="jc_chem3",
-                period="Period3",
-                request_time=now - timedelta(minutes=10),
-                decision_time=now - timedelta(minutes=9),
-                left_time=now - timedelta(minutes=5),
-            ))
-        db.session.flush()
+    classroom = initialize("duplicate_names", client.application)
+    with FEATContext("FEAT-IDEN-001", idempotency_key="hall-pass-verify:ambiguous-settings"):
+        _seed_hall_pass_settings(classroom)
+    token = _set_verify_token(classroom)
+    now = _current_utc()
 
-    resp = client.post(
-        f"/verify/hallpass/{hp_teacher.hall_pass_verify_token}",
-        data={
-            "class_id": hp_class.class_id,
-            "first_name": "Maria",
-            "last_name": "Garcia",
-        },
+    first_log = _issue_hall_pass(
+        classroom,
+        student_index=0,
+        hall_pass_id="HP-VERIFY-AMBIGUOUS-1",
+        issued_at=now - timedelta(minutes=10),
     )
-    assert resp.status_code == 200
-    html = resp.data.decode()
+    second_log = _issue_hall_pass(
+        classroom,
+        student_index=1,
+        hall_pass_id="HP-VERIFY-AMBIGUOUS-2",
+        issued_at=now - timedelta(minutes=9),
+    )
+    _mark_left(classroom, first_log, student_index=0, at_time=now - timedelta(minutes=5))
+    _mark_left(classroom, second_log, student_index=1, at_time=now - timedelta(minutes=4))
+
+    response = _post_verify(client, token, classroom, first_name="Alex", last_name="Lee")
+
+    assert response.status_code == 200
+    html = response.data.decode()
     assert "Unable to uniquely verify" in html
-    # Must not show count, timestamps, or destinations
     assert "Bathroom" not in html
 
 
-def test_DOM_ATT_001__post_verify_no_history_shown(client, hp_teacher, hp_student, hp_pass_today, hp_class):
-    """POST result must not expose any list of passes or roster."""
-    resp = client.post(
-        f"/verify/hallpass/{hp_teacher.hall_pass_verify_token}",
-        data={
-            "class_id": hp_class.class_id,
-            "first_name": "Maria",
-            "last_name": "Garcia",
-        },
-    )
-    html = resp.data.decode()
-    # Should never expose a table of multiple passes
+def test_DOM_PROD_002__post_verify_no_history_shown(client, verification_context):
+    """POST result must not expose a list of passes or internal pass IDs."""
+    classroom = verification_context["classroom"]
+    log = _issue_hall_pass(classroom, hall_pass_id="HP-VERIFY-NO-HISTORY")
+    _mark_left(classroom, log)
+
+    response = _post_verify(client, verification_context["token"], classroom)
+    html = response.data.decode()
+
     assert "<table" not in html
-    # Must not expose internal pass ID in URL or JSON
-    assert f"pass_id={hp_pass_today.id}" not in html
-    assert f'"id": {hp_pass_today.id}' not in html
+    assert f"pass_id={log.id}" not in html
+    assert f'"id": {log.id}' not in html
 
 
-def test_DOM_ATT_001__post_verify_wrong_class_rejected(client, hp_teacher, hp_student, hp_pass_today):
-    """POST with a class_id that doesn't belong to this teacher returns no_match."""
-    other_class = initialize("ap_csp_p3")
-    resp = client.post(
-        f"/verify/hallpass/{hp_teacher.hall_pass_verify_token}",
-        data={
-            "class_id": other_class.class_id,
-            "first_name": "Maria",
-            "last_name": "Garcia",
-        },
+def test_DOM_PROD_002__post_verify_wrong_class_rejected(client, verification_context):
+    """POST with a class_id that does not belong to this teacher returns no_match."""
+    other_class = initialize("biology_block_a", client.application)
+    response = _post_verify(client, verification_context["token"], other_class)
+
+    assert response.status_code == 200
+    assert "No hall pass record found" in response.data.decode()
+
+
+def test_DOM_PROD_002__post_verify_old_pass_not_shown(client, verification_context):
+    """Passes outside today's class-local window are not returned."""
+    classroom = verification_context["classroom"]
+    yesterday = _current_utc() - timedelta(days=1)
+    log = _issue_hall_pass(
+        classroom,
+        hall_pass_id="HP-VERIFY-OLD",
+        issued_at=yesterday,
     )
-    assert resp.status_code == 200
-    html = resp.data.decode()
-    assert "No hall pass record found" in html
+    _mark_left(classroom, log, at_time=yesterday + timedelta(minutes=5))
+
+    response = _post_verify(client, verification_context["token"], classroom)
+
+    assert response.status_code == 200
+    assert "No hall pass record found" in response.data.decode()
 
 
-def test_DOM_ATT_001__post_verify_old_pass_not_shown(client, hp_teacher, hp_student, hp_class):
-    """Passes from yesterday are not returned by today-scoped query."""
-    with FEATContext("FEAT-IDEN-001", idempotency_key="hall_pass_verify:old_pass"):
-        yesterday = datetime.now(timezone.utc) - timedelta(days=1)
-        old_log = HallPassLog(
-            seat_id=hp_student.id,
-            class_id=hp_student.class_id,
-            reason="Bathroom",
-            status="left",
-            join_code="jc_chem3",
-            period="Period3",
-            request_time=yesterday,
-            decision_time=yesterday + timedelta(minutes=1),
-            left_time=yesterday + timedelta(minutes=5),
-        )
-        db.session.add(old_log)
-        db.session.flush()
-
-    resp = client.post(
-        f"/verify/hallpass/{hp_teacher.hall_pass_verify_token}",
-        data={
-            "class_id": hp_class.class_id,
-            "first_name": "Maria",
-            "last_name": "Garcia",
-        },
-    )
-    assert resp.status_code == 200
-    html = resp.data.decode()
-    assert "No hall pass record found" in html
-
-
-def test_DOM_ATT_001__post_verify_finds_match_beyond_first_20_records(client, hp_teacher, hp_student, hp_class):
+def test_DOM_PROD_002__post_verify_finds_match_beyond_first_20_records(client, verification_context):
     """Matching search must not be truncated by an arbitrary fixed result window."""
-    with FEATContext("FEAT-IDEN-001", idempotency_key="hall_pass_verify:result_window"):
-        now = datetime.now(timezone.utc)
+    classroom = verification_context["classroom"]
+    now = _current_utc()
 
-        # Insert many newer non-matching records for the same class/day.
-        for i in range(25):
-            other = initialize("ap_csp_p3").students[0].seat
-            db.session.add(HallPassLog(
-                seat_id=other.id,
-                class_id=hp_student.class_id,
-                reason="Office",
-                status="left",
-                join_code="jc_chem3",
-                period="Period3",
-                request_time=now - timedelta(minutes=i),
-                decision_time=now - timedelta(minutes=i),
-                left_time=now - timedelta(minutes=i),
-            ))
+    for i in range(25):
+        log = _issue_hall_pass(
+            classroom,
+            student_index=1,
+            hall_pass_id=f"HP-VERIFY-WINDOW-{i}",
+            destination="Office",
+            issued_at=now - timedelta(minutes=i),
+        )
+        _mark_left(classroom, log, student_index=1, at_time=now - timedelta(minutes=i))
 
-        # Add the target match as an older same-day record.
-        db.session.add(HallPassLog(
-            seat_id=hp_student.id,
-            class_id=hp_student.class_id,
-            reason="Bathroom",
-            status="left",
-            join_code="jc_chem3",
-            period="Period3",
-            request_time=now - timedelta(hours=2),
-            decision_time=now - timedelta(hours=2),
-            left_time=now - timedelta(hours=2),
-        ))
-        db.session.flush()
-
-    resp = client.post(
-        f"/verify/hallpass/{hp_teacher.hall_pass_verify_token}",
-        data={
-            "class_id": hp_class.class_id,
-            "first_name": "Maria",
-            "last_name": "Garcia",
-        },
+    target_log = _issue_hall_pass(
+        classroom,
+        student_index=0,
+        hall_pass_id="HP-VERIFY-WINDOW-TARGET",
+        issued_at=now - timedelta(hours=2),
     )
-    assert resp.status_code == 200
-    html = resp.data.decode()
-    assert "Maria Garcia" in html
+    _mark_left(classroom, target_log, student_index=0, at_time=now - timedelta(hours=2))
+
+    response = _post_verify(client, verification_context["token"], classroom)
+
+    html = response.data.decode()
+    assert response.status_code == 200
+    assert "Ava Chen" in html
     assert "No hall pass record found" not in html
 
 
-def test_DOM_ATT_001__post_verify_input_normalization(client, hp_teacher, hp_student, hp_pass_today, hp_class):
-    """Input normalization: mixed-case first name and last name should still match."""
-    resp = client.post(
-        f"/verify/hallpass/{hp_teacher.hall_pass_verify_token}",
-        data={
-            "class_id": hp_class.class_id,
-            "first_name": "  MARIA  ",
-            "last_name": " garcia ",
-        },
+def test_DOM_PROD_002__post_verify_input_normalization(client, verification_context):
+    """Mixed-case first name and last name should still match hashed seat names."""
+    classroom = verification_context["classroom"]
+    log = _issue_hall_pass(classroom, hall_pass_id="HP-VERIFY-NORMALIZED")
+    _mark_left(classroom, log)
+
+    response = _post_verify(
+        client,
+        verification_context["token"],
+        classroom,
+        first_name="  AVA  ",
+        last_name=" chen ",
     )
-    assert resp.status_code == 200
-    html = resp.data.decode()
-    assert "Maria Garcia" in html
+
+    html = response.data.decode()
+    assert response.status_code == 200
+    assert "Ava Chen" in html
     assert "Currently Out" in html
 
 
-def test_DOM_ATT_001__post_verify_malformed_last_name(client, hp_teacher, hp_student, hp_class):
+def test_DOM_PROD_002__post_verify_malformed_last_name(client, verification_context):
     """POST with invalid or empty last_name returns no_match."""
+    classroom = verification_context["classroom"]
     for bad_last_name in ["", "   "]:
-        resp = client.post(
-            f"/verify/hallpass/{hp_teacher.hall_pass_verify_token}",
-            data={
-                "class_id": hp_class.class_id,
-                "first_name": "Maria",
-                "last_name": bad_last_name,
-            },
+        response = _post_verify(
+            client,
+            verification_context["token"],
+            classroom,
+            last_name=bad_last_name,
         )
-        assert resp.status_code == 200
-        html = resp.data.decode()
-        assert "No hall pass record found" in html, f"Expected no_match for last_name={bad_last_name!r}"
+
+        assert response.status_code == 200
+        assert "No hall pass record found" in response.data.decode()
 
 
-# ---------------------------------------------------------------------------
-# Token rotation
-# ---------------------------------------------------------------------------
-
-def test_DOM_ATT_001__rotate_token_requires_auth(client, hp_teacher):
+def test_DOM_PROD_002__rotate_token_requires_auth(client, verification_context):
     """Token rotation endpoint requires admin authentication."""
-    resp = client.post("/api/hall-pass/verify-token/rotate")
-    assert resp.status_code in [302, 401, 403]
+    response = client.post("/api/hall-pass/verify-token/rotate")
+    assert response.status_code in [302, 401, 403]
 
 
-def test_DOM_ATT_001__rotate_token_invalidates_old_token(client, hp_teacher, hp_class):
-    """After rotation, old token returns unavailable."""
-    old_token = hp_teacher.hall_pass_verify_token
+def test_DOM_PROD_002__rotate_token_invalidates_old_token(client):
+    """After rotation, old token returns unavailable and new token renders."""
+    classroom = initialize_as_teacher("biology_block_a", client, client.application)
+    old_token = _set_verify_token(classroom)
 
-    initialize_as_teacher("chemistry_p1", client, client.application)
-
-    resp = client.post("/api/hall-pass/verify-token/rotate")
-    assert resp.status_code == 200
-    data = resp.get_json()
-    assert data['status'] == 'success'
-    new_token = data['token']
+    response = client.post("/api/hall-pass/verify-token/rotate")
+    assert response.status_code == 200
+    data = response.get_json()
+    assert data["status"] == "success"
+    new_token = data["token"]
     assert new_token != old_token
 
-    # Old token is now invalid
-    resp_old = client.get(f"/verify/hallpass/{old_token}")
-    assert resp_old.status_code == 404
+    old_response = client.get(f"/verify/hallpass/{old_token}")
+    assert old_response.status_code == 404
 
-    # New token works
-    resp_new = client.get(f"/verify/hallpass/{new_token}")
-    assert resp_new.status_code == 200
+    new_response = client.get(f"/verify/hallpass/{new_token}")
+    assert new_response.status_code == 200
 
 
-def test_DOM_ATT_001__token_not_derived_from_teacher_id(hp_teacher):
-    """The token must not be derived from or equal to the teacher's numeric ID."""
-    token = hp_teacher.hall_pass_verify_token
-    # Token must be a 64-character hex string (256-bit random)
+def test_DOM_PROD_002__token_not_derived_from_teacher_id(verification_context):
+    """The public token must not be derived from the teacher's numeric ID."""
+    teacher = verification_context["teacher"]
+    token = verification_context["token"]
+
     assert len(token) == 64
     assert all(c in "0123456789abcdef" for c in token)
-    # Token must not equal the teacher_id in any simple encoding
-    assert token != str(hp_teacher.id)
-    assert token != hex(hp_teacher.id)
-    assert token != f"{hp_teacher.id:064d}"
+    assert token != str(teacher.id)
+    assert token != hex(teacher.id)
+    assert token != f"{teacher.id:064d}"

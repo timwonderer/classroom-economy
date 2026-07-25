@@ -71,11 +71,12 @@ def _current_utc_year():
 
 class AttendanceReasonCode(str, enum.Enum):
     """Reason codes for attendance session boundaries."""
-    DAILY_LIMIT = 'daily_limit'
-    AUTO_SWITCH = 'auto_switch'
+    HALL_PASS = 'hall_pass'
+    DONE_FOR_DAY = 'done_for_day'
+    START_WORK = 'start_work'
 
 
-# TapEventReasonCode removed — TapEvent table unauthorized; attendance expressed via attendance_sessions (DOM-ATT-001)
+# Legacy tap reason enum removed; attendance is expressed through attendance_sessions (DOM-PROD-001).
 
 
 
@@ -616,99 +617,71 @@ class LedgerBalanceSnapshot(db.Model):
 
 
 class AttendanceSession(db.Model):
-    """Canonical attendance session windows per seat/class."""
+    """Canonical attendance session facts per seat/class."""
     __tablename__ = 'attendance_sessions'
 
     id = db.Column(db.Integer, primary_key=True)
-    seat_id = db.Column(db.Integer, db.ForeignKey('seats.id', ondelete='CASCADE'), nullable=False, index=True)
-    actor_seat_id = db.Column(db.Integer, db.ForeignKey('seats.id', ondelete='SET NULL'), nullable=True, index=True)
+    target_seat_id = db.Column(db.Integer, db.ForeignKey('seats.id', ondelete='CASCADE'), nullable=False, index=True)
     class_id = db.Column(db.String(36), db.ForeignKey('classes.class_id', ondelete='CASCADE'), nullable=False, index=True)
+    target_user_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='SET NULL'), nullable=False, index=True)
+    actor_seat_id = db.Column(db.Integer, db.ForeignKey('seats.id', ondelete='SET NULL'), nullable=False, index=True)
+    mechanism = db.Column(db.String(20), nullable=False, default="self")
+    status = db.Column(db.String(20), nullable=False, default="active")
+    reason_code = db.Column(db.String(32), nullable=False, index=True)
+    # Hall-pass rows carry the consumed entitlement instance id, not the log row id.
+    hall_pass_id = db.Column(db.String(100), nullable=True, index=True)
+    timestamp = db.Column(db.DateTime(timezone=True), default=utc_now, nullable=False, index=True)
 
-    started_at = db.Column(db.DateTime(timezone=True), nullable=False, index=True)
-    ended_at = db.Column(db.DateTime(timezone=True), nullable=True, index=True)
-    duration_seconds = db.Column(db.Integer, nullable=True)
-
-    start_reason = db.Column(db.String(50), nullable=True)
-    end_reason = db.Column(db.String(50), nullable=True)
-    end_reason_code = db.Column(db.Enum(AttendanceReasonCode, values_callable=lambda x: [e.value for e in x]), nullable=True, index=True)
-
-    created_at = db.Column(db.DateTime(timezone=True), default=utc_now, nullable=False)
-    updated_at = db.Column(db.DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False)
-
-    is_deleted = db.Column(db.Boolean, default=False, nullable=False, index=True)
-    deleted_at = db.Column(db.DateTime(timezone=True), nullable=True)
-    deleted_by_seat_id = db.Column(db.Integer, db.ForeignKey('seats.id', ondelete='SET NULL'), nullable=True)
-
-    seat = db.relationship("Seat", foreign_keys=[seat_id], backref=db.backref("attendance_sessions", passive_deletes=True))
+    target_seat = db.relationship("Seat", foreign_keys=[target_seat_id], backref=db.backref("attendance_sessions", passive_deletes=True))
+    target_user = db.relationship("User", foreign_keys=[target_user_id], post_update=True)
     actor_seat = db.relationship("Seat", foreign_keys=[actor_seat_id], post_update=True)
 
-    @property
-    def timestamp(self):
-        return self.started_at
-
-    @property
-    def status(self):
-        return "active" if self.ended_at is None else "inactive"
-
-    @property
-    def reason(self):
-        return self.end_reason or self.start_reason
-
     __table_args__ = (
-        db.Index('ix_attendance_sessions_seat_class_start', 'seat_id', 'class_id', 'started_at'),
+        db.Index('ix_attendance_sessions_target_user_id_active', 'target_user_id', unique=True, postgresql_where=sa.text("status = 'active' AND target_user_id IS NOT NULL")),
     )
 
 
-class SeatAttendanceState(db.Model):
-    """Canonical latest attendance state per seat/class."""
-    __tablename__ = 'seat_attendance_state'
-
-    id = db.Column(db.Integer, primary_key=True)
-    seat_id = db.Column(db.Integer, db.ForeignKey('seats.id', ondelete='CASCADE'), nullable=False, index=True)
-    class_id = db.Column(db.String(36), db.ForeignKey('classes.class_id', ondelete='CASCADE'), nullable=False, index=True)
-
-    is_active = db.Column(db.Boolean, default=False, nullable=False)
-    open_session_id = db.Column(db.Integer, db.ForeignKey('attendance_sessions.id', ondelete='SET NULL'), nullable=True)
-    done_for_day_date = db.Column(db.Date, nullable=True)
-    tap_enabled = db.Column(db.Boolean, default=True, nullable=False)
-    last_event_at = db.Column(db.DateTime(timezone=True), nullable=True)
-    last_event_status = db.Column(db.String(10), nullable=True)
-    last_reason = db.Column(db.String(50), nullable=True)
-    updated_at = db.Column(db.DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False)
-
-    seat = db.relationship("Seat", backref=db.backref("attendance_states", passive_deletes=True))
-
-    __table_args__ = (
-        db.UniqueConstraint('seat_id', 'class_id', name='uq_attendance_state_scope'),
-    )
-
-
-
-
-
-# TapEvent removed — tap_events unauthorized; canonical replacement: attendance_sessions (DOM-ATT-001)
-
+# Legacy tap table removed; canonical replacement: attendance_sessions (DOM-PROD-001).
 
 
 # ---- Hall Pass Log Model ----
 class HallPassLog(db.Model):
     __tablename__ = 'hall_pass_logs'
     id = db.Column(db.Integer, primary_key=True)
-    seat_id = db.Column(db.Integer, db.ForeignKey('seats.id', ondelete='SET NULL'), nullable=True, index=True)
-    reason = db.Column(db.String(50), nullable=False)
-    status = db.Column(db.String(20), default='pending', nullable=False) # pending, approved, rejected, left, returned
-    period = db.Column(db.String(10), nullable=True) # Which period the request was made in
+    requested_by_seat_id = db.Column(db.Integer, db.ForeignKey('seats.id', ondelete='SET NULL'), nullable=False, index=True)
+    approved_by_seat_id = db.Column(db.Integer, db.ForeignKey('seats.id', ondelete='SET NULL'), nullable=False, index=True)
+    correlation_id = db.Column(db.String(100), nullable=False, index=True)
+    # FK-style reference to EntitlementEvent.entitlement_id for the consumed pass.
+    hall_pass_id = db.Column(db.String(100), nullable=False, unique=False, index=True)
+    destination = db.Column(db.String(255), nullable=True)
 
     # CRITICAL: class_id is the source of truth for class isolation
-    class_id = db.Column(db.String(36), db.ForeignKey('classes.class_id', ondelete='CASCADE'), nullable=True, index=True)
-    join_code = db.Column(db.String(20), nullable=True, index=True)
+    class_id = db.Column(db.String(36), db.ForeignKey('classes.class_id', ondelete='CASCADE'), nullable=False, index=True)
+    timestamp = db.Column(db.DateTime(timezone=True), default=utc_now, nullable=False)
 
-    request_time = db.Column(db.DateTime(timezone=True), default=utc_now, nullable=False)
-    decision_time = db.Column(db.DateTime(timezone=True), nullable=True)
-    left_time = db.Column(db.DateTime(timezone=True), nullable=True)
-    return_time = db.Column(db.DateTime(timezone=True), nullable=True)
+    requested_by_seat = db.relationship('Seat', foreign_keys=[requested_by_seat_id], post_update=True)
+    approved_by_seat = db.relationship('Seat', foreign_keys=[approved_by_seat_id], post_update=True)
 
-    seat = db.relationship('Seat', backref='hall_pass_logs')
+
+class PayrollEvent(db.Model):
+    __tablename__ = "payroll_event"
+
+    id = db.Column(db.Integer, primary_key=True)
+    class_id = db.Column(db.String(36), db.ForeignKey('classes.class_id', ondelete='CASCADE'), nullable=False, index=True)
+    target_seat_id = db.Column(db.Integer, db.ForeignKey('seats.id', ondelete='CASCADE'), nullable=False, index=True)
+    target_user_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'), nullable=False, index=True)
+    actor_seat_id = db.Column(db.Integer, db.ForeignKey('seats.id', ondelete='SET NULL'), nullable=False, index=True)
+    correlation_id = db.Column(db.String(100), nullable=False, index=True)
+    idempotency_key = db.Column(db.String(255), nullable=False, index=True)
+    policy_version_id = db.Column(db.Integer, db.ForeignKey('policy_versions.id', ondelete='RESTRICT'), nullable=False, index=True)
+    mechanism = db.Column(db.String(20), nullable=False, default="TEACHER")
+    payroll_event_type = db.Column(db.String(20), nullable=False)
+    recorded_at = db.Column(db.DateTime(timezone=True), default=utc_now, nullable=False, index=True)
+    summary_json = db.Column(db.JSON, nullable=True)
+
+    __table_args__ = (
+        db.UniqueConstraint('class_id', 'target_seat_id', 'correlation_id', 'idempotency_key', 'payroll_event_type', name='uq_payroll_event_replay_guard'),
+    )
 
 
 class HallPassSettings(db.Model):
@@ -784,7 +757,7 @@ class StoreItem(db.Model):
     # Collective goal settings (only for item_type='collective')
     collective_goal_type = db.Column(db.String(20), nullable=True)  # 'fixed' or 'whole_class'
     collective_goal_target = db.Column(db.Integer, nullable=True)  # Fixed number of purchases needed (used when type='fixed')
-    collective_goal_expires_at = db.Column(db.DateTime(timezone=True), nullable=True)  # Optional deadline; unmet goals are auto-refunded on expiration
+    collective_goal_expires_at = db.Column(db.DateTime(timezone=True), nullable=True)  # Optional deadline; unmet goals deactivate the item on expiration
     collective_goal_instance_code = db.Column(db.String(36), nullable=True, index=True)
 
     # Redemption prompt (for delayed use items)
@@ -905,9 +878,6 @@ class StorePurchase(db.Model):
     ledger_tx_id = db.Column(db.Integer, db.ForeignKey('ledger_transaction.id'), nullable=True, index=True)
     purchased_at = db.Column(db.DateTime(timezone=True), nullable=False, default=utc_now)
     expiry_date = db.Column(db.DateTime(timezone=True), nullable=True)
-    is_from_bundle = db.Column(db.Boolean, default=False, nullable=False)
-    bundle_remaining = db.Column(db.Integer, nullable=True)
-    uses_remaining = db.Column(db.Integer, nullable=True)
     collective_goal_instance_code = db.Column(db.String(36), nullable=True, index=True)
 
     seat = db.relationship('Seat', backref=db.backref('store_purchases', lazy='dynamic'))
@@ -920,9 +890,9 @@ class StorePurchase(db.Model):
 
 
 class RedemptionEventAction(enum.Enum):
-    REQUEST = 'request'
-    APPROVED = 'approved'
-    REJECTED = 'rejected'
+    REQUEST = 'REQUEST'
+    APPROVED = 'APPROVED'
+    REJECTED = 'REJECTED'
 
 
 class RedemptionEventSource(enum.Enum):
@@ -932,7 +902,7 @@ class RedemptionEventSource(enum.Enum):
 class RedemptionEvent(db.Model):
     __tablename__ = 'redemption_events'
     id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    purchase_id = db.Column(db.Integer, db.ForeignKey('store_purchases.id', ondelete='CASCADE'), nullable=False, index=True)
+    entitlement_id = db.Column(db.String(36), db.ForeignKey('entitlements.entitlement_id'), nullable=False, index=True)
     seat_id = db.Column(db.Integer, db.ForeignKey('seats.id', ondelete='SET NULL'), nullable=True, index=True)
     class_id = db.Column(db.String(36), db.ForeignKey('classes.class_id', ondelete='CASCADE'), nullable=True, index=True)
     action = db.Column(
@@ -959,11 +929,117 @@ class RedemptionEvent(db.Model):
     notes = db.Column(db.Text, nullable=True)
     timestamp = db.Column(db.DateTime(timezone=True), nullable=False, default=utc_now, index=True)
 
-    purchase = db.relationship('StorePurchase', backref=db.backref('redemption_events', lazy='dynamic'))
+    entitlement = db.relationship('Entitlement', backref=db.backref('redemption_events', lazy='dynamic'))
     initiated_by = db.relationship('User', backref=db.backref('initiated_redemption_events', lazy='dynamic'))
 
     __table_args__ = (
         db.Index('ix_redemption_events_initiated_by_timestamp', 'initiated_by_user_id', 'timestamp'),
+    )
+
+
+# -------------------- ENTITLEMENT GRANT AND TERMINAL LIFECYCLE (DOM-STORE-001 v3.0 §VII) --------------------
+
+class GrantType(enum.Enum):
+    PURCHASE = 'PURCHASE'
+    MANUAL_GRANT = 'MANUAL_GRANT'
+    OBLIGATION = 'OBLIGATION'
+
+
+class Entitlement(db.Model):
+    """One row per atomic entitlement — DOM-STORE-001 v3.0 §VII.A."""
+    __tablename__ = 'entitlements'
+
+    id = db.Column(db.Integer, primary_key=True)
+    entitlement_id = db.Column(db.String(36), nullable=False, unique=True, index=True, default=lambda: str(uuid.uuid4()))
+    entitlement_item_id = db.Column(db.Integer, db.ForeignKey('store_items.id'), nullable=False, index=True)
+    target_seat_id = db.Column(db.Integer, db.ForeignKey('seats.id', ondelete='CASCADE'), nullable=False, index=True)
+    actor_seat_id = db.Column(db.Integer, db.ForeignKey('seats.id', ondelete='CASCADE'), nullable=False, index=True)
+    class_id = db.Column(db.String(36), db.ForeignKey('classes.class_id', ondelete='CASCADE'), nullable=False, index=True)
+    grant_type = db.Column(
+        db.Enum(GrantType, values_callable=lambda x: [e.value for e in x], name='grant_type_enum'),
+        nullable=False,
+    )
+    correlation_id = db.Column(db.String(100), nullable=True, index=True)
+    granted_at = db.Column(db.DateTime(timezone=True), nullable=False, default=utc_now)
+
+    target_seat = db.relationship('Seat', foreign_keys=[target_seat_id], backref=db.backref('entitlements', passive_deletes=True))
+    actor_seat = db.relationship('Seat', foreign_keys=[actor_seat_id])
+    store_item = db.relationship('StoreItem', backref=db.backref('entitlements', lazy='dynamic'))
+
+    __table_args__ = (
+        db.Index('ix_entitlements_target_class', 'target_seat_id', 'class_id'),
+        db.Index('ix_entitlements_item_class', 'entitlement_item_id', 'class_id'),
+    )
+
+
+class Disposition(enum.Enum):
+    CONSUMED = 'CONSUMED'
+    EXPIRED = 'EXPIRED'
+    REVOKED = 'REVOKED'
+
+
+class EntitlementConsumption(db.Model):
+    """Store-owned terminal lifecycle fact — DOM-STORE-001 v3.0 §VII.B."""
+    __tablename__ = 'entitlement_consumptions'
+
+    id = db.Column(db.Integer, primary_key=True)
+    consumption_id = db.Column(db.String(36), nullable=False, unique=True, index=True, default=lambda: str(uuid.uuid4()))
+    entitlement_id = db.Column(db.String(36), db.ForeignKey('entitlements.entitlement_id'), nullable=False, index=True)
+    class_id = db.Column(db.String(36), db.ForeignKey('classes.class_id', ondelete='CASCADE'), nullable=False, index=True)
+    target_seat_id = db.Column(db.Integer, db.ForeignKey('seats.id', ondelete='CASCADE'), nullable=False, index=True)
+    actor_seat_id = db.Column(db.Integer, db.ForeignKey('seats.id', ondelete='CASCADE'), nullable=True, index=True)
+    disposition = db.Column(
+        db.Enum(Disposition, values_callable=lambda x: [e.value for e in x], name='disposition_enum'),
+        nullable=False,
+    )
+    correlation_id = db.Column(db.String(100), nullable=True, index=True)
+    timestamp = db.Column(db.DateTime(timezone=True), nullable=False, default=utc_now)
+
+    entitlement = db.relationship('Entitlement', backref=db.backref('consumptions', lazy='dynamic'))
+    target_seat = db.relationship('Seat', foreign_keys=[target_seat_id])
+    actor_seat = db.relationship('Seat', foreign_keys=[actor_seat_id])
+
+    __table_args__ = (
+        db.UniqueConstraint('entitlement_id', 'disposition', name='uq_entitlement_terminal_event'),
+    )
+
+
+class InsuranceClaimStatus(enum.Enum):
+    SUBMITTED = 'SUBMITTED'
+    APPROVED = 'APPROVED'
+    REJECTED = 'REJECTED'
+
+
+class InsuranceClaim(db.Model):
+    """Insurance claim workflow — DOM-STORE-001 v3.0 §VII.C."""
+    __tablename__ = 'insurance_claims'
+
+    id = db.Column(db.Integer, primary_key=True)
+    claim_id = db.Column(db.String(36), nullable=False, unique=True, index=True, default=lambda: str(uuid.uuid4()))
+    class_id = db.Column(db.String(36), db.ForeignKey('classes.class_id', ondelete='CASCADE'), nullable=False, index=True)
+    entitlement_id = db.Column(db.String(36), db.ForeignKey('entitlements.entitlement_id'), nullable=False, index=True)
+    target_seat_id = db.Column(db.Integer, db.ForeignKey('seats.id', ondelete='CASCADE'), nullable=False, index=True)
+    actor_seat_id = db.Column(db.Integer, db.ForeignKey('seats.id', ondelete='CASCADE'), nullable=False, index=True)
+    transaction_id = db.Column(db.Integer, db.ForeignKey('ledger_transaction.id'), nullable=True, index=True)
+    claimed_dates = db.Column(db.JSON, nullable=True)
+    status = db.Column(
+        db.Enum(InsuranceClaimStatus, values_callable=lambda x: [e.value for e in x], name='insurance_claim_status_enum'),
+        nullable=False,
+        default=InsuranceClaimStatus.SUBMITTED,
+    )
+    submitted_at = db.Column(db.DateTime(timezone=True), nullable=False, default=utc_now)
+    decided_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    decided_by_seat_id = db.Column(db.Integer, db.ForeignKey('seats.id', ondelete='SET NULL'), nullable=True, index=True)
+    correlation_id = db.Column(db.String(100), nullable=True, index=True)
+
+    entitlement = db.relationship('Entitlement', backref=db.backref('insurance_claims', lazy='dynamic'))
+    target_seat = db.relationship('Seat', foreign_keys=[target_seat_id], backref=db.backref('insurance_claims', passive_deletes=True))
+    actor_seat = db.relationship('Seat', foreign_keys=[actor_seat_id])
+    decided_by_seat = db.relationship('Seat', foreign_keys=[decided_by_seat_id])
+    referenced_transaction = db.relationship('Transaction', backref=db.backref('insurance_claims', lazy='dynamic'))
+
+    __table_args__ = (
+        db.Index('ix_insurance_claims_entitlement_class', 'entitlement_id', 'class_id'),
     )
 
 
@@ -1031,27 +1107,6 @@ def _sync_rent_settings_scope(mapper, connection, target):
 
 
 # Rent waiver state is expressed through obligation satisfaction
-
-@sa.event.listens_for(HallPassLog, "before_insert")
-@sa.event.listens_for(HallPassLog, "before_update")
-def _sync_hall_pass_seat(_mapper, connection, target):
-    """Synchronize hall_pass_logs.seat_id during the transition."""
-    student_id = getattr(target, "student_id", None)
-    class_id = getattr(target, "class_id", None)
-
-    if not getattr(target, "seat_id", None):
-        seat_id = _resolve_seat_id(connection, student_id, class_id=class_id)
-        if seat_id:
-            target.seat_id = seat_id
-
-    if not getattr(target, "class_id", None) and getattr(target, "seat_id", None):
-        seat_class_id = connection.execute(
-            sa.text("SELECT class_id FROM seats WHERE id = :seat_id LIMIT 1"),
-            {"seat_id": target.seat_id},
-        ).scalar()
-        if seat_class_id:
-            target.class_id = str(seat_class_id)
-
 
 # Rent store state is now canonical
 
@@ -1158,6 +1213,8 @@ class EntitlementEvent(db.Model):
     class_id = db.Column(db.String(36), db.ForeignKey('classes.class_id', ondelete='CASCADE'), nullable=False, index=True)
     assessment_id = db.Column(db.Integer, db.ForeignKey('assessment_events.id', ondelete='SET NULL'), nullable=True, index=True)
     trigger_id = db.Column(db.String(200), nullable=True, index=True)  # Idempotency key (INV-OBL-003)
+    correlation_id = db.Column(db.String(100), nullable=True, index=True)
+    entitlement_id = db.Column(db.String(100), nullable=True, index=True)
     quantity_delta = db.Column(db.Integer, nullable=False)  # +N grant, -N consumption/revocation
     event_type = db.Column(db.String(20), nullable=False)  # GRANT, CONSUMPTION, REVOCATION
     occurred_at = db.Column(db.DateTime(timezone=True), default=utc_now, nullable=False)
@@ -1263,7 +1320,7 @@ class Issue(db.Model):
 
     # Context attachment (transaction/record-specific issues)
     related_transaction_id = db.Column(db.Integer, db.ForeignKey('ledger_transaction.id'), nullable=True)
-    related_record_type = db.Column(db.String(50), nullable=True)  # 'transaction', 'tap_event', 'rent_payment', etc.
+    related_record_type = db.Column(db.String(50), nullable=True)  # 'transaction', 'attendance_session', etc.
     related_record_id = db.Column(db.Integer, nullable=True)  # Generic ID for other record types
 
     # System context snapshot (automatic, immutable)
@@ -1711,7 +1768,7 @@ class PolicyTransition(db.Model):
     activation_mode = db.Column(db.String(32), nullable=False)
     status = db.Column(db.String(32), nullable=False, default='pending')
     created_at = db.Column(db.DateTime(timezone=True), default=utc_now, nullable=False)
-    created_by = db.Column(db.Integer, nullable=True)
+    created_by = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
     applied_at = db.Column(db.DateTime(timezone=True), nullable=True)
     correlation_id = db.Column(db.String(64), nullable=True, index=True)
     superseded_by_transition_id = db.Column(db.Integer, db.ForeignKey('policy_transitions.id'), nullable=True)

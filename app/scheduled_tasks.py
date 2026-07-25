@@ -5,79 +5,217 @@ Contains periodic tasks that run in the background to maintain system state.
 """
 
 import logging
-from datetime import datetime, timezone, timedelta
-from app.utils.time import get_class_cycle_start_utc, utc_now
+import secrets
 from app.feats.base import feat_shell
+from app.services.insurance_policy_service import delete_due_policy_lineages
 from app.utils.insurance_billing import get_insurance_billing_snapshot
 
 
-@feat_shell("FEAT-ATTN-001")
+@feat_shell("FEAT-PROD-001")
 def enforce_daily_limits_job():
     """
-    Scheduled job that checks all active students and auto-taps them out if they've exceeded their daily limit.
+    Scheduled job that checks active seats and records an inactive PROD event
+    when the class daily limit has been reached.
+
     Runs hourly to ensure limits are enforced even if students close their browser.
     """
-    # Import here to avoid circular imports
-    from app.models import AttendanceSession, SeatAttendanceState, AttendanceReasonCode, Seat, ClassEconomy
-    from app.feats.attendance import enforce_daily_limits as feat_enforce_daily_limits
+    from app.feats.prod import record_attendance_session
     from app.extensions import db
+    from app.models import AttendanceReasonCode, AttendanceSession, ClassEconomy, Seat
+    from app.payroll import get_daily_limit_seconds
+    from app.services.context_resolver import CanonicalContext
+    from app.services.ledger_service import resolve_class_authority_seat_id
+    from app.utils.canonical_temporal_resolver import (
+        CLASS_LEVEL_EVALUATION,
+        canonical_temporal_resolver,
+    )
 
     logger = logging.getLogger('scheduled_tasks')
-    logger.info("Starting scheduled auto tap-out enforcement job")
+    logger.info("Starting scheduled daily-limit enforcement job")
 
     try:
-        # Find all active attendance states
-        active_states = SeatAttendanceState.query.filter_by(is_active=True).all()
+        events = (
+            AttendanceSession.query
+            .order_by(
+                AttendanceSession.class_id.asc(),
+                AttendanceSession.target_seat_id.asc(),
+                AttendanceSession.timestamp.asc(),
+                AttendanceSession.id.asc(),
+            )
+            .all()
+        )
+        rows_by_class_id = {}
+        rows_by_scope = {}
+        for event in events:
+            rows_by_class_id.setdefault(event.class_id, []).append(event)
+            rows_by_scope.setdefault((event.class_id, event.target_seat_id), []).append(event)
+
         checked_count = 0
-        tapped_out_count = 0
+        closed_count = 0
 
-        for state in active_states:
-            try:
-                with db.session.begin_nested():
-                    checked_count += 1
-                    seat_id = state.seat_id
-                    class_id = state.class_id
+        def _active_intervals_for_day(rows, *, day_start_utc, now_utc):
+            intervals = []
+            active_start = None
+            for row in rows:
+                if row.timestamp > now_utc:
+                    break
+                if row.status == "active":
+                    active_start = row.timestamp
+                    continue
+                if row.status == "inactive" and active_start is not None:
+                    interval_start = max(active_start, day_start_utc)
+                    interval_end = min(row.timestamp, now_utc)
+                    if interval_end >= interval_start:
+                        intervals.append((interval_start, interval_end))
+                    active_start = None
+            if active_start is not None:
+                interval_start = max(active_start, day_start_utc)
+                if now_utc >= interval_start:
+                    intervals.append((interval_start, now_utc))
+            return intervals
 
-                    before_daily_limit_count = (
-                        AttendanceSession.query
-                        .filter(
-                            AttendanceSession.seat_id == seat_id,
-                            AttendanceSession.class_id == class_id,
-                            AttendanceSession.end_reason_code == AttendanceReasonCode.DAILY_LIMIT,
-                            AttendanceSession.ended_at.is_not(None),
+        for class_id, class_events in rows_by_class_id.items():
+            class_row = ClassEconomy.query.filter_by(class_id=class_id).first()
+            if class_row is None:
+                continue
+
+            daily_limit = (
+                get_daily_limit_seconds(class_row.section, class_id=class_id)
+                if class_row.section else None
+            )
+            if not daily_limit:
+                continue
+
+            actor_seat_id = resolve_class_authority_seat_id(class_id)
+            ctx = CanonicalContext(
+                user_id=class_row.user_id,
+                class_id=class_id,
+                seat_id=actor_seat_id,
+                actor_role="teacher",
+            )
+            now_evaluation = canonical_temporal_resolver(
+                CLASS_LEVEL_EVALUATION,
+                canonical_execution_context=ctx,
+                primitive="current_time",
+            )
+            now_utc = now_evaluation.canonical_now_utc
+            day_bounds = canonical_temporal_resolver(
+                CLASS_LEVEL_EVALUATION,
+                canonical_execution_context=ctx,
+                primitive="evaluation_day_boundaries",
+                reference_time_utc=now_utc,
+            )
+
+            active_latest_events = {}
+            for event in class_events:
+                active_latest_events[event.target_seat_id] = event
+
+            for seat_id, latest_event in active_latest_events.items():
+                if latest_event.status != "active":
+                    continue
+                try:
+                    with db.session.begin_nested():
+                        checked_count += 1
+
+                        seat = Seat.query.filter_by(
+                            id=seat_id,
+                            class_id=class_id,
+                            role="student",
+                        ).first()
+                        if seat is None:
+                            continue
+
+                        intervals = _active_intervals_for_day(
+                            rows_by_scope[(class_id, seat_id)],
+                            day_start_utc=day_bounds.boundary_start_utc,
+                            now_utc=now_utc,
                         )
-                        .count()
-                    )
+                        if not intervals:
+                            continue
 
-                    feat_enforce_daily_limits(seat_id=seat_id, class_id=class_id, commit=False, logger=logger)
-
-                    after_daily_limit_count = (
-                        AttendanceSession.query
-                        .filter(
-                            AttendanceSession.seat_id == seat_id,
-                            AttendanceSession.class_id == class_id,
-                            AttendanceSession.end_reason_code == AttendanceReasonCode.DAILY_LIMIT,
-                            AttendanceSession.ended_at.is_not(None),
+                        total_evaluation = canonical_temporal_resolver(
+                            CLASS_LEVEL_EVALUATION,
+                            canonical_execution_context=ctx,
+                            primitive="elapsed_duration",
+                            reference_time_utc=now_utc,
+                            intervals=intervals,
                         )
-                        .count()
-                    )
+                        if total_evaluation.elapsed_seconds < daily_limit:
+                            continue
 
-                    newly_closed = max(0, after_daily_limit_count - before_daily_limit_count)
-                    if newly_closed:
-                        tapped_out_count += newly_closed
+                        accumulated_before_active = 0
+                        active_start, _active_end = intervals[-1]
+                        if len(intervals) > 1:
+                            prior_evaluation = canonical_temporal_resolver(
+                                CLASS_LEVEL_EVALUATION,
+                                canonical_execution_context=ctx,
+                                primitive="elapsed_duration",
+                                reference_time_utc=now_utc,
+                                intervals=intervals[:-1],
+                            )
+                            accumulated_before_active = prior_evaluation.elapsed_seconds
+
+                        remaining_seconds = int(daily_limit) - int(accumulated_before_active)
+                        close_at_utc = active_start
+                        if remaining_seconds > 0:
+                            close_evaluation = canonical_temporal_resolver(
+                                CLASS_LEVEL_EVALUATION,
+                                canonical_execution_context=ctx,
+                                primitive="shift_timestamp",
+                                reference_time_utc=now_utc,
+                                timestamp=active_start,
+                                elapsed_seconds=remaining_seconds,
+                            )
+                            close_at_utc = close_evaluation.shifted_timestamp_utc
+
+                        reached_at_or_before_now = canonical_temporal_resolver(
+                            CLASS_LEVEL_EVALUATION,
+                            canonical_execution_context=ctx,
+                            primitive="later_than",
+                            reference_time_utc=now_utc,
+                            candidate=now_utc,
+                            reference=close_at_utc,
+                        )
+                        if not reached_at_or_before_now.is_later and now_utc != close_at_utc:
+                            continue
+
+                        record_attendance_session(
+                            ctx=ctx,
+                            target_seat_id=seat_id,
+                            actor_seat_id=actor_seat_id,
+                            mechanism="system",
+                            status="inactive",
+                            reason=f"Daily limit reached ({daily_limit / 3600:.1f}h)",
+                            reason_code=AttendanceReasonCode.DONE_FOR_DAY,
+                            idempotency_key=f"daily_limit:{class_id}:{seat_id}:{secrets.token_hex(12)}",
+                            reference_time_utc=close_at_utc,
+                        )
+
+                        closed_count += 1
                         logger.info(
-                            "Auto-tapped out seat %s in class %s",
+                            "Closed daily-limit attendance session for seat %s in class %s at %s",
                             seat_id,
                             class_id,
+                            close_at_utc,
                         )
-            except Exception as e:
-                logger.error(f"Error checking seat {state.seat_id}: {e}", exc_info=True)
-                continue
-        logger.info(f"Auto tap-out job completed. Checked {checked_count} active seats, tapped out {tapped_out_count}")
+                except Exception as e:
+                    logger.error(
+                        "Error checking daily limit for seat %s in class %s: %s",
+                        seat_id,
+                        class_id,
+                        e,
+                        exc_info=True,
+                    )
+                    continue
+        logger.info(
+            "Daily-limit enforcement job completed. Checked %s active seats, closed %s sessions",
+            checked_count,
+            closed_count,
+        )
 
     except Exception as e:
         db.session.rollback()
-        logger.error(f"Auto tap-out job failed: {e}", exc_info=True)
+        logger.error(f"Daily-limit enforcement job failed: {e}", exc_info=True)
 
 
 @feat_shell("FEAT-OPS-001")
@@ -145,6 +283,12 @@ def run_rent_cycle_for_class(class_id: str, execution_time):
     from app.extensions import db
     from app.models import RentSettings, Seat, ObligationAssessment
     from app.feats.rent_cycle_feat import execute_scheduled_rent_charge
+    # TODO(SPEC-TIME-001): Legacy OBL scheduler exception.
+    # This path still uses timedelta and app.utils.time because OBL/insurance is outside
+    # the current PROD rewiring slice. When OBL is rewired, replace this whole path with
+    # canonical_temporal_resolver primitives instead of preserving these direct time calls.
+    from datetime import timedelta
+    from app.utils.time import get_class_cycle_start_utc, utc_now
 
     execution_time = execution_time or utc_now()
 
@@ -231,6 +375,10 @@ def run_rent_cycle_scheduler(execution_time=None):
     Iterate all rent-enabled classes and execute one rent cycle per class.
     """
     from app.models import RentSettings
+    # TODO(SPEC-TIME-001): Legacy OBL scheduler exception.
+    # Switch this to canonical_temporal_resolver during OBL rewiring instead of widening
+    # the current PROD slice.
+    from app.utils.time import utc_now
 
     execution_time = execution_time or utc_now()
     class_ids = [
@@ -263,6 +411,9 @@ def run_insurance_cycle_for_class(class_id: str, execution_time):
     from app.extensions import db
     from app.models import ObligationAssessment, Seat
     from app.feats.insurance_cycle_feat import execute_scheduled_insurance_charge
+    # TODO(SPEC-TIME-001): Legacy insurance/OBL scheduler exception.
+    # Switch this to canonical_temporal_resolver when that domain slice is rewired.
+    from app.utils.time import utc_now
 
     execution_time = execution_time or utc_now()
     policy_version = _get_active_insurance_policy_version(class_id)
@@ -313,6 +464,9 @@ def run_insurance_cycle_for_class(class_id: str, execution_time):
 def run_insurance_cycle_scheduler(execution_time=None):
     """Iterate all insurance-enabled classes and execute one insurance cycle per class."""
     from app.models import PolicyVersion
+    # TODO(SPEC-TIME-001): Legacy insurance/OBL scheduler exception.
+    # Switch this to canonical_temporal_resolver when that domain slice is rewired.
+    from app.utils.time import utc_now
 
     execution_time = execution_time or utc_now()
     class_ids = [
@@ -326,6 +480,7 @@ def run_insurance_cycle_scheduler(execution_time=None):
     outcomes = []
     for class_id in class_ids:
         outcomes.append(run_insurance_cycle_for_class(class_id, execution_time))
+    delete_due_policy_lineages(execution_time=execution_time)
     return outcomes
 
 
@@ -394,7 +549,7 @@ def init_scheduled_tasks(app):
             run_audit_invariant_check_job()
 
     if not scheduler.running:
-        # Add the auto tap-out enforcement job to run every hour
+        # Add the daily-limit enforcement job to run every hour
         scheduler.add_job(
             func=run_enforce_daily_limits,
             trigger='interval',
@@ -453,7 +608,7 @@ def init_scheduled_tasks(app):
 
         scheduler.start()
         logger.info(
-            "Scheduled tasks initialized: auto tap-out (hourly), "
+            "Scheduled tasks initialized: daily-limit enforcement (hourly), "
             "database maintenance (2 AM UTC), rent cycles (hourly), "
             "insurance cycles (hourly), "
             "audit invariant check (3 AM UTC)"

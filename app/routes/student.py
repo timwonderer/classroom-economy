@@ -14,6 +14,7 @@ from calendar import monthrange
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 from urllib.parse import urlparse
+from types import SimpleNamespace
 
 from flask import Blueprint, redirect, url_for, flash, request, session, jsonify, current_app, has_app_context, abort
 from sqlalchemy import or_, func, select, and_
@@ -28,7 +29,7 @@ from app.models import (
     # StoreItemBlock removed — store_item_blocks unauthorized; use store_item_visibility (DOM-STORE-001)
     RentSettings,
     BankingSettings, FeatureSettings, Issue, Seat, User, UserRole,
-    ClassEconomy, IdentityProfile, _quantize_currency
+    ClassEconomy, IdentityProfile, PayrollEvent, PolicyVersion, _quantize_currency
 )
 from app.auth import (
     admin_required,
@@ -69,13 +70,25 @@ from app.access import (
     resolve_scope,
     resolve_student_class_switch_scope,
 )
-from app.services.attendance_service import get_all_block_statuses
+from app.services.attendance_service import get_class_attendance_status
+from app.services.store_entitlement_service import (
+    list_entitlement_history,
+    list_entitlements_for_seat,
+    list_available_entitlements,
+    list_insurance_claims,
+    derive_display_status,
+)
+from app.services.insurance_policy_service import list_insurance_policy_versions
+from app.services.insurance_policy_service import get_insurance_entitlement_item_id
 from app.services.ledger_service import (
     apply_monthly_savings_interest as post_monthly_savings_interest,
     get_available_balances,
 )
 from app.services import access_policy_service, store_service
-from app.services.entitlement_service import reconcile_rent_hall_pass_top_off as _reconcile_rent_hall_pass_top_off
+from app.services.entitlement_service import (
+    get_hall_pass_balance,
+    reconcile_rent_hall_pass_top_off as _reconcile_rent_hall_pass_top_off,
+)
 from app.services.recovery_service import (
     dismiss_recovery_code as dismiss_recovery_code_row,
     get_pending_recovery_code_for_seat,
@@ -87,6 +100,7 @@ from app.feats.base import feat_shell
 from app.feats.rent_payment_feat import execute_rent_payment
 from app.feats.transfer_feat import execute_account_transfer
 from app.feats.insurance_purchase_feat import execute_insurance_purchase
+from app.feats.insurance_claim_feat import execute_claim_submission
 # execute_file_claim removed — insurance_claim_feat.py deleted; insurance feature broken pending DOM-OBL-001 migration
 from app.payroll import get_pay_rate_for_block
 from app.utils.join_code import get_display_join_code
@@ -102,6 +116,10 @@ from app.utils.time import (
     get_class_week_range_utc,
     get_class_now,
 )
+from app.utils.canonical_temporal_resolver import (
+    CLASS_LEVEL_EVALUATION,
+    canonical_temporal_resolver,
+)
 from app.utils.seat_scope import transaction_scope_filter, seat_scoped_filter
 from app.utils.insurance_eligibility import (
     compute_waiting_end_class_for_enrollment,
@@ -109,6 +127,7 @@ from app.utils.insurance_eligibility import (
     collect_reimbursed_source_tx_ids,
     resolve_claim_type,
 )
+from app.utils.insurance_billing import get_insurance_billing_snapshot
 
 
 def _get_identity_bound_seat_options(user_id: int):
@@ -265,8 +284,6 @@ def _get_canonical_student_from_context() -> Seat | None:
     if not context or not getattr(context, "seat_id", None):
         return None
     return db.session.get(Seat, context.seat_id)
-
-
 
 
 def _get_total_earnings_for_seat(seat_id: int | None, *, class_id: str | None = None) -> Decimal:
@@ -794,22 +811,14 @@ def add_class():
                 return redirect(_get_return_target())
             matched_seat = dedupe_matches[0]
 
-        current_blocks = [b.strip().upper() for b in student.block.split(',') if b.strip()]
-        new_block_check = matched_seat.class_economy.section.strip().upper() if matched_seat.class_economy and matched_seat.class_economy.section else ""
-        if new_block_check in current_blocks:
-            flash(f"You are already enrolled in Block {new_block_check}.", "warning")
+        # Check if student already has a Seat in this ClassEconomy (v2 canonical scoping)
+        if matched_seat.user_id is not None:
+            flash(f"This seat is already claimed. Contact your teacher.", "warning")
             return redirect(_get_return_target())
 
         # Bind this new seat to the authenticated user (student already has a User row).
         matched_seat.user_id = student.user_id
         matched_seat.claimed_at = utc_now()
-        # Update student's block to include the new block if not already there
-        current_blocks = [b.strip().upper() for b in student.block.split(',') if b.strip()]
-        new_block = matched_seat.class_economy.section.strip().upper() if matched_seat.class_economy and matched_seat.class_economy.section else ""
-
-        if new_block not in current_blocks:
-            current_blocks.append(new_block)
-            student.block = ','.join(sorted(current_blocks))
 
         try:
             flash(f"Successfully added to Block {new_block}! You can now access this class from your dashboard.", "success")
@@ -848,11 +857,6 @@ def dashboard():
         flash(exc.message, "error")
         return redirect(url_for('student.login'))
 
-    join_code = scope.join_code
-    current_block = (
-        (getattr(scope, "section", None) or "")
-        or (getattr(scope, "block", None) or "")
-    ).strip()
     if not scope.class_id:
         flash("Class context unavailable. Please select a class and retry.", "error")
         return redirect(url_for("student.select_class_context"))
@@ -867,16 +871,21 @@ def dashboard():
     ).order_by(Transaction.timestamp.desc()).all()
 
     # Canonical store purchases scoped to the active seat/class.
-    student_items = (
-        StorePurchase.query
-        .filter(
-            StorePurchase.class_id == scope.class_id,
-            StorePurchase.seat_id == scope.seat_id,
-            StorePurchase.status.in_(['purchased', 'pending', 'processing', 'redeemed', 'completed', 'expired']),
-        )
-        .order_by(StorePurchase.purchased_at.desc())
-        .all()
-    )
+    entitlements = []
+    for entitlement in list_entitlement_history(target_seat_id=scope.seat_id, class_id=scope.class_id):
+        ent = entitlement["entitlement"]
+        item = db.session.get(StoreItem, ent.entitlement_item_id)
+        if item is None:
+            continue
+        terminal = entitlement["terminal_event"]
+        entitlements.append(SimpleNamespace(
+            id=ent.entitlement_id,
+            seat_id=ent.target_seat_id,
+            class_id=ent.class_id,
+            store_item=item,
+            status=terminal.disposition.value.lower() if terminal else "purchased",
+            purchased_at=ent.granted_at,
+        ))
 
     checking_transactions = [tx for tx in transactions if tx.account_type == 'checking']
     savings_transactions = [tx for tx in transactions if tx.account_type == 'savings']
@@ -885,38 +894,16 @@ def dashboard():
     # Calculate forecast interest using Decimal
     forecast_interest = _quantize_currency(savings_balance * Decimal('0.045') / Decimal('12'))
 
-    # FIX: Only show tap in/out status for CURRENT class, not all classes
-    # Get status for only the current block (not all blocks)
-    period_states = get_all_block_statuses(student, class_id=scope.class_id)
-    # Filter to only current class block
-    current_block_key = current_block.upper() if current_block else ""
-    period_states = {current_block_key: period_states.get(current_block_key, {})} if current_block_key else {}
-    student_blocks = [current_block_key] if current_block_key else []  # Only current block
-
-    # Convert Decimal values to float for JSON serialization
-    for state in period_states.values():
-        if 'projected_pay' in state and state['projected_pay'] is not None:
-            state['projected_pay'] = float(state['projected_pay'])
-
-    period_states_json = json.dumps(period_states, separators=(',', ':'))
-
-    unpaid_seconds_per_block = {
-        blk: state.get("duration", 0)
-        for blk, state in period_states.items()
-    }
-
-    projected_pay_per_block = {
-        blk: (state.get("projected_pay") or 0)
-        for blk, state in period_states.items()
-    }
+    attendance_state = get_class_attendance_status(student, class_id=scope.class_id, ctx=scope)
+    if 'projected_pay' in attendance_state and attendance_state['projected_pay'] is not None:
+        attendance_state['projected_pay'] = float(attendance_state['projected_pay'])
+    attendance_state_json = json.dumps(attendance_state, separators=(',', ':'))
 
     # Compute total unpaid seconds and format as HH:MM:SS for display
-    total_unpaid_seconds = sum(unpaid_seconds_per_block.values())
+    total_unpaid_seconds = attendance_state.get("duration", 0)
     hours, remainder = divmod(total_unpaid_seconds, 3600)
     minutes, seconds = divmod(remainder, 60)
     total_unpaid_elapsed = f"{int(hours):02}:{int(minutes):02}:{int(seconds):02}"
-    student_name = (student.identity_profile.full_name if student.identity_profile else str(student.id))
-
     # Compute most recent deposit and insurance paid flag
     recent_deposit = student.recent_deposits[0] if student.recent_deposits else None
 
@@ -959,8 +946,6 @@ def dashboard():
         rent_is_active = timeline['rent_is_active']
         is_preview_period = timeline['is_preview_period_candidate']
 
-        rent_blocks = [b.strip().upper() for b in student.block.split(',') if b.strip()]
-
         # Calculate coverage period for pre-paid system
         if is_preview_period:
             coverage_month = upcoming_due_date.month
@@ -973,27 +958,23 @@ def dashboard():
 
         from app.services.obligations_service import get_paid_rent_assessments_for_cycle
         seat_ids = [scope.seat_id]
-        all_paid = True
-        for period in rent_blocks:
-            payments = get_paid_rent_assessments_for_cycle(
-                class_id,
-                coverage_month,
-                coverage_year,
-                seat_ids=seat_ids,
-            )
-            payments = [payment for payment in payments if payment.satisfaction is not None]
 
-            total_paid = sum((p.satisfaction.amount_paid for p in payments), Decimal('0.00'))
-            paid_by_grace = _total_paid_by_grace(payments, grace_end_date_for_status)
-            late_fee = Decimal('0.00')
-            if rent_is_active and now > grace_end_date_for_status and paid_by_grace < rent_settings.rent_amount:
-                late_fee = rent_settings.late_fee
-            total_due = rent_settings.rent_amount + late_fee if rent_is_active else Decimal('0.00')
-            is_paid = total_paid >= total_due if rent_is_active else False
+        # Check rent for current class only (v2 canonical scoping via class_id)
+        payments = get_paid_rent_assessments_for_cycle(
+            class_id,
+            coverage_month,
+            coverage_year,
+            seat_ids=seat_ids,
+        )
+        payments = [payment for payment in payments if payment.satisfaction is not None]
 
-            if rent_is_active and not is_paid:
-                all_paid = False
-                break
+        total_paid = sum((p.satisfaction.amount_paid for p in payments), Decimal('0.00'))
+        paid_by_grace = _total_paid_by_grace(payments, grace_end_date_for_status)
+        late_fee = Decimal('0.00')
+        if rent_is_active and now > grace_end_date_for_status and paid_by_grace < rent_settings.rent_amount:
+            late_fee = rent_settings.late_fee
+        total_due = rent_settings.rent_amount + late_fee if rent_is_active else Decimal('0.00')
+        all_paid = total_paid >= total_due if rent_is_active else False
 
         rent_status = {
             'is_active': rent_is_active,
@@ -1001,15 +982,22 @@ def dashboard():
             'is_preview': is_preview_period
         }
 
-    tz = get_timezone()
-    local_now = utc_now().astimezone(tz)
+    dashboard_time = canonical_temporal_resolver(
+        CLASS_LEVEL_EVALUATION,
+        canonical_execution_context=scope,
+        primitive="current_time",
+    )
+    local_now = dashboard_time.canonical_now
+    now_utc = dashboard_time.canonical_now_utc
     # --- DASHBOARD DEBUG LOGGING ---
-    current_app.logger.info(f"DASHBOARD DEBUG: Student {student.id} - Block states:")
-    for blk, blk_state in period_states.items():
-        active = blk_state.get("active")
-        done = blk_state.get("done")
-        seconds = blk_state.get("duration")
-        current_app.logger.info(f"Block {blk} => DB Active={active}, Done={done}, Seconds (today)={seconds}, Total Unpaid Seconds={unpaid_seconds_per_block.get(blk, 0)}")
+    current_app.logger.info(
+        "DASHBOARD DEBUG: Student %s class_id=%s active=%s done=%s seconds=%s",
+        student.id,
+        scope.class_id,
+        attendance_state.get("active"),
+        attendance_state.get("done"),
+        attendance_state.get("duration"),
+    )
 
 
     # --- Calculate remaining session time for frontend timer ---
@@ -1025,55 +1013,89 @@ def dashboard():
 
     # --- Calculate weekly/monthly analytics ---
     from app.models import AttendanceSession as _AttSession
-    now_utc = utc_now()
-    if class_id:
-        class_now_utc = get_class_now(class_id, reference_time_utc=now_utc).astimezone(timezone.utc)
-        week_start, week_end = get_class_week_range_utc(class_id, reference_time_utc=class_now_utc)
-        month_start = get_class_month_start_utc(class_id, reference_time=class_now_utc)
-    else:
-        week_start, week_end = get_class_week_range_utc(
-            context.class_id,
-            reference_time_utc=now_utc,
-        ) if context.class_id else (now_utc, now_utc + timedelta(days=7))
-        month_start = get_class_month_start_utc(
-            context.class_id,
-            reference_time=now_utc,
-        ) if context.class_id else now_utc
+    week_bounds = canonical_temporal_resolver(
+        CLASS_LEVEL_EVALUATION,
+        canonical_execution_context=scope,
+        primitive="evaluation_period_boundaries",
+        reference_time_utc=now_utc,
+        period="week",
+    )
+    month_bounds = canonical_temporal_resolver(
+        CLASS_LEVEL_EVALUATION,
+        canonical_execution_context=scope,
+        primitive="evaluation_period_boundaries",
+        reference_time_utc=now_utc,
+        period="month",
+    )
+    week_start = week_bounds.boundary_start_utc
+    week_end = week_bounds.boundary_end_utc
+    month_start = month_bounds.boundary_start_utc
 
-    effective_class_id = class_id or context.class_id
+    effective_class_id = class_id
     sessions_this_week = _AttSession.query.filter(
-        _AttSession.seat_id == student.id,
+        _AttSession.target_seat_id == student.id,
         _AttSession.class_id == effective_class_id,
-        _AttSession.started_at >= week_start,
-        _AttSession.started_at < week_end,
-        _AttSession.is_deleted.is_(False),
-    ).all()
+        _AttSession.timestamp >= week_start,
+        _AttSession.timestamp < week_end,
+    ).order_by(_AttSession.timestamp.asc(), _AttSession.id.asc()).all()
 
     unique_days_tapped = len(
-        {ensure_utc(s.started_at).astimezone(tz).date() for s in sessions_this_week}
+        {
+            canonical_temporal_resolver(
+                CLASS_LEVEL_EVALUATION,
+                canonical_execution_context=scope,
+                primitive="current_evaluation_day",
+                reference_time_utc=s.timestamp,
+            ).evaluation_date
+            for s in sessions_this_week
+        }
     )
 
+    weekly_intervals = []
+    active_start = None
+    for event in sessions_this_week:
+        event_time = event.timestamp
+        if event.status == "active":
+            active_start = event_time
+        elif event.status == "inactive" and active_start is not None:
+            weekly_intervals.append((active_start, event_time))
+            active_start = None
+    if active_start is not None:
+        weekly_intervals.append((active_start, now_utc))
     total_minutes_this_week = 0
-    for s in sessions_this_week:
-        if s.duration_seconds is not None:
-            total_minutes_this_week += s.duration_seconds / 60
-        elif s.ended_at is None:
-            total_minutes_this_week += (now_utc - ensure_utc(s.started_at)).total_seconds() / 60
+    if weekly_intervals:
+        weekly_elapsed = canonical_temporal_resolver(
+            CLASS_LEVEL_EVALUATION,
+            canonical_execution_context=scope,
+            primitive="elapsed_duration",
+            intervals=weekly_intervals,
+        )
+        total_minutes_this_week = weekly_elapsed.elapsed_seconds / 60
 
-    def _occurred_after(ts, start):
-        ts_utc = ensure_utc(ts)
-        return ts_utc is not None and ts_utc >= start
+    def _occurred_in_period(ts, *, start, end):
+        if ts is None:
+            return False
+        evaluation = canonical_temporal_resolver(
+            CLASS_LEVEL_EVALUATION,
+            canonical_execution_context=scope,
+            primitive="between_boundaries",
+            reference_time_utc=now_utc,
+            candidate=ts,
+            start_boundary=start,
+            end_boundary=end,
+        )
+        return evaluation.is_between
 
     # Earnings this week/month
     # FIX: Add null check to prevent decimal.InvalidOperation on corrupted data
     earnings_this_week = sum(
         (tx.amount for tx in transactions
-        if tx.amount is not None and tx.amount > Decimal('0') and _occurred_after(tx.timestamp, week_start) and not tx.is_void),
+        if tx.amount is not None and tx.amount > Decimal('0') and _occurred_in_period(tx.timestamp, start=week_start, end=week_end) and not tx.is_void),
         Decimal('0.00')
     )
     earnings_this_month = sum(
         (tx.amount for tx in transactions
-        if tx.amount is not None and tx.amount > Decimal('0') and _occurred_after(tx.timestamp, month_start) and not tx.is_void),
+        if tx.amount is not None and tx.amount > Decimal('0') and _occurred_in_period(tx.timestamp, start=month_start, end=now_utc) and not tx.is_void),
         Decimal('0.00')
     )
 
@@ -1081,12 +1103,12 @@ def dashboard():
     # FIX: Add null check to prevent decimal.InvalidOperation on corrupted data
     spending_this_week = abs(sum(
         (tx.amount for tx in transactions
-        if tx.amount is not None and tx.amount < Decimal('0') and _occurred_after(tx.timestamp, week_start) and not tx.is_void),
+        if tx.amount is not None and tx.amount < Decimal('0') and _occurred_in_period(tx.timestamp, start=week_start, end=week_end) and not tx.is_void),
         Decimal('0.00')
     ))
     spending_this_month = abs(sum(
         (tx.amount for tx in transactions
-        if tx.amount is not None and tx.amount < Decimal('0') and _occurred_after(tx.timestamp, month_start) and not tx.is_void),
+        if tx.amount is not None and tx.amount < Decimal('0') and _occurred_in_period(tx.timestamp, start=month_start, end=now_utc) and not tx.is_void),
         Decimal('0.00')
     ))
 
@@ -1117,21 +1139,19 @@ def dashboard():
         'student_dashboard.html',
         student=student,
         session_remaining_seconds=session_remaining_seconds,
-        student_blocks=student_blocks,
-        period_states=period_states,
-        period_states_json=period_states_json,
+        attendance_state=attendance_state,
+        attendance_state_json=attendance_state_json,
         checking_transactions=checking_transactions,
         savings_transactions=savings_transactions,
-        student_items=student_items,
+        entitlements=entitlements,
         recent_transactions=transactions[:5],  # Most recent 5 transactions
         now=local_now,
         forecast_interest=float(forecast_interest),
         recent_deposit=recent_deposit,
         active_insurance=active_insurance,
         rent_status=rent_status,
-        unpaid_seconds_per_block=unpaid_seconds_per_block,
-        projected_pay_per_block={blk: float(pay or 0) for blk, pay in projected_pay_per_block.items()},
-        student_name=student_name,
+        unpaid_seconds=total_unpaid_seconds,
+        projected_pay=float(attendance_state.get("projected_pay") or 0),
         total_unpaid_elapsed=total_unpaid_elapsed,
         feature_settings=feature_settings,
         # FIX: Pass scoped balances to template instead of using unscoped properties
@@ -1149,6 +1169,7 @@ def dashboard():
         announcements=announcements,
         current_class_id=class_id,
         scoped_total_earnings=_get_total_earnings_for_seat(student.id, class_id=class_id),
+        hall_pass_balance=get_hall_pass_balance(student.id, class_id),
     )
 
 
@@ -1174,56 +1195,67 @@ def payroll():
         return redirect(url_for('student.dashboard'))
     effective_class_id = class_id or context.class_id
 
-    current_block = seat.class_economy.section.upper() if seat and seat.class_economy and seat.class_economy.section else ""
-    join_code = get_display_join_code(context.class_id)
-    period_states = get_all_block_statuses(student, class_id=class_id)
+    class_row = seat.class_economy if seat and seat.class_economy else None
+    current_section = class_row.section.upper() if class_row and class_row.section else ""
+    class_label = (
+        (class_row.display_name or class_row.section or class_row.join_code or class_row.class_id)
+        if class_row
+        else effective_class_id
+    )
+    # Scope payroll display data to the selected class context only.
+    payroll_state = get_class_attendance_status(student, class_id=class_id, ctx=context)
 
-    # Scope dashboard data to the selected class context only
-    period_states = {current_block: period_states.get(current_block, {})}
-    student_blocks = [current_block]
-
-    # Determine the pay rate for the current block (per minute)
+    # Existing PayrollSettings persistence is still keyed by section; the page
+    # contract remains canonical class_id/class_label only.
     pay_rate_per_second = get_pay_rate_for_block(
-        current_block,
+        current_section,
         class_id=class_id,
     )
     pay_rate_per_minute = round(pay_rate_per_second * 60, 2)
 
-    unpaid_seconds_per_block = {
-        blk: state.get("duration", 0)
-        for blk, state in period_states.items()
-    }
-
-    projected_pay_per_block = {
-        blk: round((state.get("projected_pay") or 0), 2)
-        for blk, state in period_states.items()
-    }
+    unpaid_seconds = int(payroll_state.get("duration", 0) or 0)
+    projected_pay = round((payroll_state.get("projected_pay") or 0), 2)
 
     from app.models import AttendanceSession as _AttSession
 
     att_query = _AttSession.query.filter(
-        _AttSession.seat_id == student.id,
+        _AttSession.target_seat_id == student.id,
         _AttSession.class_id == effective_class_id,
-        _AttSession.is_deleted.is_(False),
     )
-    recent_sessions = att_query.order_by(_AttSession.started_at.desc()).limit(20).all()
-    all_tap_events = recent_sessions
-    tap_events_by_block = {}
-    for sess in recent_sessions:
-        sess.action = 'start_work' if sess.ended_at is None else 'stop_work'
-        if sess.period not in tap_events_by_block:
-            tap_events_by_block[sess.period] = []
-        tap_events_by_block[sess.period].append(sess)
+    recent_sessions = att_query.order_by(_AttSession.timestamp.desc(), _AttSession.id.desc()).limit(20).all()
+    attendance_events = recent_sessions
+    attendance_start_count = sum(1 for sess in recent_sessions if sess.status == "active")
+    attendance_inactive_count = sum(1 for sess in recent_sessions if sess.status == "inactive")
+
+    last_payroll_event = (
+        PayrollEvent.query.filter(
+            PayrollEvent.class_id == effective_class_id,
+            PayrollEvent.target_seat_id == student.id,
+            PayrollEvent.payroll_event_type == "payroll",
+        )
+        .order_by(PayrollEvent.recorded_at.desc(), PayrollEvent.id.desc())
+        .first()
+    )
+    days_since_last_payroll = None
+    if last_payroll_event:
+        elapsed = canonical_temporal_resolver(
+            CLASS_LEVEL_EVALUATION,
+            canonical_execution_context=context,
+            primitive="time_since",
+            start=last_payroll_event.recorded_at,
+        )
+        days_since_last_payroll = elapsed.elapsed_seconds // 86400
 
     return render_template(
         'student_payroll.html',
         student=student,
-        student_blocks=student_blocks,
-        unpaid_seconds_per_block=unpaid_seconds_per_block,
-        projected_pay_per_block=projected_pay_per_block,
-        period_states=period_states,
-        all_tap_events=all_tap_events,
-        tap_events_by_block=tap_events_by_block,
+        class_label=class_label,
+        payroll_state=payroll_state,
+        unpaid_seconds=unpaid_seconds,
+        projected_pay=projected_pay,
+        attendance_events=attendance_events,
+        attendance_start_count=attendance_start_count,
+        attendance_inactive_count=attendance_inactive_count,
         pay_rate_per_minute=pay_rate_per_minute,
         pay_rate_table=[
             ("1 minute", pay_rate_per_minute),
@@ -1233,8 +1265,10 @@ def payroll():
             ("2 hours", round(pay_rate_per_minute * 120, 2)),
             ("4 hours", round(pay_rate_per_minute * 240, 2)),
         ],
-        now=utc_now(),
         scoped_total_earnings=_get_total_earnings_for_seat(student.id, class_id=effective_class_id),
+        last_payroll_event=last_payroll_event,
+        days_since_last_payroll=days_since_last_payroll,
+        feature_settings=get_feature_settings_for_student(),
     )
 
 
@@ -1471,16 +1505,161 @@ def apply_savings_interest(student, annual_rate=Decimal('0.045')):
 @login_required
 def insurance_marketplace():
     """Insurance marketplace - browse and manage policies."""
+    context = resolve_canonical_context()
+    if not context:
+        flash("No class selected. Please select a class to continue.", "error")
+        return redirect(url_for('student.dashboard'))
 
-
-    abort(404)
+    class_identifier = get_display_join_code(context.class_id) if context.class_id else ""
+    policy_versions = list_insurance_policy_versions(context.class_id)
+    available_policies = []
+    for policy in policy_versions:
+        payload = json.loads(policy.policy_payload_json or "{}")
+        available_policies.append(
+            SimpleNamespace(
+                id=policy.id,
+                title=(payload.get("title") or f"Policy v{policy.version_number}"),
+                description=payload.get("description", ""),
+                premium=Decimal(str(payload.get("premium", "0.00"))),
+                charge_frequency=payload.get("charge_frequency", "monthly"),
+                waiting_period_days=int(payload.get("waiting_period_days", 0) or 0),
+                max_claims_count=payload.get("max_claims_count"),
+                claim_type=payload.get("claim_type", "transaction_monetary"),
+                marketing_badge=payload.get("marketing_badge"),
+                tier_group=payload.get("tier_group"),
+                tier_name=payload.get("tier_name"),
+                tier_color=payload.get("tier_color", "secondary"),
+                tier_level=payload.get("tier_level"),
+                is_active=policy.is_active,
+                payload=payload,
+                version_number=policy.version_number,
+            )
+        )
+    def _claim_display_row(claim):
+        raw_incident = (claim.claimed_dates or [None])[0] if getattr(claim, "claimed_dates", None) else None
+        if isinstance(raw_incident, str):
+            try:
+                incident_dt = datetime.fromisoformat(raw_incident)
+            except ValueError:
+                incident_dt = claim.submitted_at
+        elif raw_incident is not None:
+            incident_dt = raw_incident
+        else:
+            incident_dt = claim.submitted_at
+        return SimpleNamespace(
+            id=claim.id,
+            claim_id=claim.claim_id,
+            policy=getattr(claim, "policy", SimpleNamespace(title="Insurance")),
+            status=getattr(claim.status, "value", claim.status),
+            approved_amount=getattr(claim, "approved_amount", None),
+            claim_amount=getattr(claim, "claim_amount", None),
+            rejection_reason=getattr(claim, "rejection_reason", None),
+            description=getattr(claim, "description", ""),
+            teacher_notes=getattr(claim, "teacher_notes", None),
+            incident_date=incident_dt,
+            filed_date=claim.submitted_at,
+        )
+    tier_groups = defaultdict(lambda: {"name": "", "color": "secondary", "policies": []})
+    for policy in available_policies:
+        if policy.tier_group:
+            tier_groups[policy.tier_group]["name"] = policy.tier_name or f"Group {policy.tier_group}"
+            tier_groups[policy.tier_group]["color"] = policy.tier_color or "secondary"
+            tier_groups[policy.tier_group]["policies"].append(policy)
+    current_class_context = SimpleNamespace(
+        teacher_name="",
+        block_display=class_identifier,
+        class_timezone=getattr(context, "class_timezone", ""),
+        student_full_name=(
+            context.identity_profile.full_name
+            if getattr(context, "identity_profile", None) else ""
+        ),
+        join_code=class_identifier,
+        class_identifier=class_identifier,
+    )
+    return render_template(
+        'student_insurance_marketplace.html',
+        student=(
+            context.identity_profile.full_name
+            if getattr(context, "identity_profile", None) else ""
+        ),
+        current_class_context=current_class_context,
+        my_policies=[],
+        my_claims=[_claim_display_row(claim) for claim in list_insurance_claims(class_id=context.class_id, target_seat_id=context.seat_id)],
+        available_policies=available_policies,
+        tier_groups=dict(tier_groups),
+        enrolled_tiers=[],
+        can_purchase={policy.id: bool(policy.is_active) for policy in available_policies},
+        repurchase_blocks=set(),
+        claims_this_period=[],
+        now=utc_now(),
+        claim_type="transaction_monetary",
+        contract_title="Insurance",
+        contract_description="",
+        contract_claim_time_limit_days=0,
+        contract_max_claim_amount=None,
+        remaining_period_cap=None,
+        contract_max_claims_count=None,
+        contract_max_claims_period="period",
+        policy=SimpleNamespace(waiting_period_days=0, charge_frequency="", autopay=False, auto_cancel_nonpay_days=0),
+        enrollment=SimpleNamespace(
+            contract_title="Insurance",
+            contract_description="",
+            status="inactive",
+            purchase_date=utc_now(),
+            coverage_start_date=None,
+            payment_current=False,
+            days_unpaid=0,
+            next_payment_due=None,
+            policy=SimpleNamespace(waiting_period_days=0, charge_frequency="", autopay=False, auto_cancel_nonpay_days=0, no_repurchase_after_cancel=False, repurchase_wait_days=0),
+            contract_claim_time_limit_days=0,
+            contract_max_claim_amount=None,
+            contract_max_claims_count=None,
+            contract_max_claims_period="period",
+        ),
+    )
 
 
 @student_bp.route('/insurance/purchase/<int:policy_id>', methods=['POST'])
 @login_required
 def purchase_insurance(policy_id):
     """Purchase insurance policy."""
-    abort(404)
+    context = resolve_canonical_context()
+    if not context:
+        flash("No class selected. Please select a class to continue.", "error")
+        return redirect(url_for('student.student_insurance'))
+
+    policy_version = db.session.get(PolicyVersion, policy_id)
+    if (
+        policy_version is None
+        or policy_version.class_id != context.class_id
+        or policy_version.domain != "insurance"
+    ):
+        flash("That insurance policy is not available for this class.", "error")
+        return redirect(url_for('student.student_insurance'))
+
+    snapshot = get_insurance_billing_snapshot(policy_version)
+    policy = SimpleNamespace(
+        id=policy_version.id,
+        title=f"Insurance Policy {policy_version.version_number}",
+        premium=Decimal(str(snapshot["premium"] or "0.00")),
+        waiting_period_days=int(snapshot["waiting_period_days"] or 0),
+        charge_frequency=snapshot["charge_frequency"],
+        entitlement_item_id=get_insurance_entitlement_item_id(policy_version),
+    )
+    if policy.entitlement_item_id is None:
+        flash("This insurance policy is missing its entitlement mapping.", "error")
+        return redirect(url_for('student.student_insurance'))
+    seat = db.session.get(Seat, context.seat_id)
+    banking_settings = BankingSettings.query.filter_by(class_id=context.class_id).first()
+    execute_insurance_purchase(
+        seat=seat,
+        user_id=context.user_id,
+        class_id=context.class_id,
+        policy=policy,
+        banking_settings=banking_settings,
+    )
+    flash("Insurance purchase recorded.", "success")
+    return redirect(url_for('student.student_insurance'))
 
 
 @student_bp.route('/insurance/cancel/<int:enrollment_id>', methods=['POST'])
@@ -1488,28 +1667,268 @@ def purchase_insurance(policy_id):
 @feat_shell("FEAT-OBL-001")
 def cancel_insurance(enrollment_id):
     """Cancel insurance policy."""
-    abort(404)
+    flash("Insurance cancellation is not available from the current policy surface.", "warning")
+    return redirect(url_for('student.student_insurance'))
 
 
 @student_bp.route('/insurance/claim/<int:policy_id>', methods=['GET', 'POST'])
 @login_required
+@feat_shell("FEAT-STOR-003")
 def file_claim(policy_id):
     """File insurance claim."""
-    abort(404)
+    context = resolve_canonical_context()
+    if not context:
+        flash("No class selected. Please select a class to continue.", "error")
+        return redirect(url_for('student.dashboard'))
+
+    class_identifier = get_display_join_code(context.class_id) if context.class_id else ""
+    student_name = (
+        context.identity_profile.full_name
+        if getattr(context, "identity_profile", None) else ""
+    )
+    policy_version = db.session.get(PolicyVersion, policy_id)
+    if policy_version is None or policy_version.class_id != context.class_id or policy_version.domain != "insurance":
+        flash("That insurance policy is not available for this class.", "error")
+        return redirect(url_for('student.student_insurance'))
+    payload = json.loads(policy_version.policy_payload_json or "{}")
+    entitlement_item_id = get_insurance_entitlement_item_id(policy_version)
+    if entitlement_item_id is None:
+        flash("This insurance policy is missing its entitlement mapping.", "error")
+        return redirect(url_for('student.student_insurance'))
+    entitlement_rows = list_available_entitlements(
+        target_seat_id=context.seat_id,
+        class_id=context.class_id,
+        entitlement_item_id=entitlement_item_id,
+    )
+    active_entitlement = entitlement_rows[0] if entitlement_rows else None
+    if request.method == "POST":
+        if active_entitlement is None:
+            flash("You do not have an active insurance entitlement for this policy.", "error")
+            return redirect(url_for('student.student_insurance'))
+        transaction_id = request.form.get("transaction_id")
+        try:
+            transaction_id = int(transaction_id) if transaction_id not in (None, "") else None
+        except (TypeError, ValueError):
+            transaction_id = None
+        claimed_dates = None
+        incident_date = request.form.get("incident_date")
+        if incident_date:
+            claimed_dates = [incident_date]
+        result = execute_claim_submission(
+            entitlement_id=active_entitlement.entitlement_id,
+            target_seat_id=context.seat_id,
+            actor_seat_id=context.seat_id,
+            class_id=context.class_id,
+            transaction_id=transaction_id,
+            claimed_dates=claimed_dates,
+            policy_claim_type=payload.get("claim_type"),
+        )
+        flash(result.message, "success")
+        return redirect(url_for("student.student_insurance"))
+    placeholder_policy = SimpleNamespace(
+        id=policy_version.id,
+        title=payload.get("title") or f"Policy v{policy_version.version_number}",
+        description=payload.get("description", ""),
+        premium=Decimal(str(payload.get("premium", "0.00"))),
+        charge_frequency=payload.get("charge_frequency", "monthly"),
+        waiting_period_days=int(payload.get("waiting_period_days", 0) or 0),
+        max_claims_count=payload.get("max_claims_count"),
+        claim_type=payload.get("claim_type", "transaction_monetary"),
+        policy_version=policy_version,
+        payload=payload,
+    )
+    policy_claims = list_insurance_claims(
+        class_id=context.class_id,
+        target_seat_id=context.seat_id,
+        entitlement_id=getattr(active_entitlement, "entitlement_id", None),
+    )
+    enrollment = SimpleNamespace(
+        id=policy_id,
+        policy=placeholder_policy,
+        contract_title=placeholder_policy.title,
+        contract_description=placeholder_policy.description,
+        purchase_date=utc_now(),
+        coverage_start_date=None,
+        payment_current=True,
+        days_unpaid=0,
+        status="active",
+        next_payment_due=None,
+        contract_claim_time_limit_days=0,
+        contract_max_claim_amount=None,
+        contract_max_claims_count=None,
+        contract_max_claims_period="period",
+    )
+    class _DummyLabel:
+        def __init__(self, text: str):
+            self.text = text
+        def __call__(self, *args, **kwargs):
+            return self.text
+
+    class _DummyField:
+        def __init__(self, label: str, value=""):
+            self.label = _DummyLabel(label)
+            self.data = value
+        def __call__(self, *args, **kwargs):
+            return ""
+
+    form = SimpleNamespace(
+        hidden_tag=lambda: "",
+        transaction_id=_DummyField("Transaction"),
+        incident_date=_DummyField("Incident Date"),
+        description=_DummyField("Description"),
+        comments=_DummyField("Comments"),
+        claim_item=_DummyField("Claim Item"),
+        claim_amount=_DummyField("Claim Amount"),
+        submit=_DummyField("Submit"),
+    )
+    return render_template(
+        'student_file_claim.html',
+        student=student_name,
+        current_class_context=SimpleNamespace(
+            teacher_name="",
+            block_display=class_identifier,
+            class_timezone=getattr(context, "class_timezone", ""),
+            student_full_name=student_name,
+            join_code=class_identifier,
+            class_identifier=class_identifier,
+        ),
+        policy=placeholder_policy,
+        enrollment=enrollment,
+        form=form,
+        errors=[],
+        claim_type="transaction_monetary",
+        contract_title=placeholder_policy.title,
+        contract_description=placeholder_policy.description,
+        contract_claim_time_limit_days=0,
+        contract_max_claim_amount=None,
+        remaining_period_cap=None,
+        contract_max_claims_count=None,
+        contract_max_claims_period="period",
+        eligible_transactions=[],
+        claims_this_period=policy_claims,
+        now=utc_now(),
+    )
 
 
 @student_bp.route('/insurance/policy/<int:enrollment_id>')
 @login_required
 def view_policy(enrollment_id):
     """View policy details and claims history."""
-    abort(404)
+    context = resolve_canonical_context()
+    if not context:
+        flash("No class selected. Please select a class to continue.", "error")
+        return redirect(url_for('student.dashboard'))
 
-    return render_template('student_view_policy.html',
-                          student=student,
-                          enrollment=enrollment,
-                          policy=enrollment.policy,
-                          claims=claims,
-                          now=now_utc)
+    class_identifier = get_display_join_code(context.class_id) if context.class_id else ""
+    student_name = (
+        context.identity_profile.full_name
+        if getattr(context, "identity_profile", None) else ""
+    )
+    policy_version = db.session.get(PolicyVersion, enrollment_id)
+    if policy_version is None or policy_version.class_id != context.class_id or policy_version.domain != "insurance":
+        flash("That insurance policy is not available for this class.", "error")
+        return redirect(url_for('student.student_insurance'))
+    payload = json.loads(policy_version.policy_payload_json or "{}")
+    entitlement_item_id = get_insurance_entitlement_item_id(policy_version)
+    entitlement = None
+    if entitlement_item_id is not None:
+        active_entitlements = list_available_entitlements(
+            target_seat_id=context.seat_id,
+            class_id=context.class_id,
+            entitlement_item_id=entitlement_item_id,
+        )
+        entitlement = active_entitlements[0] if active_entitlements else None
+    if entitlement is None:
+        flash("You do not have an active insurance entitlement for this policy.", "warning")
+    def _claim_display_row(claim):
+        raw_incident = (claim.claimed_dates or [None])[0] if getattr(claim, "claimed_dates", None) else None
+        if isinstance(raw_incident, str):
+            try:
+                incident_dt = datetime.fromisoformat(raw_incident)
+            except ValueError:
+                incident_dt = claim.submitted_at
+        elif raw_incident is not None:
+            incident_dt = raw_incident
+        else:
+            incident_dt = claim.submitted_at
+        return SimpleNamespace(
+            id=claim.id,
+            claim_id=claim.claim_id,
+            policy=getattr(claim, "policy", SimpleNamespace(title="Insurance")),
+            status=getattr(claim.status, "value", claim.status),
+            approved_amount=getattr(claim, "approved_amount", None),
+            claim_amount=getattr(claim, "claim_amount", None),
+            rejection_reason=getattr(claim, "rejection_reason", None),
+            description=getattr(claim, "description", ""),
+            teacher_notes=getattr(claim, "teacher_notes", None),
+            incident_date=incident_dt,
+            filed_date=claim.submitted_at,
+        )
+    placeholder_policy = SimpleNamespace(
+        id=policy_version.id,
+        title=payload.get("title") or f"Policy v{policy_version.version_number}",
+        description=payload.get("description", ""),
+        premium=Decimal(str(payload.get("premium", "0.00"))),
+        charge_frequency=payload.get("charge_frequency", "monthly"),
+        waiting_period_days=int(payload.get("waiting_period_days", 0) or 0),
+        max_claims_count=payload.get("max_claims_count"),
+        claim_type=payload.get("claim_type", "transaction_monetary"),
+        autopay=bool(payload.get("autopay", False)),
+        auto_cancel_nonpay_days=int(payload.get("auto_cancel_nonpay_days", 0) or 0),
+        entitlement_item_id=entitlement_item_id,
+        payload=payload,
+    )
+    coverage_start_date = None
+    if entitlement is not None:
+        from app.models import ObligationAssessment
+        coverage_row = (
+            ObligationAssessment.query.filter_by(
+                class_id=context.class_id,
+                seat_id=context.seat_id,
+                policy_version_id=policy_version.id,
+            )
+            .order_by(ObligationAssessment.assessed_at.desc(), ObligationAssessment.id.desc())
+            .first()
+        )
+        coverage_start_date = getattr(coverage_row, "coverage_start_time", None)
+    enrollment = SimpleNamespace(
+        id=enrollment_id,
+        policy=placeholder_policy,
+        contract_title=placeholder_policy.title,
+        contract_description=placeholder_policy.description,
+        purchase_date=utc_now(),
+        coverage_start_date=coverage_start_date,
+        payment_current=entitlement is not None,
+        days_unpaid=0,
+        status="active" if entitlement is not None else "inactive",
+        next_payment_due=None,
+        contract_claim_time_limit_days=int(payload.get("claim_time_limit_days", 0) or 0),
+        contract_max_claim_amount=None,
+        contract_max_claims_count=None,
+        contract_max_claims_period="period",
+    )
+    return render_template(
+        'student_view_policy.html',
+        student=student_name,
+        current_class_context=SimpleNamespace(
+            teacher_name="",
+            block_display=class_identifier,
+            class_timezone=getattr(context, "class_timezone", ""),
+            student_full_name=student_name,
+            join_code=class_identifier,
+            class_identifier=class_identifier,
+        ),
+        enrollment=enrollment,
+        claims=[
+            _claim_display_row(claim)
+            for claim in list_insurance_claims(
+                class_id=context.class_id,
+                target_seat_id=context.seat_id,
+                entitlement_id=getattr(entitlement, "entitlement_id", None),
+            )
+        ],
+        now=utc_now(),
+    )
 
 
 # -------------------- SHOPPING --------------------
@@ -1549,16 +1968,23 @@ def shop():
         if store_service.is_item_visible_to_seat(item.id, seat.id)
     ]
 
-    student_items = (
-        StorePurchase.query
-        .filter(
-            StorePurchase.class_id == class_id,
-            StorePurchase.seat_id == seat.id,
-            StorePurchase.status.in_(['purchased', 'pending', 'processing', 'redeemed', 'completed', 'expired']),
-        )
-        .order_by(StorePurchase.purchased_at.desc())
-        .all()
-    )
+    entitlements = []
+    for entry in list_entitlement_history(target_seat_id=seat.id, class_id=class_id):
+        entitlement = entry["entitlement"]
+        terminal_event = entry["terminal_event"]
+        item = db.session.get(StoreItem, entitlement.entitlement_item_id)
+        if item is None:
+            continue
+        entitlements.append(SimpleNamespace(
+            id=entitlement.entitlement_id,
+            seat_id=entitlement.target_seat_id,
+            class_id=entitlement.class_id,
+            store_item=item,
+            status=derive_display_status(entitlement.entitlement_id),
+            purchase_date=entitlement.granted_at,
+            expiry_date=None,
+            is_from_bundle=False,
+        ))
 
     # Check if student has paid rent this month using canonical rent settings only.
     from app.models import RentSettings
@@ -1616,45 +2042,27 @@ def shop():
                     fp['store_item_id'] for fp in frozen_privileges if fp.get('store_item_id')
                 }
 
-    # Build free uses remaining map for rent-linked per-use items
-    rent_free_uses = {}  # {store_item_id: uses_remaining or -1 for unlimited}
+    # Build rent-perk availability map for rent-linked per-use items.
+    rent_free_entitlement_counts = {}  # {store_item_id: available_units or -1 for unlimited}
     if seat:
-        now_utc = utc_now()
-        rent_linked_items_query = StorePurchase.query.filter(
-            StorePurchase.seat_id == seat.id,
-            StorePurchase.uses_remaining != None,
-            db.or_(
-                StorePurchase.uses_remaining > 0,
-                StorePurchase.uses_remaining == -1
-            ),
-            db.or_(
-                StorePurchase.expiry_date.is_(None),
-                StorePurchase.expiry_date > now_utc
-            )
-        )
-        rent_linked_items = rent_linked_items_query.all()
-        for si in rent_linked_items:
-            if si.store_item_id:
-                rent_free_uses[si.store_item_id] = si.uses_remaining
+        active_entitlements = list_entitlements_for_seat(target_seat_id=seat.id, class_id=class_id)
+        for entitlement in active_entitlements:
+            if entitlement.entitlement_item_id:
+                rent_free_entitlement_counts[entitlement.entitlement_item_id] = -1
 
         # Backfill UI for paid-rent students who are entitled to per-use perks
         # but are missing grant rows (edge-state). Do not override items
         # that already have an explicit grant record (including exhausted = 0).
         if has_paid_rent and per_use_limit_by_store_id:
-            existing_per_use_rows = StorePurchase.query.filter(
-                StorePurchase.seat_id == seat.id,
-                StorePurchase.store_item_id.in_(list(per_use_limit_by_store_id.keys())),
-                StorePurchase.uses_remaining.isnot(None),
-                db.or_(
-                    StorePurchase.expiry_date.is_(None),
-                    StorePurchase.expiry_date > now_utc
-                )
-            ).all()
-            existing_per_use_ids = {row.store_item_id for row in existing_per_use_rows if row.store_item_id}
+            existing_per_use_ids = {
+                entitlement.entitlement_item_id
+                for entitlement in active_entitlements
+                if entitlement.entitlement_item_id in per_use_limit_by_store_id
+            }
 
             for store_item_id, granted_uses in per_use_limit_by_store_id.items():
-                if store_item_id not in existing_per_use_ids and store_item_id not in rent_free_uses:
-                    rent_free_uses[store_item_id] = granted_uses
+                if store_item_id not in existing_per_use_ids and store_item_id not in rent_free_entitlement_counts:
+                    rent_free_entitlement_counts[store_item_id] = granted_uses
 
     # Calculate class size for collective goals (count unique students in this class)
     from app.models import Seat
@@ -1676,22 +2084,17 @@ def shop():
     if collective_item_ids and class_id:
         progress_rows = (
             db.session.query(
-                StorePurchase.store_item_id,
-                db.func.count(db.distinct(StorePurchase.seat_id)).label('student_count'),
+                Entitlement.entitlement_item_id,
+                db.func.count(db.distinct(Entitlement.target_seat_id)).label('student_count'),
             )
-            .join(Seat, StorePurchase.seat_id == Seat.id)
-            .join(StoreItem, StorePurchase.store_item_id == StoreItem.id)
             .filter(
-                StorePurchase.store_item_id.in_(collective_item_ids),
-                StorePurchase.class_id == class_id,
-                StorePurchase.status.in_(['pending', 'processing', 'purchased', 'redeemed', 'completed']),
-                Seat.role == "student",  # Exclude teacher purchases from progress
-                StorePurchase.collective_goal_instance_code == StoreItem.collective_goal_instance_code,
+                Entitlement.entitlement_item_id.in_(collective_item_ids),
+                Entitlement.class_id == class_id,
             )
-            .group_by(StorePurchase.store_item_id)
+            .group_by(Entitlement.entitlement_item_id)
             .all()
         )
-        progress_counts = {row.store_item_id: int(row.student_count or 0) for row in progress_rows}
+        progress_counts = {row.entitlement_item_id: int(row.student_count or 0) for row in progress_rows}
 
         for item in collective_items:
             if item.collective_goal_type == 'whole_class':
@@ -1710,10 +2113,22 @@ def shop():
             }
 
     current_block = seat.class_economy.section.strip().upper() if seat and seat.class_economy and seat.class_economy.section else ""
-    return render_template('student_shop.html', student=seat, items=items, student_items=student_items,
+    student_display_name = (
+        seat.identity_profile.full_name
+        if seat and seat.identity_profile
+        else ""
+    )
+    current_class_context = SimpleNamespace(
+        student_full_name=student_display_name,
+        class_identifier=join_code or class_id,
+        join_code=join_code,
+        class_timezone=getattr(context, "class_timezone", ""),
+    )
+    student_display = SimpleNamespace(full_name=student_display_name)
+    return render_template('student_shop.html', student=student_display, current_class_context=current_class_context, items=items, entitlements=entitlements,
                          has_paid_rent=has_paid_rent, per_period_rent_item_ids=per_period_rent_item_ids,
                          rent_item_types_by_store_id=rent_item_types_by_store_id,
-                         rent_free_uses=rent_free_uses,
+                         rent_free_entitlement_counts=rent_free_entitlement_counts,
                          class_size=class_size, current_block=current_block,
                          collective_progress=collective_progress)
 
@@ -3320,10 +3735,10 @@ def report_transaction_issue(transaction_id):
                          show_recent_error_option=show_recent_error_option)
 
 
-@student_bp.route('/help-support/tap-event/<int:tap_event_id>/report', methods=['GET', 'POST'])
+@student_bp.route('/help-support/attendance-session/<int:attendance_session_id>/report', methods=['GET', 'POST'])
 @login_required
-def report_tap_event_issue(tap_event_id):
-    """Report an issue with a specific tap event (clock in/out record)."""
+def report_attendance_session_issue(attendance_session_id):
+    """Report an issue with a specific attendance session record."""
     from app.utils.issue_categories import get_active_categories
     from app.utils.issue_helpers import create_issue
     from app.forms import StudentIssueSubmissionForm
@@ -3335,10 +3750,9 @@ def report_tap_event_issue(tap_event_id):
         flash("Please select a class first.", "warning")
         return redirect(url_for('student.dashboard'))
 
-    # Get the tap event and verify it belongs to this student and class
-    tap_event = AttendanceSession.query.filter_by(
-        id=tap_event_id,
-        seat_id=student.id,
+    attendance_session = AttendanceSession.query.filter_by(
+        id=attendance_session_id,
+        target_seat_id=student.id,
         class_id=class_context.class_id,
     ).first_or_404()
 
@@ -3361,9 +3775,9 @@ def report_tap_event_issue(tap_event_id):
                 category_id=form.category_id.data,
                 explanation=form.explanation.data,
                 expected_outcome=form.expected_outcome.data,
-                related_transaction_id=None,  # No transaction for tap events
-                related_record_type='tap_event',
-                related_record_id=tap_event_id,
+                related_transaction_id=None,
+                related_record_type='attendance_session',
+                related_record_id=attendance_session_id,
                 include_recent_error=include_recent_error,
             )
 
@@ -3372,7 +3786,7 @@ def report_tap_event_issue(tap_event_id):
 
         except Exception as e:
             db.session.rollback()
-            current_app.logger.error(f"Error submitting tap event issue: {str(e)}")
+            current_app.logger.error(f"Error submitting attendance session issue: {str(e)}")
             flash("An error occurred while submitting your issue. Please try again.", "error")
 
     return render_template('student_submit_issue.html',
@@ -3380,7 +3794,7 @@ def report_tap_event_issue(tap_event_id):
                          page_title='Report Attendance Issue',
                          form=form,
                          issue_type='attendance',
-                         tap_event=tap_event,
+                         attendance_session=attendance_session,
                          show_recent_error_option=show_recent_error_option)
 
 

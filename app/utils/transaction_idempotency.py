@@ -39,7 +39,7 @@ def store_purchase_refund_key(purchase_id, reason):
     return build_transaction_idempotency_key("refund", "store-purchase", purchase_id, reason)
 
 
-def purchase_transaction_key(student_id, class_id, item_id, client_purchase_id):
+def purchase_transaction_key(student_id, class_id, item_id, client_idempotency_token):
     return build_transaction_idempotency_key(
         "purchase",
         "student",
@@ -48,7 +48,7 @@ def purchase_transaction_key(student_id, class_id, item_id, client_purchase_id):
         class_id,
         "item",
         item_id,
-        client_purchase_id,
+        client_idempotency_token,
     )
 
 

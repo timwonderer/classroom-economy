@@ -1,8 +1,10 @@
 # V2 Student Blocks Redesign Note
 
-**Status:** Draft design note  
+**Status:** Superseded design note
 **Purpose:** Record how `student_blocks` should be re-evaluated under the v2 identity,
 authority, and domain redesign
+
+**Superseded By:** `DOM-PROD-001`, `DOM-STORE-001`, and `DOM-IDEN-007`
 
 ## Why This Exists
 
@@ -64,23 +66,21 @@ Do not preserve `student_blocks` as a single target-state table.
 
 Instead, redistribute its fields by domain.
 
-### Attendance-Owned State
+### Superseded Attendance-State Recommendation
 
-Move these fields into an attendance-owned state model:
+This note previously recommended moving these fields into an attendance-owned state model:
 
 - `tap_enabled`
 - `done_for_day_date`
 
-Suggested target shape:
+That recommendation is no longer canonical.
 
-- table name: `seat_attendance_state`
-- primary reference: `seat_id`
+Current target-state direction:
 
-Why:
-
-- both fields are interpreted entirely by attendance/tap workflows
-- they are operational controls, not identity
-- they fit naturally with attendance authority
+- `tap_enabled` is not seat-level PROD truth.
+- current active/inactive state is derived from append-only `attendance_sessions`.
+- done-for-day is represented by an immutable `attendance_sessions` fact with `reason_code = done_for_day`.
+- no target-state `seat_attendance_state` table exists.
 
 ### Rent / Entitlement-Owned State
 
@@ -111,8 +111,8 @@ Those options would preserve the same ambiguity under different names.
 
 If a `student_blocks` field answers "who is this actor?", it belongs in identity.
 
-If it answers "what can this actor do right now in attendance?", it belongs in an
-attendance-owned state model.
+If it answers "what can this actor do right now in productivity?", derive it from
+`DOM-PROD-001` authoritative facts and class configuration.
 
 If it answers "what grant or operational benefit currently exists because of rent or
 hall-pass rules?", it belongs in a rent/entitlement-owned state model.
@@ -124,7 +124,7 @@ Current `student_blocks` fields fall into the second and third categories, not t
 Target-state direction:
 
 1. retire `student_blocks` as an identity-adjacent concept
-2. move attendance flags into seat-scoped attendance state
+2. do not create seat-scoped attendance state
 3. move rent hall-pass accounting into seat-scoped entitlement state
 4. keep `seats` focused on actor identity, not feature-owned mutable state
 

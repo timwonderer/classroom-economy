@@ -180,14 +180,6 @@
                 <span class="fw-medium">Manage Students</span>
             </a>
         </div>
-        <!-- Enforce Limits (Admin Only Action) -->
-        <div class="col-6 col-md-3">
-            <button id="enforceLimitsBtn"
-                class="btn btn-white w-100 p-3 h-100 shadow-sm border-0 d-flex flex-column align-items-center gap-2">
-                <span class="material-symbols-outlined fs-3 text-danger">timer_off</span>
-                <span class="fw-medium">Enforce Limits</span>
-            </button>
-        </div>
         <div class="col-6 col-md-3">
             <a href="{{ url_for('admin.insurance_management') }}"
                 class="btn btn-white w-100 p-3 h-100 shadow-sm border-0 d-flex flex-column align-items-center gap-2">
@@ -272,12 +264,12 @@
                             </div>
                             <div class="d-flex gap-2">
                                 <button class="btn btn-sm btn-outline-danger reject-redemption-btn"
-                                    data-student-item-id="{{ req.id }}" data-bs-toggle="tooltip"
+                                    data-entitlement-id="{{ req.id }}" data-bs-toggle="tooltip"
                                     title="Refund and remove" aria-label="Refund and remove">
                                     <span class="material-symbols-outlined">cancel</span>
                                 </button>
                                 <button class="btn btn-sm btn-success approve-redemption-btn"
-                                    data-student-item-id="{{ req.id }}">
+                                    data-entitlement-id="{{ req.id }}">
                                     <span class="material-symbols-outlined me-1">check_circle</span>Approve
                                 </button>
                             </div>
@@ -489,65 +481,6 @@
 <script>
     const tooltipTriggerList = document.querySelectorAll('[data-bs-toggle="tooltip"]')
     const tooltipList = [...tooltipTriggerList].map(tooltipTriggerEl => new bootstrap.Tooltip(tooltipTriggerEl))
-    document.getElementById('enforceLimitsBtn').addEventListener('click', async function () {
-        const btn = this;
-        const originalContent = btn.innerHTML;
-        btn.disabled = true;
-        btn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Checking...';
-
-        try {
-            const response = await fetch("{{ url_for('admin.enforce_daily_limits') }}", {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRFToken': "{{ csrf_token() }}"
-                }
-            });
-            const data = await response.json();
-
-            // Create toast container if not exists (layout should have it but just in case)
-            let toastContainer = document.getElementById('flashToastContainer');
-            if (!toastContainer) {
-                toastContainer = document.createElement('div');
-                toastContainer.id = 'flashToastContainer';
-                toastContainer.className = 'position-fixed bottom-0 end-0 p-3';
-                toastContainer.style.zIndex = '1050';
-                document.body.appendChild(toastContainer);
-            }
-
-            const toastEl = document.createElement('div');
-            toastEl.className = 'toast align-items-center text-bg-' + (data.status === 'success' ? 'success' : 'danger') + ' border-0 mb-2';
-            toastEl.setAttribute('role', 'alert');
-            toastEl.setAttribute('aria-live', 'assertive');
-            toastEl.setAttribute('aria-atomic', 'true');
-
-            const wrapper = document.createElement('div');
-            wrapper.className = 'd-flex';
-
-            const toastBody = document.createElement('div');
-            toastBody.className = 'toast-body';
-            toastBody.textContent = data.message;
-
-            const closeButton = document.createElement('button');
-            closeButton.type = 'button';
-            closeButton.className = 'btn-close btn-close-white me-2 m-auto';
-            closeButton.setAttribute('data-bs-dismiss', 'toast');
-            closeButton.setAttribute('aria-label', 'Close');
-
-            wrapper.appendChild(toastBody);
-            wrapper.appendChild(closeButton);
-            toastEl.appendChild(wrapper);
-            toastContainer.appendChild(toastEl);
-            new bootstrap.Toast(toastEl).show();
-
-        } catch (error) {
-            console.error('Error:', error);
-            alert('Failed to enforce limits.');
-        } finally {
-            btn.disabled = false;
-            btn.innerHTML = originalContent;
-        }
-    });
 
     // Helper to get or create toast container
     function getOrCreateToastContainer() {
@@ -630,11 +563,11 @@
     // Handle redemption rejection
     document.querySelectorAll(".reject-redemption-btn").forEach(button => {
         button.addEventListener("click", () => {
-            if (!confirm("Are you sure you want to reject this redemption? The item will be removed and the student will be refunded.")) {
+            if (!confirm("Are you sure you want to reject this redemption? The request will be removed and the student will keep the entitlement.")) {
                 return;
             }
 
-            const studentItemId = button.dataset.studentItemId;
+            const studentItemId = button.dataset.entitlementId;
             const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
             const icon = button.innerHTML;
 
@@ -648,7 +581,7 @@
                     'Content-Type': 'application/json',
                     'X-CSRFToken': csrfToken
                 },
-                body: JSON.stringify({ student_item_id: studentItemId })
+                body: JSON.stringify({ entitlement_id: studentItemId })
             })
                 .then(response => response.json())
                 .then(data => {
@@ -660,7 +593,7 @@
                         setTimeout(() => {
                             listItem.remove();
                             updatePendingCounters('redemptions');
-                            showToast('Redemption rejected and refunded.', 'success');
+                            showToast('Redemption rejected.', 'success');
 
                         }, 300);
                     } else {
@@ -681,7 +614,7 @@
     // Handle redemption approval
     document.querySelectorAll(".approve-redemption-btn").forEach(button => {
         button.addEventListener("click", () => {
-            const studentItemId = button.dataset.studentItemId;
+            const studentItemId = button.dataset.entitlementId;
             const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
 
             // Disable button and show loading state
@@ -694,7 +627,7 @@
                     'Content-Type': 'application/json',
                     'X-CSRFToken': csrfToken
                 },
-                body: JSON.stringify({ student_item_id: studentItemId })
+                body: JSON.stringify({ entitlement_id: studentItemId })
             })
                 .then(response => response.json())
                 .then(data => {

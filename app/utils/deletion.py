@@ -8,6 +8,8 @@ from app.extensions import db
 from app.models import (
     ClassEconomy, Seat, Transaction,
     AttendanceSession, HallPassLog, StorePurchase, RedemptionEvent,
+    Entitlement, EntitlementConsumption,
+    PayrollEvent,
     Issue, IssueResolutionAction, Announcement, StoreItem, StoreItemVisibility,
     # RedemptionAuditLog removed — redemption_audit_logs unauthorized; use redemption_events (DOM-STORE-001)
     # StoreItemBlock removed — store_item_blocks unauthorized; use store_item_visibility (DOM-STORE-001)
@@ -25,7 +27,9 @@ def _raise_invariant_violation(message: str) -> None:
 def _assert_class_scope_integrity(class_id: str) -> None:
     scoped_models = (
         ("ledger_transaction", Transaction),
+        ("attendance_sessions", AttendanceSession),
         ("hall_pass_logs", HallPassLog),
+        ("payroll_event", PayrollEvent),
         ("store_purchases", StorePurchase),
         ("redemption_events", RedemptionEvent),
         ("issues", Issue),
@@ -97,7 +101,9 @@ def collapse_universe(class_id: str, reason: str, actor_membership_id: Optional[
         # We explicitly delete the others or things that require manual cleanup first.
 
         # 2. Activity / State Logs & Records (Not all have ON DELETE CASCADE yet)
+        AttendanceSession.query.filter_by(class_id=class_id).delete(synchronize_session=False)
         HallPassLog.query.filter_by(class_id=class_id).delete(synchronize_session=False)
+        PayrollEvent.query.filter_by(class_id=class_id).delete(synchronize_session=False)
         Announcement.query.filter_by(class_id=class_id).delete(synchronize_session=False)
 
         # 3. Issue Data
@@ -109,9 +115,12 @@ def collapse_universe(class_id: str, reason: str, actor_membership_id: Optional[
 
         # 4. Inventory / Store Data
         store_purchase_ids_subq = select(StorePurchase.id).filter_by(class_id=class_id).subquery()
-        RedemptionEvent.query.filter(
-            RedemptionEvent.purchase_id.in_(select(store_purchase_ids_subq))
+        entitlement_ids_subq = select(Entitlement.entitlement_id).filter_by(class_id=class_id).subquery()
+        EntitlementConsumption.query.filter(
+            EntitlementConsumption.entitlement_id.in_(select(entitlement_ids_subq))
         ).delete(synchronize_session=False)
+        Entitlement.query.filter_by(class_id=class_id).delete(synchronize_session=False)
+        RedemptionEvent.query.filter_by(class_id=class_id).delete(synchronize_session=False)
         StorePurchase.query.filter_by(class_id=class_id).delete(synchronize_session=False)
 
         # 4b. Seat-level store visibility rows for this class
@@ -129,6 +138,15 @@ def collapse_universe(class_id: str, reason: str, actor_membership_id: Optional[
             )
             .subquery()
         )
+        class_item_entitlement_ids = select(Entitlement.entitlement_id).filter(
+            Entitlement.entitlement_item_id.in_(select(deletable_store_items))
+        ).subquery()
+        EntitlementConsumption.query.filter(
+            EntitlementConsumption.entitlement_id.in_(select(class_item_entitlement_ids))
+        ).delete(synchronize_session=False)
+        Entitlement.query.filter(
+            Entitlement.entitlement_item_id.in_(select(deletable_store_items))
+        ).delete(synchronize_session=False)
         StoreItem.query.filter(StoreItem.id.in_(select(deletable_store_items))).delete(synchronize_session=False)
 
         # 5. Delete Seats for this class (also handled by FK cascade on ClassEconomy deletion)

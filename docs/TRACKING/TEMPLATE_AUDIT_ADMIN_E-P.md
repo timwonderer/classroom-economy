@@ -229,13 +229,14 @@ admin_edit_insurance_policy.html
 ### admin_hall_pass.html
 **Extends:** `layout_admin.html`  
 **Route(s):** `admin.hall_pass` — GET `/admin/hall-pass` — [app/routes/admin.py:6896](app/routes/admin.py#L6896)
+**PROD status:** REWIRED — Resolved 2026-07-21. Issued-pass and out-of-class read models are derived from canonical `hall_pass_logs` plus `attendance_sessions`. Pending hall-pass requests are operational, process-local workflow state; reject/cancel discards the request without a PROD write, while approve commits by calling `FEAT-PROD-002`, writing `hall_pass_logs`, and consuming entitlement.
 
 **Variables from route:**
 
 | Variable | Type | Purpose |
 |----------|------|---------|
-| pending_requests | list[HallPassLog] | Pending hall pass requests |
-| approved_queue | list[HallPassLog] | Approved passes waiting |
+| pending_requests | list | Ephemeral pending hall-pass requests from operational queue |
+| issued_passes | list[HallPassLog] | Issued passes waiting for leave |
 | out_of_class | list[HallPassLog] | Students currently out |
 | current_page | str | Nav highlight ("hall_pass") |
 | verify_url | str / None | Hall pass verification URL |
@@ -245,8 +246,9 @@ admin_edit_insurance_policy.html
 | Line | Expression | Expects | Supplied By |
 |------|-----------|---------|-------------|
 | 108-111 | `{% if verify_url %}, {{ verify_url }}` | str or None | Route var |
-| 166-167 | `{{ pending_requests\|length }}` | int | Route var |
-| 203-207 | Loop: `{{ req.student.full_name }}, {{ req.reason }}` | HallPassLog attrs | Loop var |
+| 166-207 | `pending_requests` tab and rows | pending request rows | REWIRED — route reads process-local operational pending queue; Approve calls `/api/hall-pass/request/<request_id>/approve` and commits through `FEAT-PROD-002`; Reject calls `/api/hall-pass/request/<request_id>/reject` and performs no PROD write |
+| 166-176 | `{{ issued_passes\|length }}`, `{{ out_of_class\|length }}` | int | Route vars |
+| 203-262 | Loop: `{{ req.student_name }}, {{ req.reason }}` | route display row attrs | Resolved 2026-07-21: GET route builds display rows from `HallPassLog` + `IdentityProfile`; reachable leave/return buttons call `FEAT-PROD-001` attendance writes |
 
 ---
 
@@ -348,11 +350,11 @@ admin_edit_insurance_policy.html
 | Variable | Type | Purpose |
 |----------|------|---------|
 | recent_payrolls | list[dict] | Recent payroll transactions |
-| next_payroll_by_block | list[dict] | Per-block next payroll info |
+| next_payroll_by_block | list[dict] | Per-class next payroll info |
 | total_payroll_estimate | float | Total estimated payout |
 | all_students | list | All students |
 | payroll_history | list[dict] | Historical payroll entries |
-| blocks | list | All available blocks |
+| payroll_class_options | list[dict] | Canonical class filter/options for this page |
 | current_page | str | Nav highlight ("payroll") |
 
 **Jinja expressions (representative, complex template):**
@@ -361,14 +363,18 @@ admin_edit_insurance_policy.html
 |------|-----------|---------|-------------|
 | 14 | `{{ static_url('js/economy-balance.js') }}` | str | [CTX:static_url] |
 | 246-257 | Loop: `{{ block_info.class_label }}, {{ block_info.estimate }}` | dict attrs | Loop var |
-| 975-1003 | Loop: `{{ student.full_name }}, {{ student.public_id }}` | model attrs | Loop var |
+| 367-399, 913-948 | Class filters and student rows | `payroll_class_options`, `entry.class_id`, `student.class_id`, `student.class_label` | REWIRED_READ from canonical `class_id` page view rows; removed `blocks`, `student.block`, `data-block`, and `data-blocks` template contract |
+| 975-1003 | Loop: `{{ student.full_name }}, {{ student.public_id }}` | view-row attrs | Route-provided student stat rows |
 | 1667 | `{{ url_for("admin.run_payroll") }}` | URL | [FLASK] |
+
+**PROD disposition:** REWIRED_READ/WRITE — Resolved 2026-07-22. The payroll page no longer exposes block-shaped template filters or reads `Seat.block`; history and manual-credit student selection filter by canonical `class_id`. Run Payroll remains `FEAT-PROD-003`; manual teacher-to-student money send remains `manual_credit`. Payroll settings persistence still carries a legacy `PayrollSettings.block` implementation detail and should be collapsed in the class-configuration/settings pass, but `admin_payroll.html` no longer uses block as a template scope contract.
 
 ---
 
 ### admin_payroll_history.html
 **Extends:** `layout_admin.html`  
 **Route(s):** `admin.payroll_history` — GET `/admin/payroll-history` — [app/routes/admin.py:7293](app/routes/admin.py#L7293)
+**PROD disposition:** REWIRED_READ — Resolved 2026-07-22. The route reads canonical `payroll_event` rows scoped by active `ctx.class_id`, uses `canonical_temporal_resolver` for class-local date filters, and builds template rows through `_build_payroll_event_display_rows`, which joins Ledger amounts by `correlation_id + target_seat_id`. The template no longer depends on legacy transaction type filters for payroll history.
 
 **Variables from route:**
 
@@ -385,6 +391,7 @@ admin_edit_insurance_policy.html
 | 12 | `{{ selected_class_id }}` | str | Route var |
 | 40 | `{% for entry in payroll_history %}` | list[dict] | Route var |
 | 44 | `{{ format_utc_iso(entry.timestamp) }}` | str | [GLOBAL] + loop var |
+| 50 | `{{ student_detail_url(entry.actor_public_id) }}` | str | guarded by `entry.actor_public_id`; missing historical seat references render as plain text |
 
 ---
 
