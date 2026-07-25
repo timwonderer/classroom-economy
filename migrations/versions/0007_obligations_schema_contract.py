@@ -162,8 +162,13 @@ def upgrade():
         ("ix_assessment_events_cycle_idempotency_key", ["cycle_idempotency_key"]),
         ("ix_assessment_events_seat_class", ["seat_id", "class_id"]),
     ]:
+        # Only create index if all columns exist and index doesn't already exist
         if not index_exists("assessment_events", index_name):
-            op.create_index(index_name, "assessment_events", columns)
+            all_columns_exist = all(
+                column_exists("assessment_events", col) for col in columns
+            )
+            if all_columns_exist:
+                op.create_index(index_name, "assessment_events", columns)
 
     if table_exists("obligation_assessment"):
         _copy_missing_assessments("obligation_assessment", "assessment_events")
