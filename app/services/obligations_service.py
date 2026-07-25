@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from decimal import Decimal
 
 from app.extensions import db
@@ -78,14 +79,8 @@ def record_rent_payment(
     class_id: str,
     period: str,
     amount_paid,
-    period_month: int,
-    period_year: int,
-    coverage_month: int,
-    coverage_year: int,
     was_late: bool,
     late_fee_charged,
-    coverage_start_time=None,
-    coverage_end_time=None,
     cycle_idempotency_key: str | None = None,
     transaction_id: int | None = None,
 ) -> ObligationAssessment:
@@ -94,7 +89,6 @@ def record_rent_payment(
     Creates a PAYMENT event linked to the assessment correlation, with Ledger transaction reference.
     """
     now = utc_now()
-    period_key = f"{coverage_year}-{coverage_month:02d}" if coverage_year is not None and coverage_month is not None else None
     rent_settings = RentSettings.query.filter_by(class_id=class_id).first()
     if rent_settings is None:
         raise ValueError(f"RentSettings for class {class_id} not found")
@@ -103,20 +97,12 @@ def record_rent_payment(
     payment_event = ObligationAssessment(
         seat_id=seat_id,
         class_id=class_id,
-        period=period,
         event_type='PAYMENT',
         obligation_type="RENT",
         assessed_at=now,
         ledger_transaction_id=transaction_id,
-        period_key=period_key,
-        coverage_start_time=coverage_start_time,
-        coverage_end_time=coverage_end_time,
         cycle_idempotency_key=cycle_idempotency_key,
-        period_month=period_month,
-        period_year=period_year,
-        coverage_month=coverage_month,
-        coverage_year=coverage_year,
-        internal_ref=f"rent:{class_id}:{period_key}" if period_key else f"rent:{class_id}",
+        internal_ref=f"rent:{class_id}:{period}" if period else f"rent:{class_id}",
         correlation_id=generate_correlation_id(),
     )
     db.session.add(payment_event)
@@ -302,15 +288,22 @@ def get_rent_assessments_for_cycle(
 ) -> list[ObligationAssessment]:
     """Get all ASSESSMENT events for a rent cycle (month/year).
 
-    Returns only ASSESSMENT events (event_type='ASSESSMENT') for the given month/year.
+    Returns only ASSESSMENT events (event_type='ASSESSMENT') for the given month/year,
+    resolved from due_at as the canonical obligation boundary.
     Optionally filter by seat_ids.
     """
+    start = datetime(year, month, 1, tzinfo=timezone.utc)
+    if month == 12:
+        end = datetime(year + 1, 1, 1, tzinfo=timezone.utc)
+    else:
+        end = datetime(year, month + 1, 1, tzinfo=timezone.utc)
     query = ObligationAssessment.query.filter_by(
         class_id=class_id,
         obligation_type='RENT',
         event_type='ASSESSMENT',
-        period_month=month,
-        period_year=year,
+    ).filter(
+        ObligationAssessment.due_at >= start,
+        ObligationAssessment.due_at < end,
     )
 
     if seat_ids:
