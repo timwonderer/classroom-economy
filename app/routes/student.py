@@ -2537,9 +2537,9 @@ def _build_rent_coverage_context(
     Callers can pass this to _is_student_coverage_period_paid(...) to avoid
     repeating equivalent queries for every student in the same request.
 
-    Returns canonical ``ObligationAssessment`` rows grouped by seat.  Each
-    assessment's ``.satisfaction`` holds the payment details (amount_paid,
-    satisfied_at, was_late, late_fee_charged, transaction_id).
+    Returns canonical ``ObligationAssessment`` rows (ASSESSMENT events) grouped by seat.
+    Payment amounts are derived from PAYMENT events via the Ledger domain (per DOM-OBL-001).
+    Use get_total_paid_for_assessment() to calculate paid amounts for each assessment.
     """
     from app.services.obligations_service import (
         get_paid_rent_assessments_for_cycle,
