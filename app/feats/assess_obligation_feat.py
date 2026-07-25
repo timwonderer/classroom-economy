@@ -1,8 +1,8 @@
 """
-FEAT-OBLI-001: Assess Obligation
+FEAT-OBL-001: Assess Obligation
 
 Creates immutable ASSESSMENT event for lawful obligation.
-Per DOM-OBL-001 §IX.1 and FEAT-OBLI-001 orchestration.
+Per DOM-OBL-001 §IX.1 and FEAT-OBL-001 orchestration.
 """
 
 from __future__ import annotations
@@ -18,7 +18,7 @@ from app.feats.base import feat_shell, FEATContext
 
 @dataclass
 class AssessmentRequest:
-    """Input contract for obligation assessment (FEAT-OBLI-001 §II)."""
+    """Input contract for obligation assessment (FEAT-OBL-001 §II)."""
     seat_id: int
     class_id: str
     internal_ref: str  # Stable lineage key for continuing relationship
@@ -62,7 +62,7 @@ def assess_obligation(
     # and pass both. Obligations domain only validates within assessment_events/bill_cycles
     # tables per DOM-OBL-001 §VI. Cross-domain Seat validation belongs to caller.
 
-    # Required input validation: per FEAT-OBLI-001 §IV
+    # Required input validation: per FEAT-OBL-001 §IV
     if not request.seat_id or not request.class_id:
         raise ValueError("seat_id and class_id are required")
     if not request.internal_ref or not request.correlation_id:
@@ -72,12 +72,12 @@ def assess_obligation(
     if not request.due_at:
         raise ValueError("due_at is required")
 
-    # Idempotency: per FEAT-OBLI-001 §V, check for replay safety
+    # Idempotency: per FEAT-OBL-001 §V, check for replay safety
     if obligations_service.check_idempotency_assessment(
         request.internal_ref,
         request.correlation_id,
     ):
-        # Already exists; this is safe replay per FEAT-OBLI-001
+        # Already exists; this is safe replay per FEAT-OBL-001
         existing = obligations_service.get_assessment_for_correlation(request.correlation_id)
         return existing
 
@@ -101,13 +101,13 @@ def assess_obligation(
     db.session.flush()  # Get the ID before commit
 
     # Phase 3: Audit trace
-    # Per FEAT-OBLI-001 §V, emit ACT-OBLI-001 via DOM-OPS
+    # Per FEAT-OBL-001 §V, emit ACT-OBLI-001 via DOM-OPS
     # (OPS audit integration deferred to next phase)
 
     return assessment
 
 
-@feat_shell("FEAT-OBLI-001")
+@feat_shell("FEAT-OBL-001")
 def execute_assess_obligation(
     seat_id: int,
     class_id: str,
@@ -141,4 +141,4 @@ def execute_assess_obligation(
         source_version_ref=source_version_ref,
         policy_version_id=policy_version_id,
     )
-    return assess_obligation(request, context=FEATContext("FEAT-OBLI-001"))
+    return assess_obligation(request, context=FEATContext("FEAT-OBL-001"))

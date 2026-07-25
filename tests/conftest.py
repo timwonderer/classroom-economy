@@ -4,6 +4,7 @@ import re
 import statistics
 import subprocess
 import sys
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from dotenv import dotenv_values, load_dotenv
@@ -669,5 +670,48 @@ def classroom_with_students():
         with FEATContext("FEAT-IDEN-001", idempotency_key=f"classroom_with_students:{n}"):
             ctx = ClassroomContextFactory(db, **kwargs).with_students(n).build()
         return ctx
+
+    return _factory
+
+
+@pytest.fixture
+def create_class_scope():
+    """Create a canonical class scope with User, Seat, ClassEconomy, IdentityProfile.
+
+    Returns a factory function that creates a class and automatically a student seat.
+    Returns a dict with 'seat_id', 'class_id', 'class_row', 'student' keys.
+
+    Usage:
+        def test_something(create_class_scope):
+            context = create_class_scope()
+            seat_id = context['seat_id']
+            class_id = context['class_id']
+    """
+    from tests.helpers.class_scope import create_class_scope as _create_class_scope, make_student_identity
+    from tests.helpers.v2_fixtures import seed_canonical_admin
+
+    def _factory(**kwargs):
+        # If no teacher_user provided, create one automatically
+        if 'teacher_user' not in kwargs:
+            teacher_seed = seed_canonical_admin("auto_teacher_" + str(uuid.uuid4().hex[:8]))
+            kwargs['teacher_user'] = teacher_seed.user
+
+        # Create the class
+        class_row = _create_class_scope(**kwargs)
+
+        # Create a student in that class (returns Seat object)
+        student_seat = make_student_identity(
+            class_id=class_row.class_id,
+            first_name="Test",
+            last_name="Student",
+        )
+
+        # Return a dict with both seat_id and class_id for convenience
+        return {
+            'seat_id': student_seat.id,
+            'class_id': class_row.class_id,
+            'class_row': class_row,
+            'student_seat': student_seat,
+        }
 
     return _factory
