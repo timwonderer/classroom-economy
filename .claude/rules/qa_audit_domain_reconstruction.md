@@ -442,7 +442,6 @@ pytest tests/test_obligation_view_models.py -v
 - [ ] No dangling references to deleted code — *code quality, CLAUDE.md rule 1*
 
 **GUIDANCE:**
-- [ ] ~200+ lines of legacy code deleted
 - [ ] No unused imports
 - [ ] No orphaned functions
 - [ ] Code compiles without warnings
