@@ -6182,15 +6182,12 @@ def rent_settings():
     if settings:
         now_utc = utc_now()
         from app.routes.student import (
-            _build_rent_coverage_context,
             _calculate_rent_coverage_due_date,
             _calculate_rent_deadlines,
             _calculate_upcoming_rent_due_date,
-            _get_rent_period_delta,
-            _is_student_coverage_period_paid,
         )
 
-        # Current selected-class period card data
+        # Current selected-class period card data (for settings summary display)
         selected_coverage_due = _calculate_rent_coverage_due_date(settings, now_utc)
         selected_due_date, _ = _calculate_rent_deadlines(settings, now_utc)
         selected_next_due = _calculate_upcoming_rent_due_date(settings, selected_due_date, selected_coverage_due)
@@ -6198,18 +6195,10 @@ def rent_settings():
             current_period_start = selected_coverage_due + timedelta(days=1)
             current_period_end = selected_next_due
             next_due_date = selected_next_due
-    current_coverage_due_date = None
-    upcoming_coverage_due_date = None
-    if settings:
-        now_for_waiver = utc_now()
-        from app.routes.student import (
-            _calculate_rent_coverage_due_date as _crd,
-            _calculate_upcoming_rent_due_date as _curd,
-            _calculate_rent_deadlines as _crdeadlines,
-        )
-        current_coverage_due_date = _crd(settings, now_for_waiver)
-        _cur_due, _ = _crdeadlines(settings, now_for_waiver)
-        upcoming_coverage_due_date = _curd(settings, _cur_due, current_coverage_due_date)
+
+        # Coverage dates for waiver form state
+        current_coverage_due_date = selected_coverage_due
+        upcoming_coverage_due_date = selected_next_due
 
     # Determine period label based on frequency type
     period_label = "Month"  # Default
