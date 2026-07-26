@@ -142,8 +142,9 @@ class TestAdvanceBillCycle:
             cycle_boundary_at = now_utc + timedelta(days=30)
             next_assessment_at = now_utc + timedelta(days=60)
 
-            # Create bill cycle (identity-blind temporal reminder)
+            # Create bill cycle (identity-blind temporal reminder, class-scoped per INV-CORE-000)
             cycle = execute_advance_bill_cycle(
+                class_id=classroom.class_id,
                 internal_ref="rent:cycle:2026-08",
                 cycle_number=1,
                 cycle_boundary_at=cycle_boundary_at,
@@ -175,6 +176,7 @@ class TestAdvanceBillCycle:
 
             # First call
             cycle1 = execute_advance_bill_cycle(
+                class_id=classroom.class_id,
                 internal_ref="rent:cycle:2026-08",
                 cycle_number=1,
                 cycle_boundary_at=cycle_boundary_at,
@@ -186,6 +188,7 @@ class TestAdvanceBillCycle:
 
             # Replay with same parameters
             cycle2 = execute_advance_bill_cycle(
+                class_id=classroom.class_id,
                 internal_ref="rent:cycle:2026-08",
                 cycle_number=1,
                 cycle_boundary_at=cycle_boundary_at,

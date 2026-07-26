@@ -19,6 +19,7 @@ from app.feats.base import feat_shell, FEATContext
 @dataclass
 class AdvanceBillCycleRequest:
     """Input contract for bill cycle advancement (FEAT-OBL-002 §III)."""
+    class_id: str  # Multi-tenancy scope (required per INV-CORE-000)
     internal_ref: str  # Stable reference for continuing relationship
     cycle_number: int  # Next cycle number to create
     cycle_boundary_at: datetime  # When this cycle ends
@@ -78,6 +79,7 @@ def advance_bill_cycle(
     # Phase 2: Mutation (atomic transaction)
 
     bill_cycle = BillCycle(
+        class_id=request.class_id,
         internal_ref=request.internal_ref,
         cycle_number=request.cycle_number,
         source_version_id=request.source_version_id,
@@ -98,6 +100,7 @@ def advance_bill_cycle(
 
 @feat_shell("FEAT-OBL-002")
 def execute_advance_bill_cycle(
+    class_id: str,
     internal_ref: str,
     cycle_number: int,
     cycle_boundary_at: datetime,
@@ -114,6 +117,7 @@ def execute_advance_bill_cycle(
     Returns the successor BillCycle row.
     """
     request = AdvanceBillCycleRequest(
+        class_id=class_id,
         internal_ref=internal_ref,
         cycle_number=cycle_number,
         cycle_boundary_at=cycle_boundary_at,

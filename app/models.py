@@ -1161,11 +1161,13 @@ class BillCycle(db.Model):
     """Identity-blind recurring reminder state for obligation sources — DOM-OBL-001 Section VII.3.
 
     Records the next temporal reminder for a continuing internal reference.
-    Does not encode business meaning, amount, seat, class, product, or renewal legality.
+    Does not encode business meaning, amount, seat, or product; identity-blind except for multi-tenancy scoping.
+    Per INV-CORE-000, includes class_id for multi-tenancy enforcement at schema level.
     """
     __tablename__ = 'bill_cycles'
 
     id = db.Column(db.Integer, primary_key=True)
+    class_id = db.Column(db.String(36), db.ForeignKey('classes.class_id', ondelete='CASCADE'), nullable=False, index=True)
     internal_ref = db.Column(db.String(200), nullable=False)  # Stable lineage key
     cycle_number = db.Column(db.Integer, nullable=False)
     source_version_id = db.Column(db.String(200), nullable=True)  # Lawful version snapshot reference
