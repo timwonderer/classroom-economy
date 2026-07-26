@@ -6435,7 +6435,7 @@ def rent_settings():
 
     return render_template('admin_rent_settings.html',
                           settings=settings,
-                          total_students=total_students,
+                          obligation_summary=obligation_summary,
                           active_waivers=active_waivers,
                           all_students=all_students,
                           payroll_warning=payroll_warning,
@@ -6447,14 +6447,9 @@ def rent_settings():
                           rent_items=rent_items,
                           rent_active_for_period=rent_active_for_period,
                           period_label=period_label,
-                          rent_status_counts=rent_status_counts,
-                          rent_status_total=rent_status_total,
-                          payment_log=payment_log,
-                          unpaid_rent_log=unpaid_rent_log,
                           current_period_start=current_period_start,
                           current_period_end=current_period_end,
                           next_due_date=next_due_date,
-                          student_past_due_json=student_past_due_json,
                           current_coverage_due_date=current_coverage_due_date,
                           upcoming_coverage_due_date=upcoming_coverage_due_date,
                           selected_feature_scope=selected_scope)
