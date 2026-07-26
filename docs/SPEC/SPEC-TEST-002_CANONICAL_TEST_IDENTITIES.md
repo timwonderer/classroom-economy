@@ -1,8 +1,8 @@
-# TEST-IDEN-001: Canonical Test Identities
+# SPEC-TEST-002: Canonical Test Identities
 
 | Reference Number | Version | Effective Date | Supersedes | Authority Level |
 |------------------|---------|----------------|------------|-----------------|
-| TEST-IDEN-001    | 2.0     | 2026-07-17     | 1.0        | Constitutional  |
+| SPEC-TEST-002    | 2.0     | 2026-07-17     | 1.0        | Constitutional  |
 
 ---
 
