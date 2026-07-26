@@ -2,7 +2,7 @@
 
 | Reference Number | Version | Effective Date | Supersedes | Authority Level |
 |------------------|---------|----------------|------------|-----------------|
-| DOM-OBL-001 | 2.5 | 2026-07-24 | 2.4 | Constitutional |
+| DOM-OBL-001 | 2.6 | 2026-07-25 | 2.5 | Constitutional |
 
 ---
 
@@ -314,7 +314,185 @@ Rules:
 
 ---
 
-## X. Operational Rules
+## X. Canonical View Models (Read Projections)
+
+Obligations exposes two canonical immutable view models for page rendering. These are not persistence entities; they are derived projections built from the immutable facts in `assessment_events`, `bill_cycles`, and Ledger.
+
+### A. `StudentObligationView`
+
+**Purpose:** Answer "What does this student owe right now, how much have they satisfied, when do they move to next cycle?"
+
+**Construction:** `build_student_obligation_view(seat_id, class_id, obligation_type)` → `StudentObligationView | None`
+
+**Fields:**
+- `obligation_type` - The obligation category (RENT, INSURANCE_PREMIUM, FINE, FEE, etc.)
+- `seat_id` - The seat being viewed
+- `class_id` - The class context (multi-tenancy scoping)
+- `current_period` - Dict with:
+  - `amount_due` - Assessed amount for this cycle
+  - `amount_paid` - Amount satisfied by PAYMENT events
+  - `balance` - Remaining outstanding (can be negative for overpayment)
+  - `is_paid` - Whether `amount_paid >= amount_due`
+  - `is_waived` - Whether a WAIVED event exists
+  - `days_until_due` - Days from now until due date
+  - `days_overdue` - Days past due date (negative if not yet due)
+- `prior_obligations` - List of prior-cycle obligation dicts (similar structure)
+- `payment_history` - List of PAYMENT events with timestamps and amounts
+- `totals` - Dict with aggregate statistics (`total_assessed`, `total_paid`, `total_outstanding`)
+- `settings` - Configuration metadata (grace period, frequency, etc. from upstream sources)
+
+**Properties:**
+- Frozen (immutable, hashable)
+- Fully scoped by `class_id` (multi-tenancy safe)
+- Returns `None` if no assessments exist for seat/class/obligation_type
+
+**Contract:** Routes receive this from the read service, templates consume it directly without further derivation.
+
+### B. `ClassObligationSummary`
+
+**Purpose:** Answer "Which students are current, which are outstanding, which are past-due?"
+
+**Construction:** `build_class_obligation_summary(class_id, obligation_type)` → `ClassObligationSummary`
+
+**Fields:**
+- `class_id` - The class context
+- `obligation_type` - The obligation category
+- `summary_date` - When the projection was computed
+- `status_breakdown` - Dict with counts:
+  - `up_to_date` - Students with no past-due assessments
+  - `outstanding` - Students with current-cycle unpaid but not yet due
+  - `past_due_grace` - Students in grace period (days_overdue > 0 and < grace_days)
+  - `past_due_overdue` - Students past grace period (days_overdue >= grace_days)
+- `student_rows` - List of per-student dicts with:
+  - `seat_id`, `student_name`, `status` (one of the four above)
+  - `due_date`, `amount_due`, `amount_paid`, `balance`, `days_overdue`
+  - `is_waived` - Whether any assessment is waived
+
+**Properties:**
+- Frozen (immutable, hashable)
+- Multi-tenancy scoped (only one class's students)
+- Always returns a valid structure; empty for classes with no seats or assessments
+
+**Contract:** Routes pass this directly to templates; templates loop over `student_rows` to render rosters or use `status_breakdown` to render summaries.
+
+### C. Read Service Primitives
+
+Implementations must call these immutable read functions, never write directly from routes:
+
+- `get_assessment_events_for_seat_class(seat_id, class_id, obligation_type=None)` - Returns all ASSESSMENT events for the seat
+- `get_satisfaction_events(seat_id, correlation_id)` - Returns PAYMENT/WAIVED events for one obligation
+- `get_bill_cycles_for_reference(internal_ref)` - Returns recurring cycle reminders
+- All queries scoped by `class_id`, never by `teacher_id` alone
+
+### D. View Model Construction Requirements
+
+Every domain that follows the view model pattern must:
+
+1. **Define immutable dataclasses** - Use `@dataclass(frozen=True)` to prevent accidental mutations
+2. **Generic over obligation_type (or domain concept)** - Not rent-specific, not insurance-specific
+3. **Scope by class_id** - All queries filtered by class_id during construction
+4. **Hide persistence shape** - Templates see dicts with display-friendly keys, never SQLAlchemy objects
+5. **Derive all status** - Do not store boolean flags like `is_past_due`; derive them at read time
+6. **Build immutably** - Constructor functions are pure; they read state and build an immutable result object
+
+---
+
+## XI. Canonical Persistence
+
+### 1. `assessment_events`
+
+Records the historical fact of obligation events.
+
+Key fields:
+
+- `id`
+- `timestamp` - time when the row is created, which represents the time when the assessment took place.
+- `seat_id` - FK to `seats`
+- `class_id` - FK to `classes`
+- `internal_ref` - stable lineage key for the continuing obligation-producing relationship
+- `correlation_id` - identifier for this individual liability instance
+- `event_type` - `ASSESSMENT` | `PAYMENT` | `WAIVED`
+- `obligation_type` - closed enum of lawful assessment categories
+- `policy_version_id` - lawful version or source snapshot reference
+- `bill_cycle_id` - nullable FK to `bill_cycles`
+- `ledger_transaction_id` - nullable FK to `ledger_transaction`; required for `PAYMENT`
+
+
+Rules:
+
+- exactly one `ASSESSMENT` exists per individual liability instance;
+- `PAYMENT` may occur multiple times for the same assessment;
+- `WAIVED` is rent-only;
+- no amount is persisted here;
+- no paid/unpaid/overdue/satisfied/reversed flag is persisted here;
+- an assessment is immutable once lawfully written.
+- no `due_at` (on `bill_cycles`), `viewable_at` (Class Configuration), `assessed_at` (covered by `timestamp`), or `created_at` (on Class Configuration)
+
+### 2. `bill_cycles`
+
+Records recurring temporal progression for an internal reference.
+
+Key fields:
+
+- `id`
+- `internal_ref` - for specific assessment_event referencing and advancement
+- `cycle_number` - for advancement tracking
+- `source_version_id` or equivalent lawful version snapshot reference
+- `cycle_boundary_at` - for due date derivation
+- `next_assessment_at` - for triggering the next assessment event
+
+
+Rules:
+
+- bill cycles do not store class identity or seat identity;
+- bill cycles do not store amount;
+- bill cycles do not store business meaning for the reference;
+- bill cycles are only lawful when they point to a currently continuing relationship;
+- a terminated relationship produces no successor cycle.
+- `created_at` isn't stored here, when an recurring assessment event is written, a corresponding `bill_cycles` row is written simultaneously. The timestamp stored on `assessment_event` serves as the `created_at` reference.
+
+---
+
+## XII. Derived State
+
+The following SHALL be derived and SHALL NOT be persisted as canonical obligation truth:
+
+- satisfied;
+- outstanding;
+- past due;
+- visible;
+- partial payment;
+- amount paid;
+- amount outstanding;
+- days late;
+- overpayment handling;
+- any mutable lifecycle flag that can be inferred from immutable events.
+
+### Derived evaluation rules
+
+For one assessment:
+
+```text
+paid_amount = sum(authoritative Ledger amounts referenced by PAYMENT events for the same correlation_id)
+has_waiver = exists(WAIVED for the same correlation_id)
+
+if paid_amount >= assessed_amount:
+    status = SATISFIED
+elif has_waiver:
+    status = SATISFIED
+else:
+    status = OUTSTANDING
+```
+
+Past due is derived as:
+
+```text
+status == OUTSTANDING and canonical_now > due_at
+```
+
+---
+
+## XIII. Operational Rules
 
 1. All obligation mutation SHALL occur through the canonical business operations owned by this domain.
 2. GET and read-time logic SHALL remain pure.
@@ -327,7 +505,7 @@ Rules:
 
 ---
 
-## XI. Cross-Domain Coordination
+## XIV. Cross-Domain Coordination
 
 Obligations may consume authoritative inputs from:
 
@@ -341,7 +519,7 @@ Where an upstream domain supplies the lawful inputs for an assessment, Obligatio
 
 ---
 
-## XII. Amendment
+## XV. Amendment
 
 Revisions to this document must:
 

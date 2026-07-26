@@ -2,7 +2,7 @@
 
 | Reference Number | Version | Effective Date | Supersedes | Authority Level |
 |------------------|---------|----------------|------------|-----------------|
-| MAP-UI-002 | 0.1 | 2026-07-20 | N/A | Informative |
+| MAP-UI-002 | 0.2 | 2026-07-25 | 0.1 | Informative |
 
 ---
 
@@ -264,7 +264,122 @@ Do not introduce global view-model abstractions for pages not yet being rewired.
 
 ---
 
-## XIII. Open Questions
+## XIII. Concrete Example: Obligations Domain
+
+### Student Rent Status Page (`GET /student/rent`)
+
+**Pipeline execution:**
+
+1. **Canonical Context** resolved from Flask session:
+   - `user_id`, `seat_id`, `class_id`, `actor_role = student`
+
+2. **Temporal Context** resolved from class configuration:
+   - Class timezone, current date boundaries, grace period reference
+
+3. **Identity Display Context** assembled from `User` + `Seat` + `IdentityProfile`:
+   - Actor display name, seat public ID, class label, class timezone
+
+4. **Read service invocation** (domain layer):
+   ```python
+   view = build_student_obligation_view(
+       seat_id=context.seat_id,
+       class_id=context.class_id,
+       obligation_type='RENT'
+   )
+   ```
+   This returns a frozen `StudentObligationView` with:
+   - Current period status (due date, amount due, amount paid, days overdue, waived state)
+   - Prior periods (historical obligation status)
+   - Payment history (immutable PAYMENT event timeline)
+   - Aggregate totals
+   - Settings (grace period, frequency)
+
+5. **Template receives:**
+   ```jinja
+   {{ identity_display.actor_display_name }}
+   {{ temporal.class_display_timezone }}
+   {{ view.current_period.is_paid }}  <!-- Boolean, derived -->
+   {{ view.current_period.days_overdue }}  <!-- Derived from now vs due_at -->
+   {% for payment in view.payment_history %}
+     {{ payment.timestamp }}, {{ payment.amount }}
+   {% endfor %}
+   ```
+
+**What the view model abstracts:**
+- Query complexity for assessment_events + bill_cycles + transaction joins
+- Status derivation logic (is_paid, is_waived, past_due)
+- Multi-tenancy scoping (all queries already filtered by class_id)
+- Temporal calculations (days until due, days overdue)
+
+**What does NOT belong in the view model:**
+- Authorization (is the student viewing their own seat?) — handled at route boundary
+- UI routing decisions (next page after waiver) — handled in route/template logic
+- Business logic (should this student be allowed to request waiver?) — handled in FEAT layer
+
+### Teacher Rent Dashboard (`GET /admin/rent-settings`)
+
+**Pipeline execution:**
+
+1. **Canonical Context** resolved:
+   - `user_id`, `seat_id`, `class_id`, `actor_role = teacher`
+
+2. **Temporal Context** + **Identity Display Context** similar to above
+
+3. **Read service invocation** (aggregation):
+   ```python
+   summary = build_class_obligation_summary(
+       class_id=context.class_id,
+       obligation_type='RENT'
+   )
+   ```
+   Returns frozen `ClassObligationSummary` with:
+   - `status_breakdown`: Dict with counts (up_to_date, outstanding, past_due_grace, past_due_overdue)
+   - `student_rows`: List of per-student status dicts
+
+4. **Template receives:**
+   ```jinja
+   <!-- Status cards -->
+   {{ summary.status_breakdown.up_to_date }} students are current
+
+   <!-- Student roster -->
+   {% for row in summary.student_rows %}
+     {% if row.status == 'up_to_date' %}
+       <!-- Render in "Current" section -->
+     {% else %}
+       <!-- Render in "Behind by X cycles" section, where X derived from row.days_overdue / cycle_days -->
+     {% endif %}
+   {% endfor %}
+   ```
+
+**What the view model abstracts:**
+- Complex multi-student aggregation (24-period walk eliminated)
+- Status categorization logic (grace period boundaries)
+- Cycle calculation (days overdue → cycles behind)
+- Class-level derivation (which students fall into which status bucket)
+
+**What remains in the route:**
+- Waiver action handling (FEAT orchestration for waiver creation)
+- Waiver history reads (separate from status view)
+- Configuration edits (RentSettings mutations)
+
+---
+
+## XIV. Recommended Pattern for New Domains
+
+When reconstructing a new domain using SOP-DEV-002:
+
+1. **Phase 5 (Read Models):** Define immutable view model dataclasses as described in this section
+2. **Implement builders** following the Obligations pattern:
+   - Single-entity view (e.g., `StudentPayrollView`) for detail pages
+   - Aggregate view (e.g., `ClassPayrollSummary`) for roster/dashboard pages
+   - Builders are pure functions that query domain primitives and return frozen dataclasses
+3. **Phase 6 (Surface Inventory):** Routes invoke builders once and pass the result to templates
+4. **Templates consume view model fields directly** — no additional aggregation, filtering, or derivation
+5. **Multi-tenancy enforcement** — ensure all builder queries are scoped by `class_id` before the domain layer
+
+---
+
+## XV. Open Questions
 
 1. Should the shared template object be named `identity_display`, `presentation`, or `page_context`?
 2. Should browser timestamp rendering be powered by a single shared data attribute contract or by server-rendered formatted strings?
