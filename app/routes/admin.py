@@ -6171,31 +6171,13 @@ def rent_settings():
     if settings:
         rent_items = settings.rent_items.order_by(StoreItem.id).all()
 
-    # Calculate rent active status, backlog buckets, and logs
+    # Calculate current rent period dates for settings summary
     rent_active_for_period = False
-    # Map view model status_breakdown to template's rent_status_counts (legacy naming)
-    if obligation_summary and obligation_summary.status_breakdown:
-        rent_status_counts = {
-            'current': obligation_summary.status_breakdown.get('up_to_date', 0),
-            'behind_1': obligation_summary.status_breakdown.get('outstanding', 0),
-            'behind_2': obligation_summary.status_breakdown.get('past_due_grace', 0),
-            'behind_3_plus': obligation_summary.status_breakdown.get('past_due_overdue', 0),
-        }
-        rent_status_total = sum(rent_status_counts.values())
-    else:
-        rent_status_counts = {
-            'current': 0,
-            'behind_1': 0,
-            'behind_2': 0,
-            'behind_3_plus': 0,
-        }
-        rent_status_total = 0
-
-    unpaid_rent_log = []
-    payment_log = []
     current_period_start = None
     current_period_end = None
     next_due_date = None
+    current_coverage_due_date = None
+    upcoming_coverage_due_date = None
 
     if settings:
         now_utc = utc_now()
@@ -6216,171 +6198,6 @@ def rent_settings():
             current_period_start = selected_coverage_due + timedelta(days=1)
             current_period_end = selected_next_due
             next_due_date = selected_next_due
-
-        # Build class/class_id map for this teacher using ClassEconomy + Seat
-        ce_rows = ClassEconomy.query.filter_by(user_id=user_id).all()
-        classes_by_class_id = {}
-        for ce in ce_rows:
-            block_name = (ce.section or '').strip().upper()
-            class_id = ce.class_id
-            if not class_id:
-                continue
-            active_student_user_ids = {
-                student_id for (student_id,) in db.session.query(Seat.user_id).filter(
-                    Seat.class_id == class_id,
-                    Seat.claimed_at.isnot(None),
-                ).all()
-            }
-            if not active_student_user_ids:
-                continue
-            classes_by_class_id[class_id] = {
-                'block': block_name,
-                'join_code': get_display_join_code(class_id) or '',
-                'class_id': class_id,
-                'class_label': ce.display_name or get_display_join_code(class_id) or class_id,
-                'student_ids': active_student_user_ids,
-            }
-
-        for class_info in classes_by_class_id.values():
-            block_name = class_info['block']
-            class_id = class_info['class_id']
-            class_label = class_info['class_label']
-            student_ids = list(class_info['student_ids'])
-
-            if not student_ids:
-                continue
-
-            block_settings = RentSettings.query.filter_by(class_id=class_id).first()
-            if not block_settings:
-                continue
-
-            coverage_due_date = _calculate_rent_coverage_due_date(block_settings, now_utc)
-            if not coverage_due_date or now_utc < coverage_due_date:
-                continue
-
-            rent_active_for_period = True
-            period_delta = _get_rent_period_delta(block_settings)
-            first_due = ensure_utc(block_settings.first_rent_due_date) if block_settings.first_rent_due_date else None
-            class_students = [
-                seat for seat in Seat.query.filter(
-                    Seat.class_id == class_id,
-                    Seat.claimed_at.isnot(None),
-                    Seat.role == 'student',
-                ).all()
-                if seat.is_rent_enabled
-            ]
-            class_students.sort(key=lambda seat: ((seat.identity_profile.first_name if seat.identity_profile else "").lower(), seat.id))
-            class_seat_ids = [seat.id for seat in class_students]
-            coverage_context_cache = {}
-
-            for student in class_students:
-                unpaid_due_dates = []
-                cursor = coverage_due_date
-                seat_id = student.id
-                for _ in range(24):
-                    if first_due and cursor < first_due:
-                        break
-                    cursor_key = ensure_utc(cursor).isoformat()
-                    if cursor_key not in coverage_context_cache:
-                        coverage_context_cache[cursor_key] = _build_rent_coverage_context(
-                            block_settings,
-                            class_id=class_id,
-                            seat_ids=class_seat_ids,
-                            coverage_due_date=cursor,
-                            include_waivers=True,
-                        )
-                    is_paid = _is_student_coverage_period_paid(
-                        block_settings,
-                        seat_id,
-                        class_id,
-                        cursor,
-                        coverage_context=coverage_context_cache.get(cursor_key),
-                    )
-                    if is_paid:
-                        break
-                    unpaid_due_dates.append(cursor)
-                    cursor = cursor - period_delta
-
-                months_behind = len(unpaid_due_dates)
-                rent_status_total += 1
-                if months_behind <= 0:
-                    rent_status_counts['current'] += 1
-                elif months_behind == 1:
-                    rent_status_counts['behind_1'] += 1
-                elif months_behind == 2:
-                    rent_status_counts['behind_2'] += 1
-                else:
-                    rent_status_counts['behind_3_plus'] += 1
-
-                if months_behind > 0:
-                    unpaid_month_labels = [(d + timedelta(days=1)).strftime('%b %Y') for d in unpaid_due_dates]
-                    item = {
-                        'student': student,
-                        'actor_public_id': (db.session.get(Seat, seat_id).public_id if seat_id else None),
-                        'join_code': class_info['join_code'],
-                        'class_label': class_label,
-                        'block': block_name,
-                        'months_behind': months_behind,
-                        'unpaid_months': unpaid_month_labels,
-                        'unpaid_due_dates': list(unpaid_due_dates),
-                    }
-                    unpaid_rent_log.append(item)
-
-        # DOM-OBL-001: Get payment history using canonical query helpers
-        # Read amounts from Ledger (Transaction), not from obligation fields
-        from app.services.obligations_service import get_rent_payment_history
-        from app.models import Transaction
-
-        class_label_by_class_id = {
-            class_id: info['class_label']
-            for class_id, info in classes_by_class_id.items()
-        }
-
-        for class_id, info in classes_by_class_id.items():
-            if not class_id:
-                continue
-
-            # Get all seats in this class that are students
-            class_students = Seat.query.filter(
-                Seat.class_id == class_id,
-                Seat.role == 'student'
-            ).all()
-
-            for student_seat in class_students:
-                # Get payment history for this seat (up to 24 cycles)
-                payment_history = get_rent_payment_history(student_seat.id, class_id, limit=24)
-
-                # payment_history is list of (assessment, state_change_events)
-                for assessment, state_events in payment_history:
-                    # Find PAYMENT events in state_events
-                    for payment_event in state_events:
-                        if payment_event.event_type != 'PAYMENT':
-                            continue
-
-                        # Get amount from Ledger transaction
-                        amount_paid = Decimal('0.00')
-                        if payment_event.ledger_transaction_id:
-                            txn = db.session.get(Transaction, payment_event.ledger_transaction_id)
-                            if txn and txn.type == 'credit':
-                                amount_paid = txn.amount
-
-                        # Build coverage label from assessment due_at
-                        coverage_label = "Unknown"
-                        if assessment.due_at:
-                            coverage_label = assessment.due_at.strftime('%b %Y')
-
-                        payment_log.append({
-                            'student': student_seat.user if student_seat.user else None,
-                            'actor_public_id': student_seat.public_id if student_seat else None,
-                            'join_code': get_display_join_code(class_id),
-                            'class_label': class_label_by_class_id.get(class_id, ''),
-                            'block': student_seat.class_economy.section if student_seat.class_economy else '',
-                            'coverage_label': coverage_label,
-                            'amount_paid': amount_paid,
-                            'payment_date': payment_event.assessed_at,
-                        })
-
-    student_past_due_json = {}
     current_coverage_due_date = None
     upcoming_coverage_due_date = None
     if settings:
@@ -6393,17 +6210,6 @@ def rent_settings():
         current_coverage_due_date = _crd(settings, now_for_waiver)
         _cur_due, _ = _crdeadlines(settings, now_for_waiver)
         upcoming_coverage_due_date = _curd(settings, _cur_due, current_coverage_due_date)
-
-    for log_item in unpaid_rent_log:
-        sid = str(log_item['student'].id)
-        dates = log_item.get('unpaid_due_dates', [])
-        labels = log_item.get('unpaid_months', [])
-        student_past_due_json.setdefault(sid, [])
-        for due_date, label in zip(dates, labels):
-            student_past_due_json[sid].append({
-                'label': label,
-                'date_iso': due_date.isoformat(),
-            })
 
     # Determine period label based on frequency type
     period_label = "Month"  # Default
