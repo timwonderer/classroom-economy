@@ -101,9 +101,10 @@ def test_build_student_obligation_view_with_assessment(app):
         seat_id = ids['seat_id']
 
         with FEATContext("FEAT-TEST-SETUP", idempotency_key="test-assessment-001"):
-            # Create bill cycle
+            # Create bill cycle (class_id required per INV-CORE-000 multi-tenancy)
             now_utc = datetime.now(timezone.utc)
             bill_cycle = BillCycle(
+                class_id=class_id,
                 internal_ref='rent:monthly',
                 cycle_number=1,
                 cycle_boundary_at=now_utc - timedelta(days=1),
@@ -158,9 +159,10 @@ def test_build_student_obligation_view_with_payment(app):
         seat_id = ids['seat_id']
 
         with FEATContext("FEAT-TEST-SETUP", idempotency_key="test-payment-001"):
-            # Create bill cycle
+            # Create bill cycle (class_id required per INV-CORE-000 multi-tenancy)
             now_utc = datetime.now(timezone.utc)
             bill_cycle = BillCycle(
+                class_id=class_id,
                 internal_ref='rent:monthly',
                 cycle_number=1,
                 cycle_boundary_at=now_utc - timedelta(days=1),
@@ -257,9 +259,10 @@ def test_build_class_obligation_summary_with_obligations(app):
         seat_id = ids['seat_id']
 
         with FEATContext("FEAT-TEST-SETUP", idempotency_key="test-summary-001"):
-            # Create bill cycle
+            # Create bill cycle (class_id required per INV-CORE-000 multi-tenancy)
             now_utc = datetime.now(timezone.utc)
             bill_cycle = BillCycle(
+                class_id=class_id,
                 internal_ref='rent:monthly',
                 cycle_number=1,
                 cycle_boundary_at=now_utc - timedelta(days=1),
