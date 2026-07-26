@@ -260,7 +260,7 @@ pytest tests/test_obligation_view_models.py -v -k "RENT"
 - [ ] Constructor functions are generic (take obligation_type parameter, not rent-specific) — *DOM-OBL-001 Section X (Canonical View Models): Generic over obligation_type*
 - [ ] Status breakdown is computed (not just raw query results) — *DOM-OBL-001 Section VIII: "The following SHALL be derived and SHALL NOT be persisted"*
 - [ ] All queries in view model constructors scoped by class_id — *multi-tenancy.md: CRITICAL rule*
-- [ ] View models tested with unit tests (minimum 5) — *SOP-DEV-002 Phase 8, testing.md: MINIMUM required coverage*
+- [ ] View models tested with unit tests covering: happy path, edge cases, multi-tenancy — *SOP-DEV-002 Phase 8: "Tests prove canonical model is correct and multi-tenant safe"; testing.md: "ALWAYS test multi-tenancy scoping"*
 
 **GUIDANCE:**
 - [ ] View models include all necessary fields for display
