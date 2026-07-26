@@ -2,9 +2,17 @@
 
 **Purpose:** Strict verification that a domain reconstruction follows all 10 SOP-DEV-002 phases and meets production readiness standards.
 
-**Authority:** SOP-DEV-002, INV-CORE, INV-ARC-019
+**Authority:** SOP-DEV-002, INV-CORE, INV-ARC-016, INV-ARC-021, DOM-CORE-002, multi-tenancy.md, testing.md, database-migrations.md
 
 **Scope:** Any domain reconstruction project (obligations, entitlements, etc.)
+
+---
+
+## Criterion Classification
+
+**MANDATORY:** Every mandatory criterion cites authority documentation. Failures on mandatory criteria block sign-off.
+
+**GUIDANCE:** Recommendations without explicit authority backing. Failures on guidance criteria are noted but do not block sign-off.
 
 ---
 
@@ -44,10 +52,14 @@ grep -E "RENT|INSURANCE_PREMIUM|FINE|FEE" docs/DOMAIN/*.md
 ```
 
 ### Sign-Off Criteria
-- [ ] Domain specification document exists (DOM-* or INV-* authority)
-- [ ] Scope is explicitly generic (not domain-specific like "rent")
+
+**MANDATORY:**
+- [ ] Domain specification document exists (DOM-* or INV-* authority) — *SOP-DEV-002 Phase 0*
+- [ ] Scope is explicitly generic (not domain-specific like "rent") — *DOM-OBL-001 defines multi-obligation-type scope; DOM-CORE-002 requires generic domain definitions*
+- [ ] Multi-tenancy model specified (class_id scoping) — *multi-tenancy.md: "CRITICAL: Every query involving student/seat data MUST be scoped by `class_id`"*
+
+**GUIDANCE:**
 - [ ] Examples show domain works for 2+ obligation types
-- [ ] Multi-tenancy model specified (class_id scoping)
 
 ---
 
@@ -75,12 +87,14 @@ grep -A 10 "class Transaction" app/models.py
 ```
 
 ### Sign-Off Criteria
-- [ ] Canonical fact table exists (assessment_events or similar)
-- [ ] Facts are immutable (no update-by-user columns)
-- [ ] Foreign keys link facts to ledger (Transaction)
-- [ ] Ledger (Transaction) has authoritative amounts (not denormalized)
-- [ ] Multi-tenancy key (class_id) present on all fact tables
-- [ ] Timestamps (created_at, updated_at) on fact table
+
+**MANDATORY:**
+- [ ] Canonical fact table exists (assessment_events or similar) — *SOP-DEV-002 Phase 1, INV-ARC-016: Lawful Existence and Audit Lineage*
+- [ ] Facts are immutable (no update-by-user columns) — *INV-ARC-016, DOM-OBL-001 Section VIII: "no mutable status flag"*
+- [ ] Foreign keys link facts to ledger (Transaction) — *INV-ARC-021: Cross-Domain Reference and Coordination*
+- [ ] Ledger (Transaction) has authoritative amounts (not denormalized) — *DOM-OBL-001 Section VI: Obligations does not own Ledger transactions*
+- [ ] Multi-tenancy key (class_id) present on all fact tables — *multi-tenancy.md: CRITICAL rule; CLAUDE.md rule 2*
+- [ ] Timestamps (created_at, updated_at) on fact table — *INV-ARC-016*
 
 ---
 
@@ -111,12 +125,16 @@ flask db upgrade
 ```
 
 ### Sign-Off Criteria
-- [ ] Migration files exist for all new tables
-- [ ] Migrations include idempotency helpers (table_exists, column_exists, etc.)
-- [ ] Migration upgrade/downgrade tested successfully
-- [ ] Foreign key constraints present and enforced
+
+**MANDATORY:**
+- [ ] Migration files exist for all new tables — *SOP-DEV-002 Phase 2, database-migrations.md: "NEVER modify `app/models.py` without creating a migration"*
+- [ ] Migrations include idempotency helpers (table_exists, column_exists, etc.) — *database-migrations.md: "ALWAYS include idempotency helpers"; "NEVER edit old migrations after they're merged"*
+- [ ] Migration upgrade/downgrade tested successfully — *database-migrations.md: "ALWAYS test migrations before committing (upgrade AND downgrade)"*
+- [ ] Foreign key constraints present and enforced — *INV-ARC-016, database-migrations.md*
+- [ ] No hardcoded constraint names (discovered dynamically) — *database-migrations.md: "NEVER use hardcoded constraint names"*
+
+**GUIDANCE:**
 - [ ] Indexes created on query columns (class_id, seat_id, event_type)
-- [ ] No hardcoded constraint names (discovered dynamically)
 
 ---
 
@@ -148,12 +166,16 @@ pytest tests/test_obligation_view_models.py -v
 ```
 
 ### Sign-Off Criteria
-- [ ] Core operations in service layer (not routes)
-- [ ] All queries use SQLAlchemy ORM (no raw SQL)
-- [ ] Every query includes class_id filter (multi-tenancy enforcement)
+
+**MANDATORY:**
+- [ ] Core operations in service layer (not routes) — *SOP-DEV-002 Phase 3, CLAUDE.md: "Route → FEAT → Domain Services"*
+- [ ] All queries use SQLAlchemy ORM (no raw SQL) — *CLAUDE.md rule 5: "ALWAYS use parameterized queries (SQLAlchemy ORM, never raw SQL)"*
+- [ ] Every query includes class_id filter (multi-tenancy enforcement) — *multi-tenancy.md: "CRITICAL: Every query involving student/seat data MUST be scoped by `class_id`"*
+- [ ] Unit tests cover each primitive operation — *SOP-DEV-002 Phase 3, testing.md: MINIMUM required coverage*
+- [ ] Tests verify multi-tenancy scoping (cross-class data leak prevention) — *testing.md: "ALWAYS test multi-tenancy scoping for student-related features"*
+
+**GUIDANCE:**
 - [ ] Service functions have docstrings explaining contract
-- [ ] Unit tests cover each primitive operation
-- [ ] Tests verify multi-tenancy scoping (cross-class data leak prevention)
 
 ---
 
@@ -186,11 +208,15 @@ pytest tests/test_obligation_view_models.py::test_build_student_obligation_view_
 ```
 
 ### Sign-Off Criteria
-- [ ] All mutations wrapped in FEATContext (FEAT-* layer)
-- [ ] No direct db.session.add/commit in routes
-- [ ] FEAT implementations use idempotency_key (for exactly-once semantics)
-- [ ] Audit events logged (correlation_id tracking)
-- [ ] FEAT boundary is enforced (tested by attempting direct mutation)
+
+**MANDATORY:**
+- [ ] All mutations wrapped in FEATContext (FEAT-* layer) — *SOP-DEV-002 Phase 4, CLAUDE.md rule 3: "Mutate through FEATs. No direct `db.session.add/commit` in routes"*
+- [ ] No direct db.session.add/commit in routes — *CLAUDE.md rule 3, SOP-DEV-002 Phase 4*
+- [ ] FEAT implementations use idempotency_key (for exactly-once semantics) — *DOM-OBL-001 Section X rule 4: "Assessment creation must remain idempotent"*
+- [ ] Audit events logged (correlation_id tracking) — *INV-ARC-016: Lawful Existence and Audit Lineage*
+- [ ] FEAT boundary is enforced (tested by attempting direct mutation) — *SOP-DEV-002 Phase 4*
+
+**GUIDANCE:**
 - [ ] Transaction rollback tested on FEAT failure
 
 ---
@@ -228,13 +254,17 @@ pytest tests/test_obligation_view_models.py -v -k "RENT"
 ```
 
 ### Sign-Off Criteria
-- [ ] View model dataclasses are frozen (immutable)
-- [ ] Constructor functions are generic (take obligation_type parameter)
+
+**MANDATORY:**
+- [ ] View model dataclasses are frozen (immutable) — *SOP-DEV-002 Phase 5, MAP-UI-002 Section IX: Page view models must hide persistence shape from templates*
+- [ ] Constructor functions are generic (take obligation_type parameter, not rent-specific) — *DOM-OBL-001 Section X (Canonical View Models): Generic over obligation_type*
+- [ ] Status breakdown is computed (not just raw query results) — *DOM-OBL-001 Section VIII: "The following SHALL be derived and SHALL NOT be persisted"*
+- [ ] All queries in view model constructors scoped by class_id — *multi-tenancy.md: CRITICAL rule*
+- [ ] View models tested with unit tests (minimum 5) — *SOP-DEV-002 Phase 8, testing.md: MINIMUM required coverage*
+
+**GUIDANCE:**
 - [ ] View models include all necessary fields for display
-- [ ] Status breakdown is computed (not just raw query results)
 - [ ] Student rows include seat_id, student_name, status, balance, days_overdue
-- [ ] All queries in view model constructors scoped by class_id
-- [ ] View models tested with unit tests (5+ tests minimum)
 
 ---
 
@@ -266,12 +296,15 @@ grep "{% for.*in.*log\|{% for.*in.*counts" templates/*.html
 ```
 
 ### Sign-Off Criteria
-- [ ] Routes call view model constructors (build_*_obligation_view)
-- [ ] Routes pass view_model object to template
-- [ ] No legacy aggregation variables in render_template context
-- [ ] Templates access view_model.student_rows directly
-- [ ] Templates access view_model.status_breakdown directly
-- [ ] Templates do NOT reference: rent_status_counts, payment_log, unpaid_rent_log, etc.
+
+**MANDATORY:**
+- [ ] Routes call view model constructors (build_*_obligation_view) — *SOP-DEV-002 Phase 6, MAP-UI-002 Section V*
+- [ ] Routes pass view_model object to template — *MAP-UI-002: Template contract specifies routes pass shared context + exactly one page view model*
+- [ ] No legacy aggregation variables in render_template context — *SOP-DEV-002 Phase 7: "Ad-hoc code replaced with canonical builders"*
+- [ ] Templates access view_model fields directly (not persistence objects) — *MAP-UI-002 Section X: Preferred pattern uses view models*
+
+**GUIDANCE:**
+- [ ] Templates do NOT reference legacy variables (rent_status_counts, payment_log, unpaid_rent_log, etc.)
 - [ ] Template logic is simple (no complex aggregation)
 
 ---
@@ -307,13 +340,16 @@ grep -n "_build_rent_coverage_context\|_is_student_coverage_period_paid" app/rou
 ```
 
 ### Sign-Off Criteria
+
+**MANDATORY:**
+- [ ] Manual student/class queries moved to view model builders — *SOP-DEV-002 Phase 7*
+- [ ] Status computation logic moved to view model — *SOP-DEV-002 Phase 7, MAP-UI-002: business logic is view model responsibility*
+- [ ] No legacy helpers imported/used in routes — *SOP-DEV-002 Phase 7/9: Legacy deletion*
+- [ ] Route delegates business logic to view model — *MAP-UI-002: routes are thin request handlers*
+- [ ] GET handlers are pure (no side effects) — *CLAUDE.md rule 9: "No GET side effects"; INV-ARC-007*
+
+**GUIDANCE:**
 - [ ] Route complexity reduced 30%+ (measured by line count)
-- [ ] Manual student/class queries moved to view model builders
-- [ ] Status computation logic moved to view model
-- [ ] No direct TIMEDELTAwalk or multi-period loops in route
-- [ ] No legacy helpers imported/used in routes
-- [ ] Route delegates business logic to view model
-- [ ] GET handlers are pure (no side effects)
 
 ---
 
@@ -350,14 +386,18 @@ pytest tests/test_obligation_view_rendering.py -v -k "multi_tenancy"
 ```
 
 ### Sign-Off Criteria
-- [ ] Minimum 5 unit tests for view model (exist and pass)
+
+**MANDATORY:**
+- [ ] Minimum 5 unit tests for view model (exist and pass) — *SOP-DEV-002 Phase 8, testing.md: MINIMUM required*
+- [ ] Multi-tenancy test exists and passes (proves class_id scoping) — *testing.md: "ALWAYS test multi-tenancy scoping"; multi-tenancy.md: CRITICAL rule*
+- [ ] Status breakdown computation tested — *DOM-OBL-001 Section VIII requires derivation validation*
+- [ ] No regression in existing tests — *testing.md: Critical requirement*
+
+**GUIDANCE:**
 - [ ] Test coverage 80%+ for view model service
-- [ ] Multi-tenancy test exists and passes (proves class_id scoping)
 - [ ] Edge cases tested (no assessments, no students, empty data)
-- [ ] Payment history aggregation tested
-- [ ] Status breakdown computation tested
+- [ ] Payment history aggregation tested (domain-specific)
 - [ ] Integration tests with canonical test identity pass
-- [ ] No regression in existing tests
 
 ---
 
@@ -394,20 +434,24 @@ pytest tests/test_obligation_view_models.py -v
 ```
 
 ### Sign-Off Criteria
+
+**MANDATORY:**
+- [ ] All legacy variables removed from render_template context — *SOP-DEV-002 Phase 9*
+- [ ] No ad-hoc aggregation loops remain in routes — *SOP-DEV-002 Phase 7/9*
+- [ ] All tests pass after deletion — *testing.md: verify no regressions*
+- [ ] No dangling references to deleted code — *code quality, CLAUDE.md rule 1*
+
+**GUIDANCE:**
 - [ ] ~200+ lines of legacy code deleted
 - [ ] No unused imports
 - [ ] No orphaned functions
-- [ ] All legacy variables removed from render_template context
-- [ ] No ad-hoc aggregation loops remain in routes
-- [ ] All tests pass after deletion
 - [ ] Code compiles without warnings
-- [ ] No dangling references to deleted code
 
 ---
 
-## Phase 9.2: Cleanup (Optional)
+## Phase 9.2: Cleanup (Guidance, not Mandatory)
 
-**Goal:** Code is polished; no dead imports or duplicate logic.
+**Goal:** Code is polished; no dead imports or duplicate logic. This phase provides quality recommendations; failures do not block sign-off.
 
 ### Verification Steps
 
@@ -430,7 +474,7 @@ grep -A 3 "from app.routes.student import" app/routes/admin.py
 # Should show minimal imports (only used helpers)
 ```
 
-### Sign-Off Criteria
+### Guidance Criteria (Non-Blocking)
 - [ ] No unused imports
 - [ ] No duplicate code blocks
 - [ ] Related logic consolidated
@@ -469,54 +513,67 @@ pytest tests/test_obligation_view_models.py -v
 ```
 
 ### Sign-Off Criteria
-- [ ] Audit document (certification) exists and is complete
+
+**MANDATORY:**
+- [ ] Audit document (certification) exists and is complete — *SOP-DEV-002 Phase 10*
+- [ ] Code compiles without errors — *general code quality*
+- [ ] All tests pass — *testing.md: MINIMUM requirement*
+- [ ] No regressions in existing test suite — *testing.md: MINIMUM requirement*
+- [ ] Branch is pushed to remote — *CLAUDE.md: "active branch: codex/v2.0"*
+- [ ] Git status is clean (nothing to commit) — *git best practice*
+
+**GUIDANCE:**
 - [ ] All commits documented with phase labels
-- [ ] Git status is clean (nothing to commit)
-- [ ] Branch is pushed to remote
-- [ ] Code compiles without errors
-- [ ] All tests pass
-- [ ] No regressions in existing test suite
 - [ ] Memory/documentation files updated
 
 ---
 
 ## Final Sign-Off Checklist
 
-### Code Quality
+### Testing (MANDATORY)
+- [ ] All new tests pass — *testing.md*
+- [ ] No regression in existing tests — *testing.md: Critical requirement*
+- [ ] Multi-tenancy scoping tested — *testing.md, multi-tenancy.md: CRITICAL rule*
+
+### Production Readiness (MANDATORY)
+- [ ] Error handling is proper (no bare except) — *testing.md, code quality*
+- [ ] FEAT mutations are idempotent — *database-migrations.md, DOM-OBL-001*
+- [ ] Multi-tenancy is enforced throughout — *multi-tenancy.md: CRITICAL rule; CLAUDE.md rule 2*
+- [ ] No direct db.session mutations in routes — *CLAUDE.md rule 3*
+
+### Documentation (MANDATORY)
+- [ ] Domain spec document exists (DOM-* or INV-*) — *SOP-DEV-002*
+- [ ] Certification audit document exists — *SOP-DEV-002 Phase 10*
+
+### Git (MANDATORY)
+- [ ] All commits are on feature branch — *CLAUDE.md: active branch is codex/v2.0*
+- [ ] Branch is up-to-date with origin/codex/v2.0 — *CLAUDE.md: active branch*
+- [ ] No merge conflicts — *git best practice*
+- [ ] Branch is pushed to remote — *deployment practice*
+
+### Code Quality (GUIDANCE)
 - [ ] All code follows Python style guide (PEP 8)
 - [ ] No type errors (run with mypy if available)
 - [ ] No obvious bugs or TODOs left in code
 - [ ] Comments are clear and non-obvious logic is explained
-- [ ] Docstrings present on public functions
 
-### Testing
-- [ ] All new tests pass
-- [ ] No regression in existing tests
+### Testing (GUIDANCE)
 - [ ] Coverage is 80%+ for new code
-- [ ] Multi-tenancy scoping tested
 - [ ] Edge cases covered
 
-### Documentation
-- [ ] Domain spec document exists (DOM-* or INV-*)
-- [ ] Certification audit document exists
+### Documentation (GUIDANCE)
 - [ ] Memory file documents the work
 - [ ] Code comments explain non-obvious logic
 - [ ] Phase completion documented
 
-### Production Readiness
+### Production Readiness (GUIDANCE)
 - [ ] No dead code remaining
 - [ ] No unused imports
 - [ ] No temporary debugging code
-- [ ] Error handling is proper (no bare except)
-- [ ] FEAT mutations are idempotent
-- [ ] Multi-tenancy is enforced throughout
 
-### Git
-- [ ] All commits are on feature branch
-- [ ] Branch is up-to-date with origin/codex/v2.0
-- [ ] No merge conflicts
-- [ ] Branch is pushed to remote
+### Git (GUIDANCE)
 - [ ] Commit messages are clear and phase-labeled
+- [ ] Docstrings present on public functions
 
 ---
 
@@ -526,12 +583,16 @@ pytest tests/test_obligation_view_models.py -v
 
 **Date:** ___________________________
 
-**Status:** ☐ APPROVED ☐ REJECTED
+**Status:** ☐ APPROVED (all MANDATORY criteria met) ☐ APPROVED WITH GUIDANCE GAPS (guidance items pending) ☐ REJECTED (MANDATORY criteria failures)
+
+**Mandatory Criteria Status:** All MANDATORY criteria must be met for approval. Failures on MANDATORY criteria block sign-off.
+
+**Guidance Criteria Status:** GUIDANCE criteria are recommendations for code quality. Gaps in guidance do not block sign-off but should be tracked for follow-up work.
 
 **Comments:**
 
 ```
-[Reviewer notes here]
+[Reviewer notes here, including any guidance gaps noted for follow-up]
 ```
 
 ---
@@ -539,13 +600,13 @@ pytest tests/test_obligation_view_models.py -v
 ## Approval Authority
 
 This audit must be signed off by:
-1. **Code Reviewer:** Verifies phases 5-7 (view models, routes, templates)
-2. **QA Lead:** Verifies phase 8 (tests and coverage)
-3. **Architecture Lead:** Verifies phases 0-4 (boundary, truth, persistence, primitives, mutation boundary)
-4. **Tech Lead:** Final approval and production readiness
+1. **Code Reviewer:** Verifies phases 5-7 (view models, routes, templates) — particularly MANDATORY criteria around view model construction, route delegation, and template contracts
+2. **QA Lead:** Verifies phase 8 (tests and coverage) — particularly MANDATORY multi-tenancy test and regression verification
+3. **Architecture Lead:** Verifies phases 0-4 (boundary, truth, persistence, primitives, mutation boundary) — particularly MANDATORY criteria around immutability, multi-tenancy scoping, and FEAT boundary
+4. **Tech Lead:** Final approval of MANDATORY criteria compliance and production readiness sign-off
 
 ---
 
-**Last Updated:** 2026-07-25
-**Authority:** SOP-DEV-002, INV-CORE
+**Last Updated:** 2026-07-25 (v1.1 — Added MANDATORY/GUIDANCE classification with authority citations)
+**Authority:** SOP-DEV-002, INV-CORE, INV-ARC-016, INV-ARC-021, DOM-CORE-002, multi-tenancy.md, testing.md, database-migrations.md, documentation.md
 **Applicable To:** Any domain reconstruction following SOP-DEV-002 pattern
