@@ -6089,12 +6089,15 @@ def rent_settings():
         flash("Rent settings updated successfully!", "success")
         return redirect(url_for('admin.rent_settings'))
 
-    # Get statistics — total claimed student seats in class
-    total_students = Seat.query.filter(
-        Seat.class_id == class_id, Seat.role == 'student', Seat.claimed_at.isnot(None),
-    ).count()
+    # Use view model to get student obligation summary (encapsulates all aggregation)
+    from app.services.obligation_view_model import build_class_obligation_summary
 
-    # Get active waivers
+    obligation_summary = build_class_obligation_summary(class_id, 'RENT')
+
+    # Extract basic statistics from view model
+    total_students = len(obligation_summary.student_rows) if obligation_summary else 0
+
+    # Get active waivers (still needs manual query for waiver-specific fields not in view model)
     now = utc_now()
     active_waivers = [
         SimpleNamespace(
@@ -6111,20 +6114,21 @@ def rent_settings():
         )
     ]
 
-    # Get all seats with profiles for waiver form
-    class_seats = (
-        Seat.query
-        .filter(Seat.class_id == class_id, Seat.role == 'student', Seat.claimed_at.isnot(None))
-        .all()
-    )
-    seat_profile_map = {
-        p.seat_id: p for p in
-        IdentityProfile.query.filter(IdentityProfile.seat_id.in_([s.id for s in class_seats])).all()
-    } if class_seats else {}
-    all_students = sorted(
-        class_seats,
-        key=lambda s: ((seat_profile_map.get(s.id, None) and seat_profile_map[s.id].first_name or "").lower(), s.id),
-    )
+    # Build all_students list from view model student_rows for waiver form
+    all_students = []
+    if obligation_summary and obligation_summary.student_rows:
+        # Fetch seat objects for form rendering (view model gives us names, we need seats for IDs)
+        for row in obligation_summary.student_rows:
+            seat = Seat.query.get(row['seat_id'])
+            if seat:
+                all_students.append(seat)
+        # Sort by student name from view model
+        all_students.sort(
+            key=lambda s: (
+                next((r['student_name'] for r in obligation_summary.student_rows if r['seat_id'] == s.id), "").lower(),
+                s.id
+            )
+        )
 
     # Build class_labels_by_block dictionary
     class_labels_by_block = _get_class_labels_for_blocks(g.canonical_context, teacher_blocks)
@@ -6169,13 +6173,24 @@ def rent_settings():
 
     # Calculate rent active status, backlog buckets, and logs
     rent_active_for_period = False
-    rent_status_counts = {
-        'current': 0,
-        'behind_1': 0,
-        'behind_2': 0,
-        'behind_3_plus': 0,
-    }
-    rent_status_total = 0
+    # Map view model status_breakdown to template's rent_status_counts (legacy naming)
+    if obligation_summary and obligation_summary.status_breakdown:
+        rent_status_counts = {
+            'current': obligation_summary.status_breakdown.get('up_to_date', 0),
+            'behind_1': obligation_summary.status_breakdown.get('outstanding', 0),
+            'behind_2': obligation_summary.status_breakdown.get('past_due_grace', 0),
+            'behind_3_plus': obligation_summary.status_breakdown.get('past_due_overdue', 0),
+        }
+        rent_status_total = sum(rent_status_counts.values())
+    else:
+        rent_status_counts = {
+            'current': 0,
+            'behind_1': 0,
+            'behind_2': 0,
+            'behind_3_plus': 0,
+        }
+        rent_status_total = 0
+
     unpaid_rent_log = []
     payment_log = []
     current_period_start = None
