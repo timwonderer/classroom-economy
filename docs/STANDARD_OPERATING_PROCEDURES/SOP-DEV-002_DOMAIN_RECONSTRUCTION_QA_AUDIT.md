@@ -21,15 +21,15 @@
 ## Pre-Audit Checklist
 
 ### Repository State
-- [ ] All commits are on the feature branch (never on main)
+- [x] All commits are on the feature branch (never on main)
 - [ ] Branch is up-to-date with origin/codex/v2.0
 - [ ] No uncommitted changes (`git status` is clean)
-- [ ] No merge conflicts
+- [x] No merge conflicts
 
 ### Documentation
-- [ ] Memory file exists documenting the work
-- [ ] Certification audit document exists
-- [ ] Phase completion notes are clear and dated
+- [x] Memory file exists documenting the work
+- [x] Certification audit document exists
+- [x] Phase completion notes are clear and dated
 
 ---
 
@@ -40,12 +40,12 @@
 ### Sign-Off Criteria
 
 **MANDATORY:**
-- [ ] Domain specification document exists (DOM-* or INV-* authority) — *SOP-DEV-002 Phase 0*
-- [ ] Scope is explicitly generic (not tied to one obligation type, entity type, or feature) — *DOM-CORE-002: Domains must define scopes that generalize across variations*
-- [ ] Multi-tenancy model specified (class_id scoping for educational domains) — *INV-CORE-000: Multi-tenant isolation is foundational*
+- [x] Domain specification document exists (DOM-* or INV-* authority) — *SOP-DEV-002 Phase 0*
+- [x] Scope is explicitly generic (not tied to one obligation type, entity type, or feature) — *DOM-CORE-002: Domains must define scopes that generalize across variations*
+- [x] Multi-tenancy model specified (class_id scoping for educational domains) — *INV-CORE-000: Multi-tenant isolation is foundational*
 
 **GUIDANCE:**
-- [ ] Domain examples show scope applies to multiple entity types or obligation types
+- [x] Domain examples show scope applies to multiple entity types or obligation types
 
 ---
 
@@ -56,12 +56,12 @@
 ### Sign-Off Criteria
 
 **MANDATORY:**
-- [ ] Canonical fact table(s) exist for domain entities — *SOP-DEV-002 Phase 1, INV-ARC-016: Lawful Existence and Audit Lineage*
-- [ ] Facts are immutable (no user-facing update columns; new facts append, don't mutate) — *INV-ARC-016, DOM-CORE-002: Facts are append-only*
-- [ ] Foreign keys link domain facts to authoritative sources in other domains — *INV-ARC-021: Cross-Domain Reference and Coordination*
-- [ ] Domain does not duplicate authoritative amounts/values from other domains (e.g., doesn't store Ledger amounts) — *INV-ARC-021*
+- [x] Canonical fact table(s) exist for domain entities — *SOP-DEV-002 Phase 1, INV-ARC-016: Lawful Existence and Audit Lineage*
+- [x] Facts are immutable (no user-facing update columns; new facts append, don't mutate) — *INV-ARC-016, DOM-CORE-002: Facts are append-only*
+- [x] Foreign keys link domain facts to authoritative sources in other domains — *INV-ARC-021: Cross-Domain Reference and Coordination*
+- [x] Domain does not duplicate authoritative amounts/values from other domains (e.g., doesn't store Ledger amounts) — *INV-ARC-021*
 - [ ] Multi-tenancy key (class_id or equivalent) present on all fact tables — *INV-CORE-000: Multi-tenant data isolation*
-- [ ] Timestamps (created_at or equivalent) on fact tables for audit lineage — *INV-ARC-016*
+- [x] Timestamps (created_at or equivalent) on fact tables for audit lineage — *INV-ARC-016*
 
 **Reference:** DOM-OBL-001 Section V-VI defines assessment_events, bill_cycles, and event_type (ASSESSMENT, PAYMENT, WAIVED) as immutable facts.
 
@@ -74,14 +74,14 @@
 ### Sign-Off Criteria
 
 **MANDATORY:**
-- [ ] Migration files exist for all new tables — *SOP-DEV-002 Phase 2*
-- [ ] Migrations include idempotency helpers (table_exists, column_exists, etc.) — *Standard practice for safe re-runnable migrations*
-- [ ] Migration upgrade/downgrade tested successfully — *SOP-DEV-002 Phase 2*
-- [ ] Foreign key constraints present and enforced at database level — *INV-ARC-021*
-- [ ] No hardcoded constraint names; constraints discovered dynamically via schema inspection — *Standard practice to avoid naming collisions*
+- [x] Migration files exist for all new tables — *SOP-DEV-002 Phase 2*
+- [x] Migrations include idempotency helpers (table_exists, column_exists, etc.) — *Standard practice for safe re-runnable migrations*
+- [x] Migration upgrade/downgrade tested successfully — *SOP-DEV-002 Phase 2*
+- [x] Foreign key constraints present and enforced at database level — *INV-ARC-021*
+- [x] No hardcoded constraint names; constraints discovered dynamically via schema inspection — *Standard practice to avoid naming collisions*
 
 **GUIDANCE:**
-- [ ] Indexes created on query columns (foreign keys, tenant keys, filter columns)
+- [x] Indexes created on query columns (foreign keys, tenant keys, filter columns)
 
 **Reference:** DOM-OBL-001 Section VI specifies table structure for assessment_events and bill_cycles with foreign keys to seats, classes, and transactions.
 
@@ -94,14 +94,14 @@
 ### Sign-Off Criteria
 
 **MANDATORY:**
-- [ ] Core domain queries implemented in service layer functions — *SOP-DEV-002 Phase 3*
-- [ ] All queries use SQLAlchemy ORM (no raw SQL in service layer) — *INV-CORE-000: Canonical architecture*
-- [ ] Every query that involves domain entities scoped by class_id (multi-tenancy enforcement) — *INV-CORE-000: Multi-tenant data isolation*
+- [x] Core domain queries implemented in service layer functions — *SOP-DEV-002 Phase 3*
+- [x] All queries use SQLAlchemy ORM (no raw SQL in service layer) — *INV-CORE-000: Canonical architecture*
+- [x] Every query that involves domain entities scoped by class_id (multi-tenancy enforcement) — *INV-CORE-000: Multi-tenant data isolation*
 - [ ] Unit tests verify each primitive operation works correctly — *SOP-DEV-002 Phase 3*
 - [ ] Tests include multi-tenancy verification (no cross-class data leakage) — *INV-CORE-000*
 
 **GUIDANCE:**
-- [ ] Service functions have docstrings explaining contracts
+- [x] Service functions have docstrings explaining contracts
 
 **Reference:** DOM-OBL-001 Section IX defines canonical business operations: `create_obligation()`, `satisfy_obligation()`, `advance_bill_cycle()`.
 
@@ -114,14 +114,14 @@
 ### Sign-Off Criteria
 
 **MANDATORY:**
-- [ ] All domain state mutations wrapped in FEATContext (FEAT-* layer) — *SOP-DEV-002 Phase 4, INV-ARC-009: Domain Authority for State*
-- [ ] Routes never directly call db.session.add/commit — *INV-ARC-009*
-- [ ] FEAT implementations use idempotency_key for exactly-once semantics — *DOM-CORE-002: Idempotency required*
-- [ ] Mutation events logged with correlation_id for audit trail — *INV-ARC-016: Lawful Existence and Audit Lineage*
-- [ ] FEAT boundary enforced (test verifies direct mutation blocked) — *SOP-DEV-002 Phase 4*
+- [x] All domain state mutations wrapped in FEATContext (FEAT-* layer) — *SOP-DEV-002 Phase 4, INV-ARC-009: Domain Authority for State*
+- [x] Routes never directly call db.session.add/commit — *INV-ARC-009*
+- [x] FEAT implementations use idempotency_key for exactly-once semantics — *DOM-CORE-002: Idempotency required*
+- [x] Mutation events logged with correlation_id for audit trail — *INV-ARC-016: Lawful Existence and Audit Lineage*
+- [x] FEAT boundary enforced (test verifies direct mutation blocked) — *SOP-DEV-002 Phase 4*
 
 **GUIDANCE:**
-- [ ] Transaction rollback tested on FEAT failure
+- [x] Transaction rollback tested on FEAT failure
 
 ---
 
@@ -132,15 +132,15 @@
 ### Sign-Off Criteria
 
 **MANDATORY:**
-- [ ] View model dataclasses are frozen (immutable) — *SOP-DEV-002 Phase 5*
-- [ ] Constructor functions are generic (parameterized, not hardcoded to one entity type) — *DOM-CORE-002*
-- [ ] Derived state is computed at read time (status, balances, counts) — *DOM-CORE-002: Derived state SHALL NOT be persisted*
-- [ ] All queries in view model constructors scoped by class_id — *INV-CORE-000*
+- [x] View model dataclasses are frozen (immutable) — *SOP-DEV-002 Phase 5*
+- [x] Constructor functions are generic (parameterized, not hardcoded to one entity type) — *DOM-CORE-002*
+- [x] Derived state is computed at read time (status, balances, counts) — *DOM-CORE-002: Derived state SHALL NOT be persisted*
+- [x] All queries in view model constructors scoped by class_id — *INV-CORE-000*
 - [ ] View models tested with unit tests covering happy path, edge cases, multi-tenancy — *SOP-DEV-002 Phase 8: "Tests prove canonical model is correct and multi-tenant safe"*
 
 **GUIDANCE:**
-- [ ] View models include all fields necessary for display
-- [ ] Documentation explains what each view model answers
+- [x] View models include all fields necessary for display
+- [x] Documentation explains what each view model answers
 
 **Reference:** DOM-OBL-001 Section X defines StudentObligationView and ClassObligationSummary as canonical view models with computed current_period, status_breakdown, and payment_history.
 
@@ -153,10 +153,10 @@
 ### Sign-Off Criteria
 
 **MANDATORY:**
-- [ ] Routes call view model constructors — *SOP-DEV-002 Phase 6*
-- [ ] Routes pass view_model object to template — *SOP-DEV-002 Phase 6*
-- [ ] No legacy aggregation variables in render_template context — *SOP-DEV-002 Phase 6*
-- [ ] Templates access view_model fields directly (not persistence objects) — *SOP-DEV-002 Phase 6*
+- [x] Routes call view model constructors — *SOP-DEV-002 Phase 6*
+- [x] Routes pass view_model object to template — *SOP-DEV-002 Phase 6*
+- [x] No legacy aggregation variables in render_template context — *SOP-DEV-002 Phase 6*
+- [x] Templates access view_model fields directly (not persistence objects) — *SOP-DEV-002 Phase 6*
 
 ---
 
@@ -167,14 +167,14 @@
 ### Sign-Off Criteria
 
 **MANDATORY:**
-- [ ] Manual entity queries moved to view model builders — *SOP-DEV-002 Phase 7*
-- [ ] Status/aggregation computation moved from routes to view models — *SOP-DEV-002 Phase 7*
-- [ ] No legacy helper functions imported in routes — *SOP-DEV-002 Phase 7/9*
-- [ ] Route logic delegates to view model; routes are thin handlers — *SOP-DEV-002 Phase 7*
-- [ ] GET handlers are pure (no db.session.commit or side effects) — *INV-ARC-007*
+- [x] Manual entity queries moved to view model builders — *SOP-DEV-002 Phase 7*
+- [x] Status/aggregation computation moved from routes to view models — *SOP-DEV-002 Phase 7*
+- [x] No legacy helper functions imported in routes — *SOP-DEV-002 Phase 7/9*
+- [x] Route logic delegates to view model; routes are thin handlers — *SOP-DEV-002 Phase 7*
+- [x] GET handlers are pure (no db.session.commit or side effects) — *INV-ARC-007*
 
 **GUIDANCE:**
-- [ ] Route complexity reduced compared to legacy implementation
+- [x] Route complexity reduced compared to legacy implementation
 
 ---
 
@@ -191,8 +191,8 @@
 - [ ] Domain-specific operations tested (e.g., status derivation, payment application) — *SOP-DEV-002 Phase 8*
 
 **GUIDANCE:**
-- [ ] Test coverage 80%+ for view model service
-- [ ] Edge cases explicitly tested (no data, empty entities, etc.)
+- [x] Test coverage 80%+ for view model service
+- [x] Edge cases explicitly tested (no data, empty entities, etc.)
 
 ---
 
@@ -203,15 +203,15 @@
 ### Sign-Off Criteria
 
 **MANDATORY:**
-- [ ] Legacy aggregation variables removed from render_template context — *SOP-DEV-002 Phase 9*
-- [ ] Ad-hoc aggregation loops and helper functions removed from routes — *SOP-DEV-002 Phase 9*
+- [x] Legacy aggregation variables removed from render_template context — *SOP-DEV-002 Phase 9*
+- [x] Ad-hoc aggregation loops and helper functions removed from routes — *SOP-DEV-002 Phase 9*
 - [ ] All tests pass after deletion — *SOP-DEV-002 Phase 9*
-- [ ] No dangling references to deleted code — *SOP-DEV-002 Phase 9*
+- [x] No dangling references to deleted code — *SOP-DEV-002 Phase 9*
 
 **GUIDANCE:**
-- [ ] Unused imports removed
-- [ ] Orphaned functions removed
-- [ ] Code compiles without warnings
+- [x] Unused imports removed
+- [x] Orphaned functions removed
+- [x] Code compiles without warnings
 
 ---
 
@@ -220,10 +220,10 @@
 **Goal:** Code is polished; no dead imports or duplicate logic.
 
 **Guidance Criteria:**
-- [ ] No unused imports
-- [ ] No duplicate code blocks
-- [ ] Related logic consolidated
-- [ ] Code reads linearly
+- [x] No unused imports
+- [x] No duplicate code blocks
+- [x] Related logic consolidated
+- [x] Code reads linearly
 
 ---
 
@@ -234,16 +234,16 @@
 ### Sign-Off Criteria
 
 **MANDATORY:**
-- [ ] Audit document (certification) exists and is complete — *SOP-DEV-002 Phase 10*
-- [ ] Code compiles without errors — *SOP-DEV-002 Phase 10*
+- [x] Audit document (certification) exists and is complete — *SOP-DEV-002 Phase 10*
+- [x] Code compiles without errors — *SOP-DEV-002 Phase 10*
 - [ ] All tests pass — *SOP-DEV-002 Phase 10*
 - [ ] No regressions in existing test suite — *SOP-DEV-002 Phase 10*
-- [ ] Branch is pushed to remote — *SOP-DEV-002 Phase 10*
+- [x] Branch is pushed to remote — *SOP-DEV-002 Phase 10*
 - [ ] Git status is clean — *SOP-DEV-002 Phase 10*
 
 **GUIDANCE:**
-- [ ] All commits documented with phase labels
-- [ ] Memory/documentation files updated
+- [x] All commits documented with phase labels
+- [x] Memory/documentation files updated
 
 ---
 
@@ -255,54 +255,54 @@
 - [ ] Multi-tenancy scoping tested
 
 ### Production Readiness (MANDATORY)
-- [ ] Error handling is proper (no bare except)
-- [ ] FEAT mutations are idempotent — *DOM-CORE-002*
+- [x] Error handling is proper (no bare except)
+- [x] FEAT mutations are idempotent — *DOM-CORE-002*
 - [ ] Multi-tenancy enforced throughout — *INV-CORE-000*
-- [ ] No direct db.session mutations in routes — *INV-ARC-009*
+- [x] No direct db.session mutations in routes — *INV-ARC-009*
 
 ### Documentation (MANDATORY)
-- [ ] Domain spec document exists (DOM-* or INV-*) — *SOP-DEV-002*
-- [ ] Certification audit document exists — *SOP-DEV-002*
+- [x] Domain spec document exists (DOM-* or INV-*) — *SOP-DEV-002*
+- [x] Certification audit document exists — *SOP-DEV-002*
 
 ### Git (MANDATORY)
-- [ ] All commits are on feature branch — *SOP-DEV-002*
+- [x] All commits are on feature branch — *SOP-DEV-002*
 - [ ] Branch is up-to-date with origin/codex/v2.0 — *SOP-DEV-002*
-- [ ] No merge conflicts
-- [ ] Branch is pushed to remote
+- [x] No merge conflicts
+- [x] Branch is pushed to remote
 
 ### Code Quality (GUIDANCE)
-- [ ] All code follows Python style guide (PEP 8)
-- [ ] No type errors (mypy if available)
+- [x] All code follows Python style guide (PEP 8)
+- [x] No type errors (mypy if available)
 - [ ] No obvious bugs or TODOs left in code
-- [ ] Comments are clear and non-obvious logic is explained
+- [x] Comments are clear and non-obvious logic is explained
 
 ### Testing (GUIDANCE)
 - [ ] Coverage is 80%+ for new code
 - [ ] Edge cases covered
 
 ### Documentation (GUIDANCE)
-- [ ] Memory file documents the work
-- [ ] Code comments explain non-obvious logic
-- [ ] Phase completion documented
+- [x] Memory file documents the work
+- [x] Code comments explain non-obvious logic
+- [x] Phase completion documented
 
 ### Production Readiness (GUIDANCE)
-- [ ] No dead code remaining
-- [ ] No unused imports
-- [ ] No temporary debugging code
+- [x] No dead code remaining
+- [x] No unused imports
+- [x] No temporary debugging code
 
 ### Git (GUIDANCE)
-- [ ] Commit messages are clear and phase-labeled
-- [ ] Docstrings present on public functions
+- [x] Commit messages are clear and phase-labeled
+- [x] Docstrings present on public functions
 
 ---
 
 ## Sign-Off Statement
 
-**QA Reviewer:** ___________________________
+**QA Reviewer:** Antigravity AI
 
-**Date:** ___________________________
+**Date:** 2026-07-25
 
-**Status:** ☐ APPROVED (all MANDATORY criteria met) ☐ APPROVED WITH GUIDANCE GAPS (guidance items pending) ☐ REJECTED (MANDATORY criteria failures)
+**Status:** ❌ REJECTED (MANDATORY criteria failures)
 
 **Mandatory Criteria Status:** All MANDATORY criteria must be met for approval. Failures on MANDATORY criteria block sign-off.
 
@@ -311,7 +311,22 @@
 **Comments:**
 
 ```
-[Reviewer notes here, including any guidance gaps noted for follow-up]
+1. Feature Branch Up-To-Date:
+- The branch 'obligatin-domain-rewire' is behind the base branch 'origin/codex/v2.0' by 1 commit ('cc6e37fb').
+
+2. Multi-Tenancy Scoping:
+- The 'bill_cycles' fact table lacks a multi-tenancy key ('class_id' or equivalent), preventing it from being fully compliant with INV-CORE-000 multi-tenant data isolation at the schema level. While the table is specified as identity-blind in DOM-OBL-001, this introduces a structural data isolation discrepancy under Phase 1 requirements.
+
+3. Test Execution Failures (Mandatory Criteria):
+- Out of 9 tests in 'tests/dom/obligations/test_obligations_domain.py', 4 failed:
+  - TestAssessObligation.test_create_assessment_creates_assessment_event
+  - TestAssessObligation.test_assess_obligation_idempotent_by_lineage
+  - TestSatisfyObligation.test_satisfy_obligation_creates_waived_event
+  - TestSatisfyObligation.test_waiver_only_for_rent
+- Root Cause:
+  The 'assessment_events' table schema was correctly migrated to align with the DOM-OBL-001 v2.5 spec (dropping 'due_at' and 'viewable_at' columns). However, 'app/feats/assess_obligation_feat.py' was not updated. It still passes 'due_at' and 'viewable_at' arguments when constructing the 'ObligationAssessment' instance, resulting in:
+  "TypeError: 'due_at' is an invalid keyword argument for ObligationAssessment".
+- Because these mandatory test coverage items fail, this certification run is officially REJECTED.
 ```
 
 ---
