@@ -106,9 +106,8 @@ def satisfy_obligation(
         event_type=request.method,  # PAYMENT or WAIVED
         obligation_type=assessment.obligation_type,
         policy_version_id=assessment.policy_version_id,
-        due_at=assessment.due_at,
-        viewable_at=assessment.viewable_at,
         bill_cycle_id=assessment.bill_cycle_id,
+        # timestamp is set automatically by default=utc_now
         # For PAYMENT, reference the Ledger transaction
         ledger_transaction_id=request.ledger_transaction_id if request.method == 'PAYMENT' else None,
     )

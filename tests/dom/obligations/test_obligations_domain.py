@@ -63,19 +63,6 @@ class TestAssessObligation:
             seat_id = student.seat.id
             class_id = classroom.class_id
 
-            # Get current time via canonical temporal resolver (SPEC-TIME-001)
-            from datetime import timedelta
-            ctx = _TemporalContext(class_id=class_id)
-            now_eval = canonical_temporal_resolver(
-                CLASS_LEVEL_EVALUATION,
-                canonical_execution_context=ctx,
-                primitive="current_time",
-            )
-            now_utc = now_eval.canonical_now_utc
-
-            # Calculate due_at (30 days from now)
-            due_at = now_utc + timedelta(days=30)
-
             # Create ASSESSMENT event
             assessment = execute_assess_obligation(
                 seat_id=seat_id,
@@ -83,7 +70,6 @@ class TestAssessObligation:
                 internal_ref="rent:monthly",
                 correlation_id="rent-2026-08-monthly",
                 obligation_type="RENT",
-                due_at=due_at,
             )
 
             db.session.commit()
@@ -108,17 +94,6 @@ class TestAssessObligation:
             seat_id = student.seat.id
             class_id = classroom.class_id
 
-            from datetime import timedelta
-            ctx = _TemporalContext(class_id=class_id)
-            now_eval = canonical_temporal_resolver(
-                CLASS_LEVEL_EVALUATION,
-                canonical_execution_context=ctx,
-                primitive="current_time",
-            )
-            now_utc = now_eval.canonical_now_utc
-
-            due_at = now_utc + timedelta(days=30)
-
             # First call
             assessment1 = execute_assess_obligation(
                 seat_id=seat_id,
@@ -126,7 +101,6 @@ class TestAssessObligation:
                 internal_ref="rent:monthly",
                 correlation_id="rent-2026-08-monthly",
                 obligation_type="RENT",
-                due_at=due_at,
             )
 
             db.session.commit()
@@ -139,7 +113,6 @@ class TestAssessObligation:
                 internal_ref="rent:monthly",
                 correlation_id="rent-2026-08-monthly",
                 obligation_type="RENT",
-                due_at=due_at,
             )
 
             db.session.commit()
@@ -237,17 +210,6 @@ class TestSatisfyObligation:
             seat_id = student.seat.id
             class_id = classroom.class_id
 
-            from datetime import timedelta
-            ctx = _TemporalContext(class_id=class_id)
-            now_eval = canonical_temporal_resolver(
-                CLASS_LEVEL_EVALUATION,
-                canonical_execution_context=ctx,
-                primitive="current_time",
-            )
-            now_utc = now_eval.canonical_now_utc
-
-            due_at = now_utc + timedelta(days=30)
-
             # Create ASSESSMENT
             assessment = execute_assess_obligation(
                 seat_id=seat_id,
@@ -255,7 +217,6 @@ class TestSatisfyObligation:
                 internal_ref="rent:monthly",
                 correlation_id="rent-2026-08-monthly",
                 obligation_type="RENT",
-                due_at=due_at,
             )
 
             db.session.commit()
@@ -283,17 +244,6 @@ class TestSatisfyObligation:
             seat_id = student.seat.id
             class_id = classroom.class_id
 
-            from datetime import timedelta
-            ctx = _TemporalContext(class_id=class_id)
-            now_eval = canonical_temporal_resolver(
-                CLASS_LEVEL_EVALUATION,
-                canonical_execution_context=ctx,
-                primitive="current_time",
-            )
-            now_utc = now_eval.canonical_now_utc
-
-            due_at = now_utc + timedelta(days=30)
-
             # Create INSURANCE_PREMIUM obligation
             assessment = execute_assess_obligation(
                 seat_id=seat_id,
@@ -301,7 +251,6 @@ class TestSatisfyObligation:
                 internal_ref="insurance:monthly",
                 correlation_id="insurance-2026-08-monthly",
                 obligation_type="INSURANCE_PREMIUM",
-                due_at=due_at,
             )
 
             db.session.commit()

@@ -24,8 +24,6 @@ class AssessmentRequest:
     internal_ref: str  # Stable lineage key for continuing relationship
     correlation_id: str  # Unique ID for this individual liability
     obligation_type: str  # RENT | INSURANCE_PREMIUM
-    due_at: datetime
-    viewable_at: datetime | None = None
     source_ref: str | None = None  # Opaque upstream authority reference
     source_version_ref: str | None = None  # Immutable version snapshot
     policy_version_id: int | None = None
@@ -45,7 +43,6 @@ def assess_obligation(
     - request has valid seat_id, class_id scoped to canonical context
     - internal_ref and correlation_id are lawful per upstream authority
     - correlation_id is globally unique
-    - due_at and viewable_at satisfy temporal boundary contract
 
     Postconditions:
     - exactly one ASSESSMENT row created with event_type='ASSESSMENT'
@@ -69,8 +66,6 @@ def assess_obligation(
         raise ValueError("internal_ref and correlation_id are required")
     if not request.obligation_type:
         raise ValueError("obligation_type is required")
-    if not request.due_at:
-        raise ValueError("due_at is required")
 
     # Idempotency: per FEAT-OBL-001 §V, check for replay safety
     if obligations_service.check_idempotency_assessment(
@@ -91,8 +86,7 @@ def assess_obligation(
         event_type='ASSESSMENT',
         obligation_type=request.obligation_type,
         policy_version_id=request.policy_version_id,
-        due_at=request.due_at,
-        viewable_at=request.viewable_at,
+        # timestamp is set automatically by default=utc_now
         # ledger_transaction_id is NULL for ASSESSMENT (only filled for PAYMENT)
         # bill_cycle_id is NULL initially (linked later if recurring)
     )
@@ -114,9 +108,7 @@ def execute_assess_obligation(
     internal_ref: str,
     correlation_id: str,
     obligation_type: str,
-    due_at: datetime,
     *,
-    viewable_at: datetime | None = None,
     source_ref: str | None = None,
     source_version_ref: str | None = None,
     policy_version_id: int | None = None,
@@ -135,8 +127,6 @@ def execute_assess_obligation(
         internal_ref=internal_ref,
         correlation_id=correlation_id,
         obligation_type=obligation_type,
-        due_at=due_at,
-        viewable_at=viewable_at,
         source_ref=source_ref,
         source_version_ref=source_version_ref,
         policy_version_id=policy_version_id,
