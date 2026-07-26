@@ -1,24 +1,8 @@
-# DOM-BANK-001: Savings Interest Accrual and Disbursement Specification
+# SPEC-ECON-001: Savings Interest Accrual and Disbursement Specification
 
 | Reference Number | Version | Effective Date | Supersedes | Authority Level |
 |------------------|---------|----------------|------------|-----------------|
-| DOM-BANK-001 | 1.0 | 2026-05-21 | Draft | Constitutional |
-
-## III. Authority Level
-
-Tier 1 — Constitutional. This document defines structural enforcement mechanisms and domain-specific constraints that operationalize Foundational invariants. It is subordinate to `INV-CORE-000`, `INV-CORE-001`, and `INV-ARC-015`.
-
-**Banking domain is the sole authority over accrual rollover legality.** When a lawful accrual boundary occurs (e.g., end of a daily or monthly accrual window in class timezone), Banking determines whether the boundary is valid and may request policy transition activation from `FEAT-ECON-001`. Banking MUST NOT mutate `policy_versions` or `policy_transitions` directly. Those tables are owned by `DOM-CLASS-001` and governed by `DOM-ECON-003`.
-
-## IV. Dependencies
-
-- `INV-CORE-000` — Core Invariants
-- `INV-CORE-001` — Capability-Based Architecture and Authority Model
-- `INV-ARC-000` — Execution Model
-- `INV-ARC-015` — Temporal Model and Boundary Enforcement
-- `DOM-LED-001` — Ledger Domain Authority
-- `FEAT-CORE-000` — Feature Execution Constitutional Directive
-- `DOM-ECON-003` — Economic Policy and Transition (operational boundary activation protocol)
+| SPEC-ECON-001 | 1.0 | 2026-07-25 | None | Normative |
 
 ---
 

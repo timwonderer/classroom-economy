@@ -17,9 +17,10 @@ from __future__ import annotations
 
 from decimal import Decimal
 from dataclasses import dataclass
+from datetime import datetime, timezone, timedelta
 
 from app.extensions import db
-from app.models import ObligationAssessment, Transaction
+from app.models import ObligationAssessment, Transaction, BillCycle, Seat, ClassEconomy, IdentityProfile
 
 
 @dataclass(frozen=True)
@@ -116,6 +117,330 @@ def get_total_paid_for_obligation(
     if not status:
         return Decimal('0.00')
     return status.total_paid
+
+
+# ============================================================================
+# Generic Obligation View Models (Any obligation_type: RENT, INSURANCE_PREMIUM, etc.)
+# ============================================================================
+
+@dataclass(frozen=True)
+class StudentObligationView:
+    """Generic student view of any obligation type (RENT, INSURANCE_PREMIUM, FINE, FEE, etc.).
+
+    Answers: "What does this student owe right now, how much have they satisfied,
+    when do they move to the next cycle?"
+
+    All fields are derived from obligation_service facts + bill_cycles + ClassConfig.
+    """
+
+    obligation_type: str
+    seat_id: int
+    class_id: str
+
+    # Current period (OWE phase)
+    current_period: dict  # {due_date, grace_end, amount_due, amount_paid, amount_waived, balance, is_paid, is_waived, is_past_due, is_preview, days_until_due, days_overdue}
+
+    # Prior obligations (arrears)
+    prior_obligations: list  # [{period, amount, status, due_date, is_past_due}]
+
+    # Ledger history (payment/waiver events)
+    payment_history: list  # [{date, amount, type, status, correlation_id}]
+
+    # Computed totals
+    totals: dict  # {total_owed, total_paid_all_time, total_waived}
+
+    # Configuration (from ClassConfig, not domain-specific settings)
+    settings: dict  # {amount_expected, late_fee, grace_period_days, frequency}
+
+
+@dataclass(frozen=True)
+class ClassObligationSummary:
+    """Generic teacher view: status of all students in one class for one obligation type.
+
+    Answers: "Which students OWE, which have SATISFIED, which have MOVED ON?"
+    """
+
+    class_id: str
+    obligation_type: str
+    summary_date: datetime
+
+    # Roll-up counts
+    status_breakdown: dict  # {up_to_date, outstanding, past_due_grace, past_due_overdue}
+
+    # Per-student summary
+    student_rows: list  # [{seat_id, student_name, status, due_date, amount_due, amount_paid, balance, days_overdue, is_waived}]
+
+
+def build_student_obligation_view(
+    seat_id: int,
+    class_id: str,
+    obligation_type: str,
+) -> StudentObligationView | None:
+    """
+    Construct a complete obligation view for one student, any obligation type.
+
+    Composes:
+    - All assessments for this (seat, class, obligation_type)
+    - Satisfaction events (PAYMENT, WAIVED)
+    - Bill cycles for temporal boundaries
+    - ClassConfig for grace_period
+    - Ledger for authoritative payment amounts
+
+    Returns None if no assessments found.
+    """
+    from app.services import obligations_service
+
+    # Step 1: Get ClassEconomy for grace_period_days
+    class_econ = db.session.query(ClassEconomy).filter_by(class_id=class_id).first()
+    if not class_econ:
+        return None
+
+    grace_period_days = class_econ.grace_period_days if hasattr(class_econ, 'grace_period_days') else 0
+
+    # Step 2: Get all assessments for this (seat, class, obligation_type)
+    assessments = obligations_service.get_assessment_events_for_seat_class(
+        seat_id=seat_id,
+        class_id=class_id,
+        obligation_type=obligation_type,
+    )
+
+    if not assessments:
+        return None
+
+    # Step 3: Separate into ASSESSMENT and (PAYMENT/WAIVED) events
+    assessment_events = [a for a in assessments if a.event_type == 'ASSESSMENT']
+    if not assessment_events:
+        return None
+
+    # Step 4: Process each assessment to derive satisfaction
+    current_period = {}
+    prior_obligations = []
+    payment_history_all = []
+    total_paid_all_time = Decimal('0.00')
+    total_waived_count = 0
+
+    # Assume most recent ASSESSMENT is "current period"
+    current_assessment = assessment_events[-1] if assessment_events else None
+
+    for assessment in assessment_events:
+        # Get satisfaction events for this assessment
+        satisfaction_events = obligations_service.get_satisfaction_events(assessment.correlation_id)
+
+        # Compute total_paid from PAYMENT events via Ledger
+        total_paid = Decimal('0.00')
+        has_waiver = False
+        payment_events_for_assessment = []
+
+        for event in satisfaction_events:
+            if event.event_type == 'PAYMENT' and event.ledger_transaction_id:
+                txn = db.session.get(Transaction, event.ledger_transaction_id)
+                if txn and txn.status != 'void':
+                    total_paid += Decimal(str(txn.amount))
+                    payment_history_all.append({
+                        'date': event.timestamp,
+                        'amount': Decimal(str(txn.amount)),
+                        'type': 'PAYMENT',
+                        'status': 'completed',
+                        'correlation_id': assessment.correlation_id,
+                    })
+                    payment_events_for_assessment.append(event)
+            elif event.event_type == 'WAIVED':
+                has_waiver = True
+                total_waived_count += 1
+                payment_history_all.append({
+                    'date': event.timestamp,
+                    'amount': Decimal('0.00'),
+                    'type': 'WAIVED',
+                    'status': 'completed',
+                    'correlation_id': assessment.correlation_id,
+                })
+
+        total_paid_all_time += total_paid
+
+        # Get bill_cycle for this assessment to find due_date
+        bill_cycle = None
+        if assessment.bill_cycle_id:
+            bill_cycle = db.session.get(BillCycle, assessment.bill_cycle_id)
+
+        due_date = bill_cycle.next_assessment_at if bill_cycle else assessment.timestamp
+        grace_end = due_date + timedelta(days=grace_period_days) if due_date else None
+
+        # Get amount_due (from policy_version or config - not stored on assessment per DOM-OBL-001 v2.5)
+        # TODO: Query PolicyVersion via assessment.policy_version_id for the actual amount
+        # For now, default to 0 - caller should pass amount through view model parameters
+        amount_due = Decimal('0.00')
+
+        balance = amount_due - total_paid if amount_due else (Decimal('0.00') - total_paid)
+
+        # Compute temporal status
+        now_utc = datetime.now(timezone.utc)
+        is_satisfied = has_waiver or (total_paid >= amount_due)
+        is_past_due = (not is_satisfied) and (grace_end and now_utc > grace_end)
+        is_preview = (not is_satisfied) and (due_date and now_utc < due_date)
+
+        days_until_due = None
+        if is_preview and due_date:
+            delta = due_date - now_utc
+            days_until_due = delta.days
+
+        days_overdue = None
+        if is_past_due and grace_end:
+            delta = now_utc - grace_end
+            days_overdue = delta.days
+
+        period_info = {
+            'due_date': due_date,
+            'grace_end': grace_end,
+            'amount_due': amount_due,
+            'amount_paid': total_paid,
+            'amount_waived': has_waiver,
+            'balance': balance,
+            'is_paid': balance <= Decimal('0.00'),
+            'is_waived': has_waiver,
+            'is_past_due': is_past_due,
+            'is_preview': is_preview,
+            'days_until_due': days_until_due,
+            'days_overdue': days_overdue,
+        }
+
+        # If this is the current assessment, set as current_period
+        if assessment == current_assessment:
+            current_period = period_info
+        else:
+            # Prior obligation
+            prior_obligations.append({
+                'period': assessment.timestamp.strftime('%B %Y') if assessment.timestamp else 'Unknown',
+                'amount': amount_due,
+                'status': 'paid' if period_info['is_paid'] else ('waived' if has_waiver else 'outstanding'),
+                'due_date': due_date,
+                'is_past_due': is_past_due,
+            })
+
+    # Sort payment_history by date descending
+    payment_history_all.sort(key=lambda x: x['date'], reverse=True)
+
+    # Build settings dict (from ClassConfig, not rent/insurance settings)
+    settings = {
+        'amount_expected': Decimal('0.00'),  # TODO: Get from ClassConfig
+        'late_fee': None,  # TODO: Get from ClassConfig if applicable
+        'grace_period_days': grace_period_days,
+        'frequency': 'monthly',  # TODO: Get from bill_cycle cadence
+    }
+
+    # Compute totals
+    total_owed = Decimal('0.00')
+    if current_period:
+        total_owed += current_period.get('balance', Decimal('0.00'))
+    for prior in prior_obligations:
+        if prior['status'] == 'outstanding':
+            total_owed += prior['amount']
+
+    totals = {
+        'total_owed': total_owed,
+        'total_paid_all_time': total_paid_all_time,
+        'total_waived': total_waived_count,
+    }
+
+    return StudentObligationView(
+        obligation_type=obligation_type,
+        seat_id=seat_id,
+        class_id=class_id,
+        current_period=current_period,
+        prior_obligations=prior_obligations,
+        payment_history=payment_history_all,
+        totals=totals,
+        settings=settings,
+    )
+
+
+def build_class_obligation_summary(
+    class_id: str,
+    obligation_type: str,
+) -> ClassObligationSummary | None:
+    """
+    Construct a summary view of all students' obligations in a class.
+
+    For each seat in class:
+    - Call build_student_obligation_view()
+    - Extract status
+    - Aggregate into status_breakdown buckets
+
+    Returns ClassObligationSummary with roll-up counts and per-student rows.
+    """
+    from app.services import obligations_service
+
+    # Step 1: List all seats in this class
+    class_econ = db.session.query(ClassEconomy).filter_by(class_id=class_id).first()
+    if not class_econ:
+        return None
+
+    seats = db.session.query(Seat).filter_by(class_id=class_econ.class_id).all()
+    if not seats:
+        seats = []
+
+    # Step 2: For each seat, build view and extract status
+    student_rows = []
+    status_counts = {
+        'up_to_date': 0,
+        'outstanding': 0,
+        'past_due_grace': 0,
+        'past_due_overdue': 0,
+    }
+
+    for seat in seats:
+        view = build_student_obligation_view(seat.id, class_id, obligation_type)
+        if not view:
+            # No obligations for this seat yet
+            continue
+
+        current = view.current_period
+        if not current:
+            continue
+
+        # Map to status bucket
+        if current.get('is_paid') or current.get('is_waived'):
+            status = 'up_to_date'
+            status_counts['up_to_date'] += 1
+        elif current.get('is_preview'):
+            status = 'outstanding'
+            status_counts['outstanding'] += 1
+        elif current.get('is_past_due'):
+            # TODO: Distinguish between grace period and truly overdue
+            # For now, lump all past_due together
+            status = 'past_due_overdue'
+            status_counts['past_due_overdue'] += 1
+        else:
+            status = 'outstanding'
+            status_counts['outstanding'] += 1
+
+        # Get student name from IdentityProfile
+        profile = db.session.query(IdentityProfile).filter_by(seat_id=seat.id).first()
+        if profile:
+            student_name = f"{profile.first_name} {profile.last_name}".strip()
+        else:
+            student_name = f"Seat {seat.id}"
+
+        student_rows.append({
+            'seat_id': seat.id,
+            'student_name': student_name,
+            'status': status,
+            'due_date': current.get('due_date'),
+            'amount_due': current.get('amount_due', Decimal('0.00')),
+            'amount_paid': current.get('amount_paid', Decimal('0.00')),
+            'balance': current.get('balance', Decimal('0.00')),
+            'days_overdue': current.get('days_overdue'),
+            'is_waived': current.get('is_waived', False),
+        })
+
+    now_utc = datetime.now(timezone.utc)
+
+    return ClassObligationSummary(
+        class_id=class_id,
+        obligation_type=obligation_type,
+        summary_date=now_utc,
+        status_breakdown=status_counts,
+        student_rows=student_rows,
+    )
 
 
 # ============================================================================
