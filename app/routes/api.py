@@ -58,14 +58,17 @@ from app.routes.student import (
 from app.services.context_resolver import resolve_canonical_context, ContextResolutionError
 from app.feats.store_purchase_feat import execute_store_purchase
 from app.feats.ledger_resolution_feat import build_intended_ledger_plan, resolve_intended_ledger_plan, apply_resolved_ledger_plan
-from app.services.store_service import get_active_rent_grant, get_purchase_count
-from app.services.store_entitlement_service import consume_entitlement, list_entitlement_history, derive_display_status
-from app.feats.redemption_disposition_feat import (
-    RedemptionDispositionError,
-    execute_redemption_approval,
-    execute_redemption_rejection,
-    record_live_redemption_event,
-)
+# TODO (Phase 4): get_active_rent_grant, get_purchase_count commented out (deleted service functions)
+# from app.services.store_service import get_active_rent_grant, get_purchase_count
+# TODO (Phase 4): store_entitlement_service deleted; use EntitlementEvent queries
+# from app.services.store_entitlement_service import consume_entitlement, list_entitlement_history, derive_display_status
+# TODO (Phase 4): redemption_disposition_feat deleted; use FEAT-STOR-002 instead
+# from app.feats.redemption_disposition_feat import (
+#     RedemptionDispositionError,
+#     execute_redemption_approval,
+#     execute_redemption_rejection,
+#     record_live_redemption_event,
+# )
 from app.services import store_service
 from app.services.entitlement_service import get_hall_pass_balance, grant_hall_passes
 from app.services.hall_pass_request_queue import (

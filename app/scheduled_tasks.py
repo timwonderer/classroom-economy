@@ -8,7 +8,8 @@ import logging
 import secrets
 from app.feats.base import feat_shell
 from app.services.insurance_policy_service import delete_due_policy_lineages
-from app.utils.insurance_billing import get_insurance_billing_snapshot
+# TODO (Phase 4): insurance_billing deleted; move to Obligations domain
+# from app.utils.insurance_billing import get_insurance_billing_snapshot
 
 
 @feat_shell("FEAT-PROD-001")
