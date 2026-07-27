@@ -187,6 +187,7 @@ from app.utils.student_deletion import (
 from app.utils.seat_scope import seat_scoped_filter, transaction_scope_filter
 from app.feats.admin_adjustment_feat import execute_admin_adjustments
 from app.feats.prod import record_attendance_session, record_payroll_event
+from app.feats.direct_entitlement_grant_feat import execute_direct_grant
 # execute_insurance_claim_resolution removed — insurance_claim_feat.py deleted; insurance feature broken pending DOM-OBL-001 migration
 from app.feats.transaction_void_feat import (
     ImmediatePurchaseNotVoidable,
@@ -4483,39 +4484,66 @@ def student_detail_public(actor_public_id):
 
 @admin_bp.route('/student/<int:seat_id>/adjust-hall-pass-entitlements', methods=['POST'])
 @admin_required
-@feat_shell("FEAT-STOR-001")
 def adjust_hall_pass_entitlements(seat_id):
     """Grant or remove hall-pass entitlements for a student."""
-    student = db.session.get(Seat, seat_id)
-    if not student:
+    try:
+        canonical_context = getattr(g, "canonical_context", None)
+        if not canonical_context:
+            abort(403)
+    except Exception:
+        abort(403)
+
+    target_seat = db.session.get(Seat, seat_id)
+    if not target_seat:
         abort(404)
-    if not ClassEconomy.query.filter_by(class_id=student.class_id, user_id=g.canonical_context.user_id).first():
+
+    # Verify teacher owns this class
+    if not ClassEconomy.query.filter_by(class_id=target_seat.class_id, user_id=canonical_context.user_id).first():
         abort(404)
+
     action = (request.form.get('hall_pass_action') or '').strip().lower()
     quantity = request.form.get('hall_pass_quantity', type=int)
 
     if quantity is None or quantity <= 0 or action not in {"add", "remove"}:
         flash("Choose Add or Remove and enter a positive hall-pass quantity.", "error")
-        return _redirect_to_student_detail(student.public_id)
+        return _redirect_to_student_detail(target_seat.public_id)
 
-    student_name = student.identity_profile.full_name if student.identity_profile else str(student.id)
-    try:
-        if action == "add":
-            new_balance = grant_hall_passes(
-                student,
-                quantity,
-            )
-            flash(f"Granted {quantity} hall pass(es) to {student_name}. New balance: {new_balance}.", "success")
+    student_name = target_seat.identity_profile.full_name if target_seat.identity_profile else str(target_seat.id)
+
+    # Get teacher seat for actor_seat_id
+    teacher_seat = Seat.query.filter_by(
+        user_id=canonical_context.user_id,
+        class_id=target_seat.class_id,
+    ).first()
+
+    if not teacher_seat:
+        flash(f"Error: Teacher seat not found for class {target_seat.class_id}.", "error")
+        return _redirect_to_student_detail(target_seat.public_id)
+
+    if action == "add":
+        # Use FEAT-STOR-004 to grant entitlements
+        result = execute_direct_grant(
+            canonical_context=canonical_context,
+            target_seat_id=target_seat.id,
+            product_id=1,  # TODO: Determine correct product_id for hall passes from policy
+            quantity=quantity,
+        )
+
+        if result.success:
+            flash(f"Granted {quantity} hall pass(es) to {student_name}.", "success")
         else:
-            new_balance = remove_hall_passes(
-                student,
-                quantity,
-            )
-            flash(f"Removed {quantity} hall pass(es) from {student_name}. New balance: {new_balance}.", "success")
-    except ValueError as exc:
-        flash(str(exc), "error")
+            error_msg = result.error_message or f"Grant failed: {result.error_code}"
+            flash(error_msg, "error")
+    else:
+        # Remove functionality requires FEAT-STOR-002 (revocation/lifecycle transitions)
+        # which is not yet implemented in Phase 4
+        flash(
+            "Hall pass removal is not yet available. Use FEAT-STOR-002 (pending implementation). "
+            "Contact support to revoke hall passes.",
+            "warning"
+        )
 
-    return _redirect_to_student_detail(student.public_id)
+    return _redirect_to_student_detail(target_seat.public_id)
 
 
 @admin_bp.route('/student/edit', methods=['POST'])

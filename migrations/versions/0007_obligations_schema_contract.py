@@ -287,9 +287,11 @@ def upgrade():
         _repoint_assessment_foreign_key(
             "obligation_reversal", "assessment_events", "CASCADE"
         )
-    _repoint_assessment_foreign_key(
-        "entitlement_events", "assessment_events", "SET NULL"
-    )
+    # Only repoint if entitlement_events has assessment_id column (legacy schema)
+    if table_exists("entitlement_events") and column_exists("entitlement_events", "assessment_id"):
+        _repoint_assessment_foreign_key(
+            "entitlement_events", "assessment_events", "SET NULL"
+        )
 
 
 def downgrade():
@@ -304,9 +306,11 @@ def downgrade():
         _repoint_assessment_foreign_key(
             "obligation_reversal", "obligation_assessment", "CASCADE"
         )
-    _repoint_assessment_foreign_key(
-        "entitlement_events", "obligation_assessment", "SET NULL"
-    )
+    # Only repoint if entitlement_events has assessment_id column (legacy schema)
+    if table_exists("entitlement_events") and column_exists("entitlement_events", "assessment_id"):
+        _repoint_assessment_foreign_key(
+            "entitlement_events", "obligation_assessment", "SET NULL"
+        )
 
     if table_exists("obligation_lifecycle"):
         op.drop_table("obligation_lifecycle")
