@@ -13,7 +13,8 @@ from app.models import (
     ClassEconomy,
 )
 # Entitlement, EntitlementConsumption, StorePurchase, GrantType deleted per Phase 2 migration (DOM-STORE-001 v3.0)
-from app.services.store_entitlement_service import grant_entitlement, list_available_entitlements
+# TODO (Phase 4): store_entitlement_service deleted; all grant/entitlement functions must be rewritten to use new FEATs
+# from app.services.store_entitlement_service import grant_entitlement, list_available_entitlements
 from app.utils.time import utc_now
 
 
@@ -52,24 +53,26 @@ def set_item_visibility(store_item_id: int, seat_ids: list[int]) -> None:
 # ---------------------------------------------------------------------------
 
 
-def get_purchase_count(seat_id: int, class_id: str, store_item_id: int) -> int:
-    """Count canonical purchase entitlements for an item by a seat in a class."""
-    return Entitlement.query.filter(
-        Entitlement.target_seat_id == seat_id,
-        Entitlement.class_id == class_id,
-        Entitlement.entitlement_item_id == store_item_id,
-        Entitlement.grant_type == GrantType.PURCHASE,
-    ).count()
+# TODO (Phase 4): Rewrite using EntitlementEvent instead of deleted Entitlement model
+# def get_purchase_count(seat_id: int, class_id: str, store_item_id: int) -> int:
+#     """Count canonical purchase entitlements for an item by a seat in a class."""
+#     return Entitlement.query.filter(
+#         Entitlement.target_seat_id == seat_id,
+#         Entitlement.class_id == class_id,
+#         Entitlement.entitlement_item_id == store_item_id,
+#         Entitlement.grant_type == GrantType.PURCHASE,
+#     ).count()
 
 
-def get_active_rent_grant(seat_id: int, class_id: str, store_item_id: int):
-    """Find an active rent-derived entitlement for a seat and item."""
-    active_entitlements = list_available_entitlements(
-        target_seat_id=seat_id,
-        class_id=class_id,
-        entitlement_item_id=store_item_id,
-    )
-    return active_entitlements[0] if active_entitlements else None
+# TODO (Phase 4): Rewrite using EntitlementEvent queries
+# def get_active_rent_grant(seat_id: int, class_id: str, store_item_id: int):
+#     """Find an active rent-derived entitlement for a seat and item."""
+#     active_entitlements = list_available_entitlements(
+#         target_seat_id=seat_id,
+#         class_id=class_id,
+#         entitlement_item_id=store_item_id,
+#     )
+#     return active_entitlements[0] if active_entitlements else None
 
 
 def create_store_item(*, user_id: int, class_id: str, **fields) -> StoreItem:
@@ -191,38 +194,39 @@ def get_frozen_store_linked_items(settings: RentSettings) -> list[dict]:
     ]
 
 
-def grant_rent_per_use_items_from_settings(
-    *, seat, settings: RentSettings, calculate_due_dates_fn,
-) -> int:
-    """Grant rent-derived per-use entitlements as canonical entitlement rows."""
-    per_use_items = [
-        item for item in _get_rent_linked_store_items(settings.class_id)
-        if item.limit_per_student is not None
-    ]
-
-    granted = 0
-    now = utc_now()
-
-    for pu_item in per_use_items:
-        store_item_id = pu_item.id
-        existing = list_available_entitlements(
-            target_seat_id=seat.id,
-            class_id=seat.class_id,
-            entitlement_item_id=store_item_id,
-        )
-        if existing:
-            continue
-
-        grant_entitlement(
-            entitlement_item_id=store_item_id,
-            target_seat_id=seat.id,
-            actor_seat_id=seat.id,
-            class_id=seat.class_id,
-            grant_type=GrantType.OBLIGATION,
-        )
-        granted += 1
-
-    return granted
+# TODO (Phase 4): Rewrite using FEAT-STOR-004 (direct grants)
+# def grant_rent_per_use_items_from_settings(
+#     *, seat, settings: RentSettings, calculate_due_dates_fn,
+# ) -> int:
+#     """Grant rent-derived per-use entitlements as canonical entitlement rows."""
+#     per_use_items = [
+#         item for item in _get_rent_linked_store_items(settings.class_id)
+#         if item.limit_per_student is not None
+#     ]
+#
+#     granted = 0
+#     now = utc_now()
+#
+#     for pu_item in per_use_items:
+#         store_item_id = pu_item.id
+#         existing = list_available_entitlements(
+#             target_seat_id=seat.id,
+#             class_id=seat.class_id,
+#             entitlement_item_id=store_item_id,
+#         )
+#         if existing:
+#             continue
+#
+#         grant_entitlement(
+#             entitlement_item_id=store_item_id,
+#             target_seat_id=seat.id,
+#             actor_seat_id=seat.id,
+#             class_id=seat.class_id,
+#             grant_type=GrantType.OBLIGATION,
+#         )
+#         granted += 1
+#
+#     return granted
 
 
 def get_rent_hall_pass_grant_total(rent_setting_id: int) -> int:
@@ -230,118 +234,89 @@ def get_rent_hall_pass_grant_total(rent_setting_id: int) -> int:
     return get_rent_hall_pass_grant_total_from_settings(settings) if settings else 0
 
 
-def grant_rent_per_use_items(*, seat, settings, calculate_due_dates_fn) -> int:
-    """Store-owned mutation for rent-derived per-use entitlements."""
-    return grant_rent_per_use_items_from_settings(
-        seat=seat,
-        settings=settings,
-        calculate_due_dates_fn=calculate_due_dates_fn,
-    )
+# TODO (Phase 4): Rewrite using FEAT-STOR-004
+# def grant_rent_per_use_items(*, seat, settings, calculate_due_dates_fn) -> int:
+#     """Store-owned mutation for rent-derived per-use entitlements."""
+#     return grant_rent_per_use_items_from_settings(
+#         seat=seat,
+#         settings=settings,
+#         calculate_due_dates_fn=calculate_due_dates_fn,
+#     )
 
 
-def ensure_active_rent_per_use_grant(
-    *,
-    seat,
-    store_item_id: int,
-    use_limit: int | None,
-    now=None,
-    expiry_date=None,
-):
-    """Ensure a current rent-linked entitlement exists."""
-    now = now or utc_now()
-    existing = list_available_entitlements(
-        target_seat_id=seat.id,
-        class_id=seat.class_id,
-        entitlement_item_id=store_item_id,
-    )
-    if existing:
-        return existing[0]
-
-    return grant_entitlement(
-        entitlement_item_id=store_item_id,
-        target_seat_id=seat.id,
-        actor_seat_id=seat.id,
-        class_id=seat.class_id,
-        grant_type=GrantType.OBLIGATION,
-    )
-
-
-def record_rent_perk_purchase(
-    *,
-    seat,
-    item,
-    purchase_tx_id: int,
-    active_rent_item,
-    now,
-):
-    """Store-owned mutation for a zero-cost rent-perk purchase."""
-    _ = active_rent_item
-    return grant_entitlement(
-        entitlement_item_id=item.id,
-        target_seat_id=seat.id,
-        actor_seat_id=seat.id,
-        class_id=seat.class_id,
-        grant_type=GrantType.OBLIGATION,
-        correlation_id=f"rent-perk:{seat.id}:{seat.class_id}:{item.id}:{purchase_tx_id}",
-    )
+# TODO (Phase 4): Rewrite using EntitlementEvent queries + FEAT-STOR-004
+# def ensure_active_rent_per_use_grant(
+#     *,
+#     seat,
+#     store_item_id: int,
+#     use_limit: int | None,
+#     now=None,
+#     expiry_date=None,
+# ):
+#     """Ensure a current rent-linked entitlement exists."""
+#     now = now or utc_now()
+#     existing = list_available_entitlements(
+#         target_seat_id=seat.id,
+#         class_id=seat.class_id,
+#         entitlement_item_id=store_item_id,
+#     )
+#     if existing:
+#         return existing[0]
+#
+#     return grant_entitlement(
+#         entitlement_item_id=store_item_id,
+#         target_seat_id=seat.id,
+#         actor_seat_id=seat.id,
+#         class_id=seat.class_id,
+#         grant_type=GrantType.OBLIGATION,
+#     )
 
 
-def record_standard_purchase_items(
-    *,
-    seat,
-    item,
-    quantity: int,
-    purchase_tx_id: int,
-    total_price: Decimal,
-    expiry_date,
-    purchase_status: str,
-    idempotency_key: str | None = None,
-):
-    """Store-owned mutation for standard StorePurchase issuance."""
-    created_purchase_ids = []
+# TODO (Phase 4): Rewrite using FEAT-STOR-004
+# def record_rent_perk_purchase(
+#     *,
+#     seat,
+#     item,
+#     purchase_tx_id: int,
+#     active_rent_item,
+#     now,
+# ):
+#     """Store-owned mutation for a zero-cost rent-perk purchase."""
+#     _ = active_rent_item
+#     return grant_entitlement(
+#         entitlement_item_id=item.id,
+#         target_seat_id=seat.id,
+#         actor_seat_id=seat.id,
+#         class_id=seat.class_id,
+#         grant_type=GrantType.OBLIGATION,
+#         correlation_id=f"rent-perk:{seat.id}:{seat.class_id}:{item.id}:{purchase_tx_id}",
+#     )
 
-    if item.is_bundle and item.bundle_quantity is not None:
-        purchase = StorePurchase(
-            seat_id=seat.id,
-            class_id=seat.class_id,
-            store_item_id=item.id,
-            quantity=quantity,
-            price_at_purchase=item.price,
-            total_price=total_price,
-            status=purchase_status,
-            idempotency_key=idempotency_key,
-            ledger_tx_id=purchase_tx_id,
-            purchased_at=utc_now(),
-            expiry_date=expiry_date,
-            is_from_bundle=True,
-            collective_goal_instance_code=item.collective_goal_instance_code if item.item_type == 'collective' else None,
-        )
-        db.session.add(purchase)
-        db.session.flush()
-        created_purchase_ids.append(purchase.id)
-        return created_purchase_ids
 
-    for i in range(quantity):
-        purchase = StorePurchase(
-            seat_id=seat.id,
-            class_id=seat.class_id,
-            store_item_id=item.id,
-            quantity=1,
-            price_at_purchase=item.price,
-            total_price=item.price,
-            status=purchase_status,
-            idempotency_key=f"{idempotency_key}:{i}" if idempotency_key and quantity > 1 else idempotency_key,
-            ledger_tx_id=purchase_tx_id,
-            purchased_at=utc_now(),
-            expiry_date=expiry_date,
-            is_from_bundle=False,
-            collective_goal_instance_code=item.collective_goal_instance_code if item.item_type == 'collective' else None,
-        )
-        db.session.add(purchase)
-        db.session.flush()
-        created_purchase_ids.append(purchase.id)
-
-    return created_purchase_ids
+# TODO (Phase 4): Rewrite using EntitlementEvent creation (FEAT-STOR-001 pattern)
+# def record_standard_purchase_items(
+#     *,
+#     seat,
+#     item,
+#     quantity: int,
+#     purchase_tx_id: int,
+#     total_price: Decimal,
+#     expiry_date,
+#     purchase_status: str,
+#     idempotency_key: str | None = None,
+# ):
+#     """Store-owned mutation for standard StorePurchase issuance."""
+#     created_purchase_ids = []
+#
+#     if item.is_bundle and item.bundle_quantity is not None:
+#         purchase = StorePurchase(...)
+#         ...
+#
+#     for i in range(quantity):
+#         purchase = StorePurchase(...)
+#         ...
+#
+#     return created_purchase_ids
 
 
 def decrement_inventory(item, quantity: int) -> None:

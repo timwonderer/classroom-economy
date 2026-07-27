@@ -1,5 +1,5 @@
 """
-Canonical Temporal Resolver — SPEC-TIME-001
+Canonical Temporal Resolver — (Read Specification at SPEC-TIME-001)
 
 The single authoritative temporal evaluation tool for Classroom Token Hub.
 Measures and evaluates time; domains interpret the results according to

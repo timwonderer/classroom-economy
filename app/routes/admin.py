@@ -132,8 +132,10 @@ from app.services.insurance_policy_service import (
     list_insurance_policy_versions,
     schedule_policy_deletion,
 )
-from app.feats.insurance_claim_feat import execute_claim_approval, execute_claim_rejection
-from app.services.store_entitlement_service import get_insurance_claim, get_last_entitlement_end_for_policy_version, derive_display_status
+# TODO (Phase 4): insurance_claim_feat deleted; use FEAT-STOR-003 instead
+# from app.feats.insurance_claim_feat import execute_claim_approval, execute_claim_rejection
+# TODO (Phase 4): store_entitlement_service deleted
+# from app.services.store_entitlement_service import get_insurance_claim, get_last_entitlement_end_for_policy_version, derive_display_status
 from app.services.classroom_setup import (
     create_class,
     create_class_with_roster,
@@ -231,23 +233,25 @@ from app.services.recovery_service import (
     mark_recovery_request_verified,
     save_recovery_progress,
 )
-from app.utils.insurance_eligibility import (
-    collect_reimbursed_source_tx_ids,
-    compute_waiting_end_class_for_enrollment,
-    evaluate_claim_transaction_eligibility,
-    resolve_claim_type,
-    CLAIM_REASON_ALREADY_CLAIMED,
-    CLAIM_REASON_DELAY_USE_EXPIRED,
-    CLAIM_REASON_DELAY_USE_NOT_USED,
-    CLAIM_REASON_HARD_DENY_CATEGORY,
-    CLAIM_REASON_INTERNAL_TRANSFER,
-    CLAIM_REASON_PREMIUM_NOT_CURRENT,
-    CLAIM_REASON_REIMBURSEMENT_ALREADY_EXISTS,
-    CLAIM_REASON_TIME_LIMIT_EXCEEDED,
-    CLAIM_REASON_UNCLASSIFIED_TRANSACTION,
-    CLAIM_REASON_WAITING_PERIOD,
-)
-from app.services.store_entitlement_service import get_insurance_claim, list_insurance_claims
+# TODO (Phase 4): insurance_eligibility deleted; use canonical tools + FEAT-STOR-003
+# from app.utils.insurance_eligibility import (
+#     collect_reimbursed_source_tx_ids,
+#     compute_waiting_end_class_for_enrollment,
+#     evaluate_claim_transaction_eligibility,
+#     resolve_claim_type,
+#     CLAIM_REASON_ALREADY_CLAIMED,
+#     CLAIM_REASON_DELAY_USE_EXPIRED,
+#     CLAIM_REASON_DELAY_USE_NOT_USED,
+#     CLAIM_REASON_HARD_DENY_CATEGORY,
+#     CLAIM_REASON_INTERNAL_TRANSFER,
+#     CLAIM_REASON_PREMIUM_NOT_CURRENT,
+#     CLAIM_REASON_REIMBURSEMENT_ALREADY_EXISTS,
+#     CLAIM_REASON_TIME_LIMIT_EXCEEDED,
+#     CLAIM_REASON_UNCLASSIFIED_TRANSACTION,
+#     CLAIM_REASON_WAITING_PERIOD,
+# )
+# TODO (Phase 4): store_entitlement_service deleted
+# from app.services.store_entitlement_service import get_insurance_claim, list_insurance_claims
 import time
 
 # Join code generation constants

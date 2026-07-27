@@ -1,5 +1,5 @@
 """
-Canonical Class Context Resolver for the v2 architecture.
+Canonical Class Context Resolver for the v2 architecture. (Read Specification at DOM-IDEN-006)
 
 This service establishes a strict context object anchored only on
 user_id, class_id, and seat_id. It raises exceptions on failure

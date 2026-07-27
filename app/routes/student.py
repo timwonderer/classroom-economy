@@ -71,13 +71,14 @@ from app.access import (
     resolve_student_class_switch_scope,
 )
 from app.services.attendance_service import get_class_attendance_status
-from app.services.store_entitlement_service import (
-    list_entitlement_history,
-    list_entitlements_for_seat,
-    list_available_entitlements,
-    list_insurance_claims,
-    derive_display_status,
-)
+# TODO (Phase 4): store_entitlement_service deleted
+# from app.services.store_entitlement_service import (
+#     list_entitlement_history,
+#     list_entitlements_for_seat,
+#     list_available_entitlements,
+#     list_insurance_claims,
+#     derive_display_status,
+# )
 from app.services.insurance_policy_service import list_insurance_policy_versions
 from app.services.insurance_policy_service import get_insurance_entitlement_item_id
 from app.services.ledger_service import (
@@ -99,8 +100,10 @@ from app.services.classroom_setup import create_student_user_for_seat
 from app.feats.base import feat_shell
 from app.feats.rent_payment_feat import execute_rent_payment
 from app.feats.transfer_feat import execute_account_transfer
-from app.feats.insurance_purchase_feat import execute_insurance_purchase
-from app.feats.insurance_claim_feat import execute_claim_submission
+# TODO (Phase 4): insurance_purchase_feat deleted; use execute_store_purchase for insurance
+# from app.feats.insurance_purchase_feat import execute_insurance_purchase
+# TODO (Phase 4): insurance_claim_feat deleted; use FEAT-STOR-003 instead
+# from app.feats.insurance_claim_feat import execute_claim_submission
 # execute_file_claim removed — insurance_claim_feat.py deleted; insurance feature broken pending DOM-OBL-001 migration
 from app.payroll import get_pay_rate_for_block
 from app.utils.join_code import get_display_join_code
@@ -121,13 +124,15 @@ from app.utils.canonical_temporal_resolver import (
     canonical_temporal_resolver,
 )
 from app.utils.seat_scope import transaction_scope_filter, seat_scoped_filter
-from app.utils.insurance_eligibility import (
-    compute_waiting_end_class_for_enrollment,
-    evaluate_claim_transaction_eligibility,
-    collect_reimbursed_source_tx_ids,
-    resolve_claim_type,
-)
-from app.utils.insurance_billing import get_insurance_billing_snapshot
+# TODO (Phase 4): insurance_eligibility deleted; use canonical tools + FEAT-STOR-003
+# from app.utils.insurance_eligibility import (
+#     compute_waiting_end_class_for_enrollment,
+#     evaluate_claim_transaction_eligibility,
+#     collect_reimbursed_source_tx_ids,
+#     resolve_claim_type,
+# )
+# TODO (Phase 4): insurance_billing deleted; move to Obligations domain
+# from app.utils.insurance_billing import get_insurance_billing_snapshot
 
 
 def _get_identity_bound_seat_options(user_id: int):

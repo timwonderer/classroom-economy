@@ -1,4 +1,4 @@
-"""Display-only metadata resolver for canonical request contexts."""
+"""Display-only metadata resolver for canonical request contexts. (Read Specification at SPEC-DISPLAY-001)""" 
 
 from __future__ import annotations
 
