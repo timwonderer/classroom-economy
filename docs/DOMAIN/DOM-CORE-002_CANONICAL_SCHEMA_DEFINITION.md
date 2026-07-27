@@ -237,14 +237,12 @@ authority in v2 and must not be treated as canonical schema surfaces.
 
 ### 6. Store & Redemption (DOM-STORE-001)
 
-**Purpose:** Manage catalog, purchase, and redemption of items.
+**Purpose:** Manage entitlement grant lineage, entitlement exercise lineage, and pending entitlement actions.
 
 **Tables:**
 
-- `store_items`
-- `store_item_visibility`
-- `store_purchases`
-- `redemption_events`
+- `entitlement_events`
+- `pending_actions`
 
 ---
 

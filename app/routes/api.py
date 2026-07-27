@@ -21,14 +21,13 @@ from werkzeug.security import check_password_hash
 
 from app.extensions import db, limiter
 from app.models import (
-    StoreItem, StorePurchase, Transaction, TransactionStatus, AttendanceSession,
+    StoreItem, Transaction, TransactionStatus, AttendanceSession,
     AttendanceReasonCode, HallPassLog, HallPassSettings, BankingSettings,
     # Legacy tap models are unauthorized; use attendance_sessions (DOM-PROD-001).
     # StoreItemBlock removed — store_item_blocks unauthorized; use store_item_visibility (DOM-STORE-001)
     StoreItemVisibility, User,
-    RedemptionEvent, RedemptionEventAction, RedemptionEventSource, _quantize_currency,
+    _quantize_currency,
     ClassEconomy, Seat, IdentityProfile, PayrollEvent,
-    Entitlement, EntitlementConsumption,
 )
 from app.auth import (
     login_required,

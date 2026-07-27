@@ -32,7 +32,7 @@ Authority order:
 10. `FEAT-OBL-003_SATISFY_OBLIGATION.md`
 11. `DOM-STORE-001_STORE_AND_ENTITLEMENTS_DOMAIN.md`
 12. `FEAT-STOR-001_STORE_PURCHASE.md`
-13. `FEAT-STOR-002_ENTITLEMENT_TERMINAL_LIFECYCLE.md`
+13. `FEAT-STOR-002_ENTITLEMENT_LIFECYCLE_TRANSITION.md`
 14. `FEAT-STOR-003_INSURANCE_CLAIM_LIFECYCLE.md`
 15. `SOP-DEV-002_CANONICAL_DOMAIN_RECONSTRUCTION_WORKFLOW.md`
 16. `MAP-UI-002_REQUEST_CONTEXT_AND_VIEW_MODEL_PIPELINE.md`
@@ -237,7 +237,7 @@ Each issue should include:
 7. `StorePurchase.uses_remaining` and `bundle_remaining` are mutable counters prohibited by DOM-STORE-001. Remaining uses must be derived from entitlement grant count minus `entitlement_consumptions` terminal event count. These columns must be removed or deprecated.
 8. `RedemptionEvent.action` values must use uppercase enum values (`REQUEST`, `APPROVED`, `REJECTED`) matching DOM-STORE-001, not lowercase.
 9. Store FEATs must not create `Transaction` records directly. Ledger writes must go through lawful Ledger FEAT with a shared `correlation_id`. The current redemption rejection refund path in `redemption_disposition_feat.py` crosses this boundary — and is additionally wrong because rejection should not trigger a refund at all (see decision 5).
-10. Hall-pass entitlement grants by teacher are `MANUAL_GRANT` under `FEAT-STOR-001`; removals are `revoke_entitlement()` under `FEAT-STOR-002`. The current `FEAT-ENT-001` label does not exist in the canonical FEAT set and must be replaced.
+10. Hall-pass entitlement grants by teacher are `MANUAL_GRANT` under `FEAT-STOR-001`; removals are `revoke_entitlement()` under `FEAT-STOR-002`.
 11. Store item catalog CRUD (create, edit, deactivate) is Class Configuration, not a Store FEAT. `store_items` and `store_item_visibility` are catalog definition tables. The current code's `FEATContext("FEAT-STOR-001")` and `FEATContext("FEAT-STOR-003")` labels on these routes are wrong.
 12. Insurance initial acquisition is a Store purchase through `FEAT-STOR-001`. Renewal assessment and satisfaction belong to the Obligations domain. When an obligation is satisfied (e.g., recurring premium paid), Obligations creates an `OBLIGATION` entitlement grant — Store does not own the renewal cycle. Insurance capabilities are surviving surfaces that must be rewired, not deleted.
 13. Insurance claim lifecycle is governed by `FEAT-STOR-003`. Claim activity does not consume the insurance entitlement. Transaction-insurance compensation goes through lawful Ledger FEAT; productivity-insurance compensation goes through `DOM-PROD` as a `payroll_event` with `payroll_type = MANUAL_CREDIT`. Store must not directly create payroll events or Ledger transactions for insurance compensation.

@@ -10,10 +10,7 @@ from app.models import (
     IssueResolutionAction,
     IssueStatusHistory,
     # RedemptionAuditLog removed — redemption_audit_logs unauthorized (DOM-STORE-001)
-    RedemptionEvent,
-    StorePurchase,
-    Entitlement,
-    EntitlementConsumption,
+    # RedemptionEvent, StorePurchase, Entitlement, EntitlementConsumption deleted per Phase 2 migration (DOM-STORE-001 v3.0)
     AttendanceSession,
     PayrollEvent,
     Transaction,
