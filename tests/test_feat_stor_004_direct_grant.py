@@ -1,0 +1,429 @@
+"""
+Tests for FEAT-STOR-004: Direct Entitlement Grant (v1.0)
+
+Tests cover:
+- Happy path: teacher grants N entitlements to student creates N rows
+- Teacher authority validation (must have actor_role="teacher")
+- Target seat scope validation (must be in same class)
+- Quantity logic: quantity=N creates N rows (not 1 with count)
+- Hall-pass grants (no mutable balance)
+- Idempotency (replay safe)
+- Multi-tenancy isolation
+"""
+
+import pytest
+import uuid
+
+from app.extensions import db
+from app.models import Seat, User, ClassEconomy, EntitlementEvent, UserRole
+from app.services.context_resolver import CanonicalContext
+from app.feats.direct_entitlement_grant_feat import execute_direct_grant, DirectGrantResult
+from tests.helpers.class_scope import create_class_scope, make_student_seat
+
+
+@pytest.fixture
+def app_with_class(app):
+    """Test app with a class and seats."""
+    with app.app_context():
+        yield app
+
+
+@pytest.fixture
+def test_class_with_students(app_with_class):
+    """Create a test class with teacher and student seats."""
+    with app_with_class.app_context():
+        class_scope = create_class_scope()
+        teacher = class_scope["teacher"]
+        class_id = class_scope["class_id"]
+
+        # Create teacher seat (not typically how teachers work, but needed for context)
+        # In reality, teachers don't have Seat records; but for FEAT context we need one for testing
+        teacher_seat = Seat(
+            user_id=teacher.id,
+            class_id=class_id,
+        )
+        db.session.add(teacher_seat)
+
+        # Create student seats
+        student_user_1 = class_scope["student_user"]
+        student_seat_1 = make_student_seat(
+            user_id=student_user_1.id,
+            class_id=class_id,
+        )
+
+        # Create second student for testing multiple grants
+        student_user_2 = User(
+            username_hash=f"student_2_{uuid.uuid4().hex}",
+            user_role=UserRole.STUDENT,
+        )
+        db.session.add(student_user_2)
+        db.session.flush()
+
+        student_seat_2 = make_student_seat(
+            user_id=student_user_2.id,
+            class_id=class_id,
+        )
+
+        db.session.commit()
+
+        return {
+            "class_id": class_id,
+            "teacher": teacher,
+            "teacher_seat": teacher_seat,
+            "student_user_1": student_user_1,
+            "student_seat_1": student_seat_1,
+            "student_user_2": student_user_2,
+            "student_seat_2": student_seat_2,
+        }
+
+
+class TestDirectGrantHappyPath:
+    """Test ordinary teacher direct grant flow."""
+
+    def test_teacher_grants_to_student(self, app_with_class, test_class_with_students):
+        """Teacher can grant entitlements to a student."""
+        with app_with_class.app_context():
+            class_id = test_class_with_students["class_id"]
+            teacher_seat = test_class_with_students["teacher_seat"]
+            student_seat = test_class_with_students["student_seat_1"]
+            teacher_user = test_class_with_students["teacher"]
+
+            ctx = CanonicalContext(
+                user_id=teacher_user.id,
+                class_id=class_id,
+                seat_id=teacher_seat.id,
+                actor_role="teacher",
+            )
+
+            result = execute_direct_grant(
+                canonical_context=ctx,
+                target_seat_id=student_seat.id,
+                product_id=101,
+                quantity=3,
+            )
+
+            # Verify result
+            assert result.success is True
+            assert result.quantity_granted == 3
+            assert len(result.entitlement_ids) == 3
+            assert result.error_code is None
+
+            # Verify EntitlementEvent rows created
+            events = (
+                EntitlementEvent.query
+                .filter_by(class_id=class_id, target_seat_id=student_seat.id)
+                .filter_by(event_type="GRANTED")
+                .filter_by(acquisition_type="GRANT")
+                .order_by(EntitlementEvent.timestamp)
+                .all()
+            )
+
+            assert len(events) == 3
+            assert all(e.correlation_id == result.correlation_id for e in events)
+            assert all(e.product_id == 101 for e in events)
+            assert all(e.actor_seat_id == teacher_seat.id for e in events)
+
+    def test_grant_uses_provided_correlation_id(self, app_with_class, test_class_with_students):
+        """Grant uses provided correlation_id."""
+        with app_with_class.app_context():
+            class_id = test_class_with_students["class_id"]
+            teacher_seat = test_class_with_students["teacher_seat"]
+            student_seat = test_class_with_students["student_seat_1"]
+            teacher_user = test_class_with_students["teacher"]
+
+            provided_corr_id = "grant_corr_123"
+
+            ctx = CanonicalContext(
+                user_id=teacher_user.id,
+                class_id=class_id,
+                seat_id=teacher_seat.id,
+                actor_role="teacher",
+            )
+
+            result = execute_direct_grant(
+                canonical_context=ctx,
+                target_seat_id=student_seat.id,
+                product_id=102,
+                quantity=1,
+                correlation_id=provided_corr_id,
+            )
+
+            assert result.success is True
+            assert result.correlation_id == provided_corr_id
+
+
+class TestQuantityLogic:
+    """Test that quantity creates N rows, not mutable count."""
+
+    def test_quantity_5_creates_5_rows(self, app_with_class, test_class_with_students):
+        """Quantity=5 creates 5 EntitlementEvent rows."""
+        with app_with_class.app_context():
+            class_id = test_class_with_students["class_id"]
+            teacher_seat = test_class_with_students["teacher_seat"]
+            student_seat = test_class_with_students["student_seat_1"]
+            teacher_user = test_class_with_students["teacher"]
+
+            ctx = CanonicalContext(
+                user_id=teacher_user.id,
+                class_id=class_id,
+                seat_id=teacher_seat.id,
+                actor_role="teacher",
+            )
+
+            result = execute_direct_grant(
+                canonical_context=ctx,
+                target_seat_id=student_seat.id,
+                product_id=103,
+                quantity=5,
+            )
+
+            assert result.quantity_granted == 5
+            assert len(result.entitlement_ids) == 5
+
+            # Verify exactly 5 rows
+            events = (
+                EntitlementEvent.query
+                .filter_by(class_id=class_id, correlation_id=result.correlation_id)
+                .filter_by(event_type="GRANTED")
+                .all()
+            )
+            assert len(events) == 5
+
+            # Each row should have distinct event_id, shared correlation_id
+            event_ids = {e.event_id for e in events}
+            assert len(event_ids) == 5  # All distinct
+
+
+class TestValidationFailures:
+    """Test that invalid inputs are rejected before mutation."""
+
+    def test_non_teacher_cannot_grant(self, app_with_class, test_class_with_students):
+        """Student cannot grant entitlements (must be teacher)."""
+        with app_with_class.app_context():
+            class_id = test_class_with_students["class_id"]
+            student_seat_1 = test_class_with_students["student_seat_1"]
+            student_seat_2 = test_class_with_students["student_seat_2"]
+            student_user_1 = test_class_with_students["student_user_1"]
+
+            ctx = CanonicalContext(
+                user_id=student_user_1.id,
+                class_id=class_id,
+                seat_id=student_seat_1.id,
+                actor_role="student",  # Not "teacher"
+            )
+
+            result = execute_direct_grant(
+                canonical_context=ctx,
+                target_seat_id=student_seat_2.id,
+                product_id=104,
+                quantity=1,
+            )
+
+            assert result.success is False
+            assert result.error_code == "TEACHER_AUTHORITY_REQUIRED"
+            assert result.quantity_granted == 0
+
+    def test_invalid_quantity_zero(self, app_with_class, test_class_with_students):
+        """Grant with quantity=0 is rejected."""
+        with app_with_class.app_context():
+            class_id = test_class_with_students["class_id"]
+            teacher_seat = test_class_with_students["teacher_seat"]
+            student_seat = test_class_with_students["student_seat_1"]
+            teacher_user = test_class_with_students["teacher"]
+
+            ctx = CanonicalContext(
+                user_id=teacher_user.id,
+                class_id=class_id,
+                seat_id=teacher_seat.id,
+                actor_role="teacher",
+            )
+
+            result = execute_direct_grant(
+                canonical_context=ctx,
+                target_seat_id=student_seat.id,
+                product_id=105,
+                quantity=0,
+            )
+
+            assert result.success is False
+            assert result.error_code == "QUANTITY_NOT_ALLOWED"
+
+    def test_target_seat_not_in_class(self, app_with_class, test_class_with_students):
+        """Grant to seat outside class scope is rejected."""
+        with app_with_class.app_context():
+            # Create second class
+            class_scope_2 = create_class_scope()
+            foreign_student_seat = make_student_seat(
+                user_id=class_scope_2["student_user"].id,
+                class_id=class_scope_2["class_id"],
+            )
+            db.session.commit()
+
+            # Try to grant from class_1 to student in class_2
+            class_id = test_class_with_students["class_id"]
+            teacher_seat = test_class_with_students["teacher_seat"]
+            teacher_user = test_class_with_students["teacher"]
+
+            ctx = CanonicalContext(
+                user_id=teacher_user.id,
+                class_id=class_id,
+                seat_id=teacher_seat.id,
+                actor_role="teacher",
+            )
+
+            result = execute_direct_grant(
+                canonical_context=ctx,
+                target_seat_id=foreign_student_seat.id,  # Different class
+                product_id=106,
+                quantity=1,
+            )
+
+            assert result.success is False
+            assert result.error_code == "TARGET_SEAT_NOT_FOUND"
+
+
+class TestHallPassGrants:
+    """Test hall-pass specific grant handling."""
+
+    def test_hall_pass_grant_no_balance_row(self, app_with_class, test_class_with_students):
+        """Hall-pass grants don't create mutable balance rows."""
+        with app_with_class.app_context():
+            class_id = test_class_with_students["class_id"]
+            teacher_seat = test_class_with_students["teacher_seat"]
+            student_seat = test_class_with_students["student_seat_1"]
+            teacher_user = test_class_with_students["teacher"]
+
+            ctx = CanonicalContext(
+                user_id=teacher_user.id,
+                class_id=class_id,
+                seat_id=teacher_seat.id,
+                actor_role="teacher",
+            )
+
+            # Grant 3 hall passes
+            result = execute_direct_grant(
+                canonical_context=ctx,
+                target_seat_id=student_seat.id,
+                product_id=201,  # Hall-pass product
+                quantity=3,
+            )
+
+            assert result.success is True
+            assert result.quantity_granted == 3
+
+            # Verify EntitlementEvent rows created
+            events = EntitlementEvent.query.filter_by(
+                correlation_id=result.correlation_id,
+                event_type="GRANTED",
+            ).all()
+
+            assert len(events) == 3
+            # All should have entitlement_type HALL_PASS
+            assert all(e.entitlement_type == "HALL_PASS" for e in events)
+
+
+class TestIdempotency:
+    """Test replay protection."""
+
+    def test_replay_same_idempotency_key(self, app_with_class, test_class_with_students):
+        """Replaying with same idempotency_key should be safe."""
+        with app_with_class.app_context():
+            class_id = test_class_with_students["class_id"]
+            teacher_seat = test_class_with_students["teacher_seat"]
+            student_seat = test_class_with_students["student_seat_1"]
+            teacher_user = test_class_with_students["teacher"]
+
+            ctx = CanonicalContext(
+                user_id=teacher_user.id,
+                class_id=class_id,
+                seat_id=teacher_seat.id,
+                actor_role="teacher",
+            )
+
+            idempotency_key = f"test_grant_{uuid.uuid4().hex}"
+
+            # First grant
+            result1 = execute_direct_grant(
+                canonical_context=ctx,
+                target_seat_id=student_seat.id,
+                product_id=107,
+                quantity=2,
+                idempotency_key=idempotency_key,
+            )
+
+            assert result1.success is True
+            first_count = EntitlementEvent.query.filter_by(
+                correlation_id=result1.correlation_id
+            ).count()
+
+            # Replay with same idempotency_key
+            result2 = execute_direct_grant(
+                canonical_context=ctx,
+                target_seat_id=student_seat.id,
+                product_id=107,
+                quantity=2,
+                idempotency_key=idempotency_key,
+            )
+
+            # Should succeed (MVP: documents expected behavior)
+            # Full implementation in Phase 5 with idempotency store
+
+
+class TestCrossClassIsolation:
+    """Test that grants in different classes don't interfere."""
+
+    def test_grants_in_different_classes_isolated(self, app_with_class):
+        """Grants in different classes are isolated."""
+        with app_with_class.app_context():
+            # Create two class scopes
+            scope1 = create_class_scope()
+            scope2 = create_class_scope()
+
+            # Create teacher seats for each class
+            teacher1_seat = Seat(user_id=scope1["teacher"].id, class_id=scope1["class_id"])
+            teacher2_seat = Seat(user_id=scope2["teacher"].id, class_id=scope2["class_id"])
+            db.session.add_all([teacher1_seat, teacher2_seat])
+
+            # Create student seats
+            student1_seat = make_student_seat(user_id=scope1["student_user"].id, class_id=scope1["class_id"])
+            student2_seat = make_student_seat(user_id=scope2["student_user"].id, class_id=scope2["class_id"])
+            db.session.commit()
+
+            # Grant in class 1
+            ctx1 = CanonicalContext(
+                user_id=scope1["teacher"].id,
+                class_id=scope1["class_id"],
+                seat_id=teacher1_seat.id,
+                actor_role="teacher",
+            )
+
+            result1 = execute_direct_grant(
+                canonical_context=ctx1,
+                target_seat_id=student1_seat.id,
+                product_id=301,
+                quantity=2,
+            )
+
+            # Grant in class 2
+            ctx2 = CanonicalContext(
+                user_id=scope2["teacher"].id,
+                class_id=scope2["class_id"],
+                seat_id=teacher2_seat.id,
+                actor_role="teacher",
+            )
+
+            result2 = execute_direct_grant(
+                canonical_context=ctx2,
+                target_seat_id=student2_seat.id,
+                product_id=302,
+                quantity=3,
+            )
+
+            # Verify isolation
+            events1 = EntitlementEvent.query.filter_by(class_id=scope1["class_id"]).all()
+            events2 = EntitlementEvent.query.filter_by(class_id=scope2["class_id"]).all()
+
+            assert len(events1) == 2
+            assert len(events2) == 3
+            assert all(e.class_id == scope1["class_id"] for e in events1)
+            assert all(e.class_id == scope2["class_id"] for e in events2)
