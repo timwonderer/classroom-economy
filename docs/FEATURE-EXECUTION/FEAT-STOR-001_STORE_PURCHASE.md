@@ -2,59 +2,56 @@
 
 | Reference Number | Version | Effective Date | Supersedes | Authority Level |
 | :--- | :--- | :--- | :--- | :--- |
-| FEAT-STOR-001 | 2.0 | 2026-07-22 | 1.0 | Normative |
+| FEAT-STOR-001 | 3.0 | 2026-07-27 | 2.0 | Normative |
 
 ## I. Purpose
 
-Define the single lawful orchestration path for purchasing a configured Store capability and granting the resulting atomic entitlement or entitlements.
+Define the lawful orchestration path for a student purchase of a configured product and the resulting entitlement grant.
 
-This FEAT coordinates:
+This FEAT is the single lawful path for:
 
-- canonical request context;
-- Class Configuration purchase directives;
-- Obligations purchase eligibility;
-- Ledger financial resolution and posting; and
-- Store and Entitlements atomic grant creation.
+- resolving canonical request context;
+- evaluating policy-defined purchase eligibility;
+- coordinating Ledger purchase resolution; and
+- writing one or more immutable entitlement grant facts.
 
-A purchase is an economic exchange that may create one or more atomic entitlements.
-
-The FEAT SHALL NOT persist purchase quantity, remaining-use balance, mutable purchase status, or a second purchase-authority record inside the Store and Entitlements domain.
+A purchase may create one or more entitlement-event rows, but it SHALL NOT create a mutable purchase record, remaining-use balance, or entitlement status flag.
 
 ## II. Authority
 
 This FEAT is the sole lawful writer for entitlement grants with:
 
-- `grant_type = PURCHASE`
+- `acquisition_type = PURCHASE`
+- `event_type = GRANTED`
 
-when the grant originates from a user-initiated Store purchase.
+when the acquisition originates from a user-initiated purchase.
 
 It does not own:
 
-- capability definitions;
-- item price or purchase directives;
-- insurance configuration;
+- class configuration;
+- policy definitions;
 - Ledger truth;
 - obligation truth;
-- entitlement persistence;
-- consumption events.
-
-Those authorities remain with their owning domains.
+- pending request storage;
+- consumption or revocation history;
+- external-domain exercise events.
 
 ## III. Dependencies
 
 - `FEAT-CORE-000_FEATURE_EXECUTION_CONSTITUTIONAL_DIRECTIVE.md`
 - `DOM-STORE-001_STORE_AND_ENTITLEMENTS_DOMAIN.md`
-- Class Configuration governing DOM and FEAT contracts
+- `DOM-CLASS-001_CLASS_CONFIGURATION_DOMAIN.md`
 - `DOM-LED-001_LEDGER_DOMAIN.md`
+- lawful Policy FEAT contracts
 - lawful Ledger FEAT contracts
-- Obligations governing DOM and FEAT contracts
+- lawful Obligations FEAT contracts when purchase fulfillment produces a perk
 - `INV-ARC-015_TEMPORAL_MODEL_AND_BOUNDARY_ENFORCEMENT.md`
 - `INV-ARC-016_LAWFUL_EXISTENCE_AND_AUDIT_LINEAGE.md`
 - `INV-ARC-021_CROSS_DOMAIN_REFERENCE_AND_COORDINATION.md`
 
 ## IV. Required Execution Context
 
-The route or caller SHALL resolve canonical request context before entering this FEAT.
+The caller SHALL resolve canonical request context before entering this FEAT.
 
 Required canonical context:
 
@@ -65,23 +62,22 @@ Required canonical context:
 
 For a student purchase:
 
-- `seat_id` is both the purchasing actor seat and the target entitlement seat.
+- `seat_id` is both the actor seat and the target seat.
 
 The FEAT SHALL NOT reconstruct class or seat authority from:
 
 - `join_code`
-- username
-- display name
-- block/period/section labels
-- Store item ownership assumptions
-- route-local lookups intended to substitute for canonical context.
+- display names
+- route-local lookups
+- cached UI labels
+- username-only identity
 
 ## V. Required Inputs
 
 The FEAT accepts:
 
 - canonical request context;
-- `entitlement_item_id` — Class Configuration identifier for the configured offering;
+- `product_id` — policy-owned product definition identifier;
 - `quantity` — positive integer number of units requested;
 - `idempotency_key` — request replay guard.
 
@@ -90,9 +86,7 @@ The FEAT generates or resolves:
 - `correlation_id` — one identifier for the coordinated purchase lifecycle;
 - canonical transaction timestamp through the temporal model.
 
-`quantity` is an orchestration input only.
-
-It SHALL NOT be persisted as entitlement quantity or remaining entitlement balance.
+`quantity` is an orchestration input only. It SHALL NOT be persisted as entitlement quantity or remaining entitlement balance.
 
 ## VI. Read-Only Validation Phase
 
@@ -102,31 +96,29 @@ All validation SHALL complete before mutation begins.
 
 Verify:
 
-- the actor is a lawful student seat for `class_id`;
-- the target seat is the canonical context seat;
+- the actor is lawful for the class boundary;
+- the target seat is canonical for the request;
 - the seat exists within the class boundary.
 
 ### B. Class Configuration validation
 
-Read the configured capability definition through the lawful Class Configuration interface.
+Read the configured product definition through the lawful Class Configuration / Policies interface.
 
 Validate, as applicable:
 
-- the offering exists for `class_id`;
-- the offering is currently purchasable;
-- the price is valid for the current configuration/version;
+- the product exists for `class_id`;
+- the product is currently purchasable;
+- the product version is lawful and effective for the current temporal context;
 - the requested quantity is permitted;
-- seat-specific visibility or eligibility directives permit purchase;
-- configured inventory or purchase limits permit the requested purchase;
-- activation or collective-goal rules are valid;
-- insurance configuration is valid when the configured offering is insurance, including the class-owned policy lineage mapping that resolves the configured `entitlement_item_id`;
-- the offering has not been prospectively cancelled or disabled for new acquisition.
+- class-level feature enablement allows the product;
+- any product-specific eligibility rules permit purchase;
+- the product has not been prospectively disabled for new acquisition.
 
-The FEAT SHALL NOT copy Class Configuration state into Store and Entitlements persistence merely to make later reads convenient.
+The FEAT SHALL NOT copy product configuration into Store and Entitlements persistence merely to make later reads convenient.
 
-### C. Existing purchase/grant history
+### C. Prior entitlement history
 
-Where Class Configuration defines inventory, per-seat limits, bundles, or similar constraints, the FEAT SHALL evaluate those rules from canonical configuration plus authoritative purchase/grant history.
+Where policy defines inventory, per-seat limits, bundles, or similar constraints, the FEAT SHALL evaluate those rules from canonical policy plus authoritative entitlement history.
 
 Mutable counters such as:
 
@@ -135,11 +127,11 @@ Mutable counters such as:
 - `bundle_remaining`
 - `purchases_remaining`
 
-SHALL NOT be introduced into entitlement persistence as authority when the value is deterministically derivable.
+SHALL NOT be introduced into entitlement persistence as authority when deterministically derivable.
 
 ### D. Obligation purchase guard
 
-Call the lawful Obligations read surface to determine whether the seat may make the requested purchase.
+Call the lawful Obligations read surface when the product acquisition is conditioned on an obligation outcome.
 
 If purchase is blocked by an outstanding obligation rule, abort before monetary mutation.
 
@@ -147,7 +139,7 @@ The exact denial reason SHALL come from Obligations authority rather than being 
 
 ### E. Financial resolution
 
-Calculate the intended purchase amount from authoritative Class Configuration pricing.
+Calculate the intended purchase amount from authoritative Policy configuration.
 
 Construct the intended Ledger plan and submit it through the lawful Ledger resolution path.
 
@@ -177,84 +169,77 @@ Ledger remains the sole authority over:
 
 The purchase Ledger event SHALL carry the purchase `correlation_id`.
 
-### B. Atomic entitlement grants
+### B. Entitlement grants
 
-After the Ledger purchase is lawfully established, invoke the Store and Entitlements primitive:
+After the Ledger purchase is lawfully established, create one entitlement event per purchased unit.
 
-- `grant_entitlement(...)`
-
-exactly once for each purchased unit.
-
-For each atomic entitlement:
+For each purchased unit:
 
 - `class_id` = canonical context class;
 - `target_seat_id` = purchasing seat;
 - `actor_seat_id` = purchasing seat;
-- `entitlement_item_id` = configured offering identifier;
-- `grant_type` = `PURCHASE`;
+- `product_id` = configured product identifier;
+- `acquisition_type` = `PURCHASE`;
+- `event_type` = `GRANTED`;
+- `entitlement_type` = lawful entitlement kind for the product;
 - `correlation_id` = purchase lifecycle correlation;
-- `granted_at` = canonical transaction timestamp.
+- `timestamp` = canonical transaction timestamp;
+- `payload` = canonical type-specific facts required by the entitlement contract.
 
-A purchase of quantity `5` SHALL create five distinct entitlement rows with:
+A purchase of quantity `5` SHALL create five distinct entitlement-event rows with:
 
-- five distinct `entitlement_id` values;
+- five distinct `event_id` values;
+- the same `entitlement_id` lineage for the grant lifecycle when lawfully required by the product contract;
 - the same `class_id`;
 - the same target and actor seat;
-- the same `entitlement_item_id`;
-- the same `grant_type`;
-- the same purchase `correlation_id`.
+- the same `product_id`;
+- the same `acquisition_type`;
+- the same `correlation_id`.
 
 ### C. Instant-use capability
 
-If Class Configuration defines the purchased capability as immediate/instant exercise, the purchase FEAT SHALL coordinate the grant and the lawful exercise in the same transaction.
+If the configured product is immediate-use, the purchase FEAT SHALL coordinate the grant and lawful consumption in the same transaction.
 
-If Store and Entitlements owns the exercise:
+If Store and Entitlements owns the consumption:
 
-1. create the atomic entitlement;
-2. create its `entitlement_consumptions` row with `disposition = CONSUMED`.
+1. create the entitlement grant event;
+2. create the `CONSUMED` event for the same entitlement lifecycle;
+3. do not persist a duplicate or mutable consumption balance.
 
-If another domain owns the exercise:
+If another domain owns the consumption:
 
-1. create the atomic entitlement;
+1. create the entitlement grant event;
 2. invoke the lawful consuming-domain FEAT or primitive;
-3. require the consuming record to reference the exact `entitlement_id`;
-4. do not create a duplicate Store-and-Entitlements `CONSUMED` record.
+3. require the consuming record to reference the exact entitlement lineage;
+4. do not create a duplicate Store-and-Entitlements consumption record.
 
-### D. Collective-goal capability
+### D. Perk capability
+
+If an entitlement is produced as a perk, the purchase FEAT SHALL NOT decide whether the perk was earned.
+
+The lawful upstream FEAT or coordinating domain supplies the entitlement-grant authority.
+
+This FEAT only writes the resulting entitlement grant event when the upstream authority has lawfully established the right to receive it.
+
+### E. Collective-goal capability
 
 Collective-goal purchases use the ordinary purchase path.
 
 The FEAT SHALL NOT create a collective-progress record merely because the configured offering is collective.
 
-Each purchased unit creates one atomic entitlement for the purchasing seat.
+Each purchased unit creates one entitlement lifecycle according to the product contract.
 
 Collective activation or exercisability remains a projection over:
 
-- Class Configuration collective rules;
+- Policy rules;
 - authoritative qualifying economic events; and
 - canonical temporal context.
-
-### E. Insurance capability
-
-Insurance purchases use the ordinary atomic entitlement grant path.
-
-A purchased insurance entitlement establishes a coverage contract for its configured coverage cycle.
-
-Once the purchase commits:
-
-- the insurance entitlement SHALL NOT be revoked;
-- the purchase SHALL NOT be refunded;
-- later teacher cancellation of the insurance offering affects future coverage cycles only;
-- active coverage remains claim-eligible until its configured coverage boundary;
-- individual claims remain subject to teacher approval or rejection.
-
-The purchase FEAT SHALL NOT create an insurance claim.
 
 ## VIII. Purchase Reversal Boundary
 
 This FEAT does not itself reverse completed purchases.
 
-For an ordinary purchased entitlement, a separate lawful reversal/refund FEAT may revoke the entitlement only when:
+If a separate lawful reversal/refund FEAT exists, it may revoke the purchase outcome only when:
 
 - the entitlement remains unused;
 - no authoritative terminal or cross-domain consumption event exists;
@@ -262,7 +247,7 @@ For an ordinary purchased entitlement, a separate lawful reversal/refund FEAT ma
 - the capability is not insurance;
 - the Ledger reversal/refund succeeds within the coordinated transaction.
 
-Revocation SHALL be recorded as a separate `entitlement_consumptions` event with:
+Revocation SHALL be recorded as a separate entitlement event with:
 
 - `disposition = REVOKED`.
 

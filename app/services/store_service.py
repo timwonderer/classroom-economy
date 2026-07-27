@@ -6,16 +6,13 @@ from decimal import Decimal
 from app.extensions import db
 from app.models import (
     IdentityProfile,
-    Entitlement,
-    EntitlementConsumption,
     RentSettings,
     Seat,
-    StorePurchase,
     StoreItem,
     StoreItemVisibility,
     ClassEconomy,
-    GrantType,
 )
+# Entitlement, EntitlementConsumption, StorePurchase, GrantType deleted per Phase 2 migration (DOM-STORE-001 v3.0)
 from app.services.store_entitlement_service import grant_entitlement, list_available_entitlements
 from app.utils.time import utc_now
 

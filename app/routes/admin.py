@@ -58,19 +58,19 @@ from app.feats.base import feat_shell, FEATContext, InvariantViolation, generate
 from app.access.scope import Scope
 from app.access import AccessScopeDenied, resolve_scope
 from app.models import (
-    ClassEconomy, Transaction, TransactionStatus, AttendanceSession, StoreItem, StorePurchase, StoreItemVisibility,
-    Entitlement, EntitlementConsumption, GrantType,
+    ClassEconomy, Transaction, TransactionStatus, AttendanceSession, StoreItem, StoreItemVisibility,
     # Legacy tap table removed; use attendance_sessions (DOM-PROD-001).
     # StudentItem removed — student_items unauthorized; use store_purchases + redemption_events (DOM-STORE-001)
     # StoreItemBlock removed — store_item_blocks unauthorized; use store_item_visibility (DOM-STORE-001)
     # RedemptionAuditLog / RedemptionAuditAction / RedemptionAuditSource removed — use redemption_events (DOM-STORE-001)
     # Legacy tap reason enum removed with the legacy tap table.
+    # StorePurchase, Entitlement, EntitlementConsumption, GrantType, RedemptionEvent, etc. deleted per Phase 2 migration
     RentSettings,
     HallPassLog, HallPassSettings, PayrollSettings,
     BankingSettings,
     FeatureSettings,
-    Announcement, RedemptionEvent, RedemptionEventAction, RedemptionEventSource, Issue, IssueCategory, IssueStatusHistory, IssueResolutionAction, Seat,
-    LedgerBalanceSnapshot, ClassEconomy, User, UserRole, _quantize_currency,
+    Announcement, Issue, IssueCategory, IssueStatusHistory, IssueResolutionAction, Seat,
+    LedgerBalanceSnapshot, User, UserRole, _quantize_currency,
     ObligationAssessment,
     AttendanceReasonCode, IdentityProfile, PayrollEvent, PolicyVersion,
 )
