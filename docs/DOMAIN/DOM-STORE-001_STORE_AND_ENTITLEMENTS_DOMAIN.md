@@ -2,7 +2,7 @@
 
 | Reference Number | Version | Effective Date | Supersedes | Authority Level |
 |------------------|---------|----------------|------------|-----------------|
-| DOM-STORE-001 | 4.0 | 2026-07-27 | 3.0 | Normative |
+| DOM-STORE-001 | 5.0 | 2026-07-28 | 4.0 | Normative |
 
 ## I. Purpose
 
@@ -14,7 +14,7 @@ This domain records:
 - which immutable entitlement lifecycle facts occurred after the grant;
 - which entitlement actions are pending authoritative resolution.
 
-This domain does not own class configuration, feature policy, monetary truth, obligations, or the external business event produced by exercising an entitlement when another domain owns that event.
+This domain does not own class configuration, policy definitions, monetary truth, or obligations. It does own the entitlement that results after a policy definition is lawfully consumed.
 
 ## II. Scope
 
@@ -25,8 +25,8 @@ The domain ends where another domain owns the authoritative business fact produc
 Examples:
 
 - a late-use entitlement is granted and later consumed entirely inside Store and Entitlements;
-- an insurance entitlement is granted here, but the lawful insurance entitlement outcome may coordinate with Ledger and may carry the claim subject in its canonical payload;
-- a hall pass entitlement is granted here, but the authoritative consumption event is recorded by the Productivity/Hall-Pass domain;
+- an insurance entitlement is granted here, while claim execution may coordinate with Ledger and a claim-specific domain;
+- a hall pass entitlement is granted here, but the authoritative consumption event may be recorded by another domain;
 - a pending delayed-use redemption is preserved here until the lawful FEAT resolves it.
 
 ## III. Authority Level
@@ -51,7 +51,8 @@ The Store and Entitlements domain is the sole business authority over:
 - entitlement grant lineage;
 - entitlement exercise lineage when Store and Entitlements owns the exercise;
 - entitlement lifecycle facts for all entitlement types the domain owns;
-- pending entitlement actions awaiting authoritative resolution.
+- pending entitlement actions awaiting authoritative resolution;
+- whether a granted entitlement remains currently exercisable.
 
 The domain does not own:
 
@@ -88,6 +89,7 @@ This domain owns the following permanent truths:
 8. A claim-like or redemption-like action was submitted and remains pending authoritative resolution.
 9. The pending action preserves the canonical submission timestamp and the authoritative FEAT that must resolve it.
 10. The canonical payload for an entitlement event records the type-specific facts necessary to interpret that event.
+11. A rent-granted entitlement may expire at the rent-period boundary even when the underlying policy UUID remains current for later cycles.
 
 ### B. Cross-domain truth
 
@@ -121,7 +123,7 @@ This domain is the sole schema and mutation authority over:
 - `entitlement_events`
 - `pending_actions`
 
-The following legacy or superseded persistence concepts are not part of the v4 canonical Store and Entitlements contract:
+The following legacy or superseded persistence concepts are not part of the v5 canonical Store and Entitlements contract:
 
 - `entitlements` as a mutable grant table separate from lifecycle facts;
 - `entitlement_consumptions` as a separate terminal-history table;
@@ -243,6 +245,8 @@ For entitlement types where the exercise is terminal, `CONSUMED` ends the entitl
 
 `EXPIRED` records that the entitlement ceased to be exercisable because the configured validity period or goal boundary ended without further lawful exercise.
 
+Rent-granted entitlements expire at the rent-period boundary. Purchased rent-linked entitlements do not automatically expire just because the rent cycle rolled unless the product contract explicitly says so.
+
 ### D. Revocation semantics
 
 `REVOKED` records that an otherwise-valid entitlement was lawfully withdrawn through an authorized revocation path.
@@ -259,14 +263,7 @@ An insurance purchase SHALL create an entitlement grant and may coordinate an in
 
 Insurance claims SHALL be represented through the `pending_actions` path before resolution.
 
-Insurance claim validation SHALL distinguish:
-
-- structural invalidity, which MAY prevent PendingAction creation; and
-- policy ineligibility, which SHALL NOT by itself prevent submission where teacher adjudication applies.
-
-Failed policy evaluation SHALL be preserved on the pending action and presented during adjudication.
-
-When an insurance claim is adjudicated, both accepted and rejected claims SHALL record `CONSUMED` as the canonical entitlement event for that claim exercise.
+When an insurance claim is adjudicated, both accepted and rejected claims SHALL record a canonical claim resolution event in entitlement history.
 
 The entitlement event payload SHALL preserve the claimed subject and canonical outcome data required for future eligibility checks.
 
@@ -276,7 +273,7 @@ The corresponding Ledger event, when any, SHALL remain Ledger authority.
 
 Upon lawful resolution of an insurance claim:
 
-- the insurance entitlement SHALL record a `CONSUMED` event;
+- the insurance entitlement SHALL record the canonical claim resolution event;
 - the event payload SHALL preserve the claimed subject and any canonical result data required by future eligibility checks;
 - the pending action SHALL be removed.
 
@@ -448,4 +445,4 @@ This domain guarantees:
 - monetary truth remains Ledger-owned;
 - other domains retain authority over their own exercise or settlement records;
 - availability is derived, not stored;
-- no compatibility bridge is required for v4 canonical behavior.
+- no compatibility bridge is required for v5 canonical behavior.
