@@ -1624,6 +1624,49 @@ class PolicyTransition(db.Model):
     )
 
 
+# -------------------- POLICIES DOMAIN: STORE PRODUCTS --------------------
+
+
+class StoreProduct(db.Model):
+    """Immutable store product policy configuration — DOM-POL-001 / SPEC-STORE-001.
+
+    Policies domain owns product policy definitions.
+    Store and Entitlements consumes these policies when creating entitlements.
+
+    Key principle: UUID is the immutable locator (not FK).
+    Allows historical entitlements to reference deleted policies without breaking.
+    A policy may only be deleted when no executable entitlement depends on it.
+    """
+    __tablename__ = 'store_products'
+
+    id = db.Column(db.Integer, primary_key=True)
+
+    # Immutable UUID locator for cross-domain references (not FK)
+    policy_uuid = db.Column(db.String(36), unique=True, nullable=False, index=True, default=lambda: str(uuid.uuid4()))
+
+    # Class scope: policy is defined for a specific class period
+    class_id = db.Column(db.String(36), db.ForeignKey('classes.class_id', ondelete='CASCADE'), nullable=False, index=True)
+
+    # Payload: SPEC-STORE-001 schema per SPEC-STORE-001
+    # Contains required fields: product_id, is_purchasable, supports_direct_grants, price, entitlement_type
+    # And optional fields: limit_per_student, auto_expiry_days, name, description, tier, etc.
+    payload = db.Column(db.JSON, nullable=False)
+
+    # Immutable metadata
+    created_at = db.Column(db.DateTime(timezone=True), default=utc_now, nullable=False)
+    created_by_seat_id = db.Column(db.Integer, db.ForeignKey('seats.id', ondelete='SET NULL'), nullable=True)
+
+    # Lifecycle: is_retired indicates policy is no longer applicable for new purchases
+    # But historical entitlements created under this policy remain valid
+    is_retired = db.Column(db.Boolean, default=False, nullable=False)
+    retired_at = db.Column(db.DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        db.Index('ix_store_products_class_retired', 'class_id', 'is_retired'),
+        db.Index('ix_store_products_class_created', 'class_id', 'created_at'),
+    )
+
+
 @event.listens_for(ClassEconomy, 'after_insert')
 def _seed_default_class_features(mapper, connection, target):
     """New classes start with payroll enabled and all other features disabled."""
