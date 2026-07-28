@@ -26,6 +26,24 @@ Normative. This specification is subordinate to:
 - `DOM-POL-001_POLICIES_DOMAIN.md`
 - `DOM-CORE-002_CANONICAL_SCHEMA_DEFINITION.md`
 
+## III.A. Schema Governance Rule
+
+**A JSON field has no contractual meaning unless it is explicitly defined by this SPEC.**
+
+This is the controlling rule. It prevents JSON storage from becoming an escape hatch that allows callers or future features to invent arbitrary fields.
+
+Consequences:
+
+1. **Only declared fields are valid.** Every field in a payload MUST be enumerated in this document.
+2. **Unknown fields MUST be rejected.** Parsers SHALL treat unknown fields as a validation failure (fail-fast). Silently accepting unknown fields is prohibited.
+3. **Field changes require SPEC amendment.** Adding, removing, renaming, or changing the semantics or type of a field requires:
+   - Amendment of this SPEC document with new version number and effective date
+   - Corresponding update to all parser/validator implementations
+   - Migration guidance if existing policies must be upgraded
+4. **No inference of structure.** Callers and consumers MUST NOT persist or assume undeclared fields, even if "it makes sense" for a future use case.
+
+This approach provides JSON storage flexibility (fields can change) without surrendering schema governance (arbitrary fields cannot appear).
+
 ## IV. JSON Schema
 
 ### A. Required Fields
@@ -235,19 +253,33 @@ COLLECTIVE_GOAL   - Threshold/deadline purchase (group goal completion)
 
 A JSON object (dict) from `policy_version.payload`
 
+### Parsing Rules (Mandatory)
+
+1. **Enumerate all payload keys.** Before processing any field, collect the set of all keys in the input.
+2. **Reject unknown fields.** If any key is not declared in Section IV (Required or Optional fields), raise `ValueError` immediately with message: `"Unknown field in payload: {key}"`. **This is fail-fast; do not continue processing.**
+3. **Process declared fields only.** Extract only the declared fields listed in Section IV.A (Required) and Section IV.C (Optional).
+4. **Validate required fields.** Each required field MUST be present and non-null.
+5. **Validate optional fields.** Optional fields MAY be null or missing; if present and non-null, apply type and range validation per Section V.
+6. **Validate combinations.** Apply all mutual-exclusion and type-specific rules from Section V.
+
 ### Output
 
-A typed `StoreProductConfig` object with validated fields
+A typed `StoreProductConfig` object with all required fields set and optional fields set or defaulted.
+
+If any validation step fails, raise an exception immediately. Do not attempt recovery or partial parsing.
 
 ### Exceptions
 
 | Condition | Exception Type | Message |
 |-----------|----------------|---------|
+| Unknown field in payload | `ValueError` | "Unknown field in payload: {key}" |
 | Required field missing | `ValueError` | "Required field {name} missing" |
 | Invalid entitlement_type | `ValueError` | "Invalid entitlement_type: {value}" |
 | Invalid combination | `ValueError` | "Invalid combination: {reason}" |
 | Price negative | `ValueError` | "Price cannot be negative" |
 | Type mismatch | `TypeError` | "Field {name} must be {type}, got {actual_type}" |
+
+**All exceptions are fatal and prevent payload acceptance.**
 
 ## VIII. Version History
 
@@ -255,12 +287,61 @@ A typed `StoreProductConfig` object with validated fields
 |---------|------|---------|
 | 1.0 | 2026-07-28 | Initial specification |
 
-## IX. Amendment
+## IX. Amendment Process
 
-Changes to this specification require:
+Any change to this specification (add, remove, rename, or change semantics/type of a field) MUST follow this process:
 
-1. Update this document with new version number and effective date
-2. Update all consuming code to handle new or changed fields
-3. Add migration guidance if existing policies must be upgraded
-4. Update related domain specs (DOM-STORE-001, SPEC-OBL-001, etc.)
+1. **Update this document**
+   - Increment version number
+   - Update effective date
+   - Document change in Version History section
+   - Document rationale for change
+
+2. **Audit all consuming code**
+   - Identify all parsers and validators that consume STORE_PRODUCT payloads
+   - Identify all callers that persist STORE_PRODUCT payloads
+   - Ensure all code is updated before the new effective date
+
+3. **Update parser/validator implementations**
+   - Required: Enforce the new schema (added/removed/changed fields)
+   - Required: Reject payloads that don't match the new schema
+   - Add migration logic if existing policies must be upgraded
+
+4. **Migration guidance (if applicable)**
+   - If this change affects existing policies in production, add a section documenting:
+     - Which existing policies are affected
+     - How to migrate them (automated or manual)
+     - Effective date for migration
+     - Rollback procedure if needed
+
+5. **Update related documents**
+   - Update DOM-STORE-001 if semantic authority changes
+   - Update FEAT-STOR-001 and FEAT-STOR-004 if behavior changes
+   - Update any other SPEC documents that reference this one (e.g., SPEC-OBL-001 for insurance payloads)
+
+6. **No retroactive weakening**
+   - Once a version is effective, a future version MUST NOT silently accept old payloads without migration
+   - Parsers must reject unknown fields, always
+
+## X. Implementation Guidance
+
+### For Payload Creators (Policies domain)
+
+- Never persist undeclared fields, even if "it might be useful later"
+- When a new field is needed, follow the Amendment Process
+- Use the SPEC as the contract: if it's not in the SPEC, it cannot be in the payload
+
+### For Payload Consumers (FEAT-STOR-001, FEAT-STOR-004, etc.)
+
+- Parse payloads using `StoreProductConfig.from_payload(payload)`
+- Never attempt to infer or assume fields beyond what the parser provides
+- Never attempt to access undeclared fields
+- Treat parser exceptions as fatal (do not recover)
+
+### For Future SPEC Amendments
+
+- Document the rationale for every change
+- Consider backward compatibility implications
+- Update this entire document, not just the changed section
+- Increment the version number
 
