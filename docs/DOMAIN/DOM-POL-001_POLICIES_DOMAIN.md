@@ -2,34 +2,42 @@
 
 | Reference Number | Version | Effective Date | Supersedes | Authority Level |
 |------------------|---------|----------------|------------|-----------------|
-| DOM-POL-001 | 1.0 | 2026-07-27 | N/A | Constitutional |
+| DOM-POL-001 | 2.0 | 2026-07-28 | 1.0 | Constitutional |
 
 ## I. Purpose
 
-Define the Policies domain as the canonical authority over class-scoped feature rules and product specifications.
+Define the Policies domain as the class-scoped reference library for teacher-defined products, rules, and entitlements.
 
 Policies answers:
 
-- what rules govern an enabled feature;
-- what configuration is required for a product to behave lawfully;
-- what version of a product or policy was in effect at a particular time;
-- what closed rule schema a FEAT must interpret.
+- what definition a teacher configured for a specific capability or product family;
+- which exact immutable definition UUID applies to a specific row;
+- what contract terms a downstream domain may consume at creation time;
+- what class-scoped configuration item is currently selectable for new work.
 
-Policies does not own class identity, seat identity, money movement, entitlement history, or the operational facts produced when a rule is executed.
+Policies does not own class identity, class feature enablement, seat identity, money movement, obligations truth, entitlement history, or any other operational fact created after a Policy definition is consumed.
+
+Policies rows are locators, not foreign keys. A row has:
+
+- an immutable `policy_uuid`;
+- an immutable family/product identity;
+- an immutable definition payload;
+- a mutable availability state.
+
+Consumers use the `policy_uuid` to locate the exact definition. Downstream facts own any terms they must preserve after the Policy row is later hidden, retired, or deleted.
 
 ## II. Scope
 
-The domain begins when Class Configuration enables a feature or product family that requires typed rules.
+The domain begins when a teacher submits a policy definition for a class-scoped capability.
 
-The domain ends where another domain records the actual business fact produced under those rules.
+The domain ends where another domain records the actual business fact produced from that definition.
 
 Examples:
 
-- payroll policy defines rate, rounding, and schedule;
-- hall-pass policy defines queue and destination rules;
-- insurance policy defines claim limits, payout ceilings, and coverage behavior;
-- rent policy defines frequency, grace, preview, and linked-item rules;
-- ledger policy defines overdraft and interest behavior.
+- rent settings define the current or future rent contract and its rent-linked items;
+- store items define purchasable or rent-linked entitlement offerings;
+- insurance definitions define the insurance product and its claim/coverage terms;
+- any other teacher-defined policy family follows the same pattern.
 
 ## III. Authority Level
 
@@ -37,11 +45,13 @@ Tier 1 — Constitutional. This document defines the authoritative rule contract
 
 It is subordinate to:
 
-- `INV-CORE-000_CORE_INVARIANTS.md`
-- `INV-CORE-001_CAPABILITY_BASED_ARCHITECTURE_AND_AUTHORITY_MODEL.md`
-- `INV-ARC-015_TEMPORAL_MODEL_AND_BOUNDARY_ENFORCEMENT.md`
-- `INV-ARC-016_LAWFUL_EXISTENCE_AND_AUDIT_LINEAGE.md`
-- `INV-ARC-021_CROSS_DOMAIN_REFERENCE_AND_COORDINATION.md`
+- `../INVARIANT/CORE/INV-CORE-000_CORE_INVARIANTS.md`
+- `../INVARIANT/CORE/INV-CORE-001_CAPABILITY_BASED_ARCHITECTURE_AND_AUTHORITY_MODEL.md`
+- `../INVARIANT/ARCHITECTURE/INV-ARC-012_HARD_DELETION_ENFORCEMENT.md`
+- `../INVARIANT/ARCHITECTURE/INV-ARC-013_MEMBERSHIP_BY_EXISTENCE.md`
+- `../INVARIANT/ARCHITECTURE/INV-ARC-015_TEMPORAL_MODEL_AND_BOUNDARY_ENFORCEMENT.md`
+- `../INVARIANT/ARCHITECTURE/INV-ARC-016_LAWFUL_EXISTENCE_AND_AUDIT_LINEAGE.md`
+- `../INVARIANT/ARCHITECTURE/INV-ARC-021_CROSS_DOMAIN_REFERENCE_AND_COORDINATION.md`
 - `DOM-CORE-000_DOMAIN_FOUNDATION.md`
 - `DOM-CORE-002_CANONICAL_SCHEMA_DEFINITION.md`
 - `DOM-CLASS-001_CLASS_CONFIGURATION_DOMAIN.md`
@@ -50,21 +60,20 @@ It is subordinate to:
 
 Policies is the sole business authority over:
 
-- feature-specific rule definitions;
-- product specifications;
-- policy versions and version lineage when the rule changes are part of the policy contract;
-- effective dates for policy applicability;
-- closed rule schemas for FEAT interpretation.
+- class-scoped policy definitions for teacher-customized products and rules;
+- immutable policy UUIDs that identify exact definitions;
+- the payload contract required for downstream domains to consume a definition;
+- policy availability for new work.
 
 Policies does not own:
 
 - class existence or class identity;
+- feature enablement;
 - seat identity;
 - entitlement history;
 - obligations history;
 - Ledger truth;
 - productivity or attendance truth;
-- pending action storage;
 - display-only state.
 
 ## V. Domain Boundary
@@ -73,10 +82,12 @@ Policies does not own:
 
 This domain owns the following permanent truths:
 
-1. A class-scoped rule exists for an enabled feature or product family.
-2. The rule has a closed schema and a lawful version lineage.
-3. The rule becomes authoritative at its configured effective time.
-4. Downstream FEATs may interpret the rule only according to the published schema.
+1. A class-scoped policy definition exists for a family or product concept.
+2. The policy has a stable `policy_uuid` that identifies the exact definition.
+3. The definition payload is immutable after insert.
+4. The policy availability state determines whether the definition may be used for new work.
+5. A downstream fact may record the `policy_uuid` it used for provenance.
+6. A downstream fact that must remain executable after Policy removal must own the terms it needs.
 
 ### B. Cross-domain truth
 
@@ -87,108 +98,103 @@ This domain may lawfully reference but does not own:
 - monetary truth from Ledger;
 - entitlement lifecycle history from Store and Entitlements;
 - obligation lifecycle facts from Obligations;
-- productivity, attendance, and hall-pass execution facts from their owning domains.
+- operational execution facts from their owning domains.
 
 ### C. Derived state
 
-The following SHALL be derived and SHALL NOT be persisted as canonical Policies truth:
+The following SHALL be derived and SHALL NOT be treated as canonical Policies truth:
 
-- effective current policy as a materialized convenience if the result can be resolved from version + effective date;
+- current visible item list;
 - computed eligibility outcomes;
 - current claim allowance usage;
 - resolved payout amounts;
-- remaining limits.
+- remaining limits;
+- downstream business facts.
 
-## VI. Schema Authority Declaration
+## VI. Mutation Contract
 
-This domain is the sole schema and mutation authority over:
+FEAT-POL is the only mutation surface for this domain.
 
-- `policy_definitions`
-- `policy_versions`
-- `policy_version_effectivity`
+It supports only these user-visible actions:
 
-The schema MAY be specialized per policy family, but each policy record SHALL remain append-only and versioned.
+1. New: insert a new policy row with a new `policy_uuid`
+2. Update: submit a new policy version, which always creates a new `policy_uuid`
+3. Disable: mark a policy `HIDDEN`
+4. Retire: mark a policy `RETIRED`
+5. Delete: remove a retired policy row after all live dependencies have drained
 
-Policies SHALL NOT store:
+Any change to a policy settings submission creates a new policy UUID. The backend MUST NOT infer whether a change is meaningful. A teacher submission is a new contract.
 
-- mutable business outcomes;
-- entitlement balances;
-- Ledger balances;
-- obligations balances;
-- mutable class identity;
-- display-only UI state.
+Definition payload columns are not updated in place.
 
-## VII. Canonical Persistence
+When a teacher resubmits Rent Settings, Store Items, Insurance settings, or any other policy family, the result is a new immutable version.
 
-### A. `policy_definitions`
+`HIDDEN` means temporarily unavailable for new selection and may later return to `IN_USE`.
+`RETIRED` means permanently unavailable for new selection and may remain readable while live dependencies drain.
 
-`policy_definitions` identifies the rule family for the class-scoped policy.
+## VII. Downstream Domain Contract
 
-Key fields:
+Policies is a reference library, not a runtime dependency for already-created facts.
 
-- `policy_id` — primary key for the policy lineage
-- `class_id` — FK to `classes`
-- `policy_type` — closed enum such as `PAYROLL`, `HALL_PASS`, `INSURANCE`, `RENT`, `LEDGER`
-- `created_at`
+Downstream domains must take the terms they need at the moment they create their own authoritative fact.
 
-Rules:
+Examples:
 
-- one logical policy lineage per class and policy family;
-- the row names the rule family only;
-- the rule details live in version rows.
+- an entitlement created from a Store item must carry the terms it needs to keep executing even if the source Policy row is later removed;
+- an obligation assessment must carry the terms it needs to interpret that assessment without rereading the source Policy row later;
+- a rent-linked entitlement created from a rent cycle must be able to stand on its own until the rent-period boundary closes it out;
+- an insurance entitlement must carry the limits, benefits, and claim rules needed for later claim processing.
 
-### B. `policy_versions`
+Policies may be consulted during creation, but they are not the authority for the later operational fact.
 
-`policy_versions` stores the append-only versioned rule snapshot.
+## VIII. FEAT-POL Contract
 
-Key fields:
+FEAT-POL actions:
 
-- `policy_version_id` — primary key for the version row
-- `policy_id` — FK to `policy_definitions`
-- `version_number`
-- `effective_at`
-- `created_at`
-- `payload` — typed JSON rule payload for the policy family
+- `New` creates a new policy row and immutable definition.
+- `Update` creates a new policy row with a new `policy_uuid`.
+- `Disable` sets the current row to `HIDDEN`.
+- `Retire` sets the current row to `RETIRED`.
+- `Delete` removes a retired row only when live dependencies have drained.
 
-Rules:
+FEAT-POL MUST NOT mutate downstream domain facts directly.
+FEAT-POL MUST NOT rewrite historical downstream facts to match changed policy terms.
 
-- version rows are append-only;
-- `version_number` is monotonic within a policy lineage;
-- `effective_at` determines when the version becomes authoritative;
-- the authoritative policy at time `T` is the newest version in the lineage whose `effective_at <= T`.
+## IX. Persistence and Schema Status
 
-### C. `policy_version_effectivity`
+The v2 persistence model is:
 
-`policy_version_effectivity` is optional and may be used only if the implementation needs explicit scheduling metadata separate from the version snapshot.
+- one immutable `policy_uuid` per policy definition row;
+- one stable family/product identity per policy concept;
+- one mutable availability state per row;
+- one immutable definition payload per row;
+- no foreign keys from downstream domains to Policies;
+- downstream domains store `policy_uuid` as a non-FK locator and freeze the terms they need;
+- rent-linked item rows may exist before a rent cycle becomes current, but they are not reachable until OBL makes their rent UUID current.
 
-If present, it SHALL remain append-only and SHALL NOT mutate the underlying version record.
+Availability states:
 
-## VIII. Closed Policy Families
+- `IN_USE` - selectable for new work if the current class/cycle rules make it reachable
+- `HIDDEN` - not selectable for new work, but may return to `IN_USE`
+- `RETIRED` - not selectable for new work, may remain readable while live dependencies drain, and may later be physically deleted
 
-Policies MAY define typed rule families such as:
+Definition payloads are immutable after insert.
+Replacement creates a new `policy_uuid`.
+Deletion is allowed only after live dependencies drain.
 
-- payroll;
-- hall pass;
-- insurance;
-- rent;
-- ledger;
-- store product catalog behavior;
-- collective-goal configuration.
+## X. Boundary Examples
 
-Each family SHALL have a closed schema. Arbitrary JSON without a validator is prohibited.
+The intended boundary is:
 
-## IX. FEAT Consumption Contract
+- rent enablement -> Class Configuration
+- rent settings -> Policies
+- rent-granted items -> Store and Entitlements
+- store offerings -> Policies
+- insurance definitions -> Policies
+- insurance entitlement lifecycle -> Store and Entitlements
 
-FEATs that depend on policy truth SHALL:
+This means Class Configuration decides whether a capability exists in the class, Policies defines the class-customized reference material for that capability, and the consuming domain owns the resulting fact.
 
-1. identify the policy family required by the operation;
-2. resolve the newest lawful version in effect for the canonical temporal context;
-3. validate the payload against the family schema;
-4. apply the rule to the current authoritative facts of the owning domains;
-5. derive outcomes rather than persisting mutable policy state.
+## XI. Amendment
 
-Policies SHALL NOT execute the business outcome itself.
-
-## X. Amendment
-
-Revisions must remain consistent with `DOM-CLASS-001`, the owning business domain, and the governing FEAT and temporal invariants.
+Revisions must remain consistent with `DOM-CLASS-001`, the consuming operational domain, and the governing FEAT and temporal invariants.

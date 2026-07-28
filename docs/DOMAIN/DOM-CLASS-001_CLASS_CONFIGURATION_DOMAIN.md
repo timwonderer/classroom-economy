@@ -2,7 +2,7 @@
 
 | Reference Number | Version | Effective Date | Supersedes | Authority Level |
 |------------------|---------|----------------|------------|-----------------|
-| DOM-CLASS-001 | 3.0 | 2026-07-27 | 2.5 | Constitutional |
+| DOM-CLASS-001 | 3.1 | 2026-07-28 | 3.0 | Constitutional |
 
 ## I. Purpose
 
@@ -21,8 +21,9 @@ This domain governs:
 - `classes`
 - `feature_settings`
 - `class_features`
+- class creation and deletion workflows
 
-This domain does not govern domain-specific setup such as rent rules, store offerings, insurance policies, payroll rules, or banking rules.
+This domain does not govern domain-specific setup such as rent settings, store offerings, insurance policies, payroll rules, or banking rules.
 
 ## III. Authority Level
 
@@ -42,15 +43,16 @@ Class Configuration owns the class boundary and the class-level operating facts 
 Owned class-level facts include:
 
 - `class_id`
+- `public_class_id`
+- `join_code`
 - teacher user identity binding
 - class display name
 - `section`
 - `timezone`
 - feature enablement
-- CWI configuration
-- expected hours of work per week
-- CWI-derived ratio bands
-- price-range framing
+- all class-level economic-engine settings derived from DOM-ECON
+- feature-gated UI and access state
+- class creation and class deletion lifecycle
 
 `timezone` is fixed at class creation and MUST NOT be mutated afterward.
 
@@ -63,7 +65,7 @@ This domain is the sole schema and mutation authority over:
 - `class_features`
 
 `classes` establishes the canonical class boundary.
-`feature_settings` stores class-level economic setup.
+`feature_settings` stores class-level economic setup, including the CWI-based economic-engine settings owned by DOM-ECON.
 `class_features` stores feature enablement by class.
 
 ## VII. Owned Tables
@@ -76,6 +78,7 @@ Key fields:
 
 - `class_id`
 - `join_code`
+- `public_class_id`
 - `display_name`
 - `section`
 - `timezone`
@@ -87,8 +90,10 @@ Rules:
 
 - One record per class.
 - `class_id` is the canonical class boundary.
-- `join_code` is the public alias for the class.
+- `public_class_id` is the public alias for the class.
+- `join_code` is the teacher-facing or student-facing access code for the class.
 - `timezone` is fixed at class creation.
+- Class creation establishes the canonical class boundary and all required class-owned configuration rows.
 - Class deletion removes the class record and all class-owned configuration rows.
 
 ### 2. `feature_settings`
@@ -99,6 +104,7 @@ Key fields:
 
 - `id`
 - `class_id`
+- `cwi_json`
 - `economy_policy_mode`
 - `economy_policy_updated_at`
 - `economy_last_rebalanced_at`
@@ -108,7 +114,8 @@ Key fields:
 Rules:
 
 - One record per class.
-- Stores class-level economic setup only.
+- Stores class-level economic-engine setup only.
+- CWI-derived economic settings belong here.
 - The field set is projection state, not operational execution truth.
 - Deprecated transitional fields MUST be removed through the migration plan.
 
@@ -131,10 +138,11 @@ Rules:
 ## VIII. Constraints
 
 - This domain stores class-level configuration only.
-- It does not own domain-specific setup for rent, store, insurance, payroll, or banking.
+- It owns feature enablement, class identity, and all DOM-ECON class-level economic-engine settings.
+- It does not own rent settings, store offerings, insurance definitions, payroll rules, or banking rules.
 - It does not mutate ledger, attendance, obligations, or entitlement tables.
 - All class-level configuration must be scoped by `class_id`.
-- `join_code` is display-only and user-entered at boundaries; it does not replace `class_id` as authority and must not be used for internal routing or persistence references.
+- `public_class_id` and `join_code` are display/access aliases and must not replace `class_id` as authority or be used for internal routing or persistence references.
 - Feature enablement is class-level capability state, not domain policy state.
 
 ## IX. Derived / Cross-Domain Rules
@@ -143,6 +151,7 @@ Rules:
 - `timezone` governs class-level temporal interpretation.
 - FEAT orchestration may read class-level configuration, but it does not own it.
 - Class creation and class deletion are class-level mutation workflows.
+- Disabling a feature changes access and display state only; it does not rewrite downstream facts.
 
 ## X. Amendment
 

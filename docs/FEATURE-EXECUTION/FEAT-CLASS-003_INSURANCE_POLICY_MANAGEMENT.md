@@ -6,21 +6,18 @@
 
 ## I. Purpose
 
-Define the canonical class-configuration workflow for managing insurance policy offerings within a class.
+Define the canonical class-configuration workflow for class-level insurance enablement and economic settings.
 
 This FEAT governs:
 
-- creating an insurance policy offering;
-- editing an existing policy by creating a new prospective version;
-- marking a policy inactive so it is not offered for new enrollment;
-- deleting a policy lineage after existing coverage has drained;
-- defining same-group switching rules;
-- defining bundle eligibility rules across standalone and tiered policies;
-- producing student-visible policy-change notifications.
+- toggling the insurance capability at the class level;
+- maintaining class-level economic settings that insurance workflows depend on;
+- producing student-visible availability notices when insurance is enabled or disabled;
+- delegating insurance policy definition changes to `FEAT-POL-001`.
 
 This FEAT owns orchestration only.
 
-It SHALL NOT mutate entitlement, obligation, or ledger records directly.
+It SHALL NOT mutate insurance policy definitions, entitlement records, obligation records, or ledger records directly.
 
 ## II. Authority
 
@@ -33,7 +30,7 @@ This FEAT is authorized by:
 - `INV-ARC-016_LAWFUL_EXISTENCE_AND_AUDIT_LINEAGE.md`
 - `INV-ARC-021_CROSS_DOMAIN_REFERENCE_AND_COORDINATION.md`
 
-This FEAT is the sole lawful orchestrator for class-side insurance policy configuration changes.
+This FEAT is the sole lawful orchestrator for class-side insurance capability and economics changes.
 
 ## III. Required Context
 
@@ -50,170 +47,41 @@ This FEAT SHALL NOT reconstruct authority from labels, block names, join codes, 
 
 ## IV. Scope and Model
 
-Insurance policy configuration is class-scoped lineage.
+Class-level insurance configuration is class-scoped enablement and economics.
 
-Each change that materially alters policy terms SHALL create a new prospective version rather than mutating the historical contract in place.
+The canonical class configuration SHALL capture, at minimum:
 
-The canonical policy lineage SHALL capture, at minimum:
-
-- policy identity within the class;
-- `entitlement_item_id` mapping to the configured Store-and-Entitlements offering used for purchase grant;
-- group identity for tier-switch eligibility;
-- version number;
-- pricing and waiting-period terms;
-- claim-related limits;
-- bundle definitions;
-- active/inactive offering state;
-- deletion scheduling state;
-- student-facing notification payload.
+- class-level insurance enablement;
+- class-level economics that insurance workflows depend on;
+- teacher-facing notice state for insurance availability;
+- any class-scoped settings that influence policy orchestration but are not policy definitions themselves.
 
 This FEAT SHALL NOT add foreign keys from class configuration into entitlement, obligation, or ledger tables.
 
-## V. Create Policy
+## V. Insurance Enablement
 
-Policy creation SHALL:
+Insurance enablement SHALL:
 
-1. create a new class-scoped insurance policy lineage row;
-2. initialize the first version for that policy;
-3. record its prospective enrollment rules;
-4. bind the policy to the configured entitlement item used by FEAT-STOR-001 to grant the purchased insurance entitlement;
-5. expose the policy to class reads if it is active;
-6. create a student-visible notice that a new policy is available, when the product is meant to be discoverable by students.
+1. toggle the insurance capability at the class level;
+2. preserve existing downstream facts;
+3. control whether insurance-related Policy definitions are reachable from the class UI;
+4. emit teacher-visible notices about availability changes.
 
-## VI. Edit Policy
+## VI. Economic Settings
 
-Policy edit SHALL create a new prospective version when the teacher changes contractual terms.
+Class-level economic settings SHALL remain under Class Configuration.
 
-The edit workflow SHALL preserve historical versions.
+These settings MAY be consulted by insurance or rent policy workflows, but they SHALL NOT rewrite Policy definitions.
 
-The following are versioned policy terms:
+## VII. Delegation
 
-- title;
-- description;
-- premium;
-- charge frequency;
-- autopay behavior;
-- waiting period;
-- claim window;
-- claim limits;
-- payout limits;
-- repurchase restrictions;
-- bundle definitions;
-- tier-group assignment;
-- tier label and display color;
-- configured entitlement item binding;
-- active/inactive offering state.
+This FEAT delegates insurance policy creation, update, retirement, and deletion to `FEAT-POL-001`.
 
-When an edit materially changes terms, the FEAT SHALL:
-
-1. create the new version row;
-2. mark the version active for future enrollment, if applicable;
-3. preserve existing enrollments on their current terms;
-4. emit a persistent student-visible banner describing the change.
-
-## VII. Inactivate Policy
-
-Inactivation means:
-
-- the policy remains part of class history;
-- the policy is not available for new enrollment;
-- existing entitlements and obligations remain unchanged;
-- the policy may be reactivated later if the teacher chooses.
-
-Inactivation SHALL NOT mutate entitlement, obligation, or ledger facts.
-
-## VIII. Delete Policy
-
-Deletion is a class-configuration operation.
-
-Deletion means:
-
-- remove all class-owned insurance policy lineage rows for the policy within the class;
-- do not change entitlement rows;
-- do not change obligation rows;
-- do not change ledger rows;
-- do not rewrite historical events owned by other domains.
-
-Deletion SHALL be deferred until the last currently enforced entitlement for the policy lineage has ended.
-
-Before scheduling deletion, the FEAT SHALL ask the Entitlement authority for:
-
-- the end boundary of the last currently enforced entitlement for the policy lineage in the class.
-
-If no currently enforced entitlement exists, deletion MAY proceed immediately.
-
-If at least one entitlement remains in force, the FEAT SHALL schedule the hard delete for the resolved end boundary.
-
-Deletion SHALL produce a persistent student-visible banner stating that:
-
-- the policy is discontinued;
-- no new enrollment is available;
-- current coverage remains valid through the applicable end date;
-- the configuration will be permanently removed.
-
-## IX. Switching
-
-Switching is enrollment into a different policy within the same tier group.
-
-Switching SHALL:
-
-- require the source policy and target policy to belong to the same group;
-- treat the switch as a new policy enrollment rather than a cancellation;
-- set the source policy end date equal to the target policy waiting-period start date;
-- preserve any configured waiting period on the target policy;
-- not bypass the target policy waiting period.
-
-The waiting period on the new policy SHALL begin when the new policy begins.
-
-If a target policy is withdrawn before its effective start, the pending switch SHALL fail and the student SHALL be notified.
-
-## X. Bundle Eligibility
-
-Bundle discounts are class-configuration rules.
-
-The bundle eligibility rule SHALL operate in one of two ways:
-
-1. concurrent enrollment in the specified standalone non-grouped policies; or
-2. concurrent enrollment in one policy from the referenced tiered group plus the other specified policy.
-
-A bundle definition MAY reference:
-
-- standalone non-grouped policies; or
-- a policy group, where any tier in the group satisfies that bundle slot.
-
-If any bundled item belongs to a tier group, the entire group SHALL be eligible for that bundle slot.
-
-Bundle evaluation SHALL treat concurrent enrollment in the qualifying policies as the eligibility condition.
-
-## XI. Student Notifications
-
-Policy create, edit, inactivate, switch-affecting change, and delete scheduling SHALL emit a student-visible notification.
-
-The notification SHALL be rendered as a persistent banner until dismissed.
-
-The banner content SHALL identify:
-
-- the policy name;
-- the type of change;
-- the effective boundary when applicable;
-- whether the policy remains available for new enrollment;
-- whether existing coverage remains valid.
-
-## XII. Delegation
-
-This FEAT delegates read/write authority to:
-
-- `DOM-CLASS-001_CLASS_CONFIGURATION_DOMAIN.md`
-- the canonical entitlement boundary read surface for deletion scheduling
-- the lawful student notification persistence surface
-- the lawful cross-domain enrollment orchestration FEATs that consume this class configuration
-
-## XIII. Guarantees
+## VIII. Guarantees
 
 This FEAT guarantees:
 
-- policy edits never silently mutate historical coverage;
-- switching stays within the configured policy group;
-- bundle eligibility honors tier groups as a whole;
-- policy deletion does not rewrite downstream domain facts;
-- students receive visible notice of policy changes.
+- class-level insurance enablement is explicit;
+- class-level economic settings remain under Class Configuration;
+- Policy definitions are not mutated here;
+- downstream entitlement, obligation, and ledger facts are not rewritten by this FEAT.
