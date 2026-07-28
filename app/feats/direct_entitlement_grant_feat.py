@@ -3,12 +3,18 @@ FEAT-STOR-004: Direct Entitlement Grant (v1.0)
 
 Orchestrates teacher-directed entitlement grants:
 - Validates teacher authority for class
-- Validates product supports direct grants
+- Resolves product policy and validates supports_direct_grants
 - Creates immutable EntitlementEvent rows (one per granted unit)
 - Handles hall-pass grants (no mutable balance)
 - Handles privilege grants (teacher-directed)
 
 No Ledger coordination needed; grants are zero-cost from teacher authority.
+
+Architecture:
+- Accepts product_id (user-facing identifier)
+- Resolves applicable policy for that product in the class
+- Validates policy per SPEC-STORE-001
+- Creates entitlements with product_id and policy_uuid references
 """
 
 from __future__ import annotations
@@ -19,8 +25,9 @@ import uuid
 
 from app.extensions import db
 from app.feats.base import feat_shell
-from app.models import Seat, EntitlementEvent
+from app.models import Seat, EntitlementEvent, StoreProduct
 from app.services.context_resolver import CanonicalContext
+from app.services.store_policy_resolver import StorePolicyResolver, PolicyNotFound, PolicyParseError, PolicyValidationError
 from app.utils.canonical_temporal_resolver import canonical_temporal_resolver, CLASS_LEVEL_EVALUATION
 
 
@@ -144,12 +151,84 @@ def _execute_direct_grant_impl(
             error_message="Quantity must be a positive integer",
         )
 
-    # TODO: Validate product exists and supports direct grants
-    # This requires reading from Policy/Class Configuration domain
-    # For MVP, we assume product_id is valid and direct-grantable
+    # =========================================================================
+    # Resolve and validate product policy per SPEC-STORE-001
+    # =========================================================================
 
-    # TODO: Validate eligibility rules (per-seat limits, policy constraints, etc.)
-    # For MVP, we assume grants are always allowed
+    # Look up applicable policy for this product_id in the class
+    # Query for non-retired store_products where payload.product_id matches
+    applicable_products = db.session.query(StoreProduct).filter_by(
+        class_id=canonical_context.class_id,
+        is_retired=False,
+    ).all()
+
+    matching_policy = None
+    for sp in applicable_products:
+        try:
+            if sp.payload.get('product_id') == product_id:
+                matching_policy = sp
+                break
+        except Exception:
+            # Skip policies with unparseable payloads
+            continue
+
+    if not matching_policy:
+        return DirectGrantResult(
+            success=False,
+            correlation_id="",
+            quantity_granted=0,
+            error_code="PRODUCT_NOT_AVAILABLE",
+            error_message=f"Product {product_id} not found or not grantable in this class",
+        )
+
+    # Resolve and validate policy
+    try:
+        policy_config = StorePolicyResolver.resolve_store_item(matching_policy.policy_uuid)
+    except PolicyNotFound:
+        return DirectGrantResult(
+            success=False,
+            correlation_id="",
+            quantity_granted=0,
+            error_code="POLICY_NOT_FOUND",
+            error_message=f"Policy for product {product_id} not found (may have been deleted)",
+        )
+    except (PolicyParseError, PolicyValidationError) as e:
+        return DirectGrantResult(
+            success=False,
+            correlation_id="",
+            quantity_granted=0,
+            error_code="POLICY_INVALID",
+            error_message=f"Policy validation failed: {str(e)}",
+        )
+
+    # Validate supports_direct_grants
+    if not policy_config.supports_direct_grants:
+        return DirectGrantResult(
+            success=False,
+            correlation_id="",
+            quantity_granted=0,
+            error_code="GRANT_NOT_SUPPORTED",
+            error_message=f"Product {product_id} does not support direct grants",
+        )
+
+    # Validate per-student limit (if configured)
+    if policy_config.limit_per_student is not None:
+        # Count existing entitlements for this target seat and product
+        existing_count = db.session.query(EntitlementEvent).filter_by(
+            class_id=canonical_context.class_id,
+            target_seat_id=target_seat_id,
+            product_id=product_id,
+            event_type='GRANTED',
+        ).count()
+
+        if existing_count + quantity > policy_config.limit_per_student:
+            return DirectGrantResult(
+                success=False,
+                correlation_id="",
+                quantity_granted=0,
+                error_code="LIMIT_EXCEEDED",
+                error_message=f"Granting {quantity} would exceed per-student limit of {policy_config.limit_per_student}",
+            )
 
     # Generate or use provided correlation ID
     corr_id = correlation_id or f"direct_grant_{uuid.uuid4().hex}"
@@ -171,22 +250,27 @@ def _execute_direct_grant_impl(
     for unit_idx in range(quantity):
         entitlement_id = str(uuid.uuid4())
 
+        # Build event payload per DOM-STORE-001
+        # Contains type-specific facts about this grant event (not policy rules)
+        event_payload = {
+            "unit_index": unit_idx,
+            "quantity_total": quantity,
+            "grant_type": "teacher_direct",  # Distinguishes from PURCHASE/PERK
+            "policy_uuid": policy_config.policy_uuid,  # For audit/historical reference
+        }
+
         event = EntitlementEvent(
             event_id=str(uuid.uuid4()),
             entitlement_id=entitlement_id,
             class_id=canonical_context.class_id,
             target_seat_id=target_seat_id,
             actor_seat_id=canonical_context.seat_id,  # Teacher's seat
-            product_id=product_id,
-            entitlement_type="HALL_PASS",  # TODO: Read from product config
+            product_id=product_id,  # Product identifier (per SPEC-STORE-001)
+            entitlement_type=policy_config.entitlement_type,  # Read from resolved policy
             acquisition_type="GRANT",
             event_type="GRANTED",
             correlation_id=corr_id,
-            payload={
-                "unit_index": unit_idx,
-                "quantity_total": quantity,
-                "grant_type": "teacher_direct",  # Distinguishes from PURCHASE/PERK
-            },
+            payload=event_payload,
             timestamp=timestamp_utc,
         )
         db.session.add(event)
