@@ -114,35 +114,21 @@ D) **Product-dependent** — Approval requirement varies by product policy confi
 
 ---
 
-### Question 6: Rejection Semantics (REVOKED vs Return to GRANTED)
+### Question 6: Rejection Semantics (DENIED REQUEST)
 
-**Question**: When a teacher rejects a delayed-use redemption request, what happens?
+**Authority Clarification**: Teacher rejection is DENY REQUEST only. It terminates the PendingAction without changing the underlying entitlement.
 
-**Options**:
-A) **Record REVOKED** — Entitlement receives a REVOKED terminal event; entitlement becomes unusable
-B) **Return to GRANTED** — Entitlement stays GRANTED; pending_action deleted without terminal event; student can resubmit
-C) **Defer rejection** — Entitlement stays in intermediate state; student can retry after time window
-D) **Product-dependent** — Varies by product policy
+**Outcome**:
+- Pending_action is deleted (request is no longer pending)
+- Entitlement remains GRANTED (no terminal event written)
+- Student may submit another redemption request later
+- No refund or compensation
 
-**Implication**: Determines whether rejected redemptions are refundable vs permanently consumed
-
----
-
-### Question 7: Refund/Reversal Coordination
-
-**Question**: When a redemption is rejected (if REVOKED), how is the refund/reversal coordinated?
-
-**Options**:
-A) **Automatic via Ledger** — System automatically credits Ledger on REVOKED event
-B) **Manual teacher action** — Teacher issues refund through separate process
-C) **Deferred** — No automatic refund; teacher handles out-of-band
-D) **Product-dependent** — Varies by product configuration
-
-**Implication**: Determines cross-domain coordination with Ledger domain
+**Implication**: Rejection is purely "not approved this time" — not a reversal of the purchase or entitlement grant. Purchase reversal/refunds are Ledger domain concerns.
 
 ---
 
-### Question 8: Redemption Repeatability
+### Question 7: Redemption Repeatability
 
 **Question**: Can the same delayed-use entitlement be redeemed multiple times?
 
@@ -156,7 +142,7 @@ D) **Quantity-based** — Grant specifies quantity; each redemption consumes one
 
 ---
 
-### Question 9: Expiration Boundary
+### Question 8: Expiration Boundary
 
 **Question**: What triggers the EXPIRED event for delayed-use entitlements?
 
@@ -171,6 +157,11 @@ D) **No expiration** — Only CONSUMED or REVOKED; no automatic expiration
 ---
 
 ## IV. Proposed Baseline Contract
+
+**Authority Clarification Applied**:
+- Rejection is DENY REQUEST only (no terminal entitlement event)
+- No refund or reversal happens on denial (Ledger domain owns that)
+- Entitlement stays GRANTED (student may resubmit)
 
 **Until authority clarifies above questions, the following baseline contract is proposed**:
 
@@ -234,15 +225,15 @@ D) **No expiration** — Only CONSUMED or REVOKED; no automatic expiration
 4. Commit atomically
 5. Return success with event_id
 
-**Resolution Path B: REJECTED**
+**Resolution Path B: REJECTED (DENY REQUEST)**
 
-1. Write REVOKED entitlement event:
-   - `event_type='REVOKED'`
-   - `payload`: { redemption_subject, rejection_reason, policy_uuid }
-2. (Optional) Coordinate Ledger credit if product requires refund
-3. Delete pending_action
+1. Delete pending_action (request is denied and removed)
+2. NO entitlement event written (entitlement stays GRANTED)
+3. NO Ledger coordination (no reversal or refund)
 4. Commit atomically
-5. Return success with event_id
+5. Return success indicating request was denied
+
+**Result**: Student can submit another redemption request later. Purchase reversal/refunds (if any) are Ledger domain concerns.
 
 ---
 
@@ -272,26 +263,28 @@ D) **No expiration** — Only CONSUMED or REVOKED; no automatic expiration
 ### Resolution Tests (Proposed)
 
 - Approved redemption writes CONSUMED event + deletes pending_action
-- Rejected redemption writes REVOKED event + deletes pending_action + (optional) coordinates Ledger refund
-- Idempotent: retrying approval returns same event_id
+- Rejected redemption deletes pending_action ONLY; no entitlement event written; entitlement stays GRANTED
+- Idempotent: retrying approval returns same event_id; retrying rejection deletes pending_action
 - Policy deletion while pending creates POLICY_DELETED error (soft failure)
-- Ledger coordination failures tracked (if required)
+- Student can resubmit redemption request after denial (no blocking after first denial)
 
 ---
 
 ## VII. Authority Checklist for Approval
 
-Before Phase 3 implementation can proceed, authority must approve:
+**✅ AUTHORITY CLARIFICATION RECEIVED**:
+- Rejection is DENY REQUEST only (no terminal entitlement event, no refund)
+- Entitlement stays GRANTED (student may resubmit)
+
+**Before Phase 3 implementation can proceed, authority must approve**:
 
 - [ ] **Question 1 Answer**: Student-initiated vs teacher-initiated vs system-automatic
 - [ ] **Question 2 Answer**: On-demand vs time-triggered vs automatic
 - [ ] **Question 3 Answer**: Validation scope (minimal, policy-based, cross-domain, product-specific)
 - [ ] **Question 4 Answer**: Payload structure (minimal, purpose, temporal, product-specific)
 - [ ] **Question 5 Answer**: Approval authority (automatic, manual, product-dependent)
-- [ ] **Question 6 Answer**: REVOKED vs return-to-GRANTED on rejection
-- [ ] **Question 7 Answer**: Refund coordination (automatic Ledger, manual, deferred, product-dependent)
-- [ ] **Question 8 Answer**: Redemption repeatability (one-time, repeatable, product-dependent)
-- [ ] **Question 9 Answer**: Expiration trigger (absolute, relative, period, none)
+- [ ] **Question 7 Answer**: Redemption repeatability (one-time, repeatable, product-dependent)
+- [ ] **Question 8 Answer**: Expiration trigger (absolute, relative, period, none)
 
 ---
 
@@ -340,12 +333,13 @@ The proposed baseline assumes:
 - **Policy-based validation** because product rules should govern eligibility
 - **Minimal payload** because entitlement already exists; just signal intent
 - **Manual teacher approval** for accountability and potential override
-- **REVOKED on rejection** because DOM-STORE-001 explicitly says "REVOKED when redemption is rejected"
-- **Automatic Ledger refund** per "refunded through the lawful reversal path"
+- **DENY REQUEST on rejection** ✅ per authority clarification (no terminal event, no refund)
+- **Entitlement stays GRANTED** ✅ per authority clarification (student can resubmit)
+- **No Ledger coordination on denial** ✅ per authority clarification (refunds are Ledger domain concern)
 - **One-time redemption** (but product can specify otherwise) as default safe behavior
 - **Policy-boundary expiration** per policy config (absolute, relative, period as product specifies)
 
-This baseline is **proposed for authority review**, not directive.
+This baseline is **proposed for authority review** on remaining Questions 1-5, 7-8.
 
 ---
 
