@@ -9,16 +9,20 @@ def test_DOM_OPS_001__csp_header(client):
     csp = response.headers['Content-Security-Policy']
 
     # Check for new directives by parsing CSP header
-    csp_directives = {
-        part.split()[0]: ' '.join(part.split()[1:])
-        for part in csp.split(';')
-        if part.strip()
-    }
+    csp_directives = {}
+    for part in csp.split(';'):
+        if part.strip():
+            parts = part.strip().split()
+            directive = parts[0]
+            sources = parts[1:]
+            csp_directives[directive] = sources
 
     # connect-src should contain cdn.jsdelivr.net
     assert 'connect-src' in csp_directives
-    assert 'https://cdn.jsdelivr.net' in csp_directives['connect-src']
+    cdn_url = 'https://cdn.jsdelivr.net'
+    assert cdn_url in csp_directives['connect-src']
 
     # script-src should contain static.cloudflareinsights.com
     assert 'script-src' in csp_directives
-    assert 'https://static.cloudflareinsights.com' in csp_directives['script-src']
+    insights_url = 'https://static.cloudflareinsights.com'
+    assert insights_url in csp_directives['script-src']
