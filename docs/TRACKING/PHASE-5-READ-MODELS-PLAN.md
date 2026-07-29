@@ -20,6 +20,21 @@ This phase classifies and implements:
 
 ---
 
+## Important Note on Pending Actions
+
+**Pending Actions workflows are NOT part of Phase 5 read models** (see PENDING_ACTIONS_AUDIT_2026-07-28.md).
+
+The `pending_actions` table is canonical persistence with documented workflows (insurance claims, delayed-use redemptions, hall-pass requests), but the FEATs that would write to it are not yet implemented. 
+
+**Phase 5 should NOT**:
+- Implement read projections for pending_actions workflows
+- Assume or infer workflow semantics
+- Build view models that depend on unimplemented FEATs
+
+**Phase 5 can proceed with**: Read models for entitlements, purchases, and statuses that do not depend on pending_actions.
+
+---
+
 ## II. Read Surface Inventory
 
 ### Category A: Authoritative Domain Reads
