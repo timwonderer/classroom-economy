@@ -12,13 +12,35 @@ Uses canonical test initializer per SPEC-TEST-001.
 
 from uuid import uuid4
 from app.extensions import db
+from app.feats.base import FEATContext
 from app.models import EntitlementEvent, PendingAction
 from app.services.context_resolver import CanonicalContext
+from app.services.store_policy_resolver import StorePolicyResolver
 from app.feats.insurance_claim_feat import (
     submit_insurance_claim,
     resolve_insurance_claim,
 )
 from tests.helpers.classroom_initializer import initialize
+
+
+def seed_insurance_policy(app, classroom, teacher_seat, policy_uuid_suffix: str = "001"):
+    with app.app_context():
+        with FEATContext("FEAT-TEST-SETUP", idempotency_key=f"insurance-policy-seed:{policy_uuid_suffix}"):
+            policy = StorePolicyResolver.create_store_product(
+                class_id=classroom.class_id,
+                payload={
+                    "product_id": 1,
+                    "is_purchasable": True,
+                    "supports_direct_grants": True,
+                    "price": "0.00",
+                    "entitlement_type": "INSURANCE",
+                    "name": "Insurance Policy",
+                },
+                created_by_seat_id=teacher_seat.id,
+            )
+        db.session.flush()
+    db.session.commit()
+    return policy.policy_uuid
 
 
 class TestInsuranceClaimSubmission:
@@ -28,26 +50,28 @@ class TestInsuranceClaimSubmission:
         """Valid insurance claim submission creates pending_action with correct payload."""
         classroom = initialize("chemistry_p1", app)
         student = classroom.students[0]
+        teacher = classroom.teacher_seat
+        policy_uuid = seed_insurance_policy(app, classroom, teacher, "valid-submission")
 
         with app.app_context():
-            # Create GRANTED entitlement event
-            entitlement_id = str(uuid4())
-            policy_uuid = "policy-insurance-001"
+            with FEATContext("FEAT-TEST-SETUP", idempotency_key="insurance-claim:valid-submission"):
+                # Create GRANTED entitlement event
+                entitlement_id = str(uuid4())
 
-            granted_event = EntitlementEvent(
-                event_id=str(uuid4()),
-                class_id=classroom.class_id,
-                entitlement_id=entitlement_id,
-                target_seat_id=student.seat.id,
-                actor_seat_id=student.seat.id,
-                product_id=1,
-                entitlement_type="INSURANCE",
-                acquisition_type="PERK",
-                event_type="GRANTED",
-                payload={"policy_uuid": policy_uuid},
-            )
-            db.session.add(granted_event)
-            db.session.commit()
+                granted_event = EntitlementEvent(
+                    event_id=str(uuid4()),
+                    class_id=classroom.class_id,
+                    entitlement_id=entitlement_id,
+                    target_seat_id=student.seat.id,
+                    actor_seat_id=student.seat.id,
+                    product_id=1,
+                    entitlement_type="INSURANCE",
+                    acquisition_type="PERK",
+                    event_type="GRANTED",
+                    payload={"policy_uuid": policy_uuid},
+                )
+                db.session.add(granted_event)
+                db.session.flush()
 
             # Create student context
             context = CanonicalContext(
@@ -110,25 +134,28 @@ class TestInsuranceClaimSubmission:
         """Submission fails if entitlement is not INSURANCE type."""
         classroom = initialize("chemistry_p1", app)
         student = classroom.students[0]
+        teacher = classroom.teacher_seat
+        policy_uuid = seed_insurance_policy(app, classroom, teacher, "wrong-type")
 
         with app.app_context():
-            entitlement_id = str(uuid4())
+            with FEATContext("FEAT-TEST-SETUP", idempotency_key="insurance-claim:wrong-type"):
+                entitlement_id = str(uuid4())
 
-            # Create DELAYED_USE entitlement (not INSURANCE)
-            granted_event = EntitlementEvent(
-                event_id=str(uuid4()),
-                class_id=classroom.class_id,
-                entitlement_id=entitlement_id,
-                target_seat_id=student.seat.id,
-                actor_seat_id=student.seat.id,
-                product_id=1,
-                entitlement_type="DELAYED_USE",  # Wrong type
-                acquisition_type="PERK",
-                event_type="GRANTED",
-                payload={"policy_uuid": "policy-001"},
-            )
-            db.session.add(granted_event)
-            db.session.commit()
+                # Create DELAYED_USE entitlement (not INSURANCE)
+                granted_event = EntitlementEvent(
+                    event_id=str(uuid4()),
+                    class_id=classroom.class_id,
+                    entitlement_id=entitlement_id,
+                    target_seat_id=student.seat.id,
+                    actor_seat_id=student.seat.id,
+                    product_id=1,
+                    entitlement_type="DELAYED_USE",  # Wrong type
+                    acquisition_type="PERK",
+                    event_type="GRANTED",
+                    payload={"policy_uuid": "policy-001"},
+                )
+                db.session.add(granted_event)
+                db.session.flush()
 
             context = CanonicalContext(
                 user_id=student.user.id,
@@ -151,39 +178,41 @@ class TestInsuranceClaimSubmission:
         """Submission fails if entitlement already has terminal event."""
         classroom = initialize("chemistry_p1", app)
         student = classroom.students[0]
+        teacher = classroom.teacher_seat
+        policy_uuid = seed_insurance_policy(app, classroom, teacher, "terminal-entitlement")
 
         with app.app_context():
-            entitlement_id = str(uuid4())
-            policy_uuid = "policy-insurance-001"
+            with FEATContext("FEAT-TEST-SETUP", idempotency_key="insurance-claim:terminal-entitlement"):
+                entitlement_id = str(uuid4())
 
-            # Create GRANTED and CONSUMED events
-            granted_event = EntitlementEvent(
-                event_id=str(uuid4()),
-                class_id=classroom.class_id,
-                entitlement_id=entitlement_id,
-                target_seat_id=student.seat.id,
-                actor_seat_id=student.seat.id,
-                product_id=1,
-                entitlement_type="INSURANCE",
-                acquisition_type="PERK",
-                event_type="GRANTED",
-                payload={"policy_uuid": policy_uuid},
-            )
-            consumed_event = EntitlementEvent(
-                event_id=str(uuid4()),
-                class_id=classroom.class_id,
-                entitlement_id=entitlement_id,
-                target_seat_id=student.seat.id,
-                actor_seat_id=student.seat.id,
-                product_id=1,
-                entitlement_type="INSURANCE",
-                acquisition_type="PERK",
-                event_type="CONSUMED",
-                payload={"claim_decision": "APPROVED"},
-            )
-            db.session.add(granted_event)
-            db.session.add(consumed_event)
-            db.session.commit()
+                # Create GRANTED and CONSUMED events
+                granted_event = EntitlementEvent(
+                    event_id=str(uuid4()),
+                    class_id=classroom.class_id,
+                    entitlement_id=entitlement_id,
+                    target_seat_id=student.seat.id,
+                    actor_seat_id=student.seat.id,
+                    product_id=1,
+                    entitlement_type="INSURANCE",
+                    acquisition_type="PERK",
+                    event_type="GRANTED",
+                    payload={"policy_uuid": policy_uuid},
+                )
+                consumed_event = EntitlementEvent(
+                    event_id=str(uuid4()),
+                    class_id=classroom.class_id,
+                    entitlement_id=entitlement_id,
+                    target_seat_id=student.seat.id,
+                    actor_seat_id=student.seat.id,
+                    product_id=1,
+                    entitlement_type="INSURANCE",
+                    acquisition_type="PERK",
+                    event_type="CONSUMED",
+                    payload={"claim_decision": "APPROVED"},
+                )
+                db.session.add(granted_event)
+                db.session.add(consumed_event)
+                db.session.flush()
 
             context = CanonicalContext(
                 user_id=student.user.id,
@@ -206,25 +235,27 @@ class TestInsuranceClaimSubmission:
         """Retrying submission with same correlation_id returns prior result."""
         classroom = initialize("chemistry_p1", app)
         student = classroom.students[0]
+        teacher = classroom.teacher_seat
+        policy_uuid = seed_insurance_policy(app, classroom, teacher, "idempotency")
 
         with app.app_context():
-            entitlement_id = str(uuid4())
-            policy_uuid = "policy-insurance-001"
+            with FEATContext("FEAT-TEST-SETUP", idempotency_key="insurance-claim:idempotency"):
+                entitlement_id = str(uuid4())
 
-            granted_event = EntitlementEvent(
-                event_id=str(uuid4()),
-                class_id=classroom.class_id,
-                entitlement_id=entitlement_id,
-                target_seat_id=student.seat.id,
-                actor_seat_id=student.seat.id,
-                product_id=1,
-                entitlement_type="INSURANCE",
-                acquisition_type="PERK",
-                event_type="GRANTED",
-                payload={"policy_uuid": policy_uuid},
-            )
-            db.session.add(granted_event)
-            db.session.commit()
+                granted_event = EntitlementEvent(
+                    event_id=str(uuid4()),
+                    class_id=classroom.class_id,
+                    entitlement_id=entitlement_id,
+                    target_seat_id=student.seat.id,
+                    actor_seat_id=student.seat.id,
+                    product_id=1,
+                    entitlement_type="INSURANCE",
+                    acquisition_type="PERK",
+                    event_type="GRANTED",
+                    payload={"policy_uuid": policy_uuid},
+                )
+                db.session.add(granted_event)
+                db.session.flush()
 
             context = CanonicalContext(
                 user_id=student.user.id,
@@ -265,43 +296,44 @@ class TestInsuranceClaimResolution:
         classroom = initialize("chemistry_p1", app)
         teacher = classroom.teacher_seat
         student = classroom.students[0]
+        policy_uuid = seed_insurance_policy(app, classroom, teacher, "approval")
 
         with app.app_context():
-            entitlement_id = str(uuid4())
-            policy_uuid = "policy-insurance-001"
+            with FEATContext("FEAT-TEST-SETUP", idempotency_key="insurance-claim:approval-setup"):
+                entitlement_id = str(uuid4())
 
-            # Create GRANTED event
-            granted_event = EntitlementEvent(
-                event_id=str(uuid4()),
-                class_id=classroom.class_id,
-                entitlement_id=entitlement_id,
-                target_seat_id=student.seat.id,
-                actor_seat_id=student.seat.id,
-                product_id=1,
-                entitlement_type="INSURANCE",
-                acquisition_type="PERK",
-                event_type="GRANTED",
-                payload={"policy_uuid": policy_uuid},
-            )
-            db.session.add(granted_event)
-            db.session.commit()
+                # Create GRANTED event
+                granted_event = EntitlementEvent(
+                    event_id=str(uuid4()),
+                    class_id=classroom.class_id,
+                    entitlement_id=entitlement_id,
+                    target_seat_id=student.seat.id,
+                    actor_seat_id=student.seat.id,
+                    product_id=1,
+                    entitlement_type="INSURANCE",
+                    acquisition_type="PERK",
+                    event_type="GRANTED",
+                    payload={"policy_uuid": policy_uuid},
+                )
+                db.session.add(granted_event)
+                db.session.flush()
 
-            # Create pending_action
-            correlation_id = f"corr_{uuid4().hex}"
-            pending_action = PendingAction(
-                pending_action_id=str(uuid4()),
-                class_id=classroom.class_id,
-                seat_id=student.seat.id,
-                entitlement_id=entitlement_id,
-                correlation_id=correlation_id,
-                authoritative_feat="FEAT-STOR-003-RESOLVE",
-                payload={
-                    "claim_subject": {"transaction_id": 123},
-                    "policy_uuid": policy_uuid,
-                },
-            )
-            db.session.add(pending_action)
-            db.session.commit()
+                # Create pending_action
+                correlation_id = f"corr_{uuid4().hex}"
+                pending_action = PendingAction(
+                    pending_action_id=str(uuid4()),
+                    class_id=classroom.class_id,
+                    seat_id=student.seat.id,
+                    entitlement_id=entitlement_id,
+                    correlation_id=correlation_id,
+                    authoritative_feat="FEAT-STOR-003-RESOLVE",
+                    payload={
+                        "claim_subject": {"transaction_id": 123},
+                        "policy_uuid": policy_uuid,
+                    },
+                )
+                db.session.add(pending_action)
+                db.session.flush()
 
             # Create teacher context
             teacher_context = CanonicalContext(
@@ -342,43 +374,44 @@ class TestInsuranceClaimResolution:
         classroom = initialize("chemistry_p1", app)
         teacher = classroom.teacher_seat
         student = classroom.students[0]
+        policy_uuid = seed_insurance_policy(app, classroom, teacher, "rejection")
 
         with app.app_context():
-            entitlement_id = str(uuid4())
-            policy_uuid = "policy-insurance-001"
+            with FEATContext("FEAT-TEST-SETUP", idempotency_key="insurance-claim-rejection-setup"):
+                entitlement_id = str(uuid4())
 
-            # Create GRANTED event
-            granted_event = EntitlementEvent(
-                event_id=str(uuid4()),
-                class_id=classroom.class_id,
-                entitlement_id=entitlement_id,
-                target_seat_id=student.seat.id,
-                actor_seat_id=student.seat.id,
-                product_id=1,
-                entitlement_type="INSURANCE",
-                acquisition_type="PERK",
-                event_type="GRANTED",
-                payload={"policy_uuid": policy_uuid},
-            )
-            db.session.add(granted_event)
-            db.session.commit()
+                # Create GRANTED event
+                granted_event = EntitlementEvent(
+                    event_id=str(uuid4()),
+                    class_id=classroom.class_id,
+                    entitlement_id=entitlement_id,
+                    target_seat_id=student.seat.id,
+                    actor_seat_id=student.seat.id,
+                    product_id=1,
+                    entitlement_type="INSURANCE",
+                    acquisition_type="PERK",
+                    event_type="GRANTED",
+                    payload={"policy_uuid": policy_uuid},
+                )
+                db.session.add(granted_event)
+                db.session.flush()
 
-            # Create pending_action
-            correlation_id = f"corr_{uuid4().hex}"
-            pending_action = PendingAction(
-                pending_action_id=str(uuid4()),
-                class_id=classroom.class_id,
-                seat_id=student.seat.id,
-                entitlement_id=entitlement_id,
-                correlation_id=correlation_id,
-                authoritative_feat="FEAT-STOR-003-RESOLVE",
-                payload={
-                    "claim_subject": {"transaction_id": 123},
-                    "policy_uuid": policy_uuid,
-                },
-            )
-            db.session.add(pending_action)
-            db.session.commit()
+                # Create pending_action
+                correlation_id = f"corr_{uuid4().hex}"
+                pending_action = PendingAction(
+                    pending_action_id=str(uuid4()),
+                    class_id=classroom.class_id,
+                    seat_id=student.seat.id,
+                    entitlement_id=entitlement_id,
+                    correlation_id=correlation_id,
+                    authoritative_feat="FEAT-STOR-003-RESOLVE",
+                    payload={
+                        "claim_subject": {"transaction_id": 123},
+                        "policy_uuid": policy_uuid,
+                    },
+                )
+                db.session.add(pending_action)
+                db.session.flush()
 
             # Create teacher context
             teacher_context = CanonicalContext(
@@ -419,22 +452,25 @@ class TestInsuranceClaimResolution:
         """Only teachers can resolve insurance claims."""
         classroom = initialize("chemistry_p1", app)
         student = classroom.students[0]
+        teacher = classroom.teacher_seat
+        policy_uuid = seed_insurance_policy(app, classroom, teacher, "authz")
 
         with app.app_context():
-            entitlement_id = str(uuid4())
+            with FEATContext("FEAT-TEST-SETUP", idempotency_key="insurance-claim:authz"):
+                entitlement_id = str(uuid4())
 
-            # Create pending_action
-            pending_action = PendingAction(
-                pending_action_id=str(uuid4()),
-                class_id=classroom.class_id,
-                seat_id=student.seat.id,
-                entitlement_id=entitlement_id,
-                correlation_id=f"corr_{uuid4().hex}",
-                authoritative_feat="FEAT-STOR-003-RESOLVE",
-                payload={"claim_subject": {}, "policy_uuid": "policy-001"},
-            )
-            db.session.add(pending_action)
-            db.session.commit()
+                # Create pending_action
+                pending_action = PendingAction(
+                    pending_action_id=str(uuid4()),
+                    class_id=classroom.class_id,
+                    seat_id=student.seat.id,
+                    entitlement_id=entitlement_id,
+                    correlation_id=f"corr_{uuid4().hex}",
+                    authoritative_feat="FEAT-STOR-003-RESOLVE",
+                    payload={"claim_subject": {}, "policy_uuid": "policy-001"},
+                )
+                db.session.add(pending_action)
+                db.session.flush()
 
             # Create student context (not teacher)
             student_context = CanonicalContext(

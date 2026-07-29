@@ -15,9 +15,11 @@ import pytest
 import uuid
 
 from app.extensions import db
+from app.feats.base import FEATContext
 from app.models import Seat, User, ClassEconomy, EntitlementEvent, UserRole
 from app.services.context_resolver import CanonicalContext
 from app.feats.direct_entitlement_grant_feat import execute_direct_grant, DirectGrantResult
+from app.services.store_policy_resolver import StorePolicyResolver
 from tests.helpers.canonical_classroom import provision_classroom
 
 
@@ -34,6 +36,21 @@ def test_class_with_students(app_with_class):
     with app_with_class.app_context():
         classroom = provision_classroom("chemistry_p1")
 
+        with FEATContext("FEAT-TEST-SETUP", idempotency_key="phase4-direct-grant:store-policy"):
+            policy = StorePolicyResolver.create_store_product(
+                class_id=classroom.class_id,
+                payload={
+                    "product_id": 101,
+                    "is_purchasable": True,
+                    "supports_direct_grants": True,
+                    "price": "0.00",
+                    "entitlement_type": "HALL_PASS",
+                    "name": "Test Hall Pass",
+                },
+                created_by_seat_id=classroom.teacher_seat_id,
+            )
+        db.session.commit()
+
         return {
             "class_id": classroom.class_id,
             "teacher_user_id": classroom.teacher_user_id,
@@ -42,6 +59,8 @@ def test_class_with_students(app_with_class):
             "student_seat_1_id": classroom.students[0].seat_id,
             "student_user_2_id": classroom.students[1].user_id,
             "student_seat_2_id": classroom.students[1].seat_id,
+            "policy_uuid": policy.policy_uuid,
+            "product_id": policy.product_id,
         }
 
 
@@ -55,6 +74,7 @@ class TestDirectGrantHappyPath:
             teacher_seat_id = test_class_with_students["teacher_seat_id"]
             student_seat_id = test_class_with_students["student_seat_1_id"]
             teacher_user_id = test_class_with_students["teacher_user_id"]
+            policy_uuid = test_class_with_students["policy_uuid"]
 
             ctx = CanonicalContext(
                 user_id=teacher_user_id,
@@ -66,7 +86,7 @@ class TestDirectGrantHappyPath:
             result = execute_direct_grant(
                 canonical_context=ctx,
                 target_seat_id=student_seat_id,
-                product_id=101,
+                policy_uuid=policy_uuid,
                 quantity=3,
             )
 
@@ -88,7 +108,7 @@ class TestDirectGrantHappyPath:
 
             assert len(events) == 3
             assert all(e.correlation_id == result.correlation_id for e in events)
-            assert all(e.product_id == 101 for e in events)
+            assert all(e.product_id == test_class_with_students["product_id"] for e in events)
             assert all(e.actor_seat_id == teacher_seat_id for e in events)
 
     def test_grant_uses_provided_correlation_id(self, app_with_class, test_class_with_students):
@@ -98,6 +118,7 @@ class TestDirectGrantHappyPath:
             teacher_seat_id = test_class_with_students["teacher_seat_id"]
             student_seat_id = test_class_with_students["student_seat_1_id"]
             teacher_user_id = test_class_with_students["teacher_user_id"]
+            policy_uuid = test_class_with_students["policy_uuid"]
 
             provided_corr_id = "grant_corr_123"
 
@@ -111,7 +132,7 @@ class TestDirectGrantHappyPath:
             result = execute_direct_grant(
                 canonical_context=ctx,
                 target_seat_id=student_seat_id,
-                product_id=102,
+                policy_uuid=policy_uuid,
                 quantity=1,
                 correlation_id=provided_corr_id,
             )
@@ -130,6 +151,7 @@ class TestQuantityLogic:
             teacher_seat_id = test_class_with_students["teacher_seat_id"]
             student_seat_id = test_class_with_students["student_seat_1_id"]
             teacher_user_id = test_class_with_students["teacher_user_id"]
+            policy_uuid = test_class_with_students["policy_uuid"]
 
             ctx = CanonicalContext(
                 user_id=teacher_user_id,
@@ -141,7 +163,7 @@ class TestQuantityLogic:
             result = execute_direct_grant(
                 canonical_context=ctx,
                 target_seat_id=student_seat_id,
-                product_id=103,
+                policy_uuid=policy_uuid,
                 quantity=5,
             )
 
@@ -172,6 +194,7 @@ class TestValidationFailures:
             student_seat_1_id = test_class_with_students["student_seat_1_id"]
             student_seat_2_id = test_class_with_students["student_seat_2_id"]
             student_user_1_id = test_class_with_students["student_user_1_id"]
+            policy_uuid = test_class_with_students["policy_uuid"]
 
             ctx = CanonicalContext(
                 user_id=student_user_1_id,
@@ -183,7 +206,7 @@ class TestValidationFailures:
             result = execute_direct_grant(
                 canonical_context=ctx,
                 target_seat_id=student_seat_2_id,
-                product_id=104,
+                policy_uuid=policy_uuid,
                 quantity=1,
             )
 
@@ -198,6 +221,7 @@ class TestValidationFailures:
             teacher_seat_id = test_class_with_students["teacher_seat_id"]
             student_seat_id = test_class_with_students["student_seat_1_id"]
             teacher_user_id = test_class_with_students["teacher_user_id"]
+            policy_uuid = test_class_with_students["policy_uuid"]
 
             ctx = CanonicalContext(
                 user_id=teacher_user_id,
@@ -209,7 +233,7 @@ class TestValidationFailures:
             result = execute_direct_grant(
                 canonical_context=ctx,
                 target_seat_id=student_seat_id,
-                product_id=105,
+                policy_uuid=policy_uuid,
                 quantity=0,
             )
 
@@ -220,13 +244,14 @@ class TestValidationFailures:
         """Grant to seat outside class scope is rejected."""
         with app_with_class.app_context():
             # Create second class
-            class_scope_2 = provision_classroom("ap_csp_p3")
+            class_scope_2 = provision_classroom("biology_block_a")
             foreign_student_seat_id = class_scope_2.students[0].seat_id
 
             # Try to grant from class_1 to student in class_2
             class_id = test_class_with_students["class_id"]
             teacher_seat_id = test_class_with_students["teacher_seat_id"]
             teacher_user_id = test_class_with_students["teacher_user_id"]
+            policy_uuid = test_class_with_students["policy_uuid"]
 
             ctx = CanonicalContext(
                 user_id=teacher_user_id,
@@ -238,7 +263,7 @@ class TestValidationFailures:
             result = execute_direct_grant(
                 canonical_context=ctx,
                 target_seat_id=foreign_student_seat_id,  # Different class
-                product_id=106,
+                policy_uuid=policy_uuid,
                 quantity=1,
             )
 
@@ -256,6 +281,7 @@ class TestHallPassGrants:
             teacher_seat_id = test_class_with_students["teacher_seat_id"]
             student_seat_id = test_class_with_students["student_seat_1_id"]
             teacher_user_id = test_class_with_students["teacher_user_id"]
+            policy_uuid = test_class_with_students["policy_uuid"]
 
             ctx = CanonicalContext(
                 user_id=teacher_user_id,
@@ -268,7 +294,7 @@ class TestHallPassGrants:
             result = execute_direct_grant(
                 canonical_context=ctx,
                 target_seat_id=student_seat_id,
-                product_id=201,  # Hall-pass product
+                policy_uuid=policy_uuid,
                 quantity=3,
             )
 
@@ -296,6 +322,7 @@ class TestIdempotency:
             teacher_seat_id = test_class_with_students["teacher_seat_id"]
             student_seat_id = test_class_with_students["student_seat_1_id"]
             teacher_user_id = test_class_with_students["teacher_user_id"]
+            policy_uuid = test_class_with_students["policy_uuid"]
 
             ctx = CanonicalContext(
                 user_id=teacher_user_id,
@@ -310,7 +337,7 @@ class TestIdempotency:
             result1 = execute_direct_grant(
                 canonical_context=ctx,
                 target_seat_id=student_seat_id,
-                product_id=107,
+                policy_uuid=policy_uuid,
                 quantity=2,
                 idempotency_key=idempotency_key,
             )
@@ -324,7 +351,7 @@ class TestIdempotency:
             result2 = execute_direct_grant(
                 canonical_context=ctx,
                 target_seat_id=student_seat_id,
-                product_id=107,
+                policy_uuid=policy_uuid,
                 quantity=2,
                 idempotency_key=idempotency_key,
             )
@@ -341,7 +368,37 @@ class TestCrossClassIsolation:
         with app_with_class.app_context():
             # Create two class scopes
             scope1 = provision_classroom("chemistry_p1")
-            scope2 = provision_classroom("ap_csp_p3")
+            scope2 = provision_classroom("biology_block_a")
+
+            with FEATContext("FEAT-TEST-SETUP", idempotency_key="phase4-direct-grant:scope1-policy"):
+                policy1 = StorePolicyResolver.create_store_product(
+                    class_id=scope1.class_id,
+                    payload={
+                        "product_id": 301,
+                        "is_purchasable": True,
+                        "supports_direct_grants": True,
+                        "price": "0.00",
+                        "entitlement_type": "HALL_PASS",
+                        "name": "Scope 1 Hall Pass",
+                    },
+                    created_by_seat_id=scope1.teacher_seat_id,
+                )
+            db.session.commit()
+
+            with FEATContext("FEAT-TEST-SETUP", idempotency_key="phase4-direct-grant:scope2-policy"):
+                policy2 = StorePolicyResolver.create_store_product(
+                    class_id=scope2.class_id,
+                    payload={
+                        "product_id": 302,
+                        "is_purchasable": True,
+                        "supports_direct_grants": True,
+                        "price": "0.00",
+                        "entitlement_type": "HALL_PASS",
+                        "name": "Scope 2 Hall Pass",
+                    },
+                    created_by_seat_id=scope2.teacher_seat_id,
+                )
+            db.session.commit()
 
             teacher1_seat_id = scope1.teacher_seat_id
             teacher2_seat_id = scope2.teacher_seat_id
@@ -360,7 +417,7 @@ class TestCrossClassIsolation:
             result1 = execute_direct_grant(
                 canonical_context=ctx1,
                 target_seat_id=student1_seat_id,
-                product_id=301,
+                policy_uuid=policy1.policy_uuid,
                 quantity=2,
             )
 
@@ -375,15 +432,15 @@ class TestCrossClassIsolation:
             result2 = execute_direct_grant(
                 canonical_context=ctx2,
                 target_seat_id=student2_seat_id,
-                product_id=302,
+                policy_uuid=policy2.policy_uuid,
                 quantity=3,
             )
 
             # Verify isolation
-            events1 = EntitlementEvent.query.filter_by(class_id=scope1["class_id"]).all()
-            events2 = EntitlementEvent.query.filter_by(class_id=scope2["class_id"]).all()
+            events1 = EntitlementEvent.query.filter_by(class_id=scope1.class_id).all()
+            events2 = EntitlementEvent.query.filter_by(class_id=scope2.class_id).all()
 
             assert len(events1) == 2
             assert len(events2) == 3
-            assert all(e.class_id == scope1["class_id"] for e in events1)
-            assert all(e.class_id == scope2["class_id"] for e in events2)
+            assert all(e.class_id == scope1.class_id for e in events1)
+            assert all(e.class_id == scope2.class_id for e in events2)

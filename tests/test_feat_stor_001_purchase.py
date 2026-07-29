@@ -14,9 +14,11 @@ from decimal import Decimal
 import uuid
 
 from app.extensions import db
+from app.feats.base import FEATContext
 from app.models import Seat, User, ClassEconomy, EntitlementEvent
 from app.services.context_resolver import CanonicalContext
 from app.feats.store_purchase_feat import execute_store_purchase, StorePurchaseResult
+from app.services.store_policy_resolver import StorePolicyResolver
 from tests.helpers.canonical_classroom import provision_classroom
 
 
@@ -32,10 +34,26 @@ def test_class_and_seat(app_with_class):
     """Create a test class and student seat."""
     with app_with_class.app_context():
         classroom = provision_classroom("chemistry_p1")
+        with FEATContext("FEAT-TEST-SETUP", idempotency_key="phase4-purchase:store-policy"):
+            policy = StorePolicyResolver.create_store_product(
+                class_id=classroom.class_id,
+                payload={
+                    "product_id": 101,
+                    "is_purchasable": True,
+                    "supports_direct_grants": True,
+                    "price": "0.00",
+                    "entitlement_type": "IMMEDIATE_USE",
+                    "name": "Test Purchase",
+                },
+                created_by_seat_id=classroom.teacher_seat_id,
+            )
+        db.session.commit()
         return {
             "class_id": classroom.class_id,
             "student_user_id": classroom.students[0].user_id,
             "student_seat_id": classroom.students[0].seat_id,
+            "policy_uuid": policy.policy_uuid,
+            "product_id": policy.product_id,
         }
 
 
@@ -48,6 +66,7 @@ class TestStorePurchaseHappyPath:
             class_id = test_class_and_seat["class_id"]
             student_seat_id = test_class_and_seat["student_seat_id"]
             student_user_id = test_class_and_seat["student_user_id"]
+            policy_uuid = test_class_and_seat["policy_uuid"]
 
             ctx = CanonicalContext(
                 user_id=student_user_id,
@@ -58,7 +77,7 @@ class TestStorePurchaseHappyPath:
 
             result = execute_store_purchase(
                 canonical_context=ctx,
-                product_id=101,
+                policy_uuid=policy_uuid,
                 quantity=3,
             )
 
@@ -80,7 +99,7 @@ class TestStorePurchaseHappyPath:
 
             assert len(events) == 3
             assert all(e.correlation_id == result.correlation_id for e in events)
-            assert all(e.product_id == 101 for e in events)
+            assert all(e.product_id == test_class_and_seat["product_id"] for e in events)
             assert events[0].entitlement_id != events[1].entitlement_id  # Distinct lineages
             assert events[1].entitlement_id != events[2].entitlement_id
 
@@ -90,6 +109,7 @@ class TestStorePurchaseHappyPath:
             class_id = test_class_and_seat["class_id"]
             student_seat_id = test_class_and_seat["student_seat_id"]
             student_user_id = test_class_and_seat["student_user_id"]
+            policy_uuid = test_class_and_seat["policy_uuid"]
 
             provided_corr_id = "test_corr_123"
 
@@ -102,7 +122,7 @@ class TestStorePurchaseHappyPath:
 
             result = execute_store_purchase(
                 canonical_context=ctx,
-                product_id=102,
+                policy_uuid=policy_uuid,
                 quantity=2,
                 correlation_id=provided_corr_id,
             )
@@ -120,6 +140,7 @@ class TestInstantUse:
             class_id = test_class_and_seat["class_id"]
             student_seat_id = test_class_and_seat["student_seat_id"]
             student_user_id = test_class_and_seat["student_user_id"]
+            policy_uuid = test_class_and_seat["policy_uuid"]
 
             ctx = CanonicalContext(
                 user_id=student_user_id,
@@ -130,7 +151,7 @@ class TestInstantUse:
 
             result = execute_store_purchase(
                 canonical_context=ctx,
-                product_id=103,
+                policy_uuid=policy_uuid,
                 quantity=2,
                 instant_use=True,
             )
@@ -171,6 +192,7 @@ class TestQuantityLogic:
             class_id = test_class_and_seat["class_id"]
             student_seat_id = test_class_and_seat["student_seat_id"]
             student_user_id = test_class_and_seat["student_user_id"]
+            policy_uuid = test_class_and_seat["policy_uuid"]
 
             ctx = CanonicalContext(
                 user_id=student_user_id,
@@ -181,7 +203,7 @@ class TestQuantityLogic:
 
             result = execute_store_purchase(
                 canonical_context=ctx,
-                product_id=104,
+                policy_uuid=policy_uuid,
                 quantity=5,
             )
 
@@ -207,6 +229,7 @@ class TestQuantityLogic:
             class_id = test_class_and_seat["class_id"]
             student_seat_id = test_class_and_seat["student_seat_id"]
             student_user_id = test_class_and_seat["student_user_id"]
+            policy_uuid = test_class_and_seat["policy_uuid"]
 
             ctx = CanonicalContext(
                 user_id=student_user_id,
@@ -217,7 +240,7 @@ class TestQuantityLogic:
 
             result = execute_store_purchase(
                 canonical_context=ctx,
-                product_id=105,
+                policy_uuid=policy_uuid,
                 quantity=1,
             )
 
@@ -242,6 +265,7 @@ class TestValidationFailures:
             class_id = test_class_and_seat["class_id"]
             student_seat_id = test_class_and_seat["student_seat_id"]
             student_user_id = test_class_and_seat["student_user_id"]
+            policy_uuid = test_class_and_seat["policy_uuid"]
 
             ctx = CanonicalContext(
                 user_id=student_user_id,
@@ -252,7 +276,7 @@ class TestValidationFailures:
 
             result = execute_store_purchase(
                 canonical_context=ctx,
-                product_id=106,
+                policy_uuid=policy_uuid,
                 quantity=0,
             )
 
@@ -276,7 +300,7 @@ class TestValidationFailures:
 
             result = execute_store_purchase(
                 canonical_context=ctx,
-                product_id=107,
+                policy_uuid=test_class_and_seat["policy_uuid"],
                 quantity=-5,
             )
 
@@ -298,7 +322,7 @@ class TestValidationFailures:
 
             result = execute_store_purchase(
                 canonical_context=ctx,
-                product_id=108,
+                policy_uuid=test_class_and_seat["policy_uuid"],
                 quantity=1,
             )
 
@@ -309,7 +333,7 @@ class TestValidationFailures:
         """Purchase with seat not in class_id is rejected."""
         with app_with_class.app_context():
             # Create second class with different student
-            class_scope_2 = provision_classroom("ap_csp_p3")
+            class_scope_2 = provision_classroom("biology_block_a")
             student_user_2_id = class_scope_2.students[0].user_id
             student_seat_2_id = class_scope_2.students[0].seat_id
 
@@ -323,7 +347,7 @@ class TestValidationFailures:
 
             result = execute_store_purchase(
                 canonical_context=ctx,
-                product_id=109,
+                policy_uuid=test_class_and_seat["policy_uuid"],
                 quantity=1,
             )
 
@@ -353,7 +377,7 @@ class TestIdempotency:
             # First purchase
             result1 = execute_store_purchase(
                 canonical_context=ctx,
-                product_id=110,
+                policy_uuid=test_class_and_seat["policy_uuid"],
                 quantity=3,
                 idempotency_key=idempotency_key,
             )
@@ -365,7 +389,7 @@ class TestIdempotency:
             # Replay with same idempotency_key
             result2 = execute_store_purchase(
                 canonical_context=ctx,
-                product_id=110,
+                policy_uuid=test_class_and_seat["policy_uuid"],
                 quantity=3,
                 idempotency_key=idempotency_key,
             )
@@ -384,10 +408,42 @@ class TestCrossClassIsolation:
         with app_with_class.app_context():
             # Create two separate class scopes
             scope1 = provision_classroom("chemistry_p1")
-            scope2 = provision_classroom("ap_csp_p3")
+            scope2 = provision_classroom("biology_block_a")
+
+            with FEATContext("FEAT-TEST-SETUP", idempotency_key="phase4-purchase:scope1-policy"):
+                policy1 = StorePolicyResolver.create_store_product(
+                    class_id=scope1.class_id,
+                    payload={
+                        "product_id": 201,
+                        "is_purchasable": True,
+                        "supports_direct_grants": True,
+                        "price": "0.00",
+                        "entitlement_type": "IMMEDIATE_USE",
+                        "name": "Scope 1 Purchase",
+                    },
+                    created_by_seat_id=scope1.teacher_seat.id,
+                )
+            db.session.commit()
+
+            with FEATContext("FEAT-TEST-SETUP", idempotency_key="phase4-purchase:scope2-policy"):
+                policy2 = StorePolicyResolver.create_store_product(
+                    class_id=scope2.class_id,
+                    payload={
+                        "product_id": 202,
+                        "is_purchasable": True,
+                        "supports_direct_grants": True,
+                        "price": "0.00",
+                        "entitlement_type": "IMMEDIATE_USE",
+                        "name": "Scope 2 Purchase",
+                    },
+                    created_by_seat_id=scope2.teacher_seat.id,
+                )
+            db.session.commit()
 
             seat1_id = scope1.students[0].seat_id
             seat2_id = scope2.students[0].seat_id
+            scope1_policy_uuid = policy1.policy_uuid
+            scope2_policy_uuid = policy2.policy_uuid
 
             # Purchase in class 1
             ctx1 = CanonicalContext(
@@ -399,7 +455,7 @@ class TestCrossClassIsolation:
 
             result1 = execute_store_purchase(
                 canonical_context=ctx1,
-                product_id=201,
+                policy_uuid=scope1_policy_uuid,
                 quantity=2,
             )
 
@@ -413,15 +469,15 @@ class TestCrossClassIsolation:
 
             result2 = execute_store_purchase(
                 canonical_context=ctx2,
-                product_id=202,
+                policy_uuid=scope2_policy_uuid,
                 quantity=3,
             )
 
             # Verify isolation
-            events_class1 = EntitlementEvent.query.filter_by(class_id=scope1["class_id"]).all()
-            events_class2 = EntitlementEvent.query.filter_by(class_id=scope2["class_id"]).all()
+            events_class1 = EntitlementEvent.query.filter_by(class_id=scope1.class_id).all()
+            events_class2 = EntitlementEvent.query.filter_by(class_id=scope2.class_id).all()
 
             assert len(events_class1) == 2
             assert len(events_class2) == 3
-            assert all(e.class_id == scope1["class_id"] for e in events_class1)
-            assert all(e.class_id == scope2["class_id"] for e in events_class2)
+            assert all(e.class_id == scope1.class_id for e in events_class1)
+            assert all(e.class_id == scope2.class_id for e in events_class2)

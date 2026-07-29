@@ -29,7 +29,7 @@ from app.models import (
     # StoreItemBlock removed — store_item_blocks unauthorized; use store_item_visibility (DOM-STORE-001)
     RentSettings,
     BankingSettings, FeatureSettings, Issue, Seat, User, UserRole,
-    ClassEconomy, IdentityProfile, PayrollEvent, PolicyVersion, _quantize_currency
+    ClassEconomy, IdentityProfile, PayrollEvent, PolicyVersion, StoreProduct, _quantize_currency
 )
 from app.auth import (
     admin_required,
@@ -1990,6 +1990,11 @@ def shop():
         item for item in items_query.order_by(StoreItem.name).all()
         if store_service.is_item_visible_to_seat(item.id, seat.id)
     ]
+    policy_uuid_by_item_id = {}
+    for store_product in StoreProduct.query.filter_by(class_id=class_id, is_retired=False).all():
+        product_id = (store_product.payload or {}).get("product_id")
+        if isinstance(product_id, int):
+            policy_uuid_by_item_id[product_id] = store_product.policy_uuid
 
     entitlements = []
     for entry in list_entitlement_history(target_seat_id=seat.id, class_id=class_id):
@@ -2152,6 +2157,7 @@ def shop():
                          has_paid_rent=has_paid_rent, per_period_rent_item_ids=per_period_rent_item_ids,
                          rent_item_types_by_store_id=rent_item_types_by_store_id,
                          rent_free_entitlement_counts=rent_free_entitlement_counts,
+                         policy_uuid_by_item_id=policy_uuid_by_item_id,
                          class_size=class_size, current_block=current_block,
                          collective_progress=collective_progress)
 
