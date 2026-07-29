@@ -223,30 +223,21 @@ class EntitlementListView:
 #### View Model 2: PolicyListView (Discoverable Policies)
 
 **Purpose**: Show student what policies are available to purchase in this class  
-**Structure**:
-```python
-@dataclass
-class PolicyListView:
-    policy_uuid: str
-    product_id: int
-    product_name: str
-    description: str
-    price: Decimal
-    available: bool  # Whether can purchase (limit not exceeded, etc.)
-    current_balance: int  # For hall passes
-    purchase_count: int  # How many already purchased
-    limit_per_student: int | None
-```
+**Status**: 🔴 BLOCKED — Requires undefined authority
 
-**Source**:
-1. Call `StorePolicyResolver.get_applicable_policies(class_id)` (deferred to Phase 5)
-2. For each policy, derive `available` and `purchase_count` (Projection 3)
-3. Derive current_balance (Projection 2) for hall pass products
-4. Format for UI
+**Blocker**: `StorePolicyResolver.get_applicable_policies(class_id)` has no canonical contract
 
-**Used By**: Student store browse, purchase interface
+**Contract Gap**:
+Which policies should be "applicable"? 
+- All non-retired policies?
+- Only currently-active policies (by rent cycle)?
+- Only policies meeting prerequisites?
+- Should filtering by affordability be part of discovery or presentation?
 
-**Purity**: ⚠️ Requires `get_applicable_policies()` semantics (deferred)
+**Resolution**: Requires DOM-STORE-001 amendment or explicit application-domain decision  
+**Authority Needed**: `DOM-STORE-001 §get_applicable_policies` or equivalent
+
+**Do Not Stub**: This projection cannot be built until applicability semantics are defined.
 
 ---
 
@@ -286,25 +277,20 @@ Reads coordinated with other domains.
 #### Aggregate 1: EntitlementWithLedgerContext
 
 **Purpose**: Show entitlement status along with related Ledger transaction  
-**Domains**: Store + Ledger  
-**Structure**:
-```python
-@dataclass
-class EntitlementWithLedgerContext:
-    entitlement: EntitlementListView  # From Store
-    ledger_transaction_id: int | None  # From Ledger
-    posted_to_ledger: bool
-    ledger_amount: Decimal | None
-```
+**Status**: 🔴 BLOCKED — Requires undefined cross-domain contract
 
-**Source**:
-1. Get EntitlementListView (Store read)
-2. Query Ledger for transaction matching correlation_id
-3. Combine
+**Blocker**: Ledger domain read API not yet defined
 
-**Used By**: Admin transaction audit, reconciliation
+**Contract Gap**:
+- Does Ledger expose query API for transactions by correlation_id?
+- What's the exact schema for Ledger transactions?
+- How to handle case where Ledger transaction is pending (async)?
+- Who owns timeout/reconciliation when entries don't match?
 
-**Purity**: ⚠️ Requires coordination but still deterministic
+**Resolution**: Requires Ledger domain API specification (outside Store scope)  
+**Authority Needed**: Ledger domain read contract (Phase 5+ of Ledger reconstruction)
+
+**Do Not Stub**: This aggregate cannot be built until Ledger coordination is implemented in FEAT-STOR-001 and Ledger exposes its read API.
 
 ---
 
@@ -358,128 +344,153 @@ def format_status_badge(status: str) -> dict:
 
 ## III. Phase 5 Deliverables
 
+**Scope**: Build and test canonical read models and projections ONLY. Do NOT update routes.
+
 ### Deliverable 1: Entitlement Read Service
 
-**File**: `app/services/entitlement_read_service.py` (refactor/complete)
+**File**: `app/services/entitlement_read_service.py` (verify/complete)
 
 Must provide:
-- ✅ `get_entitlement_history(entitlement_id, class_id)` (exists, verify)
-- ✅ `get_active_entitlements(seat_id, class_id, product_id=None)` (exists, verify)
-- ✅ `get_entitlement_status(entitlement_id, class_id)` (exists, verify)
-- 🔜 `get_hall_pass_balance(seat_id, class_id)` (TODO)
-- ✅ `get_purchase_count(seat_id, class_id, product_id)` (exists)
-- 🔜 `get_active_rent_grant(seat_id, class_id)` (TODO)
+- ✅ `get_entitlement_history(entitlement_id, class_id)` (verify existing)
+- ✅ `get_active_entitlements(seat_id, class_id, product_id=None)` (verify existing)
+- ✅ `get_entitlement_status(entitlement_id, class_id)` (verify existing)
+- 🔜 `get_hall_pass_balance(seat_id, class_id)` (implement)
+- ✅ `get_purchase_count(seat_id, class_id, product_id)` (verify existing)
+- 🔜 `get_active_rent_grant(seat_id, class_id)` (implement if needed)
 
-**Status**: Mostly complete; verify consistency
+**Testing**: Unit tests for each projection; verify purity and correctness
 
 ---
 
 ### Deliverable 2: View Model Builders
 
-**Files**: `app/services/view_model_builders.py` (new or refactor)
+**Files**: `app/services/view_model_builders.py` (new or extend)
 
-Must provide:
-- 🔜 `build_entitlement_list_view(seat_id, class_id)` → List[EntitlementListView]
-- 🔜 `build_policy_list_view(class_id)` → List[PolicyListView] (blocks on get_applicable_policies)
-- 🔜 `build_purchase_history_view(seat_id, class_id)` → List[PurchaseHistoryView]
-- 🔜 `build_entitlement_with_ledger_context(entitlement_id, class_id)` → EntitlementWithLedgerContext
+Must provide (implement only unblocked ones):
+- ✅ `build_entitlement_list_view(seat_id, class_id)` → List[EntitlementListView]
+- 🔴 BLOCKED: `build_policy_list_view(class_id)` — Requires get_applicable_policies() contract
+- ✅ `build_purchase_history_view(seat_id, class_id)` → List[PurchaseHistoryView]
+- 🔴 BLOCKED: `build_entitlement_with_ledger_context(entitlement_id, class_id)` — Requires Ledger read API
 
----
+**Unblocked builders**: Must have unit tests verifying structure and data accuracy
 
-### Deliverable 3: Request Context Processors
-
-**File**: `app/context_processors.py` (update for Store/Entitlements)
-
-Must provide:
-- 🔜 `load_entitlement_context(canonical_context)` → EntitlementContext dict
-
-Following `MAP-UI-002` patterns
+**Blocked builders**: Report contract gap; do not stub or infer semantics
 
 ---
 
-### Deliverable 4: Route GET Handlers
+### Deliverable 3: Test Suite
 
-**Files**: Various route files
+**Files**: `tests/test_entitlement_read_service.py`, `tests/test_view_model_builders.py` (new)
 
-Must implement:
-- 🔜 Student entitlements list page
-- 🔜 Student store browse page (with policy discovery)
-- 🔜 Student purchase history page
-- 🔜 Admin entitlement audit page
+Must test:
+- Read service correctness (each projection with known data)
+- View model builder structure and data extraction
+- Purity of all reads (no side effects)
+- Cross-domain reference handling (when applicable)
 
-All using canonical read services, not direct table queries
+**No route/template tests in Phase 5** — Save for Phase 7 (rewiring)
 
 ---
 
 ## IV. Phase 5 Sequencing
 
+**Important**: Phase 5 builds read models ONLY. Do NOT rewire routes or update templates. Routes are rewired in Phase 7 after Phase 6 application surface inventory.
+
 ### Stage 1: Read Service Completion
 
 1. Audit existing `entitlement_read_service.py`
-2. Verify all projections (status, balance, count) are correct
-3. Document each read's source and purity
-4. Add missing reads (if any)
-5. Test all reads for correctness
+2. Verify all projections (status, balance, count) are correct and pure
+3. Document each read's source, preconditions, and data freshness
+4. Implement missing reads (hall_pass_balance, etc.)
+5. Unit test all reads with known data
 
 **Effort**: 2-4 hours  
-**Blocking**: Nothing; can proceed in parallel with other work
+**Blocking**: Nothing
+
+**Do Not**: Update any routes or templates
 
 ---
 
-### Stage 2: View Model Builders
+### Stage 2: View Model Builders (Unblocked Only)
 
-1. Design EntitlementListView, PolicyListView, PurchaseHistoryView
-2. Implement builders using read service
-3. Add tests
-4. Verify compatibility with existing templates
+1. Define data classes for EntitlementListView, PurchaseHistoryView
+2. Implement builders using read service (unblocked ones only)
+3. Add comprehensive unit tests for each builder
+4. Document builder contract (inputs, outputs, temporal semantics)
+5. Report blocked builders with their contract gaps
 
-**Effort**: 4-6 hours  
-**Blocking**: get_applicable_policies() semantics (Phase 5 blocker)
+**Unblocked Builders**:
+- EntitlementListView
+- PurchaseHistoryView
+- StudentObligationWithEntitlements
+
+**Blocked Builders** (do not implement):
+- PolicyListView — awaiting get_applicable_policies() contract
+- EntitlementWithLedgerContext — awaiting Ledger read API
+
+**Effort**: 3-5 hours  
+**Blocking**: Nothing (blocked builders stay blocked)
+
+**Do Not**: Create route endpoints, update context processors, or touch templates
 
 ---
 
-### Stage 3: Request Context & Route Handlers
+### Stage 3: Phase 5 Documentation & Handoff
 
-1. Update context processors per MAP-UI-002
-2. Rewrite GET route handlers to use view models
-3. Update templates to use view models instead of raw queries
-4. Test rendering
+1. Document all implemented reads and view models in service contracts
+2. Document all blocked projections with their contract gaps
+3. Add deliverable checklist showing what's complete vs blocked
+4. Hand off to Phase 6
 
-**Effort**: 6-8 hours  
-**Blocking**: View model builders
+**Effort**: 1-2 hours
+
+**Do Not**: Begin Phase 6 surface inventory until Phase 5 is complete
 
 ---
 
-## V. Blocking Issues for Phase 5
+## V. Contract Gaps (Blocked Projections)
 
-### BLOCKER 1: get_applicable_policies() Semantics
+Do NOT stub these. Leave them blocked until authority exists.
 
-**Issue**: StorePolicyResolver has stub but no implementation  
-**Scope**: Which policies should be shown to student?  
-**Questions**:
+### Contract Gap 1: get_applicable_policies() Semantics
+
+**Blocks**: PolicyListView  
+**Issue**: StorePolicyResolver has stub but no canonical contract  
+**Scope**: Which policies should be "applicable" to a student in a class?  
+**Open Questions**:
 - Show all non-retired policies?
 - Show only currently-active policies (by rent cycle)?
-- Show only policies student can afford?
-- Show only policies they haven't hit limit on?
+- Show only policies meeting prerequisite conditions?
+- Is affordability filtering part of discovery or presentation?
 
-**Resolution**: Requires DOM-STORE-001 refinement or view-model-specific decision  
-**Impact**: PolicyListView cannot be completed until this is decided  
-**Workaround**: Stub implementation for Phase 5, full semantics in Phase 6
+**Authority Needed**: 
+- DOM-STORE-001 amendment defining applicability semantics, OR
+- Explicit application-domain decision documented in Phase 6 surface inventory
+
+**Resolution Path**: Phase 6 application surface inventory + Phase 7 rewiring will capture this decision
+
+**Do Not**: Stub an implementation. Leave ProjectionListView unimplemented until contract exists.
 
 ---
 
-### BLOCKER 2: Ledger Cross-Domain Read
+### Contract Gap 2: Ledger Cross-Domain Read
 
-**Issue**: EntitlementWithLedgerContext requires Ledger read  
-**Scope**: How to query Ledger for transaction matching EntitlementEvent?  
-**Questions**:
+**Blocks**: EntitlementWithLedgerContext  
+**Issue**: No Ledger domain read API defined for transaction lookup  
+**Scope**: How to query Ledger for transaction matching EntitlementEvent correlation_id?  
+**Open Questions**:
 - Does Ledger expose query API for transactions by correlation_id?
-- What's the schema for Ledger transactions?
-- How to handle Ledger not having transaction yet (async)?
+- What's the exact schema and access contract?
+- How to handle async mismatch (transaction pending, not yet posted)?
+- Who owns reconciliation/retry logic?
 
-**Resolution**: Requires Ledger domain API clarification  
-**Impact**: Can defer to Phase 5 Stage 3; other views don't need it  
-**Workaround**: Skip EntitlementWithLedgerContext for initial Phase 5
+**Authority Needed**: 
+- Ledger domain Phase 5+ read models (outside Store scope)
+- Cross-domain coordination contract (INV-ARC-021)
+
+**Resolution Path**: After Ledger domain completion and FEAT-STOR-001 real coordination (Phase 4 follow-up)
+
+**Do Not**: Stub a Ledger query. Leave EntitlementWithLedgerContext unimplemented until Ledger API exists.
 
 ---
 
@@ -487,42 +498,81 @@ All using canonical read services, not direct table queries
 
 ### Consistency with Prior Work
 
-- `entitlement_read_service.py` already exists (verify it matches Phase 5 spec)
-- `StudentObligationView` pattern from Obligations domain should be replicated
-- Follow `MAP-UI-002` request context patterns
+- `entitlement_read_service.py` already exists; verify it matches Phase 5 contract
+- `StudentObligationView` pattern from Obligations domain is reference model
+- Follow canonical read service patterns (pure, class-scoped, documented preconditions)
 
 ### Testing Strategy
 
-- Unit tests for each projection (deterministic, pure)
-- Integration tests for view model builders
-- Route tests for GET handlers
-- Template render tests
+**Unit Tests**:
+- Each projection with known input data
+- Verify purity (no side effects)
+- Verify class scoping (cannot cross class_id)
+- Verify temporal semantics (if applicable)
 
-### Documentation
+**View Model Tests**:
+- Data extraction and aggregation correctness
+- Structure and field types match declaration
+- Edge cases (empty data, missing related records)
 
-- Record each read's source and temporal freshness
-- Mark which reads require Ledger/Obligations coordination
-- Note any display-only formatting outside domain logic
+**Do Not**:
+- Create route-level tests in Phase 5
+- Test template rendering (Phase 7)
+- Test authorization logic (belongs in routes, not read models)
+
+### Documentation Requirements
+
+- Each read service method: preconditions, purity statement, temporal freshness
+- Each view model builder: input contract, output structure, data sources
+- Blocked projections: explicit contract gap and blocker statement
+- Temporal semantics: whether read is point-in-time, snapshot, or eventual-consistent
 
 ---
 
-## VII. Next Phase: Phase 6 (Application Surface Inventory)
+## VII. Phase 5 Completion Checklist
+
+Phase 5 is complete when:
+
+- ✅ Read service fully documented (all methods have preconditions, purity statement, tests)
+- ✅ Unblocked view model builders implemented and tested
+- ✅ Blocked projections explicitly documented with contract gaps (PolicyListView, EntitlementWithLedgerContext)
+- ✅ All unit tests pass
+- ✅ No routes or templates updated
+- ✅ Contract gaps filed for Phase 6+ action
+
+**Do Not Complete Phase 5 if**:
+- Any read service lacks purity documentation or tests
+- Any view model was stubbed/inferred to sidestep a contract gap
+- Routes were updated during this phase
+- Blocked projections were implemented without authority
+
+---
+
+## VIII. Next Phase: Phase 6 (Application Surface Inventory)
+
+Phase 6 begins after Phase 5 is complete.
 
 Phase 6 will:
 1. Inventory every surface touching Store/Entitlements (routes, templates, APIs, jobs, CLI)
-2. Classify as REWIRE, REMOVE, COLLAPSE, or VERIFY
-3. Prepare for Phase 7 rewiring
+2. Classify each as REWIRE, REMOVE, COLLAPSE, or VERIFY
+3. Identify which surfaces need blocked projections
+4. Prepare disposition list for Phase 7
 
-**Gate**: Phase 5 (Read Models) must be complete
+**Gate**: Phase 5 completion checklist ✅
 
 ---
 
-**Ready to Begin**: Yes  
-**Estimated Effort**: 12-18 hours total  
-**Critical Path Items**: 
+**Ready to Begin**: Yes (Phase 5 implementation can start immediately)  
+**Estimated Effort**: 
+- Stage 1 (Read Service): 2-4 hours
+- Stage 2 (View Models): 3-5 hours  
+- Stage 3 (Documentation): 1-2 hours
+- **Total**: 6-11 hours (Phase 5 only)
+
+**Critical Path**: 
 1. Verify existing read service 
-2. Design/implement view models
-3. Resolve get_applicable_policies() scope
-4. Rewire route handlers
+2. Implement unblocked view model builders
+3. Document contract gaps for Phase 6 triage
+4. Hand off to Phase 6
 
 **Start Date**: Immediately after Phase 4 ✅

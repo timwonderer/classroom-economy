@@ -71,7 +71,7 @@ submitted_at           TIMESTAMP — Action creation time
 **Transaction Boundary**: One pending action per FEAT submission  
 **Idempotency**: Guaranteed by `correlation_id` uniqueness
 
-**Status**: No mutations wired yet (Phase 5+ work)
+**Status**: No current mutation surface. All future mutation must enter through a lawful FEAT (to be defined when Insurance claims or other workflows require pending action creation).
 
 ---
 
@@ -191,10 +191,11 @@ execute_store_purchase(
 - **Phase**: 5 (Read Models) or when View Model/storefront integration begins
 - **Impact**: Affects user-facing policy selection UI
 
-**TODO 3: PendingAction FEAT Wiring**
-- **Issue**: pending_actions table exists but no FEAT writes to it yet
-- **Phase**: Phase 5+ (Insurance claims, approval workflows)
-- **Impact**: Deferred until Insurance domain integration
+**NOTE: PendingAction Mutation**
+- **Status**: No current mutation surface
+- **Future**: When Insurance claims or other workflows require pending action creation, a lawful FEAT must be designed to handle it
+- **Phase**: Phase 5+ (when workflow requirements are clear)
+- **Boundary**: All mutations MUST enter through defined FEAT; direct writes forbidden
 
 ---
 
