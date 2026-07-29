@@ -1,27 +1,28 @@
-# Pending Actions Audit — Phase 3/4 Boundary Resolution
+# Pending Actions Audit — Phase 3 Reopened for Required Primitives
 
 **Date**: 2026-07-28  
-**Status**: ⚠️ CONTRACT DEFINED, IMPLEMENTATION INCOMPLETE  
-**Scope**: Canonical persistence without current mutation paths; workflows documented but FEATs not yet implemented
+**Status**: ⚠️ PERSISTENCE CONTRACT DEFINED; WORKFLOW CONTRACTS INCOMPLETE  
+**Scope**: Canonical persistence required by STORE/ENT behavior; FEATs not yet implemented; some workflows lack full authority
 
 ---
 
 ## I. Executive Summary
 
-The `pending_actions` table is canonical persistence with well-defined workflows documented in DOM-STORE-001 and FEAT specifications, but the FEATs that would write to it are not yet implemented.
+The `pending_actions` table is canonical persistence required by STORE/ENT behavior. The table contract is fully defined; however, some workflow contracts are incomplete. Phase 3 must be reopened to establish all required mutation primitives.
 
 **Current State**:
 - ✅ `pending_actions` table created (Phase 2 schema migration)
 - ✅ PendingAction model defined in `app/models.py`
-- ✅ DOM-STORE-001 v5.0 defines contract and workflows
-- ✅ FEAT-STOR-003 spec written (Insurance Claim Lifecycle)
+- ✅ DOM-STORE-001 v5.0 defines persistence contract (§VII.B) and general pending-action semantics (§IX)
+- ✅ FEAT-STOR-003 spec written with sufficient authority (Insurance Claim Lifecycle)
+- ⚠️ Delayed-use redemption workflow lacks FEAT contract (design needed)
+- ⚠️ Hall-pass pending-action workflow lacks STORE/ENT ↔ PROD coordination contract (clarification needed)
 - ❌ NO FEATs currently write to `pending_actions`
-- ❌ Insurance claim submission FEAT not implemented
-- ❌ Insurance claim resolution FEAT not implemented
-- ❌ Delayed-use redemption FEAT not implemented
-- ❌ Hall-pass request approval FEAT not implemented
+- ❌ FEAT-STOR-003 implementation code does not exist
+- ❌ Delayed-use redemption FEAT not designed
+- ❌ Hall-pass request FEAT not designed (coordination unclear)
 
-**Correct Designation**: `pending_actions` is canonical persistence **with no current mutation surface**. All future mutations must enter through lawful FEATs (to be implemented in Phase 3+ of respective workflows).
+**Phase 3 Reopened For**: Complete all required pending_actions mutation primitives with lawful FEAT contracts and implementations.
 
 ---
 
@@ -236,28 +237,59 @@ class PendingAction(db.Model):
 
 ---
 
-## VI. Phase 3/4 Recommendation
+## VI. Phase 3 Reopened — Three Distinct Paths
 
-### Do Not Close Phase 3 with Incomplete Pending Actions Workflows
+`pending_actions` is canonical persistence required by already-defined STORE/ENT behavior. Phase 3 Primitive Operations is incomplete without its required mutation capabilities. Reopen Phase 3 with three sequential paths:
 
-**Rationale**: 
-- `pending_actions` is canonical persistence with defined workflows (insurance, delayed-use, hall-pass)
-- FEATs for these workflows are not yet implemented
-- Phase 3 primitives should include all entitlement-related operations, including pending action submissions/resolutions
+### Path 1: FEAT-STOR-003 (Insurance Claim Lifecycle) — IMPLEMENT
 
-**Two Options**:
+**Authority**: Sufficient
+- ✅ DOM-STORE-001 §VIII.E.1 defines insurance claim workflow
+- ✅ FEAT-STOR-003 v2.0 specification complete
+- ✅ Claim submission, adjudication, and resolution contracts clear
 
-**Option A: Extend Phase 3 to Include Pending Actions FEATs** (Recommended if workflows are imminent)
-- Add FEAT-STOR-003 (Insurance Claim Lifecycle) implementation to Phase 3
-- Add delayed-use redemption FEAT to Phase 3
-- Add hall-pass request FEAT to Phase 3
-- Extends Phase 3 effort but ensures complete entitlement primitives
+**Phase 3 Task**: Implement FEAT-STOR-003 (submission and resolution)
+- Claim submission FEAT creates pending_action
+- Claim resolution FEAT reads pending_action, writes CONSUMED event, deletes pending_action
+- Both paths include `policy_uuid` immutable reference + Ledger coordination
 
-**Option B: Phase 3 Complete; Pending Actions Workflows = Phase 3+ Follow-Up** (Current status)
-- Keep Phase 3 closed as-is (FEAT-STOR-001, FEAT-STOR-004, StorePolicyResolver)
-- Document pending_actions as "canonical persistence with no current mutation surface"
-- Mark FEAT-STOR-003, delayed-use, and hall-pass FEATs as Phase 3 Follow-Up or Phase 5+
-- All future mutations to pending_actions must enter through lawful FEATs (enforced at Phase 4 when those FEATs exist)
+---
+
+### Path 2: Delayed-Use Redemption — DESIGN & ESTABLISH CONTRACT
+
+**Authority**: Insufficient
+- ✅ DOM-STORE-001 §VIII.E.4 states DELAYED_USE "support a pending action before resolution"
+- ❌ No FEAT specification exists
+- ❌ No redemption workflow defined (who submits? when? what validates?)
+- ❌ Unclear if redemption is one-time or repeatable
+- ❌ Refund/revocation semantics undefined
+
+**Phase 3 Task**: Design document + FEAT contract (do NOT implement yet)
+- Document pending-action-based redemption workflow
+- Establish FEAT-STOR-DELAYED_USE or similar contract
+- Define: submission authority, validation rules, approval conditions, refund model
+- Include `policy_uuid` immutable reference rule
+- Submit for authority approval before implementation
+
+---
+
+### Path 3: Hall-Pass Pending Actions — CLARIFY COORDINATION CONTRACT
+
+**Authority**: Incomplete
+- ✅ DOM-STORE-001 §VIII.E.6 states hall passes "support pending action if the exercise requires approval"
+- ❌ Unclear when approval is required (policy-dependent?)
+- ❌ Coordination with FEAT-PROD-002 (RECORD_HALL_PASS_LOG) undefined
+- ❌ Workflow for pending request/approval not specified
+- ❌ STORE/ENT ↔ PROD boundary for pending actions unclear
+
+**Phase 3 Task**: Coordination contract specification (do NOT implement yet)
+- Clarify in DOM-STORE-001 or new contract document:
+  - When does a hall-pass request become pending?
+  - Who submits? Who approves?
+  - How does pending request interact with cross-domain consumption (PROD)?
+  - What is the approval/denial user experience?
+- Include `policy_uuid` immutable reference rule
+- Submit for cross-domain authority approval before implementation
 
 ---
 
@@ -276,33 +308,70 @@ No routes, helpers, or background jobs currently write `pending_actions` directl
 
 ---
 
-## VIII. Phase 4 Check Points
+## VII. Critical Policy-Reference Rule for All Workflows
 
-When Phase 3 is extended or when pending action FEATs are later implemented:
+**All PendingAction-based workflows SHALL follow this canonical rule**:
 
-**Before closing Phase 4 for pending_actions workflows**:
-- ✅ Each pending_actions FEAT (STOR-003, delayed-use, hall-pass) is implemented
-- ✅ No routes write pending_actions directly (only through FEAT)
+- PendingAction SHALL record exact immutable `policy_uuid` (not `product_id`, not copied config)
+- Policy configuration resolved from `policy_uuid` at resolution time
+- Payload contains request-specific facts ONLY (claim subject, redemption details, etc.)
+- Payload SHALL NOT duplicate policy rules or configuration
+- While PendingAction is executable, it is an executable dependency → policy must remain resolvable
+- If policy is deleted while pending action exists, deletion must fail unless policy has no executable dependencies
+
+**Rationale**: 
+- Prevents policy-config drift between submission and resolution
+- Maintains immutable historical record
+- Ensures policy version consistency through lifecycle
+- Enables future policy audits and versions
+
+---
+
+## VIII. Phase 3 Sequence (Reopened)
+
+**Current Phase 3 (FEAT-STOR-001, FEAT-STOR-004, StorePolicyResolver)**: ✅ Complete
+
+**Phase 3 Extension — Pending Actions Primitives** (reopened):
+
+1. **FEAT-STOR-003 (Insurance)**: Implement
+   - Submission: `create_insurance_claim(entitlement_id, policy_uuid, subject_payload) → pending_action`
+   - Resolution: `resolve_insurance_claim(pending_action_id, approved: bool) → entitlement_event + delete pending_action`
+   - Include Ledger coordination for accepted claims
+
+2. **Delayed-Use Redemption (FEAT-TBD)**: Design & establish contract
+   - Document workflow, define FEAT contract
+   - Submit for approval (no implementation yet)
+
+3. **Hall-Pass Pending (FEAT-TBD)**: Clarify STORE/ENT ↔ PROD coordination
+   - Establish cross-domain contract with Productivity domain
+   - Submit for approval (no implementation yet)
+
+---
+
+## IX. Phase 4 Rerun (After Phase 3 Extension)
+
+After all Phase 3 pending-action primitives are implemented:
+
+**Phase 4 will audit**:
+- ✅ FEAT-STOR-003 has one lawful mutation path (no routes bypass it)
 - ✅ Each FEAT uses one transaction boundary
-- ✅ Idempotency and correlation built into FEAT contracts
-- ✅ Resolution path atomically writes entitlement event + deletes pending action
-- ✅ Tests verify FEAT contracts
-- ✅ Routes wired to FEATs (Phase 7 concern)
+- ✅ Idempotency via correlation_id
+- ✅ Resolution atomically writes entitlement event + deletes pending_action
+- ✅ Policy_uuid immutable reference rule enforced
+- ✅ All tests pass
 
 ---
 
-## IX. Handoff to Phase 5
+## X. Phase 5 Resumes (After Phase 3/4 Complete)
 
-**Phase 5 Read Models** can proceed independently:
-- Read projections for pending actions (list pending for student, list pending by FEAT, etc.)
-- View models for insurance claim status, redemption status
-- No blocker: Phase 3/4 pending_actions work can happen in parallel
+Phase 5 read models may then include:
+- Insurance claim status projections
+- Delayed-use redemption tracking (after workflow is designed)
+- Hall-pass request/approval status (after coordination is clarified)
+- All OTHER entitlement reads (safe to build now)
 
-**Phase 5 should NOT**:
-- Stub implementations of workflows without canonical FEATs
-- Assume semantics for delayed-use or hall-pass requests
-- Build projections that depend on unimplemented workflows
+**Phase 5 remains paused until**: Phase 3 extension complete AND Phase 4 audit complete
 
 ---
 
-**Conclusion**: `pending_actions` is correctly designated as canonical persistence with no current mutation surface. All future mutations must enter through lawful FEATs (to be defined, specified, and implemented in later phases). Phase 3 completion stands as-is; pending_actions workflows are Phase 3 Follow-Up or Phase 5+ work.
+**Conclusion**: `pending_actions` is canonical persistence required by STORE/ENT behavior. Phase 3 reopened to complete all required mutation primitives. Path 1 (Insurance) has authority and is ready to implement. Paths 2 & 3 (Delayed-use, Hall-pass) require contract establishment before implementation. Phase 5 read-model work (already completed: read service) preserved but remains paused until Phase 3/4 complete.
