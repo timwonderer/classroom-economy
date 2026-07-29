@@ -52,7 +52,7 @@ def execute_direct_grant(
     *,
     canonical_context: CanonicalContext,
     target_seat_id: int,
-    product_id: int,
+    policy_uuid: str,
     quantity: int = 1,
     correlation_id: str | None = None,
     idempotency_key: str | None = None,
@@ -63,18 +63,21 @@ def execute_direct_grant(
     Args:
         canonical_context: CanonicalContext with user_id, class_id, seat_id, actor_role="teacher"
         target_seat_id: Seat receiving the grant
-        product_id: Configured product identifier
+        policy_uuid: Exact policy UUID to resolve and execute against (no inference)
         quantity: Number of units to grant (default 1)
         correlation_id: Optional; generated if not provided
         idempotency_key: Optional replay guard
 
     Returns:
         DirectGrantResult with success status and granted entitlements
+
+    Contract: Caller is responsible for discovering which policy applies.
+    This FEAT accepts the exact policy_uuid and resolves it without inference.
     """
     return _execute_direct_grant_impl(
         canonical_context=canonical_context,
         target_seat_id=target_seat_id,
-        product_id=product_id,
+        policy_uuid=policy_uuid,
         quantity=quantity,
         correlation_id=correlation_id,
         idempotency_key=idempotency_key,
@@ -86,13 +89,15 @@ def _execute_direct_grant_impl(
     *,
     canonical_context: CanonicalContext,
     target_seat_id: int,
-    product_id: int,
+    policy_uuid: str,
     quantity: int = 1,
     correlation_id: str | None = None,
     idempotency_key: str | None = None,
 ) -> DirectGrantResult:
     """
     Internal implementation wrapped in @feat_shell for context management.
+
+    Exact resolution: accept policy_uuid and resolve without inference.
     """
 
     # =========================================================================
@@ -155,42 +160,17 @@ def _execute_direct_grant_impl(
     # Resolve and validate product policy per SPEC-STORE-001
     # =========================================================================
 
-    # Look up applicable policy for this product_id in the class
-    # Query for non-retired store_products where payload.product_id matches
-    applicable_products = db.session.query(StoreProduct).filter_by(
-        class_id=canonical_context.class_id,
-        is_retired=False,
-    ).all()
-
-    matching_policy = None
-    for sp in applicable_products:
-        try:
-            if sp.payload.get('product_id') == product_id:
-                matching_policy = sp
-                break
-        except Exception:
-            # Skip policies with unparseable payloads
-            continue
-
-    if not matching_policy:
-        return DirectGrantResult(
-            success=False,
-            correlation_id="",
-            quantity_granted=0,
-            error_code="PRODUCT_NOT_AVAILABLE",
-            error_message=f"Product {product_id} not found or not grantable in this class",
-        )
-
-    # Resolve and validate policy
+    # Exact resolution: resolve supplied policy_uuid without inference.
+    # Caller is responsible for discovering which policy applies.
     try:
-        policy_config = StorePolicyResolver.resolve_store_item(matching_policy.policy_uuid)
+        policy_config = StorePolicyResolver.resolve_store_item(policy_uuid)
     except PolicyNotFound:
         return DirectGrantResult(
             success=False,
             correlation_id="",
             quantity_granted=0,
             error_code="POLICY_NOT_FOUND",
-            error_message=f"Policy for product {product_id} not found (may have been deleted)",
+            error_message=f"Policy UUID {policy_uuid} not found (may have been deleted)",
         )
     except (PolicyParseError, PolicyValidationError) as e:
         return DirectGrantResult(
@@ -201,6 +181,16 @@ def _execute_direct_grant_impl(
             error_message=f"Policy validation failed: {str(e)}",
         )
 
+    # Verify policy belongs to the canonical class scope
+    if policy_config.class_id != canonical_context.class_id:
+        return DirectGrantResult(
+            success=False,
+            correlation_id="",
+            quantity_granted=0,
+            error_code="POLICY_SCOPE_MISMATCH",
+            error_message=f"Policy UUID {policy_uuid} belongs to different class ({policy_config.class_id} vs {canonical_context.class_id})",
+        )
+
     # Validate supports_direct_grants
     if not policy_config.supports_direct_grants:
         return DirectGrantResult(
@@ -208,16 +198,17 @@ def _execute_direct_grant_impl(
             correlation_id="",
             quantity_granted=0,
             error_code="GRANT_NOT_SUPPORTED",
-            error_message=f"Product {product_id} does not support direct grants",
+            error_message=f"Product {policy_config.product_id} does not support direct grants",
         )
 
     # Validate per-student limit (if configured)
     if policy_config.limit_per_student is not None:
-        # Count existing entitlements for this target seat and product
+        # Count existing GRANTED entitlements for this target seat and product
+        # Product_id comes from resolved policy, not inference
         existing_count = db.session.query(EntitlementEvent).filter_by(
             class_id=canonical_context.class_id,
             target_seat_id=target_seat_id,
-            product_id=product_id,
+            product_id=policy_config.product_id,
             event_type='GRANTED',
         ).count()
 
@@ -265,8 +256,8 @@ def _execute_direct_grant_impl(
             class_id=canonical_context.class_id,
             target_seat_id=target_seat_id,
             actor_seat_id=canonical_context.seat_id,  # Teacher's seat
-            product_id=product_id,  # Product identifier (per SPEC-STORE-001)
-            entitlement_type=policy_config.entitlement_type,  # Read from resolved policy
+            product_id=policy_config.product_id,  # Product identifier from resolved policy (per SPEC-STORE-001)
+            entitlement_type=policy_config.entitlement_type,  # From resolved policy
             acquisition_type="GRANT",
             event_type="GRANTED",
             correlation_id=corr_id,
@@ -283,7 +274,7 @@ def _execute_direct_grant_impl(
         correlation_id=corr_id,
         quantity_granted=quantity,
         entitlement_ids=entitlement_ids,
-        product_id=product_id,
+        product_id=policy_config.product_id,  # From resolved policy
         error_code=None,
         error_message=None,
     )
