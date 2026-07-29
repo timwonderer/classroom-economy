@@ -191,11 +191,15 @@ execute_store_purchase(
 - **Phase**: 5 (Read Models) or when View Model/storefront integration begins
 - **Impact**: Affects user-facing policy selection UI
 
-**NOTE: PendingAction Mutation**
-- **Status**: No current mutation surface
-- **Future**: When Insurance claims or other workflows require pending action creation, a lawful FEAT must be designed to handle it
-- **Phase**: Phase 5+ (when workflow requirements are clear)
-- **Boundary**: All mutations MUST enter through defined FEAT; direct writes forbidden
+**NOTE: PendingAction Mutation (See PENDING_ACTIONS_AUDIT_2026-07-28.md)**
+- **Status**: Canonical persistence with NO CURRENT MUTATION SURFACE
+- **Workflows defined but FEATs not implemented**:
+  - Insurance claims: FEAT-STOR-003 spec exists; code not implemented
+  - Delayed-use redemption: FEAT spec missing; contract gaps unresolved
+  - Hall-pass requests: Workflow needs clarification
+- **Current phase**: Phase 4 work DEFERRED until FEATs are designed/specified
+- **Boundary rule**: When FEATs are implemented, all mutations MUST enter through lawful FEAT; no direct writes permitted
+- **See also**: PENDING_ACTIONS_AUDIT_2026-07-28.md for complete contract analysis and Phase 3/4 recommendations
 
 ---
 
