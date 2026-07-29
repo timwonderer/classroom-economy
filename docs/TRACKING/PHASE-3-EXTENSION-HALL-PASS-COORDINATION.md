@@ -181,30 +181,36 @@ D) **Product-dependent** — Expiration varies by product policy
 
 ---
 
-## IV. Proposed Baseline Coordination Contract
+## IV. Canonical Coordination Contract
 
-**Authority Clarification Applied**: Hall-pass workflow is **coordinated operation**, not asynchronous read-check.
+**Authority Clarification**: Hall-pass workflow is **coordinated operation**. Prod receives **already-authorized logging command** and does NOT inspect Store/Ent pending or entitlement state.
 
-### Coordination Model (Revised)
+### Coordination Model (Authority-Guided)
 
 When student submits approval-required hall-pass use request and teacher approves:
 
-1. **Submission**: Store/Ent creates pending_action (FEAT-STOR-HALL_PASS_REQUEST-SUBMIT)
-2. **Teacher Approval**: Store/Ent initiates coordinated operation with Productivity domain
-3. **Coordination**:
-   - Store/Ent validates entitlement + creates authorized request
-   - Store/Ent coordinates with Productivity domain to write HallPassLog
-   - Productivity domain receives authorized request (does NOT inspect Store/Ent tables)
-   - Productivity owns writing the HallPassLog entry
-4. **Atomic Completion**:
+1. **Submission Phase**: Store/Ent creates pending_action (FEAT-STOR-HALL_PASS_REQUEST-SUBMIT)
+2. **Teacher Approval Phase**: Store/Ent executes coordinated completion
+   - Store/Ent validates entitlement is still GRANTED
+   - Store/Ent resolves policy via StorePolicyResolver
+   - Store/Ent prepares **authorized logging command** (not a request for approval)
+   - Store/Ent calls Prod with authorization already decided
+3. **Prod Execution**: Productivity domain writes HallPassLog
+   - Productivity receives **already-authorized command** (not "please approve")
+   - Productivity does NOT inspect pending_action status
+   - Productivity does NOT validate entitlement eligibility
+   - Productivity writes HallPassLog entry per authorized instruction
+4. **Atomic Completion** (Single Transaction Pattern):
    - If Productivity successfully writes HallPassLog:
      * Store/Ent writes CONSUMED event (marking pass use)
      * Store/Ent deletes pending_action
-     * Both succeed together
+     * Both complete in same transaction
    - If Productivity fails to write HallPassLog:
-     * Store/Ent operation fails
+     * Store/Ent transaction fails and rolls back
      * Pending_action remains intact
      * Can retry approval later
+
+**Rationale**: Authority states Prod "receives an authorized request" (not an approval request). This follows the INV-ARC-021 pattern of FEAT-only coordination with clear domain boundaries.
 
 ---
 
@@ -361,63 +367,73 @@ When rent period ends for perk-granted passes:
 
 ---
 
-## VII. Cross-Domain Authority Checklist
+## VII. Coordination Pattern & Authority Compliance
 
-**✅ AUTHORITY CLARIFICATION RECEIVED**:
-- Hall-pass workflow is **coordinated operation** (not asynchronous read-check)
-- Teacher approval causes Store/Ent to coordinate with Productivity
-- Productivity receives authorized request and owns writing HallPassLog
-- Successful Prod logging participates in Store/Ent completion (CONSUMED + PendingAction deletion)
+**✅ AUTHORITY CLARIFICATIONS RECONCILED**:
+- ✅ Hall-pass workflow is **coordinated operation** (not asynchronous read-check)
+- ✅ Teacher approval causes Store/Ent to coordinate with Productivity
+- ✅ Productivity receives **authorized command** (NOT approval request; NOT inspection of pending_action)
+- ✅ Productivity owns writing HallPassLog
+- ✅ Successful Prod logging participates in Store/Ent atomic completion (CONSUMED + PendingAction deletion)
+- ✅ Denial = DENY REQUEST only (no Productivity coordination)
 
-**CRITICAL BLOCKER - Before Implementation**:
-- [ ] **Determine atomic/coordination boundary** from existing cross-domain authority docs (INV-ARC-021 or DOM-LED-001 or DOM-PROD-001)
-  - How are multi-domain transactions coordinated (synchronous vs async via correlation_id)?
-  - What is the rollback semantics if one domain succeeds but other fails?
-  - Is there an existing pattern for PROD↔STORE/ENT coordination?
+**✅ COORDINATION PATTERN ESTABLISHED (Synchronous, Model A)**:
 
-**Store/Entitlements Authority Must Approve**:
-- [ ] Policy-UUID immutability rule for hall-pass requests
-- [ ] Pending_action schema and lifecycle for passes
-- [ ] GRANTED timing (pre-granted, confirmed)
-- [ ] Denial outcomes (DENY REQUEST only, confirmed)
-- [ ] Coordination call signature to Productivity (how to pass authorized request?)
+**Authority-Guided Analysis**: Per INV-ARC-021 ("FEAT is sole coordination layer") and existing FEAT-LED-001 precedent (synchronous Ledger coordination within Store/Ent FEAT):
 
-**Productivity Domain Authority Must Approve**:
-- [ ] HallPassLog write accepts authorization from Store/Ent
-- [ ] Productivity does NOT inspect Store/Ent pending_action status
-- [ ] Productivity returns success/failure to Store/Ent
-- [ ] How Productivity coordinates rollback on failure
+**Canonical Pattern**: Store/Ent FEAT calls Prod synchronously within single transaction
+- Store/Ent validates entitlement + policy
+- Store/Ent prepares authorized logging command
+- Store/Ent calls Prod to write HallPassLog (Prod receives command, does NOT inspect pending_action)
+- Store/Ent awaits Prod result
+- On Prod success: Store/Ent writes CONSUMED + deletes pending_action (atomic)
+- On Prod failure: Store/Ent transaction fails and rolls back; pending_action remains
 
-**Cross-Domain Authority (Both Domains) Must Approve**:
-- [ ] **Coordination pattern**: Synchronous call with atomic transaction? Async via correlation_id?
-- [ ] **Approval requirement**: Policy-dependent (confirmed)
-- [ ] **Denial model**: DENY REQUEST only, no Productivity coordination (confirmed)
-- [ ] **Rent period expiration**: Pending requests auto-cancelled (confirmed)
-- [ ] Overall workflow: student request → teacher approval → coordinated Prod logging + Store/Ent CONSUMED
+This pattern **matches the established FEAT-LED-001 precedent** and satisfies INV-ARC-021 requirements.
+
+**Store/Entitlements Authority Confirmation**:
+- ✅ Policy-UUID stored in `pending_action.payload` (verified: first-class field not in DOM-STORE-001 schema)
+- ✅ Pending_action schema matches DOM-STORE-001 v5.0 §VII.B
+- ✅ GRANTED timing (pre-granted)
+- ✅ Denial = DENY REQUEST only
+- ✅ Synchronous call pattern (inherits from FEAT-LED-001)
+
+**Productivity Domain Coordination Needed**:
+- [ ] Refactor FEAT-PROD-002 to accept authorized logging command from Store/Ent
+- [ ] Confirm FEAT-PROD-002 does NOT inspect pending_action or entitlement eligibility
+- [ ] Confirm FEAT-PROD-002 returns success/failure to Store/Ent caller
 
 ---
 
-## VIII. Next Steps (Awaiting Cross-Domain Authority)
+## VIII. Implementation Readiness
 
-**CRITICAL BLOCKER - Before Phase 3 Implementation**:
-- [ ] Research existing cross-domain coordination patterns in:
-  - `INV-ARC-021_CROSS_DOMAIN_REFERENCE_AND_COORDINATION.md`
-  - `DOM-LED-001_LEDGER_DOMAIN.md` (for monetary coordination examples)
-  - `DOM-PROD-001_PRODUCTIVITY_AND_PAYROLL_DOMAIN.md` (for Prod coordination patterns)
-  - Any existing FEAT-LED-* or FEAT-PROD-* documents that coordinate with other domains
+**Phase 3 Implementation Can Proceed (Model A Pattern)**:
 
-**Phase 3 Implementation Blocked Until**:
-- Atomic/coordination boundary is identified from authority docs
-- Both Store/Entitlements and Productivity domains approve revised baseline contract
-- Answer all critical questions in §VII checklist
-- Policy-UUID immutability rule confirmed
-- Test coverage checklist approved
+1. **Implement FEAT-STOR-HALL_PASS_REQUEST-SUBMIT** (student request):
+   - Validate entitlement is GRANTED
+   - Resolve policy from policy_uuid
+   - Create pending_action with immutable policy_uuid in payload
+   - Return success with pending_action_id
 
-**Phase 3 Implementation Will** (once boundary determined):
-- Implement FEAT-STOR-HALL_PASS_REQUEST-SUBMIT (student request)
-- Implement FEAT-STOR-HALL_PASS_REQUEST-RESOLVE (teacher approval/denial with coordinated Prod call)
-- Implement pending_action cleanup at rent period boundary
-- Implement atomic coordination with Productivity domain per identified pattern
+2. **Implement FEAT-STOR-HALL_PASS_REQUEST-RESOLVE** (teacher approval/denial):
+   - On approval: Call Prod synchronously to write HallPassLog (authorized command)
+     * Prod receives: entitlement_id, correlation_id, authorization only (no pending_action inspection)
+     * Prod writes HallPassLog
+     * Store/Ent writes CONSUMED + deletes pending_action (atomic with Prod call)
+   - On denial: Delete pending_action only (DENY REQUEST; no Prod coordination)
+
+3. **Implement pending_action cleanup** at rent period boundary:
+   - Background job deletes all pending hall-pass requests when rent period ends
+
+4. **Coordinate with Productivity Domain**:
+   - [ ] Refactor FEAT-PROD-002 to receive authorized command from Store/Ent (not inspection)
+   - [ ] Confirm FEAT-PROD-002 returns success/failure to caller
+   - [ ] Wire Store/Ent FEAT to call Prod FEAT per Model A pattern
+
+5. **Write comprehensive tests** per checklist in §VI:
+   - Submission tests (pending_action creation, policy_uuid immutability)
+   - Resolution tests (approval coordination with Prod, denial DENY REQUEST)
+   - Cross-domain tests (atomic completion, Prod failure handling)
 
 **Phase 4 Will**:
 - Audit that all hall-pass mutations enter through lawful FEAT paths

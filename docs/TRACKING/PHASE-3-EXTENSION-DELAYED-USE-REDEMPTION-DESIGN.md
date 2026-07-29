@@ -270,38 +270,65 @@ D) **No expiration** — Only CONSUMED or REVOKED; no automatic expiration
 
 ---
 
-## VII. Authority Checklist for Approval
+## VII. Authority Decisions Required
 
 **✅ AUTHORITY CLARIFICATION RECEIVED**:
-- Rejection is DENY REQUEST only (no terminal entitlement event, no refund)
-- Entitlement stays GRANTED (student may resubmit)
+- Rejection is DENY REQUEST only (no terminal entitlement event, no refund, entitlement stays GRANTED)
 
-**Before Phase 3 implementation can proceed, authority must approve**:
+**Authority Must Decide** (workflow/authorization policy):
 
-- [ ] **Question 1 Answer**: Student-initiated vs teacher-initiated vs system-automatic
-- [ ] **Question 2 Answer**: On-demand vs time-triggered vs automatic
-- [ ] **Question 3 Answer**: Validation scope (minimal, policy-based, cross-domain, product-specific)
-- [ ] **Question 4 Answer**: Payload structure (minimal, purpose, temporal, product-specific)
-- [ ] **Question 5 Answer**: Approval authority (automatic, manual, product-dependent)
-- [ ] **Question 7 Answer**: Redemption repeatability (one-time, repeatable, product-dependent)
-- [ ] **Question 8 Answer**: Expiration trigger (absolute, relative, period, none)
+These are not "configuration questions"—they are **canonical workflow decisions** that establish how delayed-use redemption is authorized and initiated.
+
+- [ ] **Question 1**: Submission authority
+  - Student self-service only? Teacher-assisted? Teacher-directed? Both?
+  - **Impact**: Determines authorization model and route structure
+
+- [ ] **Question 2**: Submission timing trigger
+  - On-demand via UI? Time-based? Automatic? Policy-dependent?
+  - **Impact**: Determines when FEAT-STOR-DELAYED_REDEEM-SUBMIT is called
+
+- [ ] **Question 3**: Validation scope (already policy-governed)
+  - Product policy rules determine eligibility
+  - Question: Do policy rules block submission, or flag for teacher review?
+  - **Impact**: Determines whether validation errors are hard blocks or warnings
+
+- [ ] **Question 4**: Payload structure (product-determined)
+  - What type-specific data does the redemption request contain?
+  - **Impact**: Determines pending_action.payload schema per entitlement_type
+
+- [ ] **Question 5**: Approval authority
+  - Manual teacher review for all requests? Auto-approval after timeout? Policy-dependent?
+  - **Impact**: Determines whether FEAT-STOR-DELAYED_REDEEM-RESOLVE is teacher-driven or system-automatic
+
+**Policy Configuration** (NOT authority decision—determined by product policy):
+
+- Redemption repeatability (one-time vs repeatable per policy)
+  - Per DOM-STORE-001: "For entitlement types where the exercise is repeatable, multiple `CONSUMED` rows MAY exist"
+  - Whether delayed-use is repeatable is product policy configuration, not authority decision
+
+- Expiration trigger (absolute deadline, relative window, period-end)
+  - Per DOM-STORE-001: "record `EXPIRED` when the configured expiration boundary is reached"
+  - Expiration boundary is product policy configuration, not authority decision
 
 ---
 
-## VIII. Next Steps (Awaiting Authority)
+## VIII. Next Steps (Awaiting Authority on 5 Decisions)
 
 **Phase 3 Implementation Blocked Until**:
-- Authority answers all questions in §VII
-- Contract is approved
-- Policy-UUID immutability rule is confirmed
-- Test coverage checklist is approved
+- Authority answers Questions 1-5 in §VII (workflow/authorization decisions)
+  1. Submission authority (student, teacher, system, both?)
+  2. Submission trigger (on-demand, time-based, automatic, policy-dependent?)
+  3. Validation scope (hard block vs flag for teacher review?)
+  4. Payload structure (what data in redemption request?)
+  5. Approval authority (manual, automatic, policy-dependent?)
+- Policy-UUID immutability rule confirmed (stored in payload per DOM-STORE-001 schema)
+- Test coverage checklist approved
 
-**Phase 3 Implementation Will**:
-- Implement FEAT-STOR-DELAYED_REDEEM-SUBMIT (student submission)
-- Implement FEAT-STOR-DELAYED_REDEEM-RESOLVE (teacher resolution)
+**Phase 3 Implementation Will** (once authority answers Questions 1-5):
+- Implement FEAT-STOR-DELAYED_REDEEM-SUBMIT (per Q1-2 answers)
+- Implement FEAT-STOR-DELAYED_REDEEM-RESOLVE (per Q5 answer)
 - Write comprehensive test coverage per approved checklist
-- Integrate with StorePolicyResolver for policy resolution
-- Coordinate Ledger refunds if required (per answer to Question 7)
+- Integrate with StorePolicyResolver for policy resolution (repeatability and expiration per product policy)
 
 **Phase 4 Will**:
 - Audit that all delayed-use redemption mutations enter through lawful FEAT paths
@@ -313,17 +340,17 @@ D) **No expiration** — Only CONSUMED or REVOKED; no automatic expiration
 
 ## IX. Appendix: Design Rationale
 
-### Why these questions matter
+### Why these authority decisions matter
 
 - **Question 1** determines whether it's a student-self-service flow or teacher-managed flow — fundamental UX difference
 - **Question 2** determines whether pending action is created immediately on grant or deferred to user action — architectural difference
-- **Question 3** determines validation complexity and cross-domain dependencies
+- **Question 3** determines validation complexity (hard block vs warning) and whether policy-checks require teacher escalation
 - **Question 4** determines payload complexity and product-specificity
-- **Question 5** determines whether resolution is workflow (manual) or system-automatic
-- **Question 6** determines whether rejection is terminal or gives student another chance
-- **Question 7** determines Ledger coordination complexity
-- **Question 8** determines whether multiple CONSUMED events can exist for single entitlement
-- **Question 9** determines whether expiration is passive (policy boundary) or active (background job)
+- **Question 5** determines whether resolution is teacher-driven workflow or system-automatic
+
+**Policy-configured parameters** (NOT authority questions):
+- Redemption repeatability is determined by product policy (one-time vs repeatable)
+- Expiration trigger is determined by product policy (absolute, relative, period)
 
 ### Baseline rationale
 
@@ -339,7 +366,7 @@ The proposed baseline assumes:
 - **One-time redemption** (but product can specify otherwise) as default safe behavior
 - **Policy-boundary expiration** per policy config (absolute, relative, period as product specifies)
 
-This baseline is **proposed for authority review** on remaining Questions 1-5, 7-8.
+This baseline is **proposed for authority review** on remaining Questions 1-5 (workflow/authorization decisions).
 
 ---
 
