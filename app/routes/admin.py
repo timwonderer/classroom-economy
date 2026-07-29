@@ -4235,7 +4235,7 @@ def set_class_timezone(class_id: str):
             class_row.class_timezone = 'Etc/UTC' if timezone_name == 'UTC' else timezone_name
     except Exception:
         current_app.logger.error(
-            "Failed to set class timezone for class_id=%s", class_id, exc_info=True
+            "Failed to set class timezone for class_id=%s", class_id
         )
         return jsonify({'status': 'error', 'message': 'Could not save class timezone.'}), 500
 
@@ -4592,7 +4592,7 @@ def edit_student():
     except Exception as e:
         db.session.rollback()
         current_app.logger.error(f"FAILED TO EDIT STUDENT EXCEPTION: {e}")
-        current_app.logger.error(f"Error updating student {seat_id}", exc_info=True)
+        current_app.logger.error(f"Error updating student {seat_id}")
         flash("Error updating student due to internal error", "error")
         return redirect(url_for('admin.students'))
 
@@ -4649,7 +4649,7 @@ def delete_student():
 
     except Exception as e:
         db.session.rollback()
-        current_app.logger.error(f"Error deleting student {student_name}", exc_info=True)
+        current_app.logger.error(f"Error deleting student {student_name}")
         flash("Cannot delete student due to internal error", "error")
 
     return redirect(url_for('admin.students'))
@@ -4690,7 +4690,7 @@ def bulk_delete_students():
         })
     except Exception as e:
         db.session.rollback()
-        current_app.logger.error(f"Error deleting students: {e}", exc_info=True)
+        current_app.logger.error(f"Error deleting students: {e}")
         return jsonify({"status": "error", "message": "An error occurred while deleting students. Please try again."}), 500
 
 
@@ -4741,7 +4741,7 @@ def delete_block():
         raise
     except Exception as e:
         db.session.rollback()
-        current_app.logger.error(f"Error deleting block {section}: {e}", exc_info=True)
+        current_app.logger.error(f"Error deleting block {section}: {e}")
         return jsonify({"status": "error", "message": "An error occurred while deleting the block. Please try again."}), 500
 
 
@@ -4791,7 +4791,7 @@ def delete_join_code():
         raise
     except Exception as e:
         db.session.rollback()
-        current_app.logger.error(f"Error deleting join code {join_code}: {e}", exc_info=True)
+        current_app.logger.error(f"Error deleting join code {join_code}: {e}")
         return jsonify({"status": "error", "message": "An error occurred while deleting the join code. Please try again."}), 500
 
 
@@ -4854,7 +4854,7 @@ def delete_pending_student():
         })
     except Exception as e:
         db.session.rollback()
-        current_app.logger.error(f"Error deleting pending student: {e}", exc_info=True)
+        current_app.logger.error(f"Error deleting pending student: {e}")
         return jsonify({"status": "error", "message": "An error occurred while deleting the pending student. Please try again."}), 500
 
 
@@ -4922,7 +4922,7 @@ def bulk_delete_pending_students():
         })
     except Exception as e:
         db.session.rollback()
-        current_app.logger.error(f"Error bulk deleting pending students: {e}", exc_info=True)
+        current_app.logger.error(f"Error bulk deleting pending students: {e}")
         return jsonify({"status": "error", "message": "An error occurred while bulk deleting pending students. Please try again."}), 500
 
 
@@ -5011,7 +5011,7 @@ def add_individual_student():
 
     except Exception as e:
         db.session.rollback()
-        current_app.logger.error("Error adding individual student", exc_info=True)
+        current_app.logger.error("Error adding individual student")
         flash(f"Cannot add student due to internal error", "error")
 
     return redirect(url_for('admin.students'))
@@ -5153,7 +5153,7 @@ def add_manual_student():
 
     except Exception as e:
         db.session.rollback()
-        current_app.logger.error("Error creating manual student", exc_info=True)
+        current_app.logger.error("Error creating manual student")
         flash(f"Cannot create student due to internal error", "error")
 
     return redirect(url_for('admin.students'))
@@ -6833,7 +6833,7 @@ def void_transaction(transaction_id):
         return _void_error("Transaction could not be voided.")
     except SQLAlchemyError as e:
         db.session.rollback()
-        current_app.logger.error(f"Failed to void transaction {transaction_id}: {e}", exc_info=True)
+        current_app.logger.error(f"Failed to void transaction {transaction_id}: {e}")
         if is_json:
             return jsonify(status="error", message="Failed to void transaction"), 500
         flash("Error voiding transaction.", "error")
@@ -7491,7 +7491,7 @@ def _run_payroll():
         db.session.rollback()
         is_db_error = isinstance(e, SQLAlchemyError)
         error_type = "database" if is_db_error else "unexpected"
-        current_app.logger.error(f"Payroll {error_type} error: {e}", exc_info=True)
+        current_app.logger.error(f"Payroll {error_type} error: {e}")
 
         if is_json:
             message = "Database error during payroll. Check logs." if is_db_error else "Unexpected error during payroll."
@@ -8735,7 +8735,7 @@ def upload_students():
                 )
                 added_count += 1
             except Exception as e:
-                current_app.logger.error(f"Error processing row {row}: {e}", exc_info=True)
+                current_app.logger.error(f"Error processing row {row}: {e}")
                 errors += 1
 
         for class_row in created_class_rows_by_block.values():
@@ -9030,7 +9030,7 @@ def tap_out_students():
 
     except Exception as e:
         db.session.rollback()
-        current_app.logger.error(f"Admin tap-out failed: {e}", exc_info=True)
+        current_app.logger.error(f"Admin tap-out failed: {e}")
         return jsonify({
             "status": "error",
             "message": "Failed to tap out students due to an internal error."
@@ -9108,7 +9108,7 @@ def tap_in_students():
 
     except Exception as e:
         db.session.rollback()
-        current_app.logger.error(f"Admin tap-in failed: {e}", exc_info=True)
+        current_app.logger.error(f"Admin tap-in failed: {e}")
         return jsonify({
             "status": "error",
             "message": "Failed to tap in students. Please try again or contact support."
@@ -9498,7 +9498,7 @@ def banking_settings_update():
             current_app.logger.info(f"Banking settings updated by admin for {len(blocks_to_update)} class(es)")
         except SQLAlchemyError as e:
             db.session.rollback()
-            current_app.logger.error(f"Failed to update banking settings: {e}", exc_info=True)
+            current_app.logger.error(f"Failed to update banking settings: {e}")
             flash('Error updating banking settings.', 'error')
     else:
         for field, errors in form.errors.items():
@@ -9744,7 +9744,7 @@ def help_support():
             return redirect(url_for('admin.help_support'))
         except SQLAlchemyError:
             db.session.rollback()
-            current_app.logger.error("Error submitting report", exc_info=True)
+            current_app.logger.error("Error submitting report")
             flash("An error occurred while submitting your ticket. Please try again.", "error")
             return redirect(url_for('admin.help_support'))
 
@@ -10166,7 +10166,7 @@ def announcement_toggle(announcement_id):
 
     except Exception as e:
         db.session.rollback()
-        current_app.logger.error(f"Error toggling announcement: {e}", exc_info=True)
+        current_app.logger.error(f"Error toggling announcement: {e}")
         return jsonify({'status': 'error', 'message': 'An error occurred while toggling the announcement. Please try again.'}), 500
 
 
@@ -11202,7 +11202,7 @@ def resolve_issue(issue_ref):
 
     except Exception as e:
         db.session.rollback()
-        current_app.logger.error(f"Error resolving issue {issue_id}", exc_info=True)
+        current_app.logger.error(f"Error resolving issue {issue_id}")
         flash("An error occurred while resolving the issue. Please try again.", "error")
         return redirect(url_for('admin.view_issue', issue_ref=make_opaque_ref('issue', issue.id)))
 
@@ -11272,7 +11272,7 @@ def escalate_issue(issue_ref):
 
     except Exception as e:
         db.session.rollback()
-        current_app.logger.error(f"Error escalating issue {issue_id}", exc_info=True)
+        current_app.logger.error(f"Error escalating issue {issue_id}")
         flash("An error occurred while escalating the issue. Please try again.", "error")
         return redirect(url_for('admin.view_issue', issue_ref=make_opaque_ref('issue', issue.id)))
 
@@ -11323,7 +11323,7 @@ def close_issue(issue_ref):
         flash("Issue closed.", "success")
     except Exception:
         db.session.rollback()
-        current_app.logger.error(f"Error closing issue {issue_id}", exc_info=True)
+        current_app.logger.error(f"Error closing issue {issue_id}")
         flash("An error occurred while closing the issue. Please try again.", "error")
 
     return redirect(url_for('admin.issues_queue'))
