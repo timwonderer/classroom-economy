@@ -45,21 +45,25 @@ def get_entitlement_balance(
     """
     Derive available entitlements from EntitlementEvent history.
 
-    Counts:
-    - GRANTED events (acquisition)
-    - Minus CONSUMED events (used)
-    - Minus EXPIRED events (time-limited)
-    - Minus REVOKED events (withdrawn)
+    Formula: (GRANTED count) - (CONSUMED + EXPIRED + REVOKED count)
+
+    Preconditions:
+    - seat_id must be valid in class
+    - class_id must exist
+    - entitlement_type must be one of: HALL_PASS, INSURANCE, PRIVILEGE, IMMEDIATE_USE, DELAYED_USE, COLLECTIVE_GOAL
+    - If reference_time_utc provided, used for expiration window checks (TODO)
 
     Args:
         seat_id: Target seat
         class_id: Class scope
-        entitlement_type: HALL_PASS, INSURANCE, PRIVILEGE, etc.
+        entitlement_type: Entitlement type (see preconditions)
         product_id: Optional product filter
-        reference_time_utc: Optional timestamp for expiration checks
+        reference_time_utc: Optional timestamp for expiration checks (not yet used)
 
     Returns:
-        Available count (may be negative if overclaimed)
+        Available count as integer (may be negative if overclaimed)
+
+    Purity: Pure (read-only query, deterministic result based on immutable events)
     """
     # Count GRANTED events
     granted = (
@@ -102,13 +106,23 @@ def is_entitlement_exercisable(
     """
     Check if an entitlement is exercisable (no terminal event + not expired).
 
+    Preconditions:
+    - entitlement_id must exist with event_type='GRANTED'
+    - class_id must be valid
+    - If reference_time_utc provided, used for expiration checks (TODO: not yet implemented)
+
     Args:
         entitlement_id: The entitlement lineage ID
         class_id: Class scope
-        reference_time_utc: Time to check expiration against
+        reference_time_utc: Time to check expiration against (not yet used)
 
     Returns:
-        True if entitlement can still be used
+        True if entitlement has no terminal event (can still be used)
+
+    Purity: Pure (read-only query)
+
+    Note: Expiration window checks not yet implemented. Currently only checks
+          for terminal events (CONSUMED, EXPIRED, REVOKED).
     """
     # Check if any terminal event exists for this entitlement
     terminal_event = (
@@ -137,16 +151,29 @@ def get_entitlement_history(
     limit: int = 100,
 ) -> list[dict]:
     """
-    Return EntitlementEvent rows for audit/display.
+    Return all EntitlementEvent rows for a seat (audit trail).
+
+    Returns events in reverse chronological order (newest first).
+
+    Preconditions:
+    - seat_id must be valid in class
+    - class_id must exist
+    - limit must be positive integer
 
     Args:
         seat_id: Target seat
         class_id: Class scope
-        product_id: Optional product filter
-        limit: Max rows to return
+        product_id: Optional product filter (if provided, only returns events for this product)
+        limit: Max rows to return (default 100)
 
     Returns:
-        List of event dicts in chronological order
+        List of event dicts (newest first), each containing:
+        - event_id, entitlement_id, event_type, acquisition_type, entitlement_type,
+          product_id, timestamp (ISO format), correlation_id
+
+    Purity: Pure (read-only query)
+
+    Freshness: Point-in-time snapshot at query time
     """
     query = (
         EntitlementEvent.query
@@ -188,11 +215,19 @@ def get_entitlement_lineage_terminal_event(
     """
     Get the terminal event for an entitlement lineage (if any).
 
-    Used by cross-domain services to detect consumption.
-    For example, Productivity domain checks if hall-pass was consumed.
+    Used by cross-domain services to detect if entitlement has been consumed/expired/revoked.
+    Example: Productivity domain checks if hall-pass was consumed before logging usage.
+
+    Preconditions:
+    - entitlement_id must exist with event_type='GRANTED'
+    - class_id must be valid
 
     Returns:
-        Terminal event (CONSUMED, EXPIRED, REVOKED) or None if exercisable
+        Terminal event object (CONSUMED, EXPIRED, or REVOKED) if one exists, else None
+
+    Purity: Pure (read-only query)
+
+    Cross-Domain Use: Safe for external domains to call (returns immutable event object)
     """
     return (
         EntitlementEvent.query
@@ -211,9 +246,29 @@ def list_entitlements_for_seat(
     entitlement_type: Optional[str] = None,
 ) -> list[dict]:
     """
-    List all entitlements for a seat (all events, not just available).
+    List all entitlements for a seat (all event types: GRANTED, CONSUMED, EXPIRED, REVOKED).
 
-    Used for display and audit purposes.
+    Used for display, audit, and dashboard purposes.
+
+    Preconditions:
+    - seat_id must be valid in class
+    - class_id must exist
+    - entitlement_type is optional filter
+
+    Args:
+        seat_id: Target seat
+        class_id: Class scope
+        entitlement_type: Optional filter (HALL_PASS, INSURANCE, PRIVILEGE, etc.)
+
+    Returns:
+        List of event dicts (newest first), each containing:
+        - event_id, entitlement_id, event_type, acquisition_type, entitlement_type,
+          product_id, timestamp (ISO format)
+
+    Purity: Pure (read-only query)
+
+    Note: Returns all events for seat regardless of status. Caller should use
+          get_entitlement_status() to determine if entitlement is active.
     """
     query = (
         EntitlementEvent.query
@@ -253,19 +308,30 @@ def derive_claim_allowance(
     reference_time_utc: datetime,
 ) -> int:
     """
-    Derive remaining claims from policy rules + EntitlementEvent history.
+    Derive remaining claims allowed from policy config + EntitlementEvent history.
 
-    INVARIANT: Do not query a persisted claims_remaining counter.
-    Always derive from policy rules + event history.
+    INVARIANT: Do NOT query a persisted claims_remaining counter.
+    Always derive from policy rules + immutable event history.
+
+    Preconditions:
+    - entitlement_id must exist with entitlement_type='INSURANCE'
+    - class_id must be valid
+    - policy_config must have 'max_claims_per_month' key
+    - reference_time_utc must be valid datetime
 
     Args:
         entitlement_id: Insurance entitlement lineage
         class_id: Class scope
         policy_config: Dict with claim limits (e.g., {"max_claims_per_month": 3})
-        reference_time_utc: Current time for period calculation
+        reference_time_utc: Current time for period calculation (TODO: not yet used for filtering)
 
     Returns:
-        Remaining claims allowed (e.g., 2 out of 3)
+        Remaining claims allowed (e.g., 2 if max is 3 and 1 already used)
+
+    Purity: Pure (read-only query, deterministic derivation)
+
+    Note: Period filtering (e.g., "within current month") not yet implemented.
+          Currently counts all CONSUMED events without time window.
     """
     # Get all CONSUMED events for this entitlement (represent claims used)
     consumed_events = (
@@ -289,6 +355,110 @@ def derive_claim_allowance(
 
 
 # ---------------------------------------------------------------------------
+# Entitlement Status Derivation
+# ---------------------------------------------------------------------------
+
+
+def get_entitlement_status(
+    entitlement_id: str,
+    class_id: str,
+) -> str:
+    """
+    Derive the current status of an entitlement from its event history.
+
+    Examines terminal events in order of precedence:
+    1. REVOKED (administratively withdrawn)
+    2. EXPIRED (time window passed)
+    3. CONSUMED (used)
+    4. GRANTED (default if no terminal event)
+
+    Preconditions:
+    - entitlement_id must exist in EntitlementEvent with event_type='GRANTED'
+    - class_id must be valid and scope must match
+
+    Returns:
+        'GRANTED', 'CONSUMED', 'EXPIRED', 'REVOKED', or 'UNKNOWN'
+
+    Purity: Pure (read-only query, deterministic result)
+    """
+    # Check for terminal events in precedence order
+    for event_type in ["REVOKED", "EXPIRED", "CONSUMED"]:
+        event = (
+            EntitlementEvent.query
+            .filter(
+                EntitlementEvent.entitlement_id == entitlement_id,
+                EntitlementEvent.class_id == class_id,
+                EntitlementEvent.event_type == event_type,
+            )
+            .first()
+        )
+        if event:
+            return event_type
+
+    # No terminal event found; check if GRANTED exists
+    granted = (
+        EntitlementEvent.query
+        .filter(
+            EntitlementEvent.entitlement_id == entitlement_id,
+            EntitlementEvent.class_id == class_id,
+            EntitlementEvent.event_type == "GRANTED",
+        )
+        .first()
+    )
+
+    if granted:
+        return "GRANTED"
+
+    return "UNKNOWN"
+
+
+def get_active_entitlements(
+    seat_id: int,
+    class_id: str,
+    product_id: Optional[int] = None,
+    entitlement_type: Optional[str] = None,
+) -> list[EntitlementEvent]:
+    """
+    Get all GRANTED (active, non-terminal) entitlements for a seat.
+
+    Returns GRANTED events; caller should check for terminal events
+    if precise availability is needed.
+
+    Preconditions:
+    - seat_id must be valid in class
+    - class_id must exist
+    - product_id and entitlement_type are optional filters
+
+    Args:
+        seat_id: Target seat
+        class_id: Class scope
+        product_id: Optional product filter
+        entitlement_type: Optional entitlement type filter
+
+    Returns:
+        List of GRANTED EntitlementEvent objects
+
+    Purity: Pure (read-only query)
+    """
+    query = (
+        EntitlementEvent.query
+        .filter(
+            EntitlementEvent.target_seat_id == seat_id,
+            EntitlementEvent.class_id == class_id,
+            EntitlementEvent.event_type == "GRANTED",
+        )
+    )
+
+    if product_id is not None:
+        query = query.filter(EntitlementEvent.product_id == product_id)
+
+    if entitlement_type is not None:
+        query = query.filter(EntitlementEvent.entitlement_type == entitlement_type)
+
+    return query.all()
+
+
+# ---------------------------------------------------------------------------
 # Store Purchase Query Helpers (Operational Support)
 # ---------------------------------------------------------------------------
 
@@ -303,6 +473,11 @@ def get_purchase_count(
 
     Queries GRANTED events with acquisition_type='PURCHASE' for the product.
 
+    Preconditions:
+    - seat_id must be valid in class
+    - class_id must exist
+    - product_id must be valid
+
     Args:
         seat_id: Target seat
         class_id: Class scope
@@ -310,6 +485,8 @@ def get_purchase_count(
 
     Returns:
         Number of times this product was purchased by this seat
+
+    Purity: Pure (read-only, deterministic count)
     """
     purchase_count = (
         db.session.query(db.func.count(EntitlementEvent.event_id))
