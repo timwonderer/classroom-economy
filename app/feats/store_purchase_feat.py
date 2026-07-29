@@ -1,13 +1,19 @@
 """
-FEAT-STOR-001: Store Purchase and Entitlement Grant (v3.0)
+FEAT-STOR-001: Store Purchase and Entitlement Grant (v4.0)
 
 Orchestrates the complete purchase lifecycle:
-- Validates purchase eligibility (product, quantity, financial)
+- Accepts exact policy_uuid (no discovery/inference)
+- Resolves policy and validates per SPEC-STORE-001
+- Validates purchase eligibility (is_purchasable, per-student limits, financial)
 - Coordinates Ledger purchase resolution
 - Creates immutable EntitlementEvent rows (one per unit)
 - Handles instant-use coordination if applicable
 
 All mutations (Ledger + EntitlementEvent) succeed or fail together (atomic).
+
+Contract: Caller is responsible for discovering which policy applies (via
+get_applicable_policies). This FEAT accepts exact policy_uuid and executes
+without inference.
 """
 
 from __future__ import annotations
@@ -26,6 +32,7 @@ from app.feats.ledger_resolution_feat import (
 )
 from app.models import Seat, EntitlementEvent, ClassEconomy
 from app.services.context_resolver import CanonicalContext
+from app.services.store_policy_resolver import StorePolicyResolver, PolicyNotFound, PolicyParseError, PolicyValidationError
 from app.utils.canonical_temporal_resolver import canonical_temporal_resolver, CLASS_LEVEL_EVALUATION
 from app.utils.time import utc_now
 
@@ -50,7 +57,7 @@ class StorePurchaseResult:
 def execute_store_purchase(
     *,
     canonical_context: CanonicalContext,
-    product_id: int,
+    policy_uuid: str,
     quantity: int,
     correlation_id: str | None = None,
     idempotency_key: str | None = None,
@@ -61,7 +68,7 @@ def execute_store_purchase(
 
     Args:
         canonical_context: CanonicalContext with user_id, class_id, seat_id, actor_role
-        product_id: Configured product identifier
+        policy_uuid: Exact policy UUID to resolve and execute against (no inference)
         quantity: Positive integer number of units
         correlation_id: Optional; generated if not provided
         idempotency_key: Optional replay guard
@@ -69,11 +76,14 @@ def execute_store_purchase(
 
     Returns:
         StorePurchaseResult with success status and granted entitlements
+
+    Contract: Caller is responsible for discovering which policy applies.
+    This FEAT accepts the exact policy_uuid and resolves it without inference.
     """
     # Use decorator's idempotency generation if not provided
     return _execute_store_purchase_impl(
         canonical_context=canonical_context,
-        product_id=product_id,
+        policy_uuid=policy_uuid,
         quantity=quantity,
         correlation_id=correlation_id,
         idempotency_key=idempotency_key,
@@ -85,7 +95,7 @@ def execute_store_purchase(
 def _execute_store_purchase_impl(
     *,
     canonical_context: CanonicalContext,
-    product_id: int,
+    policy_uuid: str,
     quantity: int,
     correlation_id: str | None = None,
     idempotency_key: str | None = None,
@@ -93,6 +103,8 @@ def _execute_store_purchase_impl(
 ) -> StorePurchaseResult:
     """
     Internal implementation wrapped in @feat_shell for context management.
+
+    Exact resolution: accept policy_uuid and resolve without inference.
     """
 
     # =========================================================================
@@ -130,16 +142,69 @@ def _execute_store_purchase_impl(
             error_message="Quantity must be a positive integer",
         )
 
-    # TODO: Validate product exists and is purchasable
-    # This requires reading from Policy/Class Configuration domain
-    # For MVP, we assume product_id is valid
+    # =========================================================================
+    # Resolve and validate product policy per SPEC-STORE-001
+    # =========================================================================
 
-    # TODO: Validate eligibility rules (per-seat limits, obligations, etc.)
-    # This requires reading from Obligations domain and Policy configuration
+    # Exact resolution: resolve supplied policy_uuid without inference.
+    # Caller is responsible for discovering which policy applies.
+    try:
+        policy_config = StorePolicyResolver.resolve_store_item(policy_uuid)
+    except PolicyNotFound:
+        return StorePurchaseResult(
+            success=False,
+            correlation_id="",
+            quantity_granted=0,
+            error_code="POLICY_NOT_FOUND",
+            error_message=f"Policy UUID {policy_uuid} not found (may have been deleted)",
+        )
+    except (PolicyParseError, PolicyValidationError) as e:
+        return StorePurchaseResult(
+            success=False,
+            correlation_id="",
+            quantity_granted=0,
+            error_code="POLICY_INVALID",
+            error_message=f"Policy validation failed: {str(e)}",
+        )
 
-    # TODO: Validate financial plan and get Ledger resolution
-    # For MVP, we assume purchase succeeds (amount = quantity * unit_price)
-    # In production, call resolve_intended_ledger_plan() and check outcome
+    # Verify policy belongs to the canonical class scope
+    if policy_config.class_id != canonical_context.class_id:
+        return StorePurchaseResult(
+            success=False,
+            correlation_id="",
+            quantity_granted=0,
+            error_code="POLICY_SCOPE_MISMATCH",
+            error_message=f"Policy UUID {policy_uuid} belongs to different class ({policy_config.class_id} vs {canonical_context.class_id})",
+        )
+
+    # Validate is_purchasable (FEAT-STOR-001 specific constraint)
+    if not policy_config.is_purchasable:
+        return StorePurchaseResult(
+            success=False,
+            correlation_id="",
+            quantity_granted=0,
+            error_code="PRODUCT_NOT_PURCHASABLE",
+            error_message=f"Product {policy_config.product_id} is not purchasable",
+        )
+
+    # Validate per-student limit (if configured)
+    if policy_config.limit_per_student is not None:
+        # Count existing GRANTED entitlements for this seat and product
+        existing_count = db.session.query(EntitlementEvent).filter_by(
+            class_id=canonical_context.class_id,
+            target_seat_id=canonical_context.seat_id,
+            product_id=policy_config.product_id,
+            event_type='GRANTED',
+        ).count()
+
+        if existing_count + quantity > policy_config.limit_per_student:
+            return StorePurchaseResult(
+                success=False,
+                correlation_id="",
+                quantity_granted=0,
+                error_code="LIMIT_EXCEEDED",
+                error_message=f"Purchasing {quantity} would exceed per-student limit of {policy_config.limit_per_student}",
+            )
 
     # Generate or use provided correlation ID
     corr_id = correlation_id or f"store_purchase_{uuid.uuid4().hex}"
@@ -185,22 +250,27 @@ def _execute_store_purchase_impl(
     for unit_idx in range(quantity):
         entitlement_id = str(uuid.uuid4())
 
+        # Build event payload per DOM-STORE-001
+        # Contains type-specific facts about this purchase event (not policy rules)
+        event_payload = {
+            "unit_index": unit_idx,
+            "quantity_total": quantity,
+            "instant_use": instant_use,
+            "policy_uuid": policy_config.policy_uuid,  # For audit/historical reference
+        }
+
         event = EntitlementEvent(
             event_id=str(uuid.uuid4()),
             entitlement_id=entitlement_id,
             class_id=canonical_context.class_id,
             target_seat_id=canonical_context.seat_id,
             actor_seat_id=canonical_context.seat_id,
-            product_id=product_id,
-            entitlement_type="DELAYED_USE",  # TODO: Read from product config
+            product_id=policy_config.product_id,  # Product identifier from resolved policy (per SPEC-STORE-001)
+            entitlement_type=policy_config.entitlement_type,  # From resolved policy
             acquisition_type="PURCHASE",
             event_type="GRANTED",
             correlation_id=corr_id,
-            payload={
-                "unit_index": unit_idx,
-                "quantity_total": quantity,
-                "instant_use": instant_use,
-            },
+            payload=event_payload,
             timestamp=timestamp_utc,
         )
         db.session.add(event)
@@ -221,14 +291,15 @@ def _execute_store_purchase_impl(
                 class_id=canonical_context.class_id,
                 target_seat_id=canonical_context.seat_id,
                 actor_seat_id=canonical_context.seat_id,
-                product_id=product_id,
-                entitlement_type="DELAYED_USE",
+                product_id=policy_config.product_id,  # From resolved policy
+                entitlement_type=policy_config.entitlement_type,  # From resolved policy
                 acquisition_type="PURCHASE",
                 event_type="CONSUMED",
                 correlation_id=corr_id,
                 payload={
                     "consumed_at_purchase": True,
                     "purchase_instant_use": True,
+                    "policy_uuid": policy_config.policy_uuid,
                 },
                 timestamp=timestamp_utc,
             )
@@ -241,7 +312,7 @@ def _execute_store_purchase_impl(
         correlation_id=corr_id,
         quantity_granted=quantity,
         entitlement_ids=entitlement_ids,
-        product_id=product_id,
+        product_id=policy_config.product_id,  # From resolved policy
         error_code=None,
         error_message=None,
     )
