@@ -18,7 +18,7 @@ from app.extensions import db
 from app.models import Seat, User, ClassEconomy, EntitlementEvent, UserRole
 from app.services.context_resolver import CanonicalContext
 from app.feats.direct_entitlement_grant_feat import execute_direct_grant, DirectGrantResult
-from tests.helpers.class_scope import create_class_scope, make_student_seat
+from tests.helpers.canonical_classroom import provision_classroom
 
 
 @pytest.fixture
@@ -32,48 +32,16 @@ def app_with_class(app):
 def test_class_with_students(app_with_class):
     """Create a test class with teacher and student seats."""
     with app_with_class.app_context():
-        class_scope = create_class_scope()
-        teacher = class_scope["teacher"]
-        class_id = class_scope["class_id"]
-
-        # Create teacher seat (not typically how teachers work, but needed for context)
-        # In reality, teachers don't have Seat records; but for FEAT context we need one for testing
-        teacher_seat = Seat(
-            user_id=teacher.id,
-            class_id=class_id,
-        )
-        db.session.add(teacher_seat)
-
-        # Create student seats
-        student_user_1 = class_scope["student_user"]
-        student_seat_1 = make_student_seat(
-            user_id=student_user_1.id,
-            class_id=class_id,
-        )
-
-        # Create second student for testing multiple grants
-        student_user_2 = User(
-            username_hash=f"student_2_{uuid.uuid4().hex}",
-            user_role=UserRole.STUDENT,
-        )
-        db.session.add(student_user_2)
-        db.session.flush()
-
-        student_seat_2 = make_student_seat(
-            user_id=student_user_2.id,
-            class_id=class_id,
-        )
-
-        db.session.commit()
+        classroom = provision_classroom("chemistry_p1")
 
         return {
-            "class_id": class_id,
-            "teacher": teacher,
-            "teacher_seat": teacher_seat,
-            "student_user_1": student_user_1,
-            "student_seat_1": student_seat_1,
-            "student_user_2": student_user_2,
-            "student_seat_2": student_seat_2,
+            "class_id": classroom.class_id,
+            "teacher_user_id": classroom.teacher_user_id,
+            "teacher_seat_id": classroom.teacher_seat_id,
+            "student_user_1_id": classroom.students[0].user_id,
+            "student_seat_1_id": classroom.students[0].seat_id,
+            "student_user_2_id": classroom.students[1].user_id,
+            "student_seat_2_id": classroom.students[1].seat_id,
         }
 
 
@@ -84,20 +52,20 @@ class TestDirectGrantHappyPath:
         """Teacher can grant entitlements to a student."""
         with app_with_class.app_context():
             class_id = test_class_with_students["class_id"]
-            teacher_seat = test_class_with_students["teacher_seat"]
-            student_seat = test_class_with_students["student_seat_1"]
-            teacher_user = test_class_with_students["teacher"]
+            teacher_seat_id = test_class_with_students["teacher_seat_id"]
+            student_seat_id = test_class_with_students["student_seat_1_id"]
+            teacher_user_id = test_class_with_students["teacher_user_id"]
 
             ctx = CanonicalContext(
-                user_id=teacher_user.id,
+                user_id=teacher_user_id,
                 class_id=class_id,
-                seat_id=teacher_seat.id,
+                seat_id=teacher_seat_id,
                 actor_role="teacher",
             )
 
             result = execute_direct_grant(
                 canonical_context=ctx,
-                target_seat_id=student_seat.id,
+                target_seat_id=student_seat_id,
                 product_id=101,
                 quantity=3,
             )
@@ -111,7 +79,7 @@ class TestDirectGrantHappyPath:
             # Verify EntitlementEvent rows created
             events = (
                 EntitlementEvent.query
-                .filter_by(class_id=class_id, target_seat_id=student_seat.id)
+                .filter_by(class_id=class_id, target_seat_id=student_seat_id)
                 .filter_by(event_type="GRANTED")
                 .filter_by(acquisition_type="GRANT")
                 .order_by(EntitlementEvent.timestamp)
@@ -121,28 +89,28 @@ class TestDirectGrantHappyPath:
             assert len(events) == 3
             assert all(e.correlation_id == result.correlation_id for e in events)
             assert all(e.product_id == 101 for e in events)
-            assert all(e.actor_seat_id == teacher_seat.id for e in events)
+            assert all(e.actor_seat_id == teacher_seat_id for e in events)
 
     def test_grant_uses_provided_correlation_id(self, app_with_class, test_class_with_students):
         """Grant uses provided correlation_id."""
         with app_with_class.app_context():
             class_id = test_class_with_students["class_id"]
-            teacher_seat = test_class_with_students["teacher_seat"]
-            student_seat = test_class_with_students["student_seat_1"]
-            teacher_user = test_class_with_students["teacher"]
+            teacher_seat_id = test_class_with_students["teacher_seat_id"]
+            student_seat_id = test_class_with_students["student_seat_1_id"]
+            teacher_user_id = test_class_with_students["teacher_user_id"]
 
             provided_corr_id = "grant_corr_123"
 
             ctx = CanonicalContext(
-                user_id=teacher_user.id,
+                user_id=teacher_user_id,
                 class_id=class_id,
-                seat_id=teacher_seat.id,
+                seat_id=teacher_seat_id,
                 actor_role="teacher",
             )
 
             result = execute_direct_grant(
                 canonical_context=ctx,
-                target_seat_id=student_seat.id,
+                target_seat_id=student_seat_id,
                 product_id=102,
                 quantity=1,
                 correlation_id=provided_corr_id,
@@ -159,20 +127,20 @@ class TestQuantityLogic:
         """Quantity=5 creates 5 EntitlementEvent rows."""
         with app_with_class.app_context():
             class_id = test_class_with_students["class_id"]
-            teacher_seat = test_class_with_students["teacher_seat"]
-            student_seat = test_class_with_students["student_seat_1"]
-            teacher_user = test_class_with_students["teacher"]
+            teacher_seat_id = test_class_with_students["teacher_seat_id"]
+            student_seat_id = test_class_with_students["student_seat_1_id"]
+            teacher_user_id = test_class_with_students["teacher_user_id"]
 
             ctx = CanonicalContext(
-                user_id=teacher_user.id,
+                user_id=teacher_user_id,
                 class_id=class_id,
-                seat_id=teacher_seat.id,
+                seat_id=teacher_seat_id,
                 actor_role="teacher",
             )
 
             result = execute_direct_grant(
                 canonical_context=ctx,
-                target_seat_id=student_seat.id,
+                target_seat_id=student_seat_id,
                 product_id=103,
                 quantity=5,
             )
@@ -201,20 +169,20 @@ class TestValidationFailures:
         """Student cannot grant entitlements (must be teacher)."""
         with app_with_class.app_context():
             class_id = test_class_with_students["class_id"]
-            student_seat_1 = test_class_with_students["student_seat_1"]
-            student_seat_2 = test_class_with_students["student_seat_2"]
-            student_user_1 = test_class_with_students["student_user_1"]
+            student_seat_1_id = test_class_with_students["student_seat_1_id"]
+            student_seat_2_id = test_class_with_students["student_seat_2_id"]
+            student_user_1_id = test_class_with_students["student_user_1_id"]
 
             ctx = CanonicalContext(
-                user_id=student_user_1.id,
+                user_id=student_user_1_id,
                 class_id=class_id,
-                seat_id=student_seat_1.id,
+                seat_id=student_seat_1_id,
                 actor_role="student",  # Not "teacher"
             )
 
             result = execute_direct_grant(
                 canonical_context=ctx,
-                target_seat_id=student_seat_2.id,
+                target_seat_id=student_seat_2_id,
                 product_id=104,
                 quantity=1,
             )
@@ -227,20 +195,20 @@ class TestValidationFailures:
         """Grant with quantity=0 is rejected."""
         with app_with_class.app_context():
             class_id = test_class_with_students["class_id"]
-            teacher_seat = test_class_with_students["teacher_seat"]
-            student_seat = test_class_with_students["student_seat_1"]
-            teacher_user = test_class_with_students["teacher"]
+            teacher_seat_id = test_class_with_students["teacher_seat_id"]
+            student_seat_id = test_class_with_students["student_seat_1_id"]
+            teacher_user_id = test_class_with_students["teacher_user_id"]
 
             ctx = CanonicalContext(
-                user_id=teacher_user.id,
+                user_id=teacher_user_id,
                 class_id=class_id,
-                seat_id=teacher_seat.id,
+                seat_id=teacher_seat_id,
                 actor_role="teacher",
             )
 
             result = execute_direct_grant(
                 canonical_context=ctx,
-                target_seat_id=student_seat.id,
+                target_seat_id=student_seat_id,
                 product_id=105,
                 quantity=0,
             )
@@ -252,28 +220,24 @@ class TestValidationFailures:
         """Grant to seat outside class scope is rejected."""
         with app_with_class.app_context():
             # Create second class
-            class_scope_2 = create_class_scope()
-            foreign_student_seat = make_student_seat(
-                user_id=class_scope_2["student_user"].id,
-                class_id=class_scope_2["class_id"],
-            )
-            db.session.commit()
+            class_scope_2 = provision_classroom("ap_csp_p3")
+            foreign_student_seat_id = class_scope_2.students[0].seat_id
 
             # Try to grant from class_1 to student in class_2
             class_id = test_class_with_students["class_id"]
-            teacher_seat = test_class_with_students["teacher_seat"]
-            teacher_user = test_class_with_students["teacher"]
+            teacher_seat_id = test_class_with_students["teacher_seat_id"]
+            teacher_user_id = test_class_with_students["teacher_user_id"]
 
             ctx = CanonicalContext(
-                user_id=teacher_user.id,
+                user_id=teacher_user_id,
                 class_id=class_id,
-                seat_id=teacher_seat.id,
+                seat_id=teacher_seat_id,
                 actor_role="teacher",
             )
 
             result = execute_direct_grant(
                 canonical_context=ctx,
-                target_seat_id=foreign_student_seat.id,  # Different class
+                target_seat_id=foreign_student_seat_id,  # Different class
                 product_id=106,
                 quantity=1,
             )
@@ -289,21 +253,21 @@ class TestHallPassGrants:
         """Hall-pass grants don't create mutable balance rows."""
         with app_with_class.app_context():
             class_id = test_class_with_students["class_id"]
-            teacher_seat = test_class_with_students["teacher_seat"]
-            student_seat = test_class_with_students["student_seat_1"]
-            teacher_user = test_class_with_students["teacher"]
+            teacher_seat_id = test_class_with_students["teacher_seat_id"]
+            student_seat_id = test_class_with_students["student_seat_1_id"]
+            teacher_user_id = test_class_with_students["teacher_user_id"]
 
             ctx = CanonicalContext(
-                user_id=teacher_user.id,
+                user_id=teacher_user_id,
                 class_id=class_id,
-                seat_id=teacher_seat.id,
+                seat_id=teacher_seat_id,
                 actor_role="teacher",
             )
 
             # Grant 3 hall passes
             result = execute_direct_grant(
                 canonical_context=ctx,
-                target_seat_id=student_seat.id,
+                target_seat_id=student_seat_id,
                 product_id=201,  # Hall-pass product
                 quantity=3,
             )
@@ -329,14 +293,14 @@ class TestIdempotency:
         """Replaying with same idempotency_key should be safe."""
         with app_with_class.app_context():
             class_id = test_class_with_students["class_id"]
-            teacher_seat = test_class_with_students["teacher_seat"]
-            student_seat = test_class_with_students["student_seat_1"]
-            teacher_user = test_class_with_students["teacher"]
+            teacher_seat_id = test_class_with_students["teacher_seat_id"]
+            student_seat_id = test_class_with_students["student_seat_1_id"]
+            teacher_user_id = test_class_with_students["teacher_user_id"]
 
             ctx = CanonicalContext(
-                user_id=teacher_user.id,
+                user_id=teacher_user_id,
                 class_id=class_id,
-                seat_id=teacher_seat.id,
+                seat_id=teacher_seat_id,
                 actor_role="teacher",
             )
 
@@ -345,7 +309,7 @@ class TestIdempotency:
             # First grant
             result1 = execute_direct_grant(
                 canonical_context=ctx,
-                target_seat_id=student_seat.id,
+                target_seat_id=student_seat_id,
                 product_id=107,
                 quantity=2,
                 idempotency_key=idempotency_key,
@@ -359,7 +323,7 @@ class TestIdempotency:
             # Replay with same idempotency_key
             result2 = execute_direct_grant(
                 canonical_context=ctx,
-                target_seat_id=student_seat.id,
+                target_seat_id=student_seat_id,
                 product_id=107,
                 quantity=2,
                 idempotency_key=idempotency_key,
@@ -376,45 +340,41 @@ class TestCrossClassIsolation:
         """Grants in different classes are isolated."""
         with app_with_class.app_context():
             # Create two class scopes
-            scope1 = create_class_scope()
-            scope2 = create_class_scope()
+            scope1 = provision_classroom("chemistry_p1")
+            scope2 = provision_classroom("ap_csp_p3")
 
-            # Create teacher seats for each class
-            teacher1_seat = Seat(user_id=scope1["teacher"].id, class_id=scope1["class_id"])
-            teacher2_seat = Seat(user_id=scope2["teacher"].id, class_id=scope2["class_id"])
-            db.session.add_all([teacher1_seat, teacher2_seat])
+            teacher1_seat_id = scope1.teacher_seat_id
+            teacher2_seat_id = scope2.teacher_seat_id
 
-            # Create student seats
-            student1_seat = make_student_seat(user_id=scope1["student_user"].id, class_id=scope1["class_id"])
-            student2_seat = make_student_seat(user_id=scope2["student_user"].id, class_id=scope2["class_id"])
-            db.session.commit()
+            student1_seat_id = scope1.students[0].seat_id
+            student2_seat_id = scope2.students[0].seat_id
 
             # Grant in class 1
             ctx1 = CanonicalContext(
-                user_id=scope1["teacher"].id,
-                class_id=scope1["class_id"],
-                seat_id=teacher1_seat.id,
+                user_id=scope1.teacher_user_id,
+                class_id=scope1.class_id,
+                seat_id=teacher1_seat_id,
                 actor_role="teacher",
             )
 
             result1 = execute_direct_grant(
                 canonical_context=ctx1,
-                target_seat_id=student1_seat.id,
+                target_seat_id=student1_seat_id,
                 product_id=301,
                 quantity=2,
             )
 
             # Grant in class 2
             ctx2 = CanonicalContext(
-                user_id=scope2["teacher"].id,
-                class_id=scope2["class_id"],
-                seat_id=teacher2_seat.id,
+                user_id=scope2.teacher_user_id,
+                class_id=scope2.class_id,
+                seat_id=teacher2_seat_id,
                 actor_role="teacher",
             )
 
             result2 = execute_direct_grant(
                 canonical_context=ctx2,
-                target_seat_id=student2_seat.id,
+                target_seat_id=student2_seat_id,
                 product_id=302,
                 quantity=3,
             )

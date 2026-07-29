@@ -7,57 +7,42 @@ because FEAT execution always supplies exact policy_uuid.
 
 import pytest
 from decimal import Decimal
-from datetime import datetime, timedelta
+from datetime import timedelta
 from app.extensions import db
-from app.models import StoreProduct, ClassEconomy, Seat, User
+from app.feats.base import FEATContext
+from app.models import StoreProduct
 from app.services.store_policy_resolver import (
     StorePolicyResolver,
-    StorePolicyConfig,
     StorePolicyConfigParser,
+    StorePolicyError,
     PolicyNotFound,
     PolicyParseError,
     PolicyValidationError,
 )
 from app.utils.time import utc_now
+from tests.helpers.canonical_classroom import provision_classroom
 
 
 @pytest.fixture
-def test_class(app):
-    """Create a test class."""
+def canonical_classroom(app):
+    """Create a canonical classroom through production code."""
     with app.app_context():
-        class_economy = ClassEconomy(
-            class_id="test-class-123",
-            join_code="TEST123",
-            display_name="Test Class",
-        )
-        db.session.add(class_economy)
-        db.session.commit()
-        return class_economy
+        return provision_classroom("chemistry_p1")
 
 
 @pytest.fixture
-def test_user(app):
-    """Create a test user."""
-    with app.app_context():
-        user = User(id=999, username_hash="test_hash")
-        db.session.add(user)
-        db.session.commit()
-        return user
+def test_class(canonical_classroom):
+    return {"class_id": canonical_classroom.class_id}
 
 
 @pytest.fixture
-def teacher_seat(app, test_class, test_user):
-    """Create a teacher seat."""
-    with app.app_context():
-        seat = Seat(
-            id=1000,
-            user_id=test_user.id,
-            class_id=test_class.class_id,
-            role="teacher",
-        )
-        db.session.add(seat)
-        db.session.commit()
-        return seat
+def test_user(canonical_classroom):
+    return {"user_id": canonical_classroom.teacher_user_id}
+
+
+@pytest.fixture
+def teacher_seat(canonical_classroom):
+    return {"seat_id": canonical_classroom.teacher_seat_id}
 
 
 class TestStorePolicyConfigParser:
@@ -200,7 +185,7 @@ class TestStorePolicyConfigParser:
                 "collective_goal_expires_at": (utc_now() + timedelta(days=30)).isoformat(),
             }
 
-            with pytest.raises(PolicyValidationError, match="Cannot have both bundle/bulk discount and collective goal"):
+            with pytest.raises(PolicyValidationError, match="COLLECTIVE_GOAL cannot have bundle/bulk discount fields"):
                 StorePolicyConfigParser.parse(payload)
 
 
@@ -210,29 +195,29 @@ class TestStorePolicyResolver:
     def test_resolve_store_item_exact_match(self, app, test_class, teacher_seat):
         """Test resolving policy by exact UUID."""
         with app.app_context():
-            payload = {
-                "product_id": 101,
-                "is_purchasable": True,
-                "supports_direct_grants": True,
-                "price": "50.00",
-                "entitlement_type": "DELAYED_USE",
-            }
+            with FEATContext("FEAT-TEST-SETUP", idempotency_key="store-policy-resolver:exact-match"):
+                payload = {
+                    "product_id": 101,
+                    "is_purchasable": True,
+                    "supports_direct_grants": True,
+                    "price": "50.00",
+                    "entitlement_type": "DELAYED_USE",
+                }
 
-            store_product = StoreProduct(
-                class_id=test_class.class_id,
-                payload=payload,
-                created_by_seat_id=teacher_seat.id,
-            )
-            db.session.add(store_product)
-            db.session.commit()
+                config = StorePolicyResolver.create_store_product(
+                    class_id=test_class["class_id"],
+                    payload=payload,
+                    created_by_seat_id=teacher_seat["seat_id"],
+                )
 
             # Exact resolution by UUID
-            config = StorePolicyResolver.resolve_store_item(store_product.policy_uuid)
+            store_product_uuid = config.policy_uuid
+            config = StorePolicyResolver.resolve_store_item(store_product_uuid)
 
             assert config.product_id == 101
             assert config.entitlement_type == "DELAYED_USE"
-            assert config.policy_uuid == store_product.policy_uuid
-            assert config.class_id == test_class.class_id
+            assert config.policy_uuid == store_product_uuid
+            assert config.class_id == test_class["class_id"]
 
     def test_resolve_store_item_not_found(self, app):
         """Test PolicyNotFound when UUID doesn't exist."""
@@ -243,27 +228,22 @@ class TestStorePolicyResolver:
     def test_resolve_store_item_validation_failure(self, app, test_class, teacher_seat):
         """Test PolicyValidationError propagates from parser."""
         with app.app_context():
-            # Invalid payload (negative price)
-            payload = {
-                "product_id": 101,
-                "is_purchasable": True,
-                "supports_direct_grants": True,
-                "price": "-10.00",  # Invalid
-                "entitlement_type": "DELAYED_USE",
-            }
+            with FEATContext("FEAT-TEST-SETUP", idempotency_key="store-policy-resolver:validation-failure"):
+                # Invalid payload (negative price)
+                payload = {
+                    "product_id": 101,
+                    "is_purchasable": True,
+                    "supports_direct_grants": True,
+                    "price": "-10.00",  # Invalid
+                    "entitlement_type": "DELAYED_USE",
+                }
 
-            store_product = StoreProduct(
-                class_id=test_class.class_id,
-                payload=payload,
-                created_by_seat_id=teacher_seat.id,
-            )
-            db.session.add(store_product)
-            db.session.commit()
-
-            # Resolution should fail
-            from app.services.store_policy_resolver import StorePolicyError
-            with pytest.raises(StorePolicyError):
-                StorePolicyResolver.resolve_store_item(store_product.policy_uuid)
+                with pytest.raises(PolicyValidationError):
+                    StorePolicyResolver.create_store_product(
+                        class_id=test_class["class_id"],
+                        payload=payload,
+                        created_by_seat_id=teacher_seat["seat_id"],
+                    )
 
 
 class TestMultiplePoliciesSameProductId:
@@ -275,111 +255,108 @@ class TestMultiplePoliciesSameProductId:
     def test_multiple_policies_same_product_id_different_uuids(self, app, test_class, teacher_seat):
         """Test multiple non-retired policies for same product_id coexist without ambiguity."""
         with app.app_context():
-            # Policy 1: product_id=101, supports_direct_grants=True
-            payload1 = {
-                "product_id": 101,
-                "is_purchasable": True,
-                "supports_direct_grants": True,
-                "price": "50.00",
-                "entitlement_type": "HALL_PASS",
-            }
-            store_product1 = StoreProduct(
-                class_id=test_class.class_id,
-                payload=payload1,
-                created_by_seat_id=teacher_seat.id,
-            )
-            db.session.add(store_product1)
-            db.session.flush()
+            with FEATContext("FEAT-TEST-SETUP", idempotency_key="store-policy-resolver:multi-policy"):
+                # Policy 1: product_id=101, supports_direct_grants=True
+                payload1 = {
+                    "product_id": 101,
+                    "is_purchasable": True,
+                    "supports_direct_grants": True,
+                    "price": "50.00",
+                    "entitlement_type": "HALL_PASS",
+                }
+                config1 = StorePolicyResolver.create_store_product(
+                    class_id=test_class["class_id"],
+                    payload=payload1,
+                    created_by_seat_id=teacher_seat["seat_id"],
+                )
 
-            # Policy 2: product_id=101, supports_direct_grants=False (different config)
-            payload2 = {
-                "product_id": 101,
-                "is_purchasable": True,
-                "supports_direct_grants": False,  # Different
-                "price": "75.00",  # Different
-                "entitlement_type": "DELAYED_USE",
-            }
-            store_product2 = StoreProduct(
-                class_id=test_class.class_id,
-                payload=payload2,
-                created_by_seat_id=teacher_seat.id,
-            )
-            db.session.add(store_product2)
-            db.session.commit()
+                # Policy 2: product_id=101, supports_direct_grants=False (different config)
+                payload2 = {
+                    "product_id": 101,
+                    "is_purchasable": True,
+                    "supports_direct_grants": False,  # Different
+                    "price": "75.00",  # Different
+                    "entitlement_type": "DELAYED_USE",
+                }
+                config2 = StorePolicyResolver.create_store_product(
+                    class_id=test_class["class_id"],
+                    payload=payload2,
+                    created_by_seat_id=teacher_seat["seat_id"],
+                )
 
-            # Both policies exist
-            assert store_product1.policy_uuid != store_product2.policy_uuid
-            assert store_product1.payload["product_id"] == store_product2.payload["product_id"]
+                # Both policies exist
+                assert config1.policy_uuid != config2.policy_uuid
+                assert config1.product_id == config2.product_id
 
-            # Exact resolution of policy1
-            config1 = StorePolicyResolver.resolve_store_item(store_product1.policy_uuid)
-            assert config1.supports_direct_grants is True
-            assert config1.price == Decimal("50.00")
-            assert config1.entitlement_type == "HALL_PASS"
+                # Exact resolution of policy1
+                resolved1 = StorePolicyResolver.resolve_store_item(config1.policy_uuid)
+                assert resolved1.supports_direct_grants is True
+                assert resolved1.price == Decimal("50.00")
+                assert resolved1.entitlement_type == "HALL_PASS"
 
-            # Exact resolution of policy2
-            config2 = StorePolicyResolver.resolve_store_item(store_product2.policy_uuid)
-            assert config2.supports_direct_grants is False
-            assert config2.price == Decimal("75.00")
-            assert config2.entitlement_type == "DELAYED_USE"
+                # Exact resolution of policy2
+                resolved2 = StorePolicyResolver.resolve_store_item(config2.policy_uuid)
+                assert resolved2.supports_direct_grants is False
+                assert resolved2.price == Decimal("75.00")
+                assert resolved2.entitlement_type == "DELAYED_USE"
 
-            # No ambiguity: each UUID resolves to its exact policy
-            assert config1.policy_uuid != config2.policy_uuid
-            assert config1.supports_direct_grants != config2.supports_direct_grants
+                # No ambiguity: each UUID resolves to its exact policy
+                assert resolved1.policy_uuid != resolved2.policy_uuid
+                assert resolved1.supports_direct_grants != resolved2.supports_direct_grants
 
     def test_policy_deletion_with_multiple_policies(self, app, test_class, teacher_seat):
         """Test deleting one policy doesn't affect others with same product_id."""
         with app.app_context():
-            # Create two policies
-            payload1 = {
-                "product_id": 102,
-                "is_purchasable": True,
-                "supports_direct_grants": True,
-                "price": "50.00",
-                "entitlement_type": "DELAYED_USE",
-            }
-            store_product1 = StoreProduct(
-                class_id=test_class.class_id,
-                payload=payload1,
-                created_by_seat_id=teacher_seat.id,
-            )
-            db.session.add(store_product1)
+            with FEATContext("FEAT-TEST-SETUP", idempotency_key="store-policy-resolver:delete-one"):
+                # Create two policies
+                payload1 = {
+                    "product_id": 102,
+                    "is_purchasable": True,
+                    "supports_direct_grants": True,
+                    "price": "50.00",
+                    "entitlement_type": "DELAYED_USE",
+                }
+                config1 = StorePolicyResolver.create_store_product(
+                    class_id=test_class["class_id"],
+                    payload=payload1,
+                    created_by_seat_id=teacher_seat["seat_id"],
+                )
 
-            payload2 = {
-                "product_id": 102,
-                "is_purchasable": True,
-                "supports_direct_grants": True,
-                "price": "60.00",
-                "entitlement_type": "DELAYED_USE",
-            }
-            store_product2 = StoreProduct(
-                class_id=test_class.class_id,
-                payload=payload2,
-                created_by_seat_id=teacher_seat.id,
-            )
-            db.session.add(store_product2)
-            db.session.commit()
+                payload2 = {
+                    "product_id": 102,
+                    "is_purchasable": True,
+                    "supports_direct_grants": True,
+                    "price": "60.00",
+                    "entitlement_type": "DELAYED_USE",
+                }
+                config2 = StorePolicyResolver.create_store_product(
+                    class_id=test_class["class_id"],
+                    payload=payload2,
+                    created_by_seat_id=teacher_seat["seat_id"],
+                )
 
-            uuid1 = store_product1.policy_uuid
-            uuid2 = store_product2.policy_uuid
+            uuid1 = config1.policy_uuid
+            uuid2 = config2.policy_uuid
 
             # Both resolve
-            config1 = StorePolicyResolver.resolve_store_item(uuid1)
-            config2 = StorePolicyResolver.resolve_store_item(uuid2)
-            assert config1.price == Decimal("50.00")
-            assert config2.price == Decimal("60.00")
+            resolved1 = StorePolicyResolver.resolve_store_item(uuid1)
+            resolved2 = StorePolicyResolver.resolve_store_item(uuid2)
+            assert resolved1.price == Decimal("50.00")
+            assert resolved2.price == Decimal("60.00")
 
             # Delete policy1
-            db.session.delete(store_product1)
-            db.session.commit()
+            with FEATContext("FEAT-TEST-SETUP", idempotency_key="store-policy-resolver:delete-one-cleanup"):
+                store_product1 = db.session.query(StoreProduct).filter_by(policy_uuid=uuid1).one()
+                db.session.delete(store_product1)
+                db.session.flush()
 
             # policy1 UUID no longer resolves (expected behavior)
             with pytest.raises(PolicyNotFound):
                 StorePolicyResolver.resolve_store_item(uuid1)
 
             # policy2 UUID still resolves (unaffected)
-            config2_after = StorePolicyResolver.resolve_store_item(uuid2)
-            assert config2_after.price == Decimal("60.00")
+            resolved2_after = StorePolicyResolver.resolve_store_item(uuid2)
+            assert resolved2_after.price == Decimal("60.00")
 
 
 class TestFeatExactResolution:

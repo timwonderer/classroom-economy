@@ -17,7 +17,7 @@ from app.extensions import db
 from app.models import Seat, User, ClassEconomy, EntitlementEvent
 from app.services.context_resolver import CanonicalContext
 from app.feats.store_purchase_feat import execute_store_purchase, StorePurchaseResult
-from tests.helpers.class_scope import create_class_scope, make_student_seat
+from tests.helpers.canonical_classroom import provision_classroom
 
 
 @pytest.fixture
@@ -31,22 +31,11 @@ def app_with_class(app):
 def test_class_and_seat(app_with_class):
     """Create a test class and student seat."""
     with app_with_class.app_context():
-        class_scope = create_class_scope()
-        teacher = class_scope["teacher"]
-        class_id = class_scope["class_id"]
-
-        # Create student seat
-        student_seat = make_student_seat(
-            user_id=class_scope["student_user"].id,
-            class_id=class_id,
-        )
-        db.session.commit()
-
+        classroom = provision_classroom("chemistry_p1")
         return {
-            "class_id": class_id,
-            "teacher": teacher,
-            "student_user": class_scope["student_user"],
-            "student_seat": student_seat,
+            "class_id": classroom.class_id,
+            "student_user_id": classroom.students[0].user_id,
+            "student_seat_id": classroom.students[0].seat_id,
         }
 
 
@@ -57,13 +46,13 @@ class TestStorePurchaseHappyPath:
         """Purchase of quantity 3 creates 3 GRANTED EntitlementEvent rows."""
         with app_with_class.app_context():
             class_id = test_class_and_seat["class_id"]
-            student_seat = test_class_and_seat["student_seat"]
-            student_user = test_class_and_seat["student_user"]
+            student_seat_id = test_class_and_seat["student_seat_id"]
+            student_user_id = test_class_and_seat["student_user_id"]
 
             ctx = CanonicalContext(
-                user_id=student_user.id,
+                user_id=student_user_id,
                 class_id=class_id,
-                seat_id=student_seat.id,
+                seat_id=student_seat_id,
                 actor_role="student",
             )
 
@@ -82,7 +71,7 @@ class TestStorePurchaseHappyPath:
             # Verify EntitlementEvent rows created
             events = (
                 EntitlementEvent.query
-                .filter_by(class_id=class_id, target_seat_id=student_seat.id)
+                .filter_by(class_id=class_id, target_seat_id=student_seat_id)
                 .filter_by(event_type="GRANTED")
                 .filter_by(acquisition_type="PURCHASE")
                 .order_by(EntitlementEvent.timestamp)
@@ -99,15 +88,15 @@ class TestStorePurchaseHappyPath:
         """Purchase uses provided correlation_id instead of generating one."""
         with app_with_class.app_context():
             class_id = test_class_and_seat["class_id"]
-            student_seat = test_class_and_seat["student_seat"]
-            student_user = test_class_and_seat["student_user"]
+            student_seat_id = test_class_and_seat["student_seat_id"]
+            student_user_id = test_class_and_seat["student_user_id"]
 
             provided_corr_id = "test_corr_123"
 
             ctx = CanonicalContext(
-                user_id=student_user.id,
+                user_id=student_user_id,
                 class_id=class_id,
-                seat_id=student_seat.id,
+                seat_id=student_seat_id,
                 actor_role="student",
             )
 
@@ -129,13 +118,13 @@ class TestInstantUse:
         """Instant-use purchase creates both GRANTED and CONSUMED events."""
         with app_with_class.app_context():
             class_id = test_class_and_seat["class_id"]
-            student_seat = test_class_and_seat["student_seat"]
-            student_user = test_class_and_seat["student_user"]
+            student_seat_id = test_class_and_seat["student_seat_id"]
+            student_user_id = test_class_and_seat["student_user_id"]
 
             ctx = CanonicalContext(
-                user_id=student_user.id,
+                user_id=student_user_id,
                 class_id=class_id,
-                seat_id=student_seat.id,
+                seat_id=student_seat_id,
                 actor_role="student",
             )
 
@@ -180,13 +169,13 @@ class TestQuantityLogic:
         """Quantity=5 creates 5 EntitlementEvent rows, not 1 row with quantity field."""
         with app_with_class.app_context():
             class_id = test_class_and_seat["class_id"]
-            student_seat = test_class_and_seat["student_seat"]
-            student_user = test_class_and_seat["student_user"]
+            student_seat_id = test_class_and_seat["student_seat_id"]
+            student_user_id = test_class_and_seat["student_user_id"]
 
             ctx = CanonicalContext(
-                user_id=student_user.id,
+                user_id=student_user_id,
                 class_id=class_id,
-                seat_id=student_seat.id,
+                seat_id=student_seat_id,
                 actor_role="student",
             )
 
@@ -216,13 +205,13 @@ class TestQuantityLogic:
         """Quantity=1 creates exactly 1 EntitlementEvent row."""
         with app_with_class.app_context():
             class_id = test_class_and_seat["class_id"]
-            student_seat = test_class_and_seat["student_seat"]
-            student_user = test_class_and_seat["student_user"]
+            student_seat_id = test_class_and_seat["student_seat_id"]
+            student_user_id = test_class_and_seat["student_user_id"]
 
             ctx = CanonicalContext(
-                user_id=student_user.id,
+                user_id=student_user_id,
                 class_id=class_id,
-                seat_id=student_seat.id,
+                seat_id=student_seat_id,
                 actor_role="student",
             )
 
@@ -251,13 +240,13 @@ class TestValidationFailures:
         """Purchase with quantity=0 is rejected."""
         with app_with_class.app_context():
             class_id = test_class_and_seat["class_id"]
-            student_seat = test_class_and_seat["student_seat"]
-            student_user = test_class_and_seat["student_user"]
+            student_seat_id = test_class_and_seat["student_seat_id"]
+            student_user_id = test_class_and_seat["student_user_id"]
 
             ctx = CanonicalContext(
-                user_id=student_user.id,
+                user_id=student_user_id,
                 class_id=class_id,
-                seat_id=student_seat.id,
+                seat_id=student_seat_id,
                 actor_role="student",
             )
 
@@ -275,13 +264,13 @@ class TestValidationFailures:
         """Purchase with negative quantity is rejected."""
         with app_with_class.app_context():
             class_id = test_class_and_seat["class_id"]
-            student_seat = test_class_and_seat["student_seat"]
-            student_user = test_class_and_seat["student_user"]
+            student_seat_id = test_class_and_seat["student_seat_id"]
+            student_user_id = test_class_and_seat["student_user_id"]
 
             ctx = CanonicalContext(
-                user_id=student_user.id,
+                user_id=student_user_id,
                 class_id=class_id,
-                seat_id=student_seat.id,
+                seat_id=student_seat_id,
                 actor_role="student",
             )
 
@@ -297,13 +286,13 @@ class TestValidationFailures:
     def test_invalid_context_missing_class_id(self, app_with_class, test_class_and_seat):
         """Purchase with missing class_id is rejected."""
         with app_with_class.app_context():
-            student_seat = test_class_and_seat["student_seat"]
-            student_user = test_class_and_seat["student_user"]
+            student_seat_id = test_class_and_seat["student_seat_id"]
+            student_user_id = test_class_and_seat["student_user_id"]
 
             ctx = CanonicalContext(
-                user_id=student_user.id,
+                user_id=student_user_id,
                 class_id="",  # Invalid
-                seat_id=student_seat.id,
+                seat_id=student_seat_id,
                 actor_role="student",
             )
 
@@ -320,19 +309,15 @@ class TestValidationFailures:
         """Purchase with seat not in class_id is rejected."""
         with app_with_class.app_context():
             # Create second class with different student
-            class_scope_2 = create_class_scope()
-            student_user_2 = class_scope_2["student_user"]
-            student_seat_2 = make_student_seat(
-                user_id=student_user_2.id,
-                class_id=class_scope_2["class_id"],
-            )
-            db.session.commit()
+            class_scope_2 = provision_classroom("ap_csp_p3")
+            student_user_2_id = class_scope_2.students[0].user_id
+            student_seat_2_id = class_scope_2.students[0].seat_id
 
             # Try to purchase in first class with seat from second class
             ctx = CanonicalContext(
-                user_id=student_user_2.id,
+                user_id=student_user_2_id,
                 class_id=test_class_and_seat["class_id"],  # Different class
-                seat_id=student_seat_2.id,  # Seat from other class
+                seat_id=student_seat_2_id,  # Seat from other class
                 actor_role="student",
             )
 
@@ -353,13 +338,13 @@ class TestIdempotency:
         """Replaying with same idempotency_key returns same result, no new rows."""
         with app_with_class.app_context():
             class_id = test_class_and_seat["class_id"]
-            student_seat = test_class_and_seat["student_seat"]
-            student_user = test_class_and_seat["student_user"]
+            student_seat_id = test_class_and_seat["student_seat_id"]
+            student_user_id = test_class_and_seat["student_user_id"]
 
             ctx = CanonicalContext(
-                user_id=student_user.id,
+                user_id=student_user_id,
                 class_id=class_id,
-                seat_id=student_seat.id,
+                seat_id=student_seat_id,
                 actor_role="student",
             )
 
@@ -398,18 +383,17 @@ class TestCrossClassIsolation:
         """Purchases in different classes don't interfere."""
         with app_with_class.app_context():
             # Create two separate class scopes
-            scope1 = create_class_scope()
-            scope2 = create_class_scope()
+            scope1 = provision_classroom("chemistry_p1")
+            scope2 = provision_classroom("ap_csp_p3")
 
-            seat1 = make_student_seat(user_id=scope1["student_user"].id, class_id=scope1["class_id"])
-            seat2 = make_student_seat(user_id=scope2["student_user"].id, class_id=scope2["class_id"])
-            db.session.commit()
+            seat1_id = scope1.students[0].seat_id
+            seat2_id = scope2.students[0].seat_id
 
             # Purchase in class 1
             ctx1 = CanonicalContext(
-                user_id=scope1["student_user"].id,
-                class_id=scope1["class_id"],
-                seat_id=seat1.id,
+                user_id=scope1.students[0].user_id,
+                class_id=scope1.class_id,
+                seat_id=seat1_id,
                 actor_role="student",
             )
 
@@ -421,9 +405,9 @@ class TestCrossClassIsolation:
 
             # Purchase in class 2
             ctx2 = CanonicalContext(
-                user_id=scope2["student_user"].id,
-                class_id=scope2["class_id"],
-                seat_id=seat2.id,
+                user_id=scope2.students[0].user_id,
+                class_id=scope2.class_id,
+                seat_id=seat2_id,
                 actor_role="student",
             )
 
