@@ -4791,7 +4791,7 @@ def delete_join_code():
         raise
     except Exception as e:
         db.session.rollback()
-        current_app.logger.error(f"Error deleting join code {join_code}: {e}")
+        current_app.logger.error(f"Error deleting join code {display_join_code}: {e}")
         return jsonify({"status": "error", "message": "An error occurred while deleting the join code. Please try again."}), 500
 
 
