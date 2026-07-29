@@ -9197,7 +9197,7 @@ def bulk_adjust_hall_pass_entitlements():
 
     except Exception as e:
         db.session.rollback()
-        current_app.logger.error(f"Bulk hall pass update failed: {e}", exc_info=True)
+        current_app.logger.error(f"Bulk hall pass update failed: {e}")
         return jsonify({
             "status": "error",
             "message": "Failed to update hall passes. Please try again or contact support."
