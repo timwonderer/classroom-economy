@@ -1,12 +1,19 @@
 # Phase 3: Primitive Operations — Completion Status
 
 **Date**: 2026-07-28  
-**Status**: ✅ COMPLETE  
+**Status**: ✅ STORE-SIDE PRIMITIVES COMPLETE (Ledger coordination deferred)
+
+**Key Status Notes**:
+- FEAT-STOR-004 (Direct Grant): Complete, production-ready
+- FEAT-STOR-001 (Purchase): Store-side primitive complete; **Ledger coordination mocked** (TODO)
+- Purchase atomicity incomplete until Ledger coordination wired (monetary + entitlement must succeed/rollback together)
+
 **Commits**:
 - `7be90ade` — Phase 3 infrastructure: StorePolicyResolver + SPEC-STORE-001 validation
 - `7539f300` — Correct FEAT-STOR-004 contract: exact UUID resolution
 - `22c4ecb4` — Document correction with architectural rationale
 - `bc2f10aa` — FEAT-STOR-001: exact-UUID execution contract for purchases
+- `1ba7d45d` — Phase 3 completion status documentation
 
 ---
 
@@ -74,9 +81,11 @@
 6. Per-student limit constraint
 7. Atomic entitlement grant
 
-### 5. FEAT-STOR-001: Store Purchase ✅
+### 5. FEAT-STOR-001: Store Purchase ✅ (STORE-Side Primitive Complete; Ledger Coordination Deferred)
 
 **File**: `app/feats/store_purchase_feat.py`
+
+**Status**: Store-and-Entitlements domain primitive is complete. End-to-end purchase atomicity requires real Ledger coordination (currently mocked).
 
 **Contract** (identical to FEAT-STOR-004):
 - Accept `policy_uuid` (exact input, no inference)
@@ -95,9 +104,11 @@
 4. SPEC-STORE-001 schema validation (via parser)
 5. is_purchasable constraint
 6. Per-student limit constraint
-7. Ledger coordination (TODO: currently mocked)
-8. Atomic entitlement grant
+7. Ledger coordination (MOCKED — TODO for production)
+8. Entitlement grant (atomic on STORE side)
 9. Instant-use coordination (if applicable)
+
+**Important**: Purchase atomicity currently incomplete — monetary posting (Ledger) and entitlement creation (STORE) do NOT yet succeed or roll back together. Ledger coordination must be wired before production use.
 
 ### 6. Test Coverage ✅
 
@@ -285,9 +296,9 @@ Current FEATs accept policy_uuid; routes must be updated to:
    - is_purchasable = true
    - per-student limit check
    ↓
-8. Ledger coordination (TODO: mocked)
+8. Ledger coordination (⚠️ MOCKED — TODO for production)
    ↓
-9. Atomic entitlement grant (one event per unit)
+9. Entitlement grant (atomic on STORE side only)
    - product_id from resolved policy
    - entitlement_type from resolved policy
    - policy_uuid in payload for audit
@@ -295,28 +306,28 @@ Current FEATs accept policy_uuid; routes must be updated to:
 10. Instant-use coordination (if instant_use=true)
    ↓
 11. Success result with entitlement IDs
+
+⚠️ WARNING: End-to-end purchase atomicity incomplete.
+Monetary posting (Ledger) and entitlement creation (STORE) do not yet
+succeed or roll back together. Production use requires real Ledger coordination.
 ```
 
 ---
 
 ## Policy Deletion Rule
 
-**Executable Dependency**: An entitlement is "executable" if:
-- event_type = GRANTED (not yet consumed/expired/revoked)
-- entitlement_type in {DELAYED_USE, PRIVILEGE, INSURANCE, COLLECTIVE_GOAL, HALL_PASS}
+**Executable Dependency**: A policy has an executable dependency when any entitlement that may require resolution of that policy remains in a state where it could be exercised or resolved.
 
-**Policy Deletion Valid When**:
-- No GRANTED entitlements reference this policy_uuid
-- OR all GRANTED entitlements for this policy_uuid have become terminal (CONSUMED, EXPIRED, REVOKED)
-
-**Policy Deletion Invalid When**:
-- Any GRANTED entitlement still depends on this policy_uuid to execute
+**Policy Deletion Permitted When**:
+- No executable dependency remains that may require resolution of that policy
+- Deletion eligibility is NOT encoded solely in terms of current GRANTED state unless authority documents (DOM-STORE-001, SPEC-STORE-001) explicitly specify that GRANTED is the sole criterion
 
 **Consequence**:
-- Historical entitlements remain valid from recorded facts
-- UUID may cease resolving after policy deletion (expected)
+- Historical entitlements remain valid from their recorded facts
+- UUID may cease resolving after policy deletion (expected behavior)
 - Other policies unaffected
-- No FK constraint; caller responsible for cleanup verification
+- No FK constraint; deletion verification is caller/operations responsibility
+- Policy version snapshots in entitlement payloads enable historical reconstruction
 
 ---
 
@@ -336,4 +347,8 @@ Phase 3 (Primitive Operations) establishes the foundation for Store/Entitlements
 
 ✅ **Audit trail**: policy_uuid recorded in entitlement events for historical reference
 
-**Next Phase**: View Model integration, storefront discovery, Ledger coordination, and production testing.
+✅ **FEAT-STOR-004 (Direct Grant)**: Complete end-to-end, production-ready
+
+⚠️ **FEAT-STOR-001 (Purchase)**: Store-side primitive complete; Ledger coordination mocked (TODO for production)
+
+**Deferred**: Discovery/applicability semantics, View Model integration, storefront, Ledger coordination, production testing.
