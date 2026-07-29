@@ -14,9 +14,11 @@ Implement the lawful lifecycle for insurance claims through the `pending_actions
 The FEAT orchestrates:
 - Pending insurance claim submission (creates pending_action)
 - Teacher adjudication (reads pending_action)
-- Canonical insurance entitlement outcome (writes entitlement event)
-- Coordinated Ledger reimbursement (via FEAT-LED-001)
+- Canonical insurance claim resolution outcome (writes CONSUMED entitlement event with outcome in payload)
+- Coordinated Ledger reimbursement on approval (via FEAT-LED-001)
 - Atomic resolution (write CONSUMED event + delete pending_action)
+
+**Authority Clarification**: Both approval and rejection write CONSUMED events (claim reached terminal resolution); the event payload records the decision (APPROVED vs REJECTED). Only approval triggers Ledger coordination. Rejection does not reverse the entitlement or trigger refunds (those are Ledger domain concerns). The entitlement remains GRANTED for future claims per policy.
 
 ---
 
