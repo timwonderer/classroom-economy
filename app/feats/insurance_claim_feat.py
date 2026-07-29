@@ -191,9 +191,9 @@ def _submit_insurance_claim_impl(
 
         # Validate coverage is active (using canonical temporal resolver)
         temporal_context = canonical_temporal_resolver(
-            class_id=canonical_context.class_id,
-            seat_id=canonical_context.seat_id,
-            evaluation_level=CLASS_LEVEL_EVALUATION,
+            CLASS_LEVEL_EVALUATION,
+            canonical_execution_context=canonical_context,
+            primitive="current_time",
         )
 
         if not temporal_context:
@@ -204,8 +204,8 @@ def _submit_insurance_claim_impl(
             )
 
         # Check if coverage window is active (policy-determined)
-        policy_config = policy.get("config", {})
-        if policy_config.get("coverage_disabled") is True:
+        policy_config = policy
+        if getattr(policy_config, "coverage_disabled", False) is True:
             return InsuranceClaimSubmissionResult(
                 success=False,
                 error_code="COVERAGE_NOT_ACTIVE",
@@ -262,7 +262,7 @@ def _submit_insurance_claim_impl(
             .count()
         )
 
-        claim_limit = policy_config.get("claim_limit", 0)
+        claim_limit = getattr(policy_config, "claim_limit", 0)
         if claim_limit > 0 and consumed_count >= claim_limit:
             eligibility_flags["count_limit_exceeded"] = True
 
@@ -458,8 +458,8 @@ def _resolve_insurance_claim_impl(
             # APPROVED path: coordinate Ledger and write CONSUMED event
 
             # Resolve reimbursement amount from policy
-            policy_config = policy.get("config", {})
-            reimbursement_amount = Decimal(str(policy_config.get("reimbursement_amount", "0.00")))
+            policy_config = policy
+            reimbursement_amount = Decimal(str(getattr(policy_config, "reimbursement_amount", "0.00")))
             reimbursement_amount = _quantize_currency(reimbursement_amount)
 
             if reimbursement_amount > 0:

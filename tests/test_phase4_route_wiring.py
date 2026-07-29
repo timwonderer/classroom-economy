@@ -11,9 +11,11 @@ import pytest
 from decimal import Decimal
 
 from app.extensions import db
-from app.models import EntitlementEvent, StoreItem
+from app.feats.base import FEATContext
+from app.models import EntitlementEvent
 from app.services.context_resolver import CanonicalContext
 from app.feats.direct_entitlement_grant_feat import execute_direct_grant
+from app.services.store_policy_resolver import StorePolicyResolver
 from tests.helpers.canonical_classroom import provision_classroom
 
 
@@ -26,7 +28,7 @@ def app_with_context(app):
 
 @pytest.fixture
 def test_class_setup(app_with_context):
-    """Create a test class with teacher, student, and store item."""
+    """Create a test class with teacher, student, and canonical store policy."""
     with app_with_context.app_context():
         classroom = provision_classroom("chemistry_p1")
         teacher_user_id = classroom.teacher_user_id
@@ -34,15 +36,19 @@ def test_class_setup(app_with_context):
         student_seat_id = classroom.students[0].seat_id
         student_user_id = classroom.students[0].user_id
 
-        store_item = StoreItem(
-            user_id=teacher_user_id,
-            class_id=classroom.class_id,
-            name="Test Hall Pass",
-            item_type="hall_pass",
-            price=Decimal("0.00"),
-            is_active=True,
-        )
-        db.session.add(store_item)
+        with FEATContext("FEAT-TEST-SETUP", idempotency_key="phase4-route-wiring:store-policy"):
+            policy = StorePolicyResolver.create_store_product(
+                class_id=classroom.class_id,
+                payload={
+                    "product_id": 1,
+                    "is_purchasable": True,
+                    "supports_direct_grants": True,
+                    "price": "0.00",
+                    "entitlement_type": "HALL_PASS",
+                    "name": "Test Hall Pass",
+                },
+                created_by_seat_id=teacher_seat_id,
+            )
         db.session.commit()
 
         return {
@@ -51,7 +57,8 @@ def test_class_setup(app_with_context):
             "teacher_seat_id": teacher_seat_id,
             "student_user_id": student_user_id,
             "student_seat_id": student_seat_id,
-            "store_item": store_item,
+            "policy_uuid": policy.policy_uuid,
+            "product_id": policy.product_id,
         }
 
 
@@ -65,6 +72,7 @@ class TestDirectGrantFeature:
             teacher_seat_id = test_class_setup["teacher_seat_id"]
             student_seat_id = test_class_setup["student_seat_id"]
             class_id = test_class_setup["class_id"]
+            policy_uuid = test_class_setup["policy_uuid"]
 
             ctx = CanonicalContext(
                 user_id=teacher_user_id,
@@ -76,7 +84,7 @@ class TestDirectGrantFeature:
             result = execute_direct_grant(
                 canonical_context=ctx,
                 target_seat_id=student_seat_id,
-                product_id=1,
+                policy_uuid=policy_uuid,
                 quantity=2,
             )
 
@@ -99,7 +107,7 @@ class TestDirectGrantFeature:
             for event in events:
                 assert event.target_seat_id == student_seat_id
                 assert event.actor_seat_id == teacher_seat_id
-                assert event.product_id == 1
+                assert event.product_id == test_class_setup["product_id"]
                 assert event.entitlement_id is not None
                 assert event.event_id is not None
                 assert event.timestamp is not None
@@ -110,6 +118,7 @@ class TestDirectGrantFeature:
             student_user_id = test_class_setup["student_user_id"]
             student_seat_id = test_class_setup["student_seat_id"]
             class_id = test_class_setup["class_id"]
+            policy_uuid = test_class_setup["policy_uuid"]
 
             ctx = CanonicalContext(
                 user_id=student_user_id,
@@ -121,7 +130,7 @@ class TestDirectGrantFeature:
             result = execute_direct_grant(
                 canonical_context=ctx,
                 target_seat_id=student_seat_id,
-                product_id=1,
+                policy_uuid=policy_uuid,
                 quantity=1,
             )
 
@@ -139,6 +148,7 @@ class TestEntitlementEventCanonicalStructure:
             teacher_seat_id = test_class_setup["teacher_seat_id"]
             student_seat_id = test_class_setup["student_seat_id"]
             class_id = test_class_setup["class_id"]
+            policy_uuid = test_class_setup["policy_uuid"]
 
             result = execute_direct_grant(
                 canonical_context=CanonicalContext(
@@ -148,7 +158,7 @@ class TestEntitlementEventCanonicalStructure:
                     actor_role="teacher",
                 ),
                 target_seat_id=student_seat_id,
-                product_id=1,
+                policy_uuid=policy_uuid,
                 quantity=1,
             )
 
@@ -163,7 +173,7 @@ class TestEntitlementEventCanonicalStructure:
             assert event.class_id == class_id
             assert event.target_seat_id == student_seat_id
             assert event.actor_seat_id == teacher_seat_id
-            assert event.product_id == 1
+            assert event.product_id == test_class_setup["product_id"]
             assert event.entitlement_type in [
                 "INSURANCE",
                 "PRIVILEGE",

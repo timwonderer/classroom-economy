@@ -382,7 +382,7 @@ def purchase_item():
 
     # 2. Parse and validate input
     data = request.get_json(silent=True) or {}
-    product_id = data.get('item_id')  # Note: StoreItem.id maps to product_id in FEAT
+    policy_uuid = data.get('policy_uuid')
     passphrase = data.get('passphrase')
 
     try:
@@ -390,8 +390,8 @@ def purchase_item():
     except (TypeError, ValueError):
         return jsonify({"status": "error", "message": "Quantity must be a whole number."}), 400
 
-    if not product_id or not passphrase:
-        return jsonify({"status": "error", "message": "Missing item ID or passphrase."}), 400
+    if not policy_uuid or not passphrase:
+        return jsonify({"status": "error", "message": "Missing policy UUID or passphrase."}), 400
 
     if quantity < 1:
         return jsonify({"status": "error", "message": "Quantity must be at least 1."}), 400
@@ -403,7 +403,7 @@ def purchase_item():
     # 4. Call FEAT-STOR-001: Create entitlement grants via purchase
     result = execute_store_purchase(
         canonical_context=context,
-        product_id=product_id,
+        policy_uuid=policy_uuid,
         quantity=quantity,
         instant_use=False,  # TODO: Read from product policy
     )
@@ -434,12 +434,12 @@ def use_item():
     if not user or not student:
         return jsonify({"status": "error", "message": "Unauthorized"}), 401
     data = request.get_json()
-    entitlement_id = data.get('entitlement_id') or data.get('student_item_id')
+    entitlement_id = data.get('entitlement_id')
     passphrase = data.get('passphrase')
     details = data.get('redemption_details', data.get('details', ''))  # optional notes from student
 
     if not all([entitlement_id, passphrase]):
-        return jsonify({"status": "error", "message": "Missing item ID or passphrase."}), 400
+        return jsonify({"status": "error", "message": "Missing entitlement ID or passphrase."}), 400
 
     # 1. Verify passphrase
     if not check_password_hash(user.passphrase_hash or '', passphrase):
@@ -534,10 +534,10 @@ def approve_redemption():
     here; they propagate to Flask's error handler.
     """
     data = request.get_json(silent=True) or {}
-    entitlement_id = data.get('entitlement_id') or data.get('student_item_id')
+    entitlement_id = data.get('entitlement_id')
 
     if not entitlement_id:
-        return jsonify({"status": "error", "message": "Missing item ID."}), 400
+        return jsonify({"status": "error", "message": "Missing entitlement ID."}), 400
 
     entitlement = Entitlement.query.filter_by(entitlement_id=entitlement_id).first()
     if not entitlement:
@@ -586,10 +586,10 @@ def approve_redemption():
 def reject_redemption():
     """Reject a pending redemption request without terminating the entitlement."""
     data = request.get_json(silent=True) or {}
-    entitlement_id = data.get('entitlement_id') or data.get('student_item_id')
+    entitlement_id = data.get('entitlement_id')
 
     if not entitlement_id:
-        return jsonify({"status": "error", "message": "Missing item ID."}), 400
+        return jsonify({"status": "error", "message": "Missing entitlement ID."}), 400
 
     entitlement = Entitlement.query.filter_by(entitlement_id=entitlement_id).first()
     if not entitlement:
