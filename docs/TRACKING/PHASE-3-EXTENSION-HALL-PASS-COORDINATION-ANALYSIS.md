@@ -71,9 +71,11 @@ Current FEAT-PROD-002 is standalone Productivity domain FEAT that:
 
 ---
 
-## Proposed Coordination Models
+## Coordination Model Analysis (Leading to Canonical Pattern)
 
-### Model A: Synchronous Call Within Store/Ent FEAT
+This analysis reconciles three possible patterns against existing authority and practice. **Model A emerges as the canonical pattern** based on INV-ARC-021 and existing FEAT-LED-001 implementation.
+
+### Model A: Synchronous Call Within Store/Ent FEAT (CANONICAL)
 
 **Pattern** (similar to FEAT-LED-001):
 
@@ -194,63 +196,100 @@ def resolve_hall_pass_approval(pending_action_id, approved):
 
 ---
 
-## Authority Documents Consulted
+## Authority Documents & Pattern Analysis
+
+### Evidence for Model A as Canonical
 
 1. **INV-ARC-021** (Cross-Domain Coordination):
    - FEAT is sole coordination layer
-   - All cross-domain logic within FEAT
+   - All cross-domain logic **within FEAT** (not between FEATs)
    - No domain-to-domain calls allowed (only via FEAT layer)
-   - Implies: Store/Ent FEAT calls Prod FEAT or Prod service
+   - **Implication**: Store/Ent FEAT orchestrates Prod calls; doesn't call another FEAT
 
-2. **DOM-LED-001** (Ledger):
-   - Shows Ledger as domain-blind (doesn't know business meaning)
-   - Implies Prod would be similar (doesn't know Store/Ent semantics)
+2. **FEAT-LED-001** (Ledger Posting - Existing Pattern):
+   - Called synchronously from Store/Ent FEATs (e.g., FEAT-STOR-003)
+   - Single transaction boundary covering both domains
+   - Result is awaited; both complete together
+   - **This is the established pattern in the codebase**
 
-3. **FEAT-LED-001** (Ledger Posting):
-   - Called from Store/Ent FEATs
-   - Single transaction boundary
-   - Suggests Model A pattern
+3. **DOM-LED-001** (Ledger):
+   - Domain-blind (doesn't know business meaning of callers)
+   - Responds to calls from other domain FEATs
+   - No inspection of caller's internal state
 
-4. **FEAT-PROD-002** (Hall Pass Logging):
-   - Currently stands alone
-   - Would need refactoring for coordination with Store/Ent
-   - Currently consumes entitlements; future model unclear
+4. **Authority Clarification**:
+   - Store/Ent "coordinates" with Prod
+   - Prod receives "authorized request" (not "pending approval")
+   - Prod doesn't inspect Store/Ent pending or entitlement state
+   - Successful Prod logging "participates in completing the STORE/ENT operation"
 
----
+### Conclusion: Model A is Canonical
 
-## Recommendation for Authority Decision
+**Model A (Synchronous Call Within Store/Ent FEAT)** is the established pattern:
+- Aligns with existing FEAT-LED-001 precedent
+- Satisfies INV-ARC-021 "FEAT layer is coordination layer" requirement
+- Supports atomic completion (both domains succeed/rollback together)
+- Matches authority description of "coordinated operation"
 
-**The authority must clarify**:
-
-1. **Is the coordination synchronous (Model A/C) or asynchronous (Model B)?**
-   - If synchronous: Store/Ent calls Prod FEAT/API; waits for completion
-   - If asynchronous: Store/Ent submits request; Prod completes independently
-
-2. **What is the transaction boundary?**
-   - Single transaction (not possible across separate DB connections)
-   - Coordinated via idempotency keys and correlation IDs
-   - Eventual consistency with background job completion
-
-3. **If Prod succeeds but Store/Ent fails, what is the recovery?**
-   - Background job retries? Idempotency ensures no duplicate?
-   - Manual recovery process?
-
-4. **Can we use existing FEAT-LED-001 pattern?**
-   - If yes: Store/Ent calls Prod synchronously within same FEAT/transaction
-   - If no: What pattern should be used instead?
+**Models B & C** are theoretically possible but contradict:
+- Existing FEAT-LED-001 pattern in the codebase
+- INV-ARC-021 requirement for FEAT-only coordination
+- Authority's description of atomic completion
 
 ---
 
-## Next Step
+## Implementation Pattern (Model A)
 
-**Do not implement hall-pass coordination until authority answers**:
-- [ ] Coordination model (sync vs async)
-- [ ] Transaction boundary semantics
-- [ ] Failure recovery path
-- [ ] Whether FEAT-LED-001 pattern is applicable
+```python
+# Within FEAT-STOR-HALL_PASS_REQUEST-RESOLVE (Store/Ent FEAT)
+
+def resolve_hall_pass_approval(pending_action_id, teacher_approves):
+    pending_action = read_pending_action(pending_action_id)
+    
+    # Validate entitlement is still GRANTED
+    entitlement_event = get_entitlement_granted_event(pending_action.entitlement_id)
+    if not entitlement_event:
+        raise EntitlementNotGranted()
+    
+    # Resolve policy from immutable policy_uuid
+    policy = StorePolicyResolver.resolve_store_item(
+        pending_action.payload["policy_uuid"]
+    )
+    
+    if teacher_approves:
+        # Call Prod domain to write HallPassLog (authorized command)
+        prod_result = call_prod_record_hall_pass_log(
+            entitlement_id=pending_action.entitlement_id,
+            destination=pending_action.payload.get("destination"),
+            approved_by_seat_id=teacher_seat_id,
+            correlation_id=pending_action.correlation_id
+        )
+        
+        if prod_result.success:
+            # Both complete in same transaction
+            write_consumed_event(pending_action)  # Store/Ent
+            delete_pending_action(pending_action_id)  # Store/Ent
+            db.commit()  # Single transaction
+        else:
+            # Prod failed; Store/Ent operation fails
+            raise ProdCoordinationFailure(prod_result.error)
+    else:
+        # Deny request (no Prod coordination)
+        delete_pending_action(pending_action_id)
+        db.commit()
+```
+
+This follows the established FEAT-LED-001 pattern used by FEAT-STOR-003.
 
 ---
 
-**Status**: Analysis Complete  
-**Blocking**: Authority decision on coordination model  
-**Action**: Ask authority which model is intended (A, B, or C) and confirm transaction boundary semantics
+## Status
+
+**Resolved**: Model A is canonical pattern based on:
+- Existing FEAT-LED-001 precedent
+- INV-ARC-021 authority
+- Authority's description of coordinated atomic completion
+
+**Not awaiting further decisions** on Models B/C; they contradict existing authority.
+
+**Implementation**: Use Model A pattern (synchronous call within Store/Ent FEAT)

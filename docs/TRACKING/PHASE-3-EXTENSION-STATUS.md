@@ -57,117 +57,104 @@ All authority is in place. Implementation can begin immediately in Phase 3.
 
 ---
 
-## Path 2: Delayed-Use Redemption (FEAT-STOR-DELAYED_REDEEM-*) — Design Complete, Awaiting Authority
+## Path 2: Delayed-Use Redemption (FEAT-STOR-DELAYED_REDEEM-*) — Design Complete, 5 Authority Decisions
 
 **Document**: `PHASE-3-EXTENSION-DELAYED-USE-REDEMPTION-DESIGN.md`
 
 ### Specification Status
 
-✅ **Design Complete**
+✅ **Design Complete with Authority Clarifications**
 
 - Workflow contract established
-- Baseline contract proposed (student-initiated, teacher-approved)
-- 9 authority questions identified and described
+- Authority clarification applied: Rejection = DENY REQUEST only (no terminal event, no refund, entitlement stays GRANTED)
+- 5 authority decisions identified (workflow/authorization policy, not configuration)
 - Test coverage checklist proposed
 
-### Authority Status
+### Authority Decisions Needed (5 Canonical Questions)
 
-⏳ **Awaiting Answers to 9 Questions**
+⏳ **Authority must decide** (workflow/authorization policy, not product-configuration):
 
-Currently blocked on authority clarification of:
+1. **Submission Authority** — Student self-service? Teacher-assisted? Teacher-directed? Both?
+2. **Submission Trigger** — On-demand via UI? Time-based? Automatic? Policy-dependent?
+3. **Validation Scope** — Hard block on eligibility, or flag for teacher review?
+4. **Request Payload** — What type-specific data in redemption request?
+5. **Approval Authority** — Manual teacher review? Auto-approval? Policy-dependent?
 
-1. **Submission Authority** — Who initiates: student, teacher, system, or both?
-2. **Submission Trigger** — When: immediate on grant, on-demand UI, after time, on event?
-3. **Validation Scope** — What's validated: minimal, policy-based, cross-domain, product-specific?
-4. **Request Payload** — What's included: minimal, purpose, temporal marker, product-specific?
-5. **Approval Conditions** — Manual, automatic, automatic-after-timeout, product-dependent?
-6. **Rejection Outcome** — Record REVOKED or return-to-GRANTED on denial?
-7. **Refund Coordination** — Automatic Ledger, manual, deferred, product-dependent?
-8. **Redemption Repeatability** — One-time, repeatable, product-dependent?
-9. **Expiration Trigger** — Fixed deadline, relative window, period-end, or no expiration?
+### Policy-Configuration (NOT Authority Decisions)
+
+Determined by product policy per DOM-STORE-001:
+- **Redemption repeatability** (one-time vs repeatable) — product policy
+- **Expiration trigger** (absolute, relative, period) — product policy
 
 ### Baseline Proposed
 
-Pending authority approval, baseline assumes:
+Pending authority answers to Questions 1-5:
 - Student-initiated submission (on-demand via UI)
-- Policy-based validation
+- Policy-based validation (flags for teacher, doesn't block)
 - Minimal payload (just signal intent to redeem)
 - Manual teacher approval required
-- REVOKED on rejection (per DOM-STORE-001 language)
-- Automatic Ledger refund (per "lawful reversal path")
-- One-time redemption (default safe behavior)
-- Policy-configured expiration (absolute, relative, or period)
+- Rejection = DENY REQUEST only (no terminal event, no refund, entitlement stays GRANTED)
 
 ### Implementation Blockers
 
-⏳ **Authority must answer all 9 questions**
+⏳ **Authority must answer 5 workflow decisions**
 
-- Cannot finalize FEAT signatures until submission authority is known
-- Cannot finalize validation rules until scope is clarified
-- Cannot determine atomicity model until approval conditions known
-- Cannot write reliable tests until contract is definitive
+- Cannot finalize FEAT signatures until submission authority (Q1) is known
+- Cannot finalize validation rules until validation scope (Q3) is clarified
+- Cannot determine resolution model until approval authority (Q5) is known
 
 **Estimated Time to Unblock**: Depends on authority decision velocity
 
 ---
 
-## Path 3: Hall-Pass Pending Actions & STORE/ENT ↔ PROD Coordination — Design Complete, Awaiting Cross-Domain Approval
+## Path 3: Hall-Pass Pending Actions & STORE/ENT ↔ PROD Coordination — ✅ PATTERN DETERMINED
 
 **Document**: `PHASE-3-EXTENSION-HALL-PASS-COORDINATION.md`
 
 ### Specification Status
 
-✅ **Coordination Design Complete**
+✅ **Coordination Pattern Established (Model A - Synchronous)**
 
-- Cross-domain boundary established
-- Workflow contract outlined
-- 8 coordination questions identified
-- Test coverage checklist (cross-domain integration tests) proposed
+- Coordination boundary established per INV-ARC-021 (FEAT-only coordination)
+- Coordination pattern reconciled with existing FEAT-LED-001 precedent
+- Workflow contract outlined with canonical pattern
+- Test coverage checklist (cross-domain coordination tests) proposed
+- Analysis document reconciling three possible models (Model A is canonical)
 
-### Authority Status
+### Authority Clarifications Applied
 
-⏳ **Awaiting Cross-Domain Authority (Store/Ent + Productivity)**
+✅ **COORDINATION PATTERN DETERMINED**:
 
-Currently blocked on coordination clarification:
+Per **INV-ARC-021** and existing **FEAT-LED-001 precedent** (synchronous Ledger coordination within Store/Ent FEAT):
 
-1. **Approval Requirement** — Always, policy-dependent, never, or product-type-dependent?
-2. **Request Submission** — Student-initiated, teacher-initiated, system-automatic?
-3. **Request Payload** — Minimal, purpose/reason, temporal marker, destination?
-4. **Entitlement Grant Timing** — Pre-granted (GRANTED on distribution) or grant-on-approval?
-5. **Approval Outcomes** — What happens when approved/denied (GRANTED creation, REVOKED, etc.)?
-6. **Productivity Integration** — How Productivity checks pending status before logging pass use
-7. **Student UX** — Request flow, approval waiting experience, retraction capability
-8. **Expiration Boundary** — Auto-expire, auto-deny, extend, or product-dependent?
+**Canonical Pattern: Model A (Synchronous Call Within Store/Ent FEAT)**
+- Store/Ent validates entitlement + prepares authorized command
+- Store/Ent calls Prod synchronously to write HallPassLog
+- Prod receives **authorized command** (does NOT inspect Store/Ent pending_action or entitlement state)
+- Store/Ent awaits Prod result
+- On Prod success: Store/Ent writes CONSUMED + deletes pending_action (atomic)
+- On Prod failure: Store/Ent transaction fails and rolls back
 
-### Cross-Domain Coordination Points
+This pattern **matches FEAT-LED-001** and satisfies INV-ARC-021 requirements.
 
-Key boundaries identified but require approval:
+### Workflow Contract
 
-- **Store/Entitlements owns**: Entitlement GRANTED status, pending approval requests, entitlement lifecycle
-- **Productivity owns**: Authoritative pass-use log (FEAT-PROD-002 authority)
-- **Coordination**: Productivity reads entitlement + pending status before accepting pass log
+- **Policy-dependent approval requirement** (configurable per product)
+- **Student-initiated requests** (on-demand "Request Use" button)
+- **Minimal payload** (entitlement_id + optional metadata)
+- **Pre-granted entitlements** (GRANTED on distribution; pending_action gates exercise)
+- **Denial = DENY REQUEST only** (no Productivity coordination, entitlement stays GRANTED)
+- **Simple UX** (Request Use → Awaiting Approval → Use when approved)
+- **Auto-expire pending passes** at rent period end
 
-### Baseline Proposed
+### Remaining Coordination Work
 
-Pending cross-domain approval, baseline assumes:
-- Policy-dependent approval requirement
-- Student-initiated requests (on-demand "Request Use" button)
-- Minimal payload (entitlement_id + optional timing)
-- Pre-granted entitlements (GRANTED on distribution; pending gates exercise)
-- Approval deletes pending_action; entitlement stays GRANTED; Productivity can now log
-- Productivity reads entitlement + pending status; checks no pending_action before accepting log
-- Simple UX (Request Use → Awaiting Approval → Use when approved)
-- Auto-expire pending passes at rent period end
+⏳ **Productivity Domain Coordination**:
+- Refactor FEAT-PROD-002 to accept authorized logging command from Store/Ent
+- Confirm FEAT-PROD-002 does NOT inspect pending_action status
+- Confirm FEAT-PROD-002 returns success/failure to Store/Ent caller
 
-### Implementation Blockers
-
-⏳ **Cross-Domain Authority must approve coordination**
-
-- Store/Entitlements domain must approve hall-pass specific FEAT contract
-- Productivity domain must approve pending status checking logic
-- Both domains must agree on atomicity model (Productivity reading pending before logging)
-
-**Estimated Time to Unblock**: Depends on cross-domain coordination meeting
+✅ **Pattern established** — no further authority decision needed on coordination model
 
 ---
 
@@ -214,18 +201,23 @@ These methods support read models and UI projections for pending_actions workflo
 
 ### For Authority (Delayed-Use, Path 2)
 
-**Decision needed before Phase 3 implementation**:
-- Answer all 9 questions in `PHASE-3-EXTENSION-DELAYED-USE-REDEMPTION-DESIGN.md` §VII
-- Approve baseline contract or specify alternatives
+**Decision needed before Phase 3 implementation** (5 workflow questions):
+- Answer Questions 1-5 in `PHASE-3-EXTENSION-DELAYED-USE-REDEMPTION-DESIGN.md` §VII
+  1. Submission authority (student, teacher, system, both?)
+  2. Submission trigger (on-demand, time-based, automatic, policy-dependent?)
+  3. Validation scope (hard block vs flag for teacher review?)
+  4. Payload structure (what type-specific data?)
+  5. Approval authority (manual, automatic, policy-dependent?)
+- Confirm baseline contract or specify alternatives
 - Return approval to development team
 
 ### For Authority (Hall-Pass, Path 3)
 
-**Cross-domain decision needed before Phase 3 implementation**:
-- Store/Entitlements domain: approve hall-pass FEAT contract (Q1-5)
-- Productivity domain: approve pending status checking logic (Q6-8)
-- Both: approve coordination atomicity model
-- Return approval to development team
+✅ **Coordination pattern already established** — no further authority decision needed on Model A (synchronous call within Store/Ent FEAT)
+
+**Remaining coordination work** (cross-domain team alignment):
+- Productivity domain: refactor FEAT-PROD-002 to receive authorized command from Store/Ent (not pending_action inspection)
+- Both domains: align on API/contract for Store/Ent→Prod call
 
 ### For Phase 3 Implementation Team (Insurance, Path 1)
 
