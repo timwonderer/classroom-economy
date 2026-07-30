@@ -4,11 +4,11 @@ Store Policy Resolver — STORE-owned policy consumption service.
 Implements DOM-STORE-001 and SPEC-STORE-001:
 - Resolves store product policies by UUID (exact immutable retrieval)
 - Parses and validates policy payloads (fail-fast per SPEC-STORE-001)
-- Supports applicability queries (separate from exact resolution)
+- Supports discovery of canonical policy definitions for a class
 
 Key principle: UUID resolution is exact, not inferential.
 - resolve_store_item(policy_uuid) returns that exact immutable policy
-- get_applicable_policies() is separate operation for "what's active now?"
+- list_store_policies(class_id) returns canonical policy definitions for the class
 - No cross-domain FK; no version inference from product_id + time
 """
 
@@ -495,7 +495,7 @@ class StorePolicyResolver:
 
     Implements:
     - Exact resolution: resolve_store_item(policy_uuid) → StorePolicyConfig
-    - Applicability queries: get_applicable_policies() (stub for future expansion)
+    - Discovery: list_store_policies(class_id) → List[StorePolicyConfig]
 
     Key principles:
     - UUID resolution is exact, not inferential
@@ -535,21 +535,19 @@ class StorePolicyResolver:
             raise StorePolicyError(f"Policy {policy_uuid} validation failed: {str(e)}")
 
     @staticmethod
-    def get_applicable_policies(class_id: str) -> List[StorePolicyConfig]:
-        """Get currently applicable store policies for a class.
+    def list_store_policies(class_id: str) -> List[StorePolicyConfig]:
+        """List canonical store policy definitions for a class.
 
-        Separate from resolve_store_item(). Used to answer:
-        "What policies are currently available for purchase/grant in this class?"
-
-        Note: Applicability semantics (what makes a policy "active") are not yet
-        fully specified in DOM-STORE-001 or SPEC-STORE-001. This is a stub
-        that returns non-retired policies only.
+        This is a pure configuration discovery primitive. It does not evaluate
+        student eligibility, affordability, entitlement ownership, class feature
+        state, ordering, or presentation. Those concerns belong in Phase 5
+        view models.
 
         Args:
             class_id: Class scope for policies
 
         Returns:
-            List[StorePolicyConfig]: Currently applicable policies
+            List[StorePolicyConfig]: Canonical policy definitions for the class
 
         Raises:
             StorePolicyError: If any policy fails validation (stop on first error)

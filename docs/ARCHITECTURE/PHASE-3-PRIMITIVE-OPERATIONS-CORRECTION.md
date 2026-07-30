@@ -45,8 +45,8 @@ def execute_direct_grant(
 
 ### Execution Flow (After Correction)
 
-1. **Caller discovers policy** (outside FEAT scope — deferred to `get_applicable_policies()`)
-   - Resolves "which policy applies for product_id X in class Y?"
+1. **Caller discovers policy** (outside FEAT scope — deferred to `list_store_policies()`)
+   - Resolves "which canonical policy definitions exist for class Y?"
    - Returns policy_uuid
 
 2. **Caller invokes FEAT with exact UUID**
@@ -128,7 +128,7 @@ execute_direct_grant(policy_uuid="UUID-2", ...)  # → UUID-2 resolved, guarante
 - Responsible for "which policies exist"
 
 **Discovery/Applicability** (deferred, separate concern)
-- `get_applicable_policies(class_id)` — semantics TBD in DOM-STORE-001
+- `list_store_policies(class_id)` — discovery contract TBD in DOM-STORE-001
 - Responsible for "which policy applies now"
 - Returns list of applicable policies with UUIDs
 - Caller chooses from list
@@ -207,7 +207,7 @@ Created `tests/test_store_policy_resolver.py` with comprehensive coverage:
    - Should return non-retired policies? Most recent? All versions?
 
 2. **Routes and API**: Update endpoints to:
-   - Call discovery layer (get_applicable_policies)
+   - Call discovery layer (list_store_policies)
    - Let caller/UI select policy
    - Supply exact policy_uuid to FEAT
 
@@ -219,7 +219,7 @@ Created `tests/test_store_policy_resolver.py` with comprehensive coverage:
 
 | Concern | Before | After | Owns |
 |---------|--------|-------|------|
-| Discovery | (Missing) | `get_applicable_policies()` | Not FEAT (TBD) |
+| Discovery | (Missing) | `list_store_policies()` | Not FEAT (TBD) |
 | Execution | FEAT (inference) | FEAT (exact UUID) | FEAT-STOR-004 |
 | Policy Selection | Implicit, ambiguous | Explicit, unambiguous | Caller |
 | Multiple Policies/Product | Undefined behavior | No conflict | Design, not bug |

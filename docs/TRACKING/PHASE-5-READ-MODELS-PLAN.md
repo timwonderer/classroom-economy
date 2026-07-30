@@ -240,7 +240,7 @@ class EntitlementListView:
 **Purpose**: Show student what policies are available to purchase in this class  
 **Status**: 🔴 BLOCKED — Requires undefined authority
 
-**Blocker**: `StorePolicyResolver.get_applicable_policies(class_id)` has no canonical contract
+**Blocker**: `StorePolicyResolver.list_store_policies(class_id)` has no canonical contract
 
 **Contract Gap**:
 Which policies should be "applicable"? 
@@ -250,7 +250,7 @@ Which policies should be "applicable"?
 - Should filtering by affordability be part of discovery or presentation?
 
 **Resolution**: Requires DOM-STORE-001 amendment or explicit application-domain decision  
-**Authority Needed**: `DOM-STORE-001 §get_applicable_policies` or equivalent
+**Authority Needed**: `DOM-STORE-001` or an explicit discovery contract for class-scoped store policies
 
 **Do Not Stub**: This projection cannot be built until applicability semantics are defined.
 
@@ -383,7 +383,7 @@ Must provide:
 
 Must provide (implement only unblocked ones):
 - ✅ `build_entitlement_list_view(seat_id, class_id)` → List[EntitlementListView]
-- 🔴 BLOCKED: `build_policy_list_view(class_id)` — Requires get_applicable_policies() contract
+- 🔴 BLOCKED: `build_policy_list_view(class_id)` — Requires list_store_policies() contract
 - ✅ `build_purchase_history_view(seat_id, class_id)` → List[PurchaseHistoryView]
 - 🔴 BLOCKED: `build_entitlement_with_ledger_context(entitlement_id, class_id)` — Requires Ledger read API
 
@@ -440,7 +440,7 @@ Must test:
 - StudentObligationWithEntitlements
 
 **Blocked Builders** (do not implement):
-- PolicyListView — awaiting get_applicable_policies() contract
+- PolicyListView — awaiting list_store_policies() contract
 - EntitlementWithLedgerContext — awaiting Ledger read API
 
 **Effort**: 3-5 hours  
@@ -467,24 +467,23 @@ Must test:
 
 Do NOT stub these. Leave them blocked until authority exists.
 
-### Contract Gap 1: get_applicable_policies() Semantics
+### Contract Gap 1: list_store_policies() Semantics
 
 **Blocks**: PolicyListView  
-**Issue**: StorePolicyResolver has stub but no canonical contract  
-**Scope**: Which policies should be "applicable" to a student in a class?  
+**Issue**: StorePolicyResolver exposes a discovery primitive but the canonical return shape and class-scoped payload contract are not yet documented  
+**Scope**: Which canonical policy fields are returned to the view model?
 **Open Questions**:
-- Show all non-retired policies?
-- Show only currently-active policies (by rent cycle)?
-- Show only policies meeting prerequisite conditions?
-- Is affordability filtering part of discovery or presentation?
+- Which canonical fields are required for discovery output?
+- Should the discovery payload expose only policy metadata, or the full typed policy config?
+- Does the view model own sorting, labeling, and filtering entirely?
+- What error behavior is expected when a class has no policies?
 
-**Authority Needed**: 
-- DOM-STORE-001 amendment defining applicability semantics, OR
-- Explicit application-domain decision documented in Phase 6 surface inventory
+**Authority Needed**:
+- DOM-STORE-001 amendment or Phase 5 policy discovery contract
 
-**Resolution Path**: Phase 6 application surface inventory + Phase 7 rewiring will capture this decision
+**Resolution Path**: Phase 5 View Models define display logic; StorePolicyResolver remains a pure configuration reader
 
-**Do Not**: Stub an implementation. Leave ProjectionListView unimplemented until contract exists.
+**Do Not**: Add eligibility, affordability, ownership, or presentation filtering to the resolver primitive.
 
 ---
 

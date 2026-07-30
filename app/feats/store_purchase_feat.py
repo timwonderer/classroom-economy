@@ -11,9 +11,8 @@ Orchestrates the complete purchase lifecycle:
 
 All mutations (Ledger + EntitlementEvent) succeed or fail together (atomic).
 
-Contract: Caller is responsible for discovering which policy applies (via
-get_applicable_policies). This FEAT accepts exact policy_uuid and executes
-without inference.
+Contract: Caller is responsible for discovery via the resolver's policy list
+primitive. This FEAT accepts exact policy_uuid and executes without inference.
 """
 
 from __future__ import annotations

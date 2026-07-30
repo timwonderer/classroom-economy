@@ -36,7 +36,7 @@
 
 - **StorePolicyResolver**: Exact resolution API
   - `resolve_store_item(policy_uuid)` — exact immutable retrieval (no inference)
-  - `get_applicable_policies(class_id)` — stub for future discovery (semantics deferred)
+  - `list_store_policies(class_id)` — discovery primitive for canonical policy definitions (semantics deferred)
 
 ### 2. StoreProduct Model ✅
 
@@ -164,7 +164,7 @@
 ### 2. Clear Domain Boundaries
 
 **Discovery** (separate concern, deferred):
-- `get_applicable_policies(class_id)` — stub for future development
+- `list_store_policies(class_id)` — discovery primitive for canonical policy definitions
 - Caller responsibility (routes/APIs)
 - Semantics TBD in DOM-STORE-001 or SPEC-STORE-001
 - Not part of FEAT execution
@@ -214,7 +214,7 @@ No ambiguity; both can coexist; caller chooses.
 
 ### 1. Discovery/Applicability Semantics
 
-`get_applicable_policies(class_id)` currently:
+`list_store_policies(class_id)` currently:
 - Returns non-retired policies for class
 - Semantics NOT fully specified
 
@@ -239,7 +239,7 @@ Currently mocked; TODO:
 ### 3. Routes and API Integration
 
 Current FEATs accept policy_uuid; routes must be updated to:
-- Call `get_applicable_policies()` (or equivalent discovery)
+- Call `list_store_policies()` (or equivalent discovery)
 - Present options to user/API caller
 - Accept policy_uuid selection
 - Call FEAT with exact UUID

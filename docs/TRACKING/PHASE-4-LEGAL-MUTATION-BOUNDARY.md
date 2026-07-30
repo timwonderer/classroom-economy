@@ -186,7 +186,7 @@ execute_store_purchase(
 - **Impact**: End-to-end purchase atomicity incomplete
 
 **TODO 2: Discovery/Applicability Semantics**
-- **File**: `app/services/store_policy_resolver.py` (get_applicable_policies stub)
+- **File**: `app/services/store_policy_resolver.py` (list_store_policies discovery primitive)
 - **Issue**: Caller responsibility for finding applicable policies; discovery semantics deferred
 - **Phase**: 5 (Read Models) or when View Model/storefront integration begins
 - **Impact**: Affects user-facing policy selection UI
@@ -339,7 +339,7 @@ Phase 5 work will:
 
 **TODO Items Carried Forward**:
 - Real Ledger coordination (Phase 4 Follow-up)
-- get_applicable_policies() semantics (Phase 5)
+- list_store_policies() contract (Phase 5)
 - PendingAction FEAT wiring (Phase 5+)
 
 ---

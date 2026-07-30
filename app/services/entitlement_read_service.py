@@ -203,6 +203,32 @@ def get_entitlement_history(
     ]
 
 
+def get_hall_pass_balance(
+    seat_id: int,
+    class_id: str,
+) -> int:
+    """
+    Derive the available hall-pass balance for a seat.
+
+    Hall-pass availability is computed from immutable entitlement events only.
+    This remains a pure read and does not rely on any mutable counter column.
+
+    Preconditions:
+    - seat_id must be valid in class
+    - class_id must exist
+
+    Returns:
+        Net hall-pass balance for the seat in the class.
+
+    Purity: Pure (read-only query, deterministic result)
+    """
+    return get_entitlement_balance(
+        seat_id=seat_id,
+        class_id=class_id,
+        entitlement_type="HALL_PASS",
+    )
+
+
 # ---------------------------------------------------------------------------
 # Cross-Domain Consumption Checks
 # ---------------------------------------------------------------------------
