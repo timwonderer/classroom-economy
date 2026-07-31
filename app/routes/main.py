@@ -163,19 +163,31 @@ def health_check_deep():
 @main_bp.route('/privacy')
 def privacy():
     """Render the Privacy & Data Handling Policy page."""
-    return render_template('privacy.html')
+    github_pages_url = current_app.config.get(
+        'GITHUB_PAGES_URL',
+        'https://timwonderer.github.io/classroom-economy'
+    )
+    return redirect(f"{github_pages_url}/privacy.html")
 
 
 @main_bp.route('/terms')
 def terms():
     """Render the Terms of Service page."""
-    return render_template('tos.html')
+    github_pages_url = current_app.config.get(
+        'GITHUB_PAGES_URL',
+        'https://timwonderer.github.io/classroom-economy'
+    )
+    return redirect(f"{github_pages_url}/terms.html")
 
 
 @main_bp.route('/district')
 def district():
     """Render the district assurance brief page."""
-    return render_template('district.html')
+    github_pages_url = current_app.config.get(
+        'GITHUB_PAGES_URL',
+        'https://timwonderer.github.io/classroom-economy'
+    )
+    return redirect(f"{github_pages_url}/district.html")
 
 
 @main_bp.route('/offline')

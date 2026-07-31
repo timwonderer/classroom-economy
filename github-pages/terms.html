@@ -9,39 +9,57 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible+Next:wght@400;700&family=IBM+Plex+Mono:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" rel="stylesheet">
-    <link href="{{ url_for('static', filename='css/tokens.css') }}" rel="stylesheet">
-    <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
+    <link href="../static/css/tokens.css" rel="stylesheet">
+    <link href="./style.css" rel="stylesheet">
+    <style>
+        .floating-back-widget {
+            position: fixed;
+            bottom: 2rem;
+            right: 2rem;
+            z-index: 1000;
+            background-color: var(--secondary-color);
+            color: white;
+            padding: 0.75rem 1.25rem;
+            border-radius: 50px;
+            box-shadow: var(--shadow-lg);
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            text-decoration: none;
+            font-weight: 500;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+        .floating-back-widget:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 15px 25px -5px rgba(0, 0, 0, 0.2);
+            color: white;
+        }
+        .floating-back-widget .material-symbols-outlined {
+            font-size: 1.5rem;
+        }
+    </style>
 </head>
 <body class="landing-page">
     <main>
         <section class="landing-hero">
             <div class="landing-shell landing-hero-grid">
                 <div class="landing-brand">
-                    <div class="landing-brand-row">
-                        <span class="material-symbols-outlined" aria-hidden="true">local_atm</span>
-                        <span>CLASSROOM</span>
-                    </div>
-                    <div class="landing-brand-row">
-                        <span class="material-symbols-outlined" aria-hidden="true">store</span>
-                        <span>TOKEN</span>
-                    </div>
-                    <div class="landing-brand-row">
-                        <span class="material-symbols-outlined" aria-hidden="true">finance_mode</span>
-                        <span>HUB</span>
-                    </div>
+                    <div class="landing-brand-row"><span class="material-symbols-outlined" aria-hidden="true">local_atm</span><span>CLASSROOM</span></div>
+                    <div class="landing-brand-row"><span class="material-symbols-outlined" aria-hidden="true">store</span><span>TOKEN</span></div>
+                    <div class="landing-brand-row"><span class="material-symbols-outlined" aria-hidden="true">finance_mode</span><span>HUB</span></div>
                 </div>
                 <div class="landing-welcome">
                     <h1>Terms of Service</h1>
                     <p>Last Updated: February 25, 2026</p>
-                    <a href="{{ url_for('main.home') }}" target="_self" class="floating-back-widget">
+                    <a href="https://classroomtokenhub.com/student/login" target="_self" class="floating-back-widget">
                         <span class="material-symbols-outlined" aria-hidden="true">arrow_circle_right</span>
-                        <span>Return to Transition Page</span>
+                        <span>Return to Login Page</span>
                     </a>
                 </div>
             </div>
         </section>
-
         <section class="landing-content">
             <div class="landing-shell">
                 <div class="public-content-card">
@@ -51,14 +69,8 @@
                         <p><strong>For students:</strong> Your teacher chose this app for your class. If you have questions, talk to your teacher.</p>
                         <p><strong>For teachers:</strong> This app is free for educational use but cannot be used for commercial purposes.</p>
                     </section>
-                    <section class="public-section">
-                        <h2>1. Accepting These Terms</h2>
-                        <p>When you create an account and use Classroom Token Hub (the "Service"), you're agreeing to follow these Terms of Service. If you don't agree with these terms, please don't use the app.</p>
-                    </section>
-                    <section class="public-section">
-                        <h2>2. What Is Classroom Token Hub?</h2>
-                        <p>Classroom Token Hub is an educational web application designed to help students learn about financial literacy through a simulated classroom economy. Teachers can use it to manage virtual currency, track student participation, and create engaging lessons about money management.</p>
-                    </section>
+                    <section class="public-section"><h2>1. Accepting These Terms</h2><p>When you create an account and use Classroom Token Hub (the "Service"), you're agreeing to follow these Terms of Service. If you don't agree with these terms, please don't use the app.</p></section>
+                    <section class="public-section"><h2>2. What Is Classroom Token Hub?</h2><p>Classroom Token Hub is an educational web application designed to help students learn about financial literacy through a simulated classroom economy. Teachers can use it to manage virtual currency, track student participation, and create engaging lessons about money management.</p></section>
                     <section class="public-section">
                         <h2>3. Your Account Responsibilities</h2>
                         <p>We worked hard to design this app so it can give you the best experience while protecting your privacy. Anyone working behind the scene to maintain this app do not have access to any information about you.</p>
@@ -107,40 +119,16 @@
                             </ul>
                         </div>
                     </section>
-                    <section class="public-section">
-                        <h2>6. Account Suspension or Termination</h2>
-                        <p>We hope it never comes to this, but we may need to suspend or terminate accounts that:</p>
-                        <ul>
-                            <li>Violate these Terms of Service</li>
-                            <li>Are used inappropriately or to harm others</li>
-                            <li>Pose security or safety concerns</li>
-                        </ul>
-                    </section>
-                    <section class="public-section">
-                        <h2>7. No Warranties</h2>
-                        <p>We work hard to make Classroom Token Hub reliable and useful, but like all software, it's not perfect. The app is provided "as is" and "as available."</p>
-                    </section>
-                    <section class="public-section">
-                        <h2>8. Limitation of Liability</h2>
-                        <p>To the extent permitted by law, Timothy Chang and anyone involved in creating or maintaining Classroom Token Hub cannot be held responsible for lost data, profits, opportunities, or issues outside our control.</p>
-                    </section>
-                    <section class="public-section">
-                        <h2>9. Governing Law</h2>
-                        <p>These Terms of Service are governed by the laws of the jurisdiction where the service is operated.</p>
-                    </section>
-                    <section class="public-section">
-                        <h2>10. Changes to These Terms</h2>
-                        <p>We may need to update these terms from time to time. If we make significant changes, we'll notify users at least 30 days before the new terms take effect.</p>
-                    </section>
-                    <section class="public-section">
-                        <h2>11. Questions or Concerns?</h2>
-                        <p>If you have questions about these Terms of Service, please file an in-app support ticket.</p>
-                    </section>
+                    <section class="public-section"><h2>6. Account Suspension or Termination</h2><p>We hope it never comes to this, but we may need to suspend or terminate accounts that:</p><ul><li>Violate these Terms of Service</li><li>Are used inappropriately or to harm others</li><li>Pose security or safety concerns</li></ul></section>
+                    <section class="public-section"><h2>7. No Warranties</h2><p>We work hard to make Classroom Token Hub reliable and useful, but like all software, it's not perfect. The app is provided "as is" and "as available."</p></section>
+                    <section class="public-section"><h2>8. Limitation of Liability</h2><p>To the extent permitted by law, Timothy Chang and anyone involved in creating or maintaining Classroom Token Hub cannot be held responsible for lost data, profits, opportunities, or issues outside our control.</p></section>
+                    <section class="public-section"><h2>9. Governing Law</h2><p>These Terms of Service are governed by the laws of the jurisdiction where the service is operated.</p></section>
+                    <section class="public-section"><h2>10. Changes to These Terms</h2><p>We may need to update these terms from time to time. If we make significant changes, we'll notify users at least 30 days before the new terms take effect.</p></section>
+                    <section class="public-section"><h2>11. Questions or Concerns?</h2><p>If you have questions about these Terms of Service, please file an in-app support ticket.</p></section>
                 </div>
             </div>
         </section>
     </main>
-
     <footer class="landing-footer">
         <div class="landing-shell landing-footer-grid">
             <div class="landing-footer-links">

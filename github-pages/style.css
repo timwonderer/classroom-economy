@@ -706,7 +706,7 @@ body.landing-page {
 
 .landing-hero-grid {
     display: grid;
-    grid-template-columns: 300px 1fr;
+    grid-template-columns: 400px 1fr;
     gap: 4.1rem;
     align-items: center;
 }
@@ -724,7 +724,7 @@ body.landing-page {
     gap: 0.65rem;
     font-size: 2.7rem;
     line-height: 1;
-    font-weight: 600;
+    font-weight: 500;
 }
 
 .landing-brand-row .material-symbols-outlined {
@@ -761,6 +761,60 @@ body.landing-page {
 .landing-content {
     padding: 3.1rem 0 4.15rem 0;
     background-color: var(--background);
+}
+
+.public-content-card {
+    background-color: var(--surface);
+    padding: 2.5rem;
+    border-radius: 2px;
+    box-shadow: var(--shadow);
+}
+
+.public-section {
+    margin-bottom: 2.5rem;
+}
+
+.public-section:last-child {
+    margin-bottom: 0;
+}
+
+.public-section h2 {
+    color: var(--guardian-gray);
+    font-size: 1.5rem;
+    margin-bottom: 1rem;
+    font-weight: 600;
+}
+
+.public-section h3 {
+    color: var(--text-primary);
+    font-size: 1.1rem;
+    margin-top: 1rem;
+    margin-bottom: 0.75rem;
+    font-weight: 600;
+}
+
+.public-section p {
+    color: var(--text-primary);
+    font-size: 1rem;
+    line-height: 1.6;
+    margin-bottom: 1rem;
+}
+
+.public-section p:last-child {
+    margin-bottom: 0;
+}
+
+.public-section ul,
+.public-section ol {
+    color: var(--text-primary);
+    font-size: 1rem;
+    line-height: 1.6;
+    margin-bottom: 1rem;
+    padding-left: 1.5rem;
+}
+
+.public-section li {
+    margin-bottom: 0.5rem;
 }
 
 .landing-content-grid {

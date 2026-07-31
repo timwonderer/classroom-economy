@@ -1494,6 +1494,368 @@ body.maintenance-active .sidebar {
     }
 }
 
+/* ─── Landing Page Styling ─── */
+.landing-shell {
+    max-width: 1240px;
+    margin: 0 auto;
+    padding: 0 2rem;
+}
+
+.landing-hero {
+    background-color: var(--primary);
+    color: var(--text-inverse);
+    padding: 2.25rem 0 2.35rem 0;
+}
+
+.landing-hero-grid {
+    display: grid;
+    grid-template-columns: 400px 1fr;
+    gap: 4.1rem;
+    align-items: center;
+}
+
+.landing-brand {
+    display: grid;
+    gap: 0.45rem;
+    padding-right: 2.8rem;
+    border-right: 2px solid var(--secondary-color);
+}
+
+.landing-brand-row {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+    font-size: 2.7rem;
+    line-height: 1;
+    font-weight: 500;
+}
+
+.landing-brand-row .material-symbols-outlined {
+    color: var(--secondary-color);
+    font-size: 2.7rem;
+}
+
+.landing-welcome h1 {
+    color: var(--secondary);
+    font-size: 2rem;
+    line-height: 1.1;
+    font-weight: 600;
+    margin: 0 0 0 0;
+}
+
+.landing-welcome p {
+    color: var(--secondary);
+    margin: 0;
+    font-size: 1.5rem;
+    font-weight: 300;
+}
+
+.landing-welcome .version {
+    color: #DEDEDE;
+    font-size: 0.7rem;
+    font-weight: 500;
+    letter-spacing: 0.3em;
+}
+
+.landing-welcome em {
+    font-style: italic;
+}
+
+.landing-content {
+    padding: 3.1rem 0 4.15rem 0;
+    background-color: var(--background);
+}
+
+.landing-content-grid {
+    display: grid;
+    grid-template-columns: 375px 1fr;
+    gap: 4rem;
+}
+
+.landing-signin-panel {
+    padding-right: 2rem;
+    border-right: 2px solid var(--secondary-color);
+}
+
+.landing-about-panel {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+}
+
+.landing-signin-heading,
+.landing-about-panel h2 {
+    margin: 0;
+    font-size: 1.75rem;
+    font-weight: 400;
+    line-height: 1.22;
+}
+
+.landing-signin-heading {
+    margin-bottom: 1rem;
+}
+
+.landing-signin-buttons {
+    display: grid;
+    gap: 1rem;
+    margin-bottom: 2.1rem;
+}
+
+.landing-signin-btn,
+.landing-learn-more-btn {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    text-decoration: none;
+    color: var(--text-inverse);
+    padding: 0.85rem 1.1rem;
+    border-radius: var(--radius-sm);
+    font-size: 1.15rem;
+    line-height: 1.2;
+    transition: filter 120ms ease-in-out;
+    box-shadow: var(--shadow);
+}
+
+.landing-signin-btn:hover,
+.landing-signin-btn:focus-visible,
+.landing-learn-more-btn:hover,
+.landing-learn-more-btn:focus-visible {
+    color: var(--text-inverse);
+    box-shadow: 0 0 5px 1px var(--secondary-color);
+}
+
+.landing-signin-btn-main {
+    display: flex;
+    align-items: center;
+    gap: 0.7rem;
+}
+
+.landing-signin-btn-main .material-symbols-outlined,
+.landing-signin-btn > .material-symbols-outlined,
+.landing-learn-more-btn > .material-symbols-outlined {
+    font-size: 1.45rem;
+}
+
+.landing-signin-btn--teacher {
+    background-color: var(--primary);
+}
+
+.landing-signin-btn--student {
+    background-color: var(--steward-blue);
+}
+
+.landing-signin-btn--operator {
+    background-color: var(--guardian-gray);
+}
+
+.landing-signin-note-title {
+    color: var(--secondary-color);
+    font-size: 1rem;
+    font-style: italic;
+    font-weight: 600;
+    margin: 0 0 0 0;
+}
+
+.landing-no-account-note {
+    border-style:solid;
+    border-color:var(--secondary);
+    border-width:2px;
+    padding:0.5rem;
+    border-radius: var(--radius-sm);
+    font-size:0.8rem;
+    background-color: var(--secondary-subtle);
+}
+
+.landing-about-panel p {
+    margin: 0 0 1rem 0;
+    font-size: 1rem;
+    line-height:1.5;
+}
+
+.landing-signin-panel p:last-child {
+    margin-bottom: 0;
+}
+
+.landing-status-wrap {
+    margin-top: 1.4rem;
+}
+
+.landing-status-label {
+    color: var(--text-light);
+    font-size: 0.8rem;
+    font-weight: 400;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+}
+
+.landing-about-panel h2 {
+    margin-bottom: 1rem;
+}
+
+.landing-signin-heading strong,
+.landing-about-panel strong {
+    color: var(--primary);
+}
+
+.landing-about-panel p {
+    max-width: 780px;
+}
+
+.landing-learn-more-btn {
+    background-color: var(--secondary);
+    color: var(--secondary-text);
+    width: 265px;
+    margin-left: auto;
+    margin-top: 2.25rem;
+}
+
+.landing-learn-more-btn:hover,
+.landing-learn-more-btn:focus-visible {
+    color: var(--secondary-text);
+}
+
+.landing-footer {
+    background-color: var(--guardian-gray);
+    color: var(--text-inverse);
+    padding: 1rem 0;
+    text-align: left;
+}
+
+.landing-footer p {
+    opacity: 1;
+}
+
+.landing-footer-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr minmax(320px, 1.8fr);
+    gap: 1rem;
+    align-items: start;
+}
+
+.landing-footer-links {
+    display: grid;
+    gap: 0.5rem;
+}
+
+.landing-footer-links a {
+    color: var(--neutral-100);
+    text-decoration: none;
+    font-size: 0.95rem;
+    line-height: 1.3;
+}
+
+.landing-footer-links a:hover,
+.landing-footer-links a:focus-visible {
+    color: var(--secondary-color);
+}
+
+.landing-footer-meta p {
+    margin: 0;
+    font-size: 0.88rem;
+    color: var(--secondary);
+    line-height: 1.4;
+}
+
+.landing-footer-meta p + p {
+    margin-top: 0.35rem;
+    color: var(--neutral-100);
+}
+
+@media (max-width: 1024px) {
+    .landing-hero-grid {
+        grid-template-columns: 1fr;
+        gap: 1.5rem;
+    }
+
+    .landing-brand {
+        border-right: 0;
+        border-bottom: 2px solid var(--secondary-color);
+        padding-right: 0;
+        padding-bottom: 1.4rem;
+    }
+
+    .landing-content-grid {
+        grid-template-columns: 1fr;
+        gap: 2rem;
+    }
+
+    .landing-signin-panel {
+        border-right: 0;
+        border-bottom: 2px solid var(--secondary-color);
+        padding-right: 0;
+        padding-bottom: 1.5rem;
+    }
+
+    .landing-about-panel {
+        justify-content: flex-start;
+    }
+
+    .landing-learn-more-btn {
+        width: 100%;
+        margin-left: 0;
+    }
+
+    .landing-footer-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* ─── Public Content Card Styling (Landing Pages) ─── */
+.public-content-card {
+    background-color: var(--surface);
+    padding: 2.5rem;
+    border-radius: 2px;
+    box-shadow: var(--shadow);
+}
+
+.public-section {
+    margin-bottom: 2.5rem;
+}
+
+.public-section:last-child {
+    margin-bottom: 0;
+}
+
+.public-section h2 {
+    color: var(--guardian-gray);
+    font-size: 1.5rem;
+    margin-bottom: 1rem;
+    font-weight: 600;
+}
+
+.public-section h3 {
+    color: var(--text-primary);
+    font-size: 1.1rem;
+    margin-top: 1rem;
+    margin-bottom: 0.75rem;
+    font-weight: 600;
+}
+
+.public-section p {
+    color: var(--text-primary);
+    font-size: 1rem;
+    line-height: 1.6;
+    margin-bottom: 1rem;
+}
+
+.public-section p:last-child {
+    margin-bottom: 0;
+}
+
+.public-section ul,
+.public-section ol {
+    color: var(--text-primary);
+    font-size: 1rem;
+    line-height: 1.6;
+    margin-bottom: 1rem;
+    padding-left: 1.5rem;
+}
+
+.public-section li {
+    margin-bottom: 0.5rem;
+}
+
 /* ─── Accessibility & Focus Styling (WCAG 2.4.7 / 1.4.11) ─── */
 *:focus-visible {
     outline: 3px solid var(--primary) !important;
