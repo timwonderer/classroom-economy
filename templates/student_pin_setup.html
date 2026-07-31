@@ -269,7 +269,7 @@
 
                 <fieldset id="setup-fields" class="disabled-fields" disabled>
                     <div class="form-group">
-                        <label class="form-label text-secondary">PIN</label>
+                        <label class="form-label text-secondary" for="pin">PIN</label>
                         {{ form.pin(class="form-control form-control-lg", id="pin", autocomplete="off", placeholder="e.g., 938291", inputmode="numeric") }}
                         <small class="form-text">Use 4-8 digits that you will remember. You will sign in using this PIN.</small>
                         {% for error in form.pin.errors %}
@@ -278,7 +278,7 @@
                     </div>
 
                     <div class="form-group">
-                        <label class="form-label text-secondary">Passphrase</label>
+                        <label class="form-label text-secondary" for="passphrase">Passphrase</label>
                         {{ form.passphrase(class="form-control form-control-lg", id="passphrase", autocomplete="off", placeholder="e.g., Surprised!Banana!2!You!") }}
                         <small class="form-text">A good passphrase has at least four words with symbols and numbers. Make it easy to remember but hard to guess.</small>
                         <div class="strength-meter">

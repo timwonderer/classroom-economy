@@ -122,7 +122,11 @@ def _render_page(template_path: Path, client) -> str:
 
     route_map = {
         "templates/admin_login.html": lambda: _render_route(client, "/admin/login"),
-        "templates/admin_recovery_saved.html": lambda: _render_route(client, "/admin/recovery-status"),
+        "templates/admin_recovery_saved.html": lambda: _render_direct(
+            "admin_recovery_saved.html",
+            saved_username="example-user",
+            recovery_codes=["123456"],
+        ),
         "templates/admin_reset_credentials.html": lambda: _render_direct(
             "admin_reset_credentials.html",
             show_qr=False,

@@ -158,15 +158,15 @@
             <form method="POST" id="loginForm">
                 {{ form.hidden_tag() }}
                 <div class="mb-4">
-                    <label class="form-label">Username</label>
+                    <label class="form-label" for="usernameField">Username</label>
                     {{ form.username(class="form-control form-control-lg", autocomplete="off",placeholder="Enter your
                     username", id="usernameField") }}
                 </div>
 
                 <div class="mb-4">
-                    <label class="form-label">Authenticator Code</label>
+                    <label class="form-label" for="totpCodeField">Authenticator Code</label>
                     {{ form.totp_code(class="form-control form-control-lg", inputmode="numeric", autocomplete="off",
-                    pattern="[0-9]*", maxlength="6", placeholder="Enter 6-digit code") }}
+                    pattern="[0-9]*", maxlength="6", placeholder="Enter 6-digit code", id="totpCodeField") }}
                 </div>
 
                 {% if turnstile_site_key %}

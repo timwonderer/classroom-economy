@@ -66,7 +66,7 @@ jobs:
       - name: Collect Changed Templates
         id: changed_templates
         run: |
-          git diff --name-only "${{ github.event.pull_request.base.sha }}" "${{ github.event.pull_request.head.sha }}" -- 'templates/**' > /tmp/changed_templates.txt
+          git diff --name-only --diff-filter=AM "${{ github.event.pull_request.base.sha }}" "${{ github.event.pull_request.head.sha }}" -- 'templates/**' > /tmp/changed_templates.txt
           if [ ! -s /tmp/changed_templates.txt ]; then
             echo "templates=" >> "$GITHUB_OUTPUT"
             echo "No template files changed; skipping accessibility audit."

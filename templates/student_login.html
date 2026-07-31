@@ -178,15 +178,15 @@
                 {{ form.hidden_tag() }}
 
                 <div class="mb-3">
-                    <label class="form-label text-secondary">Username</label>
+                    <label class="form-label text-secondary" for="studentUsername">Username</label>
                     {{ form.username(class="form-control form-control-lg", placeholder="Enter your username",
-                    autocomplete="off") }}
+                    autocomplete="off", id="studentUsername") }}
                 </div>
 
                 <div class="mb-4">
-                    <label class="form-label text-secondary">PIN</label>
+                    <label class="form-label text-secondary" for="studentPin">PIN</label>
                     {{ form.pin(class="form-control form-control-lg pin-input", placeholder="••••", inputmode="numeric",
-                    pattern="[0-9]*", autocomplete="off") }}
+                    pattern="[0-9]*", autocomplete="off", id="studentPin") }}
                 </div>
 
                 {% if turnstile_site_key %}
