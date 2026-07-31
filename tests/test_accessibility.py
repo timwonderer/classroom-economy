@@ -153,9 +153,8 @@ def _render_page(template_path: Path, client) -> str:
         "templates/admin_login.html": lambda: _render_route(client, "/admin/login"),
         "templates/admin_recovery_saved.html": lambda: _render_direct(
             "admin_recovery_saved.html",
-            codes_saved=2,
-            resume_pin="123456",
-            recovery_request=SimpleNamespace(expires_at=SimpleNamespace(strftime=lambda fmt: "July 31, 2026 at 12:00 PM")),
+            saved_username="example-user",
+            recovery_codes=["123456"],
         ),
         "templates/admin_reset_credentials.html": lambda: _render_direct(
             "admin_reset_credentials.html",
