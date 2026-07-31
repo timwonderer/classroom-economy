@@ -21,6 +21,15 @@ from app.utils.canonical_temporal_resolver import CLASS_LEVEL_EVALUATION, canoni
 main_bp = Blueprint('main', __name__)
 
 
+GITHUB_PAGES_DEFAULT_URL = 'https://timwonderer.github.io/classroom-economy'
+
+
+def _github_pages_redirect(page_filename: str):
+    """Redirect to a policy page hosted on the configured GitHub Pages site."""
+    github_pages_url = current_app.config.get('GITHUB_PAGES_URL', GITHUB_PAGES_DEFAULT_URL).rstrip('/')
+    return redirect(f"{github_pages_url}/{page_filename}")
+
+
 # -------------------- HOME AND LEGAL PAGES --------------------
 
 @main_bp.route('/')
@@ -162,32 +171,20 @@ def health_check_deep():
 
 @main_bp.route('/privacy')
 def privacy():
-    """Render the Privacy & Data Handling Policy page."""
-    github_pages_url = current_app.config.get(
-        'GITHUB_PAGES_URL',
-        'https://timwonderer.github.io/classroom-economy'
-    )
-    return redirect(f"{github_pages_url}/privacy.html")
+    """Redirect to the hosted Privacy & Data Handling Policy page."""
+    return _github_pages_redirect('privacy.html')
 
 
 @main_bp.route('/terms')
 def terms():
-    """Render the Terms of Service page."""
-    github_pages_url = current_app.config.get(
-        'GITHUB_PAGES_URL',
-        'https://timwonderer.github.io/classroom-economy'
-    )
-    return redirect(f"{github_pages_url}/terms.html")
+    """Redirect to the hosted Terms of Service page."""
+    return _github_pages_redirect('terms.html')
 
 
 @main_bp.route('/district')
 def district():
-    """Render the district assurance brief page."""
-    github_pages_url = current_app.config.get(
-        'GITHUB_PAGES_URL',
-        'https://timwonderer.github.io/classroom-economy'
-    )
-    return redirect(f"{github_pages_url}/district.html")
+    """Redirect to the hosted district assurance brief page."""
+    return _github_pages_redirect('district.html')
 
 
 @main_bp.route('/offline')

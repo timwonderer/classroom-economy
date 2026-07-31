@@ -27,7 +27,7 @@
                             <span class="level {% if log.level == 'ERROR' %}text-danger{% elif log.level == 'WARNING' %}text-warning{% endif %}" style="font-weight: bold; flex-shrink: 0;">[{{ log.level }}]</span>
                             <span class="module" style="color: var(--text-secondary); flex-shrink: 0;">{{ log.module }}</span>
                         </div>
-                        <pre class="message" style="white-space: pre-wrap; word-break: break-word; overflow-wrap: anywhere; font-size: 0.9rem; line-height: 1.4; margin: 0; color: var(--neutral-50);">{{ log.message | safe }}</pre>
+                        <pre class="message" style="white-space: pre-wrap; word-break: break-word; overflow-wrap: anywhere; font-size: 0.9rem; line-height: 1.4; margin: 0; color: var(--neutral-50); font-family: var(--font-data);">{{ log.message | safe }}</pre>
                     </div>
                     {% endif %}
                 {% endfor %}

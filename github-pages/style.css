@@ -258,6 +258,50 @@ hr {
     margin-top:0;
 }
 
+.floating-back-widget {
+    position: fixed;
+    bottom: 2rem;
+    right: 2rem;
+    z-index: 1000;
+    background-color: var(--secondary-color);
+    color: white;
+    padding: 0.75rem 1.25rem;
+    border-radius: 50px;
+    box-shadow: var(--shadow-lg);
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    text-decoration: none;
+    font-weight: 500;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.floating-back-widget:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 15px 25px -5px rgba(0, 0, 0, 0.2);
+    color: white;
+}
+
+.floating-back-widget .material-symbols-outlined {
+    font-size: 1.5rem;
+}
+
+.public-content-card {
+    background: var(--bg-white);
+    border-radius: 1rem;
+    box-shadow: var(--shadow-lg);
+    padding: 2rem;
+}
+
+.public-section {
+    padding: 0 0 1.5rem 0;
+}
+
+.public-section:not(:last-child) {
+    border-bottom: 1px solid var(--border-color);
+    margin-bottom: 1.5rem;
+}
+
 .transition-page-v2-subheading {
     color:var(--accent-color);
     font-size:1.2rem;
@@ -761,60 +805,6 @@ body.landing-page {
 .landing-content {
     padding: 3.1rem 0 4.15rem 0;
     background-color: var(--background);
-}
-
-.public-content-card {
-    background-color: var(--surface);
-    padding: 2.5rem;
-    border-radius: 2px;
-    box-shadow: var(--shadow);
-}
-
-.public-section {
-    margin-bottom: 2.5rem;
-}
-
-.public-section:last-child {
-    margin-bottom: 0;
-}
-
-.public-section h2 {
-    color: var(--guardian-gray);
-    font-size: 1.5rem;
-    margin-bottom: 1rem;
-    font-weight: 600;
-}
-
-.public-section h3 {
-    color: var(--text-primary);
-    font-size: 1.1rem;
-    margin-top: 1rem;
-    margin-bottom: 0.75rem;
-    font-weight: 600;
-}
-
-.public-section p {
-    color: var(--text-primary);
-    font-size: 1rem;
-    line-height: 1.6;
-    margin-bottom: 1rem;
-}
-
-.public-section p:last-child {
-    margin-bottom: 0;
-}
-
-.public-section ul,
-.public-section ol {
-    color: var(--text-primary);
-    font-size: 1rem;
-    line-height: 1.6;
-    margin-bottom: 1rem;
-    padding-left: 1.5rem;
-}
-
-.public-section li {
-    margin-bottom: 0.5rem;
 }
 
 .landing-content-grid {
