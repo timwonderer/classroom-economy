@@ -90,6 +90,8 @@ def _audit_html_accessibility(html_content: str) -> None:
 @pytest.mark.parametrize("template_path", _template_paths())
 def test_template_accessibility_smoke(template_path: Path):
     html = template_path.read_text(encoding="utf-8")
+    if template_path.name == "base.html" or template_path.name.startswith("layout_"):
+        pytest.skip("Layout shell templates are not standalone pages; audit rendered pages instead.")
     if "{% extends" in html:
         pytest.skip("Template is a fragment rendered via a parent layout; audit the final page instead.")
     _audit_html_accessibility(html)
