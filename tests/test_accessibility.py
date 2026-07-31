@@ -9,6 +9,7 @@ ACCESSIBILITY_TEMPLATE_PATHS.
 from __future__ import annotations
 
 import os
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -17,6 +18,7 @@ from bs4 import BeautifulSoup
 from flask import render_template
 
 from app import app as flask_app
+from app.forms import StudentCreateUsernameForm, StudentPinPassphraseForm
 
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -104,8 +106,10 @@ def _render_route(client, route: str) -> str:
     return response.get_data(as_text=True)
 
 
-def _render_direct(template_name: str, **context) -> str:
+def _render_direct(template_name: str, context_builder=None, **context) -> str:
     with flask_app.test_request_context("/"):
+        if context_builder is not None:
+            context.update(context_builder())
         return render_template(template_name, **context)
 
 
@@ -126,6 +130,11 @@ def _render_page(template_path: Path, client) -> str:
             "admin_recovery_saved.html",
             saved_username="example-user",
             recovery_codes=["123456"],
+            resume_pin="123456",
+            codes_saved=2,
+            recovery_request=SimpleNamespace(
+                expires_at=datetime.now(timezone.utc) + timedelta(hours=1)
+            ),
         ),
         "templates/admin_reset_credentials.html": lambda: _render_direct(
             "admin_reset_credentials.html",
@@ -148,8 +157,16 @@ def _render_page(template_path: Path, client) -> str:
         ),
         "templates/student_login.html": lambda: _render_route(client, "/student/login"),
         "templates/student_account_claim.html": lambda: _render_route(client, "/student/claim-account"),
-        "templates/student_create_username.html": lambda: _render_route(client, "/student/create-username"),
-        "templates/student_pin_setup.html": lambda: _render_route(client, "/student/setup-pin-passphrase"),
+        "templates/student_create_username.html": lambda: _render_direct(
+            "student_create_username.html",
+            theme_prompt="Pick a word that describes your favorite animal.",
+            context_builder=lambda: {"form": StudentCreateUsernameForm()},
+        ),
+        "templates/student_pin_setup.html": lambda: _render_direct(
+            "student_pin_setup.html",
+            username="example-student",
+            context_builder=lambda: {"form": StudentPinPassphraseForm()},
+        ),
         "templates/maintenance.html": lambda: _render_direct(
             "maintenance.html",
             badge_icon="construction",
