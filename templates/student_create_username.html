@@ -204,8 +204,8 @@
                 {{ form.hidden_tag() }}
 
                 <div class="form-group">
-                    <label class="form-label text-secondary">Your Word</label>
-                    {{ form.write_in_word(class="form-control form-control-lg", placeholder="Enter your chosen word here", autocomplete="off") }}
+                    <label class="form-label text-secondary" for="writeInWord">Your Word</label>
+                    {{ form.write_in_word(class="form-control form-control-lg", placeholder="Enter your chosen word here", autocomplete="off", id="writeInWord") }}
                     {% for error in form.write_in_word.errors %}
                     <div class="text-danger small mt-2">{{ error }}</div>
                     {% endfor %}

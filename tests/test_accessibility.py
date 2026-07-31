@@ -109,6 +109,35 @@ def _render_direct(template_name: str, **context) -> str:
         return render_template(template_name, **context)
 
 
+class _DummyField:
+    def __init__(self, tag_name: str = "input", field_type: str | None = "text"):
+        self.tag_name = tag_name
+        self.field_type = field_type
+
+    def __call__(self, **attrs):
+        rendered_attrs = []
+        if self.tag_name == "input" and self.field_type:
+            rendered_attrs.append(f'type="{self.field_type}"')
+        for key, value in attrs.items():
+            rendered_attrs.append(f'{key.replace("_", "-")}="{value}"')
+        if self.tag_name == "input":
+            return f"<input {' '.join(rendered_attrs)} />"
+        return f"<{self.tag_name} {' '.join(rendered_attrs)}></{self.tag_name}>"
+
+
+class _DummyForm:
+    def __init__(self, **fields):
+        self._fields = fields
+
+    def hidden_tag(self):
+        return ""
+
+    def __getattr__(self, item):
+        if item in self._fields:
+            return self._fields[item]
+        raise AttributeError(item)
+
+
 def _render_page(template_path: Path, client) -> str:
     name = template_path.name
 
@@ -122,7 +151,12 @@ def _render_page(template_path: Path, client) -> str:
 
     route_map = {
         "templates/admin_login.html": lambda: _render_route(client, "/admin/login"),
-        "templates/admin_recovery_saved.html": lambda: _render_route(client, "/admin/recovery-status"),
+        "templates/admin_recovery_saved.html": lambda: _render_direct(
+            "admin_recovery_saved.html",
+            codes_saved=2,
+            resume_pin="123456",
+            recovery_request=SimpleNamespace(expires_at=SimpleNamespace(strftime=lambda fmt: "July 31, 2026 at 12:00 PM")),
+        ),
         "templates/admin_reset_credentials.html": lambda: _render_direct(
             "admin_reset_credentials.html",
             show_qr=False,
@@ -144,8 +178,25 @@ def _render_page(template_path: Path, client) -> str:
         ),
         "templates/student_login.html": lambda: _render_route(client, "/student/login"),
         "templates/student_account_claim.html": lambda: _render_route(client, "/student/claim-account"),
-        "templates/student_create_username.html": lambda: _render_route(client, "/student/create-username"),
-        "templates/student_pin_setup.html": lambda: _render_route(client, "/student/setup-pin-passphrase"),
+        "templates/student_create_username.html": lambda: _render_direct(
+            "student_create_username.html",
+            theme_prompt="creative word",
+            form=_DummyForm(
+                hidden_tag=lambda: "",
+                write_in_word=_DummyField(),
+                submit=_DummyField("button", None),
+            ),
+        ),
+        "templates/student_pin_setup.html": lambda: _render_direct(
+            "student_pin_setup.html",
+            username="student1234",
+            form=_DummyForm(
+                hidden_tag=lambda: "",
+                pin=_DummyField(),
+                passphrase=_DummyField(),
+                submit=_DummyField("button", None),
+            ),
+        ),
         "templates/maintenance.html": lambda: _render_direct(
             "maintenance.html",
             badge_icon="construction",
