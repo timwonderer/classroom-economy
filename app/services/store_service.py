@@ -4,8 +4,8 @@ Store Service — Operational Store Item and Visibility Management (Supporting D
 Utility functions for managing product catalog and visibility.
 
 SCOPE:
-- Store item CRUD (create, read, update, deactivate) — product definitions belong to Policies domain
-- Store item visibility (per-seat visibility rules) — visibility rules belong to Policies domain
+- Store item CRUD (create, read, update, deactivate) — product definitions belong to Class Configuration / policy-authority surfaces
+- Store item visibility (per-seat visibility rules) — visibility rules belong to Class Configuration / policy-authority surfaces
 - Inventory management (decrements) — operational state
 - Rent-linked store item helpers — operational queries
 
@@ -16,7 +16,7 @@ OUT OF SCOPE (moved to FEATs and other services):
 - Insurance claims (use FEAT-STOR-003)
 
 NOTE: This service is NOT part of the Store and Entitlements domain (DOM-STORE-001).
-StoreItem and StoreItemVisibility definitions belong to the Policies domain (DOM-POL-001).
+StoreItem and StoreItemVisibility definitions are class-scoped catalog definitions owned by Class Configuration / policy-authority surfaces.
 Store and Entitlements owns only entitlement_events and pending_actions.
 Entitlement truth flows through immutable EntitlementEvent rows in entitlement_read_service.py.
 """

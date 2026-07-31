@@ -111,8 +111,8 @@ def _void_purchase(tx: Transaction) -> None:
     if selected_units < quantity:
         raise ValueError("Unable to map this transaction to purchasable student items.")
 
-    # TODO: Phase 3-4 — Replace with new entitlement event check against EntitlementEvent.event_type == CONSUMED
-    # Legacy RedemptionEvent model deleted per Phase 2 migration (DOM-STORE-001 v3.0)
+    # Historical note: the legacy RedemptionEvent model was removed in the Phase 2 migration.
+    # The canonical terminal-state check is now based on EntitlementEvent.event_type == CONSUMED.
 
     ledger_service.create_pending_transaction(
         seat_id=tx.seat_id,

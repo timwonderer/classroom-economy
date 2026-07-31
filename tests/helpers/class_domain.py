@@ -11,19 +11,38 @@ from __future__ import annotations
 
 from typing import Any
 
+from app.extensions import db
+from app.feats.base import FEATContext
+from app.models import ClassFeature
+
 
 def enable_class_feature(*, class_id: str, feature_name: str):
     """Seed a single class feature row via the production FEAT path."""
-    from tests.helpers.v2_fixtures import seed_class_feature
-
-    return seed_class_feature(class_id=class_id, feature_name=feature_name)
+    with FEATContext("FEAT-SETTINGS-001", idempotency_key=f"class_feature:enable:{class_id}:{feature_name}"):
+        feature = ClassFeature(class_id=class_id, feature_name=feature_name)
+        db.session.add(feature)
+        db.session.flush()
+        db.session.info["feat_orchestrator_commit"] = True
+        try:
+            db.session.commit()
+        finally:
+            db.session.info.pop("feat_orchestrator_commit", None)
+        return feature
 
 
 def disable_class_feature(*, class_id: str, feature_name: str):
     """Remove a single class feature row via the production FEAT path."""
-    from tests.helpers.v2_fixtures import clear_class_feature
-
-    return clear_class_feature(class_id=class_id, feature_name=feature_name)
+    with FEATContext("FEAT-SETTINGS-001", idempotency_key=f"class_feature:disable:{class_id}:{feature_name}"):
+        feature = ClassFeature.query.filter_by(class_id=class_id, feature_name=feature_name).first()
+        if feature is not None:
+            db.session.delete(feature)
+            db.session.flush()
+            db.session.info["feat_orchestrator_commit"] = True
+            try:
+                db.session.commit()
+            finally:
+                db.session.info.pop("feat_orchestrator_commit", None)
+        return feature
 
 
 def update_payroll_settings(client, **form_data: Any):

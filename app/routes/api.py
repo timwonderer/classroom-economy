@@ -7,6 +7,7 @@ and other interactive features. Most routes require authentication.
 
 import re
 import secrets
+import uuid
 import pytz
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
@@ -27,7 +28,7 @@ from app.models import (
     # StoreItemBlock removed — store_item_blocks unauthorized; use store_item_visibility (DOM-STORE-001)
     StoreItemVisibility, User,
     _quantize_currency,
-    ClassEconomy, Seat, IdentityProfile, PayrollEvent,
+    ClassEconomy, Seat, IdentityProfile, PayrollEvent, EntitlementEvent, PendingAction,
 )
 from app.auth import (
     login_required,
@@ -58,17 +59,6 @@ from app.routes.student import (
 from app.services.context_resolver import resolve_canonical_context, ContextResolutionError
 from app.feats.store_purchase_feat import execute_store_purchase
 from app.feats.ledger_resolution_feat import build_intended_ledger_plan, resolve_intended_ledger_plan, apply_resolved_ledger_plan
-# TODO (Phase 4): get_active_rent_grant, get_purchase_count commented out (deleted service functions)
-# from app.services.store_service import get_active_rent_grant, get_purchase_count
-# TODO (Phase 4): store_entitlement_service deleted; use EntitlementEvent queries
-# from app.services.store_entitlement_service import consume_entitlement, list_entitlement_history, derive_display_status
-# TODO (Phase 4): redemption_disposition_feat deleted; use FEAT-STOR-002 instead
-# from app.feats.redemption_disposition_feat import (
-#     RedemptionDispositionError,
-#     execute_redemption_approval,
-#     execute_redemption_rejection,
-#     record_live_redemption_event,
-# )
 from app.services import store_service
 from app.services.entitlement_read_service import get_purchase_count, get_active_rent_grant
 from app.services.entitlement_service import get_hall_pass_balance, grant_hall_passes
@@ -124,6 +114,50 @@ def _safe_exception_prefix_message(exc, default_message, *, allowed_prefixes=Non
             if message.startswith(allowed_prefix):
                 return allowed_prefix
     return default_message
+
+
+def _latest_entitlement_grant(entitlement_id: str):
+    return (
+        EntitlementEvent.query
+        .filter(
+            EntitlementEvent.entitlement_id == entitlement_id,
+            EntitlementEvent.event_type == "GRANTED",
+        )
+        .order_by(EntitlementEvent.timestamp.desc(), EntitlementEvent.event_id.desc())
+        .first()
+    )
+
+
+def _entitlement_terminal_event(entitlement_id: str):
+    return (
+        EntitlementEvent.query
+        .filter(
+            EntitlementEvent.entitlement_id == entitlement_id,
+            EntitlementEvent.event_type.in_(["CONSUMED", "EXPIRED", "REVOKED"]),
+        )
+        .order_by(EntitlementEvent.timestamp.desc(), EntitlementEvent.event_id.desc())
+        .first()
+    )
+
+
+def _pending_action_for_entitlement(entitlement_id: str):
+    return (
+        PendingAction.query
+        .filter(PendingAction.entitlement_id == entitlement_id)
+        .order_by(PendingAction.submitted_at.desc(), PendingAction.pending_action_id.desc())
+        .first()
+    )
+
+
+def derive_display_status(entitlement_id: str) -> str:
+    """Return the canonical display status for an entitlement lineage."""
+    if _pending_action_for_entitlement(entitlement_id):
+        return "processing"
+    if _entitlement_terminal_event(entitlement_id):
+        return "consumed"
+    if _latest_entitlement_grant(entitlement_id):
+        return "purchased"
+    return "unknown"
 
 @api_bp.errorhandler(ContextResolutionError)
 def handle_api_context_resolution_error(e):
@@ -200,49 +234,6 @@ def _resolve_class_display_label(class_id, fallback_block=None):
             return class_economy.display_name or get_display_join_code(class_id)
 
     return fallback_block or "Unknown Class"
-
-
-def _append_redemption_audit_log(*, entitlement, student, user_id, action, notes, guard_state, fallback_block=None):
-    """Append exactly one live redemption event row for this request path."""
-    if guard_state.get('inserted'):
-        raise RuntimeError("Duplicate redemption audit insertion attempt in single request path")
-
-    action_map = {
-        'REQUEST': RedemptionEventAction.REQUEST,
-        'APPROVED': RedemptionEventAction.APPROVED,
-        'REJECTED': RedemptionEventAction.REJECTED,
-    }
-    if action not in action_map:
-        raise ValueError(f"Unsupported redemption audit action: {action}")
-
-    class_id = entitlement.class_id
-    class_label = _resolve_class_display_label(class_id, fallback_block=fallback_block)
-
-    # Derive student display name from IdentityProfile (v2 canonical).
-    from app.models import IdentityProfile
-    seat_id_val = entitlement.target_seat_id
-    identity = IdentityProfile.query.filter_by(seat_id=seat_id_val).first() if seat_id_val else None
-    if identity:
-        try:
-            first = identity.first_name or ''
-            last = identity.last_name or ''
-            student_display_name = f"{first} {last}".strip() or 'Unknown'
-        except Exception:
-            student_display_name = 'Unknown'
-    else:
-        student_display_name = 'Unknown'
-
-    record_live_redemption_event(
-        entitlement_id=entitlement.entitlement_id,
-        seat_id=entitlement.target_seat_id,
-        class_id=class_id,
-        action=action_map[action],
-        initiated_by_user_id=user_id,
-        seat_display_name=student_display_name,
-        class_display_label=class_label,
-        notes=notes if notes else None,
-    )
-    guard_state['inserted'] = True
 
 
 def _get_hall_pass_settings_scope(class_id):
@@ -445,9 +436,8 @@ def use_item():
     if not check_password_hash(user.passphrase_hash or '', passphrase):
         return jsonify({"status": "error", "message": "Incorrect passphrase."}), 403
 
-    # 2. Get the entitlement
-    entitlement = Entitlement.query.filter_by(entitlement_id=entitlement_id).first()
-
+    # 2. Get the entitlement lineage
+    entitlement = _latest_entitlement_grant(entitlement_id)
     if not entitlement or entitlement.target_seat_id != student.id:
         return jsonify({"status": "error", "message": "Invalid item."}), 404
 
@@ -456,67 +446,67 @@ def use_item():
     if display_status not in ('purchased', 'processing'):
         return jsonify({"status": "error", "message": "This item is not available for redemption."}), 400
 
-    store_item = db.session.get(StoreItem, entitlement.entitlement_item_id)
+    store_item = db.session.get(StoreItem, entitlement.product_id)
     if not store_item:
         return jsonify({"status": "error", "message": "Invalid item."}), 404
 
-    # Special handling for hall_pass items in inventory (bundle or standalone)
+    current_action = _pending_action_for_entitlement(entitlement.entitlement_id)
+    if current_action:
+        return jsonify({"status": "error", "message": "This item is already pending approval."}), 400
+
+    if store_item.item_type == 'immediate':
+        terminal = _entitlement_terminal_event(entitlement.entitlement_id)
+        if terminal:
+            return jsonify({"status": "error", "message": "This item is not available for redemption."}), 400
+        db.session.add(
+            EntitlementEvent(
+                class_id=entitlement.class_id,
+                entitlement_id=entitlement.entitlement_id,
+                target_seat_id=entitlement.target_seat_id,
+                actor_seat_id=entitlement.target_seat_id,
+                product_id=entitlement.product_id,
+                entitlement_type=entitlement.entitlement_type,
+                acquisition_type=entitlement.acquisition_type,
+                event_type="CONSUMED",
+                correlation_id=f"immediate_use_{entitlement.entitlement_id}",
+                payload={
+                    "outcome": "APPROVED",
+                    "source": "api.use_item",
+                    "item_type": store_item.item_type,
+                    "details": details or None,
+                },
+            )
+        )
+        return jsonify({"status": "success", "message": f"You used {store_item.name}."})
+
     if store_item.item_type == 'hall_pass':
-        qty = 1
-        # Try to get quantity from the bridge StorePurchase if it exists
-        bridge_purchase = StorePurchase.query.filter_by(
-            seat_id=entitlement.target_seat_id,
-            store_item_id=entitlement.entitlement_item_id,
-            class_id=entitlement.class_id,
-        ).first()
-        if bridge_purchase and bridge_purchase.quantity:
-            qty = bridge_purchase.quantity
-        grant_hall_passes(student, qty, trigger_id=f"inventory_redeem_{entitlement.entitlement_id}")
-        consume_entitlement(
-            entitlement_id=entitlement.entitlement_id,
-            class_id=entitlement.class_id,
-            target_seat_id=student.id,
-            actor_seat_id=student.id,
-            correlation_id=f"inventory_redeem_{entitlement.entitlement_id}",
-        )
-        return jsonify({"status": "success", "message": f"Added {qty} hall pass(es) to your balance!"})
+        action_payload = {
+            "action": "REQUEST",
+            "item_type": store_item.item_type,
+            "product_id": store_item.id,
+            "policy_uuid": str(store_item.id),
+            "details": details or None,
+            "destination": details or "Hall Pass",
+        }
+    else:
+        action_payload = {
+            "action": "REQUEST",
+            "item_type": store_item.item_type,
+            "product_id": store_item.id,
+            "policy_uuid": str(store_item.id),
+            "details": details or None,
+        }
 
-    # Delayed items remain request-based in the canonical model.
-    if display_status not in ('purchased',):
-        return jsonify({"status": "error", "message": "This item is not available for redemption."}), 400
-
-    # Get context up front for audit snapshots and transaction scoping.
-    try:
-        context = resolve_canonical_context()
-    except ContextResolutionError:
-        context = None
-    # Resolve class owner (teacher) user_id from class_id via canonical ClassEconomy lookup
-    _class_id_for_audit = context.class_id if context else entitlement.class_id
-    _ce = ClassEconomy.query.filter_by(class_id=_class_id_for_audit).first() if _class_id_for_audit else None
-    user_id_for_audit = _ce.user_id if _ce else None
-    fallback_block = None
-
-
-    # 3. Record the redemption request and create the audit transaction.
-    try:
-        audit_guard = {'inserted': False}
-        _append_redemption_audit_log(
-            entitlement=entitlement,
-            student=student,
-            user_id=user_id_for_audit,
-            action='REQUEST',
-            notes=details,
-            guard_state=audit_guard,
-            fallback_block=fallback_block,
-        )
-
-        # FEAT wrapper owns commit/rollback boundaries; keep mutations in the open transaction.
-        return jsonify({"status": "success", "message": f"You have requested to use {store_item.name}. Awaiting admin approval."})
-
-    except (SQLAlchemyError, RuntimeError, ValueError) as e:
-        db.session.rollback()
-        current_app.logger.error(f"Item use failed for student {student_id}: {e}", exc_info=True)
-        return jsonify({"status": "error", "message": "An error occurred. Please try again."}), 500
+    pending_action = PendingAction(
+        class_id=entitlement.class_id,
+        seat_id=student.id,
+        entitlement_id=entitlement.entitlement_id,
+        correlation_id=f"pending_{entitlement.entitlement_id}_{uuid.uuid4().hex}",
+        authoritative_feat="FEAT-STOR-002",
+        payload=action_payload,
+    )
+    db.session.add(pending_action)
+    return jsonify({"status": "success", "message": f"You have requested to use {store_item.name}. Awaiting admin approval."})
 
 
 @api_bp.route('/approve-redemption', methods=['POST'])
@@ -539,7 +529,7 @@ def approve_redemption():
     if not entitlement_id:
         return jsonify({"status": "error", "message": "Missing entitlement ID."}), 400
 
-    entitlement = Entitlement.query.filter_by(entitlement_id=entitlement_id).first()
+    entitlement = _latest_entitlement_grant(entitlement_id)
     if not entitlement:
         return jsonify({"status": "error", "message": "Invalid item."}), 404
 
@@ -554,30 +544,60 @@ def approve_redemption():
     if not has_membership:
         return jsonify({"status": "error", "message": "You do not have access to this class."}), 403
 
-    store_item = db.session.get(StoreItem, entitlement.entitlement_item_id)
+    store_item = db.session.get(StoreItem, entitlement.product_id)
     if not store_item or not store_item.class_id or store_item.class_id != entitlement.class_id:
         return jsonify({"status": "error", "message": "Unauthorized."}), 403
     if not _admin_has_class_scope(g.canonical_context, store_item.class_id):
         return jsonify({"status": "error", "message": "Unauthorized."}), 403
 
     try:
-        result = execute_redemption_approval(
-            entitlement=entitlement,
-            actor_user_id=user_id,
-            notes=None,
-        )
-    except RedemptionDispositionError as e:
+        pending_action = _pending_action_for_entitlement(entitlement.entitlement_id)
+        if not pending_action:
+            return jsonify({"status": "error", "message": "Redemption request is no longer pending and cannot be approved."}), 409
+
+        if store_item.item_type == 'hall_pass':
+            ctx = g.canonical_context
+            record_hall_pass_log(
+                ctx=ctx,
+                requested_by_seat_id=entitlement.target_seat_id,
+                approved_by_seat_id=ctx.seat_id,
+                destination=str((pending_action.payload or {}).get("destination") or "Hall Pass"),
+                reason=str((pending_action.payload or {}).get("details") or ""),
+                idempotency_key=pending_action.correlation_id,
+            )
+        else:
+            db.session.add(
+                EntitlementEvent(
+                    class_id=entitlement.class_id,
+                    entitlement_id=entitlement.entitlement_id,
+                    target_seat_id=entitlement.target_seat_id,
+                    actor_seat_id=ctx.seat_id,
+                    product_id=entitlement.product_id,
+                    entitlement_type=entitlement.entitlement_type,
+                    acquisition_type=entitlement.acquisition_type,
+                    event_type="CONSUMED",
+                    correlation_id=pending_action.correlation_id,
+                    payload={
+                        "outcome": "APPROVED",
+                        "source": "api.approve_redemption",
+                        "item_type": store_item.item_type,
+                        "details": (pending_action.payload or {}).get("details") or None,
+                    },
+                )
+            )
+        db.session.delete(pending_action)
+    except Exception as e:
         current_app.logger.info(
-            "Redemption approval rejected by FEAT for entitlement %s: %s",
+            "Redemption approval failed for entitlement %s: %s",
             entitlement_id,
             e,
         )
         return jsonify({
             "status": "error",
-            "message": "Redemption request is no longer pending and cannot be approved.",
+            "message": "Redemption request could not be approved.",
         }), 409
 
-    return jsonify({"status": "success", "message": result.message})
+    return jsonify({"status": "success", "message": "Redemption request approved."})
 
 
 @api_bp.route('/reject-redemption', methods=['POST'])
@@ -591,7 +611,7 @@ def reject_redemption():
     if not entitlement_id:
         return jsonify({"status": "error", "message": "Missing entitlement ID."}), 400
 
-    entitlement = Entitlement.query.filter_by(entitlement_id=entitlement_id).first()
+    entitlement = _latest_entitlement_grant(entitlement_id)
     if not entitlement:
         return jsonify({"status": "error", "message": "Invalid item."}), 404
 
@@ -602,21 +622,21 @@ def reject_redemption():
 
     # SECURITY: Verify the current admin has class scope for this store item
     user_id = g.canonical_context.user_id
-    store_item = db.session.get(StoreItem, entitlement.entitlement_item_id)
+    store_item = db.session.get(StoreItem, entitlement.product_id)
     if not store_item or not store_item.class_id or store_item.class_id != entitlement.class_id:
         return jsonify({"status": "error", "message": "Unauthorized."}), 403
     if not _admin_has_class_scope(g.canonical_context, store_item.class_id):
         return jsonify({"status": "error", "message": "Unauthorized."}), 403
 
     try:
-        result = execute_redemption_rejection(
-            entitlement=entitlement,
-            actor_user_id=user_id,
-            notes=None,
-        )
-    except RedemptionDispositionError as e:
+        pending_action = _pending_action_for_entitlement(entitlement.entitlement_id)
+        if not pending_action:
+            return jsonify({"status": "error", "message": "Redemption request could not be rejected in its current state."}), 409
+
+        db.session.delete(pending_action)
+    except Exception as e:
         current_app.logger.info(
-            "Redemption rejection refused by FEAT for entitlement %s: %s",
+            "Redemption rejection failed for entitlement %s: %s",
             entitlement_id,
             e,
         )
@@ -625,7 +645,7 @@ def reject_redemption():
             "message": "Redemption request could not be rejected in its current state.",
         }), 409
 
-    return jsonify({"status": "success", "message": result.message})
+    return jsonify({"status": "success", "message": "Redemption request rejected."})
 
 
 # -------------------- HALL PASS API --------------------

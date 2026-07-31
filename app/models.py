@@ -854,14 +854,14 @@ class StoreItemVisibility(db.Model):
     seat = db.relationship('Seat', backref=db.backref('store_visibility_grants', lazy='dynamic'))
 
 
-# DELETED per Phase 2 Migration: StorePurchaseStatus, StorePurchase, RedemptionEventAction, RedemptionEventSource, RedemptionEvent
-# These tables/enums are forbidden per DOM-STORE-001 v3.0 §VI and §XIX
-# StorePurchase: collapse into Entitlements + Ledger (no quantity persistence)
-# RedemptionEvent: replace with EntitlementEvent.event_type workflow
+# Historical note: legacy store purchase / redemption tables were removed in the
+# Phase 2 migration. The canonical Store model now uses EntitlementEvent and
+# pending_actions for current lifecycle state.
 
 
 # ================================================================================
-# DELETED per Phase 2 Migration: Old Entitlement Models (v2.x schema)
+# Historical note: the old entitlement models from the v2.x schema were removed
+# in the Phase 2 migration.
 # ================================================================================
 # GrantType enum
 # Entitlement model

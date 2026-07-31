@@ -59,19 +59,15 @@ from app.access.scope import Scope
 from app.access import AccessScopeDenied, resolve_scope
 from app.models import (
     ClassEconomy, Transaction, TransactionStatus, AttendanceSession, StoreItem, StoreItemVisibility,
-    # Legacy tap table removed; use attendance_sessions (DOM-PROD-001).
-    # StudentItem removed — student_items unauthorized; use store_purchases + redemption_events (DOM-STORE-001)
-    # StoreItemBlock removed — store_item_blocks unauthorized; use store_item_visibility (DOM-STORE-001)
-    # RedemptionAuditLog / RedemptionAuditAction / RedemptionAuditSource removed — use redemption_events (DOM-STORE-001)
-    # Legacy tap reason enum removed with the legacy tap table.
-    # StorePurchase, Entitlement, EntitlementConsumption, GrantType, RedemptionEvent, etc. deleted per Phase 2 migration
+    # Legacy compatibility comments retained only for historical context.
+    # StorePurchase, Entitlement, EntitlementConsumption, GrantType, RedemptionEvent, etc. were removed in the Phase 2 migration.
     RentSettings,
     HallPassLog, HallPassSettings, PayrollSettings,
     BankingSettings,
     FeatureSettings,
     Announcement, Issue, IssueCategory, IssueStatusHistory, IssueResolutionAction, Seat,
     LedgerBalanceSnapshot, User, UserRole, _quantize_currency,
-    ObligationAssessment,
+    ObligationAssessment, EntitlementEvent, PendingAction,
     AttendanceReasonCode, IdentityProfile, PayrollEvent, PolicyVersion,
 )
 from app.auth import (
@@ -1241,7 +1237,7 @@ def _hard_delete_class_scope(class_id, canonical_context):
         ("attendance_sessions", AttendanceSession),
         ("hall_pass_logs", HallPassLog),
         ("payroll_event", PayrollEvent),
-        ("student_items", StorePurchase),
+        ("student_items", EntitlementEvent),
         ("issues", Issue),
         ("announcements", Announcement),
     )
@@ -1269,10 +1265,11 @@ def _hard_delete_class_scope(class_id, canonical_context):
         .all()
     ]
     store_purchase_entitlement_ids_subq = (
-        db.session.query(Entitlement.entitlement_id)
+        db.session.query(EntitlementEvent.entitlement_id)
         .filter(
-            Entitlement.class_id == class_id,
-            Entitlement.grant_type == GrantType.PURCHASE,
+            EntitlementEvent.class_id == class_id,
+            EntitlementEvent.event_type == "GRANTED",
+            EntitlementEvent.acquisition_type == "PURCHASE",
         )
         .subquery()
     )
@@ -1293,10 +1290,15 @@ def _hard_delete_class_scope(class_id, canonical_context):
         pass
 
     # Class-scoped records
-    RedemptionEvent.query.filter(
-        RedemptionEvent.entitlement_id.in_(sa.select(store_purchase_entitlement_ids_subq))
+    PendingAction.query.filter(
+        PendingAction.class_id == class_id,
+        PendingAction.entitlement_id.in_(sa.select(store_purchase_entitlement_ids_subq)),
     ).delete(synchronize_session=False)
-    StorePurchase.query.filter(StorePurchase.class_id == class_id).delete(synchronize_session=False)
+    EntitlementEvent.query.filter(
+        EntitlementEvent.class_id == class_id,
+        EntitlementEvent.event_type.in_(["GRANTED", "CONSUMED", "EXPIRED", "REVOKED"]),
+        EntitlementEvent.acquisition_type == "PURCHASE",
+    ).delete(synchronize_session=False)
     AttendanceSession.query.filter(AttendanceSession.class_id == class_id).delete(synchronize_session=False)
     HallPassLog.query.filter(HallPassLog.class_id == class_id).delete(synchronize_session=False)
     PayrollEvent.query.filter(PayrollEvent.class_id == class_id).delete(synchronize_session=False)
@@ -1337,19 +1339,22 @@ def _hard_delete_class_scope(class_id, canonical_context):
             .subquery()
         )
         class_item_entitlement_ids = (
-            db.session.query(Entitlement.entitlement_id)
+            db.session.query(EntitlementEvent.entitlement_id)
             .filter(
-                Entitlement.entitlement_item_id.in_(sa.select(deletable_store_item_ids)),
-                Entitlement.class_id == class_id,
-                Entitlement.grant_type == GrantType.PURCHASE,
+                EntitlementEvent.product_id.in_(sa.select(deletable_store_item_ids)),
+                EntitlementEvent.class_id == class_id,
+                EntitlementEvent.event_type == "GRANTED",
+                EntitlementEvent.acquisition_type == "PURCHASE",
             )
             .subquery()
         )
-        RedemptionEvent.query.filter(
-            RedemptionEvent.entitlement_id.in_(sa.select(class_item_entitlement_ids))
+        PendingAction.query.filter(
+            PendingAction.class_id == class_id,
+            PendingAction.entitlement_id.in_(sa.select(class_item_entitlement_ids))
         ).delete(synchronize_session=False)
-        StorePurchase.query.filter(
-            StorePurchase.store_item_id.in_(sa.select(deletable_store_item_ids))
+        EntitlementEvent.query.filter(
+            EntitlementEvent.class_id == class_id,
+            EntitlementEvent.product_id.in_(sa.select(deletable_store_item_ids)),
         ).delete(synchronize_session=False)
         StoreItem.query.filter(
             StoreItem.id.in_(sa.select(deletable_store_item_ids))
@@ -1408,7 +1413,7 @@ def _delete_teacher_settings_activity_and_audit_rows(canonical_context):
         )
     ).delete(synchronize_session=False)
     Transaction.query.filter_by(user_id=user_id).delete(synchronize_session=False)
-    RedemptionEvent.query.filter_by(initiated_by_user_id=user_id).delete(synchronize_session=False)
+    PendingAction.query.filter_by(authoritative_feat="FEAT-STOR-002").delete(synchronize_session=False)
 
 
 def _delete_teacher_rent_rows(canonical_context):
@@ -1468,8 +1473,8 @@ def _delete_teacher_store_rows(canonical_context):
     """Delete store rows owned by the teacher user."""
     user_id = canonical_context.user_id
     store_item_ids_subq = db.session.query(StoreItem.id).filter_by(user_id=user_id).subquery()
-    StorePurchase.query.filter(
-        StorePurchase.store_item_id.in_(sa.select(store_item_ids_subq))
+    EntitlementEvent.query.filter(
+        EntitlementEvent.product_id.in_(sa.select(store_item_ids_subq))
     ).delete(synchronize_session=False)
     StoreItem.query.filter_by(user_id=user_id).delete(synchronize_session=False)
 
@@ -2696,10 +2701,10 @@ def dashboard():
 
     # Pending actions - count all types of pending approvals (scoped by class_id)
     pending_redemptions_count = (
-        Entitlement.query
+        PendingAction.query
         .filter(
-            Entitlement.class_id.in_(teacher_class_ids),
-            Entitlement.grant_type == GrantType.PURCHASE,
+            PendingAction.class_id.in_(teacher_class_ids),
+            PendingAction.authoritative_feat == "FEAT-STOR-002",
         )
         .count()
     )
@@ -2716,10 +2721,11 @@ def dashboard():
             reason="",
             request_time=ent.granted_at,
         )
-        for ent in Entitlement.query.filter(
-            Entitlement.class_id.in_(teacher_class_ids),
-            Entitlement.grant_type == GrantType.PURCHASE,
-        ).order_by(Entitlement.granted_at.desc()).limit(5).all()
+        for ent in EntitlementEvent.query.filter(
+            EntitlementEvent.class_id.in_(teacher_class_ids),
+            EntitlementEvent.event_type == "GRANTED",
+            EntitlementEvent.acquisition_type == "PURCHASE",
+        ).order_by(EntitlementEvent.timestamp.desc()).limit(5).all()
     ]
     recent_hall_passes = [
         SimpleNamespace(
@@ -2733,31 +2739,27 @@ def dashboard():
     recent_insurance_claims = []
 
     pending_redemptions = (
-        db.session.query(Entitlement, EntitlementConsumption, StoreItem)
-        .join(StoreItem, Entitlement.entitlement_item_id == StoreItem.id)
-        .outerjoin(
-            EntitlementConsumption,
-            EntitlementConsumption.entitlement_id == Entitlement.entitlement_id,
-        )
+        db.session.query(PendingAction, EntitlementEvent, StoreItem)
+        .join(EntitlementEvent, EntitlementEvent.entitlement_id == PendingAction.entitlement_id)
+        .join(StoreItem, StoreItem.id == EntitlementEvent.product_id)
         .filter(
-            Entitlement.class_id.in_(teacher_class_ids),
-            Entitlement.grant_type == GrantType.PURCHASE,
-            EntitlementConsumption.consumption_id.is_(None),
+            PendingAction.class_id.in_(teacher_class_ids),
+            PendingAction.authoritative_feat == "FEAT-STOR-002",
         )
-        .order_by(Entitlement.granted_at.desc())
+        .order_by(PendingAction.submitted_at.desc())
         .limit(10)
         .all()
     )
     pending_redemptions = [
         SimpleNamespace(
-            id=ent.entitlement_id,
+            id=pending.pending_action_id,
             seat=SimpleNamespace(id=ent.target_seat_id),
             store_item=item,
-            class_id=ent.class_id,
-            purchased_at=ent.granted_at,
+            class_id=pending.class_id,
+            purchased_at=pending.submitted_at,
             status='processing',
         )
-        for ent, _consumption, item in pending_redemptions
+        for pending, ent, item in pending_redemptions
     ]
 
     # Recent transactions (limited to 5 for display)
@@ -3886,20 +3888,17 @@ def _build_rent_privileges_by_block(user_id, blocks, class_ids_by_block, student
                         if block_class_id == class_id:
                             paid_seat_ids_by_block[block].add(assessment.seat.id)
 
-    # 5. Fetch all relevant StorePurchase rows in a single query each
+    # 5. Fetch all relevant entitlement grant rows in a single query each
     items_by_seat = defaultdict(set)
     if all_store_item_ids:
         student_items = (
-            StorePurchase.query.filter(
-                StorePurchase.seat_id.in_(sa.select(Seat.id).where(Seat.user_id.in_(list(all_student_ids)))),
-                StorePurchase.store_item_id.in_(list(all_store_item_ids)),
-                StorePurchase.status.in_(['purchased', 'redeemed']),
-                or_(
-                    StorePurchase.expiry_date.is_(None),
-                    StorePurchase.expiry_date > now
-                )
+            EntitlementEvent.query.filter(
+                EntitlementEvent.target_seat_id.in_(sa.select(Seat.id).where(Seat.user_id.in_(list(all_student_ids)))),
+                EntitlementEvent.product_id.in_(list(all_store_item_ids)),
+                EntitlementEvent.event_type == "GRANTED",
+                EntitlementEvent.acquisition_type.in_(["PURCHASE", "PERK"]),
             )
-            .with_entities(StorePurchase.seat_id, StorePurchase.store_item_id)
+            .with_entities(EntitlementEvent.target_seat_id, EntitlementEvent.product_id)
             .all()
         )
 
@@ -4003,16 +4002,13 @@ def _get_rent_privileges_for_student(student, class_id, seat_id):
     if store_item_ids and seat_id:
         student_seat = Seat.query.filter_by(id=seat_id, class_id=class_id).first()
         if student_seat:
-            student_items = StorePurchase.query.filter(
-                StorePurchase.seat_id == seat_id,
-                StorePurchase.store_item_id.in_(store_item_ids),
-                StorePurchase.status.in_(['purchased', 'redeemed']),
-                db.or_(
-                    StorePurchase.expiry_date.is_(None),
-                    StorePurchase.expiry_date > now
-                )
+            student_items = EntitlementEvent.query.filter(
+                EntitlementEvent.target_seat_id == seat_id,
+                EntitlementEvent.product_id.in_(store_item_ids),
+                EntitlementEvent.event_type == "GRANTED",
+                EntitlementEvent.acquisition_type.in_(["PURCHASE", "PERK"]),
             ).all()
-            items_by_seat = {si.store_item_id for si in student_items}
+            items_by_seat = {si.product_id for si in student_items}
 
     for frozen_item in frozen_privileges:
         source = None
@@ -4331,22 +4327,25 @@ def student_detail_public(actor_public_id):
 
     transactions = transactions_query.order_by(Transaction.timestamp.desc()).all()
     _entitlement_query = (
-        Entitlement.query
-        .filter(Entitlement.target_seat_id == seat_id)
+        EntitlementEvent.query
+        .filter(
+            EntitlementEvent.target_seat_id == seat_id,
+            EntitlementEvent.event_type == "GRANTED",
+        )
     )
     if class_id:
-        _entitlement_query = _entitlement_query.filter(Entitlement.class_id == class_id)
-    _entitlements_raw = _entitlement_query.order_by(Entitlement.granted_at.desc()).all()
+        _entitlement_query = _entitlement_query.filter(EntitlementEvent.class_id == class_id)
+    _entitlements_raw = _entitlement_query.order_by(EntitlementEvent.timestamp.desc()).all()
     store_purchases = [
         SimpleNamespace(
             id=ent.entitlement_id,
             seat_id=ent.target_seat_id,
             class_id=ent.class_id,
-            store_item=db.session.get(StoreItem, ent.entitlement_item_id),
-            store_item_id=ent.entitlement_item_id,
+            store_item=db.session.get(StoreItem, ent.product_id),
+            store_item_id=ent.product_id,
             status=derive_display_status(ent.entitlement_id),
-            purchased_at=ent.granted_at,
-            purchase_date=ent.granted_at,
+            purchased_at=ent.timestamp,
+            purchase_date=ent.timestamp,
             expiry_date=None,
             quantity=1,
         )
@@ -5247,7 +5246,7 @@ def store_management():
         idempotency_key = f"feat:store:item-create:{selected_scope['class_id']}:{payload_hash}"
 
         db.session.rollback()
-        with FEATContext("FEAT-CLASS-003", idempotency_key=idempotency_key):
+        with FEATContext("FEAT-SETTINGS-001", idempotency_key=idempotency_key):
             new_item = create_store_item(
                 user_id=user_id,
                 class_id=selected_scope['class_id'],
@@ -5294,32 +5293,22 @@ def store_management():
     total_items = len(items)
     active_items = len([i for i in items if i.is_active])
     total_purchases = (
-        Entitlement.query
+        EntitlementEvent.query
         .filter(
-            Entitlement.class_id == selected_scope['class_id'],
-            Entitlement.grant_type == GrantType.PURCHASE,
+            EntitlementEvent.class_id == selected_scope['class_id'],
+            EntitlementEvent.event_type == "GRANTED",
+            EntitlementEvent.acquisition_type == "PURCHASE",
         )
         .count()
     )
 
-    # Get pending redemption requests from the canonical redemption workflow.
-    resolved_redemption_entitlement_ids = {
-        row.entitlement_id
-        for row in RedemptionEvent.query.filter(
-            RedemptionEvent.class_id == selected_scope['class_id'],
-            RedemptionEvent.action.in_(
-                [RedemptionEventAction.APPROVED, RedemptionEventAction.REJECTED]
-            ),
-        ).all()
-        if row.entitlement_id
-    }
+    # Get pending redemption requests from the canonical pending-action workflow.
     pending_redemption_events = (
-        RedemptionEvent.query.filter(
-            RedemptionEvent.class_id == selected_scope['class_id'],
-            RedemptionEvent.action == RedemptionEventAction.REQUEST,
+        PendingAction.query.filter(
+            PendingAction.class_id == selected_scope['class_id'],
+            PendingAction.authoritative_feat == "FEAT-STOR-002",
         )
-        .filter(~RedemptionEvent.entitlement_id.in_(resolved_redemption_entitlement_ids or {"-1"}))
-        .order_by(RedemptionEvent.timestamp.desc())
+        .order_by(PendingAction.submitted_at.desc())
         .limit(10)
         .all()
     )
@@ -5327,9 +5316,10 @@ def store_management():
         SimpleNamespace(
             id=event.entitlement_id,
             seat=db.session.get(Seat, event.seat_id) or SimpleNamespace(id=event.seat_id),
-            store_item=db.session.get(StoreItem, event.entitlement.entitlement_item_id) if event.entitlement else None,
+            store_item=db.session.get(StoreItem, _latest_entitlement_grant(event.entitlement_id).product_id)
+            if _latest_entitlement_grant(event.entitlement_id) else None,
             class_id=event.class_id,
-            purchased_at=event.timestamp,
+            purchased_at=event.submitted_at,
             status='processing',
         )
         for event in pending_redemption_events
@@ -5338,17 +5328,18 @@ def store_management():
     # Get recent purchases (all statuses, ordered by purchase date)
     recent_purchases = []
     recent_entitlements = (
-        Entitlement.query
+        EntitlementEvent.query
         .filter(
-            Entitlement.class_id == selected_scope['class_id'],
-            Entitlement.grant_type == GrantType.PURCHASE,
+            EntitlementEvent.class_id == selected_scope['class_id'],
+            EntitlementEvent.event_type == "GRANTED",
+            EntitlementEvent.acquisition_type == "PURCHASE",
         )
-        .order_by(Entitlement.granted_at.desc())
+        .order_by(EntitlementEvent.timestamp.desc())
         .limit(10)
         .all()
     )
     for entitlement in recent_entitlements:
-        item = db.session.get(StoreItem, entitlement.entitlement_item_id)
+        item = db.session.get(StoreItem, entitlement.product_id)
         seat = db.session.get(Seat, entitlement.target_seat_id)
         recent_purchases.append(SimpleNamespace(
             id=entitlement.entitlement_id,
@@ -5356,8 +5347,8 @@ def store_management():
             class_id=entitlement.class_id,
             store_item=item,
             status=derive_display_status(entitlement.entitlement_id),
-            purchased_at=entitlement.granted_at,
-            purchase_date=entitlement.granted_at,
+            purchased_at=entitlement.timestamp,
+            purchase_date=entitlement.timestamp,
             is_from_bundle=False,
         ))
 
@@ -5398,20 +5389,21 @@ def store_management():
         collective_item_ids = [item.id for item in collective_items]
         collective_counts = (
             db.session.query(
-                Entitlement.entitlement_item_id,
-                Entitlement.class_id,
-                db.func.count(db.distinct(Entitlement.target_seat_id)).label('student_count'),
+                EntitlementEvent.product_id,
+                EntitlementEvent.class_id,
+                db.func.count(db.distinct(EntitlementEvent.target_seat_id)).label('student_count'),
             )
             .filter(
-                Entitlement.class_id == selected_scope['class_id'],
-                Entitlement.entitlement_item_id.in_(collective_item_ids),
-                Entitlement.grant_type == GrantType.PURCHASE,
+                EntitlementEvent.class_id == selected_scope['class_id'],
+                EntitlementEvent.product_id.in_(collective_item_ids),
+                EntitlementEvent.event_type == "GRANTED",
+                EntitlementEvent.acquisition_type == "PURCHASE",
             )
-            .group_by(Entitlement.entitlement_item_id, Entitlement.class_id)
+            .group_by(EntitlementEvent.product_id, EntitlementEvent.class_id)
             .all()
         )
         counts_lookup = {
-            (row.entitlement_item_id, row.class_id): int(row.student_count or 0)
+            (row.product_id, row.class_id): int(row.student_count or 0)
             for row in collective_counts
         }
 
@@ -5458,41 +5450,37 @@ def store_management():
         if display_join_code and display_join_code not in join_code_label_map:
             join_code_label_map[display_join_code] = ce_row.display_name or display_join_code
 
-    parsed_audit_action = None
-    if audit_action:
-        try:
-            parsed_audit_action = RedemptionEventAction(audit_action)
-        except ValueError:
-            flash("Invalid audit action filter.", "warning")
+    parsed_audit_action = audit_action.upper() if audit_action else None
 
     live_query = (
         db.session.query(
-            RedemptionEvent.id.label("id"),
-            RedemptionEvent.entitlement_id.label("entitlement_id"),
-            RedemptionEvent.seat_display_name.label("student_display_name"),
-            RedemptionEvent.class_display_label.label("class_display_label"),
-            RedemptionEvent.action.label("action"),
-            RedemptionEvent.notes.label("notes"),
-            RedemptionEvent.initiated_by_user_id.label("user_id"),
-            RedemptionEvent.class_id.label("class_id"),
-            RedemptionEvent.timestamp.label("timestamp"),
-            RedemptionEvent.source.label("source"),
+            PendingAction.pending_action_id.label("id"),
+            PendingAction.entitlement_id.label("entitlement_id"),
+            Seat.id.label("seat_id"),
+            Seat.class_id.label("class_id"),
+            PendingAction.authoritative_feat.label("action"),
+            PendingAction.payload.label("notes"),
+            ClassEconomy.user_id.label("user_id"),
+            PendingAction.class_id.label("class_id"),
+            PendingAction.submitted_at.label("timestamp"),
+            sa.literal("LIVE").label("source"),
         )
         .filter(
-            RedemptionEvent.initiated_by_user_id == user_id,
-            RedemptionEvent.source == RedemptionEventSource.LIVE,
-            RedemptionEvent.class_id == selected_scope['class_id'],
+            PendingAction.class_id == selected_scope['class_id'],
+            PendingAction.authoritative_feat == "FEAT-STOR-002",
         )
     )
     if audit_class:
-        live_query = live_query.filter(RedemptionEvent.class_display_label == audit_class)
+        live_query = live_query.join(ClassEconomy, ClassEconomy.class_id == PendingAction.class_id).filter(
+            ClassEconomy.display_name == audit_class
+        )
     if parsed_audit_action:
-        live_query = live_query.filter(RedemptionEvent.action == parsed_audit_action)
+        live_query = live_query.filter(PendingAction.payload["action"].as_string() == parsed_audit_action)
     if audit_start_date:
         try:
             start_day = datetime.strptime(audit_start_date, '%Y-%m-%d').date()
             start_dt, _ = local_date_bounds_utc(start_day)
-            live_query = live_query.filter(RedemptionEvent.timestamp >= start_dt)
+            live_query = live_query.filter(PendingAction.submitted_at >= start_dt)
         except ValueError:
             flash("Invalid audit start date format. Please use YYYY-MM-DD.", "warning")
     if audit_end_date:
@@ -5500,11 +5488,11 @@ def store_management():
             end_day = datetime.strptime(audit_end_date, '%Y-%m-%d').date()
             _, end_dt = local_date_bounds_utc(end_day)
             end_dt = end_dt + timedelta(seconds=1)
-            live_query = live_query.filter(RedemptionEvent.timestamp < end_dt)
+            live_query = live_query.filter(PendingAction.submitted_at < end_dt)
         except ValueError:
             flash("Invalid audit end date format. Please use YYYY-MM-DD.", "warning")
 
-    live_rows = live_query.order_by(RedemptionEvent.timestamp.desc()).limit(5000).all()
+    live_rows = live_query.order_by(PendingAction.submitted_at.desc()).limit(5000).all()
     if audit_student:
         audit_student_lower = audit_student.lower()
         live_rows = [
@@ -5521,8 +5509,8 @@ def store_management():
 
     live_serialized = [{
         'student_item_id': row.entitlement_id,
-        'student_display_name': row.student_display_name or "Unknown",
-        'class_display_label': row.class_display_label,
+        'student_display_name': db.session.get(IdentityProfile, db.session.query(Seat.identity_profile_id).filter(Seat.id == row.seat_id).scalar()).first_name if db.session.query(Seat.identity_profile_id).filter(Seat.id == row.seat_id).scalar() else "Unknown",
+        'class_display_label': selected_scope.get('join_code') or selected_scope.get('block') or "Unknown",
         'action': row.action.value if hasattr(row.action, 'value') else row.action,
         'notes': row.notes,
         'timestamp': row.timestamp,
@@ -5617,7 +5605,7 @@ def edit_store_item(item_id):
         idempotency_key = f"feat:store:item-edit:{selected_scope['class_id']}:{item.id}:{payload_hash}"
 
         db.session.rollback()
-        with FEATContext("FEAT-CLASS-003", idempotency_key=idempotency_key):
+        with FEATContext("FEAT-SETTINGS-001", idempotency_key=idempotency_key):
             item = StoreItem.query.filter_by(id=item_id, class_id=selected_scope['class_id']).first_or_404()
             was_active = item.is_active
 
@@ -5662,7 +5650,7 @@ def delete_store_item(item_id):
         return redirect(url_for('admin.store_management'))
 
     idempotency_key = f"feat:store:item-deactivate:{selected_scope['class_id']}:{item.id}"
-    with FEATContext("FEAT-CLASS-003", idempotency_key=idempotency_key):
+    with FEATContext("FEAT-SETTINGS-001", idempotency_key=idempotency_key):
         item = StoreItem.query.filter_by(id=item_id, class_id=selected_scope['class_id']).first_or_404()
         deactivate_store_item(item)
     flash(f"'{item.name}' has been deactivated and hidden from new purchases.", "success")
@@ -5884,10 +5872,10 @@ def rent_settings():
             f"feat:rent:settings-update:{selected_scope['class_id']}:{payload_hash}"
         )
 
-        # Per MAP-UI-001, rent policy configuration is Class Configuration domain (FEAT-CLASS-003),
+        # Per MAP-UI-001, rent policy configuration is Class Configuration domain (FEAT-SETTINGS-001),
         # not admin action (FEAT-ADMN-001). Policy updates define the contractual terms that cause
         # assessments to exist; this is Class Configuration authority, not Obligations mutation.
-        with FEATContext("FEAT-CLASS-003", idempotency_key=idempotency_key):
+        with FEATContext("FEAT-SETTINGS-001", idempotency_key=idempotency_key):
             for block in blocks_to_update:
                 # block IS a class_id; query directly — no label-based lookup (INV-ARC-014)
                 block_settings = RentSettings.query.filter_by(class_id=block).first()
@@ -6021,7 +6009,11 @@ def rent_settings():
                 if not block_settings:
                     continue
 
-                existing_items = block_settings.rent_items.all()
+                existing_items = (
+                    StoreItem.query.filter_by(class_id=block, is_rent_linked=True)
+                    .order_by(StoreItem.id.asc())
+                    .all()
+                )
                 existing_map = {}
 
                 # For the target class, map by ID; for other classes, map by name
@@ -6048,8 +6040,8 @@ def rent_settings():
                         db.session.query(ObligationAssessment)
                         .filter(
                             ObligationAssessment.class_id == block_settings.class_id,
-                            ObligationAssessment.due_at >= month_start,
-                            ObligationAssessment.due_at < month_end,
+                            ObligationAssessment.timestamp >= month_start,
+                            ObligationAssessment.timestamp < month_end,
                             ObligationAssessment.event_type.in_(['PAYMENT', 'WAIVED']),
                         )
                         .count()
@@ -6201,7 +6193,11 @@ def rent_settings():
     # Get rent items for this setting
     rent_items = []
     if settings:
-        rent_items = settings.rent_items.order_by(StoreItem.id).all()
+        rent_items = (
+            StoreItem.query.filter_by(class_id=settings.class_id, is_rent_linked=True)
+            .order_by(StoreItem.id.asc())
+            .all()
+        )
 
     # Calculate current rent period dates for settings summary
     rent_active_for_period = False
@@ -6455,7 +6451,7 @@ def insurance_management():
 
 @admin_bp.route('/insurance/edit/<int:policy_id>', methods=['GET', 'POST'])
 @admin_required
-@feat_shell("FEAT-CLASS-003")
+@feat_shell("FEAT-SETTINGS-001")
 def edit_insurance_policy(policy_id):
     """Edit existing insurance policy."""
     class_id = g.canonical_context.class_id
@@ -6549,7 +6545,7 @@ def edit_insurance_policy(policy_id):
 
 @admin_bp.route('/insurance/deactivate/<int:policy_id>', methods=['POST'])
 @admin_required
-@feat_shell("FEAT-CLASS-003")
+@feat_shell("FEAT-SETTINGS-001")
 def deactivate_insurance_policy(policy_id):
     """Deactivate an insurance policy."""
     class_id = g.canonical_context.class_id
@@ -6583,7 +6579,7 @@ def deactivate_insurance_policy(policy_id):
 
 @admin_bp.route('/insurance/delete/<int:policy_id>', methods=['POST'])
 @admin_required
-@feat_shell("FEAT-CLASS-003")
+@feat_shell("FEAT-SETTINGS-001")
 def delete_insurance_policy(policy_id):
     """Delete an insurance policy and all associated data.
 
@@ -6621,7 +6617,7 @@ def delete_insurance_policy(policy_id):
 
 @admin_bp.route('/insurance/mass-remove/<int:policy_id>', methods=['POST'])
 @admin_required
-@feat_shell("FEAT-CLASS-003")
+@feat_shell("FEAT-SETTINGS-001")
 def mass_remove_policy(policy_id):
     """Cancel insurance policy for multiple or all students."""
     flash("Insurance mass-removal is now expressed as policy deactivation/deletion scheduling in the class-config editor.", "info")
