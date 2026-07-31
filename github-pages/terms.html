@@ -8,8 +8,7 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-EVSTQN3/azprG1Anm3QDgpJLIm9Nao0Yz1ztcQTwFspd3yD65VohhpuuCOmLASjC" crossorigin="anonymous">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap" rel="stylesheet">
-    <link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible+Next:wght@400;700&family=IBM+Plex+Mono:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible+Next:wght@400;700&family=IBM+Plex+Mono:wght@300;400;500;600;700&family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" rel="stylesheet">
     <link href="../static/css/tokens.css" rel="stylesheet">
     <link href="./style.css" rel="stylesheet">
@@ -19,13 +18,22 @@
         <section class="landing-hero">
             <div class="landing-shell landing-hero-grid">
                 <div class="landing-brand">
-                    <div class="landing-brand-row"><span class="material-symbols-outlined" aria-hidden="true">local_atm</span><span>CLASSROOM</span></div>
-                    <div class="landing-brand-row"><span class="material-symbols-outlined" aria-hidden="true">store</span><span>TOKEN</span></div>
-                    <div class="landing-brand-row"><span class="material-symbols-outlined" aria-hidden="true">finance_mode</span><span>HUB</span></div>
+                    <div class="landing-brand-row">
+                        <span class="material-symbols-outlined" aria-hidden="true">local_atm</span>
+                        <span>CLASSROOM</span>
+                    </div>
+                    <div class="landing-brand-row">
+                        <span class="material-symbols-outlined" aria-hidden="true">store</span>
+                        <span>TOKEN</span>
+                    </div>
+                    <div class="landing-brand-row">
+                        <span class="material-symbols-outlined" aria-hidden="true">finance_mode</span>
+                        <span>HUB</span>
+                    </div>
                 </div>
                 <div class="landing-welcome">
                     <h1>Terms of Service</h1>
-                    <p>Last Updated: February 25, 2026</p>
+                    <small>Last Updated: July 31, 2026</small>
                     <a href="https://classroomtokenhub.com/student/login" target="_self" class="floating-back-widget">
                         <span class="material-symbols-outlined" aria-hidden="true">arrow_circle_right</span>
                         <span>Return to Login Page</span>
@@ -33,30 +41,60 @@
                 </div>
             </div>
         </section>
+
         <section class="landing-content">
             <div class="landing-shell">
-                <div class="public-content-card">
-                    <section class="public-section">
+                <div class="public-content-card with-toc">
+                    <nav class="toc">
+                        <h2>Contents</h2>
+                        <ul>
+                            <li><a href="#summary">Quick summary</a></li>
+                            <li><a href="#accepting">Accepting these terms</a></li>
+                            <li><a href="#what-is">What is Classroom Token Hub?</a></li>
+                            <li><a href="#account-responsibilities">Account responsibilities</a></li>
+                            <li><a href="#use-responsibly">How to use responsibly</a></li>
+                            <li><a href="#ownership">Ownership and usage rights</a></li>
+                            <li><a href="#suspension">Account suspension or termination</a></li>
+                            <li><a href="#warranties">No warranties</a></li>
+                            <li><a href="#liability">Limitation of liability</a></li>
+                            <li><a href="#governing-law">Governing law</a></li>
+                            <li><a href="#changes">Changes to terms</a></li>
+                            <li><a href="#questions">Questions or concerns?</a></li>
+                        </ul>
+                    </nav>
+                    <div>
+
+                    <section class="public-section" id="summary">
                         <h2>Quick Summary</h2>
                         <p><strong>What this means:</strong> By using Classroom Token Hub, you agree to use the app responsibly for educational purposes. Keep your login information safe, be respectful to others, and follow your school's rules. The app is provided as-is for educational use, and we can't be held responsible if something goes wrong. We may need to suspend accounts that violate these terms.</p>
                         <p><strong>For students:</strong> Your teacher chose this app for your class. If you have questions, talk to your teacher.</p>
                         <p><strong>For teachers:</strong> This app is free for educational use but cannot be used for commercial purposes.</p>
                     </section>
-                    <section class="public-section"><h2>1. Accepting These Terms</h2><p>When you create an account and use Classroom Token Hub (the "Service"), you're agreeing to follow these Terms of Service. If you don't agree with these terms, please don't use the app.</p></section>
-                    <section class="public-section"><h2>2. What Is Classroom Token Hub?</h2><p>Classroom Token Hub is an educational web application designed to help students learn about financial literacy through a simulated classroom economy. Teachers can use it to manage virtual currency, track student participation, and create engaging lessons about money management.</p></section>
-                    <section class="public-section">
+
+                    <section class="public-section" id="accepting">
+                        <h2>1. Accepting These Terms</h2>
+                        <p>When you create an account and use Classroom Token Hub (the "Service"), you're agreeing to follow these Terms of Service. If you don't agree with these terms, please don't use the app.</p>
+                    </section>
+
+                    <section class="public-section" id="what-is">
+                        <h2>2. What Is Classroom Token Hub?</h2>
+                        <p>Classroom Token Hub is an educational web application designed to help students learn about financial literacy through a simulated classroom economy. Teachers can use it to manage virtual currency, track student participation, and create engaging lessons about money management.</p>
+                    </section>
+
+                    <section class="public-section" id="account-responsibilities">
                         <h2>3. Your Account Responsibilities</h2>
-                        <p>We worked hard to design this app so it can give you the best experience while protecting your privacy. Anyone working behind the scene to maintain this app do not have access to any information about you.</p>
-                        <p>To use the app, you'll need to create an account with a username, PIN, and passphrase. These three pieces of information are what's keeping your account safe from anyone who is not supposed to use your account.</p>
-                        <p>If you lose access to your account, your teacher can issue a recovery reset code. Account recovery uses only your class join code and the reset code — no personal information such as your name or date of birth is required, as this data is not retained after account setup.</p>
+                        <p>We worked hard to design this app so it can give you the best experience while protecting your privacy. Maintenance access is limited to system upkeep, and sensitive fields such as names and notes stay encrypted, so maintainers cannot read them.</p>
+                        <p>To use the app, you'll need to create an account with a PIN and passphrase. These two pieces of information are what's keeping your account safe from anyone who is not supposed to use your account.</p>
+                        <p>If you lose access to your account, your teacher can issue a recovery code. Account recovery uses only your class join code and the recovery code — no personal information such as your name is required, as this data is not retained in a recoverable form after account setup.</p>
                         <p>You can protect yourself by:</p>
                         <ul>
-                            <li><strong>Keep your credentials private</strong>: Don't share your username, PIN, or passphrase with anyone.</li>
+                            <li><strong>Keep your credentials private</strong>: Don't share your PIN or passphrase with anyone.</li>
                             <li><strong>You're responsible for your account</strong>: Any activity on your account is your responsibility, so keep your login information secure.</li>
                             <li><strong>Report security issues immediately</strong>: If someone else accesses your account or you notice suspicious activity, let your teacher know right away.</li>
                         </ul>
                     </section>
-                    <section class="public-section">
+
+                    <section class="public-section" id="use-responsibly">
                         <h2>4. How to Use the App Responsibly</h2>
                         <p>We trust you to use Classroom Token Hub appropriately. Please don't:</p>
                         <ul>
@@ -65,9 +103,10 @@
                             <li>Try to hack, disrupt, or interfere with the app or other users' accounts</li>
                             <li>Attempt to access parts of the system you're not supposed to see</li>
                         </ul>
-                        <p>Even though the people working on this app can't see your personal information, they can still block your account from accessing the app if they believe your actions are harmful for everyone else.</p>
+                        <p>Even though the people working on this app can't see your personal information, they can still block your account from accessing the app if they believe your actions are harmful to everyone else.</p>
                     </section>
-                    <section class="public-section">
+
+                    <section class="public-section" id="ownership">
                         <h2>5. Ownership and How You Can Use It</h2>
                         <p><strong>Timothy Chang</strong> created and owns Classroom Token Hub. The app, its code, and all its features are protected by copyright and trademark laws in the United States and other countries.</p>
                         <div class="alert alert-warning">
@@ -92,21 +131,56 @@
                             </ul>
                         </div>
                     </section>
-                    <section class="public-section"><h2>6. Account Suspension or Termination</h2><p>We hope it never comes to this, but we may need to suspend or terminate accounts that:</p><ul><li>Violate these Terms of Service</li><li>Are used inappropriately or to harm others</li><li>Pose security or safety concerns</li></ul></section>
-                    <section class="public-section"><h2>7. No Warranties</h2><p>We work hard to make Classroom Token Hub reliable and useful, but like all software, it's not perfect. The app is provided "as is" and "as available."</p></section>
-                    <section class="public-section"><h2>8. Limitation of Liability</h2><p>To the extent permitted by law, Timothy Chang and anyone involved in creating or maintaining Classroom Token Hub cannot be held responsible for lost data, profits, opportunities, or issues outside our control.</p></section>
-                    <section class="public-section"><h2>9. Governing Law</h2><p>These Terms of Service are governed by the laws of the jurisdiction where the service is operated.</p></section>
-                    <section class="public-section"><h2>10. Changes to These Terms</h2><p>We may need to update these terms from time to time. If we make significant changes, we'll notify users at least 30 days before the new terms take effect.</p></section>
-                    <section class="public-section"><h2>11. Questions or Concerns?</h2><p>If you have questions about these Terms of Service, please file an in-app support ticket.</p></section>
+
+                    <section class="public-section" id="suspension">
+                        <h2>6. Account Suspension or Termination</h2>
+                        <p>We hope it never comes to this, but we may need to suspend or terminate accounts that:</p>
+                        <ul>
+                            <li>Violate these Terms of Service</li>
+                            <li>Are used inappropriately or to harm others</li>
+                            <li>Pose security or safety concerns</li>
+                        </ul>
+                    </section>
+
+                    <section class="public-section" id="warranties">
+                        <h2>7. No Warranties</h2>
+                        <p>We work hard to make Classroom Token Hub reliable and useful, but like all software, it's not perfect. The app is provided "as is" and "as available."</p>
+                    </section>
+
+                    <section class="public-section" id="liability">
+                        <h2>8. Limitation of Liability</h2>
+                        <p>To the extent permitted by law, Timothy Chang and anyone involved in creating or maintaining Classroom Token Hub cannot be held responsible for lost data, profits, opportunities, or issues outside our control.</p>
+                    </section>
+
+                    <section class="public-section" id="governing-law">
+                        <h2>9. Governing Law</h2>
+                        <p>These Terms of Service are governed by the laws of the jurisdiction where the service is operated.</p>
+                    </section>
+
+                    <section class="public-section" id="changes">
+                        <h2>10. Changes to These Terms</h2>
+                        <p>We may need to update these terms from time to time. If we make significant changes, we'll notify users at least 30 days before the new terms take effect.</p>
+                    </section>
+
+                    <section class="public-section" id="questions">
+                        <h2>11. Questions or Concerns?</h2>
+                        <p>If you have questions about these Terms of Service, please reach out to <a href="mailto:support@classroomtokenhub.com">support@classroomtokenhub.com</a>.</p>
+                    </section>
+                    </div>
                 </div>
             </div>
         </section>
     </main>
+
     <footer class="landing-footer">
         <div class="landing-shell landing-footer-grid">
             <div class="landing-footer-links">
                 <a href="https://github.com/timwonderer/classroom-economy" target="_blank" rel="noopener">Project Repository</a>
                 <a href="https://github.com/timwonderer/classroom-economy/blob/main/CHANGELOG.md" target="_blank" rel="noopener">Changelog</a>
+            </div>
+            <div class="landing-footer-links">
+                <a href="./privacy.html" target="_self">Privacy Policy</a>
+                <a href="./district.html" target="_self">District Assurance</a>
             </div>
             <div class="landing-footer-links">
                 <a href="https://github.com/timwonderer/classroom-economy/blob/main/CONTRIBUTING.md" target="_blank" rel="noopener">Contributing</a>

@@ -3,23 +3,270 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="Classroom Token Hub - District Assurance Brief">
+    <meta name="description" content="Classroom Token Hub - District Partners">
     <title>District Assurance - Classroom Token Hub</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-EVSTQN3/azprG1Anm3QDgpJLIm9Nao0Yz1ztcQTwFspd3yD65VohhpuuCOmLASjC" crossorigin="anonymous">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap" rel="stylesheet">
-    <link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible+Next:wght@400;700&family=IBM+Plex+Mono:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible+Next:wght@400;700&family=IBM+Plex+Mono:wght@300;400;500;600;700&family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" rel="stylesheet">
     <link href="../static/css/tokens.css" rel="stylesheet">
     <link href="./style.css" rel="stylesheet">
-    <style>.floating-back-widget{position:fixed;bottom:2rem;right:2rem;z-index:1000;background-color:var(--secondary-color);color:white;padding:0.75rem 1.25rem;border-radius:50px;box-shadow:var(--shadow-lg);display:inline-flex;align-items:center;gap:0.5rem;text-decoration:none;font-weight:500;transition:transform 0.2s ease,box-shadow 0.2s ease}.floating-back-widget:hover{transform:translateY(-4px);box-shadow:0 15px 25px -5px rgba(0,0,0,0.2);color:white}.floating-back-widget .material-symbols-outlined{font-size:1.5rem}</style>
 </head>
 <body class="landing-page">
-<main>
-<section class="landing-hero"><div class="landing-shell landing-hero-grid"><div class="landing-brand"><div class="landing-brand-row"><span class="material-symbols-outlined" aria-hidden="true">local_atm</span><span>CLASSROOM</span></div><div class="landing-brand-row"><span class="material-symbols-outlined" aria-hidden="true">store</span><span>TOKEN</span></div><div class="landing-brand-row"><span class="material-symbols-outlined" aria-hidden="true">finance_mode</span><span>HUB</span></div></div><div class="landing-welcome"><h1>District Assurance</h1><p>Last Updated: June 16, 2026</p><a href="https://classroomtokenhub.com/student/login" target="_self" class="floating-back-widget"><span class="material-symbols-outlined" aria-hidden="true">arrow_circle_right</span><span>Return to Login Page</span></a></div></div></section>
-<section class="landing-content"><div class="landing-shell"><div class="public-content-card"><section class="public-section"><h2>Overview</h2><p>Thank you for your interest in Classroom Token Hub (CTH).</p><p>Classroom Token Hub is a teacher-developed classroom management system with a simulated economic model, designed with a data-minimization and isolation-first architecture.</p><p>As a 100% teacher-designed, developed, hosted, and maintained platform, we look forward to working with district partners to bring CTH to teachers and students.</p><p>This document is designed to provide an overview of the system's architecture and data protection measures for district review. The content of this document represents the most up-to-date information regarding the system's design and implementation. For more details, please visit our official GitHub repository.</p></section><section class="public-section"><h2>1. Data Collection, Processing, and Storage</h2><p>Classroom Token Hub strives to collect only the minimum data necessary to operate effectively while maintaining a strong teacher and student user experience. Sensitive user-provided information is never stored as plaintext. Where storage in readable form is required for functionality (such as display labels like class sections), the data is treated as non-sensitive, remains strictly scoped to the class, and is not used for identification or cross-system linkage.</p><h3>When a teacher creates a class, they will provide the following information on the roster template:</h3><ul><li>Student First Name: Used for teacher roster display, greetings, and account claiming process</li><li>Student Last Name: Used for teacher roster display, greetings, and account claiming process</li><li>Student Class Section: Used for creating class sections within the roster page</li><li>Additional Notes: Used for internal teacher notes</li></ul><h3>Our server processes the information from the roster template using the following approach:</h3><ul><li>Student First Name and Last Name (temporary): Normalized to remove whitespace, special characters, and accent marks. Hashed using HMAC-SHA256 with a per-record salt and a global pepper before storage. Use as account look up during claim. Removed upon successful claim and account creation.</li><li>Student First Name and Last Name (persistent): Encrypted individually with whitespace, special character, and accent marks preserved before storage. Use as in-app greeting and roster display for teachers.</li><li>Student Class Section: Stored unchanged as a non-sensitive, teacher-defined label and not interpreted, parsed, or used for inference by the system.</li><li>Additional Notes: Encrypted unchanged and stored. Used for teacher internal records</li></ul></section><section class="public-section"><h2>2. Class-Level Data Isolation</h2><p>Each class operates as an independent system defined by a unique class identifier.</p><ul><li>No cross-class visibility or aggregation</li><li>Teachers can only access classes they create</li><li>Identical names across classes are treated as unrelated</li><li>The system does not maintain a global student identity across classes</li></ul></section><section class="public-section"><h2>3. Name Collision Handling</h2><p>When duplicate names exist within a class, a random deduplication code is used during claim.</p><ul><li>Temporary and class-scoped</li><li>No persistent identifiers introduced</li></ul></section><section class="public-section"><h2>4. Optional Teacher Notes</h2><p>Teachers may add notes for internal use.</p><ul><li>Stored as encrypted, unstructured text</li><li>Not parsed or analyzed by the system</li></ul></section><section class="public-section"><h2>5. Data Lifecycle &amp; Deletion</h2><ul><li>Class deletion removes all associated data</li><li>Teacher deletion removes all classes and student data</li><li>180-day inactivity triggers automatic deletion</li><li>No archival or soft-delete exists</li></ul></section><section class="public-section"><h2>6. Administrative Access Model</h2><p>CTH does not provide administrators with a general interface to browse or query data.</p><ul><li>Access is teacher-initiated and class-scoped</li><li>Users are represented by pseudonymous identifiers</li><li>No cross-class inspection or bulk access tools exist</li></ul></section><section class="public-section"><h2>7. Application vs Infrastructure Access</h2><p>Application-level tools do not expose identifiable data. Infrastructure access is restricted to system maintenance and not used for monitoring user activity.</p></section><section class="public-section"><h2>8. Security</h2><ul><li>HTTPS encryption in transit</li><li>Encrypted sensitive data at rest</li><li>Strict class-scoped access controls enforced at the application level</li><li>No administrative interface for browsing or querying student data</li><li>Pseudonymous identifiers used in place of direct identity references</li><li>System architecture prevents cross-class data access by design</li><li>Restricted and audited infrastructure access for maintenance purposes only</li><li>No global admin identity or privileges or superuser capabilties by design</li></ul></section><section class="public-section"><h2>9. Single Sign-On (SSO) and Identity Federation</h2><p>Some district security reviews expect applications to support institution-provided Single Sign-On through SAML 2.0 or OpenID Connect for both student and staff access. Classroom Token Hub intentionally does not federate identity through an external identity provider, and this section explains why - including why doing so would make a breach worse, not better.</p><h3>Why CTH does not federate student identity</h3><p>A database compromise today exposes a display first name, a last initial, a pseudonymous class-scoped identifier, and a simulated currency ledger with no real monetary value - and no email, phone, date of birth, address, or government/district ID, because none of those are collected. There is no resolvable path from that data to a real person. The worst realistic harm is embarrassment-tier, not identity theft or financial fraud.</p><p>SSO protocols work by asserting durable, attributed identity: a SAML assertion or OIDC token typically carries a student's full name, email address, and a persistent district-issued identifier. Accepting those attributes would not just add a new data category - it would attach exactly the kind of real, resolvable identity that keeps a worst-case breach low-severity today. A compromise of a federated dataset stops being "a list of first names with no external reference" and becomes "this specific, real, named child." Adopting SSO would increase the severity of a breach, not reduce it.</p><p>The display name itself is also weaker than typical PII for a separate reason: it is teacher-entered, free-text, and unverified. A teacher provides each student's first name and last initial when building the roster, solely so the student can recognize and claim their own seat - the system does not validate this against any legal name or system of record. That is a different starting point than a SAML/OIDC assertion, which is by definition sourced from and verified against the institution's own records. And outside of direct database access, the only person who can ever see a decrypted student name is that student's own teacher - students cannot see other students' names, and system administrators have no interface that decrypts or displays them.</p><p>Federated identity also introduces a single shared point of access across every classroom that trusts the identity provider. CTH's class-scoped model keeps a compromised credential or misconfiguration contained to one class; a compromised or misconfigured federated identity provider would not have the benefit of that containment, since it authenticates broadly across the whole institution by design.</p><h3>Alignment with recognized security frameworks</h3><p>Frameworks such as the NIST Cybersecurity Framework's Identity Management, Authentication, and Access Control category call for managed credentials and access scoped to assessed risk - they describe an outcome, not a specific protocol, and they're explicit that controls should be commensurate with risk. A blanket SSO requirement would move beyond that principle by making the lowest-risk path for this application more sensitive than necessary.</p></section><section class="public-section"><h2>10. Compliance and Standards</h2><h3>FERPA</h3><p>Classroom Token Hub is designed to support school-administered educational records in a class-scoped environment.</p><h3>COPPA (School Consent Model)</h3><p>Classroom Token Hub is intended for use by teachers acting on behalf of their classes under the school consent model.</p><h3>Accessibility (WCAG)</h3><p>The application follows accessibility principles and aims to meet WCAG 2.1 Level AA wherever practical.</p></section><section class="public-section"><h2>11. What CTH Does Not Do</h2><ul><li>No advertising or data selling</li><li>No third-party analytics</li><li>No behavioral profiling</li><li>No cross-class tracking</li><li>No integration with external identity systems (e.g., SSO)</li><li>No archival or long-term data retention beyond active class lifecycle</li></ul></section><section class="public-section"><p>District partners may choose to create a self-hosted fork of the project to meet specific infrastructure or compliance requirements.</p></section></div></div></section>
-</main>
-<footer class="landing-footer"><div class="landing-shell landing-footer-grid"><div class="landing-footer-links"><a href="https://github.com/timwonderer/classroom-economy" target="_blank" rel="noopener">Project Repository</a><a href="https://github.com/timwonderer/classroom-economy/blob/main/CHANGELOG.md" target="_blank" rel="noopener">Changelog</a></div><div class="landing-footer-links"><a href="https://github.com/timwonderer/classroom-economy/blob/main/CONTRIBUTING.md" target="_blank" rel="noopener">Contributing</a><a href="https://polyformproject.org/licenses/noncommercial/1.0.0" target="_blank" rel="noopener">License</a></div><div class="landing-footer-meta"><p>&copy; <span id="current-year"></span> Classroom Token Hub. Licensed under PolyForm Noncommercial v1.0.0</p><p><em>This app is developed, operated, maintained, and self-funded by a full-time high school teacher. As such, we do not display advertisements, use third-party tracking tools, or collect information about you unless it is necessary for the operation of the platform.</em></p><p><a class="text-decoration-none text-white" href="mailto:support@classroomtokenhub.com">Need help? Reach us at support@classroomtokenhub.com</a></p></div></div></footer><script>(function(){var yearElement=document.getElementById("current-year");if(yearElement){yearElement.textContent=new Date().getFullYear();}})();</script>
+    <main>
+        <section class="landing-hero">
+            <div class="landing-shell landing-hero-grid">
+                <div class="landing-brand">
+                    <div class="landing-brand-row">
+                        <span class="material-symbols-outlined" aria-hidden="true">local_atm</span>
+                        <span>CLASSROOM</span>
+                    </div>
+                    <div class="landing-brand-row">
+                        <span class="material-symbols-outlined" aria-hidden="true">store</span>
+                        <span>TOKEN</span>
+                    </div>
+                    <div class="landing-brand-row">
+                        <span class="material-symbols-outlined" aria-hidden="true">finance_mode</span>
+                        <span>HUB</span>
+                    </div>
+                </div>
+                <div class="landing-welcome">
+                    <h1>For District Partners</h1>
+                    <small>Last Updated: July 31, 2026</small>
+                    <a href="https://classroomtokenhub.com/student/login" target="_self" class="floating-back-widget">
+                        <span class="material-symbols-outlined" aria-hidden="true">arrow_circle_right</span>
+                        <span>Return to Login Page</span>
+                    </a> 
+                </div>
+            </div>
+        </section>
+
+        <section class="landing-content">
+            <div class="landing-shell">
+                <div class="public-content-card with-toc">
+                    <nav class="toc">
+                        <h2>Contents</h2>
+                        <ul>
+                            <li><a href="#overview">Overview</a></li>
+                            <li><a href="#data-collection">Data collection &amp; storage</a></li>
+                            <li><a href="#class-isolation">Class-level isolation</a></li>
+                            <li><a href="#student-claim">Student claiming</a></li>
+                            <li><a href="#what-not-collect">What's not collected</a></li>
+                            <li><a href="#data-lifecycle">Data lifecycle &amp; deletion</a></li>
+                            <li><a href="#authentication">Authentication &amp; security</a></li>
+                            <li><a href="#admin-access">Administrative access</a></li>
+                            <li><a href="#app-vs-infra">App vs infrastructure</a></li>
+                            <li><a href="#sso">Single sign-on (SSO)</a></li>
+                            <li><a href="#compliance">Compliance & standards</a></li>
+                            <li><a href="#financial-data">Financial data</a></li>
+                            <li><a href="#what-not-do">What CTH does not do</a></li>
+                            <li><a href="#contact-info">Contact information</a></li>
+                        </ul>
+                    </nav>
+                    <div>
+                    <section class="public-section" id="overview">
+                        <h2>Overview</h2>
+                        <p>Thank you for your interest in Classroom Token Hub (CTH).</p>
+                        <p>Classroom Token Hub is a teacher-developed classroom management system with a simulated economic model, designed with a data-minimization and class-isolation-first architecture.</p>
+                        <p>As a 100% teacher-designed, developed, hosted, and maintained platform, we look forward to working with district partners to bring CTH to teachers and students.</p>
+                        <p>This document is designed to provide an overview of the system's architecture and data protection measures for district review. The content of this document represents the most up-to-date information regarding the system's design and implementation.</p>
+                        <p>For more details, please visit our official GitHub repository or see the full <a href="./privacy.html">Privacy &amp; Data Handling</a> policy.</p>
+                        <p>For questions about our security and privacy implementation, please contact us at <a href="mailto:security@classroomtokenhub.com">security@classroomtokenhub.com</a>.</p>
+                    </section>
+
+                    <section class="public-section" id="data-collection">
+                        <h2>1. Data Collection, Processing, and Storage</h2>
+                        <p>Classroom Token Hub strives to collect only the minimum data necessary to operate effectively while maintaining a strong teacher and student user experience. Sensitive user-provided information is never stored as plaintext. Where storage in readable form is required for functionality (such as display labels like student names), the data is treated as sensitive, encrypted, and remains strictly scoped to the class.</p>
+
+                        <h3>When a teacher creates a class, they will provide:</h3>
+                        <ul>
+                            <li>Teacher display name (for app interface)</li>
+                            <li>Class name/period identifier</li>
+                        </ul>
+
+                        <h3>When a teacher adds students to a class, they will provide:</h3>
+                        <ul>
+                            <li>Student first name: Used for teacher roster display and student account claiming</li>
+                            <li>Student last initial: Used for teacher roster display and student account claiming</li>
+                            <li>Optional notes: Encrypted and stored for teacher internal records only</li>
+                        </ul>
+
+                        <h3>Our server processes the information using the following approach:</h3>
+                        <ul>
+                            <li><strong>Student Names (claim hashes)</strong>: Normalized to remove whitespace, special characters, and accent marks. Hashed using HMAC-SHA256 with per-record salt and global pepper. Used for secure student account claiming only. Deleted from claim state after successful account creation.</li>
+                            <li><strong>Student Names (display)</strong>: Encrypted individually with whitespace and special characters preserved. Used only for teacher roster display within their class. Never transmitted to students or third parties. Decryption key never leaves the application.</li>
+                            <li><strong>Student Notes</strong>: Encrypted and stored. Used for teacher internal records only. Never displayed to students or other teachers.</li>
+                        </ul>
+                    </section>
+
+                    <section class="public-section" id="class-isolation">
+                        <h2>2. Class-Level Data Isolation</h2>
+                        <p>Each class operates as an independent system defined by a unique internal class identifier (class_id). The join code is a public-facing alias that students use to enter a class, but all internal scoping is performed by class_id.</p>
+                        <ul>
+                            <li>No cross-class visibility or aggregation</li>
+                            <li>Teachers can only access classes they create</li>
+                            <li>Identical names across classes are treated as unrelated</li>
+                            <li>The system does not maintain global student identity across classes</li>
+                            <li>All financial, attendance, and activity data is strictly class-scoped</li>
+                        </ul>
+                    </section>
+
+                    <section class="public-section" id="student-claim">
+                        <h2>3. Student Account Claiming Process</h2>
+                        <p>When a student claims their account:</p>
+                        <ul>
+                            <li>Student enters their first name and last initial (as provided by teacher)</li>
+                            <li>System computes hashes and matches to class roster</li>
+                            <li>If unique match: student proceeds to create PIN and passphrase</li>
+                            <li>If duplicate match: student receives a random deduplication code to distinguish from other students with same name</li>
+                            <li>After successful claim completion, claim hashes are deleted from the system</li>
+                        </ul>
+                    </section>
+
+                    <section class="public-section" id="what-not-collect">
+                        <h2>4. What Data Is NOT Collected</h2>
+                        <ul>
+                            <li>Date of birth</li>
+                            <li>Student ID numbers</li>
+                            <li>Email addresses (for students)</li>
+                            <li>Phone numbers</li>
+                            <li>Physical addresses</li>
+                            <li>Parent/guardian information</li>
+                            <li>Government IDs or identifiers</li>
+                            <li>Behavioral or disciplinary records</li>
+                            <li>Grades or academic performance data</li>
+                        </ul>
+                    </section>
+
+                    <section class="public-section" id="data-lifecycle">
+                        <h2>5. Data Lifecycle &amp; Deletion</h2>
+                        <ul>
+                            <li>Class deletion removes all associated data (student records, transactions, activity logs)</li>
+                            <li>Teacher deletion removes all classes and student data owned by that teacher</li>
+                            <li>Individual student account deletion removes that student's data and history from the class</li>
+                            <li>180-day inactivity on a class triggers automatic deletion</li>
+                            <li>No archival or soft-delete exists; deleted data cannot be recovered</li>
+                        </ul>
+                    </section>
+
+                    <section class="public-section" id="authentication">
+                        <h2>6. Authentication and Security</h2>
+                        <ul>
+                            <li><strong>Teacher Authentication</strong>: Email and password (bcrypt hashed with salt and pepper). Optional 2FA via TOTP (time-based one-time password).</li>
+                            <li><strong>Student Authentication</strong>: PIN (4-6 digits, bcrypt hashed) and passphrase (for high-stakes actions only).</li>
+                            <li><strong>Account Recovery</strong>: Teachers can generate recovery codes for students. Recovery uses only join code and recovery code—no PII required. Passphrases are always required for high-stakes financial transactions.</li>
+                            <li><strong>Encryption in Transit</strong>: All data uses HTTPS/TLS encryption</li>
+                            <li><strong>Encryption at Rest</strong>: Student names and notes are encrypted using AES-128</li>
+                            <li><strong>Session Management</strong>: HTTP-only cookies with automatic timeout after inactivity</li>
+                            <li><strong>CSRF Protection</strong>: All forms include CSRF tokens</li>
+                        </ul>
+                    </section>
+
+                    <section class="public-section" id="admin-access">
+                        <h2>7. Administrative Access Model</h2>
+                        <p>CTH does not provide a general "super admin" interface to browse or query student data across classes or teachers.</p>
+                        <ul>
+                            <li>Teachers access only their own classes</li>
+                            <li>System maintenance uses database-level access only (never application-level browsing)</li>
+                            <li>Student names and sensitive fields are encrypted; infrastructure access does not decrypt them</li>
+                            <li>No cross-class inspection or bulk export tools exist</li>
+                            <li>Users are represented by pseudonymous identifiers in logs and reports</li>
+                        </ul>
+                    </section>
+
+                    <section class="public-section" id="app-vs-infra">
+                        <h2>8. Application vs. Infrastructure Access</h2>
+                        <p>Application-level tools do not expose identifiable data. Infrastructure access is restricted to system maintenance only and does not have decryption keys for sensitive fields.</p>
+                    </section>
+
+                    <section class="public-section" id="sso">
+                        <h2>9. Single Sign-On (SSO) and Identity Federation</h2>
+                        <p>Classroom Token Hub intentionally does not federate identity through external identity providers (SAML, OpenID Connect, or district SSO). This design choice is made to maintain strict class-level isolation and minimize the collection of personally identifiable information. Because the goal of this application is for teachers to be able to manage their own classroom economy, we intentionally do not integrate external identity providers to truly achieve our ideal model of "we don't know you, we don't need to know you, we don't want to know you."</p>
+                        <p>Districts that require SSO integration may choose to self-host and modify CTH to support their identity provider. The codebase is open-source under PolyForm Noncommercial 1.0.0 and available on GitHub. Please note that the Classroom Token Hub project is not responsible for forked projects, and any attempt to push changes upstream that do not conform with the project documentation will be rejected.</p>
+                    </section>
+
+                    <section class="public-section" id="compliance">
+                        <h2>10. Compliance and Standards</h2>
+
+                        <h3>FERPA (Family Educational Rights and Privacy Act)</h3>
+                        <p>Classroom Token Hub is designed to support school-administered educational records in a class-scoped environment. Teachers control access to their class data, and the system does not share student information with external parties.</p>
+
+                        <h3>COPPA (Children's Online Privacy Protection Act)</h3>
+                        <p>Classroom Token Hub is intended for use by teachers acting on behalf of their classes under the school consent model. Parental consent is managed through school and district policies, not directly by CTH.</p>
+
+                        <h3>State Privacy Laws (CCPA, FERPA-adjacent state laws)</h3>
+                        <p>CTH is designed to minimize data collection and retention, supporting compliance with state-level privacy requirements. No data is sold, shared with third parties, or used for purposes beyond classroom operation.</p>
+
+                        <h3>Accessibility (WCAG)</h3>
+                        <p>The application follows accessibility principles and aims to meet WCAG 2.1 Level AA wherever practical.</p>
+                    </section>
+
+                    <section class="public-section" id="financial-data">
+                        <h2>11. Financial Data and Economic Activity</h2>
+                        <ul>
+                            <li>Transaction history is stored class-scoped and tied to student seats (not names)</li>
+                            <li>Account balances are calculated from transaction history</li>
+                            <li>All financial operations require encryption at rest</li>
+                            <li>Simulated currency has no real monetary value</li>
+                            <li>No integration with real payment systems or banks</li>
+                        </ul>
+                    </section>
+
+                    <section class="public-section" id="what-not-do">
+                        <h2>12. What CTH Does Not Do</h2>
+                        <ul>
+                            <li>No advertising or data selling</li>
+                            <li>No third-party analytics or tracking</li>
+                            <li>No behavioral profiling or data mining</li>
+                            <li>No cross-class tracking or aggregation</li>
+                            <li>No integration with external identity systems (SSO) by default</li>
+                            <li>No long-term data retention beyond active class lifecycle</li>
+                            <li>No integration with government or district ID systems</li>
+                        </ul>
+                    </section>
+
+                   
+
+                    <section class="public-section" id="contact-info">
+                        <h2>Contact Information</h2>
+                        <p>For district partnership or compliance inquiries, please reach out to <a href="mailto:support@classroomtokenhub.com">support@classroomtokenhub.com</a>. For security review questions, please contact <a href="mailto:security@classroomtokenhub.com">security@classroomtokenhub.com</a>.</p>
+                    </section>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <footer class="landing-footer">
+        <div class="landing-shell landing-footer-grid">
+            <div class="landing-footer-links">
+                <a href="https://github.com/timwonderer/classroom-economy" target="_blank" rel="noopener">Project Repository</a>
+                <a href="https://github.com/timwonderer/classroom-economy/blob/main/CHANGELOG.md" target="_blank" rel="noopener">Changelog</a>
+            </div>
+            <div class="landing-footer-links">
+                <a href="./terms.html" target="_self">Terms of Service</a>
+                <a href="./privacy.html" target="_self">Privacy Policy</a>
+            </div>
+            <div class="landing-footer-links">
+                <a href="https://github.com/timwonderer/classroom-economy/blob/main/CONTRIBUTING.md" target="_blank" rel="noopener">Contributing</a>
+                <a href="https://polyformproject.org/licenses/noncommercial/1.0.0" target="_blank" rel="noopener">License</a>
+            </div>
+            <div class="landing-footer-meta">
+                <p>&copy; <span id="current-year"></span> Classroom Token Hub. Licensed under PolyForm Noncommercial v1.0.0</p>
+                <p><em>This app is developed, operated, maintained, and self-funded by a full-time high school teacher. As such, we do not display advertisements, use third-party tracking tools, or collect information about you unless it is necessary for the operation of the platform.</em></p>
+                <p><a class="text-decoration-none text-white" href="mailto:support@classroomtokenhub.com">Need help? Reach us at support@classroomtokenhub.com</a></p>
+            </div>
+        </div>
+    </footer>
+
+    <script>
+        (function () {
+            var yearElement = document.getElementById("current-year");
+            if (yearElement) {
+                yearElement.textContent = new Date().getFullYear();
+            }
+        })();
+    </script>
 </body>
 </html>
