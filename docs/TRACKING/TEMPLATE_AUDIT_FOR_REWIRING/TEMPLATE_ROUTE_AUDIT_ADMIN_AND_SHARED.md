@@ -375,8 +375,8 @@
 | `total_items` | `int` | Overview stat |
 | `active_items` | `int` | Overview stat |
 | `total_purchases` | `int` | Overview stat |
-| `pending_redemptions` | `list[StorePurchase]` | Approval queue |
-| `recent_purchases` | `list[StorePurchase]` | Purchase history |
+| `pending_redemptions` | `list[dict]` | Approval queue |
+| `recent_purchases` | `list[dict]` | Purchase history |
 | `class_labels_by_block` | `dict` | Block label display |
 | `rent_managed_item_ids` | `set[int]` | Rent-linked item highlighting |
 | `collective_progress_by_item` | `dict` | Collective-goal progress |
@@ -610,7 +610,7 @@
 | `reset_code_is_active` | `bool` | Shows reset code section |
 | `join_codes` | `dict[str,str]` | Class-section join codes |
 | `transactions` | `list[Transaction]` | Financial history |
-| `student_items` | `list[StorePurchase]` | Store purchase history |
+| `student_items` | `list[dict]` | Store purchase history |
 | `latest_attendance_event` | object\|None | Attendance summary from canonical `attendance_sessions` |
 | `attendance_events` | `list` | Attendance history display rows from canonical `attendance_sessions` |
 | `payroll_event_history` | `list[dict]` | Payroll event display rows from canonical `payroll_event` plus Ledger amount lookup by `correlation_id` |

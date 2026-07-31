@@ -1,6 +1,8 @@
 # Store and Entitlements Domain Correctness Audit
 ## SOP-DEV-002 Compliance Verification
 
+> Historical audit note: this document reflects the pre-closeout Store/Entitlements state from 2026-07-26. The current live-tree status and remaining handoff are captured in `docs/TRACKING/STORE_ENTITLEMENT_PHASE6_SURFACE_INVENTORY_2026-07-31.md`.
+
 | Reference | Value |
 |-----------|-------|
 | **Domain** | Store and Entitlements (DOM-STORE-001 v3.0) |
@@ -15,7 +17,7 @@
 
 The Store and Entitlements domain contains **4 critical canonical violations** and **1 warning** when compared against DOM-STORE-001 v3.0. The core mutation FEAT (FEAT-STOR-001) and service primitives are correctly implemented, but legacy persistence and support tables violate immutable facts principles.
 
-**Status: BLOCKED PENDING REMEDIATION**
+**Status: Historical audit; blocked findings have since been reconciled in the live Store closeout slice**
 
 ---
 
