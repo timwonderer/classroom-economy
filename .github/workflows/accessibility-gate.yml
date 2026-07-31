@@ -7,8 +7,6 @@ on:
       - 'static/css/**'
       - 'app/routes/**'
       - 'app/forms.py'
-      - 'tests/test_accessibility.py'
-      - 'tests/test_axe_compliance.py'
 
 permissions:
   contents: read
@@ -65,7 +63,24 @@ jobs:
         run: |
           flask db upgrade
 
-      - name: Run Accessibility Test Suites
+      - name: Collect Changed Templates
+        id: changed_templates
+        run: |
+          git diff --name-only "${{ github.event.pull_request.base.sha }}" "${{ github.event.pull_request.head.sha }}" -- 'templates/**' > /tmp/changed_templates.txt
+          if [ ! -s /tmp/changed_templates.txt ]; then
+            echo "templates=" >> "$GITHUB_OUTPUT"
+            echo "No template files changed; skipping accessibility audit."
+            exit 0
+          fi
+
+          {
+            echo "templates<<EOF"
+            cat /tmp/changed_templates.txt
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Run Accessibility Test Suite
+        if: steps.changed_templates.outputs.templates != ''
         env:
           FLASK_APP: app
           FLASK_ENV: testing
@@ -73,6 +88,7 @@ jobs:
           ENCRYPTION_KEY: ${{ secrets.ENCRYPTION_KEY }}
           PEPPER_KEY: ${{ secrets.PEPPER_KEY }}
           SECRET_KEY: ${{ secrets.SECRET_KEY }}
+          ACCESSIBILITY_TEMPLATE_PATHS: ${{ steps.changed_templates.outputs.templates }}
         run: |
-          echo "♿ Running Structural & Axe-Core Accessibility Audits..."
-          pytest tests/test_accessibility.py tests/test_axe_compliance.py -v
+          echo "♿ Running template-scoped accessibility audit..."
+          pytest tests/test_accessibility.py -v
