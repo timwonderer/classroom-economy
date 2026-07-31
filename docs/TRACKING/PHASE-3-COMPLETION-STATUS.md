@@ -163,10 +163,10 @@
 
 ### 2. Clear Domain Boundaries
 
-**Discovery** (separate concern, deferred):
+**Discovery** (separate concern, implemented as pure read):
 - `list_store_policies(class_id)` — discovery primitive for canonical policy definitions
 - Caller responsibility (routes/APIs)
-- Semantics TBD in DOM-STORE-001 or SPEC-STORE-001
+- Presentation and filtering live in Phase 5 view models
 - Not part of FEAT execution
 
 **Execution** (FEAT responsibility):
