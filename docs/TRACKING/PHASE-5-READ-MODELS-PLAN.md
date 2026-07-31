@@ -237,22 +237,19 @@ class EntitlementListView:
 
 #### View Model 2: PolicyListView (Discoverable Policies)
 
-**Purpose**: Show student what policies are available to purchase in this class  
-**Status**: 🔴 BLOCKED — Requires undefined authority
+**Purpose**: Show the canonical store policies defined for a class  
+**Status**: ✅ UNBLOCKED — pure discovery is already authorized
 
-**Blocker**: `StorePolicyResolver.list_store_policies(class_id)` has no canonical contract
+**Primitive**: `StorePolicyResolver.list_store_policies(class_id)` returns canonical policy definitions for the class
 
-**Contract Gap**:
-Which policies should be "applicable"? 
-- All non-retired policies?
-- Only currently-active policies (by rent cycle)?
-- Only policies meeting prerequisites?
-- Should filtering by affordability be part of discovery or presentation?
+**View Contract**:
+- Use canonical policy definitions from the resolver
+- Apply presentation ordering only in the view model
+- Do not evaluate student eligibility, affordability, entitlement ownership, or class feature state
 
-**Resolution**: Requires DOM-STORE-001 amendment or explicit application-domain decision  
-**Authority Needed**: `DOM-STORE-001` or an explicit discovery contract for class-scoped store policies
+**Authority Needed**: None beyond `DOM-STORE-001` plus the pure discovery primitive
 
-**Do Not Stub**: This projection cannot be built until applicability semantics are defined.
+**Do Not Stub**: Keep business filtering out of the resolver primitive
 
 ---
 
@@ -383,7 +380,7 @@ Must provide:
 
 Must provide (implement only unblocked ones):
 - ✅ `build_entitlement_list_view(seat_id, class_id)` → List[EntitlementListView]
-- 🔴 BLOCKED: `build_policy_list_view(class_id)` — Requires list_store_policies() contract
+- ✅ `build_policy_list_view(class_id)` — pure discovery + presentation ordering
 - ✅ `build_purchase_history_view(seat_id, class_id)` → List[PurchaseHistoryView]
 - 🔴 BLOCKED: `build_entitlement_with_ledger_context(entitlement_id, class_id)` — Requires Ledger read API
 
@@ -438,9 +435,9 @@ Must test:
 - EntitlementListView
 - PurchaseHistoryView
 - StudentObligationWithEntitlements
+- PolicyListView
 
 **Blocked Builders** (do not implement):
-- PolicyListView — awaiting list_store_policies() contract
 - EntitlementWithLedgerContext — awaiting Ledger read API
 
 **Effort**: 3-5 hours  
@@ -469,21 +466,14 @@ Do NOT stub these. Leave them blocked until authority exists.
 
 ### Contract Gap 1: list_store_policies() Semantics
 
-**Blocks**: PolicyListView  
-**Issue**: StorePolicyResolver exposes a discovery primitive but the canonical return shape and class-scoped payload contract are not yet documented  
-**Scope**: Which canonical policy fields are returned to the view model?
-**Open Questions**:
-- Which canonical fields are required for discovery output?
-- Should the discovery payload expose only policy metadata, or the full typed policy config?
-- Does the view model own sorting, labeling, and filtering entirely?
-- What error behavior is expected when a class has no policies?
+**Status**: Resolved for Phase 5
 
-**Authority Needed**:
-- DOM-STORE-001 amendment or Phase 5 policy discovery contract
+**Current Contract**:
+- Returns canonical, validated `StorePolicyConfig` objects for the class
+- Does not evaluate student eligibility, affordability, entitlement ownership, or class feature state
+- View models own presentation ordering and labeling only
 
-**Resolution Path**: Phase 5 View Models define display logic; StorePolicyResolver remains a pure configuration reader
-
-**Do Not**: Add eligibility, affordability, ownership, or presentation filtering to the resolver primitive.
+**Do Not**: Add business filtering to the resolver primitive.
 
 ---
 
@@ -549,7 +539,7 @@ Phase 5 is complete when:
 
 - ✅ Read service fully documented (all methods have preconditions, purity statement, tests)
 - ✅ Unblocked view model builders implemented and tested
-- ✅ Blocked projections explicitly documented with contract gaps (PolicyListView, EntitlementWithLedgerContext)
+- ✅ Blocked projections explicitly documented only where authority is still missing (EntitlementWithLedgerContext)
 - ✅ All unit tests pass
 - ✅ No routes or templates updated
 - ✅ Contract gaps filed for Phase 6+ action

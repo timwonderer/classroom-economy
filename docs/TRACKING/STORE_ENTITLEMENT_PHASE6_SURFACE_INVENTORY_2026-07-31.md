@@ -135,12 +135,12 @@ Status:
 
 - discovery primitive exists
 - resolver is pure
-- policy list view remains blocked until discovery payload contract is finalized
+- policy list view is unblocked and now consumes the canonical discovery payload
 
 Disposition:
 
 - `VERIFY` for resolver purity
-- `BLOCK` policy list view until the discovery contract is written
+- `VERIFY` policy list view against the Phase 5 builder contract
 
 ### 2. `pending_actions`
 
@@ -167,8 +167,8 @@ Disposition:
 | `app/services/entitlement_service.py` hall-pass balance math | `VERIFY` | Confirm helpers remain aligned to canonical EntitlementEvent lineage and read-service balance derivation |
 | `app/services/store_service.py` catalog CRUD helpers | `VERIFY` | Confirm whether helpers are only class-config surfaces or need removal |
 | `app/services/view_model_builders.py` read builders | `VERIFY` | Keep pure; no route rewiring in Phase 6 |
-| `StorePolicyResolver.list_store_policies(class_id)` | `VERIFY` | Contract still pending but primitive is pure |
-| `PolicyListView` | `BLOCK` | Requires discovery contract before implementation |
+| `StorePolicyResolver.list_store_policies(class_id)` | `VERIFY` | Contract is pure and now feeds the Phase 5 discovery view model |
+| `PolicyListView` | `VERIFY` | Implemented as pure discovery + presentation ordering |
 
 ---
 

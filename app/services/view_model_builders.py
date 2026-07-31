@@ -43,6 +43,20 @@ class PurchaseHistoryView:
     correlation_id: str
 
 
+@dataclass(frozen=True)
+class PolicyListView:
+    policy_uuid: str
+    class_id: str
+    product_id: int
+    name: str
+    description: str | None
+    entitlement_type: str
+    price: Decimal
+    is_purchasable: bool
+    supports_direct_grants: bool
+    created_at: datetime | None
+
+
 def _resolve_product_name(policy_uuid: str, product_id: int) -> str:
     policy = StorePolicyResolver.resolve_store_item(policy_uuid)
     if policy.name:
@@ -156,3 +170,38 @@ def build_purchase_history_view(seat_id: int, class_id: str) -> list[PurchaseHis
         )
 
     return views
+
+
+def build_policy_list_view(class_id: str) -> list[PolicyListView]:
+    """
+    Build the canonical policy list for a class.
+
+    This is pure discovery + presentation ordering only:
+    - Discovery comes from StorePolicyResolver.list_store_policies(class_id)
+    - Ordering is presentation-only and does not affect policy truth
+    """
+    policies = StorePolicyResolver.list_store_policies(class_id)
+    sorted_policies = sorted(
+        policies,
+        key=lambda policy: (
+            policy.product_id,
+            policy.name or "",
+            policy.policy_uuid,
+        ),
+    )
+
+    return [
+        PolicyListView(
+            policy_uuid=policy.policy_uuid,
+            class_id=policy.class_id,
+            product_id=policy.product_id,
+            name=policy.name or f"Product {policy.product_id}",
+            description=policy.description,
+            entitlement_type=policy.entitlement_type,
+            price=policy.price,
+            is_purchasable=policy.is_purchasable,
+            supports_direct_grants=policy.supports_direct_grants,
+            created_at=policy.created_at,
+        )
+        for policy in sorted_policies
+    ]

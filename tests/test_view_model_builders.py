@@ -13,6 +13,7 @@ from app.services.context_resolver import CanonicalContext
 from app.services.store_policy_resolver import StorePolicyResolver
 from app.services.view_model_builders import (
     build_entitlement_list_view,
+    build_policy_list_view,
     build_purchase_history_view,
 )
 from app.feats.store_purchase_feat import execute_store_purchase
@@ -118,3 +119,20 @@ def test_build_purchase_history_view_groups_by_correlation(app, classroom):
         assert view.price_per_unit == Decimal("4.50")
         assert view.total_price == Decimal("9.00")
         assert view.correlation_id == result.correlation_id
+
+
+def test_build_policy_list_view_returns_canonical_policies_in_presentation_order(app, classroom):
+    with app.app_context():
+        classroom_obj, purchase_policy, grant_policy = classroom
+
+        views = build_policy_list_view(classroom_obj.class_id)
+
+        assert [view.policy_uuid for view in views] == [
+            purchase_policy.policy_uuid,
+            grant_policy.policy_uuid,
+        ]
+        assert [view.product_id for view in views] == [701, 702]
+        assert [view.name for view in views] == ["Notebook", "Hall Pass"]
+        assert all(view.class_id == classroom_obj.class_id for view in views)
+        assert all(view.is_purchasable for view in views)
+        assert all(view.supports_direct_grants for view in views)
