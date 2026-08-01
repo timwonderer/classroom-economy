@@ -146,7 +146,7 @@ On successful direct grant:
 
 ## IX. Idempotency
 
-`idempotency_key` SHALL protect the complete grant lifecycle.
+`idempotency_key` SHALL protect the complete grant lifecycle, and replay safety still requires persisted deduplication before write.
 
 A replay of the same lawful direct grant SHALL NOT produce duplicate entitlement events.
 
