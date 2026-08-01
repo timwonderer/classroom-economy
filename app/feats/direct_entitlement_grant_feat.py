@@ -11,8 +11,8 @@ Orchestrates teacher-directed entitlement grants:
 No Ledger coordination needed; grants are zero-cost from teacher authority.
 
 Architecture:
-- Accepts product_id (user-facing identifier)
-- Resolves applicable policy for that product in the class
+- Accepts an exact policy_uuid (no inference from product_id)
+- Resolves the immutable policy by UUID via StorePolicyResolver
 - Validates policy per SPEC-STORE-001
 - Creates entitlements with product_id and policy_uuid references
 """
@@ -222,7 +222,32 @@ def _execute_direct_grant_impl(
             )
 
     # Generate or use provided correlation ID
-    corr_id = correlation_id or f"direct_grant_{uuid.uuid4().hex}"
+    corr_id = correlation_id or idempotency_key or f"direct_grant_{uuid.uuid4().hex}"
+
+    # Replay guard: if this exact operation already committed, return the original result.
+    if idempotency_key:
+        existing_events = (
+            db.session.query(EntitlementEvent)
+            .filter_by(
+                class_id=canonical_context.class_id,
+                target_seat_id=target_seat_id,
+                actor_seat_id=canonical_context.seat_id,
+                product_id=policy_config.product_id,
+                acquisition_type="GRANT",
+                event_type="GRANTED",
+                correlation_id=corr_id,
+            )
+            .order_by(EntitlementEvent.event_id.asc())
+            .all()
+        )
+        if existing_events:
+            return DirectGrantResult(
+                success=True,
+                correlation_id=corr_id,
+                quantity_granted=len(existing_events),
+                entitlement_ids=[event.entitlement_id for event in existing_events],
+                product_id=policy_config.product_id,
+            )
 
     # =========================================================================
     # PHASE 2: Atomic Entitlement Grants

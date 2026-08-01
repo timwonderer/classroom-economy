@@ -24,7 +24,7 @@ CREATE TABLE entitlement_events (
   entitlement_id CHAR(36) NOT NULL,  -- stable lineage across lifecycle
   target_seat_id INTEGER NOT NULL REFERENCES seats(id) ON DELETE CASCADE,
   actor_seat_id INTEGER NOT NULL REFERENCES seats(id) ON DELETE CASCADE,
-  product_id INTEGER NOT NULL,  -- references Policy-owned product (can be nullable if cross-domain)
+  product_id INTEGER NULL,  -- references Policy-owned product; nullable for cross-domain compatibility
   entitlement_type VARCHAR(50) NOT NULL,  -- INSURANCE, PRIVILEGE, IMMEDIATE_USE, DELAYED_USE, COLLECTIVE_GOAL, HALL_PASS
   acquisition_type VARCHAR(20) NOT NULL,  -- PURCHASE, GRANT, PERK
   event_type VARCHAR(20) NOT NULL,  -- GRANTED, CONSUMED, EXPIRED, REVOKED
@@ -102,7 +102,7 @@ Since this is a complete paradigm shift from grant+consumption to event-based hi
 - Requires careful correlation/payload mapping
 - More complex, higher risk
 
-**Recommendation:** Go with **Option 1 (Clean Break)** because:
+**Recommendation:** Go with **Option 1 (Clean Break)** only if the deployment has explicit approval for destructive data disposition because:
 - Old tables had mutable balance tracking (forbidden per spec)
 - Migration would require inferring historical state that wasn't properly recorded
 - New paradigm is fundamentally different (events, not grant+consumption split)
