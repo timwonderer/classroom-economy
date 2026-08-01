@@ -265,6 +265,8 @@ A replay of a successful request SHALL:
 - not create additional entitlement rows;
 - return or reconstruct the original purchase result through canonical correlation/idempotency evidence.
 
+The FEAT SHALL persist the replay outcome before any downstream mutation is committed so the same key resolves to the original result without creating a second purchase path.
+
 For multi-unit purchases, idempotency applies to the complete requested batch.
 
 The system SHALL NOT interpret a retry as permission to grant another `quantity` units.
