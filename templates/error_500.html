@@ -11,6 +11,7 @@
     <link
         href="https://fonts.googleapis.com/css2?family=Google+Sans+Code:ital,wght@0,300..800;1,300..800&family=Google+Sans:ital,opsz,wght@0,17..18,400..700;1,17..18,400..700&family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap"
         rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" rel="stylesheet" />
     <link href="{{ static_url('css/tokens.css') }}" rel="stylesheet">
     <link href="{{ static_url('css/style.css') }}" rel="stylesheet">
@@ -80,7 +81,7 @@
         .error-message code {
             padding: 0.2rem 0.4rem;
             color: var(--text-primary);
-            font-family: 'Google Sans Code', monospace;
+            font-family: var(--font-data);
         }
 
         .log-section {
@@ -94,7 +95,7 @@
 
             max-height: 400px;
             overflow-y: auto;
-            font-family: 'Courier New', monospace;
+            font-family: var(--font-data);
             font-size: 0.85rem;
             line-height: 1.4;
             white-space: pre-wrap;

@@ -9,8 +9,9 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link
-        href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,100..700;1,100..700&family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap"
+        href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,100..700;1,100..700&family=IBM+Plex+Mono:wght@300;400;500;600;700&family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap"
         rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible+Next:wght@400;700&display=swap" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0"
         rel="stylesheet">
     <link href="{{ static_url('css/tokens.css') }}" rel="stylesheet">
@@ -174,6 +175,7 @@
 
         <div class="card-body">
             <div id="badge-container" class="badge-container">
+                <h1 class="visually-hidden">Scheduled Maintenance</h1>
                 <div id="badge-label" class="badge-label">
                     <span id="badge-icon" class="material-symbols-outlined badge-icon" aria-hidden="true">{{ badge_icon
                         }}</span> <span id="badge-text">{{ badge_text|upper }}</span>

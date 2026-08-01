@@ -6,6 +6,8 @@
 :root {
     /* Perspective: Professional yet warm */
     --font-family: 'Inter', system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --font-display: 'Atkinson Hyperlegible Next', 'Inter', system-ui, -apple-system, "Segoe UI", sans-serif;
+    --font-data: 'IBM Plex Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
 
     /* Bootstrap Overrides - Base */
     --bs-body-font-family: var(--font-family);
