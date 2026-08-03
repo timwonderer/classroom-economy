@@ -14,8 +14,6 @@ from tests.helpers.class_domain import disable_class_feature, enable_class_featu
 from tests.helpers.classroom_initializer import initialize_as_student, initialize_as_teacher
 from tests.helpers.ledger import create_ledger_idempotent_transaction
 
-pytestmark = [pytest.mark.critical, pytest.mark.regression]
-
 
 @pytest.fixture
 def setup_student_with_disabled_banking(client):
