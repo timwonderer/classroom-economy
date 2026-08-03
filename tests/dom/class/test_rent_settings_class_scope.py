@@ -1,8 +1,12 @@
+import pytest
+
 from app.extensions import db
 from app.models import RentSettings
 from tests.helpers.class_domain import update_rent_settings
 from tests.helpers.classroom_initializer import initialize_as_teacher
 from tests.helpers.class_domain import enable_class_feature
+
+pytestmark = [pytest.mark.critical, pytest.mark.regression]
 
 
 def test_DOM_CLASS_001__rent_settings_update_persists_class_scoped_row(client):
