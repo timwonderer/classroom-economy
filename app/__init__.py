@@ -183,32 +183,34 @@ def register_error_handlers(app):
                 from app.utils.time import utc_now
                 if context.get("actor_type") and context.get("actor_public_id"):
                     from app.services.tlcp import _sanitize_error_message
-                    conn.execute(
-                        sa.text(
-                            """
-                            INSERT INTO error_events
-                                (request_id, actor_type, actor_public_id, class_id,
-                                 endpoint, method, error_class, error_message,
-                                 correlation_version, created_at)
-                            VALUES
-                                (:request_id, :actor_type, :actor_public_id, :class_id,
-                                 :endpoint, :method, :error_class, :error_message,
-                                 :correlation_version, :created_at)
-                            """
-                        ),
-                        {
-                            "request_id": getattr(g, "request_id", None),
-                            "actor_type": context.get("actor_type"),
-                            "actor_public_id": context.get("actor_public_id"),
-                            "class_id": context.get("class_id"),
-                            "endpoint": endpoint,
-                            "method": request.method,
-                            "error_class": e.__class__.__name__,
-                            "error_message": _sanitize_error_message(sanitized_message),
-                            "correlation_version": CORRELATION_VERSION,
-                            "created_at": utc_now(),
-                        },
-                    )
+                    inspector = sa.inspect(conn)
+                    if inspector.has_table("error_events"):
+                        conn.execute(
+                            sa.text(
+                                """
+                                INSERT INTO error_events
+                                    (request_id, actor_type, actor_public_id, class_id,
+                                     endpoint, method, error_class, error_message,
+                                     correlation_version, created_at)
+                                VALUES
+                                    (:request_id, :actor_type, :actor_public_id, :class_id,
+                                     :endpoint, :method, :error_class, :error_message,
+                                     :correlation_version, :created_at)
+                                """
+                            ),
+                            {
+                                "request_id": getattr(g, "request_id", None),
+                                "actor_type": context.get("actor_type"),
+                                "actor_public_id": context.get("actor_public_id"),
+                                "class_id": context.get("class_id"),
+                                "endpoint": endpoint,
+                                "method": request.method,
+                                "error_class": e.__class__.__name__,
+                                "error_message": _sanitize_error_message(sanitized_message),
+                                "correlation_version": CORRELATION_VERSION,
+                                "created_at": utc_now(),
+                            },
+                        )
         except Exception:
             app.logger.warning("Failed to persist TLCP error event", exc_info=True)
 
