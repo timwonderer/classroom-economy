@@ -14,11 +14,11 @@ from app.extensions import db
 from app.feats.base import FEATContext
 from app.models import StoreItem
 from app.services.store_service import set_item_visibility
+from tests.helpers.class_domain import enable_class_feature
 from tests.helpers.classroom_initializer import (
     initialize_as_student,
     initialize_as_teacher,
 )
-from tests.helpers.v2_fixtures import seed_class_feature
 
 
 def login_entitlement_teacher(classroom_key: str, client, app):
@@ -34,7 +34,7 @@ def login_entitlement_student(classroom_key: str, client, app, student_index: in
 def enable_store_feature_for_class(class_id: str) -> None:
     """Enable the store feature for a canonical class."""
     with FEATContext("FEAT-ADMN-001", idempotency_key=f"entitlement:enable-store:{class_id}"):
-        seed_class_feature(class_id=class_id, feature_name="store")
+        enable_class_feature(class_id=class_id, feature_name="store")
         db.session.info["feat_orchestrator_commit"] = True
         try:
             db.session.commit()
