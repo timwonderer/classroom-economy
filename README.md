@@ -1,9 +1,9 @@
-# Classroom Token Hub
+# Classroom Token Hub (CTH)
 
 A classroom management platform that uses a simulated token economy to drive student engagement and participation. Built with Flask + SQLAlchemy + PostgreSQL, designed for multi-tenant deployment across multiple schools and class periods.
 
 **Version:** 2.0 (Reconstruction in Progress)  
-**Active Branch:** `codex/v2.0` (never merge to main)  
+**Active Branch:** `CTH_v2.0` (never merge to main)  
 **License:** [PolyForm Noncommercial 1.0.0](https://polyformproject.org/licenses/noncommercial/1.0.0/)  
 **Status:** Architecture reconstruction underway via SOP-DEV-002a domain rebuild phases
 
@@ -11,9 +11,10 @@ A classroom management platform that uses a simulated token economy to drive stu
 
 ## Current Status (2026-08-04)
 
-Classroom Token Hub v2 is undergoing a comprehensive architectural reconstruction to achieve production readiness via the 10-phase SOP-DEV-002a domain rebuild workflow. 
+Classroom Token Hub v2 is undergoing a comprehensive architectural reconstruction to achieve production readiness via the 10-phase SOP-DEV-002a domain rebuild workflow.
 
 **Audit Baseline Established:** 2026-08-04 via complete code inspection of all 10 domains
+
 - ✅ **5 domains** have Phases 0-5 complete (foundational architecture)
 - ⚠️ **2 domains** have Phase 5 complete but Phase 6-7 blocked or unverified
 - 🔄 **3 domains** at Phase 1 (not yet started)
@@ -36,6 +37,7 @@ See **[AUDIT_BASELINE_2026-08-04.md](docs/TRACKING/AUDIT_BASELINE_2026-08-04.md)
 ### If You're Starting New Work
 
 **Good News:** Phases 0-5 are largely complete for major domains (Identity, Ledger, Obligations, Store). You can:
+
 - Build new services following the domain service pattern
 - Create FEATs for state mutations
 - Build tests that verify multi-tenancy scoping
@@ -45,6 +47,7 @@ See **[AUDIT_BASELINE_2026-08-04.md](docs/TRACKING/AUDIT_BASELINE_2026-08-04.md)
 ### If You're Fixing a Route or Template
 
 Check the [domain status matrix](docs/TRACKING/DOMAIN_PROGRESS_MATRIX_2026.md):
+
 - ✅ **Green (Phase 6-7 pass):** Route should use view model; template should access fields via `view.*`
 - ⚠️ **Yellow (Phase 6-7 unverified):** Verify with domain owner before starting changes
 - ❌ **Red (Phase 6-7 blocked):** Route/template work is blocked; see audit report for why
@@ -53,7 +56,6 @@ Check the [domain status matrix](docs/TRACKING/DOMAIN_PROGRESS_MATRIX_2026.md):
 
 Features that touch student data must flow through the 10-phase SOP-DEV-002a rebuild:
 
-```
 Phase 0: Define scope (domain spec)
 Phase 1: Immutable fact tables
 Phase 2: Migrations + indexes
@@ -64,7 +66,6 @@ Phase 6-7: Route + template integration
 Phase 8: Test coverage + multi-tenancy
 Phase 9: Remove legacy code
 Phase 10: Production audit certification
-```
 
 Each phase is sequential and interdependent. Features skip no phases.
 
@@ -74,26 +75,29 @@ Each phase is sequential and interdependent. Features skip no phases.
 
 ### The Three Layers (v2)
 
-**1. Identity Layer (Foundation)**
+#### 1. Identity Layer (Foundation)
+
 - `User` — Authentication principal (global)
 - `Seat` — Class-local actor (WHERE work happens)
 - `ClassEconomy` (`class_id`) — Tenant boundary (SCOPING KEY)
 - `IdentityProfile` — Display name and class-local identity
 - `join_code` — Public alias for `class_id` (for student ingress)
 
-**2. Domain Services (Read + Validation)**
+#### 2. Domain Services (Read + Validation)
+
 - 10 bounded domains: Identity, Class Configuration, Ledger, Productivity & Payroll, Obligations, Store & Entitlements, Operations, Interpretation, Policies, Support
 - Each domain owns canonical tables, facts, and read queries
 - Domains **do not call each other**; cross-domain reads happen via FEATs
 - Authority flows: Domain spec → Service layer → FEAT mutations → Ledger
 
-**3. FEAT Layer (All Mutations)**
+#### 3. FEAT Layer (All Mutations)
+
 - Every state change goes through a FEAT (Feature Execution Transaction)
 - FEATs resolve identity, validate across domains, and commit atomically
 - Examples: `FEAT-LED-000` (transfer), `FEAT-OBL-001` (assess obligation), `FEAT-STOR-001` (purchase)
 - Pattern: Route → FEAT context → domain services → database commit
 
-```
+```plaintext
 Student clicks "Pay Rent"
     ↓
 Route calls FEAT-OBL-PAY (seat_id, class_id, amount)
@@ -199,7 +203,7 @@ Domains own the fields, not the templates. Templates are integration surfaces us
 
 ## Project Structure
 
-```
+```plaintext
 app/
 ├── models.py             # 40 domain models (Identity, Ledger, Obligations, Store, etc.)
 ├── auth.py               # Auth decorators (@admin_required, @student_required)
@@ -316,7 +320,7 @@ All migrations must include idempotency helpers. See [.claude/rules/database-mig
 ### Quick Navigation
 
 | Document | Purpose |
-|----------|---------|
+| ---------- | --------- |
 | **[AUDIT_BASELINE_2026-08-04.md](docs/TRACKING/AUDIT_BASELINE_2026-08-04.md)** | ⭐ START HERE: Domain audit findings, blockers, next steps |
 | **[DOMAIN_PROGRESS_MATRIX_2026.md](docs/TRACKING/DOMAIN_PROGRESS_MATRIX_2026.md)** | Domain status by phase; view model coverage map |
 | **[Architecture Foundation](docs/INVARIANT/CORE/INV-CORE-000_CORE_INVARIANTS.md)** | Core runtime invariants and system boundaries |
@@ -361,14 +365,18 @@ See [SOP-DEP-023](docs/STANDARD_OPERATING_PROCEDURES/DEPLOYMENT/SOP-DEP-023_V2_P
 
 Before starting work:
 
-1. **Read the audit baseline** — [AUDIT_BASELINE_2026-08-04.md](docs/TRACKING/AUDIT_BASELINE_2026-08-04.md)
-2. **Check domain status** — [DOMAIN_PROGRESS_MATRIX_2026.md](docs/TRACKING/DOMAIN_PROGRESS_MATRIX_2026.md)
-3. **Review CLAUDE.md** — [.claude/CLAUDE.md](.claude/CLAUDE.md)
-4. **Read relevant rules** — [.claude/rules/](.claude/rules/)
+1. **Read the project invariants** - [Core Invariants of CTH](docs/INVARIANT/CORE/)
+
+2. **Read the project architecture** - [Architectural Invariants of CTH](docs/INVARIANT/ARCHITECTURE/INV-ARC-000_EXECUTION_MODEL.md)
+
+3. **Read the audit baseline** — [AUDIT_BASELINE_2026-08-04.md](docs/TRACKING/AUDIT_BASELINE_2026-08-04.md)
+
+4. **Check domain status** — [DOMAIN_PROGRESS_MATRIX_2026.md](docs/TRACKING/DOMAIN_PROGRESS_MATRIX_2026.md)
 
 **Golden Rules:**
+
 - ✅ Read before writing
-- ✅ Scope by `class_id`, never by `teacher_id` alone
+- ✅ Use established canonical helpers for time and identity logic
 - ✅ Mutate through FEAT layer only (no direct `db.session.add/commit` in routes)
 - ✅ Create/update tests (always)
 - ✅ All routes follow 10-phase SOP-DEV-002a rebuild
@@ -383,7 +391,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines.
 Every domain must progress through 10 sequential phases to be production-ready:
 
 | Phase | Name | Purpose | Example Blocker |
-|-------|------|---------|-----------------|
+| ------- | ------ | --------- | ----------------- |
 | **0** | Boundary | Scope defined | "Obligations domain scope unclear" |
 | **1** | Truth | Immutable facts | "ObligationAssessment not append-only" |
 | **2** | Persistence | Migrations idempotent | "Migration has no existence checks" |
@@ -414,11 +422,10 @@ See [LICENSE](LICENSE) for complete terms and [Third-Party Notices](docs/archive
 ## Support
 
 - **Questions about architecture?** Read [CLAUDE.md](.claude/CLAUDE.md) and the relevant domain spec
-- **Found a bug?** Check the audit baseline; may be a known blocker
+- **Found a bug?** Check the audit baseline; may be a known blocker before opening an issue
 - **Ready to contribute?** See [CONTRIBUTING.md](CONTRIBUTING.md)
+- **Need to contact the human behind the project?** Reach out to [dev@classroomtokenhub.com](mailto:dev@classroomtokenhub.com)
 
----
+This project is developed, deployed, maintained, operated, and tested by a single full-time high school teacher who live by the motto of *"fine, I'll build one myself."*
 
-**Built for educators who want a practical, engaging way to manage their classrooms.**
-
-*Last updated: 2026-08-04 — Audit baseline established*
+Last updated: 2026-08-04 — Audit baseline established
