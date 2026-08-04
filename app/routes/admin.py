@@ -6021,7 +6021,14 @@ def rent_settings():
                 if not block_settings:
                     continue
 
-                existing_items = block_settings.rent_items.all()
+                existing_items = (
+                    StoreItem.query.filter(
+                        StoreItem.class_id == block_settings.class_id,
+                        StoreItem.is_rent_linked.is_(True),
+                    )
+                    .order_by(StoreItem.id.asc())
+                    .all()
+                )
                 existing_map = {}
 
                 # For the target class, map by ID; for other classes, map by name
@@ -6201,7 +6208,14 @@ def rent_settings():
     # Get rent items for this setting
     rent_items = []
     if settings:
-        rent_items = settings.rent_items.order_by(StoreItem.id).all()
+        rent_items = (
+            StoreItem.query.filter(
+                StoreItem.class_id == settings.class_id,
+                StoreItem.is_rent_linked.is_(True),
+            )
+            .order_by(StoreItem.id.asc())
+            .all()
+        )
 
     # Calculate current rent period dates for settings summary
     rent_active_for_period = False
