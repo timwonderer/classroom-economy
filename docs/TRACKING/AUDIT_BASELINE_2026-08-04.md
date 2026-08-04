@@ -1,4 +1,5 @@
 # Comprehensive CTH v2 Domain Audit Baseline
+
 **Date:** 2026-08-04  
 **Auditor:** Claude  
 **Status:** BASELINE FINDINGS (not yet approved)  
@@ -11,6 +12,7 @@
 This audit establishes a **baseline understanding** of all 10 domains' current progress through SOP-DEV-002 phases. It replaces previous stale tracking with verified code inspection findings.
 
 **Critical Finding:** Phase 6-7 (View Model Integration) has a **universal measurement problem** that affects all domains:
+
 - Phase 6-7 completion criterion changed from "routes and templates consume view models" to "domains own fields, not templates"
 - Only **2 view model implementations found** (Obligation, Store/Entitlements builders)
 - Other 8 domains have **NO view models defined yet**
@@ -18,6 +20,7 @@ This audit establishes a **baseline understanding** of all 10 domains' current p
 - This is a **blocker for Phases 6-7 for most domains**
 
 **Obligations Domain Alert:** Phase 6-7 certification is **INVALID** (previous audit false positives):
+
 - Template `student_rent.html` references `period_status[current_block]` — NOT IN VIEW MODEL
 - Template references `days_until_due` at top level — actually nested in `current_period` dict
 - Route correctly passes only `view=view` but template expects undefined variables
@@ -42,10 +45,12 @@ This audit establishes a **baseline understanding** of all 10 domains' current p
 ❌ **Phase 6-7:** BLOCKED — No `IdentityProfileView` or similar view model exists
 
 **Blocker:**
+
 - No view model for identity context; routes resolve identity inline
 - Templates get raw `user`, `seat`, `class_id` variables, not from view model
 
 **Recommendation:**
+
 - Create `IdentityProfileView` dataclass for Phase 5
 - Create `build_identity_profile_view()` constructor
 - Update routes to use view model
@@ -68,10 +73,12 @@ This audit establishes a **baseline understanding** of all 10 domains' current p
 ❌ **Phase 6-7:** BLOCKED — Templates receive `rent_settings`, `payroll_settings` directly, not via view model
 
 **Blocker:**
+
 - Settings passed as raw dicts to templates: `rent_settings=settings`
 - Should be: `view=build_class_config_view(...)`
 
 **Recommendation:**
+
 - Create `ClassConfigurationView` dataclass
 - Create `build_class_config_view()` constructor
 - Refactor all routes using settings to pass view model
@@ -93,10 +100,12 @@ This audit establishes a **baseline understanding** of all 10 domains' current p
 ❌ **Phase 6-7:** BLOCKED — Balances passed as raw `checking_balance`, `savings_balance` variables to templates
 
 **Blocker:**
+
 - `get_available_balances(seat_id, class_id)` returns tuple of Decimals, not view model
 - Should return: `LedgerBalanceView` dataclass
 
 **Recommendation:**
+
 - Create `LedgerBalanceView` dataclass with checking, savings, summary fields
 - Create `build_ledger_balance_view()` constructor
 - Refactor all routes to use view model
@@ -118,10 +127,12 @@ This audit establishes a **baseline understanding** of all 10 domains' current p
 ❌ **Phase 6-7:** BLOCKED — Routes construct context ad-hoc (current_period_earnings, rewards_total, etc.)
 
 **Blocker:**
+
 - `build_payroll_view()` or `build_attendance_view()` does not exist
 - Routes pass raw computed values to templates
 
 **Recommendation:**
+
 - Create `StudentPayrollView` dataclass
 - Create `StudentAttendanceView` dataclass
 - Create builder functions
@@ -147,17 +158,20 @@ This audit establishes a **baseline understanding** of all 10 domains' current p
 **Critical Blocker — Phase 6-7 Template Mismatch:**
 
 File: `templates/student_rent.html` line 53:
+
 ```jinja
 {% set status = period_status[current_block] %}  <!-- ❌ UNDEFINED: not in view, not in context -->
 ```
 
 File: `templates/student_rent.html` lines 71-86:
+
 ```jinja
 {% elif days_until_due is not none %}  <!-- ❌ UNDEFINED: nested in view.current_period, not top-level -->
     {% if days_until_due < 3 %}
 ```
 
 File: `app/routes/student.py` line 2959-2963:
+
 ```python
 view = build_student_obligation_view(  # ✅ View model built correctly
     seat_id=seat_id,
@@ -167,6 +181,7 @@ view = build_student_obligation_view(  # ✅ View model built correctly
 ```
 
 File: `app/routes/student.py` line 2990-3000:
+
 ```python
 return render_template(
     'student_rent.html',
@@ -181,21 +196,25 @@ return render_template(
 ```
 
 **Root Cause:**
+
 - `StudentObligationView` contains `current_period` dict with nested `days_until_due`
 - Template expects top-level `days_until_due` variable
 - `StudentObligationView` does NOT contain `period_status` dict at all
 - Template expects `period_status[current_block]` to exist
 
 **What's Actually in StudentObligationView (lines 140-150):**
+
 ```python
 current_period: dict  # {due_date, grace_end, amount_due, amount_paid, amount_waived, balance, is_paid, is_waived, is_past_due, is_preview, days_until_due, days_overdue}
 ```
 
 **What Template Needs:**
+
 - `period_status[current_block]` — a dict mapping block/period names to status
 - `days_until_due` — at top level, OR template must access via `view.current_period.days_until_due`
 
 **Solution Options:**
+
 1. **Add `period_status` to StudentObligationView** — Create dict mapping each block to its status
    - Requires change to view model builder (obligation_view_model.py lines 174-353)
    - Template stays the same
@@ -226,7 +245,8 @@ current_period: dict  # {due_date, grace_end, amount_due, amount_paid, amount_wa
 ⚠️ **Phase 6:** Routes appear to construct these views (requires verification)  
 ⚠️ **Phase 7:** Templates likely use view model fields (requires grep verification)
 
-**Status:** 
+**Status:**
+
 - Implementation appears complete per recent PRs (#1293, #1294, #1295)
 - BUT NO PHASE 10 AUDIT DOCUMENT EXISTS
 - Cannot approve without audit
@@ -297,6 +317,7 @@ current_period: dict  # {due_date, grace_end, amount_due, amount_paid, amount_wa
 **Impact:** All 8 domains blocked on Phase 6-7 completion
 
 **Evidence:**
+
 - View models found: 2 (Obligation, Store via view_model_builders.py)
 - Domains without view models: 8 (Identity, Class Config, Ledger, Payroll, Operations, Interpretation, Policies, Support)
 
@@ -309,7 +330,8 @@ current_period: dict  # {due_date, grace_end, amount_due, amount_paid, amount_wa
 **Impact:** Phase 4 (Mutation Boundary) verification incomplete
 
 **Evidence:**
-```
+
+```bash
 grep -r "db.session.add\|db.session.commit" app/routes/ | wc -l
 # Returns: 11
 ```
@@ -337,7 +359,7 @@ grep -r "db.session.add\|db.session.commit" app/routes/ | wc -l
 ## AUDIT MATRIX: Current vs. Target
 
 | Domain | Phase 0-4 | Phase 5 | Phase 6-7 | Phase 8-9 | Phase 10 | **Action Needed** |
-|--------|-----------|---------|-----------|-----------|----------|-------------------|
+| -------- | ----------- | --------- | ----------- | ----------- | ---------- | ------------------- |
 | Identity | ✅ | ❌ NONE | ❌ BLOCKED | ? | ❌ | Create identity view model |
 | Class Config | ✅ | ❌ NONE | ❌ BLOCKED | ? | ❌ | Create settings view model |
 | Ledger | ✅ | ❌ NONE | ❌ BLOCKED | ? | ❌ | Create balance view model |
@@ -415,6 +437,7 @@ grep -r "db.session.add\|db.session.commit" app/routes/ | wc -l
 ---
 
 **Audit Evidence Files:**
+
 - Grep queries: Search results for class_id, db.session, @dataclass(frozen=True)
 - Code inspection: app/services/*, app/routes/*, templates/*, app/models.py
 - Domain specs: docs/DOMAIN/DOM-*.md

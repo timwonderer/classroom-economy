@@ -9,9 +9,10 @@ domain truth in the presentation layer.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from decimal import Decimal
 from datetime import datetime
+from typing import Any
 
 from app.models import EntitlementEvent
 from app.services.entitlement_read_service import get_entitlement_status
@@ -205,3 +206,92 @@ def build_policy_list_view(class_id: str) -> list[PolicyListView]:
         )
         for policy in sorted_policies
     ]
+
+
+@dataclass(frozen=True)
+class StoreManagementView:
+    """Phase 6-7: Canonical view model for admin store management page."""
+    # Store items (owned by Store domain)
+    items: list[Any]
+    total_items: int
+    active_items: int
+    rent_managed_item_ids: set[int]
+
+    # Store statistics (owned by Store domain)
+    total_purchases: int
+    pending_redemptions: list[Any]
+    recent_purchases: list[Any]
+
+    # Collective items progress (owned by Store domain)
+    collective_progress_by_item: dict[int, list[dict]]
+
+    # Class/block labels (owned by Class Configuration domain)
+    class_labels_by_block: dict[str, str]
+
+    # Redemption audit (owned by Store domain)
+    audit_rows: list[dict[str, Any]]
+    audit_total: int
+    audit_page: int
+    audit_total_pages: int
+    audit_class_options: list[str]
+    audit_filters: dict[str, Any] = field(default_factory=dict)
+
+    # Feature scope (owned by Class Configuration domain)
+    selected_scope: dict[str, Any] = field(default_factory=dict)
+    feature_options: list[dict[str, Any]] = field(default_factory=list)
+
+
+def build_store_management_view(
+    items: list[Any],
+    total_items: int,
+    active_items: int,
+    total_purchases: int,
+    pending_redemptions: list[Any],
+    recent_purchases: list[Any],
+    class_labels_by_block: dict[str, str],
+    rent_managed_item_ids: set[int],
+    collective_progress_by_item: dict[int, list[dict]],
+    audit_rows: list[dict[str, Any]],
+    audit_total: int,
+    audit_page: int,
+    audit_total_pages: int,
+    audit_class_options: list[str],
+    audit_student: str = "",
+    audit_class: str = "",
+    audit_action: str = "",
+    audit_start_date: str = "",
+    audit_end_date: str = "",
+    selected_scope: dict[str, Any] | None = None,
+    feature_options: list[dict[str, Any]] | None = None,
+) -> StoreManagementView:
+    """
+    Build the canonical store management view for admin dashboard.
+
+    Consolidates all store management data into a single frozen dataclass
+    for Phase 6-7 template consumption.
+    """
+    return StoreManagementView(
+        items=items,
+        total_items=total_items,
+        active_items=active_items,
+        rent_managed_item_ids=rent_managed_item_ids,
+        total_purchases=total_purchases,
+        pending_redemptions=pending_redemptions,
+        recent_purchases=recent_purchases,
+        collective_progress_by_item=collective_progress_by_item,
+        class_labels_by_block=class_labels_by_block,
+        audit_rows=audit_rows,
+        audit_total=audit_total,
+        audit_page=audit_page,
+        audit_total_pages=audit_total_pages,
+        audit_class_options=audit_class_options,
+        audit_filters={
+            "student": audit_student,
+            "class": audit_class,
+            "action": audit_action,
+            "start_date": audit_start_date,
+            "end_date": audit_end_date,
+        },
+        selected_scope=selected_scope or {},
+        feature_options=feature_options or [],
+    )
