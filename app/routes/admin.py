@@ -157,6 +157,8 @@ from app.services.store_service import (
     deactivate_linked_store_item,
     delete_rent_item,
 )
+from app.services.view_model_builders import build_store_management_view
+from app.services.class_configuration_economic_service import build_economic_view
 from app.services.admin_identity_service import delete_admin_account_rows
 from app.services.admin_settings_service import create_rent_settings, create_banking_settings
 from app.services.issue_service import create_support_ticket
@@ -5546,24 +5548,35 @@ def store_management():
         ).all()
     }
 
-    return render_template('admin_store.html', form=form, items=items, current_page="store",
-                         total_items=total_items, active_items=active_items, total_purchases=total_purchases,
-                         pending_redemptions=pending_redemptions, recent_purchases=recent_purchases,
-                         class_labels_by_block=class_labels_by_block,
-                         rent_managed_item_ids=rent_managed_item_ids,
-                         collective_progress_by_item=collective_progress_by_item,
-                         audit_rows=audit_rows,
-                         audit_total=audit_total,
-                         audit_page=audit_page,
-                         audit_total_pages=audit_total_pages,
-                         audit_class_options=audit_class_options,
-                         audit_student=audit_student,
-                         audit_class=audit_class,
-                         audit_action=audit_action,
-                         audit_start_date=audit_start_date,
-                         audit_end_date=audit_end_date,
-                         feature_options=feature_options,
-                         selected_feature_scope=selected_scope)
+    # Build economic view from Class Configuration domain
+    economic_view = build_economic_view(selected_scope['class_id'])
+
+    view = build_store_management_view(
+        items=items,
+        total_items=total_items,
+        active_items=active_items,
+        total_purchases=total_purchases,
+        pending_redemptions=pending_redemptions,
+        recent_purchases=recent_purchases,
+        class_labels_by_block=class_labels_by_block,
+        rent_managed_item_ids=rent_managed_item_ids,
+        collective_progress_by_item=collective_progress_by_item,
+        audit_rows=audit_rows,
+        audit_total=audit_total,
+        audit_page=audit_page,
+        audit_total_pages=audit_total_pages,
+        audit_class_options=audit_class_options,
+        economic=economic_view,
+        audit_student=audit_student,
+        audit_class=audit_class,
+        audit_action=audit_action,
+        audit_start_date=audit_start_date,
+        audit_end_date=audit_end_date,
+        selected_scope=selected_scope,
+        feature_options=feature_options,
+    )
+
+    return render_template('admin_store.html', form=form, view=view, current_page="store")
 
 
 @admin_bp.route('/store/edit/<int:item_id>', methods=['GET', 'POST'])

@@ -7,7 +7,7 @@
 
 {# Helper macro to display class label with fallback #}
 {% macro class_label(block) -%}
-{{ class_labels_by_block.get(block|upper, block|upper) }}
+{{ view.class_labels_by_block.get(block|upper, block|upper) }}
 {%- endmacro %}
 
 {% block page_header_actions %}
@@ -183,15 +183,15 @@
           <div class="card-body">
             <div class="row text-center">
               <div class="col-6 mb-3">
-                <h3 class="text-primary">{{ total_items|default(0) }}</h3>
+                <h3 class="text-primary">{{ view.total_items|default(0) }}</h3>
                 <small class="text-muted">Total Items</small>
               </div>
               <div class="col-6 mb-3">
-                <h3 class="text-success">{{ active_items|default(0) }}</h3>
+                <h3 class="text-success">{{ view.active_items|default(0) }}</h3>
                 <small class="text-muted">Active Items</small>
               </div>
               <div class="col-12">
-                <h3 class="text-info">{{ total_purchases|default(0) }}</h3>
+                <h3 class="text-info">{{ view.total_purchases|default(0) }}</h3>
                 <small class="text-muted">Total Purchases</small>
               </div>
             </div>
@@ -225,7 +225,7 @@
         <h2 class="mb-0 h5"><span class="material-symbols-outlined me-2">hourglass_top</span>Pending Redemption Requests</h2>
       </div>
       <div class="card-body">
-        {% if pending_redemptions %}
+        {% if view.pending_redemptions %}
         <div class="table-responsive">
           <table class="table table-hover js-sortable">
             <thead>
@@ -238,7 +238,7 @@
               </tr>
             </thead>
             <tbody>
-              {% for entitlement in pending_redemptions %}
+              {% for entitlement in view.pending_redemptions %}
               <tr>
                 <td>{{ entitlement.seat.identity_profile.full_name if entitlement.seat and entitlement.seat.identity_profile else 'Unknown' }}</td>
                 <td>{{ entitlement.store_item.name }}</td>
@@ -281,7 +281,7 @@
         <h2 class="mb-0 h5"><span class="material-symbols-outlined me-2">history</span>Recent Purchases</h2>
       </div>
       <div class="card-body">
-        {% if recent_purchases %}
+        {% if view.recent_purchases %}
         <div class="table-responsive">
           <table class="table table-hover js-sortable">
             <thead>
@@ -294,7 +294,7 @@
               </tr>
             </thead>
             <tbody>
-              {% for entitlement in recent_purchases %}
+              {% for entitlement in view.recent_purchases %}
               <tr>
                 <td>{{ entitlement.seat.identity_profile.full_name if entitlement.seat and entitlement.seat.identity_profile else 'Unknown' }}</td>
                 <td>{{ entitlement.store_item.name }}</td>
@@ -337,8 +337,8 @@
   <!-- MANAGE ITEMS TAB -->
   <div class="tab-pane fade" id="manage" role="tabpanel">
     <div class="row row-cols-1 row-cols-md-2 row-cols-xl-3 g-3">
-      {% if items %}
-        {% for item in items %}
+      {% if view.items %}
+        {% for item in view.items %}
         <div class="col">
           <div class="card shadow-sm h-100">
             <div class="card-header bg-light d-flex justify-content-between align-items-start">
@@ -350,7 +350,7 @@
               </div>
               <div class="text-end">
                 <span class="badge {{ 'bg-success' if item.is_active else 'bg-secondary' }}">{{ 'Active' if item.is_active else 'Inactive' }}</span>
-                {% if item.is_rent_linked or item.id in rent_managed_item_ids %}
+                {% if item.is_rent_linked or item.id in view.rent_managed_item_ids %}
                   <span class="badge bg-info">Rent Perk</span>
                 {% endif %}
               </div>
@@ -360,7 +360,7 @@
                 {{ item.description|striptags|truncate(160) if item.description else 'No description provided.' }}
               </p>
 
-              {% if item.is_rent_linked or item.id in rent_managed_item_ids %}
+              {% if item.is_rent_linked or item.id in view.rent_managed_item_ids %}
               <div class="mb-2">
                 <span class="badge bg-info">Rent Perk</span>
                 <span class="text-muted small ms-1">Managed by rent settings</span>
@@ -392,7 +392,7 @@
               {% if item.item_type == 'collective' %}
               <div class="mb-3">
                 <div class="text-muted small mb-2"><strong>Collective Progress</strong></div>
-                {% set progress_rows = collective_progress_by_item.get(item.id, []) %}
+                {% set progress_rows = view.collective_progress_by_item.get(item.id, []) %}
                 {% if progress_rows %}
                   {% for row in progress_rows %}
                   <div class="mb-2">
@@ -435,7 +435,7 @@
                 <a href="{{ url_for('admin.edit_store_item', item_id=item.id) }}" class="btn btn-outline-primary" title="Edit">
                   <span class="material-symbols-outlined">edit</span>
                 </a>
-                {% if item.is_rent_linked or item.id in rent_managed_item_ids %}
+                {% if item.is_rent_linked or item.id in view.rent_managed_item_ids %}
                 <button class="btn btn-outline-warning" disabled title="Managed by Rent Settings">
                   <span class="material-symbols-outlined">visibility_off</span>
                 </button>
@@ -481,7 +481,7 @@
                 </div>
                 <div class="card-body">
                   <!-- Economy Balance Check -->
-                  <div id="economy-data" data-expected-weekly-hours="{{ (payroll_settings.expected_weekly_hours if payroll_settings and payroll_settings.expected_weekly_hours is not none else 5.0) | float }}" class="visually-hidden"></div>
+                  <div id="economy-data" data-expected-weekly-hours="{{ view.economic.display_context.get('expected_weekly_hours', 5.0) | float }}" class="visually-hidden"></div>
                   <div id="cwi-info" class="mb-3"></div>
 
                   <div class="row">
@@ -706,8 +706,8 @@
               </tr>
             </thead>
             <tbody>
-              {% if items %}
-                {% for item in items %}
+              {% if view.items %}
+                {% for item in view.items %}
                   {% for entitlement in item.purchases %}
                   <tr>
                     <td>{{ entitlement.seat.identity_profile.full_name if entitlement.seat and entitlement.seat.identity_profile else 'Unknown' }}</td>
@@ -747,14 +747,14 @@
           <div class="row g-3">
             <div class="col-md-3">
               <label for="audit_student" class="form-label fw-bold">Student</label>
-              <input type="text" class="form-control form-control-sm" id="audit_student" name="audit_student" value="{{ audit_student or '' }}" placeholder="Search by name">
+              <input type="text" class="form-control form-control-sm" id="audit_student" name="audit_student" value="{{ view.audit_filters.get('student', '') or '' }}" placeholder="Search by name">
             </div>
             <div class="col-md-3">
               <label for="audit_class" class="form-label fw-bold">Class</label>
               <select class="form-select form-select-sm" id="audit_class" name="audit_class">
                 <option value="">All classes</option>
-                {% for cls in audit_class_options %}
-                  <option value="{{ cls }}" {% if audit_class == cls %}selected{% endif %}>{{ cls }}</option>
+                {% for cls in view.audit_class_options %}
+                  <option value="{{ cls }}" {% if view.audit_filters.get('class') == cls %}selected{% endif %}>{{ cls }}</option>
                 {% endfor %}
               </select>
             </div>
@@ -762,24 +762,24 @@
               <label for="audit_action" class="form-label fw-bold">Action</label>
               <select class="form-select form-select-sm" id="audit_action" name="audit_action">
                 <option value="">All actions</option>
-                <option value="request" {% if audit_action == 'request' %}selected{% endif %}>Request</option>
-                <option value="approved" {% if audit_action == 'approved' %}selected{% endif %}>Approved</option>
-                <option value="rejected" {% if audit_action == 'rejected' %}selected{% endif %}>Rejected</option>
+                <option value="request" {% if view.audit_filters.get('action') == 'request' %}selected{% endif %}>Request</option>
+                <option value="approved" {% if view.audit_filters.get('action') == 'approved' %}selected{% endif %}>Approved</option>
+                <option value="rejected" {% if view.audit_filters.get('action') == 'rejected' %}selected{% endif %}>Rejected</option>
               </select>
             </div>
             <div class="col-md-2">
               <label for="audit_start_date" class="form-label fw-bold">From</label>
-              <input type="date" class="form-control form-control-sm" id="audit_start_date" name="audit_start_date" value="{{ audit_start_date or '' }}">
+              <input type="date" class="form-control form-control-sm" id="audit_start_date" name="audit_start_date" value="{{ view.audit_filters.get('start_date', '') or '' }}">
             </div>
             <div class="col-md-2">
               <label for="audit_end_date" class="form-label fw-bold">To</label>
-              <input type="date" class="form-control form-control-sm" id="audit_end_date" name="audit_end_date" value="{{ audit_end_date or '' }}">
+              <input type="date" class="form-control form-control-sm" id="audit_end_date" name="audit_end_date" value="{{ view.audit_filters.get('end_date', '') or '' }}">
             </div>
           </div>
           <div class="mt-3">
             <button type="submit" class="btn btn-primary btn-sm"><span class="material-symbols-outlined me-1">filter_alt</span>Apply Filters</button>
             <a href="{{ url_for('admin.store_management') }}#audit" class="btn btn-outline-secondary btn-sm">Clear</a>
-            <span class="ms-3 text-muted">Showing {{ audit_rows|length }} of {{ audit_total|default(0) }} row(s)</span>
+            <span class="ms-3 text-muted">Showing {{ view.audit_rows|length }} of {{ view.audit_total|default(0) }} row(s)</span>
           </div>
         </form>
 
@@ -795,8 +795,8 @@
               </tr>
             </thead>
             <tbody>
-              {% if audit_rows %}
-                {% for row in audit_rows %}
+              {% if view.audit_rows %}
+                {% for row in view.audit_rows %}
                 <tr>
                   <td>{{ row.student_display_name }}</td>
                   <td>{{ row.class_display_label }}</td>
@@ -825,19 +825,19 @@
           </table>
         </div>
 
-        {% if audit_total_pages > 1 %}
+        {% if view.audit_total_pages > 1 %}
         <nav aria-label="Audit pagination">
           <ul class="pagination pagination-sm justify-content-center mt-3">
-            <li class="page-item {% if audit_page <= 1 %}disabled{% endif %}">
-              <a class="page-link" href="{{ url_for('admin.store_management', audit_page=audit_page-1, audit_student=audit_student, audit_class=audit_class, audit_action=audit_action, audit_start_date=audit_start_date, audit_end_date=audit_end_date) }}#audit">Previous</a>
+            <li class="page-item {% if view.audit_page <= 1 %}disabled{% endif %}">
+              <a class="page-link" href="{{ url_for('admin.store_management', audit_page=view.audit_page-1, audit_student=view.audit_filters.get('student', ''), audit_class=view.audit_filters.get('class', ''), audit_action=view.audit_filters.get('action', ''), audit_start_date=view.audit_filters.get('start_date', ''), audit_end_date=view.audit_filters.get('end_date', '')) }}#audit">Previous</a>
             </li>
-            {% for p in range(1, audit_total_pages + 1) %}
-            <li class="page-item {% if p == audit_page %}active{% endif %}">
-              <a class="page-link" href="{{ url_for('admin.store_management', audit_page=p, audit_student=audit_student, audit_class=audit_class, audit_action=audit_action, audit_start_date=audit_start_date, audit_end_date=audit_end_date) }}#audit">{{ p }}</a>
+            {% for p in range(1, view.audit_total_pages + 1) %}
+            <li class="page-item {% if p == view.audit_page %}active{% endif %}">
+              <a class="page-link" href="{{ url_for('admin.store_management', audit_page=p, audit_student=view.audit_filters.get('student', ''), audit_class=view.audit_filters.get('class', ''), audit_action=view.audit_filters.get('action', ''), audit_start_date=view.audit_filters.get('start_date', ''), audit_end_date=view.audit_filters.get('end_date', '')) }}#audit">{{ p }}</a>
             </li>
             {% endfor %}
-            <li class="page-item {% if audit_page >= audit_total_pages %}disabled{% endif %}">
-              <a class="page-link" href="{{ url_for('admin.store_management', audit_page=audit_page+1, audit_student=audit_student, audit_class=audit_class, audit_action=audit_action, audit_start_date=audit_start_date, audit_end_date=audit_end_date) }}#audit">Next</a>
+            <li class="page-item {% if view.audit_page >= view.audit_total_pages %}disabled{% endif %}">
+              <a class="page-link" href="{{ url_for('admin.store_management', audit_page=view.audit_page+1, audit_student=view.audit_filters.get('student', ''), audit_class=view.audit_filters.get('class', ''), audit_action=view.audit_filters.get('action', ''), audit_start_date=view.audit_filters.get('start_date', ''), audit_end_date=view.audit_filters.get('end_date', '')) }}#audit">Next</a>
             </li>
           </ul>
         </nav>
