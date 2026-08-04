@@ -50,7 +50,7 @@ All documents are classified into one of three tiers. See [SOP-DOC-000 Section V
 |-----------|------|---------|
 | **[LOGS/](LOGS/)** | Informative | Historical audit logs and release notes |
 | **[archive/](archive/)** | Informative | v1 docs (user-guides, GitHub Pages assets, old dev artifacts) |
-| **[archive/PHASE_PLANNING/](archive/PHASE_PLANNING/)** | Informative | Phase 3-5 planning, store domain implementation logs (completed work) |
+| **[archive/PHASE_PLANNING/](archive/PHASE_PLANNING/)** | Informative | Phase 3-5 roadmaps, phase extensions (authority clarifications, delayed-use redemption, hall-pass coordination), and store domain implementation logs (Phases 2-6, completed work) |
 
 ### Other
 
