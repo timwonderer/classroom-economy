@@ -2,7 +2,7 @@
 
 | Reference Number | Version | Effective Date | Supersedes | Authority Level |
 |------------------|---------|----------------|------------|-----------------|
-| SOP-DOC-002      | 3.0     | 2026-06-08     | 2.4        | Normative       |
+| SOP-DOC-002      | 3.1     | 2026-08-03     | 3.0        | Normative       |
 
 ---
 
@@ -233,6 +233,17 @@ These legacy specifications remain active for reference during the transitional 
 
 ---
 
-## VIII. Amendment
+## VIII. Change Notes
+
+**Version 3.1 (2026-08-03):**
+- Consolidated Phase 3-5 planning and store domain implementation logs into `docs/archive/PHASE_PLANNING/` (20 documents archived)
+- Moved root-level phase/store execution docs to archive
+- Consolidated `docs/SPECS/SPEC-STORE-001_*` into `docs/SPEC/` directory; removed empty `docs/SPECS/` directory
+- Updated MAP-UI-001 to note store domain completion and removal of redemption_disposition FEAT
+- Updated DEVELOPMENT.md to reflect store domain completion and current v2 status
+
+---
+
+## IX. Amendment
 
 Revisions to this document must increment the version number, update the effective date, and remain consistent with the CTH documentation standard.
