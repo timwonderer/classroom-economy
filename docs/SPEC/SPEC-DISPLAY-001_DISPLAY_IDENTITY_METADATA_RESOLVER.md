@@ -206,6 +206,8 @@ The following are prohibited:
 
 Templates should receive display metadata through a stable display object or through page view models built from that object.
 
+Page view models that consume display metadata should remain domain-owned or page-owned presentation contracts. A page may compose multiple display-safe objects, but it should not collapse them into a generic shared builder that re-exposes raw business primitives.
+
 Templates may render:
 
 - actor display name;

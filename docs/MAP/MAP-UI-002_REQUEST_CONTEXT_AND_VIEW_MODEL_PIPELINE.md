@@ -174,6 +174,8 @@ The Page View Model answers only:
 
 A view model is page-specific. It is the template contract for one rendered surface.
 
+Page view models are composition objects, not a dumping ground for business primitives. When a page needs data from multiple domains, each domain MUST own its own presentation-ready read shape, and the page view model MAY aggregate those domain-owned objects into a single template contract.
+
 Examples:
 
 | Page | View Model Responsibility |
@@ -191,6 +193,8 @@ Rules:
 - It must hide persistence shape from templates.
 - It must use canonical identifiers and display-safe metadata.
 - It should be stable even if the underlying domain tables change.
+- It must not centralize unrelated domain presentation into a single generic builder.
+- It must not unpack another domain's business primitives into page-local authority or ad hoc calculations.
 
 ---
 
@@ -376,6 +380,8 @@ When reconstructing a new domain using SOP-DEV-002:
 3. **Phase 6 (Surface Inventory):** Routes invoke builders once and pass the result to templates
 4. **Templates consume view model fields directly** — no additional aggregation, filtering, or derivation
 5. **Multi-tenancy enforcement** — ensure all builder queries are scoped by `class_id` before the domain layer
+
+Domain-owned builders are preferred over a shared generic builder. If a page spans multiple domains, compose domain-owned views at the page boundary rather than moving those fields into one cross-domain builder.
 
 ---
 

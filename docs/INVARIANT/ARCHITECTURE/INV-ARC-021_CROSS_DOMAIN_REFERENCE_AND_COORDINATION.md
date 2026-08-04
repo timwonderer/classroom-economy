@@ -46,6 +46,8 @@ A domain MAY reference another domain's public shared identifiers (`class_id`, `
 
 Cross-domain data reads for display or presentation purposes are permitted through domain query interfaces. The consuming domain MUST NOT cache, reinterpret, or treat the result as its own authoritative state. Domain authority for state is defined by `INV-ARC-009`.
 
+Display data is not a shared generic view model contract. Each domain that exposes presentation-ready data MUST own the shape of its own display or view object. Page-level orchestration may compose multiple domain-owned presentation objects, but it MUST NOT centralize domain presentation into a single generic builder or reinterpret another domain's display contract as local authority.
+
 ### V.6 Capability Composition Restricted to FEAT
 
 Only the FEAT layer may compose capability checks from multiple domains into a single allow/deny decision. No route, background job, CLI script, or domain service may perform multi-domain capability composition.
