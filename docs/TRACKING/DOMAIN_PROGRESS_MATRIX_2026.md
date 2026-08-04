@@ -35,14 +35,11 @@ This matrix consolidates the progress of all CTH domains through the 10-phase SO
 | **Identity** | DOM-IDEN-001/002/003/006 | ✅ | ✅ | ✅ | ? | 🔄 Unaudited | None |
 | **Class Configuration** | DOM-CLASS-001 | ✅ | ✅ | ✅ | ? | 🔄 Unaudited | None |
 | **Ledger** | DOM-LED-001 | ✅ | ✅ | ✅ | ? | 🔄 Unaudited | None |
-| **Attendance** | DOM-OPS-001 (subset) | ✅ | ✅ | ✅ | ? | 🔄 Unaudited | None |
-| **Obligations** | DOM-OBL-001 | ✅ | ✅ | ✅ | ❌ | ❌ AUDIT INVALID | 2026-07-26 (FAILS Phase 6-7 verification) |
 | **Productivity & Payroll** | DOM-PROD-001 | ✅ | ✅ | ✅ | ? | 🔄 Unaudited | None |
-| **Store & Entitlements** | DOM-STORE-001 | ✅ | ✅ | ? | ? | 🔄 Needs audit | None |
-| **Operations & Audit** | DOM-OPS-001/002 | 🔄 | — | — | — | 🔄 NOT STARTED | N/A |
-| **Interpretation** | DOM-ITR-001 | 🔄 | — | — | — | 🔄 NOT STARTED | N/A |
+| **Obligations** | DOM-OBL-001 | ✅ | ✅ | ✅ | ❌ | ❌ AUDIT INVALID | 2026-07-26 (FAILS Phase 6-7 verification) |
+| **Store & Entitlements** | DOM-STORE-001 | ✅ | ✅ | ? | ? | 🔄 Unaudited | None |
+| **Operations** | DOM-OPS-001 | 🔄 | — | — | — | 🔄 NOT STARTED | N/A |
 | **Policies** | DOM-POL-001 | 🔄 | — | — | — | 🔄 NOT STARTED | N/A |
-| **Economy & Governance** | DOM-ECON-000/003/004 | 🔄 | — | — | — | 🔄 NOT STARTED | N/A |
 | **Support** | DOM-SUP-001 | 🔄 | — | — | — | 🔄 NOT STARTED | N/A |
 
 **Legend:**
@@ -65,7 +62,7 @@ This matrix consolidates the progress of all CTH domains through the 10-phase SO
 
 ## Detailed Domain Status
 
-### COMPLETE (Ready to Merge)
+### Actual 9 Domains (CTH v2)
 
 #### Identity Domain (DOM-IDEN-001, 002, 003, 006)
 **Canonical Tables:** `users`, `seats`, `classes`, `identity_profiles`, `user_invite_tokens`, `user_recovery_tokens`  
@@ -78,11 +75,12 @@ This matrix consolidates the progress of all CTH domains through the 10-phase SO
 ---
 
 #### Class Configuration Domain (DOM-CLASS-001)
+**Scope:** class_id (canonical), join_code (public alias), display name, section, timezone, CWI settings (policy mode, interest rate, pricing ratios based on CWI and policy)  
 **Canonical Tables:** `classes`, `class_features`, `feature_settings`, `hall_pass_settings`, `rent_settings`, `payroll_settings`, `payroll_rewards`, `payroll_fines`, `banking_settings`  
 **Phase:** 🔄 0-? (Unaudited)  
 **Status:** Commits exist, likely complete but needs Phase 10 audit  
-**Key Achievement:** Settings migrated to canonical; `class_id` canonical scope enforcement  
-**Notes:** `join_code` remains public alias; block/period is display-only metadata  
+**Key Achievement:** Settings migrated to canonical; `class_id` canonical scope enforcement with timezone and CWI configuration  
+**Notes:** `join_code` is public alias for class_id; block/period is display-only metadata  
 **Next Action:** Create Phase 10 audit document with template verification
 
 ---
@@ -108,11 +106,12 @@ This matrix consolidates the progress of all CTH domains through the 10-phase SO
 ---
 
 #### Productivity & Payroll Domain (DOM-PROD-001)
-**Canonical Tables:** (Integrated into Class Configuration + Ledger)  
+**Scope:** Attendance tracking, payroll execution, rewards, fines (includes attendance sessions, hall pass logs, payroll state, reward/fine definitions and application)  
+**Canonical Tables:** `attendance_sessions`, `hall_pass_logs`, `seat_attendance_state`, `payroll_settings`, `payroll_rewards`, `payroll_fines`  
 **Phase:** 🔄 0-? (Unaudited)  
 **Status:** Commits exist, likely complete but needs Phase 10 audit  
-**Key Achievement:** Payroll calculations in service layer; routes thin; view models canonical  
-**Notes:** Early work; completed before structured SOP-DEV-002a audits were formalized  
+**Key Achievement:** Attendance and payroll calculations in service layer; routes thin; view models canonical  
+**Notes:** Early work; completed before structured SOP-DEV-002a audits were formalized. Attendance domain merged into this domain.  
 **Next Action:** Create Phase 10 audit document with template verification
 
 ---
@@ -120,6 +119,7 @@ This matrix consolidates the progress of all CTH domains through the 10-phase SO
 ### IN PROGRESS (Failing Tests, Must Fix Before Merge)
 
 #### Obligations Domain (DOM-OBL-001)
+**Scope:** Rent, insurance premiums, fines (assessment events, lifecycle, satisfaction, reversal; obligation tracking and settlement)  
 **Canonical Tables:** `assessment_events`, `obligation_lifecycle`, `obligation_satisfaction`, `obligation_reversal`, `entitlement_events`  
 **Phase:** ✅ 0-5 | ⚠️ 6-7 INVALID | ✅ 8-9 | ❌ 10 INVALID  
 **Status:** BLOCKED — Phase 10 audit invalid (templates access undefined variables)  
@@ -130,15 +130,12 @@ This matrix consolidates the progress of all CTH domains through the 10-phase SO
 - Set in templates
 
 **Key Achievement:** Canonical schema and FEAT mutations complete; Phase 6-7 templates need refactoring  
-**Documentation:** 
-- `docs/DOMAIN/DOM-OBL-001_OBLIGATIONS_DOMAIN.md` (spec)
-- `docs/TRACKING/OBLIGATIONS_DOMAIN_PHASE10_CERTIFICATION_AUDIT_2026-07-26.md` (INVALID — template verification failed)
-
 **Next Action:** Fix templates to use ONLY view model fields; re-run Phase 6-7 verification
 
 ---
 
 #### Store & Entitlements Domain (DOM-STORE-001)
+**Scope:** Classroom store items, student purchases, redemptions, entitlements (store catalog and student entitlement tracking)  
 **Canonical Tables:** `store_items`, `store_item_visibility`, `store_purchases`, `redemption_events`  
 **Phase:** 🔄 0-? (Unaudited)  
 **Status:** PRs landed 2026-08-03, but needs Phase 10 audit  
@@ -150,83 +147,62 @@ This matrix consolidates the progress of all CTH domains through the 10-phase SO
 - #1299: Organize store domain documentation after completion
 
 **Key Achievement:** Full canonical store domain with FEAT-wired mutations, view models, and comprehensive docs  
-**Documentation:** `docs/DOMAIN/DOM-STORE-001_STORE_AND_ENTITLEMENTS_DOMAIN.md`  
 **Next Action:** Create Phase 10 audit document; verify Phase 6-7 templates are refactored
 
 ---
 
 ### NOT STARTED (Awaiting Sequence)
 
-#### Operations & Audit Domain (DOM-OPS-001, DOM-OPS-002)
-**Scope:** Audit lineage, observability, operational event tracking  
+#### Operations Domain (DOM-OPS-001)
+**Scope:** Operational events, audit lineage, incident tracking, job scheduling, health checks (plus economic health alerts and actionable feedback to teachers for Interpretation function)  
 **Canonical Tables:** `operational_events`, `audit_log`, `incident_events`, `incident_summary`, `alert_events`, `invariant_run_events`, `job_events`, `health_check_events`  
 **Phase:** 🔄 0-1 (Spec review)  
 **Status:** NOT STARTED (blocked on prior domain audits)  
-**Dependency Chain:** Ledger (unaudited) → Attendance (unaudited) → Obligations (blocked) → Store (unaudited) → **BLOCKED UNTIL PRIOR DOMAINS AUDITED**
-
----
-
-#### Interpretation Domain (DOM-ITR-001)
-**Scope:** Analytics snapshots, interpretation annotations for economy state  
-**Canonical Tables:** `interpretation_snapshots`, `interpretation_annotations`  
-**Phase:** 🔄 0-1 (Spec review)  
-**Status:** NOT STARTED (blocked on prior domain audits)  
-**Dependency Chain:** Ledger (unaudited) → Store (unaudited) → **BLOCKED UNTIL PRIOR DOMAINS AUDITED**
+**Dependency Chain:** Ledger (unaudited) → Productivity & Payroll (unaudited) → Obligations (blocked) → Store (unaudited) → **BLOCKED UNTIL PRIOR DOMAINS AUDITED**  
+**Notes:** Handles budget survivability, money velocity tracking, and alert generation for teachers
 
 ---
 
 #### Policies Domain (DOM-POL-001)
-**Scope:** Policy definitions, policy rules, policy activation  
-**Canonical Tables:** `policies`, `policy_rules`, `policy_assignments`  
+**Scope:** Settings and versioning storage for each domain (NOT business logic, just persistence of configuration and version history)  
+**Canonical Tables:** Per-domain settings tables and versioning logs (structure determined by each domain's needs)  
 **Phase:** 🔄 0-1 (Spec review)  
 **Status:** NOT STARTED (blocked on prior domain audits)  
-**Dependency Chain:** Class Config (unaudited) → Obligations (blocked) → **BLOCKED UNTIL PRIOR DOMAINS AUDITED**  
-**Notes:** Overlaps with DOM-ECON-003 policy execution surfaces
-
----
-
-#### Economy & Governance Domain (DOM-ECON-000, DOM-ECON-003, DOM-ECON-004)
-**Scope:** Economic policy formulas, CWI calculations, solvency models, policy disclosure  
-**Canonical Tables:** Distributed across Class Config, Ledger, Store (no dedicated tables)  
-**Phase:** 🔄 0 (Boundary definition in progress via spec review)  
-**Wave Assignment:** Integrated across Waves 4-9  
-**Status:** Requires separate planning; cross-cuts multiple domains  
-**Key Challenge:** Policy mode, CWI ratios, collective-goal rules must integrate with class config, ledger settlement, and store pricing  
-**Next Action:** Create DOM-ECON-specific implementation plan mapping to each wave's class-config/ledger/store/interpretation touchpoints
+**Dependency Chain:** All domains (each domain owns its settings, Policies just stores them) → **BLOCKED UNTIL PRIOR DOMAINS AUDITED**  
+**Notes:** This is a utility/persistence domain, not a business logic domain
 
 ---
 
 #### Support Domain (DOM-SUP-001)
-**Scope:** Issue tracking, announcements, support ticket management  
+**Scope:** Issue tracking, announcements, support ticket management, resolution actions  
 **Canonical Tables:** `issues`, `issue_status_history`, `issue_resolution_actions`, `ticket_correlation_packs`, `announcements`, `issue_categories`  
 **Phase:** 🔄 0-1 (Spec review)  
-**Wave Assignment:** Wave 10  
-**Status:** Awaiting all operational domains (Operations, Interpretation, Policies)  
-**Dependency Chain:** Operations (Wave 9) → Support (Wave 10)
+**Status:** NOT STARTED (blocked on prior domain audits)  
+**Dependency Chain:** Operations (not started) → Support → **BLOCKED UNTIL OPERATIONS AUDITED**
 
 ---
 
 ## Domain Dependencies (Critical Path)
 
 **Can start immediately (no dependencies):**
-- Identity, Class Config, Ledger, Attendance, Productivity & Payroll
+- Identity
+- Class Config
+- Ledger
 
-**Depend on 5 above:**
-- Obligations (depends on Ledger, Attendance for testing context)
-- Store & Entitlements (depends on Ledger, Class Config)
+**Depend on Ledger + Class Config:**
+- Productivity & Payroll (depends on Ledger for payroll calculations, Class Config for settings)
+- Obligations (depends on Ledger for settlement, Class Config for settings)
+- Store & Entitlements (depends on Ledger for purchase transactions, Class Config for pricing)
 
-**Depend on Obligations + Store:**
-- Operations & Audit
-- Interpretation
-- Policies
+**Depend on Ledger + Productivity & Payroll + Obligations + Store:**
+- Operations (depends on all to track events, generate economic alerts, maintain audit lineage)
+- Policies (utility domain for settings storage; depends on all domains owning their configs)
 
-**Depend on Operations + Interpretation + Policies:**
-- Support
-- Economy & Governance (integrated across all domains)
+**Depend on Operations:**
+- Support (depends on Operations for incident tracking, audit events)
 
 **Post-launch (depends on all domains):**
-- Post-launch hardening
-- Final validation
+- Post-launch hardening and final validation
 
 ---
 
