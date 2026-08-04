@@ -2,7 +2,7 @@
 
 **Date:** 2026-08-04  
 **Auditor:** Claude with Timothy Chang  
-**Status:** ✅ **CERTIFICATION PASSED**  
+**Status:** ✅ **CERTIFICATION PASSED** (with correction: Phase 7 template audit completed 2026-08-04 post-fix)  
 **Authority:** SOP-DEV-002a, DOM-STORE-001, INV-CORE-000  
 
 ---
@@ -187,8 +187,11 @@ return render_template('admin_store.html', form=form, view=view, ...)  # 2 varia
 - ✅ Line 186: Statistics use `view.total_items`, `view.active_items`, `view.total_purchases`
 - ✅ Line 228: Pending redemptions loop: `{% for entitlement in view.pending_redemptions %}`
 - ✅ Line 284: Recent purchases loop: `{% for entitlement in view.recent_purchases %}`
+- ✅ Line 340-341: Manage items loop: `{% if view.items %} / {% for item in view.items %}`
 - ✅ Line 353: Rent item check: `item.id in view.rent_managed_item_ids`
+- ✅ Line 363: Rent perk badge check: `item.id in view.rent_managed_item_ids` (fixed 505d74d2)
 - ✅ Line 395: Collective progress: `view.collective_progress_by_item.get(item.id)`
+- ✅ Line 709-710: History loop: `{% if view.items %} / {% for item in view.items %}`
 - ✅ Line 756: Audit options: `{% for cls in view.audit_class_options %}`
 - ✅ Line 750, 757, 765-767, 772, 776: Filter inputs use `view.audit_filters.get(...)`
 - ✅ Line 782: Audit summary uses `view.audit_rows|length` and `view.audit_total`
@@ -196,9 +199,15 @@ return render_template('admin_store.html', form=form, view=view, ...)  # 2 varia
 - ✅ Line 828-840: Pagination uses `view.audit_page` and `view.audit_total_pages`
 
 **No Legacy Sources Found:**
-- ✅ No direct variable references (no `{{ total_items }}`, `{{ audit_rows }}`)
+- ✅ No direct variable references (no bare `items`, `rent_managed_item_ids`)
 - ✅ No inline computations in templates
 - ✅ All data flows through `view.*` access
+
+**Correction Log (2026-08-04):**
+- Initial audit missed bare `items` references at lines 340-341, 709-710
+- Initial audit missed bare `rent_managed_item_ids` at line 363
+- **Fixed:** Commit 505d74d2 corrected all remaining bare references
+- **Re-verified:** Jinja2 template parsing clean post-fix
 
 **Cross-Domain Dependencies Verified:**
 | Field | Owner | Route Passes | Template Uses | Status |
