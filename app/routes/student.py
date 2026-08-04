@@ -28,7 +28,7 @@ from app.models import (
     Transaction, TransactionStatus, AttendanceSession, StoreItem, StoreItemVisibility,
     # StoreItemBlock removed — store_item_blocks unauthorized; use store_item_visibility (DOM-STORE-001)
     RentSettings,
-    BankingSettings, FeatureSettings, Issue, Seat, User, UserRole,
+    BankingSettings, FeatureSettings, Issue, Seat, User, UserRole, PendingAction,
     ClassEconomy, IdentityProfile, PayrollEvent, PolicyVersion, StoreProduct, _quantize_currency
 )
 from app.auth import (
@@ -71,14 +71,11 @@ from app.access import (
     resolve_student_class_switch_scope,
 )
 from app.services.attendance_service import get_class_attendance_status
-# TODO (Phase 4): store_entitlement_service deleted
-# from app.services.store_entitlement_service import (
-#     list_entitlement_history,
-#     list_entitlements_for_seat,
-#     list_available_entitlements,
-#     list_insurance_claims,
-#     derive_display_status,
-# )
+from app.services.entitlement_read_service import (
+    get_entitlement_history,
+    get_active_entitlements,
+    get_entitlement_status,
+)
 from app.services.insurance_policy_service import list_insurance_policy_versions
 from app.services.insurance_policy_service import get_insurance_entitlement_item_id
 from app.services.ledger_service import (
@@ -90,6 +87,7 @@ from app.services.entitlement_service import (
     get_hall_pass_balance,
     reconcile_rent_hall_pass_top_off as _reconcile_rent_hall_pass_top_off,
 )
+from app.services.entitlement_read_service import get_active_entitlements
 from app.services.recovery_service import (
     dismiss_recovery_code as dismiss_recovery_code_row,
     get_pending_recovery_code_for_seat,
@@ -100,11 +98,8 @@ from app.services.classroom_setup import create_student_user_for_seat
 from app.feats.base import feat_shell
 from app.feats.rent_payment_feat import execute_rent_payment
 from app.feats.transfer_feat import execute_account_transfer
-# TODO (Phase 4): insurance_purchase_feat deleted; use execute_store_purchase for insurance
-# from app.feats.insurance_purchase_feat import execute_insurance_purchase
-# TODO (Phase 4): insurance_claim_feat deleted; use FEAT-STOR-003 instead
-# from app.feats.insurance_claim_feat import execute_claim_submission
-# execute_file_claim removed — insurance_claim_feat.py deleted; insurance feature broken pending DOM-OBL-001 migration
+from app.feats.store_purchase_feat import execute_store_purchase
+from app.feats.insurance_claim_feat import submit_insurance_claim
 from app.payroll import get_pay_rate_for_block
 from app.utils.join_code import get_display_join_code
 from app.utils.time import (
@@ -190,6 +185,43 @@ def _student_login_hard_fail(*, student_id: int, reason: str, is_json: bool, sta
         return jsonify(status="error", message=_student_login_failure_message()), status_code
     flash(_student_login_failure_message(), "error")
     return redirect(url_for("student.login", next=request.args.get("next")))
+
+
+def _list_insurance_claims(*, class_id: str, target_seat_id: int, entitlement_id: str | None = None):
+    """Return current insurance claim pending actions for display."""
+    query = PendingAction.query.filter(
+        PendingAction.class_id == class_id,
+        PendingAction.seat_id == target_seat_id,
+        PendingAction.authoritative_feat == "FEAT-STOR-003-RESOLVE",
+    )
+    if entitlement_id is not None:
+        query = query.filter(PendingAction.entitlement_id == entitlement_id)
+    rows = []
+    for pending_action in query.order_by(PendingAction.submitted_at.desc()).all():
+        payload = pending_action.payload or {}
+        rows.append(SimpleNamespace(
+            id=pending_action.pending_action_id,
+            claim_id=pending_action.pending_action_id,
+            status="SUBMITTED",
+            approved_amount=None,
+            claim_amount=None,
+            rejection_reason=None,
+            description=str(payload.get("claim_subject", {})),
+            teacher_notes=None,
+            claimed_dates=payload.get("claim_subject", {}).get("claimed_dates"),
+            submitted_at=pending_action.submitted_at,
+        ))
+    return rows
+
+
+def _list_available_insurance_entitlements(*, target_seat_id: int, class_id: str, entitlement_item_id: int | None = None):
+    """Return active insurance entitlement events for a seat."""
+    return get_active_entitlements(
+        seat_id=target_seat_id,
+        class_id=class_id,
+        product_id=entitlement_item_id,
+        entitlement_type="INSURANCE",
+    )
 from app.utils.display_name_session import (
     get_teacher_display_name_cache,
     upsert_teacher_display_name_cache,
@@ -877,19 +909,17 @@ def dashboard():
 
     # Canonical store purchases scoped to the active seat/class.
     entitlements = []
-    for entitlement in list_entitlement_history(target_seat_id=scope.seat_id, class_id=scope.class_id):
-        ent = entitlement["entitlement"]
-        item = db.session.get(StoreItem, ent.entitlement_item_id)
+    for entitlement in get_entitlement_history(seat_id=scope.seat_id, class_id=scope.class_id):
+        item = db.session.get(StoreItem, entitlement["product_id"])
         if item is None:
             continue
-        terminal = entitlement["terminal_event"]
         entitlements.append(SimpleNamespace(
-            id=ent.entitlement_id,
-            seat_id=ent.target_seat_id,
-            class_id=ent.class_id,
+            id=entitlement["entitlement_id"],
+            seat_id=scope.seat_id,
+            class_id=scope.class_id,
             store_item=item,
-            status=terminal.disposition.value.lower() if terminal else "purchased",
-            purchased_at=ent.granted_at,
+            status=get_entitlement_status(entitlement["entitlement_id"], scope.class_id),
+            purchased_at=datetime.fromisoformat(entitlement["timestamp"]),
         ))
 
     checking_transactions = [tx for tx in transactions if tx.account_type == 'checking']
@@ -1607,7 +1637,7 @@ def insurance_marketplace():
         ),
         current_class_context=current_class_context,
         my_policies=[],
-        my_claims=[_claim_display_row(claim) for claim in list_insurance_claims(class_id=context.class_id, target_seat_id=context.seat_id)],
+        my_claims=[_claim_display_row(claim) for claim in _list_insurance_claims(class_id=context.class_id, target_seat_id=context.seat_id)],
         available_policies=available_policies,
         tier_groups=dict(tier_groups),
         enrolled_tiers=[],
@@ -1674,14 +1704,7 @@ def purchase_insurance(policy_id):
         return redirect(url_for('student.student_insurance'))
     seat = db.session.get(Seat, context.seat_id)
     banking_settings = BankingSettings.query.filter_by(class_id=context.class_id).first()
-    execute_insurance_purchase(
-        seat=seat,
-        user_id=context.user_id,
-        class_id=context.class_id,
-        policy=policy,
-        banking_settings=banking_settings,
-    )
-    flash("Insurance purchase recorded.", "success")
+    flash("Insurance purchase is not available from this surface.", "warning")
     return redirect(url_for('student.student_insurance'))
 
 
@@ -1718,7 +1741,7 @@ def file_claim(policy_id):
     if entitlement_item_id is None:
         flash("This insurance policy is missing its entitlement mapping.", "error")
         return redirect(url_for('student.student_insurance'))
-    entitlement_rows = list_available_entitlements(
+    entitlement_rows = _list_available_insurance_entitlements(
         target_seat_id=context.seat_id,
         class_id=context.class_id,
         entitlement_item_id=entitlement_item_id,
@@ -1737,16 +1760,16 @@ def file_claim(policy_id):
         incident_date = request.form.get("incident_date")
         if incident_date:
             claimed_dates = [incident_date]
-        result = execute_claim_submission(
+        result = submit_insurance_claim(
             entitlement_id=active_entitlement.entitlement_id,
-            target_seat_id=context.seat_id,
-            actor_seat_id=context.seat_id,
-            class_id=context.class_id,
-            transaction_id=transaction_id,
-            claimed_dates=claimed_dates,
-            policy_claim_type=payload.get("claim_type"),
+            canonical_context=context,
+            claim_subject={
+                "transaction_id": transaction_id,
+                "claimed_dates": claimed_dates,
+                "policy_claim_type": payload.get("claim_type"),
+            },
         )
-        flash(result.message, "success")
+        flash(result.error_message or "Insurance claim submitted.", "success" if result.success else "error")
         return redirect(url_for("student.student_insurance"))
     placeholder_policy = SimpleNamespace(
         id=policy_version.id,
@@ -1760,7 +1783,7 @@ def file_claim(policy_id):
         policy_version=policy_version,
         payload=payload,
     )
-    policy_claims = list_insurance_claims(
+    policy_claims = _list_insurance_claims(
         class_id=context.class_id,
         target_seat_id=context.seat_id,
         entitlement_id=getattr(active_entitlement, "entitlement_id", None),
@@ -1855,7 +1878,7 @@ def view_policy(enrollment_id):
     entitlement_item_id = get_insurance_entitlement_item_id(policy_version)
     entitlement = None
     if entitlement_item_id is not None:
-        active_entitlements = list_available_entitlements(
+        active_entitlements = _list_available_insurance_entitlements(
             target_seat_id=context.seat_id,
             class_id=context.class_id,
             entitlement_item_id=entitlement_item_id,
@@ -1944,7 +1967,7 @@ def view_policy(enrollment_id):
         enrollment=enrollment,
         claims=[
             _claim_display_row(claim)
-            for claim in list_insurance_claims(
+            for claim in _list_insurance_claims(
                 class_id=context.class_id,
                 target_seat_id=context.seat_id,
                 entitlement_id=getattr(entitlement, "entitlement_id", None),
@@ -1997,19 +2020,17 @@ def shop():
             policy_uuid_by_item_id[product_id] = store_product.policy_uuid
 
     entitlements = []
-    for entry in list_entitlement_history(target_seat_id=seat.id, class_id=class_id):
-        entitlement = entry["entitlement"]
-        terminal_event = entry["terminal_event"]
-        item = db.session.get(StoreItem, entitlement.entitlement_item_id)
+    for entry in get_entitlement_history(seat_id=seat.id, class_id=class_id):
+        item = db.session.get(StoreItem, entry["product_id"])
         if item is None:
             continue
         entitlements.append(SimpleNamespace(
-            id=entitlement.entitlement_id,
-            seat_id=entitlement.target_seat_id,
-            class_id=entitlement.class_id,
+            id=entry["entitlement_id"],
+            seat_id=seat.id,
+            class_id=class_id,
             store_item=item,
-            status=derive_display_status(entitlement.entitlement_id),
-            purchase_date=entitlement.granted_at,
+            status=get_entitlement_status(entry["entitlement_id"], class_id),
+            purchase_date=datetime.fromisoformat(entry["timestamp"]),
             expiry_date=None,
             is_from_bundle=False,
         ))
@@ -2073,19 +2094,19 @@ def shop():
     # Build rent-perk availability map for rent-linked per-use items.
     rent_free_entitlement_counts = {}  # {store_item_id: available_units or -1 for unlimited}
     if seat:
-        active_entitlements = list_entitlements_for_seat(target_seat_id=seat.id, class_id=class_id)
+        active_entitlements = get_active_entitlements(seat_id=seat.id, class_id=class_id)
         for entitlement in active_entitlements:
-            if entitlement.entitlement_item_id:
-                rent_free_entitlement_counts[entitlement.entitlement_item_id] = -1
+            if entitlement.product_id:
+                rent_free_entitlement_counts[entitlement.product_id] = -1
 
         # Backfill UI for paid-rent students who are entitled to per-use perks
         # but are missing grant rows (edge-state). Do not override items
         # that already have an explicit grant record (including exhausted = 0).
         if has_paid_rent and per_use_limit_by_store_id:
             existing_per_use_ids = {
-                entitlement.entitlement_item_id
+                entitlement.product_id
                 for entitlement in active_entitlements
-                if entitlement.entitlement_item_id in per_use_limit_by_store_id
+                if entitlement.product_id in per_use_limit_by_store_id
             }
 
             for store_item_id, granted_uses in per_use_limit_by_store_id.items():
@@ -2112,17 +2133,18 @@ def shop():
     if collective_item_ids and class_id:
         progress_rows = (
             db.session.query(
-                Entitlement.entitlement_item_id,
-                db.func.count(db.distinct(Entitlement.target_seat_id)).label('student_count'),
+                EntitlementEvent.product_id,
+                db.func.count(db.distinct(EntitlementEvent.target_seat_id)).label('student_count'),
             )
             .filter(
-                Entitlement.entitlement_item_id.in_(collective_item_ids),
-                Entitlement.class_id == class_id,
+                EntitlementEvent.product_id.in_(collective_item_ids),
+                EntitlementEvent.class_id == class_id,
+                EntitlementEvent.event_type == "GRANTED",
             )
-            .group_by(Entitlement.entitlement_item_id)
+            .group_by(EntitlementEvent.product_id)
             .all()
         )
-        progress_counts = {row.entitlement_item_id: int(row.student_count or 0) for row in progress_rows}
+        progress_counts = {row.product_id: int(row.student_count or 0) for row in progress_rows}
 
         for item in collective_items:
             if item.collective_goal_type == 'whole_class':

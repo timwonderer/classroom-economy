@@ -10,6 +10,7 @@ Covers:
 Uses canonical test initializer per SPEC-TEST-001.
 """
 
+from decimal import Decimal
 from uuid import uuid4
 from app.extensions import db
 from app.feats.base import FEATContext
@@ -20,6 +21,7 @@ from app.feats.insurance_claim_feat import (
     submit_insurance_claim,
     resolve_insurance_claim,
 )
+from tests.helpers.ledger import create_ledger_idempotent_transaction
 from tests.helpers.classroom_initializer import initialize
 
 
@@ -318,6 +320,19 @@ class TestInsuranceClaimResolution:
                 db.session.add(granted_event)
                 db.session.flush()
 
+                source_transaction, created = create_ledger_idempotent_transaction(
+                    idempotency_key=f"insurance-source:{uuid4().hex}",
+                    seat_id=student.seat.id,
+                    class_id=classroom.class_id,
+                    user_id=student.user.id,
+                    amount=Decimal("12.34"),
+                    account_type="checking",
+                    type="purchase",
+                    description="Insurance claim source transaction",
+                    actor_seat_id=student.seat.id,
+                )
+                assert created is True
+
                 # Create pending_action
                 correlation_id = f"corr_{uuid4().hex}"
                 pending_action = PendingAction(
@@ -328,7 +343,7 @@ class TestInsuranceClaimResolution:
                     correlation_id=correlation_id,
                     authoritative_feat="FEAT-STOR-003-RESOLVE",
                     payload={
-                        "claim_subject": {"transaction_id": 123},
+                        "claim_subject": {"transaction_id": source_transaction.id},
                         "policy_uuid": policy_uuid,
                     },
                 )
@@ -354,6 +369,8 @@ class TestInsuranceClaimResolution:
             assert result.success is True
             assert result.decision == "APPROVED"
             assert result.entitlement_event_id is not None
+            assert result.reimbursement_amount == Decimal("12.34")
+            assert result.ledger_transaction_id is not None
 
             # Verify CONSUMED event created
             consumed_event = db.session.query(EntitlementEvent).filter_by(
@@ -362,6 +379,9 @@ class TestInsuranceClaimResolution:
             assert consumed_event is not None
             assert consumed_event.event_type == "CONSUMED"
             assert consumed_event.payload["claim_decision"] == "APPROVED"
+            assert consumed_event.payload["reimbursement_amount"] == "12.34"
+            assert consumed_event.payload["ledger_transaction_id"] == result.ledger_transaction_id
+            assert consumed_event.payload["claim_subject"] == {"transaction_id": source_transaction.id}
 
             # Verify pending_action deleted
             deleted_pending = db.session.query(PendingAction).filter_by(

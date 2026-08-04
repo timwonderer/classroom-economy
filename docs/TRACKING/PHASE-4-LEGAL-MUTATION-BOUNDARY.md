@@ -109,7 +109,7 @@ execute_direct_grant(
 - Quantity is positive integer
 - Per-student limit not exceeded
 
-**Idempotency**: Correlation ID alone does not ensure replay safety; the FEAT still needs persisted deduplication before insert
+**Idempotency**: Requires `correlation_id` uniqueness plus a persisted replay check before insert
 
 ---
 
@@ -134,20 +134,18 @@ execute_store_purchase(
 
 **Mutation**:
 - Phase 2A (STORE-side): Creates `quantity` EntitlementEvent rows with event_type='GRANTED'
-- Phase 2B (LEDGER coordination): Posts monetary transaction (currently MOCKED — TODO)
+- Phase 2B (LEDGER coordination): Posts monetary transaction through the canonical ledger service
 - Phase 4 (Optional): Creates additional CONSUMED events if instant_use=True
-- Atomic at STORE-side only; end-to-end atomicity pending Ledger coordination
+- Atomic across store grant and ledger posting within the FEAT transaction boundary
 
 **Preconditions**:
 - Canonical context + seat authorization
 - Policy exists, belongs to class, is_purchasable=true
 - Quantity is positive integer
 - Per-student limit not exceeded
-- Ledger accepts purchase (TODO: real coordination)
+- Ledger accepts purchase through the canonical coordination path
 
-**Idempotency**: Correlation ID alone does not ensure replay safety; the FEAT still needs persisted deduplication before insert
-
-**⚠️ TODO (Phase 4 Follow-up)**: Implement real Ledger coordination to achieve end-to-end atomic (monetary + entitlements succeed/rollback together)
+**Idempotency**: `correlation_id` is lineage only; replay safety depends on the FEAT `idempotency_key` path and a persisted replay store remains a follow-up for cross-retry deduplication
 
 ---
 
@@ -186,7 +184,7 @@ execute_store_purchase(
 - **Impact**: End-to-end purchase atomicity incomplete
 
 **TODO 2: Discovery/Applicability Semantics**
-- **File**: `app/services/store_policy_resolver.py` (get_applicable_policies stub)
+- **File**: `app/services/store_policy_resolver.py` (list_store_policies discovery primitive)
 - **Issue**: Caller responsibility for finding applicable policies; discovery semantics deferred
 - **Phase**: 5 (Read Models) or when View Model/storefront integration begins
 - **Impact**: Affects user-facing policy selection UI
@@ -339,7 +337,7 @@ Phase 5 work will:
 
 **TODO Items Carried Forward**:
 - Real Ledger coordination (Phase 4 Follow-up)
-- get_applicable_policies() semantics (Phase 5)
+- list_store_policies() contract (Phase 5)
 - PendingAction FEAT wiring (Phase 5+)
 
 ---

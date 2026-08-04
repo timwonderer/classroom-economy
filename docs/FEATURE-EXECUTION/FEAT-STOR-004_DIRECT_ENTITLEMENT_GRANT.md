@@ -64,7 +64,7 @@ The FEAT SHALL NOT reconstruct teacher authority from route-local lookups or dis
 The FEAT accepts:
 
 - canonical request context;
-- `product_id` — policy-owned product definition identifier;
+- `policy_uuid` — exact immutable policy locator;
 - `target_seat_id` — seat receiving the direct grant;
 - `idempotency_key` — request replay guard;
 - optional canonical grant payload required by the product type.
@@ -146,7 +146,7 @@ On successful direct grant:
 
 ## IX. Idempotency
 
-`idempotency_key` SHALL protect the complete grant lifecycle, and replay safety still requires persisted deduplication before write.
+`idempotency_key` SHALL protect the complete grant lifecycle.
 
 A replay of the same lawful direct grant SHALL NOT produce duplicate entitlement events.
 

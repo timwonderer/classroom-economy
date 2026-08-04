@@ -235,7 +235,7 @@ When student wants to use a pass that requires approval:
 
 ### Assumption 3: Request Payload (Minimal)
 
-```json
+```jsonc
 {
   "entitlement_id": "pass-uuid",
   "policy_uuid": "policy-uuid",  // IMMUTABLE

@@ -24,16 +24,22 @@ from datetime import datetime
 import uuid
 
 from app.extensions import db
-from app.feats.base import feat_shell, FEATContext
+from app.feats.base import feat_shell
+from app.models import Seat, EntitlementEvent, PendingAction, Transaction
+from app.services.context_resolver import CanonicalContext
+from app.services import ledger_service
 from app.feats.ledger_resolution_feat import (
     build_intended_ledger_plan,
     resolve_intended_ledger_plan,
 )
-from app.models import Seat, EntitlementEvent, ClassEconomy, PendingAction
-from app.services.context_resolver import CanonicalContext
-from app.services.store_policy_resolver import StorePolicyResolver, PolicyNotFound, PolicyParseError, PolicyValidationError
+from app.services.store_policy_resolver import (
+    StorePolicyResolver,
+    StorePolicyError,
+    PolicyNotFound,
+    PolicyParseError,
+    PolicyValidationError,
+)
 from app.utils.canonical_temporal_resolver import canonical_temporal_resolver, CLASS_LEVEL_EVALUATION
-from app.utils.time import utc_now
 from app.models import _quantize_currency
 
 
@@ -221,20 +227,26 @@ def _submit_insurance_claim_impl(
             )
 
         # 5. Check for existing pending_action (idempotency)
-        if not correlation_id:
-            correlation_id = f"corr_{uuid.uuid4().hex}"
+        replay_key = correlation_id or idempotency_key or f"corr_{uuid.uuid4().hex}"
 
         existing_pending = (
             db.session.query(PendingAction)
             .filter(
-                PendingAction.class_id == canonical_context.class_id,
-                PendingAction.entitlement_id == entitlement_id,
-                PendingAction.correlation_id == correlation_id,
+                PendingAction.correlation_id == replay_key,
             )
             .first()
         )
 
         if existing_pending:
+            if (
+                existing_pending.class_id != canonical_context.class_id
+                or existing_pending.entitlement_id != entitlement_id
+            ):
+                return InsuranceClaimSubmissionResult(
+                    success=False,
+                    error_code="IDEMPOTENCY_CONFLICT",
+                    error_message="Correlation ID already exists for a different claim context",
+                )
             # Return prior result (idempotent)
             return InsuranceClaimSubmissionResult(
                 success=True,
@@ -257,6 +269,7 @@ def _submit_insurance_claim_impl(
             db.session.query(EntitlementEvent)
             .filter(
                 EntitlementEvent.entitlement_id == entitlement_id,
+                EntitlementEvent.class_id == canonical_context.class_id,
                 EntitlementEvent.event_type == "CONSUMED",
             )
             .count()
@@ -268,14 +281,19 @@ def _submit_insurance_claim_impl(
 
         # 7. Create pending_action row
         pending_action_id = str(uuid.uuid4())
-        now = utc_now()
+        temporal_eval = canonical_temporal_resolver(
+            CLASS_LEVEL_EVALUATION,
+            canonical_execution_context=canonical_context,
+            primitive="current_time",
+        )
+        now = temporal_eval.canonical_now_utc
 
         pending_action = PendingAction(
             pending_action_id=pending_action_id,
             class_id=canonical_context.class_id,
             seat_id=canonical_context.seat_id,
             entitlement_id=entitlement_id,
-            correlation_id=correlation_id,
+            correlation_id=replay_key,
             authoritative_feat="FEAT-STOR-003-RESOLVE",
             payload={
                 "claim_subject": claim_subject,
@@ -293,14 +311,13 @@ def _submit_insurance_claim_impl(
         return InsuranceClaimSubmissionResult(
             success=True,
             pending_action_id=pending_action_id,
-            correlation_id=correlation_id,
+            correlation_id=replay_key,
             entitlement_id=entitlement_id,
             submitted_at=now,
             eligibility_flags=eligibility_flags,
         )
 
     except Exception as e:
-        db.session.rollback()
         return InsuranceClaimSubmissionResult(
             success=False,
             error_code="INTERNAL_ERROR",
@@ -432,11 +449,11 @@ def _resolve_insurance_claim_impl(
         # 4. Resolve policy from immutable policy_uuid
         try:
             policy = StorePolicyResolver.resolve_store_item(policy_uuid)
-        except (PolicyNotFound, PolicyParseError, PolicyValidationError) as e:
+        except StorePolicyError as e:
             return InsuranceClaimResolutionResult(
                 success=False,
                 error_code="POLICY_DELETED",
-                error_message=f"Policy no longer resolvable: {str(e)}",
+                error_message=f"Policy no longer resolvable: {e}",
             )
 
         # Get student seat for event creation
@@ -450,44 +467,56 @@ def _resolve_insurance_claim_impl(
 
         # 5. Process based on approval/rejection decision
         event_id = str(uuid.uuid4())
-        now = utc_now()
+        temporal_eval = canonical_temporal_resolver(
+            CLASS_LEVEL_EVALUATION,
+            canonical_execution_context=canonical_context,
+            primitive="current_time",
+        )
+        now = temporal_eval.canonical_now_utc
         reimbursement_amount = Decimal("0.00")
         ledger_transaction_id = None
 
         if approved:
-            # APPROVED path: coordinate Ledger and write CONSUMED event
-
-            # Resolve reimbursement amount from policy
-            policy_config = policy
-            reimbursement_amount = Decimal(str(getattr(policy_config, "reimbursement_amount", "0.00")))
-            reimbursement_amount = _quantize_currency(reimbursement_amount)
-
-            if reimbursement_amount > 0:
-                # Coordinate Ledger credit via FEAT-LED-000 (nested FEAT call)
-                ledger_plan = build_intended_ledger_plan(
-                    seat_id=student_seat.id,
-                    class_id=canonical_context.class_id,
-                    user_id=student_seat.user_id,
-                    debit_amount=-reimbursement_amount,  # Negative = credit
-                    description=f"Insurance claim reimbursement (policy {policy_uuid})",
-                    source_account="checking",
+            # APPROVED path: derive reimbursement from the source transaction and write Ledger truth.
+            transaction_id = claim_subject.get("transaction_id")
+            if transaction_id is None:
+                return InsuranceClaimResolutionResult(
+                    success=False,
+                    error_code="INVALID_CLAIM_SUBJECT",
+                    error_message="Approved insurance claims require transaction_id",
                 )
 
-                ledger_resolved = resolve_intended_ledger_plan(
-                    plan=ledger_plan,
-                    idempotency_key=idempotency_key,
+            source_transaction = db.session.get(Transaction, transaction_id)
+            if not source_transaction or source_transaction.class_id != canonical_context.class_id:
+                return InsuranceClaimResolutionResult(
+                    success=False,
+                    error_code="INVALID_CLAIM_SUBJECT",
+                    error_message="Claim transaction not found in this class",
                 )
 
-                if ledger_resolved.outcome == "DENY":
-                    return InsuranceClaimResolutionResult(
-                        success=False,
-                        error_code="LEDGER_REJECTED",
-                        error_message="Ledger denied reimbursement credit",
-                    )
+            reimbursement_amount = _quantize_currency(abs(source_transaction.amount or Decimal("0.00")))
+            if reimbursement_amount <= Decimal("0.00"):
+                return InsuranceClaimResolutionResult(
+                    success=False,
+                    error_code="INVALID_CLAIM_SUBJECT",
+                    error_message="Claim transaction has no reimbursable amount",
+                )
 
-                # Extract ledger transaction ID if available
-                # (In a real implementation, the ledger service would return this)
-                # For now, we record the resolved plan in the event payload
+            ledger_transaction, created = ledger_service.create_pending_transaction_idempotent(
+                idempotency_key=idempotency_key or f"insurance-reimbursement:{pending_action_id}",
+                seat_id=student_seat.id,
+                class_id=canonical_context.class_id,
+                target_seat_id=student_seat.id,
+                actor_seat_id=teacher_seat.id,
+                mechanism="system",
+                user_id=student_seat.user_id,
+                amount=reimbursement_amount,
+                account_type="checking",
+                type="insurance_reimbursement",
+                description=f"Insurance reimbursement for transaction {transaction_id} (policy {policy_uuid})",
+                original_transaction_id=source_transaction.id,
+            )
+            ledger_transaction_id = ledger_transaction.id
 
             # Write CONSUMED entitlement event
             consumed_event = EntitlementEvent(
@@ -505,6 +534,7 @@ def _resolve_insurance_claim_impl(
                     "claim_subject": claim_subject,
                     "claim_decision": "APPROVED",
                     "reimbursement_amount": str(reimbursement_amount),
+                    "ledger_transaction_id": ledger_transaction_id,
                     "override_reason": override_reason,
                     "policy_uuid": policy_uuid,
                 },

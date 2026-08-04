@@ -11,9 +11,8 @@ Orchestrates the complete purchase lifecycle:
 
 All mutations (Ledger + EntitlementEvent) succeed or fail together (atomic).
 
-Contract: Caller is responsible for discovering which policy applies (via
-get_applicable_policies). This FEAT accepts exact policy_uuid and executes
-without inference.
+Contract: Caller is responsible for discovery via the resolver's policy list
+primitive. This FEAT accepts exact policy_uuid and executes without inference.
 """
 
 from __future__ import annotations
@@ -24,7 +23,7 @@ from typing import Optional
 import uuid
 
 from app.extensions import db
-from app.feats.base import feat_shell, FEATContext
+from app.feats.base import feat_shell, FEATContext, get_correlation_id
 from app.feats.ledger_resolution_feat import (
     build_intended_ledger_plan,
     resolve_intended_ledger_plan,
@@ -34,7 +33,6 @@ from app.models import Seat, EntitlementEvent, ClassEconomy
 from app.services.context_resolver import CanonicalContext
 from app.services.store_policy_resolver import StorePolicyResolver, PolicyNotFound, PolicyParseError, PolicyValidationError
 from app.utils.canonical_temporal_resolver import canonical_temporal_resolver, CLASS_LEVEL_EVALUATION
-from app.utils.time import utc_now
 
 
 class StorePurchaseError(Exception):
@@ -122,7 +120,15 @@ def _execute_store_purchase_impl(
         )
 
     # Validate target seat exists and belongs to class
-    target_seat = db.session.get(Seat, canonical_context.seat_id)
+    target_seat = (
+        db.session.query(Seat)
+        .filter(
+            Seat.id == canonical_context.seat_id,
+            Seat.class_id == canonical_context.class_id,
+        )
+        .with_for_update()
+        .one_or_none()
+    )
     if not target_seat or target_seat.class_id != canonical_context.class_id:
         return StorePurchaseResult(
             success=False,
@@ -207,30 +213,48 @@ def _execute_store_purchase_impl(
             )
 
     # Generate or use provided correlation ID
-    corr_id = correlation_id or f"store_purchase_{uuid.uuid4().hex}"
+    corr_id = correlation_id or get_correlation_id() or f"store_purchase_{uuid.uuid4().hex}"
 
     # =========================================================================
-    # PHASE 2: Ledger Execution (currently mocked)
+    # PHASE 2: Ledger Execution
     # =========================================================================
 
-    # TODO: In production, build intended plan and resolve through Ledger FEAT
-    # For MVP, assume purchase succeeds without Ledger coordination
-    # In real impl:
-    # 1. Calculate purchase amount from product_id + quantity
-    # 2. build_intended_ledger_plan(seat_id=..., class_id=..., debit_amount=..., description=...)
-    # 3. resolve_intended_ledger_plan(...) -> ResolvedLedgerPlan
-    # 4. If outcome != "ACCEPT" and != "TRANSFORM", fail purchase
-    # 5. apply_resolved_ledger_plan(...) -> persists debit/credit
-
-    ledger_success = True  # MVP: assume success
-
-    if not ledger_success:
+    intended_plan = build_intended_ledger_plan(
+        seat_id=canonical_context.seat_id,
+        class_id=canonical_context.class_id,
+        user_id=canonical_context.user_id,
+        debit_amount=policy_config.price * quantity,
+        description=f"Store purchase: {policy_config.name or policy_config.product_id}",
+        source_account="checking",
+        target_account="store_purchase",
+    )
+    ledger_idempotency_key = idempotency_key or f"store-purchase:{corr_id}:ledger-plan"
+    resolved_plan = resolve_intended_ledger_plan(
+        plan=intended_plan,
+        banking_settings=None,
+        idempotency_key=ledger_idempotency_key,
+        allow_recovery_transfer=True,
+    )
+    if resolved_plan.outcome == "DENY":
         return StorePurchaseResult(
             success=False,
             correlation_id=corr_id,
             quantity_granted=0,
             error_code="INSUFFICIENT_FUNDS",
             error_message="Purchase denied by Ledger",
+        )
+    ledger_result = apply_resolved_ledger_plan(
+        resolved_plan=resolved_plan,
+        banking_settings=None,
+        idempotency_key=ledger_idempotency_key,
+    )
+    if not ledger_result.get("accepted", False):
+        return StorePurchaseResult(
+            success=False,
+            correlation_id=corr_id,
+            quantity_granted=0,
+            error_code="INSUFFICIENT_FUNDS",
+            error_message=f"Purchase denied by Ledger: {ledger_result.get('reason', 'unknown')}",
         )
 
     # =========================================================================
@@ -257,6 +281,7 @@ def _execute_store_purchase_impl(
             "quantity_total": quantity,
             "instant_use": instant_use,
             "policy_uuid": policy_config.policy_uuid,  # For audit/historical reference
+            "price_per_unit": str(policy_config.price),
         }
 
         event = EntitlementEvent(

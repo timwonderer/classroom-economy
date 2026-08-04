@@ -1,5 +1,5 @@
 # Store/Entitlements Domain Phase 2: Persistence Migration
-## Building New Canonical Schema (DOM-STORE-001 v3.0)
+## Historical Record of the Canonical Schema Cutover
 
 | Reference | Value |
 |-----------|-------|
@@ -13,7 +13,9 @@
 
 ## I. Migration Scope
 
-### New Tables to Create
+This document is a historical cutover note. The canonical event-based schema was implemented by migration `4aa06b69d65d_rebuild_store_entitlements_phase2.py`.
+
+### New Tables Created
 
 **1. entitlement_events** (replaces: entitlements + entitlement_consumptions + redemption_events + entitlement_events)
 
@@ -64,13 +66,15 @@ CREATE TABLE pending_actions (
 );
 ```
 
-### Legacy Tables to Preserve (Temporary)
+### Legacy Tables During the Cutover
 
-- `entitlements` — kept during rebuild for data validation
-- `entitlement_consumptions` — kept during rebuild for data validation
-- `redemption_events` — kept during rebuild for data validation
-- `store_purchases` — kept during rebuild (will be deleted in Phase 9)
-- `entitlement_events` (old hall-pass table) — will be repurposed/deleted in Phase 9
+The cutover originally retained legacy tables for validation, then the live tree moved beyond them:
+
+- `entitlements`
+- `entitlement_consumptions`
+- `redemption_events`
+- `store_purchases`
+- the old mutable `entitlement_events` hall-pass table
 
 ---
 
@@ -129,20 +133,20 @@ Create idempotent migration that:
 - [ ] Verify JSONB columns work
 - [ ] Test insert/select on new tables
 
-### Step 3: Keep Old Tables Intact
+### Step 3: Legacy Tables Were Later Removed
 
-- [ ] Old `entitlements` table stays (for data comparison)
-- [ ] Old `entitlement_consumptions` table stays (for validation)
-- [ ] Old `redemption_events` table stays (for validation)
-- [ ] Old `entitlement_events` table stays (will be dropped in Phase 9)
-- [ ] Old `store_purchases` table stays (will be dropped in Phase 9)
+- [x] Old `entitlements` table preserved during the cutover window
+- [x] Old `entitlement_consumptions` table preserved during the cutover window
+- [x] Old `redemption_events` table preserved during the cutover window
+- [x] Old `entitlement_events` table removed with the canonical cutover
+- [x] Old `store_purchases` table removed in the later demolition pass
 
 ### Step 4: Update Models
 
-- [ ] Add new `EntitlementEvent` model (event-based, different from old)
-- [ ] Add new `PendingAction` model
-- [ ] Keep old models for temporary validation
-- [ ] Mark old models with deprecation comments
+- [x] Add new `EntitlementEvent` model (event-based, different from old)
+- [x] Add new `PendingAction` model
+- [x] Keep old models for temporary validation
+- [x] Mark old models with deprecation comments
 
 ---
 
@@ -280,5 +284,5 @@ After Phase 2 migration succeeds:
 
 ---
 
-**Status:** Ready to implement Phase 2 migration  
-**Estimated Effort:** 1-2 hours (migration + testing + verification)
+**Status:** Completed historical record  
+**Evidence:** Applied migration `e13a59b6aa6b_add_store_products_table.py` and the canonical event-based model cutover in the live tree

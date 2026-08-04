@@ -175,18 +175,15 @@ def get_entitlement_history(
 
     Freshness: Point-in-time snapshot at query time
     """
-    query = (
-        EntitlementEvent.query
-        .filter(
-            EntitlementEvent.target_seat_id == seat_id,
-            EntitlementEvent.class_id == class_id,
-        )
-        .order_by(EntitlementEvent.timestamp.desc())
-        .limit(limit)
+    query = EntitlementEvent.query.filter(
+        EntitlementEvent.target_seat_id == seat_id,
+        EntitlementEvent.class_id == class_id,
     )
 
     if product_id is not None:
         query = query.filter(EntitlementEvent.product_id == product_id)
+
+    query = query.order_by(EntitlementEvent.timestamp.desc()).limit(limit)
 
     return [
         {
@@ -202,7 +199,30 @@ def get_entitlement_history(
         for e in query.all()
     ]
 
+def get_hall_pass_balance(
+    seat_id: int,
+    class_id: str,
+) -> int:
+    """
+    Derive the available hall-pass balance for a seat.
 
+    Hall-pass availability is computed from immutable entitlement events only.
+    This remains a pure read and does not rely on any mutable counter column.
+
+    Preconditions:
+    - seat_id must be valid in class
+    - class_id must exist
+
+    Returns:
+        Net hall-pass balance for the seat in the class.
+
+    Purity: Pure (read-only query, deterministic result)
+    """
+    return get_entitlement_balance(
+        seat_id=seat_id,
+        class_id=class_id,
+        entitlement_type="HALL_PASS",
+    )
 # ---------------------------------------------------------------------------
 # Cross-Domain Consumption Checks
 # ---------------------------------------------------------------------------
@@ -334,22 +354,18 @@ def derive_claim_allowance(
           Currently counts all CONSUMED events without time window.
     """
     # Get all CONSUMED events for this entitlement (represent claims used)
-    consumed_events = (
-        EntitlementEvent.query
-        .filter(
+    used_count = (
+        EntitlementEvent.query.filter(
             EntitlementEvent.entitlement_id == entitlement_id,
             EntitlementEvent.class_id == class_id,
             EntitlementEvent.event_type == "CONSUMED",
-        )
-        .order_by(EntitlementEvent.timestamp)
-        .all()
+        ).count()
     )
 
     # TODO: Apply period filters (e.g., within current month) based on policy_config
     # For MVP, return max_claims - used_count
 
     max_claims = policy_config.get("max_claims_per_month", 3)
-    used_count = len([e for e in consumed_events])  # TODO: filter by period
 
     return max(0, max_claims - used_count)
 
@@ -540,18 +556,29 @@ def get_active_rent_grant(
     if not grant_event:
         return None
 
-    # Check if this entitlement has a terminal event (CONSUMED, EXPIRED, REVOKED)
-    terminal_event = (
+    # Check if any older PERK grant is still active; return the newest active grant.
+    for candidate in (
         EntitlementEvent.query
         .filter(
-            EntitlementEvent.entitlement_id == grant_event.entitlement_id,
+            EntitlementEvent.target_seat_id == seat_id,
             EntitlementEvent.class_id == class_id,
-            EntitlementEvent.event_type.in_(["CONSUMED", "EXPIRED", "REVOKED"]),
+            EntitlementEvent.product_id == product_id,
+            EntitlementEvent.event_type == "GRANTED",
+            EntitlementEvent.acquisition_type == "PERK",
         )
-        .first()
-    )
+        .order_by(EntitlementEvent.timestamp.desc())
+        .all()
+    ):
+        terminal_event = (
+            EntitlementEvent.query
+            .filter(
+                EntitlementEvent.entitlement_id == candidate.entitlement_id,
+                EntitlementEvent.class_id == class_id,
+                EntitlementEvent.event_type.in_(["CONSUMED", "EXPIRED", "REVOKED"]),
+            )
+            .first()
+        )
+        if not terminal_event:
+            return candidate
 
-    if terminal_event:
-        return None  # Not active; has terminal event
-
-    return grant_event
+    return None

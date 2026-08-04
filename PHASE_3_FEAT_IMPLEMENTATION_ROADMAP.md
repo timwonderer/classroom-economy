@@ -1,7 +1,7 @@
 # Phase 3: FEAT Implementation Roadmap
 ## Store and Entitlements Canonical FEATs
 
-**Status:** Ready to begin implementation  
+**Status:** Implemented in the live tree; retained as historical roadmap  
 **Authority:** DOM-STORE-001 v4.0, FEAT-STOR-001/002/003/004 v3.0-1.0  
 **Checkpoint:** Demolition complete (STORE_ENTITLEMENTS_DEMOLITION_REPORT_2026-07-27.md)
 
@@ -509,7 +509,7 @@ def derive_claim_allowance(
 ## IX. Risk Factors
 
 ### High Risk
-- **Ledger coordination (FEAT-STOR-001)**: Purchase FEAT must coordinate with Ledger FEAT; tight coupling
+- **Ledger coordination (FEAT-STOR-001)**: Purchase FEAT coordinates with the canonical ledger path; tight coupling remains
 - **Cross-domain detection (FEAT-STOR-002)**: Hall-pass consumption by other domain; must not duplicate
 - **Canonical tool adoption**: All temporal/identity code must use canonical resolvers (not optional)
 
@@ -527,7 +527,7 @@ def derive_claim_allowance(
 
 ## X. Next Immediate Steps
 
-1. **Create new FEAT files** (empty stubs with docstrings)
+1. **Historical note:** the FEAT files now exist in the live tree
    - `app/feats/store_purchase_feat.py`
    - `app/feats/direct_entitlement_grant_feat.py`
    - `app/feats/entitlement_lifecycle_feat.py`
@@ -536,15 +536,15 @@ def derive_claim_allowance(
 2. **Create read service file** (empty stubs)
    - `app/services/entitlement_read_service.py`
 
-3. **Start FEAT-STOR-001 implementation**
-   - Implement validation phase
-   - Implement Ledger coordination
-   - Implement EntitlementEvent writes
-   - Write tests
+3. **Verification checkpoint**
+   - Validation phase implemented
+   - Ledger coordination implemented
+   - EntitlementEvent writes implemented
+   - Tests in place
 
 ---
 
-**Ready to proceed with Week 1 implementation.**
+**Status:** Historical roadmap; current implementation proceeds from this baseline
 
 Manifest: STORE_ENTITLEMENTS_DEMOLITION_MANIFEST_2026-07-27.md  
 Report: STORE_ENTITLEMENTS_DEMOLITION_REPORT_2026-07-27.md  

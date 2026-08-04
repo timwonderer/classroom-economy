@@ -8,6 +8,7 @@ from app.services.ledger_service import get_available_balances
 from app.routes.admin import _sanitize_roster_text
 from app.feats.base import FEATContext
 from tests.helpers.classroom_initializer import initialize_as_teacher
+from tests.helpers.ledger import create_ledger_idempotent_transaction
 
 
 def test_DOM_CLASS_001__roster_upload_ignores_balance_columns_and_keeps_ledger_truth(client, app):
@@ -21,14 +22,16 @@ def test_DOM_CLASS_001__roster_upload_ignores_balance_columns_and_keeps_ledger_t
         db.session.flush()
 
     with FEATContext("FEAT-LED-001", idempotency_key="admin_export_students_scoping:seed_balance"):
-        from tests.helpers.v2_fixtures import seed_purchase
-        seed_purchase(
+        create_ledger_idempotent_transaction(
+            idempotency_key="admin_export_students_scoping:seed_balance:tx",
             seat_id=seat.id,
             class_id=class_row.class_id,
             user_id=seat.user_id,
             amount="42.50",
+            account_type="checking",
+            type="purchase",
             description="Seed checking balance",
-            transaction_type="deposit",
+            actor_seat_id=teacher_seat.id,
         )
 
     before_checking, before_savings = get_available_balances(seat.id, class_row.class_id)

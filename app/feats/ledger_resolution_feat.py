@@ -253,7 +253,7 @@ def apply_resolved_ledger_plan(
         user_id = class_economy.user_id if class_economy else resolved_plan.intended_plan.user_id
         if not user_id:
             return {"accepted": False, "reason": "missing_user"}
-        ledger_service.create_pending_transaction_idempotent(
+        fee_transaction, _created = ledger_service.create_pending_transaction_idempotent(
             idempotency_key=fee_idempotency_key,
             seat_id=seat.id,
             class_id=seat.class_id,
@@ -266,5 +266,6 @@ def apply_resolved_ledger_plan(
             type="overdraft_fee",
             description="Overdraft fee",
         )
+        return {"accepted": True, "reason": resolved_plan.outcome, "ledger_transaction_id": fee_transaction.id}
 
     return {"accepted": True, "reason": resolved_plan.outcome}

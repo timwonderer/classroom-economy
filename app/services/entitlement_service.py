@@ -13,6 +13,10 @@ import sqlalchemy as sa
 from app.extensions import db
 from app.models import EntitlementEvent, Seat
 from app.feats.base import generate_correlation_id
+from app.services.entitlement_read_service import (
+    get_entitlement_balance,
+    get_entitlement_lineage_terminal_event,
+)
 from app.utils.canonical_temporal_resolver import (
     SYSTEM_LEVEL_EVALUATION,
     canonical_temporal_resolver,
@@ -28,12 +32,10 @@ def _current_utc():
 
 def get_hall_pass_balance(seat_id: int, class_id: str) -> int:
     """Return the derived hall pass balance for a seat in a class."""
-    return max(
-        0,
-        db.session.query(sa.func.sum(EntitlementEvent.quantity_delta))
-        .filter_by(seat_id=seat_id, class_id=class_id)
-        .scalar()
-        or 0,
+    return get_entitlement_balance(
+        seat_id=seat_id,
+        class_id=class_id,
+        entitlement_type="HALL_PASS",
     )
 
 
@@ -61,12 +63,19 @@ def grant_hall_passes(
         event = EntitlementEvent(
             seat_id=seat.id,
             class_id=seat.class_id,
-            quantity_delta=1,
-            event_type=event_type,
-            trigger_id=f"{trigger_id}:{index + 1}" if trigger_id else entitlement_id,
-            correlation_id=grant_correlation_id,
+            target_seat_id=seat.id,
+            actor_seat_id=seat.id,
             entitlement_id=entitlement_id,
-            occurred_at=now,
+            product_id=None,
+            entitlement_type="HALL_PASS",
+            acquisition_type="GRANT",
+            event_type="GRANTED",
+            correlation_id=grant_correlation_id,
+            payload={
+                "source": "grant_hall_passes",
+                "trigger_id": f"{trigger_id}:{index + 1}" if trigger_id else entitlement_id,
+            },
+            timestamp=now,
         )
         db.session.add(event)
     db.session.flush()
@@ -90,7 +99,6 @@ def remove_hall_passes(
     if quantity_to_remove > current_balance:
         raise ValueError("Cannot remove more hall passes than the current available balance")
 
-    now = _current_utc()
     remaining = quantity_to_remove
     while remaining:
         grant = _available_hall_pass_grant(seat.id, seat.class_id)
@@ -99,12 +107,18 @@ def remove_hall_passes(
         event = EntitlementEvent(
             seat_id=seat.id,
             class_id=seat.class_id,
-            quantity_delta=-1,
-            event_type="REVOCATION",
-            trigger_id=grant.entitlement_id,
-            correlation_id=grant.correlation_id,
+            target_seat_id=seat.id,
+            actor_seat_id=seat.id,
             entitlement_id=grant.entitlement_id,
-            occurred_at=now,
+            product_id=grant.product_id,
+            entitlement_type="HALL_PASS",
+            acquisition_type="GRANT",
+            event_type="REVOKED",
+            correlation_id=grant.correlation_id,
+            payload={
+                "source": "remove_hall_passes",
+            },
+            timestamp=_current_utc(),
         )
         db.session.add(event)
         db.session.flush()
@@ -123,25 +137,16 @@ def _available_hall_pass_grant(seat_id: int, class_id: str) -> EntitlementEvent 
         .filter(
             EntitlementEvent.seat_id == seat_id,
             EntitlementEvent.class_id == class_id,
-            EntitlementEvent.quantity_delta > 0,
-            EntitlementEvent.correlation_id.isnot(None),
+            EntitlementEvent.entitlement_type == "HALL_PASS",
+            EntitlementEvent.event_type == "GRANTED",
             EntitlementEvent.entitlement_id.isnot(None),
         )
-        .order_by(EntitlementEvent.occurred_at.asc(), EntitlementEvent.id.asc())
+        .order_by(EntitlementEvent.timestamp.asc(), EntitlementEvent.event_id.asc())
         .all()
     )
     for grant in grants:
-        entitlement_balance = (
-            db.session.query(sa.func.coalesce(sa.func.sum(EntitlementEvent.quantity_delta), 0))
-            .filter(
-                EntitlementEvent.seat_id == seat_id,
-                EntitlementEvent.class_id == class_id,
-                EntitlementEvent.entitlement_id == grant.entitlement_id,
-            )
-            .scalar()
-            or 0
-        )
-        if int(entitlement_balance) > 0:
+        terminal_event = get_entitlement_lineage_terminal_event(grant.entitlement_id, class_id)
+        if terminal_event is None:
             return grant
     return None
 
@@ -161,12 +166,19 @@ def consume_hall_pass(
     event = EntitlementEvent(
         seat_id=seat_id,
         class_id=class_id,
-        quantity_delta=-1,
-        event_type="CONSUME",
-        trigger_id=trigger_id,
-        correlation_id=grant.correlation_id,
+        target_seat_id=seat_id,
+        actor_seat_id=seat_id,
         entitlement_id=grant.entitlement_id,
-        occurred_at=now,
+        product_id=grant.product_id,
+        entitlement_type="HALL_PASS",
+        acquisition_type="GRANT",
+        event_type="CONSUMED",
+        correlation_id=grant.correlation_id,
+        payload={
+            "source": "consume_hall_pass",
+            "trigger_id": trigger_id,
+        },
+        timestamp=now,
     )
     db.session.add(event)
     db.session.flush()
@@ -187,11 +199,13 @@ def reconcile_rent_hall_pass_top_off(
     """
     current_rent_passes = max(
         0,
-        db.session.query(sa.func.sum(EntitlementEvent.quantity_delta))
+        db.session.query(sa.func.count(EntitlementEvent.event_id))
         .filter(
             EntitlementEvent.seat_id == seat.id,
             EntitlementEvent.class_id == seat.class_id,
-            EntitlementEvent.trigger_id.like("rent_top_off_%"),
+            EntitlementEvent.entitlement_type == "HALL_PASS",
+            EntitlementEvent.event_type == "GRANTED",
+            EntitlementEvent.payload["source"].as_string() == "reconcile_rent_hall_pass_top_off",
         )
         .scalar()
         or 0,
@@ -210,11 +224,20 @@ def reconcile_rent_hall_pass_top_off(
     event = EntitlementEvent(
         seat_id=seat.id,
         class_id=seat.class_id,
-        quantity_delta=delta,
-        event_type="GRANT" if delta > 0 else "REVOCATION",
-        trigger_id=f"rent_top_off_{seat.id}_{now.isoformat()}",
+        target_seat_id=seat.id,
+        actor_seat_id=seat.id,
+        entitlement_id=_generate_entitlement_id(),
+        product_id=None,
+        entitlement_type="HALL_PASS",
+        acquisition_type="GRANT",
+        event_type="GRANTED" if delta > 0 else "REVOKED",
         correlation_id=generate_correlation_id() if delta > 0 else None,
-        occurred_at=now,
+        payload={
+            "source": "reconcile_rent_hall_pass_top_off",
+            "delta": delta,
+            "trigger_id": f"rent_top_off_{seat.id}_{now.isoformat()}",
+        },
+        timestamp=now,
     )
     db.session.add(event)
 

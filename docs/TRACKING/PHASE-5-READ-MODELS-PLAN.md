@@ -67,7 +67,7 @@ def get_entitlement_history(entitlement_id: str, class_id: str) -> List[Entitlem
 
 #### Read 2: Get Granted Entitlements for Seat+Product
 
-**Purpose**: Find all active (GRANTED, not CONSUMED/EXPIRED/REVOKED) entitlements for student+product  
+**Purpose**: Find all non-terminal entitlement lineages for student+product  
 **Source Table**: `entitlement_events`  
 **Scope**: Class-scoped  
 **Query Pattern**:
@@ -77,7 +77,7 @@ def get_active_entitlements(
     class_id: str,
     product_id: int | None = None
 ) -> List[EntitlementEvent]:
-    """Return all non-terminal GRANTED events for seat+product (optionally filtered)."""
+    """Return GRANTED events whose lineages have no terminal event."""
     query = db.session.query(EntitlementEvent).filter_by(
         target_seat_id=seat_id,
         class_id=class_id,
@@ -85,7 +85,12 @@ def get_active_entitlements(
     )
     if product_id:
         query = query.filter_by(product_id=product_id)
-    return query.all()
+    active = []
+    for event in query.all():
+        terminal = get_entitlement_lineage_terminal_event(event.entitlement_id, class_id)
+        if terminal is None:
+            active.append(event)
+    return active
 ```
 
 **Used By**:
@@ -149,19 +154,17 @@ def get_entitlement_status(entitlement_id: str, class_id: str) -> str:
 #### Projection 2: Hall Pass Balance for Seat+Class
 
 **Purpose**: Derive how many hall passes are available for a student  
-**Source**: Count GRANTED events for product_id=hall_pass, subtract CONSUMED/EXPIRED  
+**Source**: Count GRANTED events for hall-pass product, excluding lineages with terminal events  
 **Formula**:
 ```python
 def get_hall_pass_balance(seat_id: int, class_id: str) -> int:
-    """Derive available hall passes from granted - consumed."""
-    # Count active (GRANTED only) hall pass entitlements
-    active = db.session.query(sa.func.count(EntitlementEvent.event_id)).filter_by(
-        target_seat_id=seat_id,
+    """Derive available hall passes from non-terminal entitlement lineages."""
+    active = get_active_entitlements(
+        seat_id=seat_id,
         class_id=class_id,
-        product_id=HALL_PASS_PRODUCT_ID,  # From policy config
-        event_type='GRANTED'
-    ).scalar()
-    return active or 0
+        product_id=HALL_PASS_PRODUCT_ID,
+    )
+    return len(active)
 ```
 
 **Used By**:
@@ -237,22 +240,19 @@ class EntitlementListView:
 
 #### View Model 2: PolicyListView (Discoverable Policies)
 
-**Purpose**: Show student what policies are available to purchase in this class  
-**Status**: 🔴 BLOCKED — Requires undefined authority
+**Purpose**: Show the canonical store policies defined for a class  
+**Status**: ✅ UNBLOCKED — pure discovery is already authorized
 
-**Blocker**: `StorePolicyResolver.get_applicable_policies(class_id)` has no canonical contract
+**Primitive**: `StorePolicyResolver.list_store_policies(class_id)` returns canonical policy definitions for the class
 
-**Contract Gap**:
-Which policies should be "applicable"? 
-- All non-retired policies?
-- Only currently-active policies (by rent cycle)?
-- Only policies meeting prerequisites?
-- Should filtering by affordability be part of discovery or presentation?
+**View Contract**:
+- Use canonical policy definitions from the resolver
+- Apply presentation ordering only in the view model
+- Do not evaluate student eligibility, affordability, entitlement ownership, or class feature state
 
-**Resolution**: Requires DOM-STORE-001 amendment or explicit application-domain decision  
-**Authority Needed**: `DOM-STORE-001 §get_applicable_policies` or equivalent
+**Authority Needed**: None beyond `DOM-STORE-001` plus the pure discovery primitive
 
-**Do Not Stub**: This projection cannot be built until applicability semantics are defined.
+**Do Not Stub**: Keep business filtering out of the resolver primitive
 
 ---
 
@@ -383,7 +383,7 @@ Must provide:
 
 Must provide (implement only unblocked ones):
 - ✅ `build_entitlement_list_view(seat_id, class_id)` → List[EntitlementListView]
-- 🔴 BLOCKED: `build_policy_list_view(class_id)` — Requires get_applicable_policies() contract
+- ✅ `build_policy_list_view(class_id)` — pure discovery + presentation ordering
 - ✅ `build_purchase_history_view(seat_id, class_id)` → List[PurchaseHistoryView]
 - 🔴 BLOCKED: `build_entitlement_with_ledger_context(entitlement_id, class_id)` — Requires Ledger read API
 
@@ -438,6 +438,7 @@ Must test:
 - EntitlementListView
 - PurchaseHistoryView
 - StudentObligationWithEntitlements
+- PolicyListView
 
 **Blocked Builders** (do not implement):
 - PolicyListView — awaiting get_applicable_policies() contract
@@ -467,24 +468,16 @@ Must test:
 
 Do NOT stub these. Leave them blocked until authority exists.
 
-### Contract Gap 1: get_applicable_policies() Semantics
+### Contract Gap 1: list_store_policies() Semantics
 
-**Blocks**: PolicyListView  
-**Issue**: StorePolicyResolver has stub but no canonical contract  
-**Scope**: Which policies should be "applicable" to a student in a class?  
-**Open Questions**:
-- Show all non-retired policies?
-- Show only currently-active policies (by rent cycle)?
-- Show only policies meeting prerequisite conditions?
-- Is affordability filtering part of discovery or presentation?
+**Status**: Resolved for Phase 5
 
-**Authority Needed**: 
-- DOM-STORE-001 amendment defining applicability semantics, OR
-- Explicit application-domain decision documented in Phase 6 surface inventory
+**Current Contract**:
+- Returns canonical, validated `StorePolicyConfig` objects for the class
+- Does not evaluate student eligibility, affordability, entitlement ownership, or class feature state
+- View models own presentation ordering and labeling only
 
-**Resolution Path**: Phase 6 application surface inventory + Phase 7 rewiring will capture this decision
-
-**Do Not**: Stub an implementation. Leave ProjectionListView unimplemented until contract exists.
+**Do Not**: Add business filtering to the resolver primitive.
 
 ---
 
@@ -550,7 +543,8 @@ Phase 5 is complete when:
 
 - ✅ Read service fully documented (all methods have preconditions, purity statement, tests)
 - ✅ Unblocked view model builders implemented and tested
-- ✅ Blocked projections explicitly documented with contract gaps (PolicyListView, EntitlementWithLedgerContext)
+- ✅ Blocked projections explicitly documented only where authority is still missing (EntitlementWithLedgerContext)
+- ✅ Blocked projections explicitly documented only where authority is still missing (EntitlementWithLedgerContext)
 - ✅ All unit tests pass
 - ✅ No routes or templates updated
 - ✅ Contract gaps filed for Phase 6+ action

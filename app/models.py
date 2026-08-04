@@ -853,7 +853,6 @@ class StoreItemVisibility(db.Model):
     store_item = db.relationship('StoreItem', back_populates='visible_seats')
     seat = db.relationship('Seat', backref=db.backref('store_visibility_grants', lazy='dynamic'))
 
-
 # DELETED per Phase 2 Migration: StorePurchaseStatus, StorePurchase, RedemptionEventAction, RedemptionEventSource, RedemptionEvent
 # These tables/enums are forbidden per DOM-STORE-001 v3.0 §VI and §XIX
 # StorePurchase: collapse into Entitlements + Ledger (no quantity persistence)

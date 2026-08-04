@@ -1,6 +1,7 @@
 # Store/Entitlements Domain Demolition Plan
 ## Phase 9 Execution: Legacy Deletion
 
+> Historical plan note: this document describes the pre-closeout deletion target set from 2026-07-26. The current live-tree Store closure state is summarized in `docs/TRACKING/STORE_ENTITLEMENT_PHASE6_SURFACE_INVENTORY_2026-07-31.md`, and the remaining references in this plan are archival unless explicitly revalidated against current code.
 | Reference | Value |
 |-----------|-------|
 | **Domain** | Store and Entitlements (DOM-STORE-001 v3.0) |
@@ -62,11 +63,11 @@ Remove code that creates/reads/deletes these tables:
 2. Remove backref relationships
 3. Remove any @event.listens_for decorators
 
-### Phase 4: Delete Migrations
+### Phase 4: Historical Migration Record
 
-1. Remove migration files that created these tables
-2. Create a rollback migration if data needs to be preserved
-3. Verify migration chain remains valid
+1. Preserve the applied migration history as an archive of the original demolition target set
+2. Do not delete revision history that has already been applied to deployed environments
+3. Verify only that the archived chain description still matches the historical closeout record
 
 ### Phase 5: Delete Tests
 

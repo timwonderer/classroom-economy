@@ -4,17 +4,17 @@ Store Policy Resolver — STORE-owned policy consumption service.
 Implements DOM-STORE-001 and SPEC-STORE-001:
 - Resolves store product policies by UUID (exact immutable retrieval)
 - Parses and validates policy payloads (fail-fast per SPEC-STORE-001)
-- Supports applicability queries (separate from exact resolution)
+- Supports discovery of canonical policy definitions for a class
 
 Key principle: UUID resolution is exact, not inferential.
 - resolve_store_item(policy_uuid) returns that exact immutable policy
-- get_applicable_policies() is separate operation for "what's active now?"
+- list_store_policies(class_id) returns canonical policy definitions for the class
 - No cross-domain FK; no version inference from product_id + time
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from decimal import Decimal
 from typing import Optional, List, Dict, Any
 from datetime import datetime
@@ -251,7 +251,7 @@ class StorePolicyConfigParser:
         except PolicyValidationError:
             raise
         except Exception as e:
-            raise PolicyParseError(f"Unexpected error parsing payload: {str(e)}")
+            raise PolicyParseError(f"Unexpected error parsing payload: {str(e)}") from e
 
     # ============================================================================
     # Type parsers (SPEC-STORE-001 §V type checking)
@@ -495,7 +495,7 @@ class StorePolicyResolver:
 
     Implements:
     - Exact resolution: resolve_store_item(policy_uuid) → StorePolicyConfig
-    - Applicability queries: get_applicable_policies() (stub for future expansion)
+    - Discovery: list_store_policies(class_id) → List[StorePolicyConfig]
 
     Key principles:
     - UUID resolution is exact, not inferential
@@ -524,32 +524,26 @@ class StorePolicyResolver:
             raise PolicyNotFound(f"Policy UUID {policy_uuid} not found (may have been deleted)")
 
         # Parse and validate payload per SPEC-STORE-001
-        try:
-            return StorePolicyConfigParser.parse(
-                payload=store_product.payload,
-                policy_uuid=store_product.policy_uuid,
-                class_id=store_product.class_id,
-                created_at=store_product.created_at,
-            )
-        except (PolicyParseError, PolicyValidationError) as e:
-            raise StorePolicyError(f"Policy {policy_uuid} validation failed: {str(e)}")
+        return StorePolicyConfigParser.parse(
+            payload=store_product.payload,
+            policy_uuid=store_product.policy_uuid,
+            class_id=store_product.class_id,
+            created_at=store_product.created_at,
+        )
 
     @staticmethod
-    def get_applicable_policies(class_id: str) -> List[StorePolicyConfig]:
-        """Get currently applicable store policies for a class.
+    def list_store_policies(class_id: str) -> List[StorePolicyConfig]:
+        """List canonical store policy definitions for a class.
 
-        Separate from resolve_store_item(). Used to answer:
-        "What policies are currently available for purchase/grant in this class?"
-
-        Note: Applicability semantics (what makes a policy "active") are not yet
-        fully specified in DOM-STORE-001 or SPEC-STORE-001. This is a stub
-        that returns non-retired policies only.
-
+        This is a pure configuration discovery primitive. It does not evaluate
+        student eligibility, affordability, entitlement ownership, class feature
+        state, ordering, or presentation. Those concerns belong in Phase 5
+        view models.
         Args:
             class_id: Class scope for policies
 
         Returns:
-            List[StorePolicyConfig]: Currently applicable policies
+            List[StorePolicyConfig]: Canonical policy definitions for the class
 
         Raises:
             StorePolicyError: If any policy fails validation (stop on first error)
@@ -616,25 +610,8 @@ class StorePolicyResolver:
         db.session.flush()
 
         # Return config with populated UUID and timestamps
-        return StorePolicyConfig(
-            product_id=config.product_id,
-            is_purchasable=config.is_purchasable,
-            supports_direct_grants=config.supports_direct_grants,
-            price=config.price,
-            entitlement_type=config.entitlement_type,
-            limit_per_student=config.limit_per_student,
-            auto_expiry_days=config.auto_expiry_days,
-            name=config.name,
-            description=config.description,
-            tier=config.tier,
-            bypass_cwi_warnings=config.bypass_cwi_warnings,
-            is_long_term_goal=config.is_long_term_goal,
-            bundle_quantity=config.bundle_quantity,
-            bulk_discount_quantity=config.bulk_discount_quantity,
-            bulk_discount_percentage=config.bulk_discount_percentage,
-            collective_goal_type=config.collective_goal_type,
-            collective_goal_target=config.collective_goal_target,
-            collective_goal_expires_at=config.collective_goal_expires_at,
+        return replace(
+            config,
             policy_uuid=store_product.policy_uuid,
             class_id=store_product.class_id,
             created_at=store_product.created_at,
