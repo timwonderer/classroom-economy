@@ -28,6 +28,10 @@ from app.feats.base import feat_shell
 from app.models import Seat, EntitlementEvent, PendingAction, Transaction
 from app.services.context_resolver import CanonicalContext
 from app.services import ledger_service
+from app.feats.ledger_resolution_feat import (
+    build_intended_ledger_plan,
+    resolve_intended_ledger_plan,
+)
 from app.services.store_policy_resolver import (
     StorePolicyResolver,
     StorePolicyError,
@@ -223,20 +227,26 @@ def _submit_insurance_claim_impl(
             )
 
         # 5. Check for existing pending_action (idempotency)
-        if not correlation_id:
-            correlation_id = f"corr_{uuid.uuid4().hex}"
+        replay_key = correlation_id or idempotency_key or f"corr_{uuid.uuid4().hex}"
 
         existing_pending = (
             db.session.query(PendingAction)
             .filter(
-                PendingAction.class_id == canonical_context.class_id,
-                PendingAction.entitlement_id == entitlement_id,
-                PendingAction.correlation_id == correlation_id,
+                PendingAction.correlation_id == replay_key,
             )
             .first()
         )
 
         if existing_pending:
+            if (
+                existing_pending.class_id != canonical_context.class_id
+                or existing_pending.entitlement_id != entitlement_id
+            ):
+                return InsuranceClaimSubmissionResult(
+                    success=False,
+                    error_code="IDEMPOTENCY_CONFLICT",
+                    error_message="Correlation ID already exists for a different claim context",
+                )
             # Return prior result (idempotent)
             return InsuranceClaimSubmissionResult(
                 success=True,
@@ -259,6 +269,7 @@ def _submit_insurance_claim_impl(
             db.session.query(EntitlementEvent)
             .filter(
                 EntitlementEvent.entitlement_id == entitlement_id,
+                EntitlementEvent.class_id == canonical_context.class_id,
                 EntitlementEvent.event_type == "CONSUMED",
             )
             .count()
@@ -282,7 +293,7 @@ def _submit_insurance_claim_impl(
             class_id=canonical_context.class_id,
             seat_id=canonical_context.seat_id,
             entitlement_id=entitlement_id,
-            correlation_id=correlation_id,
+            correlation_id=replay_key,
             authoritative_feat="FEAT-STOR-003-RESOLVE",
             payload={
                 "claim_subject": claim_subject,
@@ -300,14 +311,13 @@ def _submit_insurance_claim_impl(
         return InsuranceClaimSubmissionResult(
             success=True,
             pending_action_id=pending_action_id,
-            correlation_id=correlation_id,
+            correlation_id=replay_key,
             entitlement_id=entitlement_id,
             submitted_at=now,
             eligibility_flags=eligibility_flags,
         )
 
     except Exception as e:
-        db.session.rollback()
         return InsuranceClaimSubmissionResult(
             success=False,
             error_code="INTERNAL_ERROR",
@@ -507,8 +517,6 @@ def _resolve_insurance_claim_impl(
                 original_transaction_id=source_transaction.id,
             )
             ledger_transaction_id = ledger_transaction.id
-            if not created:
-                ledger_transaction_id = ledger_transaction.id
 
             # Write CONSUMED entitlement event
             consumed_event = EntitlementEvent(

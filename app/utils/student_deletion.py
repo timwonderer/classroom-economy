@@ -9,8 +9,8 @@ from app.models import (
     Issue,
     IssueResolutionAction,
     IssueStatusHistory,
-    # RedemptionAuditLog removed — redemption_audit_logs unauthorized (DOM-STORE-001)
-    # RedemptionEvent, StorePurchase, Entitlement, EntitlementConsumption deleted per Phase 2 migration (DOM-STORE-001 v3.0)
+    EntitlementEvent,
+    PendingAction,
     AttendanceSession,
     PayrollEvent,
     Transaction,
@@ -26,19 +26,14 @@ def _collect_related_ids_for_seats(seat_ids_for_student):
     if not seat_ids_for_student:
         return [], [], [], []
 
-    store_purchase_ids = [
-        row[0]
-        for row in (
-            db.session.query(StorePurchase.id)
-            .filter(StorePurchase.seat_id.in_(seat_ids_for_student))
-            .all()
-        )
-    ]
     entitlement_ids = [
         row[0]
         for row in (
-            db.session.query(Entitlement.entitlement_id)
-            .filter(Entitlement.target_seat_id.in_(seat_ids_for_student))
+            db.session.query(EntitlementEvent.entitlement_id)
+            .filter(
+                EntitlementEvent.target_seat_id.in_(seat_ids_for_student),
+                EntitlementEvent.event_type == "GRANTED",
+            )
             .all()
         )
     ]
@@ -56,7 +51,7 @@ def _collect_related_ids_for_seats(seat_ids_for_student):
         .filter(Transaction.seat_id.in_(seat_ids_for_student))
         .all()
     ]
-    return store_purchase_ids, entitlement_ids, issue_ids, tx_ids, seat_ids_for_student
+    return entitlement_ids, issue_ids, tx_ids, seat_ids_for_student
 
 
 def _collect_related_ids(student_id):
@@ -116,7 +111,6 @@ def _clear_cross_transaction_refs(tx_ids):
 
 def _delete_student_scoped_rows(
     student_id,
-    store_purchase_ids,
     entitlement_ids,
     issue_ids,
     tx_ids,
@@ -125,14 +119,16 @@ def _delete_student_scoped_rows(
     scoped_class_id=None,
 ):
     """Delete records that are scoped directly to the student being removed."""
-    if scoped_class_id:
-        RedemptionEvent.query.filter_by(class_id=scoped_class_id).delete(synchronize_session=False)
     if entitlement_ids:
-        EntitlementConsumption.query.filter(
-            EntitlementConsumption.entitlement_id.in_(entitlement_ids)
+        PendingAction.query.filter(
+            PendingAction.entitlement_id.in_(entitlement_ids)
         ).delete(synchronize_session=False)
-        Entitlement.query.filter(
-            Entitlement.entitlement_id.in_(entitlement_ids)
+        EntitlementEvent.query.filter(
+            EntitlementEvent.entitlement_id.in_(entitlement_ids)
+        ).delete(synchronize_session=False)
+    if scoped_class_id:
+        PendingAction.query.filter(
+            PendingAction.class_id == scoped_class_id
         ).delete(synchronize_session=False)
     if issue_ids:
         IssueResolutionAction.query.filter(
@@ -193,10 +189,10 @@ def hard_delete_student_if_orphaned(student_id):
     if has_links:
         return False
 
-    store_purchase_ids, entitlement_ids, issue_ids, tx_ids, seat_ids = _collect_related_ids(student_id)
+    entitlement_ids, issue_ids, tx_ids, seat_ids = _collect_related_ids(student_id)
     _unclaim_all_seats_for_student(student_id)
     _clear_cross_transaction_refs(tx_ids)
-    _delete_student_scoped_rows(student_id, store_purchase_ids, entitlement_ids, issue_ids, tx_ids, seat_ids)
+    _delete_student_scoped_rows(student_id, entitlement_ids, issue_ids, tx_ids, seat_ids)
     Seat.query.filter(Seat.user_id == student_id).delete(synchronize_session=False)
     return True
 
@@ -212,7 +208,7 @@ def remove_student_from_teacher_scope(seat_id, user_id):
         return False
 
     student_user_id = seat.user_id
-    scoped_store_purchase_ids, scoped_entitlement_ids, scoped_issue_ids, scoped_tx_ids, scoped_seat_ids = (
+    scoped_entitlement_ids, scoped_issue_ids, scoped_tx_ids, scoped_seat_ids = (
         _collect_related_ids_for_seats([seat_id])
     )
     teacher_class_ids = sa.select(ClassEconomy.class_id).where(ClassEconomy.user_id == user_id)
@@ -231,26 +227,22 @@ def remove_student_from_teacher_scope(seat_id, user_id):
         _clear_cross_transaction_refs(scoped_tx_ids)
         _delete_student_scoped_rows(
             student_user_id,
-            scoped_store_purchase_ids,
             scoped_entitlement_ids,
             scoped_issue_ids,
             scoped_tx_ids,
             scoped_seat_ids,
-            seat_ids_for_student=scoped_seat_ids,
             scoped_class_id=seat.class_id,
         )
         return False
 
-    store_purchase_ids, entitlement_ids, issue_ids, tx_ids, seat_ids = _collect_related_ids_for_seats(scoped_seat_ids)
+    entitlement_ids, issue_ids, tx_ids, seat_ids = _collect_related_ids_for_seats(scoped_seat_ids)
     _clear_cross_transaction_refs(tx_ids)
     _delete_student_scoped_rows(
         student_user_id,
-        store_purchase_ids,
         entitlement_ids,
         issue_ids,
         tx_ids,
         seat_ids,
-        seat_ids_for_student=seat_ids,
     )
     Seat.query.filter(Seat.user_id == student_user_id).delete(synchronize_session=False)
     return True

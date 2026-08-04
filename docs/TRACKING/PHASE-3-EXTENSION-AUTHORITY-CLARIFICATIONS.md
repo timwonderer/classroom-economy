@@ -79,12 +79,12 @@ Remaining questions requiring authority answer:
 - Question 3: Validation scope
 - Question 4: Payload structure
 - Question 5: Approval conditions (manual, automatic?)
-- Question 7: Redemption repeatability (one-time, repeatable?)
-- Question 8: Expiration trigger
+- Question 6: Redemption repeatability (one-time, repeatable?)
+- Question 7: Expiration trigger
 
 ### Implementation Status
 
-⏳ **Blocked pending authority answers to 7 questions**
+⏳ **Blocked pending authority answers to 5 questions**
 
 Cannot finalize FEAT signature or validation logic until Questions 1-5 are answered.
 

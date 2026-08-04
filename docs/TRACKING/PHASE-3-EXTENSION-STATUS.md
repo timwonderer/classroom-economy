@@ -295,7 +295,7 @@ Phase 5 read models may then include:
 Phase 3 extension work is **design-complete for all three paths**:
 
 - **Path 1 (Insurance)**: ✅ Ready for immediate implementation — full authority in place
-- **Path 2 (Delayed-Use)**: ✅ Design complete; 🔄 awaiting authority answers to 9 questions
+- **Path 2 (Delayed-Use)**: ✅ Design complete; 🔄 awaiting authority answers to 5 questions
 - **Path 3 (Hall-Pass)**: ✅ Design complete; 🔄 awaiting cross-domain approval
 
 All workflows enforce policy-UUID immutability and atomic resolution semantics per DOM-STORE-001 v5.0.

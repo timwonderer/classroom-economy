@@ -447,7 +447,7 @@ def use_item():
         return jsonify({"status": "error", "message": "This item is not available for redemption."}), 400
 
     store_item = db.session.get(StoreItem, entitlement.product_id)
-    if not store_item:
+    if not store_item or store_item.class_id != entitlement.class_id:
         return jsonify({"status": "error", "message": "Invalid item."}), 404
 
     current_action = _pending_action_for_entitlement(entitlement.entitlement_id)
@@ -518,10 +518,9 @@ def approve_redemption():
 
     Validation and scope checks run as pure reads in the route body; the actual
     state mutation is delegated to FEAT-STOR-002. The FEAT shell owns the
-    transaction boundary — any exception raised below this point (other than
-    the explicitly caught RedemptionDispositionError business error) will
-    trigger a rollback at the shell. Infrastructure errors are NOT swallowed
-    here; they propagate to Flask's error handler.
+    transaction boundary — any exception raised below this point will trigger
+    a rollback at the shell. Infrastructure errors are NOT swallowed here;
+    they propagate to Flask's error handler.
     """
     data = request.get_json(silent=True) or {}
     entitlement_id = data.get('entitlement_id')
@@ -555,8 +554,8 @@ def approve_redemption():
         if not pending_action:
             return jsonify({"status": "error", "message": "Redemption request is no longer pending and cannot be approved."}), 409
 
+        ctx = g.canonical_context
         if store_item.item_type == 'hall_pass':
-            ctx = g.canonical_context
             record_hall_pass_log(
                 ctx=ctx,
                 requested_by_seat_id=entitlement.target_seat_id,
@@ -586,7 +585,7 @@ def approve_redemption():
                 )
             )
         db.session.delete(pending_action)
-    except Exception as e:
+    except (SQLAlchemyError, ValueError) as e:
         current_app.logger.info(
             "Redemption approval failed for entitlement %s: %s",
             entitlement_id,
@@ -634,7 +633,7 @@ def reject_redemption():
             return jsonify({"status": "error", "message": "Redemption request could not be rejected in its current state."}), 409
 
         db.session.delete(pending_action)
-    except Exception as e:
+    except (SQLAlchemyError, ValueError) as e:
         current_app.logger.info(
             "Redemption rejection failed for entitlement %s: %s",
             entitlement_id,

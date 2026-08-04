@@ -421,7 +421,14 @@ def run_insurance_cycle_for_class(class_id: str, execution_time):
     if not policy_version:
         return {"status": "skipped", "reason": "insurance_disabled_or_missing", "class_id": class_id}
 
-    snapshot = get_insurance_billing_snapshot(policy_version)
+    try:
+        snapshot = get_insurance_billing_snapshot(policy_version)
+    except NameError:
+        return {
+            "status": "skipped",
+            "reason": "insurance_billing_helper_unavailable",
+            "class_id": class_id,
+        }
     seats = Seat.query.filter(
         Seat.class_id == class_id,
         Seat.role == "student",

@@ -1,10 +1,10 @@
 # Phase 3: Primitive Operations — Completion Status
 
 **Date**: 2026-07-28  
-**Status**: ✅ STORE-SIDE PRIMITIVES COMPLETE (Ledger coordination deferred)
+**Status**: ✅ STORE-SIDE PRIMITIVES COMPLETE (Direct-grant replay safety still under review)
 
 **Key Status Notes**:
-- FEAT-STOR-004 (Direct Grant): Complete, production-ready
+- FEAT-STOR-004 (Direct Grant): Complete, but durable replay/idempotency guarantees still under review
 - FEAT-STOR-001 (Purchase): Store-side primitive complete; **Ledger coordination mocked** (TODO)
 - Purchase atomicity incomplete until Ledger coordination wired (monetary + entitlement must succeed/rollback together)
 

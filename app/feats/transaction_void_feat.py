@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 
 from app.extensions import db
-from app.models import StoreItem, Transaction, TransactionStatus
+from app.models import EntitlementEvent, StoreItem, Transaction, TransactionStatus
 from app.services import ledger_service, obligations_service
 # TODO (Phase 4): store_entitlement_service deleted; must query EntitlementEvent directly
 # from app.services.store_entitlement_service import list_entitlement_history
@@ -80,16 +80,17 @@ def _void_purchase(tx: Transaction) -> None:
         raise ImmediatePurchaseNotVoidable
     if store_item.item_type != 'delayed':
         raise ValueError("Only delayed-use item purchases are voidable.")
-    matching_items = []
-    for entry in list_entitlement_history(
-        target_seat_id=tx.seat_id,
-        class_id=tx.class_id,
-        entitlement_item_id=store_item.id,
-    ):
-        ent = entry["entitlement"]
-        if entry["terminal_event"] is not None:
-            continue
-        matching_items.append(ent)
+    matching_items = (
+        EntitlementEvent.query
+        .filter(
+            EntitlementEvent.target_seat_id == tx.seat_id,
+            EntitlementEvent.class_id == tx.class_id,
+            EntitlementEvent.product_id == store_item.id,
+            EntitlementEvent.event_type == "GRANTED",
+        )
+        .order_by(EntitlementEvent.timestamp.asc())
+        .all()
+    )
     if not matching_items:
         raise ValueError("No matching student item was found for this purchase.")
 
@@ -111,8 +112,15 @@ def _void_purchase(tx: Transaction) -> None:
     if selected_units < quantity:
         raise ValueError("Unable to map this transaction to purchasable student items.")
 
-    # Historical note: the legacy RedemptionEvent model was removed in the Phase 2 migration.
-    # The canonical terminal-state check is now based on EntitlementEvent.event_type == CONSUMED.
+    if any(
+        EntitlementEvent.query.filter_by(
+            entitlement_id=event.entitlement_id,
+            class_id=tx.class_id,
+            event_type="CONSUMED",
+        ).first()
+        for event in selected_items
+    ):
+        raise ValueError("Transaction cannot be voided because selected entitlements are already consumed.")
 
     ledger_service.create_pending_transaction(
         seat_id=tx.seat_id,

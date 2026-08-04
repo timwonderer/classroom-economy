@@ -71,25 +71,25 @@ def upgrade():
             sa.PrimaryKeyConstraint('id')
         )
         print("✅ Created store_products table")
-
-        # Create indexes
-        if not index_exists('store_products', 'ix_store_products_policy_uuid'):
-            op.create_index('ix_store_products_policy_uuid', 'store_products', ['policy_uuid'], unique=True)
-            print("✅ Created index ix_store_products_policy_uuid")
-
-        if not index_exists('store_products', 'ix_store_products_class_id'):
-            op.create_index('ix_store_products_class_id', 'store_products', ['class_id'])
-            print("✅ Created index ix_store_products_class_id")
-
-        if not index_exists('store_products', 'ix_store_products_class_retired'):
-            op.create_index('ix_store_products_class_retired', 'store_products', ['class_id', 'is_retired'])
-            print("✅ Created index ix_store_products_class_retired")
-
-        if not index_exists('store_products', 'ix_store_products_class_created'):
-            op.create_index('ix_store_products_class_created', 'store_products', ['class_id', 'created_at'])
-            print("✅ Created index ix_store_products_class_created")
     else:
         print("⚠️  Table 'store_products' already exists, skipping creation")
+
+    # Create indexes independently so a partially applied migration can still recover.
+    if not index_exists('store_products', 'ix_store_products_policy_uuid'):
+        op.create_index('ix_store_products_policy_uuid', 'store_products', ['policy_uuid'], unique=True)
+        print("✅ Created index ix_store_products_policy_uuid")
+
+    if not index_exists('store_products', 'ix_store_products_class_id'):
+        op.create_index('ix_store_products_class_id', 'store_products', ['class_id'])
+        print("✅ Created index ix_store_products_class_id")
+
+    if not index_exists('store_products', 'ix_store_products_class_retired'):
+        op.create_index('ix_store_products_class_retired', 'store_products', ['class_id', 'is_retired'])
+        print("✅ Created index ix_store_products_class_retired")
+
+    if not index_exists('store_products', 'ix_store_products_class_created'):
+        op.create_index('ix_store_products_class_created', 'store_products', ['class_id', 'created_at'])
+        print("✅ Created index ix_store_products_class_created")
 
 
 def downgrade():

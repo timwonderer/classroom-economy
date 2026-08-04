@@ -191,6 +191,8 @@ def get_frozen_privilege_items(settings: RentSettings | None) -> list[dict]:
     return [
         {
             "store_item_id": item.id,
+            "name": item.name,
+            "description": item.description,
             "rent_item_type": "privilege",
             "is_available_in_store": item.is_rent_linked,
             "purchase_duration": "per_period",
@@ -219,5 +221,4 @@ def get_frozen_store_linked_items(settings: RentSettings | None) -> list[dict]:
             "use_limit": item.limit_per_student,
         }
         for item in _get_rent_linked_store_items(settings.class_id)
-        if item.item_type != "hall_pass"
     ]

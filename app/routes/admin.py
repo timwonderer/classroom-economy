@@ -1417,7 +1417,10 @@ def _delete_teacher_settings_activity_and_audit_rows(canonical_context):
         )
     ).delete(synchronize_session=False)
     Transaction.query.filter_by(user_id=user_id).delete(synchronize_session=False)
-    PendingAction.query.filter_by(authoritative_feat="FEAT-STOR-002").delete(synchronize_session=False)
+    PendingAction.query.filter(
+        PendingAction.authoritative_feat == "FEAT-STOR-002",
+        PendingAction.class_id.in_(sa.select(class_ids_subq)),
+    ).delete(synchronize_session=False)
 
 
 def _delete_teacher_rent_rows(canonical_context):
@@ -2709,6 +2712,7 @@ def dashboard():
         .filter(
             PendingAction.class_id.in_(teacher_class_ids),
             PendingAction.authoritative_feat == "FEAT-STOR-002",
+            EntitlementEvent.event_type == "GRANTED",
         )
         .count()
     )
@@ -4489,11 +4493,8 @@ def student_detail_public(actor_public_id):
 @admin_required
 def adjust_hall_pass_entitlements(seat_id):
     """Grant or remove hall-pass entitlements for a student."""
-    try:
-        canonical_context = getattr(g, "canonical_context", None)
-        if not canonical_context:
-            abort(403)
-    except Exception:
+    canonical_context = getattr(g, "canonical_context", None)
+    if not canonical_context:
         abort(403)
 
     target_seat = db.session.get(Seat, seat_id)
@@ -5511,15 +5512,19 @@ def store_management():
     }
     inferred_rows = []
 
-    live_serialized = [{
-        'student_item_id': row.entitlement_id,
-        'student_display_name': db.session.get(IdentityProfile, db.session.query(Seat.identity_profile_id).filter(Seat.id == row.seat_id).scalar()).first_name if db.session.query(Seat.identity_profile_id).filter(Seat.id == row.seat_id).scalar() else "Unknown",
-        'class_display_label': selected_scope.get('join_code') or selected_scope.get('block') or "Unknown",
-        'action': row.action.value if hasattr(row.action, 'value') else row.action,
-        'notes': row.notes,
-        'timestamp': row.timestamp,
-        'source': row.source.value if hasattr(row.source, 'value') else row.source,
-    } for row in live_rows]
+    live_serialized = []
+    for row in live_rows:
+        seat = db.session.get(Seat, row.seat_id)
+        profile = seat.identity_profile if seat else None
+        live_serialized.append({
+            'student_item_id': row.entitlement_id,
+            'student_display_name': profile.full_name if profile else "Unknown",
+            'class_display_label': selected_scope.get('join_code') or selected_scope.get('block') or "Unknown",
+            'action': row.action.value if hasattr(row.action, 'value') else row.action,
+            'notes': row.notes,
+            'timestamp': row.timestamp,
+            'source': row.source.value if hasattr(row.source, 'value') else row.source,
+        })
 
     audit_rows_all = live_serialized + inferred_rows
     audit_rows_all.sort(key=lambda r: ensure_utc(r['timestamp']) if r['timestamp'] else UTC_MIN, reverse=True)

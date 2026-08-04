@@ -139,6 +139,7 @@ Rules:
 
 - This domain stores class-level configuration only.
 - It owns feature enablement, class identity, and all DOM-ECON class-level economic-engine settings.
+- It owns the `feature_settings` schema and its projection.
 - It does not own rent settings, store offerings, insurance definitions, payroll rules, or banking rules.
 - It does not mutate ledger, attendance, obligations, or entitlement tables.
 - All class-level configuration must be scoped by `class_id`.
@@ -150,6 +151,7 @@ Rules:
 - Other domains consume class-level configuration from this domain.
 - `timezone` governs class-level temporal interpretation.
 - FEAT orchestration may read class-level configuration, but it does not own it.
+- `feature_settings` is a projection of class-level configuration and must not become independent policy truth.
 - Class creation and class deletion are class-level mutation workflows.
 - Disabling a feature changes access and display state only; it does not rewrite downstream facts.
 

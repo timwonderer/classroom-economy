@@ -67,7 +67,7 @@ def get_entitlement_history(entitlement_id: str, class_id: str) -> List[Entitlem
 
 #### Read 2: Get Granted Entitlements for Seat+Product
 
-**Purpose**: Find all active (GRANTED, not CONSUMED/EXPIRED/REVOKED) entitlements for student+product  
+**Purpose**: Find all non-terminal entitlement lineages for student+product  
 **Source Table**: `entitlement_events`  
 **Scope**: Class-scoped  
 **Query Pattern**:
@@ -77,7 +77,7 @@ def get_active_entitlements(
     class_id: str,
     product_id: int | None = None
 ) -> List[EntitlementEvent]:
-    """Return all non-terminal GRANTED events for seat+product (optionally filtered)."""
+    """Return GRANTED events whose lineages have no terminal event."""
     query = db.session.query(EntitlementEvent).filter_by(
         target_seat_id=seat_id,
         class_id=class_id,
@@ -85,7 +85,12 @@ def get_active_entitlements(
     )
     if product_id:
         query = query.filter_by(product_id=product_id)
-    return query.all()
+    active = []
+    for event in query.all():
+        terminal = get_entitlement_lineage_terminal_event(event.entitlement_id, class_id)
+        if terminal is None:
+            active.append(event)
+    return active
 ```
 
 **Used By**:
@@ -149,19 +154,17 @@ def get_entitlement_status(entitlement_id: str, class_id: str) -> str:
 #### Projection 2: Hall Pass Balance for Seat+Class
 
 **Purpose**: Derive how many hall passes are available for a student  
-**Source**: Count GRANTED events for product_id=hall_pass, subtract CONSUMED/EXPIRED  
+**Source**: Count GRANTED events for hall-pass product, excluding lineages with terminal events  
 **Formula**:
 ```python
 def get_hall_pass_balance(seat_id: int, class_id: str) -> int:
-    """Derive available hall passes from granted - consumed."""
-    # Count active (GRANTED only) hall pass entitlements
-    active = db.session.query(sa.func.count(EntitlementEvent.event_id)).filter_by(
-        target_seat_id=seat_id,
+    """Derive available hall passes from non-terminal entitlement lineages."""
+    active = get_active_entitlements(
+        seat_id=seat_id,
         class_id=class_id,
-        product_id=HALL_PASS_PRODUCT_ID,  # From policy config
-        event_type='GRANTED'
-    ).scalar()
-    return active or 0
+        product_id=HALL_PASS_PRODUCT_ID,
+    )
+    return len(active)
 ```
 
 **Used By**:

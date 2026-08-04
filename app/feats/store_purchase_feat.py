@@ -23,7 +23,7 @@ from typing import Optional
 import uuid
 
 from app.extensions import db
-from app.feats.base import feat_shell, FEATContext
+from app.feats.base import feat_shell, FEATContext, get_correlation_id
 from app.feats.ledger_resolution_feat import (
     build_intended_ledger_plan,
     resolve_intended_ledger_plan,
@@ -120,7 +120,15 @@ def _execute_store_purchase_impl(
         )
 
     # Validate target seat exists and belongs to class
-    target_seat = db.session.get(Seat, canonical_context.seat_id)
+    target_seat = (
+        db.session.query(Seat)
+        .filter(
+            Seat.id == canonical_context.seat_id,
+            Seat.class_id == canonical_context.class_id,
+        )
+        .with_for_update()
+        .one_or_none()
+    )
     if not target_seat or target_seat.class_id != canonical_context.class_id:
         return StorePurchaseResult(
             success=False,
@@ -205,7 +213,7 @@ def _execute_store_purchase_impl(
             )
 
     # Generate or use provided correlation ID
-    corr_id = correlation_id or f"store_purchase_{uuid.uuid4().hex}"
+    corr_id = correlation_id or get_correlation_id() or f"store_purchase_{uuid.uuid4().hex}"
 
     # =========================================================================
     # PHASE 2: Ledger Execution
@@ -273,6 +281,7 @@ def _execute_store_purchase_impl(
             "quantity_total": quantity,
             "instant_use": instant_use,
             "policy_uuid": policy_config.policy_uuid,  # For audit/historical reference
+            "price_per_unit": str(policy_config.price),
         }
 
         event = EntitlementEvent(

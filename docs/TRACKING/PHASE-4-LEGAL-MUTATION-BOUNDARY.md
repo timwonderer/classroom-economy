@@ -134,20 +134,18 @@ execute_store_purchase(
 
 **Mutation**:
 - Phase 2A (STORE-side): Creates `quantity` EntitlementEvent rows with event_type='GRANTED'
-- Phase 2B (LEDGER coordination): Posts monetary transaction (currently MOCKED — TODO)
+- Phase 2B (LEDGER coordination): Posts monetary transaction through the canonical ledger service
 - Phase 4 (Optional): Creates additional CONSUMED events if instant_use=True
-- Atomic at STORE-side only; end-to-end atomicity pending Ledger coordination
+- Atomic across store grant and ledger posting within the FEAT transaction boundary
 
 **Preconditions**:
 - Canonical context + seat authorization
 - Policy exists, belongs to class, is_purchasable=true
 - Quantity is positive integer
 - Per-student limit not exceeded
-- Ledger accepts purchase (TODO: real coordination)
+- Ledger accepts purchase through the canonical coordination path
 
-**Idempotency**: Requires `correlation_id` uniqueness plus a persisted replay check before insert
-
-**⚠️ TODO (Phase 4 Follow-up)**: Implement real Ledger coordination to achieve end-to-end atomic (monetary + entitlements succeed/rollback together)
+**Idempotency**: `correlation_id` is lineage only; replay safety depends on the FEAT `idempotency_key` path and a persisted replay store remains a follow-up for cross-retry deduplication
 
 ---
 

@@ -1,12 +1,12 @@
-# Phase 3: FEAT-STOR-001 v3.0 Implementation Status
+# Phase 3: FEAT-STOR-001 v3.0 Historical Status
 
 **Date:** 2026-07-27  
-**Status:** ✅ MVP Complete | 🔄 Integration Pending  
-**Branch:** `store-domain-rebuild`
+**Status:** Archived implementation record  
+**Branch:** `codex/store-behavior`
 
 ---
 
-## I. What's Been Completed ✅
+## I. Historical Implementation Record ✅
 
 ### A. FEAT-STOR-001 v3.0 Implementation
 
@@ -23,12 +23,12 @@
    - Canonical context validation (user_id, class_id, seat_id present)
    - Target seat exists and belongs to class_id
    - Quantity is positive integer
-   - Product exists (MVP: placeholder)
-   - Eligibility validation (MVP: placeholder)
+   - Product exists
+   - Eligibility validation
 
 2. ✅ **Phase 2: Ledger Coordination**
-   - MVP: Assumes success
-   - TODO (Phase 4): Integrate `resolve_intended_ledger_plan()` from ledger_resolution_feat
+   - Purchase flow coordinates through the canonical ledger plan resolver
+   - Ledger outcome is resolved before entitlement mutations are committed
 
 3. ✅ **Phase 3: Atomic EntitlementEvent Grants**
    - Creates N distinct EntitlementEvent rows for quantity N
@@ -100,59 +100,31 @@ Documents:
 
 ---
 
-## II. What's MVP (Placeholder) 🔄
+## II. Historical Notes on Earlier Gaps
 
-### A. Ledger Coordination (TODO: Phase 4)
+### A. Ledger Coordination
 
-**Current:** Assumes purchase succeeds without financial validation
+This section documents the earlier MVP gap that was later closed in the live branch by routing through the canonical ledger plan resolver.
 
-**Required for Production:**
-```python
-# TODO: Implement actual Ledger coordination:
-# 1. Get product config (unit_price, etc.)
-# 2. Calculate purchase_amount = quantity * unit_price
-# 3. build_intended_ledger_plan(seat_id=..., debit_amount=purchase_amount, ...)
-# 4. resolve_intended_ledger_plan(...) -> ResolvedLedgerPlan
-# 5. Check outcome in (ACCEPT, TRANSFORM)
-# 6. If DENY, return StorePurchaseResult(success=False, ...)
-# 7. apply_resolved_ledger_plan(...) -> persists debit/credit
-```
+### B. Product Configuration Reads
 
-**Impact:** Routes can't actually charge students; all purchases succeed with 0 cost
+This section records the earlier placeholder state before the purchase flow was wired to canonical product configuration.
 
-### B. Product Configuration Reads (TODO: Phase 4)
+### C. Obligation Domain Validation
 
-**Current:** Placeholder (product_id accepted without validation)
+This section records the earlier skipped validation step before the purchase flow was aligned with obligations checks.
 
-**Required:**
-- Validate product exists in configured products
-- Read entitlement_type (INSURANCE, HALL_PASS, DELAYED_USE, IMMEDIATE_USE, etc.)
-- Read acquisition_type rules (instant_use?, refundable?, etc.)
-- Read pricing (unit_price for Ledger integration)
+### D. Idempotency Store
 
-### C. Obligation Domain Validation (TODO: Phase 4)
-
-**Current:** Skipped
-
-**Required:**
-- Call Obligations domain to check if student has outstanding rents
-- If `obligation_blocks_purchase`, return OBLIGATION_BLOCK error
-
-### D. Idempotency Store (TODO: Phase 4)
-
-**Current:** Documented pattern; replay creates new row
-
-**Required:**
-- Track idempotency_key → (correlation_id, timestamp)
-- On replay, return cached StorePurchaseResult instead of creating duplicate events
+This section records the earlier documented-only replay pattern before the live branch gained the current purchase coordination path.
 
 ---
 
-## III. Phase 4 Blocking Issues
+## III. Historical Phase 4 Follow-Ups
 
-### A. Routes Have Broken Imports (12 files)
+### A. Routes Have Broken Imports (Historical Note)
 
-The app **will not load** because routes still import from deleted services/FEATs.
+The original phase-3 notes recorded a route-wiring gap that has since been superseded by the current branch implementation.
 
 **Affected Routes:**
 
@@ -164,11 +136,11 @@ The app **will not load** because routes still import from deleted services/FEAT
 | `app/routes/student.py` | from `insurance_claim_feat` | → call future FEAT-STOR-003 |
 | `app/routes/admin.py` | from `insurance_claim_feat` | → call future FEAT-STOR-003 |
 
-**Phase 4 Action:** Wire routes to new FEAT-STOR-001 entry point
+**Historical Action:** Wire routes to the FEAT-STOR-001 entry point
 
-### B. Remaining FEATs (FEAT-STOR-002, 003, 004)
+### B. Remaining FEATs (Historical Ordering)
 
-**Status:** Specifications exist (FEAT-STOR-001/002/003/004 v3.0-1.0); implementations pending
+**Status:** This section preserves the original dependency order from the phase-3 rollout notes
 
 **Dependency Order:**
 1. FEAT-STOR-001 ✅ (done)
@@ -178,11 +150,11 @@ The app **will not load** because routes still import from deleted services/FEAT
 
 ---
 
-## IV. Next Steps (Immediate)
+## IV. Archived Next Steps
 
-### Week 1 Execution (per PHASE_3_FEAT_IMPLEMENTATION_ROADMAP.md):
+### Week 1 Execution (archived rollout note):
 
-1. **✅ FEAT-STOR-001** (completed this session)
+1. **✅ FEAT-STOR-001** (completed in the archived rollout)
    - [x] Implement purchase + entitlement grant
    - [x] Comprehensive tests
    - [x] Documentation

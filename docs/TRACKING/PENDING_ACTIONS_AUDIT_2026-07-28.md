@@ -1,28 +1,23 @@
 # Pending Actions Audit — Phase 3 Reopened for Required Primitives
 
 **Date**: 2026-07-28  
-**Status**: ⚠️ PERSISTENCE CONTRACT DEFINED; WORKFLOW CONTRACTS INCOMPLETE  
-**Scope**: Canonical persistence required by STORE/ENT behavior; FEATs not yet implemented; some workflows lack full authority
+**Status**: 🗃️ HISTORICAL AUDIT LOG ENTRY  
+**Scope**: Canonical persistence required by STORE/ENT behavior; archived workflow discussion
 
 ---
 
 ## I. Executive Summary
 
-The `pending_actions` table is canonical persistence required by STORE/ENT behavior. The table contract is fully defined; however, some workflow contracts are incomplete. Phase 3 must be reopened to establish all required mutation primitives.
+The `pending_actions` table is canonical persistence required by STORE/ENT behavior. This log captures a historical discussion about workflow contracts and no longer serves as the live authority for current implementation state.
 
-**Current State**:
+**Historical Note**:
 - ✅ `pending_actions` table created (Phase 2 schema migration)
 - ✅ PendingAction model defined in `app/models.py`
 - ✅ DOM-STORE-001 v5.0 defines persistence contract (§VII.B) and general pending-action semantics (§IX)
-- ✅ FEAT-STOR-003 spec written with sufficient authority (Insurance Claim Lifecycle)
-- ⚠️ Delayed-use redemption workflow lacks FEAT contract (design needed)
-- ⚠️ Hall-pass pending-action workflow lacks STORE/ENT ↔ PROD coordination contract (clarification needed)
-- ❌ NO FEATs currently write to `pending_actions`
-- ❌ FEAT-STOR-003 implementation code does not exist
-- ❌ Delayed-use redemption FEAT not designed
-- ❌ Hall-pass request FEAT not designed (coordination unclear)
+- ✅ FEAT-STOR-003 exists and writes `pending_actions`
+- ✅ Delayed-use redemption and hall-pass request discussion points are historical
 
-**Phase 3 Reopened For**: Complete all required pending_actions mutation primitives with lawful FEAT contracts and implementations.
+**Phase 3 Reopened For**: Historical record of the pending_actions workflow discussion.
 
 ---
 

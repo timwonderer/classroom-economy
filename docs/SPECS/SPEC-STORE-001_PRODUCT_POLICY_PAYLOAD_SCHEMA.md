@@ -198,6 +198,22 @@ COLLECTIVE_GOAL   - Threshold/deadline purchase (group goal completion)
 }
 ```
 
+### Example 1A: Hall Pass
+
+```json
+{
+  "product_id": 101,
+  "is_purchasable": true,
+  "supports_direct_grants": true,
+  "price": "50.00",
+  "entitlement_type": "HALL_PASS",
+  "name": "Hall Pass - Bathroom",
+  "description": "Valid for 30 days",
+  "auto_expiry_days": 30,
+  "tier": "basic"
+}
+```
+
 ### Example 2: Immediate-Use Privilege
 
 ```json
@@ -344,4 +360,3 @@ Any change to this specification (add, remove, rename, or change semantics/type 
 - Consider backward compatibility implications
 - Update this entire document, not just the changed section
 - Increment the version number
-

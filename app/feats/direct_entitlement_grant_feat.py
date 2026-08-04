@@ -27,7 +27,13 @@ from app.extensions import db
 from app.feats.base import feat_shell
 from app.models import Seat, EntitlementEvent, StoreProduct
 from app.services.context_resolver import CanonicalContext
-from app.services.store_policy_resolver import StorePolicyResolver, PolicyNotFound, PolicyParseError, PolicyValidationError
+from app.services.store_policy_resolver import (
+    StorePolicyResolver,
+    StorePolicyError,
+    PolicyNotFound,
+    PolicyParseError,
+    PolicyValidationError,
+)
 from app.utils.canonical_temporal_resolver import canonical_temporal_resolver, CLASS_LEVEL_EVALUATION
 
 
@@ -135,8 +141,14 @@ def _execute_direct_grant_impl(
             error_message="Teacher seat not found or not in class scope",
         )
 
-    # Validate target seat exists and belongs to class
-    target_seat = db.session.get(Seat, target_seat_id)
+    # Validate target seat exists and belongs to class.
+    # Lock the row so the limit check and insert happen against a stable seat scope.
+    target_seat = (
+        db.session.query(Seat)
+        .filter(Seat.id == target_seat_id)
+        .with_for_update()
+        .one_or_none()
+    )
     if not target_seat or target_seat.class_id != canonical_context.class_id:
         return DirectGrantResult(
             success=False,
@@ -172,7 +184,7 @@ def _execute_direct_grant_impl(
             error_code="POLICY_NOT_FOUND",
             error_message=f"Policy UUID {policy_uuid} not found (may have been deleted)",
         )
-    except (PolicyParseError, PolicyValidationError) as e:
+    except StorePolicyError as e:
         return DirectGrantResult(
             success=False,
             correlation_id="",

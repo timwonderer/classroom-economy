@@ -147,10 +147,10 @@ def build_purchase_history_view(seat_id: int, class_id: str) -> list[PurchaseHis
                 price_per_unit = policy.price
             except PolicyNotFound:
                 product_name = f"Product {representative.product_id}"
-                price_per_unit = Decimal("0.00")
+                price_per_unit = Decimal(str((representative.payload or {}).get("price_per_unit", "0.00")))
         else:
             product_name = f"Product {representative.product_id}"
-            price_per_unit = Decimal("0.00")
+            price_per_unit = Decimal(str((representative.payload or {}).get("price_per_unit", "0.00")))
 
         quantity = len(events)
         total_price = price_per_unit * quantity

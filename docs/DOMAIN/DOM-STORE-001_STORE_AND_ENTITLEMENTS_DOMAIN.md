@@ -273,8 +273,8 @@ The corresponding Ledger event, when any, SHALL remain Ledger authority.
 
 Upon lawful resolution of an insurance claim:
 
-- the insurance entitlement SHALL record the canonical claim resolution event;
-- the event payload SHALL preserve the claimed subject and any canonical result data required by future eligibility checks;
+- the insurance entitlement SHALL record a terminal `CONSUMED` event for the resolved claim;
+- the event payload SHALL preserve the claimed subject and any canonical result data required by future eligibility checks, including the decision outcome;
 - the pending action SHALL be removed.
 
 Insurance claims MAY be repeated against the same entitlement until the governing policy or cycle boundaries are reached.
