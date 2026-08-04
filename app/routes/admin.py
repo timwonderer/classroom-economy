@@ -6055,8 +6055,8 @@ def rent_settings():
                         db.session.query(ObligationAssessment)
                         .filter(
                             ObligationAssessment.class_id == block_settings.class_id,
-                            ObligationAssessment.due_at >= month_start,
-                            ObligationAssessment.due_at < month_end,
+                            ObligationAssessment.timestamp >= month_start,
+                            ObligationAssessment.timestamp < month_end,
                             ObligationAssessment.event_type.in_(['PAYMENT', 'WAIVED']),
                         )
                         .count()
