@@ -2,7 +2,7 @@
 
 | Reference Number | Version | Effective Date | Supersedes | Authority Level |
 |------------------|---------|----------------|------------|-----------------|
-| SOP-DOC-002      | 3.0     | 2026-06-08     | 2.4        | Normative       |
+| SOP-DOC-002      | 3.1     | 2026-08-03     | 3.0        | Normative       |
 
 ---
 
@@ -78,9 +78,10 @@ These documents conform to the V2 capability-based architecture and domain autho
 
 ### Implementation Specifications (SPEC)
 - [SPEC-DISPLAY-001 DISPLAY IDENTITY METADATA RESOLVER](../SPEC/SPEC-DISPLAY-001_DISPLAY_IDENTITY_METADATA_RESOLVER.md)
+- [SPEC-ECON-001 SAVINGS INTEREST ACCRUAL AND DISBURSEMENT SPECIFICATION]( ../SPEC/SPEC-ECON-001_SAVINGS_INTEREST_ACCRUAL_AND_DISBURSEMENT_SPECIFICATION.md)
+- [SPEC-STORE-001 PRODUCT POLICY PAYLOAD SCHEMA](../SPEC/SPEC-STORE-001_PRODUCT_POLICY_PAYLOAD_SCHEMA.md)
 - [SPEC-TEST-001 CANONICAL TEST INITIALIZER](../SPEC/SPEC-TEST-001_CANONICAL_TEST_INITIALIZER.md)
 - [SPEC-TIME-001 CANONICAL TEMPORAL RESOLVER](../SPEC/SPEC-TIME-001_CANONICAL_TEMPORAL_RESOLVER.md)
-- [SPEC-ECON-001 SAVINGS INTEREST ACCRUAL AND DISBURSEMENT SPECIFICATION]( ../SPEC/SPEC-ECON-001_SAVINGS_INTEREST_ACCRUAL_AND_DISBURSEMENT_SPECIFICATION.md)
 
 ### Domains (DOM)
 - [DOMAIN/DOM-CORE-000_DOMAIN_FOUNDATION.md](../DOMAIN/DOM-CORE-000_DOMAIN_FOUNDATION.md)
@@ -233,6 +234,17 @@ These legacy specifications remain active for reference during the transitional 
 
 ---
 
-## VIII. Amendment
+## VIII. Change Notes
+
+**Version 3.1 (2026-08-03):**
+- Consolidated Phase 3-5 planning and store domain implementation logs into `docs/archive/PHASE_PLANNING/` (20 documents archived)
+- Moved root-level phase/store execution docs to archive
+- Consolidated `docs/SPECS/SPEC-STORE-001_*` into `docs/SPEC/` directory; removed empty `docs/SPECS/` directory
+- Updated MAP-UI-001 to note store domain completion and removal of redemption_disposition FEAT
+- Updated DEVELOPMENT.md to reflect store domain completion and current v2 status
+
+---
+
+## IX. Amendment
 
 Revisions to this document must increment the version number, update the effective date, and remain consistent with the CTH documentation standard.

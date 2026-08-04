@@ -1,8 +1,8 @@
 # Classroom Token Hub - Development Priorities
 
-**Last Updated:** 2026-03-30
+**Last Updated:** 2026-08-03
 **Current Released Version:** 1.9.0
-**Engineering State:** v2.0 live-test candidate
+**Engineering State:** v2.0 with store domain complete
 **Active Integration Branch:** `codex/v2.0`
 
 ## Quick Links
@@ -41,6 +41,10 @@ Run once after clone:
 
 ### Ready Now
 
+- **Store Domain Complete** (2026-08-03): DOM-STORE-001, FEAT-STOR-001 (purchase), FEAT-STOR-002 (lifecycle transition), FEAT-STOR-003 (insurance claims), and FEAT-STOR-004 (direct grant) fully implemented and tested end-to-end.
+- **Entitlement Read Service**: Canonical read operations for entitlements, purchase counts, and active grants implemented in `app/services/entitlement_read_service.py`.
+- **Product Policy Resolver**: `app/services/store_policy_resolver.py` provides policy resolution and payload schema validation per SPEC-STORE-001.
+- **View Model Builders**: Obligation view models and class obligation summaries centralized in `app/services/view_model_builders.py`.
 - `classes.class_id` is the canonical class boundary; `join_code` is a public alias.
 - `Seat + Class` is the runtime class-scoped authority for student/admin/API flows.
 - Legacy `ClassMembership`, `student_teachers`, and principal columns may still support compatibility paths, but they are not the identity or class-boundary authority.
@@ -50,7 +54,6 @@ Run once after clone:
 - Economy policy scheduling, rebalance timing, rent-cycle locking, penalty-reversal corrections, transaction idempotency, frozen economy snapshots, waiver scope, settlement safety, and related sysadmin auth/logging fixes have landed on `codex/v2.0`.
 - Wave 7 rent-waiver actor attribution is now seat-scoped, and rent-waiver add/remove flows no longer emit legacy analytics rows; the analytics schema still needs its own seat-scoped cutover before those annotations return.
 - Pricing recommendation logic is now centralized in `app/utils/economy_policy.py`, with the checker, rebalance preview, economy APIs, and insurance setup/edit pages consuming that shared source instead of duplicating pricing math.
-- Main-branch feature divergence is now tracked in `docs/archive/v1-development/tracking/V2_MAIN_RECONCILIATION_TRACKER.md`.
 
 ### Required Before Live Testing
 

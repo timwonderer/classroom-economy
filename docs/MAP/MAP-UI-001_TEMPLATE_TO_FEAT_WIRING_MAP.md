@@ -2,7 +2,7 @@
 
 | Reference Number | Version | Effective Date | Supersedes | Authority Level |
 |------------------|---------|----------------|------------|-----------------|
-| MAP-UI-001 | 0.3 | 2026-07-31 | 0.2 | Informative |
+| MAP-UI-001 | 0.4 | 2026-08-03 | 0.3 | Informative |
 
 ---
 
@@ -240,19 +240,20 @@ Each issue should include:
 1. Student dashboard attendance controls must not be a generic tap-in/tap-out pair. The canonical contextual button set is `Start Work`, `Break`, `Leave`, and `Return`, derived from current productivity and hall-pass state.
 2. Public hall-pass verification remains outside live actor `CanonicalContext`. It uses a public capability token linked to the teacher's `user_id`; resolving that token grants read-only teacher-scoped hall-pass verification authority because a teacher may have one physical hall-pass verification surface shared among classes.
 3. Direct teacher-to-student money send is `manual_credit` under `FEAT-PROD-003`. Teacher clicking `Run Payroll` is `payroll`, even if manually triggered by the teacher.
-
-### Store and Entitlements
-
 4. Entitlement terminal truth lives in `entitlement_consumptions`, not in legacy purchase state or transient redemption rows. `redemption_events` is an append-only audit log of the redemption workflow (`REQUEST`, `APPROVED`, `REJECTED`); `entitlement_consumptions` holds the authoritative terminal events (`CONSUMED`, `EXPIRED`, `REVOKED`). Any denormalized read cache must be derived from the canonical entitlement events.
 5. Rejected redemption does not terminate the entitlement. A teacher rejecting a redemption request means "I will not fulfill this now" — the student retains the entitlement and may request redemption again. Only approval writes a `CONSUMED` terminal event to `entitlement_consumptions`. The current code's behavior of issuing a Ledger refund on rejection is wrong on both counts.
 6. FEAT-STOR-001 atomicity applies to entitlement grants, not purchase-history rows. A quantity-5 purchase creates five distinct entitlement grant rows with a shared `correlation_id`. The current code must create per-unit entitlement grants.
 7. Legacy mutable counters like `uses_remaining` and `bundle_remaining` are prohibited by DOM-STORE-001. Remaining uses must be derived from entitlement grant count minus `entitlement_consumptions` terminal event count. These columns must be removed or deprecated.
 8. Legacy redemption action enums must use uppercase values (`REQUEST`, `APPROVED`, `REJECTED`) matching DOM-STORE-001, not lowercase.
-9. Store FEATs must not create `Transaction` records directly. Ledger writes must go through lawful Ledger FEAT with a shared `correlation_id`. The current redemption rejection refund path in `redemption_disposition_feat.py` crosses this boundary — and is additionally wrong because rejection should not trigger a refund at all (see decision 5).
+9. Store FEATs must not create `Transaction` records directly. Ledger writes must go through lawful Ledger FEAT with a shared `correlation_id`. ✅ **RESOLVED (2026-08-03)**: Redemption disposition FEAT was deleted during store domain rebuild. Insurance claim lifecycle (FEAT-STOR-003) and entitlement transitions (FEAT-STOR-002) now correctly coordinate with Ledger domain through FEAT-LED-001 for all financial writes.
 10. Hall-pass entitlement grants by teacher are `MANUAL_GRANT` under `FEAT-STOR-001`; removals are `revoke_entitlement()` under `FEAT-STOR-002`.
 11. Store item catalog CRUD (create, edit, deactivate) is Class Configuration, not a Store FEAT. `store_items` and `store_item_visibility` are catalog definition tables. The current code's `FEATContext("FEAT-STOR-001")` and `FEATContext("FEAT-STOR-003")` labels on these routes are wrong.
 12. Insurance initial acquisition is a Store purchase through `FEAT-STOR-001`. Renewal assessment and satisfaction belong to the Obligations domain. When an obligation is satisfied (e.g., recurring premium paid), Obligations creates an `OBLIGATION` entitlement grant — Store does not own the renewal cycle. Insurance capabilities are surviving surfaces that must be rewired, not deleted.
 13. Insurance claim lifecycle is governed by `FEAT-STOR-003`. Claim activity does not consume the insurance entitlement. Transaction-insurance compensation goes through lawful Ledger FEAT; productivity-insurance compensation goes through `DOM-PROD` as a `payroll_event` with `payroll_type = MANUAL_CREDIT`. Store must not directly create payroll events or Ledger transactions for insurance compensation.
+
+### Store and Entitlements Decision Authority
+
+See decisions 4-13 above.
 
 ---
 

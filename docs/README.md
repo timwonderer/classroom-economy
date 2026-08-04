@@ -50,6 +50,7 @@ All documents are classified into one of three tiers. See [SOP-DOC-000 Section V
 |-----------|------|---------|
 | **[LOGS/](LOGS/)** | Informative | Historical audit logs and release notes |
 | **[archive/](archive/)** | Informative | v1 docs (user-guides, GitHub Pages assets, old dev artifacts) |
+| **[archive/PHASE_PLANNING/](archive/PHASE_PLANNING/)** | Informative | Phase 3-5 roadmaps, phase extensions (authority clarifications, delayed-use redemption, hall-pass coordination), and store domain implementation logs (Phases 2-6, completed work) |
 
 ### Other
 
@@ -92,11 +93,12 @@ The `archive/` directory contains genuinely superseded v1 documentation:
 | `archive/v1-development/` | v1→v2 migration planning and legacy schema analysis |
 | `archive/v1-docs/` | v1 security audits, deployment SOPs, ARC-* specs, FEATURES/*, DOMAINS/* (~55 files) |
 | `archive/github-pages/` | Historical GitHub Pages landing site assets |
+| `archive/PHASE_PLANNING/` | Phase 3-5 roadmaps, store domain implementation tracking, and demolition/migration plans |
 | `../github-pages/` | Deployable GitHub Pages v2 transition site |
 
 > [!NOTE]
 > 
-> Some of the documentation you are looking for maybe have been relocated. v1 namespace directories (`ARCHITECTURE/`, `FEATURES/`, `DOMAINS/`) archived — their content is covered by v2 namespaces (`INVARIANT/ARCHITECTURE/`, `FEATURE-EXECUTION/`, `DOMAIN/`). v2 docs previously misplaced in the archive were restored to canonical namespaces.
+> Some of the documentation you are looking for may have been relocated. v1 namespace directories (`ARCHITECTURE/`, `FEATURES/`, `DOMAINS/`) archived — their content is covered by v2 namespaces (`INVARIANT/ARCHITECTURE/`, `FEATURE-EXECUTION/`, `DOMAIN/`). v2 docs previously misplaced in the archive were restored to canonical namespaces. Historic Phase 3-5 planning and store domain implementation logs (completed work) have been consolidated in `archive/PHASE_PLANNING/`.
 
 
 > [!IMPORTANT] 
