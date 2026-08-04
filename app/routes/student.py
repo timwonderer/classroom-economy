@@ -2962,7 +2962,10 @@ def rent():
         current_block = (getattr(settings, 'block', '') or 'A').strip().upper()
 
     # Build view model from generic obligation service primitives
-    from app.services.obligation_view_model import build_student_obligation_view
+    from app.services.obligation_view_model import (
+        build_empty_student_obligation_view,
+        build_student_obligation_view,
+    )
 
     view = build_student_obligation_view(
         seat_id=seat_id,
@@ -2970,6 +2973,13 @@ def rent():
         obligation_type='RENT',
         current_block=current_block,
     )
+    if view is None:
+        view = build_empty_student_obligation_view(
+            seat_id=seat_id,
+            class_id=class_id,
+            obligation_type='RENT',
+            current_block=current_block,
+        )
 
     checking_balance, savings_balance = get_available_balances(seat_id, class_id)
 

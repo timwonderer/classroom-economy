@@ -157,7 +157,7 @@
             <br>Rent will be due starting {% if status.due_date %}{{ status.due_date.strftime('%B %d, %Y') }}{% else %}soon{% endif %}
         </div>
         {% else %}
-        {% if status.is_paid and status.is_waived %}
+        {% if status.is_waived %}
         <div class="alert alert-info mb-0">
             <strong>This rent period has been waived.</strong>
             {% if view.active_waivers and view.active_waivers|length > 0 %}
@@ -203,12 +203,14 @@
             {% if checking_balance >= status.remaining_amount %}
             <form action="{{ url_for('student.rent_pay', period=current_block) }}" method="POST">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+                {% if view.settings.get('allow_incremental_payment') %}
                 <div class="mb-2">
                     <label for="amount_{{ current_block }}" class="form-label"><small>Payment Amount (optional - leave blank for full payment)</small></label>
                     <input type="number" step="0.01" min="0.01" max="{{ status.remaining_amount }}" class="form-control"
                         id="amount_{{ current_block }}" name="amount"
                         placeholder="Max: ${{ '%.2f'|format(status.remaining_amount) }}">
                 </div>
+                {% endif %}
                 <button type="submit" class="btn btn-primary w-100"
                     onclick="return confirm('Pay rent for Period {{ current_block|upper }}?');">
                     Pay Rent (Remaining: ${{ "%.2f"|format(status.remaining_amount) }})
@@ -237,11 +239,11 @@
         <div class="card-body">
             <ul class="list-unstyled mb-0">
                 <li class="mb-2">
-                    The class rent is <strong>${{ "%.2f"|format(view.current_period.amount_due) }}</strong> per month.
-                </li>
-                <li class="mb-2">
-                    Rent is due monthly per your class calendar.
-                </li>
+                The class rent is <strong>${{ "%.2f"|format(view.current_period.amount_due) }}</strong> {% if view.settings.frequency_type == 'daily' %}per day{% elif view.settings.frequency_type == 'weekly' %}per week{% elif view.settings.frequency_type == 'custom' and view.settings.custom_frequency_value and view.settings.custom_frequency_unit %}per {{ view.settings.custom_frequency_value }} {{ view.settings.custom_frequency_unit }}{% else %}per month{% endif %}.
+            </li>
+            <li class="mb-2">
+                Rent is due {% if view.settings.frequency_type == 'daily' %}daily{% elif view.settings.frequency_type == 'weekly' %}weekly{% elif view.settings.frequency_type == 'custom' and view.settings.custom_frequency_value and view.settings.custom_frequency_unit %}every {{ view.settings.custom_frequency_value }} {{ view.settings.custom_frequency_unit }}{% else %}monthly{% endif %} per your class calendar.
+            </li>
                 <li class="mb-2">
                     You can pay your rent up to <strong>{{ view.settings.grace_period_days }} days</strong> late without
                     late fees.

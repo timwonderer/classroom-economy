@@ -182,6 +182,61 @@ class ClassObligationSummary:
     student_rows: list  # [{seat_id, student_name, status, due_date, amount_due, amount_paid, balance, days_overdue, is_waived}]
 
 
+def build_empty_student_obligation_view(
+    seat_id: int,
+    class_id: str,
+    obligation_type: str,
+    current_block: str = 'A',
+) -> StudentObligationView:
+    """Return a valid empty view for surfaces that need to render a no-assessment state."""
+    return StudentObligationView(
+        obligation_type=obligation_type,
+        seat_id=seat_id,
+        class_id=class_id,
+        current_block=current_block,
+        current_period={
+            'due_date': None,
+            'grace_end': None,
+            'amount_due': Decimal('0.00'),
+            'amount_paid': Decimal('0.00'),
+            'amount_waived': False,
+            'balance': Decimal('0.00'),
+            'remaining_amount': Decimal('0.00'),
+            'total_paid': Decimal('0.00'),
+            'total_due': Decimal('0.00'),
+            'is_paid': False,
+            'is_waived': False,
+            'is_past_due': False,
+            'is_late': False,
+            'is_preview': False,
+            'is_preview_period': False,
+            'rent_is_active': False,
+            'days_until_due': None,
+            'days_overdue': None,
+        },
+        period_status={},
+        prior_obligations=[],
+        payment_history=[],
+        active_waivers=[],
+        totals={
+            'total_owed': Decimal('0.00'),
+            'total_paid_all_time': Decimal('0.00'),
+            'total_waived': 0,
+        },
+        settings={
+            'amount_expected': Decimal('0.00'),
+            'late_fee': None,
+            'grace_period_days': 0,
+            'frequency': 'monthly',
+            'frequency_type': 'monthly',
+            'allow_incremental_payment': False,
+            'custom_frequency_value': None,
+            'custom_frequency_unit': None,
+        },
+        status_counts={'SATISFIED': 0, 'OUTSTANDING': 0, 'PAST_DUE': 0},
+    )
+
+
 def build_student_obligation_view(
     seat_id: int,
     class_id: str,
@@ -365,7 +420,11 @@ def build_student_obligation_view(
         ),
         'late_fee': None,  # TODO: Get from ClassConfig if applicable
         'grace_period_days': grace_period_days,
-        'frequency': 'monthly',  # TODO: Get from bill_cycle cadence
+        'frequency': getattr(rent_settings, 'frequency_type', 'monthly') if rent_settings else 'monthly',
+        'frequency_type': getattr(rent_settings, 'frequency_type', 'monthly') if rent_settings else 'monthly',
+        'allow_incremental_payment': bool(getattr(rent_settings, 'allow_incremental_payment', False)) if rent_settings else False,
+        'custom_frequency_value': getattr(rent_settings, 'custom_frequency_value', None) if rent_settings else None,
+        'custom_frequency_unit': getattr(rent_settings, 'custom_frequency_unit', None) if rent_settings else None,
     }
 
     # Compute totals
