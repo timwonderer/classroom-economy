@@ -69,46 +69,51 @@ This matrix consolidates the progress of all CTH domains through the 10-phase SO
 
 #### Identity Domain (DOM-IDEN-001, 002, 003, 006)
 **Canonical Tables:** `users`, `seats`, `classes`, `identity_profiles`, `user_invite_tokens`, `user_recovery_tokens`  
-**Phase:** ✅ 0-10 Complete  
-**Status:** LIVE (Wave 3, landed)  
+**Phase:** 🔄 0-? (Unaudited)  
+**Status:** Commits exist, likely complete but needs Phase 10 audit  
 **Key Achievement:** User/Seat canonical identity active; legacy Admin/Student tables dropped from runtime auth  
-**Notes:** Remaining bridge tables `Admin`, `Student`, `StudentTeacher` exist for backward compat; will be deleted in final cleanup
+**Notes:** Remaining bridge tables `Admin`, `Student`, `StudentTeacher` exist for backward compat; will be deleted in final cleanup  
+**Next Action:** Create Phase 10 audit document with template verification
 
 ---
 
 #### Class Configuration Domain (DOM-CLASS-001)
 **Canonical Tables:** `classes`, `class_features`, `feature_settings`, `hall_pass_settings`, `rent_settings`, `payroll_settings`, `payroll_rewards`, `payroll_fines`, `banking_settings`  
-**Phase:** ✅ 0-10 Complete  
-**Status:** LIVE (Wave 4, landed)  
+**Phase:** 🔄 0-? (Unaudited)  
+**Status:** Commits exist, likely complete but needs Phase 10 audit  
 **Key Achievement:** Settings migrated to canonical; `class_id` canonical scope enforcement  
-**Notes:** `join_code` remains public alias; block/period is display-only metadata
+**Notes:** `join_code` remains public alias; block/period is display-only metadata  
+**Next Action:** Create Phase 10 audit document with template verification
 
 ---
 
 #### Ledger Domain (DOM-LED-001)
 **Canonical Tables:** `ledger_transaction`, `ledger_balance_snapshot`  
-**Phase:** ✅ 0-10 Complete  
-**Status:** LIVE (Wave 5, landed)  
+**Phase:** 🔄 0-? (Unaudited)  
+**Status:** Commits exist, likely complete but needs Phase 10 audit  
 **Key Achievement:** `transaction` → `ledger_transaction` migration complete; FEAT-LED-000 canonical monetary resolution active  
-**Notes:** `BalanceCache` dropped; all balance reads flow through canonical ledger queries
+**Notes:** `BalanceCache` dropped; all balance reads flow through canonical ledger queries  
+**Next Action:** Create Phase 10 audit document with template verification
 
 ---
 
 #### Attendance Domain (DOM-OPS-001 subset)
 **Canonical Tables:** `attendance_sessions`, `hall_pass_logs`, `seat_attendance_state`  
-**Phase:** ✅ 0-10 Complete  
-**Status:** LIVE (Wave 6, landed)  
+**Phase:** 🔄 0-? (Unaudited)  
+**Status:** Commits exist, likely complete but needs Phase 10 audit  
 **Key Achievement:** `tap_events` → canonical attendance migration; automatic attendance state tracking  
-**Notes:** `TapEvent` legacy table dropped; hall pass entitlements scoped to `seat_id + class_id`
+**Notes:** `TapEvent` legacy table dropped; hall pass entitlements scoped to `seat_id + class_id`  
+**Next Action:** Create Phase 10 audit document with template verification
 
 ---
 
 #### Productivity & Payroll Domain (DOM-PROD-001)
 **Canonical Tables:** (Integrated into Class Configuration + Ledger)  
-**Phase:** ✅ 0-10 Complete  
-**Status:** LIVE  
+**Phase:** 🔄 0-? (Unaudited)  
+**Status:** Commits exist, likely complete but needs Phase 10 audit  
 **Key Achievement:** Payroll calculations in service layer; routes thin; view models canonical  
-**Notes:** Early work; completed before structured SOP-DEV-002a audits were formalized
+**Notes:** Early work; completed before structured SOP-DEV-002a audits were formalized  
+**Next Action:** Create Phase 10 audit document with template verification
 
 ---
 
@@ -116,22 +121,28 @@ This matrix consolidates the progress of all CTH domains through the 10-phase SO
 
 #### Obligations Domain (DOM-OBL-001)
 **Canonical Tables:** `assessment_events`, `obligation_lifecycle`, `obligation_satisfaction`, `obligation_reversal`, `entitlement_events`  
-**Phase:** ✅ 0-4 | ✅ 5-7 | ✅ 8-9 | ✅ 10  
-**Status:** COMPLETE (Wave 7, obligatin-domain-rewire merged)  
-**Last Audit:** 2026-07-26 (PASSED — all 9 tests pass; "REJECTED" was administrative only due to 1-commit branch lag)  
-**Key PRs/Commits:** Multiple phases across obligatin-domain-rewire branch, final merge at af2f76d9  
-**Key Achievement:** Complete canonical obligations domain with assessment_events, obligation_lifecycle, and FEAT-wired mutations  
+**Phase:** ✅ 0-5 | ⚠️ 6-7 INVALID | ✅ 8-9 | ❌ 10 INVALID  
+**Status:** BLOCKED — Phase 10 audit invalid (templates access undefined variables)  
+**Last Audit:** 2026-07-26 (FALSE CHECKMARKS — templates not actually verified)  
+**Blocking Issue:** Templates (`student_rent.html`) access `period_status[current_block]` and `days_until_due` which are NOT:
+- Passed from routes
+- Defined in StudentObligationView
+- Set in templates
+
+**Key Achievement:** Canonical schema and FEAT mutations complete; Phase 6-7 templates need refactoring  
 **Documentation:** 
 - `docs/DOMAIN/DOM-OBL-001_OBLIGATIONS_DOMAIN.md` (spec)
-- `docs/TRACKING/OBLIGATIONS_DOMAIN_PHASE10_CERTIFICATION_AUDIT_2026-07-26.md` (audit results showing all phases passed)
+- `docs/TRACKING/OBLIGATIONS_DOMAIN_PHASE10_CERTIFICATION_AUDIT_2026-07-26.md` (INVALID — template verification failed)
+
+**Next Action:** Fix templates to use ONLY view model fields; re-run Phase 6-7 verification
 
 ---
 
 #### Store & Entitlements Domain (DOM-STORE-001)
 **Canonical Tables:** `store_items`, `store_item_visibility`, `store_purchases`, `redemption_events`  
-**Phase:** ✅ 0-4 | ✅ 5-7 | ✅ 8-9 | ✅ 10  
-**Status:** COMPLETE (Wave 8, landed 2026-08-03)  
-**Last Audit:** PASSED (PRs #1293-1295, #1299 completed all phases)  
+**Phase:** 🔄 0-? (Unaudited)  
+**Status:** PRs landed 2026-08-03, but needs Phase 10 audit  
+**Last Audit:** None (no Phase 10 audit document exists)  
 **Key PRs:**
 - #1293: Store foundation: canonical resolver and policy view boundary
 - #1294: Store behavior: FEAT wiring for purchase, grant, and claims
@@ -139,7 +150,8 @@ This matrix consolidates the progress of all CTH domains through the 10-phase SO
 - #1299: Organize store domain documentation after completion
 
 **Key Achievement:** Full canonical store domain with FEAT-wired mutations, view models, and comprehensive docs  
-**Documentation:** `docs/DOMAIN/DOM-STORE-001_STORE_AND_ENTITLEMENTS_DOMAIN.md`
+**Documentation:** `docs/DOMAIN/DOM-STORE-001_STORE_AND_ENTITLEMENTS_DOMAIN.md`  
+**Next Action:** Create Phase 10 audit document; verify Phase 6-7 templates are refactored
 
 ---
 
@@ -148,10 +160,9 @@ This matrix consolidates the progress of all CTH domains through the 10-phase SO
 #### Operations & Audit Domain (DOM-OPS-001, DOM-OPS-002)
 **Scope:** Audit lineage, observability, operational event tracking  
 **Canonical Tables:** `operational_events`, `audit_log`, `incident_events`, `incident_summary`, `alert_events`, `invariant_run_events`, `job_events`, `health_check_events`  
-**Phase:** 🔄 0-1 (Spec review in progress)  
-**Wave Assignment:** Wave 9  
-**Status:** Ready to start (all dependencies complete)  
-**Dependency Chain:** Ledger (Wave 5) ✅ → Attendance (Wave 6) ✅ → Obligations (Wave 7) ✅ → Store (Wave 8) ✅ → **READY**
+**Phase:** 🔄 0-1 (Spec review)  
+**Status:** NOT STARTED (blocked on prior domain audits)  
+**Dependency Chain:** Ledger (unaudited) → Attendance (unaudited) → Obligations (blocked) → Store (unaudited) → **BLOCKED UNTIL PRIOR DOMAINS AUDITED**
 
 ---
 
@@ -159,9 +170,8 @@ This matrix consolidates the progress of all CTH domains through the 10-phase SO
 **Scope:** Analytics snapshots, interpretation annotations for economy state  
 **Canonical Tables:** `interpretation_snapshots`, `interpretation_annotations`  
 **Phase:** 🔄 0-1 (Spec review)  
-**Wave Assignment:** Wave 9  
-**Status:** Ready to start (all dependencies complete)  
-**Dependency Chain:** Ledger (Wave 5) ✅ → Store (Wave 8) ✅ → **READY**
+**Status:** NOT STARTED (blocked on prior domain audits)  
+**Dependency Chain:** Ledger (unaudited) → Store (unaudited) → **BLOCKED UNTIL PRIOR DOMAINS AUDITED**
 
 ---
 
@@ -169,9 +179,8 @@ This matrix consolidates the progress of all CTH domains through the 10-phase SO
 **Scope:** Policy definitions, policy rules, policy activation  
 **Canonical Tables:** `policies`, `policy_rules`, `policy_assignments`  
 **Phase:** 🔄 0-1 (Spec review)  
-**Wave Assignment:** Wave 9  
-**Status:** Ready to start (all dependencies complete)  
-**Dependency Chain:** Class Config (Wave 4) ✅ → Obligations (Wave 7) ✅ → **READY**  
+**Status:** NOT STARTED (blocked on prior domain audits)  
+**Dependency Chain:** Class Config (unaudited) → Obligations (blocked) → **BLOCKED UNTIL PRIOR DOMAINS AUDITED**  
 **Notes:** Overlaps with DOM-ECON-003 policy execution surfaces
 
 ---
@@ -197,21 +206,27 @@ This matrix consolidates the progress of all CTH domains through the 10-phase SO
 
 ---
 
-## Wave Progression Timeline
+## Domain Dependencies (Critical Path)
 
-| Wave | Domains | Status | Est. Completion |
-|------|---------|--------|-----------------|
-| 1-2 | Foundation & Bootstrap | ✅ Complete | 2026-04 |
-| 3 | Identity | ✅ Complete | 2026-05 |
-| 4 | Class Config | ✅ Complete | 2026-05 |
-| 5 | Ledger | ✅ Complete | 2026-06 |
-| 6 | Attendance | ✅ Complete | 2026-06 |
-| 7 | Obligations | ✅ Complete | 2026-07-26 (merged) |
-| 8 | Store & Entitlements | ✅ Complete | 2026-08-03 |
-| 9 | Operations, Interpretation, Policies | 🔄 Ready to start | TBD |
-| 10 | Support | 🔄 Awaiting Wave 9 | TBD |
-| 11 | Post-Launch Completion | 🔄 Awaiting all domains | TBD |
-| 12 | Final Validation | 🔄 Awaiting all domains | TBD |
+**Can start immediately (no dependencies):**
+- Identity, Class Config, Ledger, Attendance, Productivity & Payroll
+
+**Depend on 5 above:**
+- Obligations (depends on Ledger, Attendance for testing context)
+- Store & Entitlements (depends on Ledger, Class Config)
+
+**Depend on Obligations + Store:**
+- Operations & Audit
+- Interpretation
+- Policies
+
+**Depend on Operations + Interpretation + Policies:**
+- Support
+- Economy & Governance (integrated across all domains)
+
+**Post-launch (depends on all domains):**
+- Post-launch hardening
+- Final validation
 
 ---
 
