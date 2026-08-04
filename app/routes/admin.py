@@ -6045,22 +6045,17 @@ def rent_settings():
                 now = utc_now()
                 coverage_due = _calculate_rent_coverage_due_date(block_settings, now)
                 if coverage_due:
-                    from datetime import date
-                    month_start = coverage_due.replace(day=1)
-                    if coverage_due.month == 12:
-                        month_end = coverage_due.replace(year=coverage_due.year + 1, month=1, day=1)
-                    else:
-                        month_end = coverage_due.replace(month=coverage_due.month + 1, day=1)
-                    paid_count = (
-                        db.session.query(ObligationAssessment)
-                        .filter(
-                            ObligationAssessment.class_id == block_settings.class_id,
-                            ObligationAssessment.timestamp >= month_start,
-                            ObligationAssessment.timestamp < month_end,
-                            ObligationAssessment.event_type.in_(['PAYMENT', 'WAIVED']),
+                    current_bill_cycle = obligations_service.get_latest_bill_cycle_for_class(block_settings.class_id)
+                    paid_count = 0
+                    if current_bill_cycle:
+                        current_cycle_assessments = obligations_service.get_assessments_for_bill_cycle(
+                            current_bill_cycle.id,
+                            obligation_type='RENT',
                         )
-                        .count()
-                    )
+                        for assessment in current_cycle_assessments:
+                            satisfaction_events = obligations_service.get_satisfaction_events(assessment.correlation_id)
+                            if satisfaction_events:
+                                paid_count += 1
                     if paid_count > 0:
                         mid_period_locked = True
 
