@@ -36,7 +36,7 @@
 
 - **StorePolicyResolver**: Exact resolution API
   - `resolve_store_item(policy_uuid)` — exact immutable retrieval (no inference)
-  - `list_store_policies(class_id)` — discovery primitive for canonical policy definitions (semantics deferred)
+  - `list_store_policies(class_id)` — discovery primitive for canonical policy definitions (pure discovery; returns non-retired policies only; view models own presentation)
 
 ### 2. StoreProduct Model ✅
 
@@ -163,10 +163,11 @@
 
 ### 2. Clear Domain Boundaries
 
-**Discovery** (separate concern, deferred):
+**Discovery** (separate concern, implemented as pure read):
 - `list_store_policies(class_id)` — discovery primitive for canonical policy definitions
+- Returns non-retired policies only
 - Caller responsibility (routes/APIs)
-- Semantics TBD in DOM-STORE-001 or SPEC-STORE-001
+- Presentation and filtering live in Phase 5 view models
 - Not part of FEAT execution
 
 **Execution** (FEAT responsibility):
@@ -215,17 +216,10 @@ No ambiguity; both can coexist; caller chooses.
 ### 1. Discovery/Applicability Semantics
 
 `list_store_policies(class_id)` currently:
-- Returns non-retired policies for class
-- Semantics NOT fully specified
+- Returns canonical policy definitions for the class
+- Does not evaluate student eligibility, affordability, entitlement ownership, or class feature state
 
-**TBD**:
-- Should it return all non-retired policies?
-- Should it return only policies active as of "now"?
-- How do concurrent policy transitions interact?
-- Should it filter by entitlement_type?
-- Should it handle rent-cycle expiration?
-
-**Decision**: Specify in DOM-STORE-001 or SPEC-STORE-001 when integrating View Model/storefront.
+**Decision**: Presentation and filtering belong to Phase 5 view models; the resolver stays pure.
 
 ### 2. Ledger Coordination in FEAT-STOR-001
 

@@ -1,5 +1,7 @@
 # V2 Full-Compliance Migration Plan
 
+> Historical migration plan only. This document reflects the pre-closeout V2 remediation backlog and may still mention legacy Store/Entitlements surfaces, including `StorePurchase`, `RedemptionEvent`, and other superseded v1/v2 artifacts. Do not treat those references as current runtime authority; use [STORE_ENTITLEMENT_PHASE6_SURFACE_INVENTORY_2026-07-31.md](./STORE_ENTITLEMENT_PHASE6_SURFACE_INVENTORY_2026-07-31.md) for the current closeout surface map.
+
 ## Context
 
 The `codex/v2.0` branch is an active v2 rebuild that introduced the capability-based authority model (INV→DOM→FEAT), `seat_id`/`class_id` canonical scoping, and the FEAT execution layer. The codebase remains transitional: many runtime models still carry v1 compatibility columns and deprecated principal rows still exist for route rendering. However, canonical auth is now active for credential verification: `User` owns teacher/sysadmin TOTP, student PIN/passphrase, session anchoring, recovery capability, and passkey capability; `Seat + Class` owns class-local actor authority; `IdentityProfile` owns display only.

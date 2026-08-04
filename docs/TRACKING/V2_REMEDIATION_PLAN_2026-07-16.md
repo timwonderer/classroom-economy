@@ -1,5 +1,7 @@
 # V2 Constitutional Compliance Remediation Plan
 
+> Historical remediation log only. This document captures the original constitutional audit state and may still list legacy Store/Entitlements artifacts such as `StorePurchase`, `RedemptionEvent`, and `quantity_delta`. Current runtime authority lives in the live Store closeout docs and code; use [STORE_ENTITLEMENT_PHASE6_SURFACE_INVENTORY_2026-07-31.md](./STORE_ENTITLEMENT_PHASE6_SURFACE_INVENTORY_2026-07-31.md) for the current closeout surface map.
+
 | Field | Value |
 |---|---|
 | Created | 2026-07-16 |

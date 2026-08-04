@@ -732,6 +732,8 @@ The first validation report characterized this as "NOT STARTED." The deeper anal
 
 ## Wave 8 — Store Domain
 
+> Historical validation note: this wave summary reflects the pre-closeout Store/Entitlements audit state. Current live Store closeout status is captured in `docs/TRACKING/STORE_ENTITLEMENT_PHASE6_SURFACE_INVENTORY_2026-07-31.md`, which supersedes this report for runtime authority and remaining-work tracking.
+
 ### Status: ⚠️ PARTIAL SCOPE MIGRATION — TABLE CONSOLIDATION PENDING
 
 **What IS done (tracker Wave 3C.9 work):**

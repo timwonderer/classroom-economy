@@ -45,9 +45,9 @@ def execute_direct_grant(
 
 ### Execution Flow (After Correction)
 
-1. **Caller discovers policy** (outside FEAT scope — deferred to `list_store_policies()`)
+1. **Caller discovers policy** (outside FEAT scope — canonical `list_store_policies()` discovery)
    - Resolves "which canonical policy definitions exist for class Y?"
-   - Returns policy_uuid
+   - Returns canonical `StorePolicyConfig` objects including `policy_uuid`
 
 2. **Caller invokes FEAT with exact UUID**
    ```python
@@ -127,11 +127,11 @@ execute_direct_grant(policy_uuid="UUID-2", ...)  # → UUID-2 resolved, guarante
 - Owns immutable UUID locator
 - Responsible for "which policies exist"
 
-**Discovery/Applicability** (deferred, separate concern)
-- `list_store_policies(class_id)` — discovery contract TBD in DOM-STORE-001
-- Responsible for "which policy applies now"
-- Returns list of applicable policies with UUIDs
-- Caller chooses from list
+**Discovery** (deferred, separate concern)
+- `list_store_policies(class_id)` — pure discovery contract, resolved in Phase 5 view models
+- Returns canonical policy definitions for the class
+- Filtering and presentation live outside the resolver
+- Caller chooses from the discovered definitions
 
 **Store & Entitlements Domain (STORE)**
 - Owns FEAT-STOR-004 and FEAT-STOR-001

@@ -185,9 +185,9 @@ execute_store_purchase(
 
 **TODO 2: Discovery/Applicability Semantics**
 - **File**: `app/services/store_policy_resolver.py` (list_store_policies discovery primitive)
-- **Issue**: Caller responsibility for finding applicable policies; discovery semantics deferred
-- **Phase**: 5 (Read Models) or when View Model/storefront integration begins
-- **Impact**: Affects user-facing policy selection UI
+- **Issue**: Pure discovery is implemented; view models own presentation and selection UI
+- **Phase**: 5 (Read Models)
+- **Impact**: Feed the policy list view and storefront presentation without business evaluation
 
 **NOTE: PendingAction Mutation (See PENDING_ACTIONS_AUDIT_2026-07-28.md)**
 - **Status**: Canonical persistence with NO CURRENT MUTATION SURFACE
