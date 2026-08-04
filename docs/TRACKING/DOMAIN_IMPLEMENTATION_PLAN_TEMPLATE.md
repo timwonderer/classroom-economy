@@ -119,18 +119,17 @@ Use this checklist when you're ready for Phase 10 certification audit.
 - [ ] Queries scoped by class_id
 - [ ] View models tested (happy path, edge cases, multi-tenancy)
 
-**Phase 6: Surface Inventory**
-- [ ] Routes call view model constructors
-- [ ] Routes pass view_model to template
-- [ ] No legacy aggregation variables
-- [ ] Templates access view_model fields
+**Phase 6: View Model Wiring**
+- [ ] Routes construct canonical view models
+- [ ] Every field owned by this domain exists in the view model
+- [ ] Templates consume only those owned fields
+- [ ] No domain-owned field bypasses the view model
 
-**Phase 7: Rewire**
-- [ ] Entity queries moved to view model builders
-- [ ] Status/aggregation moved from routes to view models
-- [ ] No legacy helpers imported in routes
-- [ ] Routes are thin handlers
-- [ ] GET handlers are pure
+**Phase 7: Surface Integration**
+- [ ] Every consumer template uses the canonical field
+- [ ] Legacy field sources removed
+- [ ] Cross-domain dependencies documented
+- [ ] Missing dependencies explicitly tracked
 
 **Phase 8: Verify**
 - [ ] View model tests pass (happy path, edge cases, multi-tenancy)
@@ -154,12 +153,77 @@ Use this checklist when you're ready for Phase 10 certification audit.
 
 ---
 
-### Dependencies & Blockers
+## View Model Contribution Contract
 
-**Domain Dependencies:**
-- Depends on: [List domains that must complete first]
-- Blocks: [List domains that depend on this one]
-- Cross-domain references: [Any shared tables or FEATs]
+This domain does not own templates. This domain owns the canonical fields that it contributes to shared view models.
+
+A domain reaches Phase 6-7 when every field it owns:
+- Is produced from canonical services (Phase 3)
+- Is exposed through canonical view models (Phase 5)
+- Is consumed by templates exclusively through those view models (Phase 6)
+- Has all legacy field sources removed (Phase 7)
+
+Templates are integration surfaces and are never owned by a single domain. A domain can legitimately reach Phase 7 even if consuming templates are incomplete — what matters is that YOUR fields are wired correctly.
+
+---
+
+### Domain Dependencies
+
+**Architectural Dependencies:**
+
+Depends on:
+- [List domains whose services this domain queries]
+
+Blocks:
+- [List domains that depend on this domain's canonical fields]
+
+**View Model Contributions:**
+
+This domain owns the following fields in these view models:
+
+| View Model | Field | Authority | Current Status |
+|------------|-------|-----------|-----------------|
+| [ViewModelName] | [field_name] | [This Domain] | 🔄 [Phase 0-7] |
+| [ViewModelName] | [field_name] | [This Domain] | ✅ [Phase 7 complete] |
+
+Example:
+| StudentDashboardView | balance | Ledger | ✅ Phase 7 |
+| StudentDashboardView | current_rent_due | Obligations | 🔄 Phase 6 (wired, not yet template-verified) |
+| StudentDashboardView | next_payday | Payroll | ⏳ Phase 0 (not started) |
+
+**Unresolved View Model Dependencies:**
+
+(Track which fields from OTHER domains this domain depends on, and their completion status)
+
+| View Model | Field | Authority | Status | Impact |
+|------------|-------|-----------|--------|--------|
+| [MyViewModelName] | [field] | [Other Domain] | 🔄 | [What breaks if missing] |
+
+Example:
+| StudentPayrollView | class_timezone | Class Config | ✅ | Payroll calculation accuracy |
+| StudentPayrollView | current_period_number | Obligations | 🔄 | Payroll cycle alignment |
+
+---
+
+### View Model Field Ownership
+
+This table is the authoritative tracking for Phase 6-7 completion. A domain reaches Phase 7 when ALL owned fields are ✅.
+
+| View Model | Field | Service (Phase 3) | View Model (Phase 5) | Route Passes (Phase 6) | Template Uses (Phase 7) | Notes |
+|------------|-------|-------------------|----------------------|------------------------|------------------------|-------|
+| [ModelName] | [field] | ✅ | ✅ | ✅ | ✅ | Complete |
+| [ModelName] | [field] | ✅ | ✅ | ✅ | 🔄 | Template work in progress |
+| [ModelName] | [field] | ✅ | ✅ | ⏳ | ⏳ | Route wiring pending |
+
+**What each column means:**
+- **Service (Phase 3):** Canonical service method exists and returns data
+- **View Model (Phase 5):** Field is defined in view model; constructor sets it from canonical service
+- **Route Passes (Phase 6):** Route constructs view model and passes to template
+- **Template Uses (Phase 7):** Template accesses field through view model, legacy sources removed
+
+**Phase 7 Verification:** For each row, verify template code uses ONLY `{{ view_model.field }}`, not `{{ legacy_variable }}` or `{{ computed_inline }}`
+
+---
 
 **Known Blockers:**
 - [List any known issues from matrix]
@@ -217,15 +281,16 @@ Changes:
 - Routes start calling view model constructors
 ```
 
-**Phase 6-7 PR:** Surface Inventory + Rewire
+**Phase 6-7 PR:** View Model Wiring + Surface Integration
 ```
-Title: [DOMAIN] Phase 6-7: Route and template refactor
+Title: [DOMAIN] Phase 6-7: View model field ownership and template integration
 
 Changes:
-- Routes pass view_model to templates (no legacy vars)
-- Templates refactored to use view_model fields
-- Ad-hoc aggregation removed from routes
-- Routes are thin handlers, logic in view models
+- Routes construct and pass canonical view models to templates
+- Every field owned by this domain is in the view model (no bypasses)
+- Templates consume ONLY those owned fields (legacy sources removed)
+- Cross-domain field dependencies documented
+- All owned fields verified in consumer templates
 ```
 
 **Phase 8 PR:** Verify

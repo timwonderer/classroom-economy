@@ -20,8 +20,8 @@ This matrix consolidates the progress of all CTH domains through the 10-phase SO
 | **3** | Primitives | Core queries centralized in service layer |
 | **4** | Mutation Boundary | All writes through FEAT layer |
 | **5** | Read Models | View models immutable, generic, scoped |
-| **6** | Surface Inventory | Routes and templates consume view models |
-| **7** | Rewire | Legacy aggregation replaced; routes thin |
+| **6** | View Model Wiring | Routes construct view models; all owned fields exist in models |
+| **7** | Surface Integration | Templates consume only owned fields; legacy sources removed |
 | **8** | Verify | Tests prove correctness and multi-tenancy |
 | **9** | Legacy Deletion | Dead code removed |
 | **10** | Audit | Production readiness certified |
@@ -58,6 +58,41 @@ This matrix consolidates the progress of all CTH domains through the 10-phase SO
 - ✅ Domain is production-ready
 
 **Unaudited domains:** Commits exist, code likely works, but require formal Phase 10 audit to confirm all phases are complete.
+
+---
+
+## Phase 6-7 Verification: View Model Field Ownership
+
+Phase 6-7 completion is now measured via **field ownership**, not template structure. A domain reaches Phase 7 when:
+
+1. **Phase 6: View Model Wiring**
+   - Every field owned by this domain is defined in its canonical view model(s)
+   - Routes construct the view model and pass it to templates
+   - No owned field is computed inline in routes or templates
+
+2. **Phase 7: Surface Integration**
+   - Every template that uses an owned field accesses it via the view model
+   - Legacy field sources (old route variables, old model methods) are removed
+   - Cross-domain field dependencies are explicitly tracked (see below)
+
+### View Model Contribution Map
+
+Each domain owns specific fields in shared view models. The checklist for Phase 6-7 is:
+
+| Domain | Owns These Fields | Status | Audit Notes |
+|--------|------------------|--------|-------------|
+| Ledger | balance, checking_balance, savings_balance | ❓ Unaudited | Verify all consumer templates use `view_model.balance` |
+| Obligations | rent_due, rent_paid, rent_waived, fine_balance, insurance_status | ❓ Unaudited | Obligations audit failed on this; templates use undefined vars |
+| Payroll | current_period_earnings, rewards_total, fines_total, next_payday | ❓ Unaudited | Verify earnings computed at read time, not cached |
+| Class Config | class_timezone, class_display_name, hall_pass_settings, rent_settings | ❓ Unaudited | Settings must be read from canonical storage, not session |
+| Store & Entitlements | owned_items, active_entitlements, pending_purchases | ❓ Unaudited | Entitlements lifecycle must follow policy |
+
+**How to audit Phase 6-7:**
+1. For each field owned by the domain, grep for template usage: `grep -r "view_model.field_name" templates/`
+2. Verify the field is defined in the view model constructor
+3. Verify the field is computed from a canonical service (Phase 3)
+4. Verify no template uses legacy sources (e.g., `{{ legacy_variable }}` or `{{ computed_inline }}`)
+5. Verify cross-domain dependencies are documented
 
 ---
 
