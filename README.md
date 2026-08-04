@@ -2,15 +2,16 @@
 
 A classroom management platform that uses a simulated token economy to drive student engagement and participation.
 
-**Version:** 2.0.0 (local development and testing)  
+**Version:** 2.0.0 (live-test candidate)  
+**Last Released:** 1.9.0 (2026-03-04)  
 **License:** [PolyForm Noncommercial 1.0.0](https://polyformproject.org/licenses/noncommercial/1.0.0/)
-**Development branch:** `codex/v2.0`
+**Active branch:** `codex/v2.0`
 
 > [!IMPORTANT]
 >
-> Classroom Token Hub v1 is now deprecated. The current web app is inaccessible until official v2.0 launch in August 2026.
+> Classroom Token Hub v1 is now deprecated. The current public deployment reflects **v1.9.0**. The v2.0 branch (`codex/v2.0`) is in live-test candidate state — full-suite validation passes (`744 passed, 19 skipped`) and store domain is complete, but the live-test and production transition gates are not yet finalized.
 >
-> This branch represents the most up to date v2.0 development. For v1 Legacy codes, see branch [legacy_v1.10.0](https://github.com/timwonderer/classroom-token-hub/tree/legacy_v1.10.0)
+> For v1 legacy code, see branch [legacy_v1.10.0](https://github.com/timwonderer/classroom-token-hub/tree/legacy_v1.10.0)
 
 ---
 
@@ -26,7 +27,7 @@ The platform is multi-tenant: a single deployment serves many teachers, each wit
 
 The v2 architecture is built on three layers:
 
-- **Identity:** `User` authenticates, `Seat` acts within a class, `ClassEconomy` (`class_id`) scopes all data. `join_code` is the ingress alias for `class_id`.
+- **Identity:** `User` authenticates, `Seat` acts within a class, `ClassEconomy` (`class_id`) scopes all data. `join_code` is the public ingress alias for `class_id`.
 - **Domains:** Bounded services (`app/services/`) own read and validation logic. Domains do not call each other directly.
 - **FEATs:** All state mutation flows through `app/feats/` — atomic execution units that resolve identity, validate across domains, and commit in a single transaction.
 
@@ -34,20 +35,24 @@ The v2 architecture is built on three layers:
 Routes → FEAT → Domain Services → Ledger
 ```
 
-New code must route writes through FEATs; legacy routes that commit directly are being migrated. GET handlers must not trigger DB writes.
+New code must route writes through FEATs. GET handlers must not trigger DB writes.
 
 ### Key Models
 
 | Layer | Models | Purpose |
 |-------|--------|---------|
-| Identity | `User`, `Seat`, `IdentityProfile`, `ClassEconomy` | Auth, class-local actor, display name, class boundary |
-| Financial | `Transaction`, `BalanceCache` | Ledger entries and cached balances (seat + class scoped) |
-| Configuration | `PayrollSettings`, `RentSettings`, `BankingSettings`, `FeatureSettings` | Per-class economy settings |
-| Obligations | `ObligationAssessment`, `ObligationLifecycle` | Rent, insurance, and fee lifecycle |
-| Store | `StoreItem`, `StudentItem`, `RedemptionAuditLog` | Classroom store catalog and purchases |
-| Attendance | `AttendanceSession`, `SeatAttendanceState`, `HallPassLog` | Start Work / Break Done tracking, current attendance gate state, hall passes |
+| Identity | `User`, `Seat`, `IdentityProfile`, `ClassEconomy`, `PasskeyCredential` | Auth, class-local actor, display name, class boundary, passkey credentials |
+| Financial | `Transaction`, `LedgerBalanceSnapshot` | Ledger entries and cached balances (seat + class scoped) |
+| Configuration | `PayrollSettings`, `RentSettings`, `BankingSettings`, `FeatureSettings`, `ClassFeature` | Per-class economy settings and feature toggles |
+| Obligations | `ObligationAssessment`, `BillCycle`, `PolicyVersion`, `PolicyTransition` | Rent, insurance, and fee lifecycle with immutable policy versioning |
+| Store | `StoreItem`, `StoreItemVisibility`, `StoreProduct`, `EntitlementEvent` | Classroom store catalog, product policies, and entitlement lifecycle |
+| Attendance | `AttendanceSession`, `HallPassLog`, `HallPassSettings`, `PayrollEvent` | Attendance sessions, hall passes, and payroll events |
+| Audit | `AuditEvent`, `ChainHead` | Append-only hash-chained audit log |
+| Support | `Issue`, `IssueCategory`, `IssueStatusHistory`, `IssueResolutionAction`, `TicketCorrelationPack` | Support ticket lifecycle |
+| Recovery | `RecoveryRequest`, `StudentRecoveryCode` | Student account recovery flow |
+| Operations | `PendingAction`, `ActorRequestTrace`, `Announcement` | Pending approvals, request traces, announcements |
 
-55+ models total. Legacy tables (`Admin`, `Student`, `TeacherBlock`) now live in the archive doc set and should not be treated as current architecture authority.
+40 domain models total. Legacy tables (`Admin`, `Student`, `TeacherBlock`, `ClassMembership`, `StudentTeacher`, `TapEvent`, `RentPayment`, `StudentInsurance`, `StudentItem`, `RedemptionAuditLog`, `BalanceCache`) have been retired and must not be treated as current architecture authority.
 
 ---
 
@@ -66,6 +71,7 @@ New code must route writes through FEATs; legacy routes that commit directly are
 ### For Students
 - **Portal** — View balances, transaction history, store, and attendance
 - **Account Transfers** — Move funds between checking and savings accounts
+- **Seat Claim** — Self-claim a teacher-provisioned seat using claim credentials
 - **Account Recovery** — Student-assisted teacher recovery flow
 
 ### For System Admins
@@ -76,6 +82,8 @@ New code must route writes through FEATs; legacy routes that commit directly are
 - **Progressive Web App** — Installable on mobile with offline fallback
 - **Accessibility** — WCAG 2.1 AA design guidelines, keyboard navigation, ARIA labels, screen reader support. Automated testing uses axe-core; no formal certification.
 - **Security** — PII encryption at rest, TOTP 2FA for admins, CSRF protection, salted+peppered credential hashing, Cloudflare Turnstile bot protection, post-claim PII deletion
+- **Observability** — OpenTelemetry instrumentation (Flask, SQLAlchemy, requests) with OTLP export; append-only hash-chained `AuditEvent` log
+- **Rate Limiting** — Flask-Limiter with Cloudflare-aware IP detection; disabled in development by default
 
 > [!IMPORTANT]
 >
@@ -121,8 +129,14 @@ CSRF_SECRET_KEY=<random-string>
 TURNSTILE_SITE_KEY=<cloudflare-turnstile-site-key>
 TURNSTILE_SECRET_KEY=<cloudflare-turnstile-secret-key>
 
+# Optional — rate limiting (disabled in development by default)
+DEV_ENABLE_RATELIMIT=false
+
 # Optional — maintenance mode
 MAINTENANCE_MODE=false
+
+# Optional — OpenTelemetry export (OTLP/HTTP)
+OTEL_EXPORTER_OTLP_ENDPOINT=<otlp-endpoint>
 ```
 
 ### Database Setup
@@ -140,14 +154,6 @@ flask run
 
 Navigate to `http://localhost:5000`.
 
-### Git Hooks
-
-```bash
-./scripts/setup-hooks.sh
-```
-
-pre-push migration-head safety checks.
-
 ---
 
 ## Project Structure
@@ -155,22 +161,41 @@ pre-push migration-head safety checks.
 ```
 app/
 ├── __init__.py           # App factory
-├── models.py             # SQLAlchemy models (55+)
+├── models.py             # SQLAlchemy models (40 domain models)
 ├── auth.py               # Auth decorators and scoped access helpers
+├── access/               # Scope resolution and scope factory
 ├── feats/                # FEAT execution layer (all state mutation)
+│   ├── ledger_resolution_feat.py   # FEAT-LED-000: canonical monetary resolution
+│   ├── store_purchase_feat.py      # FEAT-STOR-001
+│   ├── assess_obligation_feat.py   # FEAT-OBL-001
+│   ├── rent_payment_feat.py        # FEAT-OBL (rent)
+│   ├── insurance_claim_feat.py     # FEAT-STOR-003
+│   ├── transfer_feat.py            # Account transfers
+│   ├── transaction_void_feat.py    # Ledger reversals
+│   └── ...                         # Additional FEATs
 ├── services/             # Domain-bounded read/validation services
+│   ├── balance_service.py
+│   ├── obligations_service.py
+│   ├── store_service.py
+│   ├── store_policy_resolver.py    # SPEC-STORE-001 policy resolution
+│   ├── entitlement_read_service.py # Entitlement reads
+│   ├── view_model_builders.py      # Obligation/class view models
+│   └── ...                         # Additional services
 ├── routes/               # Blueprints: admin, student, system_admin, api, analytics, docs, main, recovery
 ├── utils/                # Helpers (encryption, seat scope, economy policy, analytics engine)
+│   ├── economy_policy.py           # Centralized pricing recommendation logic
+│   ├── analytics_engine.py
+│   ├── encryption.py
+│   └── ...
 ├── forms.py              # WTForms definitions
 ├── payroll.py            # Payroll automation
 └── scheduled_tasks.py    # Background scheduler (APScheduler)
 
 templates/                # Jinja2 templates
 static/                   # CSS, JS, images, PWA assets
-tests/                    # pytest suite (55+ test files)
-migrations/               # Alembic migrations
+tests/                    # pytest suite (90 test files across 14 domain directories)
+migrations/               # Alembic migrations (88 versions)
 scripts/                  # Utility and seed scripts
-deploy/                   # Deployment config (nginx)
 docs/                     # v2 architecture, domain, and invariant specs
 wsgi.py                   # WSGI entry point (gunicorn wsgi:app)
 ```
@@ -181,12 +206,16 @@ wsgi.py                   # WSGI entry point (gunicorn wsgi:app)
 
 ### Running Tests
 
+Tests require a PostgreSQL test database. Set `TEST_DATABASE_URL` before running:
+
 ```bash
-pytest                              # All tests
-pytest tests/test_payroll.py        # Specific file
-pytest -k "recovery"                # Pattern match
-pytest --cov=app tests/             # With coverage (requires pytest-cov)
+TEST_DATABASE_URL=postgresql://... pytest   # All tests
+pytest tests/test_payroll.py               # Specific file
+pytest -k "recovery"                       # Pattern match
+pytest --cov=app tests/                    # With coverage (requires pytest-cov)
 ```
+
+The validated branch state: `744 passed, 19 skipped`.
 
 ### Database Migrations
 
@@ -197,7 +226,11 @@ flask db upgrade                        # Apply
 flask db downgrade                      # Rollback
 ```
 
-All migrations must include idempotency helpers. See `.claude/rules/database-migrations.md` for the full workflow.
+All migrations must include idempotency helpers. See `.claude/rules/database-migrations.md` for the full workflow. A pre-push hook enforces single-head integrity; install it via:
+
+```bash
+./scripts/setup-hooks.sh
+```
 
 ### Common Commands
 
@@ -216,7 +249,9 @@ python scripts/seed_dummy_students.py   # Seed test data
 - **[Domain Specs](docs/DOMAIN/)** — Per-domain authority contracts
 - **[FEAT Contracts](docs/FEATURE-EXECUTION/)** — Execution layer specifications
 - **[API Reference](docs/ARCHITECTURE/OPERATIONS/ARC-OPS-005_Api_Reference.md)** — REST API documentation
-- **[Deployment Guide](docs/STANDARD_OPERATING_PROCEDURES/DEPLOYMENT/SOP-DEP-023_V2_Production_Transition_Runbook.md)** — Current v2 production transition runbook
+- **[Developer Vocabulary](docs/REFERENCE/REF-TERM-001_DEVELOPER_VOCABULARY.md)** — Canonical v2 terminology and deprecated-term mappings
+- **[Deployment Guide](docs/STANDARD_OPERATING_PROCEDURES/DEPLOYMENT/SOP-DEP-023_V2_Production_Transition_Runbook.md)** — v2 production transition runbook
+- **[Live-Test Runbook](docs/STANDARD_OPERATING_PROCEDURES/DEPLOYMENT/SOP-DEP-022_V2_Live_Test_Runbook.md)** — Internal validation workflow before live testing
 - **[Development Priorities](DEVELOPMENT.md)** — Roadmap and v2 launch readiness
 - **[V2 Migration Tracker](docs/TRACKING/V2_Full_compliance_migration_plan.md)** — Active wave-by-wave execution status
 - **[Changelog](CHANGELOG.md)** — Version history
@@ -235,7 +270,7 @@ curl http://your-domain/health
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md). Review the [Architecture Foundation](docs/ARCHITECTURE/ARC-CORE-000_Architecture_Foundation.md) and [DEVELOPMENT.md](DEVELOPMENT.md) before starting.
+See [CONTRIBUTING.md](CONTRIBUTING.md). Review the [Architecture Foundation](docs/INVARIANT/CORE/INV-CORE-000_CORE_INVARIANTS.md) and [DEVELOPMENT.md](DEVELOPMENT.md) before starting.
 
 ---
 
