@@ -361,28 +361,144 @@ See [SOP-DEP-023](docs/STANDARD_OPERATING_PROCEDURES/DEPLOYMENT/SOP-DEP-023_V2_P
 
 ---
 
-## Contributing
+## Contributing: Start with Authority, Not Tracking
 
-Before starting work:
+**CRITICAL:** Invariants define what must be true. Tracking docs describe current progress. Always read invariants first; never let tracking docs constrain design.
 
-1. **Read the project invariants** - [Core Invariants of CTH](docs/INVARIANT/CORE/)
+### Authority Hierarchy
 
-2. **Read the project architecture** - [Architectural Invariants of CTH](docs/INVARIANT/ARCHITECTURE/INV-ARC-000_EXECUTION_MODEL.md)
+The project has a strict documentation hierarchy that governs what you build:
 
-3. **Read the audit baseline** — [AUDIT_BASELINE_2026-08-04.md](docs/TRACKING/AUDIT_BASELINE_2026-08-04.md)
+```
+INV-CORE-000 (Core invariants)
+    ↓
+    The system must be multi-tenant, must use class_id for scoping,
+    must separate identity from claims, must route mutations through FEAT.
+    These are non-negotiable—they define correctness.
 
-4. **Check domain status** — [DOMAIN_PROGRESS_MATRIX_2026.md](docs/TRACKING/DOMAIN_PROGRESS_MATRIX_2026.md)
+INV-ARC-019 (Architectural invariants)
+    ↓
+    The identity model MUST use User→Seat→ClassEconomy. The FEAT layer
+    MUST enforce all mutations. View models MUST be immutable. 
+    These apply to all domains.
 
-**Golden Rules:**
+DOM-{ID}-* (Domain specs)
+    ↓
+    Ledger owns transaction recording. Obligations owns rent assessment.
+    Store owns purchase logic. Each domain's authority limits what it owns
+    and what it depends on.
 
-- ✅ Read before writing
-- ✅ Use established canonical helpers for time and identity logic
-- ✅ Mutate through FEAT layer only (no direct `db.session.add/commit` in routes)
-- ✅ Create/update tests (always)
-- ✅ All routes follow 10-phase SOP-DEV-002a rebuild
-- ✅ Update CHANGELOG.md for every change
+FEAT-{ID}-* (Execution specifications)
+    ↓
+    A FEAT defines one atomic business transaction: its inputs, preconditions,
+    outputs, and ledger effects. Built atop domain services.
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines.
+docs/TRACKING/* (Descriptive, not prescriptive)
+    ↓
+    These documents describe current implementation progress. They answer
+    "What phase is each domain in?" NOT "What should I build?"
+    Tracking docs are always behind reality and must never constrain design.
+```
+
+### Correct Workflow
+
+**Step 1: Read Invariants**
+
+Start with [INV-CORE-000](docs/INVARIANT/CORE/INV-CORE-000_CORE_INVARIANTS.md) and [INV-ARC-019](docs/INVARIANT/ARCHITECTURE/INV-ARC-019_IDENTITY_MODEL.md). These define what the system MUST be. Non-negotiable.
+
+```
+Takes 20 minutes. Learn:
+- What makes the system correct (invariants, not implementation)
+- Why class_id is the scoping boundary
+- How identity model works (User→Seat→ClassEconomy)
+```
+
+**Step 2: Read Domain Specs**
+
+Find the domain(s) your work affects. [Obligations](docs/DOMAIN/DOM-OBL-001_OBLIGATIONS_DOMAIN.md)? [Ledger](docs/DOMAIN/DOM-LED-001_LEDGER_DOMAIN.md)? [Store](docs/DOMAIN/DOM-STORE-001_STORE_AND_ENTITLEMENTS_DOMAIN.md)?
+
+```
+Takes 30-45 minutes. Learn:
+- What this domain owns (its fields, tables, services)
+- What it depends on (other domains)
+- What constraints it has (e.g., Obligations must track period-scoped rent)
+```
+
+**Step 3: Understand the Problem Architecturally**
+
+Frame your work in terms of the invariants and domain specs you just read. What MUST be true? What does this domain authority say?
+
+```
+Example:
+- Need to fix rent calculation? Read DOM-OBL-001 to understand
+  what rent fields the Obligations domain must own. Determine if
+  the fix requires a FEAT change or just a view model fix.
+```
+
+**Step 4: Check Current Progress** (Now it's safe)
+
+Only now check [AUDIT_BASELINE_2026-08-04.md](docs/TRACKING/AUDIT_BASELINE_2026-08-04.md) and [DOMAIN_PROGRESS_MATRIX_2026.md](docs/TRACKING/DOMAIN_PROGRESS_MATRIX_2026.md).
+
+```
+Takes 10 minutes. Learn:
+- Which phases are complete for your domain
+- What blockers exist
+- What the audit found (context for known issues)
+```
+
+**Step 5: Design Your FEAT**
+
+Using domain authority and invariants, design your mutation as a FEAT. See [FEAT contract template](docs/FEATURE-EXECUTION/).
+
+**Step 6: Implement**
+
+Follow the phase-based structure and the golden rules below.
+
+### Why This Order?
+
+- **Invariants define correctness.** If you read tracking first, you might build something "within current progress" that violates an invariant. Then it blocks downstream work.
+- **Domain specs define boundaries.** They prevent you from moving fields between domains or creating cross-domain dependencies.
+- **Tracking docs describe current state.** They're not authority. They say "Obligations phase 6-7 is blocked" but they don't say "and you can't fix it"—invariants say whether the fix is possible.
+
+### Common Scenarios
+
+#### If You're Adding a Feature
+
+1. Read [INV-CORE-000](docs/INVARIANT/CORE/) — understand system constraints
+2. Identify which domain(s) own the new fields
+3. Read that domain's spec (e.g., [DOM-STORE-001](docs/DOMAIN/DOM-STORE-001_STORE_AND_ENTITLEMENTS_DOMAIN.md))
+4. Check audit baseline — which phase is that domain in?
+5. Follow SOP-DEV-002a phases for that domain
+
+#### If You're Fixing a Route or Template
+
+1. Identify the domain (which data does this route work with?)
+2. Read the domain spec
+3. Read [INV-ARC-019](docs/INVARIANT/ARCHITECTURE/INV-ARC-019_IDENTITY_MODEL.md) to understand class_id scoping
+4. Check tracking matrix to see if Phase 6-7 is complete for that domain
+5. If Phase 6-7 complete: route should build a view model, template should consume it
+6. If Phase 6-7 blocked: check audit baseline for why; don't try to work around it
+
+#### If You're Designing a FEAT
+
+1. Read the relevant domain spec (e.g., [DOM-LED-001](docs/DOMAIN/DOM-LED-001_LEDGER_DOMAIN.md) for transfers)
+2. Understand what services exist (Phase 3)
+3. Understand the multi-tenancy boundary (always class_id)
+4. See [FEAT-LED-000](docs/FEATURE-EXECUTION/FEAT-LED-000_TRANSFER_AND_LEDGER_POSTING.md) for pattern
+5. Write your FEAT following the pattern
+
+### Golden Rules
+
+- ✅ **Read before writing** — Always understand invariants first
+- ✅ **Invariants are non-negotiable** — If code violates them, redesign the code, not the invariants
+- ✅ **Scope by class_id** — Never use `teacher_id` alone for queries
+- ✅ **Mutate through FEAT layer only** — No direct `db.session.add/commit` in routes
+- ✅ **Create/update tests** — Every change needs test coverage
+- ✅ **Use canonical helpers** — `resolve_canonical_context()`, `get_current_class_scope()`, view model builders
+- ✅ **Update CHANGELOG.md** — Every change, no exceptions
+- ✅ **Phase 6-7 is field ownership** — Domains own fields in view models; templates don't own anything
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines and [CLAUDE.md](.claude/CLAUDE.md) for AI assistant workflows.
 
 ---
 
