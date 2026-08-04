@@ -1,97 +1,249 @@
 # Classroom Token Hub
 
-A classroom management platform that uses a simulated token economy to drive student engagement and participation.
+A classroom management platform that uses a simulated token economy to drive student engagement and participation. Built with Flask + SQLAlchemy + PostgreSQL, designed for multi-tenant deployment across multiple schools and class periods.
 
-**Version:** 2.0.0 (live-test candidate)  
-**Last Released:** 1.9.0 (2026-03-04)  
-**License:** [PolyForm Noncommercial 1.0.0](https://polyformproject.org/licenses/noncommercial/1.0.0/)
-**Active branch:** `codex/v2.0`
-
-> [!IMPORTANT]
->
-> Classroom Token Hub v1 is now deprecated. The current public deployment reflects **v1.9.0**. The v2.0 branch (`codex/v2.0`) is in live-test candidate state — full-suite validation passes (`744 passed, 19 skipped`) and store domain is complete, but the live-test and production transition gates are not yet finalized.
->
-> For v1 legacy code, see branch [legacy_v1.10.0](https://github.com/timwonderer/classroom-token-hub/tree/legacy_v1.10.0)
+**Version:** 2.0 (Reconstruction in Progress)  
+**Active Branch:** `codex/v2.0` (never merge to main)  
+**License:** [PolyForm Noncommercial 1.0.0](https://polyformproject.org/licenses/noncommercial/1.0.0/)  
+**Status:** Architecture reconstruction underway via SOP-DEV-002a domain rebuild phases
 
 ---
 
-## Overview
+## Current Status (2026-08-04)
 
-Classroom Token Hub gives teachers a token-based economy to manage their classroom. Students earn tokens for attendance and participation, then spend them in a class store, use them for hall passes, or save them. This system creates a feedback loop that reinforces positive classroom behavior. Teachers configure pay rates, rent, store items, and feature toggles per class period.
+Classroom Token Hub v2 is undergoing a comprehensive architectural reconstruction to achieve production readiness via the 10-phase SOP-DEV-002a domain rebuild workflow. 
 
-The platform is multi-tenant: a single deployment serves many teachers, each with multiple class periods. Students can belong to multiple classes with different teachers. All data is isolated by class.
+**Audit Baseline Established:** 2026-08-04 via complete code inspection of all 10 domains
+- ✅ **5 domains** have Phases 0-5 complete (foundational architecture)
+- ⚠️ **2 domains** have Phase 5 complete but Phase 6-7 blocked or unverified
+- 🔄 **3 domains** at Phase 1 (not yet started)
+
+### Critical Blockers (Must Resolve Before Production)
+
+1. **Obligations domain Phase 6-7 FAILS** — Template uses undefined variables (priority: fix immediately)
+2. **8 domains missing view models** — Blocks Phase 6-7 integration (15-25 hours to resolve)
+3. **11 routes with direct DB mutations** — Phase 4 (Mutation Boundary) enforcement incomplete
+4. **Zero Phase 10 audits completed** — No domain is production-certified yet
+
+**Current Estimate to Production:** 160-240 hours (4-6 weeks at 40h/week) starting from this baseline.
+
+See **[AUDIT_BASELINE_2026-08-04.md](docs/TRACKING/AUDIT_BASELINE_2026-08-04.md)** for detailed domain-by-domain findings.
 
 ---
 
-## Architecture
+## What This Means for Developers
 
-The v2 architecture is built on three layers:
+### If You're Starting New Work
 
-- **Identity:** `User` authenticates, `Seat` acts within a class, `ClassEconomy` (`class_id`) scopes all data. `join_code` is the public ingress alias for `class_id`.
-- **Domains:** Bounded services (`app/services/`) own read and validation logic. Domains do not call each other directly.
-- **FEATs:** All state mutation flows through `app/feats/` — atomic execution units that resolve identity, validate across domains, and commit in a single transaction.
+**Good News:** Phases 0-5 are largely complete for major domains (Identity, Ledger, Obligations, Store). You can:
+- Build new services following the domain service pattern
+- Create FEATs for state mutations
+- Build tests that verify multi-tenancy scoping
+
+**Blocked:** Do NOT start Phase 6-7 work (routes → view models) for domains without approved view models. Check the [domain status matrix](docs/TRACKING/DOMAIN_PROGRESS_MATRIX_2026.md) first.
+
+### If You're Fixing a Route or Template
+
+Check the [domain status matrix](docs/TRACKING/DOMAIN_PROGRESS_MATRIX_2026.md):
+- ✅ **Green (Phase 6-7 pass):** Route should use view model; template should access fields via `view.*`
+- ⚠️ **Yellow (Phase 6-7 unverified):** Verify with domain owner before starting changes
+- ❌ **Red (Phase 6-7 blocked):** Route/template work is blocked; see audit report for why
+
+### If You're Planning a Feature
+
+Features that touch student data must flow through the 10-phase SOP-DEV-002a rebuild:
 
 ```
-Routes → FEAT → Domain Services → Ledger
+Phase 0: Define scope (domain spec)
+Phase 1: Immutable fact tables
+Phase 2: Migrations + indexes
+Phase 3: Service layer queries
+Phase 4: FEAT layer mutations
+Phase 5: Immutable view models
+Phase 6-7: Route + template integration
+Phase 8: Test coverage + multi-tenancy
+Phase 9: Remove legacy code
+Phase 10: Production audit certification
 ```
 
-New code must route writes through FEATs. GET handlers must not trigger DB writes.
+Each phase is sequential and interdependent. Features skip no phases.
 
-### Key Models
+---
 
-| Layer | Models | Purpose |
-|-------|--------|---------|
-| Identity | `User`, `Seat`, `IdentityProfile`, `ClassEconomy`, `PasskeyCredential` | Auth, class-local actor, display name, class boundary, passkey credentials |
-| Financial | `Transaction`, `LedgerBalanceSnapshot` | Ledger entries and cached balances (seat + class scoped) |
-| Configuration | `PayrollSettings`, `RentSettings`, `BankingSettings`, `FeatureSettings`, `ClassFeature` | Per-class economy settings and feature toggles |
-| Obligations | `ObligationAssessment`, `BillCycle`, `PolicyVersion`, `PolicyTransition` | Rent, insurance, and fee lifecycle with immutable policy versioning |
-| Store | `StoreItem`, `StoreItemVisibility`, `StoreProduct`, `EntitlementEvent` | Classroom store catalog, product policies, and entitlement lifecycle |
-| Attendance | `AttendanceSession`, `HallPassLog`, `HallPassSettings`, `PayrollEvent` | Attendance sessions, hall passes, and payroll events |
-| Audit | `AuditEvent`, `ChainHead` | Append-only hash-chained audit log |
-| Support | `Issue`, `IssueCategory`, `IssueStatusHistory`, `IssueResolutionAction`, `TicketCorrelationPack` | Support ticket lifecycle |
-| Recovery | `RecoveryRequest`, `StudentRecoveryCode` | Student account recovery flow |
-| Operations | `PendingAction`, `ActorRequestTrace`, `Announcement` | Pending approvals, request traces, announcements |
+## Architecture Overview
 
-40 domain models total. Legacy tables (`Admin`, `Student`, `TeacherBlock`, `ClassMembership`, `StudentTeacher`, `TapEvent`, `RentPayment`, `StudentInsurance`, `StudentItem`, `RedemptionAuditLog`, `BalanceCache`) have been retired and must not be treated as current architecture authority.
+### The Three Layers (v2)
+
+**1. Identity Layer (Foundation)**
+- `User` — Authentication principal (global)
+- `Seat` — Class-local actor (WHERE work happens)
+- `ClassEconomy` (`class_id`) — Tenant boundary (SCOPING KEY)
+- `IdentityProfile` — Display name and class-local identity
+- `join_code` — Public alias for `class_id` (for student ingress)
+
+**2. Domain Services (Read + Validation)**
+- 10 bounded domains: Identity, Class Configuration, Ledger, Productivity & Payroll, Obligations, Store & Entitlements, Operations, Interpretation, Policies, Support
+- Each domain owns canonical tables, facts, and read queries
+- Domains **do not call each other**; cross-domain reads happen via FEATs
+- Authority flows: Domain spec → Service layer → FEAT mutations → Ledger
+
+**3. FEAT Layer (All Mutations)**
+- Every state change goes through a FEAT (Feature Execution Transaction)
+- FEATs resolve identity, validate across domains, and commit atomically
+- Examples: `FEAT-LED-000` (transfer), `FEAT-OBL-001` (assess obligation), `FEAT-STOR-001` (purchase)
+- Pattern: Route → FEAT context → domain services → database commit
+
+```
+Student clicks "Pay Rent"
+    ↓
+Route calls FEAT-OBL-PAY (seat_id, class_id, amount)
+    ↓
+FEAT validates: (seat exists, rent is due, sufficient balance)
+    ↓
+FEAT calls: obligations_service.record_payment() + ledger_service.transfer()
+    ↓
+FEAT commits atomically
+    ↓
+Response: "Payment processed"
+```
+
+### Multi-Tenancy (Critical)
+
+**ALL queries must be scoped by `class_id`, never by `teacher_id` alone.**
+
+```python
+# ✅ CORRECT
+students = (
+    Student.query
+    .filter_by(class_id=class_id)  # Multi-tenant isolation
+    .all()
+)
+
+# ❌ WRONG (data leak risk)
+students = Student.query.all()
+```
+
+`join_code` is a public alias for ingress only. All internal queries use `class_id`. This prevents same-teacher cross-period data leakage (P0 incident in v1).
+
+### View Models (Phase 5-7 Integration)
+
+View models are immutable (`@dataclass(frozen=True)`) and owned by domains. Routes build them, templates consume them.
+
+```python
+# Phase 5: Define view model
+@dataclass(frozen=True)
+class StudentObligationView:
+    obligation_type: str
+    current_period: dict  # {amount_due, days_until_due, is_paid, ...}
+    payment_history: list
+
+# Phase 6: Route builds and passes it
+def rent():
+    view = build_student_obligation_view(seat_id, class_id, 'RENT')
+    return render_template('student_rent.html', view=view)
+
+# Phase 7: Template accesses fields via view
+# ✅ {{ view.current_period.days_until_due }}
+# ❌ {{ days_until_due }}  (not in context)
+```
+
+Domains own the fields, not the templates. Templates are integration surfaces used by multiple domains.
 
 ---
 
 ## Features
 
 ### For Teachers
-- **Two-Step Sign Up** with just your username and authenticator. No more date of birth references
-- **At-a-Glance Dashboard** for quick class stats, activities, and pending approvals
-- **Teacher-Provisioned Seats** that are created when teacher upload a roster for student to self-claim in class
-- **Automated Payroll** for streamlined set-it-and-forget-it workflow. Configure rates, pay schedule, and overtime for your classroom needs
-- **Classroom Store** for organizing and selling virtual and physical items with bundles, expirations, and redemption tracking
-- **Recurring Rent** complete with with waivers, late fees, seat-scoped reversals, and immutable policy versioning to teach responsibility and planning
-- **Insurance** with multiple claim type and limits to teach risk management
-- **Simple Analytics** to quickly diagnose participation rate, money velocity, spending/hoarding behavior, budget survivability; weekly and monthly views
-- **Hall Passes Management** so you always know where is your student going, when did they leave, and when are they coming back.
+
+- **Two-Step Sign Up** — Username + authenticator (no PII required)
+- **Admin Dashboard** — Class overview, pending actions, analytics
+- **Roster Management** — Provision seats; students self-claim with credentials
+- **Automated Payroll** — Configure hourly rates, pay schedule, overtime thresholds
+- **Classroom Store** — Create items, bundles, expiration policies; track redemptions
+- **Rent System** — Recurring payments with grace periods, waivers, late fees
+- **Hall Passes** — Track when students leave/return; automatic status updates
+- **Analytics** — Participation rate, money velocity, budget survivability trends
+- **Support Tickets** — Student-submitted issues with admin resolution tracking
+
 ### For Students
-- **Portal** — View balances, transaction history, store, and attendance
-- **Account Transfers** — Move funds between checking and savings accounts
-- **Seat Claim** — Self-claim a teacher-provisioned seat using claim credentials
-- **Account Recovery** — Student-assisted teacher recovery flow
+
+- **Portal** — View balances, transaction history, store, attendance
+- **Account Transfers** — Move funds between checking and savings
+- **Seat Claim** — Self-provision using teacher-issued claim credentials
+- **Account Recovery** — Restore access via teacher-verified process
+- **Hall Pass Requests** — Request approval; see status in real-time
 
 ### For System Admins
-- **Admin Portal** — Teacher overview, support tickets, error/event logs, broadcast announcements
+
+- **Admin Portal** — Teacher overview, support tickets, system events, announcements
+- **User Management** — Provision sysadmins, manage 2FA recovery
 
 ### Platform
-- **Multi-Tenant** — Full class-period isolation; shared students across teachers
-- **Progressive Web App** — Installable on mobile with offline fallback
-- **Accessibility** — WCAG 2.1 AA design guidelines, keyboard navigation, ARIA labels, screen reader support. Automated testing uses axe-core; no formal certification.
-- **Security** — PII encryption at rest, TOTP 2FA for admins, CSRF protection, salted+peppered credential hashing, Cloudflare Turnstile bot protection, post-claim PII deletion
-- **Observability** — OpenTelemetry instrumentation (Flask, SQLAlchemy, requests) with OTLP export; append-only hash-chained `AuditEvent` log
-- **Rate Limiting** — Flask-Limiter with Cloudflare-aware IP detection; disabled in development by default
+
+- **Multi-Tenant** — Full class-period isolation; students share identity across teachers
+- **Progressive Web App** — Installable on mobile; offline fallback included
+- **Accessibility** — WCAG 2.1 AA design, keyboard nav, ARIA labels, screen readers
+- **Security** — PII encryption at rest, TOTP 2FA, CSRF protection, bcrypt hashing, Cloudflare Turnstile, post-claim PII deletion
+- **Observability** — OpenTelemetry instrumentation (Flask, SQLAlchemy) with OTLP export
+- **Rate Limiting** — Flask-Limiter with Cloudflare IP detection; disabled in dev
 
 > [!IMPORTANT]
 >
-> Classroom Token Hub is designed to be privacy first. This means our platform only collects information that's necessary for the app to function as intended. This is why we do not ask teachers to provide their identities nor their physical locations. We also do not collect email addresses or phone numbers.
+> **Privacy First Design:** CTH minimizes PII collection (no email, phone, SSO). We do not ask for identities or physical locations. This reduces breach impact: data is meaningless without external reference.
 >
-> Our justification for this is to reduce the blast radius should a breach happens. Our minimal PII collection approach means the data will be almost meaningless without external references. Integration of SSO on our server will fundamentally and permanently attach validated external identity to an actor in a simulated economy. This approach is the opposite of what we believe in.
+> We do not support native SSO. If your district wants to self-host with SSO integration, fork this project and implement your own auth layer. We provide technical support for architecture; you retain full operational control.
 >
-> Because of that, we do not support SSO integration natively on our server. However, if district partners are interested in forking and internally hosting this project on their own infrastructure, they may implement whichever authentication or account provisioning mechanism as they see fit. We will be more than happy to provide technical support on architecture but the district will have full operational control over its fork, including authentication, infrastructure, identity management, security, deployment, and maintenance. Learn more about why we made that choice at [PRN-SNP-001 Why Classroom Token Hub Does Not Implement SSO](docs/PRINCIPLES/SECURITY_AND_PRIVACY/PRN-SNP-001_Why_Classroom_Token_Hub_Does_Not_Implement_SSO.md)
+> See [PRN-SNP-001](docs/PRINCIPLES/SECURITY_AND_PRIVACY/PRN-SNP-001_Why_Classroom_Token_Hub_Does_Not_Implement_SSO.md) for rationale.
+
+---
+
+## Project Structure
+
+```
+app/
+├── models.py             # 40 domain models (Identity, Ledger, Obligations, Store, etc.)
+├── auth.py               # Auth decorators (@admin_required, @student_required)
+├── feats/                # State mutation layer
+│   ├── base.py           # FEATContext, feat_shell decorator
+│   ├── ledger_resolution_feat.py  # FEAT-LED-000
+│   ├── assess_obligation_feat.py  # FEAT-OBL-001
+│   ├── store_purchase_feat.py     # FEAT-STOR-001
+│   └── ...
+├── services/             # Read and validation layer (domain-bounded)
+│   ├── obligations_service.py    # Obligations domain primitives
+│   ├── ledger_service.py         # Ledger domain primitives
+│   ├── store_service.py          # Store domain primitives
+│   ├── obligation_view_model.py  # StudentObligationView builder (Phase 5)
+│   ├── view_model_builders.py    # Store/Entitlements view models (Phase 5)
+│   └── ...
+├── routes/               # HTTP handlers (thin; call FEATs and view models)
+│   ├── admin.py         # Teacher dashboard and settings
+│   ├── student.py       # Student portal
+│   ├── system_admin.py  # System admin endpoints
+│   ├── api.py           # REST API
+│   ├── analytics.py     # Analytics
+│   └── ...
+├── utils/                # Helpers
+│   ├── economy_policy.py          # Pricing logic
+│   ├── canonical_temporal_resolver.py  # Temporal context
+│   ├── encryption.py             # PII encryption
+│   └── ...
+
+templates/                # Jinja2 templates (consume view models or context)
+static/                   # CSS, JS, images, PWA assets
+tests/                    # pytest suite (90+ test files)
+migrations/               # Alembic migrations (88+ versions, all idempotent)
+docs/                     # Architecture, domain, FEAT, and invariant specs
+```
+
+### Key Files
+
+- `CLAUDE.md` — AI assistant guidelines; read before asking questions
+- `.claude/rules/` — Development rules (multi-tenancy, migrations, testing, security, docs)
+- `docs/INVARIANT/` — Core runtime invariants and architectural rules
+- `docs/DOMAIN/` — Per-domain authority specs (e.g., DOM-LED-001, DOM-OBL-001)
+- `docs/TRACKING/DOMAIN_PROGRESS_MATRIX_2026.md` — Current domain status by phase
+- `docs/TRACKING/AUDIT_BASELINE_2026-08-04.md` — Complete audit findings
 
 ---
 
@@ -100,177 +252,151 @@ New code must route writes through FEATs. GET handlers must not trigger DB write
 ### Prerequisites
 
 - Python 3.10+
-- PostgreSQL
-- A virtual environment (recommended)
+- PostgreSQL 12+
+- Virtual environment (recommended)
 
-### Installation
+### Setup
 
 ```bash
-git clone <repository-url>
-cd classroom-token-hub
+# Clone and create venv
+git clone <repo-url>
+cd classroom-economy
 python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
-```
 
-### Configuration
-
-Create a `.env` file:
-
-```bash
-SECRET_KEY=<64-char-random-string>
-DATABASE_URL=postgresql://user:password@host:port/dbname
+# Create .env
+cat > .env << 'EOF'
+SECRET_KEY=$(python3 -c "import secrets; print(secrets.token_hex(32))")
+DATABASE_URL=postgresql://user:password@localhost:5432/classroom_economy
+ENCRYPTION_KEY=$(openssl rand -base64 32)
+PEPPER_KEY=$(python3 -c "import secrets; print(secrets.token_urlsafe(32))")
+CSRF_SECRET_KEY=$(python3 -c "import secrets; print(secrets.token_urlsafe(32))")
 FLASK_ENV=development
-ENCRYPTION_KEY=<32-byte-base64-key>   # openssl rand -base64 32
-PEPPER_KEY=<secret-pepper-string>
-CSRF_SECRET_KEY=<random-string>
+EOF
 
-# Optional — leave unset to bypass in development
-TURNSTILE_SITE_KEY=<cloudflare-turnstile-site-key>
-TURNSTILE_SECRET_KEY=<cloudflare-turnstile-secret-key>
-
-# Optional — rate limiting (disabled in development by default)
-DEV_ENABLE_RATELIMIT=false
-
-# Optional — maintenance mode
-MAINTENANCE_MODE=false
-
-# Optional — OpenTelemetry export (OTLP/HTTP)
-OTEL_EXPORTER_OTLP_ENDPOINT=<otlp-endpoint>
-```
-
-### Database Setup
-
-```bash
+# Initialize database
 flask db upgrade
-flask create-sysadmin   # Follow prompts, scan QR with authenticator app
+flask create-sysadmin  # Follow prompts; scan QR with authenticator
+
+# Run
+flask run  # Navigate to http://localhost:5000
 ```
-
-### Run
-
-```bash
-flask run
-```
-
-Navigate to `http://localhost:5000`.
-
----
-
-## Project Structure
-
-```
-app/
-├── __init__.py           # App factory
-├── models.py             # SQLAlchemy models (40 domain models)
-├── auth.py               # Auth decorators and scoped access helpers
-├── access/               # Scope resolution and scope factory
-├── feats/                # FEAT execution layer (all state mutation)
-│   ├── ledger_resolution_feat.py   # FEAT-LED-000: canonical monetary resolution
-│   ├── store_purchase_feat.py      # FEAT-STOR-001
-│   ├── assess_obligation_feat.py   # FEAT-OBL-001
-│   ├── rent_payment_feat.py        # FEAT-OBL (rent)
-│   ├── insurance_claim_feat.py     # FEAT-STOR-003
-│   ├── transfer_feat.py            # Account transfers
-│   ├── transaction_void_feat.py    # Ledger reversals
-│   └── ...                         # Additional FEATs
-├── services/             # Domain-bounded read/validation services
-│   ├── balance_service.py
-│   ├── obligations_service.py
-│   ├── store_service.py
-│   ├── store_policy_resolver.py    # SPEC-STORE-001 policy resolution
-│   ├── entitlement_read_service.py # Entitlement reads
-│   ├── view_model_builders.py      # Obligation/class view models
-│   └── ...                         # Additional services
-├── routes/               # Blueprints: admin, student, system_admin, api, analytics, docs, main, recovery
-├── utils/                # Helpers (encryption, seat scope, economy policy, analytics engine)
-│   ├── economy_policy.py           # Centralized pricing recommendation logic
-│   ├── analytics_engine.py
-│   ├── encryption.py
-│   └── ...
-├── forms.py              # WTForms definitions
-├── payroll.py            # Payroll automation
-└── scheduled_tasks.py    # Background scheduler (APScheduler)
-
-templates/                # Jinja2 templates
-static/                   # CSS, JS, images, PWA assets
-tests/                    # pytest suite (90 test files across 14 domain directories)
-migrations/               # Alembic migrations (88 versions)
-scripts/                  # Utility and seed scripts
-docs/                     # v2 architecture, domain, and invariant specs
-wsgi.py                   # WSGI entry point (gunicorn wsgi:app)
-```
-
----
-
-## Development
 
 ### Running Tests
 
-Tests require a PostgreSQL test database. Set `TEST_DATABASE_URL` before running:
-
 ```bash
-TEST_DATABASE_URL=postgresql://... pytest   # All tests
-pytest tests/test_payroll.py               # Specific file
-pytest -k "recovery"                       # Pattern match
-pytest --cov=app tests/                    # With coverage (requires pytest-cov)
+# All tests (requires TEST_DATABASE_URL set)
+TEST_DATABASE_URL=postgresql://... pytest
+
+# Specific domain
+pytest tests/dom/obligations/ -v
+
+# With coverage
+pytest --cov=app tests/
 ```
 
-The validated branch state: `744 passed, 19 skipped`.
+**Current test state:** Audit underway; see [AUDIT_BASELINE_2026-08-04.md](docs/TRACKING/AUDIT_BASELINE_2026-08-04.md) for status by domain.
 
 ### Database Migrations
 
 ```bash
-flask db heads                          # Verify single head
-flask db migrate -m "Description"       # Generate migration
-flask db upgrade                        # Apply
-flask db downgrade                      # Rollback
+flask db heads           # Must show exactly 1 head
+flask db migrate -m "Description"
+flask db upgrade         # Apply
+flask db downgrade       # Rollback
 ```
 
-All migrations must include idempotency helpers. See `.claude/rules/database-migrations.md` for the full workflow. A pre-push hook enforces single-head integrity; install it via:
-
-```bash
-./scripts/setup-hooks.sh
-```
-
-### Common Commands
-
-```bash
-flask run                               # Dev server
-flask create-sysadmin                   # Create system admin
-python scripts/seed_dummy_students.py   # Seed test data
-```
+All migrations must include idempotency helpers. See [.claude/rules/database-migrations.md](.claude/rules/database-migrations.md).
 
 ---
 
 ## Documentation
 
-- **[Architecture Foundation](docs/INVARIANT/CORE/INV-CORE-000_CORE_INVARIANTS.md)** — Core runtime invariants and system boundaries
-- **[Authority Model](docs/INVARIANT/CORE/INV-CORE-001_CAPABILITY_BASED_ARCHITECTURE_AND_AUTHORITY_MODEL.md)** — Capability-based INV → DOM → FEAT hierarchy
-- **[Domain Specs](docs/DOMAIN/)** — Per-domain authority contracts
-- **[FEAT Contracts](docs/FEATURE-EXECUTION/)** — Execution layer specifications
-- **[API Reference](docs/ARCHITECTURE/OPERATIONS/ARC-OPS-005_Api_Reference.md)** — REST API documentation
-- **[Developer Vocabulary](docs/REFERENCE/REF-TERM-001_DEVELOPER_VOCABULARY.md)** — Canonical v2 terminology and deprecated-term mappings
-- **[Deployment Guide](docs/STANDARD_OPERATING_PROCEDURES/DEPLOYMENT/SOP-DEP-023_V2_Production_Transition_Runbook.md)** — v2 production transition runbook
-- **[Live-Test Runbook](docs/STANDARD_OPERATING_PROCEDURES/DEPLOYMENT/SOP-DEP-022_V2_Live_Test_Runbook.md)** — Internal validation workflow before live testing
-- **[Development Priorities](DEVELOPMENT.md)** — Roadmap and v2 launch readiness
-- **[V2 Migration Tracker](docs/TRACKING/V2_Full_compliance_migration_plan.md)** — Active wave-by-wave execution status
-- **[Changelog](CHANGELOG.md)** — Version history
+### Quick Navigation
+
+| Document | Purpose |
+|----------|---------|
+| **[AUDIT_BASELINE_2026-08-04.md](docs/TRACKING/AUDIT_BASELINE_2026-08-04.md)** | ⭐ START HERE: Domain audit findings, blockers, next steps |
+| **[DOMAIN_PROGRESS_MATRIX_2026.md](docs/TRACKING/DOMAIN_PROGRESS_MATRIX_2026.md)** | Domain status by phase; view model coverage map |
+| **[Architecture Foundation](docs/INVARIANT/CORE/INV-CORE-000_CORE_INVARIANTS.md)** | Core runtime invariants and system boundaries |
+| **[Domain Specs](docs/DOMAIN/)** | Per-domain authority (Identity, Ledger, Obligations, Store, etc.) |
+| **[FEAT Contracts](docs/FEATURE-EXECUTION/)** | Execution layer mutation specifications |
+| **[.claude/CLAUDE.md](.claude/CLAUDE.md)** | Guidelines for working with AI assistants on this codebase |
+| **[.claude/rules/](..claude/rules/)** | Development rules (multi-tenancy, migrations, testing, security) |
+| **[DEVELOPMENT.md](DEVELOPMENT.md)** | Roadmap and current priorities |
+| **[CHANGELOG.md](CHANGELOG.md)** | Version history |
+
+### For Specific Tasks
+
+- **Adding a domain:** Read [DOMAIN_IMPLEMENTATION_PLAN_TEMPLATE.md](docs/TRACKING/DOMAIN_IMPLEMENTATION_PLAN_TEMPLATE.md)
+- **Writing a FEAT:** Read relevant domain spec + [FEAT contract template](docs/FEATURE-EXECUTION/)
+- **Multi-tenancy:** Read [.claude/rules/multi-tenancy.md](.claude/rules/multi-tenancy.md)
+- **Migrations:** Read [.claude/rules/database-migrations.md](.claude/rules/database-migrations.md)
+- **Testing:** Read [.claude/rules/testing.md](.claude/rules/testing.md)
 
 ---
 
-## Monitoring
+## Deployment
 
-The `/health` endpoint returns HTTP 200 when the database is reachable. Deploy behind a production web server (e.g., NGINX + Gunicorn).
+### Health Check
 
 ```bash
-curl http://your-domain/health
+curl http://localhost:5000/health  # Returns 200 if DB is reachable
 ```
+
+### Production Deployment
+
+Deploy behind a production WSGI server:
+
+```bash
+gunicorn wsgi:app --workers 4 --bind 0.0.0.0:8000
+```
+
+See [SOP-DEP-023](docs/STANDARD_OPERATING_PROCEDURES/DEPLOYMENT/SOP-DEP-023_V2_Production_Transition_Runbook.md) for full runbook.
 
 ---
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md). Review the [Architecture Foundation](docs/INVARIANT/CORE/INV-CORE-000_CORE_INVARIANTS.md) and [DEVELOPMENT.md](DEVELOPMENT.md) before starting.
+Before starting work:
+
+1. **Read the audit baseline** — [AUDIT_BASELINE_2026-08-04.md](docs/TRACKING/AUDIT_BASELINE_2026-08-04.md)
+2. **Check domain status** — [DOMAIN_PROGRESS_MATRIX_2026.md](docs/TRACKING/DOMAIN_PROGRESS_MATRIX_2026.md)
+3. **Review CLAUDE.md** — [.claude/CLAUDE.md](.claude/CLAUDE.md)
+4. **Read relevant rules** — [.claude/rules/](.claude/rules/)
+
+**Golden Rules:**
+- ✅ Read before writing
+- ✅ Scope by `class_id`, never by `teacher_id` alone
+- ✅ Mutate through FEAT layer only (no direct `db.session.add/commit` in routes)
+- ✅ Create/update tests (always)
+- ✅ All routes follow 10-phase SOP-DEV-002a rebuild
+- ✅ Update CHANGELOG.md for every change
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines.
+
+---
+
+## Architecture Phases (SOP-DEV-002a)
+
+Every domain must progress through 10 sequential phases to be production-ready:
+
+| Phase | Name | Purpose | Example Blocker |
+|-------|------|---------|-----------------|
+| **0** | Boundary | Scope defined | "Obligations domain scope unclear" |
+| **1** | Truth | Immutable facts | "ObligationAssessment not append-only" |
+| **2** | Persistence | Migrations idempotent | "Migration has no existence checks" |
+| **3** | Primitives | Service queries exist | "obligations_service missing get_assessment()" |
+| **4** | Mutation Boundary | All writes via FEAT | "Route calls db.session.add directly" |
+| **5** | Read Models | View models defined | ❌ Identity, Class Config, Ledger missing view models |
+| **6** | Surface Inventory | Routes use view models | ❌ Obligations Phase 6-7 template fails |
+| **7** | Rewire | Templates via view models | ❌ 8 domains blocked (no view models) |
+| **8** | Verify | Tests pass + multi-tenancy | Requires Phases 0-7 complete |
+| **9** | Legacy Deletion | Dead code removed | Requires Phase 8 pass |
+| **10** | Audit | Production certified | Requires Phases 0-9 complete |
+
+Current status by domain: See [DOMAIN_PROGRESS_MATRIX_2026.md](docs/TRACKING/DOMAIN_PROGRESS_MATRIX_2026.md).
 
 ---
 
@@ -278,11 +404,21 @@ See [CONTRIBUTING.md](CONTRIBUTING.md). Review the [Architecture Foundation](doc
 
 [PolyForm Noncommercial License 1.0.0](https://polyformproject.org/licenses/noncommercial/1.0.0/)
 
-**Permitted:** Classrooms, clubs, nonprofit educational settings, research, personal learning.  
-**Prohibited:** Commercial products, SaaS platforms, paid services, for-profit internal use.
+**Permitted:** Classrooms, clubs, nonprofits, research, personal learning.  
+**Prohibited:** Commercial products, SaaS, paid services, for-profit use.
 
-See [LICENSE](LICENSE) for complete terms. See [Third-Party Notices](docs/archive/v1-user-guides/legal/third-party-notices.md) for dependency attributions.
+See [LICENSE](LICENSE) for complete terms and [Third-Party Notices](docs/archive/v1-user-guides/legal/third-party-notices.md) for dependencies.
 
 ---
 
-Built for educators who want a practical, engaging way to manage their classrooms.
+## Support
+
+- **Questions about architecture?** Read [CLAUDE.md](.claude/CLAUDE.md) and the relevant domain spec
+- **Found a bug?** Check the audit baseline; may be a known blocker
+- **Ready to contribute?** See [CONTRIBUTING.md](CONTRIBUTING.md)
+
+---
+
+**Built for educators who want a practical, engaging way to manage their classrooms.**
+
+*Last updated: 2026-08-04 — Audit baseline established*

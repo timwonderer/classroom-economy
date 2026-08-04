@@ -30,18 +30,18 @@ This matrix consolidates the progress of all CTH domains through the 10-phase SO
 
 ## Domain Status Matrix
 
-| Domain | Spec | Phase 0-4 | Phase 5-7 | Phase 8-9 | Phase 10 | Status | Audit Doc |
-|--------|------|-----------|-----------|-----------|----------|--------|-----------|
-| **Identity** | DOM-IDEN-001/002/003/006 | ✅ | ✅ | ✅ | ? | 🔄 Unaudited | None |
-| **Class Configuration** | DOM-CLASS-001 | ✅ | ✅ | ✅ | ? | 🔄 Unaudited | None |
-| **Ledger** | DOM-LED-001 | ✅ | ✅ | ✅ | ? | 🔄 Unaudited | None |
-| **Productivity & Payroll** | DOM-PROD-001 | ✅ | ✅ | ✅ | ? | 🔄 Unaudited | None |
-| **Obligations** | DOM-OBL-001 | ✅ | ✅ | ✅ | ❌ | ❌ AUDIT INVALID | 2026-07-26 (FAILS Phase 6-7 verification) |
-| **Store & Entitlements** | DOM-STORE-001 | ✅ | ✅ | ? | ? | 🔄 Unaudited | None |
-| **Operations** | DOM-OPS-001 | 🔄 | — | — | — | 🔄 NOT STARTED | N/A |
-| **Interpretation** | DOM-ITR-001 | 🔄 | — | — | — | 🔄 NOT STARTED | N/A |
-| **Policies** | DOM-POL-001 | 🔄 | — | — | — | 🔄 NOT STARTED | N/A |
-| **Support** | DOM-SUP-001 | 🔄 | — | — | — | 🔄 NOT STARTED | N/A |
+| Domain | Spec | Phase 0-4 | Phase 5 | Phase 6-7 | Phase 8-9 | Phase 10 | Status | Audit Doc |
+|--------|------|-----------|---------|-----------|-----------|----------|--------|-----------|
+| **Identity** | DOM-IDEN-001/002/003/006 | ✅ | ❌ NO VM | ❌ BLOCKED | ? | ❌ | ❌ BLOCKED on Phase 5 | 2026-08-04 baseline |
+| **Class Configuration** | DOM-CLASS-001 | ✅ | ❌ NO VM | ❌ BLOCKED | ? | ❌ | ❌ BLOCKED on Phase 5 | 2026-08-04 baseline |
+| **Ledger** | DOM-LED-001 | ✅ | ❌ NO VM | ❌ BLOCKED | ? | ❌ | ❌ BLOCKED on Phase 5 | 2026-08-04 baseline |
+| **Productivity & Payroll** | DOM-PROD-001 | ✅ | ❌ NO VM | ❌ BLOCKED | ? | ❌ | ❌ BLOCKED on Phase 5 | 2026-08-04 baseline |
+| **Obligations** | DOM-OBL-001 | ✅ | ✅ | ❌ TEMPLATE FAILS | ? | ❌ | ❌ AUDIT INVALID | 2026-08-04 (Phase 6-7 undefined vars) |
+| **Store & Entitlements** | DOM-STORE-001 | ✅ | ✅ | ⚠️ UNVERIFIED | ? | ❌ | 🔄 UNAUDITED (Phase 10 pending) | None yet |
+| **Operations** | DOM-OPS-001 | 🔄 | ❌ | — | — | ❌ | 🔄 NOT STARTED | N/A |
+| **Interpretation** | DOM-ITR-001 | 🔄 | ❌ | — | — | ❌ | 🔄 NOT STARTED | N/A |
+| **Policies** | DOM-POL-001 | 🔄 | ❌ | — | — | ❌ | 🔄 NOT STARTED | N/A |
+| **Support** | DOM-SUP-001 | 🔄 | ❌ | — | — | ❌ | 🔄 NOT STARTED | N/A |
 
 **Legend:**
 - ✅ = Passed/Complete with audit verification
@@ -58,6 +58,15 @@ This matrix consolidates the progress of all CTH domains through the 10-phase SO
 - ✅ Domain is production-ready
 
 **Unaudited domains:** Commits exist, code likely works, but require formal Phase 10 audit to confirm all phases are complete.
+
+**AUDIT STATUS UPDATE (2026-08-04):**
+- **Identity:** Phases 0-5 complete, Phase 6-7 **BLOCKED** (no view model exists; auth uses raw variables)
+- **Class Config:** Phases 0-5 complete, Phase 6-7 **BLOCKED** (settings passed as dicts, not view models)
+- **Ledger:** Phases 0-5 complete, Phase 6-7 **BLOCKED** (balances passed as tuples, not view model)
+- **Payroll:** Phases 0-5 complete, Phase 6-7 **BLOCKED** (earnings computed inline, not in view model)
+- **Obligations:** Phases 0-5 complete, Phase 6-7 **INVALID** (template uses undefined variables: `period_status`, `days_until_due`)
+- **Store:** Phases 0-5 complete, Phase 6-7 **UNVERIFIED** (view models exist but no audit)
+- **Operations, Interpretation, Policies, Support:** Phases 0-1 only, not started
 
 ---
 
