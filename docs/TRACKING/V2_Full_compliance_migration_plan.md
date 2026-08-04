@@ -1,6 +1,6 @@
 # V2 Full-Compliance Migration Plan
 
-> Historical migration plan only. This document reflects the pre-closeout V2 remediation backlog and may still mention legacy Store/Entitlements surfaces, including `StorePurchase`, `RedemptionEvent`, and other superseded v1/v2 artifacts. Do not treat those references as current runtime authority.
+> Historical migration plan only. This document reflects the pre-closeout V2 remediation backlog and may still mention legacy Store/Entitlements surfaces, including `StorePurchase`, `RedemptionEvent`, and other superseded v1/v2 artifacts. Do not treat those references as current runtime authority; use [STORE_ENTITLEMENT_PHASE6_SURFACE_INVENTORY_2026-07-31.md](./STORE_ENTITLEMENT_PHASE6_SURFACE_INVENTORY_2026-07-31.md) for the current closeout surface map.
 
 ## Context
 

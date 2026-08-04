@@ -36,7 +36,7 @@
 
 - **StorePolicyResolver**: Exact resolution API
   - `resolve_store_item(policy_uuid)` — exact immutable retrieval (no inference)
-  - `list_store_policies(class_id)` — discovery primitive for canonical policy definitions (pure discovery; view models own presentation)
+  - `list_store_policies(class_id)` — discovery primitive for canonical policy definitions (pure discovery; returns non-retired policies only; view models own presentation)
 
 ### 2. StoreProduct Model ✅
 
@@ -165,6 +165,7 @@
 
 **Discovery** (separate concern, implemented as pure read):
 - `list_store_policies(class_id)` — discovery primitive for canonical policy definitions
+- Returns non-retired policies only
 - Caller responsibility (routes/APIs)
 - Presentation and filtering live in Phase 5 view models
 - Not part of FEAT execution

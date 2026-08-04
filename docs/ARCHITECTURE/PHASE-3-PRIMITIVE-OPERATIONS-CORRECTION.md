@@ -127,11 +127,11 @@ execute_direct_grant(policy_uuid="UUID-2", ...)  # → UUID-2 resolved, guarante
 - Owns immutable UUID locator
 - Responsible for "which policies exist"
 
-**Discovery/Applicability** (deferred, separate concern)
+**Discovery** (deferred, separate concern)
 - `list_store_policies(class_id)` — pure discovery contract, resolved in Phase 5 view models
-- Responsible for "which policy applies now"
-- Returns list of applicable policies with UUIDs
-- Caller chooses from list
+- Returns canonical policy definitions for the class
+- Filtering and presentation live outside the resolver
+- Caller chooses from the discovered definitions
 
 **Store & Entitlements Domain (STORE)**
 - Owns FEAT-STOR-004 and FEAT-STOR-001
