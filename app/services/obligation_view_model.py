@@ -20,7 +20,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone, timedelta
 
 from app.extensions import db
-from app.models import ObligationAssessment, Transaction, BillCycle, Seat, ClassEconomy, IdentityProfile
+from app.models import ObligationAssessment, Transaction, BillCycle, Seat, ClassEconomy, IdentityProfile, RentSettings
 
 
 @dataclass(frozen=True)
@@ -219,6 +219,8 @@ def build_student_obligation_view(
     if not assessments:
         return None
 
+    rent_settings = db.session.query(RentSettings).filter_by(class_id=class_id).first()
+
     # Step 3: Separate into ASSESSMENT and (PAYMENT/WAIVED) events
     assessment_events = [a for a in assessments if a.event_type == 'ASSESSMENT']
     if not assessment_events:
@@ -281,10 +283,12 @@ def build_student_obligation_view(
         due_date = bill_cycle.next_assessment_at if bill_cycle else assessment.timestamp
         grace_end = due_date + timedelta(days=grace_period_days) if due_date else None
 
-        # Get amount_due (from policy_version or config - not stored on assessment per DOM-OBL-001 v2.5)
-        # TODO: Query PolicyVersion via assessment.policy_version_id for the actual amount
-        # For now, default to 0 - caller should pass amount through view model parameters
-        amount_due = Decimal('0.00')
+        # Resolve the authoritative rent amount from class-scoped rent settings.
+        amount_due = (
+            Decimal(str(rent_settings.rent_amount))
+            if obligation_type == 'RENT' and rent_settings and rent_settings.rent_amount is not None
+            else Decimal('0.00')
+        )
 
         balance = amount_due - total_paid if amount_due else (Decimal('0.00') - total_paid)
         remaining_amount = max(Decimal('0.00'), balance)
@@ -354,7 +358,11 @@ def build_student_obligation_view(
 
     # Build settings dict (from ClassConfig, not rent/insurance settings)
     settings = {
-        'amount_expected': Decimal('0.00'),  # TODO: Get from ClassConfig
+        'amount_expected': (
+            Decimal(str(rent_settings.rent_amount))
+            if obligation_type == 'RENT' and rent_settings and rent_settings.rent_amount is not None
+            else Decimal('0.00')
+        ),
         'late_fee': None,  # TODO: Get from ClassConfig if applicable
         'grace_period_days': grace_period_days,
         'frequency': 'monthly',  # TODO: Get from bill_cycle cadence

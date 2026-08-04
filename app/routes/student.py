@@ -2953,8 +2953,13 @@ def rent():
         flash("Rent system is currently disabled.", "info")
         return redirect(url_for('student.dashboard'))
 
-    # Get current_block from session context (for period display)
-    current_block = session.get('current_block', 'A')
+    # Get identity display context (MAP-UI-002)
+    from app.models import Seat
+    student_seat = db.session.get(Seat, seat_id)
+    # Derive the current block from the canonical class context, matching the payment route.
+    current_block = (student_seat.class_economy.section or '').strip().upper() if student_seat and student_seat.class_economy else ''
+    if not current_block:
+        current_block = (getattr(settings, 'block', '') or 'A').strip().upper()
 
     # Build view model from generic obligation service primitives
     from app.services.obligation_view_model import build_student_obligation_view
@@ -2965,10 +2970,6 @@ def rent():
         obligation_type='RENT',
         current_block=current_block,
     )
-
-    # Get identity display context (MAP-UI-002)
-    from app.models import Seat
-    student_seat = db.session.get(Seat, seat_id)
 
     checking_balance, savings_balance = get_available_balances(seat_id, class_id)
 

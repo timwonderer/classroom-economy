@@ -131,7 +131,8 @@
     <div class="card-body student-theme">
         <div class="mb-3">
             <p class="mb-1 text-muted"><strong>Monthly Rent:</strong></p>
-            <div class="h3 text-primary mb-0">${{ "%.2f"|format(view.settings.get('amount_expected', view.current_period.amount_due)) }}</div>
+            {% set expected_rent = view.settings.get('amount_expected') %}
+            <div class="h3 text-primary mb-0">${{ "%.2f"|format(expected_rent if expected_rent else view.current_period.amount_due) }}</div>
         </div>
 
         <div class="mb-3">
