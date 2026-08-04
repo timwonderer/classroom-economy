@@ -149,15 +149,16 @@ def upgrade():
     else:
         print("⚠️  Table 'entitlement_events' already exists, skipping create...")
 
-    if not index_exists('entitlement_events', 'ix_entitlement_events_seat_id'):
+    # Index creation guarded by column existence (handles both legacy and canonical schemas)
+    if not index_exists('entitlement_events', 'ix_entitlement_events_seat_id') and column_exists('entitlement_events', 'seat_id'):
         op.create_index('ix_entitlement_events_seat_id', 'entitlement_events', ['seat_id'])
-    if not index_exists('entitlement_events', 'ix_entitlement_events_class_id'):
+    if not index_exists('entitlement_events', 'ix_entitlement_events_class_id') and column_exists('entitlement_events', 'class_id'):
         op.create_index('ix_entitlement_events_class_id', 'entitlement_events', ['class_id'])
-    if not index_exists('entitlement_events', 'ix_entitlement_events_assessment_id'):
+    if not index_exists('entitlement_events', 'ix_entitlement_events_assessment_id') and column_exists('entitlement_events', 'assessment_id'):
         op.create_index('ix_entitlement_events_assessment_id', 'entitlement_events', ['assessment_id'])
-    if not index_exists('entitlement_events', 'ix_entitlement_events_trigger_id'):
+    if not index_exists('entitlement_events', 'ix_entitlement_events_trigger_id') and column_exists('entitlement_events', 'trigger_id'):
         op.create_index('ix_entitlement_events_trigger_id', 'entitlement_events', ['trigger_id'])
-    if not index_exists('entitlement_events', 'ix_entitlement_events_seat_class'):
+    if not index_exists('entitlement_events', 'ix_entitlement_events_seat_class') and column_exists('entitlement_events', 'seat_id') and column_exists('entitlement_events', 'class_id'):
         op.create_index('ix_entitlement_events_seat_class', 'entitlement_events', ['seat_id', 'class_id'])
 
 

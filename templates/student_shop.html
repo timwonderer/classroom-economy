@@ -152,7 +152,7 @@
                             <button class="btn btn-primary w-100"
                                     data-bs-toggle="modal"
                                     data-bs-target="#buyItemModal"
-                                    data-item-id="{{ item.id }}"
+                                    data-policy-uuid="{{ policy_uuid_by_item_id.get(item.id, '') }}"
                                     data-item-name="{{ item.name }}"
                                     data-item-price="{{ '0.00' if has_any_rent_free_purchase else '%.2f'|format(item.price) }}"
                                     data-item-regular-price="{{ "%.2f"|format(item.price) }}"
@@ -317,7 +317,7 @@
                 </div>
 
                 <form id="buyItemForm">
-                    <input type="hidden" id="modalItemId" name="item_id">
+                    <input type="hidden" id="modalItemId" name="policy_uuid">
                     <input type="hidden" id="modalItemType" name="item_type">
                     <input type="hidden" id="modalIsBundle" name="is_bundle">
                     <input type="hidden" id="modalBulkDiscountEnabled" name="bulk_discount_enabled">
@@ -371,7 +371,7 @@
                 </div>
                 <p id="useModalMessage"></p>
                 <form id="useItemForm">
-                    <input type="hidden" id="useModalItemId" name="item_id">
+                    <input type="hidden" id="useModalItemId" name="entitlement_id">
                     <input type="hidden" id="useModalItemType" name="item_type">
                     <div class="mb-3" id="redemptionDetailsDiv" style="display: none;">
                         <label for="redemptionDetails" class="form-label fw-bold">
@@ -407,7 +407,7 @@
         // Store item data
         currentItemData = {
             itemName: button.getAttribute('data-item-name'),
-            itemId: button.getAttribute('data-item-id'),
+            policyUuid: button.getAttribute('data-policy-uuid'),
             itemType: button.getAttribute('data-item-type'),
             basePrice: parseFloat(button.getAttribute('data-item-price')),
             regularPrice: parseFloat(button.getAttribute('data-item-regular-price')),
@@ -422,7 +422,7 @@
 
         // Populate modal
         document.getElementById('modalItemName').textContent = currentItemData.itemName;
-        document.getElementById('modalItemId').value = currentItemData.itemId;
+        document.getElementById('modalItemId').value = currentItemData.policyUuid;
         document.getElementById('modalItemType').value = currentItemData.itemType;
         document.getElementById('modalItemPrice').textContent = currentItemData.basePrice.toFixed(2);
         document.getElementById('modalIsBundle').value = currentItemData.isBundle;
@@ -597,7 +597,7 @@
 
     document.getElementById('confirmPurchaseBtn').addEventListener('click', () => {
         const form = document.getElementById('buyItemForm');
-        const itemId = form.querySelector('#modalItemId').value;
+        const policyUuid = form.querySelector('#modalItemId').value;
         const passphrase = form.querySelector('#passphrase').value;
         const quantity = parseInt(form.querySelector('#quantity').value);
         const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
@@ -619,7 +619,7 @@
                 'X-CSRFToken': csrfToken
             },
             body: JSON.stringify({
-                item_id: itemId,
+                policy_uuid: policyUuid,
                 passphrase: passphrase,
                 quantity: quantity
             })
@@ -645,12 +645,12 @@
     const useItemModal = document.getElementById('useItemModal');
     document.querySelectorAll('.use-item-btn').forEach(btn => {
         btn.addEventListener('click', function() {
-            const itemId = this.getAttribute('data-item-id');
+            const entitlementId = this.getAttribute('data-item-id');
             const itemName = this.getAttribute('data-item-name');
             const itemType = this.getAttribute('data-item-type');
             const redemptionPrompt = this.getAttribute('data-redemption-prompt');
 
-            document.getElementById('useModalItemId').value = itemId;
+            document.getElementById('useModalItemId').value = entitlementId;
             document.getElementById('useModalItemName').textContent = itemName;
             document.getElementById('useModalItemType').value = itemType;
 
@@ -694,7 +694,7 @@
 
     document.getElementById('confirmUseBtn').addEventListener('click', () => {
         const form = document.getElementById('useItemForm');
-        const itemId = form.querySelector('#useModalItemId').value;
+        const entitlementId = form.querySelector('#useModalItemId').value;
         const pin = form.querySelector('#usePassphrase').value;
         const redemptionDetails = form.querySelector('#redemptionDetails').value;
         const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
@@ -705,7 +705,7 @@
         }
 
         const requestBody = {
-            entitlement_id: itemId,
+            entitlement_id: entitlementId,
             passphrase: pin
         };
 

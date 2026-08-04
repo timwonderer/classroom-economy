@@ -8,34 +8,21 @@ from app.extensions import db
 from app.models import BillCycle, ObligationAssessment, Transaction, TransactionStatus
 from app.services.obligation_view_model import build_student_obligation_view, build_class_obligation_summary
 from app.feats.base import FEATContext
-from tests.helpers.v2_fixtures import seed_canonical_admin, seed_class_with_seat
+from tests.helpers.classroom_initializer import provision_classroom
 
 
 @pytest.fixture
 def canonical_class_with_student(app):
     """Set up canonical teacher and student using production service layer."""
     with app.app_context():
-        # Create teacher through production service
-        teacher_seed = seed_canonical_admin("test_teacher")
-        teacher = teacher_seed.user
-        teacher_id = teacher.id
-
-        # Create class and student through production service
-        class_seed = seed_class_with_seat(
-            teacher=teacher,
-            join_code="TEST123",
-            display_name="Test Class",
-            section="A",
-            student_first_name="Test",
-            student_last_name="Student",
-        )
-        class_id = class_seed.class_row.class_id
-        seat_id = class_seed.seat.id
+        classroom = provision_classroom("chemistry_p1")
+        student = classroom.students[0]
 
         return {
-            'teacher_id': teacher_id,
-            'class_id': class_id,
-            'seat_id': seat_id,
+            'teacher_id': classroom.teacher_user.id,
+            'class_id': classroom.class_id,
+            'seat_id': student.seat.id,
+            'student_name': f"{student.first_name} {student.last_name}",
         }
 
 
@@ -61,6 +48,7 @@ def test_obligation_view_renders_with_canonical_identity(app, canonical_class_wi
 
             # Create bill cycle
             bill_cycle = BillCycle(
+                class_id=class_id,
                 internal_ref='rent:monthly',
                 cycle_number=1,
                 cycle_boundary_at=now_utc - timedelta(days=1),
@@ -162,6 +150,7 @@ def test_class_summary_renders_with_canonical_identity(app, canonical_class_with
 
             # Create bill cycle
             bill_cycle = BillCycle(
+                class_id=class_id,
                 internal_ref='rent:monthly',
                 cycle_number=1,
                 cycle_boundary_at=now_utc - timedelta(days=1),
@@ -207,7 +196,7 @@ def test_class_summary_renders_with_canonical_identity(app, canonical_class_with
         row = summary.student_rows[0]
         assert row['seat_id'] == seat_id
         assert 'student_name' in row
-        assert row['student_name'] == 'Test Student'  # From canonical identity
+        assert row['student_name'] == ids['student_name']
         assert 'status' in row
         assert 'amount_due' in row
         assert 'balance' in row
@@ -216,40 +205,21 @@ def test_class_summary_renders_with_canonical_identity(app, canonical_class_with
 def test_view_model_respects_multi_tenancy(app):
     """Test that view models are scoped by class_id and don't leak cross-class data."""
     with app.app_context():
-        # Create two separate class contexts
-        teacher_seed = seed_canonical_admin("multi_tenant_teacher")
-        teacher = teacher_seed.user
-        db.session.flush()
-
-        # Class 1
-        class1_seed = seed_class_with_seat(
-            teacher=teacher,
-            join_code="CLASS1",
-            display_name="Class 1",
-            student_first_name="Student",
-            student_last_name="One",
-        )
-        class1_id = class1_seed.class_row.class_id
-        seat1_id = class1_seed.seat.id
-        db.session.flush()
-
-        # Class 2
-        class2_seed = seed_class_with_seat(
-            teacher=teacher,
-            join_code="CLASS2",
-            display_name="Class 2",
-            student_first_name="Student",
-            student_last_name="Two",
-        )
-        class2_id = class2_seed.class_row.class_id
-        seat2_id = class2_seed.seat.id
-        db.session.flush()
+        class1 = provision_classroom("chemistry_p1")
+        class2 = provision_classroom("biology_block_a")
+        student1 = class1.students[0]
+        student2 = class2.students[0]
+        class1_id = class1.class_id
+        seat1_id = student1.seat.id
+        class2_id = class2.class_id
+        seat2_id = student2.seat.id
 
         # Add obligation data only to Class 1
         with FEATContext("FEAT-TEST-MULTI", idempotency_key="test-multi-tenant-001"):
             now_utc = datetime.now(timezone.utc)
 
             bill_cycle = BillCycle(
+                class_id=class1_id,
                 internal_ref='rent:monthly',
                 cycle_number=1,
                 cycle_boundary_at=now_utc - timedelta(days=1),

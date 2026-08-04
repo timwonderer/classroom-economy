@@ -55,14 +55,19 @@ def upgrade():
     for fk in foreign_keys_for_column("payroll_event", "policy_version_id"):
         op.drop_constraint(fk["name"], "payroll_event", type_="foreignkey")
 
-    op.create_foreign_key(
-        "fk_payroll_event_policy_version_id",
-        "payroll_event",
-        "policy_versions",
-        ["policy_version_id"],
-        ["id"],
-        ondelete="RESTRICT",
-    )
+    if "fk_payroll_event_policy_version_id" not in {
+        fk["name"]
+        for fk in foreign_keys_for_column("payroll_event", "policy_version_id")
+        if fk.get("name")
+    }:
+        op.create_foreign_key(
+            "fk_payroll_event_policy_version_id",
+            "payroll_event",
+            "policy_versions",
+            ["policy_version_id"],
+            ["id"],
+            ondelete="RESTRICT",
+        )
 
 
 def downgrade():
@@ -76,11 +81,16 @@ def downgrade():
     for fk in foreign_keys_for_column("payroll_event", "policy_version_id"):
         op.drop_constraint(fk["name"], "payroll_event", type_="foreignkey")
 
-    op.create_foreign_key(
-        "fk_payroll_event_policy_version_id",
-        "payroll_event",
-        "policy_versions",
-        ["policy_version_id"],
-        ["id"],
-        ondelete="SET NULL",
-    )
+    if "fk_payroll_event_policy_version_id" not in {
+        fk["name"]
+        for fk in foreign_keys_for_column("payroll_event", "policy_version_id")
+        if fk.get("name")
+    }:
+        op.create_foreign_key(
+            "fk_payroll_event_policy_version_id",
+            "payroll_event",
+            "policy_versions",
+            ["policy_version_id"],
+            ["id"],
+            ondelete="SET NULL",
+        )

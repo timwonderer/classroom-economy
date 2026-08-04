@@ -21,14 +21,13 @@ from werkzeug.security import check_password_hash
 
 from app.extensions import db, limiter
 from app.models import (
-    StoreItem, StorePurchase, Transaction, TransactionStatus, AttendanceSession,
+    StoreItem, Transaction, TransactionStatus, AttendanceSession,
     AttendanceReasonCode, HallPassLog, HallPassSettings, BankingSettings,
     # Legacy tap models are unauthorized; use attendance_sessions (DOM-PROD-001).
     # StoreItemBlock removed — store_item_blocks unauthorized; use store_item_visibility (DOM-STORE-001)
     StoreItemVisibility, User,
-    RedemptionEvent, RedemptionEventAction, RedemptionEventSource, _quantize_currency,
+    _quantize_currency,
     ClassEconomy, Seat, IdentityProfile, PayrollEvent,
-    Entitlement, EntitlementConsumption,
 )
 from app.auth import (
     login_required,
@@ -59,15 +58,19 @@ from app.routes.student import (
 from app.services.context_resolver import resolve_canonical_context, ContextResolutionError
 from app.feats.store_purchase_feat import execute_store_purchase
 from app.feats.ledger_resolution_feat import build_intended_ledger_plan, resolve_intended_ledger_plan, apply_resolved_ledger_plan
-from app.services.store_service import get_active_rent_grant, get_purchase_count
-from app.services.store_entitlement_service import consume_entitlement, list_entitlement_history, derive_display_status
-from app.feats.redemption_disposition_feat import (
-    RedemptionDispositionError,
-    execute_redemption_approval,
-    execute_redemption_rejection,
-    record_live_redemption_event,
-)
+# TODO (Phase 4): get_active_rent_grant, get_purchase_count commented out (deleted service functions)
+# from app.services.store_service import get_active_rent_grant, get_purchase_count
+# TODO (Phase 4): store_entitlement_service deleted; use EntitlementEvent queries
+# from app.services.store_entitlement_service import consume_entitlement, list_entitlement_history, derive_display_status
+# TODO (Phase 4): redemption_disposition_feat deleted; use FEAT-STOR-002 instead
+# from app.feats.redemption_disposition_feat import (
+#     RedemptionDispositionError,
+#     execute_redemption_approval,
+#     execute_redemption_rejection,
+#     record_live_redemption_event,
+# )
 from app.services import store_service
+from app.services.entitlement_read_service import get_purchase_count, get_active_rent_grant
 from app.services.entitlement_service import get_hall_pass_balance, grant_hall_passes
 from app.services.hall_pass_request_queue import (
     PendingHallPassRequest,
@@ -354,321 +357,66 @@ def get_tips(user_type):
 
 
 # -------------------- STORE API --------------------
+
 @api_bp.route('/purchase-item', methods=['POST'])
 @login_required
-@feat_shell("FEAT-STOR-001")
 def purchase_item():
+    """
+    Purchase an item from the store.
+
+    Wired to FEAT-STOR-001 (Store Purchase and Entitlement Grant).
+    Creates EntitlementEvent(s) for purchased quantity.
+    """
+    # 1. Resolve context and verify actor
     try:
-        context = getattr(g, "canonical_context", None)
-        if not context:
-            raise AccessScopeDenied(reason_code="no_class_scope", message="No class selected. Please select a class to continue.")
-        
-        user = db.session.get(User, context.user_id)
-        if not user:
-            raise AccessScopeDenied(reason_code="missing_actor", message="No active actor is bound to this request.")
-    except AccessScopeDenied as exc:
-        return jsonify({"status": "error", "message": exc.message}), 403
+        context = resolve_canonical_context()
+    except ContextResolutionError:
+        return jsonify({"status": "error", "message": "No class context available."}), 400
+
+    if not context or not context.seat_id:
+        return jsonify({"status": "error", "message": "No seat assigned in this class."}), 403
+
+    user = db.session.get(User, context.user_id)
+    if not user:
+        return jsonify({"status": "error", "message": "Actor not found."}), 403
+
+    # 2. Parse and validate input
     data = request.get_json(silent=True) or {}
-    item_id = data.get('item_id')
+    policy_uuid = data.get('policy_uuid')
     passphrase = data.get('passphrase')
+
     try:
         quantity = int(data.get('quantity', 1))
     except (TypeError, ValueError):
         return jsonify({"status": "error", "message": "Quantity must be a whole number."}), 400
-    client_purchase_id = str(data.get('client_purchase_id') or '').strip()
 
-    if not all([item_id, passphrase]):
-        return jsonify({"status": "error", "message": "Missing item ID or passphrase."}), 400
+    if not policy_uuid or not passphrase:
+        return jsonify({"status": "error", "message": "Missing policy UUID or passphrase."}), 400
 
     if quantity < 1:
         return jsonify({"status": "error", "message": "Quantity must be at least 1."}), 400
 
-    if len(client_purchase_id) > MAX_IDEMPOTENCY_KEY_LENGTH:
-        return jsonify({"status": "error", "message": "Purchase request ID is too long."}), 400
-
-    # 1. Verify passphrase
+    # 3. Verify passphrase
     if not check_password_hash(user.passphrase_hash or '', passphrase):
         return jsonify({"status": "error", "message": "Incorrect passphrase."}), 403
 
-    # CRITICAL FIX v2: Get full class context (class_id is source of truth)
-    try:
-        context = resolve_canonical_context()
-    except ContextResolutionError:
-        context = None
-    if not context:
-        return jsonify({"status": "error", "message": "No class context available."}), 400
-
-    class_id = context.class_id
-    join_code = get_display_join_code(context.class_id)
-    seat_id = context.seat_id
-    if not seat_id:
-         return jsonify({"status": "error", "message": "No seat assigned in this class."}), 403
-
-    # Authoritative seat object
-    seat = db.session.get(Seat, seat_id)
-    purchase_idempotency_key = None
-    if client_purchase_id:
-        purchase_idempotency_key = purchase_transaction_key(
-            seat.id,
-            class_id,
-            item_id,
-            client_purchase_id,
-        )
-        if len(purchase_idempotency_key) > MAX_IDEMPOTENCY_KEY_LENGTH:
-            return jsonify({"status": "error", "message": "Purchase request ID is too long."}), 400
-
-    item_filters = [
-        StoreItem.id == item_id,
-        StoreItem.class_id == class_id,
-    ]
-    item = (
-        StoreItem.query
-        .filter(*item_filters)
-        .first()
+    # 4. Call FEAT-STOR-001: Create entitlement grants via purchase
+    result = execute_store_purchase(
+        canonical_context=context,
+        policy_uuid=policy_uuid,
+        quantity=quantity,
+        instant_use=False,  # TODO: Read from product policy
     )
-    if item and not store_service.is_item_visible_to_seat(item.id, seat.id):
-        item = None
 
-    # 2. Validate item and purchase conditions
-    if not item or not item.is_active:
-        return jsonify({"status": "error", "message": "This item is not available."}), 404
+    if not result.success:
+        error_msg = result.error_message or f"Purchase failed: {result.error_code}"
+        return jsonify({"status": "error", "message": error_msg}), 400
 
-    # Check if a collective goal has passed its expiration deadline.
-    if item.item_type == 'collective' and item.collective_goal_expires_at:
-        if ensure_utc(item.collective_goal_expires_at) <= utc_now():
-            return jsonify({"status": "error", "message": "This collective goal has expired and is no longer available."}), 400
-
-    # For collective items with whole_class goal, enforce one purchase per student per class
-    if item.item_type == 'collective' and item.collective_goal_type == 'whole_class':
-        existing_purchase_count = get_purchase_count(seat.id, class_id, item.id)
-        if existing_purchase_count:
-            return jsonify({"status": "error", "message": "You have already purchased this whole class goal item."}), 400
-
-    # Check rent late restrictions
-    from app.models import RentSettings
-    from datetime import timedelta
-
-    rent_settings = get_rent_settings_for_context(context)
-    now = utc_now()
-    has_paid_rent = False
-    per_use_rent_item = None
-    has_privilege_link = False
-    has_per_use_link = False
-
-    if rent_settings:
-        coverage_due_date = _calculate_rent_coverage_due_date(rent_settings, now)
-        if coverage_due_date:
-            has_paid_rent = _is_student_coverage_period_paid(
-                rent_settings,
-                seat.id,
-                class_id,
-                coverage_due_date,
-            )
-
-        has_per_use_link = item.is_rent_linked and item.item_type != 'hall_pass'
-        has_privilege_link = item.is_rent_linked and item.item_type != 'hall_pass'
-        per_use_rent_item = None
-
-    # Privilege-only rent items are already included when rent is paid and
-    # should not be purchasable.
-    if has_paid_rent and has_privilege_link and not has_per_use_link:
-        return jsonify({
-            "status": "error",
-            "message": "This item is already included in your rent for this period."
-        }), 400
-
-    if rent_settings and rent_settings.prevent_purchase_when_late:
-        # Check if student is late on rent
-        coverage_due_date = _calculate_rent_coverage_due_date(rent_settings, now)
-
-        if coverage_due_date:
-            grace_end_date = coverage_due_date + timedelta(days=rent_settings.grace_period_days)
-
-            # Pre-paid system: use the most recently passed due date
-            # as the coverage period so we match payments that COVER this cycle.
-            coverage_month = coverage_due_date.month
-            coverage_year = coverage_due_date.year
-
-            # Check if past grace period
-            if now > grace_end_date:
-                is_paid_for_coverage = _is_student_coverage_period_paid(
-                    rent_settings,
-                    seat.id,
-                    class_id,
-                    coverage_due_date,
-                )
-
-                # Student is late if they haven't fully settled the coverage period
-                if not is_paid_for_coverage:
-                    if not item.is_rent_linked:
-                        return jsonify({
-                            "status": "error",
-                            "message": "You cannot make purchases while late on rent. Please pay your rent first."
-                        }), 403
-
-    # Check if student has free uses remaining from rent (per-use rent items).
-    if (
-        quantity == 1
-        and item.item_type != 'hall_pass'
-        and (item.is_rent_linked or per_use_rent_item)
-    ):
-        active_rent_item = get_active_rent_grant(seat.id, class_id, item.id)
-        needs_rent_grant = (
-            not active_rent_item
-            and has_paid_rent
-            and (per_use_rent_item or item.is_rent_linked)
-        )
-
-        if active_rent_item or needs_rent_grant:
-            result = execute_store_purchase(
-                ctx=context,
-                seat=seat,
-                item=item,
-                quantity=1,
-                total_price=Decimal("0.00"),
-                purchase_description=f"Purchase: {item.name}",
-                banking_settings=None,
-                idempotency_key=purchase_idempotency_key,
-                is_instant_use=False,
-            )
-            return jsonify({"status": "success", "message": result.success_message})
-
-    # Calculate price (with bulk discount if applicable)
-    unit_price = item.price
-    if (item.bulk_discount_enabled and
-        item.bulk_discount_quantity is not None and
-        item.bulk_discount_percentage is not None and
-        quantity >= item.bulk_discount_quantity):
-        discount_multiplier = Decimal('1') - (Decimal(str(item.bulk_discount_percentage)) / 100)
-        unit_price = item.price * discount_multiplier
-
-    # Align balance checks and persisted purchase amount with 2dp currency semantics.
-    total_price = _quantize_currency(unit_price * quantity)
-
-    # Get banking settings for overdraft handling
-    banking_settings = BankingSettings.query.filter_by(class_id=class_id).first()
-    checking_balance, savings_balance = get_available_balances(seat.id, class_id)
-
-    # Check if student has sufficient funds
-    if checking_balance < total_price:
-        intended_plan = build_intended_ledger_plan(
-            seat_id=seat.id,
-            class_id=class_id,
-            user_id=seat.user_id,
-            debit_amount=total_price,
-            description=f"Purchase: {item.name}",
-            source_account="checking",
-            target_account="store",
-        )
-        resolved_plan = resolve_intended_ledger_plan(
-            plan=intended_plan,
-            banking_settings=banking_settings,
-            idempotency_key=purchase_idempotency_key or f"purchase-item:{seat.id}:{class_id}:{item_id}:resolve",
-            force_overdraft_fee=True,
-            allow_recovery_transfer=True,
-        )
-        apply_resolved_ledger_plan(
-            resolved_plan=resolved_plan,
-            banking_settings=banking_settings,
-            idempotency_key=purchase_idempotency_key or f"purchase-item:{seat.id}:{class_id}:{item_id}:force-overdraft",
-        )
-
-        if banking_settings and banking_settings.overdraft_protection_enabled:
-            message = (f"Insufficient funds in both checking and savings. You need "
-                       f"${total_price:.2f} total but have "
-                       f"${checking_balance + savings_balance:.2f}.")
-        else:
-            message = (f"Insufficient funds. You need ${total_price:.2f} but have "
-                       f"${checking_balance:.2f}.")
-
-        if resolved_plan.overdraft_fee_amount > 0:
-            message += f" Overdraft fee of ${resolved_plan.overdraft_fee_amount:.2f} charged."
-
-        return jsonify({"status": "error", "message": message}), 400
-
-    if item.inventory is not None and item.inventory < quantity:
-        return jsonify({"status": "error", "message": f"Insufficient stock. Only {item.inventory} available."}), 400
-
-    if item.limit_per_student is not None:
-        if item.item_type == 'hall_pass':
-            # For hall passes, check transaction history and sum quantities
-            transactions = Transaction.query.filter(
-                Transaction.seat_id == seat.id,
-                Transaction.class_id == class_id,
-                Transaction.type == 'purchase',
-                Transaction.description.like(f"Purchase: {item.name}%")
-            ).all()
-
-            # Parse quantities from transaction descriptions
-            total_purchased = 0
-            for txn in transactions:
-                match = re.search(r'\(x(\d+)\)', txn.description)
-                total_purchased += int(match.group(1)) if match else 1
-
-            purchase_count = total_purchased
-        else:
-            purchase_count = get_purchase_count(seat.id, class_id, item.id)
-        if purchase_count + quantity > item.limit_per_student:
-            return jsonify({"status": "error", "message": f"You can only purchase {item.limit_per_student - purchase_count} more of this item."}), 400
-
-    # 3. Process the transaction
-    try:
-        purchase_description = f"Purchase: {item.name}"
-        if quantity > 1:
-            purchase_description += f" (x{quantity})"
-        if item.bulk_discount_enabled and quantity >= item.bulk_discount_quantity:
-            purchase_description += f" [{item.bulk_discount_percentage}% bulk discount]"
-        expiry_date = None
-        from app.models import RentSettings
-        if item.is_rent_linked:
-            rent_setting = RentSettings.query.filter_by(class_id=class_id).first()
-            if rent_setting:
-                now = utc_now()
-                if rent_setting.first_rent_due_date:
-                    current_due, next_due = _calculate_due_dates(rent_setting, now)
-                    if current_due and next_due:
-                        expiry_date = next_due
-                else:
-                    delta = _get_period_delta(rent_setting)
-                    expiry_date = _add_period(now, delta)
-
-        # Fall back to standard auto_expiry for delayed items
-        if expiry_date is None and item.item_type == 'delayed' and item.auto_expiry_days:
-            expiry_date = utc_now() + timedelta(days=item.auto_expiry_days)
-
-        student_item_status = 'purchased'
-        if item.item_type == 'immediate':
-            student_item_status = 'redeemed'
-        elif item.item_type == 'collective':
-            student_item_status = 'pending'
-        else: # delayed
-            student_item_status = 'purchased'
-        
-        result = execute_store_purchase(
-            ctx=context,
-            seat=seat,
-            item=item,
-            quantity=quantity,
-            total_price=total_price,
-            purchase_description=purchase_description,
-            banking_settings=banking_settings,
-            idempotency_key=purchase_idempotency_key,
-            is_instant_use=(item.item_type == 'immediate'),
-        )
-        # No manual commit here; feat_shell owns it
-
-        if item.item_type == 'hall_pass':
-            return jsonify({
-                "status": "success",
-                "message": f"You purchased {quantity} Hall Pass(es)! Your new balance is {result.hall_pass_balance}.",
-            })
-
-        return jsonify({"status": "success", "message": result.success_message})
-
-    except SQLAlchemyError as e:
-        db.session.rollback()
-        current_app.logger.error(f"Purchase failed for seat {seat.id}: {e}", exc_info=True)
-        return jsonify({"status": "error", "message": "An error occurred during purchase. Please try again."}), 500
+    return jsonify({
+        "status": "success",
+        "message": f"Purchase successful! Quantity: {quantity}",
+        "correlation_id": result.correlation_id,
+    })
 
 
 @api_bp.route('/use-item', methods=['POST'])
@@ -686,12 +434,12 @@ def use_item():
     if not user or not student:
         return jsonify({"status": "error", "message": "Unauthorized"}), 401
     data = request.get_json()
-    entitlement_id = data.get('entitlement_id') or data.get('student_item_id')
+    entitlement_id = data.get('entitlement_id')
     passphrase = data.get('passphrase')
     details = data.get('redemption_details', data.get('details', ''))  # optional notes from student
 
     if not all([entitlement_id, passphrase]):
-        return jsonify({"status": "error", "message": "Missing item ID or passphrase."}), 400
+        return jsonify({"status": "error", "message": "Missing entitlement ID or passphrase."}), 400
 
     # 1. Verify passphrase
     if not check_password_hash(user.passphrase_hash or '', passphrase):
@@ -786,10 +534,10 @@ def approve_redemption():
     here; they propagate to Flask's error handler.
     """
     data = request.get_json(silent=True) or {}
-    entitlement_id = data.get('entitlement_id') or data.get('student_item_id')
+    entitlement_id = data.get('entitlement_id')
 
     if not entitlement_id:
-        return jsonify({"status": "error", "message": "Missing item ID."}), 400
+        return jsonify({"status": "error", "message": "Missing entitlement ID."}), 400
 
     entitlement = Entitlement.query.filter_by(entitlement_id=entitlement_id).first()
     if not entitlement:
@@ -838,10 +586,10 @@ def approve_redemption():
 def reject_redemption():
     """Reject a pending redemption request without terminating the entitlement."""
     data = request.get_json(silent=True) or {}
-    entitlement_id = data.get('entitlement_id') or data.get('student_item_id')
+    entitlement_id = data.get('entitlement_id')
 
     if not entitlement_id:
-        return jsonify({"status": "error", "message": "Missing item ID."}), 400
+        return jsonify({"status": "error", "message": "Missing entitlement ID."}), 400
 
     entitlement = Entitlement.query.filter_by(entitlement_id=entitlement_id).first()
     if not entitlement:

@@ -58,19 +58,19 @@ from app.feats.base import feat_shell, FEATContext, InvariantViolation, generate
 from app.access.scope import Scope
 from app.access import AccessScopeDenied, resolve_scope
 from app.models import (
-    ClassEconomy, Transaction, TransactionStatus, AttendanceSession, StoreItem, StorePurchase, StoreItemVisibility,
-    Entitlement, EntitlementConsumption, GrantType,
+    ClassEconomy, Transaction, TransactionStatus, AttendanceSession, StoreItem, StoreItemVisibility,
     # Legacy tap table removed; use attendance_sessions (DOM-PROD-001).
     # StudentItem removed — student_items unauthorized; use store_purchases + redemption_events (DOM-STORE-001)
     # StoreItemBlock removed — store_item_blocks unauthorized; use store_item_visibility (DOM-STORE-001)
     # RedemptionAuditLog / RedemptionAuditAction / RedemptionAuditSource removed — use redemption_events (DOM-STORE-001)
     # Legacy tap reason enum removed with the legacy tap table.
+    # StorePurchase, Entitlement, EntitlementConsumption, GrantType, RedemptionEvent, etc. deleted per Phase 2 migration
     RentSettings,
     HallPassLog, HallPassSettings, PayrollSettings,
     BankingSettings,
     FeatureSettings,
-    Announcement, RedemptionEvent, RedemptionEventAction, RedemptionEventSource, Issue, IssueCategory, IssueStatusHistory, IssueResolutionAction, Seat,
-    LedgerBalanceSnapshot, ClassEconomy, User, UserRole, _quantize_currency,
+    Announcement, Issue, IssueCategory, IssueStatusHistory, IssueResolutionAction, Seat,
+    LedgerBalanceSnapshot, User, UserRole, _quantize_currency,
     ObligationAssessment,
     AttendanceReasonCode, IdentityProfile, PayrollEvent, PolicyVersion,
 )
@@ -132,8 +132,10 @@ from app.services.insurance_policy_service import (
     list_insurance_policy_versions,
     schedule_policy_deletion,
 )
-from app.feats.insurance_claim_feat import execute_claim_approval, execute_claim_rejection
-from app.services.store_entitlement_service import get_insurance_claim, get_last_entitlement_end_for_policy_version, derive_display_status
+# TODO (Phase 4): insurance_claim_feat deleted; use FEAT-STOR-003 instead
+# from app.feats.insurance_claim_feat import execute_claim_approval, execute_claim_rejection
+# TODO (Phase 4): store_entitlement_service deleted
+# from app.services.store_entitlement_service import get_insurance_claim, get_last_entitlement_end_for_policy_version, derive_display_status
 from app.services.classroom_setup import (
     create_class,
     create_class_with_roster,
@@ -185,6 +187,7 @@ from app.utils.student_deletion import (
 from app.utils.seat_scope import seat_scoped_filter, transaction_scope_filter
 from app.feats.admin_adjustment_feat import execute_admin_adjustments
 from app.feats.prod import record_attendance_session, record_payroll_event
+from app.feats.direct_entitlement_grant_feat import execute_direct_grant
 # execute_insurance_claim_resolution removed — insurance_claim_feat.py deleted; insurance feature broken pending DOM-OBL-001 migration
 from app.feats.transaction_void_feat import (
     ImmediatePurchaseNotVoidable,
@@ -231,23 +234,25 @@ from app.services.recovery_service import (
     mark_recovery_request_verified,
     save_recovery_progress,
 )
-from app.utils.insurance_eligibility import (
-    collect_reimbursed_source_tx_ids,
-    compute_waiting_end_class_for_enrollment,
-    evaluate_claim_transaction_eligibility,
-    resolve_claim_type,
-    CLAIM_REASON_ALREADY_CLAIMED,
-    CLAIM_REASON_DELAY_USE_EXPIRED,
-    CLAIM_REASON_DELAY_USE_NOT_USED,
-    CLAIM_REASON_HARD_DENY_CATEGORY,
-    CLAIM_REASON_INTERNAL_TRANSFER,
-    CLAIM_REASON_PREMIUM_NOT_CURRENT,
-    CLAIM_REASON_REIMBURSEMENT_ALREADY_EXISTS,
-    CLAIM_REASON_TIME_LIMIT_EXCEEDED,
-    CLAIM_REASON_UNCLASSIFIED_TRANSACTION,
-    CLAIM_REASON_WAITING_PERIOD,
-)
-from app.services.store_entitlement_service import get_insurance_claim, list_insurance_claims
+# TODO (Phase 4): insurance_eligibility deleted; use canonical tools + FEAT-STOR-003
+# from app.utils.insurance_eligibility import (
+#     collect_reimbursed_source_tx_ids,
+#     compute_waiting_end_class_for_enrollment,
+#     evaluate_claim_transaction_eligibility,
+#     resolve_claim_type,
+#     CLAIM_REASON_ALREADY_CLAIMED,
+#     CLAIM_REASON_DELAY_USE_EXPIRED,
+#     CLAIM_REASON_DELAY_USE_NOT_USED,
+#     CLAIM_REASON_HARD_DENY_CATEGORY,
+#     CLAIM_REASON_INTERNAL_TRANSFER,
+#     CLAIM_REASON_PREMIUM_NOT_CURRENT,
+#     CLAIM_REASON_REIMBURSEMENT_ALREADY_EXISTS,
+#     CLAIM_REASON_TIME_LIMIT_EXCEEDED,
+#     CLAIM_REASON_UNCLASSIFIED_TRANSACTION,
+#     CLAIM_REASON_WAITING_PERIOD,
+# )
+# TODO (Phase 4): store_entitlement_service deleted
+# from app.services.store_entitlement_service import get_insurance_claim, list_insurance_claims
 import time
 
 # Join code generation constants
@@ -4479,39 +4484,66 @@ def student_detail_public(actor_public_id):
 
 @admin_bp.route('/student/<int:seat_id>/adjust-hall-pass-entitlements', methods=['POST'])
 @admin_required
-@feat_shell("FEAT-STOR-001")
 def adjust_hall_pass_entitlements(seat_id):
     """Grant or remove hall-pass entitlements for a student."""
-    student = db.session.get(Seat, seat_id)
-    if not student:
+    try:
+        canonical_context = getattr(g, "canonical_context", None)
+        if not canonical_context:
+            abort(403)
+    except Exception:
+        abort(403)
+
+    target_seat = db.session.get(Seat, seat_id)
+    if not target_seat:
         abort(404)
-    if not ClassEconomy.query.filter_by(class_id=student.class_id, user_id=g.canonical_context.user_id).first():
+
+    # Verify teacher owns this class
+    if not ClassEconomy.query.filter_by(class_id=target_seat.class_id, user_id=canonical_context.user_id).first():
         abort(404)
+
     action = (request.form.get('hall_pass_action') or '').strip().lower()
     quantity = request.form.get('hall_pass_quantity', type=int)
 
     if quantity is None or quantity <= 0 or action not in {"add", "remove"}:
         flash("Choose Add or Remove and enter a positive hall-pass quantity.", "error")
-        return _redirect_to_student_detail(student.public_id)
+        return _redirect_to_student_detail(target_seat.public_id)
 
-    student_name = student.identity_profile.full_name if student.identity_profile else str(student.id)
-    try:
-        if action == "add":
-            new_balance = grant_hall_passes(
-                student,
-                quantity,
-            )
-            flash(f"Granted {quantity} hall pass(es) to {student_name}. New balance: {new_balance}.", "success")
+    student_name = target_seat.identity_profile.full_name if target_seat.identity_profile else str(target_seat.id)
+
+    # Get teacher seat for actor_seat_id
+    teacher_seat = Seat.query.filter_by(
+        user_id=canonical_context.user_id,
+        class_id=target_seat.class_id,
+    ).first()
+
+    if not teacher_seat:
+        flash(f"Error: Teacher seat not found for class {target_seat.class_id}.", "error")
+        return _redirect_to_student_detail(target_seat.public_id)
+
+    if action == "add":
+        # Use FEAT-STOR-004 to grant entitlements
+        result = execute_direct_grant(
+            canonical_context=canonical_context,
+            target_seat_id=target_seat.id,
+            product_id=1,  # TODO: Determine correct product_id for hall passes from policy
+            quantity=quantity,
+        )
+
+        if result.success:
+            flash(f"Granted {quantity} hall pass(es) to {student_name}.", "success")
         else:
-            new_balance = remove_hall_passes(
-                student,
-                quantity,
-            )
-            flash(f"Removed {quantity} hall pass(es) from {student_name}. New balance: {new_balance}.", "success")
-    except ValueError as exc:
-        flash(str(exc), "error")
+            error_msg = result.error_message or f"Grant failed: {result.error_code}"
+            flash(error_msg, "error")
+    else:
+        # Remove functionality requires FEAT-STOR-002 (revocation/lifecycle transitions)
+        # which is not yet implemented in Phase 4
+        flash(
+            "Hall pass removal is not yet available. Use FEAT-STOR-002 (pending implementation). "
+            "Contact support to revoke hall passes.",
+            "warning"
+        )
 
-    return _redirect_to_student_detail(student.public_id)
+    return _redirect_to_student_detail(target_seat.public_id)
 
 
 @admin_bp.route('/student/edit', methods=['POST'])
@@ -5852,10 +5884,10 @@ def rent_settings():
             f"feat:rent:settings-update:{selected_scope['class_id']}:{payload_hash}"
         )
 
-        # Per MAP-UI-001, rent policy configuration is Class Configuration domain (FEAT-CLASS-003),
+        # Per MAP-UI-001, rent policy configuration is Class Configuration domain (FEAT-SETTINGS-001),
         # not admin action (FEAT-ADMN-001). Policy updates define the contractual terms that cause
         # assessments to exist; this is Class Configuration authority, not Obligations mutation.
-        with FEATContext("FEAT-CLASS-003", idempotency_key=idempotency_key):
+        with FEATContext("FEAT-SETTINGS-001", idempotency_key=idempotency_key):
             for block in blocks_to_update:
                 # block IS a class_id; query directly — no label-based lookup (INV-ARC-014)
                 block_settings = RentSettings.query.filter_by(class_id=block).first()
@@ -5989,7 +6021,14 @@ def rent_settings():
                 if not block_settings:
                     continue
 
-                existing_items = block_settings.rent_items.all()
+                existing_items = (
+                    StoreItem.query.filter(
+                        StoreItem.class_id == block_settings.class_id,
+                        StoreItem.is_rent_linked.is_(True),
+                    )
+                    .order_by(StoreItem.id.asc())
+                    .all()
+                )
                 existing_map = {}
 
                 # For the target class, map by ID; for other classes, map by name
@@ -6006,22 +6045,17 @@ def rent_settings():
                 now = utc_now()
                 coverage_due = _calculate_rent_coverage_due_date(block_settings, now)
                 if coverage_due:
-                    from datetime import date
-                    month_start = coverage_due.replace(day=1)
-                    if coverage_due.month == 12:
-                        month_end = coverage_due.replace(year=coverage_due.year + 1, month=1, day=1)
-                    else:
-                        month_end = coverage_due.replace(month=coverage_due.month + 1, day=1)
-                    paid_count = (
-                        db.session.query(ObligationAssessment)
-                        .filter(
-                            ObligationAssessment.class_id == block_settings.class_id,
-                            ObligationAssessment.due_at >= month_start,
-                            ObligationAssessment.due_at < month_end,
-                            ObligationAssessment.event_type.in_(['PAYMENT', 'WAIVED']),
+                    current_bill_cycle = obligations_service.get_latest_bill_cycle_for_class(block_settings.class_id)
+                    paid_count = 0
+                    if current_bill_cycle:
+                        current_cycle_assessments = obligations_service.get_assessments_for_bill_cycle(
+                            current_bill_cycle.id,
+                            obligation_type='RENT',
                         )
-                        .count()
-                    )
+                        for assessment in current_cycle_assessments:
+                            satisfaction_events = obligations_service.get_satisfaction_events(assessment.correlation_id)
+                            if satisfaction_events:
+                                paid_count += 1
                     if paid_count > 0:
                         mid_period_locked = True
 
@@ -6169,7 +6203,14 @@ def rent_settings():
     # Get rent items for this setting
     rent_items = []
     if settings:
-        rent_items = settings.rent_items.order_by(StoreItem.id).all()
+        rent_items = (
+            StoreItem.query.filter(
+                StoreItem.class_id == settings.class_id,
+                StoreItem.is_rent_linked.is_(True),
+            )
+            .order_by(StoreItem.id.asc())
+            .all()
+        )
 
     # Calculate current rent period dates for settings summary
     rent_active_for_period = False

@@ -158,6 +158,21 @@ def get_latest_bill_cycle(internal_ref: str) -> BillCycle | None:
     )
 
 
+def get_latest_bill_cycle_for_class(class_id: str) -> BillCycle | None:
+    """Get the most recent bill cycle for a class.
+
+    DOM-OBL-001 treats bill_cycles as the current recurring rent cycle in force
+    for the class. The latest cycle row for the class is the canonical current
+    cycle projection.
+    """
+    return (
+        db.session.query(BillCycle)
+        .filter_by(class_id=class_id)
+        .order_by(BillCycle.cycle_number.desc(), BillCycle.id.desc())
+        .first()
+    )
+
+
 def check_idempotency_assessment(
     internal_ref: str,
     correlation_id: str,

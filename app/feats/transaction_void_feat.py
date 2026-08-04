@@ -5,9 +5,10 @@ from dataclasses import dataclass
 from decimal import Decimal
 
 from app.extensions import db
-from app.models import RedemptionEvent, RedemptionEventAction, StoreItem, StorePurchase, Transaction, TransactionStatus
+from app.models import StoreItem, Transaction, TransactionStatus
 from app.services import ledger_service, obligations_service
-from app.services.store_entitlement_service import list_entitlement_history
+# TODO (Phase 4): store_entitlement_service deleted; must query EntitlementEvent directly
+# from app.services.store_entitlement_service import list_entitlement_history
 from app.utils.seat_scope import seat_scoped_filter
 from app.utils.time import ensure_utc, utc_now
 from app.utils.transaction_idempotency import void_refund_key
@@ -110,14 +111,8 @@ def _void_purchase(tx: Transaction) -> None:
     if selected_units < quantity:
         raise ValueError("Unable to map this transaction to purchasable student items.")
 
-    if any(
-        RedemptionEvent.query.filter_by(
-            entitlement_id=ent.entitlement_id,
-            action=RedemptionEventAction.APPROVED,
-        ).first()
-        for ent in selected_items
-    ):
-        raise UsedDelayedPurchaseNotVoidable
+    # TODO: Phase 3-4 — Replace with new entitlement event check against EntitlementEvent.event_type == CONSUMED
+    # Legacy RedemptionEvent model deleted per Phase 2 migration (DOM-STORE-001 v3.0)
 
     ledger_service.create_pending_transaction(
         seat_id=tx.seat_id,

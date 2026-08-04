@@ -93,12 +93,12 @@ All domains listed below are bound by the following structural rules:
 - **Primary Schema**: `ledger_transaction`, `ledger_balance_snapshot`.
 
 ### 6. Store & Entitlements (`DOM-STORE-001`)
-- **Authority**: Sovereign over store catalog and purchased perk redemption.
+- **Authority**: Sovereign over entitlement grant lineage, entitlement exercise lineage, and unresolved entitlement actions.
 - **State Classification**:
-  - `store_items`: Authoritative Directive (Catalog).
-  - `redemption_history`: Authoritative Fact (Usage Log).
-- **Key Transitions**: `Purchase`, `Redeem`.
-- **Primary Schema**: `store_purchases`, `redemption_events`, `store_items`.
+  - `entitlement_events`: Authoritative Event Stream.
+  - `pending_actions`: Durable unresolved entitlement-action records.
+- **Key Transitions**: `Grant`, `Consume`, `Expire`, `Revoke`, `Submit Pending Action`, `Resolve Pending Action`.
+- **Primary Schema**: `entitlement_events`, `pending_actions`.
 
 ### 7. Operations (`DOM-OPS-001`)
 - **Authority**: Sovereign over operational truth, system health, and observability.

@@ -9,9 +9,12 @@ import pytest
 
 from app.extensions import db
 from app.models import ClassFeature, StoreItem
+from app.feats.base import FEATContext
 from tests.helpers.class_domain import disable_class_feature, enable_class_feature
 from tests.helpers.classroom_initializer import initialize_as_student, initialize_as_teacher
-from tests.helpers.v2_fixtures import seed_purchase
+from tests.helpers.ledger import create_ledger_idempotent_transaction
+
+pytestmark = [pytest.mark.critical, pytest.mark.regression]
 
 
 @pytest.fixture
@@ -21,15 +24,18 @@ def setup_student_with_disabled_banking(client):
     teacher = classroom.teacher_user
     user = student.user
     student_seat = student.seat
-
-    seed_purchase(
-        seat_id=student_seat.id,
-        class_id=classroom.class_id,
-        user_id=user.id,
-        amount="100.00",
-        description="Starting balance",
-        transaction_type="Initial",
-    )
+    with FEATContext("FEAT-LED-001", idempotency_key="feature_flag_enforcement:disabled_banking:seed"):
+        create_ledger_idempotent_transaction(
+            idempotency_key="feature_flag_enforcement:disabled_banking:seed",
+            seat_id=student_seat.id,
+            class_id=classroom.class_id,
+            user_id=user.id,
+            amount="100.00",
+            account_type="checking",
+            type="purchase",
+            description="Starting balance",
+            actor_seat_id=student_seat.id,
+        )
     disable_class_feature(class_id=classroom.class_id, feature_name='banking')
     db.session.commit()
 
@@ -50,15 +56,18 @@ def setup_student_with_enabled_banking(client):
     teacher = classroom.teacher_user
     student_seat = student.seat
     user = student.user
-
-    seed_purchase(
-        seat_id=student_seat.id,
-        class_id=classroom.class_id,
-        user_id=user.id,
-        amount="100.00",
-        description="Starting balance",
-        transaction_type="Initial",
-    )
+    with FEATContext("FEAT-LED-001", idempotency_key="feature_flag_enforcement:enabled_banking:seed"):
+        create_ledger_idempotent_transaction(
+            idempotency_key="feature_flag_enforcement:enabled_banking:seed",
+            seat_id=student_seat.id,
+            class_id=classroom.class_id,
+            user_id=user.id,
+            amount="100.00",
+            account_type="checking",
+            type="purchase",
+            description="Starting balance",
+            actor_seat_id=student_seat.id,
+        )
     enable_class_feature(class_id=classroom.class_id, feature_name='banking')
     db.session.commit()
 
@@ -147,17 +156,18 @@ def test_DOM_CLASS_001__admin_store_delete_rejects_disabled_class_scope(client):
     classroom_b = initialize_as_teacher("ap_csp_p3", client, client.application)
     disable_class_feature(class_id=classroom_b.class_id, feature_name='store')
     db.session.commit()
-    store_item = StoreItem(
-        user_id=classroom_b.teacher_user.id,
-        class_id=classroom_b.class_id,
-        name="Pencil",
-        description="Simple item",
-        price=1,
-        item_type='immediate',
-        is_active=True,
-    )
-    db.session.add(store_item)
-    db.session.flush()
+    with FEATContext("FEAT-SETTINGS-001", idempotency_key=f"feature_flag_enforcement:store_item:{classroom_b.class_id}"):
+        store_item = StoreItem(
+            user_id=classroom_b.teacher_user.id,
+            class_id=classroom_b.class_id,
+            name="Pencil",
+            description="Simple item",
+            price=1,
+            item_type='immediate',
+            is_active=True,
+        )
+        db.session.add(store_item)
+        db.session.flush()
     response = client.post(
         f'/admin/store/delete/{store_item.id}',
         data={'join_code': 'STD2'},

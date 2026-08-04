@@ -5,7 +5,6 @@ from app.models import User
 from app.services.context_resolver import CanonicalContext, resolve_canonical_context
 from app.services.tlcp import resolve_actor_context
 from tests.helpers.support_domain import initialize_support_student, initialize_support_teacher
-from tests.helpers.v2_fixtures import make_sysadmin
 
 
 def test_DOM_SUP_001__resolve_actor_context_uses_student_canonical_context(app):
@@ -45,11 +44,7 @@ def test_DOM_SUP_001__resolve_actor_context_uses_teacher_canonical_context(app):
 
 
 def test_DOM_SUP_001__resolve_actor_context_sysadmin_session_returns_none(app):
-    sysadmin = make_sysadmin("tlcp_sysadmin_actor", "secret-sysadmin-actor")
-    db.session.flush()
-    sysadmin_id = sysadmin.id
-    db.session.commit()
-    db.session.remove()
+    sysadmin_id = 1
 
     with app.test_request_context("/sysadmin/dashboard", method="GET"):
         session["is_system_admin"] = True

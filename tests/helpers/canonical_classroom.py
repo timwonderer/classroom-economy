@@ -50,6 +50,8 @@ class ProvisionedStudent:
     user: User
     seat: Seat
     profile: IdentityProfile
+    user_id: int
+    seat_id: int
     first_name: str
     last_name: str
     chosen_word: str
@@ -61,17 +63,16 @@ class ProvisionedStudent:
 @dataclass
 class ProvisionedClassroom:
     economy: ClassEconomy
+    class_id: str
     teacher_user: User
     teacher_seat: Seat
+    teacher_user_id: int
+    teacher_seat_id: int
     students: list[ProvisionedStudent] = field(default_factory=list)
 
     @property
     def join_code(self) -> str:
         return self.economy.join_code
-
-    @property
-    def class_id(self) -> str:
-        return self.economy.class_id
 
 
 # ---------------------------------------------------------------------------
@@ -143,6 +144,8 @@ def provision_classroom(classroom_key: str) -> ProvisionedClassroom:
                 user=student_user,
                 seat=seat,
                 profile=profile,
+                user_id=student_user.id,
+                seat_id=seat.id,
                 first_name=row["first_name"],
                 last_name=row["last_name"],
                 chosen_word=row["chosen_word"],
@@ -153,8 +156,11 @@ def provision_classroom(classroom_key: str) -> ProvisionedClassroom:
 
     return ProvisionedClassroom(
         economy=economy,
+        class_id=economy.class_id,
         teacher_user=teacher_user,
         teacher_seat=teacher_seat,
+        teacher_user_id=teacher_user.id,
+        teacher_seat_id=teacher_seat.id,
         students=provisioned_students,
     )
 

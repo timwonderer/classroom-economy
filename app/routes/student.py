@@ -25,11 +25,11 @@ from dateutil.relativedelta import relativedelta
 
 from app.extensions import db, limiter
 from app.models import (
-    Transaction, TransactionStatus, AttendanceSession, StoreItem, StoreItemVisibility, StorePurchase,
+    Transaction, TransactionStatus, AttendanceSession, StoreItem, StoreItemVisibility,
     # StoreItemBlock removed — store_item_blocks unauthorized; use store_item_visibility (DOM-STORE-001)
     RentSettings,
     BankingSettings, FeatureSettings, Issue, Seat, User, UserRole,
-    ClassEconomy, IdentityProfile, PayrollEvent, PolicyVersion, _quantize_currency
+    ClassEconomy, IdentityProfile, PayrollEvent, PolicyVersion, StoreProduct, _quantize_currency
 )
 from app.auth import (
     admin_required,
@@ -71,13 +71,14 @@ from app.access import (
     resolve_student_class_switch_scope,
 )
 from app.services.attendance_service import get_class_attendance_status
-from app.services.store_entitlement_service import (
-    list_entitlement_history,
-    list_entitlements_for_seat,
-    list_available_entitlements,
-    list_insurance_claims,
-    derive_display_status,
-)
+# TODO (Phase 4): store_entitlement_service deleted
+# from app.services.store_entitlement_service import (
+#     list_entitlement_history,
+#     list_entitlements_for_seat,
+#     list_available_entitlements,
+#     list_insurance_claims,
+#     derive_display_status,
+# )
 from app.services.insurance_policy_service import list_insurance_policy_versions
 from app.services.insurance_policy_service import get_insurance_entitlement_item_id
 from app.services.ledger_service import (
@@ -99,8 +100,10 @@ from app.services.classroom_setup import create_student_user_for_seat
 from app.feats.base import feat_shell
 from app.feats.rent_payment_feat import execute_rent_payment
 from app.feats.transfer_feat import execute_account_transfer
-from app.feats.insurance_purchase_feat import execute_insurance_purchase
-from app.feats.insurance_claim_feat import execute_claim_submission
+# TODO (Phase 4): insurance_purchase_feat deleted; use execute_store_purchase for insurance
+# from app.feats.insurance_purchase_feat import execute_insurance_purchase
+# TODO (Phase 4): insurance_claim_feat deleted; use FEAT-STOR-003 instead
+# from app.feats.insurance_claim_feat import execute_claim_submission
 # execute_file_claim removed — insurance_claim_feat.py deleted; insurance feature broken pending DOM-OBL-001 migration
 from app.payroll import get_pay_rate_for_block
 from app.utils.join_code import get_display_join_code
@@ -121,13 +124,15 @@ from app.utils.canonical_temporal_resolver import (
     canonical_temporal_resolver,
 )
 from app.utils.seat_scope import transaction_scope_filter, seat_scoped_filter
-from app.utils.insurance_eligibility import (
-    compute_waiting_end_class_for_enrollment,
-    evaluate_claim_transaction_eligibility,
-    collect_reimbursed_source_tx_ids,
-    resolve_claim_type,
-)
-from app.utils.insurance_billing import get_insurance_billing_snapshot
+# TODO (Phase 4): insurance_eligibility deleted; use canonical tools + FEAT-STOR-003
+# from app.utils.insurance_eligibility import (
+#     compute_waiting_end_class_for_enrollment,
+#     evaluate_claim_transaction_eligibility,
+#     collect_reimbursed_source_tx_ids,
+#     resolve_claim_type,
+# )
+# TODO (Phase 4): insurance_billing deleted; move to Obligations domain
+# from app.utils.insurance_billing import get_insurance_billing_snapshot
 
 
 def _get_identity_bound_seat_options(user_id: int):
@@ -1985,6 +1990,11 @@ def shop():
         item for item in items_query.order_by(StoreItem.name).all()
         if store_service.is_item_visible_to_seat(item.id, seat.id)
     ]
+    policy_uuid_by_item_id = {}
+    for store_product in StoreProduct.query.filter_by(class_id=class_id, is_retired=False).all():
+        product_id = (store_product.payload or {}).get("product_id")
+        if isinstance(product_id, int):
+            policy_uuid_by_item_id[product_id] = store_product.policy_uuid
 
     entitlements = []
     for entry in list_entitlement_history(target_seat_id=seat.id, class_id=class_id):
@@ -2147,6 +2157,7 @@ def shop():
                          has_paid_rent=has_paid_rent, per_period_rent_item_ids=per_period_rent_item_ids,
                          rent_item_types_by_store_id=rent_item_types_by_store_id,
                          rent_free_entitlement_counts=rent_free_entitlement_counts,
+                         policy_uuid_by_item_id=policy_uuid_by_item_id,
                          class_size=class_size, current_block=current_block,
                          collective_progress=collective_progress)
 
@@ -2163,15 +2174,29 @@ def _get_rent_timezone(class_id: str):
     """
     if not class_id:
         raise ValueError("Rent timezone resolution requires class_id")
-    return get_timezone(get_class_timezone(class_id))
+    from app.utils.canonical_temporal_resolver import (
+        CLASS_LEVEL_EVALUATION,
+        canonical_temporal_resolver,
+    )
+
+    class _TemporalContext:
+        def __init__(self, class_id: str):
+            self.class_id = class_id
+
+    evaluation = canonical_temporal_resolver(
+        CLASS_LEVEL_EVALUATION,
+        canonical_execution_context=_TemporalContext(class_id=class_id),
+        primitive="current_time",
+    )
+    return evaluation.canonical_now.tzinfo
 
 
 def _calculate_rent_deadlines(settings, reference_date=None):
     """Return the due date and grace end date for the active month."""
-    reference_date = ensure_utc(reference_date) if reference_date else utc_now()
     class_id = getattr(settings, "class_id", None)
     teacher_tz = _get_rent_timezone(class_id)
-    reference_local = reference_date.astimezone(teacher_tz)
+    reference_utc = ensure_utc(reference_date) if reference_date else utc_now()
+    reference_local = reference_utc.astimezone(teacher_tz)
 
     def _local_due_to_utc(
         year: int,

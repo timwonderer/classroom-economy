@@ -14,11 +14,11 @@ from app.extensions import db
 from app.feats.base import FEATContext
 from app.models import StoreItem
 from app.services.store_service import set_item_visibility
+from tests.helpers.class_domain import enable_class_feature
 from tests.helpers.classroom_initializer import (
     initialize_as_student,
     initialize_as_teacher,
 )
-from tests.helpers.v2_fixtures import seed_class_feature
 
 
 def login_entitlement_teacher(classroom_key: str, client, app):
@@ -34,7 +34,7 @@ def login_entitlement_student(classroom_key: str, client, app, student_index: in
 def enable_store_feature_for_class(class_id: str) -> None:
     """Enable the store feature for a canonical class."""
     with FEATContext("FEAT-ADMN-001", idempotency_key=f"entitlement:enable-store:{class_id}"):
-        seed_class_feature(class_id=class_id, feature_name="store")
+        enable_class_feature(class_id=class_id, feature_name="store")
         db.session.info["feat_orchestrator_commit"] = True
         try:
             db.session.commit()
@@ -83,10 +83,10 @@ def create_entitlement_store_item(
         return item
 
 
-def purchase_entitlement_item(client, *, item_id: int, passphrase: str, quantity: int = 1, client_purchase_id: str | None = None):
+def purchase_entitlement_item(client, *, policy_uuid: str, passphrase: str, quantity: int = 1, client_purchase_id: str | None = None):
     """Invoke the production purchase-item route."""
     payload = {
-        "item_id": item_id,
+        "policy_uuid": policy_uuid,
         "passphrase": passphrase,
         "quantity": quantity,
     }
@@ -95,23 +95,23 @@ def purchase_entitlement_item(client, *, item_id: int, passphrase: str, quantity
     return client.post("/api/purchase-item", json=payload)
 
 
-def use_entitlement_item(client, *, student_item_id: int, passphrase: str, details: str = ""):
+def use_entitlement_item(client, *, entitlement_id: str, passphrase: str, details: str = ""):
     """Invoke the production use-item route."""
     return client.post(
         "/api/use-item",
         json={
-            "student_item_id": student_item_id,
+            "entitlement_id": entitlement_id,
             "passphrase": passphrase,
             "details": details,
         },
     )
 
 
-def approve_entitlement_redemption(client, *, student_item_id: int):
+def approve_entitlement_redemption(client, *, entitlement_id: str):
     """Invoke the production approve-redemption route."""
-    return client.post("/api/approve-redemption", json={"student_item_id": student_item_id})
+    return client.post("/api/approve-redemption", json={"entitlement_id": entitlement_id})
 
 
-def reject_entitlement_redemption(client, *, student_item_id: int):
+def reject_entitlement_redemption(client, *, entitlement_id: str):
     """Invoke the production reject-redemption route."""
-    return client.post("/api/reject-redemption", json={"student_item_id": student_item_id})
+    return client.post("/api/reject-redemption", json={"entitlement_id": entitlement_id})

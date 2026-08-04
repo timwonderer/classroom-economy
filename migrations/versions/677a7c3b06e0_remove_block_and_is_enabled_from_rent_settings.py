@@ -43,19 +43,30 @@ def index_exists(table_name, index_name):
 def upgrade():
     # Deduplicate: if multiple rows per class_id exist, keep the most recent one.
     # This can happen if per-block rows were created before this migration.
-    op.execute("""
-        DELETE FROM rent_settings
-        WHERE id NOT IN (
-            SELECT DISTINCT ON (class_id) id
-            FROM rent_settings
-            ORDER BY class_id, id DESC
+    rent_settings = sa.table(
+        'rent_settings',
+        sa.column('id', sa.Integer()),
+        sa.column('class_id', sa.Integer()),
+    )
+    conn = op.get_bind()
+    rows = conn.execute(
+        sa.select(rent_settings.c.id, rent_settings.c.class_id).order_by(
+            rent_settings.c.class_id,
+            rent_settings.c.id.desc(),
         )
-    """)
+    ).fetchall()
+    seen_class_ids = set()
+    for row in rows:
+        if row.class_id in seen_class_ids:
+            conn.execute(sa.delete(rent_settings).where(rent_settings.c.id == row.id))
+        else:
+            seen_class_ids.add(row.class_id)
 
     # Make class_id unique now that duplicates are removed
     if index_exists('rent_settings', 'ix_rent_settings_class_id'):
         op.drop_index('ix_rent_settings_class_id', table_name='rent_settings')
-    op.create_index('ix_rent_settings_class_id', 'rent_settings', ['class_id'], unique=True)
+    if not index_exists('rent_settings', 'ix_rent_settings_class_id'):
+        op.create_index('ix_rent_settings_class_id', 'rent_settings', ['class_id'], unique=True)
 
     # Drop is_enabled — row existence is the gate
     if column_exists('rent_settings', 'is_enabled'):
@@ -74,4 +85,5 @@ def downgrade():
     # Restore non-unique index
     if index_exists('rent_settings', 'ix_rent_settings_class_id'):
         op.drop_index('ix_rent_settings_class_id', table_name='rent_settings')
-    op.create_index('ix_rent_settings_class_id', 'rent_settings', ['class_id'], unique=False)
+    if not index_exists('rent_settings', 'ix_rent_settings_class_id'):
+        op.create_index('ix_rent_settings_class_id', 'rent_settings', ['class_id'], unique=False)
