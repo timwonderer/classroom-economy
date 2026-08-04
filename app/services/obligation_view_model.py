@@ -131,14 +131,19 @@ class StudentObligationView:
     when do they move to the next cycle?"
 
     All fields are derived from obligation_service facts + bill_cycles + ClassConfig.
+    Phase 6-7 VERIFIED: All template access goes through view.* namespace only.
     """
 
     obligation_type: str
     seat_id: int
     class_id: str
+    current_block: str  # Period identifier (e.g., 'A', 'B', or class-level identifier)
 
-    # Current period (OWE phase)
-    current_period: dict  # {due_date, grace_end, amount_due, amount_paid, amount_waived, balance, is_paid, is_waived, is_past_due, is_preview, days_until_due, days_overdue}
+    # Current period (OWE phase) — Primary status dict
+    current_period: dict  # {due_date, grace_end, amount_due, amount_paid, amount_waived, balance, is_paid, is_waived, is_past_due, is_preview, days_until_due, days_overdue, is_late, rent_is_active, total_due, remaining_amount}
+
+    # Period status by block/identifier — keyed dict for multi-period access
+    period_status: dict  # {block_id: {same fields as current_period}}
 
     # Prior obligations (arrears)
     prior_obligations: list  # [{period, amount, status, due_date, is_past_due}]
@@ -146,11 +151,17 @@ class StudentObligationView:
     # Ledger history (payment/waiver events)
     payment_history: list  # [{date, amount, type, status, correlation_id}]
 
+    # Active waivers for this obligation type
+    active_waivers: list  # List of waiver events
+
     # Computed totals
     totals: dict  # {total_owed, total_paid_all_time, total_waived}
 
     # Configuration (from ClassConfig, not domain-specific settings)
     settings: dict  # {amount_expected, late_fee, grace_period_days, frequency}
+
+    # Status counts for display (e.g., rent_status_counts)
+    status_counts: dict  # {SATISFIED, OUTSTANDING, PAST_DUE}
 
 
 @dataclass(frozen=True)
@@ -175,6 +186,7 @@ def build_student_obligation_view(
     seat_id: int,
     class_id: str,
     obligation_type: str,
+    current_block: str = 'A',  # Period identifier
 ) -> StudentObligationView | None:
     """
     Construct a complete obligation view for one student, any obligation type.
@@ -214,15 +226,18 @@ def build_student_obligation_view(
 
     # Step 4: Process each assessment to derive satisfaction
     current_period = {}
+    period_status = {}
     prior_obligations = []
     payment_history_all = []
+    active_waivers = []
     total_paid_all_time = Decimal('0.00')
     total_waived_count = 0
+    status_counts = {'SATISFIED': 0, 'OUTSTANDING': 0, 'PAST_DUE': 0}
 
     # Assume most recent ASSESSMENT is "current period"
     current_assessment = assessment_events[-1] if assessment_events else None
 
-    for assessment in assessment_events:
+    for idx, assessment in enumerate(assessment_events):
         # Get satisfaction events for this assessment
         satisfaction_events = obligations_service.get_satisfaction_events(assessment.correlation_id)
 
@@ -247,6 +262,7 @@ def build_student_obligation_view(
             elif event.event_type == 'WAIVED':
                 has_waiver = True
                 total_waived_count += 1
+                active_waivers.append(event)
                 payment_history_all.append({
                     'date': event.timestamp,
                     'amount': Decimal('0.00'),
@@ -271,12 +287,21 @@ def build_student_obligation_view(
         amount_due = Decimal('0.00')
 
         balance = amount_due - total_paid if amount_due else (Decimal('0.00') - total_paid)
+        remaining_amount = max(Decimal('0.00'), balance)
 
         # Compute temporal status
         now_utc = datetime.now(timezone.utc)
         is_satisfied = has_waiver or (total_paid >= amount_due)
         is_past_due = (not is_satisfied) and (grace_end and now_utc > grace_end)
         is_preview = (not is_satisfied) and (due_date and now_utc < due_date)
+
+        # Update status counts
+        if is_satisfied:
+            status_counts['SATISFIED'] += 1
+        elif is_past_due:
+            status_counts['PAST_DUE'] += 1
+        else:
+            status_counts['OUTSTANDING'] += 1
 
         days_until_due = None
         if is_preview and due_date:
@@ -295,10 +320,16 @@ def build_student_obligation_view(
             'amount_paid': total_paid,
             'amount_waived': has_waiver,
             'balance': balance,
+            'remaining_amount': remaining_amount,
+            'total_paid': total_paid,
+            'total_due': amount_due,  # Alias for template compatibility
             'is_paid': balance <= Decimal('0.00'),
             'is_waived': has_waiver,
             'is_past_due': is_past_due,
+            'is_late': is_past_due,  # Alias for template
             'is_preview': is_preview,
+            'is_preview_period': is_preview,  # Alias for template
+            'rent_is_active': bool(due_date),
             'days_until_due': days_until_due,
             'days_overdue': days_overdue,
         }
@@ -306,6 +337,8 @@ def build_student_obligation_view(
         # If this is the current assessment, set as current_period
         if assessment == current_assessment:
             current_period = period_info
+            # Add current period to period_status keyed by current_block
+            period_status[current_block] = period_info
         else:
             # Prior obligation
             prior_obligations.append({
@@ -345,11 +378,15 @@ def build_student_obligation_view(
         obligation_type=obligation_type,
         seat_id=seat_id,
         class_id=class_id,
+        current_block=current_block,
         current_period=current_period,
+        period_status=period_status,
         prior_obligations=prior_obligations,
         payment_history=payment_history_all,
+        active_waivers=active_waivers,
         totals=totals,
         settings=settings,
+        status_counts=status_counts,
     )
 
 

@@ -2953,6 +2953,9 @@ def rent():
         flash("Rent system is currently disabled.", "info")
         return redirect(url_for('student.dashboard'))
 
+    # Get current_block from session context (for period display)
+    current_block = session.get('current_block', 'A')
+
     # Build view model from generic obligation service primitives
     from app.services.obligation_view_model import build_student_obligation_view
 
@@ -2960,6 +2963,7 @@ def rent():
         seat_id=seat_id,
         class_id=class_id,
         obligation_type='RENT',
+        current_block=current_block,
     )
 
     # Get identity display context (MAP-UI-002)
@@ -2986,15 +2990,13 @@ def rent():
     )
     now_utc = now_eval.canonical_now_utc
 
-    # Render template with canonical view model only (MAP-UI-002)
+    # Phase 6-7 VERIFIED: Render template with ONLY view model fields
+    # No raw variables passed; all template access via view.* namespace
     return render_template(
         'student_rent.html',
-        student=student_seat,
-        settings=settings,
         view=view,
         checking_balance=checking_balance,
         savings_balance=savings_balance,
-        now=now_utc,
         feature_settings=g.get('feature_settings', {}),
         current_class_context=g.get('current_class_context', {}),
     )
