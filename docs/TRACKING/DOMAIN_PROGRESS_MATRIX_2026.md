@@ -94,7 +94,7 @@ Phase 6-7 completion is now measured via **field ownership**, not template struc
 | Domain | View Model(s) | Phase 6-7 Status | Audit Notes |
 | -------- | --------------- | ----------------- | ------------- |
 | **Obligations** | StudentObligationView | ❌ INVALID | Templates use undefined variables; must add `period_status` dict |
-| **Store & Entitlements** | EntitlementListView, PurchaseHistoryView, PolicyListView | ⚠️ UNVERIFIED | Exists but Phase 10 audit pending |
+| **Store & Entitlements** | EntitlementListView, PurchaseHistoryView, PolicyListView, StoreManagementView | ✅ COMPLETE | Phase 10 audit passed; all fields wired via view.* namespace |
 
 **Domains WITHOUT view models (Phase 5 blocked):**
 

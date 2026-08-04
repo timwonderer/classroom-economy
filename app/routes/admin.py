@@ -5547,6 +5547,13 @@ def store_management():
         ).all()
     }
 
+    # Get expected weekly hours from PayrollSettings for the selected class
+    payroll_settings = PayrollSettings.query.filter_by(
+        class_id=selected_scope['class_id'],
+        block=None,  # Get global/default settings
+    ).first()
+    expected_weekly_hours = float(payroll_settings.expected_weekly_hours) if payroll_settings and payroll_settings.expected_weekly_hours else 5.0
+
     view = build_store_management_view(
         items=items,
         total_items=total_items,
@@ -5569,6 +5576,7 @@ def store_management():
         audit_end_date=audit_end_date,
         selected_scope=selected_scope,
         feature_options=feature_options,
+        expected_weekly_hours=expected_weekly_hours,
     )
 
     return render_template('admin_store.html', form=form, view=view, current_page="store")

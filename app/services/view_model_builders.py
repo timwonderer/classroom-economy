@@ -239,6 +239,7 @@ class StoreManagementView:
     # Feature scope (owned by Class Configuration domain)
     selected_scope: dict[str, Any] = field(default_factory=dict)
     feature_options: list[dict[str, Any]] = field(default_factory=list)
+    expected_weekly_hours: float = 5.0  # Default CWI validator expectation from PayrollSettings
 
 
 def build_store_management_view(
@@ -256,6 +257,7 @@ def build_store_management_view(
     audit_page: int,
     audit_total_pages: int,
     audit_class_options: list[str],
+    expected_weekly_hours: float = 5.0,
     audit_student: str = "",
     audit_class: str = "",
     audit_action: str = "",
@@ -294,4 +296,5 @@ def build_store_management_view(
         },
         selected_scope=selected_scope or {},
         feature_options=feature_options or [],
+        expected_weekly_hours=expected_weekly_hours,
     )
