@@ -337,8 +337,8 @@
   <!-- MANAGE ITEMS TAB -->
   <div class="tab-pane fade" id="manage" role="tabpanel">
     <div class="row row-cols-1 row-cols-md-2 row-cols-xl-3 g-3">
-      {% if items %}
-        {% for item in items %}
+      {% if view.items %}
+        {% for item in view.items %}
         <div class="col">
           <div class="card shadow-sm h-100">
             <div class="card-header bg-light d-flex justify-content-between align-items-start">
@@ -360,7 +360,7 @@
                 {{ item.description|striptags|truncate(160) if item.description else 'No description provided.' }}
               </p>
 
-              {% if item.is_rent_linked or item.id in rent_managed_item_ids %}
+              {% if item.is_rent_linked or item.id in view.rent_managed_item_ids %}
               <div class="mb-2">
                 <span class="badge bg-info">Rent Perk</span>
                 <span class="text-muted small ms-1">Managed by rent settings</span>
@@ -706,8 +706,8 @@
               </tr>
             </thead>
             <tbody>
-              {% if items %}
-                {% for item in items %}
+              {% if view.items %}
+                {% for item in view.items %}
                   {% for entitlement in item.purchases %}
                   <tr>
                     <td>{{ entitlement.seat.identity_profile.full_name if entitlement.seat and entitlement.seat.identity_profile else 'Unknown' }}</td>
