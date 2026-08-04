@@ -141,8 +141,12 @@ Phase 6-7 completion is now measured via **field ownership**, not template struc
 **Phase:** 🔄 0-? (Unaudited)  
 **Status:** Commits exist, likely complete but needs Phase 10 audit  
 **Key Achievement:** Settings migrated to canonical; `class_id` canonical scope enforcement with timezone and CWI configuration  
+**Pending View Models:** 
+- ✅ **EconomicView** (stub) — Provides presentation-ready economic guidance (pricing range, economy health, warnings) consumed by Store and other domains. Stub implementation (`app/services/class_configuration_economic_service.py`) pending full CWI/pricing calculation implementation.
+- ⏳ **ClassConfigurationView** — Settings presentation model pending implementation.
+
 **Notes:** `join_code` is public alias for class_id; block/period is display-only metadata  
-**Next Action:** Create Phase 10 audit document with template verification
+**Next Action:** Implement full economic calculations in build_economic_view(); ensure Store consumes EconomicView instead of raw PayrollSettings
 
 ---
 

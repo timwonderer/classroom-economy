@@ -158,6 +158,7 @@ from app.services.store_service import (
     delete_rent_item,
 )
 from app.services.view_model_builders import build_store_management_view
+from app.services.class_configuration_economic_service import build_economic_view
 from app.services.admin_identity_service import delete_admin_account_rows
 from app.services.admin_settings_service import create_rent_settings, create_banking_settings
 from app.services.issue_service import create_support_ticket
@@ -5547,12 +5548,8 @@ def store_management():
         ).all()
     }
 
-    # Get expected weekly hours from PayrollSettings for the selected class
-    payroll_settings = PayrollSettings.query.filter_by(
-        class_id=selected_scope['class_id'],
-        block=None,  # Get global/default settings
-    ).first()
-    expected_weekly_hours = float(payroll_settings.expected_weekly_hours) if payroll_settings and payroll_settings.expected_weekly_hours else 5.0
+    # Build economic view from Class Configuration domain
+    economic_view = build_economic_view(selected_scope['class_id'])
 
     view = build_store_management_view(
         items=items,
@@ -5569,6 +5566,7 @@ def store_management():
         audit_page=audit_page,
         audit_total_pages=audit_total_pages,
         audit_class_options=audit_class_options,
+        economic=economic_view,
         audit_student=audit_student,
         audit_class=audit_class,
         audit_action=audit_action,
@@ -5576,7 +5574,6 @@ def store_management():
         audit_end_date=audit_end_date,
         selected_scope=selected_scope,
         feature_options=feature_options,
-        expected_weekly_hours=expected_weekly_hours,
     )
 
     return render_template('admin_store.html', form=form, view=view, current_page="store")

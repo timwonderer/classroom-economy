@@ -17,6 +17,7 @@ from typing import Any
 from app.models import EntitlementEvent
 from app.services.entitlement_read_service import get_entitlement_status
 from app.services.store_policy_resolver import StorePolicyResolver, PolicyNotFound
+from app.services.class_configuration_economic_service import EconomicView
 
 
 @dataclass(frozen=True)
@@ -239,7 +240,17 @@ class StoreManagementView:
     # Feature scope (owned by Class Configuration domain)
     selected_scope: dict[str, Any] = field(default_factory=dict)
     feature_options: list[dict[str, Any]] = field(default_factory=list)
-    expected_weekly_hours: float = 5.0  # Default CWI validator expectation from PayrollSettings
+
+    # Economic presentation model (owned by Class Configuration domain)
+    # Consumed by Store but produced by Class Configuration economic service.
+    # Contains presentation concepts: pricing guidance, economy health, warnings.
+    # Does NOT expose implementation details like expected_weekly_hours or CWI calculations.
+    economic: EconomicView = field(default_factory=lambda: EconomicView(
+        suggested_pricing_range={},
+        economy_health=0,
+        warnings=[],
+        display_context={},
+    ))
 
 
 def build_store_management_view(
@@ -257,7 +268,7 @@ def build_store_management_view(
     audit_page: int,
     audit_total_pages: int,
     audit_class_options: list[str],
-    expected_weekly_hours: float = 5.0,
+    economic: EconomicView | None = None,
     audit_student: str = "",
     audit_class: str = "",
     audit_action: str = "",
@@ -296,5 +307,10 @@ def build_store_management_view(
         },
         selected_scope=selected_scope or {},
         feature_options=feature_options or [],
-        expected_weekly_hours=expected_weekly_hours,
+        economic=economic or EconomicView(
+            suggested_pricing_range={},
+            economy_health=0,
+            warnings=[],
+            display_context={},
+        ),
     )

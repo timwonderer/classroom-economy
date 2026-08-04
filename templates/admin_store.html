@@ -481,7 +481,7 @@
                 </div>
                 <div class="card-body">
                   <!-- Economy Balance Check -->
-                  <div id="economy-data" data-expected-weekly-hours="{{ view.expected_weekly_hours | float }}" class="visually-hidden"></div>
+                  <div id="economy-data" data-expected-weekly-hours="{{ view.economic.display_context.get('expected_weekly_hours', 5.0) | float }}" class="visually-hidden"></div>
                   <div id="cwi-info" class="mb-3"></div>
 
                   <div class="row">

@@ -191,7 +191,7 @@ return render_template('admin_store.html', form=form, view=view, ...)  # 2 varia
 - ✅ Line 353: Rent item check: `item.id in view.rent_managed_item_ids`
 - ✅ Line 363: Rent perk badge check: `item.id in view.rent_managed_item_ids` (fixed 505d74d2)
 - ✅ Line 395: Collective progress: `view.collective_progress_by_item.get(item.id)`
-- ✅ Line 484: Economy data uses `view.expected_weekly_hours` (fixed post-CodeRabbit review)
+- ✅ Line 484: Economy data uses `view.economic.display_context.get('expected_weekly_hours', 5.0)` (refactored per architectural guidance)
 - ✅ Line 709-710: History loop: `{% if view.items %} / {% for item in view.items %}`
 - ✅ Line 756: Audit options: `{% for cls in view.audit_class_options %}`
 - ✅ Line 750, 757, 765-767, 772, 776: Filter inputs use `view.audit_filters.get(...)`
@@ -210,15 +210,20 @@ return render_template('admin_store.html', form=form, view=view, ...)  # 2 varia
 - **Fixed:** Commit 505d74d2 corrected all remaining bare references
 - **Re-verified:** Jinja2 template parsing clean post-fix
 - CodeRabbit review discovered missing expected_weekly_hours field at line 484
-- **Fixed:** Added expected_weekly_hours to StoreManagementView, extracted from PayrollSettings in route
-- **Re-verified:** Template now uses view.expected_weekly_hours instead of undefined payroll_settings variable
+- **Architectural Refactor:** Per architectural guidance, expected_weekly_hours access was moved from direct PayrollSettings query to consumption via `EconomicView` presentation model
+- **Rationale:** Maintains domain isolation; Store domain no longer aware of PayrollSettings or CWI calculations; consumes only presentation-ready EconomicView from Class Configuration domain
+- **Implementation:** Created `class_configuration_economic_service.py` with stub `build_economic_view()` service; updated StoreManagementView to include economic field; route calls economic builder and passes result to store builder
+- **Result:** Store domain is completely decoupled from Payroll implementation details while still having economic context available for UI
 
 **Cross-Domain Dependencies Verified:**
 | Field | Owner | Route Passes | Template Uses | Status |
 |-------|-------|--------------|---------------|--------|
 | class_labels_by_block | Class Config | ✅ via builder | ✅ view.* | ✅ |
 | selected_scope, feature_options | Class Config | ✅ via builder | ✅ (route only) | ✅ |
-| expected_weekly_hours | Payroll domain | ✅ via PayrollSettings.query | ✅ view.* | ✅ |
+| economic (EconomicView) | Class Config | ✅ via build_economic_view() | ✅ view.economic.* | ✅ |
+
+**Architectural Note (Phase 6-7 Refactor):**
+Store domain no longer accesses PayrollSettings or CWI calculations directly. Instead, it consumes `EconomicView` — a presentation contract produced by Class Configuration domain. This maintains domain isolation while allowing economic concepts to flow through the view model. Store is completely unaware of how EconomicView values are calculated; it only receives the presentation-ready results.
 
 **Status:** ✅ PASS
 
