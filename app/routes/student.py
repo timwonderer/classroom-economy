@@ -2174,15 +2174,29 @@ def _get_rent_timezone(class_id: str):
     """
     if not class_id:
         raise ValueError("Rent timezone resolution requires class_id")
-    return get_class_timezone(class_id)
+    from app.utils.canonical_temporal_resolver import (
+        CLASS_LEVEL_EVALUATION,
+        canonical_temporal_resolver,
+    )
+
+    class _TemporalContext:
+        def __init__(self, class_id: str):
+            self.class_id = class_id
+
+    evaluation = canonical_temporal_resolver(
+        CLASS_LEVEL_EVALUATION,
+        canonical_execution_context=_TemporalContext(class_id=class_id),
+        primitive="current_time",
+    )
+    return evaluation.canonical_now.tzinfo
 
 
 def _calculate_rent_deadlines(settings, reference_date=None):
     """Return the due date and grace end date for the active month."""
-    reference_date = ensure_utc(reference_date) if reference_date else utc_now()
     class_id = getattr(settings, "class_id", None)
     teacher_tz = _get_rent_timezone(class_id)
-    reference_local = reference_date.astimezone(teacher_tz)
+    reference_utc = ensure_utc(reference_date) if reference_date else utc_now()
+    reference_local = reference_utc.astimezone(teacher_tz)
 
     def _local_due_to_utc(
         year: int,
