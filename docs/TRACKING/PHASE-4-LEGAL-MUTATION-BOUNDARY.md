@@ -48,7 +48,7 @@ timestamp              TIMESTAMP — Event time (immutable)
 
 **Mutability**: Append-only (immutable after insert)  
 **Transaction Boundary**: One event per FEAT action  
-**Idempotency**: Guaranteed by `correlation_id` uniqueness + FEAT deduplication
+**Idempotency**: Requires `correlation_id` uniqueness plus a persisted replay check before insert
 
 ### Table 2: pending_actions
 
@@ -69,7 +69,7 @@ submitted_at           TIMESTAMP — Action creation time
 
 **Mutability**: Append-only for submissions; workflow state mutable in cross-domain consumers  
 **Transaction Boundary**: One pending action per FEAT submission  
-**Idempotency**: Guaranteed by `correlation_id` uniqueness
+**Idempotency**: Requires `correlation_id` uniqueness plus a persisted replay check before insert
 
 **Status**: No current mutation surface. All future mutation must enter through a lawful FEAT (to be defined when Insurance claims or other workflows require pending action creation).
 
@@ -109,7 +109,7 @@ execute_direct_grant(
 - Quantity is positive integer
 - Per-student limit not exceeded
 
-**Idempotency**: Correlation ID ensures replay safety
+**Idempotency**: Requires `correlation_id` uniqueness plus a persisted replay check before insert
 
 ---
 
@@ -145,7 +145,7 @@ execute_store_purchase(
 - Per-student limit not exceeded
 - Ledger accepts purchase (TODO: real coordination)
 
-**Idempotency**: Correlation ID ensures replay safety
+**Idempotency**: Requires `correlation_id` uniqueness plus a persisted replay check before insert
 
 **⚠️ TODO (Phase 4 Follow-up)**: Implement real Ledger coordination to achieve end-to-end atomic (monetary + entitlements succeed/rollback together)
 
@@ -208,7 +208,7 @@ execute_store_purchase(
 ### FEAT-STOR-004 Transaction Model
 
 ```
-┌─ FEAT-STOR-001 Wrapper ─────────────────────┐
+┌─ FEAT-STOR-004 Wrapper ─────────────────────┐
 │  resolve_canonical_context()                │
 │  ↓                                          │
 │  ┌─ @feat_shell Transaction Boundary ──┐   │

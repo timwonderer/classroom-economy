@@ -438,6 +438,7 @@ Must test:
 - PolicyListView
 
 **Blocked Builders** (do not implement):
+- PolicyListView — awaiting get_applicable_policies() contract
 - EntitlementWithLedgerContext — awaiting Ledger read API
 
 **Effort**: 3-5 hours  
@@ -539,6 +540,7 @@ Phase 5 is complete when:
 
 - ✅ Read service fully documented (all methods have preconditions, purity statement, tests)
 - ✅ Unblocked view model builders implemented and tested
+- ✅ Blocked projections explicitly documented only where authority is still missing (EntitlementWithLedgerContext)
 - ✅ Blocked projections explicitly documented only where authority is still missing (EntitlementWithLedgerContext)
 - ✅ All unit tests pass
 - ✅ No routes or templates updated

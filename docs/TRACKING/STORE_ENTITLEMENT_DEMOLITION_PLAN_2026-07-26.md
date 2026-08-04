@@ -2,7 +2,6 @@
 ## Phase 9 Execution: Legacy Deletion
 
 > Historical plan note: this document describes the pre-closeout deletion target set from 2026-07-26. The current live-tree Store closure state is summarized in `docs/TRACKING/STORE_ENTITLEMENT_PHASE6_SURFACE_INVENTORY_2026-07-31.md`, and the remaining references in this plan are archival unless explicitly revalidated against current code.
-
 | Reference | Value |
 |-----------|-------|
 | **Domain** | Store and Entitlements (DOM-STORE-001 v3.0) |

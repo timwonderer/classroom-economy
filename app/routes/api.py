@@ -28,7 +28,7 @@ from app.models import (
     # StoreItemBlock removed — store_item_blocks unauthorized; use store_item_visibility (DOM-STORE-001)
     StoreItemVisibility, User,
     _quantize_currency,
-    ClassEconomy, Seat, IdentityProfile, PayrollEvent, EntitlementEvent, PendingAction,
+    ClassEconomy, Seat, IdentityProfile, PayrollEvent,
 )
 from app.auth import (
     login_required,

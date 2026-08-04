@@ -202,7 +202,6 @@ def get_entitlement_history(
         for e in query.all()
     ]
 
-
 def get_hall_pass_balance(
     seat_id: int,
     class_id: str,
@@ -227,8 +226,6 @@ def get_hall_pass_balance(
         class_id=class_id,
         entitlement_type="HALL_PASS",
     )
-
-
 # ---------------------------------------------------------------------------
 # Cross-Domain Consumption Checks
 # ---------------------------------------------------------------------------

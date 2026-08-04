@@ -542,7 +542,6 @@ class StorePolicyResolver:
         student eligibility, affordability, entitlement ownership, class feature
         state, ordering, or presentation. Those concerns belong in Phase 5
         view models.
-
         Args:
             class_id: Class scope for policies
 

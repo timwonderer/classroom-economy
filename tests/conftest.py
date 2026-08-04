@@ -607,26 +607,15 @@ def client_with_fk(client):
 
 
 @pytest.fixture
-def test_student():
-    from tests.helpers.class_scope import create_class_scope, make_student_identity
-    from tests.helpers.v2_fixtures import seed_canonical_admin
+def test_student(app):
+    from tests.helpers.classroom_initializer import initialize
 
-    teacher = seed_canonical_admin("test_student_teacher").user
-    class_row = create_class_scope(
-        teacher_user=teacher,
-        join_code="TEST_STUDENT_CLASS",
-        display_name="Test Student Class",
-        section="A",
-    )
-    return make_student_identity(
-        class_id=class_row.class_id,
-        first_name="Test",
-        last_name="Student",
-    )
+    classroom = initialize("chemistry_p1", app)
+    return classroom.students[0]
 
 
 @pytest.fixture
-def classroom_context():
+def classroom_context(app):
     """Create a fully-wired v2 classroom context.
 
     Returns a factory function. The context uses User/Seat/IdentityProfile
@@ -646,16 +635,20 @@ def classroom_context():
             student.seat          # Seat instance
             student.profile       # IdentityProfile instance
     """
-    from tests.helpers.context_factory import ClassroomContextFactory
+    from tests.helpers.classroom_initializer import initialize
 
     def _factory(**kwargs):
-        return ClassroomContextFactory(db, **kwargs).build()
+        classroom_key = kwargs.pop("classroom_key", "chemistry_p1")
+        classroom = initialize(classroom_key, app)
+        if kwargs:
+            raise TypeError(f"Unsupported classroom_context kwargs: {sorted(kwargs)}")
+        return classroom
 
     return _factory
 
 
 @pytest.fixture
-def classroom_with_students():
+def classroom_with_students(app):
     """Convenience: create a class with N students, committed.
 
     Usage:
@@ -663,19 +656,21 @@ def classroom_with_students():
             ctx = classroom_with_students(3)
             ctx.students[0].login(client)
     """
-    from tests.helpers.context_factory import ClassroomContextFactory
-    from app.feats.base import FEATContext
+    from tests.helpers.classroom_initializer import initialize
 
     def _factory(n=1, **kwargs):
-        with FEATContext("FEAT-IDEN-001", idempotency_key=f"classroom_with_students:{n}"):
-            ctx = ClassroomContextFactory(db, **kwargs).with_students(n).build()
-        return ctx
+        classroom_key = kwargs.pop("classroom_key", "chemistry_p1")
+        classroom = initialize(classroom_key, app)
+        if kwargs:
+            raise TypeError(f"Unsupported classroom_with_students kwargs: {sorted(kwargs)}")
+        classroom.students = classroom.students[:n]
+        return classroom
 
     return _factory
 
 
 @pytest.fixture
-def create_class_scope():
+def create_class_scope(app):
     """Create a canonical class scope with User, Seat, ClassEconomy, IdentityProfile.
 
     Returns a factory function that creates a class and automatically a student seat.
@@ -687,31 +682,18 @@ def create_class_scope():
             seat_id = context['seat_id']
             class_id = context['class_id']
     """
-    from tests.helpers.class_scope import create_class_scope as _create_class_scope, make_student_identity
-    from tests.helpers.v2_fixtures import seed_canonical_admin
+    from tests.helpers.classroom_initializer import initialize
 
     def _factory(**kwargs):
-        # If no teacher_user provided, create one automatically
-        if 'teacher_user' not in kwargs:
-            teacher_seed = seed_canonical_admin("auto_teacher_" + str(uuid.uuid4().hex[:8]))
-            kwargs['teacher_user'] = teacher_seed.user
-
-        # Create the class
-        class_row = _create_class_scope(**kwargs)
-
-        # Create a student in that class (returns Seat object)
-        student_seat = make_student_identity(
-            class_id=class_row.class_id,
-            first_name="Test",
-            last_name="Student",
-        )
-
-        # Return a dict with both seat_id and class_id for convenience
+        classroom_key = kwargs.pop("classroom_key", "chemistry_p1")
+        classroom = initialize(classroom_key, app)
+        if kwargs:
+            raise TypeError(f"Unsupported create_class_scope kwargs: {sorted(kwargs)}")
         return {
-            'seat_id': student_seat.id,
-            'class_id': class_row.class_id,
-            'class_row': class_row,
-            'student_seat': student_seat,
+            'seat_id': classroom.students[0].seat_id,
+            'class_id': classroom.class_id,
+            'class_row': classroom.economy,
+            'student_seat': classroom.students[0].seat,
         }
 
     return _factory

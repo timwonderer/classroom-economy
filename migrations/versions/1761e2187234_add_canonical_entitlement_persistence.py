@@ -56,7 +56,7 @@ def enum_type_exists(enum_name):
 
 def create_enum_type(enum_name, values):
     quoted_values = ", ".join(f"'{value}'" for value in values)
-    op.execute(sa.text(f"""
+    op.get_bind().exec_driver_sql(f"""
         DO $$
         BEGIN
             CREATE TYPE {enum_name} AS ENUM ({quoted_values});
@@ -64,7 +64,7 @@ def create_enum_type(enum_name, values):
             WHEN duplicate_object THEN NULL;
         END
         $$;
-    """))
+    """)
 
 
 # ============================================================================
@@ -238,7 +238,8 @@ def downgrade():
         op.drop_table('entitlement_grants')
 
     # --- Drop enum types ---
-    op.execute("DROP TYPE IF EXISTS grant_type_enum")
-    op.execute("DROP TYPE IF EXISTS disposition_enum")
-    op.execute("DROP TYPE IF EXISTS insurance_claim_type_enum")
-    op.execute("DROP TYPE IF EXISTS insurance_claim_status_enum")
+    conn = op.get_bind()
+    conn.exec_driver_sql("DROP TYPE IF EXISTS grant_type_enum")
+    conn.exec_driver_sql("DROP TYPE IF EXISTS disposition_enum")
+    conn.exec_driver_sql("DROP TYPE IF EXISTS insurance_claim_type_enum")
+    conn.exec_driver_sql("DROP TYPE IF EXISTS insurance_claim_status_enum")

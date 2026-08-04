@@ -575,6 +575,7 @@ def _resolve_insurance_claim_impl(
         )
 
     except Exception as e:
+        db.session.rollback()
         return InsuranceClaimResolutionResult(
             success=False,
             error_code="INTERNAL_ERROR",

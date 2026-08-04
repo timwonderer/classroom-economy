@@ -59,15 +59,19 @@ from app.access.scope import Scope
 from app.access import AccessScopeDenied, resolve_scope
 from app.models import (
     ClassEconomy, Transaction, TransactionStatus, AttendanceSession, StoreItem, StoreItemVisibility,
-    # Legacy compatibility comments retained only for historical context.
-    # StorePurchase, Entitlement, EntitlementConsumption, GrantType, RedemptionEvent, etc. were removed in the Phase 2 migration.
+    # Legacy tap table removed; use attendance_sessions (DOM-PROD-001).
+    # StudentItem removed — student_items unauthorized; use store_purchases + redemption_events (DOM-STORE-001)
+    # StoreItemBlock removed — store_item_blocks unauthorized; use store_item_visibility (DOM-STORE-001)
+    # RedemptionAuditLog / RedemptionAuditAction / RedemptionAuditSource removed — use redemption_events (DOM-STORE-001)
+    # Legacy tap reason enum removed with the legacy tap table.
+    # StorePurchase, Entitlement, EntitlementConsumption, GrantType, RedemptionEvent, etc. deleted per Phase 2 migration
     RentSettings,
     HallPassLog, HallPassSettings, PayrollSettings,
     BankingSettings,
     FeatureSettings,
     Announcement, Issue, IssueCategory, IssueStatusHistory, IssueResolutionAction, Seat,
     LedgerBalanceSnapshot, User, UserRole, _quantize_currency,
-    ObligationAssessment, EntitlementEvent, PendingAction,
+    ObligationAssessment,
     AttendanceReasonCode, IdentityProfile, PayrollEvent, PolicyVersion,
 )
 from app.auth import (
@@ -6010,7 +6014,10 @@ def rent_settings():
                     continue
 
                 existing_items = (
-                    StoreItem.query.filter_by(class_id=block, is_rent_linked=True)
+                    StoreItem.query.filter(
+                        StoreItem.class_id == block_settings.class_id,
+                        StoreItem.is_rent_linked.is_(True),
+                    )
                     .order_by(StoreItem.id.asc())
                     .all()
                 )
@@ -6030,22 +6037,17 @@ def rent_settings():
                 now = utc_now()
                 coverage_due = _calculate_rent_coverage_due_date(block_settings, now)
                 if coverage_due:
-                    from datetime import date
-                    month_start = coverage_due.replace(day=1)
-                    if coverage_due.month == 12:
-                        month_end = coverage_due.replace(year=coverage_due.year + 1, month=1, day=1)
-                    else:
-                        month_end = coverage_due.replace(month=coverage_due.month + 1, day=1)
-                    paid_count = (
-                        db.session.query(ObligationAssessment)
-                        .filter(
-                            ObligationAssessment.class_id == block_settings.class_id,
-                            ObligationAssessment.timestamp >= month_start,
-                            ObligationAssessment.timestamp < month_end,
-                            ObligationAssessment.event_type.in_(['PAYMENT', 'WAIVED']),
+                    current_bill_cycle = obligations_service.get_latest_bill_cycle_for_class(block_settings.class_id)
+                    paid_count = 0
+                    if current_bill_cycle:
+                        current_cycle_assessments = obligations_service.get_assessments_for_bill_cycle(
+                            current_bill_cycle.id,
+                            obligation_type='RENT',
                         )
-                        .count()
-                    )
+                        for assessment in current_cycle_assessments:
+                            satisfaction_events = obligations_service.get_satisfaction_events(assessment.correlation_id)
+                            if satisfaction_events:
+                                paid_count += 1
                     if paid_count > 0:
                         mid_period_locked = True
 
@@ -6194,7 +6196,10 @@ def rent_settings():
     rent_items = []
     if settings:
         rent_items = (
-            StoreItem.query.filter_by(class_id=settings.class_id, is_rent_linked=True)
+            StoreItem.query.filter(
+                StoreItem.class_id == settings.class_id,
+                StoreItem.is_rent_linked.is_(True),
+            )
             .order_by(StoreItem.id.asc())
             .all()
         )

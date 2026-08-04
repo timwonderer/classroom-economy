@@ -356,8 +356,13 @@ class TestIdempotency:
                 idempotency_key=idempotency_key,
             )
 
-            # Should succeed (MVP: documents expected behavior)
-            # Full implementation in Phase 5 with idempotency store
+            assert result2.success is True
+            assert result2.correlation_id == result1.correlation_id
+            assert result2.entitlement_ids == result1.entitlement_ids
+            second_count = EntitlementEvent.query.filter_by(
+                correlation_id=result2.correlation_id
+            ).count()
+            assert second_count == first_count
 
 
 class TestCrossClassIsolation:
