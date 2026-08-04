@@ -8,6 +8,9 @@ and this project follows semantic versioning principles.
 
 ## [Unreleased]
 
+### Fixed
+- **Schema Change Gate: Corrected PR 1293 Classification** — Fixed PR classification from EXPAND to CONTRACT (DATABASE) to accurately reflect Phase 2 migration that deletes forbidden tables per DOM-STORE-001 v3.0 (StorePurchase, RedemptionEvent, Entitlement, EntitlementConsumption, InsuranceClaim). All migrations remain idempotent with proper existence checks.
+
 ### Changed
 - **DOM-PROD-001 (Productivity and Payroll) Schema Alignment and Audit Completed** — The v2 canonical schema migration for the PROD domain is fully verified. `AttendanceSession`, `HallPassLog`, and `PayrollEvent` tables are actively enforcing `class_id` scoping. All legacy `student.block` scope derivations have been completely removed from runtime surfaces (API and Templates). The audit confirms 100% PASS for DOM-PROD compliance.
 - Full v2 test stabilization checkpoint landed: the FEAT transaction teardown leak was fixed in `app/feats/base.py`, legacy v1-style rent/time/payroll tests were rewritten to current canonical helpers where needed, and the latest full suite now passes as `744 passed, 19 skipped, 1 warning`.
