@@ -39,6 +39,7 @@ This matrix consolidates the progress of all CTH domains through the 10-phase SO
 | **Obligations** | DOM-OBL-001 | ✅ | ✅ | ✅ | ❌ | ❌ AUDIT INVALID | 2026-07-26 (FAILS Phase 6-7 verification) |
 | **Store & Entitlements** | DOM-STORE-001 | ✅ | ✅ | ? | ? | 🔄 Unaudited | None |
 | **Operations** | DOM-OPS-001 | 🔄 | — | — | — | 🔄 NOT STARTED | N/A |
+| **Interpretation** | DOM-ITR-001 | 🔄 | — | — | — | 🔄 NOT STARTED | N/A |
 | **Policies** | DOM-POL-001 | 🔄 | — | — | — | 🔄 NOT STARTED | N/A |
 | **Support** | DOM-SUP-001 | 🔄 | — | — | — | 🔄 NOT STARTED | N/A |
 
@@ -154,12 +155,21 @@ This matrix consolidates the progress of all CTH domains through the 10-phase SO
 ### NOT STARTED (Awaiting Sequence)
 
 #### Operations Domain (DOM-OPS-001)
-**Scope:** Operational events, audit lineage, incident tracking, job scheduling, health checks (plus economic health alerts and actionable feedback to teachers for Interpretation function)  
+**Scope:** Operational events, audit lineage, incident tracking, job scheduling, health checks  
 **Canonical Tables:** `operational_events`, `audit_log`, `incident_events`, `incident_summary`, `alert_events`, `invariant_run_events`, `job_events`, `health_check_events`  
 **Phase:** 🔄 0-1 (Spec review)  
 **Status:** NOT STARTED (blocked on prior domain audits)  
-**Dependency Chain:** Ledger (unaudited) → Productivity & Payroll (unaudited) → Obligations (blocked) → Store (unaudited) → **BLOCKED UNTIL PRIOR DOMAINS AUDITED**  
-**Notes:** Handles budget survivability, money velocity tracking, and alert generation for teachers
+**Dependency Chain:** Ledger (unaudited) → Productivity & Payroll (unaudited) → Obligations (blocked) → Store (unaudited) → **BLOCKED UNTIL PRIOR DOMAINS AUDITED**
+
+---
+
+#### Interpretation Domain (DOM-ITR-001)
+**Scope:** Economic health metrics (budget survivability, money velocity), economic alerts, actionable feedback to teachers  
+**Canonical Tables:** `interpretation_snapshots`, `interpretation_annotations`, `alert_events`  
+**Phase:** 🔄 0-1 (Spec review)  
+**Status:** NOT STARTED (blocked on prior domain audits)  
+**Dependency Chain:** Ledger (unaudited) → Store (unaudited) → Operations (not started) → **BLOCKED UNTIL PRIOR DOMAINS AUDITED**  
+**Notes:** Generates economic health alerts and recommendations for teachers; feeds from Ledger and Operations event streams
 
 ---
 
@@ -195,8 +205,13 @@ This matrix consolidates the progress of all CTH domains through the 10-phase SO
 - Store & Entitlements (depends on Ledger for purchase transactions, Class Config for pricing)
 
 **Depend on Ledger + Productivity & Payroll + Obligations + Store:**
-- Operations (depends on all to track events, generate economic alerts, maintain audit lineage)
-- Policies (utility domain for settings storage; depends on all domains owning their configs)
+- Operations (depends on all to track events, maintain audit lineage)
+
+**Depend on Ledger + Store + Operations:**
+- Interpretation (depends on Ledger for financial data, Store for transaction data, Operations for event stream; generates economic health alerts)
+
+**Depend on all domains:**
+- Policies (utility domain for settings storage and versioning; depends on all domains owning their configs)
 
 **Depend on Operations:**
 - Support (depends on Operations for incident tracking, audit events)
@@ -210,10 +225,10 @@ This matrix consolidates the progress of all CTH domains through the 10-phase SO
 
 **Current Status:** 
 - ❌ **0 domains AUDITED:** Obligations audit is INVALID (templates access undefined variables, Phase 6-7 failed)
-- 🔄 **7 domains UNAUDITED AND UNTRUSTED:** All domains (Identity, Class Config, Ledger, Attendance, Productivity & Payroll, Obligations, Store & Entitlements)
+- 🔄 **6 domains UNAUDITED AND UNTRUSTED:** Identity, Class Config, Ledger, Productivity & Payroll, Obligations, Store & Entitlements
   - No valid Phase 10 audit documents
   - No Phase 6-7 template verification
-- 🔄 **5 domains NOT STARTED:** Operations, Interpretation, Policies, Support, Economy & Governance
+- 🔄 **4 domains NOT STARTED:** Operations, Interpretation, Policies, Support
 
 **CRITICAL BLOCKER:** The only existing Phase 10 audit (Obligations) has false checkmarks. Templates were NOT actually verified. **No domain is known to be end-to-end complete.**
 
