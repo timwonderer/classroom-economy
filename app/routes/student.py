@@ -2174,7 +2174,7 @@ def _get_rent_timezone(class_id: str):
     """
     if not class_id:
         raise ValueError("Rent timezone resolution requires class_id")
-    return get_timezone(get_class_timezone(class_id))
+    return get_class_timezone(class_id)
 
 
 def _calculate_rent_deadlines(settings, reference_date=None):
