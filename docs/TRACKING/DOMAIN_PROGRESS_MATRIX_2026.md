@@ -35,7 +35,7 @@ This matrix consolidates the progress of all CTH domains through the 10-phase SO
 
 | Domain | Spec | Phase 0-4 | Phase 5 | Phase 6-7 | Phase 8-9 | Phase 10 | Status | Audit Doc |
 | -------- | ------ | ----------- | --------- | ----------- | ----------- | ---------- | -------- | ----------- |
-| **Identity** | DOM-IDEN-001/002/003/006 | ✅ | ❌ NO VM | ❌ BLOCKED | ? | ❌ | ❌ BLOCKED on Phase 5 | 2026-08-04 baseline |
+| **Identity** | DOM-IDEN-001/002/003/006 | ✅ | ✅ | ✅ VERIFIED | ⏳ | ❌ | 🔄 Phases 6-7 complete; Phase 8 pending | 2026-08-05 (Phase 6-7 audit) |
 | **Class Configuration** | DOM-CLASS-001 | ✅ | ❌ NO VM | ❌ BLOCKED | ? | ❌ | ❌ BLOCKED on Phase 5 | 2026-08-04 baseline |
 | **Ledger** | DOM-LED-001 | ✅ | ❌ NO VM | ❌ BLOCKED | ? | ❌ | ❌ BLOCKED on Phase 5 | 2026-08-04 baseline |
 | **Productivity & Payroll** | DOM-PROD-001 | ✅ | ❌ NO VM | ❌ BLOCKED | ? | ❌ | ❌ BLOCKED on Phase 5 | 2026-08-04 baseline |
@@ -66,7 +66,7 @@ This matrix consolidates the progress of all CTH domains through the 10-phase SO
 
 **AUDIT STATUS UPDATE (2026-08-04 REVISED):**
 
-- **Identity:** Phases 0-4 complete, Phase 5 **BLOCKED** (no view model), Phase 6-7 **BLOCKED**
+- **Identity:** Phases 0-7 complete ✅, Phase 8 test verification pending
 - **Class Config:** Phases 0-4 complete, Phase 5 **BLOCKED** (no view model), Phase 6-7 **BLOCKED**
 - **Ledger:** Phases 0-4 complete, Phase 5 **BLOCKED** (no view model), Phase 6-7 **BLOCKED**
 - **Payroll:** Phases 0-4 complete, Phase 5 **BLOCKED** (no view model), Phase 6-7 **BLOCKED**
@@ -103,7 +103,7 @@ Phase 6-7 completion is now measured via **field ownership**, not template struc
 
 | Domain | Why Blocked | Action Needed |
 | -------- | ------------ | --------------- |
-| **Identity** | No IdentityProfileView | Create dataclass + builder function |
+| **Identity** | ✅ IdentityProfileView complete | Phase 8 test verification pending |
 | **Class Configuration** | No ClassConfigurationView | Create dataclass + builder function |
 | **Ledger** | No LedgerBalanceView | Create dataclass + builder function |
 | **Payroll/Attendance** | No PayrollView or AttendanceView | Create 2 dataclasses + builder functions |

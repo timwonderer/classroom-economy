@@ -157,7 +157,7 @@ from app.services.store_service import (
     deactivate_linked_store_item,
     delete_rent_item,
 )
-from app.services.view_model_builders import build_store_management_view
+from app.services.view_model_builders import build_identity_profile_view, build_store_management_view
 from app.services.class_configuration_economic_service import build_economic_view
 from app.services.admin_identity_service import delete_admin_account_rows
 from app.services.admin_settings_service import create_rent_settings, create_banking_settings
@@ -4305,10 +4305,13 @@ def student_detail_public(actor_public_id):
         abort(404)
 
     student = scoped_seat
-    if not student.identity_profile:
-        abort(404)
     class_id = scoped_seat.class_id
     seat_id = scoped_seat.id
+
+    # Phase 6-7: Build canonical identity view model
+    identity_view = build_identity_profile_view(seat_id, class_id)
+    if not identity_view:
+        abort(404)
 
     tx_scope = sa.and_(Transaction.seat_id == seat_id, Transaction.class_id == class_id)
     att_scope = sa.and_(
@@ -4468,21 +4471,15 @@ def student_detail_public(actor_public_id):
         and _student_user.reset_code_expires_at
         and ensure_utc(_student_user.reset_code_expires_at) >= utc_now()
     )
-    student_profile = student.identity_profile
-    student_full_name = student_profile.full_name if student_profile else str(student.id)
-    student_first_name = student_profile.first_name if student_profile else ""
-    student_last_name = student_profile.last_name if student_profile else ""
-    student_notes = student_profile.notes if student_profile else ""
+    # Phase 6-7: identity fields sourced from view model (not raw ORM attributes)
     student_has_completed_setup = bool(_student_user and _student_user.username_hash)
     reset_code = _student_user.reset_code if _student_user else None
     reset_code_expires_at = _student_user.reset_code_expires_at if _student_user else None
 
+    # Phase 6-7 VERIFIED: identity_view passes all name/notes fields via view model namespace
     return render_template('student_detail.html',
                          student=student,
-                         student_full_name=student_full_name,
-                         student_first_name=student_first_name,
-                         student_last_name=student_last_name,
-                         student_notes=student_notes,
+                         identity_view=identity_view,
                          student_has_completed_setup=student_has_completed_setup,
                          reset_code=reset_code,
                          reset_code_expires_at=reset_code_expires_at,

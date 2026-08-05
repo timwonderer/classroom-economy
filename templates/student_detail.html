@@ -1,6 +1,6 @@
 {% extends "layout_admin.html" %}
-{% set page_title = student_full_name ~ " - Student Detail" %}
-{% block title %}{{ student_full_name }} - Detail{% endblock %}
+{% set page_title = identity_view.full_name ~ " - Student Detail" %}
+{% block title %}{{ identity_view.full_name }} - Detail{% endblock %}
 {% block page_icon %}person{% endblock %}
 
 {% block extra_styles %}
@@ -34,7 +34,7 @@
             <span class="material-symbols-outlined me-1">arrow_back</span> Back to Students
         </a>
         <h2 class="mb-0">
-            <span class="material-symbols-outlined me-2">account_circle</span>{{ student_full_name }}
+            <span class="material-symbols-outlined me-2">account_circle</span>{{ identity_view.full_name }}
         </h2>
     </div>
     <div>
@@ -181,7 +181,7 @@
                         <table class="table table-borderless mb-0">
                             <tr>
                                 <td class="fw-bold">Name:</td>
-                                <td>{{ student_full_name }}</td>
+                                <td>{{ identity_view.full_name }}</td>
                             </tr>
                             <tr>
                                 <td class="fw-bold">Setup Status:</td>
@@ -281,7 +281,7 @@
                                 <div class="row g-2">
                                     <div class="col-12">
                                         <div class="small text-muted text-uppercase fw-bold">Name</div>
-                                        <div class="fs-5 fw-bold">{{ student_full_name }}
+                                        <div class="fs-5 fw-bold">{{ identity_view.full_name }}
                                         </div>
                                     </div>
                                     <div class="col-12">
@@ -750,19 +750,19 @@
                                 <div class="col-md-6 mb-3">
                                     <label for="edit_first_name" class="form-label fw-bold">First Name</label>
                                     <input type="text" class="form-control" id="edit_first_name" name="first_name"
-                                        value="{{ student_first_name }}" required>
+                                        value="{{ identity_view.first_name }}" required>
                                     <div class="form-text">Used for account claim process</div>
                                 </div>
                                 <div class="col-md-6 mb-3">
                                     <label for="edit_last_name" class="form-label fw-bold">Last Name</label>
                                     <input type="text" class="form-control" id="edit_last_name" name="last_name"
-                                        value="{{ student_last_name or '' }}" required>
+                                        value="{{ identity_view.last_name or '' }}" required>
                                     <div class="form-text">Stored as the student's encrypted full last name</div>
                                 </div>
                             </div>
                             <div class="mb-0">
                                 <label for="edit_notes" class="form-label fw-bold">Teacher Notes</label>
-                                <textarea class="form-control" id="edit_notes" name="notes" rows="3">{{ student_notes or '' }}</textarea>
+                                <textarea class="form-control" id="edit_notes" name="notes" rows="3">{{ identity_view.notes or '' }}</textarea>
                                 <div class="form-text">Display-only teacher notes stored on the student's identity profile.</div>
                             </div>
                         </div>

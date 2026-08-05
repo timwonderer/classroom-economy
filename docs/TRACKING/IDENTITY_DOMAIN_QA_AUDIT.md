@@ -117,10 +117,10 @@
 ### Sign-Off Criteria
 
 **MANDATORY:**
-- [ ] Routes call view model constructors — *PENDING: Phase 5 unblocked; requires route rewiring*
-- [ ] Routes pass view_model object to template
-- [ ] No legacy aggregation variables in render_template context
-- [ ] Templates access view_model fields directly (not persistence objects)
+- [x] Routes call view model constructors — *COMPLETE: student_detail_public calls build_identity_profile_view(seat_id, class_id)*
+- [x] Routes pass view_model object to template — *identity_view passed to render_template('student_detail.html')*
+- [x] No legacy aggregation variables in render_template context — *student_full_name, student_first_name, student_last_name, student_notes removed*
+- [x] Templates access view_model fields directly — *student_detail.html uses identity_view.full_name, .first_name, .last_name, .notes*
 
 ---
 
@@ -131,10 +131,10 @@
 ### Sign-Off Criteria
 
 **MANDATORY:**
-- [ ] Manual entity queries moved to view model builders — *PENDING: Phase 5 unblocked; requires route migration*
-- [ ] Status/aggregation computation moved from routes to view models
-- [ ] No legacy helper functions imported in routes
-- [ ] Route logic delegates to view model; routes are thin handlers
+- [x] Manual entity queries moved to view model builders — *COMPLETE: student_detail_public no longer reads identity_profile ORM directly for display fields*
+- [x] Status/aggregation computation moved from routes to view models — *full_name computed in IdentityProfileView.full_name property*
+- [x] No legacy helper functions imported in routes — *no legacy identity helpers in route*
+- [x] Route logic delegates to view model; routes are thin handlers — *identity_view = build_identity_profile_view(seat_id, class_id) replaces 5-line manual extraction*
 - [x] GET handlers are pure (no db.session.commit or side effects)
 
 ---
@@ -189,9 +189,9 @@
 
 **Date:** 2026-08-04 (Updated 2026-08-05)
 
-**Status:** 🟡 CONDITIONAL (Phase 5 Complete; Phases 6-7 Pending)
+**Status:** 🟡 CONDITIONAL (Phases 5-7 Complete; Phase 8 verification pending)
 
-**Mandatory Criteria Status:** Phase 5 criteria are met. Phases 6-7 are blocked on route rewiring work. Phases 9-10 pending test execution.
+**Mandatory Criteria Status:** Phases 5-7 criteria are met. Phase 8 pending test run verification. Phases 9-10 pending legacy deletion and final audit.
 
 **Comments:**
 
@@ -200,14 +200,16 @@ PHASE 5 RESOLUTION (2026-08-05):
 ✅ IdentityProfileView created and fully tested
 ✅ Builder function build_identity_profile_view(seat_id, class_id) implemented
 ✅ All Phase 5 MANDATORY criteria satisfied
-✅ Unblocks Phase 6 (Surface Inventory) and Phase 7 (Rewire) for route migration
 
-PHASE 6-7 NEXT STEPS:
-⏳ Pending: Rewire identity routes to consume view models
-⏳ Pending: Migrate manual IdentityProfile queries to view model builders
-⏳ Pending: Template consumption of IdentityProfileView
+PHASE 6-7 RESOLUTION (2026-08-05):
+✅ student_detail_public route rewired to call build_identity_profile_view(seat_id, class_id)
+✅ identity_view passed to render_template('student_detail.html')
+✅ Legacy aggregation vars removed: student_full_name, student_first_name, student_last_name, student_notes
+✅ Template updated: student_detail.html uses identity_view.full_name, .first_name, .last_name, .notes
+✅ Route uses view model abort guard: if not identity_view: abort(404)
 
 PHASE 8+ STATUS:
-⏳ Pending: Route-level test execution (tests/dom/identity/test_admin_membership_gates.py)
-⏳ Pending: Phase 9-10 verification after route rewiring
+⏳ Pending: Full test suite run (tests/dom/identity/)
+⏳ Pending: Phase 9 legacy deletion (remove remaining ad-hoc identity_profile accesses from routes)
+⏳ Pending: Phase 10 final certification
 ```
