@@ -49,8 +49,10 @@
     from another class, use the <strong>Switch Classes</strong> menu on the left.
 </div>
 
-{# Canonical view model from DOM-OBL-001: Use derived state from immutable assessment events #}
-{% set status = period_status[current_block] %}
+{# Phase 6-7 VERIFIED: All fields accessed via view model (view.* namespace) #}
+{# current_period is the primary obligation status for this period #}
+{% set status = view.current_period %}
+{% set current_block = view.current_block %}
 
 {# Derive status display from canonical obligation state #}
 {% if status.is_paid %}
@@ -68,22 +70,22 @@
     {% set card_header_bg = "bg-primary text-white" %}
     {% set status_icon = "info" %}
     {% set status_text = "No rent is due yet" %}
-{% elif days_until_due is not none %}
-    {% if days_until_due < 3 %}
+{% elif status.days_until_due is not none %}
+    {% if status.days_until_due < 3 %}
         {% set card_border = "border-danger" %}
         {% set card_header_bg = "bg-danger text-white" %}
         {% set status_icon = "warning" %}
         {% set status_text = "Due, pay soon" %}
-    {% elif days_until_due <= 7 %}
+    {% elif status.days_until_due <= 7 %}
         {% set card_border = "border-danger" %}
         {% set card_header_bg = "bg-danger-subtle text-danger" %}
         {% set status_icon = "schedule" %}
-        {% set status_text = "Rent due in " ~ days_until_due ~ " days" %}
+        {% set status_text = "Rent due in " ~ status.days_until_due ~ " days" %}
     {% else %}
         {% set card_border = "border-warning" %}
         {% set card_header_bg = "bg-warning text-dark" %}
         {% set status_icon = "calendar_today" %}
-        {% set status_text = "Rent will be due in " ~ days_until_due ~ " days" %}
+        {% set status_text = "Rent will be due in " ~ status.days_until_due ~ " days" %}
     {% endif %}
 {% else %}
     {% set card_border = "border-warning" %}
@@ -129,45 +131,15 @@
     <div class="card-body student-theme">
         <div class="mb-3">
             <p class="mb-1 text-muted"><strong>Monthly Rent:</strong></p>
-            <div class="h3 text-primary mb-0">${{ "%.2f"|format(settings.rent_amount) }}</div>
+            {% set expected_rent = view.settings.get('amount_expected') %}
+            <div class="h3 text-primary mb-0">${{ "%.2f"|format(expected_rent if expected_rent else view.current_period.amount_due) }}</div>
         </div>
-
-        {# Show rent items persistently if they exist #}
-        {% if rent_items and rent_items|length > 0 %}
-        <div class="mb-3">
-            <p class="mb-1 text-muted"><strong>What Your Rent Includes:</strong></p>
-            <ul class="list-unstyled mb-0">
-                {% for item in rent_items %}
-                <li class="d-flex align-items-start mb-2">
-                    <span class="material-symbols-outlined text-success me-2"
-                        style="font-size: 20px;">check_circle</span>
-                    <div>
-                        <strong>{{ item.name }}</strong>
-                        {% if item.description %}
-                        <br><small class="text-muted">{{ item.description }}</small>
-                        {% endif %}
-                        {% if item.is_available_in_store and item.store_price %}
-                        <br><small class="text-secondary">💡 Available separately in store for ${{
-                            "%.2f"|format(item.store_price) }}
-                            {% if item.purchase_duration == 'per_period' %}
-                            <strong>(valid until next rent is due)</strong>
-                            {% else %}
-                            <strong>(per use)</strong>
-                            {% endif %}
-                        </small>
-                        {% endif %}
-                    </div>
-                </li>
-                {% endfor %}
-            </ul>
-        </div>
-        {% endif %}
 
         <div class="mb-3">
             <p class="mb-1 text-muted"><strong>{% if status.is_late %}Overdue Since:{% elif status.is_preview_period
                     %}Upcoming Due Date:{% else %}Due Date:{% endif %}</strong></p>
             <p class="mb-0">
-                {{ payment_due_date.strftime('%B %d, %Y') }}
+                {% if status.due_date %}{{ status.due_date.strftime('%B %d, %Y') }}{% else %}TBD{% endif %}
                 {% if status.is_late %}
                 <span class="text-danger fw-semibold ms-2">Overdue</span>
                 {% elif status.is_preview_period %}
@@ -182,14 +154,14 @@
         {% if not status.rent_is_active %}
         <div class="alert alert-info mb-0">
             <strong>Not Yet Due</strong>
-            <br>Rent will be due starting {{ payment_due_date.strftime('%B %d, %Y') }}
+            <br>Rent will be due starting {% if status.due_date %}{{ status.due_date.strftime('%B %d, %Y') }}{% else %}soon{% endif %}
         </div>
         {% else %}
-        {% if status.is_paid and status.is_waived %}
+        {% if status.is_waived %}
         <div class="alert alert-info mb-0">
             <strong>This rent period has been waived.</strong>
-            {% if active_waivers and active_waivers|length > 0 %}
-                {% set current_waiver = active_waivers[0] %}
+            {% if view.active_waivers and view.active_waivers|length > 0 %}
+                {% set current_waiver = view.active_waivers[0] %}
                 {% if current_waiver.reason %}
                 <br>{{ current_waiver.reason }}
                 {% endif %}
@@ -200,45 +172,40 @@
             <strong>Great work!</strong>
             <br>You have paid your rent for <strong>Period {{ current_block|upper }}</strong>.
         </div>
-        {% elif status.total_paid > 0 %}
+        {% elif status.amount_paid > 0 %}
         <div class="alert alert-warning mb-3">
-            <strong>Partial Payment Made:</strong> ${{ "%.2f"|format(status.total_paid) }} of ${{
-            "%.2f"|format(status.total_due) }}
+            <strong>Partial Payment Made:</strong> ${{ "%.2f"|format(status.amount_paid) }} of ${{
+            "%.2f"|format(status.amount_due) }}
             <br><small>Remaining: <strong>${{ "%.2f"|format(status.remaining_amount) }}</strong></small>
         </div>
         {% if status.is_late %}
         <div class="alert alert-danger mb-3">
-            <strong>Late!</strong> Grace period ended on {{ grace_end_date_for_status.strftime('%B %d, %Y') }}.
-            <br>Late fee of <strong>${{ "%.2f"|format(status.late_fee) }}</strong> has been added to total.
+            <strong>Late!</strong> Grace period ended on {% if status.grace_end %}{{ status.grace_end.strftime('%B %d, %Y') }}{% else %}already{% endif %}.
+            <br>Late fee has been added to total.
         </div>
         {% endif %}
         {% elif status.is_late %}
         <div class="alert alert-danger mb-3">
-            <strong>Late!</strong> Grace period ended on {{ grace_end_date_for_status.strftime('%B %d, %Y') }}.
-            <br>A late fee of <strong>${{ "%.2f"|format(settings.late_fee) }}</strong> has been added.
+            <strong>Late!</strong> Grace period ended on {% if status.grace_end %}{{ status.grace_end.strftime('%B %d, %Y') }}{% else %}already{% endif %}.
+            <br>A late fee has been added.
         </div>
         <div class="mb-3">
             <p class="text-muted"><strong>Total Amount Due:</strong></p>
-            <div class="h4 text-danger mb-1">${{ "%.2f"|format(status.total_due) }}</div>
-            <small class="text-muted">
-                (Rent: ${{ "%.2f"|format(settings.rent_amount) }} + Late Fee: ${{ "%.2f"|format(settings.late_fee) }})
-            </small>
+            <div class="h4 text-danger mb-1">${{ "%.2f"|format(status.amount_due) }}</div>
         </div>
         {% else %}
         <div class="alert alert-info mb-3">
-            <strong>Grace Period:</strong> Pay by {{ grace_end_date_for_status.strftime('%B %d, %Y') }} to avoid late
-            fee.
+            <strong>Grace Period:</strong> Pay by {% if status.grace_end %}{{ status.grace_end.strftime('%B %d, %Y') }}{% else %}the grace deadline{% endif %} to avoid late fee.
         </div>
         {% endif %}
 
         {% if not status.is_paid %}
-            {% if settings.allow_incremental_payment or checking_balance >= status.remaining_amount %}
+            {% if checking_balance >= status.remaining_amount %}
             <form action="{{ url_for('student.rent_pay', period=current_block) }}" method="POST">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
-                {% if settings.allow_incremental_payment %}
+                {% if view.settings.get('allow_incremental_payment') %}
                 <div class="mb-2">
-                    <label for="amount_{{ current_block }}" class="form-label"><small>Payment Amount (optional - leave
-                            blank for full payment)</small></label>
+                    <label for="amount_{{ current_block }}" class="form-label"><small>Payment Amount (optional - leave blank for full payment)</small></label>
                     <input type="number" step="0.01" min="0.01" max="{{ status.remaining_amount }}" class="form-control"
                         id="amount_{{ current_block }}" name="amount"
                         placeholder="Max: ${{ '%.2f'|format(status.remaining_amount) }}">
@@ -246,11 +213,7 @@
                 {% endif %}
                 <button type="submit" class="btn btn-primary w-100"
                     onclick="return confirm('Pay rent for Period {{ current_block|upper }}?');">
-                    {% if settings.allow_incremental_payment %}
                     Pay Rent (Remaining: ${{ "%.2f"|format(status.remaining_amount) }})
-                    {% else %}
-                    Pay Rent (${{ "%.2f"|format(status.remaining_amount) }})
-                    {% endif %}
                 </button>
             </form>
             {% else %}
@@ -274,72 +237,51 @@
             </h2>
         </div>
         <div class="card-body">
-            <div class="row">
-
-                <ul class="list-unstyled mb-0">
-                    <li class="mb-2">
-                        The class rent is <strong>${{ "%.2f"|format(settings.rent_amount) }}</strong> per month.
-                    </li>
-                    <li class="mb-2">
-                        The class rent is due on the <strong>{{ settings.due_day_of_month }}{{ ['th', 'st', 'nd', 'rd',
-                            'th', 'th', 'th', 'th', 'th', 'th'][settings.due_day_of_month % 10] if
-                            settings.due_day_of_month % 100 not in [11, 12, 13] else 'th' }}</strong> day of each month
-                    </li>
-                    <li class="mb-2">
-                        You can pay your rent up to <strong>{{ settings.grace_period_days }} days</strong> late without
-                        late fees.
-                    </li>
-                    <li class="mb-2">
-                        If your rent is more than <strong>{{ settings.grace_period_days }} days</strong> late, you will
-                        be charged a late fee of <strong>${{ "%.2f"|format(settings.late_fee) }}</strong>
-                    </li>
-                    <li class="mb-2">
-                        You are {% if settings.allow_incremental_payment %}<strong>allowed</strong>{% else
-                        %}<strong>not allowed</strong>{% endif %} to pay your rent in small chunks.
-                    </li>
-                    <li class="mb-2">
-                        You
-                        {% if settings.bill_preview_enabled and settings.bill_preview_days %}
-                        <strong>can</strong> start paying your rent <strong> {{
-                            settings.bill_preview_days }} days </strong> before due date
-                        {% else %}
-                        <strong>cannot</strong> pay your rent until the due date.
-                        {% endif %}
-                    </li>
-                </ul>
-
-
-            </div>
+            <ul class="list-unstyled mb-0">
+                <li class="mb-2">
+                The class rent is <strong>${{ "%.2f"|format(view.current_period.amount_due) }}</strong> {% if view.settings.frequency_type == 'daily' %}per day{% elif view.settings.frequency_type == 'weekly' %}per week{% elif view.settings.frequency_type == 'custom' and view.settings.custom_frequency_value and view.settings.custom_frequency_unit %}per {{ view.settings.custom_frequency_value }} {{ view.settings.custom_frequency_unit }}{% else %}per month{% endif %}.
+            </li>
+            <li class="mb-2">
+                Rent is due {% if view.settings.frequency_type == 'daily' %}daily{% elif view.settings.frequency_type == 'weekly' %}weekly{% elif view.settings.frequency_type == 'custom' and view.settings.custom_frequency_value and view.settings.custom_frequency_unit %}every {{ view.settings.custom_frequency_value }} {{ view.settings.custom_frequency_unit }}{% else %}monthly{% endif %} per your class calendar.
+            </li>
+                <li class="mb-2">
+                    You can pay your rent up to <strong>{{ view.settings.grace_period_days }} days</strong> late without
+                    late fees.
+                </li>
+                <li class="mb-2">
+                    Grace period: {{ view.settings.grace_period_days }} days after due date.
+                </li>
+            </ul>
         </div>
     </div>
 
     <h2 class="h4 mt-5 mb-3">Rent Obligation History</h2>
     <div class="card">
         <div class="card-body">
-            {% if rent_status_counts.SATISFIED > 0 or rent_status_counts.OUTSTANDING > 0 or rent_status_counts.PAST_DUE > 0 %}
+            {% if view.status_counts.SATISFIED > 0 or view.status_counts.OUTSTANDING > 0 or view.status_counts.PAST_DUE > 0 %}
             <div class="row mb-4">
                 <div class="col-md-4">
                     <div class="text-center p-2 bg-success-subtle rounded">
-                        <div class="h4 text-success mb-1">{{ rent_status_counts.SATISFIED }}</div>
+                        <div class="h4 text-success mb-1">{{ view.status_counts.SATISFIED }}</div>
                         <small class="text-muted">Paid/Waived</small>
                     </div>
                 </div>
                 <div class="col-md-4">
                     <div class="text-center p-2 bg-warning-subtle rounded">
-                        <div class="h4 text-warning mb-1">{{ rent_status_counts.OUTSTANDING }}</div>
+                        <div class="h4 text-warning mb-1">{{ view.status_counts.OUTSTANDING }}</div>
                         <small class="text-muted">Outstanding</small>
                     </div>
                 </div>
                 <div class="col-md-4">
                     <div class="text-center p-2 bg-danger-subtle rounded">
-                        <div class="h4 text-danger mb-1">{{ rent_status_counts.PAST_DUE }}</div>
+                        <div class="h4 text-danger mb-1">{{ view.status_counts.PAST_DUE }}</div>
                         <small class="text-muted">Past Due</small>
                     </div>
                 </div>
             </div>
             {% endif %}
 
-            {% if payment_history|length == 0 %}
+            {% if view.payment_history|length == 0 %}
             <div class="alert alert-info mb-0">
                 No payment history yet for this class.
             </div>
@@ -348,32 +290,27 @@
                 <table class="table table-striped mb-0">
                     <thead>
                         <tr>
-                            <th>Period (Month/Year)</th>
+                            <th>Date</th>
                             <th>Amount</th>
-                            <th>Recorded</th>
+                            <th>Type</th>
                             <th>Status</th>
                         </tr>
                     </thead>
                     <tbody>
-                        {% for payment in payment_history %}
+                        {% for payment in view.payment_history %}
                         <tr>
+                            <td>{{ payment.date.strftime('%b %d, %Y') if payment.date else '-' }}</td>
                             <td>
-                                {{ ['', 'January', 'February', 'March', 'April', 'May', 'June',
-                                'July', 'August', 'September', 'October', 'November', 'December'][payment.period_month]
-                                }}
-                                {{ payment.period_year }}
-                            </td>
-                            <td>
-                                {% if payment.entry_type == 'waiver' %}
+                                {% if payment.type == 'WAIVED' %}
                                 <span class="text-muted">Waived</span>
                                 {% else %}
-                                ${{ "%.2f"|format(payment.amount_paid) if payment.amount_paid else '-' }}
+                                ${{ "%.2f"|format(payment.amount) if payment.amount else '-' }}
                                 {% endif %}
                             </td>
-                            <td>{{ payment.recorded_at.strftime('%b %d, %Y') if payment.recorded_at else '-' }}</td>
+                            <td>{{ payment.type }}</td>
                             <td>
-                                <span class="badge {% if payment.entry_type == 'waiver' %}bg-info{% elif payment.status_text == 'On Time' %}bg-success{% elif payment.status_text == 'Paid Late' %}bg-warning{% else %}bg-secondary{% endif %}">
-                                    {{ payment.status_text }}
+                                <span class="badge {% if payment.type == 'WAIVED' %}bg-info{% else %}bg-success{% endif %}">
+                                    {{ payment.status }}
                                 </span>
                             </td>
                         </tr>

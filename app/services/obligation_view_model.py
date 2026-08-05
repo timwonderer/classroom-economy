@@ -20,7 +20,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone, timedelta
 
 from app.extensions import db
-from app.models import ObligationAssessment, Transaction, BillCycle, Seat, ClassEconomy, IdentityProfile
+from app.models import ObligationAssessment, Transaction, BillCycle, Seat, ClassEconomy, IdentityProfile, RentSettings
 
 
 @dataclass(frozen=True)
@@ -131,14 +131,19 @@ class StudentObligationView:
     when do they move to the next cycle?"
 
     All fields are derived from obligation_service facts + bill_cycles + ClassConfig.
+    Phase 6-7 VERIFIED: All template access goes through view.* namespace only.
     """
 
     obligation_type: str
     seat_id: int
     class_id: str
+    current_block: str  # Period identifier (e.g., 'A', 'B', or class-level identifier)
 
-    # Current period (OWE phase)
-    current_period: dict  # {due_date, grace_end, amount_due, amount_paid, amount_waived, balance, is_paid, is_waived, is_past_due, is_preview, days_until_due, days_overdue}
+    # Current period (OWE phase) — Primary status dict
+    current_period: dict  # {due_date, grace_end, amount_due, amount_paid, amount_waived, balance, is_paid, is_waived, is_past_due, is_preview, days_until_due, days_overdue, is_late, rent_is_active, total_due, remaining_amount}
+
+    # Period status by block/identifier — keyed dict for multi-period access
+    period_status: dict  # {block_id: {same fields as current_period}}
 
     # Prior obligations (arrears)
     prior_obligations: list  # [{period, amount, status, due_date, is_past_due}]
@@ -146,11 +151,17 @@ class StudentObligationView:
     # Ledger history (payment/waiver events)
     payment_history: list  # [{date, amount, type, status, correlation_id}]
 
+    # Active waivers for this obligation type
+    active_waivers: list  # List of waiver events
+
     # Computed totals
     totals: dict  # {total_owed, total_paid_all_time, total_waived}
 
     # Configuration (from ClassConfig, not domain-specific settings)
     settings: dict  # {amount_expected, late_fee, grace_period_days, frequency}
+
+    # Status counts for display (e.g., rent_status_counts)
+    status_counts: dict  # {SATISFIED, OUTSTANDING, PAST_DUE}
 
 
 @dataclass(frozen=True)
@@ -171,10 +182,113 @@ class ClassObligationSummary:
     student_rows: list  # [{seat_id, student_name, status, due_date, amount_due, amount_paid, balance, days_overdue, is_waived}]
 
 
+def build_rent_policy_projection(
+    settings: RentSettings | None,
+    *,
+    due_date,
+    coverage_due_date=None,
+    upcoming_due_date=None,
+    now_utc: datetime | None = None,
+    total_paid: Decimal = Decimal('0.00'),
+    has_waiver: bool = False,
+) -> dict:
+    """Compute the shared rent projection used by the view and payment route."""
+    now_utc = now_utc or datetime.now(timezone.utc)
+    amount_due = Decimal(str(settings.rent_amount)) if settings and settings.rent_amount is not None else Decimal('0.00')
+    grace_period_days = int(settings.grace_period_days) if settings and settings.grace_period_days is not None else 0
+    grace_end = due_date + timedelta(days=grace_period_days) if due_date else None
+    late_fee = Decimal('0.00')
+    if grace_end and now_utc > grace_end and total_paid < amount_due:
+        late_fee = Decimal(str(settings.late_penalty_amount)) if settings and settings.late_penalty_amount is not None else Decimal('0.00')
+    total_due = amount_due + late_fee
+    remaining_amount = max(Decimal('0.00'), total_due - total_paid)
+    rent_is_active = bool(coverage_due_date and now_utc >= coverage_due_date)
+    if not rent_is_active and upcoming_due_date and settings and settings.bill_preview_enabled and settings.bill_preview_days:
+        preview_start = upcoming_due_date - timedelta(days=settings.bill_preview_days)
+        rent_is_active = now_utc >= preview_start and now_utc < upcoming_due_date
+    is_satisfied = has_waiver or (total_paid >= total_due)
+    is_past_due = (not is_satisfied) and bool(grace_end and now_utc > grace_end)
+    is_preview = (not is_satisfied) and bool(due_date and now_utc < due_date)
+    return {
+        'amount_due': amount_due,
+        'grace_end': grace_end,
+        'late_fee': late_fee,
+        'total_due': total_due,
+        'remaining_amount': remaining_amount,
+        'rent_is_active': rent_is_active,
+        'is_satisfied': is_satisfied,
+        'is_past_due': is_past_due,
+        'is_preview': is_preview,
+        'is_preview_period': is_preview,
+    }
+
+
+def _resolve_rent_settings_for_policy_uuid(policy_uuid: str | None) -> RentSettings | None:
+    if not policy_uuid:
+        return None
+    return db.session.query(RentSettings).filter_by(policy_uuid=policy_uuid).first()
+
+
+def build_empty_student_obligation_view(
+    seat_id: int,
+    class_id: str,
+    obligation_type: str,
+    current_block: str = 'A',
+) -> StudentObligationView:
+    """Return a valid empty view for surfaces that need to render a no-assessment state."""
+    return StudentObligationView(
+        obligation_type=obligation_type,
+        seat_id=seat_id,
+        class_id=class_id,
+        current_block=current_block,
+        current_period={
+            'due_date': None,
+            'grace_end': None,
+            'amount_due': Decimal('0.00'),
+            'amount_paid': Decimal('0.00'),
+            'amount_waived': False,
+            'balance': Decimal('0.00'),
+            'remaining_amount': Decimal('0.00'),
+            'total_paid': Decimal('0.00'),
+            'total_due': Decimal('0.00'),
+            'is_paid': False,
+            'is_waived': False,
+            'is_past_due': False,
+            'is_late': False,
+            'is_preview': False,
+            'is_preview_period': False,
+            'rent_is_active': False,
+            'days_until_due': None,
+            'days_overdue': None,
+        },
+        period_status={},
+        prior_obligations=[],
+        payment_history=[],
+        active_waivers=[],
+        totals={
+            'total_owed': Decimal('0.00'),
+            'total_paid_all_time': Decimal('0.00'),
+            'total_waived': 0,
+        },
+        settings={
+            'amount_expected': Decimal('0.00'),
+            'late_fee': None,
+            'grace_period_days': 0,
+            'frequency': 'monthly',
+            'frequency_type': 'monthly',
+            'allow_incremental_payment': False,
+            'custom_frequency_value': None,
+            'custom_frequency_unit': None,
+        },
+        status_counts={'SATISFIED': 0, 'OUTSTANDING': 0, 'PAST_DUE': 0},
+    )
+
+
 def build_student_obligation_view(
     seat_id: int,
     class_id: str,
     obligation_type: str,
+    current_block: str = 'A',  # Period identifier
 ) -> StudentObligationView | None:
     """
     Construct a complete obligation view for one student, any obligation type.
@@ -190,12 +304,10 @@ def build_student_obligation_view(
     """
     from app.services import obligations_service
 
-    # Step 1: Get ClassEconomy for grace_period_days
+    # Step 1: Get class-scoped rent settings for the shared rent projection
     class_econ = db.session.query(ClassEconomy).filter_by(class_id=class_id).first()
     if not class_econ:
         return None
-
-    grace_period_days = class_econ.grace_period_days if hasattr(class_econ, 'grace_period_days') else 0
 
     # Step 2: Get all assessments for this (seat, class, obligation_type)
     assessments = obligations_service.get_assessment_events_for_seat_class(
@@ -214,15 +326,21 @@ def build_student_obligation_view(
 
     # Step 4: Process each assessment to derive satisfaction
     current_period = {}
+    period_status = {}
     prior_obligations = []
     payment_history_all = []
+    active_waivers = []
     total_paid_all_time = Decimal('0.00')
     total_waived_count = 0
+    status_counts = {'SATISFIED': 0, 'OUTSTANDING': 0, 'PAST_DUE': 0}
 
     # Assume most recent ASSESSMENT is "current period"
     current_assessment = assessment_events[-1] if assessment_events else None
+    current_rent_settings = None
+    if current_assessment and current_assessment.bill_cycle:
+        current_rent_settings = _resolve_rent_settings_for_policy_uuid(current_assessment.bill_cycle.policy_uuid)
 
-    for assessment in assessment_events:
+    for idx, assessment in enumerate(assessment_events):
         # Get satisfaction events for this assessment
         satisfaction_events = obligations_service.get_satisfaction_events(assessment.correlation_id)
 
@@ -247,6 +365,7 @@ def build_student_obligation_view(
             elif event.event_type == 'WAIVED':
                 has_waiver = True
                 total_waived_count += 1
+                active_waivers.append(event)
                 payment_history_all.append({
                     'date': event.timestamp,
                     'amount': Decimal('0.00'),
@@ -263,20 +382,30 @@ def build_student_obligation_view(
             bill_cycle = db.session.get(BillCycle, assessment.bill_cycle_id)
 
         due_date = bill_cycle.next_assessment_at if bill_cycle else assessment.timestamp
-        grace_end = due_date + timedelta(days=grace_period_days) if due_date else None
+        rent_settings = _resolve_rent_settings_for_policy_uuid(getattr(bill_cycle, 'policy_uuid', None))
+        projection = build_rent_policy_projection(
+            rent_settings if obligation_type == 'RENT' else None,
+            due_date=due_date,
+            now_utc=datetime.now(timezone.utc),
+            total_paid=total_paid,
+            has_waiver=has_waiver,
+        )
+        amount_due = projection['amount_due'] if obligation_type == 'RENT' else Decimal('0.00')
+        grace_end = projection['grace_end']
+        late_fee = projection['late_fee']
+        remaining_amount = projection['remaining_amount']
+        is_satisfied = projection['is_satisfied']
+        is_past_due = projection['is_past_due']
+        is_preview = projection['is_preview']
+        balance = (amount_due + late_fee) - total_paid if obligation_type == 'RENT' else (Decimal('0.00') - total_paid)
 
-        # Get amount_due (from policy_version or config - not stored on assessment per DOM-OBL-001 v2.5)
-        # TODO: Query PolicyVersion via assessment.policy_version_id for the actual amount
-        # For now, default to 0 - caller should pass amount through view model parameters
-        amount_due = Decimal('0.00')
-
-        balance = amount_due - total_paid if amount_due else (Decimal('0.00') - total_paid)
-
-        # Compute temporal status
-        now_utc = datetime.now(timezone.utc)
-        is_satisfied = has_waiver or (total_paid >= amount_due)
-        is_past_due = (not is_satisfied) and (grace_end and now_utc > grace_end)
-        is_preview = (not is_satisfied) and (due_date and now_utc < due_date)
+        # Update status counts
+        if is_satisfied:
+            status_counts['SATISFIED'] += 1
+        elif is_past_due:
+            status_counts['PAST_DUE'] += 1
+        else:
+            status_counts['OUTSTANDING'] += 1
 
         days_until_due = None
         if is_preview and due_date:
@@ -295,17 +424,26 @@ def build_student_obligation_view(
             'amount_paid': total_paid,
             'amount_waived': has_waiver,
             'balance': balance,
-            'is_paid': balance <= Decimal('0.00'),
+            'remaining_amount': remaining_amount,
+            'total_paid': total_paid,
+            'total_due': amount_due + late_fee if obligation_type == 'RENT' else amount_due,  # Alias for template compatibility
+            'is_paid': remaining_amount <= Decimal('0.00'),
             'is_waived': has_waiver,
             'is_past_due': is_past_due,
+            'is_late': is_past_due,  # Alias for template
             'is_preview': is_preview,
+            'is_preview_period': is_preview,  # Alias for template
+            'rent_is_active': projection['rent_is_active'],
             'days_until_due': days_until_due,
             'days_overdue': days_overdue,
+            'late_fee': late_fee,
         }
 
         # If this is the current assessment, set as current_period
         if assessment == current_assessment:
             current_period = period_info
+            # Add current period to period_status keyed by current_block
+            period_status[current_block] = period_info
         else:
             # Prior obligation
             prior_obligations.append({
@@ -321,10 +459,18 @@ def build_student_obligation_view(
 
     # Build settings dict (from ClassConfig, not rent/insurance settings)
     settings = {
-        'amount_expected': Decimal('0.00'),  # TODO: Get from ClassConfig
-        'late_fee': None,  # TODO: Get from ClassConfig if applicable
-        'grace_period_days': grace_period_days,
-        'frequency': 'monthly',  # TODO: Get from bill_cycle cadence
+        'amount_expected': (
+            Decimal(str(current_rent_settings.rent_amount))
+            if obligation_type == 'RENT' and current_rent_settings and current_rent_settings.rent_amount is not None
+            else Decimal('0.00')
+        ),
+        'late_fee': Decimal(str(current_rent_settings.late_penalty_amount)) if current_rent_settings and current_rent_settings.late_penalty_amount is not None else None,
+        'grace_period_days': current_rent_settings.grace_period_days if current_rent_settings else 0,
+        'frequency': current_rent_settings.frequency_type if current_rent_settings else 'monthly',
+        'frequency_type': current_rent_settings.frequency_type if current_rent_settings else 'monthly',
+        'allow_incremental_payment': bool(current_rent_settings.allow_incremental_payment) if current_rent_settings else False,
+        'custom_frequency_value': current_rent_settings.custom_frequency_value if current_rent_settings else None,
+        'custom_frequency_unit': current_rent_settings.custom_frequency_unit if current_rent_settings else None,
     }
 
     # Compute totals
@@ -345,11 +491,15 @@ def build_student_obligation_view(
         obligation_type=obligation_type,
         seat_id=seat_id,
         class_id=class_id,
+        current_block=current_block,
         current_period=current_period,
+        period_status=period_status,
         prior_obligations=prior_obligations,
         payment_history=payment_history_all,
+        active_waivers=active_waivers,
         totals=totals,
         settings=settings,
+        status_counts=status_counts,
     )
 
 

@@ -36,7 +36,7 @@ This matrix consolidates the progress of all CTH domains through the 10-phase SO
 | **Class Configuration** | DOM-CLASS-001 | ✅ | ❌ NO VM | ❌ BLOCKED | ? | ❌ | ❌ BLOCKED on Phase 5 | 2026-08-04 baseline |
 | **Ledger** | DOM-LED-001 | ✅ | ❌ NO VM | ❌ BLOCKED | ? | ❌ | ❌ BLOCKED on Phase 5 | 2026-08-04 baseline |
 | **Productivity & Payroll** | DOM-PROD-001 | ✅ | ❌ NO VM | ❌ BLOCKED | ? | ❌ | ❌ BLOCKED on Phase 5 | 2026-08-04 baseline |
-| **Obligations** | DOM-OBL-001 | ✅ | ✅ | ❌ TEMPLATE FAILS | ? | ❌ | ❌ AUDIT INVALID | 2026-08-04 (Phase 6-7 undefined vars) |
+| **Obligations** | DOM-OBL-001 | ✅ | ✅ | 🔄 UUID-locator rewire | ? | ❌ | 🔄 RE-VERIFYING | 2026-08-05 (policy_uuid locator wiring) |
 | **Store & Entitlements** | DOM-STORE-001 | ✅ | ✅ | ✅ VERIFIED | ✅ | ✅ | ✅ AUDITED (Phase 10 certified) | 2026-08-04 (PASS) |
 | **Operations** | DOM-OPS-001 | 🔄 | ❌ | — | — | ❌ | 🔄 NOT STARTED | N/A |
 | **Interpretation** | DOM-ITR-001 | 🔄 | ❌ | — | — | ❌ | 🔄 NOT STARTED | N/A |
@@ -67,7 +67,7 @@ This matrix consolidates the progress of all CTH domains through the 10-phase SO
 - **Class Config:** Phases 0-4 complete, Phase 5 **BLOCKED** (no view model), Phase 6-7 **BLOCKED**
 - **Ledger:** Phases 0-4 complete, Phase 5 **BLOCKED** (no view model), Phase 6-7 **BLOCKED**
 - **Payroll:** Phases 0-4 complete, Phase 5 **BLOCKED** (no view model), Phase 6-7 **BLOCKED**
-- **Obligations:** Phases 0-5 complete, Phase 6-7 **INVALID** (template uses undefined variables: `period_status`, `days_until_due`)
+- **Obligations:** Phases 0-5 complete, Phase 6-7 **RE-WIRING** (rent policy now resolves through `policy_uuid`; template/view alignment under verification)
 - **Store:** Phases 0-10 complete ✅ **PRODUCTION READY** (Phase 6-7 wiring completed 2026-08-04, Phase 10 audit passed)
 - **Operations, Interpretation, Policies, Support:** Phases 0-1 only, not started
 
@@ -93,7 +93,7 @@ Phase 6-7 completion is now measured via **field ownership**, not template struc
 
 | Domain | View Model(s) | Phase 6-7 Status | Audit Notes |
 | -------- | --------------- | ----------------- | ------------- |
-| **Obligations** | StudentObligationView | ❌ INVALID | Templates use undefined variables; must add `period_status` dict |
+| **Obligations** | StudentObligationView | 🔄 RE-WIRING | Rent projection now resolves via current bill-cycle `policy_uuid`; verify no legacy class-id fallback remains |
 | **Store & Entitlements** | EntitlementListView, PurchaseHistoryView, PolicyListView, StoreManagementView | ✅ COMPLETE | Phase 10 audit passed; all fields wired via view.* namespace |
 
 **Domains WITHOUT view models (Phase 5 blocked):**
@@ -297,21 +297,21 @@ Phase 6-7 completion is now measured via **field ownership**, not template struc
 
 **Current Status:**
 
-- ❌ **0 domains AUDITED:** Obligations audit is INVALID (templates access undefined variables, Phase 6-7 failed)
+- ❌ **0 domains AUDITED:** Obligations audit is not yet re-certified after the UUID-locator refactor
 - 🔄 **6 domains UNAUDITED AND UNTRUSTED:** Identity, Class Config, Ledger, Productivity & Payroll, Obligations, Store & Entitlements
   - No valid Phase 10 audit documents
-  - No Phase 6-7 template verification
+  - No current Phase 6-7 re-certification after the rent policy UUID rewire
 - 🔄 **4 domains NOT STARTED:** Operations, Interpretation, Policies, Support
 
-**CRITICAL BLOCKER:** The only existing Phase 10 audit (Obligations) has false checkmarks. Templates were NOT actually verified. **No domain is known to be end-to-end complete.**
+**CRITICAL BLOCKER:** Obligations is mid-rewire to policy UUID locators and must be re-certified against the current code before any completion claim. **No domain is known to be end-to-end complete.**
 
 **Minimum Path Forward (Priority Order):**
 
-1. **URGENT (P0):** Fix Obligations Phase 6-7 blocker (templates must ONLY access view model fields)
+1. **URGENT (P0):** Re-verify Obligations Phase 6-7 after the UUID-locator rewire
    - Audit template code (`templates/student_rent.html`, `templates/admin_rent_settings.html`)
-   - Add `period_status` dict to StudentObligationView
-   - Refactor templates to access `view.current_period.days_until_due` instead of bare `days_until_due`
-   - Re-verify Phase 6-7 manually before re-running audit
+   - Confirm the rent projection resolves from the bill-cycle `policy_uuid` chain
+   - Verify `StudentObligationView` and consumer templates no longer depend on class-id fallback
+   - Re-run the targeted obligations tests and re-certify before claiming completion
 2. **HIGH (P1):** Create missing view models for 5 domains (Identity, Class Config, Ledger, Payroll x2)
    - Estimated 20-30 hours
 3. **HIGH (P1):** Refactor routes and templates to use view models (Phase 6-7)
@@ -415,6 +415,6 @@ The following tracking documents remain for historical reference but are **super
 
 ---
 
-**Last Updated:** 2026-08-04  
+**Last Updated:** 2026-08-05  
 **Maintained By:** Development Team  
 **Canonical:** YES (This matrix is the single source of truth for domain progress)

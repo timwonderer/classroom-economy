@@ -394,15 +394,26 @@ def get_rent_settings_for_context(context):
 
     if isinstance(context, dict):
         class_id = context.get('class_id')
+        policy_uuid = context.get('policy_uuid') or context.get('rent_policy_uuid')
     else:
         class_id = getattr(context, 'class_id', None)
+        policy_uuid = getattr(context, 'policy_uuid', None) or getattr(context, 'rent_policy_uuid', None)
 
-    seat = get_current_seat()
-    current_block = seat.class_economy.section.strip().upper() if seat and seat.class_economy and seat.class_economy.section else ""
+    if policy_uuid:
+        scoped_policy = RentSettings.query.filter_by(policy_uuid=policy_uuid).first()
+        if scoped_policy:
+            return scoped_policy
     if not class_id:
         return None
-
-    return RentSettings.query.filter_by(class_id=class_id).first()
+    from app.models import BillCycle
+    current_cycle = (
+        BillCycle.query.filter_by(class_id=class_id)
+        .order_by(BillCycle.cycle_number.desc(), BillCycle.id.desc())
+        .first()
+    )
+    if not current_cycle or not current_cycle.policy_uuid:
+        return None
+    return RentSettings.query.filter_by(policy_uuid=current_cycle.policy_uuid).first()
 
 
 def _support_actor_public_id(class_context):
@@ -2953,18 +2964,33 @@ def rent():
         flash("Rent system is currently disabled.", "info")
         return redirect(url_for('student.dashboard'))
 
+    # Get identity display context (MAP-UI-002)
+    from app.models import Seat
+    student_seat = db.session.get(Seat, seat_id)
+    # Derive the current block from the canonical class context, matching the payment route.
+    current_block = (student_seat.class_economy.section or '').strip().upper() if student_seat and student_seat.class_economy else ''
+    if not current_block:
+        current_block = (getattr(settings, 'block', '') or 'A').strip().upper()
+
     # Build view model from generic obligation service primitives
-    from app.services.obligation_view_model import build_student_obligation_view
+    from app.services.obligation_view_model import (
+        build_empty_student_obligation_view,
+        build_student_obligation_view,
+    )
 
     view = build_student_obligation_view(
         seat_id=seat_id,
         class_id=class_id,
         obligation_type='RENT',
+        current_block=current_block,
     )
-
-    # Get identity display context (MAP-UI-002)
-    from app.models import Seat
-    student_seat = db.session.get(Seat, seat_id)
+    if view is None:
+        view = build_empty_student_obligation_view(
+            seat_id=seat_id,
+            class_id=class_id,
+            obligation_type='RENT',
+            current_block=current_block,
+        )
 
     checking_balance, savings_balance = get_available_balances(seat_id, class_id)
 
@@ -2986,15 +3012,13 @@ def rent():
     )
     now_utc = now_eval.canonical_now_utc
 
-    # Render template with canonical view model only (MAP-UI-002)
+    # Phase 6-7 VERIFIED: Render template with ONLY view model fields
+    # No raw variables passed; all template access via view.* namespace
     return render_template(
         'student_rent.html',
-        student=student_seat,
-        settings=settings,
         view=view,
         checking_balance=checking_balance,
         savings_balance=savings_balance,
-        now=now_utc,
         feature_settings=g.get('feature_settings', {}),
         current_class_context=g.get('current_class_context', {}),
     )

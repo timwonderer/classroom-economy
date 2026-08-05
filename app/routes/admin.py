@@ -2209,10 +2209,22 @@ def _resolve_payroll_settings_for_class_id(canonical_context, class_id):
     )
 
 
-def _resolve_rent_settings_for_class_id(class_id):
+def _resolve_rent_settings_for_class_id(class_id, policy_uuid=None):
+    if policy_uuid:
+        scoped_policy = RentSettings.query.filter_by(policy_uuid=policy_uuid).first()
+        if scoped_policy:
+            return scoped_policy
     if not class_id:
         return None
-    return RentSettings.query.filter_by(class_id=class_id).first()
+    from app.models import BillCycle
+    current_cycle = (
+        BillCycle.query.filter_by(class_id=class_id)
+        .order_by(BillCycle.cycle_number.desc(), BillCycle.id.desc())
+        .first()
+    )
+    if not current_cycle or not current_cycle.policy_uuid:
+        return None
+    return RentSettings.query.filter_by(policy_uuid=current_cycle.policy_uuid).first()
 
 
 def _resolve_banking_settings_for_class_id(class_id):
