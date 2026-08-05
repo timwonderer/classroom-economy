@@ -394,15 +394,26 @@ def get_rent_settings_for_context(context):
 
     if isinstance(context, dict):
         class_id = context.get('class_id')
+        policy_uuid = context.get('policy_uuid') or context.get('rent_policy_uuid')
     else:
         class_id = getattr(context, 'class_id', None)
+        policy_uuid = getattr(context, 'policy_uuid', None) or getattr(context, 'rent_policy_uuid', None)
 
-    seat = get_current_seat()
-    current_block = seat.class_economy.section.strip().upper() if seat and seat.class_economy and seat.class_economy.section else ""
+    if policy_uuid:
+        scoped_policy = RentSettings.query.filter_by(policy_uuid=policy_uuid).first()
+        if scoped_policy:
+            return scoped_policy
     if not class_id:
         return None
-
-    return RentSettings.query.filter_by(class_id=class_id).first()
+    from app.models import BillCycle
+    current_cycle = (
+        BillCycle.query.filter_by(class_id=class_id)
+        .order_by(BillCycle.cycle_number.desc(), BillCycle.id.desc())
+        .first()
+    )
+    if not current_cycle or not current_cycle.policy_uuid:
+        return None
+    return RentSettings.query.filter_by(policy_uuid=current_cycle.policy_uuid).first()
 
 
 def _support_actor_public_id(class_context):

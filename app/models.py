@@ -878,6 +878,7 @@ class StoreItemVisibility(db.Model):
 class RentSettings(db.Model):
     __tablename__ = 'rent_settings'
     id = db.Column(db.Integer, primary_key=True)
+    policy_uuid = db.Column(db.String(36), unique=True, nullable=False, index=True, default=lambda: str(uuid.uuid4()))
     class_id = db.Column(db.String(36), db.ForeignKey('classes.class_id', ondelete='CASCADE'), nullable=False, unique=True, index=True)
 
     # Rent amount and frequency
@@ -964,6 +965,7 @@ class ObligationAssessment(db.Model):
     event_type = db.Column(db.String(20), nullable=False, index=True)  # ASSESSMENT | PAYMENT | WAIVED (per DOM-OBL-001)
 
     obligation_type = db.Column(db.String(30), nullable=False, index=True)  # RENT, INSURANCE_PREMIUM
+    policy_uuid = db.Column(db.String(36), nullable=True, index=True)
     policy_version_id = db.Column(db.Integer, db.ForeignKey('policy_versions.id'), nullable=True, index=True)
 
     # Canonical timestamp — DOM-OBL-001 §VII.1
@@ -1000,6 +1002,7 @@ class BillCycle(db.Model):
     class_id = db.Column(db.String(36), db.ForeignKey('classes.class_id', ondelete='CASCADE'), nullable=False, index=True)
     internal_ref = db.Column(db.String(200), nullable=False)  # Stable lineage key
     cycle_number = db.Column(db.Integer, nullable=False)
+    policy_uuid = db.Column(db.String(36), nullable=True, index=True)
     source_version_id = db.Column(db.String(200), nullable=True)  # Lawful version snapshot reference
     cycle_boundary_at = db.Column(db.DateTime(timezone=True), nullable=False)
     next_assessment_at = db.Column(db.DateTime(timezone=True), nullable=False)
