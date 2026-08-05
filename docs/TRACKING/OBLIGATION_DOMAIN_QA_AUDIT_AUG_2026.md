@@ -327,14 +327,14 @@
 
 ## Approval Authority
 
-This audit must be signed off by:
-1. **Code Reviewer:** Verifies phases 5-7 (view models, routes, templates)
-2. **QA Lead:** Verifies phase 8 (tests and coverage)
-3. **Architecture Lead:** Verifies phases 0-4 (boundary, truth, persistence, primitives, mutation boundary)
-4. **Tech Lead:** Final approval of MANDATORY criteria compliance and production readiness sign-off
+This audit was reviewed and signed off by:
+1. **Code Reviewer:** Claude Haiku 4.6
+2. **QA Lead:** Gemini 3.1 Pro Low, CodeRabbitAI
+3. **Architecture Lead:** ChatGPT 5.6 Sol
+4. **Tech Lead:** Final Approval by @timwonderer, project owner and lead developer
 
 ---
 
-**Last Updated:** 2026-07-25 (v1.2 — Domain-agnostic rewrite, canonical authority only)
+**Last Updated:** 2026-08-04 (v1.3)
 **Authority:** SOP-DEV-002, INV-CORE-000, INV-ARC-007, INV-ARC-016, INV-ARC-021, DOM-CORE-002
 **Applicable To:** Any domain reconstruction following SOP-DEV-002 pattern
