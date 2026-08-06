@@ -1047,6 +1047,13 @@ class EntitlementEvent(db.Model):
     __table_args__ = (
         db.Index('ix_entitlement_events_entitlement_id_class', 'entitlement_id', 'class_id'),
         db.Index('ix_entitlement_events_seat_class', 'target_seat_id', 'class_id'),
+        # One terminal event per entitlement lineage per class (DOM-STORE-001 §VIII.6).
+        db.Index(
+            'ix_entitlement_events_one_terminal_per_lineage',
+            'entitlement_id', 'class_id',
+            unique=True,
+            postgresql_where=db.text("event_type IN ('CONSUMED', 'EXPIRED', 'REVOKED')"),
+        ),
     )
 
 

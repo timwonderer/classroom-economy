@@ -333,3 +333,56 @@ def test_double_expire_produces_single_expired_event(app, classroom):
             correlation_id="rent-double",
         ).all()
         assert len(expired_events) == 2
+
+
+def test_unique_index_rejects_duplicate_terminal_events(app, classroom):
+    """DB unique partial index prevents duplicate terminal events per lineage.
+
+    The ix_entitlement_events_one_terminal_per_lineage index enforces at most
+    one terminal event (CONSUMED/EXPIRED/REVOKED) per (entitlement_id, class_id).
+    This is the last line of defense if FOR UPDATE serialization fails.
+    """
+    from sqlalchemy.exc import IntegrityError as SAIntegrityError
+
+    with app.app_context():
+        seat = _seat(app, classroom)
+        with FEATContext("FEAT-TEST-ENTITLEMENT", idempotency_key="dup-terminal-setup"):
+            grant_hall_passes(seat, 1, acquisition_type="PERK", correlation_id="rent-dup")
+
+        granted = EntitlementEvent.query.filter_by(
+            target_seat_id=seat.id, event_type="GRANTED",
+        ).first()
+        assert granted is not None
+
+        # First EXPIRED event succeeds.
+        with FEATContext("FEAT-TEST-ENTITLEMENT", idempotency_key="dup-terminal-1"):
+            expire_rent_hall_passes(
+                correlation_id="rent-dup",
+                class_id=seat.class_id,
+                actor_seat_id=classroom.teacher_seat_id,
+            )
+
+        # Manually inserting a second terminal event for the same lineage
+        # must be rejected by the unique partial index.
+        with pytest.raises(SAIntegrityError):
+            with FEATContext("FEAT-TEST-ENTITLEMENT", idempotency_key="dup-terminal-2"):
+                duplicate = EntitlementEvent(
+                    class_id=seat.class_id,
+                    target_seat_id=seat.id,
+                    actor_seat_id=classroom.teacher_seat_id,
+                    entitlement_id=granted.entitlement_id,
+                    entitlement_type="HALL_PASS",
+                    acquisition_type="PERK",
+                    event_type="EXPIRED",
+                    correlation_id="rent-dup",
+                )
+                db.session.add(duplicate)
+                db.session.flush()
+
+        # Verify only the original EXPIRED event exists.
+        expired_events = EntitlementEvent.query.filter_by(
+            target_seat_id=seat.id,
+            event_type="EXPIRED",
+            correlation_id="rent-dup",
+        ).all()
+        assert len(expired_events) == 1
