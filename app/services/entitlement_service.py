@@ -61,7 +61,6 @@ def grant_hall_passes(
     for index in range(grant_quantity):
         entitlement_id = _generate_entitlement_id()
         event = EntitlementEvent(
-            seat_id=seat.id,
             class_id=seat.class_id,
             target_seat_id=seat.id,
             actor_seat_id=seat.id,
@@ -105,7 +104,6 @@ def remove_hall_passes(
         if grant is None:
             break
         event = EntitlementEvent(
-            seat_id=seat.id,
             class_id=seat.class_id,
             target_seat_id=seat.id,
             actor_seat_id=seat.id,
@@ -135,7 +133,7 @@ def _available_hall_pass_grant(seat_id: int, class_id: str) -> EntitlementEvent 
     grants = (
         EntitlementEvent.query
         .filter(
-            EntitlementEvent.seat_id == seat_id,
+            EntitlementEvent.target_seat_id == seat_id,
             EntitlementEvent.class_id == class_id,
             EntitlementEvent.entitlement_type == "HALL_PASS",
             EntitlementEvent.event_type == "GRANTED",
@@ -164,7 +162,6 @@ def consume_hall_pass(
 
     now = _current_utc()
     event = EntitlementEvent(
-        seat_id=seat_id,
         class_id=class_id,
         target_seat_id=seat_id,
         actor_seat_id=seat_id,
@@ -201,7 +198,7 @@ def reconcile_rent_hall_pass_top_off(
         0,
         db.session.query(sa.func.count(EntitlementEvent.event_id))
         .filter(
-            EntitlementEvent.seat_id == seat.id,
+            EntitlementEvent.target_seat_id == seat.id,
             EntitlementEvent.class_id == seat.class_id,
             EntitlementEvent.entitlement_type == "HALL_PASS",
             EntitlementEvent.event_type == "GRANTED",
@@ -222,7 +219,6 @@ def reconcile_rent_hall_pass_top_off(
     now = _current_utc()
 
     event = EntitlementEvent(
-        seat_id=seat.id,
         class_id=seat.class_id,
         target_seat_id=seat.id,
         actor_seat_id=seat.id,

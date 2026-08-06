@@ -28,13 +28,17 @@ from app.utils.time import utc_now
 # ---------------------------------------------------------------------------
 
 def create_teacher(username: str, *, totp_secret: str | None = None) -> User:
-    """Create a canonical teacher User (role=TEACHER).
+    """Create a canonical teacher User (role=TEACHER), or return existing.
 
+    Idempotent: if a teacher with this username already exists, returns them.
     Returns the flushed User instance. Does NOT create a class or seat —
     call create_class() next to complete the teacher identity.
     """
     from app.utils.encryption import normalize_totp_for_storage
     _salt, u_hash, u_lookup = build_hashed_username_fields(username)
+    existing = User.query.filter_by(username_lookup_hash=u_lookup).first()
+    if existing is not None:
+        return existing
     teacher = User(
         user_role=UserRole.TEACHER,
         username_hash=u_hash,

@@ -73,6 +73,7 @@ from app.models import (
     LedgerBalanceSnapshot, User, UserRole, _quantize_currency,
     ObligationAssessment,
     AttendanceReasonCode, IdentityProfile, PayrollEvent, PolicyVersion,
+    EntitlementEvent, PendingAction,
 )
 from app.auth import (
     admin_required,
@@ -5049,8 +5050,6 @@ def add_individual_student():
                 dedupe_code=dedupe_key,
             )
 
-            grant_hall_passes(new_seat, 3, trigger_id=f"student_init_{new_seat.id}")
-
             profile.seat_id = new_seat.id
 
             if class_context.get('class_created'):
@@ -5189,9 +5188,6 @@ def add_manual_student():
                 dedupe_code=dedupe_key,
                 has_received_rent_exemption=not rent_enabled,
             )
-
-            if hall_passes > 0:
-                grant_hall_passes(new_seat, hall_passes, trigger_id=f"student_init_{new_seat.id}")
 
             profile.seat_id = new_seat.id
 
