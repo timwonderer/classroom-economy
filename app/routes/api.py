@@ -54,7 +54,6 @@ from app.routes.student import (
     get_rent_settings_for_context,
     _calculate_rent_coverage_due_date,
     _is_student_coverage_period_paid,
-    _ensure_rent_hall_pass_top_off,
 )
 from app.services.context_resolver import resolve_canonical_context, ContextResolutionError
 from app.feats.store_purchase_feat import execute_store_purchase
