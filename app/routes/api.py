@@ -54,14 +54,14 @@ from app.routes.student import (
     get_rent_settings_for_context,
     _calculate_rent_coverage_due_date,
     _is_student_coverage_period_paid,
-    _ensure_rent_hall_pass_top_off,
 )
 from app.services.context_resolver import resolve_canonical_context, ContextResolutionError
+from app.feats.base import FEATContext
 from app.feats.store_purchase_feat import execute_store_purchase
 from app.feats.ledger_resolution_feat import build_intended_ledger_plan, resolve_intended_ledger_plan, apply_resolved_ledger_plan
 from app.services import store_service
 from app.services.entitlement_read_service import get_purchase_count, get_active_rent_grant
-from app.services.entitlement_service import get_hall_pass_balance, grant_hall_passes
+from app.services.entitlement_service import consume_entitlement, get_hall_pass_balance, grant_hall_passes
 from app.services.hall_pass_request_queue import (
     PendingHallPassRequest,
     clear_pending_hall_pass_requests_for_seat,
@@ -458,24 +458,21 @@ def use_item():
         terminal = _entitlement_terminal_event(entitlement.entitlement_id)
         if terminal:
             return jsonify({"status": "error", "message": "This item is not available for redemption."}), 400
-        db.session.add(
-            EntitlementEvent(
-                class_id=entitlement.class_id,
-                entitlement_id=entitlement.entitlement_id,
-                target_seat_id=entitlement.target_seat_id,
-                actor_seat_id=entitlement.target_seat_id,
-                product_id=entitlement.product_id,
-                entitlement_type=entitlement.entitlement_type,
-                acquisition_type=entitlement.acquisition_type,
-                event_type="CONSUMED",
-                correlation_id=f"immediate_use_{entitlement.entitlement_id}",
-                payload={
-                    "outcome": "APPROVED",
-                    "source": "api.use_item",
-                    "item_type": store_item.item_type,
-                    "details": details or None,
-                },
-            )
+        consume_entitlement(
+            entitlement_id=entitlement.entitlement_id,
+            class_id=entitlement.class_id,
+            target_seat_id=entitlement.target_seat_id,
+            actor_seat_id=entitlement.target_seat_id,
+            product_id=entitlement.product_id,
+            entitlement_type=entitlement.entitlement_type,
+            acquisition_type=entitlement.acquisition_type,
+            correlation_id=f"immediate_use_{entitlement.entitlement_id}",
+            payload={
+                "outcome": "APPROVED",
+                "source": "api.use_item",
+                "item_type": store_item.item_type,
+                "details": details or None,
+            },
         )
         return jsonify({"status": "success", "message": f"You used {store_item.name}."})
 
@@ -565,24 +562,21 @@ def approve_redemption():
                 idempotency_key=pending_action.correlation_id,
             )
         else:
-            db.session.add(
-                EntitlementEvent(
-                    class_id=entitlement.class_id,
-                    entitlement_id=entitlement.entitlement_id,
-                    target_seat_id=entitlement.target_seat_id,
-                    actor_seat_id=ctx.seat_id,
-                    product_id=entitlement.product_id,
-                    entitlement_type=entitlement.entitlement_type,
-                    acquisition_type=entitlement.acquisition_type,
-                    event_type="CONSUMED",
-                    correlation_id=pending_action.correlation_id,
-                    payload={
-                        "outcome": "APPROVED",
-                        "source": "api.approve_redemption",
-                        "item_type": store_item.item_type,
-                        "details": (pending_action.payload or {}).get("details") or None,
-                    },
-                )
+            consume_entitlement(
+                entitlement_id=entitlement.entitlement_id,
+                class_id=entitlement.class_id,
+                target_seat_id=entitlement.target_seat_id,
+                actor_seat_id=ctx.seat_id,
+                product_id=entitlement.product_id,
+                entitlement_type=entitlement.entitlement_type,
+                acquisition_type=entitlement.acquisition_type,
+                correlation_id=pending_action.correlation_id,
+                payload={
+                    "outcome": "APPROVED",
+                    "source": "api.approve_redemption",
+                    "item_type": store_item.item_type,
+                    "details": (pending_action.payload or {}).get("details") or None,
+                },
             )
         db.session.delete(pending_action)
     except (SQLAlchemyError, ValueError) as e:
@@ -747,24 +741,23 @@ def handle_pending_hall_pass_request(request_id, action):
     if not requested_seat or requested_seat.class_id != ctx.class_id:
         return jsonify({"status": "error", "message": "Pending request not found."}), 404
 
+    idempotency_key = f"hall_pass_approve:{ctx.class_id}:{request_id}"
     try:
-        record_hall_pass_log(
-            ctx=ctx,
-            requested_by_seat_id=requested_seat.id,
-            approved_by_seat_id=ctx.seat_id,
-            destination=pending_request.destination,
-            reason="teacher_approved",
-            idempotency_key=f"hall_pass_approve:{ctx.class_id}:{request_id}",
-        )
-        db.session.commit()
+        with FEATContext("FEAT-PROD-002", idempotency_key=idempotency_key):
+            record_hall_pass_log(
+                ctx=ctx,
+                requested_by_seat_id=requested_seat.id,
+                approved_by_seat_id=ctx.seat_id,
+                destination=pending_request.destination,
+                reason="teacher_approved",
+                idempotency_key=idempotency_key,
+            )
         pop_pending_hall_pass_request(request_id)
         return jsonify({"status": "success", "message": "Hall pass issued."})
     except ValueError as exc:
-        db.session.rollback()
         _log_api_client_error("handle_pending_hall_pass_request", exc, extra=f"request_id={request_id}")
         return jsonify({"status": "error", "message": "Hall pass request cannot be approved."}), 400
     except SQLAlchemyError as exc:
-        db.session.rollback()
         current_app.logger.error("Hall pass approval failed: %s", exc, exc_info=True)
         return jsonify({"status": "error", "message": "Database error."}), 500
 

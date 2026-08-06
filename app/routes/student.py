@@ -85,7 +85,6 @@ from app.services.ledger_service import (
 from app.services import access_policy_service, store_service
 from app.services.entitlement_service import (
     get_hall_pass_balance,
-    reconcile_rent_hall_pass_top_off as _reconcile_rent_hall_pass_top_off,
 )
 from app.services.entitlement_read_service import get_active_entitlements
 from app.services.recovery_service import (
@@ -2879,55 +2878,6 @@ def _calculate_rent_coverage_due_date(settings, reference_date=None):
     delta = _get_rent_period_delta(settings)
     return current_due_date - delta
 
-
-def _ensure_rent_hall_pass_top_off(student, context, settings=None, now=None):
-    """
-    Reconcile rent-granted hall passes for the current coverage period.
-
-    Returns:
-        tuple[int, int, bool]: (passes_awarded, passes_revoked, state_changed)
-    """
-    if not student or not context:
-        return 0, 0, False
-
-    seat = get_current_seat()
-    if not seat and student and context:
-        seat = db.session.get(Seat, context.seat_id)
-    current_block = seat.class_economy.section.strip().upper() if seat and seat.class_economy and seat.class_economy.section else ""
-    class_id = context.class_id
-
-    if not class_id:
-        return 0, 0, False
-
-    seat_id = student.identity_profile.seat_id if student and student.identity_profile else None
-    if not seat_id:
-        return 0, 0, False
-
-    settings = settings or get_rent_settings_for_context(context)
-    if not settings:
-        return 0, 0, False
-
-    now = now or utc_now()
-    coverage_due_date = _calculate_rent_coverage_due_date(settings, now)
-    if not coverage_due_date:
-        return 0, 0, False
-
-    is_paid = _is_student_coverage_period_paid(
-        settings,
-        seat_id,
-        class_id,
-        coverage_due_date,
-        include_late_fee=False,
-    )
-
-    seat = Seat.query.get(seat_id)
-
-    total_grant = store_service.get_rent_hall_pass_grant_total(settings.id)
-    target_rent_passes = total_grant if is_paid else 0
-    return _reconcile_rent_hall_pass_top_off(
-        seat=seat,
-        target_rent_passes=target_rent_passes,
-    )
 
 
 @student_bp.route('/rent')

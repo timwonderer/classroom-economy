@@ -8,8 +8,6 @@ from __future__ import annotations
 
 import secrets
 
-import sqlalchemy as sa
-
 from app.extensions import db
 from app.models import EntitlementEvent, Seat
 from app.feats.base import generate_correlation_id
@@ -47,27 +45,45 @@ def grant_hall_passes(
     seat: Seat,
     quantity: int,
     *,
+    actor_seat_id: int | None = None,
     trigger_id: str | None = None,
     correlation_id: str | None = None,
-    event_type: str = "GRANT",
+    acquisition_type: str = "GRANT",
 ) -> int:
-    """Grant hall passes by appending one EntitlementEvent per pass."""
+    """Grant hall passes by appending one EntitlementEvent per pass.
+
+    Per DOM-STORE-001 §VII and FEAT-STOR-001 §VII.B: one event per unit,
+    same correlation_id across the batch.
+
+    Args:
+        seat: Target seat receiving passes.
+        quantity: Number of passes to grant (must be positive).
+        actor_seat_id: Seat performing the action. Defaults to target seat.
+        trigger_id: Optional trigger identifier for payload lineage.
+        correlation_id: Cross-domain lineage ID. Generated if not provided.
+        acquisition_type: GRANT (teacher direct), PURCHASE, or PERK (rent).
+    """
+    _VALID_ACQUISITION_TYPES = ("GRANT", "PURCHASE", "PERK")
+    if acquisition_type not in _VALID_ACQUISITION_TYPES:
+        raise ValueError(f"acquisition_type must be one of {_VALID_ACQUISITION_TYPES}")
+
     grant_quantity = int(quantity)
     if grant_quantity <= 0:
         raise ValueError("Hall-pass grant quantity must be positive")
 
     now = _current_utc()
     grant_correlation_id = correlation_id or generate_correlation_id()
+    resolved_actor = actor_seat_id if actor_seat_id is not None else seat.id
     for index in range(grant_quantity):
         entitlement_id = _generate_entitlement_id()
         event = EntitlementEvent(
             class_id=seat.class_id,
             target_seat_id=seat.id,
-            actor_seat_id=seat.id,
+            actor_seat_id=resolved_actor,
             entitlement_id=entitlement_id,
             product_id=None,
             entitlement_type="HALL_PASS",
-            acquisition_type="GRANT",
+            acquisition_type=acquisition_type,
             event_type="GRANTED",
             correlation_id=grant_correlation_id,
             payload={
@@ -85,10 +101,10 @@ def remove_hall_passes(
     seat: Seat,
     quantity: int,
 ) -> int:
-    """Remove available hall passes by reversing unconsumed entitlement instances.
+    """Remove available hall passes by appending REVOKED events.
 
-    Removal is not a balance overwrite. It appends REVOCATION events against
-    existing entitlement ids that still have unconsumed quantity.
+    Reuses the entitlement_id from the grant being revoked to maintain
+    lineage per DOM-STORE-001 §VII.
     """
     quantity_to_remove = int(quantity or 0)
     if quantity_to_remove <= 0:
@@ -110,7 +126,7 @@ def remove_hall_passes(
             entitlement_id=grant.entitlement_id,
             product_id=grant.product_id,
             entitlement_type="HALL_PASS",
-            acquisition_type="GRANT",
+            acquisition_type=grant.acquisition_type,
             event_type="REVOKED",
             correlation_id=grant.correlation_id,
             payload={
@@ -130,6 +146,7 @@ def remove_hall_passes(
 
 
 def _available_hall_pass_grant(seat_id: int, class_id: str) -> EntitlementEvent | None:
+    """Find the oldest exercisable hall pass grant (FIFO)."""
     grants = (
         EntitlementEvent.query
         .filter(
@@ -168,7 +185,7 @@ def consume_hall_pass(
         entitlement_id=grant.entitlement_id,
         product_id=grant.product_id,
         entitlement_type="HALL_PASS",
-        acquisition_type="GRANT",
+        acquisition_type=grant.acquisition_type,
         event_type="CONSUMED",
         correlation_id=grant.correlation_id,
         payload={
@@ -182,59 +199,112 @@ def consume_hall_pass(
     return event, get_hall_pass_balance(seat_id, class_id)
 
 
-def reconcile_rent_hall_pass_top_off(
+def consume_entitlement(
     *,
-    seat: Seat,
-    target_rent_passes: int,
-) -> tuple[int, int, bool]:
-    """Adjust the rent-sourced hall pass entitlement to match target_rent_passes.
+    entitlement_id: str,
+    class_id: str,
+    target_seat_id: int,
+    actor_seat_id: int,
+    product_id: int | None,
+    entitlement_type: str,
+    acquisition_type: str,
+    correlation_id: str,
+    payload: dict | None = None,
+) -> EntitlementEvent:
+    """Record a CONSUMED terminal event for a generic entitlement.
 
-    Only events with trigger_id starting with 'rent_top_off_' are included in
-    the reconciliation to isolate the rent-granted portion from admin/store grants.
+    Per DOM-STORE-001 §VIII: terminal events reuse the grant's entitlement_id
+    to preserve lineage. Caller must verify no terminal event already exists
+    (enforced by ix_entitlement_events_one_terminal_per_lineage).
 
-    Returns (passes_awarded, passes_revoked, state_changed).
+    This is the canonical write path for non-hall-pass consumption
+    (store items, privileges, etc.). Hall pass consumption uses
+    consume_hall_pass() which also handles balance derivation.
     """
-    current_rent_passes = max(
-        0,
-        db.session.query(sa.func.count(EntitlementEvent.event_id))
-        .filter(
-            EntitlementEvent.target_seat_id == seat.id,
-            EntitlementEvent.class_id == seat.class_id,
-            EntitlementEvent.entitlement_type == "HALL_PASS",
-            EntitlementEvent.event_type == "GRANTED",
-            EntitlementEvent.payload["source"].as_string() == "reconcile_rent_hall_pass_top_off",
+    terminal = get_entitlement_lineage_terminal_event(entitlement_id, class_id)
+    if terminal is not None:
+        raise ValueError(
+            f"Entitlement {entitlement_id} already has terminal event: "
+            f"{terminal.event_type}"
         )
-        .scalar()
-        or 0,
-    )
 
-    target = max(0, int(target_rent_passes or 0))
-    delta = target - current_rent_passes
-
-    if delta == 0:
-        return 0, 0, False
-
-    passes_awarded = max(0, delta)
-    passes_revoked = max(0, -delta)
     now = _current_utc()
-
     event = EntitlementEvent(
-        class_id=seat.class_id,
-        target_seat_id=seat.id,
-        actor_seat_id=seat.id,
-        entitlement_id=_generate_entitlement_id(),
-        product_id=None,
-        entitlement_type="HALL_PASS",
-        acquisition_type="GRANT",
-        event_type="GRANTED" if delta > 0 else "REVOKED",
-        correlation_id=generate_correlation_id() if delta > 0 else None,
-        payload={
-            "source": "reconcile_rent_hall_pass_top_off",
-            "delta": delta,
-            "trigger_id": f"rent_top_off_{seat.id}_{now.isoformat()}",
-        },
+        class_id=class_id,
+        target_seat_id=target_seat_id,
+        actor_seat_id=actor_seat_id,
+        entitlement_id=entitlement_id,
+        product_id=product_id,
+        entitlement_type=entitlement_type,
+        acquisition_type=acquisition_type,
+        event_type="CONSUMED",
+        correlation_id=correlation_id,
+        payload=payload,
         timestamp=now,
     )
     db.session.add(event)
+    db.session.flush()
+    return event
 
-    return passes_awarded, passes_revoked, True
+
+def expire_rent_hall_passes(
+    *,
+    correlation_id: str,
+    class_id: str,
+    actor_seat_id: int,
+) -> int:
+    """Expire perk-based hall passes at rent cycle boundary.
+
+    Per DOM-OBL-001 §IX.9: "At rent boundary, previously granted rent perks
+    expire regardless of same policy UUID."
+    Per DOM-STORE-001 §VIII.6: hall passes with acquisition_type=PERK get
+    EXPIRED at rent period end.
+
+    Finds all active PERK hall pass grants sharing the correlation_id from
+    the rent obligation and writes EXPIRED events for each.
+
+    Returns the count of passes expired.
+    """
+    # Lock grant rows to serialize concurrent expiration attempts (FOR UPDATE).
+    grants = (
+        EntitlementEvent.query
+        .filter(
+            EntitlementEvent.class_id == class_id,
+            EntitlementEvent.correlation_id == correlation_id,
+            EntitlementEvent.entitlement_type == "HALL_PASS",
+            EntitlementEvent.acquisition_type == "PERK",
+            EntitlementEvent.event_type == "GRANTED",
+        )
+        .with_for_update()
+        .all()
+    )
+
+    now = _current_utc()
+    expired_count = 0
+    for grant in grants:
+        terminal = get_entitlement_lineage_terminal_event(
+            grant.entitlement_id, class_id,
+        )
+        if terminal is not None:
+            continue
+        event = EntitlementEvent(
+            class_id=class_id,
+            target_seat_id=grant.target_seat_id,
+            actor_seat_id=actor_seat_id,
+            entitlement_id=grant.entitlement_id,
+            product_id=grant.product_id,
+            entitlement_type="HALL_PASS",
+            acquisition_type="PERK",
+            event_type="EXPIRED",
+            correlation_id=correlation_id,
+            payload={
+                "source": "expire_rent_hall_passes",
+            },
+            timestamp=now,
+        )
+        db.session.add(event)
+        expired_count += 1
+
+    if expired_count:
+        db.session.flush()
+    return expired_count
