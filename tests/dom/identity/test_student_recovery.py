@@ -374,6 +374,7 @@ def test_DOM_IDEN_002__recovery_username_uses_random_segment(client, recovery_da
 
     assert generated_username is not None
     assert "galaxy" in generated_username
+    assert len(generated_username) > len("galaxy"), "Username must include generated segments beyond the base word"
 
 
 def test_DOM_IDEN_006__claim_account_resolves_join_code_to_class_id(client):

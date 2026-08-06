@@ -250,13 +250,13 @@ def test_DOM_IDEN_006__add_individual_student_uses_selected_class_when_block_has
     with client.session_transaction() as sess:
         set_canonical_context(sess, user_id=admin.id, class_id=class_row_new.class_id, seat_id=teacher_seat_new.id, role="admin")
 
-        response = admin_add_individual_student(
-            client,
-            first_name="Scoped",
-            last_name="Student",
-            dob="2010-01-02",
-            block_select="A",
-        )
+    response = admin_add_individual_student(
+        client,
+        first_name="Scoped",
+        last_name="Student",
+        dob="2010-01-02",
+        block_select="A",
+    )
 
     assert response.status_code == 302
 

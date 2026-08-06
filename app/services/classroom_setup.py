@@ -38,6 +38,8 @@ def create_teacher(username: str, *, totp_secret: str | None = None) -> User:
     _salt, u_hash, u_lookup = build_hashed_username_fields(username)
     existing = User.query.filter_by(username_lookup_hash=u_lookup).first()
     if existing is not None:
+        if existing.user_role != UserRole.TEACHER:
+            raise ValueError("Username belongs to a non-teacher user")
         return existing
     teacher = User(
         user_role=UserRole.TEACHER,
