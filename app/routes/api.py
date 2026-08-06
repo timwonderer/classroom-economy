@@ -755,7 +755,6 @@ def handle_pending_hall_pass_request(request_id, action):
             reason="teacher_approved",
             idempotency_key=f"hall_pass_approve:{ctx.class_id}:{request_id}",
         )
-        db.session.commit()
         pop_pending_hall_pass_request(request_id)
         return jsonify({"status": "success", "message": "Hall pass issued."})
     except ValueError as exc:

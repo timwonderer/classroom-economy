@@ -331,7 +331,7 @@ def record_hall_pass_log(
         destination=destination,
     )
     db.session.add(log)
-    db.session.flush()
+    db.session.commit()
 
     return HallPassLogResult(hall_pass_log=log)
 
