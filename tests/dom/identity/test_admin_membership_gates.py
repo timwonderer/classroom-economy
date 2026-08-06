@@ -250,6 +250,8 @@ def test_DOM_IDEN_006__add_individual_student_uses_selected_class_when_block_has
     with client.session_transaction() as sess:
         set_canonical_context(sess, user_id=admin.id, class_id=class_row_new.class_id, seat_id=teacher_seat_new.id, role="admin")
 
+    seat_ids_before = {s.id for s in Seat.query.filter_by(class_id=class_row_new.class_id, role="student").all()}
+
     response = admin_add_individual_student(
         client,
         first_name="Scoped",
@@ -260,12 +262,12 @@ def test_DOM_IDEN_006__add_individual_student_uses_selected_class_when_block_has
 
     assert response.status_code == 302
 
-    linked_seat = (
-        Seat.query.filter_by(class_id=class_row_new.class_id, role="student")
-        .order_by(Seat.id.desc())
-        .first()
-    )
-    assert linked_seat is not None
+    seat_ids_after = {s.id for s in Seat.query.filter_by(class_id=class_row_new.class_id, role="student").all()}
+    new_seat_ids = seat_ids_after - seat_ids_before
+    assert len(new_seat_ids) == 1, f"Expected exactly 1 new seat, got {len(new_seat_ids)}"
+
+    linked_seat = db.session.get(Seat, new_seat_ids.pop())
+    assert linked_seat.class_id == class_row_new.class_id
     assert ClassEconomy.query.filter_by(class_id=linked_seat.class_id).first().join_code == class_row_new.join_code
 
 

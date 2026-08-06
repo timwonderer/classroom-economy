@@ -35,7 +35,7 @@ This matrix consolidates the progress of all CTH domains through the 10-phase SO
 
 | Domain | Spec | Phase 0-4 | Phase 5 | Phase 6-7 | Phase 8-9 | Phase 10 | Status | Audit Doc |
 | -------- | ------ | ----------- | --------- | ----------- | ----------- | ---------- | -------- | ----------- |
-| **Identity** | DOM-IDEN-001/002/003/006 | ✅ | ✅ | ✅ VERIFIED | ✅ VERIFIED | ❌ | 🔄 Phase 8 complete (33 passed, 1 skipped); Phase 9-10 pending | 2026-08-05 (Phase 8 verified) |
+| **Identity** | DOM-IDEN-001/002/003/006 | ✅ | ✅ | ✅ VERIFIED | ✅ Phase 8 VERIFIED | ❌ | 🔄 Phase 8 complete (33 passed, 1 skipped); Phase 9-10 pending | 2026-08-05 (Phase 8 verified) |
 | **Class Configuration** | DOM-CLASS-001 | ✅ | ❌ NO VM | ❌ BLOCKED | ? | ❌ | ❌ BLOCKED on Phase 5 | 2026-08-04 baseline |
 | **Ledger** | DOM-LED-001 | ✅ | ❌ NO VM | ❌ BLOCKED | ? | ❌ | ❌ BLOCKED on Phase 5 | 2026-08-04 baseline |
 | **Productivity & Payroll** | DOM-PROD-001 | ✅ | ❌ NO VM | ❌ BLOCKED | ? | ❌ | ❌ BLOCKED on Phase 5 | 2026-08-04 baseline |
@@ -98,12 +98,12 @@ Phase 6-7 completion is now measured via **field ownership**, not template struc
 | -------- | --------------- | ----------------- | ------------- |
 | **Obligations** | StudentObligationView | ✅ COMPLETE | Phase 6-7 validated: `period_status` dict properly implemented; templates use view.current_period namespace only; all 5 tests pass |
 | **Store & Entitlements** | EntitlementListView, PurchaseHistoryView, PolicyListView, StoreManagementView | ✅ COMPLETE | Phase 10 audit passed; all fields wired via view.* namespace |
+| **Identity** | IdentityProfileView | ✅ Phase 6-7 VERIFIED | Phase 8 verified (33 passed, 1 skipped); Phase 9 legacy deletion next |
 
 **Domains WITHOUT view models (Phase 5 blocked):**
 
 | Domain | Why Blocked | Action Needed |
 | -------- | ------------ | --------------- |
-| **Identity** | ✅ IdentityProfileView complete | ✅ Phase 8 verified (33 passed, 1 skipped); Phase 9 legacy deletion next |
 | **Class Configuration** | No ClassConfigurationView | Create dataclass + builder function |
 | **Ledger** | No LedgerBalanceView | Create dataclass + builder function |
 | **Payroll/Attendance** | No PayrollView or AttendanceView | Create 2 dataclasses + builder functions |

@@ -58,7 +58,6 @@ def create_teacher(username: str, *, totp_secret: str | None = None) -> User:
             db.session.add(teacher)
             db.session.flush()
     except IntegrityError:
-        db.session.rollback()
         existing = User.query.filter_by(username_lookup_hash=u_lookup).first()
         if existing is not None:
             if existing.user_role != UserRole.TEACHER:
@@ -87,12 +86,13 @@ def create_teacher_account_with_class(
         join_code=join_code,
     ).first()
     if existing_class is None:
-        create_class(
-            teacher.id,
-            join_code=join_code,
-            display_name=display_name,
-            section=section,
-        )
+        with db.session.begin_nested():
+            create_class(
+                teacher.id,
+                join_code=join_code,
+                display_name=display_name,
+                section=section,
+            )
     return teacher
 
 

@@ -160,10 +160,10 @@
 ### Sign-Off Criteria
 
 **MANDATORY:**
-- [x] Legacy aggregation variables removed from render_template context — *COMPLETE: student_full_name, student_first_name, student_last_name, student_notes removed from student_detail_public*
-- [x] Ad-hoc aggregation loops and helper functions removed from routes — *COMPLETE: student_profile = student.identity_profile extraction block removed*
+- [x] Legacy aggregation variables removed from render_template context — *PARTIAL: student_full_name, student_first_name, student_last_name, student_notes removed from student_detail_public*
+- [ ] Ad-hoc aggregation loops and helper functions removed from routes — *PARTIAL: student_detail_public cleaned; broader route sweep pending*
 - [x] All tests pass after deletion — *VERIFIED (2026-08-05): 33 passed, 1 skipped across test_admin_membership_gates.py and test_student_recovery.py*
-- [x] No dangling references to deleted code — *VERIFIED: grep confirms no other templates reference removed vars; layout_student.html uses current_class_context.student_full_name (separate student-side context, unaffected)*
+- [ ] No dangling references to deleted code — *PARTIAL: student_detail vars verified; full route sweep for remaining ad-hoc identity_profile accesses pending*
 
 ---
 
@@ -178,7 +178,7 @@
 - [x] Code compiles without errors
 - [x] All tests pass — *VERIFIED (2026-08-05): 33 passed, 1 skipped*
 - [x] No regressions in existing test suite — *VERIFIED (2026-08-05): All pre-existing failures fixed*
-- [x] Branch is pushed to remote
+- [ ] Branch is pushed to remote — *Pending Phase 9 completion*
 - [ ] Git status is clean
 
 ---
