@@ -217,6 +217,7 @@ def expire_rent_hall_passes(
 
     Returns the count of passes expired.
     """
+    # Lock grant rows to serialize concurrent expiration attempts (FOR UPDATE).
     grants = (
         EntitlementEvent.query
         .filter(
@@ -226,6 +227,7 @@ def expire_rent_hall_passes(
             EntitlementEvent.acquisition_type == "PERK",
             EntitlementEvent.event_type == "GRANTED",
         )
+        .with_for_update()
         .all()
     )
 

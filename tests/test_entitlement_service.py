@@ -301,3 +301,35 @@ def test_expire_entitlement_id_lineage(app, classroom):
             target_seat_id=seat.id, event_type="EXPIRED",
         ).first()
         assert expired.entitlement_id == granted.entitlement_id
+
+
+def test_double_expire_produces_single_expired_event(app, classroom):
+    """Calling expire twice must not create duplicate EXPIRED events."""
+    with app.app_context():
+        seat = _seat(app, classroom)
+        with FEATContext("FEAT-TEST-ENTITLEMENT", idempotency_key="double-expire-setup"):
+            grant_hall_passes(seat, 2, acquisition_type="PERK", correlation_id="rent-double")
+
+        with FEATContext("FEAT-TEST-ENTITLEMENT", idempotency_key="double-expire-1"):
+            count1 = expire_rent_hall_passes(
+                correlation_id="rent-double",
+                class_id=seat.class_id,
+                actor_seat_id=classroom.teacher_seat_id,
+            )
+
+        with FEATContext("FEAT-TEST-ENTITLEMENT", idempotency_key="double-expire-2"):
+            count2 = expire_rent_hall_passes(
+                correlation_id="rent-double",
+                class_id=seat.class_id,
+                actor_seat_id=classroom.teacher_seat_id,
+            )
+
+        assert count1 == 2
+        assert count2 == 0
+
+        expired_events = EntitlementEvent.query.filter_by(
+            target_seat_id=seat.id,
+            event_type="EXPIRED",
+            correlation_id="rent-double",
+        ).all()
+        assert len(expired_events) == 2
