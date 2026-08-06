@@ -1,4 +1,9 @@
-"""Time utilities for the classroom economy application."""
+"""Time utilities for the classroom economy application.
+
+WARNING: THIS MODULE HAS BEEN DEPRECATED. DO NOT USE THIS IN LIVE CODE. IF YOU ARE READING THIS THAT MEANS YOU HAVE REVIVED A DEPRECATED MODULE BRUH. ONLY USE CANONICAL TEMPORAL RESOLVER. FOR MORE INFORMATION, PLEASE READ SPEC-TIME-001.
+
+"""
+
 
 from datetime import datetime, timezone, timedelta, MINYEAR, MAXYEAR
 from typing import Optional, Tuple
@@ -35,7 +40,7 @@ def get_class_now(tz: Optional[pytz.BaseTzInfo] = None) -> datetime:
     return datetime.now(tz)
 
 
-def get_class_timezone(class_id: str) -> pytz.BaseTzInfo:
+def _get_class_timezone(class_id: str) -> pytz.BaseTzInfo:
     """Get timezone for a class (currently hardcoded to US/Central).
 
     TODO: Make this configurable per class.
