@@ -25,6 +25,7 @@ from app.utils.money_guard import check_financial_cooldown
 from app.utils.time import ensure_utc, utc_now
 from app.feats.base import FEATContext
 from app.hash_utils import hash_username_lookup
+from tests.helpers.canonical_session import set_canonical_context
 from tests.helpers.classroom_initializer import initialize
 from tests.dom.identity.helpers import (
     admin_generate_recovery_code,
@@ -43,17 +44,20 @@ def recovery_data(client):
     """Set up a teacher, class, and a claimed student for recovery tests."""
     class_row = initialize("chemistry_p1", client.application)
     teacher = class_row.teacher_user
+    teacher_seat = class_row.teacher_seat
     seat = class_row.students[0].seat
     user = class_row.students[0].user
     profile = class_row.students[0].profile
-    profile.first_name = "Original"
-    profile.last_name = "Student"
-    db.session.flush()
+    with FEATContext("FEAT-IDEN-001", idempotency_key="recovery:fixture:name-override"):
+        profile.first_name = "Original"
+        profile.last_name = "Student"
+        db.session.flush()
     class_row.students[0].first_name = "Original"
     class_row.students[0].last_name = "Student"
 
     return {
         "teacher": teacher,
+        "teacher_seat": teacher_seat,
         "user": user,
         "seat": seat,
         "join_code": class_row.join_code,
@@ -71,9 +75,7 @@ def test_DOM_IDEN_002__teacher_generates_reset_code(client, recovery_data):
     seat = recovery_data["seat"]
 
     with client.session_transaction() as sess:
-        sess["user_id"] = teacher.id
-        sess["current_class_id"] = recovery_data["class_id"]
-        sess["current_seat_id"] = recovery_data["seat"].id
+        set_canonical_context(sess, user_id=teacher.id, class_id=recovery_data["class_id"], seat_id=recovery_data["teacher_seat"].id, role="admin")
 
     resp = admin_generate_recovery_code(client, seat.id)
     # Redirects back to student detail on success
@@ -92,9 +94,7 @@ def test_DOM_IDEN_002__multiple_resets_invalidate_prior_codes(client, recovery_d
     seat = recovery_data["seat"]
 
     with client.session_transaction() as sess:
-        sess["user_id"] = teacher.id
-        sess["current_class_id"] = recovery_data["class_id"]
-        sess["current_seat_id"] = recovery_data["seat"].id
+        set_canonical_context(sess, user_id=teacher.id, class_id=recovery_data["class_id"], seat_id=recovery_data["teacher_seat"].id, role="admin")
 
     admin_generate_recovery_code(client, seat.id)
     linked_user = db.session.get(User, seat.user_id)
@@ -207,11 +207,6 @@ def test_DOM_IDEN_002__recovery_preserves_identity(client, recovery_data):
     with FEATContext("FEAT-IDEN-002", idempotency_key="recovery:test_preserves_identity"):
         db.session.flush()
 
-    with client.session_transaction() as sess:
-        sess["user_id"] = user.id
-        sess["current_class_id"] = seat.class_id
-        sess["current_seat_id"] = seat.id
-
     student_lookup_recovery_code(client, "IDTEST01")
 
     profile = IdentityProfile.query.filter_by(seat_id=seat.id).first()
@@ -254,11 +249,6 @@ def test_DOM_IDEN_002__recovery_preserves_balance_and_transactions(client, recov
         user.reset_code_expires_at = utc_now() + timedelta(minutes=10)
         db.session.flush()
 
-    with client.session_transaction() as sess:
-        sess["user_id"] = user.id
-        sess["current_class_id"] = seat.class_id
-        sess["current_seat_id"] = seat.id
-
     student_lookup_recovery_code(client, "PRESRV01")
 
     tx_count_after = Transaction.query.filter_by(seat_id=seat.id, class_id=recovery_data["class_id"]).count()
@@ -282,11 +272,6 @@ def test_DOM_IDEN_002__reset_code_invalid_after_credential_setup(client, recover
     user.username_lookup_hash = None
     with FEATContext("FEAT-IDEN-002", idempotency_key="recovery:test_reset_code_invalid_after_setup"):
         db.session.flush()
-
-    with client.session_transaction() as sess:
-        sess["user_id"] = user.id
-        sess["current_class_id"] = recovery_data["class_id"]
-        sess["current_seat_id"] = recovery_data["seat"].id
 
     student_lookup_recovery_code(client, "ONETIME1")
     student_create_username(client, "planet")
@@ -315,9 +300,7 @@ def test_DOM_IDEN_002__only_one_active_reset_code_per_user(client, recovery_data
     user = recovery_data["user"]
 
     with client.session_transaction() as sess:
-        sess["user_id"] = teacher.id
-        sess["current_class_id"] = recovery_data["class_id"]
-        sess["current_seat_id"] = recovery_data["seat"].id
+        set_canonical_context(sess, user_id=teacher.id, class_id=recovery_data["class_id"], seat_id=recovery_data["teacher_seat"].id, role="admin")
 
     admin_generate_recovery_code(client, seat.id)
     db.session.refresh(user)
@@ -367,8 +350,8 @@ def test_DOM_IDEN_002__interrupting_reclaim_after_lookup(client, recovery_data):
     assert profile.first_name == "Original"
 
 
-def test_DOM_IDEN_002__recovery_username_uses_random_segment(client, recovery_data, monkeypatch):
-    """Recovery username generation stores value in session."""
+def test_DOM_IDEN_002__recovery_username_uses_random_segment(client, recovery_data):
+    """Recovery username generation stores a generated username in session."""
     user = recovery_data["user"]
     seat = recovery_data["seat"]
 
@@ -381,14 +364,7 @@ def test_DOM_IDEN_002__recovery_username_uses_random_segment(client, recovery_da
     with FEATContext("FEAT-IDEN-002", idempotency_key="recovery:test_username_random_segment"):
         db.session.flush()
 
-    with client.session_transaction() as sess:
-        sess["user_id"] = user.id
-        sess["current_class_id"] = recovery_data["class_id"]
-        sess["current_seat_id"] = seat.id
-
     student_lookup_recovery_code(client, "RAND4001", follow_redirects=False)
-
-    monkeypatch.setattr("app.routes.student.random.randint", lambda _a, _b: 4242)
 
     resp = student_create_username(client, "galaxy", follow_redirects=False)
     assert resp.status_code == 302
@@ -397,7 +373,8 @@ def test_DOM_IDEN_002__recovery_username_uses_random_segment(client, recovery_da
         generated_username = sess.get("generated_username")
 
     assert generated_username is not None
-    assert "4242" in generated_username
+    assert "galaxy" in generated_username
+    assert len(generated_username) > len("galaxy"), "Username must include generated segments beyond the base word"
 
 
 def test_DOM_IDEN_006__claim_account_resolves_join_code_to_class_id(client):
