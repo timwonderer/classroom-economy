@@ -63,6 +63,10 @@ def grant_hall_passes(
         correlation_id: Cross-domain lineage ID. Generated if not provided.
         acquisition_type: GRANT (teacher direct), PURCHASE, or PERK (rent).
     """
+    _VALID_ACQUISITION_TYPES = ("GRANT", "PURCHASE", "PERK")
+    if acquisition_type not in _VALID_ACQUISITION_TYPES:
+        raise ValueError(f"acquisition_type must be one of {_VALID_ACQUISITION_TYPES}")
+
     grant_quantity = int(quantity)
     if grant_quantity <= 0:
         raise ValueError("Hall-pass grant quantity must be positive")

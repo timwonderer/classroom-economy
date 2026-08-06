@@ -69,6 +69,7 @@ def test_grant_perk_acquisition_type(app, classroom):
             target_seat_id=seat.id,
             event_type="GRANTED",
         ).all()
+        assert len(events) == 2
         assert all(e.acquisition_type == "PERK" for e in events)
 
 
