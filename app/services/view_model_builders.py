@@ -1,8 +1,8 @@
 """
-Store/Entitlements read-side view model builders.
+View model builders for all domains.
 
 Phase 5 canonical read layer for presentation-only aggregates.
-Builds pure read models from authoritative Store and Entitlement facts.
+Builds pure read models from authoritative domain facts.
 Routes and templates should consume these builders rather than reconstructing
 domain truth in the presentation layer.
 """
@@ -14,10 +14,69 @@ from decimal import Decimal
 from datetime import datetime
 from typing import Any
 
-from app.models import EntitlementEvent
+from app.extensions import db
+from app.models import EntitlementEvent, IdentityProfile, Seat
 from app.services.entitlement_read_service import get_entitlement_status
 from app.services.store_policy_resolver import StorePolicyResolver, PolicyNotFound
 from app.services.class_configuration_economic_service import EconomicView
+
+
+@dataclass(frozen=True)
+class IdentityProfileView:
+    """Phase 5 view model for seat-bound display identity."""
+    seat_id: int
+    class_id: str
+    profile_type: str
+    first_name: str
+    last_name: str
+    notes: str | None
+    created_at: datetime
+    updated_at: datetime
+
+    @property
+    def last_initial(self) -> str:
+        """Return first letter of last name for display."""
+        return self.last_name[0] if self.last_name else ''
+
+    @property
+    def full_name(self) -> str:
+        """Return full display name."""
+        return f"{self.first_name} {self.last_name}"
+
+
+def build_identity_profile_view(seat_id: int, class_id: str) -> IdentityProfileView | None:
+    """
+    Build the canonical identity profile view for a seat.
+
+    Queries the authoritative IdentityProfile for the seat and returns
+    a frozen read model for template consumption.
+
+    Args:
+        seat_id: The seat to query
+        class_id: The class scope (for multi-tenancy verification)
+
+    Returns:
+        Frozen view model, or None if profile not found
+    """
+    profile = (
+        IdentityProfile.query
+        .filter_by(seat_id=seat_id, class_id=class_id)
+        .first()
+    )
+
+    if not profile:
+        return None
+
+    return IdentityProfileView(
+        seat_id=profile.seat_id,
+        class_id=profile.class_id,
+        profile_type=profile.profile_type,
+        first_name=profile.first_name,
+        last_name=profile.last_name,
+        notes=profile.notes,
+        created_at=profile.created_at,
+        updated_at=profile.updated_at,
+    )
 
 
 @dataclass(frozen=True)

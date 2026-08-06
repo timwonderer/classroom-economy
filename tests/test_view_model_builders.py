@@ -8,13 +8,14 @@ import pytest
 
 from app.extensions import db
 from app.feats.base import FEATContext
-from app.models import EntitlementEvent
+from app.models import EntitlementEvent, IdentityProfile
 from app.services.context_resolver import CanonicalContext
 from app.services.store_policy_resolver import StorePolicyResolver
 from app.services.view_model_builders import (
     build_entitlement_list_view,
     build_policy_list_view,
     build_purchase_history_view,
+    build_identity_profile_view,
 )
 from app.feats.store_purchase_feat import execute_store_purchase
 from app.feats.direct_entitlement_grant_feat import execute_direct_grant
@@ -136,3 +137,77 @@ def test_build_policy_list_view_returns_canonical_policies_in_presentation_order
         assert all(view.class_id == classroom_obj.class_id for view in views)
         assert all(view.is_purchasable for view in views)
         assert all(view.supports_direct_grants for view in views)
+
+
+def test_build_identity_profile_view_happy_path(app, classroom):
+    """Test building identity profile view for a student seat."""
+    with app.app_context():
+        classroom_obj, _, _ = classroom
+        student = classroom_obj.students[0]
+
+        view = build_identity_profile_view(student.seat_id, classroom_obj.class_id)
+
+        assert view is not None
+        assert view.seat_id == student.seat_id
+        assert view.class_id == classroom_obj.class_id
+        assert view.profile_type == "student"
+        # Verify view model contains identity profile data
+        profile = IdentityProfile.query.filter_by(seat_id=student.seat_id).first()
+        assert profile is not None
+        assert view.first_name == profile.first_name
+        assert view.last_name == profile.last_name
+        assert view.notes == profile.notes
+
+
+def test_build_identity_profile_view_computes_display_properties(app, classroom):
+    """Test that view model computes full_name and last_initial correctly."""
+    with app.app_context():
+        classroom_obj, _, _ = classroom
+        student = classroom_obj.students[0]
+
+        view = build_identity_profile_view(student.seat_id, classroom_obj.class_id)
+
+        assert view is not None
+        profile = IdentityProfile.query.filter_by(seat_id=student.seat_id).first()
+        assert view.full_name == f"{profile.first_name} {profile.last_name}"
+        assert view.last_initial == profile.last_name[0]
+
+
+def test_build_identity_profile_view_returns_none_when_not_found(app, classroom):
+    """Test that builder returns None when profile doesn't exist."""
+    with app.app_context():
+        classroom_obj, _, _ = classroom
+
+        view = build_identity_profile_view(999999, classroom_obj.class_id)
+
+        assert view is None
+
+
+def test_build_identity_profile_view_scoped_by_class_id(app, classroom):
+    """Test that view model respects multi-tenancy scoping by class_id."""
+    with app.app_context():
+        classroom_obj, _, _ = classroom
+        student = classroom_obj.students[0]
+
+        # Query with correct class_id - should find the profile
+        view = build_identity_profile_view(student.seat_id, classroom_obj.class_id)
+        assert view is not None
+
+        # Query with wrong class_id - should not find the profile
+        view_wrong_class = build_identity_profile_view(student.seat_id, "wrong-class-id")
+        assert view_wrong_class is None
+
+
+def test_build_identity_profile_view_is_frozen(app, classroom):
+    """Test that view model dataclass is frozen and immutable."""
+    with app.app_context():
+        classroom_obj, _, _ = classroom
+        student = classroom_obj.students[0]
+
+        view = build_identity_profile_view(student.seat_id, classroom_obj.class_id)
+
+        assert view is not None
+
+        # Attempting to modify should raise FrozenInstanceError
+        with pytest.raises((AttributeError, TypeError)):
+            view.first_name = "Modified"
