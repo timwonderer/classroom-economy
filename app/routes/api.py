@@ -56,6 +56,7 @@ from app.routes.student import (
     _is_student_coverage_period_paid,
 )
 from app.services.context_resolver import resolve_canonical_context, ContextResolutionError
+from app.feats.base import FEATContext
 from app.feats.store_purchase_feat import execute_store_purchase
 from app.feats.ledger_resolution_feat import build_intended_ledger_plan, resolve_intended_ledger_plan, apply_resolved_ledger_plan
 from app.services import store_service
@@ -746,23 +747,23 @@ def handle_pending_hall_pass_request(request_id, action):
     if not requested_seat or requested_seat.class_id != ctx.class_id:
         return jsonify({"status": "error", "message": "Pending request not found."}), 404
 
+    idempotency_key = f"hall_pass_approve:{ctx.class_id}:{request_id}"
     try:
-        record_hall_pass_log(
-            ctx=ctx,
-            requested_by_seat_id=requested_seat.id,
-            approved_by_seat_id=ctx.seat_id,
-            destination=pending_request.destination,
-            reason="teacher_approved",
-            idempotency_key=f"hall_pass_approve:{ctx.class_id}:{request_id}",
-        )
+        with FEATContext("FEAT-PROD-002", idempotency_key=idempotency_key):
+            record_hall_pass_log(
+                ctx=ctx,
+                requested_by_seat_id=requested_seat.id,
+                approved_by_seat_id=ctx.seat_id,
+                destination=pending_request.destination,
+                reason="teacher_approved",
+                idempotency_key=idempotency_key,
+            )
         pop_pending_hall_pass_request(request_id)
         return jsonify({"status": "success", "message": "Hall pass issued."})
     except ValueError as exc:
-        db.session.rollback()
         _log_api_client_error("handle_pending_hall_pass_request", exc, extra=f"request_id={request_id}")
         return jsonify({"status": "error", "message": "Hall pass request cannot be approved."}), 400
     except SQLAlchemyError as exc:
-        db.session.rollback()
         current_app.logger.error("Hall pass approval failed: %s", exc, exc_info=True)
         return jsonify({"status": "error", "message": "Database error."}), 500
 
