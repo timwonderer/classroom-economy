@@ -284,12 +284,8 @@ def run_rent_cycle_for_class(class_id: str, execution_time):
     from app.extensions import db
     from app.models import RentSettings, Seat, ObligationAssessment
     from app.feats.rent_cycle_feat import execute_scheduled_rent_charge
-    # TODO(SPEC-TIME-001): Legacy OBL scheduler exception.
-    # This path still uses timedelta and app.utils.time because OBL/insurance is outside
-    # the current PROD rewiring slice. When OBL is rewired, replace this whole path with
-    # canonical_temporal_resolver primitives instead of preserving these direct time calls.
     from datetime import timedelta
-    from app.utils.time import get_class_cycle_start_utc, utc_now
+    from app.utils.canonical_temporal_resolver import utc_now
 
     execution_time = execution_time or utc_now()
 
@@ -315,12 +311,11 @@ def run_rent_cycle_for_class(class_id: str, execution_time):
         return {"status": "skipped", "reason": "before_effective_at", "class_id": class_id}
 
     # Freeze deterministic class-local cycle boundary for the full execution.
-    cycle_start = get_class_cycle_start_utc(
-        class_id,
-        execution_time,
-        cycle_length_days=cycle_length_days,
-        effective_start_utc=rent_effective_at,
-    )
+    # Inline OBL cycle arithmetic: find which cycle window execution_time falls in.
+    elapsed = (execution_time - rent_effective_at).total_seconds()
+    cycle_seconds = cycle_length_days * 86400
+    cycles_completed = int(elapsed // cycle_seconds)
+    cycle_start = rent_effective_at + timedelta(seconds=cycles_completed * cycle_seconds)
 
     claimed_seats = Seat.query.filter(
         Seat.class_id == class_id,
@@ -379,7 +374,7 @@ def run_rent_cycle_scheduler(execution_time=None):
     # TODO(SPEC-TIME-001): Legacy OBL scheduler exception.
     # Switch this to canonical_temporal_resolver during OBL rewiring instead of widening
     # the current PROD slice.
-    from app.utils.time import utc_now
+    from app.utils.canonical_temporal_resolver import utc_now
 
     execution_time = execution_time or utc_now()
     class_ids = [
@@ -414,7 +409,7 @@ def run_insurance_cycle_for_class(class_id: str, execution_time):
     from app.feats.insurance_cycle_feat import execute_scheduled_insurance_charge
     # TODO(SPEC-TIME-001): Legacy insurance/OBL scheduler exception.
     # Switch this to canonical_temporal_resolver when that domain slice is rewired.
-    from app.utils.time import utc_now
+    from app.utils.canonical_temporal_resolver import utc_now
 
     execution_time = execution_time or utc_now()
     policy_version = _get_active_insurance_policy_version(class_id)
@@ -474,7 +469,7 @@ def run_insurance_cycle_scheduler(execution_time=None):
     from app.models import PolicyVersion
     # TODO(SPEC-TIME-001): Legacy insurance/OBL scheduler exception.
     # Switch this to canonical_temporal_resolver when that domain slice is rewired.
-    from app.utils.time import utc_now
+    from app.utils.canonical_temporal_resolver import utc_now
 
     execution_time = execution_time or utc_now()
     class_ids = [

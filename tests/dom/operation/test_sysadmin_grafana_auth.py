@@ -3,7 +3,7 @@ from app import app, db
 from app.feats.base import FEATContext
 from app.hash_utils import hash_username_lookup
 from app.models import User
-from app.utils.time import utc_now
+from app.utils.canonical_temporal_resolver import utc_now
 from tests.helpers.classroom_initializer import initialize
 from tests.helpers.operation_routes import (
     get_sysadmin_auth_check,

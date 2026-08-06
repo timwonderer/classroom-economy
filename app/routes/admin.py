@@ -23,18 +23,11 @@ from types import SimpleNamespace
 from calendar import monthrange
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
-from app.utils.time import (
+from app.utils.canonical_temporal_resolver import (
     utc_now,
     ensure_utc,
-    local_date_end_utc,
-    local_date_bounds_utc,
-    UTC_MIN,
-    normalize_for_db,
-    claim_period_bounds_utc,
-    class_date,
-    day_bounds_utc,
-    get_class_now,
-    get_timezone,
+    canonical_temporal_resolver,
+    SYSTEM_LEVEL_EVALUATION,
 )
 from decimal import Decimal, InvalidOperation
 
@@ -2794,8 +2787,10 @@ def dashboard():
         .limit(5)
         .all()
     )
-    today_start_utc, _ = day_bounds_utc()
-    today_start_db = normalize_for_db(today_start_utc)
+    _day_bounds = canonical_temporal_resolver(
+        SYSTEM_LEVEL_EVALUATION, primitive="evaluation_day_boundaries",
+    )
+    today_start_db = ensure_utc(_day_bounds.boundary_start_utc)
     total_transactions_today = (
         Transaction.query
         .filter(Transaction.class_id.in_(teacher_class_ids))
@@ -4336,7 +4331,8 @@ def student_detail_public(actor_public_id):
 
     # Compute due dates and overdue status
     from datetime import date
-    effective_tz = get_timezone()
+    import pytz as _pytz
+    effective_tz = _pytz.UTC
     today = utc_now().astimezone(effective_tz).date()
     # Rent due on 5th, overdue after 6th
     rent_due = date(today.year, today.month, 5)
@@ -5208,10 +5204,15 @@ def add_manual_student():
 # -------------------- STORE MANAGEMENT --------------------
 
 def _end_of_day_utc(date_obj):
-    """Convert a local date to end-of-day UTC using the effective teacher timezone."""
+    """Convert a local date to end-of-day UTC using SLE day boundaries."""
     if not date_obj:
         return None
-    return local_date_end_utc(date_obj)
+    bounds = canonical_temporal_resolver(
+        SYSTEM_LEVEL_EVALUATION,
+        primitive="evaluation_day_boundaries",
+        evaluation_date=date_obj,
+    )
+    return bounds.boundary_end_utc
 
 import uuid
 
@@ -5494,15 +5495,15 @@ def store_management():
     if audit_start_date:
         try:
             start_day = datetime.strptime(audit_start_date, '%Y-%m-%d').date()
-            start_dt, _ = local_date_bounds_utc(start_day)
-            live_query = live_query.filter(PendingAction.submitted_at >= start_dt)
+            _sb = canonical_temporal_resolver(SYSTEM_LEVEL_EVALUATION, primitive="evaluation_day_boundaries", evaluation_date=start_day)
+            live_query = live_query.filter(PendingAction.submitted_at >= _sb.boundary_start_utc)
         except ValueError:
             flash("Invalid audit start date format. Please use YYYY-MM-DD.", "warning")
     if audit_end_date:
         try:
             end_day = datetime.strptime(audit_end_date, '%Y-%m-%d').date()
-            _, end_dt = local_date_bounds_utc(end_day)
-            end_dt = end_dt + timedelta(seconds=1)
+            _eb = canonical_temporal_resolver(SYSTEM_LEVEL_EVALUATION, primitive="evaluation_day_boundaries", evaluation_date=end_day)
+            end_dt = _eb.boundary_end_utc + timedelta(seconds=1)
             live_query = live_query.filter(PendingAction.submitted_at < end_dt)
         except ValueError:
             flash("Invalid audit end date format. Please use YYYY-MM-DD.", "warning")
@@ -5537,7 +5538,8 @@ def store_management():
         })
 
     audit_rows_all = live_serialized + inferred_rows
-    audit_rows_all.sort(key=lambda r: ensure_utc(r['timestamp']) if r['timestamp'] else UTC_MIN, reverse=True)
+    _UTC_MIN = datetime.min.replace(tzinfo=timezone.utc)
+    audit_rows_all.sort(key=lambda r: ensure_utc(r['timestamp']) if r['timestamp'] else _UTC_MIN, reverse=True)
 
     audit_total = len(audit_rows_all)
     audit_total_pages = max(1, math.ceil(audit_total / audit_per_page)) if audit_total else 1
@@ -7568,7 +7570,8 @@ def payroll():
     Enhanced payroll page with tabs for settings, students, rewards, fines, and manual payments.
     """
     now_utc = utc_now()
-    current_time = now_utc.astimezone(get_timezone())
+    import pytz as _pytz
+    current_time = now_utc.astimezone(_pytz.UTC)
 
     ctx = g.canonical_context
     user_id = ctx.user_id

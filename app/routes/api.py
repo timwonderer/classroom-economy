@@ -77,12 +77,7 @@ from app.utils.transaction_idempotency import (
     get_idempotent_transaction,
     purchase_transaction_key,
 )
-from app.utils.time import (
-    utc_now,
-    ensure_utc,
-    get_timezone,
-    UTC_MIN,
-)
+from app.utils.canonical_temporal_resolver import utc_now, ensure_utc
 
 # Import external modules
 from app.services.attendance_service import calculate_unpaid_attendance_seconds, get_class_attendance_status
@@ -832,7 +827,8 @@ def handle_hall_pass_action(pass_id, action):
 
 def _get_default_timezone():
     """Return the configured default timezone or fall back to Pacific Time."""
-    return get_timezone(current_app.config.get('DEFAULT_TIMEZONE'))
+    import pytz
+    return pytz.timezone(current_app.config.get('DEFAULT_TIMEZONE'))
 
 
 def _enforce_hall_pass_student_context(student, log_entry):

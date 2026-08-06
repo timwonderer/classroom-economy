@@ -10,7 +10,7 @@ from app.services import ledger_service, obligations_service
 # TODO (Phase 4): store_entitlement_service deleted; must query EntitlementEvent directly
 # from app.services.store_entitlement_service import list_entitlement_history
 from app.utils.seat_scope import seat_scoped_filter
-from app.utils.time import ensure_utc, utc_now
+from app.utils.canonical_temporal_resolver import ensure_utc, utc_now
 from app.utils.transaction_idempotency import void_refund_key
 
 

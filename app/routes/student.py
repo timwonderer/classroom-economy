@@ -101,18 +101,7 @@ from app.feats.store_purchase_feat import execute_store_purchase
 from app.feats.insurance_claim_feat import submit_insurance_claim
 from app.payroll import get_pay_rate_for_block
 from app.utils.join_code import get_display_join_code
-from app.utils.time import (
-    utc_now,
-    ensure_utc,
-    normalize_for_db,
-    get_timezone,
-    get_class_timezone,
-    class_date,
-    claim_period_bounds_utc,
-    get_class_month_start_utc,
-    get_class_week_range_utc,
-    get_class_now,
-)
+from app.utils.canonical_temporal_resolver import utc_now, ensure_utc
 from app.utils.canonical_temporal_resolver import (
     CLASS_LEVEL_EVALUATION,
     canonical_temporal_resolver,
@@ -2013,7 +2002,7 @@ def shop():
         class_id = context.class_id
 
     now = utc_now()
-    now_db = normalize_for_db(now)
+    now_db = ensure_utc(now)
     items_query = StoreItem.query.filter(
         StoreItem.class_id == class_id,
         StoreItem.is_active == True,

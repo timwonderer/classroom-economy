@@ -4,7 +4,7 @@ from decimal import Decimal
 
 from app.extensions import db
 from app.models import PayrollSettings
-from app.utils.time import utc_now
+from app.utils.canonical_temporal_resolver import utc_now
 
 
 def upsert_payroll_settings_for_blocks(

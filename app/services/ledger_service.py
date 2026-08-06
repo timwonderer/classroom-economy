@@ -5,7 +5,7 @@ from decimal import Decimal
 from app.extensions import db
 from app.models import LedgerBalanceSnapshot, Seat, Transaction, TransactionStatus, ClassEconomy, _quantize_currency
 from app.utils.seat_scope import transaction_scope_filter
-from app.utils.time import ensure_utc, utc_now
+from app.utils.canonical_temporal_resolver import ensure_utc, utc_now
 from app.utils.transaction_idempotency import create_idempotent_transaction
 from app.feats.base import feat_shell, audit_protected
 
@@ -370,22 +370,34 @@ def _apply_monthly_savings_interest(seat, *, annual_rate=Decimal("0.045")):
         return None
 
     # V2 Temporal Model: INTEREST IS CLASS-SCOPED
-    # Use class timezone for month/year resolution
-    from app.utils.time import get_class_now
-    now = get_class_now(seat.class_id)
+    # Use class timezone for month/year resolution via canonical resolver
+    from types import SimpleNamespace
+    from app.utils.canonical_temporal_resolver import (
+        canonical_temporal_resolver, CLASS_LEVEL_EVALUATION,
+        _get_class_timezone,
+    )
+    ctx = SimpleNamespace(class_id=seat.class_id)
+    now_eval = canonical_temporal_resolver(
+        CLASS_LEVEL_EVALUATION,
+        canonical_execution_context=ctx,
+        primitive="current_time",
+    )
+    now = now_eval.canonical_now
+    now_utc = now_eval.canonical_now_utc
     this_month = now.month
     this_year = now.year
+    class_tz = _get_class_timezone(seat.class_id)
 
     # Check for existing interest this month
     for tx in seat.transactions:
         tx_timestamp = ensure_utc(tx.timestamp)
         # Convert UTC timestamp to class time for comparison
-        from app.utils.time import to_class_time
-        tx_class_time = to_class_time(tx_timestamp, seat.class_id)
-        
+        tx_class_time = tx_timestamp.astimezone(class_tz) if tx_timestamp else None
+
         if (
             tx.account_type == "savings"
             and tx.description == "Monthly Savings Interest"
+            and tx_class_time is not None
             and tx_class_time.month == this_month
             and tx_class_time.year == this_year
             and not tx.is_void
@@ -400,9 +412,10 @@ def _apply_monthly_savings_interest(seat, *, annual_rate=Decimal("0.045")):
             continue
         if tx.type == "Interest" or "Interest" in (tx.description or ""):
             continue
-            
+
         available_at = ensure_utc(tx.date_funds_available)
-        if available_at and (now - to_class_time(available_at, seat.class_id)).days >= 30:
+        available_class = available_at.astimezone(class_tz) if available_at else None
+        if available_class and (now - available_class).days >= 30:
             eligible_balance += _quantize_currency(tx.amount)
 
     current_savings_balance = get_posted_balance(seat.id, seat.class_id, "savings")

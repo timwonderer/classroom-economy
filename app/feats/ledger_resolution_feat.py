@@ -176,8 +176,18 @@ def _calculate_overdraft_fee_amount(*, seat, banking_settings, force: bool = Fal
         return _quantize_currency(banking_settings.overdraft_fee_flat_amount)
 
     if banking_settings.overdraft_fee_type == "progressive":
-        from app.utils.time import get_class_month_start_utc
-        month_start_utc = get_class_month_start_utc(seat.class_id)
+        from types import SimpleNamespace
+        from app.utils.canonical_temporal_resolver import (
+            canonical_temporal_resolver, CLASS_LEVEL_EVALUATION,
+        )
+        ctx = SimpleNamespace(class_id=seat.class_id)
+        month_eval = canonical_temporal_resolver(
+            CLASS_LEVEL_EVALUATION,
+            canonical_execution_context=ctx,
+            primitive="evaluation_period_boundaries",
+            period="month",
+        )
+        month_start_utc = month_eval.boundary_start_utc
 
         from app.models import Transaction
 

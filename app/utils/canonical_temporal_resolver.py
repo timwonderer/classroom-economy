@@ -14,7 +14,41 @@ from typing import Any
 
 import pytz
 
-from app.utils.time import utc_now, get_class_timezone
+
+
+# ---------------------------------------------------------------------------
+# Infrastructure utilities (public API per SPEC-TIME-001)
+# ---------------------------------------------------------------------------
+
+def utc_now() -> datetime:
+    """Return current time in UTC as timezone-aware datetime."""
+    return datetime.now(timezone.utc)
+
+
+def ensure_utc(dt: datetime | None) -> datetime | None:
+    """Ensure datetime is in UTC. Naive datetimes are assumed UTC."""
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
+def _get_class_timezone(class_id: str) -> pytz.BaseTzInfo:
+    """Look up the IANA timezone for a class from ClassEconomy."""
+    from app.models import ClassEconomy
+    cls = ClassEconomy.query.filter_by(class_id=class_id).first()
+    if cls is None:
+        raise TemporalResolutionError(
+            f"No ClassEconomy found for class_id={class_id}"
+        )
+    tz_name = getattr(cls, "class_timezone", None) or "UTC"
+    try:
+        return pytz.timezone(tz_name)
+    except pytz.UnknownTimeZoneError:
+        raise TemporalResolutionError(
+            f"Unknown IANA timezone '{tz_name}' for class {class_id}"
+        )
 
 SYSTEM_LEVEL_EVALUATION = "SLE"
 CLASS_LEVEL_EVALUATION = "CLE"
@@ -129,8 +163,8 @@ def _resolve_authority(evaluation_type: str, ctx) -> tuple[str, str | None]:
             "CLE requires canonical_execution_context with class_id"
         )
 
-    tz_obj = get_class_timezone(class_id)
-    # get_class_timezone returns a pytz object; extract the zone name string
+    tz_obj = _get_class_timezone(class_id)
+    # _get_class_timezone returns a pytz object; extract the zone name string
     tz_name = tz_obj.zone if hasattr(tz_obj, 'zone') else str(tz_obj)
     try:
         pytz.timezone(tz_name)

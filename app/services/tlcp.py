@@ -13,7 +13,7 @@ from flask import has_request_context, request, current_app
 from app.extensions import db
 from app.models import ActorRequestTrace, AuditEvent, ClassEconomy, Seat
 from app.services.context_resolver import CanonicalContext
-from app.utils.time import utc_now
+from app.utils.canonical_temporal_resolver import utc_now
 
 CORRELATION_VERSION = 1
 DEFAULT_TRACE_LIMIT = 20

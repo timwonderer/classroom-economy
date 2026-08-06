@@ -21,7 +21,7 @@ from typing import Any
 import sqlalchemy as sa
 
 from app.extensions import db
-from app.utils.time import ensure_utc, utc_now
+from app.utils.canonical_temporal_resolver import ensure_utc, utc_now
 
 logger = logging.getLogger(__name__)
 

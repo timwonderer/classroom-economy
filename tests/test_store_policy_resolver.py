@@ -19,7 +19,7 @@ from app.services.store_policy_resolver import (
     PolicyParseError,
     PolicyValidationError,
 )
-from app.utils.time import utc_now
+from app.utils.canonical_temporal_resolver import utc_now
 from tests.helpers.canonical_classroom import provision_classroom
 
 

@@ -5,7 +5,7 @@ import secrets
 from app.extensions import db, limiter
 from app.models import Seat, User
 from app.auth import admin_required
-from app.utils.time import utc_now, ensure_utc
+from app.utils.canonical_temporal_resolver import utc_now, ensure_utc
 
 recovery_bp = Blueprint('recovery', __name__, url_prefix='/recovery')
 RESET_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"

@@ -20,7 +20,7 @@ import uuid
 from app.extensions import db
 from app.models import ClassEconomy, IdentityProfile, Seat, User, UserRole
 from app.utils.auth_username import build_hashed_username_fields
-from app.utils.time import utc_now
+from app.utils.canonical_temporal_resolver import utc_now
 
 
 # ---------------------------------------------------------------------------
@@ -168,7 +168,7 @@ def create_student(
 
     Returns (user, seat, profile).
     """
-    from app.utils.time import utc_now
+    from app.utils.canonical_temporal_resolver import utc_now
     from werkzeug.security import generate_password_hash
 
     if username:

@@ -14,7 +14,7 @@ import logging
 from dataclasses import dataclass
 
 from app.extensions import db
-from app.utils.time import utc_now
+from app.utils.canonical_temporal_resolver import utc_now
 
 logger = logging.getLogger(__name__)
 
