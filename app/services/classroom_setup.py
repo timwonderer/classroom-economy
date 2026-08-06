@@ -31,10 +31,16 @@ def create_teacher(username: str, *, totp_secret: str | None = None) -> User:
     """Create a canonical teacher User (role=TEACHER), or return existing.
 
     Idempotent: if a teacher with this username already exists, returns them.
+    Concurrent-safe: uses a savepoint to handle unique constraint races on
+    username_lookup_hash — if a concurrent caller wins the insert, re-queries
+    and returns the winner's row.
+
     Returns the flushed User instance. Does NOT create a class or seat —
     call create_class() next to complete the teacher identity.
     """
+    from sqlalchemy.exc import IntegrityError
     from app.utils.encryption import normalize_totp_for_storage
+
     _salt, u_hash, u_lookup = build_hashed_username_fields(username)
     existing = User.query.filter_by(username_lookup_hash=u_lookup).first()
     if existing is not None:
@@ -47,8 +53,18 @@ def create_teacher(username: str, *, totp_secret: str | None = None) -> User:
         username_lookup_hash=u_lookup,
         totp_secret_encrypted=normalize_totp_for_storage(totp_secret) if totp_secret else None,
     )
-    db.session.add(teacher)
-    db.session.flush()
+    try:
+        with db.session.begin_nested():
+            db.session.add(teacher)
+            db.session.flush()
+    except IntegrityError:
+        db.session.rollback()
+        existing = User.query.filter_by(username_lookup_hash=u_lookup).first()
+        if existing is not None:
+            if existing.user_role != UserRole.TEACHER:
+                raise ValueError("Username belongs to a non-teacher user")
+            return existing
+        raise
     return teacher
 
 
@@ -60,14 +76,23 @@ def create_teacher_account_with_class(
     display_name: str | None = None,
     section: str | None = None,
 ) -> User:
-    """Create the canonical teacher account and initial class."""
+    """Create the canonical teacher account and initial class.
+
+    Retry-safe: if the class already exists for this teacher and join_code,
+    returns the existing teacher without creating a duplicate class.
+    """
     teacher = create_teacher(username, totp_secret=totp_secret)
-    create_class(
-        teacher.id,
+    existing_class = ClassEconomy.query.filter_by(
+        user_id=teacher.id,
         join_code=join_code,
-        display_name=display_name,
-        section=section,
-    )
+    ).first()
+    if existing_class is None:
+        create_class(
+            teacher.id,
+            join_code=join_code,
+            display_name=display_name,
+            section=section,
+        )
     return teacher
 
 

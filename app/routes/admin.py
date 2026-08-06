@@ -4304,6 +4304,9 @@ def student_detail_public(actor_public_id):
         abort(404)
     if expected_class_id and str(scoped_seat.class_id or "") != expected_class_id:
         abort(404)
+    # DOM-IDEN-006: student detail must be scoped to the active canonical class
+    if current_class_id and str(scoped_seat.class_id or "") != str(current_class_id):
+        abort(404)
 
     student = scoped_seat
     class_id = scoped_seat.class_id
