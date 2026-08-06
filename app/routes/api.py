@@ -61,7 +61,7 @@ from app.feats.store_purchase_feat import execute_store_purchase
 from app.feats.ledger_resolution_feat import build_intended_ledger_plan, resolve_intended_ledger_plan, apply_resolved_ledger_plan
 from app.services import store_service
 from app.services.entitlement_read_service import get_purchase_count, get_active_rent_grant
-from app.services.entitlement_service import get_hall_pass_balance, grant_hall_passes
+from app.services.entitlement_service import consume_entitlement, get_hall_pass_balance, grant_hall_passes
 from app.services.hall_pass_request_queue import (
     PendingHallPassRequest,
     clear_pending_hall_pass_requests_for_seat,
@@ -458,24 +458,21 @@ def use_item():
         terminal = _entitlement_terminal_event(entitlement.entitlement_id)
         if terminal:
             return jsonify({"status": "error", "message": "This item is not available for redemption."}), 400
-        db.session.add(
-            EntitlementEvent(
-                class_id=entitlement.class_id,
-                entitlement_id=entitlement.entitlement_id,
-                target_seat_id=entitlement.target_seat_id,
-                actor_seat_id=entitlement.target_seat_id,
-                product_id=entitlement.product_id,
-                entitlement_type=entitlement.entitlement_type,
-                acquisition_type=entitlement.acquisition_type,
-                event_type="CONSUMED",
-                correlation_id=f"immediate_use_{entitlement.entitlement_id}",
-                payload={
-                    "outcome": "APPROVED",
-                    "source": "api.use_item",
-                    "item_type": store_item.item_type,
-                    "details": details or None,
-                },
-            )
+        consume_entitlement(
+            entitlement_id=entitlement.entitlement_id,
+            class_id=entitlement.class_id,
+            target_seat_id=entitlement.target_seat_id,
+            actor_seat_id=entitlement.target_seat_id,
+            product_id=entitlement.product_id,
+            entitlement_type=entitlement.entitlement_type,
+            acquisition_type=entitlement.acquisition_type,
+            correlation_id=f"immediate_use_{entitlement.entitlement_id}",
+            payload={
+                "outcome": "APPROVED",
+                "source": "api.use_item",
+                "item_type": store_item.item_type,
+                "details": details or None,
+            },
         )
         return jsonify({"status": "success", "message": f"You used {store_item.name}."})
 
@@ -565,24 +562,21 @@ def approve_redemption():
                 idempotency_key=pending_action.correlation_id,
             )
         else:
-            db.session.add(
-                EntitlementEvent(
-                    class_id=entitlement.class_id,
-                    entitlement_id=entitlement.entitlement_id,
-                    target_seat_id=entitlement.target_seat_id,
-                    actor_seat_id=ctx.seat_id,
-                    product_id=entitlement.product_id,
-                    entitlement_type=entitlement.entitlement_type,
-                    acquisition_type=entitlement.acquisition_type,
-                    event_type="CONSUMED",
-                    correlation_id=pending_action.correlation_id,
-                    payload={
-                        "outcome": "APPROVED",
-                        "source": "api.approve_redemption",
-                        "item_type": store_item.item_type,
-                        "details": (pending_action.payload or {}).get("details") or None,
-                    },
-                )
+            consume_entitlement(
+                entitlement_id=entitlement.entitlement_id,
+                class_id=entitlement.class_id,
+                target_seat_id=entitlement.target_seat_id,
+                actor_seat_id=ctx.seat_id,
+                product_id=entitlement.product_id,
+                entitlement_type=entitlement.entitlement_type,
+                acquisition_type=entitlement.acquisition_type,
+                correlation_id=pending_action.correlation_id,
+                payload={
+                    "outcome": "APPROVED",
+                    "source": "api.approve_redemption",
+                    "item_type": store_item.item_type,
+                    "details": (pending_action.payload or {}).get("details") or None,
+                },
             )
         db.session.delete(pending_action)
     except (SQLAlchemyError, ValueError) as e:

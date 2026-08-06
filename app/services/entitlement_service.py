@@ -199,6 +199,54 @@ def consume_hall_pass(
     return event, get_hall_pass_balance(seat_id, class_id)
 
 
+def consume_entitlement(
+    *,
+    entitlement_id: str,
+    class_id: str,
+    target_seat_id: int,
+    actor_seat_id: int,
+    product_id: int | None,
+    entitlement_type: str,
+    acquisition_type: str,
+    correlation_id: str,
+    payload: dict | None = None,
+) -> EntitlementEvent:
+    """Record a CONSUMED terminal event for a generic entitlement.
+
+    Per DOM-STORE-001 §VIII: terminal events reuse the grant's entitlement_id
+    to preserve lineage. Caller must verify no terminal event already exists
+    (enforced by ix_entitlement_events_one_terminal_per_lineage).
+
+    This is the canonical write path for non-hall-pass consumption
+    (store items, privileges, etc.). Hall pass consumption uses
+    consume_hall_pass() which also handles balance derivation.
+    """
+    terminal = get_entitlement_lineage_terminal_event(entitlement_id, class_id)
+    if terminal is not None:
+        raise ValueError(
+            f"Entitlement {entitlement_id} already has terminal event: "
+            f"{terminal.event_type}"
+        )
+
+    now = _current_utc()
+    event = EntitlementEvent(
+        class_id=class_id,
+        target_seat_id=target_seat_id,
+        actor_seat_id=actor_seat_id,
+        entitlement_id=entitlement_id,
+        product_id=product_id,
+        entitlement_type=entitlement_type,
+        acquisition_type=acquisition_type,
+        event_type="CONSUMED",
+        correlation_id=correlation_id,
+        payload=payload,
+        timestamp=now,
+    )
+    db.session.add(event)
+    db.session.flush()
+    return event
+
+
 def expire_rent_hall_passes(
     *,
     correlation_id: str,
