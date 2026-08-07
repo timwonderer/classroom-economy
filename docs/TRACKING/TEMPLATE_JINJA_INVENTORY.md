@@ -74,7 +74,7 @@
 - `layout_admin.html:various` — Multiple `current_class_context.*` direct accesses
 
 **Domain Owner:** Identity (DOM-IDEN-001)  
-**Responsible View Model Builder:** `identity/builders.py`  
+**Responsible View Model Builder:** `identity/builders.py` *(to be implemented; currently scattered in routes)*  
 **Status:** PARTIAL - Layout templates still receive raw context objects
 
 ---
@@ -119,7 +119,7 @@ Lines various: Direct balance reads without view model wrapper
 ```
 
 **Domain Owner:** Ledger (DOM-LEDG-001)  
-**Responsible View Model Builder:** `ledger/builders.py`  
+**Responsible View Model Builder:** `ledger/builders.py` *(to be implemented; currently in `app/services/view_model_builders.py`)*  
 **Status:** ❌ SEVERE VIOLATION - Most templates directly expose raw balance/transaction data
 
 **Note on admin_payroll.html:** See Payroll Domain section below - this is a cross-domain page owned by Payroll with Ledger as a composition dependency.
@@ -177,7 +177,7 @@ Line 191: {{ obligation_summary.status_breakdown.past_due_grace + ... }}
 ```
 
 **Domain Owner:** Obligations (DOM-OBL-001)  
-**Responsible View Model Builder:** `obligations/builders.py`  
+**Responsible View Model Builder:** `app/services/obligation_view_model.py` (StudentObligationView, ClassObligationSummary)  
 **Status:** ⚠️ PARTIAL - student_rent.html shows correct pattern but incomplete, others CRITICAL
 
 ---
@@ -251,8 +251,8 @@ Line 230: {{ entitlement.expiry_date.strftime('%m/%d/%y') }}  [ORM DATE FORMATTI
    - `can_use: bool`
 
 **Domain Owner:** Store (DOM-STORE-001)  
-**Responsible View Model Builder:** `store/builders.py`  
-**Status:** ❌ SEVERE VIOLATION - All complexity in template, no pre-computed view models
+**Responsible View Model Builder:** `app/services/view_model_builders.py` (build_store_management_view, partial implementation)  
+**Status:** ❌ SEVERE VIOLATION - Most templates have no pre-computed view models; builders incomplete
 
 ---
 
@@ -299,8 +299,8 @@ Line 230: {{ entitlement.expiry_date.strftime('%m/%d/%y') }}  [ORM DATE FORMATTI
 ```
 
 **Composition:** This is a cross-domain page composed of:
-- **Primary Owner:** Payroll (DOM-PAYROLL-001) → `payroll/builders.py` for PayrollConfigurationView, StudentPayrollStatusView
-- **Secondary Dependency:** Ledger (DOM-LEDG-001) → `ledger/builders.py` for AccountBalanceView (checking/savings balance context)
+- **Primary Owner:** Payroll (DOM-PAYROLL-001) → `payroll/builders.py` (to be implemented) for PayrollConfigurationView, StudentPayrollStatusView
+- **Secondary Dependency:** Ledger (DOM-LEDG-001) → `ledger/builders.py` (to be implemented) for AccountBalanceView (checking/savings balance context)
 
 **Route Responsibility:** Assemble both domain builders into a single PayrollPageView
 
@@ -331,7 +331,7 @@ Line 230: {{ entitlement.expiry_date.strftime('%m/%d/%y') }}  [ORM DATE FORMATTI
 **Status:** ❌ SEVERE VIOLATION - Analytics computations should be pre-rendered
 
 **Domain Owner:** Analytics (DOM-ANALYTICS-001)  
-**Responsible View Model Builder:** `analytics/builders.py`  
+**Responsible View Model Builder:** `analytics/builders.py` (to be implemented)  
 **Status:** ❌ SEVERE VIOLATION
 
 ---
@@ -795,9 +795,17 @@ class EntitlementView:
 
 **Priority:** Templates with 30-49 Jinja variables or HIGH violations
 
-4. **analytics/builders.py** → `admin_analytics_dashboard.html`
-5. **class_config/builders.py** → Policy and announcement views
-6. **payroll/builders.py** → Payroll configuration and history
+4. **analytics/builders.py** (to be implemented) → `admin_analytics_dashboard.html`
+   - `AnalyticsDashboardView`
+   - `ChartDataView`
+
+5. **class_config/builders.py** (to be implemented) → Policy and announcement views
+   - `PolicyManagementView`
+   - `AnnouncementListView`
+
+6. **payroll/builders.py** (to be implemented) → Payroll configuration and history
+   - `PayrollConfigurationView`
+   - `StudentPayrollStatusView`
 
 ### Phase 3: Layout & Navigation (Week 5)
 
@@ -876,8 +884,10 @@ From INV-ARC-022:
 
 | Metric | Count | Status |
 |--------|-------|--------|
-| Total Templates | 96 | — |
-| Templates with Violations | 78 | ❌ 81% |
+| Total Templates (All Scopes) | 96 | — |
+| Templates Audited (SPEC-UI-001 Scope) | 71 | ✅ Normative |
+| Templates with Violations (SPEC-UI-001) | 68+ | ❌ 95%+ |
+| Templates with Violations (All Scopes) | 78 | ❌ 81% |
 | CRITICAL Violations | 18 | 🔴 |
 | HIGH Violations | 35 | 🟠 |
 | MEDIUM Violations | 25 | 🟡 |
@@ -891,5 +901,5 @@ From INV-ARC-022:
 
 **Estimated Remediation Effort:** 200-250 hours of development across 6 weeks
 
-**Blocking:** Many Phase 10 audit certifications pending completion of view model wiring
+**Blocking:** Many Phase 10 audit certifications pending completion of view model wiring per INV-ARC-022 and SPEC-UI-001
 

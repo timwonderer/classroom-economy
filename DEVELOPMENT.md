@@ -46,7 +46,7 @@ Run once after clone:
 - **Store Domain Phase 10 Certified** (2026-08-04): DOM-STORE-001, FEAT-STOR-001 (purchase), FEAT-STOR-002 (lifecycle transition), FEAT-STOR-003 (insurance claims), and FEAT-STOR-004 (direct grant) fully implemented, tested end-to-end, and audited for production readiness.
 - **Entitlement Read Service**: Canonical read operations for entitlements, purchase counts, and active grants implemented in `app/services/entitlement_read_service.py`.
 - **Product Policy Resolver**: `app/services/store_policy_resolver.py` provides policy resolution and payload schema validation per SPEC-STORE-001.
-- **View Model Builders**: Obligation view models and class obligation summaries centralized in `app/services/view_model_builders.py`.
+- **View Model Builders**: Obligation view models and class obligation summaries implemented in `app/services/obligation_view_model.py`.
 - `classes.class_id` is the canonical class boundary; `join_code` is a public alias.
 - `Seat + Class` is the runtime class-scoped authority for student/admin/API flows.
 - Legacy `ClassMembership`, `student_teachers`, and principal columns may still support compatibility paths, but they are not the identity or class-boundary authority.

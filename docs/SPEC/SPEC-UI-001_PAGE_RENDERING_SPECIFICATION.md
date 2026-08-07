@@ -229,15 +229,22 @@ A page conforms to this specification when:
 
 ## XIV. Reference Implementations
 
-The following implementations are considered canonical examples of this specification:
+Reference implementations are pending completion of view model wiring across all 71 SPEC-UI-001 authenticated pages.
 
-- Student Dashboard
-- Student Payroll
-- Teacher Payroll
-- Student Obligations
-- Teacher Obligations
+Current target surfaces for conformance (Phase 10 audit):
 
-These examples are informative and do not supersede this specification.
+- Student Rent (partial conformance with view model integration)
+- Student Obligations (conformant with StudentObligationView and ClassObligationSummary)
+- Teacher Obligations (conformant with StudentObligationView and ClassObligationSummary)
+
+Aspirational targets requiring builder implementation:
+
+- Student Dashboard (requires AnnouncementListView, TransactionListView)
+- Student Payroll (requires StudentPayrollStatusView)
+- Teacher Payroll (requires PayrollConfigurationView, StudentPayrollStatusView)
+- Store Management (requires StoreItemCardView, EntitlementCardView)
+
+These examples are informative and do not supersede this specification. Implementations shall achieve conformance through systematic view model wiring per `docs/TRACKING/TEMPLATE_JINJA_INVENTORY.md` Phase 1-4 remediation roadmap.
 
 ---
 

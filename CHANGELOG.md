@@ -10,7 +10,9 @@ and this project follows semantic versioning principles.
 
 ### Added
 
-- **FEAT-CLASS-001 & FEAT-CLASS-002** — Canonical workflows for creating and modifying Class Boundaries. Includes orchestration of Class, Teacher Seat, and class configuration provisioning via delegated domain services. Supports initial class creation after teacher registration and additional class creation for existing teachers (#1314).
+- **Template Jinja2 Element Inventory Audit** — Comprehensive audit of all 96 application templates analyzing Jinja2 variable and tag patterns, domain authority mapping, view model wiring status, and compliance against INV-ARC-022 and SPEC-UI-001. Includes per-template breakdown, violation categorization (CRITICAL/HIGH/MEDIUM), affected templates, and 6-week remediation roadmap. Document: `docs/TRACKING/TEMPLATE_JINJA_INVENTORY.md` (#1314).
+- **Canonical Page Rendering Specification (SPEC-UI-001)** — Normative specification defining implementation requirements for authenticated page routes, page view models, builder responsibilities, template contracts, and route orchestration. `docs/SPEC/SPEC-UI-001_PAGE_RENDERING_SPECIFICATION.md` (#1314).
+- **Request Context and Page Rendering Pipeline Invariant (INV-ARC-022)** — Foundational architectural invariant establishing the 8-layer rendering pipeline (Request → Canonical Context → Temporal Context → Identity Display Context → Domain Reads → Page View Model → Template) and strict separation of authority, interpretation, and presentation responsibilities. `docs/INVARIANT/ARCHITECTURE/INV-ARC-022_REQUEST_CONTEXT_AND_PAGE_RENDERING.md` (#1314).
 
 ### Changed
 
