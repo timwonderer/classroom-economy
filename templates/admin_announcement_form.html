@@ -107,8 +107,8 @@
                 <h5 class="mb-0"><span class="material-symbols-outlined me-2">info</span>Preview</h5>
             </div>
             <div class="card-body">
-                <div class="alert {{ announcement.get_priority_class() }} mb-0">
-                    <strong><span class="material-symbols-outlined me-2 align-middle">{{ announcement.get_priority_icon() }}</span>{{ announcement.title }}</strong>
+                <div class="alert {{ announcement.priority_class }} mb-0">
+                    <strong><span class="material-symbols-outlined me-2 align-middle">{{ announcement.priority_icon }}</span>{{ announcement.title }}</strong>
                     <p class="mb-0 mt-2">{{ announcement.message }}</p>
                 </div>
             </div>

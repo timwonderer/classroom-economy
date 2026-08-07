@@ -5234,6 +5234,7 @@ def store_management():
     if pending_redemption_events:
         entitlement_ids = [e.entitlement_id for e in pending_redemption_events]
         grants = EntitlementEvent.query.filter(
+            EntitlementEvent.class_id == selected_scope["class_id"],
             EntitlementEvent.entitlement_id.in_(entitlement_ids),
             EntitlementEvent.event_type == 'GRANTED'
         ).all()

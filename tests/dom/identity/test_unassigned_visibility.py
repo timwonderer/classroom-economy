@@ -18,17 +18,19 @@ def test_DOM_IDEN_001__cross_teacher_isolation(client):
     class_b = initialize("biology_block_a", client.application)
     
     resp_a = admin_get_students(client)
+    assert resp_a.status_code == 200, "Teacher A should successfully access student list"
     html_a = resp_a.data.decode('utf-8')
 
     for seat in class_b.students:
         assert f'data-seat-id="{seat.seat.id}"' not in html_a, "Teacher A should not see Teacher B's students"
-        
+
     # Switch to Teacher B and verify
     client.get('/admin/logout')
     initialize_as_teacher("biology_block_a", client, client.application)
     resp_b = admin_get_students(client)
+    assert resp_b.status_code == 200, "Teacher B should successfully access student list"
     html_b = resp_b.data.decode('utf-8')
-    
+
     for seat in class_a.students:
         assert f'data-seat-id="{seat.seat.id}"' not in html_b, "Teacher B should not see Teacher A's students"
 
