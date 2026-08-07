@@ -41,7 +41,7 @@ The Identity domain has successfully completed all 10 phases of SOP-DEV-002 doma
 **Evidence:**
 - ✅ `User` — authenticated principal (credentials, recovery, global auth state)
 - ✅ `Class` (ClassEconomy) — isolated classroom universe with `class_id` (UUID) as canonical key
-- ✅ `Seat` — runtime actor within a class, bound to exactly one `User`
+- ✅ `Seat` — runtime actor within a class, bound to zero or one `User` (None for unassigned pending students)
 - ✅ `IdentityProfile` — display-only data associated with a `Seat`, 1:1 relationship
 - ✅ Foreign keys: `Seat.user_id → User.id`, `Seat.class_id → ClassEconomy.class_id`, `IdentityProfile.seat_id → Seat.id`
 - ✅ Timestamps: `created_at`, `updated_at` on identity_profiles
