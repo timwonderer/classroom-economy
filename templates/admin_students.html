@@ -1511,7 +1511,7 @@
       });
   }
 
-  function deletePendingStudent(teacherBlockId, studentName) {
+  function deletePendingStudent(seatId, studentName) {
     const confirmation = confirm(
       `Are you sure you want to delete the pending roster entry for ${studentName}?\n\n` +
       `This student has not yet claimed their account. This action will remove them from your roster.\n\n` +
@@ -1527,7 +1527,7 @@
         'Content-Type': 'application/json',
         'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content')
       },
-      body: JSON.stringify({ teacher_block_id: teacherBlockId })
+      body: JSON.stringify({ seat_id: seatId })
     })
       .then(response => response.json())
       .then(data => {
