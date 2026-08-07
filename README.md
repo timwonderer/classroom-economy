@@ -9,26 +9,27 @@ A classroom management platform that uses a simulated token economy to drive stu
 
 ---
 
-## Current Status (2026-08-04)
+## Current Status (2026-08-06)
 
 Classroom Token Hub v2 is undergoing a comprehensive architectural reconstruction to achieve production readiness via the 10-phase SOP-DEV-002a domain rebuild workflow.
 
-**Audit Baseline Established:** 2026-08-04 via complete code inspection of all 10 domains
+**Progress:** 3 of 10 domains are Phase 10 certified and production-ready as of 2026-08-06.
 
-- ✅ **5 domains** have Phases 0-5 complete (foundational architecture)
-- ⚠️ **2 domains** have Phase 5 complete but Phase 6-7 blocked or unverified
-- 🔄 **3 domains** at Phase 1 (not yet started)
+- ✅ **3 domains** Phase 10 CERTIFIED (production-ready): Identity (2026-08-06), Obligations (2026-08-04), Store (2026-08-04)
+- 🔄 **3 domains** Phases 0-4 complete, Phase 5 blocked (missing view models): Class Config, Ledger, Payroll
+- 🔄 **4 domains** Phase 0-1 only (not started): Operations, Interpretation, Policies, Support
 
-### Critical Blockers (Must Resolve Before Production)
+### Phase 10 Certifications
 
-1. **Obligations domain Phase 6-7 FAILS** — Template uses undefined variables (priority: fix immediately)
-2. **8 domains missing view models** — Blocks Phase 6-7 integration (15-25 hours to resolve)
-3. **11 routes with direct DB mutations** — Phase 4 (Mutation Boundary) enforcement incomplete
-4. **Zero Phase 10 audits completed** — No domain is production-certified yet
+| Domain | Phases 0-10 | Audit Date | Status |
+|--------|------------|-----------|--------|
+| **Identity** | ✅ COMPLETE | 2026-08-06 | PRODUCTION READY |
+| **Obligations** | ✅ COMPLETE | 2026-08-04 | PRODUCTION READY |
+| **Store & Entitlements** | ✅ COMPLETE | 2026-08-04 | PRODUCTION READY |
 
-**Current Estimate to Production:** 160-240 hours (4-6 weeks at 40h/week) starting from this baseline.
+**Current Work:** Phase 5-7 wiring for Class Config, Ledger, Payroll domains (requires immutable view model implementations).
 
-See **[AUDIT_BASELINE_2026-08-04.md](docs/TRACKING/AUDIT_BASELINE_2026-08-04.md)** for detailed domain-by-domain findings.
+See **[DOMAIN_PROGRESS_MATRIX_2026.md](docs/TRACKING/DOMAIN_PROGRESS_MATRIX_2026.md)** for detailed domain-by-domain status and **[SOP-DEV-002a_IDENTITY_20260806_AUDIT.md](docs/TRACKING/SOP-DEV-002a_IDENTITY_20260806_AUDIT.md)** for Identity certification example.
 
 ---
 
