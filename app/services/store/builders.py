@@ -118,6 +118,7 @@ class EntitlementCardView:
     is_pending_approval: bool
     is_processing: bool
     is_hall_pass: bool
+    status_badge_class: str  # Bootstrap badge class based on status (bg-success, bg-warning, etc.)
 
 
 def build_store_item_card_view(
@@ -312,8 +313,20 @@ def build_entitlement_card_view(
     can_request_redemption = (
         item_type == "delayed" and status == "purchased"
     )
+    can_use_hall_pass = is_hall_pass and status == "purchased"
     is_pending_approval = status == "pending"
     is_processing = status == "processing"
+
+    # Map status to badge class
+    status_badge_classes = {
+        "purchased": "bg-success",
+        "pending": "bg-warning",
+        "processing": "bg-info",
+        "consumed": "bg-secondary",
+        "expired": "bg-secondary",
+        "revoked": "bg-danger",
+    }
+    status_badge_class = status_badge_classes.get(status, "bg-secondary")
 
     return EntitlementCardView(
         entitlement_id=str(entitlement_id),
@@ -329,9 +342,11 @@ def build_entitlement_card_view(
         redemption_prompt=None,
         can_redeem_immediately=can_redeem_immediately,
         can_request_redemption=can_request_redemption,
+        can_use_hall_pass=can_use_hall_pass,
         is_pending_approval=is_pending_approval,
         is_processing=is_processing,
         is_hall_pass=is_hall_pass,
+        status_badge_class=status_badge_class,
     )
 
 

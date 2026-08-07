@@ -178,7 +178,7 @@
                     <div class="card-body d-flex flex-column">
                         <h2 class="h5 card-title">{{ entitlement.item_name }}</h2>
                         <div class="mb-2">
-                            <span class="badge bg-success">{{ entitlement.display_status }}</span>
+                            <span class="badge {{ entitlement.status_badge_class }}">{{ entitlement.display_status }}</span>
                             {% if entitlement.item_type == 'immediate' %}
                                 <span class="badge bg-success">Immediate</span>
                             {% elif entitlement.item_type == 'delayed' %}
@@ -206,7 +206,7 @@
                         <div class="mt-auto">
                             {% if entitlement.is_hall_pass %}
                                 <!-- Hall Pass - Use immediately -->
-                                <button class="btn btn-success w-100 use-item-btn"
+                                <button type="button" class="btn btn-success w-100 use-item-btn"
                                         data-item-id="{{ entitlement.entitlement_id }}"
                                         data-item-name="{{ entitlement.item_name }}"
                                         data-item-type="hall_pass"
@@ -215,7 +215,7 @@
                                 </button>
                             {% elif entitlement.can_redeem_immediately %}
                                 <!-- Immediate use item - redeem now -->
-                                <button class="btn btn-primary w-100 use-item-btn"
+                                <button type="button" class="btn btn-primary w-100 use-item-btn"
                                         data-item-id="{{ entitlement.entitlement_id }}"
                                         data-item-name="{{ entitlement.item_name }}"
                                         data-item-type="immediate"
@@ -224,7 +224,7 @@
                                 </button>
                             {% elif entitlement.can_request_redemption %}
                                 <!-- Delayed use item - request redemption -->
-                                <button class="btn btn-warning w-100 use-item-btn"
+                                <button type="button" class="btn btn-warning w-100 use-item-btn"
                                         data-item-id="{{ entitlement.entitlement_id }}"
                                         data-item-name="{{ entitlement.item_name }}"
                                         data-item-type="delayed"
@@ -232,7 +232,7 @@
                                     <span class="material-symbols-outlined">schedule</span> Request Redemption
                                 </button>
                             {% elif entitlement.is_pending_approval %}
-                                <button class="btn btn-secondary w-100" disabled>
+                                <button type="button" class="btn btn-secondary w-100" disabled>
                                     <span class="material-symbols-outlined">hourglass_empty</span> Awaiting Approval
                                 </button>
                             {% elif entitlement.is_processing %}
