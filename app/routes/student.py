@@ -2033,7 +2033,6 @@ def shop():
     # Check if student has paid rent this month using canonical rent settings only.
     from app.models import RentSettings
     has_paid_rent = False
-    per_period_rent_item_ids = set()
     rent_item_types_by_store_id = {}
     per_use_limit_by_store_id = {}
 
@@ -2063,7 +2062,6 @@ def shop():
             rent_settings = get_rent_settings_for_context(context)
             rent_item_types_by_store_id = {}
             per_use_limit_by_store_id = {}
-            per_period_rent_item_ids = set()
 
             if rent_settings:
                 frozen_store_items = get_frozen_store_linked_items(rent_settings)
@@ -2079,12 +2077,6 @@ def shop():
                     if effective_type == 'per_use':
                         use_limit = frozen_item.get('use_limit')
                         per_use_limit_by_store_id[sid] = use_limit if use_limit else -1
-
-                # Privilege items get the "Included in your rent!" badge
-                frozen_privileges = get_frozen_privilege_items(rent_settings)
-                per_period_rent_item_ids = {
-                    fp['store_item_id'] for fp in frozen_privileges if fp.get('store_item_id')
-                }
 
     # Build rent-perk availability map for rent-linked per-use items.
     rent_free_entitlement_counts = {}  # {store_item_id: available_units or -1 for unlimited}
