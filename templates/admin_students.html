@@ -416,8 +416,9 @@
                           {% endif %}
                         </td>
                         <td>
-                          <button type="button" class="btn btn-sm btn-outline-danger"
-                            onclick="deletePendingStudent({{ seat.id }}, '{{ seat.full_name }}')"
+                          <button type="button" class="btn btn-sm btn-outline-danger delete-pending-student"
+                            data-seat-id="{{ seat.id }}"
+                            data-student-name="{{ seat.full_name }}"
                             aria-label="Delete pending student {{ seat.full_name }}.">
                             <span class="material-symbols-outlined align-middle fs-6" aria-hidden="true">delete</span>
                           </button>
@@ -1543,6 +1544,16 @@
         alert('Network error occurred while deleting pending student.');
       });
   }
+
+  // Event listener for delete pending student buttons using data attributes
+  document.addEventListener('click', function (e) {
+    if (e.target.closest('.delete-pending-student')) {
+      const button = e.target.closest('.delete-pending-student');
+      const seatId = button.dataset.seatId;
+      const studentName = button.dataset.studentName;
+      deletePendingStudent(seatId, studentName);
+    }
+  });
 
   // (Tap toggle controls moved to Attendance page)
 
