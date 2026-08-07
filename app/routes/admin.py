@@ -3635,9 +3635,11 @@ def settings():
 
     # Build view model dict for admin (no raw SQLAlchemy in templates).
     admin_view = {
+        'id': admin.id,
         'display_name': admin.display_name,
         'teacher_public_id': admin.teacher_public_id,
         'get_display_name': admin.get_display_name(),
+        'get_display_username': admin.get_display_username(),
         'created_at': admin.created_at,
         'last_login': admin.last_login,
     }
@@ -5250,7 +5252,10 @@ def store_management():
             store_items_dict = {i.id: i for i in store_items}
 
         for event in pending_redemption_events:
+            # Enforce class_id validation: seat must belong to the selected class
             seat = db.session.get(Seat, event.seat_id)
+            if not seat or seat.class_id != selected_scope['class_id']:
+                continue
             profile = seat.identity_profile if seat else None
             grant = grants_dict.get(event.entitlement_id)
             store_item = store_items_dict.get(grant.product_id) if grant and grant.product_id else None
@@ -5289,6 +5294,7 @@ def store_management():
             status=derive_display_status(entitlement.entitlement_id),
             purchased_at=entitlement.timestamp,
             purchase_date=entitlement.timestamp,
+            quantity=1,
             is_from_bundle=False,
         ))
 
