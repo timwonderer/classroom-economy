@@ -282,7 +282,7 @@ def build_entitlement_card_view(
         purchase_date = getattr(entitlement, 'timestamp', None)
         expiry_date = payload.get("expiry_date")
         item_id = getattr(entitlement, 'product_id', 0) or 0
-        redemption_prompt = None
+        redemption_prompt = payload.get("redemption_prompt")
 
     # Map status to display label
     status_labels = {
