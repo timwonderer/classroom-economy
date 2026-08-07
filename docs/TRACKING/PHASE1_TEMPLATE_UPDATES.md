@@ -93,24 +93,24 @@
 
 ### Required Changes
 
-**Remove ORM Property Access (Lines 178, 191):**
+**Use Pre-Computed Student Counts (Lines 178, 191):**
 ```jinja
-{# BEFORE: #}
-{{ obligation_summary.status_breakdown.up_to_date + obligation_summary.status_breakdown.outstanding + ... }}
-
-{# AFTER: Use display fields added by helper #}
-{{ obligation_summary.display_total_paid }}
-{{ obligation_summary.display_total_unpaid }}
+{# TEMPLATE ALREADY CORRECT: #}
+{{ obligation_summary.current_student_count if obligation_summary else 0 }}
+{{ obligation_summary.behind_student_count if obligation_summary else 0 }}
 ```
 
 **Verify Usage Pattern:**
 The route now calls `add_display_formatting_to_class_obligation_summary()` which adds:
+- `obligation_summary.current_student_count` (students with status up_to_date or outstanding)
+- `obligation_summary.behind_student_count` (students with status past_due_grace or past_due_overdue)
 - `obligation_summary.display_total_paid` (pre-formatted as "$X.XX")
 - `obligation_summary.display_total_unpaid` (pre-formatted as "$X.XX")
 
 ### Verification Steps
+- [ ] Lines 178, 191 use `current_student_count` and `behind_student_count` (already done ✅)
+- [ ] Currency formatting moved to view model (display_total_paid, display_total_unpaid)
 - [ ] No direct access to `status_breakdown` dict properties
-- [ ] Use `display_total_paid` and `display_total_unpaid` instead
 - [ ] All amounts are pre-formatted strings starting with "$"
 
 ---

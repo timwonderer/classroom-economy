@@ -10,10 +10,11 @@ is pre-computed here. Templates receive only formatted display values.
 
 from __future__ import annotations
 
+from collections.abc import Collection
 from dataclasses import dataclass, field
 from decimal import Decimal
 from datetime import datetime
-from typing import Any, Collection
+from typing import Any
 
 from app.extensions import db
 from app.models import StoreItem, EntitlementEvent, RentSettings, ClassEconomy

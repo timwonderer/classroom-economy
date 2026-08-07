@@ -2,7 +2,7 @@
 
 **Date:** 2026-08-07  
 **Branch:** jinja-remediation-phase1  
-**Status:** ✅ 100% COMPLETE — All 3 Templates Updated
+**Status:** 🔄 IN PROGRESS — 1/3 Templates Fully Complete, 2/3 Partially Complete
 
 ---
 
@@ -48,20 +48,24 @@
 
 ---
 
-## ✅ ALL TEMPLATES COMPLETE
+## 🔄 TEMPLATE STATUS
 
 ### Template 1: student_shop.html ✅
 - ✅ All 6 violations fixed (patterns 1, 2, 4, 6)
 - ✅ Route passes StoreItemCardView, EntitlementCardView, CollectiveProgressView
+- ✅ No remaining strftime() or |format() expressions
 
-### Template 2: admin_rent_settings.html ✅
+### Template 2: admin_rent_settings.html 🔄
 - ✅ Lines 178, 191 updated with pre-computed student counts
 - ✅ Route applies display formatting helper
+- ❌ **UNRESOLVED:** Lines 237, 250, 266, 276, 286, 531 still contain strftime() and "%.2f"|format() expressions
+- **Action Required:** Move date/currency formatting to RentSettingsView and RentPeriodView models
 
-### Template 3: admin_payroll.html ✅
+### Template 3: admin_payroll.html 🔄
 - ✅ Manual Payment tab uses pre-formatted balances
-- ✅ All format filters removed from student display
-- ✅ StudentPayrollStatusView enhanced with all required display fields
+- ⚠️ StudentPayrollStatusView enhanced but incomplete
+- ❌ **UNRESOLVED:** Lines 257, 279, 284, 294, 346, 420, 459, 488-494, 507, 509, 540+ still contain strftime() and "%.2f"|format() expressions
+- **Action Required:** Move date/currency formatting to PayrollSettingsView and PayrollPeriodView models
 
 ---
 
@@ -104,8 +108,8 @@
 | Layer | Separation | Status |
 |-------|-----------|--------|
 | Business logic | View models | ✅ Builders contain logic |
-| Presentation | Display fields | ✅ Pre-formatted strings |
-| Persistence | No ORM in templates | ⏳ 1/3 templates done |
+| Presentation | Display fields | 🔄 Partially pre-formatted (1/3 templates complete) |
+| Persistence | No ORM in templates | 🔄 student_shop.html complete; admin_rent_settings.html & admin_payroll.html still have strftime() and |format() |
 
 ---
 
@@ -143,42 +147,49 @@ ffd76ad2 fix(templates): Update admin_rent_settings.html to consume obligation v
 
 ## Completion Timeline
 
-- **Template Updates:** ✅ COMPLETE (3 commits)
+- **Template 1 (student_shop.html):** ✅ COMPLETE (1 commit)
+- **Template 2 (admin_rent_settings.html):** ⏳ IN PROGRESS (builders exist, template needs update)
+- **Template 3 (admin_payroll.html):** ⏳ IN PROGRESS (builders exist, template needs update)
 - **Testing:** ⏳ PENDING
 - **Audit Update:** ⏳ PENDING
 - **PR to CTHv2.0:** ⏳ PENDING
 
 ---
 
-## Remaining Tasks
+## Remaining Tasks (Critical Path)
 
-1. **Manual Testing** (10 mins)
-   - student_shop: Browse items, test rent, collective, entitlements
-   - admin_rent_settings: Verify student counts display
-   - admin_payroll: Verify balance display in manual payment
+### PHASE 1 BLOCKER: Template 2 & 3 Formatting
 
-2. **Automated Tests** (5 mins)
-   ```bash
-   pytest tests/test_student_routes.py::test_student_shop -v
-   pytest tests/test_admin_routes.py::test_rent_settings -v
-   pytest tests/test_admin_routes.py::test_payroll -v
-   pytest tests/ -k "payroll or rent or shop"
-   ```
+1. **admin_rent_settings.html** (Est. 45 mins)
+   - [ ] Create RentSettingsView and RentPeriodView dataclasses
+   - [ ] Move date formatting (first_rent_due_date, current_period, next_due_date) to view models
+   - [ ] Move currency formatting (rent_amount, late_penalty_amount) to view models
+   - [ ] Update admin_rent_settings route to populate display fields
+   - [ ] Update template to use view model fields instead of strftime()/|format()
 
-3. **Audit Checklist** (5 mins)
+2. **admin_payroll.html** (Est. 60 mins)
+   - [ ] Enhance PayrollConfigurationView with display_pay_rate_hourly, display_pay_rate_unit
+   - [ ] Create PayrollPeriodView with display_created_at
+   - [ ] Move currency formatting for estimates, payouts, history to view models
+   - [ ] Move date formatting to view models
+   - [ ] Update admin_payroll route to populate all display fields
+   - [ ] Update template to use view model fields instead of strftime()/|format()
+
+3. **Manual Testing** (Est. 10 mins)
+   - [ ] Verify admin_rent_settings displays dates and amounts correctly
+   - [ ] Verify admin_payroll displays dates, estimates, and student payouts correctly
+   - [ ] Run pytest on affected routes
+
+4. **Audit Checklist** (Est. 5 mins)
+   - [ ] Verify no `.strftime()` remains in any template
+   - [ ] Verify no `|format()` remains in any template
    - [ ] Update TEMPLATE_JINJA_INVENTORY.md — mark Phase 1 templates FIXED
    - [ ] Update CHANGELOG.md with Phase 1 completion entry
-   - [ ] Verify no `.strftime()` remains in templates
-   - [ ] Verify no `|format()` remains in updated templates
-
-4. **Create PR** (5 mins)
-   - All builders and routes in place
-   - All templates updated
-   - Reference: INV-ARC-022, SPEC-UI-001
 
 ---
 
-**Phase 1 Progress:** 100% ✅  
-**Templates:** 3/3 Updated  
-**Builders:** 3/3 Complete  
-**Routes:** 3/3 Integrated
+**Phase 1 Progress:** 33% (1/3 templates complete) 🔄  
+**Templates Complete:** 1/3 (student_shop.html)  
+**Templates In Progress:** 2/3 (admin_rent_settings.html, admin_payroll.html)  
+**Builders:** 3/3 Exist (but not all fully integrated with templates)  
+**Routes:** 2/3 Fully Integrated (student_shop works; admin routes need display field integration)

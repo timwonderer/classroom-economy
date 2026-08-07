@@ -123,9 +123,9 @@
 
                         <div class="card-text text-muted flex-grow-1">{{ (item.description or 'No description available.') | markdown }}</div>
 
-                        {% if item.inventory is not none %}
+                        {% if item.inventory_available is not none %}
                             <p class="text-muted small mb-2">
-                                <strong>Available:</strong> {{ item.inventory }} left
+                                <strong>Available:</strong> {{ item.inventory_available }} left
                             </p>
                         {% endif %}
 

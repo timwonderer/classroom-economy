@@ -2046,7 +2046,7 @@ def shop():
             # Calculate current coverage period (pre-paid system)
             coverage_due_date = _calculate_rent_coverage_due_date(rent_settings, now)
 
-            
+
             if coverage_due_date and seat_id:
                 has_paid_rent = _is_student_coverage_period_paid(
                     rent_settings,
@@ -2058,25 +2058,20 @@ def shop():
 
             # Read store-linked rent items from canonical rent settings so
             # mid-cycle teacher edits don't change what students see.
-            from app.services.store_service import get_frozen_store_linked_items, get_frozen_privilege_items
-            rent_settings = get_rent_settings_for_context(context)
-            rent_item_types_by_store_id = {}
-            per_use_limit_by_store_id = {}
+            from app.services.store_service import get_frozen_store_linked_items
+            frozen_store_items = get_frozen_store_linked_items(rent_settings)
+            for frozen_item in frozen_store_items:
+                sid = frozen_item['store_item_id']
+                effective_type = frozen_item.get('rent_item_type', 'privilege')
+                # Some rows can still carry privilege as the
+                # default type while semantically behaving per-use via duration.
+                if effective_type == 'privilege' and frozen_item.get('purchase_duration') == 'per_use':
+                    effective_type = 'per_use'
+                rent_item_types_by_store_id.setdefault(sid, set()).add(effective_type)
 
-            if rent_settings:
-                frozen_store_items = get_frozen_store_linked_items(rent_settings)
-                for frozen_item in frozen_store_items:
-                    sid = frozen_item['store_item_id']
-                    effective_type = frozen_item.get('rent_item_type', 'privilege')
-                    # Some rows can still carry privilege as the
-                    # default type while semantically behaving per-use via duration.
-                    if effective_type == 'privilege' and frozen_item.get('purchase_duration') == 'per_use':
-                        effective_type = 'per_use'
-                    rent_item_types_by_store_id.setdefault(sid, set()).add(effective_type)
-
-                    if effective_type == 'per_use':
-                        use_limit = frozen_item.get('use_limit')
-                        per_use_limit_by_store_id[sid] = use_limit if use_limit else -1
+                if effective_type == 'per_use':
+                    use_limit = frozen_item.get('use_limit')
+                    per_use_limit_by_store_id[sid] = use_limit if use_limit else -1
 
     # Build rent-perk availability map for rent-linked per-use items.
     rent_free_entitlement_counts = {}  # {store_item_id: available_units or -1 for unlimited}
