@@ -5238,11 +5238,11 @@ def store_management():
             EntitlementEvent.event_type == 'GRANTED'
         ).all()
         grants_dict = {}
-        for g in grants:
-            if g.entitlement_id not in grants_dict or g.timestamp > grants_dict[g.entitlement_id].timestamp:
-                grants_dict[g.entitlement_id] = g
+        for grant in grants:
+            if grant.entitlement_id not in grants_dict or grant.timestamp > grants_dict[grant.entitlement_id].timestamp:
+                grants_dict[grant.entitlement_id] = grant
 
-        store_item_ids = {g.product_id for g in grants_dict.values() if g.product_id}
+        store_item_ids = {grant.product_id for grant in grants_dict.values() if grant.product_id}
         store_items_dict = {}
         if store_item_ids:
             store_items = StoreItem.query.filter(StoreItem.id.in_(store_item_ids)).all()

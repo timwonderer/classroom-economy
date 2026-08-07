@@ -432,8 +432,9 @@ def switch_student_session_context(student, *, class_id: str, seat_id: int):
     seat = db.session.get(Seat, seat_id)
     if seat and seat.user_id:
         linked_user = db.session.get(User, seat.user_id)
-        if linked_user and linked_user.last_active_class_id != class_id:
+        if linked_user and (linked_user.last_active_class_id != class_id or linked_user.last_active_seat_id != seat_id):
             linked_user.last_active_class_id = class_id
+            linked_user.last_active_seat_id = seat_id
             db.session.flush()
     
     # Log the transition for audit clarity

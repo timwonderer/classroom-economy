@@ -3,47 +3,49 @@ from tests.helpers.classroom_initializer import initialize
 
 
 def _get_teacher_student_seats(teacher_user_id: int):
-    """Return student Seat rows in classes owned by this teacher."""
-    return (
-        Seat.query
-        .join(ClassEconomy, ClassEconomy.class_id == Seat.class_id)
-        .filter(
-            ClassEconomy.user_id == teacher_user_id,
-            Seat.role == "student",
-        )
-        .all()
-    )
+    # This is a legacy helper replaced by route testing.
+    pass
 
 
 def test_DOM_IDEN_001__cross_teacher_isolation(client):
     """
     Regression test for P0 leak: Teacher B should NOT see students in Teacher A's classes.
     """
-    class_a = initialize("chemistry_p1", client.application)
+    from tests.dom.identity.helpers import admin_get_students
+    from tests.helpers.classroom_initializer import initialize_as_teacher
+    
+    class_a = initialize_as_teacher("chemistry_p1", client, client.application)
     class_b = initialize("biology_block_a", client.application)
-    teacher_a = class_a.teacher_user
-    teacher_b = class_b.teacher_user
+    
+    resp_a = admin_get_students(client)
+    html_a = resp_a.data.decode('utf-8')
 
-    results_a = _get_teacher_student_seats(teacher_a.id)
-    results_b = _get_teacher_student_seats(teacher_b.id)
-
-    class_a_seat_ids = {s.seat.id for s in class_a.students}
-    class_b_seat_ids = {s.seat.id for s in class_b.students}
-
-    for seat in results_a:
-        assert seat.id not in class_b_seat_ids, "Teacher A should not see Teacher B's students"
-    for seat in results_b:
-        assert seat.id not in class_a_seat_ids, "Teacher B should not see Teacher A's students"
+    for seat in class_b.students:
+        assert f'data-seat-id="{seat.seat.id}"' not in html_a, "Teacher A should not see Teacher B's students"
+        
+    # Switch to Teacher B and verify
+    client.get('/admin/logout')
+    initialize_as_teacher("biology_block_a", client, client.application)
+    resp_b = admin_get_students(client)
+    html_b = resp_b.data.decode('utf-8')
+    
+    for seat in class_a.students:
+        assert f'data-seat-id="{seat.seat.id}"' not in html_b, "Teacher B should not see Teacher A's students"
 
 
 def test_DOM_IDEN_001__owner_can_see_students_in_own_class(client):
     """
     Verify that a teacher CAN see students enrolled in their own class.
     """
-    classroom = initialize("chemistry_p1", client.application)
-    teacher = classroom.teacher_user
+    from tests.dom.identity.helpers import admin_get_students
+    from tests.helpers.classroom_initializer import initialize_as_teacher
+    
+    classroom = initialize_as_teacher("chemistry_p1", client, client.application)
 
-    results = _get_teacher_student_seats(teacher.id)
-    assert len(results) >= 1
-    for seat in results:
-        assert seat.class_id == classroom.class_id
+    resp = admin_get_students(client)
+    html = resp.data.decode('utf-8')
+    
+    seat_ids = [s.seat.id for s in classroom.students]
+    assert len(seat_ids) >= 1
+    for seat_id in seat_ids:
+        assert f'data-seat-id="{seat_id}"' in html, "Owner should see their own students in the route response"

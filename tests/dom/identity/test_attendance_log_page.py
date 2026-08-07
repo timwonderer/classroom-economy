@@ -95,5 +95,6 @@ def test_DOM_IDEN_006__attendance_log_tenant_scoping(client):
     api_response = api_get_attendance_history(client)
     assert api_response.status_code == 200
     data = api_response.get_json()
-    returned_periods = {r['student_block'] for r in data['records']}
-    assert 'ADM2PER' not in returned_periods, "Admin1 should not see admin2's period"
+    returned_periods = {r['period'] for r in data['records']}
+    assert 'Period 1' in returned_periods, "Admin1 should see their own period"
+    assert 'Block A' not in returned_periods, "Admin1 should not see admin2's period"

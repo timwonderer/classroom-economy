@@ -232,10 +232,7 @@ def test_DOM_IDEN_006__switch_class_between_all_classes(client, setup_multi_clas
     for class_alias, expected_block in [("TEACHER1A", "Period 1"), ("TEACHER2B", "Period 3"), ("TEACHER3C", "Block A"), ("TEACHER1A", "Period 1")]:
         class_id = setup_multi_class_student["classes"][class_alias].class_id
         response = student_switch_class(client, class_id)
-        assert response.status_code in (200, 302)
-        if response.status_code == 200:
-            payload = response.get_json()
-            assert payload["status"] == "success"
-            assert payload["block"] == expected_block
-        else:
-            assert "/student/login" in response.location
+        assert response.status_code == 200
+        payload = response.get_json()
+        assert payload["status"] == "success"
+        assert payload["block"] == expected_block

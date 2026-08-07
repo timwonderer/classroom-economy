@@ -51,17 +51,6 @@ def test_DOM_IDEN_006__student_login_missing_last_active_class_shows_selector(cl
     assert "/student/select-class-context" in response.headers["Location"]
 
 
-def test_DOM_IDEN_006__student_login_no_active_class_redirects_to_selector(client, monkeypatch):
-    monkeypatch.setattr("app.routes.student.verify_turnstile_token", lambda *_args, **_kwargs: True)
-    classroom, student = initialize_as_student("chemistry_p1", client, client.application)
-    with FEATContext("FEAT-IDEN-001", idempotency_key="test:clear-last-active-class:hard-fail"):
-        student.user.last_active_class_id = None
-        db.session.flush()
-    response = student_login(client, username=student.username, pin=student.pin)
-
-    assert response.status_code == 302
-    assert "/student/select-class-context" in response.headers["Location"]
-
 
 def test_DOM_IDEN_006__admin_passkey_register_uses_canonical_user_external_id(client, monkeypatch):
     captured = {}
