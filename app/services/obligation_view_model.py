@@ -191,6 +191,8 @@ class ClassObligationSummary:
     # Phase 1 display formatting (audit violations: admin_rent_settings.html lines 178, 191)
     display_total_paid: str = "$0.00"  # Pre-formatted sum of all payments
     display_total_unpaid: str = "$0.00"  # Pre-formatted sum of all outstanding
+    current_student_count: int = 0  # Count of students current on rent (up_to_date + outstanding)
+    behind_student_count: int = 0  # Count of students behind on rent (past_due_grace + past_due_overdue)
 
 
 def build_rent_policy_projection(
@@ -849,8 +851,8 @@ def add_display_formatting_to_class_obligation_summary(
     """
     Add pre-formatted display fields to ClassObligationSummary.
 
-    Pre-formats totals for display (audit violations: admin_rent_settings.html
-    lines 178, 191 ORM property aggregation in template).
+    Pre-formats totals and student counts for display (audit violations:
+    admin_rent_settings.html lines 178, 191 ORM property aggregation in template).
 
     Returns a new summary with display fields populated.
     """
@@ -860,12 +862,21 @@ def add_display_formatting_to_class_obligation_summary(
     # Compute display totals from status_breakdown and student_rows
     total_paid = Decimal('0.00')
     total_unpaid = Decimal('0.00')
+    current_student_count = 0
+    behind_student_count = 0
 
     for row in summary.student_rows or []:
         if row.get('amount_paid'):
             total_paid += Decimal(str(row['amount_paid']))
         if row.get('balance') and row['balance'] > 0:
             total_unpaid += Decimal(str(row['balance']))
+
+        # Count students by status (mirrors template filtering at lines 337, 365)
+        status = row.get('status')
+        if status in ['up_to_date', 'outstanding']:
+            current_student_count += 1
+        elif status in ['past_due_grace', 'past_due_overdue']:
+            behind_student_count += 1
 
     display_total_paid = f"${total_paid:.2f}"
     display_total_unpaid = f"${total_unpaid:.2f}"
@@ -874,5 +885,7 @@ def add_display_formatting_to_class_obligation_summary(
     summary_dict = summary.__dict__.copy()
     summary_dict['display_total_paid'] = display_total_paid
     summary_dict['display_total_unpaid'] = display_total_unpaid
+    summary_dict['current_student_count'] = current_student_count
+    summary_dict['behind_student_count'] = behind_student_count
 
     return ClassObligationSummary(**summary_dict)

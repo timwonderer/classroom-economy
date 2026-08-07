@@ -175,7 +175,7 @@
             <div class="d-flex align-items-center">
               <div class="flex-grow-1">
                 <div class="text-muted mb-2">Current on Rent</div>
-                <h2 class="text-success mb-0">{{ obligation_summary.status_breakdown.up_to_date + obligation_summary.status_breakdown.outstanding if obligation_summary else 0 }}</h2>
+                <h2 class="text-success mb-0">{{ obligation_summary.current_student_count if obligation_summary else 0 }}</h2>
               </div>
               <span class="material-symbols-outlined text-success" style="font-size: 3rem;">check_circle</span>
             </div>
@@ -188,7 +188,7 @@
             <div class="d-flex align-items-center">
               <div class="flex-grow-1">
                 <div class="text-muted mb-2">Behind on Rent</div>
-                <h2 class="text-danger mb-0">{{ obligation_summary.status_breakdown.past_due_grace + obligation_summary.status_breakdown.past_due_overdue if obligation_summary else 0 }}</h2>
+                <h2 class="text-danger mb-0">{{ obligation_summary.behind_student_count if obligation_summary else 0 }}</h2>
               </div>
               <span class="material-symbols-outlined text-danger" style="font-size: 3rem;">error</span>
             </div>
