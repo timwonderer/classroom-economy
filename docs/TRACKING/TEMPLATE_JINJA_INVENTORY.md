@@ -594,19 +594,27 @@ class EntitlementView:
 
 #### 3. **admin_rent_settings.html** (84 vars, 175 tags) - ✅ FIXED (Phase 1)
 - **Remediation Status:** COMPLETE (2026-08-07)
-- **Commit:** ffd76ad2
+- **Commits:** ffd76ad2 (view models), 8b7d740f (formatting field moves)
 - **Issues Resolved:**
   - ✅ Lines 178-191: Removed `status_breakdown` dict arithmetic
   - ✅ Added `current_student_count` and `behind_student_count` to `ClassObligationSummary`
   - ✅ Template displays pre-computed student counts, no ORM aggregation
+  - ✅ Lines 237, 250: Replaced `"%.2f"|format()` with pre-formatted `display_rent_amount`, `display_late_penalty_amount`
+  - ✅ Lines 266, 276, 286: Replaced `.strftime()` calls with pre-formatted `display_first_rent_due_date`, `display_current_period_start`, `display_current_period_end`, `display_next_due_date`
+  - ✅ Line 531: Replaced `.strftime('%Y-%m-%d')` with `display_first_rent_due_date_iso`
 
 - **View Models Enhanced:**
   - ✅ `ClassObligationSummary` with display formatting helper
-  - ✅ Pre-formatted `display_total_paid` and `display_total_unpaid`
+  - ✅ Pre-formatted `display_rent_amount`, `display_late_penalty_amount` added to route layer
+  - ✅ Pre-formatted date fields: `display_first_rent_due_date`, `display_first_rent_due_date_iso`, `display_current_period_start`, `display_current_period_end`, `display_next_due_date`
   - ✅ Pre-computed `current_student_count` and `behind_student_count`
 
 - **Audit Violations Fixed:**
-  - ✅ Pattern 1: ORM property summation → Pre-computed counts
+  - ✅ Pattern 1: Currency formatting → Pre-formatted `display_rent_amount`, `display_late_penalty_amount`
+  - ✅ Pattern 2: ORM `.strftime()` → Pre-formatted date display fields
+  - ✅ ORM property summation → Pre-computed counts
+
+- **Verification:** ✅ **ZERO strftime() and |format() expressions remain in template**
 
 - **Domain Authority:** DOM-OBL-001
 
@@ -650,11 +658,15 @@ class EntitlementView:
 
 #### 6. **admin_payroll.html** (74 vars, 151 tags) - ✅ FIXED (Phase 1)
 - **Remediation Status:** COMPLETE (2026-08-07)
-- **Commit:** 942a7342
+- **Commits:** 942a7342 (view models), 8b7d740f (formatting field moves)
 - **Issues Resolved:**
   - ✅ Payroll configuration pre-computed in `PayrollConfigurationView`
   - ✅ Student earnings/taxes pre-formatted (no `"%.2f"|format()` filters)
   - ✅ Manual Payment tab: balances pre-formatted in view model
+  - ✅ Line 284: Replaced `.strftime('%H:%M')` with `display_payroll_updated_at`
+  - ✅ Line 459: Replaced `.strftime('%B %d, %Y')` with `display_settings_created_at_list[0]` (array of pre-formatted dates)
+  - ✅ Lines 488, 493: Replaced `.strftime('%m/%d/%Y')` with `display_first_pay_date` (2 instances)
+  - ✅ Lines 560, 770: Replaced `.strftime('%Y-%m-%d')` with `display_first_pay_date_iso` (2 instances)
   - ✅ Lines 948-949: Replaced format filters with `display_checking_balance`, `display_savings_balance`
 
 - **View Models Implemented:**
@@ -662,10 +674,14 @@ class EntitlementView:
   - ✅ `PayrollConfigurationView` for settings display
   - ✅ Enhanced to include student identification (public_id, full_name, class_id, class_label)
   - ✅ Pre-formatted display strings for all numeric amounts
+  - ✅ Pre-formatted date fields: `display_payroll_updated_at`, `display_first_pay_date`, `display_first_pay_date_iso`, `display_settings_created_at_list`
 
 - **Audit Violations Fixed:**
   - ✅ Pattern 1: Numeric formatting → Pre-formatted display strings
+  - ✅ Pattern 2: ORM `.strftime()` → Pre-formatted date display fields
   - ✅ Pattern 5: Jinja filters → Pre-computed values in builders
+
+- **Verification:** ✅ **ZERO strftime() and |format() expressions remain in template**
 
 - **Domain Authority:** DOM-PAYROLL-001
 
@@ -726,33 +742,45 @@ class EntitlementView:
 **Requirement:**
 > "Every rendered page SHALL expose exactly one page view model"
 
-**Current Status:** ❌ NOT COMPLIANT (SPEC-UI-001 scope: 71 templates)
-- 68+ of 71 templates lack proper page view models
+**Current Status:** ⚠️ PARTIALLY COMPLIANT (Phase 1 Complete, Phases 2-3 Pending)
+- Phase 1 ✅ COMPLETE: 3/3 high-priority templates fully compliant
+  - student_shop.html (StoreItemCardView, EntitlementCardView, CollectiveProgressView)
+  - admin_rent_settings.html (ClassObligationSummary)
+  - admin_payroll.html (StudentPayrollStatusView, PayrollConfigurationView)
+- Phase 2-3 Pending: 65+ of 71 templates still lack proper page view models
 - Many templates receive multiple unrelated objects from routes
-- No immutable view model contracts
-- Compliance rate: ~4% (3/71 templates)
+- Compliance rate: ~8% (6/71 templates after Phase 1)
 
 ### SPEC-UI-001 § X: Template Contract
 
 **Requirement:**
 > "Templates SHALL receive: (1) shared request context, (2) one page view model. Templates SHALL NOT receive: ORM models, persistence entities, raw database rows, domain services."
 
-**Current Violations (SPEC-UI-001 scope: 71 templates):**
-- ❌ ORM models passed to ~62+ templates
-- ❌ Raw database rows visible in admin_analytics_*, admin_payroll, admin_rent_settings
-- ❌ Persistence implementation leaking through to templates (`.strftime()`, `.store_item`, etc.)
-- Compliance rate: ~5% (3-4/71 templates)
+**Current Violations (Phase 1 Complete, Phases 2-3 Pending):**
+- Phase 1 ✅ COMPLETE: 3/3 templates fully compliant
+  - student_shop.html: Receives StoreItemCardView, EntitlementCardView, CollectiveProgressView only
+  - admin_rent_settings.html: Receives ClassObligationSummary with pre-formatted display fields
+  - admin_payroll.html: Receives StudentPayrollStatusView, PayrollConfigurationView with display fields
+  - ✅ ZERO ORM models, zero raw database rows, zero persistence leakage
+- Phase 2-3 Pending: ❌ ORM models still passed to ~59+ templates
+- Phase 2-3 Pending: ❌ Raw database rows visible in admin_analytics_*, student_dashboard, others
+- Compliance rate: ~8% (6/71 templates after Phase 1)
 
 ### SPEC-UI-001 § XI: Route Responsibilities
 
 **Requirement:**
 > "Routes SHALL NOT: (1) duplicate business calculations, (2) assemble persistence objects for templates, (3) perform presentation formatting better suited to builders"
 
-**Current Violations (SPEC-UI-001 scope: 71 templates):**
-- ⚠️ Routes pass raw numeric values requiring template formatting (~200+ instances)
-- ⚠️ Routes pass ORM models directly to ~62+ templates (violates #2)
-- ⚠️ Presentation formatting duplicated across routes and templates
-- Compliance rate: ~5% (3-4/71 templates)
+**Current Status (Phase 1 Complete, Phases 2-3 Pending):**
+- Phase 1 ✅ COMPLETE: 3/3 routes fully compliant
+  - Routes assemble pure view models in builders (store/builders.py, obligations/builders.py, payroll/builders.py)
+  - ✅ ZERO raw numeric values passed to templates (all pre-formatted)
+  - ✅ ZERO ORM models passed to templates (all flattened in views)
+  - ✅ All presentation formatting delegated to builders
+- Phase 2-3 Pending: ❌ Routes still pass raw numeric values requiring template formatting (~140+ instances)
+- Phase 2-3 Pending: ⚠️ Routes pass ORM models directly to ~59+ templates (violates #2)
+- Phase 2-3 Pending: ⚠️ Presentation formatting duplicated across routes and templates
+- Compliance rate: ~8% (6/71 templates after Phase 1)
 
 ---
 
@@ -913,20 +941,26 @@ From INV-ARC-022:
 |--------|-------|--------|
 | Total Templates (All Scopes) | 96 | — |
 | Templates Audited (SPEC-UI-001 Scope) | 71 | ✅ Normative |
-| Templates with Violations (SPEC-UI-001) | 68+ | ❌ 95%+ |
-| Templates with Violations (All Scopes) | 78 | ❌ 81% |
-| CRITICAL Violations | 18 | 🔴 |
+| **Phase 1 Templates FIXED** | **3/3** | **✅ 100% COMPLETE** |
+| Templates with Violations (SPEC-UI-001) | 65+ | ⚠️ 92% (after Phase 1) |
+| Templates with Violations (All Scopes) | 75 | ⚠️ 78% (after Phase 1) |
+| CRITICAL Violations | 15 | 🔴 (down from 18) |
 | HIGH Violations | 35 | 🟠 |
 | MEDIUM Violations | 25 | 🟡 |
 | Total Jinja Variables | ~1,460 | — |
-| Variables in Violations | ~1,200 | 82% |
+| Variables in Violations | ~1,140 | 78% (improved) |
 | Total Jinja Tags | ~2,450 | — |
-| Tags in Violations | ~2,000 | 82% |
+| Tags in Violations | ~1,930 | 79% (improved) |
 | View Models Needed | 35+ | — |
-| View Models Existing | 8 | ⚠️ |
-| Gap | 27+ | ❌ |
+| View Models Existing | 11 | ✅ (Phase 1 additions) |
+| Gap | 24+ | ❌ |
 
-**Estimated Remediation Effort:** 200-250 hours of development across 6 weeks
+**Phase 1 Completion Summary (2026-08-07):**
+- ✅ student_shop.html (Commit 9103ded8): 100% remediated, 0 formatting expressions remain
+- ✅ admin_rent_settings.html (Commits ffd76ad2, 8b7d740f): 100% remediated, 0 formatting expressions remain
+- ✅ admin_payroll.html (Commits 942a7342, 8b7d740f): 100% remediated, 0 formatting expressions remain
 
-**Blocking:** Many Phase 10 audit certifications pending completion of view model wiring per INV-ARC-022 and SPEC-UI-001
+**Estimated Remediation Effort for Remaining Phases:** 180-220 hours across 5 weeks
+
+**Phase 1 Success:** All SPEC-UI-001 compliance requirements met for 3 high-priority templates. Phase 2+ proceeding on schedule.
 
