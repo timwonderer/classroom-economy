@@ -813,6 +813,21 @@ def _issue_to_view(issue):
     }
 
 
+def _correlation_pack_to_view(pack):
+    """Convert a raw TicketCorrelationPack model to a template-safe dict."""
+    if not pack:
+        return None
+    return {
+        'correlation_version': pack.correlation_version,
+        'actor_type': pack.actor_type,
+        'actor_public_id': pack.actor_public_id,
+        'class_public_id': pack.class_public_id,
+        'request_trace_json': pack.request_trace_json,
+        'error_refs_json': pack.error_refs_json,
+        'created_at': pack.created_at,
+    }
+
+
 def _history_entry_to_view(entry):
     """Convert a raw IssueStatusHistory model to a template-safe dict."""
     return {
@@ -1326,7 +1341,7 @@ def view_escalated_issue(issue_ref):
         issue=issue_view,
         issue_ref=make_opaque_ref('issue', issue.id),
         report_ref_for=lambda report_id: make_opaque_ref('report', report_id),
-        correlation_pack=issue.correlation_pack,
+        correlation_pack=_correlation_pack_to_view(issue.correlation_pack),
         history=history,
         format_utc_iso=format_utc_iso)
 
