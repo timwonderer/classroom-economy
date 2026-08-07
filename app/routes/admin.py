@@ -1397,10 +1397,7 @@ def _delete_teacher_settings_activity_and_audit_rows(canonical_context):
         PayrollSettings.class_id.in_(sa.select(class_ids_subq))
     ).delete(synchronize_session=False)
     Announcement.query.filter(
-        sa.or_(
-            Announcement.user_id == user_id,
-            Announcement.target_teacher_id == user_id,
-        )
+        Announcement.user_id == user_id
     ).delete(synchronize_session=False)
     Transaction.query.filter_by(user_id=user_id).delete(synchronize_session=False)
     PendingAction.query.filter(
@@ -9590,33 +9587,35 @@ def help_support():
 
     def _support_report_views(issues):
         """Build view-model dicts for the My Tickets list."""
+        from app.models import ClassEconomy
         views = []
         for issue in issues:
             explanation = issue.student_explanation or ''
             first_line = explanation.split('\n', 1)[0] if explanation else ''
-            metadata = {}
             clean = explanation
             if first_line.startswith('SUPPORT_SCOPE|'):
-                for token in first_line.split('|')[1:]:
-                    k, _, v = token.partition('=')
-                    if k and v:
-                        metadata[k] = v
                 clean = explanation.split('\n', 1)[1].strip() if '\n' in explanation else explanation
 
-            title = metadata.get('class_label', issue.issue_type or 'Support Ticket')
-            scope_jc = get_display_join_code(metadata.get('class_id', '')) if metadata.get('class_id') else (selected_join_code or 'Unknown')
+            scope_jc = selected_join_code or 'Unknown'
+            class_label = selected_class_label or 'Unknown Class'
+
+            if issue.class_public_id:
+                ce = ClassEconomy.query.filter_by(class_public_id=issue.class_public_id).first()
+                if ce:
+                    scope_jc = ce.join_code
+                    class_label = ce.display_name or ce.join_code
 
             views.append({
                 'report': {
-                    'title': title,
+                    'title': 'Support Ticket',
                     'status': issue.status,
                     'submitted_at': issue.submitted_at,
                     'report_type': issue.issue_type,
                 },
-                'class_label': metadata.get('class_label', selected_class_label or 'Unknown Class'),
+                'class_label': class_label,
                 'scope_join_code': scope_jc,
                 'scope_class_id': issue.class_public_id,
-                'issue_category': metadata.get('category', issue.issue_type),
+                'issue_category': issue.category.name if issue.category else 'Unknown',
                 'clean_description': clean,
             })
         return views
