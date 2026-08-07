@@ -781,18 +781,18 @@ def create_app():
 
     @app.context_processor
     def inject_current_sysadmin():
-        """Inject current system admin (User object) into all templates."""
+        """Inject current system admin display name into all templates."""
         try:
             from app.auth import get_current_user
             from app.models import UserRole
 
             user = get_current_user()
             if user and getattr(user.user_role, "value", user.user_role) == UserRole.SYSADMIN.value:
-                return {'current_sysadmin': user}
-            return {'current_sysadmin': None}
+                return {'current_sysadmin_display_name': user.get_display_username()}
+            return {'current_sysadmin_display_name': None}
         except Exception as e:
             app.logger.warning(f"Could not load current system admin: {e}")
-            return {'current_sysadmin': None}
+            return {'current_sysadmin_display_name': None}
 
     @app.context_processor
     def inject_docs_helpers():

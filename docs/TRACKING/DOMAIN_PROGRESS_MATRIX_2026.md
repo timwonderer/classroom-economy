@@ -1,12 +1,12 @@
 # CTH Domain Reconstruction Progress Matrix
 
 **Status:** Active Canonical Tracker
-**Last Updated:** 2026-08-04 (Obligations Phase 10 ACCEPTED; 2 domains production-ready, 8 blocked on Phase 5)
+**Last Updated:** 2026-08-06 (Identity Phase 10 CERTIFIED; 3 domains production-ready, 7 remaining)
 **Authority:** SOP-DEV-002a, INV-CORE-000, DOM-CORE-002
 
 **DOMAIN READINESS SNAPSHOT:**
-- ✅ **2 domains** Phase 10 certified (production-ready): Obligations, Store
-- 🔄 **4 domains** Phase 4 complete but blocked on Phase 5 (missing view models): Identity, Class Config, Ledger, Payroll
+- ✅ **3 domains** Phase 10 certified (production-ready): Identity, Obligations, Store
+- 🔄 **3 domains** Phase 4 complete but blocked on Phase 5 (missing view models): Class Config, Ledger, Payroll
 - 🔄 **4 domains** Phase 0-1 only, not started: Operations, Interpretation, Policies, Support
 
 ---
@@ -35,7 +35,7 @@ This matrix consolidates the progress of all CTH domains through the 10-phase SO
 
 | Domain | Spec | Phase 0-4 | Phase 5 | Phase 6-7 | Phase 8-9 | Phase 10 | Status | Audit Doc |
 | -------- | ------ | ----------- | --------- | ----------- | ----------- | ---------- | -------- | ----------- |
-| **Identity** | DOM-IDEN-001/002/003/006 | ✅ | ✅ | ✅ VERIFIED | ✅ Phase 8 VERIFIED | ❌ | 🔄 Phase 8 complete (33 passed, 1 skipped); Phase 9-10 pending | 2026-08-05 (Phase 8 verified) |
+| **Identity** | DOM-IDEN-001/002/003/006 | ✅ | ✅ | ✅ VERIFIED | ✅ VERIFIED | ✅ CERTIFIED | ✅ PRODUCTION READY (Phase 10 certified 2026-08-06) | 2026-08-06 (PASS) |
 | **Class Configuration** | DOM-CLASS-001 | ✅ | ❌ NO VM | ❌ BLOCKED | ? | ❌ | ❌ BLOCKED on Phase 5 | 2026-08-04 baseline |
 | **Ledger** | DOM-LED-001 | ✅ | ❌ NO VM | ❌ BLOCKED | ? | ❌ | ❌ BLOCKED on Phase 5 | 2026-08-04 baseline |
 | **Productivity & Payroll** | DOM-PROD-001 | ✅ | ❌ NO VM | ❌ BLOCKED | ? | ❌ | ❌ BLOCKED on Phase 5 | 2026-08-04 baseline |
@@ -64,9 +64,9 @@ This matrix consolidates the progress of all CTH domains through the 10-phase SO
 
 **Unaudited domains:** Commits exist, code likely works, but require formal Phase 10 audit to confirm all phases are complete.
 
-**AUDIT STATUS UPDATE (2026-08-04 REVISED):**
+**AUDIT STATUS UPDATE (2026-08-06 REVISED):**
 
-- **Identity:** Phases 0-8 complete ✅ (33 passed, 1 skipped), Phase 9-10 pending
+- **Identity:** Phases 0-10 complete ✅ **PRODUCTION READY** (Phase 10 certified 2026-08-06)
 - **Class Config:** Phases 0-4 complete, Phase 5 **BLOCKED** (no view model), Phase 6-7 **BLOCKED**
 - **Ledger:** Phases 0-4 complete, Phase 5 **BLOCKED** (no view model), Phase 6-7 **BLOCKED**
 - **Payroll:** Phases 0-4 complete, Phase 5 **BLOCKED** (no view model), Phase 6-7 **BLOCKED**
@@ -98,7 +98,7 @@ Phase 6-7 completion is now measured via **field ownership**, not template struc
 | -------- | --------------- | ----------------- | ------------- |
 | **Obligations** | StudentObligationView | ✅ COMPLETE | Phase 6-7 validated: `period_status` dict properly implemented; templates use view.current_period namespace only; all 5 tests pass |
 | **Store & Entitlements** | EntitlementListView, PurchaseHistoryView, PolicyListView, StoreManagementView | ✅ COMPLETE | Phase 10 audit passed; all fields wired via view.* namespace |
-| **Identity** | IdentityProfileView | ✅ Phase 6-7 VERIFIED | Phase 8 verified (33 passed, 1 skipped); Phase 9 legacy deletion next |
+| **Identity** | IdentityProfileView | ✅ COMPLETE | Phase 10 certified (2026-08-06); all 10 phases verified |
 
 **Domains WITHOUT view models (Phase 5 blocked):**
 
@@ -129,11 +129,12 @@ Phase 6-7 completion is now measured via **field ownership**, not template struc
 #### Identity Domain (DOM-IDEN-001, 002, 003, 006)
 
 **Canonical Tables:** `users`, `seats`, `classes`, `identity_profiles`, `user_invite_tokens`, `user_recovery_tokens`  
-**Phase:** 🔄 0-? (Unaudited)  
-**Status:** Commits exist, likely complete but needs Phase 10 audit  
-**Key Achievement:** User/Seat canonical identity active; legacy Admin/Student tables dropped from runtime auth  
+**Phase:** ✅ 0-10 (COMPLETE & CERTIFIED)  
+**Status:** ✅ **PRODUCTION READY** (Phase 10 certified 2026-08-06)  
+**Last Audit:** 2026-08-06 (PASS) — `docs/TRACKING/SOP-DEV-002a_IDENTITY_20260806_AUDIT.md`  
+**Key Achievement:** User/Seat canonical identity active; IdentityProfileView wired to student_detail surface; full Phase 9 legacy sweep confirmed no dead code  
 **Notes:** Remaining bridge tables `Admin`, `Student`, `StudentTeacher` exist for backward compat; will be deleted in final cleanup  
-**Next Action:** Create Phase 10 audit document with template verification
+**Next Action:** None — domain is production-ready
 
 ---
 
@@ -295,24 +296,24 @@ Phase 6-7 completion is now measured via **field ownership**, not template struc
 
 **Current Status:**
 
-- ✅ **2 domains PRODUCTION READY:** Obligations (Phase 10 ACCEPTED 2026-08-04), Store (Phase 10 certified 2026-08-04)
-- 🔄 **4 domains UNAUDITED:** Identity, Class Config, Ledger, Productivity & Payroll (all blocked on Phase 5 - missing view models)
+- ✅ **3 domains PRODUCTION READY:** Identity (Phase 10 certified 2026-08-06), Obligations (Phase 10 ACCEPTED 2026-08-04), Store (Phase 10 certified 2026-08-04)
+- 🔄 **3 domains UNAUDITED:** Class Config, Ledger, Productivity & Payroll (all blocked on Phase 5 - missing view models)
 - 🔄 **4 domains NOT STARTED:** Operations, Interpretation, Policies, Support
 
-**STATUS UPDATE (2026-08-04):** Obligations and Store are both production-ready (Phase 10 certified). Remaining 8 domains: 4 are blocked on Phase 5 (missing view models), 4 have not started.
+**STATUS UPDATE (2026-08-06):** Identity, Obligations, and Store are all production-ready (Phase 10 certified). Remaining 7 domains: 3 are blocked on Phase 5 (missing view models), 4 have not started.
 
 **Minimum Path Forward (Priority Order):**
 
-1. **HIGH (P1):** Create missing view models for 4 domains (Identity, Class Config, Ledger, Payroll)
+1. **HIGH (P1):** Create missing view models for 3 domains (Class Config, Ledger, Payroll)
    - Blocked at Phase 5 until complete
    - Estimated 20-30 hours
 2. **HIGH (P1):** Refactor routes and templates to use view models (Phase 6-7)
-   - Applies to all 4 domains once Phase 5 view models created
+   - Applies to all 3 domains once Phase 5 view models created
    - Estimated 15-20 hours
 3. **HIGH (P1):** Audit 11 direct db.session mutations in routes (Phase 4 enforcement)
    - Estimated 10-15 hours
-4. **MEDIUM (P2):** Run Phase 10 audits for remaining 8 domains using SOP-DEV-002a checklist
-   - Estimated 80-120 hours (10-15 per domain after phases 5-9 complete)
+4. **MEDIUM (P2):** Run Phase 10 audits for remaining 7 domains using SOP-DEV-002a checklist
+   - Estimated 70-105 hours (10-15 per domain after phases 5-9 complete)
    - Focus on template field verification (as done with Obligations and Store)
 5. **MEDIUM (P2):** Start Operations, Interpretation, Policies, Support domains (Phase 0-1)
    - Only after Ledger, Productivity & Payroll audited
@@ -408,6 +409,6 @@ The following tracking documents remain for historical reference but are **super
 
 ---
 
-**Last Updated:** 2026-08-04 (Obligations Phase 10 ACCEPTED; 2 domains production-ready)
+**Last Updated:** 2026-08-06 (Identity Phase 10 CERTIFIED; 3 domains production-ready)
 **Maintained By:** Development Team
 **Canonical:** YES (This matrix is the single source of truth for domain progress)

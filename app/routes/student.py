@@ -105,6 +105,8 @@ from app.utils.canonical_temporal_resolver import utc_now, ensure_utc
 from app.utils.canonical_temporal_resolver import (
     CLASS_LEVEL_EVALUATION,
     canonical_temporal_resolver,
+    ensure_utc,
+    utc_now,
 )
 from app.utils.seat_scope import transaction_scope_filter, seat_scoped_filter
 # TODO (Phase 4): insurance_eligibility deleted; use canonical tools + FEAT-STOR-003
@@ -1165,26 +1167,15 @@ def dashboard():
     ))
 
     # Get active announcements for this student
-    # Include: class-specific, system-wide, all students, and teacher's all classes
     from app.models import Announcement
 
-    user_id = scope.user_id
     announcements = Announcement.query.filter(
         Announcement.is_active.is_(True),
         or_(
             Announcement.expires_at.is_(None),
             Announcement.expires_at > utc_now()
         ),
-        or_(
-            # Class-specific announcements
-            Announcement.class_id == scope.class_id,
-            # System-wide announcements
-            Announcement.audience_type == 'system_wide',
-            # All students announcements
-            Announcement.audience_type == 'all_students',
-            # Teacher's all classes announcements
-            (Announcement.audience_type == 'teacher_all_classes') & (Announcement.target_teacher_id == scope.user_id)
-        )
+        Announcement.class_id == scope.class_id,
     ).order_by(Announcement.created_at.desc()).all()
 
     return render_template(
@@ -3536,7 +3527,7 @@ def help_support():
     class_context = resolve_canonical_context()
     student = db.session.get(Seat, class_context.seat_id) if class_context and getattr(class_context, "seat_id", None) else None
 
-    if not class_context:
+    if not class_context or not student:
         flash("Please select a class first.", "warning")
         return redirect(url_for('student.dashboard'))
 
@@ -3544,10 +3535,12 @@ def help_support():
     init_default_categories()
 
     # Get student's issues for current class (last 20)
+    from app.models import ClassEconomy
+    class_economy = ClassEconomy.query.filter_by(class_id=class_context.class_id).first()
     my_issues = Issue.query.filter_by(
-        seat_id=student.id,
-        class_id=class_context.class_id,
-    ).order_by(Issue.submitted_at.desc()).limit(20).all()
+        actor_public_id=student.public_id,
+        class_public_id=class_economy.class_public_id if class_economy else "",
+    ).order_by(Issue.submitted_at.desc()).limit(20).all() if class_economy else []
 
     return render_template('student_help_support_new.html',
                          current_page='help',

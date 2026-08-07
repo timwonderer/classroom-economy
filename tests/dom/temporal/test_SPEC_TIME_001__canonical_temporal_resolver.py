@@ -41,7 +41,7 @@ REF = _utc(2026, 7, 20, 18, 30, 0)  # 18:30 UTC
 def _patch_class_timezone():
     """All CLE tests use America/New_York unless overridden."""
     with patch(
-        "app.utils.canonical_temporal_resolver.get_class_timezone",
+        "app.utils.canonical_temporal_resolver._get_class_timezone",
         return_value=EASTERN,
     ):
         yield
@@ -95,7 +95,7 @@ def test_cle_fails_without_context():
 
 def test_cle_fails_with_unknown_timezone():
     with patch(
-        "app.utils.canonical_temporal_resolver.get_class_timezone",
+        "app.utils.canonical_temporal_resolver._get_class_timezone",
         return_value="Invalid/Zone",
     ):
         with pytest.raises(TemporalResolutionError, match="Unknown IANA"):

@@ -109,12 +109,6 @@ class SystemAdminLoginForm(FlaskForm):
     totp_code = StringField('TOTP Code', validators=[DataRequired()])
     turnstile_token = HiddenField('cf-turnstile-response')
     submit = SubmitField('Login')
-class SystemAdminInviteForm(FlaskForm):
-    code = StringField('Custom Code')
-    expiry_days = StringField('Expiry Days')
-    expires_at = StringField('Expires At')  # Added to match app.py usage
-    submit = SubmitField('Generate Invite Code')
-
 class StudentClaimAccountForm(FlaskForm):
     join_code = StringField('Join Code (from your teacher)', validators=[DataRequired()])
     first_name = StringField('First Name', validators=[DataRequired(), Length(min=1, max=128)])
@@ -277,37 +271,6 @@ class AnnouncementForm(FlaskForm):
     is_active = BooleanField('Display to Students', default=True)
     expires_at = DateField('Expiration Date (optional)', format='%Y-%m-%d', validators=[Optional()])
     submit = SubmitField('Save Announcement')
-
-
-class SystemAdminAnnouncementForm(FlaskForm):
-    """Form for creating system-wide announcements."""
-    audience_type = SelectField('Audience', choices=[
-        ('system_wide', 'Everyone (System-Wide)'),
-        ('all_students', 'All Students'),
-        ('all_teachers', 'All Teachers'),
-        ('teacher_all_classes', 'All Classes of Specific Teacher')
-    ], validators=[DataRequired()])
-
-    # Custom coerce function to handle empty string (when "-- Select Teacher --" is chosen)
-    @staticmethod
-    def _coerce_teacher_id(value):
-        """Coerce teacher ID, treating empty string as None."""
-        if value == '' or value is None:
-            return None
-        return int(value)
-
-    target_teacher = SelectField('Target Teacher', choices=[], validators=[Optional()], coerce=_coerce_teacher_id)
-    title = StringField('Announcement Title', validators=[DataRequired(), Length(min=1, max=200)])
-    message = TextAreaField('Message', validators=[DataRequired()])
-    priority = SelectField('Priority', choices=[
-        ('low', 'Low - General Information'),
-        ('normal', 'Normal - Standard Announcement'),
-        ('high', 'High - Important Notice'),
-        ('urgent', 'Urgent - Critical Alert')
-    ], default='normal', validators=[DataRequired()])
-    is_active = BooleanField('Display Immediately', default=True)
-    expires_at = DateField('Expiration Date (optional)', format='%Y-%m-%d', validators=[Optional()])
-    submit = SubmitField('Post Announcement')
 
 
 # ---- Issue Resolution Forms ----

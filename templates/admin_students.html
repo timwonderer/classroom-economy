@@ -400,7 +400,7 @@
                       {% for seat in unclaimed_seats %}
                       <tr>
                         <td>
-                          <span class="fw-bold">{{ seat.identity_profile.full_name if seat.identity_profile else 'Unknown' }}</span>
+                          <span class="fw-bold">{{ seat.full_name }}</span>
                           {% if seat.is_teacher %}
                           <div><small class="text-muted">Claim credential: managed by system</small></div>
                           {% endif %}
@@ -416,9 +416,10 @@
                           {% endif %}
                         </td>
                         <td>
-                          <button type="button" class="btn btn-sm btn-outline-danger"
-                            onclick="deletePendingStudent({{ seat.id }}, '{{ seat.identity_profile.full_name if seat.identity_profile else 'Unknown' }}')"
-                            aria-label="Delete pending student {{ seat.identity_profile.full_name if seat.identity_profile else 'Unknown' }}.">
+                          <button type="button" class="btn btn-sm btn-outline-danger delete-pending-student"
+                            data-seat-id="{{ seat.id }}"
+                            data-student-name="{{ seat.full_name }}"
+                            aria-label="Delete pending student {{ seat.full_name }}.">
                             <span class="material-symbols-outlined align-middle fs-6" aria-hidden="true">delete</span>
                           </button>
                         </td>
@@ -1511,7 +1512,7 @@
       });
   }
 
-  function deletePendingStudent(teacherBlockId, studentName) {
+  function deletePendingStudent(seatId, studentName) {
     const confirmation = confirm(
       `Are you sure you want to delete the pending roster entry for ${studentName}?\n\n` +
       `This student has not yet claimed their account. This action will remove them from your roster.\n\n` +
@@ -1527,7 +1528,7 @@
         'Content-Type': 'application/json',
         'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content')
       },
-      body: JSON.stringify({ teacher_block_id: teacherBlockId })
+      body: JSON.stringify({ seat_id: seatId })
     })
       .then(response => response.json())
       .then(data => {
@@ -1543,6 +1544,16 @@
         alert('Network error occurred while deleting pending student.');
       });
   }
+
+  // Event listener for delete pending student buttons using data attributes
+  document.addEventListener('click', function (e) {
+    if (e.target.closest('.delete-pending-student')) {
+      const button = e.target.closest('.delete-pending-student');
+      const seatId = button.dataset.seatId;
+      const studentName = button.dataset.studentName;
+      deletePendingStudent(seatId, studentName);
+    }
+  });
 
   // (Tap toggle controls moved to Attendance page)
 

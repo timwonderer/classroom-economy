@@ -100,7 +100,7 @@
                 <div class="sysadmin-identity">
                     <span class="material-symbols-outlined"
                         style="font-size:16px; color: var(--sysadmin-accent); vertical-align:middle;">admin_panel_settings</span>
-                    {{ current_sysadmin.get_display_username() if current_sysadmin else "System Administrator" }}
+                    {{ current_sysadmin_display_name or "System Administrator" }}
                     <div class="mt-0"
                         style="font-size:10pt; color: color-mix(in srgb, var(--secondary) 60%, transparent)">
                         System Administrator
@@ -113,11 +113,6 @@
                         <span class="material-symbols-outlined">dashboard</span> Dashboard
                     </a>
 
-                    <a href="{{ url_for('sysadmin.manage_teachers') }}"
-                        class="{% if current_page in ['teachers', 'teacher_overview'] %}active{% endif %}">
-                        <span class="material-symbols-outlined">group</span> Teacher Management
-                    </a>
-
                     <a href="{{ url_for('sysadmin.support_tickets') }}"
                         class="{% if current_page in ['support_tickets', 'user_reports', 'issues'] %}active{% endif %}">
                         <span class="material-symbols-outlined">support_agent</span> Support Tickets
@@ -126,11 +121,6 @@
                     <a href="{{ url_for('sysadmin.combined_logs') }}"
                         class="{% if current_page in ['logs', 'sysadmin_error_logs', 'network_activity'] %}active{% endif %}">
                         <span class="material-symbols-outlined">description</span> Logs
-                    </a>
-
-                    <a href="{{ url_for('sysadmin.announcements') }}"
-                        class="{% if current_page == 'announcements' %}active{% endif %}">
-                        <span class="material-symbols-outlined">campaign</span> Announcements
                     </a>
 
                     <a href="/sysadmin/grafana" target="_blank" rel="noopener noreferrer">
@@ -189,11 +179,6 @@
             <span class="material-symbols-outlined">dashboard</span>
             <span>Dashboard</span>
         </a>
-        <a href="{{ url_for('sysadmin.manage_teachers') }}"
-            class="{% if current_page in ['teachers', 'teacher_overview'] %}active{% endif %}" aria-label="Teachers">
-            <span class="material-symbols-outlined">group</span>
-            <span>Teachers</span>
-        </a>
         <a href="{{ url_for('sysadmin.support_tickets') }}"
             class="{% if current_page in ['support_tickets', 'user_reports', 'issues'] %}active{% endif %}"
             aria-label="Support">
@@ -205,11 +190,6 @@
             aria-label="Logs">
             <span class="material-symbols-outlined">description</span>
             <span>Logs</span>
-        </a>
-        <a href="{{ url_for('sysadmin.announcements') }}"
-            class="{% if current_page == 'announcements' %}active{% endif %}" aria-label="Announcements">
-            <span class="material-symbols-outlined">campaign</span>
-            <span>Announce</span>
         </a>
     </nav>
 

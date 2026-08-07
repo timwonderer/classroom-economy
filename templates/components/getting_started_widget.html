@@ -537,11 +537,22 @@
 
         // Check which tasks are completed
         function checkTaskCompletion() {
+            // Check if widget is dismissed via localStorage
+            const dismissKey = 'getting_started_dismissed_{{ g.canonical_context.user_id }}';
+            if (localStorage.getItem(dismissKey) === 'true') {
+                widgetDismissed = true;
+                const widget = document.getElementById('gettingStartedWidget');
+                if (widget) {
+                    widget.style.display = 'none';
+                }
+                return;
+            }
+
             fetch('/admin/onboarding/status')
                 .then(response => response.json())
                 .then(data => {
                     if (data.status === 'success') {
-                        // Check if widget is dismissed
+                        // Check if widget is dismissed from backend (if all tasks completed)
                         if (data.dismissed) {
                             widgetDismissed = true;
                             const widget = document.getElementById('gettingStartedWidget');
@@ -697,32 +708,18 @@
             event.stopPropagation();
 
             if (confirm('Are you sure you want to dismiss this getting started guide? You can always access settings from the navigation menu.')) {
-                // Call backend to persist dismissal
-                fetch('/admin/onboarding/dismiss-widget', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRFToken': document.querySelector('[name="csrf-token"]').content
-                    }
-                })
-                    .then(response => response.json())
-                    .then(data => {
-                        if (data.status === 'success') {
-                            widgetDismissed = true;
-                            const widget = document.getElementById('gettingStartedWidget');
-                            widget.style.animation = 'slideOutDown 0.3s ease-out';
-                            setTimeout(() => {
-                                widget.style.display = 'none';
-                            }, 300);
-                        } else {
-                            console.error('Failed to dismiss widget:', data.message);
-                            alert('Could not dismiss the getting started guide. Please try again.');
-                        }
-                    })
-                    .catch(error => {
-                        console.error('Error dismissing widget:', error);
-                        alert('An error occurred while dismissing the getting started guide. Please try again.');
-                    });
+                // Persist dismissal in localStorage
+                const dismissKey = 'getting_started_dismissed_{{ g.canonical_context.user_id }}';
+                localStorage.setItem(dismissKey, 'true');
+                
+                widgetDismissed = true;
+                const widget = document.getElementById('gettingStartedWidget');
+                if (widget) {
+                    widget.style.animation = 'slideOutDown 0.3s ease-out';
+                    setTimeout(() => {
+                        widget.style.display = 'none';
+                    }, 300);
+                }
             }
         };
 

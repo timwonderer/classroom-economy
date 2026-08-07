@@ -240,7 +240,7 @@
             <tbody>
               {% for entitlement in view.pending_redemptions %}
               <tr>
-                <td>{{ entitlement.seat.identity_profile.full_name if entitlement.seat and entitlement.seat.identity_profile else 'Unknown' }}</td>
+                <td>{{ entitlement.student_name }}</td>
                 <td>{{ entitlement.store_item.name }}</td>
                 <td><small class="text-muted local-timestamp" data-timestamp="{{ format_utc_iso(entitlement.purchased_at) }}"></small></td>
                 <td>
@@ -296,7 +296,7 @@
             <tbody>
               {% for entitlement in view.recent_purchases %}
               <tr>
-                <td>{{ entitlement.seat.identity_profile.full_name if entitlement.seat and entitlement.seat.identity_profile else 'Unknown' }}</td>
+                <td>{{ entitlement.student_name }}</td>
                 <td>{{ entitlement.store_item.name }}</td>
                 <td>${{ "%.2f"|format(entitlement.store_item.price) }}</td>
                 <td><small class="text-muted local-timestamp" data-timestamp="{{ format_utc_iso(entitlement.purchased_at) }}"></small></td>
@@ -710,7 +710,7 @@
                 {% for item in view.items %}
                   {% for entitlement in item.purchases %}
                   <tr>
-                    <td>{{ entitlement.seat.identity_profile.full_name if entitlement.seat and entitlement.seat.identity_profile else 'Unknown' }}</td>
+                    <td>{{ entitlement.student_name }}</td>
                     <td>{{ item.name }}</td>
                     <td>
                         {% if entitlement.purchased_at %}

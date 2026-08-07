@@ -45,18 +45,6 @@
 </div>
 {% endif %}
 
-{% if system_announcements %}
-    {% for ann in system_announcements %}
-    <div class="alert {{ ann.get_priority_class() }} border-0 shadow-sm mb-4 d-flex align-items-center" role="alert">
-        <span class="material-symbols-outlined me-3 fs-3">{{ ann.get_priority_icon() }}</span>
-        <div>
-            <h2 class="alert-heading fw-bold h5 mb-1">{{ ann.title }}</h2>
-            <p class="mb-0">{{ ann.message | safe }}</p>
-        </div>
-    </div>
-    {% endfor %}
-{% endif %}
-
 <div class="row g-4 mb-4">
     <!-- Key Metrics -->
     <div class="col-12 col-md-6 col-lg-3">

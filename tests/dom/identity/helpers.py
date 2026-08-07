@@ -208,13 +208,5 @@ def api_get_attendance_history(client: FlaskClient):
     return client.get("/api/attendance/history")
 
 
-def api_get_tap_entry(client: FlaskClient, seat_id: int):
-    return client.get(f"/api/admin/tap-entries/{seat_id}")
-
-
-def api_delete_tap_entry(client: FlaskClient, event_id: int):
-    return client.delete(f"/api/admin/tap-entries/{event_id}")
-
-
 def student_help_support(client: FlaskClient, *, follow_redirects: bool = True):
     return client.get("/student/help-support", follow_redirects=follow_redirects)

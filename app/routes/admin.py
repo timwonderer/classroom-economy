@@ -28,6 +28,7 @@ from app.utils.canonical_temporal_resolver import (
     ensure_utc,
     canonical_temporal_resolver,
     SYSTEM_LEVEL_EVALUATION,
+    CLASS_LEVEL_EVALUATION,
 )
 from decimal import Decimal, InvalidOperation
 
@@ -82,7 +83,6 @@ from app.forms import (
 )
 # Import utility functions
 from app.utils.helpers import is_safe_url, format_utc_iso, generate_anonymous_code, render_template_with_fallback as render_template
-from app.utils.canonical_temporal_resolver import CLASS_LEVEL_EVALUATION, canonical_temporal_resolver
 from app.utils.join_code import generate_join_code, get_display_join_code
 from app.utils.economy_balance import EconomyBalanceChecker
 from app.utils.economy_policy import (
@@ -173,7 +173,6 @@ from app.utils.display_name_session import (
 from app.utils.opaque_refs import make_opaque_ref, resolve_opaque_ref
 from app.utils.auth_username import (
     normalize_auth_username,
-    needs_hashed_username_migration,
     build_hashed_username_fields,
 )
 from app.utils.student_deletion import (
@@ -209,14 +208,8 @@ from app.services.admin_identity_service import (
     create_admin_credential,
     delete_admin_credential,
     delete_admin_credentials_for_user,
-    delete_admin_onboarding_for_user,
     get_admin_credential,
-    get_or_create_admin_onboarding,
-    get_admin_onboarding,
     list_admin_credentials,
-    set_admin_onboarding_skipped,
-    set_admin_onboarding_widget_dismissed,
-    set_admin_onboarding_widget_task_status,
     touch_admin_credentials_last_used,
 )
 from app.services.recovery_service import (
@@ -782,9 +775,6 @@ def _auth_username_exists(username: str, *, exclude_admin_id: int | None = None)
         return False
     return True
 
-
-def _admin_requires_username_migration(admin: User) -> bool:
-    return needs_hashed_username_migration(admin)
 
 
 def _build_admin_auth_fields(username: str, *, existing_salt: bytes | None = None) -> tuple[bytes, str, str]:
@@ -1407,10 +1397,7 @@ def _delete_teacher_settings_activity_and_audit_rows(canonical_context):
         PayrollSettings.class_id.in_(sa.select(class_ids_subq))
     ).delete(synchronize_session=False)
     Announcement.query.filter(
-        sa.or_(
-            Announcement.user_id == user_id,
-            Announcement.target_teacher_id == user_id,
-        )
+        Announcement.user_id == user_id
     ).delete(synchronize_session=False)
     Transaction.query.filter_by(user_id=user_id).delete(synchronize_session=False)
     PendingAction.query.filter(
@@ -1465,11 +1452,10 @@ def _delete_teacher_issue_rows(canonical_context):
 
 
 def _delete_teacher_recovery_and_credentials_rows(canonical_context):
-    """Delete teacher-user recovery, credential, and onboarding rows."""
+    """Delete teacher-user recovery and credential rows."""
     user_id = canonical_context.user_id
     delete_recovery_rows_for_user(user_id)
     delete_admin_credentials_for_user(user_id)
-    delete_admin_onboarding_for_user(user_id)
 
 
 def _delete_teacher_store_rows(canonical_context):
@@ -2516,47 +2502,8 @@ def _apply_rebalance_plan(canonical_context, settings_row, change_plan, activati
     return applied_labels
 
 
-def _get_or_create_onboarding(user_id):
-    """
-    Get or create onboarding record for an admin teacher.
-
-    Args:
-        user_id: The admin teacher's canonical user ID
-
-    Returns:
-        Admin onboarding record view
-    """
-    return get_or_create_admin_onboarding(user_id, utc_now())
-
-
 def _check_onboarding_redirect():
-    """
-    Check if the current admin needs onboarding and should be redirected.
-
-    NOTE: As of the widget-based onboarding redesign, we no longer force redirect
-    teachers to the onboarding wizard. Instead, they see the Getting Started widget
-    in the bottom-right corner of the dashboard.
-
-    Returns:
-        None - onboarding redirect disabled in favor of floating widget
-    """
-    user = get_current_user()
-    if not user:
-        return None
-    admin = User.query.filter_by(
-        username_lookup_hash=user.username_lookup_hash,
-        user_role=UserRole.TEACHER,
-    ).first()
-
-    # Check if teacher has completed or skipped onboarding
-    onboarding = get_admin_onboarding(user.id)
-
-    # If no onboarding record exists, teacher needs onboarding
-    if not onboarding:
-        # New teacher - no redirect, they'll see the Getting Started widget
-        return None
-
-    # No redirect - widget-based onboarding is now used instead
+    """Onboarding status is derived live — no redirect needed."""
     return None
 
 
@@ -2674,13 +2621,6 @@ def dashboard():
         primitive="current_time",
     )
     now = temporal_now.canonical_now_utc
-
-    # Fetch active system announcements for teachers
-    system_announcements = Announcement.query.filter(
-        Announcement.is_active == True,
-        sa.or_(Announcement.expires_at == None, Announcement.expires_at > now),
-        Announcement.audience_type.in_(['system_wide', 'all_teachers'])
-    ).order_by(Announcement.created_at.desc()).all()
 
     # INV-ARC-007: dashboard GET must remain read-only.
     # Daily-limit auto tap-out is handled by scheduled tasks only.
@@ -2857,12 +2797,10 @@ def dashboard():
 
     # Prompt teachers to upgrade insurance policies to the new tiered design.
     show_insurance_tier_prompt = False
-    onboarding_record = get_admin_onboarding(current_user_id)
     show_insurance_tier_prompt = False
 
     return render_template(
         'admin_dashboard.html',
-        system_announcements=system_announcements,
         show_recovery_setup=show_recovery_setup,
         # Quick stats
         total_students=total_students,
@@ -2948,7 +2886,6 @@ def login():
     session.pop("user_id", None)
     session.pop("current_session_nonce", None)
     session.pop("last_activity", None)
-    session.pop("force_admin_username_migration", None)
     form = AdminLoginForm()
     if form.validate_on_submit():
         username = normalize_auth_username(form.username.data)
@@ -2986,78 +2923,6 @@ def login():
         return redirect(url_for("admin.login", next=request.args.get("next")))
     return render_template("admin_login.html", form=form)
 
-
-@admin_bp.route('/username-migration', methods=['GET', 'POST'])
-@admin_required
-def username_migration():
-    """One-time username update screen."""
-    admin = db.session.get(User, g.canonical_context.user_id)
-    if not admin:
-        flash("Account not found.", "error")
-        return redirect(url_for("admin.login"))
-
-    if not _admin_requires_username_migration(admin):
-        session.pop("force_admin_username_migration", None)
-        return redirect(url_for("admin.dashboard"))
-
-    current_username = session.get("admin_auth_username")
-    if not current_username:
-        flash("Could not determine your current username. Contact support.", "error")
-        return redirect(url_for("admin.logout"))
-
-    student_count = admin.get_student_count()
-    no_recovery_warning = student_count == 0
-
-    if request.method == "POST":
-        action = request.form.get("action", "continue")
-        chosen_username = current_username
-
-        if action == "update":
-            chosen_username = normalize_auth_username(request.form.get("new_username", ""))
-            if not chosen_username:
-                flash("Please enter a username.", "error")
-                return render_template(
-                    "admin_username_migration.html",
-                    current_username=current_username,
-                    no_recovery_warning=no_recovery_warning,
-                    student_count=student_count,
-                )
-            if _auth_username_exists(chosen_username, exclude_admin_id=admin.id):
-                flash("Username already exists. Choose a different username.", "error")
-                return render_template(
-                    "admin_username_migration.html",
-                    current_username=current_username,
-                    no_recovery_warning=no_recovery_warning,
-                    student_count=student_count,
-                )
-
-        salt, username_hash, username_lookup_hash = _build_admin_auth_fields(
-            chosen_username,
-            existing_salt=admin.salt,
-        )
-        admin.salt = salt
-        admin.username_hash = username_hash
-        admin.username_lookup_hash = username_lookup_hash
-        user = find_canonical_user_by_auth_username(current_username, expected_role="teacher")
-        if user:
-            user.username_hash = username_hash
-            user.username_lookup_hash = username_lookup_hash
-        if not admin.hall_pass_verify_token:
-            admin.hall_pass_verify_token = User.generate_verify_token()
-        if user and not user.hall_pass_verify_token:
-            user.hall_pass_verify_token = User.generate_verify_token()
-        session["admin_auth_username"] = chosen_username
-        set_admin_display_name_cache(user_id=admin.id, display_name=admin.get_display_name())
-        session.pop("force_admin_username_migration", None)
-        flash("Username update completed.", "success")
-        return redirect(url_for("admin.dashboard"))
-
-    return render_template(
-        "admin_username_migration.html",
-        current_username=current_username,
-        no_recovery_warning=no_recovery_warning,
-        student_count=student_count,
-    )
 
 
 @admin_bp.route('/signup', methods=['GET', 'POST'])
@@ -3764,10 +3629,11 @@ def settings():
     # GET: Show settings form
     # Derive blocks from ClassEconomy (canonical class anchor)
     blocks = [
-        (cls.section or cls.join_code or '', cls.display_name)
+        {'block': cls.section or cls.join_code or '', 'class_label': cls.display_name}
         for cls in ClassEconomy.query.filter_by(user_id=user_id).order_by(ClassEconomy.class_id.asc()).all()
     ]
 
+    # Pass admin object directly so template can call methods like get_display_username()
     return render_template(
         'admin_settings.html',
         admin=admin,
@@ -3784,7 +3650,6 @@ def logout():
     session.pop("user_id", None)
     session.pop("admin_auth_username", None)
     session.pop("last_activity", None)
-    session.pop("force_admin_username_migration", None)
     session.pop("passkey_auth_username", None)
     flash("Logged out.")
     return redirect(url_for("admin.login"))
@@ -4133,9 +3998,21 @@ def students():
         else:
             seat.username_display = "Not Set"
 
-    unclaimed_seats = [
+    unclaimed_seats_raw = [
         seat for seat in class_seats
         if seat.user_id is None and seat.claimed_at is None
+    ]
+    # Build view model dicts for unclaimed seats (no raw SQLAlchemy in templates).
+    unclaimed_seats = [
+        {
+            'id': seat.id,
+            'public_id': seat.public_id,
+            'class_id': seat.class_id,
+            'is_teacher': getattr(seat, 'is_teacher', False),
+            'created_at': seat.created_at,
+            'full_name': seat.identity_profile.full_name if seat.identity_profile else 'Unknown',
+        }
+        for seat in unclaimed_seats_raw
     ]
 
     # CRITICAL: Add scoped balances by canonical seat_id only.
@@ -4168,14 +4045,30 @@ def students():
     class_display_label = " - ".join(class_label_parts) or (class_row.class_id if class_row else "Current Class")
     display_join_code = class_row.join_code if class_row else None
 
+    # Build view model dicts for claimed students (no raw SQLAlchemy in templates).
+    claimed_student_views = []
+    for seat in all_students:
+        profile = seat.identity_profile
+        claimed_student_views.append({
+            'id': seat.id,
+            'public_id': seat.public_id,
+            'class_id': seat.class_id,
+            'identity_profile': {
+                'full_name': profile.full_name if profile else '',
+                'first_name': profile.first_name if profile else '',
+                'last_name': profile.last_name if profile else '',
+                'notes': profile.notes if profile and profile.notes else '',
+            },
+        })
+
     return render_template('admin_students.html',
-                         students=all_students,
+                         students=claimed_student_views,
                          class_display_label=class_display_label,
                          current_class_id=current_class_id,
                          current_class_section=class_row.section if class_row else None,
                          current_class_display_name=class_row.display_name if class_row else None,
                          current_class_join_code=display_join_code,
-                         claimed_students=all_students,
+                         claimed_students=claimed_student_views,
                          unclaimed_seats=unclaimed_seats,
                          student_balances_by_seat_id=student_balances_by_seat_id,
                          student_rent_privileges_by_seat_id=student_rent_privileges_by_seat_id,
@@ -4334,18 +4227,19 @@ def student_detail_public(actor_public_id):
     from app.utils.canonical_temporal_resolver import _get_class_timezone
     effective_tz = _get_class_timezone(class_id)
     today = utc_now().astimezone(effective_tz).date()
+    class_tz = effective_tz
     # Rent due on 5th, overdue after 6th
     rent_due = date(today.year, today.month, 5)
     student.rent_due_date = rent_due
     student.rent_overdue = today > rent_due and (
-        not student.rent_last_paid or student.rent_last_paid.astimezone(effective_tz).date() <= rent_due
+        not student.rent_last_paid or student.rent_last_paid.astimezone(class_tz).date() <= rent_due
     )
 
     # Property tax due on 5th, overdue after 6th
     tax_due = date(today.year, today.month, 5)
     student.property_tax_due_date = tax_due
     student.property_tax_overdue = today > tax_due and (
-        not student.property_tax_last_paid or student.property_tax_last_paid.astimezone(effective_tz).date() <= tax_due
+        not student.property_tax_last_paid or student.property_tax_last_paid.astimezone(class_tz).date() <= tax_due
     )
 
     transactions_query = Transaction.query.filter(tx_scope)
@@ -5328,18 +5222,42 @@ def store_management():
         .limit(10)
         .all()
     )
-    pending_redemptions = [
-        SimpleNamespace(
-            id=event.entitlement_id,
-            seat=db.session.get(Seat, event.seat_id) or SimpleNamespace(id=event.seat_id),
-            store_item=db.session.get(StoreItem, _latest_entitlement_grant(event.entitlement_id).product_id)
-            if _latest_entitlement_grant(event.entitlement_id) else None,
-            class_id=event.class_id,
-            purchased_at=event.submitted_at,
-            status='processing',
-        )
-        for event in pending_redemption_events
-    ]
+    pending_redemptions = []
+    if pending_redemption_events:
+        entitlement_ids = [e.entitlement_id for e in pending_redemption_events]
+        grants = EntitlementEvent.query.filter(
+            EntitlementEvent.class_id == selected_scope["class_id"],
+            EntitlementEvent.entitlement_id.in_(entitlement_ids),
+            EntitlementEvent.event_type == 'GRANTED'
+        ).all()
+        grants_dict = {}
+        for grant in grants:
+            if grant.entitlement_id not in grants_dict or grant.timestamp > grants_dict[grant.entitlement_id].timestamp:
+                grants_dict[grant.entitlement_id] = grant
+
+        store_item_ids = {grant.product_id for grant in grants_dict.values() if grant.product_id}
+        store_items_dict = {}
+        if store_item_ids:
+            store_items = StoreItem.query.filter(StoreItem.id.in_(store_item_ids)).all()
+            store_items_dict = {i.id: i for i in store_items}
+
+        for event in pending_redemption_events:
+            # Enforce class_id validation: seat must belong to the selected class
+            seat = db.session.get(Seat, event.seat_id)
+            if not seat or seat.class_id != selected_scope['class_id']:
+                continue
+            profile = seat.identity_profile if seat else None
+            grant = grants_dict.get(event.entitlement_id)
+            store_item = store_items_dict.get(grant.product_id) if grant and grant.product_id else None
+            
+            pending_redemptions.append(SimpleNamespace(
+                id=event.entitlement_id,
+                student_name=profile.full_name if profile else 'Unknown',
+                store_item=store_item,
+                class_id=event.class_id,
+                purchased_at=event.submitted_at,
+                status='processing',
+            ))
 
     # Get recent purchases (all statuses, ordered by purchase date)
     recent_purchases = []
@@ -5357,15 +5275,25 @@ def store_management():
     for entitlement in recent_entitlements:
         item = db.session.get(StoreItem, entitlement.product_id)
         seat = db.session.get(Seat, entitlement.target_seat_id)
+        profile = seat.identity_profile if seat else None
+
+        # Extract quantity from payload (defaults to 1 if not present)
+        payload = entitlement.payload or {}
+        quantity_total = payload.get('quantity_total', 1)
+
+        # Determine if this is from a bundle purchase
+        is_from_bundle = item.is_bundle if item else False
+
         recent_purchases.append(SimpleNamespace(
             id=entitlement.entitlement_id,
-            seat=seat or SimpleNamespace(id=entitlement.target_seat_id),
+            student_name=profile.full_name if profile else 'Unknown',
             class_id=entitlement.class_id,
             store_item=item,
             status=derive_display_status(entitlement.entitlement_id),
             purchased_at=entitlement.timestamp,
             purchase_date=entitlement.timestamp,
-            is_from_bundle=False,
+            quantity=quantity_total,
+            is_from_bundle=is_from_bundle,
         ))
 
     collective_progress_by_item = {}
@@ -5557,6 +5485,19 @@ def store_management():
             is_rent_linked=True,
         ).all()
     }
+
+    # Group recent purchases by item for template iteration
+    purchases_by_item_id = {}
+    for purchase in recent_purchases:
+        if purchase.store_item and hasattr(purchase.store_item, 'id'):
+            item_id = purchase.store_item.id
+            if item_id not in purchases_by_item_id:
+                purchases_by_item_id[item_id] = []
+            purchases_by_item_id[item_id].append(purchase)
+
+    # Add purchases list to each item for template access
+    for item in items:
+        item.purchases = purchases_by_item_id.get(item.id, [])
 
     # Build economic view from Class Configuration domain
     economic_view = build_economic_view(selected_scope['class_id'])
@@ -6153,34 +6094,37 @@ def rent_settings():
 
     # Get active waivers (still needs manual query for waiver-specific fields not in view model)
     now = utc_now()
-    active_waivers = [
-        SimpleNamespace(
+    active_waivers = []
+    for waiver in obligations_service.get_active_rent_waivers_for_class(
+        class_id,
+        coverage_date=now,
+    ):
+        profile = IdentityProfile.query.filter_by(seat_id=waiver.seat_id).first() if waiver.seat_id else None
+        active_waivers.append(SimpleNamespace(
             id=waiver.id,
-            profile=IdentityProfile.query.filter_by(seat_id=waiver.seat_id).first() if waiver.seat_id else None,
+            student=SimpleNamespace(
+                full_name=profile.full_name if profile else 'Unknown',
+            ),
             waiver_start_date=waiver.coverage_start_time,
             waiver_end_date=waiver.coverage_end_time,
-            periods_count=_count_rent_waiver_periods(rent_settings, waiver),
+            periods_count=_count_rent_waiver_periods(settings, waiver),
+            reason=getattr(waiver, 'notes', None) or getattr(waiver, 'reason', None),
             created_at=waiver.assessed_at,
-        )
-        for waiver in obligations_service.get_active_rent_waivers_for_class(
-            class_id,
-            coverage_date=now,
-        )
-    ]
+        ))
 
-    # Build all_students list from view model student_rows for waiver form
+    # Build all_students view model dicts for waiver form (no raw SQLAlchemy in templates).
     all_students = []
     if obligation_summary and obligation_summary.student_rows:
-        # Fetch seat objects for form rendering (view model gives us names, we need seats for IDs)
         for row in obligation_summary.student_rows:
-            seat = Seat.query.get(row['seat_id'])
-            if seat:
-                all_students.append(seat)
-        # Sort by student name from view model
+            all_students.append({
+                'id': row['seat_id'],
+                'full_name': row['student_name'],
+                'block': '',
+            })
         all_students.sort(
             key=lambda s: (
-                next((r['student_name'] for r in obligation_summary.student_rows if r['seat_id'] == s.id), "").lower(),
-                s.id
+                s['full_name'].lower(),
+                s['id'],
             )
         )
 
@@ -6327,15 +6271,13 @@ def add_rent_waiver():
     if not class_id:
         abort(404)
 
-    # Get seat IDs from request (format: multiple seat_id_<n> form fields)
+    # Get seat IDs from request (format: student_ids multiple select)
     seat_ids_to_waive = []
-    for key in request.form.keys():
-        if key.startswith('seat_id_'):
-            try:
-                seat_id = int(request.form.get(key))
-                seat_ids_to_waive.append(seat_id)
-            except (ValueError, TypeError):
-                continue
+    for seat_id_str in request.form.getlist('student_ids'):
+        try:
+            seat_ids_to_waive.append(int(seat_id_str))
+        except ValueError:
+            continue
 
     if not seat_ids_to_waive:
         flash("No students selected for waiver.", "warning")
@@ -7574,6 +7516,13 @@ def payroll():
     current_time = now_utc.astimezone(_pytz.UTC)
 
     ctx = g.canonical_context
+    now_eval = canonical_temporal_resolver(
+        CLASS_LEVEL_EVALUATION,
+        canonical_execution_context=ctx,
+        primitive="current_time",
+    )
+    now_utc = now_eval.canonical_now_utc
+    current_time = now_eval.canonical_now
     user_id = ctx.user_id
     current_class_id = ctx.class_id
     feature_options = get_admin_feature_join_code_options('payroll', canonical_context=g.canonical_context)
@@ -9662,6 +9611,50 @@ def help_support():
     selected_join_code = (selected_option["join_code"] if selected_option else get_display_join_code(selected_class_id) or "").strip()
     selected_class_label = selected_option["label"] if selected_option else None
 
+    class_scope_options = [
+        {
+            'class_id': ce_row.class_id,
+            'join_code': get_display_join_code(ce_row.class_id),
+            'label': ce_row.display_name or get_display_join_code(ce_row.class_id),
+        }
+        for ce_row in teacher_user_class_rows
+    ]
+
+    def _support_report_views(issues):
+        """Build view-model dicts for the My Tickets list."""
+        from app.models import ClassEconomy
+        views = []
+        for issue in issues:
+            explanation = issue.student_explanation or ''
+            first_line = explanation.split('\n', 1)[0] if explanation else ''
+            clean = explanation
+            if first_line.startswith('SUPPORT_SCOPE|'):
+                clean = explanation.split('\n', 1)[1].strip() if '\n' in explanation else explanation
+
+            scope_jc = selected_join_code or 'Unknown'
+            class_label = selected_class_label or 'Unknown Class'
+
+            if issue.class_public_id:
+                ce = ClassEconomy.query.filter_by(class_public_id=issue.class_public_id).first()
+                if ce:
+                    scope_jc = ce.join_code
+                    class_label = ce.display_name or ce.join_code
+
+            views.append({
+                'report': {
+                    'title': 'Support Ticket',
+                    'status': issue.status,
+                    'submitted_at': issue.submitted_at,
+                    'report_type': issue.issue_type,
+                },
+                'class_label': class_label,
+                'scope_join_code': scope_jc,
+                'scope_class_id': issue.class_public_id,
+                'issue_category': issue.category.name if issue.category else 'Unknown',
+                'clean_description': clean,
+            })
+        return views
+
     category_to_report_type = {
         'general': 'comment',
         'bug': 'bug',
@@ -9721,26 +9714,20 @@ def help_support():
 
         if issue_category not in category_to_report_type:
             flash("Please select a valid support ticket category.", "error")
-            my_reports = [
-                SimpleNamespace(
-                    report=issue,
-                    scope_class_id=issue.class_public_id,
-                    class_label=selected_class_label or selected_join_code or 'Unknown',
-                    issue_category=issue.issue_type,
-                    clean_description=issue.student_explanation,
-                )
-                for issue in Issue.query.filter(
+            my_reports = _support_report_views(
+                Issue.query.filter(
                     Issue.actor_public_id == generate_anonymous_code(f"admin:{user_id}"),
                     Issue.class_public_id == selected_class_id,
                     Issue.issue_type == 'general',
                 ).order_by(Issue.submitted_at.desc()).limit(20).all()
-            ]
+            )
 
             return render_template(
                 'admin_support_tickets.html',
                 current_page='help',
                 page_title='Help & Support',
                 selected_class_id=selected_class_id,
+                class_scope_options=class_scope_options,
                 my_reports=my_reports,
                 help_content=HELP_ARTICLES['teacher'],
                 format_utc_iso=format_utc_iso,
@@ -9753,26 +9740,20 @@ def help_support():
 
         if not title or not description or not issue_category:
             flash("Please provide a category, title, and description for your support ticket.", "error")
-            my_reports = [
-                SimpleNamespace(
-                    report=issue,
-                    scope_class_id=issue.class_public_id,
-                    class_label=selected_class_label or selected_join_code or 'Unknown',
-                    issue_category=issue.issue_type,
-                    clean_description=issue.student_explanation,
-                )
-                for issue in Issue.query.filter(
+            my_reports = _support_report_views(
+                Issue.query.filter(
                     Issue.actor_public_id == generate_anonymous_code(f"admin:{user_id}"),
                     Issue.class_public_id == selected_class_id,
                     Issue.issue_type == 'general',
                 ).order_by(Issue.submitted_at.desc()).limit(20).all()
-            ]
+            )
 
             return render_template(
                 'admin_support_tickets.html',
                 current_page='help',
                 page_title='Help & Support',
                 selected_class_id=selected_class_id,
+                class_scope_options=class_scope_options,
                 my_reports=my_reports,
                 help_content=HELP_ARTICLES['teacher'],
                 format_utc_iso=format_utc_iso,
@@ -9815,22 +9796,17 @@ def help_support():
         Issue.actor_public_id == anonymous_code,
         Issue.issue_type == 'general',
     ).order_by(Issue.submitted_at.desc()).limit(50).all()
-    my_reports = [
-        {
-            'report': report,
-            'scope_class_id': report.class_public_id,
-            'class_label': selected_class_label or selected_join_code or 'Unknown',
-            'issue_category': report.issue_type,
-            'clean_description': report.student_explanation,
-        }
-        for report in reports
-        if not selected_class_id or not report.class_public_id or report.class_public_id == selected_class_id
+    filtered_reports = [
+        r for r in reports
+        if not selected_class_id or not r.class_public_id or r.class_public_id == selected_class_id
     ][:20]
+    my_reports = _support_report_views(filtered_reports)
 
     return render_template('admin_support_tickets.html',
                          current_page='help',
                          page_title='Help & Support',
                          selected_class_id=selected_class_id,
+                         class_scope_options=class_scope_options,
                          my_reports=my_reports,
                          help_content=HELP_ARTICLES['teacher'],
                          format_utc_iso=format_utc_iso)
@@ -10032,7 +10008,6 @@ def announcements():
     announcements_list = Announcement.query.filter_by(
         user_id=user_id,
         class_id=selected_class_id,
-        system_admin_id=None  # Only teacher-created announcements
     ).order_by(Announcement.created_at.desc()).all()
 
     active_class_label = selected_join_code
@@ -10143,11 +10118,25 @@ def announcement_edit(announcement_id):
             current_app.logger.error(f"Error updating announcement: {e}")
             flash('An error occurred while updating the announcement.', 'danger')
 
+    # Build view model for class context display in edit mode.
+    class_label = class_context.get("join_code") or class_context.get("class_id") or "Unknown"
+    teacher_block_view = {
+        'class_label': class_label,
+    }
+
+    # Build announcement view model for preview section.
+    announcement_view = {
+        'title': announcement.title,
+        'message': announcement.message,
+        'priority_class': announcement.get_priority_class(),
+        'priority_icon': announcement.get_priority_icon(),
+    }
+
     return render_template(
         'admin_announcement_form.html',
         form=form,
-        announcement=announcement,
-        teacher_block=class_context.get("block"),
+        announcement=announcement_view,
+        teacher_block=teacher_block_view,
         action='Edit'
     )
 
@@ -10237,132 +10226,55 @@ def announcement_toggle(announcement_id):
 @admin_bp.route('/onboarding/status', methods=['GET'])
 @admin_required
 def onboarding_status():
-    """Get onboarding task completion status for the Getting Started widget."""
+    """Get onboarding task completion status for the Getting Started widget.
+
+    All status is derived live from existing feature configuration — no
+    separate onboarding table.
+    """
     user_id = g.canonical_context.user_id
     try:
-        # GET endpoint must remain read-only: do not create records here.
-        onboarding_record = get_admin_onboarding(user_id)
-
-        # Check if widget is dismissed
-        if onboarding_record and onboarding_record.widget_dismissed:
-            return jsonify({
-                'status': 'success',
-                'dismissed': True,
-                'completion': {}
-            })
-
-        # No early return when a teacher has no class periods yet.
-        # The widget should still render the full checklist so teachers can
-        # see all setup tasks immediately.
-
-        # Get all blocks for this teacher (for account-wide onboarding checks)
-        all_blocks = _get_teacher_blocks(g.canonical_context)
-
-        # Initialize completion status
-        completion = {
-            'roster': False,
-            'payroll': False,
-            'store': False,
-            'banking': False,
-            'rent': False,
-            'insurance': False,
-            'hall_pass': False,
-            'personalization': False,
-            'passkey': False
-        }
-        data_completed = completion.copy()
-        skipped_tasks = {}
-
-        widget_task_statuses = (onboarding_record.widget_tasks_completed if onboarding_record else {}) or {}
-        for task_name, status in widget_task_statuses.items():
-            if status is True or status == 'skipped':
-                skipped_tasks[task_name] = True
-
-        # ACCOUNT-WIDE ONBOARDING CHECKS
-        # Onboarding is per admin account, not per class section
-        # If ANY of the teacher's class sections has a feature set up, mark as complete
-
-        # Roster: has at least one claimed student seat in any owned class.
-        student_count = (
-            db.session.query(Seat.id)
-            .join(ClassEconomy, ClassEconomy.class_id == Seat.class_id)
-            .filter(
-                ClassEconomy.user_id == user_id,
-                Seat.role == "student",
-                Seat.user_id.isnot(None),
-                Seat.claimed_at.isnot(None),
-            )
-            .count()
-        )
-        data_completed['roster'] = student_count > 0
-
         class_ids_subq = db.session.query(ClassEconomy.class_id).filter_by(user_id=user_id).subquery()
-        # Payroll: has payroll settings configured for ANY class OR marked complete
-        payroll_settings = (
-            PayrollSettings.query
-            .filter(PayrollSettings.class_id.in_(sa.select(class_ids_subq)))
-            .first()
-        )
-        data_completed['payroll'] = payroll_settings is not None
 
-        # Store: has at least one store item for ANY block OR marked complete
-        store_items = (
-            StoreItem.query
-            .filter(StoreItem.class_id.in_(sa.select(class_ids_subq)))
-            .count()
-        )
-        data_completed['store'] = store_items > 0
-
-        # Banking: has banking settings configured for ANY block OR marked complete
-        banking_settings = (
-            BankingSettings.query
-            .filter(BankingSettings.class_id.in_(sa.select(class_ids_subq)))
-            .first()
-        )
-        data_completed['banking'] = banking_settings is not None
-
-        # Rent: has rent settings configured for ANY block OR marked complete
-        rent_settings = (
-            RentSettings.query.with_entities(RentSettings.id)
-            .filter(RentSettings.class_id.in_(sa.select(class_ids_subq)))
-            .first()
-        )
-        data_completed['rent'] = rent_settings is not None
-
-        # Insurance provisioning is no longer tracked through legacy policy rows.
-        data_completed['insurance'] = False
-
-        # Hall pass: check if hall pass settings exist for ANY block OR marked complete
-        hall_pass_settings = (
-            HallPassSettings.query
-            .filter(HallPassSettings.class_id.in_(sa.select(class_ids_subq)))
-            .first()
-        )
-        data_completed['hall_pass'] = hall_pass_settings is not None
-
-        # Personalization: check if ANY ClassEconomy row has a display_name set OR marked complete
-        has_label = bool(
-            ClassEconomy.query.filter(
+        completion = {
+            'roster': (
+                db.session.query(Seat.id)
+                .join(ClassEconomy, ClassEconomy.class_id == Seat.class_id)
+                .filter(
+                    ClassEconomy.user_id == user_id,
+                    Seat.role == "student",
+                    Seat.user_id.isnot(None),
+                    Seat.claimed_at.isnot(None),
+                )
+                .count()
+            ) > 0,
+            'payroll': PayrollSettings.query.filter(
+                PayrollSettings.class_id.in_(sa.select(class_ids_subq))
+            ).first() is not None,
+            'store': StoreItem.query.filter(
+                StoreItem.class_id.in_(sa.select(class_ids_subq))
+            ).count() > 0,
+            'banking': BankingSettings.query.filter(
+                BankingSettings.class_id.in_(sa.select(class_ids_subq))
+            ).first() is not None,
+            'rent': RentSettings.query.with_entities(RentSettings.id).filter(
+                RentSettings.class_id.in_(sa.select(class_ids_subq))
+            ).first() is not None,
+            'insurance': False,
+            'hall_pass': HallPassSettings.query.filter(
+                HallPassSettings.class_id.in_(sa.select(class_ids_subq))
+            ).first() is not None,
+            'personalization': bool(ClassEconomy.query.filter(
                 ClassEconomy.user_id == user_id,
                 ClassEconomy.display_name.isnot(None),
                 ClassEconomy.display_name != '',
-            ).first()
-        )
-        data_completed['personalization'] = has_label
-
-        # Passkey: check if at least one credential exists OR marked complete
-        has_passkey = admin_has_passkeys(user_id)
-        data_completed['passkey'] = has_passkey
-
-        for task_name in completion.keys():
-            completion[task_name] = data_completed.get(task_name, False) or skipped_tasks.get(task_name, False)
+            ).first()),
+            'passkey': admin_has_passkeys(user_id),
+        }
 
         return jsonify({
             'status': 'success',
-            'dismissed': False,
+            'dismissed': all(completion.values()),
             'completion': completion,
-            'data_completed': data_completed,
-            'skipped': skipped_tasks
         })
 
     except Exception as e:
@@ -10380,94 +10292,18 @@ def onboarding():
 @admin_bp.route('/onboarding/skip', methods=['POST'])
 @admin_required
 def onboarding_skip():
-    """Mark onboarding as skipped for the current admin."""
-    user = get_current_user()
-    if not user:
-        return jsonify({'status': 'error', 'message': 'Not authenticated'}), 401
-
-    get_or_create_admin_onboarding(user.id, utc_now())
-    set_admin_onboarding_skipped(user.id, utc_now())
+    """No-op — onboarding status is derived live."""
     return jsonify({'status': 'success'})
 
 
 @admin_bp.route('/onboarding/skip-task', methods=['POST'])
 @admin_required
 def onboarding_skip_task():
-    """Mark an optional onboarding task as skipped."""
-    user = get_current_user()
-    if not user:
-        return jsonify({'status': 'error', 'message': 'Not authenticated'}), 401
-
-    try:
-        data = request.get_json()
-        task_name = data.get('task')
-
-        if not task_name:
-            return jsonify({'status': 'error', 'message': 'Task name required'}), 400
-
-        # Get or create onboarding record
-        set_admin_onboarding_widget_task_status(
-            user.id,
-            task_name=task_name,
-            status='skipped',
-            now=utc_now(),
-        )
-
-        return jsonify({
-            'status': 'success',
-            'message': f'Task "{task_name}" marked as skipped'
-        })
-
-    except Exception as e:
-        db.session.rollback()
-        current_app.logger.error(f"Error skipping task: {e}")
-        return jsonify({'status': 'error', 'message': 'Failed to skip task'}), 500
+    """No-op — onboarding tasks are derived from feature configuration."""
+    return jsonify({'status': 'success'})
 
 
-@admin_bp.route('/onboarding/dismiss-widget', methods=['POST'])
-@admin_required
-def onboarding_dismiss_widget():
-    """Dismiss the Getting Started widget permanently."""
-    user = get_current_user()
-    if not user:
-        return jsonify({'status': 'error', 'message': 'Not authenticated'}), 401
 
-    try:
-        # Get or create onboarding record
-        set_admin_onboarding_widget_dismissed(user.id, dismissed=True, now=utc_now())
-
-        return jsonify({
-            'status': 'success',
-            'message': 'Getting Started widget dismissed'
-        })
-
-    except Exception as e:
-        db.session.rollback()
-        current_app.logger.error(f"Error dismissing widget: {e}")
-        return jsonify({'status': 'error', 'message': 'Failed to dismiss widget'}), 500
-
-
-@admin_bp.route('/onboarding/undismiss-widget', methods=['POST'])
-@admin_required
-def onboarding_undismiss_widget():
-    """Un-dismiss the Getting Started widget to show it again."""
-    user = get_current_user()
-    if not user:
-        return jsonify({'status': 'error', 'message': 'Not authenticated'}), 401
-
-    try:
-        # Get onboarding record
-        set_admin_onboarding_widget_dismissed(user.id, dismissed=False, now=utc_now())
-
-        return jsonify({
-            'status': 'success',
-            'message': 'Getting Started widget will appear again'
-        })
-
-    except Exception as e:
-        db.session.rollback()
-        current_app.logger.error(f"Error un-dismissing widget: {e}")
-        return jsonify({'status': 'error', 'message': 'Failed to show widget'}), 500
 
 
 # ==================== ECONOMY BALANCE CHECKER API ====================
@@ -11033,6 +10869,94 @@ def passkey_settings():
 
     # ==================== ISSUE RESOLUTION SYSTEM ====================
 
+
+def _resolve_issue_identity(actor_public_id, class_public_id):
+    """Resolve student display name and class label from public IDs.
+
+    Returns (student_display_name, class_label).  Falls back to truncated
+    public IDs when canonical records are missing.
+    """
+    from app.models import Seat, IdentityProfile, ClassEconomy
+
+    student_display_name = actor_public_id[:8] if actor_public_id else 'Unknown'
+    class_label = None
+
+    if actor_public_id:
+        seat = Seat.query.filter_by(public_id=actor_public_id).first()
+        if seat and seat.identity_profile:
+            student_display_name = seat.identity_profile.full_name
+
+    if class_public_id:
+        ce = ClassEconomy.query.filter_by(class_public_id=class_public_id).first()
+        if ce:
+            class_label = ce.display_name or ce.join_code
+
+    return student_display_name, class_label
+
+
+def _issue_to_view(issue, student_display_name, class_label):
+    """Build a plain-dict view model from an Issue row + resolved identity fields."""
+    return {
+        'id': issue.id,
+        'status': issue.status,
+        'student_display_name': student_display_name,
+        'class_label': class_label,
+        'category': {'name': issue.category.name if issue.category else 'Unknown'},
+        'issue_type': issue.issue_type,
+        'related_transaction_id': issue.related_transaction_id,
+        'student_explanation': issue.student_explanation or '',
+        'student_expected_outcome': issue.student_expected_outcome,
+        'submitted_at': issue.submitted_at,
+        'updated_at': issue.updated_at,
+        'created_at': issue.created_at,
+        'escalated_at': issue.escalated_at,
+        'escalation_reason': issue.escalation_reason,
+        'teacher_resolution': issue.teacher_resolution,
+        'teacher_reviewed_at': issue.teacher_reviewed_at,
+        'teacher_notes': issue.teacher_notes,
+        'teacher_diagnostic_note': issue.teacher_diagnostic_note,
+        'sysadmin_notes': issue.sysadmin_notes,
+        'sysadmin_resolved_at': issue.sysadmin_resolved_at,
+        'closed_at': issue.closed_at,
+        'closed_by_type': issue.closed_by_type,
+        'context_snapshot': issue.context_snapshot,
+        'page_url': issue.page_url,
+        'system_metadata': issue.system_metadata,
+        'eligible_for_reward': issue.eligible_for_reward,
+        'share_class_name_with_sysadmin': issue.share_class_name_with_sysadmin,
+        # Relationships resolved to plain lists below when needed.
+        'resolution_actions': [],
+        'status_history': [],
+    }
+
+
+def _resolution_action_to_view(action):
+    """Build a plain-dict view model from an IssueResolutionAction row."""
+    return {
+        'action_type': action.action_type,
+        'action_description': action.action_description,
+        'performed_by_type': action.performed_by_type,
+        'performed_by_public_id': action.performed_by_public_id,
+        'related_transaction_id': action.related_transaction_id,
+        'amount_changed': action.amount_changed,
+        'before_value': action.before_value,
+        'after_value': action.after_value,
+        'created_at': action.created_at,
+    }
+
+
+def _status_history_to_view(history):
+    """Build a plain-dict view model from an IssueStatusHistory row."""
+    return {
+        'previous_status': history.previous_status,
+        'new_status': history.new_status,
+        'changed_at': history.changed_at,
+        'changed_by_type': history.changed_by_type,
+        'changed_by_public_id': history.changed_by_public_id,
+        'notes': history.notes,
+    }
+
+
 def _resolve_issue_id_from_ref(issue_ref: str) -> int | None:
     if issue_ref.isdigit():
         return int(issue_ref)
@@ -11065,7 +10989,7 @@ def issues_queue():
         issues_query = Issue.query.filter_by(class_id=None)
 
     # Get issues by status.
-    pending_issues = issues_query.filter(
+    pending_rows = issues_query.filter(
         Issue.status.in_([
             Issue.STATUS_OPEN,
             Issue.STATUS_TEACHER_REVIEW,
@@ -11074,7 +10998,7 @@ def issues_queue():
         ])
     ).order_by(Issue.submitted_at.desc()).all()
 
-    resolved_issues = issues_query.filter(
+    resolved_rows = issues_query.filter(
         Issue.status.in_([
             Issue.STATUS_TEACHER_FINAL_REVIEW,
             Issue.STATUS_DEV_RESOLVED,
@@ -11083,13 +11007,42 @@ def issues_queue():
         ])
     ).order_by(Issue.updated_at.desc()).limit(50).all()
 
-    escalated_issues = issues_query.filter(
+    escalated_rows = issues_query.filter(
         Issue.status.in_([
             Issue.STATUS_ESCALATED_TO_DEV,
             'elevated',
             'developer_review',
         ])
     ).order_by(Issue.escalated_at.desc()).all()
+
+    all_issues = pending_rows + resolved_rows + escalated_rows
+    
+    actor_ids = {i.actor_public_id for i in all_issues if i.actor_public_id}
+    class_ids = {i.class_public_id for i in all_issues if i.class_public_id}
+    
+    from app.models import Seat, ClassEconomy
+    
+    actor_dict = {}
+    if actor_ids:
+        seats = Seat.query.filter(Seat.public_id.in_(actor_ids)).all()
+        for seat in seats:
+            if seat.identity_profile:
+                actor_dict[seat.public_id] = seat.identity_profile.full_name
+                
+    class_dict = {}
+    if class_ids:
+        classes = ClassEconomy.query.filter(ClassEconomy.class_public_id.in_(class_ids)).all()
+        for ce in classes:
+            class_dict[ce.class_public_id] = ce.display_name or ce.join_code
+
+    def _to_queue_view(issue):
+        name = actor_dict.get(issue.actor_public_id, issue.actor_public_id[:8] if issue.actor_public_id else 'Unknown')
+        label = class_dict.get(issue.class_public_id)
+        return _issue_to_view(issue, name, label)
+
+    pending_issues = [_to_queue_view(i) for i in pending_rows]
+    resolved_issues = [_to_queue_view(i) for i in resolved_rows]
+    escalated_issues = [_to_queue_view(i) for i in escalated_rows]
 
     return render_template('admin_issues_queue.html',
                          current_page='issues',
@@ -11120,10 +11073,21 @@ def view_issue(issue_ref):
         issue_query = issue_query.filter_by(class_id=class_id)
     issue = issue_query.first_or_404()
 
+    name, label = _resolve_issue_identity(issue.actor_public_id, issue.class_public_id)
+    issue_view = _issue_to_view(issue, name, label)
+    issue_view['resolution_actions'] = [
+        _resolution_action_to_view(a) for a in issue.resolution_actions
+    ]
+    issue_view['status_history'] = [
+        _status_history_to_view(h) for h in issue.status_history
+    ]
+    # Template checks resolution_actions count via len()
+    issue_view['_resolution_actions_count'] = len(issue_view['resolution_actions'])
+
     return render_template('admin_view_issue.html',
                          current_page='issues',
                          page_title=f'Issue #{issue.id}',
-                         issue=issue,
+                         issue=issue_view,
                          issue_ref=make_opaque_ref('issue', issue.id),
                          format_utc_iso=format_utc_iso)
 

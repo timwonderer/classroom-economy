@@ -210,7 +210,7 @@
             {% endif %}
 
             <!-- Resolution Actions History -->
-            {% if issue.resolution_actions.count() > 0 %}
+            {% if issue.resolution_actions|length > 0 %}
             <div class="card shadow-sm mb-4">
                 <div class="card-header bg-secondary text-white">
                     <h5 class="mb-0">

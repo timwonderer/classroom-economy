@@ -23,13 +23,13 @@
                     <div class="alert alert-info mb-3">
                         <span class="material-symbols-outlined me-2">info</span>
                         This announcement will post to the class currently selected in the sidebar:
-                        <strong>{{ active_class_label }}</strong>{% if active_block %} (Period {{ active_block }}){% endif %}{% if active_join_code %} — {{ active_join_code }}{% endif %}.
+                        <strong>{{ active_class_label }}</strong>{% if active_join_code %} — {{ active_join_code }}{% endif %}.
                     </div>
                     {{ form.class_id }}
                     {% elif action == 'Edit' and teacher_block %}
                     <div class="alert alert-info mb-3">
                         <span class="material-symbols-outlined me-2">info</span>
-                        <strong>Class Period:</strong> {{ teacher_block.get_class_label() }} (Period {{ teacher_block.block }})
+                        <strong>Class Period:</strong> {{ teacher_block.class_label }}
                         <br><small>To post to a different class, switch class in the sidebar and create a new announcement.</small>
                     </div>
                     {% endif %}
@@ -107,8 +107,8 @@
                 <h5 class="mb-0"><span class="material-symbols-outlined me-2">info</span>Preview</h5>
             </div>
             <div class="card-body">
-                <div class="alert {{ announcement.get_priority_class() }} mb-0">
-                    <strong><span class="material-symbols-outlined me-2 align-middle">{{ announcement.get_priority_icon() }}</span>{{ announcement.title }}</strong>
+                <div class="alert {{ announcement.priority_class }} mb-0">
+                    <strong><span class="material-symbols-outlined me-2 align-middle">{{ announcement.priority_icon }}</span>{{ announcement.title }}</strong>
                     <p class="mb-0 mt-2">{{ announcement.message }}</p>
                 </div>
             </div>

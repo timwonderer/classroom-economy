@@ -9,11 +9,8 @@ import os
 import re
 import binascii
 import secrets
-import io
-import base64
 from urllib.parse import urlparse
 import sqlalchemy as sa
-import qrcode
 import requests
 from types import SimpleNamespace
 from datetime import datetime, timedelta, timezone
@@ -44,11 +41,11 @@ from app.auth import (
     find_canonical_user_by_auth_username,
     get_current_user,
 )
-from app.forms import SystemAdminLoginForm, SystemAdminInviteForm
+from app.forms import SystemAdminLoginForm
 
 # Import utility functions
 from app.utils.helpers import is_safe_url, format_utc_iso
-from app.utils.encryption import encrypt_totp, decrypt_totp
+from app.utils.encryption import decrypt_totp
 from app.hash_utils import hash_username_lookup
 from app.services import ledger_service
 from app.utils.passwordless_client import (
@@ -59,33 +56,16 @@ from app.utils.passwordless_client import (
 from app.utils.auth_username import normalize_auth_username
 from app.utils.opaque_refs import make_opaque_ref, resolve_opaque_ref
 from app.services.admin_identity_service import (
-    count_active_admin_invite_codes,
-    create_admin_invite_code,
     create_admin_credential,
-    delete_admin_credentials_for_user,
     delete_admin_credential,
-    delete_admin_onboarding_for_user,
-    delete_admin_account_rows,
-    get_admin_invite_code_by_id,
-    list_admin_invite_codes,
     admin_has_passkeys,
     list_admin_credentials,
-    mark_admin_invite_code_used,
     touch_admin_credentials_last_used,
 )
-from app.services.announcement_service import (
-    create_system_announcement,
-    delete_system_announcement,
-    update_system_announcement,
-)
 from app.utils.issue_helpers import record_resolution_action
-from app.services.recovery_service import delete_recovery_rows_for_user
 
 # Create blueprint
 sysadmin_bp = Blueprint('sysadmin', __name__, url_prefix='/sysadmin')
-
-# Constants
-INACTIVITY_THRESHOLD_DAYS = 180  # Number of days of inactivity before highlighting inactive admins
 
 
 def _resolve_admin_user(admin: User) -> User | None:
@@ -94,61 +74,6 @@ def _resolve_admin_user(admin: User) -> User | None:
         return None
     return User.query.filter_by(username_lookup_hash=admin.username_lookup_hash).first()
 
-
-def _resolve_legacy_admin(user: User) -> User | None:
-    """Resolve the canonical teacher user for the supplied auth username hash."""
-    if not user or not user.username_lookup_hash:
-        return None
-    return User.query.filter_by(
-        username_lookup_hash=user.username_lookup_hash,
-        user_role=UserRole.TEACHER,
-    ).first()
-
-
-def _user_student_counts(user_ids: list[int]) -> tuple[dict[int, int], dict[int, dict[str, int]]]:
-    """Aggregate claimed student seats per admin user."""
-    if not user_ids:
-        return {}, {}
-
-    user_students = (
-        db.session.query(
-            ClassEconomy.user_id.label("user_id"),
-            Seat.id.label("seat_id"),
-            ClassEconomy.section.label("block"),
-        )
-        .join(Seat, Seat.class_id == ClassEconomy.class_id)
-        .filter(
-            ClassEconomy.user_id.in_(user_ids),
-            Seat.role == "student",
-            Seat.user_id.isnot(None),
-            Seat.claimed_at.isnot(None),
-        )
-        .subquery()
-    )
-
-    count_rows = (
-        db.session.query(
-            user_students.c.user_id,
-            db.func.count(user_students.c.seat_id).label("count"),
-        )
-        .group_by(user_students.c.user_id)
-        .all()
-    )
-    total_counts = {row.user_id: row.count for row in count_rows}
-
-    period_rows = (
-        db.session.query(
-            user_students.c.user_id,
-            user_students.c.block,
-            db.func.count(user_students.c.seat_id).label("count"),
-        )
-        .group_by(user_students.c.user_id, user_students.c.block)
-        .all()
-    )
-    periods: dict[int, dict[str, int]] = {}
-    for user_id, block, count in period_rows:
-        periods.setdefault(user_id, {})[block] = count
-    return total_counts, periods
 
 
 def _find_sysadmin_by_auth_username(username: str):
@@ -569,12 +494,11 @@ def passkey_settings():
 def dashboard():
     """
     System admin dashboard with unified statistics and quick actions.
-    Shows admin count, student count, active invites, recent admins, and recent errors.
+    Shows teacher count, student count, open tickets, recent errors.
     """
     # Gather statistics
     total_admins = User.query.filter_by(user_role=UserRole.TEACHER).count()
     total_students = Seat.query.filter(Seat.role == 'student').count()
-    active_invites = count_active_admin_invite_codes()
     system_admin_count = User.query.filter(User.user_role == UserRole.SYSADMIN).count()
 
     # Open tickets = new user reports + pending/in-review escalated issues
@@ -590,14 +514,6 @@ def dashboard():
     ).count()
     open_tickets = new_reports_count + open_issues_count
 
-    # Recent admins (last 5) are the canonical teacher Users.
-    recent_admins = (
-        User.query.filter_by(user_role=UserRole.TEACHER)
-        .order_by(User.created_at.desc())
-        .limit(5)
-        .all()
-    )
-
     # Recent errors (last 5)
     recent_errors = db.session.execute(
         sa.text(
@@ -608,21 +524,26 @@ def dashboard():
         )
     ).mappings().all()
 
-    # System admins
-    system_admins = (
+    # System admins — resolve to view dicts (no raw models in templates)
+    system_admins_query = (
         User.query.filter(User.user_role == UserRole.SYSADMIN)
         .order_by(User.id.asc())
         .all()
     )
+    system_admins = [
+        {
+            'display_username': sa.get_display_username(),
+            'last_login': None,
+        }
+        for sa in system_admins_query
+    ]
 
     return render_template(
         "system_admin_dashboard.html",
         total_admins=total_admins,
         total_students=total_students,
-        active_invites=active_invites,
         system_admin_count=system_admin_count,
         open_tickets=open_tickets,
-        recent_admins=recent_admins,
         recent_errors=recent_errors,
         system_admins=system_admins
     )
@@ -858,307 +779,6 @@ def test_error_503():
     raise ServiceUnavailable("This is a test 503 error triggered by system admin for testing purposes.")
 
 
-# -------------------- ADMIN MANAGEMENT --------------------
-
-@sysadmin_bp.route('/admins')
-@system_admin_required
-def manage_admins():
-    """Teacher account management for canonical teacher Users."""
-    teachers = User.query.filter_by(user_role=UserRole.TEACHER).order_by(User.id.asc()).all()
-    user_student_counts, _ = _user_student_counts([teacher.id for teacher in teachers])
-
-    admin_data = [
-        {
-            'id': teacher.id,
-            'username': f"user_{teacher.id}",
-            'student_count': user_student_counts.get(teacher.id, 0),
-            'created_at': teacher.created_at,
-            'last_login': None,
-        }
-        for teacher in teachers
-    ]
-
-    return render_template(
-        'system_admin_manage_admins.html',
-        admins=admin_data,
-        current_page='sysadmin_admins'
-    )
-
-
-@sysadmin_bp.route('/admins/<int:user_id>/reset-totp', methods=['POST'])
-@system_admin_required
-@feat_shell("FEAT-OPS-001")
-def reset_admin_totp(user_id):
-    """
-    Reset TOTP for a teacher account.
-
-    user_id is the canonical User.id (matches what manage_admins() renders).
-    Teacher TOTP lives on User.totp_secret_encrypted; login checks that field only.
-    """
-    user = db.get_or_404(User, user_id)
-
-    try:
-        display_name = user.get_display_username()
-        new_secret = pyotp.random_base32()
-        encrypted_totp_secret = encrypt_totp(new_secret)
-        user.totp_secret_encrypted = encrypted_totp_secret
-        stored_secret = user.totp_secret_encrypted
-
-        # Generate QR code
-        totp_uri = pyotp.totp.TOTP(new_secret).provisioning_uri(
-            name=display_name,
-            issuer_name="Classroom Economy System Admin"
-        )
-
-        img = qrcode.make(totp_uri)
-        buf = io.BytesIO()
-        img.save(buf, format='PNG')
-        buf.seek(0)
-        qr_b64 = base64.b64encode(buf.read()).decode('utf-8')
-
-        return jsonify({
-            "status": "success",
-            "message": f"TOTP secret reset for {display_name}",
-            "totp_secret": stored_secret,
-            "totp_secret_plain": new_secret,
-            "qr_code": qr_b64,
-            "username": display_name
-        })
-    except Exception as e:
-        db.session.rollback()
-        current_app.logger.error(f"Error resetting TOTP for user {user_id}: {str(e)}")
-        return jsonify({
-            "status": "error",
-            "message": "An internal error occurred while resetting the TOTP secret."
-        }), 500
-
-
-@sysadmin_bp.route('/admins/<int:user_id>/delete', methods=['POST'])
-@system_admin_required
-@feat_shell("FEAT-OPS-001")
-def delete_admin(user_id):
-    """Delete a teacher account and all students created under that teacher."""
-    admin_user = db.get_or_404(User, user_id)
-
-    try:
-        admin_username = admin_user.get_display_username()
-        class_ids = [
-            class_id for (class_id,) in db.session.query(ClassEconomy.class_id)
-            .filter(ClassEconomy.user_id == admin_user.id)
-            .all()
-        ]
-        deleted_class_count = len(class_ids)
-        deleted_student_count = db.session.query(Seat.id).filter(
-            Seat.class_id.in_(class_ids),
-            Seat.role == "student",
-        ).count() if class_ids else 0
-
-        from app.utils.deletion import collapse_universe
-        for cid in class_ids:
-            collapse_universe(cid, reason="Teacher account deletion", actor_membership_id=None)
-
-        delete_recovery_rows_for_user(admin_user.id)
-        delete_admin_credentials_for_user(admin_user.id)
-        delete_admin_onboarding_for_user(admin_user.id)
-
-        legacy_admin = _resolve_legacy_admin(admin_user)
-        delete_admin_account_rows(admin_user, legacy_admin=legacy_admin)
-
-        flash(
-            f"Teacher '{admin_username}' deleted. Removed {deleted_student_count} student seats across {deleted_class_count} classes.",
-            "success",
-        )
-
-    except Exception as e:
-        db.session.rollback()
-        current_app.logger.exception(f"Error deleting admin {user_id}")
-        flash(f"Error deleting admin: {str(e)}", "error")
-
-    return redirect(url_for('sysadmin.manage_admins'))
-
-
-@sysadmin_bp.route('/manage-teachers', methods=['GET', 'POST'])
-@system_admin_required
-def manage_teachers():
-    """
-    Manage invite codes.
-    """
-    # Handle invite code form submission
-    form = SystemAdminInviteForm()
-    if form.validate_on_submit():
-        code = (form.code.data.strip() if form.code.data else None) or secrets.token_urlsafe(8)
-        current_app.logger.info(f"Creating invite code: {repr(code)} (length: {len(code)})")
-        expiry_days = request.form.get('expiry_days', 30, type=int)
-        expires_at = utc_now() + timedelta(days=expiry_days)
-        invite = create_admin_invite_code(code=code, expires_at=expires_at)
-        current_app.logger.info(f"Invite code created in database: {repr(invite.code)} (id: {invite.id})")
-        flash(f"Invite code '{code}' created successfully.", "success")
-        return redirect(url_for("sysadmin.manage_teachers") + "#invite-codes")
-
-    # Get all invite codes and organize them.
-    all_invites = list_admin_invite_codes()
-    
-    # Organize invites: active, expired, or used.
-    active_invites = []
-    expired_invites = []
-    used_invites = []
-    
-    current_time = utc_now()
-    
-    for invite in all_invites:
-        if invite.used:
-            used_invites.append(invite)
-        elif invite.expires_at and invite.expires_at < current_time:
-            expired_invites.append(invite)
-        else:
-            active_invites.append(invite)
-
-    # Build rich admin data (from overview logic)
-    all_admins = User.query.filter(User.user_role == UserRole.TEACHER).order_by(User.id.asc()).all()
-    inactivity_threshold = utc_now() - timedelta(days=INACTIVITY_THRESHOLD_DAYS)
-
-    user_ids_by_admin_id = {
-        admin.id: admin.id
-        for admin in all_admins
-    }
-    user_student_counts, user_periods = _user_student_counts(list(user_ids_by_admin_id.values()))
-    admin_pending_requests = {}
-
-    admins = []
-    for admin in all_admins:
-        user_id = user_ids_by_admin_id.get(admin.id)
-        total_students = user_student_counts.get(user_id, 0) if user_id else 0
-        periods = user_periods.get(user_id, {}) if user_id else {}
-        pending_requests = admin_pending_requests.get(admin.id, [])
-
-        is_inactive = False
-        if admin.last_login:
-            last_login = admin.last_login
-            last_login = ensure_utc(last_login)
-            is_inactive = last_login < inactivity_threshold
-        else:
-            is_inactive = True
-
-        admins.append({
-            'id': admin.id,
-            'username': admin.get_display_username(),
-            'last_login': admin.last_login,
-            'is_inactive': is_inactive,
-            'total_students': total_students,
-            'periods': periods,
-            'pending_requests': pending_requests,
-            'can_delete_account': False,
-        })
-
-    return render_template(
-        "system_admin_manage_teachers.html",
-        form=form,
-        active_invites=active_invites,
-        expired_invites=expired_invites,
-        used_invites=used_invites,
-        teachers=admins,
-        inactivity_threshold_days=INACTIVITY_THRESHOLD_DAYS,
-    )
-
-
-@sysadmin_bp.route('/manage-teachers/void/<int:code_id>', methods=['POST'])
-@system_admin_required
-def void_invite_code(code_id):
-    """Void (mark as used) an unused invite code so it can no longer be claimed."""
-    invite = get_admin_invite_code_by_id(code_id)
-    if not invite:
-        raise NotFound("Invite code not found")
-    if invite.used:
-        flash("This invite code has already been used or voided.", "warning")
-    else:
-        mark_admin_invite_code_used(code_id)
-        flash(f"Invite code '{invite.code}' has been voided.", "success")
-    return redirect(url_for("sysadmin.manage_teachers") + "#invite-codes")
-
-
-@sysadmin_bp.route('/teacher-overview', methods=['GET'])
-@system_admin_required
-def teacher_overview():
-    """
-    Privacy-compliant admin overview showing only aggregated student counts.
-
-    System admins can view:
-    - Teacher public ID/display name
-    - Total student count per admin
-    - Student counts by period/block
-    - Last login date
-    - Teacher public IDs/display names and aggregate roster state only
-
-    System admins CANNOT view:
-    - Individual student names
-    - Individual student details
-    """
-    admins = User.query.filter(User.user_role == UserRole.TEACHER).order_by(User.id.asc()).all()
-    
-    # Define inactivity threshold (6 months)
-    inactivity_threshold = utc_now() - timedelta(days=INACTIVITY_THRESHOLD_DAYS)
-
-    user_ids_by_admin_id = {
-        admin.id: admin.id
-        for admin in admins
-    }
-    user_student_counts, user_periods = _user_student_counts(list(user_ids_by_admin_id.values()))
-
-    admin_pending_requests = {}
-
-    # Now build the admin_data list using the batched data
-    admin_data = []
-    for admin in admins:
-        # Get data from batched queries
-        user_id = user_ids_by_admin_id.get(admin.id)
-        total_students = user_student_counts.get(user_id, 0) if user_id else 0
-        periods = user_periods.get(user_id, {}) if user_id else {}
-        pending_requests = admin_pending_requests.get(admin.id, [])
-
-        # Check if admin is inactive
-        is_inactive = False
-        if admin.last_login:
-            # Ensure last_login is timezone-aware
-            last_login = admin.last_login
-            last_login = ensure_utc(last_login)
-            is_inactive = last_login < inactivity_threshold
-        else:
-            # Never logged in - consider inactive
-            is_inactive = True
-
-        admin_data.append({
-            'id': admin.id,
-            'username': admin.get_display_username(),
-            'total_students': total_students,
-            'periods': periods,
-            'last_login': admin.last_login,
-            'is_inactive': is_inactive,
-            'pending_requests': pending_requests,
-            'can_delete_account': False,
-        })
-
-    return render_template(
-        "system_admin_teacher_overview.html",
-        teachers=admin_data,
-        current_page="teacher_overview",
-        inactivity_threshold_days=INACTIVITY_THRESHOLD_DAYS
-    )
-
-
-@sysadmin_bp.route('/delete-period/<int:user_id>/<string:period>', methods=['POST'])
-@system_admin_required
-def delete_period(user_id, period):
-    flash("Teacher account deletions are self-managed. System admins cannot delete classes.", "error")
-    return redirect(url_for('sysadmin.manage_teachers'))
-
-
-@sysadmin_bp.route('/manage-teachers/delete/<int:user_id>', methods=['POST'])
-@system_admin_required
-def delete_teacher(user_id):
-    flash("Teacher account deletions are self-managed. System admins cannot delete admin accounts.", "error")
-    return redirect(url_for('sysadmin.manage_teachers'))
-
-
 # -------------------- SUPPORT TICKETS (COMBINED VIEW) --------------------
 
 def _resolve_issue_id_from_ref(issue_ref: str) -> int | None:
@@ -1167,6 +787,55 @@ def _resolve_issue_id_from_ref(issue_ref: str) -> int | None:
 
 def _resolve_report_id_from_ref(report_ref: str) -> int | None:
     return resolve_opaque_ref('report', report_ref)
+
+
+def _issue_to_view(issue):
+    """Convert a raw Issue model to a template-safe dict (no SQLAlchemy models in templates)."""
+    return {
+        'id': issue.id,
+        'status': issue.status,
+        'actor_public_id': issue.actor_public_id,
+        'teacher_display_name': issue.teacher.get_sysadmin_display_name() if issue.teacher else "Unknown",
+        'share_class_name_with_sysadmin': issue.share_class_name_with_sysadmin,
+        'class_label': issue.class_label,
+        'category_name': issue.category.name if issue.category else 'Unknown',
+        'issue_type': issue.issue_type,
+        'escalation_reason': issue.escalation_reason,
+        'teacher_diagnostic_note': issue.teacher_diagnostic_note,
+        'student_explanation': issue.student_explanation,
+        'student_expected_outcome': issue.student_expected_outcome,
+        'escalated_at': issue.escalated_at,
+        'sysadmin_reviewed_at': issue.sysadmin_reviewed_at,
+        'sysadmin_resolved_at': issue.sysadmin_resolved_at,
+        'sysadmin_notes': issue.sysadmin_notes,
+        'eligible_for_reward': issue.eligible_for_reward,
+        'context_snapshot': issue.context_snapshot,
+    }
+
+
+def _correlation_pack_to_view(pack):
+    """Convert a raw TicketCorrelationPack model to a template-safe dict."""
+    if not pack:
+        return None
+    return {
+        'correlation_version': pack.correlation_version,
+        'actor_type': pack.actor_type,
+        'actor_public_id': pack.actor_public_id,
+        'class_public_id': pack.class_public_id,
+        'request_trace_json': pack.request_trace_json,
+        'error_refs_json': pack.error_refs_json,
+        'created_at': pack.created_at,
+    }
+
+
+def _history_entry_to_view(entry):
+    """Convert a raw IssueStatusHistory model to a template-safe dict."""
+    return {
+        'new_status': entry.new_status,
+        'changed_by_type': entry.changed_by_type,
+        'changed_at': entry.changed_at,
+    }
+
 
 @sysadmin_bp.route('/support')
 @system_admin_required
@@ -1188,7 +857,7 @@ def support_tickets():
         SimpleNamespace(
             id=issue.id,
             status=issue.status,
-            report_type=issue.category_id,
+            report_type=issue.category.name if issue.category else "unknown",
             submitted_at=issue.submitted_at,
             title=issue.student_expected_outcome or "Support issue",
             description=issue.student_explanation,
@@ -1218,11 +887,11 @@ def support_tickets():
         ])
     ).order_by(Issue.escalated_at.desc()).all()
     issues_pending = [
-        i for i in all_issues
+        _issue_to_view(i) for i in all_issues
         if i.status in [Issue.STATUS_ESCALATED_TO_DEV, 'elevated']
     ]
-    issues_in_review = [i for i in all_issues if i.status == 'developer_review']
-    issues_resolved = [i for i in all_issues if i.status in [Issue.STATUS_DEV_RESOLVED, 'developer_resolved']]
+    issues_in_review = [_issue_to_view(i) for i in all_issues if i.status == 'developer_review']
+    issues_resolved = [_issue_to_view(i) for i in all_issues if i.status in [Issue.STATUS_DEV_RESOLVED, 'developer_resolved']]
 
     return render_template(
         'sysadmin_support_tickets.html',
@@ -1268,7 +937,7 @@ def user_reports():
         SimpleNamespace(
             id=issue.id,
             status=issue.status,
-            report_type=issue.category_id,
+            report_type=issue.category.name if issue.category else "unknown",
             submitted_at=issue.submitted_at,
             title=issue.student_expected_outcome or "Support issue",
             description=issue.student_explanation,
@@ -1604,200 +1273,6 @@ def grafana_proxy(path):
         return redirect(url_for('sysadmin.dashboard'))
 
 
-# -------------------- SYSTEM ADMIN ANNOUNCEMENTS --------------------
-
-@sysadmin_bp.route('/announcements')
-@system_admin_required
-def announcements():
-    """
-    System admin announcement management.
-
-    View and manage system-wide announcements.
-    System admins cannot see teacher-created class announcements.
-    """
-    from app.models import Announcement
-
-    # Get only system admin announcements (not teacher announcements)
-    announcements_list = Announcement.query.filter(
-        Announcement.system_admin_id != None
-    ).order_by(Announcement.created_at.desc()).all()
-
-    # Get list of teachers for display
-    admins_dict = {admin.id: admin for admin in User.query.filter(User.user_role == UserRole.TEACHER).all()}
-
-    # Attach audience info to each announcement
-    for announcement in announcements_list:
-        if announcement.audience_type == 'teacher_all_classes' and announcement.target_teacher_id:
-            teacher_admin = admins_dict.get(announcement.target_teacher_id)
-            announcement.audience_display = f"All classes of {teacher_admin.get_display_username() if teacher_admin else 'Unknown teacher'}"
-        else:
-            announcement.audience_display = announcement.get_audience_label()
-
-    return render_template(
-        'sysadmin_announcements.html',
-        announcements=announcements_list
-    )
-
-
-@sysadmin_bp.route('/announcements/create', methods=['GET', 'POST'])
-@system_admin_required
-@feat_shell("FEAT-OPS-001")
-def announcement_create():
-    """Create a new system-wide announcement."""
-    from app.forms import SystemAdminAnnouncementForm
-    from app.models import Announcement
-
-    sysadmin_user_id = g.canonical_context.user_id
-
-    form = SystemAdminAnnouncementForm()
-
-    # Populate teacher choices
-    teacher_admins = User.query.filter(User.user_role == UserRole.TEACHER).order_by(User.id.asc()).all()
-    form.target_teacher.choices = [('', '-- Select Teacher --')] + [
-        (teacher_admin.id, teacher_admin.get_display_username())
-        for teacher_admin in teacher_admins
-    ]
-
-    if form.validate_on_submit():
-        try:
-            # Validate target admin requirement
-            if form.audience_type.data == 'teacher_all_classes':
-                if not form.target_teacher.data:
-                    flash('Please select a target teacher for "All Classes of Specific Teacher" audience.', 'danger')
-                    return render_template('sysadmin_announcement_form.html', form=form, action='Create')
-
-            announcement = create_system_announcement(
-                system_admin_id=sysadmin_user_id,
-                audience_type=form.audience_type.data,
-                target_teacher_id=form.target_teacher.data if form.audience_type.data == 'teacher_all_classes' else None,
-                title=form.title.data,
-                message=form.message.data,
-                priority=form.priority.data,
-                is_active=form.is_active.data,
-                expires_at=form.expires_at.data,
-            )
-
-            flash(f'System announcement "{announcement.title}" created successfully!', 'success')
-            return redirect(url_for('sysadmin.announcements'))
-
-        except Exception as e:
-            db.session.rollback()
-            current_app.logger.error(f"Error creating system announcement: {e}")
-            flash('An error occurred while creating the announcement.', 'danger')
-
-    return render_template('sysadmin_announcement_form.html', form=form, action='Create')
-
-
-@sysadmin_bp.route('/announcements/edit/<int:announcement_id>', methods=['GET', 'POST'])
-@system_admin_required
-def announcement_edit(announcement_id):
-    """Edit an existing system announcement."""
-    from app.forms import SystemAdminAnnouncementForm
-    from app.models import Announcement
-
-    # sysadmin_user_id not needed here — announcement ownership verified by is_system_admin_announcement()
-
-    # Get announcement and verify it's a system admin announcement
-    announcement = Announcement.query.filter_by(id=announcement_id).first()
-
-    if not announcement or not announcement.is_system_admin_announcement():
-        flash('Announcement not found or access denied.', 'danger')
-        return redirect(url_for('sysadmin.announcements'))
-
-    form = SystemAdminAnnouncementForm(obj=announcement)
-
-    # Populate teacher choices
-    teacher_admins = User.query.filter(User.user_role == UserRole.TEACHER).order_by(User.id.asc()).all()
-    form.target_teacher.choices = [('', '-- Select Teacher --')] + [
-        (teacher_admin.id, teacher_admin.get_display_username())
-        for teacher_admin in teacher_admins
-    ]
-
-    if form.validate_on_submit():
-        try:
-            # Validate target admin requirement
-            if form.audience_type.data == 'teacher_all_classes':
-                if not form.target_teacher.data:
-                    flash('Please select a target teacher for "All Classes of Specific Teacher" audience.', 'danger')
-                    return render_template('sysadmin_announcement_form.html', form=form, announcement=announcement, action='Edit')
-
-            update_system_announcement(
-                announcement,
-                audience_type=form.audience_type.data,
-                target_teacher_id=form.target_teacher.data if form.audience_type.data == 'teacher_all_classes' else None,
-                title=form.title.data,
-                message=form.message.data,
-                priority=form.priority.data,
-                is_active=form.is_active.data,
-                expires_at=form.expires_at.data,
-            )
-
-            flash(f'System announcement "{announcement.title}" updated successfully!', 'success')
-            return redirect(url_for('sysadmin.announcements'))
-
-        except Exception as e:
-            db.session.rollback()
-            current_app.logger.error(f"Error updating system announcement: {e}")
-            flash('An error occurred while updating the announcement.', 'danger')
-
-    return render_template('sysadmin_announcement_form.html', form=form, announcement=announcement, action='Edit')
-
-
-@sysadmin_bp.route('/announcements/delete/<int:announcement_id>', methods=['POST'])
-@system_admin_required
-def announcement_delete(announcement_id):
-    """Delete a system announcement."""
-    from app.models import Announcement
-
-    # Get announcement and verify it's a system admin announcement
-    announcement = Announcement.query.filter_by(id=announcement_id).first()
-
-    if not announcement or not announcement.is_system_admin_announcement():
-        flash('Announcement not found or access denied.', 'danger')
-        return redirect(url_for('sysadmin.announcements'))
-
-    try:
-        title = announcement.title
-        delete_system_announcement(announcement)
-
-        flash(f'System announcement "{title}" deleted successfully!', 'success')
-
-    except Exception as e:
-        db.session.rollback()
-        current_app.logger.error(f"Error deleting system announcement: {e}")
-        flash('An error occurred while deleting the announcement.', 'danger')
-
-    return redirect(url_for('sysadmin.announcements'))
-
-
-@sysadmin_bp.route('/announcements/toggle/<int:announcement_id>', methods=['POST'])
-@system_admin_required
-def announcement_toggle(announcement_id):
-    """Toggle system announcement active status."""
-    from app.models import Announcement
-
-    # Get announcement and verify it's a system admin announcement
-    announcement = Announcement.query.filter_by(id=announcement_id).first()
-
-    if not announcement or not announcement.is_system_admin_announcement():
-        return jsonify({'status': 'error', 'message': 'Announcement not found'}), 404
-
-    try:
-        announcement.is_active = not announcement.is_active
-        announcement.updated_at = utc_now()
-
-        return jsonify({
-            'status': 'success',
-            'is_active': announcement.is_active,
-            'message': f'Announcement {"activated" if announcement.is_active else "deactivated"}'
-        })
-
-    except Exception as e:
-        db.session.rollback()
-        current_app.logger.error(f"Error toggling system announcement: {e}")
-        return jsonify({'status': 'error', 'message': 'An internal error occurred while updating the announcement.'}), 500
-
-
 # ================== ESCALATED ISSUES ==================
 
 @sysadmin_bp.route('/issues')
@@ -1818,10 +1293,10 @@ def escalated_issues():
         ])
     ).order_by(Issue.escalated_at.desc()).all()
 
-    # Separate by status
-    pending_issues = [i for i in issues if i.status in [Issue.STATUS_ESCALATED_TO_DEV, 'elevated']]
-    in_review_issues = [i for i in issues if i.status == 'developer_review']
-    resolved_issues = [i for i in issues if i.status in [Issue.STATUS_DEV_RESOLVED, 'developer_resolved']]
+    # Separate by status and convert to view dicts
+    pending_issues = [_issue_to_view(i) for i in issues if i.status in [Issue.STATUS_ESCALATED_TO_DEV, 'elevated']]
+    in_review_issues = [_issue_to_view(i) for i in issues if i.status == 'developer_review']
+    resolved_issues = [_issue_to_view(i) for i in issues if i.status in [Issue.STATUS_DEV_RESOLVED, 'developer_resolved']]
 
     return render_template('sysadmin_escalated_issues.html',
                          current_page='issues',
@@ -1852,18 +1327,21 @@ def view_escalated_issue(issue_ref):
         ])
     ).first_or_404()
 
-    # Get status history
-    history = IssueStatusHistory.query.filter_by(
+    # Get status history — convert to view dicts
+    history_query = IssueStatusHistory.query.filter_by(
         issue_id=issue.id
     ).order_by(IssueStatusHistory.changed_at.desc()).all()
+    history = [_history_entry_to_view(entry) for entry in history_query]
+
+    issue_view = _issue_to_view(issue)
 
     return render_template('sysadmin_view_escalated_issue.html',
                          current_page='issues',
         page_title=f'Issue #{issue.id}',
-        issue=issue,
+        issue=issue_view,
         issue_ref=make_opaque_ref('issue', issue.id),
         report_ref_for=lambda report_id: make_opaque_ref('report', report_id),
-        correlation_pack=issue.correlation_pack,
+        correlation_pack=_correlation_pack_to_view(issue.correlation_pack),
         history=history,
         format_utc_iso=format_utc_iso)
 

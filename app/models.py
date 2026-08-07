@@ -1695,30 +1695,20 @@ def _seed_default_class_features(mapper, connection, target):
 # -------------------- ANNOUNCEMENT MODEL --------------------
 class Announcement(db.Model):
     """
-    Announcements for teachers and system administrators.
+    Class-scoped announcements created by teachers.
 
-    Teacher Announcements:
     - Teachers post to specific class periods (scoped by class_id)
-    - join_code remains ingress/display metadata only
     - Only visible to students in that class period
-
-    Platform announcements:
-    - System admins post with broader audience types
-    - Can target: all students, all teachers, specific teacher's classes, or everyone
-    - Teachers cannot see these in their announcement management
     """
     __tablename__ = 'announcements'
 
     id = db.Column(db.Integer, primary_key=True)
 
-    # Author (one of these will be set)
-    user_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'), nullable=True)
-    system_admin_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'), nullable=True)
+    # Author
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
 
-    # Audience targeting
-    class_id = db.Column(db.String(36), db.ForeignKey('classes.class_id', ondelete='CASCADE'), nullable=True, index=True)
-    audience_type = db.Column(db.String(30), default='class', nullable=False)  # 'class', 'system_wide', 'all_teachers', 'all_students', 'teacher_all_classes', 'specific_class'
-    target_teacher_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'), nullable=True)  # For 'teacher_all_classes' audience type
+    # Class scope
+    class_id = db.Column(db.String(36), db.ForeignKey('classes.class_id', ondelete='CASCADE'), nullable=False, index=True)
 
     # Announcement content
     title = db.Column(db.String(200), nullable=False)
@@ -1726,43 +1716,28 @@ class Announcement(db.Model):
 
     # Display settings
     is_active = db.Column(db.Boolean, default=True, nullable=False)
-    priority = db.Column(db.String(20), default='normal', nullable=False)  # 'low', 'normal', 'high', 'urgent'
+    priority = db.Column(db.String(20), default='normal', nullable=False)
 
     # Timestamps
     created_at = db.Column(db.DateTime(timezone=True), default=utc_now, nullable=False)
     updated_at = db.Column(db.DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False)
-    expires_at = db.Column(db.DateTime(timezone=True), nullable=True)  # Optional expiration
+    expires_at = db.Column(db.DateTime(timezone=True), nullable=True)
 
     # Relationships
     teacher = db.relationship('User', foreign_keys=[user_id], backref=db.backref('announcements', lazy='dynamic', passive_deletes=True))
-    system_admin = db.relationship('User', foreign_keys=[system_admin_id], backref=db.backref('sysadmin_announcements', lazy='dynamic', passive_deletes=True))
-    target_teacher = db.relationship('User', foreign_keys=[target_teacher_id], backref=db.backref('targeted_announcements', lazy='dynamic', passive_deletes=True))
-
-    # Indexes
-    __table_args__ = (
-        db.Index('ix_announcements_audience_type', 'audience_type', 'is_active'),
-        db.Index('ix_announcements_system_admin', 'system_admin_id', 'is_active'),
-    )
 
     def __repr__(self):
-        author = f"Teacher {self.user_id}" if self.user_id else f"SysAdmin {self.system_admin_id}"
-        return f'<Announcement {self.id} - {self.title[:30]} ({author}, {self.audience_type})>'
+        return f'<Announcement {self.id} - {self.title[:30]} (Teacher {self.user_id}, class {self.class_id})>'
 
     def is_expired(self):
-        """Check if announcement has expired."""
         if self.expires_at is None:
             return False
-
-        expires_at = ensure_utc(self.expires_at)
-
-        return utc_now() > expires_at
+        return utc_now() > ensure_utc(self.expires_at)
 
     def should_display(self):
-        """Check if announcement should be displayed."""
         return self.is_active and not self.is_expired()
 
     def get_priority_class(self):
-        """Get CSS class for announcement priority."""
         priority_classes = {
             'low': 'alert-secondary',
             'normal': 'alert-info',
@@ -1772,7 +1747,6 @@ class Announcement(db.Model):
         return priority_classes.get(self.priority, 'alert-info')
 
     def get_priority_icon(self):
-        """Get icon for announcement priority."""
         priority_icons = {
             'low': 'push_pin',
             'normal': 'campaign',
@@ -1780,22 +1754,6 @@ class Announcement(db.Model):
             'urgent': 'error'
         }
         return priority_icons.get(self.priority, 'campaign')
-
-    def get_audience_label(self):
-        """Get human-readable label for audience type."""
-        labels = {
-            'class': 'Class Period',
-            'system_wide': 'Everyone (System-Wide)',
-            'all_teachers': 'All Teachers',
-            'all_students': 'All Students',
-            'teacher_all_classes': 'Teacher\'s All Classes',
-            'specific_class': 'Specific Class'
-        }
-        return labels.get(self.audience_type, 'Unknown')
-
-    def is_system_admin_announcement(self):
-        """Check if this is a system admin announcement."""
-        return self.system_admin_id is not None
 
 
 # Analytics state is represented by interpretation and audit tables

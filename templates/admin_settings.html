@@ -35,10 +35,10 @@
                                 id="display_name"
                                 name="display_name"
                                 value="{{ admin.display_name or '' }}"
-                                placeholder="{{ admin.teacher_public_id or admin.get_display_name() }}"
+                                placeholder="{{ admin.display_name or admin.get_display_username() }}"
                                 maxlength="100">
                             <div class="form-text">
-                                If you don't change this, it will remain: <strong>{{ admin.teacher_public_id or admin.get_display_name() }}</strong>
+                                If you don't change this, it will remain: <strong>{{ admin.display_name or admin.get_display_username() }}</strong>
                             </div>
                         </div>
                     </div>
@@ -99,7 +99,7 @@
                         <div class="row">
                             <div class="col-md-6 mb-2">
                                 <small class="text-muted">Teacher ID:</small>
-                                <div><strong>{{ admin.teacher_public_id or admin.get_display_name() }}</strong></div>
+                                <div><strong>{{ admin.display_name or admin.get_display_username() }}</strong></div>
                                 <small class="text-muted">When you file support tickets, this is what you will be known as.</small>
                             </div>
                             <div class="col-md-6 mb-2">
@@ -145,27 +145,11 @@
 
 <script>
 function showGettingStartedWidget() {
-    // Call the un-dismiss endpoint to show the widget again
-    fetch('/admin/onboarding/undismiss-widget', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'X-CSRFToken': '{{ csrf_token() }}'
-        }
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.status === 'success') {
-            alert('Getting started widget will appear when you return to the dashboard.');
-            window.location.href = '{{ url_for("admin.dashboard") }}';
-        } else {
-            alert('Error: ' + (data.message || 'Failed to show widget'));
-        }
-    })
-    .catch(error => {
-        console.error('Error:', error);
-        alert('An error occurred while showing the widget.');
-    });
+    // Remove the dismissal from localStorage
+    const dismissKey = 'getting_started_dismissed_{{ admin.id }}';
+    localStorage.removeItem(dismissKey);
+    alert('Getting started widget will appear when you return to the dashboard.');
+    window.location.href = '{{ url_for("admin.dashboard") }}';
 }
 </script>
 {% endblock %}
