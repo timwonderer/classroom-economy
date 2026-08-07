@@ -68,7 +68,8 @@ Governed in conjunction with:
 ### V.1 Canonical Rendering Pipeline
 
 Every authenticated page request MUST follow the canonical rendering pipeline.
-```
+
+```text
 Request
     ↓
 Canonical Context
@@ -77,12 +78,13 @@ Temporal Context
     ↓
 Identity Display Context
     ↓
-Lawful Domain Reads / FEAT Commands
+Lawful Domain Reads
     ↓
 Page View Model
     ↓
 Template
 ```
+
 No layer may be skipped, reordered, or merged unless explicitly authorized by a governing architectural invariant.
 
 ---
@@ -231,6 +233,8 @@ Routes MUST NOT:
 This invariant separates execution authority, temporal interpretation, presentation identity, domain projections, and rendering into independent architectural layers.
 
 The objective is to eliminate duplicated business decisions across routes, templates, and presentation code while preserving strict ownership boundaries between runtime authority, domain authority, and presentation.
+
+**Scope note on mutations:** This pipeline governs page rendering only. FEAT commands and mutation orchestration operate in a separate, parallel flow. The page-rendering pipeline itself MUST remain read-only: it queries domain state but does not execute writes. Routes MAY coordinate both flows (mutations followed by page rendering), but the two flows are architecturally distinct.
 
 ---
 

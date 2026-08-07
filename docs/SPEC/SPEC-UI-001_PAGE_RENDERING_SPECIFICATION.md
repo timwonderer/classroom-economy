@@ -12,7 +12,7 @@ This specification defines the canonical implementation of the CTH page renderin
 
 It establishes the required implementation patterns for authenticated page routes, page view models, builder organization, template composition, and presentation contracts.
 
-Architectural constraints are governed by `INV-ARC-022_REQUEST_CONTEXT_AND_PAGE_RENDERING_PIPELINE.md`.
+Architectural constraints are governed by `INV-ARC-022_REQUEST_CONTEXT_AND_PAGE_RENDERING.md`.
 
 ---
 
@@ -48,7 +48,7 @@ Implementations SHALL conform to this specification unless superseded by a highe
 
 ## IV. Dependencies
 
-- `INV-ARC-022_REQUEST_CONTEXT_AND_PAGE_RENDERING_PIPELINE.md`
+- `INV-ARC-022_REQUEST_CONTEXT_AND_PAGE_RENDERING.md`
 - `INV-ARC-020_ACCESSIBILITY_REQUIREMENTS_AND_TEMPLATE_CONTRACT.md`
 - `INV-ARC-021_CROSS_DOMAIN_REFERENCE_AND_COORDINATION.md`
 - Relevant DOM specifications

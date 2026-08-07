@@ -10,10 +10,13 @@
 ## Executive Summary
 
 ### Audit Scope
-- **Total Templates:** 96
+- **Total Templates Audited:** 96 (all application templates)
+- **Templates Covered by SPEC-UI-001:** 71 (authenticated page routes only)
+  - Breakdown: 3 Auth + 3 Layout + 15 Student + 35 Admin + 6 System Admin = 71
+  - Out of Scope: 7 Error pages + 2 Component/Macro + 16 Other special pages
 - **Total Jinja2 Variables:** ~1,460+
 - **Total Jinja2 Tags:** ~2,450+
-- **Templates with Violations:** 78+ (80%+)
+- **Templates with Violations (SPEC-UI-001 scope):** 68+ of 71 (95%+)
 
 ### Critical Findings
 
@@ -115,17 +118,11 @@ Lines 321-349: {% for t in recent_transactions %}      [DIRECT ORM MODEL ITERATI
 Lines various: Direct balance reads without view model wrapper
 ```
 
-##### admin_payroll.html (CRITICAL - 74 vars, 151 tags)
-```
-[Extensive business logic for payroll calculations in template]
-- Complex conditional formatting for pay states
-- Multiple aggregations without pre-computation
-- Formatting logic embedded throughout
-```
-
 **Domain Owner:** Ledger (DOM-LEDG-001)  
 **Responsible View Model Builder:** `ledger/builders.py`  
 **Status:** ❌ SEVERE VIOLATION - Most templates directly expose raw balance/transaction data
+
+**Note on admin_payroll.html:** See Payroll Domain section below - this is a cross-domain page owned by Payroll with Ledger as a composition dependency.
 
 ---
 
@@ -149,10 +146,14 @@ Line 163: {% if view.active_waivers %}                    [✅ VIEW MODEL]
 BUT:
 Line 108:  {{ "%.2f"|format(checking_balance) }}         [❌ RAW FROM ROUTE]
 Line 114:  {{ "%.2f"|format(savings_balance) }}          [❌ RAW FROM ROUTE]
-Line 142:  {{ status.due_date.strftime(...) }}           [✅ OK - VIEW MODEL]
+Line 142:  {{ status.due_date.strftime(...) }}           [❌ VIOLATION - Date formatting in template]
 ```
 
-**Status:** GOOD PARTIAL - Uses domain-specific `view.` namespace but mixing with legacy route variables
+**Status:** PARTIAL COMPLIANCE - Good view model foundation but still has violations:
+- ✅ Uses domain-specific `view.*` namespace correctly
+- ❌ Mixing legacy route variables (checking_balance, savings_balance)
+- ❌ Date formatting in template (should be `view.display_due_date` pre-formatted)
+- **Fix:** Move balance reads to ledger view model, pre-format all dates in obligation builder
 
 ##### admin_rent_settings.html (CRITICAL - 84 vars)
 ```
@@ -276,20 +277,7 @@ Line 230: {{ entitlement.expiry_date.strftime('%m/%d/%y') }}  [ORM DATE FORMATTI
 ```
 
 ##### admin_announcements.html (HIGH)
-```
-Lines (from student_dashboard):
-Line 82: {{ announcement.get_priority_class() }}   [ORM METHOD CALL]
-Line 84: {{ announcement.get_priority_icon() }}    [ORM METHOD CALL]
-Line 86: {{ announcement.title }}                  [ORM PROPERTY]
-Line 87: {{ announcement.message|nl2br|safe }}     [ORM PROPERTY + FILTER]
-Line 91: {{ announcement.expires_at.strftime(...) }}  [ORM DATE FORMATTING]
-```
-
-**VIOLATION:** Methods and properties from announcement ORM object called directly in template.
-
-**Domain Owner:** Class Configuration (DOM-CLASS-001) / Policy  
-**Responsible View Model Builder:** `class_config/builders.py`  
-**Status:** ❌ VIOLATION - Policies and announcements exposed as ORM models
+**Status:** ⚠️ NEEDS REVIEW - Announcement pattern audit incomplete. (Note: Announcement ORM access violations are documented in student_dashboard.html section below, as that template contains the primary evidence. If admin_announcements.html duplicates this pattern, evidence should be separately verified.)
 
 ---
 
@@ -303,18 +291,20 @@ Line 91: {{ announcement.expires_at.strftime(...) }}  [ORM DATE FORMATTING]
 
 **Payroll Domain Violations:**
 
-##### admin_payroll.html (CRITICAL)
+##### admin_payroll.html (CRITICAL - 74 vars, 151 tags - Cross-Domain Page)
 ```
 [Extensive payroll configuration and calculation]
-[74 variables, 151 tags - one of the most complex templates]
 [Payroll rule application embedded throughout template conditionals]
+[Also includes ledger context: balance displays, transaction history]
 ```
 
-**Status:** ❌ SEVERE VIOLATION - Payroll calculations not extracted to view model builders
+**Composition:** This is a cross-domain page composed of:
+- **Primary Owner:** Payroll (DOM-PAYROLL-001) → `payroll/builders.py` for PayrollConfigurationView, StudentPayrollStatusView
+- **Secondary Dependency:** Ledger (DOM-LEDG-001) → `ledger/builders.py` for AccountBalanceView (checking/savings balance context)
 
-**Domain Owner:** Payroll (DOM-PAYROLL-001)  
-**Responsible View Model Builder:** `payroll/builders.py`  
-**Status:** ❌ SEVERE VIOLATION
+**Route Responsibility:** Assemble both domain builders into a single PayrollPageView
+
+**Status:** ❌ SEVERE VIOLATION - Payroll and ledger calculations not extracted to view model builders; complex business logic embedded in template
 
 ---
 
@@ -707,35 +697,40 @@ class EntitlementView:
 
 ## Compliance Status by SPEC-UI-001
 
+**Scope Note:** SPEC-UI-001 applies to authenticated page routes (71 templates). Statistics below reflect this scope.
+
 ### SPEC-UI-001 § VI: Page View Models
 
 **Requirement:**
 > "Every rendered page SHALL expose exactly one page view model"
 
-**Current Status:** ❌ NOT COMPLIANT
-- 78+ templates lack proper page view models
+**Current Status:** ❌ NOT COMPLIANT (SPEC-UI-001 scope: 71 templates)
+- 68+ of 71 templates lack proper page view models
 - Many templates receive multiple unrelated objects from routes
 - No immutable view model contracts
+- Compliance rate: ~4% (3/71 templates)
 
 ### SPEC-UI-001 § X: Template Contract
 
 **Requirement:**
 > "Templates SHALL receive: (1) shared request context, (2) one page view model. Templates SHALL NOT receive: ORM models, persistence entities, raw database rows, domain services."
 
-**Current Violations:**
-- ❌ ORM models passed to 62+ templates
+**Current Violations (SPEC-UI-001 scope: 71 templates):**
+- ❌ ORM models passed to ~62+ templates
 - ❌ Raw database rows visible in admin_analytics_*, admin_payroll, admin_rent_settings
 - ❌ Persistence implementation leaking through to templates (`.strftime()`, `.store_item`, etc.)
+- Compliance rate: ~5% (3-4/71 templates)
 
 ### SPEC-UI-001 § XI: Route Responsibilities
 
 **Requirement:**
 > "Routes SHALL NOT: (1) duplicate business calculations, (2) assemble persistence objects for templates, (3) perform presentation formatting better suited to builders"
 
-**Current Violations:**
+**Current Violations (SPEC-UI-001 scope: 71 templates):**
 - ⚠️ Routes pass raw numeric values requiring template formatting (~200+ instances)
-- ⚠️ Routes pass ORM models directly (violates #2)
-- ⚠️ Some presentation logic still in routes, duplicated in templates
+- ⚠️ Routes pass ORM models directly to ~62+ templates (violates #2)
+- ⚠️ Presentation formatting duplicated across routes and templates
+- Compliance rate: ~5% (3-4/71 templates)
 
 ---
 
