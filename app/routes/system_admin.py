@@ -857,7 +857,7 @@ def support_tickets():
         SimpleNamespace(
             id=issue.id,
             status=issue.status,
-            report_type=issue.category_id,
+            report_type=issue.category.name if issue.category else "unknown",
             submitted_at=issue.submitted_at,
             title=issue.student_expected_outcome or "Support issue",
             description=issue.student_explanation,
@@ -937,7 +937,7 @@ def user_reports():
         SimpleNamespace(
             id=issue.id,
             status=issue.status,
-            report_type=issue.category_id,
+            report_type=issue.category.name if issue.category else "unknown",
             submitted_at=issue.submitted_at,
             title=issue.student_expected_outcome or "Support issue",
             description=issue.student_explanation,
