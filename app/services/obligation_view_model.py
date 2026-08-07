@@ -163,6 +163,13 @@ class StudentObligationView:
     # Status counts for display (e.g., rent_status_counts)
     status_counts: dict  # {SATISFIED, OUTSTANDING, PAST_DUE}
 
+    # Phase 1 display formatting (audit violations: student_rent.html line 142)
+    display_current_due_date: str | None = None  # Pre-formatted as "B %d, %Y" or None
+    display_amount_due: str | None = None  # Pre-formatted as "$X.XX"
+    display_total_due: str | None = None  # Pre-formatted as "$X.XX"
+    display_amount_paid: str | None = None  # Pre-formatted as "$X.XX"
+    display_remaining_amount: str | None = None  # Pre-formatted as "$X.XX"
+
 
 @dataclass(frozen=True)
 class ClassObligationSummary:
@@ -180,6 +187,10 @@ class ClassObligationSummary:
 
     # Per-student summary
     student_rows: list  # [{seat_id, student_name, status, due_date, amount_due, amount_paid, balance, days_overdue, is_waived}]
+
+    # Phase 1 display formatting (audit violations: admin_rent_settings.html lines 178, 191)
+    display_total_paid: str = "$0.00"  # Pre-formatted sum of all payments
+    display_total_unpaid: str = "$0.00"  # Pre-formatted sum of all outstanding
 
 
 def build_rent_policy_projection(
@@ -772,3 +783,96 @@ def get_rent_status_projection(
         total_assessed_all_periods=total_assessed,
         payment_history=payment_history,
     )
+
+
+# ============================================================================
+# Phase 1 Display Formatting Helpers (audit violations: pre-format dates/amounts)
+# ============================================================================
+
+def add_display_formatting_to_student_obligation_view(
+    view: StudentObligationView,
+) -> StudentObligationView:
+    """
+    Add pre-formatted display fields to StudentObligationView.
+
+    Eliminates template-level date/currency formatting (audit violations:
+    student_rent.html line 142 strftime, admin_rent_settings.html nested ORM access).
+
+    Returns a new view with display fields populated.
+    """
+    if not view:
+        return view
+
+    # Format current period dates and amounts
+    display_due_date = None
+    if view.current_period and view.current_period.get('due_date'):
+        due_date = view.current_period['due_date']
+        if isinstance(due_date, datetime):
+            display_due_date = due_date.strftime("%B %d, %Y")
+
+    display_amount_due = "$0.00"
+    if view.current_period and view.current_period.get('amount_due') is not None:
+        amount = Decimal(str(view.current_period['amount_due']))
+        display_amount_due = f"${amount:.2f}"
+
+    display_total_due = "$0.00"
+    if view.current_period and view.current_period.get('total_due') is not None:
+        amount = Decimal(str(view.current_period['total_due']))
+        display_total_due = f"${amount:.2f}"
+
+    display_amount_paid = "$0.00"
+    if view.current_period and view.current_period.get('amount_paid') is not None:
+        amount = Decimal(str(view.current_period['amount_paid']))
+        display_amount_paid = f"${amount:.2f}"
+
+    display_remaining = "$0.00"
+    if view.current_period and view.current_period.get('remaining_amount') is not None:
+        amount = Decimal(str(view.current_period['remaining_amount']))
+        display_remaining = f"${amount:.2f}"
+
+    # Create new view with display fields populated
+    # Use object.__setattr__ since dataclass is frozen
+    view_dict = view.__dict__.copy()
+    view_dict['display_current_due_date'] = display_due_date
+    view_dict['display_amount_due'] = display_amount_due
+    view_dict['display_total_due'] = display_total_due
+    view_dict['display_amount_paid'] = display_amount_paid
+    view_dict['display_remaining_amount'] = display_remaining
+
+    # Reconstruct frozen dataclass
+    return StudentObligationView(**view_dict)
+
+
+def add_display_formatting_to_class_obligation_summary(
+    summary: ClassObligationSummary,
+) -> ClassObligationSummary:
+    """
+    Add pre-formatted display fields to ClassObligationSummary.
+
+    Pre-formats totals for display (audit violations: admin_rent_settings.html
+    lines 178, 191 ORM property aggregation in template).
+
+    Returns a new summary with display fields populated.
+    """
+    if not summary:
+        return summary
+
+    # Compute display totals from status_breakdown and student_rows
+    total_paid = Decimal('0.00')
+    total_unpaid = Decimal('0.00')
+
+    for row in summary.student_rows or []:
+        if row.get('amount_paid'):
+            total_paid += Decimal(str(row['amount_paid']))
+        if row.get('balance') and row['balance'] > 0:
+            total_unpaid += Decimal(str(row['balance']))
+
+    display_total_paid = f"${total_paid:.2f}"
+    display_total_unpaid = f"${total_unpaid:.2f}"
+
+    # Create new summary with display fields
+    summary_dict = summary.__dict__.copy()
+    summary_dict['display_total_paid'] = display_total_paid
+    summary_dict['display_total_unpaid'] = display_total_unpaid
+
+    return ClassObligationSummary(**summary_dict)

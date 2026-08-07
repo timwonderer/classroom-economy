@@ -6085,9 +6085,15 @@ def rent_settings():
         return redirect(url_for('admin.rent_settings'))
 
     # Use view model to get student obligation summary (encapsulates all aggregation)
-    from app.services.obligation_view_model import build_class_obligation_summary
+    from app.services.obligation_view_model import (
+        build_class_obligation_summary,
+        add_display_formatting_to_class_obligation_summary,
+    )
 
     obligation_summary = build_class_obligation_summary(class_id, 'RENT')
+    # Phase 1: Apply display formatting (eliminates template-level ORM property access)
+    if obligation_summary:
+        obligation_summary = add_display_formatting_to_class_obligation_summary(obligation_summary)
 
     # Extract basic statistics from view model
     total_students = len(obligation_summary.student_rows) if obligation_summary else 0
@@ -7774,6 +7780,30 @@ def payroll():
     # Quick stats
     avg_payout = total_payroll_estimate / len(students) if students else 0
 
+    # Phase 1: Build payroll view models (eliminates template-level numeric formatting)
+    from app.services.payroll.builders import build_student_payroll_status_view, build_payroll_configuration_view
+
+    # Convert student_stats to StudentPayrollStatusView objects
+    student_payroll_views = []
+    for stat in student_stats:
+        view = build_student_payroll_status_view(
+            seat_id=stat['id'],
+            class_id=stat['class_id'],
+            student_name=stat['student_name'],
+            earnings_this_period=stat.get('estimated_payout', Decimal('0.00')),
+            taxes_this_period=Decimal('0.00'),  # Taxes not yet calculated in payroll system
+            total_earnings_all_time=stat.get('total_earned', Decimal('0.00')),
+            total_taxes_all_time=Decimal('0.00'),  # Taxes not yet calculated
+        )
+        student_payroll_views.append(view)
+
+    # Build payroll configuration view (eliminates payroll settings display logic)
+    payroll_config = build_payroll_configuration_view(
+        class_id=selected_class_id,
+        settings=default_setting,
+        student_statuses=student_payroll_views,
+    )
+
     # Payroll history for History tab: PROD payroll business events only.
     payroll_history_events = (
         PayrollEvent.query
@@ -7823,12 +7853,13 @@ def payroll():
         settings_by_block=settings_by_block,
         next_global_payroll=next_pay_date_utc,  # Pass UTC timestamp
         show_setup_banner=show_setup_banner,
-        # Students tab
-        student_stats=student_stats,
+        # Students tab (using pre-formatted view models per Phase 1)
+        student_stats=student_payroll_views,
         scoped_balances_by_student=scoped_balances_by_student,
+        payroll_config=payroll_config,
         # Manual Payment tab
         manual_payment_form=manual_payment_form,
-        all_students=student_stats,
+        all_students=student_payroll_views,
         # History tab
         payroll_history=payroll_history,
         # CWI Configuration

@@ -87,6 +87,11 @@ from app.services.entitlement_service import (
     get_hall_pass_balance,
 )
 from app.services.entitlement_read_service import get_active_entitlements
+from app.services.store.builders import (
+    build_store_item_card_view,
+    build_entitlement_card_view,
+    build_collective_progress_view,
+)
 from app.services.recovery_service import (
     dismiss_recovery_code as dismiss_recovery_code_row,
     get_pending_recovery_code_for_seat,
@@ -2117,7 +2122,8 @@ def shop():
             .scalar() or 0
         )
 
-    collective_progress = {}
+    # Phase 1: Build collective progress view models (eliminates template-level calculations)
+    collective_progress_by_item = {}
     collective_items = [item for item in items if item.item_type == 'collective']
     collective_item_ids = [item.id for item in collective_items]
     if collective_item_ids and class_id:
@@ -2137,20 +2143,36 @@ def shop():
         progress_counts = {row.product_id: int(row.student_count or 0) for row in progress_rows}
 
         for item in collective_items:
-            if item.collective_goal_type == 'whole_class':
-                target = class_size
-            elif item.collective_goal_type == 'fixed':
-                target = int(item.collective_goal_target or 0)
-            else:
-                target = 0
             count = progress_counts.get(item.id, 0)
-            collective_progress[item.id] = {
-                'count': count,
-                'target': target,
-                'remaining': max(0, target - count),
-                'percent': min(100, int((count / target) * 100)) if target > 0 else 0,
-                'is_complete': bool(target > 0 and count >= target),
-            }
+            collective_progress_by_item[item.id] = build_collective_progress_view(
+                item=item,
+                purchase_count=count,
+                class_size=class_size,
+            )
+
+    # Phase 1: Build store item card view models (eliminates template-level rent logic)
+    store_item_views = []
+    for item in items:
+        view = build_store_item_card_view(
+            item=item,
+            class_id=class_id,
+            has_paid_rent=has_paid_rent,
+            rent_item_types_by_store_id=rent_item_types_by_store_id,
+            rent_free_entitlement_counts=rent_free_entitlement_counts,
+            collective_progress_by_item=collective_progress_by_item,
+        )
+        store_item_views.append(view)
+
+    # Phase 1: Build entitlement card view models (eliminates ORM traversals and date formatting)
+    entitlement_views = []
+    for entitlement in entitlements:
+        # Convert the SimpleNamespace entitlement to an EntitlementEvent for builder
+        # (Legacy bridge: construct minimal EntitlementEvent-like data)
+        view = build_entitlement_card_view(
+            event=entitlement,
+            class_id=class_id,
+        )
+        entitlement_views.append(view)
 
     current_block = seat.class_economy.section.strip().upper() if seat and seat.class_economy and seat.class_economy.section else ""
     student_display_name = (
@@ -2165,13 +2187,16 @@ def shop():
         class_timezone=getattr(context, "class_timezone", ""),
     )
     student_display = SimpleNamespace(full_name=student_display_name)
-    return render_template('student_shop.html', student=student_display, current_class_context=current_class_context, items=items, entitlements=entitlements,
-                         has_paid_rent=has_paid_rent, per_period_rent_item_ids=per_period_rent_item_ids,
-                         rent_item_types_by_store_id=rent_item_types_by_store_id,
-                         rent_free_entitlement_counts=rent_free_entitlement_counts,
-                         policy_uuid_by_item_id=policy_uuid_by_item_id,
-                         class_size=class_size, current_block=current_block,
-                         collective_progress=collective_progress)
+
+    return render_template(
+        'student_shop.html',
+        student=student_display,
+        current_class_context=current_class_context,
+        items=store_item_views,
+        entitlements=entitlement_views,
+        class_size=class_size,
+        current_block=current_block,
+    )
 
 
 # -------------------- RENT --------------------
