@@ -388,7 +388,14 @@ def _apply_monthly_savings_interest(seat, *, annual_rate=Decimal("0.045")):
     this_year = now.year
     class_tz = _get_class_timezone(seat.class_id)
 
-    # Check for existing interest this month
+    month_bounds = canonical_temporal_resolver(
+        CLASS_LEVEL_EVALUATION,
+        canonical_execution_context=ctx,
+        primitive="evaluation_period_boundaries",
+        period="month",
+        reference_time_utc=now_eval.canonical_now_utc,
+    )
+
     for tx in seat.transactions:
         tx_timestamp = ensure_utc(tx.timestamp)
         # Convert UTC timestamp to class time for comparison

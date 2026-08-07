@@ -8,7 +8,7 @@ their own business rules.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta, timezone
 from typing import Any
 
@@ -17,7 +17,7 @@ import pytz
 
 
 # ---------------------------------------------------------------------------
-# Infrastructure utilities (public API per SPEC-TIME-001)
+# Self-contained time helpers (no external time module dependency)
 # ---------------------------------------------------------------------------
 
 def utc_now() -> datetime:

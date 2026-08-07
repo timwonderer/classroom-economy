@@ -400,7 +400,7 @@
                       {% for seat in unclaimed_seats %}
                       <tr>
                         <td>
-                          <span class="fw-bold">{{ seat.identity_profile.full_name if seat.identity_profile else 'Unknown' }}</span>
+                          <span class="fw-bold">{{ seat.full_name }}</span>
                           {% if seat.is_teacher %}
                           <div><small class="text-muted">Claim credential: managed by system</small></div>
                           {% endif %}
@@ -417,8 +417,8 @@
                         </td>
                         <td>
                           <button type="button" class="btn btn-sm btn-outline-danger"
-                            onclick="deletePendingStudent({{ seat.id }}, '{{ seat.identity_profile.full_name if seat.identity_profile else 'Unknown' }}')"
-                            aria-label="Delete pending student {{ seat.identity_profile.full_name if seat.identity_profile else 'Unknown' }}.">
+                            onclick="deletePendingStudent({{ seat.id }}, '{{ seat.full_name }}')"
+                            aria-label="Delete pending student {{ seat.full_name }}.">
                             <span class="material-symbols-outlined align-middle fs-6" aria-hidden="true">delete</span>
                           </button>
                         </td>

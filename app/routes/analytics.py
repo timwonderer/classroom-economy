@@ -29,10 +29,6 @@ from app.models import Transaction
 from app.models import AuditEvent
 from app.services.ledger_service import get_available_balance
 from app.utils.join_code import get_display_join_code
-from app.utils.canonical_temporal_resolver import (
-    CLASS_LEVEL_EVALUATION,
-    canonical_temporal_resolver,
-)
 
 # Define allowed window types constant
 ALLOWED_WINDOW_TYPES = {'week', 'month', 'pay_cycle', 'rent_cycle'}

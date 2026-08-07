@@ -144,7 +144,6 @@ _CLASSLESS_ADMIN_ENDPOINTS = frozenset({
     'admin.onboarding_undismiss_widget',
     'admin.login',
     'admin.logout',
-    'admin.username_migration',
     'admin.account_delete',
     'admin.passkey_login_start',
     'admin.passkey_login_finish',

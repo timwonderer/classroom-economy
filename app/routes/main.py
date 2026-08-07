@@ -463,11 +463,8 @@ def debug_admin_db_test():
     """
     try:
         admins = User.query.filter(User.user_role == UserRole.TEACHER).all()
-        with db.engine.connect() as conn:
-            invite_codes_count = conn.execute(text('SELECT COUNT(*) FROM teacher_invite_codes')).scalar()
         return jsonify({
             "admin_count": len(admins),
-            "invite_codes_count": invite_codes_count,
             "status": "success"
         }), 200
     except Exception as e:

@@ -876,8 +876,8 @@
               <div class="mb-3">
                 <label for="waiver_student_ids" class="form-label fw-bold">1. Select Students</label>
                 <select class="form-select" id="waiver_student_ids" name="student_ids" multiple size="7" required>
-                  {% for student in all_students if not settings or student.block == settings.block %}
-                  <option value="{{ student.id }}">{{ student.full_name }} (Block {{ student.block }})</option>
+                  {% for student in all_students %}
+                  <option value="{{ student.id }}">{{ student.full_name }}</option>
                   {% endfor %}
                 </select>
                 <small class="text-muted">Hold Ctrl/Cmd to select multiple students</small>

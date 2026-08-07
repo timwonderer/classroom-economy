@@ -62,15 +62,6 @@ def get_sysadmin_dashboard(client):
     return client.get("/sysadmin/dashboard")
 
 
-def get_sysadmin_admins(client):
-    """Fetch the sysadmin admins page."""
-    return client.get("/sysadmin/admins")
-
-
-def post_sysadmin_reset_totp(client, user_id: int):
-    """Invoke the sysadmin reset-TOTP route."""
-    return client.post(f"/sysadmin/admins/{user_id}/reset-totp")
-
 
 def set_maintenance_global_bypass(client) -> None:
     """Mark the session as having maintenance bypass."""

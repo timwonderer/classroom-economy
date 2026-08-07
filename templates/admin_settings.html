@@ -35,10 +35,10 @@
                                 id="display_name"
                                 name="display_name"
                                 value="{{ admin.display_name or '' }}"
-                                placeholder="{{ admin.teacher_public_id or admin.get_display_name() }}"
+                                placeholder="{{ admin.teacher_public_id or admin.get_display_name }}"
                                 maxlength="100">
                             <div class="form-text">
-                                If you don't change this, it will remain: <strong>{{ admin.teacher_public_id or admin.get_display_name() }}</strong>
+                                If you don't change this, it will remain: <strong>{{ admin.teacher_public_id or admin.get_display_name }}</strong>
                             </div>
                         </div>
                     </div>
@@ -99,7 +99,7 @@
                         <div class="row">
                             <div class="col-md-6 mb-2">
                                 <small class="text-muted">Teacher ID:</small>
-                                <div><strong>{{ admin.teacher_public_id or admin.get_display_name() }}</strong></div>
+                                <div><strong>{{ admin.teacher_public_id or admin.get_display_name }}</strong></div>
                                 <small class="text-muted">When you file support tickets, this is what you will be known as.</small>
                             </div>
                             <div class="col-md-6 mb-2">

@@ -9,10 +9,6 @@ def normalize_auth_username(username: str | None) -> str:
     return (username or "").strip()
 
 
-def needs_hashed_username_migration(entity) -> bool:
-    """True when an auth entity still lacks hashed username fields."""
-    return not getattr(entity, "username_hash", None) or not getattr(entity, "username_lookup_hash", None)
-
 
 def build_hashed_username_fields(username: str, *, existing_salt: bytes | None = None) -> tuple[bytes, str, str]:
     salt = existing_salt or get_random_salt()

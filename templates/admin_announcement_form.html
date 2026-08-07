@@ -29,7 +29,7 @@
                     {% elif action == 'Edit' and teacher_block %}
                     <div class="alert alert-info mb-3">
                         <span class="material-symbols-outlined me-2">info</span>
-                        <strong>Class Period:</strong> {{ teacher_block.get_class_label() }} (Period {{ teacher_block.block }})
+                        <strong>Class Period:</strong> {{ teacher_block.class_label }}{% if teacher_block.block %} (Period {{ teacher_block.block }}){% endif %}
                         <br><small>To post to a different class, switch class in the sidebar and create a new announcement.</small>
                     </div>
                     {% endif %}

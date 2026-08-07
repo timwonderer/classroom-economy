@@ -70,7 +70,12 @@ from app.services.hall_pass_request_queue import (
     pop_pending_hall_pass_request,
 )
 from app.utils.economy_policy import resolve_class_scope, resolve_feature_class, resolve_feature_class_for_class
-from app.utils.canonical_temporal_resolver import CLASS_LEVEL_EVALUATION, canonical_temporal_resolver
+from app.utils.canonical_temporal_resolver import (
+    CLASS_LEVEL_EVALUATION,
+    canonical_temporal_resolver,
+    ensure_utc,
+    utc_now,
+)
 from app.utils.join_code import get_display_join_code
 from app.utils.transaction_idempotency import (
     MAX_IDEMPOTENCY_KEY_LENGTH,

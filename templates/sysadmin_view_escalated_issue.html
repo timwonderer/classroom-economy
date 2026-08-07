@@ -32,7 +32,7 @@
                         <h6 class="text-muted mb-2">Escalated By</h6>
                         <p class="mb-0">
                             <span class="material-symbols-outlined me-2">badge</span>
-                            <strong>{{ issue.teacher.get_sysadmin_display_name() }}</strong>
+                            <strong>{{ issue.teacher_display_name }}</strong>
                             {% if issue.share_class_name_with_sysadmin and issue.class_label %}
                             <span class="text-muted">| {{ issue.class_label }}</span>
                             {% endif %}
@@ -58,7 +58,7 @@
                     <!-- Category -->
                     <div class="mb-3">
                         <h6 class="text-muted mb-2">Category</h6>
-                        <span class="badge bg-secondary">{{ issue.category.name if issue.category else 'Unknown' }}</span>
+                        <span class="badge bg-secondary">{{ issue.category_name }}</span>
                         <span class="badge bg-light text-dark ms-2">{{ issue.issue_type|title }}</span>
                     </div>
 

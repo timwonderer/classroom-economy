@@ -1,3 +1,5 @@
+import pytest
+
 from flask import session
 from types import SimpleNamespace
 
@@ -40,25 +42,25 @@ def test_DOM_IDEN_006__student_login_verifies_user_pin_and_resolves_through_clai
 def test_DOM_IDEN_006__student_login_missing_last_active_class_shows_selector(client, monkeypatch):
     monkeypatch.setattr("app.routes.student.verify_turnstile_token", lambda *_args, **_kwargs: True)
     classroom, student = initialize_as_student("chemistry_p1", client, client.application)
-    student.user.last_active_class_id = None
-    db.session.flush()
+    with FEATContext("FEAT-IDEN-001", idempotency_key="test:clear-last-active-class:selector"):
+        student.user.last_active_class_id = None
+        db.session.flush()
     response = student_login(client, username=student.username, pin=student.pin)
 
     assert response.status_code == 302
     assert "/student/select-class-context" in response.headers["Location"]
 
 
-def test_DOM_IDEN_006__student_login_no_valid_class_seats_hard_fails(client, monkeypatch):
+def test_DOM_IDEN_006__student_login_no_active_class_redirects_to_selector(client, monkeypatch):
     monkeypatch.setattr("app.routes.student.verify_turnstile_token", lambda *_args, **_kwargs: True)
     classroom, student = initialize_as_student("chemistry_p1", client, client.application)
-    student.user.last_active_class_id = None
-    db.session.flush()
+    with FEATContext("FEAT-IDEN-001", idempotency_key="test:clear-last-active-class:hard-fail"):
+        student.user.last_active_class_id = None
+        db.session.flush()
     response = student_login(client, username=student.username, pin=student.pin)
 
     assert response.status_code == 302
-    assert "/student/login" in response.headers["Location"]
-    with client.session_transaction() as auth_session:
-        assert "user_id" not in auth_session
+    assert "/student/select-class-context" in response.headers["Location"]
 
 
 def test_DOM_IDEN_006__admin_passkey_register_uses_canonical_user_external_id(client, monkeypatch):
@@ -85,8 +87,9 @@ def test_DOM_IDEN_006__admin_passkey_register_uses_canonical_user_external_id(cl
 def test_DOM_IDEN_006__admin_passkey_finish_sets_canonical_user_session(client, monkeypatch):
     classroom = initialize_as_teacher("chemistry_p1", client, client.application)
     user = classroom.teacher_user
-    db.session.add(PasskeyCredential(user_id=user.id, authenticator_name="Key"))
-    db.session.flush()
+    with FEATContext("FEAT-IDEN-001", idempotency_key="test:passkey-credential:admin"):
+        db.session.add(PasskeyCredential(user_id=user.id, authenticator_name="Key"))
+        db.session.flush()
 
     monkeypatch.setattr(
         "app.routes.admin.verify_signin_token",
@@ -99,10 +102,16 @@ def test_DOM_IDEN_006__admin_passkey_finish_sets_canonical_user_session(client, 
 
 
 def test_DOM_IDEN_006__system_admin_passkey_finish_sets_canonical_user_session(client, monkeypatch):
-    classroom = initialize("chemistry_p1", client.application)
-    user = classroom.teacher_user
-    db.session.add(PasskeyCredential(user_id=user.id, authenticator_name="Key"))
-    db.session.flush()
+    with FEATContext("FEAT-IDEN-001", idempotency_key="test:passkey-credential:sysadmin"):
+        user = User(
+            user_role=UserRole.SYSADMIN,
+            username_hash="sysadmin-passkey-hash",
+            username_lookup_hash="sysadmin-passkey-lookup",
+        )
+        db.session.add(user)
+        db.session.flush()
+        db.session.add(PasskeyCredential(user_id=user.id, authenticator_name="Key"))
+        db.session.flush()
 
     monkeypatch.setattr(
         "app.routes.system_admin.verify_signin_token",

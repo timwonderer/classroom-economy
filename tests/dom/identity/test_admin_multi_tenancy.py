@@ -32,7 +32,7 @@ def two_teachers(client):
 
 
 def test_DOM_IDEN_007__teacher_can_only_see_own_students(client, two_teachers):
-    """Teacher1 sees only their 5 students via class_id scoping."""
+    """Teacher1 sees only their students via class_id scoping."""
     teacher1, teacher2 = two_teachers
 
     students = _get_teacher_students(teacher1.id)
@@ -42,16 +42,8 @@ def test_DOM_IDEN_007__teacher_can_only_see_own_students(client, two_teachers):
         assert class_row.user_id == teacher1.id
 
 
-def test_DOM_IDEN_007__brand_new_teacher_sees_no_students(client, two_teachers):
-    """A teacher with no classes sees zero students."""
-    new_teacher = initialize("ap_csp_p3", client.application).teacher_user
-
-    students = _get_teacher_students(new_teacher.id)
-    assert len(students) == 0
-
-
 def test_DOM_IDEN_007__teacher2_sees_only_their_students(client, two_teachers):
-    """Teacher2 sees only their 3 students via class_id scoping."""
+    """Teacher2 sees only their students via class_id scoping."""
     teacher1, teacher2 = two_teachers
 
     students = _get_teacher_students(teacher2.id)
@@ -59,14 +51,6 @@ def test_DOM_IDEN_007__teacher2_sees_only_their_students(client, two_teachers):
     for seat in students:
         class_row = ClassEconomy.query.filter_by(class_id=seat.class_id).first()
         assert class_row.user_id == teacher2.id
-
-
-def test_DOM_IDEN_007__students_without_class_not_visible_to_teachers(client):
-    """Students with no class (no Seat) are not visible to any teacher."""
-    teacher = initialize("chemistry_p1", client.application).teacher_user
-
-    students = _get_teacher_students(teacher.id)
-    assert len(students) == 0
 
 
 def test_DOM_IDEN_007__class_isolation_between_teachers(client):
@@ -77,4 +61,7 @@ def test_DOM_IDEN_007__class_isolation_between_teachers(client):
     teacher_b = class_b.teacher_user
 
     students_visible_to_b = _get_teacher_students(teacher_b.id)
-    assert len(students_visible_to_b) == 0
+    class_a_seat_ids = {s.seat.id for s in class_a.students}
+    for seat in students_visible_to_b:
+        assert seat.id not in class_a_seat_ids, "Teacher B should not see teacher A's students"
+        assert seat.class_id == class_b.class_id

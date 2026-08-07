@@ -14,7 +14,7 @@
                     <span class="material-symbols-outlined text-primary">badge</span>
                 </div>
                 <div>
-                    <div class="sysadmin-stat-value">{{ total_teachers }}</div>
+                    <div class="sysadmin-stat-value">{{ total_admins }}</div>
                     <div class="sysadmin-stat-label">Total Teachers</div>
                 </div>
             </div>
@@ -28,18 +28,6 @@
                 <div>
                     <div class="sysadmin-stat-value">{{ total_students }}</div>
                     <div class="sysadmin-stat-label">Total Students</div>
-                </div>
-            </div>
-        </div>
-
-        <div class="col-6 col-lg-3">
-            <div class="sysadmin-stat-card h-100">
-                <div class="sysadmin-stat-icon bg-warning-subtle">
-                    <span class="material-symbols-outlined text-warning">confirmation_number</span>
-                </div>
-                <div>
-                    <div class="sysadmin-stat-value">{{ active_invites }}</div>
-                    <div class="sysadmin-stat-label">Active Invite Codes</div>
                 </div>
             </div>
         </div>
@@ -63,18 +51,6 @@
             Actions</h6>
         <div class="row g-3">
             <div class="col-6 col-md-4 col-lg-2">
-                <a href="{{ url_for('sysadmin.manage_teachers') }}#invite-codes" class="sysadmin-quick-action">
-                    <span class="material-symbols-outlined text-warning">add_card</span>
-                    <span>Generate Invite</span>
-                </a>
-            </div>
-            <div class="col-6 col-md-4 col-lg-2">
-                <a href="{{ url_for('sysadmin.manage_teachers') }}" class="sysadmin-quick-action">
-                    <span class="material-symbols-outlined text-primary">group</span>
-                    <span>Manage Teachers</span>
-                </a>
-            </div>
-            <div class="col-6 col-md-4 col-lg-2">
                 <a href="{{ url_for('sysadmin.support_tickets') }}" class="sysadmin-quick-action">
                     <span class="material-symbols-outlined text-danger">support_agent</span>
                     <span>Support Tickets</span>
@@ -84,12 +60,6 @@
                 <a href="{{ url_for('sysadmin.combined_logs') }}" class="sysadmin-quick-action">
                     <span class="material-symbols-outlined text-secondary">description</span>
                     <span>View Logs</span>
-                </a>
-            </div>
-            <div class="col-6 col-md-4 col-lg-2">
-                <a href="{{ url_for('sysadmin.announcements') }}" class="sysadmin-quick-action">
-                    <span class="material-symbols-outlined text-info">campaign</span>
-                    <span>Announcements</span>
                 </a>
             </div>
             <div class="col-6 col-md-4 col-lg-2">
@@ -103,53 +73,8 @@
 
     <!-- ── Recent Activity ── -->
     <div class="row g-4 mb-4">
-        <!-- Recent Teacher Registrations -->
-        <div class="col-12 col-lg-6">
-            <div class="card border-0 shadow-sm h-100">
-                <div class="card-header bg-white border-bottom d-flex align-items-center gap-2 py-3">
-                    <span class="material-symbols-outlined text-primary" style="font-size:20px;">history_edu</span>
-                    <h6 class="mb-0 fw-semibold">Recent Teacher Registrations</h6>
-                    <a href="{{ url_for('sysadmin.manage_teachers') }}" class="btn btn-sm btn-outline-secondary ms-auto"
-                        style="font-size:0.75rem;">View All</a>
-                </div>
-                <div class="card-body p-0">
-                    {% if recent_teachers %}
-                    <ul class="list-group list-group-flush">
-                        {% for teacher in recent_teachers %}
-                        <li class="list-group-item border-bottom py-3">
-                            <div class="d-flex align-items-center justify-content-between">
-                                <div class="d-flex align-items-center gap-2">
-                                    <div class="rounded-circle bg-primary-subtle d-flex align-items-center justify-content-center"
-                                        style="width:36px;height:36px;flex-shrink:0;">
-                                        <span class="material-symbols-outlined text-primary"
-                                            style="font-size:18px;">person</span>
-                                    </div>
-                                    <div>
-                                        <div class="fw-semibold" style="font-size:0.9rem;">{{ teacher.get_sysadmin_display_name() }}</div>
-                                        <div class="text-muted" style="font-size:0.75rem;">
-                                            Joined {{ teacher.created_at.strftime('%b %d, %Y') if teacher.created_at
-                                            else 'Unknown' }}
-                                        </div>
-                                    </div>
-                                </div>
-                                <span class="badge bg-success-subtle text-success">Active</span>
-                            </div>
-                        </li>
-                        {% endfor %}
-                    </ul>
-                    {% else %}
-                    <div class="p-4 text-center text-muted">
-                        <span class="material-symbols-outlined d-block mb-2"
-                            style="font-size:40px;opacity:0.3;">person_off</span>
-                        No teachers registered yet
-                    </div>
-                    {% endif %}
-                </div>
-            </div>
-        </div>
-
         <!-- Recent Errors -->
-        <div class="col-12 col-lg-6">
+        <div class="col-12">
             <div class="card border-0 shadow-sm h-100">
                 <div class="card-header bg-white border-bottom d-flex align-items-center gap-2 py-3">
                     <span class="material-symbols-outlined text-danger" style="font-size:20px;">error</span>
@@ -229,7 +154,7 @@
                                         <span class="material-symbols-outlined"
                                             style="font-size:16px;color:var(--sysadmin-accent);">shield_person</span>
                                     </div>
-                                    <span class="fw-semibold" style="font-size:0.9rem;">{{ admin.get_display_username() }}</span>
+                                    <span class="fw-semibold" style="font-size:0.9rem;">{{ admin.display_username }}</span>
                                 </div>
                             </td>
                             <td><span class="badge bg-success-subtle text-success">Active</span></td>

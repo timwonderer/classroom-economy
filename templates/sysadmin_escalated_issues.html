@@ -87,9 +87,9 @@
                                         <span class="material-symbols-outlined me-1">person</span>
                                         {{ issue.actor_public_id[:8] }}...
                                     </h6>
-                                    <span class="badge bg-secondary">{{ issue.category.name if issue.category else 'Unknown' }}</span>
+                                    <span class="badge bg-secondary">{{ issue.category_name }}</span>
                                     <span class="badge bg-primary ms-2">
-                                        <span class="material-symbols-outlined me-1">badge</span>{{ issue.teacher.get_sysadmin_display_name() }}
+                                        <span class="material-symbols-outlined me-1">badge</span>{{ issue.teacher_display_name }}
                                     </span>
                                     {% if issue.share_class_name_with_sysadmin and issue.class_label %}
                                     <span class="badge bg-info ms-2">
@@ -139,9 +139,9 @@
                                         <span class="material-symbols-outlined me-1">person</span>
                                         {{ issue.actor_public_id[:8] }}...
                                     </h6>
-                                    <span class="badge bg-secondary">{{ issue.category.name if issue.category else 'Unknown' }}</span>
+                                    <span class="badge bg-secondary">{{ issue.category_name }}</span>
                                     <span class="badge bg-primary ms-2">
-                                        <span class="material-symbols-outlined me-1">badge</span>{{ issue.teacher.get_sysadmin_display_name() }}
+                                        <span class="material-symbols-outlined me-1">badge</span>{{ issue.teacher_display_name }}
                                     </span>
                                     {% if issue.share_class_name_with_sysadmin and issue.class_label %}
                                     <span class="badge bg-info ms-2">
@@ -191,9 +191,9 @@
                                         <span class="material-symbols-outlined me-1">person</span>
                                         {{ issue.actor_public_id[:8] }}...
                                     </h6>
-                                    <span class="badge bg-secondary">{{ issue.category.name if issue.category else 'Unknown' }}</span>
+                                    <span class="badge bg-secondary">{{ issue.category_name }}</span>
                                     <span class="badge bg-primary ms-2">
-                                        <span class="material-symbols-outlined me-1">badge</span>{{ issue.teacher.get_sysadmin_display_name() }}
+                                        <span class="material-symbols-outlined me-1">badge</span>{{ issue.teacher_display_name }}
                                     </span>
                                     {% if issue.eligible_for_reward %}
                                     <span class="badge bg-warning text-dark ms-2">
