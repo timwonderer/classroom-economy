@@ -311,11 +311,19 @@ def run_rent_cycle_for_class(class_id: str, execution_time):
         return {"status": "skipped", "reason": "before_effective_at", "class_id": class_id}
 
     # Freeze deterministic class-local cycle boundary for the full execution.
-    # Inline OBL cycle arithmetic: find which cycle window execution_time falls in.
-    elapsed = (execution_time - rent_effective_at).total_seconds()
-    cycle_seconds = cycle_length_days * 86400
-    cycles_completed = int(elapsed // cycle_seconds)
-    cycle_start = rent_effective_at + timedelta(seconds=cycles_completed * cycle_seconds)
+    # Use class-local date arithmetic (not UTC seconds) so DST transitions
+    # don't shift cycle boundaries.
+    from datetime import datetime as _dt, timezone as _tz
+    from app.utils.canonical_temporal_resolver import _get_class_timezone
+    class_tz = _get_class_timezone(class_id)
+    effective_local = rent_effective_at.astimezone(class_tz)
+    exec_local = execution_time.astimezone(class_tz)
+    elapsed_days = (exec_local.date() - effective_local.date()).days
+    cycles_completed = elapsed_days // cycle_length_days
+    cycle_start_date = effective_local.date() + timedelta(days=cycles_completed * cycle_length_days)
+    cycle_start = class_tz.localize(
+        _dt.combine(cycle_start_date, effective_local.time())
+    ).astimezone(_tz.utc)
 
     claimed_seats = Seat.query.filter(
         Seat.class_id == class_id,

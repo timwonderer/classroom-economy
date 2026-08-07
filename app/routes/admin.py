@@ -4329,10 +4329,10 @@ def student_detail_public(actor_public_id):
     latest_tax = tax_query.order_by(Transaction.timestamp.desc()).first()
     student.property_tax_last_paid = latest_tax.timestamp if latest_tax else None
 
-    # Compute due dates and overdue status
+    # Compute due dates and overdue status using class-local timezone
     from datetime import date
-    import pytz as _pytz
-    effective_tz = _pytz.UTC
+    from app.utils.canonical_temporal_resolver import _get_class_timezone
+    effective_tz = _get_class_timezone(class_id)
     today = utc_now().astimezone(effective_tz).date()
     # Rent due on 5th, overdue after 6th
     rent_due = date(today.year, today.month, 5)

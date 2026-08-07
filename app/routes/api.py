@@ -825,12 +825,6 @@ def handle_hall_pass_action(pass_id, action):
 
 
 
-def _get_default_timezone():
-    """Return the configured default timezone or fall back to Pacific Time."""
-    import pytz
-    return pytz.timezone(current_app.config.get('DEFAULT_TIMEZONE'))
-
-
 def _enforce_hall_pass_student_context(student, log_entry):
     """
     Enforce active student class context for hall-pass state mutations.
