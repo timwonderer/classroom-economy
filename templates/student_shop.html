@@ -27,46 +27,36 @@
         {% if items %}
         <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4">
             {% for item in items %}
-            {% set rent_item_types = rent_item_types_by_store_id.get(item.id, []) %}
-            {% set is_privilege_rent_item = 'privilege' in rent_item_types %}
-            {% set is_per_use_rent_item = 'per_use' in rent_item_types %}
-            {% set is_hall_pass_item = item.item_type == 'hall_pass' %}
-            {% set is_rent_perk_item = (not is_hall_pass_item) and ((rent_item_types|length > 0) or item.is_rent_linked) %}
-            {% set is_rent_covered = has_paid_rent and is_privilege_rent_item and not is_per_use_rent_item %}
-            {% set rent_free_units_available = rent_free_entitlement_counts.get(item.id) %}
-            {% set has_rent_free_purchase = rent_free_units_available is not none and (rent_free_units_available == -1 or rent_free_units_available > 0) %}
-            {% set has_legacy_rent_free_purchase = (not is_hall_pass_item) and has_paid_rent and item.is_rent_linked and not is_rent_covered and not has_rent_free_purchase %}
-            {% set has_any_rent_free_purchase = has_rent_free_purchase or has_legacy_rent_free_purchase %}
             <div class="col">
-                <div class="card h-100 {% if item.is_bundle or item.bulk_discount_enabled %}border-primary{% endif %} {% if is_rent_covered %}opacity-50{% endif %}">
+                <div class="card h-100 {% if item.is_bundle or item.bulk_discount_enabled %}border-primary{% endif %} {% if item.is_rent_covered %}opacity-50{% endif %}">
                     <div class="card-body d-flex flex-column">
                         <h2 class="h5 card-title">{{ item.name }}</h2>
-                        {% if is_rent_covered %}
+                        {% if item.is_rent_covered %}
                         <div class="alert alert-success alert-sm mb-2 py-1 px-2">
                             <small><strong><span class="material-symbols-outlined" style="font-size: 16px; vertical-align: middle;">check_circle</span> Included in your rent!</strong></small>
                         </div>
-                        {% elif is_rent_perk_item %}
+                        {% elif item.is_rent_perk_item %}
                         <div class="mb-2">
                             <span class="badge bg-info"><span class="material-symbols-outlined" style="font-size: 14px; vertical-align: middle;">card_membership</span> Rent Perk</span>
-                            {% if has_any_rent_free_purchase %}
-                            {% if rent_free_units_available == -1 %}
+                            {% if item.has_any_rent_free_purchase %}
+                            {% if item.rent_free_units_available == -1 %}
                             <span class="badge bg-success">Unlimited free uses</span>
-                            {% elif has_legacy_rent_free_purchase %}
+                            {% elif item.has_legacy_rent_free_purchase %}
                             <span class="badge bg-success">Free with paid rent</span>
                             {% else %}
-                            <span class="badge bg-success">{{ rent_free_units_available }} free use{{ 's' if rent_free_units_available != 1 else '' }} remaining</span>
+                            <span class="badge bg-success">{{ item.rent_free_units_available }} free use{{ 's' if item.rent_free_units_available != 1 else '' }} remaining</span>
                             {% endif %}
                             {% endif %}
                         </div>
                         {% endif %}
                         <div class="mb-2">
-                            {% if is_rent_covered %}
+                            {% if item.is_rent_covered %}
                             <span class="badge bg-success fs-6">Included in Rent</span>
-                            {% elif has_any_rent_free_purchase %}
+                            {% elif item.has_any_rent_free_purchase %}
                             <span class="badge bg-success fs-6">Rent Perk price: $0.00</span>
-                            <span class="badge bg-light text-dark border">Regular: ${{ "%.2f"|format(item.price) }}</span>
+                            <span class="badge bg-light text-dark border">Regular: {{ item.display_regular_price }}</span>
                             {% else %}
-                            <span class="badge bg-primary fs-6">${{ "%.2f"|format(item.price) }}</span>
+                            <span class="badge bg-primary fs-6">{{ item.display_price }}</span>
                             {% endif %}
                             {% if item.item_type == 'immediate' %}
                                 <span class="badge bg-success">Immediate Use</span>
@@ -97,38 +87,35 @@
                         {% endif %}
 
                         <!-- Collective Goal Progress -->
-                        {% if item.item_type == 'collective' and item.collective_goal_type %}
+                        {% if item.collective_progress %}
                         <div class="mb-3">
-                            {% set progress = collective_progress.get(item.id, {'count': 0, 'target': 0, 'remaining': 0, 'percent': 0, 'is_complete': false}) %}
-                            {% set purchases_count = progress.count %}
-                            {% set target = progress.target %}
-                            {% if item.collective_goal_type == 'whole_class' %}
+                            {% if item.collective_progress.goal_type == 'whole_class' %}
                                 <div class="alert alert-info p-2 mb-2">
                                     <small><strong>Whole Class Goal:</strong> All {{ class_size }} students must purchase!</small>
                                 </div>
-                            {% elif item.collective_goal_type == 'fixed' %}
+                            {% elif item.collective_progress.goal_type == 'fixed' %}
                                 <div class="alert alert-info p-2 mb-2">
-                                    <small><strong>Collective Goal:</strong> {{ target }} students needed to unlock</small>
+                                    <small><strong>Collective Goal:</strong> {{ item.collective_progress.target_count }} students needed to unlock</small>
                                 </div>
                             {% endif %}
                             <div class="progress" style="height: 25px;">
-                                <div class="progress-bar {% if progress.is_complete %}bg-success{% else %}bg-warning{% endif %}"
+                                <div class="progress-bar {% if item.collective_progress.is_complete %}bg-success{% else %}bg-warning{% endif %}"
                                      role="progressbar"
-                                     style="width: {{ progress.percent }}%;"
-                                     aria-valuenow="{{ purchases_count }}"
+                                     style="width: {{ item.collective_progress.progress_percent }}%;"
+                                     aria-valuenow="{{ item.collective_progress.purchase_count }}"
                                      aria-valuemin="0"
-                                     aria-valuemax="{{ target }}">
-                                    {{ purchases_count }}/{{ target }}
+                                     aria-valuemax="{{ item.collective_progress.target_count }}">
+                                    {{ item.collective_progress.purchase_count }}/{{ item.collective_progress.target_count }}
                                 </div>
                             </div>
-                            {% if not progress.is_complete %}
-                                <small class="text-muted">{{ progress.remaining }} more needed!</small>
+                            {% if not item.collective_progress.is_complete %}
+                                <small class="text-muted">{{ item.collective_progress.remaining_count }} more needed!</small>
                             {% else %}
                                 <small class="text-success"><span class="material-symbols-outlined">check_circle</span> Goal reached! Item will unlock soon.</small>
                             {% endif %}
-                            {% if item.collective_goal_expires_at %}
+                            {% if item.collective_progress.display_expires_at %}
                             <div class="alert alert-warning p-2 mt-2 mb-0">
-                                <small><span class="material-symbols-outlined" style="font-size: 14px; vertical-align: middle;">schedule</span> <strong>Deadline:</strong> Goal expires {{ item.collective_goal_expires_at.strftime('%b %d, %Y') }}</small>
+                                <small><span class="material-symbols-outlined" style="font-size: 14px; vertical-align: middle;">schedule</span> <strong>Deadline:</strong> Goal expires {{ item.collective_progress.display_expires_at }}</small>
                             </div>
                             {% endif %}
                         </div>
@@ -154,24 +141,18 @@
                                     data-bs-target="#buyItemModal"
                                     data-policy-uuid="{{ policy_uuid_by_item_id.get(item.id, '') }}"
                                     data-item-name="{{ item.name }}"
-                                    data-item-price="{{ '0.00' if has_any_rent_free_purchase else '%.2f'|format(item.price) }}"
-                                    data-item-regular-price="{{ "%.2f"|format(item.price) }}"
-                                    data-has-rent-free-purchase="{{ 'true' if has_any_rent_free_purchase else 'false' }}"
+                                    data-item-price="{{ item.display_price.lstrip('$') }}"
+                                    data-item-regular-price="{{ item.display_regular_price.lstrip('$') }}"
+                                    data-has-rent-free-purchase="{{ 'true' if item.has_any_rent_free_purchase else 'false' }}"
                                     data-item-type="{{ item.item_type }}"
                                     data-is-bundle="{{ 'true' if item.is_bundle else 'false' }}"
                                     data-bundle-quantity="{{ item.bundle_quantity if item.is_bundle else 0 }}"
                                     data-bulk-discount-enabled="{{ 'true' if item.bulk_discount_enabled else 'false' }}"
                                     data-bulk-discount-quantity="{{ item.bulk_discount_quantity if item.bulk_discount_enabled else 0 }}"
                                     data-bulk-discount-percentage="{{ item.bulk_discount_percentage if item.bulk_discount_enabled else 0 }}"
-                                    data-inventory="{{ item.inventory if item.inventory is not none else 'unlimited' }}"
-                                    {% if is_rent_covered or (item.inventory is not none and item.inventory <= 0) %}disabled{% endif %}>
-                                {% if item.inventory is not none and item.inventory <= 0 %}
-                                    Out of Stock
-                                {% elif is_rent_covered %}
-                                    Already Included
-                                {% else %}
-                                    Purchase
-                                {% endif %}
+                                    data-inventory="{{ item.inventory_available if item.inventory_available is not none else 'unlimited' }}"
+                                    {% if item.button_disabled %}disabled{% endif %}>
+                                {{ item.button_text }}
                             </button>
                         </div>
                     </div>
@@ -195,77 +176,66 @@
             <div class="col">
                 <div class="card h-100">
                     <div class="card-body d-flex flex-column">
-                        <h2 class="h5 card-title">{{ entitlement.store_item.name }}</h2>
+                        <h2 class="h5 card-title">{{ entitlement.item_name }}</h2>
                         <div class="mb-2">
-                            {% if entitlement.status == 'purchased' %}
-                                <span class="badge bg-success">Ready to Use</span>
-                            {% elif entitlement.status == 'pending' %}
-                                <span class="badge bg-warning text-dark">Pending Approval</span>
-                            {% elif entitlement.status == 'processing' %}
-                                <span class="badge bg-info">Processing</span>
-                            {% endif %}
-
-                            {% if entitlement.store_item.item_type == 'immediate' %}
+                            <span class="badge bg-success">{{ entitlement.display_status }}</span>
+                            {% if entitlement.item_type == 'immediate' %}
                                 <span class="badge bg-success">Immediate</span>
-                            {% elif entitlement.store_item.item_type == 'delayed' %}
+                            {% elif entitlement.item_type == 'delayed' %}
                                 <span class="badge bg-warning text-dark">Delayed</span>
-                            {% elif entitlement.store_item.item_type == 'collective' %}
+                            {% elif entitlement.item_type == 'collective' %}
                                 <span class="badge bg-info">Collective</span>
-                            {% elif entitlement.store_item.item_type == 'hall_pass' %}
+                            {% elif entitlement.item_type == 'hall_pass' %}
                                 <span class="badge bg-secondary">Hall Pass</span>
                             {% endif %}
                         </div>
 
                         <p class="text-muted small mb-2">
                             <strong>Purchased:</strong>
-                            {% if entitlement.purchase_date %}
-                                <span class="local-timestamp" data-timestamp="{{ format_utc_iso(entitlement.purchase_date) }}"></span>
-                            {% else %}
-                                N/A
-                            {% endif %}
+                            <span class="local-timestamp" data-timestamp="{{ entitlement.display_purchased_date }}"></span>
                         </p>
 
-                        {% if entitlement.expiry_date %}
+                        {% if entitlement.has_expiry_date %}
                         <p class="text-muted small mb-2">
-                            <strong>Expires:</strong> {{ entitlement.expiry_date.strftime('%m/%d/%y') }}
+                            <strong>Expires:</strong> {{ entitlement.display_expiry_date }}
                         </p>
                         {% endif %}
 
-                        <div class="card-text text-muted flex-grow-1">{{ (entitlement.store_item.description or 'No description available.') | markdown }}</div>
+                        <div class="card-text text-muted flex-grow-1">{{ (entitlement.item_description or 'No description available.') | markdown }}</div>
 
                         <div class="mt-auto">
-                            {% if entitlement.store_item.item_type == 'hall_pass' %}
+                            {% if entitlement.is_hall_pass %}
                                 <!-- Hall Pass - Use immediately -->
                                 <button class="btn btn-success w-100 use-item-btn"
-                                        data-item-id="{{ entitlement.id }}"
-                                        data-item-name="{{ entitlement.store_item.name }}"
+                                        data-item-id="{{ entitlement.entitlement_id }}"
+                                        data-item-name="{{ entitlement.item_name }}"
                                         data-item-type="hall_pass"
                                         data-redemption-prompt="">
                                     <span class="material-symbols-outlined">exit_to_app</span> Request Hall Pass
                                 </button>
-                            {% elif entitlement.store_item.item_type == 'immediate' and entitlement.status == 'purchased' %}
+                            {% elif entitlement.can_redeem_immediately %}
                                 <!-- Immediate use item - redeem now -->
                                 <button class="btn btn-primary w-100 use-item-btn"
-                                        data-item-id="{{ entitlement.id }}"
-                                        data-item-name="{{ entitlement.store_item.name }}"
+                                        data-item-id="{{ entitlement.entitlement_id }}"
+                                        data-item-name="{{ entitlement.item_name }}"
                                         data-item-type="immediate"
                                         data-redemption-prompt="">
                                     <span class="material-symbols-outlined">redeem</span> Use Now
                                 </button>
-                            {% elif entitlement.store_item.item_type == 'delayed' and entitlement.status == 'purchased' %}
+                            {% elif entitlement.can_request_redemption %}
                                 <!-- Delayed use item - request redemption -->
                                 <button class="btn btn-warning w-100 use-item-btn"
-                                        data-item-id="{{ entitlement.id }}"
-                                        data-item-name="{{ entitlement.store_item.name }}"
+                                        data-item-id="{{ entitlement.entitlement_id }}"
+                                        data-item-name="{{ entitlement.item_name }}"
                                         data-item-type="delayed"
-                                        data-redemption-prompt="{{ entitlement.store_item.redemption_prompt or '' }}">
+                                        data-redemption-prompt="{{ entitlement.redemption_prompt or '' }}">
                                     <span class="material-symbols-outlined">schedule</span> Request Redemption
                                 </button>
-                            {% elif entitlement.status == 'pending' %}
+                            {% elif entitlement.is_pending_approval %}
                                 <button class="btn btn-secondary w-100" disabled>
                                     <span class="material-symbols-outlined">hourglass_empty</span> Awaiting Approval
                                 </button>
-                            {% elif entitlement.status == 'processing' %}
+                            {% elif entitlement.is_processing %}
                                 <button class="btn btn-info w-100" disabled>
                                     <span class="material-symbols-outlined">sync</span> Processing
                                 </button>
