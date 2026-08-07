@@ -90,7 +90,7 @@
 | student_dashboard.html | 38 | 29 | **CRITICAL** | ❌ VIOLATION |
 | student_transfer.html | 34 | 64 | High | ❌ VIOLATION |
 | student_payroll.html | 28 | 45 | High | ❌ VIOLATION |
-| admin_payroll.html | 74 | 151 | **CRITICAL** | ❌ VIOLATION |
+| admin_payroll.html | 74 | 151 | **CRITICAL** | ✅ FIXED (Phase 1) |
 | admin_analytics_dashboard.html | 41 | 137 | **CRITICAL** | ❌ VIOLATION |
 | admin_banking.html | 74 | 102 | **CRITICAL** | ❌ VIOLATION |
 | admin_economy_health.html | 60 | 99 | **CRITICAL** | ❌ VIOLATION |
@@ -135,7 +135,7 @@ Lines various: Direct balance reads without view model wrapper
 | Template | Jinja Vars | Jinja Tags | Violations | Status |
 |----------|-----------|------------|-----------|--------|
 | student_rent.html | 44 | 123 | **CRITICAL** | ⚠️ PARTIAL |
-| admin_rent_settings.html | 84 | 175 | **CRITICAL** | ❌ VIOLATION |
+| admin_rent_settings.html | 84 | 175 | **CRITICAL** | ✅ FIXED (Phase 1) |
 | student_insurance_marketplace.html | 71 | 150 | **CRITICAL** | ❌ VIOLATION |
 | admin_insurance.html | 5 | 13 | Low | ✅ CLEAN |
 
@@ -190,7 +190,7 @@ Line 191: {{ obligation_summary.status_breakdown.past_due_grace + ... }}
 
 | Template | Jinja Vars | Jinja Tags | Violations | Status |
 |----------|-----------|------------|-----------|--------|
-| student_shop.html | 44 | 105 | **CRITICAL** | ❌ VIOLATION |
+| student_shop.html | 44 | 105 | **CRITICAL** | ✅ FIXED (Phase 1) |
 | admin_store.html | 114 | 116 | **CRITICAL** | ❌ VIOLATION |
 | admin_edit_item.html | 48 | 25 | High | ❌ VIOLATION |
 
@@ -289,7 +289,7 @@ Line 230: {{ entitlement.expiry_date.strftime('%m/%d/%y') }}  [ORM DATE FORMATTI
 
 | Template | Jinja Vars | Jinja Tags | Violations | Status |
 |----------|-----------|------------|-----------|--------|
-| admin_payroll.html | 74 | 151 | **CRITICAL** | ❌ VIOLATION |
+| admin_payroll.html | 74 | 151 | **CRITICAL** | ✅ FIXED (Phase 1) |
 | student_payroll.html | 28 | 45 | High | ❌ VIOLATION |
 | admin_payroll_history.html | 11 | 17 | Medium | ⚠️ NEEDS REVIEW |
 
@@ -552,20 +552,27 @@ class EntitlementView:
 
 ### High-Priority Templates (Violations Count)
 
-#### 1. **student_shop.html** (44 vars, 105 tags) - CRITICAL
-- **Current Issues:**
-  - Lines 30-39: Complex rent entitlement logic in template
-  - Lines 100-135: Collective goal progress calculations
-  - Lines 198-234: Direct ORM model access
-  - Lines 222, 230: Date formatting
+#### 1. **student_shop.html** (44 vars, 105 tags) - ✅ FIXED (Phase 1)
+- **Remediation Status:** COMPLETE (2026-08-07)
+- **Commit:** 9103ded8
+- **Issues Resolved:**
+  - ✅ Lines 30-39: Rent logic moved to `StoreItemCardView.is_rent_covered`, `is_rent_perk_item`, etc.
+  - ✅ Lines 100-135: Progress calculations in `CollectiveProgressView`
+  - ✅ Lines 198-234: ORM flattened in `EntitlementCardView` with `item_name`, `item_type`, `display_dates`
+  - ✅ Date formatting: Pre-formatted in builders, no `.strftime()` in template
 
-- **Required View Models:**
-  - `StoreItemCardView` (for each item display)
-  - `EntitlementCardView` (for My Items tab)
-  - `CollectiveProgressView` (for progress calculations)
+- **View Models Implemented:**
+  - ✅ `StoreItemCardView` (pre-computed rent flags, pricing, button state)
+  - ✅ `EntitlementCardView` (flattened ORM, pre-formatted dates)
+  - ✅ `CollectiveProgressView` (pre-computed progress metrics)
+
+- **Audit Violations Fixed:**
+  - ✅ Pattern 1: Raw numeric formatting → `item.display_price`
+  - ✅ Pattern 2: ORM `.strftime()` → Pre-formatted strings
+  - ✅ Pattern 4: Business logic → View model computation
+  - ✅ Pattern 6: ORM traversal → Flattened properties
 
 - **Domain Authority:** DOM-STORE-001
-- **Remediation Priority:** CRITICAL
 
 ---
 
@@ -585,19 +592,23 @@ class EntitlementView:
 
 ---
 
-#### 3. **admin_rent_settings.html** (84 vars, 175 tags) - CRITICAL
-- **Current Issues:**
-  - Lines 178-191: ORM model property aggregation in template
-  - Extensive configuration UI without view models
-  - Status computations (up_to_date, past_due, etc.)
+#### 3. **admin_rent_settings.html** (84 vars, 175 tags) - ✅ FIXED (Phase 1)
+- **Remediation Status:** COMPLETE (2026-08-07)
+- **Commit:** ffd76ad2
+- **Issues Resolved:**
+  - ✅ Lines 178-191: Removed `status_breakdown` dict arithmetic
+  - ✅ Added `current_student_count` and `behind_student_count` to `ClassObligationSummary`
+  - ✅ Template displays pre-computed student counts, no ORM aggregation
 
-- **Required View Models:**
-  - `RentManagementView`
-  - `RentObligationSummaryView`
-  - `StudentRentStatusView`
+- **View Models Enhanced:**
+  - ✅ `ClassObligationSummary` with display formatting helper
+  - ✅ Pre-formatted `display_total_paid` and `display_total_unpaid`
+  - ✅ Pre-computed `current_student_count` and `behind_student_count`
+
+- **Audit Violations Fixed:**
+  - ✅ Pattern 1: ORM property summation → Pre-computed counts
 
 - **Domain Authority:** DOM-OBL-001
-- **Remediation Priority:** CRITICAL
 
 ---
 
@@ -637,19 +648,26 @@ class EntitlementView:
 
 ---
 
-#### 6. **admin_payroll.html** (74 vars, 151 tags) - CRITICAL
-- **Current Issues:**
-  - Extensive payroll configuration without view models
-  - Business rule calculations in template
-  - Complex conditional formatting throughout
+#### 6. **admin_payroll.html** (74 vars, 151 tags) - ✅ FIXED (Phase 1)
+- **Remediation Status:** COMPLETE (2026-08-07)
+- **Commit:** 942a7342
+- **Issues Resolved:**
+  - ✅ Payroll configuration pre-computed in `PayrollConfigurationView`
+  - ✅ Student earnings/taxes pre-formatted (no `"%.2f"|format()` filters)
+  - ✅ Manual Payment tab: balances pre-formatted in view model
+  - ✅ Lines 948-949: Replaced format filters with `display_checking_balance`, `display_savings_balance`
 
-- **Required View Models:**
-  - `PayrollManagementView`
-  - `PayrollSettingsView`
-  - `StudentPayrollStatusView`
+- **View Models Implemented:**
+  - ✅ `StudentPayrollStatusView` with display earnings/taxes and balance fields
+  - ✅ `PayrollConfigurationView` for settings display
+  - ✅ Enhanced to include student identification (public_id, full_name, class_id, class_label)
+  - ✅ Pre-formatted display strings for all numeric amounts
+
+- **Audit Violations Fixed:**
+  - ✅ Pattern 1: Numeric formatting → Pre-formatted display strings
+  - ✅ Pattern 5: Jinja filters → Pre-computed values in builders
 
 - **Domain Authority:** DOM-PAYROLL-001
-- **Remediation Priority:** CRITICAL
 
 ---
 
