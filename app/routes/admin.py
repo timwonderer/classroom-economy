@@ -5482,6 +5482,19 @@ def store_management():
         ).all()
     }
 
+    # Group recent purchases by item for template iteration
+    purchases_by_item_id = {}
+    for purchase in recent_purchases:
+        if purchase.store_item and hasattr(purchase.store_item, 'id'):
+            item_id = purchase.store_item.id
+            if item_id not in purchases_by_item_id:
+                purchases_by_item_id[item_id] = []
+            purchases_by_item_id[item_id].append(purchase)
+
+    # Add purchases list to each item for template access
+    for item in items:
+        item.purchases = purchases_by_item_id.get(item.id, [])
+
     # Build economic view from Class Configuration domain
     economic_view = build_economic_view(selected_scope['class_id'])
 
