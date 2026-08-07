@@ -3633,20 +3633,10 @@ def settings():
         for cls in ClassEconomy.query.filter_by(user_id=user_id).order_by(ClassEconomy.class_id.asc()).all()
     ]
 
-    # Build view model dict for admin (no raw SQLAlchemy in templates).
-    admin_view = {
-        'id': admin.id,
-        'display_name': admin.display_name,
-        'teacher_public_id': admin.teacher_public_id,
-        'get_display_name': admin.get_display_name(),
-        'get_display_username': admin.get_display_username(),
-        'created_at': admin.created_at,
-        'last_login': admin.last_login,
-    }
-
+    # Pass admin object directly so template can call methods like get_display_username()
     return render_template(
         'admin_settings.html',
-        admin=admin_view,
+        admin=admin,
         blocks=blocks,
         current_page='settings',
         page_title='Account Personalization'
@@ -5286,6 +5276,14 @@ def store_management():
         item = db.session.get(StoreItem, entitlement.product_id)
         seat = db.session.get(Seat, entitlement.target_seat_id)
         profile = seat.identity_profile if seat else None
+
+        # Extract quantity from payload (defaults to 1 if not present)
+        payload = entitlement.payload or {}
+        quantity_total = payload.get('quantity_total', 1)
+
+        # Determine if this is from a bundle purchase
+        is_from_bundle = item.is_bundle if item else False
+
         recent_purchases.append(SimpleNamespace(
             id=entitlement.entitlement_id,
             student_name=profile.full_name if profile else 'Unknown',
@@ -5294,8 +5292,8 @@ def store_management():
             status=derive_display_status(entitlement.entitlement_id),
             purchased_at=entitlement.timestamp,
             purchase_date=entitlement.timestamp,
-            quantity=1,
-            is_from_bundle=False,
+            quantity=quantity_total,
+            is_from_bundle=is_from_bundle,
         ))
 
     collective_progress_by_item = {}
