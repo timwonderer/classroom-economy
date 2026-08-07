@@ -1,8 +1,8 @@
 # Classroom Token Hub - Development Priorities
 
-**Last Updated:** 2026-08-03
+**Last Updated:** 2026-08-06
 **Current Released Version:** 1.9.0
-**Engineering State:** v2.0 with store domain complete
+**Engineering State:** v2.0 with 3 domains Phase 10 certified (Identity, Obligations, Store)
 **Active Integration Branch:** `codex/v2.0`
 
 ## Quick Links
@@ -41,7 +41,9 @@ Run once after clone:
 
 ### Ready Now
 
-- **Store Domain Complete** (2026-08-03): DOM-STORE-001, FEAT-STOR-001 (purchase), FEAT-STOR-002 (lifecycle transition), FEAT-STOR-003 (insurance claims), and FEAT-STOR-004 (direct grant) fully implemented and tested end-to-end.
+- **Identity Domain Phase 10 Certified** (2026-08-06): DOM-IDEN-001/002/003/006 complete with full Phase 5-7 view model wiring. IdentityProfileView wired to student_detail surface. Phase 9 legacy sweep confirmed no dead code. Audit: `docs/TRACKING/SOP-DEV-002a_IDENTITY_20260806_AUDIT.md`.
+- **Obligations Domain Phase 10 Certified** (2026-08-04): DOM-OBL-001 complete with immutable view models (StudentObligationView, ClassObligationSummary) and full Phase 6-7 surface integration. Audit: `docs/TRACKING/OBLIGATION_DOMAIN_QA_AUDIT_AUG_2026.md`.
+- **Store Domain Phase 10 Certified** (2026-08-04): DOM-STORE-001, FEAT-STOR-001 (purchase), FEAT-STOR-002 (lifecycle transition), FEAT-STOR-003 (insurance claims), and FEAT-STOR-004 (direct grant) fully implemented, tested end-to-end, and audited for production readiness.
 - **Entitlement Read Service**: Canonical read operations for entitlements, purchase counts, and active grants implemented in `app/services/entitlement_read_service.py`.
 - **Product Policy Resolver**: `app/services/store_policy_resolver.py` provides policy resolution and payload schema validation per SPEC-STORE-001.
 - **View Model Builders**: Obligation view models and class obligation summaries centralized in `app/services/view_model_builders.py`.

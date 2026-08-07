@@ -8,7 +8,14 @@ and this project follows semantic versioning principles.
 
 ## [Unreleased]
 
+### Added
+- **FEAT-CLASS-001 & FEAT-CLASS-002** — Canonical workflows for creating and modifying Class Boundaries. Includes orchestration of Class, Teacher Seat, and class configuration provisioning via delegated domain services. Supports initial class creation after teacher registration and additional class creation for existing teachers (#1314).
+
 ### Changed
+- **Identity Domain Phase 10 Certification (2026-08-06)** — All 10 phases of SOP-DEV-002a completed and audited. Identity domain is production-ready. Certification document: `docs/TRACKING/SOP-DEV-002a_IDENTITY_20260806_AUDIT.md` (#1313).
+- **Canonical Temporal Resolver Refactoring** — `app/utils/canonical_temporal_resolver.py` made fully self-contained with no external configuration dependencies. Payroll, attendance, scheduled-task, and route surfaces now resolve time via the canonical resolver. Improves testability and removes coupling to global application state (#1312).
+- **Entitlements Contract Violation Fix (Phase 8 Test Verification)** — Fixed rent hall pass contract violations where `RentPayment` terminal state was not properly synchronized with entitlements lifecycle. Added `one_terminal_per_lineage` unique constraint on `RentPayment(policy_uuid, lineage_key)` to enforce one paid payment per student per rent period. Tests in `test_entitlement_service.py` verify contract compliance (#1311).
+- **Obligations Domain Phase 6-7 Complete** — Full view model wiring and surface integration complete. `StudentObligationView` and `ClassObligationSummary` immutable models standardize rent/insurance obligation presentation. Admin and student templates exclusively consume view.* fields. Phase 6-7 verification complete; pending Phase 8-10 audit (#1305).
 - **DOM-PROD-001 (Productivity and Payroll) Schema Alignment and Audit Completed** — The v2 canonical schema migration for the PROD domain is fully verified. `AttendanceSession`, `HallPassLog`, and `PayrollEvent` tables are actively enforcing `class_id` scoping. All legacy `student.block` scope derivations have been completely removed from runtime surfaces (API and Templates). The audit confirms 100% PASS for DOM-PROD compliance.
 - Full v2 test stabilization checkpoint landed: the FEAT transaction teardown leak was fixed in `app/feats/base.py`, legacy v1-style rent/time/payroll tests were rewritten to current canonical helpers where needed, and the latest full suite now passes as `744 passed, 19 skipped, 1 warning`.
 - Shared canonical fixture cleanup moved the collective-goal and economy-policy test slices onto a single explicit class scope per scenario, eliminating teacher-ownership lookup from the test setup path and keeping student/item seeding anchored to `class_id`.
