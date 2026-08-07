@@ -2169,7 +2169,7 @@ def shop():
         # Convert the SimpleNamespace entitlement to an EntitlementEvent for builder
         # (Legacy bridge: construct minimal EntitlementEvent-like data)
         view = build_entitlement_card_view(
-            event=entitlement,
+            entitlement=entitlement,
             class_id=class_id,
         )
         entitlement_views.append(view)

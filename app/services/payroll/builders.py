@@ -27,7 +27,7 @@ class StudentPayrollStatusView:
     Eliminates all template-level payroll calculations and currency formatting.
     Includes student identification fields for Manual Payment tab display.
     """
-    seat_id: int
+    seat_id: int  # Seat ID (used for balance lookups in templates)
     student_name: str
     display_earnings_this_period: str  # Pre-formatted as "$X.XX"
     display_taxes_this_period: str  # Pre-formatted as "$X.XX"
@@ -45,7 +45,6 @@ class StudentPayrollStatusView:
     status_label: str  # "Paid", "Pending", "No earnings", etc.
 
     # Student identification fields (for Manual Payment tab template display)
-    student_id: int = 0  # Student.id for balance lookups
     public_id: str = ""  # Public student ID for form submission
     full_name: str = ""  # Display name (duplicate of student_name for template compatibility)
     class_id: str = ""  # Class identifier
@@ -66,10 +65,10 @@ class PayrollConfigurationView:
     class_id: str
     settings_mode: str  # 'simple' or 'advanced'
     pay_schedule_type: str  # 'daily', 'weekly', 'biweekly', 'monthly', 'custom'
-    display_pay_rate: str  # Pre-formatted as "$X.XX per minute"
+    display_pay_rate: str  # Pre-formatted as "$X.XX per {time_unit}"
     display_next_payroll_date: str | None  # Pre-formatted date or "Not scheduled"
     overtime_enabled: bool
-    display_overtime_multiplier: str | None  # Pre-formatted as "X.X%" if enabled
+    display_overtime_multiplier: str | None  # Pre-formatted as "X.Xx" multiplier if enabled
     rounding_mode: str  # 'up' or 'down'
 
     # Student summary
@@ -90,7 +89,6 @@ def build_student_payroll_status_view(
     taxes_this_period: Decimal | float | int = 0,
     total_earnings_all_time: Decimal | float | int = 0,
     total_taxes_all_time: Decimal | float | int = 0,
-    student_id: int = 0,
     public_id: str = "",
     full_name: str = "",
     class_label: str = "",
@@ -161,7 +159,6 @@ def build_student_payroll_status_view(
         has_current_period_earnings=earnings > 0,
         status_label=status_label,
         # Student identification for template display
-        student_id=student_id,
         public_id=public_id,
         full_name=full_name or student_name,  # Fallback to student_name if not provided
         class_id=class_id,
@@ -202,6 +199,7 @@ def build_payroll_configuration_view(
     overtime_multiplier = 1.0
     rounding_mode = 'down'
     next_payroll_date = None
+    time_unit = 'minute'
 
     if settings:
         pay_rate = Decimal(str(settings.pay_rate))
@@ -211,9 +209,10 @@ def build_payroll_configuration_view(
         overtime_multiplier = float(settings.overtime_multiplier or 1.0)
         rounding_mode = settings.rounding_mode or 'down'
         next_payroll_date = settings.next_payroll_date
+        time_unit = (settings.time_unit or 'minutes').rstrip('s')  # Remove plural
 
     # Pre-format display strings
-    display_pay_rate = f"${pay_rate:.2f} per minute"
+    display_pay_rate = f"${pay_rate:.2f} per {time_unit}"
 
     display_next_payroll = "Not scheduled"
     if next_payroll_date:

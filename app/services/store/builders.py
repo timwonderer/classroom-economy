@@ -45,6 +45,9 @@ class StoreItemCardView:
     description: str | None
     display_price: str  # Pre-formatted as "$X.XX"
     display_regular_price: str  # Pre-formatted as "$X.XX" (used in rent perk badges)
+    price_amount: str  # Unformatted decimal string for data attributes
+    regular_price_amount: str  # Unformatted decimal string for data attributes
+    policy_uuid: str | None  # For rent policy tracking in purchase modal
     item_type: str  # 'immediate', 'delayed', 'collective', 'hall_pass'
     inventory_available: int | None  # None means unlimited
     limit_per_student: int | None
@@ -111,6 +114,7 @@ class EntitlementCardView:
     # Derived presentation state
     can_redeem_immediately: bool  # immediate items in purchased status
     can_request_redemption: bool  # delayed items in purchased status
+    can_use_hall_pass: bool  # hall pass items in purchased status
     is_pending_approval: bool
     is_processing: bool
     is_hall_pass: bool

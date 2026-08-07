@@ -7800,7 +7800,6 @@ def payroll():
             total_earnings_all_time=stat.get('total_earned', Decimal('0.00')),
             total_taxes_all_time=Decimal('0.00'),  # Taxes not yet calculated
             # Student identification fields for Manual Payment tab display
-            student_id=stat['id'],
             public_id=stat['public_id'],
             full_name=stat['full_name'],
             class_label=stat['class_label'],
