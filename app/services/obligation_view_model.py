@@ -16,7 +16,7 @@ Obligations and Ledger services remain isolated and own their own facts.
 from __future__ import annotations
 
 from decimal import Decimal
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone, timedelta
 
 from app.extensions import db
@@ -163,6 +163,13 @@ class StudentObligationView:
     # Status counts for display (e.g., rent_status_counts)
     status_counts: dict  # {SATISFIED, OUTSTANDING, PAST_DUE}
 
+    # Phase 1 display formatting (audit violations: student_rent.html line 142)
+    display_current_due_date: str | None = None  # Pre-formatted as "%B %d, %Y" or None
+    display_amount_due: str | None = None  # Pre-formatted as "$X.XX"
+    display_total_due: str | None = None  # Pre-formatted as "$X.XX"
+    display_amount_paid: str | None = None  # Pre-formatted as "$X.XX"
+    display_remaining_amount: str | None = None  # Pre-formatted as "$X.XX"
+
 
 @dataclass(frozen=True)
 class ClassObligationSummary:
@@ -180,6 +187,12 @@ class ClassObligationSummary:
 
     # Per-student summary
     student_rows: list  # [{seat_id, student_name, status, due_date, amount_due, amount_paid, balance, days_overdue, is_waived}]
+
+    # Phase 1 display formatting (audit violations: admin_rent_settings.html lines 178, 191)
+    display_total_paid: str = "$0.00"  # Pre-formatted sum of all payments
+    display_total_unpaid: str = "$0.00"  # Pre-formatted sum of all outstanding
+    current_student_count: int = 0  # Count of students current on rent (up_to_date + outstanding)
+    behind_student_count: int = 0  # Count of students behind on rent (past_due_grace + past_due_overdue)
 
 
 def build_rent_policy_projection(
@@ -771,4 +784,106 @@ def get_rent_status_projection(
         total_paid_all_periods=total_paid,
         total_assessed_all_periods=total_assessed,
         payment_history=payment_history,
+    )
+
+
+# ============================================================================
+# Phase 1 Display Formatting Helpers (audit violations: pre-format dates/amounts)
+# ============================================================================
+
+def add_display_formatting_to_student_obligation_view(
+    view: StudentObligationView | None,
+) -> StudentObligationView | None:
+    """
+    Add pre-formatted display fields to StudentObligationView.
+
+    Eliminates template-level date/currency formatting (audit violations:
+    student_rent.html line 142 strftime, admin_rent_settings.html nested ORM access).
+
+    Returns a new view with display fields populated.
+    """
+    if view is None:
+        return view
+
+    # Format current period dates and amounts
+    display_due_date = None
+    if view.current_period and view.current_period.get('due_date'):
+        due_date = view.current_period['due_date']
+        if isinstance(due_date, datetime):
+            display_due_date = due_date.strftime("%B %d, %Y")
+
+    display_amount_due = "$0.00"
+    if view.current_period and view.current_period.get('amount_due') is not None:
+        amount = Decimal(str(view.current_period['amount_due']))
+        display_amount_due = f"${amount:.2f}"
+
+    display_total_due = "$0.00"
+    if view.current_period and view.current_period.get('total_due') is not None:
+        amount = Decimal(str(view.current_period['total_due']))
+        display_total_due = f"${amount:.2f}"
+
+    display_amount_paid = "$0.00"
+    if view.current_period and view.current_period.get('amount_paid') is not None:
+        amount = Decimal(str(view.current_period['amount_paid']))
+        display_amount_paid = f"${amount:.2f}"
+
+    display_remaining = "$0.00"
+    if view.current_period and view.current_period.get('remaining_amount') is not None:
+        amount = Decimal(str(view.current_period['remaining_amount']))
+        display_remaining = f"${amount:.2f}"
+
+    # Create new view with display fields populated using dataclasses.replace
+    return replace(
+        view,
+        display_current_due_date=display_due_date,
+        display_amount_due=display_amount_due,
+        display_total_due=display_total_due,
+        display_amount_paid=display_amount_paid,
+        display_remaining_amount=display_remaining,
+    )
+
+
+def add_display_formatting_to_class_obligation_summary(
+    summary: ClassObligationSummary | None,
+) -> ClassObligationSummary | None:
+    """
+    Add pre-formatted display fields to ClassObligationSummary.
+
+    Pre-formats totals and student counts for display (audit violations:
+    admin_rent_settings.html lines 178, 191 ORM property aggregation in template).
+
+    Returns a new summary with display fields populated.
+    """
+    if summary is None:
+        return summary
+
+    # Compute display totals from status_breakdown and student_rows
+    total_paid = Decimal('0.00')
+    total_unpaid = Decimal('0.00')
+    current_student_count = 0
+    behind_student_count = 0
+
+    for row in summary.student_rows or []:
+        if row.get('amount_paid'):
+            total_paid += Decimal(str(row['amount_paid']))
+        if row.get('balance') and row['balance'] > 0:
+            total_unpaid += Decimal(str(row['balance']))
+
+        # Count students by status (mirrors template filtering at lines 337, 365)
+        status = row.get('status')
+        if status in ['up_to_date', 'outstanding']:
+            current_student_count += 1
+        elif status in ['past_due_grace', 'past_due_overdue']:
+            behind_student_count += 1
+
+    display_total_paid = f"${total_paid:.2f}"
+    display_total_unpaid = f"${total_unpaid:.2f}"
+
+    # Create new summary with display fields using dataclasses.replace
+    return replace(
+        summary,
+        display_total_paid=display_total_paid,
+        display_total_unpaid=display_total_unpaid,
+        current_student_count=current_student_count,
+        behind_student_count=behind_student_count,
     )

@@ -175,7 +175,7 @@
             <div class="d-flex align-items-center">
               <div class="flex-grow-1">
                 <div class="text-muted mb-2">Current on Rent</div>
-                <h2 class="text-success mb-0">{{ obligation_summary.status_breakdown.up_to_date + obligation_summary.status_breakdown.outstanding if obligation_summary else 0 }}</h2>
+                <h2 class="text-success mb-0">{{ obligation_summary.current_student_count if obligation_summary else 0 }}</h2>
               </div>
               <span class="material-symbols-outlined text-success" style="font-size: 3rem;">check_circle</span>
             </div>
@@ -188,7 +188,7 @@
             <div class="d-flex align-items-center">
               <div class="flex-grow-1">
                 <div class="text-muted mb-2">Behind on Rent</div>
-                <h2 class="text-danger mb-0">{{ obligation_summary.status_breakdown.past_due_grace + obligation_summary.status_breakdown.past_due_overdue if obligation_summary else 0 }}</h2>
+                <h2 class="text-danger mb-0">{{ obligation_summary.behind_student_count if obligation_summary else 0 }}</h2>
               </div>
               <span class="material-symbols-outlined text-danger" style="font-size: 3rem;">error</span>
             </div>
@@ -234,7 +234,7 @@
         <div class="row">
           <div class="col-md-6">
             <h3 class="text-muted h6">Rent Amount</h3>
-            <p class="h4">${{ "%.2f"|format(settings.rent_amount) }}
+            <p class="h4">{{ display_rent_amount }}
               <small class="text-muted">
                 {% if settings.frequency_type == 'daily' %}per day
                 {% elif settings.frequency_type == 'weekly' %}per week
@@ -247,7 +247,7 @@
           </div>
           <div class="col-md-6">
             <h3 class="text-muted h6">Late Penalty</h3>
-            <p class="h4">${{ "%.2f"|format(settings.late_penalty_amount) }}
+            <p class="h4">{{ display_late_penalty_amount }}
               <small class="text-muted">
                 {% if settings.late_penalty_type == 'once' %}once per period
                 {% else %}every {{ settings.late_penalty_frequency_days }} days
@@ -262,8 +262,8 @@
           <div class="col-md-6">
             <h3 class="text-muted h6">First Due Date</h3>
             <p class="h4">
-              {% if settings.first_rent_due_date %}
-              {{ settings.first_rent_due_date.strftime('%B %d, %Y') }}
+              {% if display_first_rent_due_date %}
+              {{ display_first_rent_due_date }}
               {% else %}
               Day {{ settings.due_day_of_month }} of each month
               {% endif %}
@@ -272,8 +272,8 @@
           <div class="col-md-6">
             <h3 class="text-muted h6">Current Rent Period</h3>
             <p class="h5 mb-0">
-              {% if current_period_start and current_period_end %}
-              {{ current_period_start.strftime('%b %d, %Y') }} - {{ current_period_end.strftime('%b %d, %Y') }}
+              {% if display_current_period_start and display_current_period_end %}
+              {{ display_current_period_start }} - {{ display_current_period_end }}
               {% else %}
               Not active yet
               {% endif %}
@@ -282,8 +282,8 @@
           <div class="col-md-6">
             <h3 class="text-muted h6">Next Due Date</h3>
             <p class="h5 mb-0">
-              {% if next_due_date %}
-              {{ next_due_date.strftime('%B %d, %Y') }}
+              {% if display_next_due_date %}
+              {{ display_next_due_date }}
               {% else %}
               Not scheduled yet
               {% endif %}
@@ -528,7 +528,7 @@
                   <div class="col-md-6 mb-3">
                     <label for="first_rent_due_date" class="form-label fw-bold">First Rent Due Date</label>
                     <input type="date" class="form-control" id="first_rent_due_date" name="first_rent_due_date"
-                      value="{{ settings.first_rent_due_date.strftime('%Y-%m-%d') if settings.first_rent_due_date else '' }}">
+                      value="{{ display_first_rent_due_date_iso }}">
                     <small class="text-muted">When the first rent payment is due (subsequent payments calculated from
                       this)</small>
                   </div>

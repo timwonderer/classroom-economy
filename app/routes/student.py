@@ -87,6 +87,11 @@ from app.services.entitlement_service import (
     get_hall_pass_balance,
 )
 from app.services.entitlement_read_service import get_active_entitlements
+from app.services.store.builders import (
+    build_store_item_card_view,
+    build_entitlement_card_view,
+    build_collective_progress_view,
+)
 from app.services.recovery_service import (
     dismiss_recovery_code as dismiss_recovery_code_row,
     get_pending_recovery_code_for_seat,
@@ -2028,7 +2033,6 @@ def shop():
     # Check if student has paid rent this month using canonical rent settings only.
     from app.models import RentSettings
     has_paid_rent = False
-    per_period_rent_item_ids = set()
     rent_item_types_by_store_id = {}
     per_use_limit_by_store_id = {}
 
@@ -2042,7 +2046,7 @@ def shop():
             # Calculate current coverage period (pre-paid system)
             coverage_due_date = _calculate_rent_coverage_due_date(rent_settings, now)
 
-            
+
             if coverage_due_date and seat_id:
                 has_paid_rent = _is_student_coverage_period_paid(
                     rent_settings,
@@ -2054,32 +2058,20 @@ def shop():
 
             # Read store-linked rent items from canonical rent settings so
             # mid-cycle teacher edits don't change what students see.
-            from app.services.store_service import get_frozen_store_linked_items, get_frozen_privilege_items
-            rent_settings = get_rent_settings_for_context(context)
-            rent_item_types_by_store_id = {}
-            per_use_limit_by_store_id = {}
-            per_period_rent_item_ids = set()
+            from app.services.store_service import get_frozen_store_linked_items
+            frozen_store_items = get_frozen_store_linked_items(rent_settings)
+            for frozen_item in frozen_store_items:
+                sid = frozen_item['store_item_id']
+                effective_type = frozen_item.get('rent_item_type', 'privilege')
+                # Some rows can still carry privilege as the
+                # default type while semantically behaving per-use via duration.
+                if effective_type == 'privilege' and frozen_item.get('purchase_duration') == 'per_use':
+                    effective_type = 'per_use'
+                rent_item_types_by_store_id.setdefault(sid, set()).add(effective_type)
 
-            if rent_settings:
-                frozen_store_items = get_frozen_store_linked_items(rent_settings)
-                for frozen_item in frozen_store_items:
-                    sid = frozen_item['store_item_id']
-                    effective_type = frozen_item.get('rent_item_type', 'privilege')
-                    # Some rows can still carry privilege as the
-                    # default type while semantically behaving per-use via duration.
-                    if effective_type == 'privilege' and frozen_item.get('purchase_duration') == 'per_use':
-                        effective_type = 'per_use'
-                    rent_item_types_by_store_id.setdefault(sid, set()).add(effective_type)
-
-                    if effective_type == 'per_use':
-                        use_limit = frozen_item.get('use_limit')
-                        per_use_limit_by_store_id[sid] = use_limit if use_limit else -1
-
-                # Privilege items get the "Included in your rent!" badge
-                frozen_privileges = get_frozen_privilege_items(rent_settings)
-                per_period_rent_item_ids = {
-                    fp['store_item_id'] for fp in frozen_privileges if fp.get('store_item_id')
-                }
+                if effective_type == 'per_use':
+                    use_limit = frozen_item.get('use_limit')
+                    per_use_limit_by_store_id[sid] = use_limit if use_limit else -1
 
     # Build rent-perk availability map for rent-linked per-use items.
     rent_free_entitlement_counts = {}  # {store_item_id: available_units or -1 for unlimited}
@@ -2117,7 +2109,8 @@ def shop():
             .scalar() or 0
         )
 
-    collective_progress = {}
+    # Phase 1: Build collective progress view models (eliminates template-level calculations)
+    collective_progress_by_item = {}
     collective_items = [item for item in items if item.item_type == 'collective']
     collective_item_ids = [item.id for item in collective_items]
     if collective_item_ids and class_id:
@@ -2137,20 +2130,36 @@ def shop():
         progress_counts = {row.product_id: int(row.student_count or 0) for row in progress_rows}
 
         for item in collective_items:
-            if item.collective_goal_type == 'whole_class':
-                target = class_size
-            elif item.collective_goal_type == 'fixed':
-                target = int(item.collective_goal_target or 0)
-            else:
-                target = 0
             count = progress_counts.get(item.id, 0)
-            collective_progress[item.id] = {
-                'count': count,
-                'target': target,
-                'remaining': max(0, target - count),
-                'percent': min(100, int((count / target) * 100)) if target > 0 else 0,
-                'is_complete': bool(target > 0 and count >= target),
-            }
+            collective_progress_by_item[item.id] = build_collective_progress_view(
+                item=item,
+                purchase_count=count,
+                class_size=class_size,
+            )
+
+    # Phase 1: Build store item card view models (eliminates template-level rent logic)
+    store_item_views = []
+    for item in items:
+        view = build_store_item_card_view(
+            item=item,
+            class_id=class_id,
+            has_paid_rent=has_paid_rent,
+            rent_item_types_by_store_id=rent_item_types_by_store_id,
+            rent_free_entitlement_counts=rent_free_entitlement_counts,
+            collective_progress_by_item=collective_progress_by_item,
+        )
+        store_item_views.append(view)
+
+    # Phase 1: Build entitlement card view models (eliminates ORM traversals and date formatting)
+    entitlement_views = []
+    for entitlement in entitlements:
+        # Convert the SimpleNamespace entitlement to an EntitlementEvent for builder
+        # (Legacy bridge: construct minimal EntitlementEvent-like data)
+        view = build_entitlement_card_view(
+            entitlement=entitlement,
+            class_id=class_id,
+        )
+        entitlement_views.append(view)
 
     current_block = seat.class_economy.section.strip().upper() if seat and seat.class_economy and seat.class_economy.section else ""
     student_display_name = (
@@ -2165,13 +2174,16 @@ def shop():
         class_timezone=getattr(context, "class_timezone", ""),
     )
     student_display = SimpleNamespace(full_name=student_display_name)
-    return render_template('student_shop.html', student=student_display, current_class_context=current_class_context, items=items, entitlements=entitlements,
-                         has_paid_rent=has_paid_rent, per_period_rent_item_ids=per_period_rent_item_ids,
-                         rent_item_types_by_store_id=rent_item_types_by_store_id,
-                         rent_free_entitlement_counts=rent_free_entitlement_counts,
-                         policy_uuid_by_item_id=policy_uuid_by_item_id,
-                         class_size=class_size, current_block=current_block,
-                         collective_progress=collective_progress)
+
+    return render_template(
+        'student_shop.html',
+        student=student_display,
+        current_class_context=current_class_context,
+        items=store_item_views,
+        entitlements=entitlement_views,
+        class_size=class_size,
+        current_block=current_block,
+    )
 
 
 # -------------------- RENT --------------------

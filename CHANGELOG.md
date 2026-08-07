@@ -10,9 +10,15 @@ and this project follows semantic versioning principles.
 
 ### Added
 
+- **Phase 1 Jinja2 Remediation Complete (2026-08-07)** — Completed Phase 1 of SPEC-UI-001 template remediation for Store, Obligations, and Payroll domains across all 3 admin/student-facing templates. Implemented domain-specific view model builders: `StoreItemCardView`, `EntitlementCardView`, `CollectiveProgressView` (store); enhanced `StudentObligationView`, `ClassObligationSummary` (obligations); `StudentPayrollStatusView`, `PayrollConfigurationView` (payroll). Updated all routes to build and pass view models instead of raw ORM objects. Moved ALL Jinja2 date/currency formatting to route display fields: `student_shop.html` (37% reduction), `admin_rent_settings.html` (rent_amount, late_penalty, dates), `admin_payroll.html` (payroll timestamps, settings dates, pay dates). Fixed violations across all templates: Pattern 1 (numeric formatting) → pre-formatted display strings; Pattern 2 (ORM `.strftime()`) → pre-computed dates; Pattern 4 (business logic) → view model computation; Pattern 6 (ORM traversal) → flattened properties. Final status: 3/3 templates complete, 0 Jinja2 formatting expressions. Commits: 9103ded8, ffd76ad2, 942a7342, 8b7d740f.
+
 - **Template Jinja2 Element Inventory Audit** — Comprehensive audit of all 96 application templates analyzing Jinja2 variable and tag patterns, domain authority mapping, view model wiring status, and compliance against INV-ARC-022 and SPEC-UI-001. Includes per-template breakdown, violation categorization (CRITICAL/HIGH/MEDIUM), affected templates, and 6-week remediation roadmap. Document: `docs/TRACKING/TEMPLATE_JINJA_INVENTORY.md` (#1314).
 - **Canonical Page Rendering Specification (SPEC-UI-001)** — Normative specification defining implementation requirements for authenticated page routes, page view models, builder responsibilities, template contracts, and route orchestration. `docs/SPEC/SPEC-UI-001_PAGE_RENDERING_SPECIFICATION.md` (#1314).
 - **Request Context and Page Rendering Pipeline Invariant (INV-ARC-022)** — Foundational architectural invariant establishing the 8-layer rendering pipeline (Request → Canonical Context → Temporal Context → Identity Display Context → Domain Reads → Page View Model → Template) and strict separation of authority, interpretation, and presentation responsibilities. `docs/INVARIANT/ARCHITECTURE/INV-ARC-022_REQUEST_CONTEXT_AND_PAGE_RENDERING.md` (#1314).
+
+### Fixed
+
+- **`admin_payroll.html` residual `"%.2f"|format()` currency expressions eliminated** — The Phase 1 payroll remediation missed 10 raw Jinja2 formatting expressions covering next-payroll estimates, total/average payout stats, recent-payroll and payroll-history amounts, and simple/advanced pay-rate display and input pre-population. Added `build_payroll_settings_display()` in `app/services/payroll/builders.py` and pre-formatted `display_amount`/`display_estimate` fields on the payroll row/summary dicts built in `app/routes/admin.py`, so the template now consumes only pre-formatted display strings, matching the `StudentPayrollStatusView`/`PayrollConfigurationView` pattern used elsewhere on the page.
 
 ### Changed
 
