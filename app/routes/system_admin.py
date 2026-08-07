@@ -533,7 +533,7 @@ def dashboard():
     system_admins = [
         {
             'display_username': sa.get_display_username(),
-            'last_login': sa.last_login,
+            'last_login': None,
         }
         for sa in system_admins_query
     ]
