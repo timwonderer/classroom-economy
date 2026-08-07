@@ -12,8 +12,12 @@
 ### Audit Scope
 - **Total Templates Audited:** 96 (all application templates)
 - **Templates Covered by SPEC-UI-001:** 71 (authenticated page routes only)
-  - Breakdown: 3 Auth + 3 Layout + 15 Student + 35 Admin + 6 System Admin = 71
-  - Out of Scope: 7 Error pages + 2 Component/Macro + 16 Other special pages
+  - Breakdown: 3 Auth + 3 Layout + 15 Student + 35 Admin + 6 System Admin + 7 Error + 2 Component/Macro = 71
+  - Out of Scope: 25 templates
+    - Documentation pages (4: docs/index, docs/search, docs/timeline, docs/view)
+    - Recovery flows (5: student/recovery/layout, landing, account_lookup, identity_update, reset_form)
+    - Special pages (9: maintenance, offline, base, admin_nav, admin_feature_disabled, hall_pass_setup, hall_pass_verify, admin_recover variations)
+    - Navigation/component infrastructure (7: admin_nav, macros/help, and related layout components)
 - **Total Jinja2 Variables:** ~1,460+
 - **Total Jinja2 Tags:** ~2,450+
 - **Templates with Violations (SPEC-UI-001 scope):** 68+ of 71 (95%+)
@@ -787,25 +791,30 @@ class EntitlementView:
    - `RentObligationSummaryView`
    - `StudentRentStatusView`
 
-3. **ledger/builders.py** → Fix `admin_banking.html`, `admin_payroll.html`
-   - `TransactionListView`
-   - `AccountBalanceView`
+3. **payroll/builders.py** (to be implemented) → Fix `admin_payroll.html` (CRITICAL, primary owner)
+   - `PayrollConfigurationView`
+   - `StudentPayrollStatusView`
+   - **Route Composition Note:** Compose with Ledger's `AccountBalanceView` for balance context
+
+4. **ledger/builders.py** (to be implemented) → Provide supporting builders for Phase 1-2
+   - `TransactionListView` (supports `admin_banking.html`, `admin_payroll.html`)
+   - `AccountBalanceView` (secondary dependency for Payroll composition)
 
 ### Phase 2: Medium-Impact Builders (Weeks 3-4)
 
 **Priority:** Templates with 30-49 Jinja variables or HIGH violations
 
-4. **analytics/builders.py** (to be implemented) → `admin_analytics_dashboard.html`
+5. **analytics/builders.py** (to be implemented) → `admin_analytics_dashboard.html`
    - `AnalyticsDashboardView`
    - `ChartDataView`
 
-5. **class_config/builders.py** (to be implemented) → Policy and announcement views
+6. **class_config/builders.py** (to be implemented) → Policy and announcement views
    - `PolicyManagementView`
    - `AnnouncementListView`
 
-6. **payroll/builders.py** (to be implemented) → Payroll configuration and history
-   - `PayrollConfigurationView`
-   - `StudentPayrollStatusView`
+7. **identity/builders.py** (to be implemented) → Dashboard and detail views
+   - `IdentityDisplayView` (supports `student_detail.html`, `admin_students.html`)
+   - `StudentProfileView`
 
 ### Phase 3: Layout & Navigation (Week 5)
 
