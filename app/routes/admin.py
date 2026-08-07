@@ -6253,15 +6253,13 @@ def add_rent_waiver():
     if not class_id:
         abort(404)
 
-    # Get seat IDs from request (format: multiple seat_id_<n> form fields)
+    # Get seat IDs from request (format: student_ids multiple select)
     seat_ids_to_waive = []
-    for key in request.form.keys():
-        if key.startswith('seat_id_'):
-            try:
-                seat_id = int(request.form.get(key))
-                seat_ids_to_waive.append(seat_id)
-            except (ValueError, TypeError):
-                continue
+    for seat_id_str in request.form.getlist('student_ids'):
+        try:
+            seat_ids_to_waive.append(int(seat_id_str))
+        except ValueError:
+            continue
 
     if not seat_ids_to_waive:
         flash("No students selected for waiver.", "warning")
