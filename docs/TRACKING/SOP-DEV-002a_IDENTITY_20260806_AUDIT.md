@@ -261,3 +261,24 @@ Other surfaces (roster lists, CSV exports, transaction logs, analytics) consume 
 - [x] Documentation current
 
 **RECOMMENDATION: Approved for merge to `codex/v2.0` and production deployment.**
+
+---
+
+## Code Review Resolution (2026-08-07)
+
+**CodeRabbit Review Status:** All 3 actionable comments resolved ✅
+
+| Comment | File | Issue | Resolution | Commit |
+|---------|------|-------|-----------|--------|
+| 1 | `app/routes/admin.py:5237` | Missing class_id filter on pending redemption grant lookup | Added `EntitlementEvent.class_id == selected_scope["class_id"]` filter to restrict grants to active class | 864b7469 |
+| 2 | `templates/admin_announcement_form.html:110-111` | Calling methods on dict instead of accessing keys | Changed `announcement.get_priority_class()` → `announcement.priority_class` and `announcement.get_priority_icon()` → `announcement.priority_icon` | 33555829 |
+| 3 | `tests/dom/identity/test_unassigned_visibility.py:21,31` | Missing status code validation before decoding responses | Added `assert resp_a.status_code == 200` and `assert resp_b.status_code == 200` assertions | 33555829 |
+
+**CI Status:** All checks passing
+- ✅ Schema Change Gate: pass (1m29s)
+- ✅ Analyze (actions, python, javascript-typescript): pass
+- ✅ CodeQL: pass
+- ✅ WCAG 2.1 AA Compliance: pass
+- ✅ Security checks (Aikido, guardrails): pass
+
+**Domain Certification:** Confirmed production-ready with all review feedback integrated.
