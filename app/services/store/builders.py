@@ -263,6 +263,7 @@ def build_entitlement_card_view(
         purchase_date = getattr(entitlement, 'purchase_date', None)
         expiry_date = getattr(entitlement, 'expiry_date', None)
         item_id = item.id if item else 0
+        redemption_prompt = getattr(item, 'redemption_prompt', None) if item else None
     else:
         # EntitlementEvent model
         payload = getattr(entitlement, 'payload', None) or {}
@@ -281,6 +282,7 @@ def build_entitlement_card_view(
         purchase_date = getattr(entitlement, 'timestamp', None)
         expiry_date = payload.get("expiry_date")
         item_id = getattr(entitlement, 'product_id', 0) or 0
+        redemption_prompt = None
 
     # Map status to display label
     status_labels = {
@@ -347,7 +349,7 @@ def build_entitlement_card_view(
         display_purchased_date=display_purchased_date,
         display_expiry_date=display_expiry_date,
         has_expiry_date=has_expiry_date,
-        redemption_prompt=None,
+        redemption_prompt=redemption_prompt,
         can_redeem_immediately=can_redeem_immediately,
         can_request_redemption=can_request_redemption,
         can_use_hall_pass=can_use_hall_pass,

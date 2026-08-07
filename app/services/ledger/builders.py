@@ -212,11 +212,13 @@ def build_transaction_summary_view(
     total_outflow = Decimal("0.00")
     earliest = None
     latest = None
+    non_void_count = 0
 
     for txn in transactions:
-        if txn.status.value == "void":
+        if txn.is_void:
             continue
 
+        non_void_count += 1
         amount = Decimal(str(txn.amount))
         if amount > 0:
             total_inflow += amount
@@ -231,11 +233,19 @@ def build_transaction_summary_view(
 
     net_activity = total_inflow - total_outflow
 
+    # Format net_activity with negative sign before dollar sign (e.g., -$12.34)
+    if net_activity == 0:
+        net_activity_display = "$0.00"
+    elif net_activity > 0:
+        net_activity_display = f"+${net_activity:.2f}"
+    else:
+        net_activity_display = f"-${abs(net_activity):.2f}"
+
     return {
-        "total_count": len([t for t in transactions if t.status.value != "void"]),
+        "total_count": non_void_count,
         "earliest_date": earliest.strftime("%b %d, %Y") if earliest else None,
         "latest_date": latest.strftime("%b %d, %Y") if latest else None,
         "total_inflow": f"${total_inflow:.2f}",
         "total_outflow": f"${total_outflow:.2f}",
-        "net_activity": f"${net_activity:+.2f}" if net_activity != 0 else "$0.00",
+        "net_activity": net_activity_display,
     }
