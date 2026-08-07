@@ -5231,18 +5231,37 @@ def store_management():
         .all()
     )
     pending_redemptions = []
-    for event in pending_redemption_events:
-        seat = db.session.get(Seat, event.seat_id)
-        profile = seat.identity_profile if seat else None
-        grant = _latest_entitlement_grant(event.entitlement_id)
-        pending_redemptions.append(SimpleNamespace(
-            id=event.entitlement_id,
-            student_name=profile.full_name if profile else 'Unknown',
-            store_item=db.session.get(StoreItem, grant.product_id) if grant else None,
-            class_id=event.class_id,
-            purchased_at=event.submitted_at,
-            status='processing',
-        ))
+    if pending_redemption_events:
+        entitlement_ids = [e.entitlement_id for e in pending_redemption_events]
+        grants = EntitlementEvent.query.filter(
+            EntitlementEvent.entitlement_id.in_(entitlement_ids),
+            EntitlementEvent.event_type == 'GRANTED'
+        ).all()
+        grants_dict = {}
+        for g in grants:
+            if g.entitlement_id not in grants_dict or g.timestamp > grants_dict[g.entitlement_id].timestamp:
+                grants_dict[g.entitlement_id] = g
+
+        store_item_ids = {g.product_id for g in grants_dict.values() if g.product_id}
+        store_items_dict = {}
+        if store_item_ids:
+            store_items = StoreItem.query.filter(StoreItem.id.in_(store_item_ids)).all()
+            store_items_dict = {i.id: i for i in store_items}
+
+        for event in pending_redemption_events:
+            seat = db.session.get(Seat, event.seat_id)
+            profile = seat.identity_profile if seat else None
+            grant = grants_dict.get(event.entitlement_id)
+            store_item = store_items_dict.get(grant.product_id) if grant and grant.product_id else None
+            
+            pending_redemptions.append(SimpleNamespace(
+                id=event.entitlement_id,
+                student_name=profile.full_name if profile else 'Unknown',
+                store_item=store_item,
+                class_id=event.class_id,
+                purchased_at=event.submitted_at,
+                status='processing',
+            ))
 
     # Get recent purchases (all statuses, ordered by purchase date)
     recent_purchases = []
@@ -6070,7 +6089,7 @@ def rent_settings():
             ),
             waiver_start_date=waiver.coverage_start_time,
             waiver_end_date=waiver.coverage_end_time,
-            periods_count=_count_rent_waiver_periods(rent_settings, waiver),
+            periods_count=_count_rent_waiver_periods(settings, waiver),
             reason=getattr(waiver, 'notes', None) or getattr(waiver, 'reason', None),
             created_at=waiver.assessed_at,
         ))
@@ -10268,18 +10287,7 @@ def onboarding_skip_task():
     return jsonify({'status': 'success'})
 
 
-@admin_bp.route('/onboarding/dismiss-widget', methods=['POST'])
-@admin_required
-def onboarding_dismiss_widget():
-    """No-op — widget auto-hides when all tasks are complete."""
-    return jsonify({'status': 'success'})
 
-
-@admin_bp.route('/onboarding/undismiss-widget', methods=['POST'])
-@admin_required
-def onboarding_undismiss_widget():
-    """No-op — widget visibility is derived."""
-    return jsonify({'status': 'success'})
 
 
 # ==================== ECONOMY BALANCE CHECKER API ====================

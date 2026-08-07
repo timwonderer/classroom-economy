@@ -145,27 +145,11 @@
 
 <script>
 function showGettingStartedWidget() {
-    // Call the un-dismiss endpoint to show the widget again
-    fetch('/admin/onboarding/undismiss-widget', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'X-CSRFToken': '{{ csrf_token() }}'
-        }
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.status === 'success') {
-            alert('Getting started widget will appear when you return to the dashboard.');
-            window.location.href = '{{ url_for("admin.dashboard") }}';
-        } else {
-            alert('Error: ' + (data.message || 'Failed to show widget'));
-        }
-    })
-    .catch(error => {
-        console.error('Error:', error);
-        alert('An error occurred while showing the widget.');
-    });
+    // Remove the dismissal from localStorage
+    const dismissKey = 'getting_started_dismissed_{{ admin.id }}';
+    localStorage.removeItem(dismissKey);
+    alert('Getting started widget will appear when you return to the dashboard.');
+    window.location.href = '{{ url_for("admin.dashboard") }}';
 }
 </script>
 {% endblock %}
