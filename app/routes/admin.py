@@ -7786,6 +7786,11 @@ def payroll():
     # Convert student_stats to StudentPayrollStatusView objects
     student_payroll_views = []
     for stat in student_stats:
+        # Get balances from scoped_balances_by_student dict
+        balances = scoped_balances_by_student.get(stat['id'], {})
+        checking_bal = Decimal(str(balances.get('checking', 0)))
+        savings_bal = Decimal(str(balances.get('savings', 0)))
+
         view = build_student_payroll_status_view(
             seat_id=stat['id'],
             class_id=stat['class_id'],
@@ -7794,6 +7799,14 @@ def payroll():
             taxes_this_period=Decimal('0.00'),  # Taxes not yet calculated in payroll system
             total_earnings_all_time=stat.get('total_earned', Decimal('0.00')),
             total_taxes_all_time=Decimal('0.00'),  # Taxes not yet calculated
+            # Student identification fields for Manual Payment tab display
+            student_id=stat['id'],
+            public_id=stat['public_id'],
+            full_name=stat['full_name'],
+            class_label=stat['class_label'],
+            # Account balances (pre-formatted to eliminate template filters)
+            checking_balance=checking_bal,
+            savings_balance=savings_bal,
         )
         student_payroll_views.append(view)
 

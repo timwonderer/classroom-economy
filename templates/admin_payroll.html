@@ -945,8 +945,8 @@
                       <strong>{{ student.full_name }}</strong><br>
                       <small class="text-muted student-class-label">{{ student.class_label }}</small>
                     </td>
-                    <td class="text-end">${{ "%.2f"|format(scoped_balances_by_student.get(student.id, {}).get('checking', 0)) }}</td>
-                    <td class="text-end">${{ "%.2f"|format(scoped_balances_by_student.get(student.id, {}).get('savings', 0)) }}</td>
+                    <td class="text-end">{{ student.display_checking_balance }}</td>
+                    <td class="text-end">{{ student.display_savings_balance }}</td>
                   </tr>
                   {% endfor %}
                   {% else %}

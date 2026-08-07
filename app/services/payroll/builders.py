@@ -25,6 +25,7 @@ class StudentPayrollStatusView:
     Pre-computed payroll status snapshot for one student.
 
     Eliminates all template-level payroll calculations and currency formatting.
+    Includes student identification fields for Manual Payment tab display.
     """
     seat_id: int
     student_name: str
@@ -42,6 +43,17 @@ class StudentPayrollStatusView:
     # Derived state
     has_current_period_earnings: bool
     status_label: str  # "Paid", "Pending", "No earnings", etc.
+
+    # Student identification fields (for Manual Payment tab template display)
+    student_id: int = 0  # Student.id for balance lookups
+    public_id: str = ""  # Public student ID for form submission
+    full_name: str = ""  # Display name (duplicate of student_name for template compatibility)
+    class_id: str = ""  # Class identifier
+    class_label: str = ""  # Display label for class
+
+    # Account balances (pre-formatted for template display without filters)
+    display_checking_balance: str = "$0.00"  # Pre-formatted checking account balance
+    display_savings_balance: str = "$0.00"  # Pre-formatted savings account balance
 
 
 @dataclass(frozen=True)
@@ -78,6 +90,12 @@ def build_student_payroll_status_view(
     taxes_this_period: Decimal | float | int = 0,
     total_earnings_all_time: Decimal | float | int = 0,
     total_taxes_all_time: Decimal | float | int = 0,
+    student_id: int = 0,
+    public_id: str = "",
+    full_name: str = "",
+    class_label: str = "",
+    checking_balance: Decimal | float | int = 0,
+    savings_balance: Decimal | float | int = 0,
 ) -> StudentPayrollStatusView:
     """
     Build pre-computed payroll status for one student.
@@ -114,6 +132,12 @@ def build_student_payroll_status_view(
     display_total_taxes = f"${total_taxes:.2f}"
     display_total_net = f"${total_net:.2f}"
 
+    # Pre-format account balances
+    checking = Decimal(str(checking_balance))
+    savings = Decimal(str(savings_balance))
+    display_checking = f"${checking:.2f}"
+    display_savings = f"${savings:.2f}"
+
     # Derive status label
     if earnings > 0:
         status_label = "Earning"
@@ -136,6 +160,15 @@ def build_student_payroll_status_view(
         net_raw=net,
         has_current_period_earnings=earnings > 0,
         status_label=status_label,
+        # Student identification for template display
+        student_id=student_id,
+        public_id=public_id,
+        full_name=full_name or student_name,  # Fallback to student_name if not provided
+        class_id=class_id,
+        class_label=class_label,
+        # Account balances (pre-formatted for template)
+        display_checking_balance=display_checking,
+        display_savings_balance=display_savings,
     )
 
 
