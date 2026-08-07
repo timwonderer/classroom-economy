@@ -16,7 +16,7 @@ Obligations and Ledger services remain isolated and own their own facts.
 from __future__ import annotations
 
 from decimal import Decimal
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone, timedelta
 
 from app.extensions import db
@@ -164,7 +164,7 @@ class StudentObligationView:
     status_counts: dict  # {SATISFIED, OUTSTANDING, PAST_DUE}
 
     # Phase 1 display formatting (audit violations: student_rent.html line 142)
-    display_current_due_date: str | None = None  # Pre-formatted as "B %d, %Y" or None
+    display_current_due_date: str | None = None  # Pre-formatted as "%B %d, %Y" or None
     display_amount_due: str | None = None  # Pre-formatted as "$X.XX"
     display_total_due: str | None = None  # Pre-formatted as "$X.XX"
     display_amount_paid: str | None = None  # Pre-formatted as "$X.XX"
@@ -792,8 +792,8 @@ def get_rent_status_projection(
 # ============================================================================
 
 def add_display_formatting_to_student_obligation_view(
-    view: StudentObligationView,
-) -> StudentObligationView:
+    view: StudentObligationView | None,
+) -> StudentObligationView | None:
     """
     Add pre-formatted display fields to StudentObligationView.
 
@@ -802,7 +802,7 @@ def add_display_formatting_to_student_obligation_view(
 
     Returns a new view with display fields populated.
     """
-    if not view:
+    if view is None:
         return view
 
     # Format current period dates and amounts
@@ -832,22 +832,20 @@ def add_display_formatting_to_student_obligation_view(
         amount = Decimal(str(view.current_period['remaining_amount']))
         display_remaining = f"${amount:.2f}"
 
-    # Create new view with display fields populated
-    # Use object.__setattr__ since dataclass is frozen
-    view_dict = view.__dict__.copy()
-    view_dict['display_current_due_date'] = display_due_date
-    view_dict['display_amount_due'] = display_amount_due
-    view_dict['display_total_due'] = display_total_due
-    view_dict['display_amount_paid'] = display_amount_paid
-    view_dict['display_remaining_amount'] = display_remaining
-
-    # Reconstruct frozen dataclass
-    return StudentObligationView(**view_dict)
+    # Create new view with display fields populated using dataclasses.replace
+    return replace(
+        view,
+        display_current_due_date=display_due_date,
+        display_amount_due=display_amount_due,
+        display_total_due=display_total_due,
+        display_amount_paid=display_amount_paid,
+        display_remaining_amount=display_remaining,
+    )
 
 
 def add_display_formatting_to_class_obligation_summary(
-    summary: ClassObligationSummary,
-) -> ClassObligationSummary:
+    summary: ClassObligationSummary | None,
+) -> ClassObligationSummary | None:
     """
     Add pre-formatted display fields to ClassObligationSummary.
 
@@ -856,7 +854,7 @@ def add_display_formatting_to_class_obligation_summary(
 
     Returns a new summary with display fields populated.
     """
-    if not summary:
+    if summary is None:
         return summary
 
     # Compute display totals from status_breakdown and student_rows
@@ -881,11 +879,11 @@ def add_display_formatting_to_class_obligation_summary(
     display_total_paid = f"${total_paid:.2f}"
     display_total_unpaid = f"${total_unpaid:.2f}"
 
-    # Create new summary with display fields
-    summary_dict = summary.__dict__.copy()
-    summary_dict['display_total_paid'] = display_total_paid
-    summary_dict['display_total_unpaid'] = display_total_unpaid
-    summary_dict['current_student_count'] = current_student_count
-    summary_dict['behind_student_count'] = behind_student_count
-
-    return ClassObligationSummary(**summary_dict)
+    # Create new summary with display fields using dataclasses.replace
+    return replace(
+        summary,
+        display_total_paid=display_total_paid,
+        display_total_unpaid=display_total_unpaid,
+        current_student_count=current_student_count,
+        behind_student_count=behind_student_count,
+    )

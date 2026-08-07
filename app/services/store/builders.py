@@ -13,7 +13,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from decimal import Decimal
 from datetime import datetime
-from typing import Any
+from typing import Any, Collection
 
 from app.extensions import db
 from app.models import StoreItem, EntitlementEvent, RentSettings, ClassEconomy
@@ -125,7 +125,7 @@ def build_store_item_card_view(
     item: StoreItem,
     class_id: str,
     has_paid_rent: bool,
-    rent_item_types_by_store_id: dict[int, list[str]],
+    rent_item_types_by_store_id: dict[int, Collection[str]],
     rent_free_entitlement_counts: dict[int, int | None],
     collective_progress_by_item: dict[int, CollectiveProgressView] | None = None,
 ) -> StoreItemCardView:
@@ -174,12 +174,16 @@ def build_store_item_card_view(
     # Pre-compute pricing display (pre-formatted, no Jinja filters)
     if is_rent_covered:
         display_price = "$0.00"
+        price_amount = "0.00"
     elif has_any_rent_free_purchase:
         display_price = "$0.00"
+        price_amount = "0.00"
     else:
         display_price = f"${item.price:.2f}"
+        price_amount = f"{item.price:.2f}"
 
     display_regular_price = f"${item.price:.2f}"
+    regular_price_amount = f"{item.price:.2f}"
 
     # Pre-compute inventory state
     is_out_of_stock = item.inventory is not None and item.inventory <= 0
@@ -202,6 +206,9 @@ def build_store_item_card_view(
         description=item.description,
         display_price=display_price,
         display_regular_price=display_regular_price,
+        price_amount=price_amount,
+        regular_price_amount=regular_price_amount,
+        policy_uuid=getattr(item, 'policy_uuid', None),
         item_type=item.item_type,
         inventory_available=item.inventory,
         limit_per_student=item.limit_per_student,
