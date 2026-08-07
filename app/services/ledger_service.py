@@ -396,17 +396,17 @@ def _apply_monthly_savings_interest(seat, *, annual_rate=Decimal("0.045")):
         reference_time_utc=now_eval.canonical_now_utc,
     )
 
+    start_utc = month_bounds.result["boundary_start_utc"]
+    end_utc = month_bounds.result["boundary_end_utc"]
+
     for tx in seat.transactions:
         tx_timestamp = ensure_utc(tx.timestamp)
-        # Convert UTC timestamp to class time for comparison
-        tx_class_time = tx_timestamp.astimezone(class_tz) if tx_timestamp else None
 
         if (
             tx.account_type == "savings"
             and tx.description == "Monthly Savings Interest"
-            and tx_class_time is not None
-            and tx_class_time.month == this_month
-            and tx_class_time.year == this_year
+            and tx_timestamp is not None
+            and start_utc <= tx_timestamp < end_utc
             and not tx.is_void
         ):
             return None
