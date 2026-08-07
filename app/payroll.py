@@ -1,7 +1,7 @@
 import sqlalchemy as sa
 from app.extensions import db
 from app.models import Transaction, PayrollSettings, ClassEconomy
-from app.utils.time import ensure_utc
+from app.utils.canonical_temporal_resolver import ensure_utc
 from app.attendance import (
     get_batch_attendance_events,
     calculate_seconds_in_memory
@@ -225,7 +225,7 @@ def _get_batch_last_payroll_times(seat_ids, allowed_class_ids):
 
 
 from app.feats.base import feat_shell
-from app.utils.time import utc_now
+from app.utils.canonical_temporal_resolver import utc_now
 
 
 @feat_shell("FEAT-LED-004")

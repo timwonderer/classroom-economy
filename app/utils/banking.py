@@ -4,7 +4,7 @@ from flask import g
 from sqlalchemy.exc import IntegrityError
 from app import db
 from app.models import Transaction, TransactionStatus, LedgerBalanceSnapshot, AccountType, ClassEconomy, Seat
-from app.utils.time import utc_now
+from app.utils.canonical_temporal_resolver import utc_now
 from app.utils.seat_scope import transaction_scope_filter
 
 logger = logging.getLogger(__name__)

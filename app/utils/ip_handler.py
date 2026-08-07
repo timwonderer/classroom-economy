@@ -16,7 +16,7 @@ import ipaddress
 import urllib.request
 import urllib.error
 from datetime import datetime, timedelta, timezone
-from app.utils.time import utc_now
+from app.utils.canonical_temporal_resolver import utc_now
 
 
 # Cloudflare IP ranges (updated periodically)

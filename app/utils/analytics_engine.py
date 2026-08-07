@@ -20,7 +20,7 @@ Per spec section 4.2:
 """
 
 from datetime import datetime, timezone
-from app.utils.time import utc_now
+from app.utils.canonical_temporal_resolver import utc_now
 from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass
 from types import SimpleNamespace

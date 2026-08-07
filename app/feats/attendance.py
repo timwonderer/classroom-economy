@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from app.extensions import db
 from app.models import HallPassSettings
-from app.utils.time import ensure_utc, utc_now
+from app.utils.canonical_temporal_resolver import ensure_utc, utc_now
 
 
 def _get_or_create_hall_pass_settings(*, class_id: str):

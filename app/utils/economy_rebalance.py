@@ -14,7 +14,7 @@ from app.models import (
     PolicyVersion,
     RentSettings,
 )
-from app.utils.time import ensure_utc, utc_now
+from app.utils.canonical_temporal_resolver import ensure_utc, utc_now
 
 
 REBALANCE_ACTIVATION_IMMEDIATE = "immediate"

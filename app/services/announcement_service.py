@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from app.extensions import db
 from app.models import Announcement
-from app.utils.time import utc_now
+from app.utils.canonical_temporal_resolver import utc_now
 
 
 def create_system_announcement(

@@ -13,7 +13,7 @@ import pyotp
 from app import db
 from app.feats.base import FEATContext
 from app.models import User
-from app.utils.time import utc_now
+from app.utils.canonical_temporal_resolver import utc_now
 
 
 def login_sysadmin(client, *, username: str, totp_secret: str):

@@ -17,7 +17,7 @@ import qrcode
 import requests
 from types import SimpleNamespace
 from datetime import datetime, timedelta, timezone
-from app.utils.time import utc_now, ensure_utc
+from app.utils.canonical_temporal_resolver import utc_now, ensure_utc
 from decimal import Decimal, InvalidOperation
 
 from flask import Blueprint, render_template, redirect, url_for, flash, request, session, current_app, jsonify, Response, abort

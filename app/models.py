@@ -22,7 +22,7 @@ from sqlalchemy import event
 from app.extensions import db
 from app.hash_utils import get_random_salt, hash_hmac, hash_username, hash_username_lookup
 from app.utils.encryption import PIIEncryptedType, normalize_totp_for_storage
-from app.utils.time import utc_now, ensure_utc
+from app.utils.canonical_temporal_resolver import utc_now, ensure_utc
 
 logger = logging.getLogger(__name__)
 

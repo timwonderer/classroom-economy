@@ -22,7 +22,7 @@ from datetime import timedelta
 from app import db
 from app.models import Seat, IdentityProfile, User, UserRole, Transaction
 from app.utils.money_guard import check_financial_cooldown
-from app.utils.time import ensure_utc, utc_now
+from app.utils.canonical_temporal_resolver import ensure_utc, utc_now
 from app.feats.base import FEATContext
 from app.hash_utils import hash_username_lookup
 from tests.helpers.canonical_session import set_canonical_context

@@ -7,7 +7,7 @@ Contains session management helpers, authentication decorators, and timeout logi
 import urllib.parse
 import secrets
 from datetime import datetime, timedelta
-from app.utils.time import utc_now
+from app.utils.canonical_temporal_resolver import utc_now
 from functools import wraps
 
 import sqlalchemy as sa

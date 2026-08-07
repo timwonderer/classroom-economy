@@ -12,7 +12,10 @@ Key Principles:
 """
 
 from datetime import datetime, timedelta
-from app.utils.time import utc_now, ensure_utc, day_bounds_utc
+from app.utils.canonical_temporal_resolver import (
+    utc_now, ensure_utc,
+    canonical_temporal_resolver, SYSTEM_LEVEL_EVALUATION, CLASS_LEVEL_EVALUATION,
+)
 from flask import Blueprint, session, jsonify, request, flash, redirect, url_for, g
 from sqlalchemy import desc
 
@@ -42,10 +45,17 @@ from jinja2 import TemplateNotFound
 analytics_bp = Blueprint('analytics', __name__, url_prefix='/admin/analytics')
 
 
-def _anchor_window_end(now_utc: datetime) -> datetime:
+def _anchor_window_end(now_utc: datetime, class_id: str) -> datetime:
     """Align window end to the start of the current class-local day for stable caching."""
-    anchor_start_utc, _ = day_bounds_utc(timestamp_utc=now_utc)
-    return anchor_start_utc
+    from types import SimpleNamespace
+    ctx = SimpleNamespace(class_id=class_id)
+    bounds = canonical_temporal_resolver(
+        CLASS_LEVEL_EVALUATION,
+        canonical_execution_context=ctx,
+        primitive="evaluation_day_boundaries",
+        reference_time_utc=now_utc,
+    )
+    return bounds.boundary_start_utc
 
 def get_teacher_class_options(user_id: int):
     if not user_id:
@@ -162,7 +172,7 @@ def get_time_window(
         Tuple of (window_start, window_end)
     """
     now = utc_now()
-    anchored_end = _anchor_window_end(now)
+    anchored_end = _anchor_window_end(now, class_id)
     
     if window_type == 'week':
         # Last 7 days

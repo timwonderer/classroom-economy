@@ -6,7 +6,7 @@ proper data minimization for sysadmin review.
 """
 
 from datetime import datetime, timezone
-from app.utils.time import utc_now
+from app.utils.canonical_temporal_resolver import utc_now
 from decimal import Decimal
 from flask import request, current_app
 import hashlib

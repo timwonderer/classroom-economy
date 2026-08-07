@@ -15,7 +15,7 @@ import pytest
 from decimal import Decimal
 from app.extensions import db
 from app.models import ObligationAssessment, RentSettings, Transaction
-from app.utils.time import utc_now
+from app.utils.canonical_temporal_resolver import utc_now
 from app.feats.base import FEATContext
 from app.services.obligations_service import (
     get_assessment_events_for_seat_class,

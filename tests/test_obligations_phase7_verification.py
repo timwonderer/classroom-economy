@@ -9,7 +9,7 @@ import pytest
 from flask import url_for
 from app.models import RentSettings, Transaction, ObligationAssessment
 from app.extensions import db
-from app.utils.time import utc_now
+from app.utils.canonical_temporal_resolver import utc_now
 from app.feats.base import FEATContext
 from decimal import Decimal
 from tests.helpers.classroom_initializer import initialize
