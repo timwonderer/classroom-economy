@@ -64,7 +64,7 @@ def home():
 def health_check():
     """Simple health check endpoint for uptime monitoring."""
     try:
-        db.session.execute(text('SELECT 1'))
+        db.session.scalar(text('SELECT 1'))
         return 'ok', 200
     except SQLAlchemyError as e:
         current_app.logger.exception('Health check failed')
