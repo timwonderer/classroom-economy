@@ -7399,6 +7399,7 @@ def _build_payroll_event_display_rows(*, ctx, payroll_events, class_label=None):
             'student_name': (seat.identity_profile.full_name if seat and seat.identity_profile else 'Unknown'),
             'student': None,
             'amount': ledger_amount,
+            'display_amount': f"${ledger_amount:.2f}",
             'account_type': "checking",
             'notes': summary.get("description") or event.payroll_event_type,
             'is_reversal': event.payroll_event_type == "reversal",
@@ -7692,7 +7693,8 @@ def payroll():
             'class_label': class_option["label"],
             'next_date': block_next_payroll,  # Keep in UTC
             'next_date_iso': format_utc_iso(block_next_payroll),
-            'estimate': block_estimate
+            'estimate': block_estimate,
+            'display_estimate': f"${block_estimate:.2f}",
         })
 
     # Student statistics
@@ -7809,9 +7811,23 @@ def payroll():
     manual_payment_form = ManualPaymentForm()
     # Quick stats
     avg_payout = total_payroll_estimate / len(students) if students else 0
+    display_total_payroll_estimate = f"${Decimal(str(total_payroll_estimate)):.2f}"
+    display_avg_payout = f"${Decimal(str(avg_payout)):.2f}"
 
     # Phase 1: Build payroll view models (eliminates template-level numeric formatting)
-    from app.services.payroll.builders import build_student_payroll_status_view, build_payroll_configuration_view
+    from app.services.payroll.builders import (
+        build_student_payroll_status_view,
+        build_payroll_configuration_view,
+        build_payroll_settings_display,
+    )
+
+    # Pre-format pay rate display strings for the Settings tab (eliminates
+    # template-level "%.2f"|format() calls on raw PayrollSettings.pay_rate)
+    default_setting_display = build_payroll_settings_display(default_setting)
+    display_pay_rate_by_block = {
+        block_key: build_payroll_settings_display(setting)['display_pay_rate']
+        for block_key, setting in settings_by_block.items()
+    }
 
     # Convert student_stats to StudentPayrollStatusView objects
     student_payroll_views = []
@@ -7904,19 +7920,23 @@ def payroll():
         next_payroll_date=next_pay_date_utc,  # Pass UTC timestamp
         next_payroll_by_block=next_payroll_by_block,
         total_payroll_estimate=total_payroll_estimate,
+        display_total_payroll_estimate=display_total_payroll_estimate,
         payroll_updated_at=payroll_updated_at,
         display_payroll_updated_at=display_payroll_updated_at,
         total_students=len(students),
         avg_payout=avg_payout,
+        display_avg_payout=display_avg_payout,
         total_classes=len(payroll_class_options),
         # Settings tab
         settings_form=settings_form,
         block_settings=block_settings,
         default_setting=default_setting,
+        default_setting_display=default_setting_display,
         display_first_pay_date=display_first_pay_date,
         display_first_pay_date_iso=display_first_pay_date_iso,
         display_settings_created_at_list=display_settings_created_at_list,
         settings_by_block=settings_by_block,
+        display_pay_rate_by_block=display_pay_rate_by_block,
         next_global_payroll=next_pay_date_utc,  # Pass UTC timestamp
         show_setup_banner=show_setup_banner,
         # Students tab (using pre-formatted view models per Phase 1)

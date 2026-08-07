@@ -250,3 +250,46 @@ def build_payroll_configuration_view(
         display_total_payroll_amount=display_total_payroll,
         student_statuses=student_statuses,
     )
+
+
+def build_payroll_settings_display(settings: PayrollSettings | None) -> dict[str, str]:
+    """
+    Build pre-formatted pay rate display strings for a single PayrollSettings row.
+
+    Eliminates template-level "%.2f"|format() currency formatting used for the
+    Settings tab "Current Settings" summary and the simple/advanced pay rate
+    input pre-population (audit violation: admin_payroll.html pay_rate formatting).
+
+    Args:
+        settings: PayrollSettings model instance, or None
+
+    Returns:
+        Dict with:
+            display_pay_rate: "$X.XX" selected by settings_mode (hourly rate for
+                'simple' mode, per-time-unit rate for 'advanced' mode)
+            display_hourly_rate_value: plain "X.XX" hourly rate (no "$"), for the
+                simple-mode pay rate input value attribute
+            display_per_unit_rate_value: plain "X.XX" per-time-unit rate (no "$"),
+                for the advanced-mode pay rate input value attribute
+    """
+    if not settings:
+        return {
+            'display_pay_rate': "$0.00",
+            'display_hourly_rate_value': "",
+            'display_per_unit_rate_value': "",
+        }
+
+    rate = Decimal(str(settings.pay_rate))
+    display_hourly_value = f"{rate * 60:.2f}"
+    display_per_unit_value = f"{rate:.2f}"
+
+    if settings.settings_mode == 'simple':
+        display_pay_rate = f"${display_hourly_value}"
+    else:
+        display_pay_rate = f"${display_per_unit_value}"
+
+    return {
+        'display_pay_rate': display_pay_rate,
+        'display_hourly_rate_value': display_hourly_value,
+        'display_per_unit_rate_value': display_per_unit_value,
+    }

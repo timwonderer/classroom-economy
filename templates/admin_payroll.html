@@ -254,7 +254,7 @@
                       N/A
                       {% endif %}
                     </td>
-                    <td>${{ "%.2f"|format(block_info.estimate|default(0)) }}</td>
+                    <td>{{ block_info.display_estimate }}</td>
                   </tr>
                   {% endfor %}
                 </tbody>
@@ -276,7 +276,7 @@
           <div class="card-body">
             <div class="row text-center">
               <div class="col-6 mb-3">
-                <h3 class="text-primary">${{ "%.2f"|format(total_payroll_estimate|default(0)) }}</h3>
+                <h3 class="text-primary">{{ display_total_payroll_estimate }}</h3>
                 <small class="text-muted">Total Estimated Payout</small>
                 {% if payroll_updated_at %}
                 <div class="text-muted small" style="font-size: 0.75em;">
@@ -291,7 +291,7 @@
                 <small class="text-muted">Total Students</small>
               </div>
               <div class="col-6">
-                <h3 class="text-info">${{ "%.2f"|format(avg_payout|default(0)) }}</h3>
+                <h3 class="text-info">{{ display_avg_payout }}</h3>
                 <small class="text-muted">Average Payout</small>
               </div>
               <div class="col-6">
@@ -343,7 +343,7 @@
                   {% endif %}
                 </td>
                 <td>{{ record.class_label }}</td>
-                <td class="text-success fw-bold">${{ "%.2f"|format(record.amount) }}</td>
+                <td class="text-success fw-bold">{{ record.display_amount }}</td>
                 <td><span class="badge bg-secondary">{{ record.account_type|title }}</span></td>
               </tr>
               {% endfor %}
@@ -417,7 +417,7 @@
                   {% endif %}
                 </td>
                 <td class="{% if entry.amount > 0 %}text-success{% else %}text-danger{% endif %} fw-bold">
-                  ${{ "%.2f"|format(entry.amount) }}
+                  {{ entry.display_amount }}
                   {% if entry.is_reversal %}
                   <span class="badge bg-secondary ms-1">REVERSAL</span>
                   {% endif %}
@@ -484,10 +484,10 @@
               <div class="mb-2">
                 <strong>Global Default:</strong>
                 {% if default_setting.settings_mode == 'simple' %}
-                ${{ "%.2f"|format(default_setting.pay_rate * 60) }}/hour, {{ default_setting.pay_schedule_type }}
+                {{ default_setting_display.display_pay_rate }}/hour, {{ default_setting.pay_schedule_type }}
                 {% if display_first_pay_date %}, starting {{ display_first_pay_date }}{% endif %}
                 {% else %}
-                ${{ "%.2f"|format(default_setting.pay_rate) }}/{{ default_setting.time_unit }}, {{
+                {{ default_setting_display.display_pay_rate }}/{{ default_setting.time_unit }}, {{
                 default_setting.pay_schedule_type }}
                 {% if display_first_pay_date %}, starting {{ display_first_pay_date }}{% endif %}
                 {% endif %}
@@ -501,9 +501,9 @@
                   <li>
                     <strong>{{ class_labels_by_block.get(setting_key, setting_key) }}:</strong>
                     {% if setting.settings_mode == 'simple' %}
-                    ${{ "%.2f"|format(setting.pay_rate * 60) }}/hour, {{ setting.pay_schedule_type }}
+                    {{ display_pay_rate_by_block.get(setting_key) }}/hour, {{ setting.pay_schedule_type }}
                     {% else %}
-                    ${{ "%.2f"|format(setting.pay_rate) }}/{{ setting.time_unit }}, {{ setting.pay_schedule_type }}
+                    {{ display_pay_rate_by_block.get(setting_key) }}/{{ setting.time_unit }}, {{ setting.pay_schedule_type }}
                     {% endif %}
                   </li>
                   {% endfor %}
@@ -533,8 +533,7 @@
                     <span class="input-group-text">$</span>
                     <input type="number" class="form-control" id="simplePayRate" name="simple_pay_rate" step="0.01"
                       placeholder="15.00"
-                      value="{% if default_setting and default_setting.settings_mode == 'simple' %}{{ "
-                      %.2f"|format(default_setting.pay_rate * 60) }}{% endif %}">
+                      value="{% if default_setting and default_setting.settings_mode == 'simple' %}{{ default_setting_display.display_hourly_rate_value }}{% endif %}">
                     <span class="input-group-text">/hour</span>
                   </div>
                   <small class="text-muted">Amount paid per hour of attendance</small>
@@ -629,8 +628,7 @@
                       <span class="input-group-text">$</span>
                       <input type="number" class="form-control" id="advPayAmount" name="adv_pay_amount" step="0.01"
                         placeholder="0.25"
-                        value="{% if default_setting and default_setting.settings_mode == 'advanced' %}{{ "
-                        %.2f"|format(default_setting.pay_rate) }}{% endif %}">
+                        value="{% if default_setting and default_setting.settings_mode == 'advanced' %}{{ default_setting_display.display_per_unit_rate_value }}{% endif %}">
                     </div>
                   </div>
                   <div class="col-md-6">
