@@ -281,7 +281,7 @@
                 {% if payroll_updated_at %}
                 <div class="text-muted small" style="font-size: 0.75em;">
                   Updated: <span class="local-timestamp" data-timestamp="{{ format_utc_iso(payroll_updated_at) }}">
-                    {{ payroll_updated_at.strftime('%H:%M') }}
+                    {{ display_payroll_updated_at }}
                   </span>
                 </div>
                 {% endif %}
@@ -456,8 +456,7 @@
       <div class="col-12 mb-3">
         <div class="alert alert-info alert-dismissible fade show" role="alert">
           <span class="material-symbols-outlined me-2">info</span>
-          Payroll settings have been set on <strong>{{ block_settings[0].created_at.strftime('%B %d, %Y') if
-            block_settings[0].created_at else 'unknown date' }}</strong>. Any changes here will override the previous
+          Payroll settings have been set on <strong>{{ display_settings_created_at_list[0] if display_settings_created_at_list and display_settings_created_at_list[0] else 'unknown date' }}</strong>. Any changes here will override the previous
           settings.
           <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
         </div>
@@ -486,13 +485,11 @@
                 <strong>Global Default:</strong>
                 {% if default_setting.settings_mode == 'simple' %}
                 ${{ "%.2f"|format(default_setting.pay_rate * 60) }}/hour, {{ default_setting.pay_schedule_type }}
-                {% if default_setting.first_pay_date %}, starting {{ default_setting.first_pay_date.strftime('%m/%d/%Y')
-                }}{% endif %}
+                {% if display_first_pay_date %}, starting {{ display_first_pay_date }}{% endif %}
                 {% else %}
                 ${{ "%.2f"|format(default_setting.pay_rate) }}/{{ default_setting.time_unit }}, {{
                 default_setting.pay_schedule_type }}
-                {% if default_setting.first_pay_date %}, starting {{ default_setting.first_pay_date.strftime('%m/%d/%Y')
-                }}{% endif %}
+                {% if display_first_pay_date %}, starting {{ display_first_pay_date }}{% endif %}
                 {% endif %}
               </div>
               {% endif %}
@@ -560,7 +557,7 @@
                 <div class="mb-3">
                   <label for="simpleFirstPayDate" class="form-label fw-bold">Starting Date (First Payday):</label>
                   <input type="date" class="form-control" id="simpleFirstPayDate" name="simple_first_pay_date"
-                    value="{% if default_setting and default_setting.first_pay_date %}{{ default_setting.first_pay_date.strftime('%Y-%m-%d') }}{% endif %}">
+                    value="{{ display_first_pay_date_iso }}">
                   <small class="text-muted">Date of the first payroll run</small>
                 </div>
 
@@ -767,7 +764,7 @@
                 <div class="mb-3">
                   <label for="advFirstPayDate" class="form-label fw-bold">First Pay Date:</label>
                   <input type="date" class="form-control" id="advFirstPayDate" name="adv_first_pay_date"
-                    value="{% if default_setting and default_setting.first_pay_date %}{{ default_setting.first_pay_date.strftime('%Y-%m-%d') }}{% endif %}">
+                    value="{{ display_first_pay_date_iso }}">
                 </div>
 
                 <!-- Rounding Mode -->

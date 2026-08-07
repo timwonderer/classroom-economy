@@ -6239,6 +6239,29 @@ def rent_settings():
                 else:
                     period_label = f"{settings.custom_frequency_value} Months"
 
+    # Pre-format display values (Phase 1 Jinja2 remediation - no formatting in templates)
+    display_rent_amount = ""
+    display_late_penalty_amount = ""
+    display_first_rent_due_date = ""
+    display_first_rent_due_date_iso = ""
+    display_current_period_start = ""
+    display_current_period_end = ""
+    display_next_due_date = ""
+
+    if settings:
+        display_rent_amount = f"${settings.rent_amount:.2f}"
+        display_late_penalty_amount = f"${settings.late_penalty_amount:.2f}"
+        if settings.first_rent_due_date:
+            display_first_rent_due_date = settings.first_rent_due_date.strftime("%B %d, %Y")
+            display_first_rent_due_date_iso = settings.first_rent_due_date.strftime("%Y-%m-%d")
+
+    if current_period_start and current_period_end:
+        display_current_period_start = current_period_start.strftime("%b %d, %Y")
+        display_current_period_end = current_period_end.strftime("%b %d, %Y")
+
+    if next_due_date:
+        display_next_due_date = next_due_date.strftime("%B %d, %Y")
+
     return render_template('admin_rent_settings.html',
                           settings=settings,
                           obligation_summary=obligation_summary,
@@ -6253,6 +6276,13 @@ def rent_settings():
                           rent_items=rent_items,
                           rent_active_for_period=rent_active_for_period,
                           period_label=period_label,
+                          display_rent_amount=display_rent_amount,
+                          display_late_penalty_amount=display_late_penalty_amount,
+                          display_first_rent_due_date=display_first_rent_due_date,
+                          display_first_rent_due_date_iso=display_first_rent_due_date_iso,
+                          display_current_period_start=display_current_period_start,
+                          display_current_period_end=display_current_period_end,
+                          display_next_due_date=display_next_due_date,
                           current_period_start=current_period_start,
                           current_period_end=current_period_end,
                           next_due_date=next_due_date,
@@ -7845,6 +7875,26 @@ def payroll():
     # This is needed because transactions are displayed per class scope
     join_code_to_label = {selected_join_code: class_label}
 
+    # Pre-format display values (Phase 1 Jinja2 remediation - no formatting in templates)
+    display_payroll_updated_at = ""
+    if payroll_updated_at:
+        display_payroll_updated_at = payroll_updated_at.strftime("%H:%M")
+
+    # Format first_pay_date for both display and input
+    display_first_pay_date = ""
+    display_first_pay_date_iso = ""
+    if default_setting and default_setting.first_pay_date:
+        display_first_pay_date = default_setting.first_pay_date.strftime("%m/%d/%Y")
+        display_first_pay_date_iso = default_setting.first_pay_date.strftime("%Y-%m-%d")
+
+    # Format created_at for each block setting
+    display_settings_created_at_list = []
+    for setting in block_settings:
+        if setting.created_at:
+            display_settings_created_at_list.append(setting.created_at.strftime("%B %d, %Y"))
+        else:
+            display_settings_created_at_list.append("")
+
     return render_template(
         'admin_payroll.html',
         # Overview tab
@@ -7855,6 +7905,7 @@ def payroll():
         next_payroll_by_block=next_payroll_by_block,
         total_payroll_estimate=total_payroll_estimate,
         payroll_updated_at=payroll_updated_at,
+        display_payroll_updated_at=display_payroll_updated_at,
         total_students=len(students),
         avg_payout=avg_payout,
         total_classes=len(payroll_class_options),
@@ -7862,6 +7913,9 @@ def payroll():
         settings_form=settings_form,
         block_settings=block_settings,
         default_setting=default_setting,
+        display_first_pay_date=display_first_pay_date,
+        display_first_pay_date_iso=display_first_pay_date_iso,
+        display_settings_created_at_list=display_settings_created_at_list,
         settings_by_block=settings_by_block,
         next_global_payroll=next_pay_date_utc,  # Pass UTC timestamp
         show_setup_banner=show_setup_banner,
