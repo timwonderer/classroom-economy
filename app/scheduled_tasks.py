@@ -306,15 +306,19 @@ def run_rent_cycle_for_class(class_id: str, execution_time):
         settings.rent_effective_at = rent_configured_at + timedelta(days=cycle_length_days)
         db.session.flush()
 
-    rent_effective_at = settings.rent_effective_at
+    # Ensure timestamps are timezone-aware for all operations
+    from datetime import datetime as _dt, timezone as _tz
+    from app.utils.canonical_temporal_resolver import _get_class_timezone, ensure_utc
+
+    rent_effective_at = ensure_utc(settings.rent_effective_at)
+    execution_time = ensure_utc(execution_time)
+
     if execution_time < rent_effective_at:
         return {"status": "skipped", "reason": "before_effective_at", "class_id": class_id}
 
     # Freeze deterministic class-local cycle boundary for the full execution.
     # Use class-local date arithmetic (not UTC seconds) so DST transitions
     # don't shift cycle boundaries.
-    from datetime import datetime as _dt, timezone as _tz
-    from app.utils.canonical_temporal_resolver import _get_class_timezone
     class_tz = _get_class_timezone(class_id)
     effective_local = rent_effective_at.astimezone(class_tz)
     exec_local = execution_time.astimezone(class_tz)
