@@ -10087,7 +10087,6 @@ def announcement_edit(announcement_id):
     class_label = class_context.get("join_code") or class_context.get("class_id") or "Unknown"
     teacher_block_view = {
         'class_label': class_label,
-        'block': class_context.get("block") or '',
     }
 
     # Build announcement view model for preview section.
@@ -10992,8 +10991,29 @@ def issues_queue():
         ])
     ).order_by(Issue.escalated_at.desc()).all()
 
+    all_issues = pending_rows + resolved_rows + escalated_rows
+    
+    actor_ids = {i.actor_public_id for i in all_issues if i.actor_public_id}
+    class_ids = {i.class_public_id for i in all_issues if i.class_public_id}
+    
+    from app.models import Seat, ClassEconomy
+    
+    actor_dict = {}
+    if actor_ids:
+        seats = Seat.query.filter(Seat.public_id.in_(actor_ids)).all()
+        for seat in seats:
+            if seat.identity_profile:
+                actor_dict[seat.public_id] = seat.identity_profile.full_name
+                
+    class_dict = {}
+    if class_ids:
+        classes = ClassEconomy.query.filter(ClassEconomy.class_public_id.in_(class_ids)).all()
+        for ce in classes:
+            class_dict[ce.class_public_id] = ce.display_name or ce.join_code
+
     def _to_queue_view(issue):
-        name, label = _resolve_issue_identity(issue.actor_public_id, issue.class_public_id)
+        name = actor_dict.get(issue.actor_public_id, issue.actor_public_id[:8] if issue.actor_public_id else 'Unknown')
+        label = class_dict.get(issue.class_public_id)
         return _issue_to_view(issue, name, label)
 
     pending_issues = [_to_queue_view(i) for i in pending_rows]
