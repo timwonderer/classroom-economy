@@ -3527,7 +3527,7 @@ def help_support():
     class_context = resolve_canonical_context()
     student = db.session.get(Seat, class_context.seat_id) if class_context and getattr(class_context, "seat_id", None) else None
 
-    if not class_context:
+    if not class_context or not student:
         flash("Please select a class first.", "warning")
         return redirect(url_for('student.dashboard'))
 
