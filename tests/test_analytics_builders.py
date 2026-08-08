@@ -28,6 +28,7 @@ class TestMetricSnapshotView:
         """Test that metric values are pre-formatted as percentage strings."""
         view = build_metric_snapshot_view(
             metric_name="Participation Rate",
+            icon_name="group",
             current_value=Decimal("75.5"),
             previous_value=Decimal("70.0"),
             threshold_low=Decimal("50"),
@@ -41,6 +42,7 @@ class TestMetricSnapshotView:
         """Test that metric values are pre-formatted as currency strings."""
         view = build_metric_snapshot_view(
             metric_name="Average Balance",
+            icon_name="account_balance",
             current_value=Decimal("45.67"),
             previous_value=Decimal("40.00"),
             threshold_low=Decimal("30"),
@@ -54,6 +56,7 @@ class TestMetricSnapshotView:
         """Test that metric values are pre-formatted as decimal strings."""
         view = build_metric_snapshot_view(
             metric_name="Money Velocity",
+            icon_name="speed",
             current_value=Decimal("2.45"),
             previous_value=Decimal("2.10"),
             threshold_low=Decimal("1.0"),
@@ -67,6 +70,7 @@ class TestMetricSnapshotView:
         """Test that trend direction is classified as increasing when current > previous * 1.05."""
         view = build_metric_snapshot_view(
             metric_name="Participation Rate",
+            icon_name="group",
             current_value=Decimal("80.0"),
             previous_value=Decimal("70.0"),
             threshold_low=Decimal("50"),
@@ -80,6 +84,7 @@ class TestMetricSnapshotView:
         """Test that trend direction is classified as decreasing when current < previous * 0.95."""
         view = build_metric_snapshot_view(
             metric_name="Participation Rate",
+            icon_name="group",
             current_value=Decimal("60.0"),
             previous_value=Decimal("70.0"),
             threshold_low=Decimal("50"),
@@ -93,6 +98,7 @@ class TestMetricSnapshotView:
         """Test that trend direction is classified as stable when within 5% buffer."""
         view = build_metric_snapshot_view(
             metric_name="Participation Rate",
+            icon_name="group",
             current_value=Decimal("70.0"),
             previous_value=Decimal("70.0"),
             threshold_low=Decimal("50"),
@@ -106,6 +112,7 @@ class TestMetricSnapshotView:
         """Test that status is 'success' when current >= threshold_high."""
         view = build_metric_snapshot_view(
             metric_name="Participation Rate",
+            icon_name="group",
             current_value=Decimal("85.0"),
             previous_value=Decimal("80.0"),
             threshold_low=Decimal("50"),
@@ -119,6 +126,7 @@ class TestMetricSnapshotView:
         """Test that status is 'warning' when low <= current < high."""
         view = build_metric_snapshot_view(
             metric_name="Participation Rate",
+            icon_name="group",
             current_value=Decimal("65.0"),
             previous_value=Decimal("60.0"),
             threshold_low=Decimal("50"),
@@ -132,6 +140,7 @@ class TestMetricSnapshotView:
         """Test that status is 'danger' when current < threshold_low."""
         view = build_metric_snapshot_view(
             metric_name="Participation Rate",
+            icon_name="group",
             current_value=Decimal("40.0"),
             previous_value=Decimal("45.0"),
             threshold_low=Decimal("50"),
@@ -145,6 +154,7 @@ class TestMetricSnapshotView:
         """Test that MetricSnapshotView is immutable (frozen dataclass)."""
         view = build_metric_snapshot_view(
             metric_name="Test",
+            icon_name="group",
             current_value=Decimal("50.0"),
             previous_value=Decimal("50.0"),
             threshold_low=Decimal("40"),
@@ -159,6 +169,7 @@ class TestMetricSnapshotView:
         """Test that view contains only strings and primitives, no ORM models."""
         view = build_metric_snapshot_view(
             metric_name="Test",
+            icon_name="group",
             current_value=Decimal("50.0"),
             previous_value=Decimal("50.0"),
             threshold_low=Decimal("40"),
@@ -167,6 +178,7 @@ class TestMetricSnapshotView:
         )
         # All fields should be strings or simple types
         assert isinstance(view.metric_name, str)
+        assert isinstance(view.icon_name, str)
         assert isinstance(view.current_value, Decimal)  # Raw for transparency
         assert isinstance(view.display_current_value, str)
         assert isinstance(view.trend_direction, str)
@@ -201,7 +213,6 @@ class TestAnalyticsDashboardView:
             window_type="week",
             window_start=datetime(2026, 8, 1),
             window_end=datetime(2026, 8, 8),
-            class_id="test-class-id",
         )
 
         # All metrics should be MetricSnapshotView instances, not ORM
@@ -224,13 +235,12 @@ class TestAnalyticsDashboardView:
             window_type="week",
             window_start=datetime(2026, 8, 1),
             window_end=datetime(2026, 8, 8),
-            class_id="test-class-id",
         )
 
         assert dashboard_view.has_snapshot is False
         assert dashboard_view.display_no_data_message is not None
         assert len(dashboard_view.metrics) == 0
-        assert dashboard_view.display_cwi_value == "$0.00"
+        assert dashboard_view.display_cwi_value == "$0.00/week"
 
     def test_dashboard_view_all_values_preformatted(self):
         """Test that NO template filtering is needed."""
@@ -254,7 +264,6 @@ class TestAnalyticsDashboardView:
             window_type="week",
             window_start=datetime(2026, 8, 1),
             window_end=datetime(2026, 8, 8),
-            class_id="test-class-id",
         )
 
         # Time window display
@@ -299,7 +308,6 @@ class TestAnalyticsDashboardView:
             window_type="week",
             window_start=datetime(2026, 8, 1),
             window_end=datetime(2026, 8, 8),
-            class_id="test-class-id",
         )
 
         # Attempting to modify should raise AttributeError
@@ -315,7 +323,6 @@ class TestAnalyticsDashboardView:
             window_type="month",
             window_start=datetime(2026, 7, 8),
             window_end=datetime(2026, 8, 8),
-            class_id="test-class-id",
         )
 
         assert dashboard_view.window_type == "month"
@@ -342,7 +349,6 @@ class TestAnalyticsDashboardView:
             window_type="week",
             window_start=datetime(2026, 8, 1),
             window_end=datetime(2026, 8, 8),
-            class_id="test-class-id",
         )
 
         # Should have 4 metrics: participation, velocity, ontrack, budget
@@ -437,7 +443,6 @@ class TestNoJinjaFiltersNeeded:
             window_type="week",
             window_start=datetime(2026, 8, 1),
             window_end=datetime(2026, 8, 8),
-            class_id="test-class-id",
         )
 
         # All display_* fields should be strings
@@ -475,7 +480,6 @@ class TestNoJinjaFiltersNeeded:
             window_type="week",
             window_start=datetime(2026, 8, 1),
             window_end=datetime(2026, 8, 8),
-            class_id="test-class-id",
         )
 
         # Verify that this object is suitable for template consumption

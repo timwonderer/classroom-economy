@@ -271,7 +271,6 @@ def dashboard():
         window_type=window_type,
         window_start=window_start,
         window_end=window_end,
-        class_id=class_id,
     )
 
     return render_template(

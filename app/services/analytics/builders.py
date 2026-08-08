@@ -1,10 +1,10 @@
 """Analytics domain view model builders.
 
 Transforms ORM AnalyticsWindowView snapshots into display-ready frozen dataclasses.
-Pre-formats all numeric and date values so templates receive ONLY strings.
+Pre-formats all numeric and date values for template consumption.
 
-Per SPEC-UI-001 § VI: Each view model is immutable (@dataclass(frozen=True))
-and contains ONLY display-ready values (no ORM models, no Decimal/datetime).
+Per SPEC-UI-001 § VI: Each view model is immutable (@dataclass(frozen=True)).
+Display fields are strings; raw Decimal values included for calculations/transparency.
 """
 
 from __future__ import annotations
@@ -25,6 +25,7 @@ class MetricSnapshotView:
     - ORM access (all values pre-fetched)
     """
     metric_name: str
+    icon_name: str  # Material Symbols icon (e.g., "group", "speed")
     current_value: Decimal
     display_current_value: str
     display_previous_value: str
@@ -32,6 +33,7 @@ class MetricSnapshotView:
     display_trend_badge: str
     status_color: str  # "success", "warning", "danger"
     status_label: str
+    change_display: str  # Computed change value (e.g., "+5.2%")
 
 
 @dataclass(frozen=True)
@@ -104,8 +106,9 @@ class AnalyticsDashboardView:
 
 def build_metric_snapshot_view(
     metric_name: str,
+    icon_name: str,
     current_value: Decimal,
-    previous_value: Decimal,
+    previous_value: Optional[Decimal],
     threshold_low: Decimal,
     threshold_high: Decimal,
     format_as: str = "percent",  # "percent", "decimal", "currency"
@@ -119,8 +122,9 @@ def build_metric_snapshot_view(
 
     Args:
         metric_name: Display name ("Participation Rate", "Money Velocity", etc.)
+        icon_name: Material Symbols icon name (e.g., "group", "speed")
         current_value: Current metric value (Decimal for precision)
-        previous_value: Previous metric value for trend calculation
+        previous_value: Previous metric value for trend calculation (None for "no prior")
         threshold_low: Low threshold for "danger" status
         threshold_high: High threshold for "warning" status
         format_as: Format type for display_current_value
@@ -128,40 +132,55 @@ def build_metric_snapshot_view(
     Returns:
         MetricSnapshotView with all display fields pre-computed
     """
-    # Format current and previous values based on type
+    # Format current value based on type (preserving Decimal precision)
     if format_as == "percent":
-        display_current = f"{float(current_value):.1f}%"
-        display_previous = f"{float(previous_value):.1f}%"
+        display_current = f"{current_value:.1f}%"
     elif format_as == "currency":
-        display_current = f"${float(current_value):.2f}"
-        display_previous = f"${float(previous_value):.2f}"
+        display_current = f"${current_value:.2f}"
     else:  # decimal
-        display_current = f"{float(current_value):.2f}"
-        display_previous = f"{float(previous_value):.2f}"
+        display_current = f"{current_value:.2f}"
 
-    # Compute trend direction
-    if current_value > previous_value * Decimal("1.05"):  # 5% buffer for stability
-        trend_direction = "increasing"
-        trend_symbol = "↑"
-    elif current_value < previous_value * Decimal("0.95"):
-        trend_direction = "decreasing"
-        trend_symbol = "↓"
-    else:
+    # Handle previous value (may be None for "no prior data")
+    if previous_value is None:
+        display_previous = "No prior"
         trend_direction = "stable"
         trend_symbol = "→"
+        change_display = ""
+        display_trend_badge = f"{trend_symbol} No prior"
+    else:
+        # Format previous value based on type
+        if format_as == "percent":
+            display_previous = f"{previous_value:.1f}%"
+        elif format_as == "currency":
+            display_previous = f"${previous_value:.2f}"
+        else:  # decimal
+            display_previous = f"{previous_value:.2f}"
 
-    # Compute trend badge with change amount
-    if trend_direction != "stable":
+        # Compute trend direction with 5% buffer for stability
+        if current_value > previous_value * Decimal("1.05"):
+            trend_direction = "increasing"
+            trend_symbol = "↑"
+        elif current_value < previous_value * Decimal("0.95"):
+            trend_direction = "decreasing"
+            trend_symbol = "↓"
+        else:
+            trend_direction = "stable"
+            trend_symbol = "→"
+
+        # Compute change display using Decimal precision (not float)
         change = abs(current_value - previous_value)
         if format_as == "percent":
-            change_display = f"{float(change):.1f}%"
+            change_display = f"{change:.1f}%"
         elif format_as == "currency":
-            change_display = f"${float(change):.2f}"
+            change_display = f"${change:.2f}"
         else:
-            change_display = f"{float(change):.2f}"
-        display_trend_badge = f"{trend_symbol} {change_display}"
-    else:
-        display_trend_badge = f"{trend_symbol} Stable"
+            change_display = f"{change:.2f}"
+
+        # Compute trend badge with change amount
+        if trend_direction != "stable":
+            display_trend_badge = f"{trend_symbol} {change_display}"
+        else:
+            display_trend_badge = f"{trend_symbol} Stable"
 
     # Determine status based on thresholds
     # Convert to Decimal for proper comparison
@@ -181,6 +200,7 @@ def build_metric_snapshot_view(
 
     return MetricSnapshotView(
         metric_name=metric_name,
+        icon_name=icon_name,
         current_value=current_value,
         display_current_value=display_current,
         display_previous_value=display_previous,
@@ -188,6 +208,7 @@ def build_metric_snapshot_view(
         display_trend_badge=display_trend_badge,
         status_color=status_color,
         status_label=status_label,
+        change_display=change_display,
     )
 
 
@@ -196,13 +217,19 @@ def build_alert_card_view(alert_orm_object: Optional[object] = None) -> Optional
 
     Currently alerts are not fully implemented in analytics,
     so this returns None. Structure is ready for future use.
+
+    Args:
+        alert_orm_object: Alert ORM object (or None for empty case)
+
+    Raises:
+        NotImplementedError: If called with a non-None alert_orm_object
     """
     if not alert_orm_object:
         return None
 
     # When alerts are implemented, this will accept Alert ORM model
     # and pre-compute display fields like severity CSS class, icon class, etc.
-    return None
+    raise NotImplementedError("Alert view building not yet implemented")
 
 
 def build_recent_event_view(event_orm_object: object) -> Optional[RecentEventView]:
@@ -265,10 +292,14 @@ def build_recent_event_view(event_orm_object: object) -> Optional[RecentEventVie
             new_num = float(new_value) if new_value is not None else 0
             if new_num > old_num:
                 display_change = f"+${float(new_num - old_num):.2f}"
-            else:
+            elif new_num < old_num:
                 display_change = f"-${float(old_num - new_num):.2f}"
+            else:
+                display_change = "$0.00"
         except (ValueError, TypeError):
             display_change = f"{display_old} → {display_new}"
+    elif display_old == "N/A" and display_new == "N/A":
+        display_change = ""
     else:
         display_change = f"{display_old} → {display_new}"
 
@@ -294,7 +325,6 @@ def build_analytics_dashboard_view(
     window_type: str,
     window_start: datetime,
     window_end: datetime,
-    class_id: str,
 ) -> AnalyticsDashboardView:
     """Build the complete analytics dashboard view model.
 
@@ -315,7 +345,6 @@ def build_analytics_dashboard_view(
         window_type: "week", "month", "pay_cycle", "rent_cycle"
         window_start: Start of time window (UTC)
         window_end: End of time window (UTC)
-        class_id: Class ID for scoping
 
     Returns:
         AnalyticsDashboardView frozen dataclass
@@ -331,7 +360,7 @@ def build_analytics_dashboard_view(
             display_window_end=display_window_end,
             window_type=window_type,
             cwi_value=Decimal('0'),
-            display_cwi_value='$0.00',
+            display_cwi_value='$0.00/week',
             cwi_status_color='secondary',
             cwi_status_label='No data',
             metrics=[],
@@ -367,8 +396,9 @@ def build_analytics_dashboard_view(
     if hasattr(snapshot_orm, 'participation_rate'):
         participation_metric = build_metric_snapshot_view(
             metric_name='Participation Rate',
+            icon_name='group',
             current_value=Decimal(str(snapshot_orm.participation_rate)),
-            previous_value=Decimal(str(snapshot_orm.participation_trend == 'increasing' and 70 or 75)),
+            previous_value=None,  # No prior data available in snapshot
             threshold_low=Decimal('50'),
             threshold_high=Decimal('70'),
             format_as='percent',
@@ -379,8 +409,9 @@ def build_analytics_dashboard_view(
     if hasattr(snapshot_orm, 'money_velocity'):
         velocity_metric = build_metric_snapshot_view(
             metric_name='Money Velocity',
+            icon_name='speed',
             current_value=Decimal(str(snapshot_orm.money_velocity)),
-            previous_value=Decimal(str(snapshot_orm.velocity_trend == 'increasing' and 1.5 or 2.0)),
+            previous_value=None,  # No prior data available in snapshot
             threshold_low=Decimal('1.0'),
             threshold_high=Decimal('2.0'),
             format_as='decimal',
@@ -391,8 +422,9 @@ def build_analytics_dashboard_view(
     if hasattr(snapshot_orm, 'cwi_deviation_within_20pct'):
         ontrack_metric = build_metric_snapshot_view(
             metric_name='On-Track Students',
+            icon_name='target',
             current_value=Decimal(str(snapshot_orm.cwi_deviation_within_20pct)),
-            previous_value=Decimal(str(snapshot_orm.balance_trend == 'increasing' and 70 or 75)),
+            previous_value=None,  # No prior data available in snapshot
             threshold_low=Decimal('60'),
             threshold_high=Decimal('80'),
             format_as='percent',
@@ -403,8 +435,9 @@ def build_analytics_dashboard_view(
     if hasattr(snapshot_orm, 'budget_survival_pass_rate'):
         budget_metric = build_metric_snapshot_view(
             metric_name='Budget Survival',
+            icon_name='account_balance',
             current_value=Decimal(str(snapshot_orm.budget_survival_pass_rate)),
-            previous_value=Decimal(str(snapshot_orm.balance_trend == 'decreasing' and 75 or 70)),
+            previous_value=None,  # No prior data available in snapshot
             threshold_low=Decimal('60'),
             threshold_high=Decimal('80'),
             format_as='percent',
