@@ -83,15 +83,7 @@
               <tr>
                 <td>
                   <div class="d-flex gap-3">
-                    {% if metric.metric_name == 'Participation Rate' %}
-                    <span class="material-symbols-outlined text-muted">group</span>
-                    {% elif metric.metric_name == 'Money Velocity' %}
-                    <span class="material-symbols-outlined text-muted">speed</span>
-                    {% elif metric.metric_name == 'On-Track Students' %}
-                    <span class="material-symbols-outlined text-muted">target</span>
-                    {% elif metric.metric_name == 'Budget Survival' %}
-                    <span class="material-symbols-outlined text-muted">account_balance</span>
-                    {% endif %}
+                    <span class="material-symbols-outlined text-muted">{{ metric.icon_name }}</span>
                     <div>
                       <div class="fw-semibold">{{ metric.metric_name }}</div>
                     </div>
