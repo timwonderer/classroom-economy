@@ -139,7 +139,7 @@ CWI = expected weekly pay at full attendance
 
 ### Hourly Payroll Model
 
-```text id="q7i6f4"
+```text
 CWI =
     hourly_pay_rate *
     expected_hours_per_week
@@ -147,7 +147,7 @@ CWI =
 
 ### Minute-Based Payroll Model
 
-```text id="4mk6u6"
+```text
 CWI =
     minute_pay_rate *
     expected_minutes_per_week
@@ -210,7 +210,7 @@ weekly_equivalent =
 
 The economy engine SHALL support exactly three policy modes:
 
-```text id="t6a4sq"
+```text
 tight
 default
 comfortable
@@ -271,28 +271,28 @@ weekly_savings_target =
 
 ### Tight
 
-```text id="u7n9w8"
+```text
 recommended range:
     0.70 - 0.80
 ```
 
 ### Default
 
-```text id="4ml0vd"
+```text
 recommended range:
     0.60 - 0.75
 ```
 
 ### Comfortable
 
-```text id="o5j0rj"
+```text
 recommended range:
     0.50 - 0.65
 ```
 
 Canonical formula:
 
-```text id="s0k8m9"
+```text
 weekly_rent_ratio =
     weekly_rent / CWI
 ```
@@ -303,26 +303,26 @@ weekly_rent_ratio =
 
 Canonical formula:
 
-```text id="m8e6r1"
+```text
 utilities_ratio =
     weekly_utilities / CWI
 ```
 
 ### Tight
 
-```text id="h5g8j2"
+```text
 0.07 - 0.12
 ```
 
 ### Default
 
-```text id="s6t9x4"
+```text
 0.05 - 0.10
 ```
 
 ### Comfortable
 
-```text id="z3f8y0"
+```text
 0.04 - 0.08
 ```
 
@@ -332,32 +332,32 @@ utilities_ratio =
 
 Canonical formula:
 
-```text id="n8d4r7"
+```text
 item_ratio =
     item_price / CWI
 ```
 
 ### Basic
 
-```text id="g7t2k1"
+```text
 0.01 - 0.03 * CWI
 ```
 
 ### Standard
 
-```text id="r2d8m0"
+```text 
 0.02 - 0.05 * CWI
 ```
 
 ### Premium
 
-```text id="u4v1s3"
+```text
 0.05 - 0.15 * CWI
 ```
 
 ### Luxury
 
-```text id="x6w8n2"
+```text
 0.15 - 0.30 * CWI
 ```
 
@@ -367,26 +367,26 @@ item_ratio =
 
 Canonical formula:
 
-```text id="b8h9x2"
+```text
 premium_ratio =
     weekly_premium / CWI
 ```
 
 ### Tight
 
-```text id="g4r8k1"
+```text
 0.06 - 0.14
 ```
 
 ### Default
 
-```text id="q7j2v9"
+```text
 0.05 - 0.12
 ```
 
 ### Comfortable
 
-```text id="u8n3p6"
+```text 
 0.04 - 0.10
 ```
 
@@ -396,26 +396,26 @@ premium_ratio =
 
 Canonical formula:
 
-```text id="e9m4s0"
+```text 
 fine_ratio =
     fine / CWI
 ```
 
 ### Tight
 
-```text id="j7n2r4"
+```text 
 0.07 - 0.18
 ```
 
 ### Default
 
-```text id="m4p8v2"
+```text 
 0.05 - 0.15
 ```
 
 ### Comfortable
 
-```text id="k3q6x9"
+```text
 0.04 - 0.12
 ```
 
@@ -439,26 +439,26 @@ Collective goals exist to reinforce:
 
 Canonical formula:
 
-```text id="u7r5n8"
+```text 
 goal_ratio =
     goal_cost / CWI
 ```
 
 ### Tight
 
-```text id="n8x4q1"
+```text
 0.75x - 7.0x weekly CWI
 ```
 
 ### Default
 
-```text id="g5p9k3"
+```text 
 1.0x - 8.0x weekly CWI
 ```
 
 ### Comfortable
 
-```text id="y2v8r4"
+```text
 1.5x - 10.0x weekly CWI
 ```
 
@@ -466,7 +466,7 @@ goal_ratio =
 
 ## 3. Goal Reachability Projection
 
-```text id="r6s4j8"
+```text 
 projected_completion_weeks =
     remaining_goal_cost /
     projected_weekly_contribution
@@ -498,7 +498,7 @@ Savings SHALL NOT replace labor participation.
 
 ## 2. Compound Growth Formula
 
-```text id="t8u2r5"
+```text
 A = P * (1 + r/n)^(n*t)
 ```
 
@@ -512,7 +512,7 @@ Where:
 
 ## 3. Daily Accrual Formula
 
-```text id="w7m4k2"
+```text
 daily_accrual =
     eligible_balance * (APR / 365)
 ```
@@ -523,13 +523,13 @@ daily_accrual =
 
 Canonical doubling-time equation:
 
-```text id="p3r7m1"
+```text
 2 = (1 + r/n)^(n*t)
 ```
 
 Maximum APY derivation:
 
-```text id="q9t8k0"
+```text
 r =
     n * (2^(1/(n*t)) - 1)
 ```
@@ -540,19 +540,19 @@ r =
 
 ### Tight
 
-```text id="r7u6v1"
+```text 
 minimum doubling time = 6 years
 ```
 
 ### Default
 
-```text id="t2x5k8"
+```text 
 minimum doubling time = 4 years
 ```
 
 ### Comfortable
 
-```text id="s9m4j3"
+```text 
 minimum doubling time = 2 years
 ```
 
@@ -566,7 +566,7 @@ minimum doubling time = 2 years
 
 Canonical formula:
 
-```text id="v6n4q8"
+```text 
 weekly_savings =
     CWI
     - weekly_rent
@@ -576,7 +576,7 @@ weekly_savings =
 
 Constraint:
 
-```text id="w8m3t2"
+```text 
 weekly_savings >=
     policy_minimum_savings_ratio * CWI
 ```
@@ -615,7 +615,7 @@ Analytics SHALL prioritize:
 
 The primary analytics aggregation boundary SHALL be:
 
-```text id="n5k7w9"
+```text 
 class_id
 ```
 
@@ -642,7 +642,7 @@ The analytics system SHALL support:
 
 ### Obligation Coverage Ratio
 
-```text id="h2q4x8"
+```text 
 obligation_coverage_ratio =
     students_meeting_obligations /
     total_students
@@ -650,7 +650,7 @@ obligation_coverage_ratio =
 
 ### Savings Participation Rate
 
-```text id="j6n3v2"
+```text 
 savings_participation_rate =
     students_with_positive_savings /
     total_students
@@ -658,7 +658,7 @@ savings_participation_rate =
 
 ### Insurance Adoption Rate
 
-```text id="p8m7k4"
+```text 
 insurance_adoption_rate =
     insured_students /
     total_students
@@ -666,7 +666,7 @@ insurance_adoption_rate =
 
 ### Passive Income Ratio
 
-```text id="r4t9x3"
+```text
 passive_income_ratio =
     interest_income /
     labor_income
@@ -674,7 +674,7 @@ passive_income_ratio =
 
 ### Money Velocity
 
-```text id="u3m8q1"
+```text 
 money_velocity =
     total_economic_transactions /
     average_money_supply
@@ -692,7 +692,7 @@ Each classroom SHALL possess exactly one authoritative IANA timezone.
 
 Examples:
 
-```text id="y4v8n2"
+```text 
 America/Los_Angeles
 America/New_York
 Asia/Tokyo
@@ -717,7 +717,7 @@ All timestamps SHALL:
 
 ## 3. Canonical Day Boundary
 
-```text id="m9q5k7"
+```text
 canonical_day_boundary =
     00:00:00 in classroom timezone
 ```
@@ -726,7 +726,7 @@ canonical_day_boundary =
 
 ## 4. Savings Accrual Window
 
-```text id="k2v6t8"
+```text 
 daily_accrual_window =
     previous_class_midnight
     →

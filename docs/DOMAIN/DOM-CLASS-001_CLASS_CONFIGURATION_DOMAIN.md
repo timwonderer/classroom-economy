@@ -96,7 +96,7 @@ Rules:
 - Class creation establishes the canonical class boundary and all required class-owned configuration rows.
 - Class deletion removes the class record and all class-owned configuration rows.
 
-### 2. `feature_settings`
+### 2. `economic-engine` (renamed from `FeatureSettings`)
 
 Class-level economic setup and projection state.
 
