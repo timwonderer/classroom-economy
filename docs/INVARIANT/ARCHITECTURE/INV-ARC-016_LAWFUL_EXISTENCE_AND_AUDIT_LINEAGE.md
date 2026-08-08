@@ -31,7 +31,7 @@ Foundational within `INV-ARC`. Derived from `INV-CORE-000` Section III.3, `Deter
 - `INV-ARC-006_COMMAND_BOUNDARY_FOR_MUTATION.md`
 - `INV-ARC-007_GET_MUST_BE_PURE.md`
 - `DOM-OPS-002_AUDIT_LINEAGE_INTEGRITY.md`
-- `DOM-ECON-003_ECONOMIC_POLICY_AND_TRANSITION.md`
+- `DOM-CLASS-003_ECONOMIC_POLICY.md`
 
 ## V. Core Rule
 
@@ -116,3 +116,4 @@ CI guardrails in `scripts/policy_guardrails.py` enforce this structurally.
 ## XII. Amendment
 
 Revisions must preserve the distinction between `UNVERIFIED` and `INVALID`, the two-path lawful write model, and the HMAC key startup requirement.
+

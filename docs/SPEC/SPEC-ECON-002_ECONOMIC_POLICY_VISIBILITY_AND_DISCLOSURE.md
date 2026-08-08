@@ -1,8 +1,8 @@
-# DOM-ECON-004: Economic Policy Visibility and Disclosure Specification
+# SPEC-ECON-002: Economic Policy Visibility and Disclosure
 
 | Reference Number | Version | Effective Date | Supersedes | Authority Level |
 |---|---|---|---|---|
-| DOM-ECON-004 | 2.0 | 2026-05-20 | none | Constitutional |
+| SPEC-ECON-002 | 2.0 | 2026-05-20 | none | Constitutional |
 
 # I. Purpose
 
@@ -10,7 +10,7 @@ This specification defines constitutional visibility and disclosure requirements
 
 This specification establishes:
 - future economic law disclosure requirements,
-- pending policy visibility requirements,
+- future policy visibility requirements,
 - student-facing economic transparency requirements,
 - teacher-facing governance visibility requirements,
 - operational-domain disclosure responsibilities.
@@ -23,7 +23,7 @@ Economic policy visibility is treated as constitutional economic legitimacy infr
 
 This specification governs:
 - active policy visibility,
-- pending policy transition visibility,
+- future policy visibility,
 - student-facing economic disclosure,
 - teacher-facing economic disclosure,
 - future pricing disclosure,
@@ -44,13 +44,17 @@ This specification applies to:
 
 This specification is subordinate to:
 - INV-CORE-000
-- DOM-ECON-003
+- DOM-CLASS-001
+- DOM-CLASS-002
+- DOM-CLASS-003
 - DOM-ITR-001
 - INV-ARC-015
 
+This specification derives its policy visibility authority from `DOM-CLASS-003`, which derives from `DOM-CLASS-002` and `DOM-CLASS-001`.
+
 This specification is authoritative over:
 - economic policy disclosure requirements,
-- pending economic law visibility,
+- future economic law visibility,
 - future economic impact visibility.
 
 ---
@@ -59,7 +63,7 @@ This specification is authoritative over:
 
 ## ECON-VIS-001 — Future Economic Law Must Be Visible
 
-Pending economic policy transitions are considered publicly announced future economic law.
+Pending economic policy versions are considered publicly announced future economic law.
 
 Future economic state MUST NOT remain hidden from:
 - affected students,
@@ -92,7 +96,7 @@ Examples:
 - insurance domain surfaces future premiums,
 - banking domain surfaces future APY.
 
-Operational domains MUST NOT conceal pending policy transitions relevant to affected users.
+Operational domains MUST NOT conceal pending policy changes relevant to affected users.
 
 ---
 
@@ -112,15 +116,15 @@ Visibility MUST remain contextually discoverable.
 
 Teachers MUST be able to view:
 - current policy state,
-- pending policy transitions,
+- pending policy versions,
 - activation intent,
-- superseded transitions,
-- cancelled transitions,
+- superseded policy changes,
+- cancelled policy changes,
 - future economic impact.
 
 Teachers MUST be able to:
-- cancel pending transitions,
-- apply pending transitions immediately,
+- cancel pending policy versions,
+- apply pending policy versions immediately,
 - navigate to affected operational domains.
 
 ---
@@ -138,9 +142,9 @@ Students MUST NOT experience hidden future economic changes without prior visibi
 
 ---
 
-# VII. Pending Transition Disclosure Requirements
+# VII. Pending Policy Disclosure Requirements
 
-Pending policy transitions MUST display:
+Pending policy versions MUST display:
 
 | Field | Requirement |
 |---|---|
@@ -148,7 +152,7 @@ Pending policy transitions MUST display:
 | Future value | required |
 | Activation intent | required |
 | Affected domain | required |
-| Transition status | required |
+| Policy status | required |
 
 ---
 
@@ -156,7 +160,7 @@ Pending policy transitions MUST display:
 
 ## 1. Rent Domain
 
-Pending rent transitions MUST appear:
+Pending rent policy changes MUST appear:
 - above rent overview surfaces,
 - inside student rent obligation surfaces,
 - inside teacher rent management surfaces.
@@ -178,7 +182,7 @@ Pending Next-Cycle Rent: $1,200  (Effective: next rent cycle)
 
 ## 2. Insurance Domain
 
-Pending insurance transitions MUST appear:
+Pending insurance policy changes MUST appear:
 - beside active policy listings,
 - inside student insurance policy detail pages,
 - inside teacher insurance management surfaces.
@@ -200,7 +204,7 @@ Pending Renewal Premium:  $180  (Effective: next renewal boundary)
 
 ## 3. Banking Domain
 
-Pending banking transitions MUST appear:
+Pending banking policy changes MUST appear:
 - within savings/APY informational surfaces,
 - within teacher banking configuration surfaces.
 
@@ -211,16 +215,16 @@ Displayed information MUST include:
 
 ---
 
-# IX. Transition State Visibility
+# IX. Policy State Visibility
 
 Teachers MUST be able to distinguish:
-- pending transitions,
-- applied transitions,
-- superseded transitions,
-- cancelled transitions,
-- failed transitions.
+- pending policy versions,
+- applied policy versions,
+- superseded policy changes,
+- cancelled policy changes,
+- failed policy changes.
 
-Superseded and cancelled transitions MUST remain historically visible.
+Superseded and cancelled policy changes MUST remain historically visible.
 
 ---
 
@@ -254,7 +258,7 @@ This specification governs:
 FEAT layer:
 - orchestrates execution,
 - coordinates activation,
-- manages transition operations.
+- manages policy application operations.
 
 This specification governs:
 - what MUST remain visible,
@@ -286,3 +290,4 @@ This specification establishes:
 - contextual operational disclosure.
 
 Economic policy therefore behaves as publicly visible constitutional law rather than hidden backend configuration state.
+

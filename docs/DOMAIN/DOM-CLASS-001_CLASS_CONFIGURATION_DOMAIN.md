@@ -2,7 +2,7 @@
 
 | Reference Number | Version | Effective Date | Supersedes | Authority Level |
 |------------------|---------|----------------|------------|-----------------|
-| DOM-CLASS-001 | 3.1 | 2026-07-28 | 3.0 | Constitutional |
+| DOM-CLASS-001 | 3.2 | 2026-08-08 | 3.1 | Constitutional |
 
 ## I. Purpose
 
@@ -10,17 +10,20 @@ This document defines the class-level configuration boundary for Classroom Token
 
 Class Configuration answers:
 
-> What class exists, who owns it, what is its operating identity, and what class-level economics and feature settings define it?
+> What class exists, who owns it, what is its operating identity, and what class-level settings define it?
 
 This domain owns the setup that applies to the class as a whole, not the rules for individual classroom domains.
+
+This domain also absorbs the class economy governance and class economic policy lineage previously described elsewhere. The companion class and spec files are supporting slices of this authority, not separate economic namespaces.
 
 ## II. Scope
 
 This domain governs:
 
 - `classes`
-- `feature_settings`
+- `economic-engine`
 - `class_features`
+- class-level economic configuration
 - class creation and deletion workflows
 
 This domain does not govern domain-specific setup such as rent settings, store offerings, insurance policies, payroll rules, or banking rules.
@@ -50,7 +53,7 @@ Owned class-level facts include:
 - `section`
 - `timezone`
 - feature enablement
-- all class-level economic-engine settings derived from DOM-ECON
+- all class-level economic configuration facts
 - feature-gated UI and access state
 - class creation and class deletion lifecycle
 
@@ -61,11 +64,11 @@ Owned class-level facts include:
 This domain is the sole schema and mutation authority over:
 
 - `classes`
-- `feature_settings`
+- `economic-engine`
 - `class_features`
 
 `classes` establishes the canonical class boundary.
-`feature_settings` stores class-level economic setup, including the CWI-based economic-engine settings owned by DOM-ECON.
+`economic-engine` stores only the canonical class-level economic configuration facts identified by `DOM-CLASS-002`.
 `class_features` stores feature enablement by class.
 
 ## VII. Owned Tables
@@ -96,39 +99,22 @@ Rules:
 - Class creation establishes the canonical class boundary and all required class-owned configuration rows.
 - Class deletion removes the class record and all class-owned configuration rows.
 
-### 2. `economic-engine` (renamed from `FeatureSettings`)
+### 2. `economic-engine`
 
 Class-level economic setup and projection state.
-
-Key fields:
-
-- `id`
-- `class_id`
-- `cwi_json`
-- `economy_policy_mode`
-- `economy_policy_updated_at`
-- `economy_last_rebalanced_at`
-- `economy_last_rebalanced_by`
-- `economy_pending_rebalance_json` - deprecated transitional field
 
 Rules:
 
 - One record per class.
-- Stores class-level economic-engine setup only.
-- CWI-derived economic settings belong here.
-- The field set is projection state, not operational execution truth.
-- Deprecated transitional fields MUST be removed through the migration plan.
+- Stores canonical class-level economic configuration facts only.
+- The exact persisted fields are derived from `DOM-CLASS-002` and may be refined during the reconstruction.
+- The stored state is configuration truth, not operational execution truth.
 
 ### 3. `class_features`
 
-Feature enablement by class.
-
-Key fields:
-
-- `id`
-- `class_id`
-- `feature_name`
-- `created_at`
+Feature enablement by class. Its exact identity and persisted fields are derived
+from the feature-state facts established during reconstruction; this document
+does not create a surrogate identifier or freeze a legacy column set.
 
 Rules:
 
@@ -138,8 +124,9 @@ Rules:
 ## VIII. Constraints
 
 - This domain stores class-level configuration only.
-- It owns feature enablement, class identity, and all DOM-ECON class-level economic-engine settings.
-- It owns the `feature_settings` schema and its projection.
+- It owns feature enablement, class identity, and all class-level economic configuration facts.
+- It owns the `economic-engine` schema and its projection.
+- It does not freeze any derived projection field set before the reconstruction is complete.
 - It does not own rent settings, store offerings, insurance definitions, payroll rules, or banking rules.
 - It does not mutate ledger, attendance, obligations, or entitlement tables.
 - All class-level configuration must be scoped by `class_id`.
@@ -151,7 +138,8 @@ Rules:
 - Other domains consume class-level configuration from this domain.
 - `timezone` governs class-level temporal interpretation.
 - FEAT orchestration may read class-level configuration, but it does not own it.
-- `feature_settings` is a projection of class-level configuration and must not become independent policy truth.
+- `economic-engine` is a projection of class-level configuration and must not become independent policy truth.
+- `economic-engine` must not be treated as an immutable legacy schema contract while reconstruction is in progress.
 - Class creation and class deletion are class-level mutation workflows.
 - Disabling a feature changes access and display state only; it does not rewrite downstream facts.
 

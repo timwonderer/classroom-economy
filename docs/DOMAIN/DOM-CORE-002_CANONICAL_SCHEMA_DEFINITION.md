@@ -171,23 +171,14 @@ authority in v2 and must not be treated as canonical schema surfaces.
 
 ### 2. Class Configuration (DOM-CLASS-001)
 
-**Purpose:** Define class-level directives and policy.
+**Purpose:** Define class-level directives, feature enablement, and class-owned configuration.
 
 **Tables:**
 
 - `class_features`
-- `feature_settings`
+- `economic-engine` — class-level economic configuration and projection state
 - `hall_pass_settings`
-- `rent_settings`
-- `payroll_settings`
-- `banking_settings`
-
-**Composition tables** (owned by DOM-CLASS-001; child rows of `payroll_settings`):
-
-- `payroll_rewards` — per-class reward definitions; FK to `payroll_settings`, no independent uniqueness
-- `payroll_fines` — per-class fine definitions; FK to `payroll_settings`, no independent uniqueness
-
-**Invariant:** `payroll_rewards` and `payroll_fines` have no authority of their own; they express the parent `payroll_settings` directive. Deleting a `payroll_settings` row CASCADE-deletes its rewards and fines.
+`rent_settings` belongs to `DOM-OBL-001`; `payroll_settings`, `payroll_rewards`, and `payroll_fines` belong to `DOM-PROD-001`; and `banking_settings` belongs to the owning Banking domain. These tables are not Class Configuration authority.
 
 **Prohibited:** No persisted compute-result caches (e.g., `payroll_cache`). Computed values are derived on read from authoritative event tables or recomputed by services.
 
@@ -294,7 +285,7 @@ authority in v2 and must not be treated as canonical schema surfaces.
 
 ---
 
-### 10. Economic Policy (DOM-ECON-003)
+### 10. Economic Policy (DOM-CLASS-003)
 
 **Purpose:** Record policy versioning and transition lifecycle.
 

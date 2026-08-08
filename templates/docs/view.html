@@ -289,15 +289,15 @@
                         <div class="accordion-item">
                             <h2 class="accordion-header">
                                 <button
-                                    class="accordion-button {% if not (doc_path.startswith('ARCHITECTURE/') or doc_path.startswith('DOMAINS/') or doc_path.startswith('FEATURES/')) %}collapsed{% endif %}"
+                                    class="accordion-button {% if not (doc_path.startswith('ARCHITECTURE/') or doc_path.startswith('DOMAIN/') or doc_path.startswith('DOMAINS/') or doc_path.startswith('FEATURES/')) %}collapsed{% endif %}"
                                     type="button" data-bs-toggle="collapse" data-bs-target="#technicalCollapse"
-                                    aria-expanded="{% if doc_path.startswith('ARCHITECTURE/') or doc_path.startswith('DOMAINS/') or doc_path.startswith('FEATURES/') %}true{% else %}false{% endif %}">
+                                    aria-expanded="{% if doc_path.startswith('ARCHITECTURE/') or doc_path.startswith('DOMAIN/') or doc_path.startswith('DOMAINS/') or doc_path.startswith('FEATURES/') %}true{% else %}false{% endif %}">
                                     <span class="material-symbols-outlined me-2">code</span>
                                     Technical Reference
                                 </button>
                             </h2>
                             <div id="technicalCollapse"
-                                class="accordion-collapse collapse {% if doc_path.startswith('ARCHITECTURE/') or doc_path.startswith('DOMAINS/') or doc_path.startswith('FEATURES/') %}show{% endif %}">
+                                class="accordion-collapse collapse {% if doc_path.startswith('ARCHITECTURE/') or doc_path.startswith('DOMAIN/') or doc_path.startswith('DOMAINS/') or doc_path.startswith('FEATURES/') %}show{% endif %}">
                                 <div class="accordion-body p-0">
                                     <ul class="nav flex-column">
                                         <li class="nav-item">
@@ -313,8 +313,8 @@
                                             </a>
                                         </li>
                                         <li class="nav-item">
-                                            <a class="nav-link {% if doc_path == 'DOMAINS/ECONOMY_DESIGN/DOM-ECON-002_Economy_Specification' %}active{% endif %}"
-                                                href="{{ url_for('docs.view_doc', doc_path='DOMAINS/ECONOMY_DESIGN/DOM-ECON-002_Economy_Specification') }}">
+                                            <a class="nav-link {% if doc_path == 'DOMAIN/DOM-CLASS-003_ECONOMIC_POLICY' %}active{% endif %}"
+                                                href="{{ url_for('docs.view_doc', doc_path='DOMAIN/DOM-CLASS-003_ECONOMIC_POLICY') }}">
                                                 Economy Spec
                                             </a>
                                         </li>

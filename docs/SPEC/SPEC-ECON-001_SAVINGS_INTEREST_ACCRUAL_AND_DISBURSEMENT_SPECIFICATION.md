@@ -378,30 +378,30 @@ This mirrors common real-world savings account behavior while preserving determi
 
 ## 14. Operational Boundary Authority
 
-Banking domain is the sole authority over **accrual rollover legality** within CTH.
+Class Configuration is the sole authority over the class-local policy inputs that feed accrual rollover legality within CTH.
 
-This authority is referenced by `DOM-ECON-003` (ECON-CONST-004) and `FEAT-ECON-001` (§VIII) as "Banking domain owns accrual rollover legality." Both phrases refer to this domain.
+This authority derives from `DOM-CLASS-001` through `DOM-CLASS-002` and `DOM-CLASS-003`. `FEAT-ECON-001` executes the behavior but does not own the authority.
 
 ### 14.1 Boundary Determination
 
-When the scheduled accrual settlement job fires, Banking SHALL:
+When the scheduled accrual settlement job fires, the accrual service SHALL:
 
 1. Resolve the canonical class-time boundary using `class_id` and class timezone (per INV-ARC-015).
 2. Determine whether the accrual window has closed since the last settled period.
 3. Execute interest payout through `FEAT-CORE-000`-compliant FEAT orchestration.
-4. If a pending banking policy transition exists and the accrual boundary is lawful, signal `FEAT-ECON-001` to activate the transition.
+4. If a lawful banking policy change exists and the accrual boundary is lawful, signal `FEAT-ECON-001` to apply it.
 
 ### 14.2 Policy Transition Activation Protocol
 
-Banking MAY request policy transition activation at a lawful accrual boundary.
+The accrual service MAY request policy activation at a lawful accrual boundary.
 
-Banking MUST NOT:
+The accrual service MUST NOT:
 - Directly mutate `policy_versions` or `policy_transitions`
-- Activate policy transitions outside `FEAT-ECON-001` orchestration
+- Activate policy changes outside `FEAT-ECON-001` orchestration
 - Determine supersession legality
 - Perform activation inside a GET handler or read path
 
-Policy lineage remains owned by `DOM-CLASS-001`. Activation is orchestrated by `FEAT-ECON-001`.
+Policy lineage remains owned by `DOM-CLASS-003`. Class-level policy inputs remain owned by `DOM-CLASS-001` through `DOM-CLASS-002`. Activation is orchestrated by `FEAT-ECON-001`.
 
 ---
 
@@ -411,5 +411,5 @@ Revisions to this document SHALL:
 1. Increment the version number.
 2. Update the Effective Date.
 3. Maintain consistency with `INV-CORE-000` and `INV-ARC-015`.
-4. Maintain consistency with `DOM-ECON-003` for operational boundary activation protocol.
+4. Maintain consistency with `DOM-CLASS-001` and `DOM-CLASS-002` for class-level policy inputs, `DOM-CLASS-003` for policy lineage, and the owning operational domain together with `FEAT-ECON-001` for operational boundary activation.
 5. Preserve deterministic, replayable accrual semantics.

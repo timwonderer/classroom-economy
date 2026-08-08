@@ -1,37 +1,35 @@
-# DOM-ECON-003: Economic Policy and Transition
+# DOM-CLASS-003: Economic Policy
 
 | Reference Number | Version | Effective Date | Supersedes | Authority Level |
 |---|---|---|---|---|
-| DOM-ECON-003 | 2.0 | 2026-05-20 | DOM-ECON-000 (transitional concepts only) | Constitutional |
+| DOM-CLASS-003 | 2.1 | 2026-08-08 | DOM-ECON-002 v1.0 | Constitutional |
 
 # I. Purpose
 
-This specification defines the constitutional governance model for economic policy evolution within Classroom Token Hub (CTH).
+This specification defines the constitutional governance model for class economics within Classroom Token Hub (CTH).
+
+This specification derives its authority from `DOM-CLASS-002`, which in turn derives from `DOM-CLASS-001`. This document controls only economics-specific policy lineage, not the general policy domain. The broader policy domain owns non-economic policy versioning.
 
 This specification establishes:
-- immutable economic policy lineage,
-- lawful future economic state transitions,
+- immutable economics policy lineage,
 - append-only policy evolution,
 - visible future economic law,
-- operational-boundary activation sovereignty,
+- policy activation sovereignty,
 - policy supersession legality,
-- economic governance transparency requirements.
-
-This specification replaces hidden delayed settings mutation behavior with explicit constitutional policy transition lineage.
+- rebalancing governance,
+- economic transparency requirements.
 
 ---
 
 # II. Scope
 
 This specification governs:
-- economic policy versions,
-- policy transition legality,
-- economic policy mode semantics,
+- economics policy versions,
+- policy activation legality,
+- economic policy mode semantics for `tight`, `default`, and `comfortable`,
 - rebalance governance,
-- policy supersession,
-- pending economic law visibility,
-- activation intent semantics,
-- economic transition legality.
+- pending future policy visibility,
+- activation intent semantics.
 
 This specification applies to:
 - rent policy,
@@ -50,10 +48,11 @@ This specification is subordinate to:
 - INV-ARC-015
 - INV-ARC-016
 - DOM-CORE-001
+- DOM-CLASS-002
 
 This specification is authoritative over:
-- economic policy governance,
-- economic transition legality,
+- economics policy governance,
+- policy activation legality,
 - economic policy evolution semantics.
 
 This specification does NOT define:
@@ -62,29 +61,20 @@ This specification does NOT define:
 - scheduler implementation,
 - route-layer mechanics.
 
-## Supersession Boundary
+`DOM-CLASS-002` remains authoritative for:
+- the supported class economy modes
+- the class-economy facts that policy lineage builds on
+- the class-level economic posture consumed by downstream specs
+- economic configuration context owned by class configuration
 
-This specification supersedes `DOM-ECON-000` with respect to:
-- Policy transition governance semantics
-- Hidden delayed mutation patterns (prohibited by `ECON-CONST-001`)
-- Mutable singleton policy truth (prohibited by `ECON-CONST-006`)
-- Any implicit write-on-read or GET-triggered policy activation behavior
-
-`DOM-ECON-000` remains authoritative for:
-- Classroom Wage Index (CWI) definition and canonical derivation formulas
-- Policy mode ratio bands (tight / default / comfortable) and economic climate definitions
-- Savings and interest philosophy, compound growth formulas, and doubling-time constraints
-- Solvency validation formulas (budget survival test, catastrophe stability rule)
-- Analytics categories and canonical metrics
-- Canonical normalization rules (monthly → weekly, semester → weekly, daily → weekly)
-
-Implementations MUST NOT treat `DOM-ECON-000` ratio bands and CWI formulas as superseded. Only the policy mutation and transition governance model is superseded by this document.
+`SPEC-ECON-001` and `SPEC-ECON-002` remain authoritative for savings interest behavior and policy visibility behavior, respectively.
 
 ## Related Documents
 
-- `docs/DOMAIN/DOM-ECON-000_ECONOMY_GOVERNANCE_FOUNDATION.md` — CWI, ratio bands, solvency rules (remains authoritative)
-- `DOM-ECON-004_ECONOMIC_POLICY_VISIBILITY_AND_DISCLOSURE_SPECIFICATION.md` — pending policy visibility requirements
-- `FEAT-ECON-001_ECONOMIC_POLICY_TRANSITION_EXECUTION_AND_ACTIVATION_ORCHESTRATION.md` — FEAT-layer execution
+- `docs/DOMAIN/DOM-CLASS-002_CLASS_ECONOMY_GOVERNANCE.md` — class economy facts and supported modes
+- `docs/SPEC/SPEC-ECON-001_SAVINGS_INTEREST_ACCRUAL_AND_DISBURSEMENT_SPECIFICATION.md` — savings interest accrual and disbursement behavior
+- `docs/SPEC/SPEC-ECON-002_ECONOMIC_POLICY_VISIBILITY_AND_DISCLOSURE.md` — pending policy visibility requirements
+- `docs/FEATURE-EXECUTION/FEAT-ECON-001_ECONOMIC_POLICY_TRANSITION_EXECUTION_AND_ACTIVATION_ORCHESTRATION.md` — FEAT-layer execution
 
 ---
 
@@ -92,11 +82,11 @@ Implementations MUST NOT treat `DOM-ECON-000` ratio bands and CWI formulas as su
 
 ## ECON-CONST-001 — Economic Policy Evolution Is Append-Only
 
-Economic policy MUST evolve exclusively through policy transitions.
+Class economics MUST evolve through lawful economics policy versions and activation events.
 
-Direct mutation of active policy state is prohibited.
+Direct mutation of active economics policy state is prohibited.
 
-All economic policy evolution SHALL be represented as immutable transition lineage.
+All economics policy evolution SHALL be represented as immutable policy lineage.
 
 This includes:
 - immediate policy changes,
@@ -108,7 +98,7 @@ This includes:
 
 ## ECON-CONST-002 — Economic Policy Versions Are Immutable
 
-Economic policy versions represent constitutional economic truth.
+Economics policy versions represent constitutional class-economy truth.
 
 Activated policy versions MUST remain immutable.
 
@@ -123,7 +113,7 @@ Previously active policy versions MUST NOT be modified after replacement.
 
 ## ECON-CONST-003 — Future Economic Law Must Be Visible
 
-Pending policy transitions are considered publicly announced future economic law.
+Pending policy versions are considered publicly announced future economic law.
 
 Pending future economic state MUST be visible to:
 - teachers,
@@ -136,7 +126,7 @@ Hidden future economic state is prohibited.
 
 ## ECON-CONST-004 — Operational Domains Own Boundary Legality
 
-Economic policy governance MUST NOT interpret operational timing legality.
+Economics policy governance MUST NOT interpret operational timing legality.
 
 Operational domains remain sole authority over:
 - cycle closure legality,
@@ -154,7 +144,7 @@ Examples:
 
 ## ECON-CONST-005 — Policy Governance Owns Policy Lineage
 
-Economic governance remains sole authority over:
+Class economics governance remains sole authority over:
 - policy version lineage,
 - policy transition lineage,
 - supersession legality,
@@ -181,7 +171,7 @@ Policy activation behavior MUST NOT depend on:
 
 ## 1. policy_versions
 
-Represents immutable constitutional economic policy truth.
+Represents immutable constitutional economics policy truth.
 
 A policy version defines the exact economic rules active for a:
 
@@ -202,25 +192,24 @@ policy_payload_json
 created_at
 activated_at
 created_by_transition_id
-is_active
 ```
 
 Constraints:
-- exactly one active policy version per (class_id, domain)
+- activation is derived from append-only policy transitions or a separate mutable status projection; it is not immutable policy truth
 - historical versions MUST remain immutable
 
 ---
 
 ## 2. policy_transitions
 
-Represents append-only economic policy evolution lineage.
+Represents append-only economics policy evolution lineage.
 
-A policy transition defines:
+A policy record defines:
 - source policy state,
 - target policy state,
 - activation intent,
-- transition legality,
-- supersession lineage.
+- activation legality,
+- lineage.
 
 Example fields:
 
@@ -243,7 +232,7 @@ cancelled_at
 
 ---
 
-# VI. Transition States
+# VI. Policy States
 
 Allowed transition states:
 
@@ -265,7 +254,7 @@ Definitions:
 
 # VII. Activation Intent
 
-Economic governance MAY store abstract activation intent.
+Economics governance MAY store abstract activation intent.
 
 Allowed activation modes:
 
@@ -281,7 +270,7 @@ Definitions:
 | next_boundary | Activate at next lawful operational boundary |
 | manual | Await explicit activation |
 
-Economic governance MUST NOT encode:
+Economics governance MUST NOT encode:
 - operational cycle calculations,
 - renewal calculations,
 - timezone legality,
@@ -291,43 +280,43 @@ Economic governance MUST NOT encode:
 
 # VIII. Policy Supersession
 
-If a newer lawful transition conflicts with an existing pending transition:
+If a newer lawful economics policy version conflicts with an existing pending version in the same `(class_id, domain)` scope:
 
 ```
 new_transition.created_at > existing_pending_transition.created_at
 ```
 
-the older transition MUST become `superseded`.
+the older version MUST become `superseded`. If timestamps are equal or clock-skewed, the authoritative ordering MUST use a monotonic sequence or a documented total-order tie-breaker, such as the transition identifier. Exactly one pending version MUST be authoritative for each `(class_id, domain)` scope.
 
-The newer lawful transition becomes authoritative.
+The newer lawful version becomes authoritative.
 
 Supersession MUST remain append-only lineage.
 
-Previously recorded transitions MUST NOT be deleted.
+Previously recorded policy versions MUST NOT be deleted.
 
 ---
 
 # IX. Rebalance Governance
 
-Teacher-visible rebalance operations represent grouped economic governance actions.
+Teacher-visible rebalance operations represent grouped class economics governance actions.
 
 Operationally:
-- each selected economic change SHALL create an independent policy transition,
+- each selected economic change SHALL create an independent economics policy version,
 - each operational domain SHALL retain sovereign activation legality,
 - rebalance execution SHALL NOT collapse multiple domains into single mutable state.
 
 Examples:
-- rent transition
-- insurance transition
-- banking transition
+- rent economics policy version
+- insurance economics policy version
+- banking economics policy version
 
-Each transition remains independently governed.
+Each version remains independently governed.
 
 ---
 
 # X. Visibility Requirements
 
-Pending economic transitions MUST remain visible through relevant operational surfaces.
+Pending policy versions MUST remain visible through relevant operational surfaces.
 
 Required visibility includes:
 - current economic law,
@@ -351,10 +340,8 @@ The following patterns are constitutionally prohibited.
 
 ## 1. Hidden Deferred Mutation
 
-Future economic state MUST NOT exist exclusively inside hidden delayed payloads.
-
-Examples:
-- `economy_pending_rebalance_json` 
+Future economic state MUST NOT exist exclusively inside hidden delayed payloads or
+undocumented serialized fields.
 
 ---
 
@@ -366,7 +353,7 @@ Active policy versions MUST NOT be mutated directly.
 
 ## 3. Centralized Operational Timing Interpretation
 
-Economic governance MUST NOT determine:
+Economics governance MUST NOT determine:
 - rent-cycle legality,
 - insurance renewal legality,
 - operational rollover legality.
@@ -375,7 +362,7 @@ Economic governance MUST NOT determine:
 
 ## 4. Mutable Singleton Policy Truth
 
-Economic governance MUST NOT rely on:
+Economics governance MUST NOT rely on:
 - singleton mutable settings blobs,
 - mutable pending payload pointers,
 - overwrite-style future-state mutation.
@@ -436,10 +423,11 @@ This model establishes:
 - replayable economic policy lineage,
 - constitutional economic transparency.
 
-Economic governance therefore behaves as constitutional system law rather than mutable delayed configuration state.
+Class economics governance therefore behaves as constitutional system law rather than mutable delayed configuration state.
 
 ---
 
 ## XVI. Amendment
 
 Revisions to this document must increment the version number, update the effective date, and remain consistent with foundational documentation standards.
+
