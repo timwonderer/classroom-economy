@@ -2,7 +2,7 @@
 
 | Reference Number | Version | Effective Date | Supersedes | Authority Level |
 |---|---|---|---|---|
-| DOM-CLASS-003 | 2.1 | 2026-08-08 | DOM-CLASS-002 | Constitutional |
+| DOM-CLASS-003 | 2.1 | 2026-08-08 | DOM-ECON-002 v1.0 | Constitutional |
 
 # I. Purpose
 
@@ -192,11 +192,10 @@ policy_payload_json
 created_at
 activated_at
 created_by_transition_id
-is_active
 ```
 
 Constraints:
-- exactly one active policy version per (class_id, domain)
+- activation is derived from append-only policy transitions or a separate mutable status projection; it is not immutable policy truth
 - historical versions MUST remain immutable
 
 ---
@@ -281,13 +280,13 @@ Economics governance MUST NOT encode:
 
 # VIII. Policy Supersession
 
-If a newer lawful economics policy version conflicts with an existing pending version:
+If a newer lawful economics policy version conflicts with an existing pending version in the same `(class_id, domain)` scope:
 
 ```
 new_transition.created_at > existing_pending_transition.created_at
 ```
 
-the older version MUST become `superseded`.
+the older version MUST become `superseded`. If timestamps are equal or clock-skewed, the authoritative ordering MUST use a monotonic sequence or a documented total-order tie-breaker, such as the transition identifier. Exactly one pending version MUST be authoritative for each `(class_id, domain)` scope.
 
 The newer lawful version becomes authoritative.
 
@@ -431,5 +430,4 @@ Class economics governance therefore behaves as constitutional system law rather
 ## XVI. Amendment
 
 Revisions to this document must increment the version number, update the effective date, and remain consistent with foundational documentation standards.
-
 

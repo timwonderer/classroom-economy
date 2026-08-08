@@ -411,6 +411,5 @@ Revisions to this document SHALL:
 1. Increment the version number.
 2. Update the Effective Date.
 3. Maintain consistency with `INV-CORE-000` and `INV-ARC-015`.
-4. Maintain consistency with `DOM-CLASS-001` and `DOM-CLASS-002` for class-level policy inputs and `DOM-CLASS-003` for operational boundary activation protocol.
+4. Maintain consistency with `DOM-CLASS-001` and `DOM-CLASS-002` for class-level policy inputs, `DOM-CLASS-003` for policy lineage, and the owning operational domain together with `FEAT-ECON-001` for operational boundary activation.
 5. Preserve deterministic, replayable accrual semantics.
-

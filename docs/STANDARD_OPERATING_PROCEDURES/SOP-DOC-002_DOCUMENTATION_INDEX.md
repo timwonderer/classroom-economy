@@ -157,10 +157,10 @@ These legacy specifications remain active for reference during the transitional 
 - [ARC-SYS-002_Deterministic_Analytics_Alerting_Pipeline.md](../../ARCHITECTURE/SYSADMIN/ARC-SYS-002_Deterministic_Analytics_Alerting_Pipeline.md)
 
 ### Domains
-- [DOM-CLASS-002_Class_Economy_Governance.md](../../DOMAIN/DOM-CLASS-002_CLASS_ECONOMY_GOVERNANCE.md)
-- [DOM-CLASS-003_Economic_Policy.md](../../DOMAIN/DOM-CLASS-003_ECONOMIC_POLICY.md)
-- [DOM-CLASS-003_Ledger_Integrity_and_Determinism.md](../../DOMAINS/ECONOMY_DESIGN/DOM-CLASS-003_Ledger_Integrity_and_Determinism.md)
-- [SPEC-ECON-002_Automated_Rent_Linked_Benefit_Resolution.md](../../DOMAINS/ECONOMY_DESIGN/SPEC-ECON-002_Automated_Rent_Linked_Benefit_Resolution.md)
+- [DOM-CLASS-002_Class_Economy_Governance.md](../DOMAIN/DOM-CLASS-002_CLASS_ECONOMY_GOVERNANCE.md)
+- [DOM-CLASS-003_Economic_Policy.md](../DOMAIN/DOM-CLASS-003_ECONOMIC_POLICY.md)
+- [DOM-CLASS-003_Ledger_Integrity_and_Determinism.md](../archive/v1-docs/DOMAINS/ECONOMY_DESIGN/DOM-ECON-003_Ledger_Integrity_and_Determinism.md)
+- [SPEC-ECON-002_Automated_Rent_Linked_Benefit_Resolution.md](../archive/v1-docs/DOMAINS/ECONOMY_DESIGN/DOM-ECON-004_Automated_Rent_Linked_Benefit_Resolution.md)
 
 ### Features
 - [FEAT-MET-001_Analytics_Specification.md](../../FEATURES/ANALYTICS/FEAT-MET-001_Analytics_Specification.md)
@@ -248,4 +248,3 @@ These legacy specifications remain active for reference during the transitional 
 ## IX. Amendment
 
 Revisions to this document must increment the version number, update the effective date, and remain consistent with the CTH documentation standard.
-
