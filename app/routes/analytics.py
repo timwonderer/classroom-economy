@@ -211,7 +211,8 @@ def dashboard():
     - Aggregated at class level
     - Auto-updating
 
-    Template receives ONLY a single AnalyticsDashboardView frozen dataclass.
+    Domain data reaches template via AnalyticsDashboardView + shared layout context
+    (join_code, available_classes, current_class_label, current_page).
     All formatting, logic, and ORM access is handled by the builder.
     """
     try:

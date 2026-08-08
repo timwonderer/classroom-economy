@@ -325,7 +325,7 @@ Line 230: {{ entitlement.expiry_date.strftime('%m/%d/%y') }}  [ORM DATE FORMATTI
 
 **Analytics Domain Violations:**
 
-##### admin_analytics_dashboard.html (CRITICAL - 41 vars, 137 tags - NOW FIXED ✅)
+#### admin_analytics_dashboard.html (CRITICAL - 41 vars, 137 tags - NOW FIXED ✅)
 
 **Remediation Status:** COMPLETE (2026-08-07)
 
@@ -354,6 +354,9 @@ Line 230: {{ entitlement.expiry_date.strftime('%m/%d/%y') }}  [ORM DATE FORMATTI
 - ✅ Zero `|format()` expressions
 - ✅ Zero `|format_datetime()` expressions
 - ✅ Zero ORM model references (all data pre-fetched)
+- ✅ Template contains acceptable `| e` escaping filter (for HTML safety, not formatting)
+- ✅ Template retains presentation-only conditional branching on `view.window_type` and `metric.metric_name`
+- ✅ All formatting and business logic eliminated (only display logic remains)
 - ✅ Template receives ONLY `view: AnalyticsDashboardView` (+ layout context)
 - ✅ ~200 lines of logic moved to builders (574 → ~350 lines)
 
@@ -1002,7 +1005,7 @@ From INV-ARC-022:
 | Templates Audited (SPEC-UI-001 Scope) | 71 | ✅ Normative |
 | **Phase 1 Templates FIXED** | **3/3** | **✅ 100% COMPLETE** |
 | **Phase 2-3 Part 1 Templates FIXED** | **1/1** | **✅ 100% COMPLETE** |
-| **Total Templates FIXED** | **4/4** | **✅ 100% COMPLETE (to date)** |
+| **Total Templates FIXED** | **4/71** | **✅ 6% COMPLETE (to date)** |
 | Templates with Violations (SPEC-UI-001) | 64+ | ⚠️ 90% (after Phase 2-3 Part 1) |
 | Templates with Violations (All Scopes) | 74 | ⚠️ 77% (after Phase 2-3 Part 1) |
 | CRITICAL Violations | 14 | 🔴 (down from 15) |
@@ -1013,8 +1016,8 @@ From INV-ARC-022:
 | Total Jinja Tags | ~2,450 | — |
 | Tags in Violations | ~1,880 | 77% (improved) |
 | View Models Needed | 35+ | — |
-| View Models Existing | 15 | ✅ (Phase 1: 6, Phase 2-3 Part 1: 4) |
-| Gap | 20+ | ❌ |
+| View Models Existing | 10 | ✅ (Phase 1: 6, Phase 2-3 Part 1: 4) |
+| Gap | 25+ | ❌ |
 
 **Phase 1 Completion Summary (2026-08-07):**
 - ✅ student_shop.html (Commit 9103ded8): 100% remediated, 0 formatting expressions remain
@@ -1026,7 +1029,7 @@ From INV-ARC-022:
 **Phase 2-3 Part 1 Completion Summary (2026-08-07):**
 - ✅ admin_analytics_dashboard.html: 100% remediated, 0 formatting expressions remain
   - **Files Created:** `app/services/analytics/__init__.py`, `app/services/analytics/builders.py`, `tests/test_analytics_builders.py`
-  - **Files Modified:** `app/routes/analytics.py`, `templates/admin_analytics_dashboard.html`, `CHANGELOG.md`, `docs/tracking/TEMPLATE_JINJA_INVENTORY.md`
+  - **Files Modified:** `app/routes/analytics.py`, `templates/admin_analytics_dashboard.html`, `CHANGELOG.md`, `docs/TRACKING/TEMPLATE_JINJA_INVENTORY.md`
   - **View Models:** 4 frozen dataclasses (MetricSnapshotView, AlertCardView, RecentEventView, AnalyticsDashboardView)
   - **Builder Functions:** 4 (build_metric_snapshot_view, build_alert_card_view, build_recent_event_view, build_analytics_dashboard_view)
   - **Test Coverage:** 23 comprehensive test cases (all passing, 100%)

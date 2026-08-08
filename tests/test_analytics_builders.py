@@ -417,6 +417,67 @@ class TestRecentEventView:
         assert event_view.display_new_value == "$75.25"
         assert isinstance(event_view.display_change_indicator, str)
 
+    def test_dashboard_view_with_non_empty_events_list(self):
+        """Test that dashboard handles non-empty events_list (covers event path)."""
+        from types import SimpleNamespace
+
+        snapshot = SimpleNamespace(
+            participation_rate=75.0,
+            participation_trend="increasing",
+            money_velocity=2.5,
+            velocity_trend="stable",
+            cwi_deviation_within_20pct=80.0,
+            balance_trend="increasing",
+            budget_survival_pass_rate=85.0,
+            cwi_value=50.0,
+        )
+
+        event = SimpleNamespace(
+            id=1,
+            description="Payroll posted",
+            event_type="transaction",
+            created_at_utc=datetime(2026, 8, 5, 14, 30, 0),
+            old_value=Decimal("100.00"),
+            new_value=Decimal("150.00"),
+        )
+
+        dashboard_view = build_analytics_dashboard_view(
+            snapshot_orm=snapshot,
+            alerts_list=[],
+            events_list=[event],
+            window_type="week",
+            window_start=datetime(2026, 8, 1),
+            window_end=datetime(2026, 8, 8),
+        )
+
+        # Verify events are processed
+        assert len(dashboard_view.recent_events) == 1
+        recent_event = dashboard_view.recent_events[0]
+        assert recent_event.description == "Payroll posted"
+        assert isinstance(recent_event.display_timestamp, str)
+        assert isinstance(recent_event.display_change_indicator, str)
+
+    def test_metric_snapshot_with_decreasing_trend(self):
+        """Test trend badge and display_previous_value for decreasing metric."""
+        metric = build_metric_snapshot_view(
+            metric_name="Test Metric",
+            icon_name="test_icon",
+            current_value=Decimal("40.0"),
+            previous_value=Decimal("50.0"),  # Decreasing
+            threshold_low=Decimal("30.0"),
+            threshold_high=Decimal("60.0"),
+            format_as="percent",
+        )
+
+        # Verify trend direction
+        assert metric.trend_direction == "decreasing"
+        # Verify display_trend_badge shows decrease
+        assert "↓" in metric.display_trend_badge
+        assert "10.0%" in metric.display_trend_badge
+        # Verify display_previous_value is pre-formatted
+        assert metric.display_previous_value == "50.0%"
+        assert isinstance(metric.display_previous_value, str)
+
 
 class TestNoJinjaFiltersNeeded:
     """Integration tests verifying templates need zero Jinja filters."""
@@ -458,8 +519,8 @@ class TestNoJinjaFiltersNeeded:
             assert isinstance(metric.display_previous_value, str)
             assert isinstance(metric.display_trend_badge, str)
 
-    def test_template_receives_single_view_model(self):
-        """Test that route would pass ONLY view model to template."""
+    def test_builds_analytics_view_model(self):
+        """Test that builder creates AnalyticsDashboardView with only view model passed to template."""
         from types import SimpleNamespace
 
         snapshot = SimpleNamespace(
@@ -482,10 +543,15 @@ class TestNoJinjaFiltersNeeded:
             window_end=datetime(2026, 8, 8),
         )
 
-        # Verify that this object is suitable for template consumption
+        # Verify that this is the ONLY object suitable for template consumption
         assert isinstance(dashboard_view, AnalyticsDashboardView)
         assert dashboard_view is not None
+
         # Template should not need to:
         # - Call Jinja filters (|format, |format_datetime)
         # - Access ORM models
         # - Compute trends or thresholds
+        # All values are pre-computed as display strings
+        for metric in dashboard_view.metrics:
+            assert isinstance(metric.display_current_value, str)
+            assert isinstance(metric.display_trend_badge, str)

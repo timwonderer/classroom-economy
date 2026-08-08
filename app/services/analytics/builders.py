@@ -13,6 +13,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
 from typing import Optional
+from zoneinfo import ZoneInfo
+from flask import session
 
 
 @dataclass(frozen=True)
@@ -240,6 +242,8 @@ def build_recent_event_view(event_orm_object: object) -> Optional[RecentEventVie
     - Numeric value formatting
     - Event type to icon mapping
 
+    Per SPEC-TIME-001: Converts UTC timestamp to session timezone before formatting.
+
     Args:
         event_orm_object: AuditEvent ORM model instance
 
@@ -249,11 +253,15 @@ def build_recent_event_view(event_orm_object: object) -> Optional[RecentEventVie
     if not event_orm_object or not hasattr(event_orm_object, 'created_at_utc'):
         return None
 
-    # Format timestamp as "Mon DD, YYYY at HH:MM AM/PM"
+    # Format timestamp as "Mon DD, YYYY at HH:MM AM/PM" (SPEC-TIME-001: convert UTC to session timezone)
     if hasattr(event_orm_object, 'created_at_utc') and event_orm_object.created_at_utc:
         try:
-            display_timestamp = event_orm_object.created_at_utc.strftime('%b %d, %Y at %I:%M %p')
-        except (AttributeError, TypeError):
+            session_tz = session.get('timezone', 'America/Los_Angeles')
+            utc_timestamp = event_orm_object.created_at_utc
+            # Convert UTC to session timezone
+            local_timestamp = utc_timestamp.astimezone(ZoneInfo(session_tz))
+            display_timestamp = local_timestamp.strftime('%b %d, %Y at %I:%M %p')
+        except (AttributeError, TypeError, ValueError):
             display_timestamp = "Unknown date"
     else:
         display_timestamp = "Unknown date"
@@ -349,9 +357,17 @@ def build_analytics_dashboard_view(
     Returns:
         AnalyticsDashboardView frozen dataclass
     """
-    # Format time window display
-    display_window_start = window_start.strftime('%b %d')
-    display_window_end = window_end.strftime('%b %d, %Y')
+    # Format time window display (SPEC-TIME-001: convert UTC to session timezone)
+    session_tz = session.get('timezone', 'America/Los_Angeles')
+    try:
+        window_start_local = window_start.astimezone(ZoneInfo(session_tz))
+        window_end_local = window_end.astimezone(ZoneInfo(session_tz))
+        display_window_start = window_start_local.strftime('%b %d')
+        display_window_end = window_end_local.strftime('%b %d, %Y')
+    except (AttributeError, ValueError):
+        # Fallback if timezone conversion fails
+        display_window_start = window_start.strftime('%b %d')
+        display_window_end = window_end.strftime('%b %d, %Y')
 
     # If no snapshot, return minimal view
     if not snapshot_orm:
