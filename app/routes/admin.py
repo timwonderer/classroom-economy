@@ -9152,8 +9152,7 @@ def tap_out_students():
             "status": "success",
             "message": ". ".join(message_parts),
             "tapped_out": tapped_out,
-            "already_inactive": already_inactive,
-            "errors": errors
+            "already_inactive": already_inactive
         })
 
     except Exception as e:
@@ -9230,8 +9229,7 @@ def tap_in_students():
             "status": "success",
             "message": ". ".join(message_parts),
             "tapped_in": tapped_in,
-            "already_active": already_active,
-            "errors": errors
+            "already_active": already_active
         })
 
     except Exception as e:
@@ -9319,8 +9317,7 @@ def bulk_adjust_hall_pass_entitlements():
         return jsonify({
             "status": "success",
             "message": message,
-            "updated": updated,
-            "errors": errors
+            "updated": updated
         })
 
     except Exception as e:
