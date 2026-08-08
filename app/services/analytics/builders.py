@@ -133,8 +133,8 @@ def build_metric_snapshot_view(
         icon_name: Material Symbols icon name (e.g., "group", "speed")
         current_value: Current metric value (Decimal for precision)
         previous_value: Previous metric value for trend calculation (None for "no prior")
-        threshold_low: Low threshold for "danger" status
-        threshold_high: High threshold for "warning" status
+        threshold_low: Low threshold for "caution" status (danger below this)
+        threshold_high: High threshold for "success" status (on-track at or above this)
         format_as: Format type for display_current_value
 
     Returns:
