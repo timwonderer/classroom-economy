@@ -204,19 +204,23 @@ def get_time_window(
 def dashboard():
     """
     Main analytics dashboard.
-    
+
     Per spec section 4.1:
     - System health metrics always visible
     - Readable in under 5 seconds
     - Aggregated at class level
     - Auto-updating
+
+    Domain data reaches template via AnalyticsDashboardView + shared layout context
+    (join_code, available_classes, current_class_label, current_page).
+    All formatting, logic, and ORM access is handled by the builder.
     """
     try:
         from app.services.context_resolver import resolve_canonical_context, ContextResolutionError
         context = resolve_canonical_context()
         user_id = context.user_id
         class_id = context.class_id
-        
+
         # Resolve the active class directly from canonical class authority.
         class_row = db.session.get(ClassEconomy, class_id)
         if not class_row:
@@ -232,20 +236,20 @@ def dashboard():
     # Get or set time window preference, validated against allowed values
     requested_window_type = request.args.get('window', 'week')
     window_type = requested_window_type if requested_window_type in ALLOWED_WINDOW_TYPES else 'week'
-    
+
     # Calculate time window
     window_start, window_end = get_time_window(window_type, class_id)
-    
+
     # Initialize analytics engine
     engine = AnalyticsEngine(class_id)
-    
+
     # INV-ARC-007: analytics GET must be read-only.
     snapshot = (
         engine.get_snapshot_read_only(window_type, window_start, window_end)
         if getattr(g, "read_only", False)
         else engine.get_or_create_snapshot(window_type, window_start, window_end)
     )
-    
+
     active_alerts = []
 
     recent_events = (
@@ -258,15 +262,23 @@ def dashboard():
         .limit(10)
         .all()
     )
-    
-    return render_template(
-        'admin_analytics_dashboard.html',
-        snapshot=snapshot,
-        alerts=active_alerts,
-        events=recent_events,
+
+    # Build the page view model using the analytics builder
+    # Pass g.canonical_context for SPEC-TIME-001 compliant timezone conversion
+    from app.services.analytics.builders import build_analytics_dashboard_view
+    dashboard_view = build_analytics_dashboard_view(
+        snapshot_orm=snapshot,
+        alerts_list=active_alerts,
+        events_list=recent_events,
         window_type=window_type,
         window_start=window_start,
         window_end=window_end,
+        canonical_execution_context=g.canonical_context,
+    )
+
+    return render_template(
+        'admin_analytics_dashboard.html',
+        view=dashboard_view,
         join_code=join_code,
         available_classes=available_classes,
         current_class_label=selected_class['label'],
