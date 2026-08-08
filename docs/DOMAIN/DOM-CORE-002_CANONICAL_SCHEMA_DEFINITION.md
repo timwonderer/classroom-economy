@@ -171,12 +171,12 @@ authority in v2 and must not be treated as canonical schema surfaces.
 
 ### 2. Class Configuration (DOM-CLASS-001)
 
-**Purpose:** Define class-level directives and policy.
+**Purpose:** Define class-level directives, feature enablement, and class-owned configuration.
 
 **Tables:**
 
 - `class_features`
-- `feature_settings`
+- `economic-engine` — class-level economic configuration and projection state
 - `hall_pass_settings`
 - `rent_settings`
 - `payroll_settings`
@@ -294,7 +294,7 @@ authority in v2 and must not be treated as canonical schema surfaces.
 
 ---
 
-### 10. Economic Policy (DOM-ECON-003)
+### 10. Economic Policy (DOM-CLASS-003)
 
 **Purpose:** Record policy versioning and transition lifecycle.
 
@@ -333,3 +333,4 @@ Any modification to the canonical schema requires:
 - Version increment
 - Updated Effective Date
 - Explicit justification tied to domain authority
+

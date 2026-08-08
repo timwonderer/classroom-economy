@@ -102,9 +102,9 @@ These documents conform to the V2 capability-based architecture and domain autho
 - [DOMAIN/DOM-OPS-002_AUDIT_LINEAGE_INTEGRITY.md](../DOMAIN/DOM-OPS-002_AUDIT_LINEAGE_INTEGRITY.md)
 - [DOMAIN/DOM-ITR-001_INTERPRETATION_DOMAIN.md](../DOMAIN/DOM-ITR-001_INTERPRETATION_DOMAIN.md)
 - [DOMAIN/DOM-SUP-001_SUPPORT_DOMAIN.md](../DOMAIN/DOM-SUP-001_SUPPORT_DOMAIN.md)
-- [DOMAIN/DOM-ECON-000_ECONOMY_GOVERNANCE_FOUNDATION.md](../DOMAIN/DOM-ECON-000_ECONOMY_GOVERNANCE_FOUNDATION.md)
-- [DOMAIN/DOM-ECON-003_ECONOMIC_POLICY_AND_TRANSITION.md](../DOMAIN/DOM-ECON-003_ECONOMIC_POLICY_AND_TRANSITION.md)
-- [DOMAIN/DOM-ECON-004_ECONOMIC_POLICY_VISIBILITY_AND_DISCLOSURE_SPECIFICATION.md](../DOMAIN/DOM-ECON-004_ECONOMIC_POLICY_VISIBILITY_AND_DISCLOSURE_SPECIFICATION.md)
+- [DOMAIN/DOM-CLASS-002_CLASS_ECONOMY_GOVERNANCE.md](../DOMAIN/DOM-CLASS-002_CLASS_ECONOMY_GOVERNANCE.md)
+- [DOMAIN/DOM-CLASS-003_ECONOMIC_POLICY.md](../DOMAIN/DOM-CLASS-003_ECONOMIC_POLICY.md)
+- [SPEC/SPEC-ECON-002_ECONOMIC_POLICY_VISIBILITY_AND_DISCLOSURE.md](../SPEC/SPEC-ECON-002_ECONOMIC_POLICY_VISIBILITY_AND_DISCLOSURE.md)
 - [DOMAIN/DOM-BANK-001_SAVINGS_INTEREST_ACCRUAL_AND_DISBURSEMENT_SPECIFICATION.md](../DOMAIN/DOM-BANK-001_SAVINGS_INTEREST_ACCRUAL_AND_DISBURSEMENT_SPECIFICATION.md)
 
 ### Feature Execution (FEAT)
@@ -157,10 +157,10 @@ These legacy specifications remain active for reference during the transitional 
 - [ARC-SYS-002_Deterministic_Analytics_Alerting_Pipeline.md](../../ARCHITECTURE/SYSADMIN/ARC-SYS-002_Deterministic_Analytics_Alerting_Pipeline.md)
 
 ### Domains
-- [DOM-ECON-001_Economy_Balance_Checker.md](../../DOMAINS/ECONOMY_DESIGN/DOM-ECON-001_Economy_Balance_Checker.md)
-- [DOM-ECON-002_Economy_Specification.md](../../DOMAINS/ECONOMY_DESIGN/DOM-ECON-002_Economy_Specification.md)
-- [DOM-ECON-003_Ledger_Integrity_and_Determinism.md](../../DOMAINS/ECONOMY_DESIGN/DOM-ECON-003_Ledger_Integrity_and_Determinism.md)
-- [DOM-ECON-004_Automated_Rent_Linked_Benefit_Resolution.md](../../DOMAINS/ECONOMY_DESIGN/DOM-ECON-004_Automated_Rent_Linked_Benefit_Resolution.md)
+- [DOM-CLASS-002_Class_Economy_Governance.md](../../DOMAIN/DOM-CLASS-002_CLASS_ECONOMY_GOVERNANCE.md)
+- [DOM-CLASS-003_Economic_Policy.md](../../DOMAIN/DOM-CLASS-003_ECONOMIC_POLICY.md)
+- [DOM-CLASS-003_Ledger_Integrity_and_Determinism.md](../../DOMAINS/ECONOMY_DESIGN/DOM-CLASS-003_Ledger_Integrity_and_Determinism.md)
+- [SPEC-ECON-002_Automated_Rent_Linked_Benefit_Resolution.md](../../DOMAINS/ECONOMY_DESIGN/SPEC-ECON-002_Automated_Rent_Linked_Benefit_Resolution.md)
 
 ### Features
 - [FEAT-MET-001_Analytics_Specification.md](../../FEATURES/ANALYTICS/FEAT-MET-001_Analytics_Specification.md)
@@ -248,3 +248,4 @@ These legacy specifications remain active for reference during the transitional 
 ## IX. Amendment
 
 Revisions to this document must increment the version number, update the effective date, and remain consistent with the CTH documentation standard.
+

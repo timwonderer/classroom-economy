@@ -38,7 +38,7 @@ The Operations domain is the single authority over the **Operational Truth** of 
 *   **Attendance Facts**: It does not own the tap logs or session status.
 *   **Obligation Facts**: It does not own debt or assessment logic.
 *   **Entitlement Balances**: It does not own the count of perks or items.
-*   **Economic Policy Truth**: It does not own `policy_versions` or `policy_transitions`. These are owned by `DOM-CLASS-001` and governed by `DOM-ECON-003`.
+*   **Economic Policy Truth**: It does not own `policy_versions` or `policy_transitions`. These are owned by `DOM-CLASS-001` and governed by `DOM-CLASS-003`.
 *   **Operational Boundary Legality**: It does not determine whether a rent cycle has closed, an insurance period has expired, or an accrual rollover is lawful. Those determinations belong to the owning operational domain (see §8).
 
 ### Interactions:
@@ -296,3 +296,4 @@ For every scheduled policy activation attempt, OPS MUST record:
 - Any `FAILED` event MUST include the failure reason in `payload`
 
 OPS evidence does not constitute policy truth. Policy truth remains in `policy_versions` under `DOM-CLASS-001` authority.
+

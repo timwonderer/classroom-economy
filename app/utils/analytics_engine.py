@@ -311,7 +311,7 @@ class AnalyticsEngine:
         """
         Calculate % of students passing budget survival test.
         
-        Per DOM-ECON-000 and economy policy modes:
+        Per DOM-CLASS-002 and economy policy modes:
         - Students with perfect attendance must meet policy-mode minimum savings ratio of CWI
         - This tests if economy is balanced
         """
@@ -633,3 +633,4 @@ class AnalyticsEngine:
             computed_at=utc_now(),
             is_complete=(window_end <= utc_now()),
         )
+

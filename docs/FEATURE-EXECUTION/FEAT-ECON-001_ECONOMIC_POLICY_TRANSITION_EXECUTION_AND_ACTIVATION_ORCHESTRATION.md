@@ -18,7 +18,7 @@ This specification defines lawful FEAT-layer orchestration for:
 This specification governs execution behavior only.
 
 Economic governance law remains defined by:
-`DOM-ECON-003`
+`DOM-CLASS-003`
 
 
 ---
@@ -47,7 +47,7 @@ This specification does NOT define:
 
 This specification is subordinate to:
 - FEAT-CORE-000
-- DOM-ECON-003
+- DOM-CLASS-003
 - DOM-CLASS-001
 - INV-ARC-015
 - INV-ARC-016
@@ -347,3 +347,4 @@ This specification establishes:
 - replayable execution history.
 
 The FEAT layer therefore acts as constitutional execution orchestrator rather than policy-law authority.
+

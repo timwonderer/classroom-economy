@@ -310,7 +310,7 @@ def get_insurance_premium_recommendation(
     recommendations and insurance setup/edit guidance. It follows the policy-mode
     profile ratios, which in turn implement the documented economics contract:
     - docs/FEATURES/ECONOMY/FEAT-ECON-001_Policy_Mode_and_Rebalancer.md
-    - docs/DOMAINS/ECONOMY_DESIGN/DOM-ECON-002_Economy_Specification.md
+    - docs/DOMAIN/DOM-CLASS-003_ECONOMIC_POLICY.md
     """
     recommendation_context = get_price_recommendation_context(mode, cwi)
     if recommendation_context is None:
