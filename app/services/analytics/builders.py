@@ -294,11 +294,12 @@ def build_recent_event_view(
     old_value = getattr(event_orm_object, 'old_value', None)
     new_value = getattr(event_orm_object, 'new_value', None)
 
-    # Try to format as currency if numeric
+    # Try to format as currency if numeric (use Decimal to preserve precision)
     try:
         if old_value is not None:
             if isinstance(old_value, (int, float, Decimal)):
-                display_old = f"${float(old_value):.2f}"
+                old_decimal = Decimal(str(old_value)) if not isinstance(old_value, Decimal) else old_value
+                display_old = f"${old_decimal:.2f}"
             else:
                 display_old = str(old_value)
         else:
@@ -309,7 +310,8 @@ def build_recent_event_view(
     try:
         if new_value is not None:
             if isinstance(new_value, (int, float, Decimal)):
-                display_new = f"${float(new_value):.2f}"
+                new_decimal = Decimal(str(new_value)) if not isinstance(new_value, Decimal) else new_value
+                display_new = f"${new_decimal:.2f}"
             else:
                 display_new = str(new_value)
         else:
@@ -317,15 +319,15 @@ def build_recent_event_view(
     except (ValueError, TypeError):
         display_new = "N/A"
 
-    # Compute change indicator
+    # Compute change indicator (use Decimal to preserve precision)
     if display_old != "N/A" and display_new != "N/A":
         try:
-            old_num = float(old_value) if old_value is not None else 0
-            new_num = float(new_value) if new_value is not None else 0
-            if new_num > old_num:
-                display_change = f"+${float(new_num - old_num):.2f}"
-            elif new_num < old_num:
-                display_change = f"-${float(old_num - new_num):.2f}"
+            old_decimal = Decimal(str(old_value)) if old_value is not None else Decimal('0')
+            new_decimal = Decimal(str(new_value)) if new_value is not None else Decimal('0')
+            if new_decimal > old_decimal:
+                display_change = f"+${(new_decimal - old_decimal):.2f}"
+            elif new_decimal < old_decimal:
+                display_change = f"-${(old_decimal - new_decimal):.2f}"
             else:
                 display_change = "$0.00"
         except (ValueError, TypeError):
@@ -442,9 +444,9 @@ def build_analytics_dashboard_view(
             display_no_data_message='No analytics data available yet. Analytics will appear once students start participating.',
         )
 
-    # Build CWI context
+    # Build CWI context (use Decimal to preserve precision)
     cwi_value = Decimal(str(snapshot_orm.cwi_value)) if hasattr(snapshot_orm, 'cwi_value') else Decimal('0')
-    display_cwi_value = f"${float(cwi_value):.2f}/week"
+    display_cwi_value = f"${cwi_value:.2f}/week"
 
     # Determine CWI status (threshold-based)
     # Placeholder thresholds - adjust based on actual business rules
