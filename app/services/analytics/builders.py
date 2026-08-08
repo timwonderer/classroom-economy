@@ -5,6 +5,9 @@ Pre-formats all numeric and date values for template consumption.
 
 Per SPEC-UI-001 § VI: Each view model is immutable (@dataclass(frozen=True)).
 Display fields are strings; raw Decimal values included for calculations/transparency.
+
+Per SPEC-TIME-001 § VI: All timezone conversion uses canonical_temporal_resolver.
+Callers must NOT independently convert UTC timestamps to class-local time.
 """
 
 from __future__ import annotations
@@ -13,8 +16,11 @@ from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
 from typing import Optional
-from zoneinfo import ZoneInfo
-from flask import session
+from app.utils.canonical_temporal_resolver import (
+    canonical_temporal_resolver,
+    CLASS_LEVEL_EVALUATION,
+    TemporalResolutionError,
+)
 
 
 @dataclass(frozen=True)
@@ -234,7 +240,10 @@ def build_alert_card_view(alert_orm_object: Optional[object] = None) -> Optional
     raise NotImplementedError("Alert view building not yet implemented")
 
 
-def build_recent_event_view(event_orm_object: object) -> Optional[RecentEventView]:
+def build_recent_event_view(
+    event_orm_object: object,
+    canonical_execution_context
+) -> Optional[RecentEventView]:
     """Build an event view from AuditEvent ORM object.
 
     Eliminates template-level:
@@ -242,10 +251,13 @@ def build_recent_event_view(event_orm_object: object) -> Optional[RecentEventVie
     - Numeric value formatting
     - Event type to icon mapping
 
-    Per SPEC-TIME-001: Converts UTC timestamp to session timezone before formatting.
+    Per SPEC-TIME-001 § VI: Converts UTC timestamp to class-local time using
+    canonical_temporal_resolver (CLASS_LEVEL_EVALUATION with shift_timestamp primitive).
+    Callers must NOT independently convert UTC timestamps before calling this builder.
 
     Args:
         event_orm_object: AuditEvent ORM model instance
+        canonical_execution_context: CanonicalContext with class_id (from g.canonical_context)
 
     Returns:
         RecentEventView with all display fields pre-formatted, or None
@@ -253,15 +265,27 @@ def build_recent_event_view(event_orm_object: object) -> Optional[RecentEventVie
     if not event_orm_object or not hasattr(event_orm_object, 'created_at_utc'):
         return None
 
-    # Format timestamp as "Mon DD, YYYY at HH:MM AM/PM" (SPEC-TIME-001: convert UTC to session timezone)
+    # Format timestamp as "Mon DD, YYYY at HH:MM AM/PM" (SPEC-TIME-001: use canonical resolver)
     if hasattr(event_orm_object, 'created_at_utc') and event_orm_object.created_at_utc:
         try:
-            session_tz = session.get('timezone', 'America/Los_Angeles')
-            utc_timestamp = event_orm_object.created_at_utc
-            # Convert UTC to session timezone
-            local_timestamp = utc_timestamp.astimezone(ZoneInfo(session_tz))
+            if canonical_execution_context is None or not hasattr(canonical_execution_context, 'class_id'):
+                raise TemporalResolutionError(
+                    "CLE requires canonical_execution_context with class_id"
+                )
+
+            # Use canonical resolver to convert UTC to class-local time
+            # shift_timestamp with elapsed_seconds=0 converts timezone without shifting the time
+            eval_result = canonical_temporal_resolver(
+                CLASS_LEVEL_EVALUATION,
+                canonical_execution_context=canonical_execution_context,
+                primitive="shift_timestamp",
+                reference_time_utc=None,  # Use current UTC as reference (for tz authority resolution)
+                timestamp=event_orm_object.created_at_utc,
+                elapsed_seconds=0,  # No time shift, just timezone conversion
+            )
+            local_timestamp = eval_result.shifted_timestamp
             display_timestamp = local_timestamp.strftime('%b %d, %Y at %I:%M %p')
-        except (AttributeError, TypeError, ValueError):
+        except (AttributeError, TypeError, ValueError, TemporalResolutionError):
             display_timestamp = "Unknown date"
     else:
         display_timestamp = "Unknown date"
@@ -333,6 +357,7 @@ def build_analytics_dashboard_view(
     window_type: str,
     window_start: datetime,
     window_end: datetime,
+    canonical_execution_context
 ) -> AnalyticsDashboardView:
     """Build the complete analytics dashboard view model.
 
@@ -346,6 +371,10 @@ def build_analytics_dashboard_view(
     - All threshold-based conditional logic
     - All trend direction logic
 
+    Per SPEC-TIME-001 § VI: Converts UTC timestamps to class-local time using
+    canonical_temporal_resolver (CLASS_LEVEL_EVALUATION with shift_timestamp primitive).
+    Callers must NOT independently convert UTC timestamps before calling this builder.
+
     Args:
         snapshot_orm: AnalyticsWindowView ORM object (or None)
         alerts_list: List of Alert ORM objects (currently empty)
@@ -353,19 +382,44 @@ def build_analytics_dashboard_view(
         window_type: "week", "month", "pay_cycle", "rent_cycle"
         window_start: Start of time window (UTC)
         window_end: End of time window (UTC)
+        canonical_execution_context: CanonicalContext with class_id (from g.canonical_context)
 
     Returns:
         AnalyticsDashboardView frozen dataclass
     """
-    # Format time window display (SPEC-TIME-001: convert UTC to session timezone)
-    session_tz = session.get('timezone', 'America/Los_Angeles')
+    # Format time window display (SPEC-TIME-001: use canonical resolver)
     try:
-        window_start_local = window_start.astimezone(ZoneInfo(session_tz))
-        window_end_local = window_end.astimezone(ZoneInfo(session_tz))
+        if canonical_execution_context is None or not hasattr(canonical_execution_context, 'class_id'):
+            raise TemporalResolutionError(
+                "CLE requires canonical_execution_context with class_id"
+            )
+
+        # Convert window_start from UTC to class-local time using canonical resolver
+        start_eval = canonical_temporal_resolver(
+            CLASS_LEVEL_EVALUATION,
+            canonical_execution_context=canonical_execution_context,
+            primitive="shift_timestamp",
+            reference_time_utc=None,  # Use current UTC for tz authority resolution
+            timestamp=window_start,
+            elapsed_seconds=0,  # No time shift, just timezone conversion
+        )
+        window_start_local = start_eval.shifted_timestamp
+
+        # Convert window_end from UTC to class-local time using canonical resolver
+        end_eval = canonical_temporal_resolver(
+            CLASS_LEVEL_EVALUATION,
+            canonical_execution_context=canonical_execution_context,
+            primitive="shift_timestamp",
+            reference_time_utc=None,  # Use current UTC for tz authority resolution
+            timestamp=window_end,
+            elapsed_seconds=0,  # No time shift, just timezone conversion
+        )
+        window_end_local = end_eval.shifted_timestamp
+
         display_window_start = window_start_local.strftime('%b %d')
         display_window_end = window_end_local.strftime('%b %d, %Y')
-    except (AttributeError, ValueError):
-        # Fallback if timezone conversion fails
+    except (AttributeError, ValueError, TemporalResolutionError):
+        # Fallback if temporal resolution fails (fail closed per SPEC-TIME-001)
         display_window_start = window_start.strftime('%b %d')
         display_window_end = window_end.strftime('%b %d, %Y')
 
@@ -471,10 +525,10 @@ def build_analytics_dashboard_view(
 
     alert_count = len([a for a in all_alerts if not a.is_acknowledged])
 
-    # Build recent events
+    # Build recent events (pass canonical_execution_context to each builder)
     recent_events = []
     for event in events_list:
-        event_view = build_recent_event_view(event)
+        event_view = build_recent_event_view(event, canonical_execution_context)
         if event_view:
             recent_events.append(event_view)
 

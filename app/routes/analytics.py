@@ -264,6 +264,7 @@ def dashboard():
     )
 
     # Build the page view model using the analytics builder
+    # Pass g.canonical_context for SPEC-TIME-001 compliant timezone conversion
     from app.services.analytics.builders import build_analytics_dashboard_view
     dashboard_view = build_analytics_dashboard_view(
         snapshot_orm=snapshot,
@@ -272,6 +273,7 @@ def dashboard():
         window_type=window_type,
         window_start=window_start,
         window_end=window_end,
+        canonical_execution_context=g.canonical_context,
     )
 
     return render_template(
