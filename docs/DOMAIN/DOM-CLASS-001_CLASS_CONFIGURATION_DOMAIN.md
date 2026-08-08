@@ -2,7 +2,7 @@
 
 | Reference Number | Version | Effective Date | Supersedes | Authority Level |
 |------------------|---------|----------------|------------|-----------------|
-| DOM-CLASS-001 | 3.1 | 2026-07-28 | 3.0 | Constitutional |
+| DOM-CLASS-001 | 3.2 | 2026-08-08 | 3.1 | Constitutional |
 
 ## I. Purpose
 
@@ -103,23 +103,12 @@ Rules:
 
 Class-level economic setup and projection state.
 
-Key fields:
-
-- `id`
-- `class_id`
-- `cwi_json`
-- `economy_policy_mode`
-- `economy_policy_updated_at`
-- `economy_last_rebalanced_at`
-- `economy_last_rebalanced_by`
-- `economy_pending_rebalance_json`
-
 Rules:
 
 - One record per class.
-- Stores class-level economic setup only.
-- Class-wide policy mode, CWI projection inputs, and rebalancing metadata belong here.
-- The field set is projection state, not operational execution truth.
+- Stores canonical class-level economic configuration facts only.
+- The exact persisted fields are derived from `DOM-CLASS-002` and may be refined during the reconstruction.
+- The stored state is configuration truth, not operational execution truth.
 
 ### 3. `class_features`
 
@@ -142,6 +131,7 @@ Rules:
 - This domain stores class-level configuration only.
 - It owns feature enablement, class identity, and all class-level economic configuration facts.
 - It owns the `economic-engine` schema and its projection.
+- It does not freeze any derived projection field set before the reconstruction is complete.
 - It does not own rent settings, store offerings, insurance definitions, payroll rules, or banking rules.
 - It does not mutate ledger, attendance, obligations, or entitlement tables.
 - All class-level configuration must be scoped by `class_id`.
@@ -154,6 +144,7 @@ Rules:
 - `timezone` governs class-level temporal interpretation.
 - FEAT orchestration may read class-level configuration, but it does not own it.
 - `economic-engine` is a projection of class-level configuration and must not become independent policy truth.
+- `economic-engine` must not be treated as an immutable legacy schema contract while reconstruction is in progress.
 - Class creation and class deletion are class-level mutation workflows.
 - Disabling a feature changes access and display state only; it does not rewrite downstream facts.
 

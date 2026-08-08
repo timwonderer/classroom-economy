@@ -2,7 +2,7 @@
 
 | Reference Number | Version | Effective Date | Supersedes | Authority Level |
 |---|---|---|---|---|
-| DOM-CLASS-003 | 2.0 | 2026-05-20 | DOM-CLASS-002 | Constitutional |
+| DOM-CLASS-003 | 2.1 | 2026-08-08 | DOM-CLASS-002 | Constitutional |
 
 # I. Purpose
 
@@ -62,20 +62,19 @@ This specification does NOT define:
 - route-layer mechanics.
 
 `DOM-CLASS-002` remains authoritative for:
-- Classroom Wage Index (CWI) definition and canonical derivation formulas
-- Policy mode ratio bands (tight / default / comfortable) and economic climate definitions
-- Solvency validation formulas (budget survival test, catastrophe stability rule)
-- Analytics categories and canonical metrics
-- Canonical normalization rules (monthly → weekly, semester → weekly, daily → weekly)
+- the supported class economy modes
+- the class-economy facts that policy lineage builds on
+- the class-level economic posture consumed by downstream specs
+- economic configuration context owned by class configuration
 
 `SPEC-ECON-001` and `SPEC-ECON-002` remain authoritative for savings interest behavior and policy visibility behavior, respectively.
 
 ## Related Documents
 
-- `docs/DOMAIN/DOM-CLASS-002_CLASS_ECONOMY_GOVERNANCE.md` — CWI, ratio bands, solvency rules (remains authoritative)
+- `docs/DOMAIN/DOM-CLASS-002_CLASS_ECONOMY_GOVERNANCE.md` — class economy facts and supported modes
 - `docs/SPEC/SPEC-ECON-001_SAVINGS_INTEREST_ACCRUAL_AND_DISBURSEMENT_SPECIFICATION.md` — savings interest accrual and disbursement behavior
-- `SPEC-ECON-002_ECONOMIC_POLICY_VISIBILITY_AND_DISCLOSURE.md` — pending policy visibility requirements
-- `FEAT-ECON-001_ECONOMIC_POLICY_TRANSITION_EXECUTION_AND_ACTIVATION_ORCHESTRATION.md` — FEAT-layer execution
+- `docs/SPEC/SPEC-ECON-002_ECONOMIC_POLICY_VISIBILITY_AND_DISCLOSURE.md` — pending policy visibility requirements
+- `docs/FEATURE-EXECUTION/FEAT-ECON-001_ECONOMIC_POLICY_TRANSITION_EXECUTION_AND_ACTIVATION_ORCHESTRATION.md` — FEAT-layer execution
 
 ---
 
@@ -434,8 +433,6 @@ Class economics governance therefore behaves as constitutional system law rather
 ## XVI. Amendment
 
 Revisions to this document must increment the version number, update the effective date, and remain consistent with foundational documentation standards.
-
-
 
 
 
