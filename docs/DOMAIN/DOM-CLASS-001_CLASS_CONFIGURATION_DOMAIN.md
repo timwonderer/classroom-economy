@@ -68,7 +68,7 @@ This domain is the sole schema and mutation authority over:
 - `class_features`
 
 `classes` establishes the canonical class boundary.
-`economic-engine` stores class-level economic setup, including the class-wide policy mode, CWI projection inputs, and rebalancing metadata owned by this domain.
+`economic-engine` stores only the canonical class-level economic configuration facts identified by `DOM-CLASS-002`.
 `class_features` stores feature enablement by class.
 
 ## VII. Owned Tables
@@ -112,14 +112,9 @@ Rules:
 
 ### 3. `class_features`
 
-Feature enablement by class.
-
-Key fields:
-
-- `id`
-- `class_id`
-- `feature_name`
-- `created_at`
+Feature enablement by class. Its exact identity and persisted fields are derived
+from the feature-state facts established during reconstruction; this document
+does not create a surrogate identifier or freeze a legacy column set.
 
 Rules:
 

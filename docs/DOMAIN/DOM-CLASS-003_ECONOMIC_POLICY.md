@@ -341,10 +341,8 @@ The following patterns are constitutionally prohibited.
 
 ## 1. Hidden Deferred Mutation
 
-Future economic state MUST NOT exist exclusively inside hidden delayed payloads.
-
-Examples:
-- `economy_pending_rebalance_json` 
+Future economic state MUST NOT exist exclusively inside hidden delayed payloads or
+undocumented serialized fields.
 
 ---
 
@@ -433,6 +431,5 @@ Class economics governance therefore behaves as constitutional system law rather
 ## XVI. Amendment
 
 Revisions to this document must increment the version number, update the effective date, and remain consistent with foundational documentation standards.
-
 
 
