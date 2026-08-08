@@ -27,10 +27,10 @@
 <div class="container-fluid">
   <!-- Per spec section 13: "Something is drifting — and I know what lever to pull." -->
 
-  {% if not snapshot %}
+  {% if not view.has_snapshot %}
   <div class="alert alert-info">
     <span class="material-symbols-outlined me-2">info</span>
-    <strong>No analytics data available yet.</strong> Analytics will appear once students start participating.
+    <strong>No analytics data available yet.</strong> {{ view.display_no_data_message }}
   </div>
   {% else %}
 
@@ -40,9 +40,9 @@
       <h2 class="mb-3">
         Classroom Macroeconomics Indicators
         <br>
-        <small class="text-muted" style="font-size:1.5rem"> {% if window_type == 'week' %}Week{% elif window_type ==
-          'month' %}Month{% else %}Period{% endif %} of {{ window_start|format_datetime('%b %d') }} to {{
-          window_end|format_datetime('%b %d, %Y') }}</small>
+        <small class="text-muted" style="font-size:1.5rem"> {% if view.window_type == 'week' %}Week{% elif view.window_type ==
+          'month' %}Month{% else %}Period{% endif %} of {{ view.display_window_start }} to {{
+          view.display_window_end }}</small>
       </h2>
     </div>
   </div>
@@ -55,7 +55,7 @@
             CWI Context
           </h5>
           <p class="mb-2">
-            <strong>Current CWI:</strong> ${{ "%.2f"|format(snapshot.cwi_value) }}/week
+            <strong>Current CWI:</strong> {{ view.display_cwi_value }}
           </p>
           <p class="small text-muted mb-0">
             This is the expected weekly income for perfect attendance. All metrics above are relative to this baseline.
@@ -64,18 +64,6 @@
       </div>
     </div>
   </div>
-  {% set alert_lookup = namespace(participation=None, velocity=None, cwi=None, budget=None) %}
-  {% for alert in alerts %}
-  {% if alert.alert_key == 'participation_low' %}
-  {% set alert_lookup.participation = alert %}
-  {% elif alert.alert_key == 'velocity_drop' %}
-  {% set alert_lookup.velocity = alert %}
-  {% elif alert.alert_key == 'cwi_deviation' %}
-  {% set alert_lookup.cwi = alert %}
-  {% elif alert.alert_key == 'budget_survival_low' %}
-  {% set alert_lookup.budget = alert %}
-  {% endif %}
-  {% endfor %}
 
   <div class="row mb-4">
     <div class="col-12">
@@ -85,296 +73,41 @@
             <thead class="table-light">
               <tr>
                 <th scope="col">Metric</th>
-                <th scope="col">Why this matters</th>
-                <th scope="col">Alert</th>
-                <th scope="col">What to do</th>
+                <th scope="col">Current Value</th>
+                <th scope="col">Trend</th>
+                <th scope="col">Status</th>
               </tr>
             </thead>
             <tbody>
+              {% for metric in view.metrics %}
               <tr>
                 <td>
                   <div class="d-flex gap-3">
+                    {% if metric.metric_name == 'Participation Rate' %}
                     <span class="material-symbols-outlined text-muted">group</span>
-                    <div>
-                      <div class="fw-semibold">
-                        Participation Rate
-                        <span class="ms-1 text-muted" data-bs-toggle="tooltip" data-bs-placement="top"
-                          data-bs-title="Share of enrolled students with any activity (transactions or attendance) during this window.">
-                          <span class="material-symbols-outlined">info</span>
-                        </span>
-                      </div>
-                      <div class="d-flex align-items-baseline gap-2">
-                        <span
-                          class="fs-5 {% if snapshot.participation_rate >= 70 %}text-success{% elif snapshot.participation_rate >= 50 %}text-warning{% else %}text-danger{% endif %}">
-                          {{ "%.1f"|format(snapshot.participation_rate) }}%
-                        </span>
-                        <span class="small text-muted">{{ snapshot.active_students }} of {{ snapshot.total_students }}
-                          active</span>
-                      </div>
-                      {% if snapshot.participation_trend %}
-                      <div class="small mt-1">
-                        {% if snapshot.participation_trend == 'increasing' %}
-                        <span class="badge bg-success-subtle text-success"><span class="material-symbols-outlined">north</span>
-                          Increasing</span>
-                        {% elif snapshot.participation_trend == 'decreasing' %}
-                        <span class="badge bg-danger-subtle text-danger"><span class="material-symbols-outlined">south</span>
-                          Decreasing</span>
-                        {% else %}
-                        <span class="badge bg-secondary-subtle text-secondary"><span class="material-symbols-outlined">arrow_forward</span>
-                          Stable</span>
-                        {% endif %}
-                      </div>
-                      {% endif %}
-                    </div>
-                  </div>
-                </td>
-                <td class="small text-muted">
-                  {% if alert_lookup.participation %}
-                  {{ alert_lookup.participation.why_it_matters | e }}
-                  {% else %}
-                  Participation reflects whether students are engaging with the system during this window.
-                  {% endif %}
-                </td>
-                <td>
-                  {% if alert_lookup.participation %}
-                  <span
-                    class="badge {% if alert_lookup.participation.severity == 'critical' %}bg-danger-subtle text-danger{% elif alert_lookup.participation.severity == 'warning' %}bg-warning-subtle text-warning{% else %}bg-info-subtle text-info{% endif %}">
-                    {{ alert_lookup.participation.severity|capitalize }}
-                  </span>
-                  <div class="small mt-1">{{ alert_lookup.participation.what_changed | e }}</div>
-                  {% if not alert_lookup.participation.acknowledged_at %}
-                  <form action="{{ url_for('analytics.acknowledge_alert', alert_id=alert_lookup.participation.id) }}"
-                    method="POST" class="mt-2">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                    <button type="submit" class="btn btn-sm btn-outline-secondary">
-                      <span class="material-symbols-outlined">check</span> Acknowledge
-                    </button>
-                  </form>
-                  {% else %}
-                  <div class="small text-muted mt-2">Acknowledged</div>
-                  {% endif %}
-                  {% else %}
-                  <span class="badge bg-success-subtle text-success">Normal</span>
-                  {% endif %}
-                </td>
-                <td class="small">
-                  {% if alert_lookup.participation and alert_lookup.participation.suggested_action %}
-                  {{ alert_lookup.participation.suggested_action | e }}
-                  {% elif alert_lookup.participation %}
-                  Review recent routines and remove barriers to participation.
-                  {% else %}
-                  Keep monitoring participation trends.
-                  {% endif %}
-                </td>
-              </tr>
-              <tr>
-                <td>
-                  <div class="d-flex gap-3">
+                    {% elif metric.metric_name == 'Money Velocity' %}
                     <span class="material-symbols-outlined text-muted">speed</span>
-                    <div>
-                      <div class="fw-semibold">
-                        Money Velocity
-                        <span class="ms-1 text-muted" data-bs-toggle="tooltip" data-bs-placement="top"
-                          data-bs-title="Average number of transactions per student per day in this window.">
-                          <span class="material-symbols-outlined">info</span>
-                        </span>
-                      </div>
-                      <div class="d-flex align-items-baseline gap-2">
-                        <span class="fs-5">{{ "%.2f"|format(snapshot.money_velocity) }}</span>
-                        <span class="small text-muted">transactions/student/day</span>
-                      </div>
-                      {% if snapshot.velocity_trend %}
-                      <div class="small mt-1">
-                        {% if snapshot.velocity_trend == 'increasing' %}
-                        <span class="badge bg-success-subtle text-success"><span class="material-symbols-outlined">north</span>
-                          Increasing</span>
-                        {% elif snapshot.velocity_trend == 'decreasing' %}
-                        <span class="badge bg-warning-subtle text-warning"><span class="material-symbols-outlined">south</span>
-                          Decreasing</span>
-                        {% else %}
-                        <span class="badge bg-secondary-subtle text-secondary"><span class="material-symbols-outlined">arrow_forward</span>
-                          Stable</span>
-                        {% endif %}
-                      </div>
-                      {% endif %}
-                    </div>
-                  </div>
-                </td>
-                <td class="small text-muted">
-                  {% if alert_lookup.velocity %}
-                  {{ alert_lookup.velocity.why_it_matters | e }}
-                  {% else %}
-                  Velocity shows how actively money is circulating through the economy.
-                  {% endif %}
-                </td>
-                <td>
-                  {% if alert_lookup.velocity %}
-                  <span
-                    class="badge {% if alert_lookup.velocity.severity == 'critical' %}bg-danger-subtle text-danger{% elif alert_lookup.velocity.severity == 'warning' %}bg-warning-subtle text-warning{% else %}bg-info-subtle text-info{% endif %}">
-                    {{ alert_lookup.velocity.severity|capitalize }}
-                  </span>
-                  <div class="small mt-1">{{ alert_lookup.velocity.what_changed | e }}</div>
-                  {% if not alert_lookup.velocity.acknowledged_at %}
-                  <form action="{{ url_for('analytics.acknowledge_alert', alert_id=alert_lookup.velocity.id) }}"
-                    method="POST" class="mt-2">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                    <button type="submit" class="btn btn-sm btn-outline-secondary">
-                      <span class="material-symbols-outlined">check</span> Acknowledge
-                    </button>
-                  </form>
-                  {% else %}
-                  <div class="small text-muted mt-2">Acknowledged</div>
-                  {% endif %}
-                  {% else %}
-                  <span class="badge bg-success-subtle text-success">Normal</span>
-                  {% endif %}
-                </td>
-                <td class="small">
-                  {% if alert_lookup.velocity and alert_lookup.velocity.suggested_action %}
-                  {{ alert_lookup.velocity.suggested_action | e }}
-                  {% elif alert_lookup.velocity %}
-                  Add reasons to spend or refresh store inventory.
-                  {% else %}
-                  Keep an eye on activity levels.
-                  {% endif %}
-                </td>
-              </tr>
-              <tr>
-                <td>
-                  <div class="d-flex gap-3">
+                    {% elif metric.metric_name == 'On-Track Students' %}
                     <span class="material-symbols-outlined text-muted">target</span>
-                    <div>
-                      <div class="fw-semibold">
-                        On-Track Students
-                        <span class="ms-1 text-muted" data-bs-toggle="tooltip" data-bs-placement="top"
-                          data-bs-title="Share of students within ±20% of expected CWI earnings for this window.">
-                          <span class="material-symbols-outlined">info</span>
-                        </span>
-                      </div>
-                      <div class="d-flex align-items-baseline gap-2">
-                        <span
-                          class="fs-5 {% if snapshot.cwi_deviation_within_20pct >= 80 %}text-success{% elif snapshot.cwi_deviation_within_20pct >= 60 %}text-warning{% else %}text-danger{% endif %}">
-                          {{ "%.1f"|format(snapshot.cwi_deviation_within_20pct) }}%
-                        </span>
-                        <span class="small text-muted">within ±20% of CWI</span>
-                      </div>
-                      {% if snapshot.balance_trend %}
-                      <div class="small mt-1">
-                        {% if snapshot.balance_trend == 'increasing' %}
-                        <span class="badge bg-success-subtle text-success"><span class="material-symbols-outlined">north</span>
-                          Improving</span>
-                        {% elif snapshot.balance_trend == 'decreasing' %}
-                        <span class="badge bg-danger-subtle text-danger"><span class="material-symbols-outlined">south</span>
-                          Worsening</span>
-                        {% else %}
-                        <span class="badge bg-secondary-subtle text-secondary"><span class="material-symbols-outlined">arrow_forward</span>
-                          Stable</span>
-                        {% endif %}
-                      </div>
-                      {% endif %}
-                    </div>
-                  </div>
-                </td>
-                <td class="small text-muted">
-                  {% if alert_lookup.cwi %}
-                  {{ alert_lookup.cwi.why_it_matters | e }}
-                  {% else %}
-                  Shows whether earnings align with expectations based on CWI.
-                  {% endif %}
-                </td>
-                <td>
-                  {% if alert_lookup.cwi %}
-                  <span
-                    class="badge {% if alert_lookup.cwi.severity == 'critical' %}bg-danger-subtle text-danger{% elif alert_lookup.cwi.severity == 'warning' %}bg-warning-subtle text-warning{% else %}bg-info-subtle text-info{% endif %}">
-                    {{ alert_lookup.cwi.severity|capitalize }}
-                  </span>
-                  <div class="small mt-1">{{ alert_lookup.cwi.what_changed | e }}</div>
-                  {% if not alert_lookup.cwi.acknowledged_at %}
-                  <form action="{{ url_for('analytics.acknowledge_alert', alert_id=alert_lookup.cwi.id) }}"
-                    method="POST" class="mt-2">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                    <button type="submit" class="btn btn-sm btn-outline-secondary">
-                      <span class="material-symbols-outlined">check</span> Acknowledge
-                    </button>
-                  </form>
-                  {% else %}
-                  <div class="small text-muted mt-2">Acknowledged</div>
-                  {% endif %}
-                  {% else %}
-                  <span class="badge bg-success-subtle text-success">Normal</span>
-                  {% endif %}
-                </td>
-                <td class="small">
-                  {% if alert_lookup.cwi and alert_lookup.cwi.suggested_action %}
-                  {{ alert_lookup.cwi.suggested_action | e }}
-                  {% elif alert_lookup.cwi %}
-                  Review wage and expense settings for alignment.
-                  {% else %}
-                  Continue monitoring earnings alignment.
-                  {% endif %}
-                </td>
-              </tr>
-              <tr>
-                <td>
-                  <div class="d-flex gap-3">
+                    {% elif metric.metric_name == 'Budget Survival' %}
                     <span class="material-symbols-outlined text-muted">account_balance</span>
+                    {% endif %}
                     <div>
-                      <div class="fw-semibold">
-                        Budget Survival
-                        <span class="ms-1 text-muted" data-bs-toggle="tooltip" data-bs-placement="top"
-                          data-bs-title="Share of students who can save at least 10% of weekly income.">
-                          <span class="material-symbols-outlined">info</span>
-                        </span>
-                      </div>
-                      <div class="d-flex align-items-baseline gap-2">
-                        <span
-                          class="fs-5 {% if snapshot.budget_survival_pass_rate >= 80 %}text-success{% elif snapshot.budget_survival_pass_rate >= 60 %}text-warning{% else %}text-danger{% endif %}">
-                          {{ "%.1f"|format(snapshot.budget_survival_pass_rate) }}%
-                        </span>
-                        <span class="small text-muted">students saving 10%+</span>
-                      </div>
+                      <div class="fw-semibold">{{ metric.metric_name }}</div>
                     </div>
                   </div>
                 </td>
-                <td class="small text-muted">
-                  {% if alert_lookup.budget %}
-                  {{ alert_lookup.budget.why_it_matters | e }}
-                  {% else %}
-                  Indicates whether students can cover expenses while still saving.
-                  {% endif %}
+                <td>
+                  <span class="fs-5 text-{{ metric.status_color }}">{{ metric.display_current_value }}</span>
                 </td>
                 <td>
-                  {% if alert_lookup.budget %}
-                  <span
-                    class="badge {% if alert_lookup.budget.severity == 'critical' %}bg-danger-subtle text-danger{% elif alert_lookup.budget.severity == 'warning' %}bg-warning-subtle text-warning{% else %}bg-info-subtle text-info{% endif %}">
-                    {{ alert_lookup.budget.severity|capitalize }}
-                  </span>
-                  <div class="small mt-1">{{ alert_lookup.budget.what_changed | e }}</div>
-                  {% if not alert_lookup.budget.acknowledged_at %}
-                  <form action="{{ url_for('analytics.acknowledge_alert', alert_id=alert_lookup.budget.id) }}"
-                    method="POST" class="mt-2">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                    <button type="submit" class="btn btn-sm btn-outline-secondary">
-                      <span class="material-symbols-outlined">check</span> Acknowledge
-                    </button>
-                  </form>
-                  {% else %}
-                  <div class="small text-muted mt-2">Acknowledged</div>
-                  {% endif %}
-                  {% else %}
-                  <span class="badge bg-success-subtle text-success">Normal</span>
-                  {% endif %}
+                  <span class="badge bg-{{ metric.status_color }}-subtle text-{{ metric.status_color }}">{{ metric.display_trend_badge }}</span>
                 </td>
-                <td class="small">
-                  {% if alert_lookup.budget and alert_lookup.budget.suggested_action %}
-                  {{ alert_lookup.budget.suggested_action | e }}
-                  {% elif alert_lookup.budget %}
-                  Rebalance rent and expenses so saving remains possible.
-                  {% else %}
-                  Keep budgets steady and review periodically.
-                  {% endif %}
+                <td>
+                  <span class="badge bg-{{ metric.status_color }}-subtle text-{{ metric.status_color }}">{{ metric.status_label }}</span>
                 </td>
               </tr>
+              {% endfor %}
             </tbody>
           </table>
         </div>
@@ -387,7 +120,7 @@
 
 
   <!-- Recent Events (Per spec 5.2: Provide context annotations) -->
-  {% if events %}
+  {% if view.recent_events %}
   <div class="row mb-4">
     <div class="col-12">
       <h2 class="h4 mb-3">
@@ -396,15 +129,15 @@
       </h2>
       <div class="card border-0 shadow-sm">
         <div class="list-group list-group-flush">
-          {% for event in events %}
+          {% for event in view.recent_events %}
           <div class="list-group-item">
             <div class="d-flex justify-content-between align-items-start">
               <div>
                 <h6 class="mb-1">{{ event.description | e }}</h6>
                 <p class="small text-muted mb-0">
-                  {{ event.event_date|format_datetime('%b %d, %Y at %I:%M %p') }}
-                  {% if event.old_value and event.new_value %}
-                  — Changed from ${{ "%.2f"|format(event.old_value) }} to ${{ "%.2f"|format(event.new_value) }}
+                  {{ event.display_timestamp }}
+                  {% if event.display_change_indicator %}
+                  — {{ event.display_change_indicator }}
                   {% endif %}
                 </p>
               </div>

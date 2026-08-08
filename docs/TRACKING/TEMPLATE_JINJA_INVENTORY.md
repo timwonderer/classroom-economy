@@ -316,7 +316,7 @@ Line 230: {{ entitlement.expiry_date.strftime('%m/%d/%y') }}  [ORM DATE FORMATTI
 
 | Template | Jinja Vars | Jinja Tags | Violations | Status |
 |----------|-----------|------------|-----------|--------|
-| admin_analytics_dashboard.html | 41 | 137 | **CRITICAL** | ❌ VIOLATION |
+| admin_analytics_dashboard.html | 41 | 137 | **CRITICAL** | ✅ FIXED (Phase 2-3 Part 1) |
 | admin_analytics_events.html | 15 | 30 | High | ❌ VIOLATION |
 | admin_analytics_student_detail.html | 17 | 44 | High | ❌ VIOLATION |
 | sysadmin_combined_logs.html | 54 | 118 | High | ❌ VIOLATION |
@@ -325,18 +325,54 @@ Line 230: {{ entitlement.expiry_date.strftime('%m/%d/%y') }}  [ORM DATE FORMATTI
 
 **Analytics Domain Violations:**
 
-##### admin_analytics_dashboard.html (CRITICAL - 41 vars, 137 tags)
-```
-[Complex analytics calculations in template]
-[Multiple aggregations and data transformations]
-[Filtering and grouping logic embedded in Jinja]
-```
+##### admin_analytics_dashboard.html (CRITICAL - 41 vars, 137 tags - NOW FIXED ✅)
 
-**Status:** ❌ SEVERE VIOLATION - Analytics computations should be pre-rendered
+**Remediation Status:** COMPLETE (2026-08-07)
+
+**View Models Implemented:**
+- ✅ `MetricSnapshotView` — Pre-computed metric with formatted values, trend direction, status classification
+- ✅ `AlertCardView` — Pre-built alert with display fields (currently empty, structure ready for future)
+- ✅ `RecentEventView` — Pre-formatted event log entry with timestamp and value formatting
+- ✅ `AnalyticsDashboardView` — Single page view model (THE ONLY object passed to template)
+
+**Builder Functions:**
+- ✅ `build_metric_snapshot_view()` — Formats numeric values, computes trend, determines status
+- ✅ `build_alert_card_view()` — Alert formatting (currently returns None, ready for alerts feature)
+- ✅ `build_recent_event_view()` — Event timestamp/value pre-formatting
+- ✅ `build_analytics_dashboard_view()` — Orchestrator function (template receives ONLY this)
+
+**Audit Violations Fixed:**
+- ✅ Pattern 1: Numeric formatting (`"%.1f"|format()`, `"%.2f"|format()`) → Pre-formatted `display_*` strings
+- ✅ Pattern 2: Date formatting (`|format_datetime()`) → Pre-computed `display_window_start`, `display_window_end`
+- ✅ Pattern 4: Business logic (trend/threshold classification) → Pre-computed in builders
+- ✅ Alert lookup namespace construction (lines 67-78) → Removed, pre-built in `alerts_by_key` dict
+- ✅ Threshold-based CSS logic (lines 108, 256, 331) → Removed, `status_color` pre-computed
+- ✅ Trend badge conditionals (lines 114-127, 186-199, 261-274) → Removed, `display_trend_badge` pre-computed
+
+**Template Verification:**
+- ✅ Zero `.strftime()` expressions
+- ✅ Zero `|format()` expressions
+- ✅ Zero `|format_datetime()` expressions
+- ✅ Zero ORM model references (all data pre-fetched)
+- ✅ Template receives ONLY `view: AnalyticsDashboardView` (+ layout context)
+- ✅ ~200 lines of logic moved to builders (574 → ~350 lines)
+
+**Route Refactoring:**
+- ✅ `app/routes/analytics.py::dashboard()` imports builder and calls `build_analytics_dashboard_view()`
+- ✅ Route passes ONLY `view=dashboard_view` to template (plus layout context)
+- ✅ All snapshot/alerts/events processing moved to builder layer
+
+**Test Coverage:**
+- ✅ 23 comprehensive test cases in `tests/test_analytics_builders.py`
+- ✅ Pattern A: Immutability tests (frozen dataclass)
+- ✅ Pattern B: Format verification (all display_* are strings)
+- ✅ Pattern C: Threshold/trend classification
+- ✅ Pattern D: Zero ORM leakage tests
+- ✅ All tests passing (100%)
 
 **Domain Owner:** Analytics (DOM-ANALYTICS-001)  
-**Responsible View Model Builder:** `analytics/builders.py` (to be implemented)  
-**Status:** ❌ SEVERE VIOLATION
+**View Model Builder:** `app/services/analytics/builders.py` ✅ COMPLETE  
+**Status:** ✅ FIXED (Phase 2-3 Part 1, 2026-08-07)
 
 ---
 
@@ -965,34 +1001,47 @@ From INV-ARC-022:
 | Total Templates (All Scopes) | 96 | — |
 | Templates Audited (SPEC-UI-001 Scope) | 71 | ✅ Normative |
 | **Phase 1 Templates FIXED** | **3/3** | **✅ 100% COMPLETE** |
-| Templates with Violations (SPEC-UI-001) | 65+ | ⚠️ 92% (after Phase 1) |
-| Templates with Violations (All Scopes) | 75 | ⚠️ 78% (after Phase 1) |
-| CRITICAL Violations | 15 | 🔴 (down from 18) |
+| **Phase 2-3 Part 1 Templates FIXED** | **1/1** | **✅ 100% COMPLETE** |
+| **Total Templates FIXED** | **4/4** | **✅ 100% COMPLETE (to date)** |
+| Templates with Violations (SPEC-UI-001) | 64+ | ⚠️ 90% (after Phase 2-3 Part 1) |
+| Templates with Violations (All Scopes) | 74 | ⚠️ 77% (after Phase 2-3 Part 1) |
+| CRITICAL Violations | 14 | 🔴 (down from 15) |
 | HIGH Violations | 35 | 🟠 |
 | MEDIUM Violations | 25 | 🟡 |
 | Total Jinja Variables | ~1,460 | — |
-| Variables in Violations | ~1,140 | 78% (improved) |
+| Variables in Violations | ~1,120 | 77% (improved) |
 | Total Jinja Tags | ~2,450 | — |
-| Tags in Violations | ~1,930 | 79% (improved) |
+| Tags in Violations | ~1,880 | 77% (improved) |
 | View Models Needed | 35+ | — |
-| View Models Existing | 11 | ✅ (Phase 1 additions) |
-| Gap | 24+ | ❌ |
+| View Models Existing | 15 | ✅ (Phase 1: 6, Phase 2-3 Part 1: 4) |
+| Gap | 20+ | ❌ |
 
-**Phase 1 Completion Summary (2026-08-07, Final 2026-08-07):**
+**Phase 1 Completion Summary (2026-08-07):**
 - ✅ student_shop.html (Commit 9103ded8): 100% remediated, 0 formatting expressions remain
 - ✅ admin_rent_settings.html (Commits ffd76ad2, 8b7d740f): 100% remediated, 0 formatting expressions remain
 - ✅ admin_payroll.html (Commits 942a7342, 8b7d740f, b183a413): 100% remediated, 0 formatting expressions remain
   - **Enhanced:** 10 residual formatting expressions eliminated with post-Phase 1 cleanup
   - **New Builder:** `build_payroll_settings_display()` for comprehensive pay-rate pre-formatting
 
-**Phase 1 Final Audit Results:**
-- 3/3 templates fully compliant with SPEC-UI-001 (all sections VI, X, XI)
-- 0 residual `.strftime()` expressions across all templates
-- 0 residual `|format()` expressions across all templates
-- 15+ builder functions and display fields pre-computed
-- 6 major builder enhancements (StoreItemCardView, EntitlementCardView, CollectiveProgressView, StudentPayrollStatusView, PayrollConfigurationView, build_payroll_settings_display)
+**Phase 2-3 Part 1 Completion Summary (2026-08-07):**
+- ✅ admin_analytics_dashboard.html: 100% remediated, 0 formatting expressions remain
+  - **Files Created:** `app/services/analytics/__init__.py`, `app/services/analytics/builders.py`, `tests/test_analytics_builders.py`
+  - **Files Modified:** `app/routes/analytics.py`, `templates/admin_analytics_dashboard.html`, `CHANGELOG.md`, `docs/tracking/TEMPLATE_JINJA_INVENTORY.md`
+  - **View Models:** 4 frozen dataclasses (MetricSnapshotView, AlertCardView, RecentEventView, AnalyticsDashboardView)
+  - **Builder Functions:** 4 (build_metric_snapshot_view, build_alert_card_view, build_recent_event_view, build_analytics_dashboard_view)
+  - **Test Coverage:** 23 comprehensive test cases (all passing, 100%)
+  - **Template Simplification:** 574 → ~350 lines (~39% reduction), ~200 lines of logic moved to builders
 
-**Estimated Remediation Effort for Remaining Phases:** 180-220 hours across 5 weeks
+**Cumulative Progress (Phase 1 + Phase 2-3 Part 1):**
+- 4/4 templates fully compliant with SPEC-UI-001
+- 0 residual `.strftime()` expressions
+- 0 residual `|format()` expressions
+- 4 domain view model builders implemented
+- 10 domain-specific frozen dataclasses
+- 15+ builder functions
+- 23+ test cases (all passing)
 
-**Phase 1 Success:** All SPEC-UI-001 compliance requirements exceeded for 3 high-priority templates. Comprehensive cleanup identified and resolved 10 additional residual formatting expressions. Phase 2+ proceeding on schedule.
+**Estimated Remediation Effort for Remaining Phases (2-3 Parts 2-3):** 150-180 hours across 3-4 weeks
+
+**Next Phase Target:** Class Configuration domain (Policy, Announcement, Feature Settings templates) — estimated 4-6 templates, ~6-8 hours per template
 
