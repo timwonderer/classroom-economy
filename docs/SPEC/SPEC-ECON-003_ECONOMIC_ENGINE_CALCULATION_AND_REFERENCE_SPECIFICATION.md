@@ -1,8 +1,8 @@
 # SPEC-ECON-003: Economic Engine Calculation and Reference Specification
 
 | Reference Number | Version | Effective Date | Supersedes | Authority Level |
-|---|---|---|---|---|
-| SPEC-ECON-003 | 1.0 | 2026-08-09 | None | Normative |
+|------------------|---------|----------------|------------|-----------------|
+| SPEC-ECON-003    |  1.0    |     2026-08-09 |       None |       Normative |
 
 ---
 
