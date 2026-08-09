@@ -16,33 +16,55 @@ from app.feats.base import FEATContext
 from app.models import ClassFeature
 
 
-def enable_class_feature(*, class_id: str, feature_name: str):
-    """Seed a single class feature row via the production FEAT path."""
-    with FEATContext("FEAT-SETTINGS-001", idempotency_key=f"class_feature:enable:{class_id}:{feature_name}"):
-        feature = ClassFeature(class_id=class_id, feature_name=feature_name)
-        db.session.add(feature)
+def enable_class_feature(*, class_id: str, feature_name: str = None, feature: str = None):
+    """Seed a single class feature row via the production FEAT path.
+
+    Args:
+        class_id: The class to enable feature for
+        feature_name: DEPRECATED - use 'feature' instead
+        feature: Feature name (e.g., 'payroll', 'rent', 'banking')
+    """
+    # Support both old and new parameter names for backward compatibility during migration
+    feature_value = feature or feature_name
+    if not feature_value:
+        raise ValueError("Either 'feature' or 'feature_name' parameter must be provided")
+
+    with FEATContext("FEAT-SETTINGS-001", idempotency_key=f"class_feature:enable:{class_id}:{feature_value}"):
+        cf = ClassFeature(class_id=class_id, feature=feature_value)
+        db.session.add(cf)
         db.session.flush()
         db.session.info["feat_orchestrator_commit"] = True
         try:
             db.session.commit()
         finally:
             db.session.info.pop("feat_orchestrator_commit", None)
-        return feature
+        return cf
 
 
-def disable_class_feature(*, class_id: str, feature_name: str):
-    """Remove a single class feature row via the production FEAT path."""
-    with FEATContext("FEAT-SETTINGS-001", idempotency_key=f"class_feature:disable:{class_id}:{feature_name}"):
-        feature = ClassFeature.query.filter_by(class_id=class_id, feature_name=feature_name).first()
-        if feature is not None:
-            db.session.delete(feature)
+def disable_class_feature(*, class_id: str, feature_name: str = None, feature: str = None):
+    """Remove a single class feature row via the production FEAT path.
+
+    Args:
+        class_id: The class
+        feature_name: DEPRECATED - use 'feature' instead
+        feature: Feature name (e.g., 'payroll', 'rent', 'banking')
+    """
+    # Support both old and new parameter names for backward compatibility during migration
+    feature_value = feature or feature_name
+    if not feature_value:
+        raise ValueError("Either 'feature' or 'feature_name' parameter must be provided")
+
+    with FEATContext("FEAT-SETTINGS-001", idempotency_key=f"class_feature:disable:{class_id}:{feature_value}"):
+        cf = ClassFeature.query.filter_by(class_id=class_id, feature=feature_value).first()
+        if cf is not None:
+            db.session.delete(cf)
             db.session.flush()
             db.session.info["feat_orchestrator_commit"] = True
             try:
                 db.session.commit()
             finally:
                 db.session.info.pop("feat_orchestrator_commit", None)
-        return feature
+        return cf
 
 
 def update_payroll_settings(client, **form_data: Any):
