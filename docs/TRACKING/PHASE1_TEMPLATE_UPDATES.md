@@ -14,6 +14,7 @@
 ### Required Changes
 
 **Remove Template Logic (Lines 30-39):**
+
 ```jinja
 {# DELETE THESE LINES #}
 {% set rent_item_types = rent_item_types_by_store_id.get(item.id, []) %}
@@ -29,6 +30,7 @@
 ```
 
 **Replace with pre-computed properties from StoreItemCardView:**
+
 ```jinja
 {# NOW USE PROPERTIES FROM VIEW MODEL #}
 {% if item.is_rent_covered %}
@@ -38,6 +40,7 @@
 ```
 
 **Remove Price Formatting (Line 67, 69):**
+
 ```jinja
 {# BEFORE: #}
 <span class="badge bg-primary fs-6">${{ "%.2f"|format(item.price) }}</span>
@@ -47,6 +50,7 @@
 ```
 
 **Remove Collective Progress Calculations (Lines 100-135):**
+
 ```jinja
 {# DELETE: #}
 {% set progress = collective_progress.get(item.id, {...}) %}
@@ -61,6 +65,7 @@
 ```
 
 **Flatten ORM Access in My Items Tab (Lines 198-234):**
+
 ```jinja
 {# BEFORE: #}
 {{ entitlement.store_item.name }}
@@ -76,6 +81,7 @@
 ```
 
 ### Verification Steps
+
 - [ ] All items access pre-formatted `display_price` not `price`
 - [ ] All rent flags use item properties (item.is_rent_covered, item.is_rent_perk_item, etc.)
 - [ ] All collective progress uses `item.collective_progress` view model or None
@@ -91,9 +97,10 @@
 **Current Status:** Routes updated with builders ✅  
 **Template Status:** AWAITING UPDATES ⏳
 
-### Required Changes
+### Required Changes in Template 2
 
 **Use Pre-Computed Student Counts (Lines 178, 191):**
+
 ```jinja
 {# TEMPLATE ALREADY CORRECT: #}
 {{ obligation_summary.current_student_count if obligation_summary else 0 }}
@@ -102,12 +109,14 @@
 
 **Verify Usage Pattern:**
 The route now calls `add_display_formatting_to_class_obligation_summary()` which adds:
+
 - `obligation_summary.current_student_count` (students with status up_to_date or outstanding)
 - `obligation_summary.behind_student_count` (students with status past_due_grace or past_due_overdue)
 - `obligation_summary.display_total_paid` (pre-formatted as "$X.XX")
 - `obligation_summary.display_total_unpaid` (pre-formatted as "$X.XX")
 
-### Verification Steps
+### Verification Steps in Template 2
+
 - [ ] Lines 178, 191 use `current_student_count` and `behind_student_count` (already done ✅)
 - [ ] Currency formatting moved to view model (display_total_paid, display_total_unpaid)
 - [ ] No direct access to `status_breakdown` dict properties
@@ -120,10 +129,11 @@ The route now calls `add_display_formatting_to_class_obligation_summary()` which
 **Current Status:** Routes updated with builders ✅  
 **Template Status:** AWAITING UPDATES ⏳
 
-### Required Changes
+### Required Changes in Template 3
 
 **Update Student Stats Loop:**
 student_stats is now a list of `StudentPayrollStatusView` objects with pre-formatted display fields:
+
 ```jinja
 {# REPLACE raw stats with view models #}
 {% for stat in student_stats %}
@@ -138,6 +148,7 @@ student_stats is now a list of `StudentPayrollStatusView` objects with pre-forma
 ```
 
 **Use PayrollConfigurationView (if display exists):**
+
 ```jinja
 {# If payroll_config is passed: #}
 {{ payroll_config.display_pay_rate }}
@@ -146,7 +157,8 @@ student_stats is now a list of `StudentPayrollStatusView` objects with pre-forma
 {{ payroll_config.display_overtime_multiplier }}
 ```
 
-### Verification Steps
+### Verification Steps in Template 3
+
 - [ ] All earnings amounts use pre-formatted display fields
 - [ ] No `"%.2f"|format()` filters remain
 - [ ] No date `.strftime()` calls remain
@@ -183,7 +195,7 @@ grep -n "strftime\|format(" templates/admin_payroll.html
 ### Violations Fixed
 
 | Template | Violation | Status |
-|----------|-----------|--------|
+| ---------- | ----------- | -------- |
 | student_shop.html | Lines 30-39 complex rent logic | ✅ View model computed |
 | student_shop.html | Lines 100-135 collective progress | ✅ View model computed |
 | student_shop.html | Lines 198-234 ORM traversal | ✅ Flattened in view |
@@ -212,6 +224,7 @@ grep -n "strftime\|format(" templates/admin_payroll.html
 ---
 
 **Next Steps:**
+
 1. Update student_shop.html template
 2. Update admin_rent_settings.html template
 3. Update admin_payroll.html template
