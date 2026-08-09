@@ -7,12 +7,24 @@ DOM-CLASS-002 authority.
 
 Per SPEC-TEST-001: All fixtures use canonical initializer (initialize).
 Per SPEC-TIME-001: All temporal logic uses canonical_temporal_resolver.
+
+PHASE D STATUS (Test Execution):
+⏳ BLOCKED by Phase 3 FEAT implementation
+   Root cause: v2 FEAT-INTEGRITY enforcement requires all DB mutations through FEAT context
+   Current behavior: Direct db.session.add/commit raises FEATContextError
+   Solution: Phase 3 must define FEAT-ECON-001 orchestration layer for economic engine creation
+
+   When Phase 3 FEATs are complete:
+   1. Update tests to call FEATs instead of direct db.session mutations
+   2. Run full test suite to verify Phase 2 persistence layer
+   3. Verify schema constraints and immutability TRIGGERs work correctly
 """
 import pytest
 from datetime import timedelta
 from decimal import Decimal
+from sqlalchemy.exc import IntegrityError
 
-from app.models import EconomicEngine, ClassFeature
+from app.models import EconomicEngine, ClassFeature, ClassEconomy
 from app.extensions import db
 from app.utils.canonical_temporal_resolver import (
     canonical_temporal_resolver,
@@ -182,7 +194,7 @@ class TestEconomicEngineVersionChain:
 
             # Attempt to delete v1 should fail (RESTRICT FK)
             db.session.delete(v1)
-            with pytest.raises(Exception):  # IntegrityError
+            with pytest.raises(IntegrityError):
                 db.session.commit()
             db.session.rollback()
 
@@ -297,7 +309,7 @@ class TestClassFeatureAppendOnly:
             )
             db.session.add(f2)
 
-            with pytest.raises(Exception):  # IntegrityError
+            with pytest.raises(IntegrityError):
                 db.session.commit()
             db.session.rollback()
 
@@ -428,7 +440,7 @@ class TestClassFeatureAppendOnly:
 
             # Attempt to delete version should fail (RESTRICT FK)
             db.session.delete(v1)
-            with pytest.raises(Exception):  # IntegrityError
+            with pytest.raises(IntegrityError):
                 db.session.commit()
             db.session.rollback()
 
@@ -456,7 +468,7 @@ class TestEconomicEngineCheckConstraints:
                 economy_policy_mode="invalid_mode",
             )
             db.session.add(v_invalid)
-            with pytest.raises(Exception):  # IntegrityError
+            with pytest.raises(IntegrityError):
                 db.session.commit()
             db.session.rollback()
 
@@ -482,7 +494,7 @@ class TestEconomicEngineCheckConstraints:
                 economy_policy_mode="default",
             )
             db.session.add(v_invalid)
-            with pytest.raises(Exception):  # IntegrityError
+            with pytest.raises(IntegrityError):
                 db.session.commit()
             db.session.rollback()
 
@@ -522,7 +534,7 @@ class TestEconomicEngineCheckConstraints:
                 economy_policy_mode="default",
             )
             db.session.add(v_zero)
-            with pytest.raises(Exception):  # IntegrityError
+            with pytest.raises(IntegrityError):
                 db.session.commit()
             db.session.rollback()
 
@@ -563,7 +575,7 @@ class TestEconomicEngineCheckConstraints:
                 economy_policy_mode="default",
             )
             db.session.add(v_invalid)
-            with pytest.raises(Exception):  # IntegrityError
+            with pytest.raises(IntegrityError):
                 db.session.commit()
             db.session.rollback()
 
@@ -589,7 +601,7 @@ class TestEconomicEngineCheckConstraints:
                 economy_policy_mode="default",
             )
             db.session.add(v_invalid)
-            with pytest.raises(Exception):  # IntegrityError
+            with pytest.raises(IntegrityError):
                 db.session.commit()
             db.session.rollback()
 
@@ -615,7 +627,7 @@ class TestEconomicEngineCheckConstraints:
                 economy_policy_mode="default",
             )
             db.session.add(v_invalid)
-            with pytest.raises(Exception):  # IntegrityError
+            with pytest.raises(IntegrityError):
                 db.session.commit()
             db.session.rollback()
 
@@ -641,7 +653,7 @@ class TestEconomicEngineCheckConstraints:
                 economy_policy_mode="default",
             )
             db.session.add(v_invalid)
-            with pytest.raises(Exception):  # IntegrityError
+            with pytest.raises(IntegrityError):
                 db.session.commit()
             db.session.rollback()
 
@@ -675,7 +687,7 @@ class TestClassFeatureCheckConstraints:
                 effective_at=now + timedelta(hours=1),
             )
             db.session.add(f_invalid)
-            with pytest.raises(Exception):  # IntegrityError
+            with pytest.raises(IntegrityError):
                 db.session.commit()
             db.session.rollback()
 

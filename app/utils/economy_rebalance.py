@@ -9,7 +9,6 @@ from typing import Any
 from app.extensions import db
 from app.models import (
     ClassEconomy,
-    FeatureSettings,
     PolicyTransition,
     PolicyVersion,
     RentSettings,
@@ -216,7 +215,7 @@ def _create_policy_transition(
 
 
 def _create_policy_transitions_for_changes(
-    settings_row,
+    class_id: str,
     changes: list[dict[str, Any]],
     *,
     activation_mode: str,
@@ -225,7 +224,11 @@ def _create_policy_transitions_for_changes(
     reference_time: datetime,
     applied_at: datetime | None = None,
 ) -> list[PolicyTransition]:
-    class_id = getattr(settings_row, "class_id", None)
+    """Create policy transitions for a set of changes.
+
+    Refactored in Phase 2 to remove FeatureSettings dependency (table dropped).
+    Now takes class_id directly instead of settings_row object.
+    """
     if not class_id:
         return []
 
@@ -329,11 +332,25 @@ def _get_effective_rent_settings(class_id: str | None):
     )
 
 
-def _apply_change_list(user_id, settings_row, changes, activation_mode, *, reference_time=None):
+def _apply_change_list(user_id, class_id, changes, activation_mode, *, reference_time=None):
+    """Apply policy changes to a class's economic configuration.
+
+    Args:
+        user_id: Teacher who triggered the rebalance
+        class_id: Class to apply changes to (canonical identifier)
+        changes: List of change dictionaries from policy payload
+        activation_mode: When to activate (REBALANCE_ACTIVATION_*)
+        reference_time: Time of rebalance (for audit trail)
+
+    Returns:
+        Tuple of (applied_labels, applied_changes)
+
+    Note: FeatureSettings.economy_last_rebalanced_* audit fields removed in Phase 2
+    (table dropped; audit trail moves to EconomicEngine version history)
+    """
     reference_time = ensure_utc(reference_time) if reference_time else utc_now()
     applied_labels = []
     applied_changes: list[dict[str, Any]] = []
-    class_id = getattr(settings_row, "class_id", None)
 
     for change in changes:
         change_type = change.get("type")
@@ -343,10 +360,6 @@ def _apply_change_list(user_id, settings_row, changes, activation_mode, *, refer
                 rent_settings.rent_amount = Decimal(str(change.get("new_value")))
                 applied_labels.append("Rent")
                 applied_changes.append(dict(change))
-
-    if applied_labels:
-        settings_row.economy_last_rebalanced_at = reference_time
-        settings_row.economy_last_rebalanced_by = user_id
 
     return applied_labels, applied_changes
 
@@ -371,18 +384,33 @@ def _activate_pending_policy_version(transition: PolicyTransition, *, reference_
     return activated_version
 
 
-def apply_rebalance_changes(user_id, settings_row, change_plan, activation_mode, *, reference_time=None):
+def apply_rebalance_changes(user_id, class_id, change_plan, activation_mode, *, reference_time=None):
+    """Apply rebalance changes for a class.
+
+    Refactored in Phase 2 to remove FeatureSettings dependency (table dropped).
+    Now takes class_id directly instead of settings_row object.
+
+    Args:
+        user_id: Teacher user ID
+        class_id: Class to apply changes to
+        change_plan: List of change payloads from policy
+        activation_mode: When to activate (REBALANCE_ACTIVATION_*)
+        reference_time: Time of rebalance
+
+    Returns:
+        List of applied change labels
+    """
     reference_time = ensure_utc(reference_time) if reference_time else utc_now()
     applied_labels, applied_changes = _apply_change_list(
         user_id,
-        settings_row,
+        class_id,
         change_plan,
         activation_mode,
         reference_time=reference_time,
     )
     if applied_changes:
         _create_policy_transitions_for_changes(
-            settings_row,
+            class_id,
             applied_changes,
             activation_mode=activation_mode,
             created_by=user_id,
@@ -394,21 +422,28 @@ def apply_rebalance_changes(user_id, settings_row, change_plan, activation_mode,
 
 
 def activate_due_rebalances(user_id, *, class_id=None, reference_time=None):
+    """Activate due rebalances for a teacher's classes.
+
+    Replaces FeatureSettings query (dropped in Phase 2) with direct ClassEconomy query.
+    """
     reference_time = ensure_utc(reference_time) if reference_time else utc_now()
-    class_ids_subq = (
-        db.session.query(ClassEconomy.class_id)
-        .filter(ClassEconomy.teacher_user_id == user_id)
-        .subquery()
+
+    # Get class_ids for this teacher (direct from ClassEconomy, not via FeatureSettings)
+    class_ids_query = db.session.query(ClassEconomy.class_id).filter(
+        ClassEconomy.teacher_user_id == user_id
     )
-    pending_rows_query = FeatureSettings.query.filter(FeatureSettings.class_id.in_(sa.select(class_ids_subq)))
+
+    # Filter to specific class if provided
     if class_id:
-        pending_rows_query = pending_rows_query.filter(FeatureSettings.class_id == class_id)
+        class_ids_query = class_ids_query.filter(ClassEconomy.class_id == class_id)
+
+    class_ids_to_process = [row[0] for row in class_ids_query.all()]
 
     activated = 0
     applied_labels = []
 
-    for settings_row in pending_rows_query.all():
-        pending_transitions = _get_pending_policy_transitions_for_class(settings_row.class_id)
+    for current_class_id in class_ids_to_process:
+        pending_transitions = _get_pending_policy_transitions_for_class(current_class_id)
         if pending_transitions:
             for transition in pending_transitions:
                 target_version = db.session.get(PolicyVersion, transition.target_policy_version_id)
@@ -435,7 +470,7 @@ def activate_due_rebalances(user_id, *, class_id=None, reference_time=None):
 
                 applied_now, applied_changes = _apply_change_list(
                     user_id,
-                    settings_row,
+                    current_class_id,
                     [change],
                     activation_mode,
                     reference_time=reference_time,
@@ -447,7 +482,7 @@ def activate_due_rebalances(user_id, *, class_id=None, reference_time=None):
                     transition.status = POLICY_TRANSITION_STATUS_APPLIED
                     transition.applied_at = reference_time
                     _supersede_pending_transitions(
-                        settings_row.class_id,
+                        current_class_id,
                         transition.domain,
                         transition.id,
                         reference_time=reference_time,

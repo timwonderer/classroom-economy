@@ -570,15 +570,25 @@ def get_active_policy_mode(
 
 
 def get_active_policy_mode_for_class(class_id: Optional[str]) -> str:
+    """Get the active policy mode for a class from its latest EconomicEngine version.
+
+    Refactored in Phase 2 to get policy_mode from EconomicEngine instead of FeatureSettings.
+    If no EconomicEngine version exists yet, returns the default policy mode.
+    """
     if not has_app_context() or not class_id:
         return POLICY_MODE_DEFAULT
 
-    from app.models import FeatureSettings
+    from app.models import EconomicEngine
+    from sqlalchemy import desc
 
-    row = FeatureSettings.query.filter_by(class_id=class_id).first()
-    if not row:
+    # Get the most recent EconomicEngine version for this class
+    economic_engine = EconomicEngine.query.filter_by(
+        class_id=class_id
+    ).order_by(desc(EconomicEngine.created_at)).first()
+
+    if not economic_engine:
         return POLICY_MODE_DEFAULT
-    return normalize_policy_mode(getattr(row, "economy_policy_mode", POLICY_MODE_DEFAULT))
+    return normalize_policy_mode(getattr(economic_engine, "economy_policy_mode", POLICY_MODE_DEFAULT))
 
 
 def resolve_feature_class_for_class(

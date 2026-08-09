@@ -1,8 +1,8 @@
 # SPEC-ECON-001: Savings Interest Accrual and Disbursement Specification
 
 | Reference Number | Version | Effective Date | Supersedes | Authority Level |
-|---|---|---|---|---|
-| SPEC-ECON-001 | 1.0 | 2026-07-25 | None | Normative |
+|------------------|---------|----------------|------------|-----------------|
+| SPEC-ECON-001    | 1.0     | 2026-07-25     | None       | Normative       |
 
 ---
 

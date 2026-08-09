@@ -62,7 +62,7 @@ from app.models import (
     RentSettings,
     HallPassLog, HallPassSettings, PayrollSettings,
     BankingSettings,
-    FeatureSettings,
+    ClassFeature,
     Announcement, Issue, IssueCategory, IssueStatusHistory, IssueResolutionAction, Seat,
     LedgerBalanceSnapshot, User, UserRole, _quantize_currency,
     ObligationAssessment,
@@ -604,21 +604,21 @@ def _get_teacher_user_join_code(canonical_context=None) -> str | None:
 
 def get_admin_feature_settings_for_class_id(canonical_context=None, class_id: str | None = None) -> dict:
     if canonical_context is None or not getattr(canonical_context, "user_id", None):
-        return FeatureSettings.get_defaults()
+        return ClassFeature.defaults_dict()
 
     resolved_class_id = (class_id or getattr(canonical_context, "class_id", None) or "").strip()
     if not resolved_class_id:
-        return FeatureSettings.get_defaults()
+        return ClassFeature.defaults_dict()
 
     class_row = ClassEconomy.query.with_entities(ClassEconomy.class_id).filter_by(
         teacher_user_id=canonical_context.user_id,
         class_id=resolved_class_id,
     ).first()
     if not class_row or not class_row.class_id:
-        return FeatureSettings.get_defaults()
+        return ClassFeature.defaults_dict()
 
     scoped_features = get_class_feature_settings_for_class(class_row.class_id)
-    return scoped_features["features"] if scoped_features else FeatureSettings.get_defaults()
+    return scoped_features["features"] if scoped_features else ClassFeature.defaults_dict()
 
 
 def is_admin_feature_enabled(canonical_context: CanonicalContext, feature_name: str) -> bool:
@@ -1387,9 +1387,6 @@ def _delete_teacher_settings_activity_and_audit_rows(canonical_context):
     BankingSettings.query.filter(
         BankingSettings.class_id.in_(sa.select(class_ids_subq))
     ).delete(synchronize_session=False)
-    FeatureSettings.query.filter(
-        FeatureSettings.class_id.in_(sa.select(class_ids_subq))
-    ).delete(synchronize_session=False)
     HallPassSettings.query.filter(
         HallPassSettings.class_id.in_(sa.select(class_ids_subq))
     ).delete(synchronize_session=False)
@@ -1965,11 +1962,11 @@ def _get_feature_settings(class_id=None):
     Get class-scoped feature settings for a specific class.
     """
     if not class_id:
-        return FeatureSettings.get_defaults()
+        return ClassFeature.defaults_dict()
     scoped_features = get_class_feature_settings(None, class_id=class_id)
     if scoped_features:
         return scoped_features["features"]
-    return FeatureSettings.get_defaults()
+    return ClassFeature.defaults_dict()
 
 
 def _build_economy_snapshot_from_analysis(class_id, checker, analysis):
@@ -2490,12 +2487,18 @@ def _load_economy_rebalance_context(canonical_context, class_id, selected_block)
 
 
 def _apply_rebalance_plan(canonical_context, settings_row, change_plan, activation_mode):
+    """Apply rebalance plan for a class (wrapper for economy_rebalance function).
+
+    Refactored in Phase 2 to extract class_id from settings_row instead of passing
+    the FeatureSettings object directly (FeatureSettings table dropped).
+    """
     user_id = canonical_context.user_id
-    applied_labels = apply_rebalance_changes(user_id, settings_row, change_plan, activation_mode)
+    class_id = getattr(settings_row, "class_id", None)
+    applied_labels = apply_rebalance_changes(user_id, class_id, change_plan, activation_mode)
     current_app.logger.info(
         "Applied economy rebalance for teacher=%s class_id=%s activation=%s changes=%s",
         user_id,
-        settings_row.class_id,
+        class_id,
         activation_mode,
         applied_labels,
     )
@@ -9951,7 +9954,7 @@ def feature_settings():
     period_settings = {}
     for period in periods:
         scoped_features = get_class_feature_settings(None, class_id=class_id_by_period.get(period))
-        period_settings[period] = scoped_features["features"] if scoped_features else FeatureSettings.get_defaults()
+        period_settings[period] = scoped_features["features"] if scoped_features else ClassFeature.defaults_dict()
 
     return render_template(
         'admin_feature_settings.html',

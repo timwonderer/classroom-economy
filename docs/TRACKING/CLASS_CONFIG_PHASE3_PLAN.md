@@ -296,9 +296,10 @@ def validate_payroll_rate(hourly_pay_rate: float, policy_mode: str) -> tuple[boo
 
 ## Refactoring Scope (Routes Using These Queries)
 
-### Routes that need Phase 3 refactoring:
+### Routes that need Phase 3 refactoring
 
 **Admin Routes (`app/routes/admin.py`):**
+
 - `/admin/<join_code>/settings` - class configuration page
 - `/admin/<join_code>/settings/payroll` - payroll settings page
 - `/admin/<join_code>/settings/rent` - rent settings page
@@ -306,20 +307,24 @@ def validate_payroll_rate(hourly_pay_rate: float, policy_mode: str) -> tuple[boo
 - Any route that reads ClassEconomy, PayrollSettings, RentSettings, etc.
 
 **Analytics Routes (`app/routes/analytics.py`):**
+
 - `/admin/analytics/class/<join_code>` - class analytics (uses CWI, policy mode)
 
 **Main Routes (`app/routes/main.py`):**
+
 - Any route that lists classes or checks configuration
 
-### Refactoring Pattern:
+### Refactoring Pattern
 
 **BEFORE (Direct DB access):**
+
 ```python
 class_econ = ClassEconomy.query.filter_by(class_id=class_id).first()
 payroll = PayrollSettings.query.filter_by(class_id=class_id).first()
 ```
 
 **AFTER (Service layer):**
+
 ```python
 from app.services.class_configuration_query_service import (
     get_class_economy,
@@ -341,6 +346,7 @@ Each service function requires:
 3. **Multi-tenancy test** — Query respects class_id scope (if applicable)
 
 Example test structure:
+
 ```python
 def test_get_payroll_settings_returns_class_scoped_data(app):
     """Verify payroll settings query respects class scope."""
