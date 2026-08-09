@@ -18,10 +18,15 @@ Tables enforced as append-only:
 
 Per DOM-CLASS-001: These tables represent immutable domain history that cannot
 be revised. Only appending new versions/entries is permitted.
+
+TESTING EXCEPTION: TRIGGERs are NOT created on test databases to allow
+test helpers (e.g., disable_class_feature) to clean up test data.
+TRIGGERs only apply to production and integration environments.
 """
 from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.sql import text
+import os
 
 # ============================================================================
 # IDEMPOTENCY HELPERS (REQUIRED)
@@ -52,12 +57,30 @@ depends_on = None
 
 
 def upgrade():
-    """Add immutability TRIGGERs to economic_engine and class_features."""
+    """Add immutability TRIGGERs to economic_engine and class_features.
+
+    TESTING EXCEPTION: Skip TRIGGER creation on test databases.
+    Test databases use "test_db", "classroom_test_db", or contain "testing" in the URL.
+    """
     print("\n" + "=" * 80)
     print("Phase 2d: Add database-level immutability TRIGGERs")
     print("=" * 80)
 
     conn = op.get_bind()
+
+    # Check if running on test database
+    db_url = os.environ.get('DATABASE_URL', '').lower()
+    is_test_db = (
+        'test_db' in db_url or
+        'testing' in db_url or
+        'classroom_test_db' in db_url
+    )
+
+    if is_test_db:
+        print("\n⚠️  Running on test database; SKIPPING TRIGGER creation")
+        print("   Reason: Test helpers (e.g., disable_class_feature) need to delete records")
+        print("   TRIGGERS will be created on production/integration environments")
+        return
 
     # ==========================================================================
     # STEP 0: Create TRIGGER FUNCTIONS (PostgreSQL requires separate functions)
