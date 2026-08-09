@@ -83,15 +83,30 @@ def upgrade():
 
     # Use batch_alter_table to handle the PK change
     with op.batch_alter_table('class_features', schema=None) as batch_op:
-        # Drop the old serial id column
+        # Drop the old serial id column (which was the PK)
         batch_op.drop_column('id')
         print("   ✅ Dropped id column")
+
+    # Explicitly create the composite primary key
+    # (batch_alter_table doesn't automatically create composite PKs)
+    if not constraint_exists('class_features', 'pk_class_features'):
+        op.create_primary_key(
+            'pk_class_features',
+            'class_features',
+            ['class_id', 'feature', 'effective_at']
+        )
+        print("   ✅ Created composite primary key (class_id, feature, effective_at)")
+    else:
+        print("   ℹ️  Composite primary key already exists")
 
     print("   ✅ Phase 2b complete: class_features now uses composite PK (class_id, feature, effective_at)")
 
 
 def downgrade():
     """Revert Phase 2b (downgrade not supported)."""
-    print("\n⬅️  Reverting Phase 2b: Cannot restore id column without sequence recreation")
-    print("⚠️  Phase 2b downgrade is not supported. Composite PK is permanent.")
-    print("   Use a fresh database if you need to revert this phase.")
+    raise RuntimeError(
+        "Downgrade from Phase 2b is not supported. "
+        "Removing the id surrogate and establishing composite PK (class_id, feature, effective_at) "
+        "is a permanent architectural change. If rollback is necessary, restore from database backup. "
+        "Contact ops team for guidance."
+    )

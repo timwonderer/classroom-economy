@@ -84,6 +84,9 @@ def upgrade():
     print("CLASS Phase 2: Persistence Reconstruction")
     print("=" * 80)
 
+    # Get database connection once at start (available for all steps)
+    conn = op.get_bind()
+
     # ==========================================================================
     # STEP 1: Create economic_engine table (immutable versioning)
     # ==========================================================================
@@ -128,7 +131,6 @@ def upgrade():
         print("\n📊 Migrating configuration data to economic_engine...")
 
         # Query existing configuration from legacy tables
-        conn = op.get_bind()
         rows_to_insert = conn.execute(text("""
             SELECT
                 fs.class_id,
@@ -136,6 +138,7 @@ def upgrade():
                 bs.savings_apy,
                 bs.interest_calculation_type,
                 bs.compound_frequency,
+                bs.interest_schedule_type,
                 fs.economy_policy_mode,
                 fs.created_at
             FROM feature_settings fs
@@ -146,14 +149,14 @@ def upgrade():
 
         inserted_count = 0
         for row in rows_to_insert:
-            class_id, hours, rate, calc_type, compound_freq, mode, created_at = row
+            class_id, hours, rate, calc_type, compound_freq, payout_freq, mode, created_at = row
             version_id = str(uuid.uuid4())
             conn.execute(text("""
                 INSERT INTO economic_engine
                 (economic_version_id, class_id, previous_version_id, expected_weekly_hours, interest_rate,
                  interest_calculation_type, compound_frequency, interest_accrual_frequency, interest_payout_frequency,
                  economy_policy_mode, created_at)
-                VALUES (:version_id, :class_id, NULL, :hours, :rate, :calc_type, :compound_freq, NULL, NULL, :mode, :created_at)
+                VALUES (:version_id, :class_id, NULL, :hours, :rate, :calc_type, :compound_freq, NULL, :payout_freq, :mode, :created_at)
             """), {
                 'version_id': version_id,
                 'class_id': class_id,
@@ -161,6 +164,7 @@ def upgrade():
                 'rate': rate,  # NULL if not configured; preserved as-is
                 'calc_type': calc_type,
                 'compound_freq': compound_freq,
+                'payout_freq': payout_freq,  # banking_settings.interest_schedule_type; NULL if not configured
                 'mode': mode,
                 'created_at': created_at
             })
@@ -272,15 +276,20 @@ def upgrade():
         print("⚠️  classes table not found; skipping updates")
 
     # ==========================================================================
-    # STEP 5: Drop feature_settings table (mutable singleton, replaced by economic-engine)
+    # STEP 5: Drop feature_settings table (DEFERRED - consumers must migrate first)
     # ==========================================================================
-    print("\n🗑️  Cleaning up legacy tables...")
+    print("\n⏳ Cleanup deferred: feature_settings still referenced by runtime code")
+    print("   Consumers (economy_rebalance.py, economy_policy.py, routes) must migrate first.")
+    print("   After consumer migration complete: feature_settings will be dropped in Phase A follow-up.")
 
-    if table_exists('feature_settings'):
-        op.drop_table('feature_settings')
-        print("   ✅ Dropped feature_settings table (replaced by immutable economic-engine)")
-    else:
-        print("   ⚠️  feature_settings table already removed")
+    # NOTE: DO NOT DROP feature_settings yet. Runtime code still queries:
+    #   - app/utils/economy_rebalance.py: FeatureSettings.query
+    #   - app/utils/economy_policy.py: FeatureSettings.query.filter_by(), FeatureSettings()
+    #   - app/routes/admin.py: get_admin_feature_settings_for_class_id()
+    #   - app/routes/student.py: get_feature_settings_for_student()
+    #
+    # Drop will be executed after Phase C (route migration) completes.
+    # See: Phase A Step 4-5 in remediation plan
 
     print("\n" + "=" * 80)
     print("✅ CLASS Phase 2 Migration Complete")
@@ -292,49 +301,11 @@ def downgrade():
     print("CLASS Phase 2 Downgrade")
     print("=" * 80)
 
-    # Note: Downgrade is complex and may not fully restore state.
-    # This is intentional: Phase 2 represents a structural shift that should not be reversed.
-    # If downgrade is truly needed, perform a backup restore instead.
-
-    print("⚠️  Downgrade is not fully supported for Phase 2 (architectural shift)")
-    print("    If necessary, restore from database backup instead of downgrade")
-
-    # Minimal downgrade: recreate feature_settings table for compat
-    if not table_exists('feature_settings'):
-        op.create_table('feature_settings',
-            sa.Column('id', sa.Integer(), nullable=False),
-            sa.Column('class_id', sa.String(length=36), nullable=False),
-            sa.Column('economy_policy_mode', sa.String(length=20), server_default='default', nullable=False),
-            sa.Column('economy_policy_updated_at', sa.DateTime(timezone=True), nullable=False),
-            sa.Column('economy_policy_alignment_status', sa.String(length=32), nullable=True),
-            sa.Column('economy_last_rebalanced_at', sa.DateTime(timezone=True), nullable=True),
-            sa.Column('economy_last_rebalanced_by', sa.Integer(), nullable=True),
-            sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
-            sa.Column('updated_at', sa.DateTime(timezone=True), nullable=False),
-            sa.ForeignKeyConstraint(['class_id'], ['classes.class_id'], ondelete='CASCADE'),
-            sa.PrimaryKeyConstraint('id'),
-            sa.UniqueConstraint('class_id', name='uq_feature_settings_class_id')
-        )
-        print("   ✅ Recreated feature_settings table (downgrade compat)")
-
-    # Restore columns to classes table
-    if not column_exists('classes', 'updated_at'):
-        with op.batch_alter_table('classes', schema=None) as batch_op:
-            batch_op.add_column(sa.Column('updated_at', sa.DateTime(timezone=True), nullable=False))
-        print("   ✅ Restored updated_at to classes")
-
-    if not column_exists('classes', 'created_by_user_id'):
-        with op.batch_alter_table('classes', schema=None) as batch_op:
-            batch_op.add_column(sa.Column('created_by_user_id', sa.Integer(), nullable=True))
-        op.create_foreign_key('fk_classes_created_by_user_id', 'classes', 'users', ['created_by_user_id'], ['id'], ondelete='SET NULL')
-        print("   ✅ Restored created_by_user_id to classes")
-
-    # Restore user_id to classes (requires rename from teacher_user_id)
-    if column_exists('classes', 'teacher_user_id') and not column_exists('classes', 'user_id'):
-        with op.batch_alter_table('classes', schema=None) as batch_op:
-            batch_op.alter_column('teacher_user_id', new_column_name='user_id')
-        print("   ✅ Restored user_id to classes")
-
-    print("\n" + "=" * 80)
-    print("❌ Downgrade Complete (Partial - restore from backup recommended)")
-    print("=" * 80)
+    # Phase 2 represents a structural shift that cannot be safely reversed.
+    # Downgrade is not supported; raising exception to alert operator.
+    raise RuntimeError(
+        "Downgrade from Phase 2 is not supported. "
+        "Phase 2 represents an immutable architectural shift to event-based economic versioning. "
+        "If rollback is truly necessary, restore from database backup instead of downgrade. "
+        "Contact ops team for guidance."
+    )
