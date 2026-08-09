@@ -401,8 +401,6 @@ class EconomicEngine(db.Model):
         db.CheckConstraint("interest_payout_frequency IS NULL OR interest_payout_frequency IN ('weekly', 'monthly')", name='ck_economic_engine_payout_freq'),
     )
 
-    class_economy = db.relationship('ClassEconomy', foreign_keys=[class_id])
-
 
 @event.listens_for(EconomicEngine, "before_update")
 def prevent_economic_engine_update(_mapper, _connection, target):

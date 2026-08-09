@@ -9,37 +9,47 @@ import pytest
 from datetime import timedelta
 from decimal import Decimal
 
-from app.models import ClassEconomy, EconomicEngine, ClassFeature, User
+from app.models import ClassEconomy, EconomicEngine, ClassFeature, User, UserRole
 from app.extensions import db
 from app.utils.canonical_temporal_resolver import utc_now
+from app.feats.base import FEATContext
 
 
 @pytest.fixture
-def teacher(app):
-    """Create a test teacher."""
+def teacher_id(app):
+    """Create a test teacher and return its ID."""
     with app.app_context():
-        teacher = User(username="teacher1", email="teacher@example.com")
-        db.session.add(teacher)
-        db.session.commit()
-        return teacher
+        with FEATContext("FEAT-TEST-SETUP", idempotency_key="test-class-phase2-teacher"):
+            teacher = User(
+                username_hash='teacher1_hash',
+                user_role=UserRole.TEACHER,
+            )
+            db.session.add(teacher)
+            db.session.flush()
+            teacher_id = teacher.id
+        # Context exits and commits
+        return teacher_id
 
 
 @pytest.fixture
-def class_economy(app, teacher):
-    """Create a test class with the teacher."""
+def class_economy(app, teacher_id):
+    """Create a test class and return its ID."""
     with app.app_context():
-        class_obj = ClassEconomy(
-            class_id="class-1",
-            class_public_id="public-1",
-            join_code="ABC123",
-            teacher_user_id=teacher.id,
-            display_name="Test Class",
-            section="Period 1",
-            class_timezone="US/Eastern",
-        )
-        db.session.add(class_obj)
-        db.session.commit()
-        return class_obj
+        with FEATContext("FEAT-TEST-SETUP", idempotency_key="test-class-phase2-class"):
+            class_obj = ClassEconomy(
+                class_id="class-1",
+                class_public_id="public-1",
+                join_code="ABC123",
+                teacher_user_id=teacher_id,
+                display_name="Test Class",
+                section="Period 1",
+                class_timezone="US/Eastern",
+            )
+            db.session.add(class_obj)
+            db.session.flush()
+            class_id = class_obj.class_id
+        # Context exits and commits
+        return class_id
 
 
 class TestEconomicEngineImmutability:
