@@ -235,18 +235,35 @@ def upgrade():
                 conn.execute(text("ALTER TABLE classes ADD COLUMN teacher_user_id INTEGER"))
                 conn.execute(text("UPDATE classes SET teacher_user_id = user_id WHERE teacher_user_id IS NULL"))
 
+                # Validate backfill: ensure no NULL teacher_user_id remains (class ownership is mandatory)
+                null_owner_count = conn.execute(
+                    text("SELECT COUNT(*) FROM classes WHERE teacher_user_id IS NULL")
+                ).scalar()
+                if null_owner_count > 0:
+                    raise RuntimeError(
+                        f"Backfill failed: {null_owner_count} classes have NULL teacher_user_id. "
+                        "Classes must have an owner (teacher_user_id is NOT NULL). "
+                        "Verify user_id backfill completed successfully before retrying."
+                    )
+                print(f"   ✅ Backfill verified: all {conn.execute(text('SELECT COUNT(*) FROM classes')).scalar()} classes have teacher_user_id")
+
                 # Drop old FK and column
                 for fk in get_foreign_keys_by_column('classes', 'user_id'):
                     op.drop_constraint(fk['name'], 'classes', type_='foreignkey')
 
+                # Enforce NOT NULL constraint before dropping user_id
                 with op.batch_alter_table('classes', schema=None) as batch_op:
+                    # Alter teacher_user_id to NOT NULL (mandatory class ownership)
+                    batch_op.alter_column('teacher_user_id', nullable=False)
+                    # Then drop the old user_id column
                     batch_op.drop_column('user_id')
+                print("   ✅ Set teacher_user_id to NOT NULL (mandatory class ownership)")
 
                 # Add new FK
                 op.create_foreign_key('fk_classes_teacher_user_id', 'classes', 'users', ['teacher_user_id'], ['id'], ondelete='CASCADE')
                 if not index_exists('classes', 'ix_classes_teacher_user_id'):
                     op.create_index('ix_classes_teacher_user_id', 'classes', ['teacher_user_id'])
-                print("   ✅ Renamed user_id → teacher_user_id with FK")
+                print("   ✅ Renamed user_id → teacher_user_id with FK (NOT NULL)")
             else:
                 # teacher_user_id already exists, just drop user_id if it exists
                 for fk in get_foreign_keys_by_column('classes', 'user_id'):

@@ -363,12 +363,7 @@ class EconomicEngine(db.Model):
         nullable=False,
         index=True,
     )
-    previous_version_id = db.Column(
-        db.String(36),
-        db.ForeignKey('economic_engine.economic_version_id', ondelete='RESTRICT'),
-        nullable=True,
-        index=True,
-    )
+    previous_version_id = db.Column(db.String(36), nullable=True, index=True)
 
     # Class capacity
     expected_weekly_hours = db.Column(db.Float, nullable=True)
@@ -392,6 +387,16 @@ class EconomicEngine(db.Model):
     created_at = db.Column(db.DateTime(timezone=True), default=utc_now, nullable=False)
 
     __table_args__ = (
+        # Composite key enforcement: versions are scoped to their owning class
+        db.UniqueConstraint('class_id', 'economic_version_id', name='uq_economic_engine_class_version'),
+        # Composite foreign key: previous version must be in the same class
+        db.ForeignKeyConstraint(
+            ['class_id', 'previous_version_id'],
+            ['economic_engine.class_id', 'economic_engine.economic_version_id'],
+            ondelete='RESTRICT',
+            name='fk_economic_engine_previous_version'
+        ),
+        # Check constraints
         db.CheckConstraint("economy_policy_mode IN ('tight', 'default', 'comfortable')", name='ck_economic_engine_mode'),
         db.CheckConstraint('expected_weekly_hours IS NULL OR expected_weekly_hours > 0', name='ck_economic_engine_hours'),
         db.CheckConstraint('interest_rate IS NULL OR (interest_rate >= 0 AND interest_rate <= 1.0)', name='ck_economic_engine_rate'),
@@ -1543,17 +1548,19 @@ class ClassFeature(db.Model):
         index=True,
     )
     feature = db.Column(db.String(32), nullable=False)
-    economic_version_id = db.Column(
-        db.String(36),
-        db.ForeignKey('economic_engine.economic_version_id', ondelete='RESTRICT'),
-        nullable=True,
-        index=True,
-    )
+    economic_version_id = db.Column(db.String(36), nullable=True, index=True)
     effective_at = db.Column(db.DateTime(timezone=True), nullable=False, default=utc_now)
     created_at = db.Column(db.DateTime(timezone=True), default=utc_now, nullable=False)
 
     __table_args__ = (
         db.PrimaryKeyConstraint('class_id', 'feature', 'effective_at', name='pk_class_features'),
+        # Composite foreign key: feature version must be in the same class
+        db.ForeignKeyConstraint(
+            ['class_id', 'economic_version_id'],
+            ['economic_engine.class_id', 'economic_engine.economic_version_id'],
+            ondelete='RESTRICT',
+            name='fk_class_features_economic_version'
+        ),
         db.CheckConstraint(
             "feature IN ('payroll', 'insurance', 'banking', 'rent', 'hall_pass', 'store')",
             name='ck_class_features_feature',
