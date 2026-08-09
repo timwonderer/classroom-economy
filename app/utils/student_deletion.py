@@ -211,7 +211,7 @@ def remove_student_from_teacher_scope(seat_id, user_id):
     scoped_entitlement_ids, scoped_issue_ids, scoped_tx_ids, scoped_seat_ids = (
         _collect_related_ids_for_seats([seat_id])
     )
-    teacher_class_ids = sa.select(ClassEconomy.class_id).where(ClassEconomy.user_id == user_id)
+    teacher_class_ids = sa.select(ClassEconomy.class_id).where(ClassEconomy.teacher_user_id == user_id)
     Seat.query.filter(
         Seat.id == seat_id,
         Seat.class_id.in_(teacher_class_ids),

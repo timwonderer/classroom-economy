@@ -252,7 +252,7 @@ def verify_hall_pass(teacher_public_token):
     # Build the display list from the teacher's classes; POST must still resolve
     # the selected class directly by class_id.
     classes_rows = (
-        ClassEconomy.query.filter_by(user_id=teacher_user.id)
+        ClassEconomy.query.filter_by(teacher_user_id=teacher_user.id)
         .order_by(ClassEconomy.display_name)
         .all()
     )

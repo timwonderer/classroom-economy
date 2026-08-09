@@ -415,10 +415,10 @@ def _resolve_admin_class_context(canonical_context=None) -> dict | None:
     if candidate_class_id:
         class_row = (
             ClassEconomy.query.with_entities(
-                ClassEconomy.class_id, ClassEconomy.user_id
+                ClassEconomy.class_id, ClassEconomy.teacher_user_id
             )
             .filter(
-                ClassEconomy.user_id == user_id,
+                ClassEconomy.teacher_user_id == user_id,
                 ClassEconomy.class_id == candidate_class_id,
             )
             .first()
@@ -594,7 +594,7 @@ def _get_teacher_user_join_code(canonical_context=None) -> str | None:
     if not current_class_id:
         return None
     class_row = ClassEconomy.query.with_entities(ClassEconomy.class_id).filter(
-        ClassEconomy.user_id == user_id,
+        ClassEconomy.teacher_user_id == user_id,
         ClassEconomy.class_id == current_class_id,
     ).first()
     if not class_row:
@@ -611,7 +611,7 @@ def get_admin_feature_settings_for_class_id(canonical_context=None, class_id: st
         return FeatureSettings.get_defaults()
 
     class_row = ClassEconomy.query.with_entities(ClassEconomy.class_id).filter_by(
-        user_id=canonical_context.user_id,
+        teacher_user_id=canonical_context.user_id,
         class_id=resolved_class_id,
     ).first()
     if not class_row or not class_row.class_id:
@@ -641,7 +641,7 @@ def get_admin_feature_join_code_options(feature_name: str, canonical_context=Non
             ClassEconomy.display_name,
         )
         .filter(
-            ClassEconomy.user_id == resolved_admin_user_id,
+            ClassEconomy.teacher_user_id == resolved_admin_user_id,
         )
         .order_by(ClassEconomy.class_id.asc(), ClassEconomy.created_at.asc())
         .all()
@@ -795,7 +795,7 @@ def _get_teacher_blocks(canonical_context):
     query = (
         db.session.query(ClassEconomy.section)
         .filter(
-            ClassEconomy.user_id == user_id,
+            ClassEconomy.teacher_user_id == user_id,
             ClassEconomy.section.isnot(None),
         )
     )
@@ -822,7 +822,7 @@ def _resolve_block_class_ids(canonical_context, blocks):
     rows = (
         db.session.query(ClassEconomy.section, ClassEconomy.class_id)
         .filter(
-            ClassEconomy.user_id == user_id,
+            ClassEconomy.teacher_user_id == user_id,
             ClassEconomy.class_id.isnot(None),
         )
         .all()
@@ -1065,7 +1065,7 @@ def _seat_scope_subquery_for_class(class_id: str, *, include_unassigned: bool = 
         db.session.query(Seat.id)
         .join(ClassEconomy, ClassEconomy.class_id == Seat.class_id)
         .filter(
-            ClassEconomy.user_id == user_id,
+            ClassEconomy.teacher_user_id == user_id,
             Seat.class_id == class_id,
             Seat.role == "student",
         )
@@ -1374,7 +1374,7 @@ def _delete_teacher_residual_ownership_rows(canonical_context):
     """Delete teacher-user link rows not already removed by class-scoped deletion."""
     user_id = canonical_context.user_id
     Seat.query.join(ClassEconomy, ClassEconomy.class_id == Seat.class_id).filter(
-        ClassEconomy.user_id == user_id
+        ClassEconomy.teacher_user_id == user_id
     ).delete(synchronize_session=False)
 
 
@@ -1382,7 +1382,7 @@ def _delete_teacher_settings_activity_and_audit_rows(canonical_context):
     """Delete teacher-user scoped settings, activity, and audit rows."""
     user_id = canonical_context.user_id
     class_ids_subq = db.session.query(ClassEconomy.class_id).filter(
-        ClassEconomy.user_id == user_id
+        ClassEconomy.teacher_user_id == user_id
     ).subquery()
     BankingSettings.query.filter(
         BankingSettings.class_id.in_(sa.select(class_ids_subq))
@@ -1399,7 +1399,7 @@ def _delete_teacher_settings_activity_and_audit_rows(canonical_context):
     Announcement.query.filter(
         Announcement.user_id == user_id
     ).delete(synchronize_session=False)
-    Transaction.query.filter_by(user_id=user_id).delete(synchronize_session=False)
+    Transaction.query.filter_by(teacher_user_id=user_id).delete(synchronize_session=False)
     PendingAction.query.filter(
         PendingAction.authoritative_feat == "FEAT-STOR-002",
         PendingAction.class_id.in_(sa.select(class_ids_subq)),
@@ -1410,7 +1410,7 @@ def _delete_teacher_rent_rows(canonical_context):
     """Delete rent settings and dependent items owned by the teacher user."""
     user_id = canonical_context.user_id
     class_ids_subq = db.session.query(ClassEconomy.class_id).filter(
-        ClassEconomy.user_id == user_id
+        ClassEconomy.teacher_user_id == user_id
     ).subquery()
     RentSettings.query.filter(
         RentSettings.class_id.in_(sa.select(class_ids_subq))
@@ -1421,7 +1421,7 @@ def _delete_teacher_insurance_rows(canonical_context):
     """Delete insurance policies and dependent rows scoped to classes owned by the teacher user."""
     user_id = canonical_context.user_id
     class_ids_subq = db.session.query(ClassEconomy.class_id).filter(
-        ClassEconomy.user_id == user_id
+        ClassEconomy.teacher_user_id == user_id
     ).subquery()
     # Insurance tables are removed in v2; no legacy cleanup path remains here.
     _ = class_ids_subq
@@ -1435,7 +1435,7 @@ def _delete_teacher_issue_rows(canonical_context):
     user_id = canonical_context.user_id
     class_public_ids = [
         pub_id for (pub_id,) in
-        db.session.query(ClassEconomy.class_public_id).filter(ClassEconomy.user_id == user_id).all()
+        db.session.query(ClassEconomy.class_public_id).filter(ClassEconomy.teacher_user_id == user_id).all()
     ]
     if not class_public_ids:
         return
@@ -1461,11 +1461,11 @@ def _delete_teacher_recovery_and_credentials_rows(canonical_context):
 def _delete_teacher_store_rows(canonical_context):
     """Delete store rows owned by the teacher user."""
     user_id = canonical_context.user_id
-    store_item_ids_subq = db.session.query(StoreItem.id).filter_by(user_id=user_id).subquery()
+    store_item_ids_subq = db.session.query(StoreItem.id).filter_by(teacher_user_id=user_id).subquery()
     EntitlementEvent.query.filter(
         EntitlementEvent.product_id.in_(sa.select(store_item_ids_subq))
     ).delete(synchronize_session=False)
-    StoreItem.query.filter_by(user_id=user_id).delete(synchronize_session=False)
+    StoreItem.query.filter_by(teacher_user_id=user_id).delete(synchronize_session=False)
 
 
 def _delete_orphan_students(affected_student_ids):
@@ -1496,7 +1496,7 @@ def _hard_delete_teacher_account_scope(canonical_context):
 
     class_ids = [
         value for (value,) in db.session.query(ClassEconomy.class_id).filter(
-            ClassEconomy.user_id == user_id,
+            ClassEconomy.teacher_user_id == user_id,
         ).distinct().all()
     ]
 
@@ -1622,7 +1622,7 @@ def _get_seat_or_404(seat_id, include_unassigned=True):
         .join(ClassEconomy, ClassEconomy.class_id == Seat.class_id)
         .filter(
             Seat.id == seat_id,
-            ClassEconomy.user_id == g.canonical_context.user_id,
+            ClassEconomy.teacher_user_id == g.canonical_context.user_id,
         )
     )
     if class_id:
@@ -1775,7 +1775,7 @@ def _consume_pending_class_timezone_confirmations(canonical_context) -> list[dic
     class_rows = {
         row.class_id: row
         for row in ClassEconomy.query.filter(
-            ClassEconomy.user_id == user_id,
+            ClassEconomy.teacher_user_id == user_id,
             ClassEconomy.class_id.in_(class_ids),
         ).all()
     }
@@ -1904,7 +1904,7 @@ def _link_student_to_admin(
 
     if not target_class_id:
         existing_class = ClassEconomy.query.filter(
-            ClassEconomy.user_id == user_id,
+            ClassEconomy.teacher_user_id == user_id,
             ClassEconomy.class_id.in_(
                 [cid for cid in _get_class_ids_by_block(g.canonical_context, [target_block]).values() if cid]
             ),
@@ -2470,7 +2470,7 @@ def _load_economy_rebalance_context(canonical_context, class_id, selected_block)
     if not selected_class_id:
         raise InvariantViolation("Missing canonical class_id for economy rebalance context.")
 
-    class_ids_query = db.session.query(ClassEconomy.class_id).filter_by(user_id=user_id)
+    class_ids_query = db.session.query(ClassEconomy.class_id).filter_by(teacher_user_id=user_id)
     payroll_query = PayrollSettings.query.filter(
         PayrollSettings.class_id.in_(sa.select(class_ids_query.subquery())),
         PayrollSettings.is_active.is_(True),
@@ -2483,7 +2483,7 @@ def _load_economy_rebalance_context(canonical_context, class_id, selected_block)
 
     rent_settings = _resolve_rent_settings_for_class_id(selected_class_id)
 
-    class_ids_query = db.session.query(ClassEconomy.class_id).filter_by(user_id=user_id)
+    class_ids_query = db.session.query(ClassEconomy.class_id).filter_by(teacher_user_id=user_id)
     insurance_policies = []
 
     return effective_block, payroll_settings, rent_settings, insurance_policies, all_payroll_settings
@@ -2522,7 +2522,7 @@ def _get_validated_teacher_class_options(user_id: int) -> list[dict]:
 
     class_rows = (
         db.session.query(ClassEconomy.class_id, ClassEconomy.display_name)
-        .filter(ClassEconomy.user_id == user_id)
+        .filter(ClassEconomy.teacher_user_id == user_id)
         .order_by(ClassEconomy.created_at.asc(), ClassEconomy.class_id.asc())
         .all()
     )
@@ -2628,7 +2628,7 @@ def dashboard():
     # V2 canonical: scope everything through class_id from canonical context.
     teacher_class_ids = [
         c.class_id for c in
-        ClassEconomy.query.filter_by(user_id=current_user_id).all()
+        ClassEconomy.query.filter_by(teacher_user_id=current_user_id).all()
     ]
 
     seats = Seat.query.filter(Seat.class_id.in_(teacher_class_ids), Seat.role == 'student').all()
@@ -3615,7 +3615,7 @@ def settings():
                 admin.display_name = None  # Use canonical public_id as fallback
 
             # Update class labels for each ClassEconomy (canonical class label store)
-            teacher_classes = ClassEconomy.query.filter_by(user_id=user_id).all()
+            teacher_classes = ClassEconomy.query.filter_by(teacher_user_id=user_id).all()
             for cls in teacher_classes:
                 section_key = cls.section or cls.join_code or ''
                 class_label_key = f'class_label_{section_key}'
@@ -3630,7 +3630,7 @@ def settings():
     # Derive blocks from ClassEconomy (canonical class anchor)
     blocks = [
         {'block': cls.section or cls.join_code or '', 'class_label': cls.display_name}
-        for cls in ClassEconomy.query.filter_by(user_id=user_id).order_by(ClassEconomy.class_id.asc()).all()
+        for cls in ClassEconomy.query.filter_by(teacher_user_id=user_id).order_by(ClassEconomy.class_id.asc()).all()
     ]
 
     # Pass admin object directly so template can call methods like get_display_username()
@@ -3923,7 +3923,7 @@ def students():
     if not current_class_id:
         first_class = (
             ClassEconomy.query.with_entities(ClassEconomy.class_id)
-            .filter(ClassEconomy.user_id == user_id)
+            .filter(ClassEconomy.teacher_user_id == user_id)
             .order_by(ClassEconomy.display_name.asc(), ClassEconomy.class_id.asc())
             .first()
         )
@@ -3944,7 +3944,7 @@ def students():
     pending_ids = {item.get("class_id") for item in pending_class_timezone_confirmations if item.get("class_id")}
     if current_class_id and current_class_id not in pending_ids:
         class_row = ClassEconomy.query.filter(
-            ClassEconomy.user_id == user_id,
+            ClassEconomy.teacher_user_id == user_id,
             ClassEconomy.class_id == current_class_id,
             sa.or_(
                 ClassEconomy.class_timezone.is_(None),
@@ -4090,7 +4090,7 @@ def set_current_class():
 
     user_id = g.canonical_context.user_id
     query = ClassEconomy.query.with_entities(ClassEconomy.class_id).filter(
-        ClassEconomy.user_id == user_id,
+        ClassEconomy.teacher_user_id == user_id,
     )
     query = query.filter(ClassEconomy.class_id == class_id)
     class_row = query.first()
@@ -4120,7 +4120,7 @@ def set_class_timezone(class_id: str):
             'message': 'Class scope mismatch. Switch class from the navigation to continue.',
         }), 403
 
-    class_row = ClassEconomy.query.filter_by(class_id=class_id, user_id=user_id).first()
+    class_row = ClassEconomy.query.filter_by(class_id=class_id, teacher_user_id=user_id).first()
     if class_row is None:
         return jsonify({'status': 'error', 'message': 'Class not found.'}), 404
 
@@ -4184,7 +4184,7 @@ def student_detail_public(actor_public_id):
         .filter(
             Seat.public_id == actor_public_id,
             Seat.role == "student",
-            ClassEconomy.user_id == user_id,
+            ClassEconomy.teacher_user_id == user_id,
         )
         .first()
     )
@@ -4407,7 +4407,7 @@ def adjust_hall_pass_entitlements(seat_id):
         abort(404)
 
     # Verify teacher owns this class
-    if not ClassEconomy.query.filter_by(class_id=target_seat.class_id, user_id=canonical_context.user_id).first():
+    if not ClassEconomy.query.filter_by(class_id=target_seat.class_id, teacher_user_id=canonical_context.user_id).first():
         abort(404)
 
     action = (request.form.get('hall_pass_action') or '').strip().lower()
@@ -4475,7 +4475,7 @@ def edit_student():
         abort(404)
     if student.class_id != current_class_id:
         abort(404)
-    if not ClassEconomy.query.filter_by(class_id=current_class_id, user_id=user_id).first():
+    if not ClassEconomy.query.filter_by(class_id=current_class_id, teacher_user_id=user_id).first():
         abort(404)
 
     # Get form data
@@ -4572,7 +4572,7 @@ def delete_student():
     student = db.session.get(Seat, seat_id)
     if not student:
         abort(404)
-    if not ClassEconomy.query.filter_by(class_id=student.class_id, user_id=g.canonical_context.user_id).first():
+    if not ClassEconomy.query.filter_by(class_id=student.class_id, teacher_user_id=g.canonical_context.user_id).first():
         abort(404)
     student_name = student.identity_profile.full_name if student.identity_profile else str(student.id)
 
@@ -4699,7 +4699,7 @@ def delete_join_code():
     if not display_join_code:
         return jsonify({"status": "error", "message": "join_code is required."}), 400
 
-    class_rows = ClassEconomy.query.with_entities(ClassEconomy.class_id).filter_by(user_id=user_id).all()
+    class_rows = ClassEconomy.query.with_entities(ClassEconomy.class_id).filter_by(teacher_user_id=user_id).all()
     class_row = next(
         (row for row in class_rows if (get_display_join_code(row.class_id) or "").upper() == display_join_code),
         None,
@@ -4766,7 +4766,7 @@ def delete_pending_student():
             .join(ClassEconomy, ClassEconomy.class_id == Seat.class_id)
             .filter(
                 Seat.id == seat_id,
-                ClassEconomy.user_id == user_id,
+                ClassEconomy.teacher_user_id == user_id,
             )
             .first()
         )
@@ -4841,7 +4841,7 @@ def bulk_delete_pending_students():
                     .join(ClassEconomy, ClassEconomy.class_id == Seat.class_id)
                     .filter(
                         Seat.id == seat_id,
-                        ClassEconomy.user_id == user_id,
+                        ClassEconomy.teacher_user_id == user_id,
                     )
                     .first()
                 )
@@ -5388,7 +5388,7 @@ def store_management():
     audit_per_page = 25
 
     join_code_label_map = {}
-    teacher_class_rows = ClassEconomy.query.filter_by(user_id=user_id).all()
+    teacher_class_rows = ClassEconomy.query.filter_by(teacher_user_id=user_id).all()
     for ce_row in teacher_class_rows:
         display_join_code = get_display_join_code(ce_row.class_id)
         if display_join_code and display_join_code not in join_code_label_map:
@@ -5404,7 +5404,7 @@ def store_management():
             Seat.class_id.label("class_id"),
             PendingAction.authoritative_feat.label("action"),
             PendingAction.payload.label("notes"),
-            ClassEconomy.user_id.label("user_id"),
+            ClassEconomy.teacher_user_id.label("user_id"),
             PendingAction.class_id.label("class_id"),
             PendingAction.submitted_at.label("timestamp"),
             sa.literal("LIVE").label("source"),
@@ -5800,7 +5800,7 @@ def rent_settings():
             ClassEconomy.section,
             ClassEconomy.display_name,
         )
-        .filter_by(user_id=user_id, class_id=current_class_id)
+        .filter_by(teacher_user_id=user_id, class_id=current_class_id)
         .first()
     )
     if not class_row or not class_row.class_id:
@@ -6387,7 +6387,7 @@ def _get_teacher_user_tier_namespace_seed(user_id):
     """Return a stable seed for tenant-scoped tier IDs using a display alias if available."""
     class_row = (
         db.session.query(ClassEconomy.class_id)
-        .filter_by(user_id=user_id)
+        .filter_by(teacher_user_id=user_id)
         .order_by(ClassEconomy.class_id)
         .first()
     )
@@ -8581,7 +8581,7 @@ def upload_students():
                 flash("Select a class before syncing roster data.", "error")
                 return redirect(url_for("admin.students"))
 
-            class_row = ClassEconomy.query.filter_by(class_id=class_id, user_id=user_id).first()
+            class_row = ClassEconomy.query.filter_by(class_id=class_id, teacher_user_id=user_id).first()
             if not class_row:
                 flash("Select a class before syncing roster data.", "error")
                 return redirect(url_for("admin.students"))
@@ -8908,7 +8908,7 @@ def export_class_roster():
         flash("Select a class before exporting roster.", "error")
         return redirect(url_for("admin.students"))
 
-    class_row = ClassEconomy.query.filter_by(class_id=class_id, user_id=user_id).first()
+    class_row = ClassEconomy.query.filter_by(class_id=class_id, teacher_user_id=user_id).first()
     if not class_row:
         flash("Select a class before exporting roster.", "error")
         return redirect(url_for("admin.students"))
@@ -9002,7 +9002,7 @@ def export_students():
     # Prefetch active insurances to avoid N+1 queries
     active_insurances_map = {}
     if user_id and seat_ids:
-        class_ids_subq = db.session.query(ClassEconomy.class_id).filter_by(user_id=user_id).subquery()
+        class_ids_subq = db.session.query(ClassEconomy.class_id).filter_by(teacher_user_id=user_id).subquery()
         pass
 
     for seat in seats:
@@ -9278,7 +9278,7 @@ def bulk_adjust_hall_pass_entitlements():
                 errors.append(f"Student {seat_id} not found")
                 continue
 
-            if not ClassEconomy.query.filter_by(class_id=student.class_id, user_id=g.canonical_context.user_id).first():
+            if not ClassEconomy.query.filter_by(class_id=student.class_id, teacher_user_id=g.canonical_context.user_id).first():
                 errors.append(f"Student {seat_id} not found")
                 continue
 
@@ -9713,7 +9713,7 @@ def help_support():
 
     teacher_user_class_rows = (
         ClassEconomy.query
-        .filter_by(user_id=user_id)
+        .filter_by(teacher_user_id=user_id)
         .order_by(ClassEconomy.class_id.asc(), ClassEconomy.created_at.asc())
         .all()
     )
@@ -10347,14 +10347,14 @@ def onboarding_status():
     """
     user_id = g.canonical_context.user_id
     try:
-        class_ids_subq = db.session.query(ClassEconomy.class_id).filter_by(user_id=user_id).subquery()
+        class_ids_subq = db.session.query(ClassEconomy.class_id).filter_by(teacher_user_id=user_id).subquery()
 
         completion = {
             'roster': (
                 db.session.query(Seat.id)
                 .join(ClassEconomy, ClassEconomy.class_id == Seat.class_id)
                 .filter(
-                    ClassEconomy.user_id == user_id,
+                    ClassEconomy.teacher_user_id == user_id,
                     Seat.role == "student",
                     Seat.user_id.isnot(None),
                     Seat.claimed_at.isnot(None),
@@ -10378,7 +10378,7 @@ def onboarding_status():
                 HallPassSettings.class_id.in_(sa.select(class_ids_subq))
             ).first() is not None,
             'personalization': bool(ClassEconomy.query.filter(
-                ClassEconomy.user_id == user_id,
+                ClassEconomy.teacher_user_id == user_id,
                 ClassEconomy.display_name.isnot(None),
                 ClassEconomy.display_name != '',
             ).first()),
@@ -10509,7 +10509,7 @@ def _resolve_admin_payroll_settings_for_class_id(canonical_context, class_id: st
         )
 
     user_id = canonical_context.user_id if canonical_context and getattr(canonical_context, "user_id", None) else None
-    class_ids_subq = db.session.query(ClassEconomy.class_id).filter_by(user_id=user_id).subquery()
+    class_ids_subq = db.session.query(ClassEconomy.class_id).filter_by(teacher_user_id=user_id).subquery()
     return (
         PayrollSettings.query
         .filter(
@@ -10569,7 +10569,7 @@ def api_economy_analyze():
         checker = EconomyBalanceChecker(user_id, None, class_id=getattr(payroll_settings, "class_id", None))
 
         # Get other economy features
-        class_ids_query = db.session.query(ClassEconomy.class_id).filter_by(user_id=user_id)
+        class_ids_query = db.session.query(ClassEconomy.class_id).filter_by(teacher_user_id=user_id)
         scoped_class_id = class_id
 
         if scoped_class_id:

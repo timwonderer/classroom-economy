@@ -433,7 +433,7 @@ def resolve_class_scope(
     class_row = (
         ClassEconomy.query.with_entities(ClassEconomy.class_id, ClassEconomy.section)
         .filter(
-            ClassEconomy.user_id == user_id,
+            ClassEconomy.teacher_user_id == user_id,
             ClassEconomy.class_id == normalized_class_id,
         )
         .first()
