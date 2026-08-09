@@ -39,7 +39,17 @@ def enable_class_feature(*, class_id: str, feature_name: str = None, feature: st
             class_id=class_id
         ).order_by(desc(EconomicEngine.created_at)).first()
 
-        economic_version_id = latest_engine.economic_version_id if latest_engine else None
+        # If no engine exists, create a default one for this class
+        if not latest_engine:
+            latest_engine = EconomicEngine(
+                class_id=class_id,
+                economic_version_id="v1",  # Default initial version
+                economy_policy_mode="default",
+            )
+            db.session.add(latest_engine)
+            db.session.flush()
+
+        economic_version_id = latest_engine.economic_version_id
 
         cf = ClassFeature(
             class_id=class_id,
