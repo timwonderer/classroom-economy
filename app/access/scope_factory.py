@@ -50,7 +50,7 @@ def _scope_from_runtime_seat(*, actor, selected_class_id: str | None) -> Scope |
         join_code=get_display_join_code(class_row.class_id) or "",
         actor_id=actor.id,
         role="student",
-        user_id=class_row.user_id,
+        user_id=class_row.teacher_user_id,
         block=current_seat.class_economy.section if current_seat.class_economy else None,
         seat_id=current_seat.id,
     )
@@ -93,7 +93,7 @@ def resolve_student_class_switch_scope(*, actor, class_id: str) -> ResolvedStude
         join_code=get_display_join_code(class_row.class_id) or "",
         actor_id=actor.id,
         role="student",
-        user_id=class_row.user_id,
+        user_id=class_row.teacher_user_id,
         block=seat.class_economy.section if seat.class_economy else None,
         seat_id=seat.id,
     )
@@ -198,7 +198,7 @@ def resolve_scope(*, actor, selected_class_id: str | None = None, actor_role: st
         join_code=get_display_join_code(class_row.class_id) or "",
         actor_id=actor.id,
         role="student",
-        user_id=class_row.user_id,
+        user_id=class_row.teacher_user_id,
         block=active_seat.class_economy.section if active_seat.class_economy else None,
         seat_id=active_seat.id,
     )

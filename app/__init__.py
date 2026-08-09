@@ -551,8 +551,8 @@ def create_app():
             current_class_id = get_current_class_id()
             if current_seat and current_class_id:
                 class_row = ClassEconomy.query.filter_by(class_id=current_class_id).first()
-                if class_row and class_row.user_id:
-                    user_id = class_row.user_id
+                if class_row and class_row.teacher_user_id:
+                    user_id = class_row.teacher_user_id
         except Exception:
             # Keep request resilient.
             return None
@@ -681,7 +681,7 @@ def create_app():
 
             from app.models import ClassEconomy
             class_row = ClassEconomy.query.filter_by(class_id=current_class_id).first()
-            if not class_row or not class_row.user_id:
+            if not class_row or not class_row.teacher_user_id:
                 return {'admin_feature_settings': ClassFeature.defaults_dict()}
             return {
                 'admin_feature_settings': get_admin_feature_settings_for_class_id(
