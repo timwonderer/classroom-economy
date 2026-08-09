@@ -7,7 +7,7 @@ from tests.helpers.classroom_initializer import initialize_as_teacher
 
 def test_DOM_CLASS_001__banking_settings_update_persists_class_scoped_row(client):
     classroom = initialize_as_teacher("chemistry_p1", client, client.application)
-    enable_class_feature(class_id=classroom.class_id, feature_name="banking")
+    enable_class_feature(class_id=classroom.class_id, feature="banking")
 
     response = update_banking_settings(
         client,

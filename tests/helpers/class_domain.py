@@ -16,33 +16,98 @@ from app.feats.base import FEATContext
 from app.models import ClassFeature
 
 
-def enable_class_feature(*, class_id: str, feature_name: str):
-    """Seed a single class feature row via the production FEAT path."""
-    with FEATContext("FEAT-SETTINGS-001", idempotency_key=f"class_feature:enable:{class_id}:{feature_name}"):
-        feature = ClassFeature(class_id=class_id, feature_name=feature_name)
-        db.session.add(feature)
+def enable_class_feature(*, class_id: str, feature_name: str = None, feature: str = None):
+    """Seed a single class feature row via the production FEAT path.
+
+    Args:
+        class_id: The class to enable feature for
+        feature_name: DEPRECATED - use 'feature' instead
+        feature: Feature name (e.g., 'payroll', 'rent', 'banking')
+    """
+    # Support both old and new parameter names for backward compatibility during migration
+    feature_value = feature or feature_name
+    if not feature_value:
+        raise ValueError("Either 'feature' or 'feature_name' parameter must be provided")
+
+    with FEATContext("FEAT-SETTINGS-001", idempotency_key=f"class_feature:enable:{class_id}:{feature_value}"):
+        # Phase 2 semantic: Feature is enabled by linking to current EconomicEngine version
+        from app.models import EconomicEngine
+        from sqlalchemy import desc
+
+        # Get the most recent EconomicEngine version for this class
+        latest_engine = EconomicEngine.query.filter_by(
+            class_id=class_id
+        ).order_by(desc(EconomicEngine.created_at)).first()
+
+        # If no engine exists, create a default one for this class
+        if not latest_engine:
+            latest_engine = EconomicEngine(
+                class_id=class_id,
+                economic_version_id="v1",  # Default initial version
+                economy_policy_mode="default",
+            )
+            db.session.add(latest_engine)
+            db.session.flush()
+
+        economic_version_id = latest_engine.economic_version_id
+
+        cf = ClassFeature(
+            class_id=class_id,
+            feature=feature_value,
+            economic_version_id=economic_version_id  # Link to current version for enablement
+        )
+        db.session.add(cf)
         db.session.flush()
         db.session.info["feat_orchestrator_commit"] = True
         try:
             db.session.commit()
         finally:
             db.session.info.pop("feat_orchestrator_commit", None)
-        return feature
+        return cf
 
 
-def disable_class_feature(*, class_id: str, feature_name: str):
-    """Remove a single class feature row via the production FEAT path."""
-    with FEATContext("FEAT-SETTINGS-001", idempotency_key=f"class_feature:disable:{class_id}:{feature_name}"):
-        feature = ClassFeature.query.filter_by(class_id=class_id, feature_name=feature_name).first()
-        if feature is not None:
-            db.session.delete(feature)
+def disable_class_feature(*, class_id: str, feature_name: str = None, feature: str = None):
+    """Disable a class feature by appending a disablement row (append-only).
+
+    Phase 2 semantics: Rather than deleting the feature row, we append a new row
+    with economic_version_id=None to represent disablement. This preserves the
+    append-only timeline contract.
+
+    Args:
+        class_id: The class
+        feature_name: DEPRECATED - use 'feature' instead
+        feature: Feature name (e.g., 'payroll', 'rent', 'banking')
+    """
+    # Support both old and new parameter names for backward compatibility during migration
+    feature_value = feature or feature_name
+    if not feature_value:
+        raise ValueError("Either 'feature' or 'feature_name' parameter must be provided")
+
+    with FEATContext("FEAT-SETTINGS-001", idempotency_key=f"class_feature:disable:{class_id}:{feature_value}"):
+        # Check if feature currently exists as enabled
+        existing = ClassFeature.query.filter_by(
+            class_id=class_id,
+            feature=feature_value
+        ).order_by(ClassFeature.effective_at.desc()).first()
+
+        if existing and existing.economic_version_id is not None:
+            # Feature is currently enabled; append a disablement row
+            cf = ClassFeature(
+                class_id=class_id,
+                feature=feature_value,
+                economic_version_id=None  # Signals "disabled"
+            )
+            db.session.add(cf)
             db.session.flush()
             db.session.info["feat_orchestrator_commit"] = True
             try:
                 db.session.commit()
             finally:
                 db.session.info.pop("feat_orchestrator_commit", None)
-        return feature
+            return cf
+        else:
+            # Feature already disabled or doesn't exist; no-op
+            return existing
 
 
 def update_payroll_settings(client, **form_data: Any):

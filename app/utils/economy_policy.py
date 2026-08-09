@@ -433,7 +433,7 @@ def resolve_class_scope(
     class_row = (
         ClassEconomy.query.with_entities(ClassEconomy.class_id, ClassEconomy.section)
         .filter(
-            ClassEconomy.user_id == user_id,
+            ClassEconomy.teacher_user_id == user_id,
             ClassEconomy.class_id == normalized_class_id,
         )
         .first()
@@ -493,22 +493,55 @@ def get_class_feature_settings(
 
 def replace_enabled_class_features(class_id: str, enabled_features: set[str]) -> None:
     from app.extensions import db
-    from app.models import ClassFeature
+    from app.models import ClassFeature, EconomicEngine
+    from sqlalchemy import desc
 
     valid_features = set(ClassFeature.feature_names())
     requested_features = {name for name in enabled_features if name in valid_features}
     # Payroll is mandatory in v2 class feature gating.
     requested_features.add("payroll")
-    existing_rows = ClassFeature.query.filter_by(class_id=class_id).all()
-    existing_names = {row.feature_name for row in existing_rows}
 
-    for row in existing_rows:
-        if row.feature_name not in requested_features:
-            db.session.delete(row)
+    # Get the current economic version for this class
+    latest_engine = EconomicEngine.query.filter_by(
+        class_id=class_id
+    ).order_by(desc(EconomicEngine.created_at)).first()
 
-    missing_names = requested_features - existing_names
-    for feature_name in sorted(missing_names):
-        db.session.add(ClassFeature(class_id=class_id, feature_name=feature_name))
+    if not latest_engine:
+        # Create default engine if missing
+        latest_engine = EconomicEngine(
+            class_id=class_id,
+            economic_version_id="v1",
+            economy_policy_mode="default",
+        )
+        db.session.add(latest_engine)
+        db.session.flush()
+
+    economic_version_id = latest_engine.economic_version_id
+
+    # Get currently enabled features for this class
+    currently_enabled = ClassFeature.enabled_names_for_class(class_id)
+
+    # For each feature, if the requested state differs from current state, append a row
+    for feature_name in sorted(valid_features | requested_features):
+        is_currently_enabled = feature_name in currently_enabled
+        should_be_enabled = feature_name in requested_features
+
+        if is_currently_enabled != should_be_enabled:
+            # State changed; append new row to timeline
+            if should_be_enabled:
+                # Enable: set version_id to current version
+                db.session.add(ClassFeature(
+                    class_id=class_id,
+                    feature=feature_name,
+                    economic_version_id=economic_version_id
+                ))
+            else:
+                # Disable: set version_id to None
+                db.session.add(ClassFeature(
+                    class_id=class_id,
+                    feature=feature_name,
+                    economic_version_id=None
+                ))
 
 
 def get_feature_settings_row(
@@ -570,15 +603,25 @@ def get_active_policy_mode(
 
 
 def get_active_policy_mode_for_class(class_id: Optional[str]) -> str:
+    """Get the active policy mode for a class from its latest EconomicEngine version.
+
+    Refactored in Phase 2 to get policy_mode from EconomicEngine instead of FeatureSettings.
+    If no EconomicEngine version exists yet, returns the default policy mode.
+    """
     if not has_app_context() or not class_id:
         return POLICY_MODE_DEFAULT
 
-    from app.models import FeatureSettings
+    from app.models import EconomicEngine
+    from sqlalchemy import desc
 
-    row = FeatureSettings.query.filter_by(class_id=class_id).first()
-    if not row:
+    # Get the most recent EconomicEngine version for this class
+    economic_engine = EconomicEngine.query.filter_by(
+        class_id=class_id
+    ).order_by(desc(EconomicEngine.created_at)).first()
+
+    if not economic_engine:
         return POLICY_MODE_DEFAULT
-    return normalize_policy_mode(getattr(row, "economy_policy_mode", POLICY_MODE_DEFAULT))
+    return normalize_policy_mode(getattr(economic_engine, "economy_policy_mode", POLICY_MODE_DEFAULT))
 
 
 def resolve_feature_class_for_class(

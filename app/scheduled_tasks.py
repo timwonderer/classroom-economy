@@ -89,7 +89,7 @@ def enforce_daily_limits_job():
 
             actor_seat_id = resolve_class_authority_seat_id(class_id)
             ctx = CanonicalContext(
-                user_id=class_row.user_id,
+                user_id=class_row.teacher_user_id,
                 class_id=class_id,
                 seat_id=actor_seat_id,
                 actor_role="teacher",

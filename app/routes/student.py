@@ -28,7 +28,7 @@ from app.models import (
     Transaction, TransactionStatus, AttendanceSession, StoreItem, StoreItemVisibility,
     # StoreItemBlock removed — store_item_blocks unauthorized; use store_item_visibility (DOM-STORE-001)
     RentSettings,
-    BankingSettings, FeatureSettings, Issue, Seat, User, UserRole, PendingAction,
+    BankingSettings, ClassFeature, Issue, Seat, User, UserRole, PendingAction,
     ClassEconomy, IdentityProfile, PayrollEvent, PolicyVersion, StoreProduct, _quantize_currency
 )
 from app.auth import (
@@ -469,18 +469,18 @@ def get_feature_settings_for_student():
     """
     context = resolve_canonical_context()
     if not context:
-        return FeatureSettings.get_defaults()
+        return ClassFeature.defaults_dict()
 
     class_id = context.class_id
     if not class_id:
-        return FeatureSettings.get_defaults()
+        return ClassFeature.defaults_dict()
 
     scoped_features = get_class_feature_settings_for_class(class_id)
     if scoped_features:
         return scoped_features["features"]
 
     # Return system defaults
-    return FeatureSettings.get_defaults()
+    return ClassFeature.defaults_dict()
 
 
 def is_feature_enabled(feature_name):

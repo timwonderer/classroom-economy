@@ -122,8 +122,7 @@ def create_class(
     economy = ClassEconomy(
         class_id=class_id,
         join_code=join_code,
-        user_id=user_id,
-        created_by_user_id=user_id,
+        teacher_user_id=user_id,
         display_name=display_name,
         section=section,
         class_timezone=class_timezone,

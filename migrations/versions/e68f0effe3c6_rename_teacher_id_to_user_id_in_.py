@@ -82,7 +82,8 @@ def upgrade():
         op.alter_column('classes', 'teacher_id', new_column_name='user_id')
     if index_exists('classes', 'ix_classes_teacher_id'):
         op.drop_index(op.f('ix_classes_teacher_id'), table_name='classes')
-    if not index_exists('classes', 'ix_classes_user_id'):
+    # Only create index if user_id column exists (may not if created as teacher_user_id in bootstrap)
+    if column_exists('classes', 'user_id') and not index_exists('classes', 'ix_classes_user_id'):
         op.create_index(op.f('ix_classes_user_id'), 'classes', ['user_id'], unique=False)
 
 

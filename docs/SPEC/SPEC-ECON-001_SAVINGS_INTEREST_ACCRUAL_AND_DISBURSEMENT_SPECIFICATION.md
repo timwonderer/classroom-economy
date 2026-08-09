@@ -2,7 +2,7 @@
 
 | Reference Number | Version | Effective Date | Supersedes | Authority Level |
 |------------------|---------|----------------|------------|-----------------|
-| SPEC-ECON-001 | 1.0 | 2026-07-25 | None | Normative |
+| SPEC-ECON-001    | 1.0     | 2026-07-25     | None       | Normative       |
 
 ---
 
@@ -65,7 +65,7 @@ UTC calendar shortcuts are prohibited.
 The following concepts are independent:
 
 | Concept | Purpose |
-|---|---|
+| --- | --- |
 | Accrual Frequency | How often interest is earned |
 | Compound Frequency | How often accrued interest joins future earning base |
 | Payout Frequency | How often interest becomes posted ledger balance |
@@ -222,7 +222,7 @@ Compound frequency determines when accrued interest joins future earning eligibi
 Example:
 
 | Frequency | Behavior |
-|---|---|
+| --- | --- |
 | Daily | Accrued interest participates next day |
 | Weekly | Participation updates weekly |
 | Monthly | Participation updates after monthly capitalization |
@@ -364,7 +364,7 @@ from authoritative records.
 The recommended canonical banking model for CTH is:
 
 | Property | Recommended Setting |
-|---|---|
+| --- | --- |
 | Accrual Frequency | Daily |
 | Compound Frequency | Monthly |
 | Payout Frequency | Monthly |
@@ -396,6 +396,7 @@ When the scheduled accrual settlement job fires, the accrual service SHALL:
 The accrual service MAY request policy activation at a lawful accrual boundary.
 
 The accrual service MUST NOT:
+
 - Directly mutate `policy_versions` or `policy_transitions`
 - Activate policy changes outside `FEAT-ECON-001` orchestration
 - Determine supersession legality
@@ -408,6 +409,7 @@ Policy lineage remains owned by `DOM-CLASS-003`. Class-level policy inputs remai
 ## 15. Amendment
 
 Revisions to this document SHALL:
+
 1. Increment the version number.
 2. Update the Effective Date.
 3. Maintain consistency with `INV-CORE-000` and `INV-ARC-015`.

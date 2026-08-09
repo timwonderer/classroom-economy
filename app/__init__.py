@@ -551,8 +551,8 @@ def create_app():
             current_class_id = get_current_class_id()
             if current_seat and current_class_id:
                 class_row = ClassEconomy.query.filter_by(class_id=current_class_id).first()
-                if class_row and class_row.user_id:
-                    user_id = class_row.user_id
+                if class_row and class_row.teacher_user_id:
+                    user_id = class_row.teacher_user_id
         except Exception:
             # Keep request resilient.
             return None
@@ -663,26 +663,26 @@ def create_app():
             # This can happen during `flask db` commands before the table exists.
             # Fallback to defaults to avoid breaking CLI commands.
             app.logger.warning(f"Could not load feature settings, falling back to defaults: {e}")
-            from app.models import FeatureSettings
-            return {'feature_settings': FeatureSettings.get_defaults()}
+            from app.models import ClassFeature
+            return {'feature_settings': ClassFeature.defaults_dict()}
 
     @app.context_processor
     def inject_admin_feature_settings():
         """Inject class-scoped admin feature settings into all templates."""
         try:
             from app.auth import get_current_class_id, get_current_user
-            from app.models import FeatureSettings
+            from app.models import ClassFeature
             from app.routes.admin import get_admin_feature_settings_for_class_id
 
             current_user = get_current_user()
             current_class_id = get_current_class_id()
             if not current_user or not current_class_id:
-                return {'admin_feature_settings': FeatureSettings.get_defaults()}
+                return {'admin_feature_settings': ClassFeature.defaults_dict()}
 
             from app.models import ClassEconomy
             class_row = ClassEconomy.query.filter_by(class_id=current_class_id).first()
-            if not class_row or not class_row.user_id:
-                return {'admin_feature_settings': FeatureSettings.get_defaults()}
+            if not class_row or not class_row.teacher_user_id:
+                return {'admin_feature_settings': ClassFeature.defaults_dict()}
             return {
                 'admin_feature_settings': get_admin_feature_settings_for_class_id(
                     g.canonical_context,
@@ -691,8 +691,8 @@ def create_app():
             }
         except Exception as e:
             app.logger.warning(f"Could not load admin feature settings, falling back to defaults: {e}")
-            from app.models import FeatureSettings
-            return {'admin_feature_settings': FeatureSettings.get_defaults()}
+            from app.models import ClassFeature
+            return {'admin_feature_settings': ClassFeature.defaults_dict()}
 
     @app.context_processor
     def inject_class_context():

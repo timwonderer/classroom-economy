@@ -91,7 +91,7 @@ def _teacher_profile_for_class(class_row: ClassEconomy | None) -> IdentityProfil
         return None
     teacher_seat = (
         Seat.query
-        .filter_by(class_id=class_row.class_id, user_id=class_row.user_id, role="teacher")
+        .filter_by(class_id=class_row.class_id, user_id=class_row.teacher_user_id, role="teacher")
         .order_by(Seat.id.asc())
         .first()
     )

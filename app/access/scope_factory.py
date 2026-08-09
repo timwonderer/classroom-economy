@@ -50,7 +50,7 @@ def _scope_from_runtime_seat(*, actor, selected_class_id: str | None) -> Scope |
         join_code=get_display_join_code(class_row.class_id) or "",
         actor_id=actor.id,
         role="student",
-        user_id=class_row.user_id,
+        user_id=class_row.teacher_user_id,
         block=current_seat.class_economy.section if current_seat.class_economy else None,
         seat_id=current_seat.id,
     )
@@ -93,7 +93,7 @@ def resolve_student_class_switch_scope(*, actor, class_id: str) -> ResolvedStude
         join_code=get_display_join_code(class_row.class_id) or "",
         actor_id=actor.id,
         role="student",
-        user_id=class_row.user_id,
+        user_id=class_row.teacher_user_id,
         block=seat.class_economy.section if seat.class_economy else None,
         seat_id=seat.id,
     )
@@ -107,7 +107,7 @@ def _resolve_teacher_scope(*, actor, selected_class_id: str | None) -> Scope:
         normalized_class_id = getattr(context, "class_id", None)
     if normalized_class_id:
         class_row = ClassEconomy.query.filter_by(
-            user_id=actor.id,
+            teacher_user_id=actor.id,
             class_id=normalized_class_id,
         ).first()
         if class_row:
@@ -124,7 +124,7 @@ def _resolve_teacher_scope(*, actor, selected_class_id: str | None) -> Scope:
 
     class_query = (
         ClassEconomy.query
-        .filter_by(user_id=actor.id)
+        .filter_by(teacher_user_id=actor.id)
         .order_by(ClassEconomy.display_name.asc(), ClassEconomy.class_id.asc())
     )
     class_row = None
@@ -198,7 +198,7 @@ def resolve_scope(*, actor, selected_class_id: str | None = None, actor_role: st
         join_code=get_display_join_code(class_row.class_id) or "",
         actor_id=actor.id,
         role="student",
-        user_id=class_row.user_id,
+        user_id=class_row.teacher_user_id,
         block=active_seat.class_economy.section if active_seat.class_economy else None,
         seat_id=active_seat.id,
     )

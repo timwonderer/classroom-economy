@@ -1432,7 +1432,7 @@ def hall_pass_verification_active():
     if not teacher_user:
         return jsonify({"status": "error", "message": "Verification page not available."}), 404
 
-    class_rows = ClassEconomy.query.filter_by(user_id=teacher_user.id).all()
+    class_rows = ClassEconomy.query.filter_by(teacher_user_id=teacher_user.id).all()
     class_ids = [row.class_id for row in class_rows]
     class_by_id = {row.class_id: row for row in class_rows}
     passes = []

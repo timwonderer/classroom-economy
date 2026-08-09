@@ -117,7 +117,7 @@ def test_DOM_IDEN_006__feature_settings_returns_scoped_row(client, two_class_ctx
 
     for row in ClassFeature.query.filter(
         ClassFeature.class_id == classroom.class_id,
-        ClassFeature.feature_name.in_(["banking", "store", "insurance", "rent", "hall_pass", "payroll"]),
+        ClassFeature.feature.in_(["banking", "store", "insurance", "rent", "hall_pass", "payroll"]),
     ).all():
         db.session.delete(row)
     with FEATContext("FEAT-IDEN-001", idempotency_key="settings_feature_rows"):

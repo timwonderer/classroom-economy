@@ -300,8 +300,7 @@ class ClassEconomy(db.Model):
     class_public_id = db.Column(db.String(36), unique=True, nullable=False, index=True, default=lambda: str(uuid.uuid4()))
     join_code = db.Column(db.String(20), unique=True, nullable=False, index=True)
     section = db.Column(db.String(50), nullable=True)
-    block = synonym("section")
-    user_id = db.Column(
+    teacher_user_id = db.Column(
         db.Integer,
         db.ForeignKey('users.id', ondelete='CASCADE'),
         nullable=False,
@@ -310,21 +309,14 @@ class ClassEconomy(db.Model):
     display_name = db.Column(db.String(100), nullable=True)
     class_timezone = db.Column(db.String(64), nullable=False, default='UTC', server_default='UTC')
     created_at = db.Column(db.DateTime(timezone=True), default=utc_now, nullable=False)
-    updated_at = db.Column(db.DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False)
-    created_by_user_id = db.Column(
-        db.Integer,
-        db.ForeignKey('users.id', ondelete='SET NULL'),
-        nullable=True,
-        index=True,
-    )
 
     features = db.relationship('ClassFeature', backref='class_economy', cascade='all, delete-orphan', lazy='dynamic')
+    economic_versions = db.relationship('EconomicEngine', backref='class_economy', cascade='all, delete-orphan', lazy='dynamic')
     teacher = db.relationship(
         'User',
-        foreign_keys=[user_id],
+        foreign_keys=[teacher_user_id],
         backref=db.backref('classes', lazy='dynamic', passive_deletes=True),
     )
-    created_by_user = db.relationship('User', foreign_keys=[created_by_user_id])
 
     @property
     def status(self):
@@ -358,6 +350,67 @@ def prevent_class_timezone_mutation(_mapper, _connection, target):
 
 # Derived interpretation cache is excluded from the canonical runtime schema
 
+
+class EconomicEngine(db.Model):
+    """Immutable, versioned class-level economic configuration snapshots."""
+
+    __tablename__ = 'economic_engine'
+
+    economic_version_id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    class_id = db.Column(
+        db.String(36),
+        db.ForeignKey('classes.class_id', ondelete='CASCADE'),
+        nullable=False,
+        index=True,
+    )
+    previous_version_id = db.Column(db.String(36), nullable=True, index=True)
+
+    # Class capacity
+    expected_weekly_hours = db.Column(db.Float, nullable=True)
+
+    # Banking configuration (per SPEC-ECON-001 independent behavioral choices)
+    interest_rate = db.Column(db.Numeric(precision=8, scale=6), nullable=True)
+    interest_calculation_type = db.Column(db.String(20), nullable=True)
+    compound_frequency = db.Column(db.String(20), nullable=True)
+    interest_accrual_frequency = db.Column(db.String(20), nullable=True)
+    interest_payout_frequency = db.Column(db.String(20), nullable=True)
+
+    # Economic policy
+    economy_policy_mode = db.Column(
+        db.String(20),
+        nullable=False,
+        default='default',
+        server_default='default',
+    )
+
+    # Audit
+    created_at = db.Column(db.DateTime(timezone=True), default=utc_now, nullable=False)
+
+    __table_args__ = (
+        # Composite key enforcement: versions are scoped to their owning class
+        db.UniqueConstraint('class_id', 'economic_version_id', name='uq_economic_engine_class_version'),
+        # Composite foreign key: previous version must be in the same class
+        db.ForeignKeyConstraint(
+            ['class_id', 'previous_version_id'],
+            ['economic_engine.class_id', 'economic_engine.economic_version_id'],
+            ondelete='RESTRICT',
+            name='fk_economic_engine_previous_version'
+        ),
+        # Check constraints
+        db.CheckConstraint("economy_policy_mode IN ('tight', 'default', 'comfortable')", name='ck_economic_engine_mode'),
+        db.CheckConstraint('expected_weekly_hours IS NULL OR expected_weekly_hours > 0', name='ck_economic_engine_hours'),
+        db.CheckConstraint('interest_rate IS NULL OR (interest_rate >= 0 AND interest_rate <= 1.0)', name='ck_economic_engine_rate'),
+        db.CheckConstraint("interest_calculation_type IS NULL OR interest_calculation_type IN ('simple', 'compound')", name='ck_economic_engine_calc_type'),
+        db.CheckConstraint("compound_frequency IS NULL OR compound_frequency IN ('never', 'daily', 'weekly', 'monthly')", name='ck_economic_engine_compound_freq'),
+        db.CheckConstraint("interest_accrual_frequency IS NULL OR interest_accrual_frequency IN ('daily', 'weekly', 'monthly')", name='ck_economic_engine_accrual_freq'),
+        db.CheckConstraint("interest_payout_frequency IS NULL OR interest_payout_frequency IN ('weekly', 'monthly')", name='ck_economic_engine_payout_freq'),
+    )
+
+
+@event.listens_for(EconomicEngine, "before_update")
+def prevent_economic_engine_update(_mapper, _connection, target):
+    """Prevent updates to EconomicEngine versions (immutable)."""
+    raise RuntimeError("EconomicEngine versions are immutable. Create a new version instead.")
 
 
 class PasskeyCredential(db.Model):
@@ -1485,27 +1538,36 @@ class BankingSettings(db.Model):
 
 # -------------------- FEATURE SETTINGS MODEL --------------------
 class ClassFeature(db.Model):
-    """Row existence represents feature enablement for a class."""
+    """Append-only timeline of feature enablement/disablement per class."""
     __tablename__ = 'class_features'
 
-    id = db.Column(db.Integer, primary_key=True)
     class_id = db.Column(
         db.String(36),
         db.ForeignKey('classes.class_id', ondelete='CASCADE'),
         nullable=False,
         index=True,
     )
-    feature_name = db.Column(db.String(32), nullable=False)
+    feature = db.Column(db.String(32), nullable=False)
+    economic_version_id = db.Column(db.String(36), nullable=True, index=True)
+    effective_at = db.Column(db.DateTime(timezone=True), nullable=False, default=utc_now)
     created_at = db.Column(db.DateTime(timezone=True), default=utc_now, nullable=False)
 
     __table_args__ = (
-        db.UniqueConstraint('class_id', 'feature_name', name='uq_class_features_class_feature'),
-        db.CheckConstraint(
-            "feature_name IN ('payroll', 'insurance', 'banking', 'rent', 'hall_pass', 'store')",
-            name='ck_class_features_feature_name',
+        db.PrimaryKeyConstraint('class_id', 'feature', 'effective_at', name='pk_class_features'),
+        # Composite foreign key: feature version must be in the same class
+        db.ForeignKeyConstraint(
+            ['class_id', 'economic_version_id'],
+            ['economic_engine.class_id', 'economic_engine.economic_version_id'],
+            ondelete='RESTRICT',
+            name='fk_class_features_economic_version'
         ),
-        db.Index('ix_class_features_feature_name', 'feature_name'),
+        db.CheckConstraint(
+            "feature IN ('payroll', 'insurance', 'banking', 'rent', 'hall_pass', 'store')",
+            name='ck_class_features_feature',
+        ),
     )
+
+    economic_version = db.relationship('EconomicEngine', foreign_keys=[economic_version_id])
 
     @classmethod
     def feature_names(cls):
@@ -1520,17 +1582,51 @@ class ClassFeature(db.Model):
 
     @classmethod
     def enabled_names_for_class(cls, class_id):
+        """Get currently enabled features for a class (latest effective_at per feature).
+
+        Returns only features whose effective_at <= now (excludes future-dated features).
+        """
         if not class_id:
             return set()
-        return {
-            feature_name
-            for (feature_name,) in db.session.query(cls.feature_name)
-            .filter(cls.class_id == class_id)
+
+        from app.utils.canonical_temporal_resolver import canonical_temporal_resolver, SYSTEM_LEVEL_EVALUATION
+
+        # Get current time (system level, UTC)
+        current_time = canonical_temporal_resolver(
+            SYSTEM_LEVEL_EVALUATION,
+            primitive="current_time"
+        ).canonical_now_utc
+
+        # Subquery: get latest effective_at for each (class_id, feature) pair
+        # Filter to only consider entries currently effective (effective_at <= now)
+        latest_subquery = (
+            db.session.query(
+                cls.feature,
+                sa.func.max(cls.effective_at).label('max_effective_at')
+            )
+            .filter(
+                cls.class_id == class_id,
+                cls.effective_at <= current_time  # Only current/past entries, exclude future
+            )
+            .group_by(cls.feature)
+            .subquery()
+        )
+        # Query: get rows where economic_version_id IS NOT NULL (enabled)
+        enabled_rows = (
+            db.session.query(cls.feature)
+            .join(latest_subquery,
+                  sa.and_(
+                      cls.feature == latest_subquery.c.feature,
+                      cls.effective_at == latest_subquery.c.max_effective_at
+                  ))
+            .filter(cls.class_id == class_id, cls.economic_version_id.isnot(None))
             .all()
-        }
+        )
+        return {row[0] for row in enabled_rows}
 
     @classmethod
     def feature_map_for_class(cls, class_id):
+        """Get current feature state map for a class."""
         enabled_names = cls.enabled_names_for_class(class_id)
         return {
             f'{feature_name}_enabled': feature_name in enabled_names
@@ -1678,13 +1774,42 @@ class StoreProduct(db.Model):
 
 @event.listens_for(ClassEconomy, 'after_insert')
 def _seed_default_class_features(mapper, connection, target):
-    """New classes start with payroll enabled and all other features disabled."""
+    """New classes start with payroll enabled and all other features disabled.
+
+    Per SPEC-TIME-001, temporal logic must use canonical resolver.
+    However, event listeners execute at the connection level before session/context
+    is available. The utc_now() helper is a low-level primitive in canonical_temporal_resolver
+    suitable for initialization side effects at the connection level.
+    """
+    from app.utils.canonical_temporal_resolver import utc_now as _get_utc_now
+
+    now = _get_utc_now()
+    economic_version_id = str(uuid.uuid4())
+
+    connection.execute(
+        sa.insert(EconomicEngine.__table__),
+        {
+            'economic_version_id': economic_version_id,
+            'class_id': target.class_id,
+            'previous_version_id': None,
+            'expected_weekly_hours': None,
+            'interest_rate': None,
+            'interest_calculation_type': None,
+            'compound_frequency': None,
+            'interest_accrual_frequency': None,
+            'interest_payout_frequency': None,
+            'economy_policy_mode': 'default',
+            'created_at': now,
+        },
+    )
     connection.execute(
         sa.insert(ClassFeature.__table__),
         {
             'class_id': target.class_id,
-            'feature_name': 'payroll',
-            'created_at': utc_now(),
+            'feature': 'payroll',  # Phase 2: renamed from feature_name
+            'created_at': now,
+            'effective_at': now,  # Phase 2: added for append-only timeline
+            'economic_version_id': economic_version_id,
         },
     )
 
