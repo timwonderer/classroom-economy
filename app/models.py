@@ -1575,16 +1575,32 @@ class ClassFeature(db.Model):
 
     @classmethod
     def enabled_names_for_class(cls, class_id):
-        """Get currently enabled features for a class (latest effective_at per feature)."""
+        """Get currently enabled features for a class (latest effective_at per feature).
+
+        Returns only features whose effective_at <= now (excludes future-dated features).
+        """
         if not class_id:
             return set()
+
+        from app.utils.canonical_temporal_resolver import canonical_temporal_resolver, SYSTEM_LEVEL_EVALUATION
+
+        # Get current time (system level, UTC)
+        current_time = canonical_temporal_resolver(
+            SYSTEM_LEVEL_EVALUATION,
+            primitive="current_time"
+        ).canonical_now_utc
+
         # Subquery: get latest effective_at for each (class_id, feature) pair
+        # Filter to only consider entries currently effective (effective_at <= now)
         latest_subquery = (
             db.session.query(
                 cls.feature,
                 sa.func.max(cls.effective_at).label('max_effective_at')
             )
-            .filter(cls.class_id == class_id)
+            .filter(
+                cls.class_id == class_id,
+                cls.effective_at <= current_time  # Only current/past entries, exclude future
+            )
             .group_by(cls.feature)
             .subquery()
         )

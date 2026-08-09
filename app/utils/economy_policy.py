@@ -500,15 +500,15 @@ def replace_enabled_class_features(class_id: str, enabled_features: set[str]) ->
     # Payroll is mandatory in v2 class feature gating.
     requested_features.add("payroll")
     existing_rows = ClassFeature.query.filter_by(class_id=class_id).all()
-    existing_names = {row.feature_name for row in existing_rows}
+    existing_names = {row.feature for row in existing_rows}
 
     for row in existing_rows:
-        if row.feature_name not in requested_features:
+        if row.feature not in requested_features:
             db.session.delete(row)
 
     missing_names = requested_features - existing_names
     for feature_name in sorted(missing_names):
-        db.session.add(ClassFeature(class_id=class_id, feature_name=feature_name))
+        db.session.add(ClassFeature(class_id=class_id, feature=feature_name))
 
 
 def get_feature_settings_row(
