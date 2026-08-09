@@ -36,7 +36,7 @@ def setup_student_with_disabled_banking(client):
             description="Starting balance",
             actor_seat_id=student_seat.id,
         )
-    disable_class_feature(class_id=classroom.class_id, feature_name='banking')
+    disable_class_feature(class_id=classroom.class_id, feature='banking')
     db.session.commit()
 
     return {
@@ -68,7 +68,7 @@ def setup_student_with_enabled_banking(client):
             description="Starting balance",
             actor_seat_id=student_seat.id,
         )
-    enable_class_feature(class_id=classroom.class_id, feature_name='banking')
+    enable_class_feature(class_id=classroom.class_id, feature='banking')
     db.session.commit()
 
     return {
@@ -114,7 +114,7 @@ def test_DOM_CLASS_001__payroll_allowed_when_payroll_enabled(client, setup_stude
 
 def test_DOM_CLASS_001__admin_banking_rejects_disabled_class_scope(client):
     classroom = initialize_as_teacher("chemistry_p1", client, client.application)
-    disable_class_feature(class_id=classroom.class_id, feature_name='banking')
+    disable_class_feature(class_id=classroom.class_id, feature='banking')
     db.session.commit()
 
     response = client.get('/admin/banking')
@@ -124,7 +124,7 @@ def test_DOM_CLASS_001__admin_banking_rejects_disabled_class_scope(client):
 
 def test_DOM_CLASS_001__admin_store_rejects_disabled_class_scope(client):
     classroom_b = initialize_as_teacher("ap_csp_p3", client, client.application)
-    disable_class_feature(class_id=classroom_b.class_id, feature_name='store')
+    disable_class_feature(class_id=classroom_b.class_id, feature='store')
     db.session.commit()
 
     response = client.get('/admin/store')
@@ -134,7 +134,7 @@ def test_DOM_CLASS_001__admin_store_rejects_disabled_class_scope(client):
 
 def test_DOM_CLASS_001__admin_hall_pass_rejects_disabled_class_scope(client):
     classroom_b = initialize_as_teacher("ap_csp_p3", client, client.application)
-    disable_class_feature(class_id=classroom_b.class_id, feature_name='hall_pass')
+    disable_class_feature(class_id=classroom_b.class_id, feature='hall_pass')
     db.session.commit()
 
     response = client.get('/admin/hall-pass')
@@ -144,7 +144,7 @@ def test_DOM_CLASS_001__admin_hall_pass_rejects_disabled_class_scope(client):
 
 def test_DOM_CLASS_001__admin_payroll_rejects_disabled_class_scope(client):
     classroom_b = initialize_as_teacher("ap_csp_p3", client, client.application)
-    disable_class_feature(class_id=classroom_b.class_id, feature_name='payroll')
+    disable_class_feature(class_id=classroom_b.class_id, feature='payroll')
     db.session.commit()
 
     response = client.get('/admin/payroll')
@@ -154,7 +154,7 @@ def test_DOM_CLASS_001__admin_payroll_rejects_disabled_class_scope(client):
 
 def test_DOM_CLASS_001__admin_store_delete_rejects_disabled_class_scope(client):
     classroom_b = initialize_as_teacher("ap_csp_p3", client, client.application)
-    disable_class_feature(class_id=classroom_b.class_id, feature_name='store')
+    disable_class_feature(class_id=classroom_b.class_id, feature='store')
     db.session.commit()
     with FEATContext("FEAT-SETTINGS-001", idempotency_key=f"feature_flag_enforcement:store_item:{classroom_b.class_id}"):
         store_item = StoreItem(
@@ -180,7 +180,7 @@ def test_DOM_CLASS_001__admin_store_delete_rejects_disabled_class_scope(client):
 
 def test_DOM_CLASS_001__student_rent_rejects_disabled_class_scope(client):
     classroom, student = initialize_as_student("chemistry_p1", client, client.application)
-    disable_class_feature(class_id=classroom.class_id, feature_name='rent')
+    disable_class_feature(class_id=classroom.class_id, feature='rent')
     db.session.commit()
 
     response = client.get('/student/rent', follow_redirects=False)
