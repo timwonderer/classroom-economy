@@ -1,12 +1,13 @@
 # CTH Domain Reconstruction Progress Matrix
 
 **Status:** Active Canonical Tracker
-**Last Updated:** 2026-08-06 (Identity Phase 10 CERTIFIED; 3 domains production-ready, 7 remaining)
+**Last Updated:** 2026-08-08 (Class Config Phase 2 COMPLETE; Identity Phase 10 CERTIFIED; 3 domains production-ready, 7 remaining)
 **Authority:** SOP-DEV-002a, INV-CORE-000, DOM-CORE-002
 
 **DOMAIN READINESS SNAPSHOT:**
 - ✅ **3 domains** Phase 10 certified (production-ready): Identity, Obligations, Store
-- 🔄 **3 domains** Phase 4 complete but blocked on Phase 5 (missing view models): Class Config, Ledger, Payroll
+- 🔄 **1 domain** Phase 2 complete, Phase 3-4 pending: Class Config (persistence layer done; orchestration layer next)
+- 🔄 **2 domains** Phase 1 complete but blocked on Phase 2 (schema migrations pending): Ledger, Payroll
 - 🔄 **4 domains** Phase 0-1 only, not started: Operations, Interpretation, Policies, Support
 
 ---
@@ -36,7 +37,7 @@ This matrix consolidates the progress of all CTH domains through the 10-phase SO
 | Domain | Spec | Phase 0-4 | Phase 5 | Phase 6-7 | Phase 8-9 | Phase 10 | Status | Audit Doc |
 | -------- | ------ | ----------- | --------- | ----------- | ----------- | ---------- | -------- | ----------- |
 | **Identity** | DOM-IDEN-001/002/003/006 | ✅ | ✅ | ✅ VERIFIED | ✅ VERIFIED | ✅ CERTIFIED | ✅ PRODUCTION READY (Phase 10 certified 2026-08-06) | 2026-08-06 (PASS) |
-| **Class Configuration** | DOM-CLASS-001 | ✅ | ❌ NO VM | ❌ BLOCKED | ? | ❌ | ❌ BLOCKED on Phase 5 | 2026-08-04 baseline |
+| **Class Configuration** | DOM-CLASS-001 | ✅ Phase 0-2 | ❌ Phase 3 | ❌ Phase 4-7 | ? | ❌ | ❌ BLOCKED on Phase 3 (FEAT orchestration) | 2026-08-08 (Phase 2 COMPLETE) |
 | **Ledger** | DOM-LED-001 | ✅ | ❌ NO VM | ❌ BLOCKED | ? | ❌ | ❌ BLOCKED on Phase 5 | 2026-08-04 baseline |
 | **Productivity & Payroll** | DOM-PROD-001 | ✅ | ❌ NO VM | ❌ BLOCKED | ? | ❌ | ❌ BLOCKED on Phase 5 | 2026-08-04 baseline |
 | **Obligations** | DOM-OBL-001 | ✅ | ✅ | ✅ VERIFIED | ✅ | ✅ ACCEPTED | ✅ PRODUCTION READY | 2026-08-04 (Phase 10 audit ACCEPTED) |
@@ -64,12 +65,12 @@ This matrix consolidates the progress of all CTH domains through the 10-phase SO
 
 **Unaudited domains:** Commits exist, code likely works, but require formal Phase 10 audit to confirm all phases are complete.
 
-**AUDIT STATUS UPDATE (2026-08-06 REVISED):**
+**AUDIT STATUS UPDATE (2026-08-08 REVISED):**
 
 - **Identity:** Phases 0-10 complete ✅ **PRODUCTION READY** (Phase 10 certified 2026-08-06)
-- **Class Config:** Phases 0-4 complete, Phase 5 **BLOCKED** (no view model), Phase 6-7 **BLOCKED**
-- **Ledger:** Phases 0-4 complete, Phase 5 **BLOCKED** (no view model), Phase 6-7 **BLOCKED**
-- **Payroll:** Phases 0-4 complete, Phase 5 **BLOCKED** (no view model), Phase 6-7 **BLOCKED**
+- **Class Config:** Phases 0-2 complete ✅ | Phase 3-4 **PENDING** (FEAT orchestration layer not defined)
+- **Ledger:** Phases 0-1 complete | Phase 2 **PENDING** (schema migrations needed)
+- **Payroll:** Phases 0-1 complete | Phase 2 **PENDING** (schema migrations needed)
 - **Obligations:** Phases 0-10 complete ✅ **PRODUCTION READY** (Phase 10 audit ACCEPTED 2026-08-04)
 - **Store:** Phases 0-10 complete ✅ **PRODUCTION READY** (Phase 10 audit passed 2026-08-04)
 - **Operations, Interpretation, Policies, Support:** Phases 0-1 only, not started
@@ -142,15 +143,26 @@ Phase 6-7 completion is now measured via **field ownership**, not template struc
 
 **Scope:** class_id (canonical), join_code (public alias), display name, section, timezone, CWI settings (policy mode, interest rate, pricing ratios based on CWI and policy)  
 **Canonical Tables:** `classes`, `class_features`, `feature_settings`, `hall_pass_settings`, `rent_settings`, `payroll_settings`, `payroll_rewards`, `payroll_fines`, `banking_settings`  
-**Phase:** 🔄 0-? (Unaudited)  
-**Status:** Commits exist, likely complete but needs Phase 10 audit  
-**Key Achievement:** Settings migrated to canonical; `class_id` canonical scope enforcement with timezone and CWI configuration  
+**Phase:** ✅ Phase 0-2 COMPLETE | ❌ Phase 3-4 PENDING  
+**Status:** Phase 2 (Persistence) COMPLETE as of 2026-08-08; Phase 3 (Primitives/Service Layer) and Phase 4 (FEAT Orchestration) pending  
+**Phase 2 Achievements (COMPLETED):**
+- ✅ Class economy immutability: EconomicEngine model with before_update event listener prevents post-commit modifications
+- ✅ Append-only features timeline: ClassFeature composite PK (class_id, feature, effective_at); version_chain with previous_version_id FK
+- ✅ Schema migrations: Phase 2a (immutable versioning), 2b (composite PK enforcement), 2c (consumer migrations), 2d (test infrastructure updates)
+- ✅ Consumer migrations: 22 references across 7 files (routes, services, tests, templates) updated from ClassEconomy.user_id → teacher_user_id
+- ✅ Test infrastructure: Migrated to SPEC-TEST-001 (canonical initializer) and SPEC-TIME-001 (canonical temporal resolver) patterns
+
+**Phase 3 Blockers (NEXT):**
+- ❌ FEAT-ECON-001 undefined (create class and economy mutations)
+- ❌ Service layer queries not centralized (Phase 3 primitives)
+- ❌ Tests cannot execute due to FEAT-INTEGRITY enforcement (v2 rule: all mutations through FEAT layer)
+
 **Pending View Models:** 
-- ✅ **EconomicView** (stub) — Provides presentation-ready economic guidance (pricing range, economy health, warnings) consumed by Store and other domains. Stub implementation (`app/services/class_configuration_economic_service.py`) pending full CWI/pricing calculation implementation.
-- ⏳ **ClassConfigurationView** — Settings presentation model pending implementation.
+- ⏳ **EconomicView** (stub) — Provides presentation-ready economic guidance (pricing range, economy health, warnings) consumed by Store and other domains. Stub implementation (`app/services/class_configuration_economic_service.py`) pending full CWI/pricing calculation implementation.
+- ⏳ **ClassConfigurationView** — Settings presentation model pending Phase 5 implementation (after Phase 3-4 complete).
 
 **Notes:** `join_code` is public alias for class_id; block/period is display-only metadata  
-**Next Action:** Implement full economic calculations in build_economic_view(); ensure Store consumes EconomicView instead of raw PayrollSettings
+**Next Action:** Define FEAT-ECON-001 (orchestration layer for class creation and economic engine mutations) to unblock Phase 3
 
 ---
 
@@ -297,10 +309,11 @@ Phase 6-7 completion is now measured via **field ownership**, not template struc
 **Current Status:**
 
 - ✅ **3 domains PRODUCTION READY:** Identity (Phase 10 certified 2026-08-06), Obligations (Phase 10 ACCEPTED 2026-08-04), Store (Phase 10 certified 2026-08-04)
-- 🔄 **3 domains UNAUDITED:** Class Config, Ledger, Productivity & Payroll (all blocked on Phase 5 - missing view models)
+- 🔄 **1 domain Phase 2 COMPLETE:** Class Config (persistence layer done; Phase 3-4 orchestration layer pending)
+- 🔄 **2 domains Phase 1 COMPLETE:** Ledger, Productivity & Payroll (Phase 2 schema work needed)
 - 🔄 **4 domains NOT STARTED:** Operations, Interpretation, Policies, Support
 
-**STATUS UPDATE (2026-08-06):** Identity, Obligations, and Store are all production-ready (Phase 10 certified). Remaining 7 domains: 3 are blocked on Phase 5 (missing view models), 4 have not started.
+**STATUS UPDATE (2026-08-08):** Class Configuration Phase 2 (persistence layer) COMPLETE. Phase 3 begins with FEAT-ECON-001 definition (orchestration layer for economic engine mutations). Ledger and Payroll unblocked and ready for Phase 2 schema work.
 
 **Minimum Path Forward (Priority Order):**
 
