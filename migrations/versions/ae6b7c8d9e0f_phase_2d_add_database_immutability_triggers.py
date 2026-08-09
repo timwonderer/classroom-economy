@@ -26,7 +26,6 @@ TRIGGERs only apply to production and integration environments.
 from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.sql import text
-import os
 
 # ============================================================================
 # IDEMPOTENCY HELPERS (REQUIRED)
@@ -60,7 +59,7 @@ def upgrade():
     """Add immutability TRIGGERs to economic_engine and class_features.
 
     TESTING EXCEPTION: Skip TRIGGER creation on test databases.
-    Test databases use "test_db", "classroom_test_db", or contain "testing" in the URL.
+    Test databases are detected from the active migration connection URL.
     """
     print("\n" + "=" * 80)
     print("Phase 2d: Add database-level immutability TRIGGERs")
@@ -68,8 +67,8 @@ def upgrade():
 
     conn = op.get_bind()
 
-    # Check if running on test database
-    db_url = os.environ.get('DATABASE_URL', '').lower()
+    # Check if running on test database by inspecting the active connection URL
+    db_url = str(conn.engine.url).lower()
     is_test_db = (
         'test_db' in db_url or
         'testing' in db_url or
@@ -78,6 +77,7 @@ def upgrade():
 
     if is_test_db:
         print("\n⚠️  Running on test database; SKIPPING TRIGGER creation")
+        print(f"   Database URL: {db_url}")
         print("   Reason: Test helpers (e.g., disable_class_feature) need to delete records")
         print("   TRIGGERS will be created on production/integration environments")
         return

@@ -67,7 +67,11 @@ def enable_class_feature(*, class_id: str, feature_name: str = None, feature: st
 
 
 def disable_class_feature(*, class_id: str, feature_name: str = None, feature: str = None):
-    """Remove a single class feature row via the production FEAT path.
+    """Disable a class feature by appending a disablement row (append-only).
+
+    Phase 2 semantics: Rather than deleting the feature row, we append a new row
+    with economic_version_id=None to represent disablement. This preserves the
+    append-only timeline contract.
 
     Args:
         class_id: The class
@@ -80,16 +84,30 @@ def disable_class_feature(*, class_id: str, feature_name: str = None, feature: s
         raise ValueError("Either 'feature' or 'feature_name' parameter must be provided")
 
     with FEATContext("FEAT-SETTINGS-001", idempotency_key=f"class_feature:disable:{class_id}:{feature_value}"):
-        cf = ClassFeature.query.filter_by(class_id=class_id, feature=feature_value).first()
-        if cf is not None:
-            db.session.delete(cf)
+        # Check if feature currently exists as enabled
+        existing = ClassFeature.query.filter_by(
+            class_id=class_id,
+            feature=feature_value
+        ).order_by(ClassFeature.effective_at.desc()).first()
+
+        if existing and existing.economic_version_id is not None:
+            # Feature is currently enabled; append a disablement row
+            cf = ClassFeature(
+                class_id=class_id,
+                feature=feature_value,
+                economic_version_id=None  # Signals "disabled"
+            )
+            db.session.add(cf)
             db.session.flush()
             db.session.info["feat_orchestrator_commit"] = True
             try:
                 db.session.commit()
             finally:
                 db.session.info.pop("feat_orchestrator_commit", None)
-        return cf
+            return cf
+        else:
+            # Feature already disabled or doesn't exist; no-op
+            return existing
 
 
 def update_payroll_settings(client, **form_data: Any):

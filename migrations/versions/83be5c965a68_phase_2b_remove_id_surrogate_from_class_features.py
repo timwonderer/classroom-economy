@@ -76,12 +76,27 @@ def upgrade():
 
     if column_exists('class_features', 'id'):
         print("   📋 Removing id column and reestablishing composite PK...")
+
+        # First, drop the existing primary key constraint that references id
+        # PostgreSQL won't allow dropping a column that's part of a PK
+        conn = op.get_bind()
+        inspector = sa.inspect(conn)
+        pk_constraint = inspector.get_pk_constraint('class_features')
+
+        if pk_constraint and pk_constraint.get('name'):
+            pk_name = pk_constraint['name']
+            op.drop_constraint(pk_name, 'class_features', type_='primary')
+            print(f"   ✅ Dropped existing primary key constraint: {pk_name}")
+
+        # Use batch_alter_table to handle dropping the column
         with op.batch_alter_table('class_features', schema=None) as batch_op:
+            # Drop the old serial id column (which was the PK)
             batch_op.drop_column('id')
-        print("   ✅ Dropped id column")
+            print("   ✅ Dropped id column")
     else:
         print("   ℹ️  id column already absent; verifying composite PK")
 
+    # Verify and create composite PK if needed
     if primary_key_columns('class_features') != composite_pk:
         op.create_primary_key(
             'pk_class_features',

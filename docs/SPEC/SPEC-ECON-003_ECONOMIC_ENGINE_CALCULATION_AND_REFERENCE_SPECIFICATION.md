@@ -288,6 +288,26 @@ daily_accrual = eligible_balance × (APR / 365)
 
 Equivalent formulations MAY be used only if they are mathematically identical and deterministic.
 
+### 5.6 Compound Frequency Persistence
+
+The `EconomicEngine.compound_frequency` field persists the compound frequency choice per SPEC-ECON-001 § 6.1.
+
+Supported values:
+
+| Value | Semantics | Persistence |
+| --- | --- | --- |
+| `never` | Simple interest; accrued interest never participates | `compound_frequency = 'never'` |
+| `daily` | Compounds daily | `compound_frequency = 'daily'` |
+| `weekly` | Compounds weekly | `compound_frequency = 'weekly'` |
+| `monthly` | Compounds monthly | `compound_frequency = 'monthly'` |
+| `NULL` | No compounding configured (engine not initialized for interest) | `compound_frequency IS NULL` |
+
+Implementations that consume this field MUST validate against the persisted enum constraint:
+
+```sql
+CHECK (compound_frequency IS NULL OR compound_frequency IN ('never', 'daily', 'weekly', 'monthly'))
+```
+
 ---
 
 ## 6. Normalization Rules

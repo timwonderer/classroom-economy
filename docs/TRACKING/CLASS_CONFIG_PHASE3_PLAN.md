@@ -63,15 +63,14 @@ def get_class_by_join_code(join_code: str) -> ClassEconomy | None:
 def get_current_economic_engine(class_id: str) -> EconomicEngine | None:
     """Get the current (active) EconomicEngine for a class.
     
-    The economic engine defines the class's CWI-derived policy mode.
-    Returns the latest version (previous_version_id IS NULL OR 
-    effective_at is most recent).
+    The current version is determined from the latest effective ClassFeature state.
+    Query the EconomicEngine linked by the most recent ClassFeature record.
     
     Args:
         class_id: The class to retrieve
         
     Returns:
-        Latest EconomicEngine instance or None
+        EconomicEngine instance linked to current feature state, or None if no engine exists
     """
 ```
 
@@ -79,13 +78,14 @@ def get_current_economic_engine(class_id: str) -> EconomicEngine | None:
 def get_economic_engine_history(class_id: str) -> list[EconomicEngine]:
     """Get all EconomicEngine versions for a class in chronological order.
     
-    Ordered by effective_at DESC (most recent first).
+    Ordered by created_at DESC (most recent first).
+    Use created_at (not effective_at, which does not exist on EconomicEngine).
     
     Args:
         class_id: The class to retrieve history for
         
     Returns:
-        List of EconomicEngine instances (may be empty)
+        List of EconomicEngine instances, ordered by creation time (may be empty)
     """
 ```
 

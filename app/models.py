@@ -396,7 +396,7 @@ class EconomicEngine(db.Model):
         db.CheckConstraint('expected_weekly_hours IS NULL OR expected_weekly_hours > 0', name='ck_economic_engine_hours'),
         db.CheckConstraint('interest_rate IS NULL OR (interest_rate >= 0 AND interest_rate <= 1.0)', name='ck_economic_engine_rate'),
         db.CheckConstraint("interest_calculation_type IS NULL OR interest_calculation_type IN ('simple', 'compound')", name='ck_economic_engine_calc_type'),
-        db.CheckConstraint("compound_frequency IS NULL OR compound_frequency IN ('daily', 'weekly', 'monthly')", name='ck_economic_engine_compound_freq'),
+        db.CheckConstraint("compound_frequency IS NULL OR compound_frequency IN ('never', 'daily', 'weekly', 'monthly')", name='ck_economic_engine_compound_freq'),
         db.CheckConstraint("interest_accrual_frequency IS NULL OR interest_accrual_frequency IN ('daily', 'weekly', 'monthly')", name='ck_economic_engine_accrual_freq'),
         db.CheckConstraint("interest_payout_frequency IS NULL OR interest_payout_frequency IN ('weekly', 'monthly')", name='ck_economic_engine_payout_freq'),
     )

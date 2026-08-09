@@ -107,7 +107,7 @@ def _resolve_teacher_scope(*, actor, selected_class_id: str | None) -> Scope:
         normalized_class_id = getattr(context, "class_id", None)
     if normalized_class_id:
         class_row = ClassEconomy.query.filter_by(
-            user_id=actor.id,
+            teacher_user_id=actor.id,
             class_id=normalized_class_id,
         ).first()
         if class_row:
@@ -124,7 +124,7 @@ def _resolve_teacher_scope(*, actor, selected_class_id: str | None) -> Scope:
 
     class_query = (
         ClassEconomy.query
-        .filter_by(user_id=actor.id)
+        .filter_by(teacher_user_id=actor.id)
         .order_by(ClassEconomy.display_name.asc(), ClassEconomy.class_id.asc())
     )
     class_row = None
