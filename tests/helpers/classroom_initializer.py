@@ -126,8 +126,8 @@ def _assert_db_invariants(classroom: ProvisionedClassroom) -> None:
     economy = db.session.get(ClassEconomy, classroom.class_id)
     _check(economy is not None, f"ClassEconomy not found in DB for class_id={classroom.class_id}")
     _check(
-        economy.user_id == classroom.teacher_user.id,
-        f"ClassEconomy.user_id {economy.user_id} != teacher user_id {classroom.teacher_user.id}",
+        economy.teacher_user_id == classroom.teacher_user.id,
+        f"ClassEconomy.teacher_user_id {economy.teacher_user_id} != teacher user_id {classroom.teacher_user.id}",
     )
 
     # Re-query teacher user

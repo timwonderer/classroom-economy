@@ -1751,13 +1751,24 @@ class StoreProduct(db.Model):
 
 @event.listens_for(ClassEconomy, 'after_insert')
 def _seed_default_class_features(mapper, connection, target):
-    """New classes start with payroll enabled and all other features disabled."""
+    """New classes start with payroll enabled and all other features disabled.
+
+    Per SPEC-TIME-001, temporal logic must use canonical resolver.
+    However, event listeners execute at the connection level before session/context
+    is available. The utc_now() helper is a low-level primitive in canonical_temporal_resolver
+    suitable for initialization side effects at the connection level.
+    """
+    from app.utils.canonical_temporal_resolver import utc_now as _get_utc_now
+
+    now = _get_utc_now()
     connection.execute(
         sa.insert(ClassFeature.__table__),
         {
             'class_id': target.class_id,
-            'feature_name': 'payroll',
-            'created_at': utc_now(),
+            'feature': 'payroll',  # Phase 2: renamed from feature_name
+            'created_at': now,
+            'effective_at': now,  # Phase 2: added for append-only timeline
+            'economic_version_id': None,  # Disabled initially
         },
     )
 
