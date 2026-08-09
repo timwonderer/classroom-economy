@@ -12,7 +12,6 @@ the database table still had the old id column. This migration removes it.
 """
 from alembic import op
 import sqlalchemy as sa
-from sqlalchemy.dialects import postgresql
 
 # ============================================================================
 # IDEMPOTENCY HELPERS (REQUIRED)
@@ -44,16 +43,15 @@ def index_exists(table_name, index_name):
     except Exception:
         return False
 
-def constraint_exists(table_name, constraint_name):
-    """Check if a constraint exists on a table."""
+def primary_key_columns(table_name):
+    """Return primary-key columns for a table."""
     conn = op.get_bind()
     inspector = sa.inspect(conn)
     try:
-        constraints = [c['name'] for c in inspector.get_unique_constraints(table_name)] + \
-                     [c['name'] for c in inspector.get_pk_constraint(table_name) or []]
-        return constraint_name in constraints
+        pk = inspector.get_pk_constraint(table_name) or {}
+        return pk.get('constrained_columns') or []
     except Exception:
-        return False
+        return []
 
 # ============================================================================
 # MIGRATION FUNCTIONS
@@ -74,26 +72,21 @@ def upgrade():
         print("⚠️  class_features table not found; skipping")
         return
 
-    # Check if id column exists
-    if not column_exists('class_features', 'id'):
-        print("⚠️  id column does not exist on class_features; already cleaned")
-        return
+    composite_pk = ['class_id', 'feature', 'effective_at']
 
-    print("   📋 Removing id column and reestablishing composite PK...")
-
-    # Use batch_alter_table to handle the PK change
-    with op.batch_alter_table('class_features', schema=None) as batch_op:
-        # Drop the old serial id column (which was the PK)
-        batch_op.drop_column('id')
+    if column_exists('class_features', 'id'):
+        print("   📋 Removing id column and reestablishing composite PK...")
+        with op.batch_alter_table('class_features', schema=None) as batch_op:
+            batch_op.drop_column('id')
         print("   ✅ Dropped id column")
+    else:
+        print("   ℹ️  id column already absent; verifying composite PK")
 
-    # Explicitly create the composite primary key
-    # (batch_alter_table doesn't automatically create composite PKs)
-    if not constraint_exists('class_features', 'pk_class_features'):
+    if primary_key_columns('class_features') != composite_pk:
         op.create_primary_key(
             'pk_class_features',
             'class_features',
-            ['class_id', 'feature', 'effective_at']
+            composite_pk
         )
         print("   ✅ Created composite primary key (class_id, feature, effective_at)")
     else:

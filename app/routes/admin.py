@@ -1396,7 +1396,7 @@ def _delete_teacher_settings_activity_and_audit_rows(canonical_context):
     Announcement.query.filter(
         Announcement.user_id == user_id
     ).delete(synchronize_session=False)
-    Transaction.query.filter_by(teacher_user_id=user_id).delete(synchronize_session=False)
+    Transaction.query.filter_by(user_id=user_id).delete(synchronize_session=False)
     PendingAction.query.filter(
         PendingAction.authoritative_feat == "FEAT-STOR-002",
         PendingAction.class_id.in_(sa.select(class_ids_subq)),
@@ -1458,11 +1458,11 @@ def _delete_teacher_recovery_and_credentials_rows(canonical_context):
 def _delete_teacher_store_rows(canonical_context):
     """Delete store rows owned by the teacher user."""
     user_id = canonical_context.user_id
-    store_item_ids_subq = db.session.query(StoreItem.id).filter_by(teacher_user_id=user_id).subquery()
+    store_item_ids_subq = db.session.query(StoreItem.id).filter_by(user_id=user_id).subquery()
     EntitlementEvent.query.filter(
         EntitlementEvent.product_id.in_(sa.select(store_item_ids_subq))
     ).delete(synchronize_session=False)
-    StoreItem.query.filter_by(teacher_user_id=user_id).delete(synchronize_session=False)
+    StoreItem.query.filter_by(user_id=user_id).delete(synchronize_session=False)
 
 
 def _delete_orphan_students(affected_student_ids):

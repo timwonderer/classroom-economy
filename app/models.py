@@ -1777,6 +1777,24 @@ def _seed_default_class_features(mapper, connection, target):
     from app.utils.canonical_temporal_resolver import utc_now as _get_utc_now
 
     now = _get_utc_now()
+    economic_version_id = str(uuid.uuid4())
+
+    connection.execute(
+        sa.insert(EconomicEngine.__table__),
+        {
+            'economic_version_id': economic_version_id,
+            'class_id': target.class_id,
+            'previous_version_id': None,
+            'expected_weekly_hours': None,
+            'interest_rate': None,
+            'interest_calculation_type': None,
+            'compound_frequency': None,
+            'interest_accrual_frequency': None,
+            'interest_payout_frequency': None,
+            'economy_policy_mode': 'default',
+            'created_at': now,
+        },
+    )
     connection.execute(
         sa.insert(ClassFeature.__table__),
         {
@@ -1784,7 +1802,7 @@ def _seed_default_class_features(mapper, connection, target):
             'feature': 'payroll',  # Phase 2: renamed from feature_name
             'created_at': now,
             'effective_at': now,  # Phase 2: added for append-only timeline
-            'economic_version_id': None,  # Disabled initially
+            'economic_version_id': economic_version_id,
         },
     )
 
