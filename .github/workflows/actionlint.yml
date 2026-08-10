@@ -22,7 +22,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v7
       - name: actionlint with reviewdog
-        uses: reviewdog/action-actionlint@v1.71.0
+        uses: reviewdog/action-actionlint@v1.73.1
         with:
           reporter: github-pr-check
           fail_level: error
