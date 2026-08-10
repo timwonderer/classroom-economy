@@ -97,8 +97,10 @@ A student `User` is a `users` row with `user_role = 'student'`. Common `users` f
 
 Student-specific fields:
 
-- `pin_hash` — hashed PIN used for login
-- `passphrase_hash` — hashed passphrase used to gate financial actions
+- `pin_hash` — hashed PIN used for login. NULL until credential activation, then immutable until recovery clears it.
+- `passphrase_hash` — hashed passphrase used to gate financial actions. NULL until credential activation, then immutable until recovery clears it.
+- `username_hash` — Full username hash (shared field). Set during credential activation (M-002), immutable until recovery (M-004), cleared during credential reset, then immutable again after re-setup.
+- `username_lookup_hash` — Class-scoped username lookup hash (shared field). Set during credential activation, cleared during recovery.
 - `reset_code` - 8-digit alphanumeric code randomly generated and stored on the corresponding student user row for student to reclaim their account
 - `reset_code_generated_at` - timestamp of when the reset code was generated. Stored as UTC but rendered to canonical class timezone.
 - `reset_code_expires_at` - set to 10 minutes after `reset_code_generated_at`. Stored as UTC but rendered to canonical class timezone.
