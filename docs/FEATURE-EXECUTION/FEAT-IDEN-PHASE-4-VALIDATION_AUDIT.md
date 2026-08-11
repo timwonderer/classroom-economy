@@ -470,16 +470,29 @@ FEAT-IDEN-002 (Setup Credentials - Reused)
 
 ## X. Idempotency Validation
 
+### Idempotency Record Storage
+
+All FEATs MUST use a durable `IdempotencyRecord` store for replay detection and caching:
+
+**Durable Store Requirements:**
+- **Entity:** `IdempotencyRecord` table with PK = (idempotency_key, feat_id, user_id)
+- **Lookup:** On FEAT entry, query by `idempotency_key` + `feat_id` to detect replays
+- **Cache:** If found and `expires_at > NOW()`, return cached outcome (no re-execution)
+- **Expiration:** TTL of 24 hours (expires_at = created_at + 24h)
+- **Atomicity:** Idempotency check and mutation must be in same transaction
+
+**Audit Trail:** Idempotency records are ALSO captured in audit event (duplicated for audit trail).
+
 ### Idempotency Key Handling
 
-| FEAT | Idempotency Key Usage | Replay Safety | Status |
-|------|----------------------|---------------|--------|
-| FEAT-IDEN-001 | Captured in audit event | Prevents duplicate user creation | ✅ |
-| FEAT-IDEN-002 | Captured in audit event | Prevents duplicate credential setup | ✅ |
-| FEAT-IDEN-003 | Captured in audit event | Code overwrite safe (single active) | ✅ |
-| FEAT-IDEN-004 | Captured in audit event | Code clear idempotent | ✅ |
+| FEAT | Idempotency Record Scope | Replay Safety | Status |
+|------|--------------------------|---------------|--------|
+| FEAT-IDEN-001 | (idempotency_key, "FEAT-IDEN-001", user_id) | Cached outcome prevents duplicate user creation | ✅ |
+| FEAT-IDEN-002 | (idempotency_key, "FEAT-IDEN-002", user_id) | Cached outcome prevents duplicate credential setup | ✅ |
+| FEAT-IDEN-003 | (idempotency_key, "FEAT-IDEN-003", student_user_id) | Code overwrite safe (single active code) | ✅ |
+| FEAT-IDEN-004 | (idempotency_key, "FEAT-IDEN-004", user_id) | Code clear idempotent (safe to replay) | ✅ |
 
-**Status:** ✅ **IDEMPOTENCY CORRECTLY IMPLEMENTED**
+**Status:** ✅ **IDEMPOTENCY CORRECTLY IMPLEMENTED (durable store + audit trail)**
 
 ---
 

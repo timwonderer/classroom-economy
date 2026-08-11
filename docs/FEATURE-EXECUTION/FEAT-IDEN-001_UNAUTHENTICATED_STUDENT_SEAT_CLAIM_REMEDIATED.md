@@ -197,18 +197,42 @@ Per DOM-IDEN-005 §VII:
 
 ## V. Idempotency
 
-**Mechanism:** The combination of `idempotency_key` and claimed `seat_id` acts as the idempotency lock.
+**Mechanism:** Durable idempotency record store with request matching by `idempotency_key` + `seat_id`.
+
+**Idempotency Record Format (Required):**
+
+An `IdempotencyRecord` entity MUST exist with:
+```
+idempotency_key    (String, PK part 1) — Unique request ID provided by client
+feat_id            (String, PK part 2) — Always "FEAT-IDEN-001"
+user_id            (Integer, PK part 3) — User ID claimed (optional; nullable for anonymous claims)
+seat_id            (Integer)            — Claimed seat (idempotency scope)
+outcome            (Enum)               — "NEW_USER_CLAIMED" or "DUPLICATE_CLAIM"
+created_at         (Timestamp)          — UTC timestamp of original request
+expires_at         (Timestamp)          — TTL (24 hours from created_at)
+```
 
 **Behavior:**
-- If a retry occurs with the same `idempotency_key` and `seat_id`:
-  - Detect that the seat is already claimed (`user_id IS NOT NULL`).
-  - Return the existing `user_id` and `seat_id` with outcome `"NEW_USER_CLAIMED"` (the claim already succeeded).
-  - Do NOT create a duplicate `User` or re-bind the seat.
-  - Do NOT emit duplicate audit events (same `idempotency_key` indicates a replay).
+1. **On entry**, check `IdempotencyRecord` where `idempotency_key = idempotency_key` and `feat_id = "FEAT-IDEN-001"`:
+   - If found and `expires_at > NOW()`: Return cached outcome and `user_id`/`seat_id` (idempotent success).
+   - If found but expired: Proceed with fresh execution (treat as new request).
+   - If not found: Proceed with execution.
 
-**Implications:**
-- Client MUST provide a deterministic `idempotency_key` (e.g., derived from session ID or request fingerprint).
-- Server MUST store the `idempotency_key` on the audit log to detect replays.
+2. **On success**, create `IdempotencyRecord` atomically with FEAT outcome:
+   - `idempotency_key`: From request.
+   - `feat_id`: "FEAT-IDEN-001".
+   - `user_id`: The newly created or resolved user.
+   - `seat_id`: The claimed seat.
+   - `outcome`: "NEW_USER_CLAIMED" (successful claim).
+   - `created_at`: Current UTC timestamp.
+   - `expires_at`: UTC timestamp 24 hours in future.
+
+3. **On failure**, do NOT create idempotency record (client should retry with same key after resolving error).
+
+**Client Responsibility:**
+- Generate a stable, deterministic `idempotency_key` (e.g., `SHA256(session_id + user_agent + timestamp_seconds)` or similar).
+- Retry on transient errors (network, 500) with the SAME `idempotency_key`.
+- NEVER reuse the same `idempotency_key` for different logical requests.
 
 ---
 

@@ -181,19 +181,40 @@ All credential mutations SHALL occur in a single transaction. If any step fails,
 
 ## V. Idempotency
 
-**Mechanism:** The combination of `idempotency_key` and `user_id` acts as the idempotency lock.
+**Mechanism:** Durable idempotency record store with request matching by `idempotency_key` + `user_id`.
+
+**Idempotency Record Format (Required):**
+
+An `IdempotencyRecord` entity MUST exist with:
+```
+idempotency_key    (String, PK part 1) — Unique request ID provided by client
+feat_id            (String, PK part 2) — Always "FEAT-IDEN-002"
+user_id            (Integer, PK part 3) — Student user being credentialed
+outcome            (Enum)               — "CREDENTIAL_ACTIVATED" or "ALREADY_CREDENTIALED"
+created_at         (Timestamp)          — UTC timestamp of original request
+expires_at         (Timestamp)          — TTL (24 hours from created_at)
+```
 
 **Behavior:**
-- If a retry occurs with the same `idempotency_key`:
-  - Check if `User.pin_hash IS NOT NULL` (credentials already activated).
-  - If true, return success with the same outcome.
-  - If false, re-attempt the full mutation (no duplicate state).
-- Replayed requests with the same `idempotency_key` **SHALL NOT** create duplicate audit events.
+1. **On entry**, check `IdempotencyRecord` where `idempotency_key = idempotency_key` and `feat_id = "FEAT-IDEN-002"`:
+   - If found and `expires_at > NOW()`: Return cached outcome (idempotent success).
+   - If found but expired: Proceed with fresh execution (treat as new request).
+   - If not found: Proceed with execution.
+
+2. **On success**, create `IdempotencyRecord` atomically with FEAT outcome:
+   - `idempotency_key`: From request.
+   - `feat_id`: "FEAT-IDEN-002".
+   - `user_id`: The student being credentialed.
+   - `outcome`: "CREDENTIAL_ACTIVATED" (new credentials) or "ALREADY_CREDENTIALED" (second call).
+   - `created_at`: Current UTC timestamp.
+   - `expires_at`: UTC timestamp 24 hours in future.
+
+3. **On failure**, do NOT create idempotency record (client should retry with same key after resolving error).
 
 **Client Responsibility:**
-- Generate a stable `idempotency_key` (e.g., based on session or user context).
-- Retry on transient errors with the same key.
-- Server stores key on audit log to detect and skip replays.
+- Generate a stable, deterministic `idempotency_key` (e.g., based on session or request fingerprint).
+- Retry on transient errors with the SAME `idempotency_key`.
+- NEVER reuse the same `idempotency_key` for different logical requests.
 
 ---
 
