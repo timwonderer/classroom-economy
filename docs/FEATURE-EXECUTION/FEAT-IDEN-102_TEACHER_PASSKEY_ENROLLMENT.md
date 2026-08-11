@@ -61,12 +61,29 @@ Before mutation, the FEAT MUST resolve:
 3. Verify that `Seat.role = 'teacher'` (seat is a teacher seat).
 4. **Failure Behavior**: Abort with `INVALID_SEAT_STATE` if seat is not a teacher seat.
 
-#### Step 3: Validate WebAuthn Response
+#### Step 3: Validate WebAuthn Ceremony Response (Creation)
 1. Verify that `webauthn_response` is valid JSON.
-2. Extract and decode `rawId` (base64url).
-3. Decode and validate `response.attestationObject` (CBOR format).
-4. Extract attested credential data and public key.
-5. **Failure Behavior**: Abort with `INVALID_WEBAUTHN_RESPONSE` if response cannot be parsed or validated.
+2. **Extract clientDataJSON**: Base64url-decode `response.clientDataJSON` and parse as JSON.
+   - Verify `clientDataJSON.type == "webauthn.create"` (NOT "webauthn.get").
+   - Verify `clientDataJSON.challenge` matches the challenge sent to the client in Step 1 (exact base64url match).
+   - Mark the challenge as consumed (used) to prevent replay in future requests.
+   - Verify `clientDataJSON.origin` matches the expected origin (e.g., "https://classroom-economy.com").
+3. **Extract and decode attestationObject**: Base64url-decode `response.attestationObject` (CBOR format).
+   - Extract `attStmt` (attestation statement), `authData` (authenticator data), and `fmt` (attestation format).
+   - Extract public key from `authData.credentialPublicKey`.
+4. **Verify RP ID Hash**: Compute `SHA256(RP_ID)` and verify it matches `authData.rpIdHash`.
+   - RP ID should be the domain name (e.g., "classroom-economy.com").
+5. **Extract credential data**:
+   - `credential_id`: Extract from `authData.credentialId` (base64url encode).
+   - `public_key`: Extract from `authData.credentialPublicKey`.
+   - `sign_count`: Extract from `authData.signCount` (for rollback detection).
+   - `aaguid`: Extract from `authData.aaguid` (authenticator model identifier).
+6. **Failure Behavior**: Abort with `INVALID_WEBAUTHN_RESPONSE` if any check fails:
+   - clientDataJSON.type is not "webauthn.create" → `INVALID_CEREMONY_TYPE`
+   - Challenge mismatch or invalid → `INVALID_CHALLENGE`
+   - Origin mismatch → `INVALID_ORIGIN`
+   - RP ID hash mismatch → `INVALID_RP_ID`
+   - Cannot parse CBOR or extract credential data → `INVALID_ATTESTATION_OBJECT`
 
 #### Step 4: Verify Attestation Chain (Optional, Security Enhancement)
 1. If attestation verification is enabled, validate attestation chain (requires root certificate management).
@@ -147,6 +164,34 @@ All mutations SHALL occur in a single transaction. If any step fails, complete r
 
 ### 6. Multiple Passkeys Allowed (MANDATORY)
 A single teacher can enroll multiple passkey credentials. There is no limit on the number of passkeys per user (policy can enforce a soft limit in future versions).
+
+### 7. WebAuthn Ceremony Binding (MANDATORY - SECURITY CRITICAL)
+The passkey enrollment MUST verify full WebAuthn ceremony integrity to prevent spoofing:
+
+**Challenge Binding:**
+- Before enrollment (in route handler), generate a cryptographically random challenge (256 bits).
+- Store challenge in server-side session or temporary table with TTL of 10 minutes.
+- Send challenge to client in WebAuthn API call (as base64url string).
+- Verify the returned challenge in `clientDataJSON.challenge` matches stored challenge exactly.
+- Mark challenge as consumed after verification (cannot be reused).
+
+**Ceremony Type Verification:**
+- Verify `clientDataJSON.type == "webauthn.create"` (creation ceremony, not assertion).
+- Reject if type is "webauthn.get" or any other value.
+
+**Origin Verification:**
+- Verify `clientDataJSON.origin` matches the server's origin exactly (e.g., "https://classroom-economy.com").
+- This prevents phishing attacks where attacker tricks user into enrolling passkey on attacker's domain.
+
+**RP ID Verification:**
+- Compute `SHA256(RP_ID)` where RP_ID is the domain name (e.g., "classroom-economy.com").
+- Verify `authData.rpIdHash` matches the computed hash.
+- This ensures the passkey is bound to the correct relying party (prevents cross-domain attacks).
+
+**Failure Handling:**
+- If any ceremony check fails, abort with specific error code (INVALID_CEREMONY_TYPE, INVALID_CHALLENGE, INVALID_ORIGIN, INVALID_RP_ID).
+- Do NOT store the credential if ceremony validation fails.
+- Log the failure for security audit.
 
 ---
 
