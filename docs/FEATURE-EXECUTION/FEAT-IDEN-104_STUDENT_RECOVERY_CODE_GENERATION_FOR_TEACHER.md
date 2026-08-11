@@ -51,7 +51,7 @@ Before mutation, the FEAT MUST resolve:
 
 #### Step 1: Validate Recovery Request State
 1. Query `recovery_requests` where `id = recovery_request_id`.
-2. Verify that `status IN ('pending', 'in_progress')` (recovery is active).
+2. Verify that `status = 'pending'` (recovery is active).
 3. Verify that `expires_at > NOW()` (recovery request not expired).
 4. **Failure Behavior**: Abort with `RECOVERY_NOT_ACTIVE` if recovery is closed or expired.
 
@@ -101,17 +101,17 @@ Insert into `student_recovery_codes` table:
 3. `class_id`: The class context (denormalized for scoping).
 4. `code_hash`: The hashed recovery code (bcrypt).
 5. `generated_at`: ISO 8601 UTC timestamp.
-6. `used_at`: NULL (not yet used in FEAT-IDEN-105).
+6. `verified_at`: NULL (will be set to timestamp in FEAT-IDEN-105 when validated).
+7. `dismissed`: FALSE (will be set when code is consumed).
 
 Per DOM-IDEN-003 §IV:
 > "`student_recovery_codes` table stores one recovery code per student per recovery request."
 
-#### Step 3: Update RecoveryRequest Status (Optional)
+#### Step 3: RecoveryRequest Status Remains Pending
 
-If no recovery codes existed and this is the first:
-1. Optionally update `recovery_requests.status` from "pending" to "in_progress".
-2. This signals that student code generation has begun.
-3. **Note:** This is optional; status can remain "pending" until all codes are received.
+1. Do NOT update `recovery_requests.status` during code generation.
+2. Status remains "pending" until all eligible student codes are received and validated in FEAT-IDEN-105.
+3. Only FEAT-IDEN-105 transitions the status to "verified".
 
 #### Step 4: Audit Trace
 
@@ -141,7 +141,7 @@ Per DOM-IDEN-003 §IV:
 This FEAT creates one code per student per recovery request.
 
 ### 2. Active Recovery Required (MANDATORY)
-Code generation only proceeds if an active recovery request exists in the class (`status IN ('pending', 'in_progress')` and `expires_at > NOW()`).
+Code generation only proceeds if an active recovery request exists in the class (`status = 'pending'` and `expires_at > NOW()`).
 
 ### 3. One Code Per Student Per Recovery (MANDATORY)
 A single student cannot generate multiple codes for the same recovery request. If re-attempted with the same idempotency key, return existing code (idempotent).

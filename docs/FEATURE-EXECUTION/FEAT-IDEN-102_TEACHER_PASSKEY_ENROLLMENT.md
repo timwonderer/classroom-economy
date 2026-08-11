@@ -39,7 +39,7 @@ Before mutation, the FEAT MUST resolve:
 * The `User` record matching `user_id` in the `users` table.
 * The `Seat` record matching `seat_id` in the `seats` table.
 * Verify that `User.id == Seat.user_id` (seat is bound to this user).
-* Verify that `Seat.role = 'admin'` (seat is a teacher seat).
+* Verify that `Seat.role = 'teacher'` (seat is a teacher seat).
 * Verify that `Seat.class_id == class_id` (seat is in the correct class).
 
 ---
@@ -58,8 +58,8 @@ Before mutation, the FEAT MUST resolve:
 #### Step 2: Validate Seat State
 1. Query `Seat` record where `id = seat_id`.
 2. Verify that `user_id = user_id` (seat is bound to the target user).
-3. Verify that `role = 'admin'` (seat is an admin/teacher seat).
-4. **Failure Behavior**: Abort with `INVALID_SEAT_STATE` if seat is not an admin seat.
+3. Verify that `role = 'teacher'` (seat is a teacher seat).
+4. **Failure Behavior**: Abort with `INVALID_SEAT_STATE` if seat is not a teacher seat.
 
 #### Step 3: Validate WebAuthn Response
 1. Verify that `webauthn_response` is valid JSON.

@@ -84,7 +84,7 @@ class AdminLayoutContextView:
     class_join_code: str       # OPTIONAL: If has_class_context, the join code
     
     # Feature flags
-    is_in_maintenance_bypass: bool  # Whether user bypassed maintenance mode
+    is_maintenance_bypass_active: bool  # Whether maintenance bypass is active
 ```
 
 **Template Usage (After Refactoring):**
@@ -176,7 +176,7 @@ class StudentLayoutContextView:
     class_join_code: str  # OPTIONAL: Join code for this class
     
     # Feature flags
-    is_in_maintenance_bypass: bool
+    is_maintenance_bypass_active: bool
 ```
 
 **Template Usage (After Refactoring):**
@@ -222,12 +222,11 @@ class TOTPSetupView:
     totp_secret_display: str  # REQUIRED: 32-char base32 secret for manual entry
     
     # Backup codes (one-time display)
-    backup_codes: list[str]  # REQUIRED: List of 10 codes in XXXX-XXXX-XXXX-XXXX format
-    backup_codes_formatted: str  # OPTIONAL: Pre-formatted as newline-separated string for copy/paste
+    backup_codes: tuple[str, ...]  # REQUIRED: Immutable tuple of 10 codes in XXXX-XXXX-XXXX-XXXX format
+    backup_codes_formatted: str  # REQUIRED: Pre-formatted as newline-separated string for copy/paste
     
     # Metadata (for confirmation page)
     issuer_name: str  # REQUIRED: "Classroom Token Hub" (for authenticator app display)
-    enrollment_deadline: str  # OPTIONAL: Reminder message if time-sensitive
 ```
 
 **Template Usage (After Refactoring):**
@@ -315,8 +314,8 @@ class AccountClaimView:
     
     # Claim metadata
     claim_identifier: str  # REQUIRED: The claim code or identifier displayed to student
-    claim_remaining_attempts: int  # REQUIRED: How many attempts left
-    claim_max_attempts: int  # REQUIRED: Total attempts allowed
+    remaining_attempts: int  # REQUIRED: How many attempts left
+    max_attempts: int  # REQUIRED: Total attempts allowed
 ```
 
 ---
@@ -340,10 +339,10 @@ class AccountClaimView:
 class ClassOption:
     """Single class option in selection list."""
     class_id: str  # UUID
-    display_name: str  # Pre-formatted, e.g., "Period 1 - 8:30 AM"
+    display_name: str  # Pre-formatted, e.g., "Period 1"
     join_code: str
     student_count: int  # Number of enrolled students (metadata)
-    is_selected: bool  # Whether this is the current selection
+    is_current: bool  # Whether this is the current selection
 
 @dataclass(frozen=True)
 class AdminClassSelectionView:
@@ -354,8 +353,8 @@ class AdminClassSelectionView:
     """
     
     teacher_display_name: str  # REQUIRED
-    available_classes: list[ClassOption]  # REQUIRED: List of classes teacher owns
-    currently_selected_class_id: str | None  # OPTIONAL: Current selection
+    available_classes: tuple[ClassOption, ...]  # REQUIRED: Immutable tuple of classes teacher owns
+    current_class_id: Optional[str]  # OPTIONAL: UUID of currently selected class (None if none)
     has_any_classes: bool  # REQUIRED: Whether teacher has ANY classes
 ```
 
@@ -380,7 +379,7 @@ class StudentClassOption:
     display_name: str  # Pre-formatted
     join_code: str
     teacher_display_name: str  # Teacher's name for this class
-    is_selected: bool
+    is_current: bool
 
 @dataclass(frozen=True)
 class StudentClassSelectionView:
@@ -391,8 +390,8 @@ class StudentClassSelectionView:
     """
     
     student_display_name: str  # REQUIRED
-    available_classes: list[StudentClassOption]  # REQUIRED
-    currently_selected_class_id: str | None  # OPTIONAL
+    available_classes: tuple[StudentClassOption, ...]  # REQUIRED: Immutable tuple of available classes
+    current_class_id: Optional[str]  # OPTIONAL: UUID of currently selected class (None if none)
     has_any_classes: bool  # REQUIRED
 ```
 

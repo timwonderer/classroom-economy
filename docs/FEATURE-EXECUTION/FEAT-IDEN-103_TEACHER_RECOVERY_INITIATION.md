@@ -50,7 +50,7 @@ Before mutation, the FEAT MUST resolve:
 4. **Failure Behavior**: Abort with `INVALID_USER_ROLE` if user is not a teacher.
 
 #### Step 2: Check Existing Recovery Requests
-1. Query `recovery_requests` where `user_id = user_id` and `status IN ('pending', 'in_progress')`.
+1. Query `recovery_requests` where `user_id = user_id` and `status = 'pending'` and `expires_at > NOW()`.
 2. If an active recovery request exists, return `RECOVERY_IN_PROGRESS` (idempotent success).
 3. If multiple pending requests exist, this indicates a data integrity issue — abort with `DATA_INTEGRITY_ERROR`.
 
@@ -60,9 +60,9 @@ Before mutation, the FEAT MUST resolve:
 3. **Failure Behavior**: Abort with `INVALID_CLASS_CONTEXT` if class does not exist.
 
 #### Step 4: Verify Teacher Affiliation
-1. Query `Seat` where `user_id = user_id` and `class_id = class_id` and `role = 'admin'`.
-2. Verify at least one admin seat exists for this teacher in the class.
-3. **Failure Behavior**: Abort with `NO_ADMIN_SEAT` if teacher has no admin seat in this class.
+1. Query `Seat` where `user_id = user_id` and `class_id = class_id` and `role = 'teacher'`.
+2. Verify at least one teacher seat exists for this teacher in the class.
+3. **Failure Behavior**: Abort with `NO_TEACHER_SEAT` if teacher has no teacher seat in this class.
 
 #### Step 5: Check Student Population
 1. Query `Seat` where `class_id = class_id` and `role = 'student'` and `claimed_at IS NOT NULL`.
@@ -86,10 +86,10 @@ Perform time calculation outside the transaction:
 
 Insert into `recovery_requests` table:
 1. `user_id`: The teacher user.
-2. `status`: "pending" (awaiting student code generation).
-3. `expires_at`: Calculated 5-day expiration.
-4. `created_at`: ISO 8601 UTC timestamp.
-5. `updated_at`: ISO 8601 UTC timestamp (same as created_at).
+2. `class_id`: The class context (for scoping).
+3. `status`: "pending" (awaiting student code generation).
+4. `expires_at`: Calculated 5-day expiration (NOW() + 5 DAYS).
+5. `created_at`: ISO 8601 UTC timestamp (set by database default).
 
 Per DOM-IDEN-003 §IV:
 > "`recovery_requests` table stores teacher recovery requests with 5-day TTL."

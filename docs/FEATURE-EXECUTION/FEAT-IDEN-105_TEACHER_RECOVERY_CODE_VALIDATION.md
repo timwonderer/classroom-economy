@@ -48,7 +48,7 @@ Before mutation, the FEAT MUST resolve:
 
 #### Step 1: Validate Recovery Request State
 1. Query `recovery_requests` where `id = recovery_request_id`.
-2. Verify that `status IN ('pending', 'in_progress')` (recovery is active).
+2. Verify that `status = 'pending'` (recovery is active and awaiting code validation).
 3. Verify that `expires_at > NOW()` (recovery request not expired).
 4. Verify that `user_id = user_id` (recovery belongs to this teacher).
 5. **Failure Behavior**: Abort with `RECOVERY_NOT_ACTIVE` if recovery is closed or expired.
@@ -86,20 +86,20 @@ Before mutation, the FEAT MUST resolve:
 
 All mutations in this section **MUST** occur within a single database transaction.
 
-#### Step 1: Mark Codes as Used
+#### Step 1: Mark Codes as Verified
 
 Update all verified `student_recovery_codes`:
-1. Set `used_at = NOW()` (mark as consumed).
-2. Verify that each code is marked used exactly once (no re-use).
+1. Set `verified_at = NOW()` (mark as verified).
+2. Set `dismissed = FALSE` (explicitly mark as active/verified).
+3. Verify that each code is marked verified exactly once (no re-use).
 
 #### Step 2: Update Recovery Request Status
 
 Update the `recovery_requests` record:
 1. Set `status = 'verified'` (recovery codes validated successfully).
-2. Set `updated_at = NOW()`.
 
 Per DOM-IDEN-003 §IV:
-> "`recovery_requests` status transitions: pending → in_progress → verified"
+> "`recovery_requests` status transitions: pending → verified"
 
 #### Step 3: Audit Trace
 
@@ -140,13 +140,13 @@ Per DOM-IDEN-003 §IV:
 This is not a majority-vote or threshold mechanism — all codes are required.
 
 ### 2. Active Recovery Required (MANDATORY)
-Validation only proceeds if an active recovery request exists (`status IN ('pending', 'in_progress')` and `expires_at > NOW()`).
+Validation only proceeds if an active recovery request exists (`status = 'pending'` and `expires_at > NOW()`).
 
 ### 3. Expiration Tied to RecoveryRequest (MANDATORY)
 If the recovery request expires, all associated codes expire. Validation fails if codes are expired.
 
 ### 4. One-Time Use (MANDATORY)
-Each recovery code can be used only once. After successful validation, `student_recovery_codes.used_at` is set to prevent re-use.
+Each recovery code can be used only once. After successful validation, `student_recovery_codes.verified_at` is set to prevent re-use.
 
 ### 5. Atomic Transaction (MANDATORY)
 All mutations SHALL occur in a single transaction. If any step fails, complete rollback occurs.
