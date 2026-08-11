@@ -101,14 +101,22 @@ Per DOM-IDEN-003 §III.B:
 
 **Important:** The old secret is overwritten, not preserved. There is no rollback to old credentials after update.
 
-#### Step 3: Generate New Backup Codes
+#### Step 3: Generate and Persist New Backup Codes
 
-Generate recovery backup codes (optional, same as FEAT-IDEN-101):
+Generate and persist fresh one-time backup codes (replaces old codes):
 1. Create 10 new backup codes (alphanumeric, format: XXXX-XXXX-XXXX-XXXX).
-2. Hash each backup code with `HASH_PASSWORD()` (same bcrypt + pepper as student credentials).
-3. Store hashes in a temporary in-memory structure (do NOT persist during setup; backup codes are displayed once and discarded).
+2. Hash each backup code with `HASH_PASSWORD()` (same bcrypt + pepper as passwords).
+3. Persist hashes to `User.backup_codes_encrypted` (encrypted JSON array of hashed codes, replacing old codes).
+4. For display, keep plaintext codes in memory (display once, then discard from memory).
 
-**Note:** Old backup codes are invalidated. New codes must be secured by the teacher.
+**Backup Code Lifecycle During Update:**
+- All old backup codes are immediately invalidated and replaced
+- New codes are stored as one-way bcrypt hashes
+- Each code can be used once; usage is tracked by `used_at` timestamp
+- After use, code cannot be reused
+- If teacher loses both new secret AND all backup codes, they must initiate recovery again
+
+**Note:** Old backup codes are invalidated immediately and cannot be recovered. New codes must be secured by the teacher.
 
 #### Step 4: Clear Recovery Context (If Applicable)
 
@@ -163,6 +171,14 @@ TOTP update can occur:
 - As proactive credential rotation (without recovery context).
 
 Both scenarios use the same FEAT logic.
+
+### 7. One-Time Backup Code Usage (MANDATORY)
+Backup codes are replaced entirely during TOTP update. Old codes are invalidated. Each new code can be used exactly once during future recovery. Validation SHALL:
+- Retrieve stored hash from updated `User.backup_codes_encrypted`
+- Verify plaintext code against hash using `verify_password()`
+- Check that `used_at IS NULL` (code has not been used)
+- On successful validation, set `used_at = NOW()` to mark as consumed
+- Codes cannot be reused after `used_at` is set
 
 ---
 

@@ -84,12 +84,20 @@ Update the `User` record:
 Per DOM-IDEN-003 §III.B:
 > "Teacher-specific fields: `totp_secret_encrypted`"
 
-#### Step 3: Generate Backup Codes
+#### Step 3: Generate and Persist Backup Codes
 
-Generate recovery backup codes (optional, for manual fallback):
+Generate one-time backup codes for account recovery:
 1. Create 10 backup codes (alphanumeric, format: XXXX-XXXX-XXXX-XXXX).
-2. Hash each backup code with `HASH_PASSWORD()` (same bcrypt + pepper as student credentials).
-3. Store hashes in a temporary in-memory structure (do NOT persist during initial setup; backup codes are displayed once and discarded).
+2. Hash each backup code with `HASH_PASSWORD()` (same bcrypt + pepper as passwords).
+3. Persist hashes to `User.backup_codes_encrypted` (encrypted JSON array of hashed codes).
+4. For display, keep plaintext codes in memory (display once, then discard from memory).
+
+**Backup Code Lifecycle:**
+- Codes are stored as one-way bcrypt hashes (cannot be decrypted, only verified)
+- When a code is used (e.g., during account recovery), it is validated against stored hash
+- Used codes are marked with `used_at` timestamp and cannot be reused
+- All codes are invalidated when TOTP secret is reset (FEAT-IDEN-106)
+- Old backup codes are replaced with new ones during TOTP updates
 
 **Note:** Backup codes are distinct from student-verified recovery codes (FEAT-IDEN-104). These are for manual fallback only.
 
@@ -130,6 +138,13 @@ All mutations SHALL occur in a single transaction. If any step fails, complete r
 
 ### 5. One-Time Display (MANDATORY)
 The unencrypted secret is displayed to the teacher ONLY ONCE during initial setup via QR code and text representation. After display, the secret is never revealed again (only the encrypted version is stored).
+
+### 6. One-Time Backup Code Usage (MANDATORY)
+Each backup code can be used exactly once during account recovery. Once a code is used (validated and marked with `used_at` timestamp), it cannot be reused. This is tracked at validation time (not during storage). Validation SHALL:
+- Retrieve stored hash from `User.backup_codes_encrypted`
+- Verify plaintext code against hash using `verify_password()`
+- Check that `used_at IS NULL` (code has not been used)
+- On successful validation, set `used_at = NOW()` to mark as consumed
 
 ---
 
