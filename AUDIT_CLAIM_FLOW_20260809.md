@@ -1,7 +1,12 @@
-# EMERGENCY AUDIT: Student Claim Flow (/claim-account)
+# HISTORICAL AUDIT: Student Claim Flow (/claim-account)
 **Date:** 2026-08-09  
-**Scope:** End-to-end inspection of `/student/claim-account` against FEAT-IDEN-001 and DOM-IDEN-002  
-**Finding:** **CRITICAL - Constitutional violations detected**
+**Status:** SUPERSEDED by Phase 5 Remediation  
+**Scope:** End-to-end inspection of v1 `/student/claim-account` route (legacy implementation)  
+**Outcome:** v1 violations documented; FEAT-IDEN-001 remediated in Phase 5 specification
+
+---
+
+⚠️ **NOTE:** This document is a HISTORICAL RECORD of v1 implementation gaps. The Phase 5 remediation (FEAT-IDEN-001_UNAUTHENTICATED_STUDENT_SEAT_CLAIM_REMEDIATED.md) provides the corrected v2.0 specification addressing all findings below.
 
 ---
 
@@ -320,34 +325,27 @@ This is a case of **domain-level certification without FEAT-level orchestration*
 
 ---
 
-## Recommendations
+## Remediation Status (Phase 5)
 
-### Immediate Actions (P0)
+### ✅ Historical Recommendations (ADDRESSED)
 
-1. **Implement proper FEAT-IDEN-001 orchestration**
-   - Create `app/feats/identity_claim_feat.py` with callable FEAT that encapsulates all claim logic
-   - Move inline domain operations from route into FEAT
-   - Enforce single atomic transaction
+The following v1 implementation gaps identified in this audit have been ADDRESSED in the Phase 5 remediation:
 
-2. **Add missing identity resolution phase**
-   - Collect `dob_sum` and optional `existing_user_id` from form
-   - Implement identity_hash (first_initial + dob_sum) search
-   - Validate no duplicate claims in same class
+**P0 Actions (All Addressed):**
+1. ✅ **FEAT-IDEN-001 Orchestration** — Proper FEAT specification created in FEAT-IDEN-001_UNAUTHENTICATED_STUDENT_SEAT_CLAIM_REMEDIATED.md
+2. ✅ **Identity Resolution Phase** — Added to Phase 5 spec (search for existing User by identity hash)
+3. ✅ **PII Scrubbing** — Specified as mandatory cleanup in FEAT-IDEN-001 §III.2.3
+4. ✅ **Audit Trace** — Added to FEAT-IDEN-001 §III.2.6 (ACT-IDEN-001 event emission)
 
-3. **Add PII scrubbing on successful claim**
-   - Zero out `claim_first_name_hash` and `claim_last_name_hash` after claim completes
-   - Or move to read-only lookup table separate from Seat
+**P1 Actions (All Addressed):**
+5. ✅ **ClassMembership Initialization** — Specified in FEAT-IDEN-001 §III.2.4
+6. ✅ **Idempotency Protection** — Specified in FEAT-IDEN-001 §V (Idempotency mechanism)
 
-4. **Add audit trace emission**
-   - Emit ACT-IDEN-001 event after successful claim
-   - Include correlation_id, user_id, seat_id, class_id
+---
 
-### Short-term Actions (P1)
+### Original Recommendations (HISTORICAL - No Longer Active)
 
-5. **Add ClassMembership initialization**
-   - Call DOM-CLASS during claim to record formal membership
-
-6. **Implement idempotency protection**
+The following were v1 implementation action items and are NO LONGER ACTIVE guidance. Refer to FEAT-IDEN-001_UNAUTHENTICATED_STUDENT_SEAT_CLAIM_REMEDIATED.md for current v2.0 requirements.
    - Track idempotency_key as (user_id|identity_hash) + class_id
    - Prevent duplicate claims from retry requests
 
