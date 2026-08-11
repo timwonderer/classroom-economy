@@ -57,9 +57,9 @@ Before mutation, the FEAT MUST resolve:
 3. If not enrolled (NULL), proceed to generate secret.
 
 #### Step 3: Validate Seat State
-1. Query `Seat` record where `id = seat_id`.
-2. Verify that `user_id = user_id` (seat is bound to the target user).
-3. Verify that `role = 'teacher'` (seat is a teacher seat).
+1. Query `Seat` record where `Seat.id = seat_id`.
+2. Verify that `Seat.user_id = user_id` (seat is bound to the target user).
+3. Verify that `Seat.role = 'teacher'` (seat is a teacher seat).
 4. **Failure Behavior**: Abort with `INVALID_SEAT_STATE` if seat is not a teacher seat.
 
 ---

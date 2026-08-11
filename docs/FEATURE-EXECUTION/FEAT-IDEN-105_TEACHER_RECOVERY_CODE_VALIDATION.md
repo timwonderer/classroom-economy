@@ -47,14 +47,14 @@ Before mutation, the FEAT MUST resolve:
 ### A. Verification Phase (Read-Only)
 
 #### Step 1: Validate Recovery Request State
-1. Query `recovery_requests` where `id = recovery_request_id`.
-2. Verify that `status = 'pending'` (recovery is active and awaiting code validation).
-3. Verify that `expires_at > NOW()` (recovery request not expired).
-4. Verify that `user_id = user_id` (recovery belongs to this teacher).
+1. Query `recovery_requests` where `recovery_requests.id = recovery_request_id`.
+2. Verify that `recovery_requests.status = 'pending'` (recovery is active and awaiting code validation).
+3. Verify that `recovery_requests.expires_at > NOW()` (recovery request not expired).
+4. Verify that `recovery_requests.user_id = user_id` (recovery belongs to this teacher).
 5. **Failure Behavior**: Abort with `RECOVERY_NOT_ACTIVE` if recovery is closed or expired.
 
 #### Step 2: Fetch Expected Recovery Codes
-1. Query all `student_recovery_codes` where `recovery_request_id = recovery_request_id`.
+1. Query all `student_recovery_codes` where `student_recovery_codes.recovery_request_id = recovery_request_id`.
 2. Get count of expected codes (one per claimed student in class).
 3. Build a mapping of `seat_id -> code_hash` for verification.
 

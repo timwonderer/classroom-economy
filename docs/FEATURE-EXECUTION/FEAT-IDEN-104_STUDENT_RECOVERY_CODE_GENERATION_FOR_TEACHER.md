@@ -62,14 +62,14 @@ Before mutation, the FEAT MUST resolve:
 4. **Failure Behavior**: Abort with `INVALID_USER_ROLE` if user is not a student or not credentialed.
 
 #### Step 3: Validate Student Seat State
-1. Query `Seat` record where `id = seat_id`.
-2. Verify that `user_id = student_user_id` (seat is bound to this student).
-3. Verify that `role = 'student'` and `claimed_at IS NOT NULL` (seat is claimed).
-4. Verify that `class_id = class_id` (seat is in the correct class).
+1. Query `Seat` record where `Seat.id = seat_id`.
+2. Verify that `Seat.user_id = student_user_id` (seat is bound to this student).
+3. Verify that `Seat.role = 'student'` and `Seat.claimed_at IS NOT NULL` (seat is claimed).
+4. Verify that `Seat.class_id = class_id` (seat is in the correct class).
 5. **Failure Behavior**: Abort with `INVALID_SEAT_STATE` if seat is not a claimed student seat.
 
 #### Step 4: Check Existing Recovery Code
-1. Query `student_recovery_codes` where `recovery_request_id = recovery_request_id` and `seat_id = seat_id`.
+1. Query `student_recovery_codes` where `student_recovery_codes.recovery_request_id = recovery_request_id` and `student_recovery_codes.seat_id = seat_id`.
 2. If a code already exists for this recovery request and student, return `CODE_ALREADY_GENERATED` (idempotent success).
 3. **Failure Behavior**: Do not allow duplicate codes from the same student for the same recovery request.
 
