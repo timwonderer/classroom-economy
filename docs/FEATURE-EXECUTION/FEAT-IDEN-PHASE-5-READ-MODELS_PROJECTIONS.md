@@ -241,8 +241,21 @@ class TOTPSetupView:
 {# Later on page: Backup codes display (NEW) #}
 <div class="backup-codes-panel">
     <h3>Save Your Backup Codes</h3>
-    <pre>{{ view.backup_codes_formatted }}</pre>
-    <button onclick="copyToClipboard('{{ view.backup_codes_formatted }}')">Copy Codes</button>
+    <pre id="backup-codes-text">{{ view.backup_codes_formatted }}</pre>
+    <button id="copy-codes-btn" data-codes="{{ view.backup_codes_formatted | safe }}">Copy Codes</button>
+    
+    <script>
+    document.getElementById('copy-codes-btn').addEventListener('click', function() {
+        // Read codes from data attribute or from the pre element text content
+        const codesElement = document.getElementById('backup-codes-text');
+        const codesToCopy = codesElement.textContent;
+        navigator.clipboard.writeText(codesToCopy).then(() => {
+            alert('Codes copied to clipboard!');
+        }).catch(err => {
+            console.error('Copy failed:', err);
+        });
+    });
+    </script>
 </div>
 ```
 

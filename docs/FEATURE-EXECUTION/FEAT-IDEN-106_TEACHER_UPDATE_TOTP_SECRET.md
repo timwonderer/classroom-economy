@@ -121,10 +121,8 @@ Generate and persist fresh one-time backup codes (replaces old codes):
 #### Step 4: Clear Recovery Context (If Applicable)
 
 If `recovery_context_id` was provided:
-1. Update `recovery_requests` where `id = recovery_context_id`:
-   - Set `status = 'completed'` (recovery fully resolved).
-   - Set `updated_at = NOW()`.
-2. **Note:** This marks the recovery as complete. The teacher can now authenticate normally.
+1. No update to `recovery_requests` is needed; recovery status is already `'verified'` from FEAT-IDEN-105.
+2. **Note:** FEAT-IDEN-105 set the status to 'verified' and recorded completed_at. The teacher can now authenticate normally with the new TOTP secret.
 
 #### Step 5: Audit Trace
 

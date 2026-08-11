@@ -101,8 +101,10 @@ Insert into `student_recovery_codes` table:
 3. `class_id`: The class context (denormalized for scoping).
 4. `code_hash`: The hashed recovery code (bcrypt).
 5. `generated_at`: ISO 8601 UTC timestamp.
-6. `verified_at`: NULL (will be set to timestamp in FEAT-IDEN-105 when validated).
-7. `dismissed`: FALSE (will be set when code is consumed).
+6. `verified_at`: NULL (will be set to timestamp in FEAT-IDEN-105 when code is validated/consumed).
+7. `dismissed`: FALSE (optional; can be set if student dismisses/opts-out of providing a code).
+
+**Authoritative One-Time-Use State**: `verified_at` is the authoritative field. A code with `verified_at IS NOT NULL` has been consumed and cannot be reused. A code with `verified_at IS NULL` has not been used (regardless of dismissed state).
 
 Per DOM-IDEN-003 §IV:
 > "`student_recovery_codes` table stores one recovery code per student per recovery request."

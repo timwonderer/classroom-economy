@@ -46,7 +46,13 @@ Before mutation, the FEAT MUST resolve:
 
 ### A. Verification Phase (Read-Only)
 
-#### Step 1: Validate Recovery Request State
+#### Step 1: Check Idempotency (Replay Detection)
+1. Query `IdempotencyRecord` where `idempotency_key = idempotency_key` and `feat_id = "FEAT-IDEN-105"`:
+   - If found and `expires_at > NOW()` and recovery_request_id matches: Return `ALREADY_VERIFIED` (idempotent success, no re-execution).
+   - If found but expired: Proceed with fresh execution.
+   - If not found: Proceed to Step 2.
+
+#### Step 2: Validate Recovery Request State
 1. Query `recovery_requests` where `recovery_requests.id = recovery_request_id`.
 2. Verify that `recovery_requests.status = 'pending'` (recovery is active and awaiting code validation).
 3. Verify that `recovery_requests.expires_at > NOW()` (recovery request not expired).
@@ -86,14 +92,14 @@ Before mutation, the FEAT MUST resolve:
 
 All mutations in this section **MUST** occur within a single database transaction.
 
-#### Step 1: Mark Codes as Verified
+#### Step 3: Mark Codes as Verified
 
 Update all verified `student_recovery_codes`:
-1. Set `verified_at = NOW()` (mark as verified).
-2. Set `dismissed = FALSE` (explicitly mark as active/verified).
-3. Verify that each code is marked verified exactly once (no re-use).
+1. Set `verified_at = NOW()` (mark as verified/consumed - **authoritative one-time-use state**).
+2. Do NOT modify `dismissed` field (dismissed is orthogonal to verified; a code can be dismissed without being used, or used without being dismissed).
+3. **One-Time-Use Semantics**: A code with `verified_at IS NOT NULL` has been consumed and cannot be reused. A code with `verified_at IS NULL` has not been used (regardless of dismissed state).
 
-#### Step 2: Update Recovery Request Status
+#### Step 4: Update Recovery Request Status
 
 Update the `recovery_requests` record:
 1. Set `status = 'verified'` (recovery codes validated successfully).
@@ -101,7 +107,19 @@ Update the `recovery_requests` record:
 Per DOM-IDEN-003 §IV:
 > "`recovery_requests` status transitions: pending → verified"
 
-#### Step 3: Audit Trace
+#### Step 5: Store Idempotency Record
+
+Create `IdempotencyRecord` atomically with this FEAT outcome:
+1. `idempotency_key`: From request.
+2. `feat_id`: "FEAT-IDEN-105".
+3. `recovery_request_id`: The validated recovery request.
+4. `outcome`: "CODES_VALIDATED" (successful validation).
+5. `created_at`: Current UTC timestamp.
+6. `expires_at`: UTC timestamp 24 hours in future.
+
+**Purpose**: Prevents revalidation on retries with same idempotency_key.
+
+#### Step 6: Audit Trace
 
 Per FEAT-CORE-000 §III.4:
 
