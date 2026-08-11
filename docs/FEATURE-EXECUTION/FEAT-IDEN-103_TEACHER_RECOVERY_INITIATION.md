@@ -50,9 +50,11 @@ Before mutation, the FEAT MUST resolve:
 4. **Failure Behavior**: Abort with `INVALID_USER_ROLE` if user is not a teacher.
 
 #### Step 2: Check Existing Recovery Requests
-1. Query `recovery_requests` where `recovery_requests.user_id = user_id` and `recovery_requests.status = 'pending'` and `recovery_requests.expires_at > NOW()`.
-2. If an active recovery request exists, return `RECOVERY_IN_PROGRESS` (idempotent success).
-3. If multiple pending requests exist, this indicates a data integrity issue — abort with `DATA_INTEGRITY_ERROR`.
+1. Query `recovery_requests` where `recovery_requests.user_id = user_id` AND `recovery_requests.class_id = class_id` AND `recovery_requests.status = 'pending'` AND `recovery_requests.expires_at > NOW()`.
+2. If an active recovery request exists for this user **and class**, return `RECOVERY_IN_PROGRESS` (idempotent success within that class scope).
+3. If multiple pending requests exist for the same user+class, this indicates a data integrity issue — abort with `DATA_INTEGRITY_ERROR`.
+
+**Note:** A teacher may have separate active recovery requests for different classes. Scope all checks to `class_id`.
 
 #### Step 3: Validate Class Context
 1. Query `ClassEconomy` record where `ClassEconomy.class_id = class_id`.
@@ -67,8 +69,7 @@ Before mutation, the FEAT MUST resolve:
 #### Step 5: Check Student Population
 1. Query `Seat` where `Seat.class_id = class_id` and `Seat.role = 'student'` and `Seat.claimed_at IS NOT NULL`.
 2. Get count of claimed student seats.
-3. If count == 0, return warning: "No students in class. Recovery cannot proceed without student verification."
-   - Recovery still succeeds, but notification should indicate students are needed.
+3. If count == 0, abort with `NO_ELIGIBLE_STUDENTS`. Recovery cannot proceed without at least one eligible student to provide a verification code. An empty-class recovery would bypass the quorum requirement entirely.
 
 ---
 
@@ -174,7 +175,7 @@ When the FEAT fails, the system SHALL:
 | No admin seat | `NO_ADMIN_SEAT` | 409 | "You don't have an admin seat in this class." |
 | Recovery already in progress | `RECOVERY_IN_PROGRESS` | 200 | "Recovery is already in progress for this account." |
 | Invalid class | `INVALID_CLASS_CONTEXT` | 400 | "Invalid class context." |
-| No students | `NO_STUDENTS_WARNING` | 201 | "Recovery initiated, but there are no students in class to provide codes." |
+| No students | `NO_ELIGIBLE_STUDENTS` | 409 | "Recovery cannot proceed: no eligible students in this class." |
 | Database error | `INTERNAL_ERROR` | 500 | "An error occurred during recovery initiation. Please try again." |
 
 ---

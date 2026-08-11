@@ -66,14 +66,14 @@ Subordinate to:
 - Set `Seat.user_id = new_user.id`
 - Set `Seat.claimed_at = NOW()`
 - Create `IdentityProfile` with encrypted name hash
-- Initialize `Seat.last_active_class_id = class_id`
+- Initialize `User.last_active_class_id = class_id`
 
 **Postconditions:**
 - `User.id` exists
 - `Seat.claimed_at IS NOT NULL`
 - `Seat.user_id = User.id`
-- `Seat.pin_hash IS NULL` (credentials not yet set)
-- `Seat.passphrase_hash IS NULL` (credentials not yet set)
+- `User.pin_hash IS NULL` (credentials not yet set)
+- `User.passphrase_hash IS NULL` (credentials not yet set)
 - User ready for credential setup (FEAT-IDEN-002)
 
 **Failure Cases:**
@@ -128,7 +128,7 @@ Subordinate to:
 - Set `User.current_session_started_at = NOW()`
 - Set `User.current_session_expires_at = NOW() + session_ttl`
 - Set `User.current_session_nonce = generate_nonce()`
-- Update `Seat.last_active_class_id = class_id`
+- Update `User.last_active_class_id = class_id`
 
 **Postconditions:**
 - `User.pin_hash IS NOT NULL`
@@ -246,7 +246,8 @@ Subordinate to:
 - Set `User.reset_code = NULL` (single-use invariant)
 - Set `User.reset_code_generated_at = NULL`
 - Set `User.reset_code_expires_at = NULL`
-- Verify `Seat.claimed_at IS NOT NULL` (if somehow NULL, set it)
+
+**Precondition Enforcement:** Seat MUST have `claimed_at IS NOT NULL` before this primitive executes. A NULL `claimed_at` indicates an invalid state; reject with `SEAT_NOT_CLAIMED` rather than silently setting it.
 
 **Postconditions:**
 - All four credential hashes are `NULL`
@@ -260,6 +261,7 @@ Subordinate to:
 - Code expired (TTL exceeded) → `CODE_EXPIRED` (generic message)
 - Code already used → `CODE_ALREADY_USED` (generic message)
 - No claimed seat found for user → `NO_CLAIMED_SEAT` (generic message)
+- Seat exists but `claimed_at IS NULL` → `SEAT_NOT_CLAIMED` (reject; do not mutate claim state)
 - Database error → `INTERNAL_ERROR` (rollback)
 
 **Atomicity:** Single transaction. All four credential hashes cleared together. On failure, none cleared.
@@ -385,7 +387,7 @@ Subordinate to:
 
 **Owning FEAT:** FEAT-IDEN-101 (TO BE CREATED)
 
-**Type:** Command (write + validation)
+**Type:** Command (write + validation) — two-step: **Prepare** then **Confirm**
 
 **Purpose:** Activate Time-based One-Time Password (TOTP) 2FA on teacher account during initial setup
 
@@ -393,34 +395,71 @@ Subordinate to:
 - `teacher_user_id` (new teacher account, uncredentialed)
 - `class_id` (teacher's primary class context)
 
+---
+
+#### T-002a: Prepare TOTP Enrollment
+
 **Inputs:**
-- `totp_code` (6-digit code to verify secret was added to authenticator)
 - `idempotency_key` (replay detection)
 
 **Preconditions:**
 - Teacher User exists with `user_role = 'teacher'`
 - Teacher is uncredentialed: `totp_secret_encrypted IS NULL`
-- Teacher is freshly provisioned or has just generated TOTP secret via out-of-band setup
-- TOTP code is valid against the secret being enrolled
+- No pending enrollment already active for this user
 
 **Reads:**
 - `User` by `user_id`
-- (If secret not yet generated, generate: `secret = pyotp.random_base32()`)
-- Verify TOTP code against secret
+- Verify no committed TOTP and no unexpired pending enrollment
 
 **Writes:**
-- Generate TOTP base32 secret: `secret = pyotp.random_base32()`
-- Encrypt and store: `User.totp_secret_encrypted = encrypt(secret, ENCRYPTION_KEY)`
-- Use custom validator: `normalize_totp_for_storage(secret)`
+- Generate TOTP base32 secret: `pending_secret = pyotp.random_base32()`
+- Store short-lived pending enrollment: `User.totp_pending_secret_encrypted = encrypt(pending_secret)`, `User.totp_pending_expires_at = NOW() + 10 minutes`
+
+**Returns:** QR code artifact (data URI) and manual entry secret for display to teacher
+
+**Postconditions:**
+- Pending enrollment reference persisted and time-bound
+- Teacher can open authenticator app, scan QR, and produce a valid code
+
+**Failure Cases:**
+- User not found → `USER_NOT_FOUND`
+- TOTP already enrolled → `ALREADY_ENROLLED`
+- Encryption failed → `INTERNAL_ERROR`
+
+**Atomicity:** Single transaction. On failure, rollback.
+
+---
+
+#### T-002b: Confirm TOTP Enrollment
+
+**Inputs:**
+- `totp_code` (6-digit code from authenticator to verify secret was added)
+- `idempotency_key` (replay detection)
+
+**Preconditions:**
+- Pending enrollment exists: `totp_pending_secret_encrypted IS NOT NULL` AND `totp_pending_expires_at > NOW()`
+- `totp_secret_encrypted IS NULL` (not yet committed)
+- Provided `totp_code` is valid against the pending secret
+
+**Reads:**
+- `User` by `user_id`
+- Decrypt `totp_pending_secret_encrypted` → `pending_secret`
+- Verify TOTP code against `pending_secret`
+
+**Writes:**
+- Encrypt and commit: `User.totp_secret_encrypted = encrypt(normalize_totp_for_storage(pending_secret))`
+- Clear pending enrollment: `User.totp_pending_secret_encrypted = NULL`, `User.totp_pending_expires_at = NULL`
 
 **Postconditions:**
 - `User.totp_secret_encrypted IS NOT NULL`
+- Pending enrollment fields cleared
 - Teacher can now authenticate using T-001 (TOTP challenge)
 - Recovery codes generated (backup in case of lost authenticator)
 
 **Failure Cases:**
 - User not found → `USER_NOT_FOUND`
 - User already has TOTP enrolled → `ALREADY_ENROLLED`
+- No pending enrollment or enrollment expired → `NO_PENDING_ENROLLMENT`
 - TOTP code invalid/expired → `INVALID_CODE`
 - Encryption failed → `INTERNAL_ERROR`
 
@@ -428,7 +467,7 @@ Subordinate to:
 
 **Audit:** Emits audit event with outcome `TOTP_ENROLLED`
 
-**Backup Codes:** After successful enrollment, generate 10 backup codes and display to teacher (one-time only)
+**Backup Codes:** After successful confirmation, generate 10 backup codes and display to teacher (one-time only)
 
 ---
 
@@ -513,11 +552,16 @@ Subordinate to:
 **Writes:**
 - Create `RecoveryRequest` row:
   - `user_id = teacher_user_id`
+  - `class_id = class_id` (class context for this recovery)
   - `status = 'pending'`
   - `created_at = NOW()`
   - `expires_at = NOW() + 5 days`
   - `completed_at = NULL`
   - `partial_codes = []` (JSON array)
+  - `eligible_seat_ids = [list of claimed student seat IDs in class_id at creation time]` (immutable snapshot; stored as JSON array)
+  - `eligible_seat_count = COUNT(claimed student seats in class_id)` (integer; guard against empty class)
+
+**Precondition Enforcement:** Reject with `NO_ELIGIBLE_STUDENTS` if `eligible_seat_count = 0`.
 
 **Postconditions:**
 - `RecoveryRequest` exists in `pending` state
@@ -529,6 +573,7 @@ Subordinate to:
 - Active recovery already exists → `RECOVERY_IN_PROGRESS`
 - User is not credentialed → `USER_NOT_CREDENTIALED`
 - Teacher not admin in class → `UNAUTHORIZED`
+- No eligible students (claimed seats) in class → `NO_ELIGIBLE_STUDENTS`
 - Database error → `INTERNAL_ERROR`
 
 **Atomicity:** Single transaction. On failure, rollback.
@@ -618,13 +663,16 @@ Subordinate to:
 
 **Preconditions:**
 - Active `RecoveryRequest` exists: `status = 'pending'` AND `NOW() < expires_at`
-- All `StudentRecoveryCode` rows exist for recovery request
+- `RecoveryRequest.eligible_seat_ids` is non-empty (guaranteed at creation by T-004)
+- Exactly one `StudentRecoveryCode` row exists per seat in `eligible_seat_ids` (one code per snapshotted student)
 - Each code hashes correctly against stored `code_hash`
-- All students in class have provided codes (all-or-nothing)
+- Submitted code count equals `RecoveryRequest.eligible_seat_count` (all-or-nothing)
 
 **Reads:**
 - `RecoveryRequest` by `recovery_request_id`
+- Read `RecoveryRequest.eligible_seat_ids` (immutable snapshot from T-004)
 - All `StudentRecoveryCode` rows for recovery request
+- Verify submitted code set covers every seat in `eligible_seat_ids`
 - Verify each code against hashed values
 
 **Writes:**
@@ -668,34 +716,71 @@ Subordinate to:
 - `teacher_user_id` (authenticated teacher)
 - `class_id` (teacher's class)
 
+**Type:** Command (write + validation) — two-step: **Prepare** then **Confirm**
+
+---
+
+#### T-007a: Prepare TOTP Rotation
+
 **Inputs:**
-- `new_totp_code` (6-digit code from new authenticator)
 - `idempotency_key` (replay detection)
 
 **Preconditions:**
 - Teacher is authenticated (already passed TOTP challenge)
 - Teacher User exists with `user_role = 'teacher'`
 - Existing TOTP secret is set: `totp_secret_encrypted IS NOT NULL`
-- New TOTP code is valid against new secret being set
+- No unexpired pending rotation already active
 
 **Reads:**
 - `User` by `user_id`
 - Verify existing TOTP is set
+- Verify no unexpired `totp_pending_secret_encrypted`
 
 **Writes:**
 - Generate new TOTP secret: `new_secret = pyotp.random_base32()`
-- Verify new code against secret
-- Encrypt and store: `User.totp_secret_encrypted = encrypt(new_secret)`
+- Store short-lived pending rotation: `User.totp_pending_secret_encrypted = encrypt(new_secret)`, `User.totp_pending_expires_at = NOW() + 10 minutes`
+
+**Returns:** QR code artifact (data URI) and manual entry secret for display to teacher
+
+**Failure Cases:**
+- User not found → `USER_NOT_FOUND`
+- TOTP not enrolled → `TOTP_NOT_ENROLLED`
+- Encryption failed → `INTERNAL_ERROR`
+
+**Atomicity:** Single transaction. On failure, rollback (existing secret unchanged).
+
+---
+
+#### T-007b: Confirm TOTP Rotation
+
+**Inputs:**
+- `new_totp_code` (6-digit code from new authenticator)
+- `idempotency_key` (replay detection)
+
+**Preconditions:**
+- Pending rotation exists: `totp_pending_secret_encrypted IS NOT NULL` AND `totp_pending_expires_at > NOW()`
+- Provided code is valid against the pending secret
+
+**Reads:**
+- `User` by `user_id`
+- Decrypt `totp_pending_secret_encrypted` → `new_secret`
+- Verify new code against `new_secret`
+
+**Writes:**
+- Encrypt and commit: `User.totp_secret_encrypted = encrypt(normalize_totp_for_storage(new_secret))`
+- Clear pending rotation: `User.totp_pending_secret_encrypted = NULL`, `User.totp_pending_expires_at = NULL`
 - Invalidate all passkey credentials (optional: require re-enrollment after TOTP change)
 
 **Postconditions:**
 - Old TOTP secret replaced with new one
+- Pending rotation fields cleared
 - Old authenticator apps will no longer work
 - New backup codes generated and displayed
 
 **Failure Cases:**
 - User not found → `USER_NOT_FOUND`
 - TOTP not enrolled → `TOTP_NOT_ENROLLED`
+- No pending rotation or rotation expired → `NO_PENDING_ROTATION`
 - New code invalid → `INVALID_CODE`
 - Encryption failed → `INTERNAL_ERROR`
 
@@ -734,8 +819,7 @@ Subordinate to:
 - Verify `user_id` matches
 
 **Writes:**
-- Delete `PasskeyCredential` row
-- Update `PasskeyCredential.deleted_at = NOW()` (soft delete, optional)
+- Delete `PasskeyCredential` row (hard delete)
 
 **Postconditions:**
 - Credential no longer usable for authentication
@@ -1024,25 +1108,34 @@ Subordinate to:
 
 **Type:** Query (pure read)
 
-**Purpose:** Check if User has an active (non-expired) reset code
+**Purpose:** Return a student's active (non-expired) reset code to an authorized teacher in the same class
 
 **Inputs:**
-- `user_id`
+- `student_user_id`
+- `requesting_teacher_id`
+- `class_id`
 
 **Reads:**
-- `User` by `user_id`
+- `User` (teacher) by `requesting_teacher_id` — verify `user_role = 'teacher'`
+- `Seat` by `(requesting_teacher_id, class_id)` — verify teacher holds an administrative seat in the class
+- `User` (student) by `student_user_id`
+- Verify student has a claimed seat in `class_id`
 - Check `reset_code IS NOT NULL` AND `reset_code_expires_at > NOW()`
 
 **Returns:** `reset_code` (plaintext string) or `None`
 
 **Preconditions:**
-- User exists
+- Requesting teacher exists with `user_role = 'teacher'`
+- Teacher holds an administrative seat in `class_id`
+- Student exists with a claimed seat in the same `class_id`
 
 **Postconditions:**
 - No modifications
 
 **Failure Cases:**
-- User not found → return `None`
+- Teacher not found or not a teacher → return `None`
+- Teacher does not hold an administrative seat in `class_id` → return `None` (or raise `UNAUTHORIZED`)
+- Student not found or not in class → return `None`
 - No active code → return `None`
 
 **Note:** Used by teacher to display code to student; only accessible to teacher in recovery flow

@@ -64,16 +64,16 @@ Before mutation, the FEAT MUST resolve:
 5. **Failure Behavior**: Abort with `INVALID_OR_EXPIRED_CODE` (generic for security).
 
 #### Step 4: Find Student Seat
-1. Query `Seat` where `user_id = student_user.id`.
-2. If multiple seats exist, prefer the one with `claimed_at IS NOT NULL`.
-3. If still multiple, pick the first by `id` (arbitrary but deterministic).
-4. **Failure Behavior**: Abort with `NO_CLAIMED_SEAT` if no seat exists (recovery requires at least one claim).
+1. Query `Seat` where `user_id = student_user.id` AND `claimed_at IS NOT NULL` (recovery must not operate on unclaimed seats).
+2. If multiple claimed seats exist, pick the first by `id` (deterministic).
+3. **Failure Behavior**: Abort with `NO_CLAIMED_SEAT` if no claimed seat exists. Do not fall back to unclaimed seats.
 
-#### Step 5: Mark Code as Used
-This is a soft marker to prevent reuse. Some implementations may prefer to clear immediately:
-- Option A: Set a flag `reset_code_used_at = NOW()` before next step
-- Option B: Wait and clear in Step 2 of mutation phase
-- **Chosen**: Validate but don't mark yet; clear in mutation phase (cleaner transaction)
+#### Step 5: Conditional Reset Code Clear (Concurrency Guard)
+
+To prevent two simultaneous requests from both consuming the same code, clear it with a conditional update:
+1. Execute: `UPDATE User SET reset_code = NULL, reset_code_generated_at = NULL, reset_code_expires_at = NULL WHERE id = student_user.id AND reset_code = :normalized_code AND reset_code_expires_at > NOW()`
+2. Verify exactly one row was affected. If zero rows were affected, the code was already consumed by a concurrent request — abort with `INVALID_OR_EXPIRED_CODE`.
+3. Continue to the mutation phase only for the winning request.
 
 ---
 
@@ -92,24 +92,17 @@ Update the `User` record:
 
 **Atomicity Guarantee:** All four fields are set in the same transaction. The user cannot log in with old credentials once this transaction commits.
 
-#### Step 2: Clear Reset Code (Single-Use Invariant)
+#### Step 2: Reset Code Already Cleared (Step 5 of Validation Phase)
 
-Per DOM-IDEN-002 §IX:
-> "Reset codes are single-use — cleared on successful use or expiry."
+The reset code was cleared atomically in the conditional update at Step 5 of the validation phase. No further action required here.
 
-Update the `User` record:
-1. Set `reset_code = NULL` (prevent reuse)
-2. Set `reset_code_generated_at = NULL`
-3. Set `reset_code_expires_at = NULL`
+**Security Invariant:** The conditional clear guarantees single-use — only the first concurrent request succeeds.
 
-**Security Invariant:** Once cleared, the reset code cannot be used again, even if someone obtains the string.
+#### Step 3: Seat Claimed State (Read-Only Verification)
 
-#### Step 3: Update Seat Claimed State (If Needed)
-
-Per DOM-IDEN-002 §VIII.IV:
-- Seat should already have `claimed_at` set (from FEAT-IDEN-001).
-- If somehow `claimed_at IS NULL`, set it to `NOW()`.
-- This handles edge cases where recovery is initiated before claim completes.
+Per DOM-IDEN-002 §VIII.IV, the seat must already be claimed. Recovery must not create or modify participation:
+- Verify `Seat.claimed_at IS NOT NULL` (guaranteed by Step 4 of the validation phase).
+- Do NOT set `claimed_at` during recovery. If no claimed seat was found, the flow was already aborted in Step 4.
 
 #### Step 4: Clear Session State (Application-Level)
 

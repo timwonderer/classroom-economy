@@ -67,8 +67,9 @@ Before mutation, the FEAT MUST resolve:
    - Query `recovery_requests` where `id = recovery_context_id`.
    - Verify that `user_id = user_id` (recovery is for this teacher).
    - Verify that `status = 'verified'` (recovery has completed successfully).
-   - Verify that `expires_at > NOW()` (recovery not expired).
-2. **Failure Behavior**: Abort with `RECOVERY_CONTEXT_INVALID` if recovery context is invalid.
+   - Verify that `completed_at IS NOT NULL` (recovery was conclusively closed).
+   - Verify a separate post-verification window: `completed_at + 30 minutes > NOW()`. This short-lived window is distinct from the original 5-day recovery `expires_at`, which covers the submission period only. The 30-minute post-verification window limits how long an attacker can exploit a stolen verified-request ID.
+2. **Failure Behavior**: Abort with `RECOVERY_CONTEXT_INVALID` if recovery context is invalid or the post-verification window has elapsed.
 
 **Note:** If no recovery context, this is a proactive TOTP rotation (not part of recovery).
 

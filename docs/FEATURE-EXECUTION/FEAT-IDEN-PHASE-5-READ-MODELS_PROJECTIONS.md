@@ -242,13 +242,14 @@ class TOTPSetupView:
 <div class="backup-codes-panel">
     <h3>Save Your Backup Codes</h3>
     <pre id="backup-codes-text">{{ view.backup_codes_formatted }}</pre>
-    <button id="copy-codes-btn" data-codes="{{ view.backup_codes_formatted | safe }}">Copy Codes</button>
+    {# Encode backup_codes_formatted as JSON in a data attribute to safely handle newlines #}
+    <button id="copy-codes-btn" data-codes="{{ view.backup_codes_formatted | tojson }}">Copy Codes</button>
     
     <script>
     document.getElementById('copy-codes-btn').addEventListener('click', function() {
-        // Read codes from data attribute or from the pre element text content
-        const codesElement = document.getElementById('backup-codes-text');
-        const codesToCopy = codesElement.textContent;
+        // Read codes from JSON-encoded data attribute (safe: newlines are \n in JSON string)
+        const codesJson = document.getElementById('copy-codes-btn').getAttribute('data-codes');
+        const codesToCopy = JSON.parse(codesJson);
         navigator.clipboard.writeText(codesToCopy).then(() => {
             alert('Codes copied to clipboard!');
         }).catch(err => {

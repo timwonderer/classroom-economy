@@ -110,7 +110,14 @@ From the `webauthn_response`, extract:
 4. `aaguid`: The authenticator's AAGUID (for device identification).
 5. `transports`: Supported transports (if available; e.g., ["usb", "internal"]).
 
-#### Step 2: Create PasskeyCredential Record
+#### Step 2: Validate `authenticator_name`
+
+Before storing or logging `authenticator_name`:
+1. Verify length is between 3 and 128 characters. Reject with `INVALID_AUTHENTICATOR_NAME` if outside range.
+2. Reject any value containing control characters (`\x00`–`\x1f`, `\x7f`). Reject with `INVALID_AUTHENTICATOR_NAME`.
+3. HTML-encode the validated value when rendering it in the management UI to prevent XSS.
+
+#### Step 3: Create PasskeyCredential Record
 
 Insert into `passkey_credentials` table:
 1. `user_id`: The teacher user.
@@ -118,12 +125,12 @@ Insert into `passkey_credentials` table:
 3. `public_key`: The public key (stored encrypted or plaintext depending on security requirements).
 4. `sign_count`: Initial signature counter (0 or extracted value).
 5. `aaguid`: Authenticator AAGUID.
-6. `authenticator_name`: User-provided name (e.g., "YubiKey 5").
+6. `authenticator_name`: Validated user-provided name (3–128 chars, no control characters).
 7. `transports`: JSON array of supported transports (optional).
 8. `created_at`: ISO 8601 UTC timestamp.
 9. `last_used_at`: NULL (not yet used).
 
-#### Step 3: Audit Trace
+#### Step 4: Audit Trace
 
 Per FEAT-CORE-000 §III.4:
 

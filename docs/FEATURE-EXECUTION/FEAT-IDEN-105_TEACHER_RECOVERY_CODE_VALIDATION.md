@@ -59,15 +59,19 @@ Before mutation, the FEAT MUST resolve:
 4. Verify that `recovery_requests.user_id = user_id` (recovery belongs to this teacher).
 5. **Failure Behavior**: Abort with `RECOVERY_NOT_ACTIVE` if recovery is closed or expired.
 
-#### Step 2: Fetch Expected Recovery Codes
-1. Query all `student_recovery_codes` where `student_recovery_codes.recovery_request_id = recovery_request_id`.
-2. Get count of expected codes (one per claimed student in class).
-3. Build a mapping of `seat_id -> code_hash` for verification.
+#### Step 2: Fetch Expected Recovery Codes and Eligible Seat Snapshot
+1. Read `RecoveryRequest.eligible_seat_ids` (immutable snapshot set at T-004 / FEAT-IDEN-103 initiation time).
+2. Read `RecoveryRequest.eligible_seat_count` — this is the authoritative expected count.
+3. Derive the expected code set: one submitted code required per seat in `eligible_seat_ids`.
+4. Query all `student_recovery_codes` where `student_recovery_codes.recovery_request_id = recovery_request_id`.
+5. Build a mapping of `seat_id -> code_hash` for verification.
+
+**Note:** The expected count comes from the snapshotted seat roster, NOT from the current number of `student_recovery_codes` rows. This prevents a missing student from silently reducing the required quorum.
 
 #### Step 3: Validate Code Count
-1. If `submitted_codes` array length != expected code count, abort with `INCOMPLETE_SUBMISSION`.
-   - This is all-or-nothing: every student's code is required.
-2. **Failure Behavior**: Return count of codes provided vs. expected (generic, no PII leaks).
+1. If `submitted_codes` array length != `RecoveryRequest.eligible_seat_count`, abort with `INCOMPLETE_SUBMISSION`.
+   - This is all-or-nothing: every snapshotted eligible student's code is required.
+2. **Failure Behavior**: Return count of codes provided vs. `eligible_seat_count` (generic, no PII leaks).
 
 #### Step 4: Verify Each Code
 1. For each code in `submitted_codes`:

@@ -82,18 +82,24 @@ Before mutation, the FEAT MUST resolve:
 
 All mutations in this section **MUST** occur within a single database transaction.
 
-#### Step 1: Delete PasskeyCredential Record
+#### Step 1: Persist Idempotency Record Before Deletion
+
+Before executing the hard delete, write the idempotency record:
+1. Insert into `IdempotencyRecord`: `idempotency_key = idempotency_key`, `feat_id = "FEAT-IDEN-107"`, `credential_id = credential_id`, `user_id = user_id`, `expires_at = NOW() + 24 hours`.
+2. This ensures that if the delete succeeds but the response is lost, a retry will resolve via the idempotency check at Step 1 of the validation phase and return success rather than `CREDENTIAL_NOT_FOUND`.
+
+#### Step 2: Delete PasskeyCredential Record
 
 Delete from `passkey_credentials` table:
 1. WHERE `credential_id = credential_id` and `user_id = user_id`.
-2. Confirm exactly one row was deleted (idempotency check).
+2. Confirm zero or one row was deleted. Zero rows indicates the credential was already removed (acceptable for idempotent retries covered by Step 1).
 
 Per DOM-IDEN-003 §III.B:
 > "Passkey credentials can be revoked (deleted) at any time."
 
-**Note:** This is a hard delete, not a soft delete (status flag). The credential is completely removed.
+**Note:** This is a hard delete. The credential is completely removed; there is no `deleted_at` soft-delete marker.
 
-#### Step 2: Audit Trace
+#### Step 3: Audit Trace
 
 Per FEAT-CORE-000 §III.4:
 

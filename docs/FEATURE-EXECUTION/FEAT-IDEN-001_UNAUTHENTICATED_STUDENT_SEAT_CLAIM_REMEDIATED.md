@@ -13,7 +13,7 @@ This FEAT orchestrates the unauthenticated binding of a newly provisioned `User`
 
 > [!IMPORTANT]
 >
-> **Scope Clarification:** This FEAT handles **unauthenticated claim only**. It is for students claiming a classroom seat without prior authentication. For authenticated users joining a new classroom (reusing existing credentials), see **FEAT-IDEN-004** (Authenticated Class Binding).
+> **Scope Clarification:** This FEAT handles **unauthenticated claim only**. It is for students claiming a classroom seat without prior authentication. For authenticated users joining a new classroom (reusing existing credentials), see **FEAT-IDEN-005** (Authenticated Class Binding).
 
 **Governing Authority:**
 - DOM-IDEN-005 §VII (Student Identity Lifecycle)
@@ -110,11 +110,15 @@ Per DOM-IDEN-005 §VII:
 Per DOM-IDEN-005 §VIII (Identity Binding):
 > "Binding SHALL occur atomically."
 
-1. Update the resolved `Seat` record:
+1. Acquire a row lock on the resolved `Seat` record before binding:
+   - Use `SELECT ... FOR UPDATE` (or equivalent ORM row lock) on the `Seat` row.
+2. Execute a conditional update requiring `Seat.user_id IS NULL` (guard against concurrent claims):
    - Set `user_id = user_id` (bind seat to the newly provisioned user)
    - Set `claimed_at = NOW()` (mark claim timestamp)
    - Set `role = 'student'` (or verify already set)
-2. Verify `UNIQUE(user_id, class_id)` constraint is satisfied (only one seat per user per class).
+   - **WHERE** `Seat.user_id IS NULL` (conditional bind)
+3. Verify exactly one row was affected by the update. If zero rows were updated (seat was concurrently claimed), roll back the entire transaction including the newly provisioned `User` and return `SEAT_ALREADY_CLAIMED`.
+4. Verify `UNIQUE(user_id, class_id)` constraint is satisfied (only one seat per user per class).
 
 #### Step 3: Roster Finalization (PII Scrubbing)
 
