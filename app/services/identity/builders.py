@@ -39,14 +39,53 @@ class AdminLayoutContextView:
 
     Producer: build_admin_layout_context_view()
     Consumer: layout_admin.html (shared across ALL admin pages)
+
+    All fields are pre-formatted and immutable (frozen=True) per SPEC-UI-001 § VI.
     """
 
-    teacher_display_name: str            # Uppercase pre-formatted, e.g. "JOHN SMITH"
-    has_class_context: bool              # False → show "No classes created yet"
-    class_timezone: str                  # "" when not set / UTC (data-timezone attr)
-    class_display_name: str              # e.g. "Period 1" or join_code fallback
-    class_join_code: str                 # Public join code for display
-    is_maintenance_bypass_active: bool   # Whether maintenance banner renders
+    teacher_display_name: str
+    """Teacher's display name, pre-formatted to uppercase.
+
+    Examples: "JOHN SMITH", "JANE DOE". Empty string if no name available.
+    Pre-formatting eliminates |upper filter from templates.
+    """
+
+    has_class_context: bool
+    """Whether a class context is available for display.
+
+    False indicates no class is selected or no classes exist. Template uses this to
+    show "No classes created yet" message instead of class context fields.
+    """
+
+    class_timezone: str
+    """Timezone identifier for the current class context.
+
+    Empty string ("") when timezone is UTC or not set. The template uses empty string
+    to trigger JavaScript fallback message. Non-empty values like "America/New_York"
+    are passed to data-timezone attribute for client-side rendering.
+    Only rendered if has_class_context is True.
+    """
+
+    class_display_name: str
+    """Display name for the current class (e.g., "Period 1", "1st Hour").
+
+    Falls back to join_code if no formal display name is set. Only rendered if
+    has_class_context is True. Empty string if no class context.
+    """
+
+    class_join_code: str
+    """Public join code for the current class.
+
+    Example: "ABC123DEF456". Displayed alongside class_display_name for reference.
+    Empty string if no class context.
+    """
+
+    is_maintenance_bypass_active: bool
+    """Whether the maintenance mode bypass is active for this user.
+
+    Controls visibility of maintenance bypass banner. True indicates user has
+    permission to access system during maintenance window.
+    """
 
 
 @dataclass(frozen=True)
@@ -59,15 +98,59 @@ class StudentLayoutContextView:
 
     Producer: build_student_layout_context_view()
     Consumer: layout_student.html (shared across ALL student pages)
+
+    All fields are pre-formatted and immutable (frozen=True) per SPEC-UI-001 § VI.
     """
 
-    student_display_full_name: str       # Uppercase pre-formatted, e.g. "ALEX JOHNSON"
-    student_display_first_name: str      # Pre-formatted first name, e.g. "Alex"
-    student_display_last_initial: str    # Single char, e.g. "J"
-    has_class_context: bool              # False → show no-class message
-    class_display_name: str             # e.g. "Period 1" or ""
-    class_join_code: str                # Public join code or ""
+    student_display_full_name: str
+    """Student's full name, pre-formatted to uppercase.
+
+    Format: First name and last name separated by space, all uppercase.
+    Examples: "ALEX JOHNSON", "JANE SMITH". Empty string if not available.
+    Pre-formatting eliminates |upper filter from templates.
+    """
+
+    student_display_first_name: str
+    """Student's first name, title-cased.
+
+    Format: First letter capitalized, rest lowercase.
+    Example: "Alex", "Jane". Empty string if not available.
+    """
+
+    student_display_last_initial: str
+    """Student's last name initial, single uppercase letter.
+
+    Format: Single character, uppercase (e.g., "J", "S"). Empty string if last name
+    not available. Used in layouts to display "Alex J" style abbreviated names.
+    """
+
+    has_class_context: bool
+    """Whether a class context is available for display.
+
+    False indicates no class is selected or student not enrolled in any class.
+    Template uses this to show appropriate "no class" message.
+    """
+
+    class_display_name: str
+    """Display name for the current class (e.g., "Period 1", "1st Hour").
+
+    Falls back to join_code if no formal display name exists. Empty string if no
+    class context. Only rendered if has_class_context is True.
+    """
+
+    class_join_code: str
+    """Public join code for the current class.
+
+    Example: "ABC123DEF456". Displayed alongside class_display_name for reference.
+    Empty string if no class context.
+    """
+
     is_maintenance_bypass_active: bool
+    """Whether the maintenance mode bypass is active for this user.
+
+    Controls visibility of maintenance bypass banner. True indicates user has
+    permission to access system during maintenance window.
+    """
 
 
 @dataclass(frozen=True)
@@ -80,13 +163,46 @@ class TOTPSetupView:
 
     Producer: build_totp_setup_view() — called by FEAT-IDEN-101
     Consumer: admin_signup_totp.html (teacher TOTP setup step)
+
+    All fields are pre-formatted and immutable (frozen=True) per SPEC-UI-001 § VI.
     """
 
-    qr_code_data_uri: str               # "data:image/png;base64,..." — ready for <img src="">
-    totp_secret_display: str            # 32-char base32 string for manual entry
-    backup_codes: tuple[str, ...]       # 10 one-time backup codes (XXXX-XXXX-XXXX-XXXX format)
-    backup_codes_formatted: str         # Newline-separated for copy/paste
-    issuer_name: str                    # "Classroom Token Hub"
+    qr_code_data_uri: str
+    """Full data URI for QR code image, ready for <img src="">.
+
+    Format: "data:image/png;base64,{base64-encoded-png}". Pre-assembled by FEAT
+    so template doesn't need to construct data URI. Can be directly used as img src.
+    """
+
+    totp_secret_display: str
+    """32-character base32-encoded TOTP secret for manual entry.
+
+    Format: Uppercase base32 string (e.g., "JBSWY3DPEBLW64TMMQ======"). Displayed
+    for manual entry into authenticator apps. This is the ONLY time the plaintext
+    secret is shown to the user; it's never stored unencrypted.
+    """
+
+    backup_codes: tuple[str, ...]
+    """Immutable tuple of 10 one-time backup codes.
+
+    Format: Each code is XXXX-XXXX-XXXX-XXXX pattern (e.g., "ABCD-EFGH-IJKL-MNOP").
+    Displayed once for user to save. Used only for account recovery if TOTP device
+    is lost. Immutable tuple ensures consistent reference semantics.
+    """
+
+    backup_codes_formatted: str
+    """Pre-formatted backup codes, newline-separated.
+
+    Format: Codes joined by newlines, ready for copy/paste into a note-taking app.
+    Example: "ABCD-EFGH-IJKL-MNOP\\nWXYZ-...". Eliminates need for join() in template.
+    """
+
+    issuer_name: str
+    """Issuer name displayed in authenticator app.
+
+    Example: "Classroom Token Hub". Shown alongside account name when user adds
+    TOTP to their authenticator, helping them identify the credential source.
+    """
 
 
 @dataclass(frozen=True)
@@ -98,25 +214,95 @@ class AccountClaimView:
 
     Producer: build_account_claim_view()
     Consumer: student_account_claim.html (student claim flow)
+
+    All fields are pre-formatted and immutable (frozen=True) per SPEC-UI-001 § VI.
     """
 
-    student_display_full_name: str      # e.g. "Alex Johnson"
-    student_display_first_name: str     # e.g. "Alex"
-    student_display_last_initial: str   # e.g. "J"
-    claim_identifier: str               # The claim code displayed to student
-    remaining_attempts: int             # How many attempts remain
-    max_attempts: int                   # Total attempts allowed
+    student_display_full_name: str
+    """Student's full name, plaintext (not uppercase).
+
+    Format: First name and last name separated by space (title-cased).
+    Example: "Alex Johnson", "Jane Smith". Used during claim for identity confirmation.
+    """
+
+    student_display_first_name: str
+    """Student's first name, plaintext.
+
+    Format: First letter capitalized, rest lowercase.
+    Example: "Alex", "Jane". Used for personalized greeting during claim flow.
+    """
+
+    student_display_last_initial: str
+    """Student's last name initial, single uppercase letter.
+
+    Format: Single character, uppercase (e.g., "J", "S"). Used alongside first name
+    to help student confirm their identity ("Alex J") during claim process.
+    """
+
+    claim_identifier: str
+    """Claim code or token displayed to student.
+
+    Format: Alphanumeric code (e.g., "ABC123DEF456"). Unique identifier for this
+    claim attempt. Student must enter this code to proceed with account setup.
+    """
+
+    remaining_attempts: int
+    """Number of claim attempts remaining before lockout.
+
+    Integer >= 0. Displayed to warn student of attempt limit. Template shows
+    "You have X attempts remaining" when > 1, "This is your last attempt" when = 1.
+    """
+
+    max_attempts: int
+    """Maximum total claim attempts allowed for this claim session.
+
+    Integer > 0. Example: 3. Used to calculate progress ("Attempt 1 of 3").
+    Immutable once claim starts to prevent tampering with attempt limits.
+    """
 
 
 @dataclass(frozen=True)
 class ClassOption:
-    """Single class entry in AdminClassSelectionView."""
+    """Single class entry in AdminClassSelectionView.
+
+    Represents one class that a teacher owns, used to populate dropdown/list
+    of available classes. All fields are pre-formatted and immutable.
+    """
 
     class_id: str
-    display_name: str          # Pre-formatted, e.g. "Period 1" or join_code
+    """UUID of this class.
+
+    Canonical identifier used for routing and data access. Example:
+    "550e8400-e29b-41d4-a716-446655440000"
+    """
+
+    display_name: str
+    """Display name for this class, pre-formatted.
+
+    Format: Teacher-provided name (e.g., "Period 1", "1st Hour") or join_code
+    fallback if no formal name. Used in dropdown/list to identify class.
+    """
+
     join_code: str
+    """Public join code for this class.
+
+    Format: Alphanumeric code (e.g., "ABC123DEF456"). Used by students to
+    enroll. Displayed in dropdown for quick reference. Immutable.
+    """
+
     student_count: int
-    is_current: bool           # Whether this is the currently selected class
+    """Number of enrolled students in this class.
+
+    Integer >= 0. Displayed as metadata to help teacher identify classes.
+    Pre-computed for display efficiency (not live-counted each time).
+    """
+
+    is_current: bool
+    """Whether this is the currently selected class.
+
+    True if this class_id matches the user's current session context.
+    Used to highlight current class in dropdown or show active state.
+    """
 
 
 @dataclass(frozen=True)
@@ -128,23 +314,83 @@ class AdminClassSelectionView:
 
     Producer: build_admin_class_selection_view()
     Consumer: admin_select_class_context.html
+
+    All fields are pre-formatted and immutable (frozen=True) per SPEC-UI-001 § VI.
     """
 
     teacher_display_name: str
+    """Teacher's display name, plaintext.
+
+    Format: First and last name (title-cased). Example: "John Smith".
+    Shown at top of class selection page for user confirmation.
+    """
+
     available_classes: tuple[ClassOption, ...]
-    current_class_id: Optional[str]    # UUID of currently selected class (None if none)
-    has_any_classes: bool              # Whether teacher has ANY classes
+    """Immutable tuple of all classes this teacher owns.
+
+    Each ClassOption is pre-formatted with display_name, join_code, student count.
+    Immutable tuple ensures consistent iteration semantics across renders.
+    Empty tuple if teacher has no classes.
+    """
+
+    current_class_id: Optional[str]
+    """UUID of currently selected class, or None if no class selected.
+
+    Used to highlight current class in dropdown and show active state.
+    Used by is_current flag on each ClassOption to match/highlight.
+    """
+
+    has_any_classes: bool
+    """Whether teacher owns at least one class.
+
+    True if available_classes is non-empty. Template uses this to show
+    appropriate message ("No classes created yet" vs. class list).
+    Avoids need for template to check len(available_classes) > 0.
+    """
 
 
 @dataclass(frozen=True)
 class StudentClassOption:
-    """Single class entry in StudentClassSelectionView."""
+    """Single class entry in StudentClassSelectionView.
+
+    Represents one class that a student is enrolled in, used to populate
+    dropdown/list of available classes. All fields are pre-formatted and immutable.
+    """
 
     class_id: str
+    """UUID of this class.
+
+    Canonical identifier used for routing and data access. Example:
+    "550e8400-e29b-41d4-a716-446655440000"
+    """
+
     display_name: str
+    """Display name for this class, pre-formatted.
+
+    Format: Teacher-provided name (e.g., "Period 1", "1st Hour") or join_code
+    fallback if no formal name. Used in dropdown/list to identify class.
+    """
+
     join_code: str
+    """Public join code for this class.
+
+    Format: Alphanumeric code (e.g., "ABC123DEF456"). Displayed in dropdown
+    for reference. Immutable.
+    """
+
     teacher_display_name: str
+    """Name of the teacher who owns this class, plaintext.
+
+    Format: First and last name (title-cased). Example: "Mrs. Smith".
+    Helps student identify which class this is (especially with same-period names).
+    """
+
     is_current: bool
+    """Whether this is the currently selected class.
+
+    True if this class_id matches the user's current session context.
+    Used to highlight current class in dropdown or show active state.
+    """
 
 
 @dataclass(frozen=True)
@@ -159,9 +405,36 @@ class StudentClassSelectionView:
     """
 
     student_display_name: str
+    """Display name of the logged-in student, plaintext.
+
+    Format: First and last name or first and last initial (title-cased).
+    Example: "Alice Smith" or "Alice S." Matches StudentLayoutContextView.student_display_full_name.
+    Used in page title/header to confirm student identity.
+    """
+
     available_classes: tuple[StudentClassOption, ...]
+    """Tuple of all classes the student is enrolled in, immutable.
+
+    Each StudentClassOption is fully formatted and ready for dropdown/list rendering.
+    Order determined by class creation order or teacher preference. Empty tuple if
+    student has no class enrollments. Tuple type enforces immutability per SPEC-UI-001.
+    """
+
     current_class_id: Optional[str]
+    """Class ID of the currently selected class in session, or None.
+
+    Format: UUID string or None. Must be present in available_classes if not None.
+    Used to highlight/pre-select in dropdown. Template iterates available_classes
+    and checks (option.class_id == current_class_id) to set is_current flag.
+    """
+
     has_any_classes: bool
+    """Whether the student has any class enrollments.
+
+    True if len(available_classes) > 0, False otherwise.
+    Template uses this to show empty-state message (e.g., "You are not enrolled
+    in any classes"). Pre-computed to eliminate template-level length check.
+    """
 
 
 # ---------------------------------------------------------------------------
