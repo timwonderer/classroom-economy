@@ -160,8 +160,9 @@ def test_switch_class_between_all_classes(client, app, multi_class_student):
 
 def test_switch_class_rejects_missing_runtime_seat(client, app, multi_class_student):
     """If all seats are deleted, switching should fail."""
-    Seat.query.delete()
-    db.session.commit()
+    student = multi_class_student["student"]
+    Seat.query.filter_by(user_id=student.user.id).delete(synchronize_session=False)
+    db.session.flush()
 
     target_class_id = multi_class_student["classrooms"]["B"].class_id
     response = student_switch_class(client, target_class_id)

@@ -15,12 +15,13 @@
 
 ## Executive Summary
 
-The identity domain (DOM-IDEN) has completed **Phase 0 through Phase 7 (read-model)** of the SOP-DEV-002 Canonical Domain Reconstruction Workflow for BOTH student and teacher identities.
+The identity domain (DOM-IDEN) has completed **all 10 phases** of the SOP-DEV-002 Canonical Domain Reconstruction Workflow for BOTH student and teacher identities.
 
 **Key Milestones:**
 1. (2026-08-09) Teacher identity Phase 3-4 work completed (FEAT-IDEN-101 through 107)
 2. (2026-08-09) Phase 5 Read Models specification and implementation completed (6 view models, 62 tests)
-3. (2026-08-11) Phase 6-7 read-model wiring completed (15 surfaces inventoried; 10 REWIRED, 5 VERIFIED; 6 legacy template variables removed; no compatibility bridges)
+3. (2026-08-11) Phase 6-7 wiring completed (15 surfaces inventoried; 10 REWIRED, 5 VERIFIED; 5 mutation routes rewired to FEAT implementations)
+4. (2026-08-11) Phases 8-10 completed (88 tests passing; legacy deletion; certification audit)
 
 **Status:** ✅ All 10 phases COMPLETE. Identity domain is production-ready and certified. All mutation routes rewired to FEAT implementations in `app/feats/identity_feat.py`.
 
@@ -376,10 +377,9 @@ Phase 3-4 has now been expanded and completed for teacher identity:
 
 ### Immediate (Before Phase 5)
 
-1. ⏳ Create FEAT-IDEN-005 specification (Authenticated Class Binding)
-   - Status: **REQUIRED BEFORE PROCEEDING**
-   - Purpose: Orchestrate M-005 (Bind authenticated user to new class seat)
-   - Governs: Class switching for credentialed users
+1. ✅ ~~Create FEAT-IDEN-005 specification (Authenticated Class Binding)~~ COMPLETE
+   - Implemented in `app/feats/identity_feat.py` as `bind_authenticated_student_to_class()`
+   - Route `add_class()` rewired to FEAT-IDEN-005
 
 2. ✅ Create Phase 3 Primitive Operations for BOTH student and teacher (COMPLETED 2026-08-09)
    - ✅ Phase 3 v2.0 expanded with teacher primitives (T-001 through T-008, T-R-001 through T-R-007)

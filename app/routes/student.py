@@ -745,7 +745,7 @@ def add_class():
 
         # FEAT-IDEN-005: Bind authenticated student to new class.
         result = bind_authenticated_student_to_class(
-            user_id=student.user_id,
+            user_id=context.user_id,
             join_code=display_join_code,
             first_name=first_name,
             last_name=last_name,

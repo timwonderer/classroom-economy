@@ -269,7 +269,7 @@ class TestTOTPSetupView:
         assert len(lines) == 10
         assert lines[0] == codes[0]
 
-    def test_issuer_name_defaults_to_classroom_token_hub(self):
+    def test_issuer_name_defaults_to_classroom_economy_admin(self):
         view = self._sample_view()
         assert view.issuer_name == "Classroom Economy Admin"
 

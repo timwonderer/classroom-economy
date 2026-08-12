@@ -231,12 +231,15 @@ def activate_student_credentials(
             seat.claimed_at = seat.claimed_at or now
     else:
         # New claim path: create User and bind seat atomically.
+        # Use savepoint so IntegrityError doesn't poison the FEATContext transaction.
+        savepoint = db.session.begin_nested()
         try:
             user = create_student_user_for_seat(
                 seat, username=username, pin=pin, passphrase=passphrase,
             )
+            savepoint.commit()
         except IntegrityError:
-            db.session.rollback()
+            savepoint.rollback()
             return CredentialSetupResult(
                 success=False,
                 error_code="USERNAME_TAKEN",
@@ -263,12 +266,23 @@ def generate_teacher_reset_code(
     code, and writes it to the users table. Overwrites any existing code
     (single active code invariant per DOM-IDEN-002 §IX).
     """
+    from app.models import ClassEconomy
+
     seat = db.session.get(Seat, seat_id)
     if not seat:
         return ResetCodeResult(
             success=False,
             error_code="SEAT_NOT_FOUND",
             error_message="Seat not found.",
+        )
+
+    # Verify teacher owns this seat's class (IDOR prevention).
+    class_row = ClassEconomy.query.filter_by(class_id=seat.class_id).first()
+    if not class_row or class_row.teacher_user_id != teacher_user_id:
+        return ResetCodeResult(
+            success=False,
+            error_code="UNAUTHORIZED",
+            error_message="You are not authorized to reset credentials for this student.",
         )
 
     linked_user = db.session.get(User, seat.user_id) if seat.user_id else None
@@ -344,6 +358,13 @@ def validate_recovery_code(
         .first()
     )
 
+    if not seat:
+        return RecoveryLookupResult(
+            success=False,
+            error_code="NO_SEAT",
+            error_message="No class seat found for this account. Contact your teacher.",
+        )
+
     # Clear credentials — forces fresh credential setup.
     linked_user.username_lookup_hash = None
     linked_user.pin_hash = None
@@ -353,19 +374,19 @@ def validate_recovery_code(
     linked_user.reset_code_generated_at = None
     linked_user.reset_code_expires_at = None
 
-    if seat and seat.claimed_at is None:
+    if seat.claimed_at is None:
         seat.claimed_at = utc_now()
 
     db.session.flush()
 
     logger.info(
         "Recovery lookup succeeded for user %s (seat %s); credentials cleared.",
-        linked_user.id, seat.id if seat else None,
+        linked_user.id, seat.id,
     )
 
     return RecoveryLookupResult(
         success=True,
-        seat_id=seat.id if seat else None,
+        seat_id=seat.id,
         user_id=linked_user.id,
     )
 
@@ -403,10 +424,14 @@ def bind_authenticated_student_to_class(
 
     class_id = class_row.class_id
 
-    # Step 2: Find unclaimed seats (unclaimed = claimed_at IS NULL for add-class)
+    # Step 2: Find unclaimed seats (both user_id and claimed_at must be NULL)
     unclaimed_seats = (
         Seat.query
-        .filter(Seat.class_id == class_id, Seat.claimed_at.is_(None))
+        .filter(
+            Seat.class_id == class_id,
+            Seat.claimed_at.is_(None),
+            Seat.user_id.is_(None),
+        )
         .all()
     )
     if not unclaimed_seats:

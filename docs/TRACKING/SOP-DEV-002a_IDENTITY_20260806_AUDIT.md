@@ -214,6 +214,13 @@ The Identity domain has successfully completed all 10 phases of SOP-DEV-002 doma
 - ✅ All tests use `initialize_as_student()`/`initialize_as_teacher()` per SPEC-TEST-001
 - ✅ Multi-class fixtures use `provision_classroom()` + `Seat` creation per SPEC-TEST-002
 
+**Recovery Tests (15 tests in `tests/dom/identity/test_student_recovery.py`):**
+- ✅ Reset code generation and validation flows
+- ✅ Expired code rejection, credential clearing, onboarding redirect
+- ✅ Multi-tenancy: seat resolution scoped by user binding
+
+**Total: 88 tests (62 builder + 11 route-level + 15 recovery)**
+
 **Status:** ✅ PASS
 
 ---
@@ -243,8 +250,8 @@ The Identity domain has successfully completed all 10 phases of SOP-DEV-002 doma
 | Spec current | DOM-IDEN-001 v2.2 (2026-07-10) | ✅ |
 | Schema verified | users, seats, classes, identity_profiles tables present | ✅ |
 | Multi-tenancy scoped | class_id in all queries, view models, FEATs | ✅ |
-| CSRF protection | Student detail form uses FlaskWTF | ✅ |
-| No PII leaks | IdentityProfile uses PIIEncryptedType for names | ✅ |
+| CSRF protection | Global `csrf.init_app(app)` enforcement; no route-level exemptions | ✅ |
+| PII encrypted at rest | IdentityProfile uses PIIEncryptedType for names | ✅ |
 | View models wired (read) | 5 view models in context processors + templates | ✅ |
 | Mutation routes wired | 5 routes → 5 FEAT implementations | ✅ |
 | Templates refactored | All read-model access via view models | ✅ |
