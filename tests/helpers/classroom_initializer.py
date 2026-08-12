@@ -1,7 +1,7 @@
 """
+STOP! READ SPEC-TEST-001 AND SPEC-TEST-002 BEFORE USING THIS HELPER.
+
 Canonical Classroom Initializer 
-docs/SPEC/SPEC-TEST-001_CANONICAL_TEST_INITIALIZER.md
-docs/SPEC/SPEC-TEST-002_CANONICAL_TEST_IDENTITIES.md
 
 The single entry point for any test that requires class scope, teacher identity,
 or student identity. No test may construct identity, scope, or context through

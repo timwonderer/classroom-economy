@@ -10,7 +10,7 @@
 
 This document is the developer guide for the canonical test initializer. It covers which function to call, what the returned objects contain, how to use the initializer in a test, and how to migrate tests that use the superseded helpers.
 
-For the authoritative definition of what scenarios exist and why, see `TEST-IDEN-001`.
+For the authoritative definition of what scenarios exist and why, see [`SPEC-TEST-002`](SPEC-TEST-002_CANONICAL_TEST_IDENTITIES.md).
 
 ---
 

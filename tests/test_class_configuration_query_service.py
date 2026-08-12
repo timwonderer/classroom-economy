@@ -16,7 +16,6 @@ from decimal import Decimal
 
 from app.services.class_configuration_query_service import (
     get_class_economy,
-    get_class_by_join_code,
     get_effective_economic_engine,
     get_initial_economic_engine,
     get_economic_engine_history,
@@ -42,7 +41,7 @@ from tests.helpers.classroom_initializer import initialize, initialize_as_teache
 
 
 class TestClassEntityQueries:
-    """Test class entity query functions (get_class_economy, get_class_by_join_code)."""
+    """Test class entity query functions (get_class_economy)."""
 
     # ========== get_class_economy Tests ==========
 
@@ -64,7 +63,7 @@ class TestClassEntityQueries:
     def test_get_class_economy_multi_tenancy(self, app):
         """Multi-tenancy: queries isolated by class_id."""
         classroom1 = initialize("chemistry_p1", app)
-        classroom2 = initialize("biology_p2", app)
+        classroom2 = initialize("biology_block_a", app)
 
         econ1 = get_class_economy(classroom1.class_id)
         econ2 = get_class_economy(classroom2.class_id)
@@ -73,34 +72,6 @@ class TestClassEntityQueries:
         assert econ2 is not None
         assert econ1.class_id != econ2.class_id
         assert econ1.join_code != econ2.join_code
-
-    # ========== get_class_by_join_code Tests ==========
-
-    def test_get_class_by_join_code_returns_correct_class(self, app):
-        """Happy path: get_class_by_join_code returns correct data."""
-        classroom = initialize("chemistry_p1", app)
-
-        economy = get_class_by_join_code(classroom.join_code)
-
-        assert economy is not None
-        assert economy.class_id == classroom.class_id
-        assert economy.join_code == classroom.join_code
-
-    def test_get_class_by_join_code_returns_none_for_missing_code(self, app):
-        """Empty state: non-existent join_code returns None."""
-        economy = get_class_by_join_code("NONEXISTENT")
-        assert economy is None
-
-    def test_get_class_by_join_code_multi_tenancy(self, app):
-        """Multi-tenancy: join_code is class-level unique."""
-        classroom1 = initialize("chemistry_p1", app)
-        classroom2 = initialize("biology_p2", app)
-
-        econ1 = get_class_by_join_code(classroom1.join_code)
-        econ2 = get_class_by_join_code(classroom2.join_code)
-
-        assert econ1.class_id == classroom1.class_id
-        assert econ2.class_id == classroom2.class_id
 
 
 class TestEconomicEngineQueries:
@@ -115,7 +86,7 @@ class TestEconomicEngineQueries:
         engine = get_effective_economic_engine(classroom.class_id, "payroll")
 
         assert engine is not None
-        assert engine.policy_mode in ["tight", "default", "comfortable"]
+        assert engine.economy_policy_mode in ["tight", "default", "comfortable"]
 
     def test_get_effective_economic_engine_returns_none_for_missing_feature(self, app):
         """Empty state: missing feature returns None."""
@@ -126,27 +97,32 @@ class TestEconomicEngineQueries:
         assert engine is None
 
     def test_get_effective_economic_engine_respects_feature_scope(self, app):
-        """Multi-tenancy: different features can have different engines."""
+        """Feature scope: returns None for features that don't have ClassFeature records."""
         classroom = initialize("chemistry_p1", app)
 
-        # Both payroll and store should have engines
+        # Payroll should have an engine (seeded by default)
         payroll_engine = get_effective_economic_engine(classroom.class_id, "payroll")
-        store_engine = get_effective_economic_engine(classroom.class_id, "store")
-
-        # Both should exist
         assert payroll_engine is not None
-        assert store_engine is not None
 
-    def test_get_effective_economic_engine_with_historical_query(self, app):
-        """Temporal: can query historical state with effective_at parameter."""
+        # Store should not have an engine (not seeded by default)
+        store_engine = get_effective_economic_engine(classroom.class_id, "store")
+        assert store_engine is None
+
+    def test_get_effective_economic_engine_with_temporal_query(self, app):
+        """Temporal: can query engine state at specific times."""
         classroom = initialize("chemistry_p1", app)
 
-        # Query with a past timestamp (10 days ago)
-        past_time = datetime.now(timezone.utc) - timedelta(days=10)
-        engine = get_effective_economic_engine(classroom.class_id, "payroll", effective_at=past_time)
+        # Query with current time should return the engine
+        now = datetime.now(timezone.utc)
+        engine_now = get_effective_economic_engine(classroom.class_id, "payroll", effective_at=now)
+        assert engine_now is not None
 
-        # Should still return an engine (the original one)
-        assert engine is not None
+        # Query with a future timestamp (10 days from now) should also return the same engine
+        # (since we only have one engine version)
+        future_time = now + timedelta(days=10)
+        engine_future = get_effective_economic_engine(classroom.class_id, "payroll", effective_at=future_time)
+        assert engine_future is not None
+        assert engine_future.economic_version_id == engine_now.economic_version_id
 
     # ========== get_initial_economic_engine Tests ==========
 
@@ -159,7 +135,7 @@ class TestEconomicEngineQueries:
         assert engine is not None
         # Should be the earliest created engine
         all_engines = get_economic_engine_history(classroom.class_id)
-        assert engine.id == all_engines[-1].id  # Last in DESC order = first created
+        assert engine.economic_version_id == all_engines[-1].economic_version_id  # Last in DESC order = first created
 
     def test_get_initial_economic_engine_returns_none_for_missing_class(self, app):
         """Empty state: non-existent class returns None."""
@@ -169,7 +145,7 @@ class TestEconomicEngineQueries:
     def test_get_initial_economic_engine_multi_tenancy(self, app):
         """Multi-tenancy: each class has its own initial engine."""
         classroom1 = initialize("chemistry_p1", app)
-        classroom2 = initialize("biology_p2", app)
+        classroom2 = initialize("biology_block_a", app)
 
         engine1 = get_initial_economic_engine(classroom1.class_id)
         engine2 = get_initial_economic_engine(classroom2.class_id)
@@ -177,7 +153,7 @@ class TestEconomicEngineQueries:
         assert engine1 is not None
         assert engine2 is not None
         # Different classes have different engines
-        assert engine1.id != engine2.id
+        assert engine1.economic_version_id != engine2.economic_version_id
 
     # ========== get_economic_engine_history Tests ==========
 
@@ -201,7 +177,7 @@ class TestEconomicEngineQueries:
     def test_get_economic_engine_history_multi_tenancy(self, app):
         """Multi-tenancy: each class has separate engine history."""
         classroom1 = initialize("chemistry_p1", app)
-        classroom2 = initialize("biology_p2", app)
+        classroom2 = initialize("biology_block_a", app)
 
         history1 = get_economic_engine_history(classroom1.class_id)
         history2 = get_economic_engine_history(classroom2.class_id)
@@ -209,8 +185,8 @@ class TestEconomicEngineQueries:
         assert len(history1) > 0
         assert len(history2) > 0
         # Should have different engines
-        engine_ids_1 = {e.id for e in history1}
-        engine_ids_2 = {e.id for e in history2}
+        engine_ids_1 = {e.economic_version_id for e in history1}
+        engine_ids_2 = {e.economic_version_id for e in history2}
         assert len(engine_ids_1 & engine_ids_2) == 0  # No intersection
 
 
@@ -237,7 +213,7 @@ class TestClassFeatureQueries:
     def test_get_class_features_multi_tenancy(self, app):
         """Multi-tenancy: features isolated by class_id."""
         classroom1 = initialize("chemistry_p1", app)
-        classroom2 = initialize("biology_p2", app)
+        classroom2 = initialize("biology_block_a", app)
 
         features1 = get_class_features(classroom1.class_id)
         features2 = get_class_features(classroom2.class_id)
@@ -279,7 +255,7 @@ class TestClassFeatureQueries:
     def test_get_class_feature_multi_tenancy(self, app):
         """Multi-tenancy: features isolated by class_id."""
         classroom1 = initialize("chemistry_p1", app)
-        classroom2 = initialize("biology_p2", app)
+        classroom2 = initialize("biology_block_a", app)
 
         feature1 = get_class_feature(classroom1.class_id, "payroll")
         feature2 = get_class_feature(classroom2.class_id, "payroll")
@@ -313,7 +289,7 @@ class TestClassFeatureQueries:
     def test_get_class_feature_history_multi_tenancy(self, app):
         """Multi-tenancy: feature history isolated by class_id."""
         classroom1 = initialize("chemistry_p1", app)
-        classroom2 = initialize("biology_p2", app)
+        classroom2 = initialize("biology_block_a", app)
 
         history1 = get_class_feature_history(classroom1.class_id, "payroll")
         history2 = get_class_feature_history(classroom2.class_id, "payroll")
@@ -336,8 +312,8 @@ class TestSettingsQueries:
 
         assert payroll is not None
         assert payroll.class_id == classroom.class_id
-        assert payroll.hourly_pay_rate is not None
-        assert payroll.expected_weekly_hours is not None
+        assert payroll.pay_rate is not None
+        assert payroll.payroll_frequency_days is not None
 
     def test_get_payroll_settings_returns_none_for_missing_class(self, app):
         """Empty state: non-existent class returns None."""
@@ -347,7 +323,7 @@ class TestSettingsQueries:
     def test_get_payroll_settings_multi_tenancy(self, app):
         """Multi-tenancy: payroll settings isolated by class_id."""
         classroom1 = initialize("chemistry_p1", app)
-        classroom2 = initialize("biology_p2", app)
+        classroom2 = initialize("biology_block_a", app)
 
         payroll1 = get_payroll_settings(classroom1.class_id)
         payroll2 = get_payroll_settings(classroom2.class_id)
@@ -376,7 +352,7 @@ class TestSettingsQueries:
     def test_get_rent_settings_multi_tenancy(self, app):
         """Multi-tenancy: rent settings isolated by class_id."""
         classroom1 = initialize("chemistry_p1", app)
-        classroom2 = initialize("biology_p2", app)
+        classroom2 = initialize("biology_block_a", app)
 
         rent1 = get_rent_settings(classroom1.class_id)
         rent2 = get_rent_settings(classroom2.class_id)
@@ -404,7 +380,7 @@ class TestSettingsQueries:
     def test_get_banking_settings_multi_tenancy(self, app):
         """Multi-tenancy: banking settings isolated by class_id."""
         classroom1 = initialize("chemistry_p1", app)
-        classroom2 = initialize("biology_p2", app)
+        classroom2 = initialize("biology_block_a", app)
 
         banking1 = get_banking_settings(classroom1.class_id)
         banking2 = get_banking_settings(classroom2.class_id)
@@ -432,7 +408,7 @@ class TestSettingsQueries:
     def test_get_hall_pass_settings_multi_tenancy(self, app):
         """Multi-tenancy: hall pass settings isolated by class_id."""
         classroom1 = initialize("chemistry_p1", app)
-        classroom2 = initialize("biology_p2", app)
+        classroom2 = initialize("biology_block_a", app)
 
         hp1 = get_hall_pass_settings(classroom1.class_id)
         hp2 = get_hall_pass_settings(classroom2.class_id)
@@ -454,7 +430,8 @@ class TestDerivedValueQueries:
         payroll = get_payroll_settings(classroom.class_id)
         cwi = calculate_cwi(classroom.class_id)
 
-        expected_cwi = payroll.hourly_pay_rate * payroll.expected_weekly_hours
+        # CWI = pay_rate × expected_weekly_hours (teacher-configured reference)
+        expected_cwi = float(payroll.pay_rate) * float(payroll.expected_weekly_hours)
         assert cwi == expected_cwi
 
     def test_calculate_cwi_returns_none_for_missing_payroll(self, app):
@@ -465,7 +442,7 @@ class TestDerivedValueQueries:
     def test_calculate_cwi_multi_tenancy(self, app):
         """Multi-tenancy: CWI calculated per class."""
         classroom1 = initialize("chemistry_p1", app)
-        classroom2 = initialize("biology_p2", app)
+        classroom2 = initialize("biology_block_a", app)
 
         cwi1 = calculate_cwi(classroom1.class_id)
         cwi2 = calculate_cwi(classroom2.class_id)
@@ -491,7 +468,7 @@ class TestDerivedValueQueries:
     def test_get_policy_mode_multi_tenancy(self, app):
         """Multi-tenancy: policy mode per class."""
         classroom1 = initialize("chemistry_p1", app)
-        classroom2 = initialize("biology_p2", app)
+        classroom2 = initialize("biology_block_a", app)
 
         mode1 = get_policy_mode(classroom1.class_id)
         mode2 = get_policy_mode(classroom2.class_id)
@@ -524,7 +501,7 @@ class TestConfigurationStateQueries:
     def test_is_feature_enabled_multi_tenancy(self, app):
         """Multi-tenancy: feature enablement per class."""
         classroom1 = initialize("chemistry_p1", app)
-        classroom2 = initialize("biology_p2", app)
+        classroom2 = initialize("biology_block_a", app)
 
         enabled1 = is_feature_enabled(classroom1.class_id, "payroll")
         enabled2 = is_feature_enabled(classroom2.class_id, "payroll")

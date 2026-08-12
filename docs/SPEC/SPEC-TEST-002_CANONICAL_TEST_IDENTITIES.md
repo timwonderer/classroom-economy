@@ -75,7 +75,7 @@ Two roster rows containing identical names are not assumed to represent the same
 | Chemistry | Ava Chen |
 | AP CSP | Ava Chen |
 
-These may later become two independent users, or two seats bound to one user. The fixture makes no assumption. Identity is established only through `FEAT-IDENTITY`.
+These may later become two independent users, or two seats bound to one user. The fixture makes no assumption. Identity is established only through `FEAT-IDEN`.
 
 ---
 

@@ -123,6 +123,23 @@ Phase 6-7 completion is now measured via **field ownership**, not template struc
 
 ---
 
+## Misclassified FEATs and Docs
+
+**Authority:** SOP-DEV-002 Phase 0 (Domain Boundary) requires clear ownership. These documents are currently in the wrong domain and must be reclassified.
+
+| Document | Current Classification | Actual Owner | Issue | Status | Notes |
+|----------|----------------------|--------------|-------|--------|-------|
+| FEAT-CLASS-002 | DOM-CLASS (Class Configuration) | DOM-IDEN (Identity) | Modifying roster (student seats and identity profiles) is Identity domain concern, not class configuration | ⏳ TO BE RECLASSIFIED | Should be FEAT-IDEN-002 or similar |
+| FEAT-CLASS-003 | DOM-CLASS (Class Configuration) | DOM-STORE (Store & Entitlements) | Insurance policy definitions and entitlements belong to Store/Entitlements domain; only the class-level feature toggle belongs in CLASS | ⏳ TO BE SPLIT | CLASS domain: enable/disable insurance feature only. Store domain: policy definitions, entitlement management |
+
+**Reclassification Plan:**
+- Phase 3 conformance audit identified these misclassifications (2026-08-09)
+- Will be corrected in future domain boundary cleanup
+- Does NOT block Phase 3 (Class Configuration) completion
+- Recorded here for transparency and future reference
+
+---
+
 ## Detailed Domain Status
 
 ### The 10 Domains (CTH v2)

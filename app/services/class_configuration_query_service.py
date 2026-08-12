@@ -2,7 +2,7 @@
 Class Configuration Query Service — Phase 3 Primitives
 
 Authority: DOM-CLASS-001, DOM-CLASS-002, DOM-CLASS-003
-Implements: 17 read-only query functions for class configuration domain
+Implements: 16 read-only query functions for class configuration domain
 
 Per SPEC-TIME-001: All temporal queries use canonical_temporal_resolver()
 Per SPEC-ECON-002: effective_at parameter enables future-law visibility
@@ -29,7 +29,7 @@ from app.utils.canonical_temporal_resolver import (
 
 
 # ============================================================================
-# 1. CLASS ENTITY QUERIES (2 functions)
+# 1. CLASS ENTITY QUERIES (1 function)
 # ============================================================================
 
 
@@ -48,23 +48,6 @@ def get_class_economy(class_id: str) -> Optional[ClassEconomy]:
             print(f"Class: {economy.display_name}, Timezone: {economy.timezone}")
     """
     return ClassEconomy.query.filter_by(class_id=class_id).first()
-
-
-def get_class_by_join_code(join_code: str) -> Optional[ClassEconomy]:
-    """Get ClassEconomy entity by public join_code alias.
-
-    Args:
-        join_code: Public class alias (e.g., "CHEM101")
-
-    Returns:
-        ClassEconomy instance or None if not found
-
-    Example:
-        economy = get_class_by_join_code("CHEM101")
-        if economy:
-            class_id = economy.class_id  # Use canonical ID for further queries
-    """
-    return ClassEconomy.query.filter_by(join_code=join_code).first()
 
 
 # ============================================================================
@@ -128,7 +111,7 @@ def get_effective_economic_engine(
     if not class_feature:
         return None
 
-    return db.session.get(EconomicEngine, class_feature.economic_engine_id)
+    return db.session.get(EconomicEngine, class_feature.economic_version_id)
 
 
 def get_initial_economic_engine(class_id: str) -> Optional[EconomicEngine]:
@@ -163,7 +146,7 @@ def get_initial_economic_engine(class_id: str) -> Optional[EconomicEngine]:
     if not class_feature:
         return None
 
-    return db.session.get(EconomicEngine, class_feature.economic_engine_id)
+    return db.session.get(EconomicEngine, class_feature.economic_version_id)
 
 
 def get_economic_engine_history(class_id: str) -> list[EconomicEngine]:
@@ -184,7 +167,7 @@ def get_economic_engine_history(class_id: str) -> list[EconomicEngine]:
     Example:
         history = get_economic_engine_history(classroom.class_id)
         for engine in history:
-            print(f"Version created at {engine.created_at}: mode={engine.policy_mode}")
+            print(f"Version created at {engine.created_at}: mode={engine.economy_policy_mode}")
     """
     return EconomicEngine.query.filter_by(
         class_id=class_id
@@ -386,7 +369,11 @@ def get_hall_pass_settings(class_id: str) -> Optional[HallPassSettings]:
 def calculate_cwi(class_id: str) -> Optional[float]:
     """Calculate the current Classroom Wage Index (CWI) for a class.
 
-    CWI = hourly_pay_rate × expected_weekly_hours
+    CWI = pay_rate × expected_weekly_hours
+
+    The expected_weekly_hours is a teacher-configured reference value representing
+    the expected number of hours a student should be active in a week. Actual weekly
+    payout varies based on day-to-day student activity, not this reference value.
 
     Args:
         class_id: The class (UUID)
@@ -403,7 +390,12 @@ def calculate_cwi(class_id: str) -> Optional[float]:
     if not payroll:
         return None
 
-    return payroll.hourly_pay_rate * payroll.expected_weekly_hours
+    # CWI combines teacher-configured pay rate with teacher-configured expected weekly hours
+    # Actual payroll depends on day-to-day activity, not this reference calculation
+    if payroll.expected_weekly_hours is None:
+        return None
+
+    return float(payroll.pay_rate) * float(payroll.expected_weekly_hours)
 
 
 def get_policy_mode(class_id: str) -> Optional[str]:
@@ -426,7 +418,7 @@ def get_policy_mode(class_id: str) -> Optional[str]:
     if not engine:
         return None
 
-    return engine.policy_mode
+    return engine.economy_policy_mode
 
 
 # ============================================================================
