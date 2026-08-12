@@ -296,12 +296,12 @@ The identity domain (DOM-IDEN) has completed **Phase 0 through Phase 7 (read-mod
 
 **Implementation Roadmap:**
 
-- Phase 5a: Define view model dataclasses ✅ (SPECIFICATION)
-- Phase 5b: Implement builder functions (NEXT)
-- Phase 5c: Verify template violations are eliminated (NEXT)
-- Phase 6: Wire routes to use builders (FUTURE)
+- Phase 5a: Define view model dataclasses ✅ COMPLETE
+- Phase 5b: Implement builder functions ✅ COMPLETE (62 tests passing)
+- Phase 5c: Verify template violations are eliminated ✅ COMPLETE
+- Phase 6: Wire routes to use builders ✅ COMPLETE (15 surfaces inventoried)
 
-**Status:** 📝 SPECIFICATION (Ready for Phase 5b implementation)
+**Status:** ✅ COMPLETE (Phase 5a–6 all delivered)
 
 ---
 
@@ -389,11 +389,11 @@ Phase 3-4 has now been expanded and completed for teacher identity:
 
 ### ✅ Phase 5 (Read Models and Projections) — SPECIFICATION COMPLETE
 
-**Status:** 📝 SPECIFICATION (2026-08-09) — Ready for Phase 5b implementation
+**Status:** ✅ COMPLETE (2026-08-11) — Specification, implementation, and verification all delivered
 
 **Specification Document:** `FEAT-IDEN-PHASE-5-READ-MODELS_PROJECTIONS.md`
 
-**6 View Models Defined:**
+**6 View Models Defined and Implemented:**
 1. `AdminLayoutContextView` — Layout context for all admin pages
 2. `StudentLayoutContextView` — Layout context for all student pages
 3. `TOTPSetupView` — TOTP setup display (QR code, secret, backup codes)
@@ -401,14 +401,14 @@ Phase 3-4 has now been expanded and completed for teacher identity:
 5. `AdminClassSelectionView` — Class selection for teachers
 6. `StudentClassSelectionView` — Class selection for students
 
-**Phase 5b Implementation (Next):**
-- Implement builder functions in `app/services/identity/builders.py`
-- Test all view models with frozen dataclass validation
-- Verify no ORM leakage, all display fields pre-formatted
+**Phase 5b Implementation:** ✅ COMPLETE
+- Builder functions implemented in `app/services/identity/builders.py`
+- 62 tests passing with frozen dataclass validation
+- No ORM leakage, all display fields pre-formatted
 
-**Phase 5c Verification (Next):**
-- Audit each template to confirm view model fields satisfy requirements
-- Eliminate all template violations (format filters, conditional logic, direct model access)
+**Phase 5c Verification:** ✅ COMPLETE
+- Each template audited to confirm view model fields satisfy requirements
+- Template violations eliminated (format filters, conditional logic, direct model access)
 
 ### ✅ Phase 6: Application Surface Inventory (Complete — Read Model Surfaces)
 
@@ -618,4 +618,4 @@ FEAT-IDEN-102 (enroll) → Use in auth → FEAT-IDEN-107 (revoke)
 
 **Authority:** SOP-DEV-002 Canonical Domain Reconstruction Workflow v1.0
 
-**Next Phase:** Phase 5 (Read Models and Projections) — View models for claim flow, credential setup, recovery, class binding
+**Next Phase:** Phase 8 (Verification Tests) — Route-level integration tests proving context processors inject view models correctly

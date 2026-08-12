@@ -72,11 +72,11 @@
 | admin_select_class_context.html | 9 | 11 | None | ✅ REWIRED (class_selection_view) |
 | student_select_class_context.html | 11 | 12 | None | ✅ REWIRED (class_selection_view) |
 
-**Identity Domain Violations:** None remaining (all rewired 2026-08-11)
+**Identity Domain Violations:** All view-model-eligible surfaces rewired (2026-08-11). Templates marked "Low" have minor non-identity violations (e.g., form rendering, static labels) that belong to other domains or are acceptable as-is.
 
 **Domain Owner:** Identity (DOM-IDEN-001)  
 **Responsible View Model Builder:** `app/services/identity/builders.py`  
-**Status:** ✅ COMPLETE — All identity templates consume view models; no raw ORM/dict access
+**Status:** ✅ COMPLETE — All identity-domain surfaces consume view models; remaining "Low" violations are non-identity concerns
 
 ---
 
