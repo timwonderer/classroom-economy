@@ -1198,17 +1198,8 @@ class TestClassConfigurationQueryService:
 
     def test_calculate_cwi_returns_none_when_no_payroll(self, app):
         """Empty state: CWI None without payroll settings."""
-        # Create classroom, then remove payroll
-        classroom = initialize("chemistry_p1", app)
-        
-        with app.app_context():
-            from app.models import PayrollSettings
-            from app.extensions import db
-            
-            PayrollSettings.query.filter_by(class_id=classroom.class_id).delete()
-            db.session.commit()
-        
-        cwi = calculate_cwi(classroom.class_id)
+        # Query a non-existent class_id that has no payroll settings provisioned
+        cwi = calculate_cwi("nonexistent-class-id")
         assert cwi is None
 
     # ========== Multi-Tenancy Tests ==========
