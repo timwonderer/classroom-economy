@@ -118,10 +118,10 @@ class StudentLayoutContextView:
     """
 
     student_display_first_name: str
-    """Student's first name, title-cased.
+    """Student's first name, pre-formatted to uppercase.
 
-    Format: First letter capitalized, rest lowercase.
-    Example: "Alex", "Jane". Empty string if not available.
+    Examples: "ALEX", "JANE". Empty string if not available.
+    Pre-formatting eliminates |upper filter from templates.
     """
 
     student_display_last_initial: str
@@ -580,7 +580,7 @@ def build_student_layout_context_view(
 
     return StudentLayoutContextView(
         student_display_full_name=full_name.upper() if full_name else "",
-        student_display_first_name=first,
+        student_display_first_name=first.upper() if first else "",
         student_display_last_initial=last_initial,
         has_class_context=has_class_context,
         class_display_name=class_display_name,
@@ -691,7 +691,7 @@ def build_admin_class_selection_view(
     class_options = tuple(
         ClassOption(
             class_id=str(cls.get("class_id") or ""),
-            display_name=(cls.get("class_identifier") or cls.get("join_code") or "").strip(),
+            display_name=(cls.get("display_name") or cls.get("class_identifier") or cls.get("join_code") or "").strip(),
             join_code=(cls.get("join_code") or "").strip(),
             student_count=int(cls.get("student_count") or 0),
             is_current=str(cls.get("class_id") or "") == str(current_class_id or ""),
@@ -729,7 +729,7 @@ def build_student_class_selection_view(
     class_options = tuple(
         StudentClassOption(
             class_id=str(cls.get("class_id") or ""),
-            display_name=(cls.get("class_identifier") or cls.get("join_code") or "").strip(),
+            display_name=(cls.get("display_name") or cls.get("class_identifier") or cls.get("join_code") or "").strip(),
             join_code=(cls.get("join_code") or "").strip(),
             teacher_display_name=(cls.get("teacher_name") or "Teacher").strip(),
             is_current=str(cls.get("class_id") or "") == str(current_class_id or ""),

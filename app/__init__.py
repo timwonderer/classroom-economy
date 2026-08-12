@@ -703,29 +703,35 @@ def create_app():
             from app.services.identity.builders import build_student_layout_context_view
             from app.utils.display_metadata import get_or_resolve_display_metadata
 
+            bypass_flag = getattr(g, 'maintenance_bypass_active', False)
+
             current_seat_ctx = get_current_seat()
             current_user = get_current_user()
             if not current_seat_ctx or not current_user:
                 return {
-                    'student_layout_view': build_student_layout_context_view(None),
+                    'student_layout_view': build_student_layout_context_view(
+                        None, is_maintenance_bypass_active=bypass_flag,
+                    ),
                     'available_classes': [],
                 }
 
             context = resolve_canonical_context()
             if not context or not getattr(context, "class_id", None):
                 return {
-                    'student_layout_view': build_student_layout_context_view(None),
+                    'student_layout_view': build_student_layout_context_view(
+                        None, is_maintenance_bypass_active=bypass_flag,
+                    ),
                     'available_classes': [],
                 }
 
             display_metadata = get_or_resolve_display_metadata(context)
             if display_metadata is None:
                 return {
-                    'student_layout_view': build_student_layout_context_view(None),
+                    'student_layout_view': build_student_layout_context_view(
+                        None, is_maintenance_bypass_active=bypass_flag,
+                    ),
                     'available_classes': [],
                 }
-
-            bypass_flag = getattr(g, 'maintenance_bypass_active', False)
             view = build_student_layout_context_view(
                 display_metadata, is_maintenance_bypass_active=bypass_flag,
             )

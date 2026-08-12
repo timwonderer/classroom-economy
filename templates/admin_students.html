@@ -951,9 +951,9 @@
 <script>
   console.log('Student management scripts loading.');
   const pendingClassTimezoneConfirmations = {{ pending_class_timezone_confirmations|tojson }};
-  const currentClassTimezone = "{{ admin_layout_view.class_timezone|e }}";
-  const currentClassId = "{{ admin_layout_view.class_id|e }}";
-  const currentClassIdentifier = "{{ admin_layout_view.class_display_name|e }}";
+  const currentClassTimezone = {{ admin_layout_view.class_timezone|tojson }};
+  const currentClassId = {{ admin_layout_view.class_id|tojson }};
+  const currentClassIdentifier = {{ admin_layout_view.class_display_name|tojson }};
 
   // Join Code Copy Function
   function copyJoinCode(code, btn) {
