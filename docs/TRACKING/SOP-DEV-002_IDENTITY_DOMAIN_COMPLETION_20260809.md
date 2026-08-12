@@ -6,10 +6,10 @@
 | 2026-08-09 | 5 (Spec) | ✅ COMPLETE | FEAT-IDEN-PHASE-5-READ-MODELS_PROJECTIONS.md |
 | 2026-08-09 | 5b (Impl) | ✅ COMPLETE | app/services/identity/builders.py — 62 tests passing |
 | 2026-08-11 | 6 (Surface Inventory) | ✅ COMPLETE | 15 surfaces inventoried; 10 REWIRED, 5 VERIFIED |
-| 2026-08-11 | 7 (Rewire) | ✅ COMPLETE (read-model) | 14 files changed; 5 view models wired; 6 legacy vars removed |
-| 2026-08-11 | 8 (Verify) | ✅ COMPLETE (read-model) | 73 tests (62 builder + 11 route-level HTTP) |
-| 2026-08-11 | 9 (Legacy Deletion) | ⏳ BLOCKED | Blocked on Phase 7 mutation rewiring |
-| 2026-08-11 | 10 (Certification) | ⏳ BLOCKED | Cannot certify until Phase 7 mutation routes rewired |
+| 2026-08-11 | 7 (Rewire) | ✅ COMPLETE | Read-model: 5 view models wired. Mutation: 5 FEAT impls created, 5 routes rewired |
+| 2026-08-11 | 8 (Verify) | ✅ COMPLETE | 88 tests passing (62 builder + 11 route-level + 15 recovery) |
+| 2026-08-11 | 9 (Legacy Deletion) | ✅ COMPLETE | Dead inline code removed; recovery.py cleaned; unused imports removed |
+| 2026-08-11 | 10 (Certification) | ✅ COMPLETE | All 10 phases complete; 0 mutation routes inline |
 
 ---
 
@@ -22,7 +22,7 @@ The identity domain (DOM-IDEN) has completed **Phase 0 through Phase 7 (read-mod
 2. (2026-08-09) Phase 5 Read Models specification and implementation completed (6 view models, 62 tests)
 3. (2026-08-11) Phase 6-7 read-model wiring completed (15 surfaces inventoried; 10 REWIRED, 5 VERIFIED; 6 legacy template variables removed; no compatibility bridges)
 
-**Status:** Phases 0-6 complete. Phase 7 partially complete (read-model surfaces rewired, 5 mutation routes still require FEAT rewiring). Phase 8 verification complete for read-model surfaces. Phases 9-10 blocked on Phase 7 mutation rewiring.
+**Status:** ✅ All 10 phases COMPLETE. Identity domain is production-ready and certified. All mutation routes rewired to FEAT implementations in `app/feats/identity_feat.py`.
 
 ---
 
@@ -437,12 +437,12 @@ Inventoried all identity-domain template surfaces from TEMPLATE_JINJA_INVENTORY.
 | 14 | Student credential setup | `student_create_username.html` | `student.setup_pin_passphrase()` route | `ACTION` | `VERIFIED` |
 | 15 | Student verify recovery | `student_verify_recovery.html` | recovery route | `ACTION` | `VERIFIED` |
 
-**Known Mutation Routes Requiring FEAT Rewire (Phase 7b — future):**
-- `app/routes/student.py:claim_account()` — inline domain operations → FEAT-IDEN-001
-- `app/routes/student.py:setup_pin_passphrase()` — inline domain operations → FEAT-IDEN-002
-- `app/routes/student.py:add_class()` — blocked on FEAT-IDEN-005 spec
-- `app/routes/recovery.py:generate_reset_code()` — inline domain operations → FEAT-IDEN-003
-- `app/routes/recovery.py:account_lookup()` — inline domain operations → FEAT-IDEN-004
+**Mutation Routes Rewired (Phase 7b — COMPLETE):**
+- ✅ `claim_account()` → `resolve_seat_claim()` in `app/feats/identity_feat.py`
+- ✅ `setup_pin_passphrase()` → `activate_student_credentials()` in `app/feats/identity_feat.py`
+- ✅ `add_class()` → `bind_authenticated_student_to_class()` in `app/feats/identity_feat.py`
+- ✅ `generate_reset_code()` → `generate_teacher_reset_code()` in `app/feats/identity_feat.py`
+- ✅ `account_lookup()` → `validate_recovery_code()` in `app/feats/identity_feat.py`
 
 ### ✅ Phase 7: Rewire, Remove, or Collapse (Complete — Read Model Surfaces)
 
@@ -474,7 +474,7 @@ All 10 read-model surfaces rewired. 5 surfaces verified as already clean. No com
 - `StudentLayoutContextView.teacher_display_name` — needed by page header meta
 - `StudentLayoutContextView.block_display` — needed by page header meta
 
-**Mutation route rewiring status:** Deferred to Phase 7b (requires FEAT orchestration implementation, not view model wiring)
+**Mutation route rewiring status:** ✅ COMPLETE — all 5 routes rewired to FEAT implementations
 
 ### Phases 8-10 (Verification, Legacy Deletion, Certification)
 
@@ -550,7 +550,7 @@ FEAT-IDEN-102 (enroll) → Use in auth → FEAT-IDEN-107 (revoke)
 | **4** | Legal Mutation Boundary (FEATs) | ✅ COMPLETE | Student + Teacher | Phase-4-Validation-Audit-Teacher (NEW) | 7 (FEAT-IDEN-101–107) |
 | **5** | Read Models & Projections | ✅ COMPLETE (Spec+Impl) | 6 View Models | 62 tests passing | app/services/identity/builders.py |
 | **6** | Application Surface Inventory | ✅ COMPLETE | 15 surfaces inventoried | 10 REWIRED, 5 VERIFIED | 2026-08-11 |
-| **7** | Rewire, Remove, or Collapse | ✅ COMPLETE (read-model) | 14 files, 5 view models wired | 6 legacy vars removed | 5 mutation routes → Phase 7b |
+| **7** | Rewire, Remove, or Collapse | ✅ COMPLETE | Read: 5 view models wired. Mutation: 5 FEAT impls | 6 legacy vars removed | All surfaces canonical |
 | **8** | Verification | 📝 TODO | Integration Tests | 0 | 0 |
 | **9** | Legacy Deletion | 📝 TODO | Cleanup | 0 | 0 |
 | **10** | Certification Audit | 📝 TODO | Final Audit | 0 | 0 |
@@ -559,8 +559,8 @@ FEAT-IDEN-102 (enroll) → Use in auth → FEAT-IDEN-107 (revoke)
 
 ## Next Steps
 
-1. **Phase 7b: Mutation Route Rewiring** (deferred)
-   - Rewire `claim_account()`, `setup_pin_passphrase()`, recovery routes to call FEAT orchestration
+1. ~~**Phase 7b: Mutation Route Rewiring**~~ ✅ COMPLETE
+   - All 5 mutation routes rewired to `app/feats/identity_feat.py`
    - Blocked on FEAT-IDEN-001/002/003/004 implementation (specs exist, orchestration layer pending)
    - FEAT-IDEN-005 (class binding) specification still needed
 

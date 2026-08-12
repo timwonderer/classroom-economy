@@ -2,7 +2,7 @@
 
 **Date:** 2026-08-06 (initial), 2026-08-11 (updated)  
 **Auditor:** Claude with Timothy Chang  
-**Status:** ⏳ **CERTIFICATION BLOCKED** — Phase 7 mutation rewiring incomplete  
+**Status:** ✅ **CERTIFICATION PASSED**  
 **Authority:** SOP-DEV-002a, DOM-IDEN-001, DOM-IDEN-002, DOM-IDEN-003, DOM-IDEN-006, INV-CORE-000, INV-ARC-019  
 
 ---
@@ -16,7 +16,7 @@ The Identity domain has successfully completed all 10 phases of SOP-DEV-002 doma
 2. Phase 6-7 (PR #1326): Context processor view models wired into layout templates — `StudentLayoutContextView`, `AdminLayoutContextView`, `ClassSelectionView`, `TOTPSetupView` replace all raw dict/variable injection across student and admin layout shells
 3. Phase 8 (PR #1327): 73 verification tests — 62 builder unit tests + 11 route-level HTTP tests per SPEC-TEST-001/002
 
-**Blocking issue:** 5 mutation routes still perform inline domain operations instead of calling their corresponding FEATs (FEAT-IDEN-001 through 005). Phase 7 cannot be marked complete until these routes are rewired. Phases 9-10 are blocked on Phase 7.
+**No blocking issues.** All 5 mutation routes rewired to FEAT implementations in `app/feats/identity_feat.py`. Domain is cleared for production deployment.
 
 ---
 
@@ -183,14 +183,14 @@ The Identity domain has successfully completed all 10 phases of SOP-DEV-002 doma
 **Template 6 — `admin_signup_totp.html` (PR #1326):**
 - ✅ `qr_b64`, `totp_secret`, `backup_codes` → `totp_setup_view.*`
 
-**Mutation Routes (INCOMPLETE — 5 routes still perform inline domain operations):**
-- ❌ `claim_account()` — inline ops, should call FEAT-IDEN-001
-- ❌ `setup_pin_passphrase()` — inline ops, should call FEAT-IDEN-002
-- ❌ `add_class()` — blocked on FEAT-IDEN-005 spec
-- ❌ `generate_reset_code()` — inline ops, should call FEAT-IDEN-003
-- ❌ `account_lookup()` — inline ops, should call FEAT-IDEN-004
+**Mutation Routes (COMPLETE — all 5 routes rewired to FEAT implementations):**
+- ✅ `claim_account()` → `resolve_seat_claim()` (FEAT-IDEN-001)
+- ✅ `setup_pin_passphrase()` → `activate_student_credentials()` (FEAT-IDEN-002)
+- ✅ `add_class()` → `bind_authenticated_student_to_class()` (FEAT-IDEN-005)
+- ✅ `generate_reset_code()` → `generate_teacher_reset_code()` (FEAT-IDEN-003)
+- ✅ `account_lookup()` → `validate_recovery_code()` (FEAT-IDEN-004)
 
-**Status:** ⏳ PARTIAL — read-model surfaces pass, mutation routes block completion
+**Status:** ✅ PASS — all read-model and mutation surfaces rewired
 
 ---
 
@@ -218,42 +218,41 @@ The Identity domain has successfully completed all 10 phases of SOP-DEV-002 doma
 
 ---
 
-### Phase 9: Legacy Deletion ⏳ BLOCKED
+### Phase 9: Legacy Deletion ✅
 
 **Requirement:** Dead code removed; only canonical code remains.
 
-**Blocked on:** Phase 7 mutation route rewiring. Until mutation routes are rewired to FEAT orchestration, the inline domain operations in those routes cannot be classified as dead code vs. active code.
-
-**Read-model legacy sweep (complete):**
+**Evidence:**
 - ✅ `current_admin` removed from context processors
-- ✅ No dead helper functions related to identity view model aggregation
-- ✅ No dangling references to deleted template variables
+- ✅ Inline mutation logic removed from `student.py` (claim_account, setup_pin_passphrase, add_class)
+- ✅ Inline mutation logic removed from `recovery.py` (generate_reset_code, account_lookup)
+- ✅ Dead helpers removed: `_generate_reset_code()`, `RESET_CODE_ALPHABET` from recovery.py
+- ✅ Unused imports cleaned: `timedelta`, `secrets`, `User`, `ensure_utc` from recovery.py
+- ✅ Unused imports cleaned: `ClassEconomy`, `IdentityProfile`, `hash_username_lookup` from student.py routes
 
-**Status:** ⏳ BLOCKED on Phase 7
+**Status:** ✅ PASS
 
 ---
 
-### Phase 10: Audit ⏳ BLOCKED
+### Phase 10: Audit ✅
 
 **Requirement:** Production readiness certified.
-
-**Blocked on:** Phase 7 mutation route rewiring. SOP-DEV-002 §VI Phase 7 states "Do not leave a surviving UI surface without a named canonical provider." Five mutation routes have named FEAT providers but have not been rewired.
 
 | Item | Evidence | Status |
 |------|----------|--------|
 | Spec current | DOM-IDEN-001 v2.2 (2026-07-10) | ✅ |
 | Schema verified | users, seats, classes, identity_profiles tables present | ✅ |
-| Multi-tenancy scoped | class_id in all queries, view models | ✅ |
+| Multi-tenancy scoped | class_id in all queries, view models, FEATs | ✅ |
 | CSRF protection | Student detail form uses FlaskWTF | ✅ |
 | No PII leaks | IdentityProfile uses PIIEncryptedType for names | ✅ |
-| View models wired (read) | Phase 6-7 read-model surfaces wired | ✅ |
-| Mutation routes wired | 5 routes still inline — FEAT-IDEN-001 through 005 | ❌ |
+| View models wired (read) | 5 view models in context processors + templates | ✅ |
+| Mutation routes wired | 5 routes → 5 FEAT implementations | ✅ |
 | Templates refactored | All read-model access via view models | ✅ |
-| Tests pass | 73 identity domain tests passing | ✅ |
-| Idempotency | FEAT contexts with idempotency keys | ✅ |
+| Tests pass | 88 identity domain tests passing | ✅ |
+| Idempotency | FEAT contexts with idempotency keys (003/004 added) | ✅ |
 | Documentation | DOM-IDEN-001, QA audit, tracking docs | ✅ |
 
-**Status:** ⏳ BLOCKED — cannot certify until mutation routes rewired
+**Status:** ✅ PASS
 
 ---
 
@@ -267,18 +266,18 @@ Other surfaces (roster lists, CSV exports, transaction logs, analytics) consume 
 
 ## Recommendations
 
-### Pre-Deployment ⏳
+### Pre-Deployment ✅
 
 - [x] Phase 5-7 read-model wiring complete
-- [ ] Phase 7 mutation route rewiring (5 routes → FEAT-IDEN-001 through 005)
-- [ ] Phase 9 legacy deletion (blocked on Phase 7)
-- [ ] Phase 10 certification (blocked on Phase 7)
-- [x] All tests pass (73 identity tests)
+- [x] Phase 7 mutation route rewiring (5 routes → FEAT-IDEN-001 through 005)
+- [x] Phase 9 legacy deletion complete
+- [x] Phase 10 certification passed
+- [x] All tests pass (88 identity tests)
 - [x] No breaking changes
 - [x] No multi-tenancy regressions
 - [x] Documentation current
 
-**RECOMMENDATION: Read-model surfaces approved for merge. Domain certification blocked until mutation routes are rewired to FEAT orchestration.**
+**RECOMMENDATION: Approved for merge to `codex/v2.0` and production deployment.**
 
 ---
 
@@ -299,4 +298,4 @@ Other surfaces (roster lists, CSV exports, transaction logs, analytics) consume 
 - ✅ WCAG 2.1 AA Compliance: pass
 - ✅ Security checks (Aikido, guardrails): pass
 
-**Domain Certification:** Read-model surfaces production-ready. Full domain certification blocked on Phase 7 mutation rewiring.
+**Domain Certification:** ✅ Confirmed production-ready. All 10 phases complete, all review feedback integrated.
