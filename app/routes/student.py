@@ -3450,7 +3450,13 @@ def select_class_context():
 
         return redirect(url_for('student.dashboard'))
 
-    return render_template('student_select_class_context.html', class_options=seat_options)
+    from app.services.identity.builders import build_student_class_selection_view
+    student_name = getattr(linked_user, 'display_username', None) or ""
+    class_selection_view = build_student_class_selection_view(student_name, seat_options)
+    return render_template(
+        'student_select_class_context.html',
+        class_selection_view=class_selection_view,
+    )
 
 
 @student_bp.route('/logout')
