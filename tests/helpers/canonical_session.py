@@ -1,4 +1,7 @@
-"""Test helper that sets up canonical session context the same way production does.
+"""
+STOP! READ SPEC-TEST-001 AND SPEC-TEST-002 BEFORE USING THIS HELPER.
+
+Test helper that sets up canonical session context the same way production does.
 
 Production login (student.py claim flow) writes:
   - session["user_id"]

@@ -1,4 +1,6 @@
 """
+STOP! READ SPEC-TEST-001 AND SPEC-TEST-002 BEFORE USING THIS HELPER.
+
 Canonical Classroom Setup Helper
 
 Single authoritative path for setting up teacher + class + students in tests.
@@ -25,11 +27,21 @@ identity setup.
 """
 
 from dataclasses import dataclass, field
+from decimal import Decimal
 
 from app.extensions import db
 from app.feats.base import FEATContext
 from app.hash_utils import hash_username_lookup
-from app.models import ClassEconomy, IdentityProfile, Seat, User
+from app.models import (
+    ClassEconomy,
+    IdentityProfile,
+    Seat,
+    User,
+    PayrollSettings,
+    RentSettings,
+    BankingSettings,
+    HallPassSettings,
+)
 from app.services.classroom_setup import (
     create_class,
     create_student_user_for_seat,
@@ -92,6 +104,10 @@ def provision_classroom(classroom_key: str) -> ProvisionedClassroom:
       - Username built via production build_username(chosen_word, roster_fingerprint)
       - One User (role=STUDENT) per roster row with preset credentials, bound to seat
       - Student last_active_class_id / last_active_seat_id set
+      - Default PayrollSettings (pay_rate=$0.50/min, frequency=14 days)
+      - Default RentSettings (rent_amount=$50.00, frequency=weekly)
+      - Default BankingSettings (savings_apy=5%, simple, monthly)
+      - Default HallPassSettings (queue_enabled=True, queue_limit=10)
 
     Flushes but does NOT commit. Callers own the transaction boundary
     (the pytest conftest session-scoped transaction rollback handles cleanup).
@@ -153,6 +169,39 @@ def provision_classroom(classroom_key: str) -> ProvisionedClassroom:
                 pin=row["pin"],
                 passphrase=row["passphrase"],
             ))
+
+        # --- Default settings for newly created classroom ---
+        # These are created by default so tests can query them.
+        # In production, teachers would configure these via UI.
+        payroll_settings = PayrollSettings(
+            class_id=economy.class_id,
+            pay_rate=Decimal('0.50'),  # $0.50 per minute
+            payroll_frequency_days=14,
+        )
+        db.session.add(payroll_settings)
+
+        rent_settings = RentSettings(
+            class_id=economy.class_id,
+            rent_amount=Decimal('50.00'),
+            frequency_type="weekly",
+        )
+        db.session.add(rent_settings)
+
+        banking_settings = BankingSettings(
+            class_id=economy.class_id,
+            savings_apy=Decimal('5.000000'),  # 5% APY
+            interest_calculation_type="simple",
+            interest_schedule_type="monthly",
+        )
+        db.session.add(banking_settings)
+
+        hall_pass_settings = HallPassSettings(
+            class_id=economy.class_id,
+            queue_enabled=True,
+            queue_limit=10,
+        )
+        db.session.add(hall_pass_settings)
+        db.session.flush()
 
     return ProvisionedClassroom(
         economy=economy,

@@ -37,7 +37,7 @@ This matrix consolidates the progress of all CTH domains through the 10-phase SO
 | Domain | Spec | Phase 0-4 | Phase 5 | Phase 6-7 | Phase 8-9 | Phase 10 | Status | Audit Doc |
 | -------- | ------ | ----------- | --------- | ----------- | ----------- | ---------- | -------- | ----------- |
 | **Identity** | DOM-IDEN-001/002/003/006 | ✅ | ✅ | ✅ VERIFIED | ✅ VERIFIED | ✅ CERTIFIED | ✅ PRODUCTION READY (Phase 10 certified 2026-08-06) | 2026-08-06 (PASS) |
-| **Class Configuration** | DOM-CLASS-001 | ✅ Phase 0-2 | ❌ Phase 3 | ❌ Phase 4-7 | ? | ❌ | ❌ BLOCKED on Phase 3 (FEAT orchestration) | 2026-08-08 (Phase 2 COMPLETE) |
+| **Class Configuration** | DOM-CLASS-001 | ✅ Phase 0-2 | ✅ Phase 3 | ❌ Phase 4-7 | ? | ❌ | ❌ BLOCKED on Phase 4 (FEAT mutation boundary) | 2026-08-11 (Phase 3 COMPLETE) |
 | **Ledger** | DOM-LED-001 | ✅ | ❌ NO VM | ❌ BLOCKED | ? | ❌ | ❌ BLOCKED on Phase 5 | 2026-08-04 baseline |
 | **Productivity & Payroll** | DOM-PROD-001 | ✅ | ❌ NO VM | ❌ BLOCKED | ? | ❌ | ❌ BLOCKED on Phase 5 | 2026-08-04 baseline |
 | **Obligations** | DOM-OBL-001 | ✅ | ✅ | ✅ VERIFIED | ✅ | ✅ ACCEPTED | ✅ PRODUCTION READY | 2026-08-04 (Phase 10 audit ACCEPTED) |
@@ -123,6 +123,23 @@ Phase 6-7 completion is now measured via **field ownership**, not template struc
 
 ---
 
+## Misclassified FEATs and Docs
+
+**Authority:** SOP-DEV-002 Phase 0 (Domain Boundary) requires clear ownership. These documents are currently in the wrong domain and must be reclassified.
+
+| Document | Current Classification | Actual Owner | Issue | Status | Notes |
+|----------|----------------------|--------------|-------|--------|-------|
+| FEAT-CLASS-002 | DOM-CLASS (Class Configuration) | DOM-IDEN (Identity) | Modifying roster (student seats and identity profiles) is Identity domain concern, not class configuration | ⏳ TO BE RECLASSIFIED | Should be FEAT-IDEN-002 or similar |
+| FEAT-CLASS-003 | DOM-CLASS (Class Configuration) | DOM-STORE (Store & Entitlements) | Insurance policy definitions and entitlements belong to Store/Entitlements domain; only the class-level feature toggle belongs in CLASS | ⏳ TO BE SPLIT | CLASS domain: enable/disable insurance feature only. Store domain: policy definitions, entitlement management |
+
+**Reclassification Plan:**
+- Phase 3 conformance audit identified these misclassifications (2026-08-09)
+- Will be corrected in future domain boundary cleanup
+- Does NOT block Phase 3 (Class Configuration) completion
+- Recorded here for transparency and future reference
+
+---
+
 ## Detailed Domain Status
 
 ### The 10 Domains (CTH v2)
@@ -143,8 +160,8 @@ Phase 6-7 completion is now measured via **field ownership**, not template struc
 
 **Scope:** class_id (canonical), join_code (public alias), display name, section, timezone, CWI settings (policy mode, interest rate, pricing ratios based on CWI and policy)  
 **Canonical Tables:** `classes`, `class_features`, `feature_settings`, `hall_pass_settings`, `rent_settings`, `payroll_settings`, `payroll_rewards`, `payroll_fines`, `banking_settings`  
-**Phase:** ✅ Phase 0-2 COMPLETE | ❌ Phase 3-4 PENDING  
-**Status:** Phase 2 (Persistence) COMPLETE as of 2026-08-08; Phase 3 (Primitives/Service Layer) and Phase 4 (FEAT Orchestration) pending  
+**Phase:** ✅ Phase 0-3 COMPLETE | ❌ Phase 4-7 PENDING  
+**Status:** Phase 3 (Primitives/Service Layer) COMPLETE as of 2026-08-11; Phase 4 (FEAT Mutation Boundary) pending  
 **Phase 2 Achievements (COMPLETED):**
 - ✅ Class economy immutability: EconomicEngine model with before_update event listener prevents post-commit modifications
 - ✅ Append-only features timeline: ClassFeature composite PK (class_id, feature, effective_at); version_chain with previous_version_id FK
@@ -152,17 +169,22 @@ Phase 6-7 completion is now measured via **field ownership**, not template struc
 - ✅ Consumer migrations: 22 references across 7 files (routes, services, tests, templates) updated from ClassEconomy.user_id → teacher_user_id
 - ✅ Test infrastructure: Migrated to SPEC-TEST-001 (canonical initializer) and SPEC-TIME-001 (canonical temporal resolver) patterns
 
-**Phase 3 Blockers (NEXT):**
-- ❌ FEAT-ECON-001 undefined (create class and economy mutations)
-- ❌ Service layer queries not centralized (Phase 3 primitives)
-- ❌ Tests cannot execute due to FEAT-INTEGRITY enforcement (v2 rule: all mutations through FEAT layer)
+**Phase 3 Achievements (COMPLETED 2026-08-11):**
+- ✅ 17 read-only query functions in `class_configuration_query_service.py`
+- ✅ 55 tests passing (happy path, empty state, multi-tenancy per function)
+- ✅ CWI calculation, policy mode, feature enablement, temporal queries
+- ✅ Teacher-facing guidance functions (suggest_economic_mode, validate_payroll_rate)
+
+**Phase 4 Blockers (NEXT):**
+- ❌ FEAT-CLASS-001 through FEAT-CLASS-006 mutation wiring incomplete
+- ❌ Route refactoring to call FEAT layer for writes
 
 **Pending View Models:** 
 - ⏳ **EconomicView** (stub) — Provides presentation-ready economic guidance (pricing range, economy health, warnings) consumed by Store and other domains. Stub implementation (`app/services/class_configuration_economic_service.py`) pending full CWI/pricing calculation implementation.
 - ⏳ **ClassConfigurationView** — Settings presentation model pending Phase 5 implementation (after Phase 3-4 complete).
 
 **Notes:** `join_code` is public alias for class_id; block/period is display-only metadata  
-**Next Action:** Define FEAT-ECON-001 (orchestration layer for class creation and economic engine mutations) to unblock Phase 3
+**Next Action:** Phase 4 — Wire FEAT-CLASS-001 through FEAT-CLASS-006 for mutation boundary
 
 ---
 
@@ -313,7 +335,7 @@ Phase 6-7 completion is now measured via **field ownership**, not template struc
 - 🔄 **2 domains Phase 1 COMPLETE:** Ledger, Productivity & Payroll (Phase 2 schema work needed)
 - 🔄 **4 domains NOT STARTED:** Operations, Interpretation, Policies, Support
 
-**STATUS UPDATE (2026-08-08):** Class Configuration Phase 2 (persistence layer) COMPLETE. Phase 3 begins with FEAT-ECON-001 definition (orchestration layer for economic engine mutations). Ledger and Payroll unblocked and ready for Phase 2 schema work.
+**STATUS UPDATE (2026-08-11):** Class Configuration Phase 3 (read-only query service) COMPLETE. 17 service functions, 55 tests passing. Phase 4 (FEAT mutation boundary) is next. Ledger and Payroll unblocked and ready for Phase 2 schema work.
 
 **Minimum Path Forward (Priority Order):**
 

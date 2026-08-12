@@ -1,4 +1,6 @@
 """
+STOP! READ SPEC-TEST-001 AND SPEC-TEST-002 BEFORE USING THIS HELPER.
+
 Canonical Test Universe
 
 This file defines the canonical input data used throughout the test suite.
