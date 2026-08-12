@@ -1,12 +1,12 @@
 # CTH Domain Reconstruction Progress Matrix
 
 **Status:** Active Canonical Tracker
-**Last Updated:** 2026-08-08 (Class Config Phase 2 COMPLETE; Identity Phase 10 CERTIFIED; 3 domains production-ready, 7 remaining)
+**Last Updated:** 2026-08-11 (Class Config Phase 4 COMPLETE; Identity Phase 10 CERTIFIED; 3 domains production-ready, 7 remaining)
 **Authority:** SOP-DEV-002a, INV-CORE-000, DOM-CORE-002
 
 **DOMAIN READINESS SNAPSHOT:**
 - ✅ **3 domains** Phase 10 certified (production-ready): Identity, Obligations, Store
-- 🔄 **1 domain** Phase 2 complete, Phase 3-4 pending: Class Config (persistence layer done; orchestration layer next)
+- 🔄 **1 domain** Phase 4 complete, Phase 5 pending: Class Config (reads through service layer, mutations through FEAT boundaries; view models next)
 - 🔄 **2 domains** Phase 1 complete but blocked on Phase 2 (schema migrations pending): Ledger, Payroll
 - 🔄 **4 domains** Phase 0-1 only, not started: Operations, Interpretation, Policies, Support
 
@@ -37,7 +37,7 @@ This matrix consolidates the progress of all CTH domains through the 10-phase SO
 | Domain | Spec | Phase 0-4 | Phase 5 | Phase 6-7 | Phase 8-9 | Phase 10 | Status | Audit Doc |
 | -------- | ------ | ----------- | --------- | ----------- | ----------- | ---------- | -------- | ----------- |
 | **Identity** | DOM-IDEN-001/002/003/006 | ✅ | ✅ | ✅ VERIFIED | ✅ VERIFIED | ✅ CERTIFIED | ✅ PRODUCTION READY (Phase 10 certified 2026-08-06) | 2026-08-06 (PASS) |
-| **Class Configuration** | DOM-CLASS-001 | ✅ Phase 0-2 | ✅ Phase 3 | ❌ Phase 4-7 | ? | ❌ | ❌ BLOCKED on Phase 4 (FEAT mutation boundary) | 2026-08-11 (Phase 3 COMPLETE) |
+| **Class Configuration** | DOM-CLASS-001 | ✅ Phase 0-4 | ❌ Phase 5 | ❌ Phase 6-7 | ? | ❌ | 🔄 Phase 4 COMPLETE — reads through service layer, mutations through FEAT boundaries | 2026-08-11 (Phase 4 COMPLETE) |
 | **Ledger** | DOM-LED-001 | ✅ | ❌ NO VM | ❌ BLOCKED | ? | ❌ | ❌ BLOCKED on Phase 5 | 2026-08-04 baseline |
 | **Productivity & Payroll** | DOM-PROD-001 | ✅ | ❌ NO VM | ❌ BLOCKED | ? | ❌ | ❌ BLOCKED on Phase 5 | 2026-08-04 baseline |
 | **Obligations** | DOM-OBL-001 | ✅ | ✅ | ✅ VERIFIED | ✅ | ✅ ACCEPTED | ✅ PRODUCTION READY | 2026-08-04 (Phase 10 audit ACCEPTED) |
