@@ -24,7 +24,8 @@ import uuid
 
 from app.extensions import db
 from app.feats.base import feat_shell
-from app.models import ClassEconomy, Seat, IdentityProfile
+from app.models import Seat, IdentityProfile
+from app.services.class_configuration_query_service import get_class_economy
 from app.services.context_resolver import CanonicalContext
 from app.services.classroom_setup import (
     create_student_seat_with_profile,
@@ -315,7 +316,7 @@ def _execute_provision_student_seat_impl(
         )
 
     # Validate class exists
-    class_economy = ClassEconomy.query.filter_by(class_id=class_id).first()
+    class_economy = get_class_economy(class_id)
     if not class_economy:
         return ProvisionStudentSeatResult(
             success=False,
@@ -451,12 +452,20 @@ def _execute_remove_student_seat_impl(
 
     # Validate target student seat exists in this class
     student_seat = db.session.get(Seat, seat_id)
-    if not student_seat or student_seat.class_id != class_id:
+    if not student_seat:
         # Idempotency: seat already gone is success
         return RemoveStudentSeatResult(
             success=True,
             correlation_id=corr_id,
             seat_id=seat_id,
+        )
+
+    if student_seat.class_id != class_id:
+        return RemoveStudentSeatResult(
+            success=False,
+            correlation_id=corr_id,
+            error_code="SEAT_NOT_FOUND",
+            error_message=f"Student seat {seat_id} not found in class {class_id}",
         )
 
     if student_seat.role != "student":

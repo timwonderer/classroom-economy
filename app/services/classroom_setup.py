@@ -313,6 +313,8 @@ def create_student_seat_with_profile(
     db.session.add(seat)
     db.session.flush()
 
+    _set_claim_hashes(seat, first_name, last_name)
+
     profile = IdentityProfile(
         seat_id=seat.id,
         class_id=class_id,
@@ -324,6 +326,14 @@ def create_student_seat_with_profile(
     db.session.add(profile)
     db.session.flush()
     return seat
+
+
+def _set_claim_hashes(seat: Seat, first_name: str, last_name: str) -> None:
+    """Set claim lookup hashes on a seat so the claim flow can match by name."""
+    from app.hash_utils import hash_username_lookup
+
+    seat.claim_first_name_hash = hash_username_lookup(first_name.strip().lower())
+    seat.claim_last_name_hash = hash_username_lookup(last_name.strip().lower())
 
 
 def update_or_create_roster_seat(
@@ -351,6 +361,7 @@ def update_or_create_roster_seat(
                 notes=notes,
             )
             db.session.add(profile)
+        _set_claim_hashes(existing_seat, first_name, last_name)
         db.session.flush()
         return existing_seat
 
