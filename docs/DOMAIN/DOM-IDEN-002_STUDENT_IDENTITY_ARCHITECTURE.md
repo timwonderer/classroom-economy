@@ -97,11 +97,13 @@ A student `User` is a `users` row with `user_role = 'student'`. Common `users` f
 
 Student-specific fields:
 
-- `pin_hash` — hashed PIN used for login
-- `passphrase_hash` — hashed passphrase used to gate financial actions
-- `recovery_code` - 8-digit alphanumeric code randomly generated and stored on the corresponding student user row for student to reclaim their account
-- `recovery_code_issued_at` - timestamp of when the recovery code was issued. Stored as UTC but rendered to canonical class timezone.
-- `recovery_code_expires_at` - set to 10 minutes after `recovery_code_issued_at`. Stored as UTC but rendered to canonical class timezone.
+- `pin_hash` — hashed PIN used for login. NULL until credential activation, then immutable until recovery clears it.
+- `passphrase_hash` — hashed passphrase used to gate financial actions. NULL until credential activation, then immutable until recovery clears it.
+- `username_hash` — Full username hash (shared field). Set during credential activation (M-002), immutable until recovery (M-004), cleared during credential reset, then immutable again after re-setup.
+- `username_lookup_hash` — Class-scoped username lookup hash (shared field). Set during credential activation, cleared during recovery.
+- `reset_code` - 8-digit alphanumeric code randomly generated and stored on the corresponding student user row for student to reclaim their account
+- `reset_code_generated_at` - timestamp of when the reset code was generated. Stored as UTC but rendered to canonical class timezone.
+- `reset_code_expires_at` - set to 10 minutes after `reset_code_generated_at`. Stored as UTC but rendered to canonical class timezone.
 
 
 Teacher-specific fields (`totp_secret_encrypted`) SHALL be `NULL` for student rows.
@@ -109,7 +111,7 @@ Teacher-specific fields (`totp_secret_encrypted`) SHALL be `NULL` for student ro
 Student-specific rules:
 
 - A `users` row may be provisioned before claim; credentials are activated when a student claims a seat and completes setup.
-- Recovery capability belongs to `users` and is implemented by `user_recovery_tokens` (per INV-ARC-019 §XI), not by `seats`, `classes`, or display profiles.
+- Recovery capability belongs to `users` and is implemented by `reset_code`, `reset_code_generated_at`, and `reset_code_expires_at` fields (per INV-ARC-019 §XI), not by `seats`, `classes`, or display profiles.
 
 ### Student `Seat` Fields
 
