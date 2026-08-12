@@ -1,7 +1,7 @@
 # SPEC-TEST-001: Canonical Test Initializer
 
-| Reference Number | Version | Effective Date | Supersedes | Authority Level |
-|------------------|---------|----------------|------------|-----------------|
+| Reference Number | Version | Effective Date | Supersedes | Authority Level     |
+|------------------|---------|----------------|------------|---------------------|
 | SPEC-TEST-001    | 1.0     | 2026-07-17     | N/A        | Implementation Spec |
 
 ---
@@ -17,7 +17,7 @@ For the authoritative definition of what scenarios exist and why, see [`SPEC-TES
 ## II. Source Files
 
 | File | Role |
-|---|---|
+| --- | --- |
 | `tests/helpers/classroom_initializer.py` | Public API — the only legal entry point |
 | `tests/helpers/canonical_classroom.py` | Provisions DB state via production code |
 | `tests/helpers/canonical_identities.py` | Input data (teacher usernames, classroom definitions, roster rows) |
@@ -28,7 +28,7 @@ For the authoritative definition of what scenarios exist and why, see [`SPEC-TES
 ## III. Choosing a Scenario
 
 | Key | Teacher | When to use |
-|---|---|---|
+| --- | --- | --- |
 | `chemistry_p1` | `teacher.alice` | Default. Most tests — attendance, payroll, ledger, store, obligations, feature flags. |
 | `ap_csp_p3` | `teacher.alice` | When you need a second standard class owned by the same teacher. |
 | `biology_block_a` | `teacher.brian` | When you need a class owned by a different teacher. |
@@ -40,7 +40,7 @@ For the authoritative definition of what scenarios exist and why, see [`SPEC-TES
 ## IV. Choosing a Function
 
 | Function | Session established | Use when |
-|---|---|---|
+| --- | --- | --- |
 | `initialize_as_student(key, client, app, student_index=0)` | Student | Test makes HTTP requests as a student |
 | `initialize_as_teacher(key, client, app)` | Teacher | Test makes HTTP requests as a teacher/admin |
 | `initialize(key, app)` | None | Test exercises services or models directly |
@@ -56,7 +56,7 @@ All three run the DB self-test. The session variants also run the nonce and cont
 Returned by all three functions.
 
 | Attribute | Type | Description |
-|---|---|---|
+| --- | --- | --- |
 | `class_id` | `str` | UUID — canonical class anchor |
 | `join_code` | `str` | Public join code |
 | `teacher_user` | `User` | Teacher's User record |
@@ -69,7 +69,7 @@ Returned by all three functions.
 Returned alongside `ProvisionedClassroom` by `initialize_as_student`. Also accessible as `classroom.students[n]`.
 
 | Attribute | Type | Description |
-|---|---|---|
+| --- | --- | --- |
 | `user` | `User` | Student's User record |
 | `seat` | `Seat` | Student's Seat record |
 | `profile` | `IdentityProfile` | Student's IdentityProfile record |
@@ -195,7 +195,7 @@ def test_something(client, app):
 ### Property mapping
 
 | Before | After |
-|---|---|
+| --- | --- |
 | `class_row.class_id` | `classroom.class_id` |
 | `class_row.join_code` | `classroom.join_code` |
 | `student_seat.id` | `student.seat.id` |
@@ -257,7 +257,7 @@ def test_class_switching(client, app):
 When you call any initializer function, you do not need to write:
 
 | Manual setup replaced | Handled by |
-|---|---|
+| --- | --- |
 | `FEATContext("FEAT-IDEN-001", ...)` wrapper | `provision_classroom()` |
 | `db.session.flush()` | `provision_classroom()` |
 | `set_canonical_context(sess, ...)` | `login_teacher()` / `login_student()` |
