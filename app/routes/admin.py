@@ -2474,16 +2474,23 @@ def select_class_context():
         flash("Admin session is invalid. Please log in again.", "error")
         return redirect(url_for("admin.login"))
 
-    class_options = _get_validated_teacher_class_options(ctx.user_id)
-    if not class_options:
+    raw_options = _get_validated_teacher_class_options(ctx.user_id)
+    if not raw_options:
         return redirect(url_for("admin.onboarding"))
 
     if request.method == "POST":
         selected_class_id = (request.form.get("class_id") or "").strip()
-        selected = next((item for item in class_options if item["class_id"] == selected_class_id), None)
+        selected = next((item for item in raw_options if item["class_id"] == selected_class_id), None)
         if not selected:
             flash("Invalid class selection.", "error")
-            return render_template("admin_select_class_context.html", class_options=class_options), 400
+            from app.services.identity.builders import build_admin_class_selection_view
+            from app.utils.display_name_session import get_admin_display_name_cache
+            admin_name = get_admin_display_name_cache(user_id=ctx.user_id)
+            class_selection_view = build_admin_class_selection_view(admin_name, raw_options)
+            return render_template(
+                "admin_select_class_context.html",
+                class_selection_view=class_selection_view,
+            ), 400
 
         session["last_activity"] = utc_now().isoformat()
         user = db.session.get(User, ctx.user_id)
@@ -2491,7 +2498,14 @@ def select_class_context():
             user.last_active_class_id = selected["class_id"]
         return redirect(url_for("admin.dashboard"))
 
-    return render_template("admin_select_class_context.html", class_options=class_options)
+    from app.services.identity.builders import build_admin_class_selection_view
+    from app.utils.display_name_session import get_admin_display_name_cache
+    admin_name = get_admin_display_name_cache(user_id=ctx.user_id)
+    class_selection_view = build_admin_class_selection_view(admin_name, raw_options)
+    return render_template(
+        "admin_select_class_context.html",
+        class_selection_view=class_selection_view,
+    )
 
 @admin_bp.route('/')
 @admin_required
@@ -2909,11 +2923,12 @@ def signup():
             # Populate form with data
             totp_form = AdminTOTPConfirmForm()
             totp_form.username.data = username
+            from app.services.identity.builders import build_totp_setup_view
+            totp_view = build_totp_setup_view(totp_secret, img_b64, [])
             return render_template(
                 "admin_signup_totp.html",
                 form=totp_form,
-                qr_b64=img_b64,
-                totp_secret=totp_secret
+                totp_view=totp_view,
             )
         # Step 5: Validate entered TOTP code
         current_app.logger.info(f"TOTP code submitted (length: {len(totp_code)})")
@@ -2936,11 +2951,12 @@ def signup():
             # Populate form with data
             totp_form = AdminTOTPConfirmForm()
             totp_form.username.data = username
+            from app.services.identity.builders import build_totp_setup_view
+            totp_view = build_totp_setup_view(totp_secret, img_b64, [])
             return render_template(
                 "admin_signup_totp.html",
                 form=totp_form,
-                qr_b64=img_b64,
-                totp_secret=totp_secret
+                totp_view=totp_view,
             )
         # Step 6: Create admin account and mark invite as used
         current_app.logger.info(f"TOTP verified. Creating admin account")
@@ -2965,11 +2981,12 @@ def signup():
             # Populate form with data
             totp_form = AdminTOTPConfirmForm()
             totp_form.username.data = username
+            from app.services.identity.builders import build_totp_setup_view
+            totp_view = build_totp_setup_view(totp_secret, img_b64, [])
             return render_template(
                 "admin_signup_totp.html",
                 form=totp_form,
-                qr_b64=img_b64,
-                totp_secret=totp_secret,
+                totp_view=totp_view,
                 tos_agreed=False
             )
 
