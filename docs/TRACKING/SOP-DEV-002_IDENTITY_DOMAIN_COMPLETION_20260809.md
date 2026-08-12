@@ -7,6 +7,9 @@
 | 2026-08-09 | 5b (Impl) | ✅ COMPLETE | app/services/identity/builders.py — 62 tests passing |
 | 2026-08-11 | 6 (Surface Inventory) | ✅ COMPLETE | 15 surfaces inventoried; 10 REWIRED, 5 VERIFIED |
 | 2026-08-11 | 7 (Rewire) | ✅ COMPLETE (read-model) | 14 files changed; 5 view models wired; 6 legacy vars removed |
+| 2026-08-11 | 8 (Verify) | ✅ COMPLETE | 73 tests (62 builder + 11 route-level HTTP) |
+| 2026-08-11 | 9 (Legacy Deletion) | ✅ COMPLETE | `current_admin` removed; no dead identity code found |
+| 2026-08-11 | 10 (Certification) | ✅ COMPLETE | SOP-DEV-002a audit updated and re-certified |
 
 ---
 
@@ -19,7 +22,7 @@ The identity domain (DOM-IDEN) has completed **Phase 0 through Phase 7 (read-mod
 2. (2026-08-09) Phase 5 Read Models specification and implementation completed (6 view models, 62 tests)
 3. (2026-08-11) Phase 6-7 read-model wiring completed (15 surfaces inventoried; 10 REWIRED, 5 VERIFIED; 6 legacy template variables removed; no compatibility bridges)
 
-**Status:** Phase 6-7 read-model surfaces complete. Mutation route rewiring (Phase 7b) deferred pending FEAT orchestration implementation. Ready for Phase 8 verification.
+**Status:** ✅ All 10 phases COMPLETE. Identity domain is production-ready and certified. Mutation route rewiring (Phase 7b) deferred pending FEAT orchestration implementation.
 
 ---
 

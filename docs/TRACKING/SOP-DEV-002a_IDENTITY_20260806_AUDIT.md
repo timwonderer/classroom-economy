@@ -1,6 +1,6 @@
 # Identity Domain (DOM-IDEN-001) — Phase 10 Audit Certification
 
-**Date:** 2026-08-06  
+**Date:** 2026-08-06 (initial), 2026-08-11 (updated)  
 **Auditor:** Claude with Timothy Chang  
 **Status:** ✅ **CERTIFICATION PASSED**  
 **Authority:** SOP-DEV-002a, DOM-IDEN-001, DOM-IDEN-002, DOM-IDEN-003, DOM-IDEN-006, INV-CORE-000, INV-ARC-019  
@@ -9,11 +9,14 @@
 
 ## Executive Summary
 
-The Identity domain has successfully completed all 10 phases of SOP-DEV-002 domain reconstruction and is **PRODUCTION READY** as of 2026-08-06.
+The Identity domain has successfully completed all 10 phases of SOP-DEV-002 domain reconstruction and is **PRODUCTION READY**.
 
-**Key Achievement:** Complete Phase 5-7 view model wiring for the student_detail administrative surface. The `student_detail_public` route now constructs a canonical `IdentityProfileView` via `build_identity_profile_view()`, and the `student_detail.html` template consumes exclusively `identity_view.*` fields via a frozen dataclass.
+**Key Achievements:**
+1. Phase 5-7 (initial): `IdentityProfileView` wired into `student_detail` admin surface
+2. Phase 6-7 (PR #1326): Context processor view models wired into layout templates — `StudentLayoutContextView`, `AdminLayoutContextView`, `ClassSelectionView`, `TOTPSetupView` replace all raw dict/variable injection across student and admin layout shells
+3. Phase 8 (PR #1327): 73 verification tests — 62 builder unit tests + 11 route-level HTTP tests per SPEC-TEST-001/002
 
-**No blocking issues.** Domain is cleared for merge and production deployment.
+**No blocking issues.** Domain is cleared for production deployment.
 
 ---
 
@@ -138,11 +141,18 @@ The Identity domain has successfully completed all 10 phases of SOP-DEV-002 doma
 
 **Evidence:**
 
-**Admin Student Detail Route (`student_detail_public` in `app/routes/admin.py:4316`):**
-- ✅ Route calls `identity_view = build_identity_profile_view(seat_id, class_id)`
-- ✅ Route passes `identity_view` to `render_template('student_detail.html')`
-- ✅ Guard clause: `if not identity_view: abort(404)`
-- ✅ Legacy aggregation variables removed: `student_full_name`, `student_first_name`, `student_last_name`, `student_notes` no longer in render_template context
+**Surface 1 — Admin Student Detail Route (`student_detail_public`):**
+- ✅ Route calls `build_identity_profile_view(seat_id, class_id)`
+- ✅ Passes `identity_view` to template; guard clause on None → abort(404)
+- ✅ Legacy variables removed: `student_full_name`, `student_first_name`, `student_last_name`, `student_notes`
+
+**Surface 2 — Context Processors (PR #1326):**
+- ✅ `inject_student_layout_view()` builds `StudentLayoutContextView` via `build_student_layout_context_view()`
+- ✅ `inject_admin_layout_view()` builds `AdminLayoutContextView` via `build_admin_layout_context_view()`
+- ✅ Student class selection route builds `ClassSelectionView` via `build_student_class_selection_view()`
+- ✅ Admin class selection route builds `ClassSelectionView` via `build_admin_class_selection_view()`
+- ✅ Admin TOTP signup route builds `TOTPSetupView` via `build_totp_setup_view()`
+- ✅ Raw dict/variable injection removed from all routes (`class_options=`, `qr_b64=`, `totp_secret=`)
 
 **Status:** ✅ PASS
 
@@ -154,22 +164,24 @@ The Identity domain has successfully completed all 10 phases of SOP-DEV-002 doma
 
 **Evidence:**
 
-**Template Audit (`templates/student_detail.html`):**
-- ✅ Line 2: `{% set page_title = identity_view.full_name ~ " - Student Detail" %}`
-- ✅ Line 3: `{% block title %}{{ identity_view.full_name }} - Detail{% endblock %}`
-- ✅ Line 37: `{{ identity_view.full_name }}` (header display)
-- ✅ Line 184: `{{ identity_view.full_name }}` (profile card)
-- ✅ Line 284: `{{ identity_view.full_name }}` (detail section)
-- ✅ Line 753: `value="{{ identity_view.first_name }}"` (edit form)
-- ✅ Line 759: `value="{{ identity_view.last_name or '' }}"` (edit form)
-- ✅ Line 765: `{{ identity_view.notes or '' }}` (edit form textarea)
+**Template 1 — `student_detail.html`:** 8 access points via `identity_view.*`
 
-**8 total access points, all via `identity_view.*` namespace.**
+**Template 2 — `layout_student.html` (PR #1326):**
+- ✅ All `current_class_context` → `student_layout_view.*` (class_timezone, student_full_name, class_identifier, join_code, teacher_name, block_display)
+- ✅ `student_display_first_name` → `student_layout_view.student_display_first_name` (pre-uppercased by builder)
 
-**No Legacy Sources Found:**
-- ✅ No bare `student_full_name`, `student_first_name`, `student_last_name`, `student_notes` references
-- ✅ No direct `identity_profile.*` ORM access in template
-- ✅ All identity data flows through `identity_view.*`
+**Template 3 — `layout_admin.html` (PR #1326):**
+- ✅ All `current_admin` references removed
+- ✅ Admin layout variables → `admin_layout_view.*`
+
+**Template 4 — `student_select_class_context.html` (PR #1326):**
+- ✅ `class_options` → `class_selection_view.available_classes`
+
+**Template 5 — `admin_select_class_context.html` (PR #1326):**
+- ✅ `class_options` → `class_selection_view.available_classes`
+
+**Template 6 — `admin_signup_totp.html` (PR #1326):**
+- ✅ `qr_b64`, `totp_secret`, `backup_codes` → `totp_setup_view.*`
 
 **Status:** ✅ PASS
 
@@ -180,12 +192,20 @@ The Identity domain has successfully completed all 10 phases of SOP-DEV-002 doma
 **Requirement:** Tests prove correctness and multi-tenancy.
 
 **Evidence:**
-- ✅ `tests/test_view_model_builders.py` — 5 identity view model tests (happy path, properties, not found, class_id scoping, immutability)
-- ✅ `tests/dom/identity/test_admin_membership_gates.py` — 18 passed, 1 skipped
-- ✅ `tests/dom/identity/test_student_recovery.py` — 15 passed
-- ✅ `tests/dom/identity/test_identity_resolution.py` — identity resolution coverage
-- ✅ Multi-tenancy: `test_build_identity_profile_view_scoped_by_class_id` verifies class_id boundary isolation
-- ✅ No regressions: pre-existing failures fixed (entitlement_service seat_id bug, missing imports, v1 test patterns rewritten to v2)
+
+**Builder Unit Tests (62 tests in `tests/test_identity_builders.py`):**
+- ✅ `StudentLayoutContextView` — 15 tests (happy path, fallback, maintenance bypass, empty state)
+- ✅ `AdminLayoutContextView` — 8 tests (happy path, missing seat, missing profile)
+- ✅ `ClassSelectionView` — 8 tests (student/admin builders, empty classes, current class marking)
+- ✅ `TOTPSetupView` — 10 tests (construction, backup codes, issuer name)
+- ✅ `IdentityProfileView` — 5 tests (happy path, properties, scoping, immutability)
+- ✅ Remaining tests cover `AccountClaimView`, `ClassSwitcherOption`, edge cases
+
+**Route-Level HTTP Tests (11 tests in `tests/dom/identity/test_class_context_and_switching.py`):**
+- ✅ 4 view model injection tests via real HTTP GET requests (student dashboard, admin dashboard, student class selection, admin class selection)
+- ✅ 7 class switching API tests (successful switch, invalid class, unauthorized class, multi-class fixture per SPEC-TEST-001 §VIII)
+- ✅ All tests use `initialize_as_student()`/`initialize_as_teacher()` per SPEC-TEST-001
+- ✅ Multi-class fixtures use `provision_classroom()` + `Seat` creation per SPEC-TEST-002
 
 **Status:** ✅ PASS
 

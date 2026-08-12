@@ -271,7 +271,7 @@ class TestTOTPSetupView:
 
     def test_issuer_name_defaults_to_classroom_token_hub(self):
         view = self._sample_view()
-        assert view.issuer_name == "Classroom Token Hub"
+        assert view.issuer_name == "Classroom Economy Admin"
 
     def test_issuer_name_can_be_overridden(self):
         view = build_totp_setup_view(
