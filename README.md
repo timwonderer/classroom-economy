@@ -161,7 +161,7 @@ See [SOP-DEP-023](docs/STANDARD_OPERATING_PROCEDURES/DEPLOYMENT/SOP-DEP-023_V2_P
 
 Read the invariants first, then domain specs, then tracking docs. Authority flows downward:
 
-```
+```text
 INV-CORE (what must be true) → INV-ARC (architectural rules) → DOM-* (domain authority) → FEAT-* (execution specs)
 ```
 
@@ -176,7 +176,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines.
 **Permitted:** Classrooms, clubs, nonprofits, research, personal learning.  
 **Prohibited:** Commercial products, SaaS, paid services, for-profit use.
 
-See [LICENSE](LICENSE) for complete terms.
+See [LICENSE](LICENSE) for complete terms. [Third-party notices](docs/archive/v1-user-guides/legal/third-party-notices.md).
 
 ---
 
