@@ -13,98 +13,18 @@
     <link href="../static/css/tokens.css" rel="stylesheet">
     <link href="./style.css" rel="stylesheet">
     <style>
-        .v2-feature-list {
-            list-style: none;
-            padding: 0;
-            margin: 0;
-            display: grid;
-            gap: 2rem;
-            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-        }
+        /* v2-feature-list, v2-feature-card, philosophy-*, and floating-back-widget
+           are defined in style.css. Only progress-stream-specific styles below. */
 
-        .v2-feature-card {
-            background-color: var(--surface);
-            padding: 2.25rem;
-            border-radius: 2px;
-            box-shadow: var(--shadow);
-            border-top: 6px solid var(--secondary-color);
-            transition: transform 0.2s ease, box-shadow 0.2s ease;
-        }
-
-        .v2-feature-card .material-symbols-outlined {
-            color: var(--primary);
-            font-size: 2.5rem;
-            margin-bottom: 1.25rem;
-        }
-
-        .v2-feature-card h3 {
-            color: var(--text-primary);
-            font-size: 1.35rem;
-            margin-bottom: 0.85rem;
-            font-weight: 600;
-        }
-
-        .v2-feature-card p,
         .v2-feature-card li {
             color: var(--text-secondary);
             font-size: 1.05rem;
             line-height: 1.6;
         }
 
-        .v2-feature-card p:last-child {
-            margin-bottom: 0;
-        }
-
         .v2-feature-card ul {
             margin: 0;
             padding-left: 1.2rem;
-        }
-
-        .philosophy-section {
-            margin-bottom: 4.5rem;
-        }
-
-        .philosophy-heading {
-            color: var(--guardian-gray);
-            font-size: 2.25rem;
-            margin-bottom: 1rem;
-            font-weight: 600;
-            border-bottom: 2px solid var(--border-subtle);
-        }
-
-        .philosophy-text p {
-            font-size: 1.15rem;
-            color: var(--text-primary);
-            line-height: 1.75;
-            margin-bottom: 1.5rem;
-        }
-
-        .floating-back-widget {
-            position: fixed;
-            bottom: 2rem;
-            right: 2rem;
-            z-index: 1000;
-            background-color: var(--secondary-color);
-            color: white;
-            padding: 0.75rem 1.25rem;
-            border-radius: 50px;
-            box-shadow: var(--shadow-lg);
-            display: inline-flex;
-            align-items: center;
-            gap: 0.5rem;
-            text-decoration: none;
-            font-weight: 500;
-            transition: transform 0.2s ease, box-shadow 0.2s ease;
-        }
-
-        .floating-back-widget:hover {
-            transform: translateY(-4px);
-            box-shadow: 0 15px 25px -5px rgba(0, 0, 0, 0.2);
-            color: white;
-        }
-
-        .floating-back-widget .material-symbols-outlined {
-            font-size: 1.5rem;
         }
 
         .progress-stream {

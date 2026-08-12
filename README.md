@@ -132,7 +132,7 @@ All queries must be scoped by `class_id`, never by `teacher_id` alone.
 
 | Document | Purpose |
 | ---------- | --------- |
-| **[CLAUDE.md](.claude/CLAUDE.md)** | AI assistant guidelines |
+| **[.claude/CLAUDE.md](.claude/CLAUDE.md)** | AI assistant guidelines |
 | **[.claude/rules/](.claude/rules/)** | Development rules (multi-tenancy, migrations, testing, security) |
 | **[docs/INVARIANT/](docs/INVARIANT/)** | Core runtime invariants and architectural rules |
 | **[docs/DOMAIN/](docs/DOMAIN/)** | Per-domain authority specs |
@@ -182,7 +182,7 @@ See [LICENSE](LICENSE) for complete terms.
 
 ## Support
 
-- **Questions about architecture?** Read [CLAUDE.md](.claude/CLAUDE.md) and the relevant domain spec
+- **Questions about architecture?** Read [.claude/CLAUDE.md](.claude/CLAUDE.md) and the relevant domain spec
 - **Found a bug?** Open an issue
 - **Ready to contribute?** See [CONTRIBUTING.md](CONTRIBUTING.md)
 - **Contact:** [dev@classroomtokenhub.com](mailto:dev@classroomtokenhub.com)
