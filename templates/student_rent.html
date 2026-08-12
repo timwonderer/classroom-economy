@@ -36,9 +36,9 @@
             </a>
         </li>
     </ul>
-    {% if current_class_context %}
+    {% if student_layout_view.has_class_context %}
     <div class="text-muted small">
-        Viewing {{ current_class_context.teacher_name }} • {{ current_class_context.block_display }}
+        Viewing {{ student_layout_view.teacher_display_name }} • {{ student_layout_view.block_display }}
     </div>
     {% endif %}
 </div>

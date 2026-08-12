@@ -80,6 +80,13 @@ class AdminLayoutContextView:
     Empty string if no class context.
     """
 
+    class_id: str
+    """UUID of the current class context.
+
+    Canonical identifier used for routing and data access.
+    Empty string if no class context.
+    """
+
     is_maintenance_bypass_active: bool
     """Whether the maintenance mode bypass is active for this user.
 
@@ -142,6 +149,27 @@ class StudentLayoutContextView:
     """Public join code for the current class.
 
     Example: "ABC123DEF456". Displayed alongside class_display_name for reference.
+    Empty string if no class context.
+    """
+
+    class_timezone: str
+    """Timezone identifier for the current class context.
+
+    Empty string when not set or UTC. Passed to data-timezone attribute for
+    client-side clock rendering. Only rendered if has_class_context is True.
+    """
+
+    teacher_display_name: str
+    """Name of the teacher who owns this class, plaintext.
+
+    Example: "Mrs. Smith". Displayed in page header meta line.
+    Empty string if no class context.
+    """
+
+    block_display: str
+    """Block/period display label for the current class.
+
+    Example: "Period 1", "Block A". Displayed in page header meta line.
     Empty string if no class context.
     """
 
@@ -480,14 +508,15 @@ def build_admin_layout_context_view(
 
     if has_class_context:
         raw_tz = (class_context.get("class_timezone") or "").strip()
-        # Timezone attribute is empty string when UTC or unset — JS interprets "" as unset
         class_timezone = "" if (not raw_tz or raw_tz == "UTC") else raw_tz
         class_display_name = (class_context.get("class_identifier") or "").strip()
         class_join_code = (class_context.get("join_code") or "").strip()
+        class_id = str(class_context.get("class_id") or "")
     else:
         class_timezone = ""
         class_display_name = ""
         class_join_code = ""
+        class_id = ""
 
     return AdminLayoutContextView(
         teacher_display_name=teacher_display_name,
@@ -495,6 +524,7 @@ def build_admin_layout_context_view(
         class_timezone=class_timezone,
         class_display_name=class_display_name,
         class_join_code=class_join_code,
+        class_id=class_id,
         is_maintenance_bypass_active=is_maintenance_bypass_active,
     )
 
@@ -528,6 +558,9 @@ def build_student_layout_context_view(
             has_class_context=False,
             class_display_name="",
             class_join_code="",
+            class_timezone="",
+            teacher_display_name="",
+            block_display="",
             is_maintenance_bypass_active=is_maintenance_bypass_active,
         )
 
@@ -540,6 +573,11 @@ def build_student_layout_context_view(
     class_join_code = (display_metadata.join_code or "").strip()
     has_class_context = bool(class_display_name or class_join_code)
 
+    raw_tz = (getattr(display_metadata, "class_timezone", None) or "").strip()
+    class_timezone = "" if (not raw_tz or raw_tz == "UTC") else raw_tz
+    teacher_name = (getattr(display_metadata, "teacher_display_name", None) or "").strip()
+    block_display = (getattr(display_metadata, "block_display", None) or "").strip()
+
     return StudentLayoutContextView(
         student_display_full_name=full_name.upper() if full_name else "",
         student_display_first_name=first,
@@ -547,6 +585,9 @@ def build_student_layout_context_view(
         has_class_context=has_class_context,
         class_display_name=class_display_name,
         class_join_code=class_join_code,
+        class_timezone=class_timezone,
+        teacher_display_name=teacher_name,
+        block_display=block_display,
         is_maintenance_bypass_active=is_maintenance_bypass_active,
     )
 

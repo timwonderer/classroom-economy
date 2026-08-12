@@ -29,9 +29,9 @@
             <label for="class_id" class="form-label">Available Classes</label>
             <select id="class_id" name="class_id" class="form-select" required>
               <option value="" disabled selected>Select class</option>
-              {% for option in class_options %}
-                <option value="{{ option.class_id }}">
-                  {{ option.join_code }} - {{ option.class_identifier }}
+              {% for option in class_selection_view.available_classes %}
+                <option value="{{ option.class_id }}"{% if option.is_current %} selected{% endif %}>
+                  {{ option.join_code }} - {{ option.display_name }}
                 </option>
               {% endfor %}
             </select>
@@ -41,10 +41,8 @@
               We have found the following classes that you have previously joined. If you don't see your class, please ask your teacher for the join code and try again.
             </small>
             <ul class="mt-2 mb-0">
-              {% for option in class_options %}
-                {% if option.class_name %}
-                  <li><strong>{{ option.join_code }} - {{ option.class_identifier }}</strong>: {{ option.class_name }}</li>
-                {% endif %}
+              {% for option in class_selection_view.available_classes %}
+                <li><strong>{{ option.join_code }} - {{ option.display_name }}</strong></li>
               {% endfor %}
             </ul>
           </div>

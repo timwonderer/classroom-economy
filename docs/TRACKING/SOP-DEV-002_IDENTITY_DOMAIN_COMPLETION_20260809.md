@@ -3,21 +3,23 @@
 | Date | Phase | Status | Commits |
 |------|-------|--------|---------|
 | 2026-08-09 | 0-4 | ✅ COMPLETE | 7a8c3650, 4e4bcd07, 88ab38e3 |
-| 2026-08-09 | 5 (Spec) | 📝 SPECIFICATION | FEAT-IDEN-PHASE-5-READ-MODELS_PROJECTIONS.md |
+| 2026-08-09 | 5 (Spec) | ✅ COMPLETE | FEAT-IDEN-PHASE-5-READ-MODELS_PROJECTIONS.md |
 | 2026-08-09 | 5b (Impl) | ✅ COMPLETE | app/services/identity/builders.py — 62 tests passing |
+| 2026-08-11 | 6 (Surface Inventory) | ✅ COMPLETE | 15 surfaces inventoried; 10 REWIRED, 5 VERIFIED |
+| 2026-08-11 | 7 (Rewire) | ✅ COMPLETE (read-model) | 14 files changed; 5 view models wired; 6 legacy vars removed |
 
 ---
 
 ## Executive Summary
 
-The identity domain (DOM-IDEN) has completed **Phase 0 through Phase 5 (Specification)** of the SOP-DEV-002 Canonical Domain Reconstruction Workflow for BOTH student and teacher identities.
+The identity domain (DOM-IDEN) has completed **Phase 0 through Phase 7 (read-model)** of the SOP-DEV-002 Canonical Domain Reconstruction Workflow for BOTH student and teacher identities.
 
-**Key Milestones (2026-08-09):**
-1. Teacher identity Phase 3-4 work completed (FEAT-IDEN-101 through 107)
-2. Phase 5 Read Models specification completed (6 view models identified and specified)
-3. Identity domain fully unified with both roles specified through consumer projection layer
+**Key Milestones:**
+1. (2026-08-09) Teacher identity Phase 3-4 work completed (FEAT-IDEN-101 through 107)
+2. (2026-08-09) Phase 5 Read Models specification and implementation completed (6 view models, 62 tests)
+3. (2026-08-11) Phase 6-7 read-model wiring completed (15 surfaces inventoried; 10 REWIRED, 5 VERIFIED; 6 legacy template variables removed; no compatibility bridges)
 
-**Status:** Phase 5 specification complete. Ready for Phase 5b implementation (builder functions) and Phase 6 (application surface inventory)
+**Status:** Phase 6-7 read-model surfaces complete. Mutation route rewiring (Phase 7b) deferred pending FEAT orchestration implementation. Ready for Phase 8 verification.
 
 ---
 
@@ -408,20 +410,68 @@ Phase 3-4 has now been expanded and completed for teacher identity:
 - Audit each template to confirm view model fields satisfy requirements
 - Eliminate all template violations (format filters, conditional logic, direct model access)
 
-### Phase 6 (Application Surface Inventory)
+### ✅ Phase 6: Application Surface Inventory (Complete — Read Model Surfaces)
 
-Inventory every route, template, API endpoint, job, CLI command that touches identity domain.
+**Date:** 2026-08-11
 
-**Known Routes Requiring Rewire:**
-- `app/routes/student.py:claim_account()` (currently performs inline domain operations)
-- `app/routes/student.py:setup_pin_passphrase()` (currently performs inline domain operations)
-- `app/routes/student.py:add_class()` (blocked on FEAT-IDEN-005 spec)
-- `app/routes/recovery.py:generate_reset_code()` (currently performs inline domain operations)
-- `app/routes/recovery.py:account_lookup()` (currently performs inline domain operations)
+Inventoried all identity-domain template surfaces from TEMPLATE_JINJA_INVENTORY.md:
 
-### Phase 7 (Rewire, Remove, or Collapse)
+| # | Surface | Template | Route/Provider | Type | Disposition |
+|---|---------|----------|---------------|------|-------------|
+| 1 | Teacher layout identity | `layout_admin.html` | `inject_admin_layout_view()` context processor | `OUTPUT` | `REWIRED` |
+| 2 | Student layout identity | `layout_student.html` | `inject_student_layout_view()` context processor | `OUTPUT` | `REWIRED` |
+| 3 | TOTP enrollment display | `admin_signup_totp.html` | `admin.signup()` route | `OUTPUT` | `REWIRED` |
+| 4 | Teacher class selection | `admin_select_class_context.html` | `admin.select_class_context()` route | `ACTION` | `REWIRED` |
+| 5 | Student class selection | `student_select_class_context.html` | `student.select_class_context()` route | `ACTION` | `REWIRED` |
+| 6 | Teacher dashboard greeting | `admin_dashboard.html` | `inject_admin_layout_view()` context processor | `OUTPUT` | `REWIRED` |
+| 7 | Student dashboard greeting | `student_dashboard.html` | `inject_student_layout_view()` context processor | `OUTPUT` | `REWIRED` |
+| 8 | Admin students JS context | `admin_students.html` | `inject_admin_layout_view()` context processor | `CLIENT_JS` | `REWIRED` |
+| 9 | Student rent class context | `student_rent.html` | `inject_student_layout_view()` context processor | `OUTPUT` | `REWIRED` |
+| 10 | Student insurance class context | `student_insurance_marketplace.html` | `inject_student_layout_view()` context processor | `OUTPUT` | `REWIRED` |
+| 11 | Student account claim | `student_account_claim.html` | `student.claim_account()` route | `ACTION` | `VERIFIED` |
+| 12 | Login templates (3) | `admin_login.html`, `student_login.html`, `system_admin_login.html` | auth routes | `ACTION` | `VERIFIED` |
+| 13 | Admin signup | `admin_signup.html` | `admin.signup()` route | `ACTION` | `VERIFIED` |
+| 14 | Student credential setup | `student_create_username.html` | `student.setup_pin_passphrase()` route | `ACTION` | `VERIFIED` |
+| 15 | Student verify recovery | `student_verify_recovery.html` | recovery route | `ACTION` | `VERIFIED` |
 
-Rewrite identified routes to call FEAT orchestration layer instead of performing domain operations inline.
+**Known Mutation Routes Requiring FEAT Rewire (Phase 7b — future):**
+- `app/routes/student.py:claim_account()` — inline domain operations → FEAT-IDEN-001
+- `app/routes/student.py:setup_pin_passphrase()` — inline domain operations → FEAT-IDEN-002
+- `app/routes/student.py:add_class()` — blocked on FEAT-IDEN-005 spec
+- `app/routes/recovery.py:generate_reset_code()` — inline domain operations → FEAT-IDEN-003
+- `app/routes/recovery.py:account_lookup()` — inline domain operations → FEAT-IDEN-004
+
+### ✅ Phase 7: Rewire, Remove, or Collapse (Complete — Read Model Surfaces)
+
+**Date:** 2026-08-11
+
+All 10 read-model surfaces rewired. 5 surfaces verified as already clean. No compatibility bridges.
+
+**View models wired:**
+| View Model | Provider | Consumers |
+|------------|----------|-----------|
+| `AdminLayoutContextView` | `inject_admin_layout_view()` | `layout_admin.html`, `admin_dashboard.html`, `admin_students.html` |
+| `StudentLayoutContextView` | `inject_student_layout_view()` | `layout_student.html`, `student_dashboard.html`, `student_rent.html`, `student_insurance_marketplace.html` |
+| `TOTPSetupView` | `admin.signup()` route | `admin_signup_totp.html` |
+| `AdminClassSelectionView` | `admin.select_class_context()` route | `admin_select_class_context.html` |
+| `StudentClassSelectionView` | `student.select_class_context()` route | `student_select_class_context.html` |
+| `AccountClaimView` | (Phase 5 spec only) | No template violations to fix |
+
+**Legacy variables removed from context processors:**
+- `current_admin_display_name` — replaced by `admin_layout_view.teacher_display_name`
+- `admin_current_class_context` — replaced by `admin_layout_view.*` fields
+- `current_class_context` — replaced by `student_layout_view.*` fields
+- `student_display_first_name` — replaced by `student_layout_view.student_display_first_name`
+- `student_name` — replaced by `student_layout_view.student_display_full_name`
+- `current_admin` — removed (unused)
+
+**View model fields added during rewiring:**
+- `AdminLayoutContextView.class_id` — needed by `admin_students.html` JS
+- `StudentLayoutContextView.class_timezone` — needed by layout clock widget
+- `StudentLayoutContextView.teacher_display_name` — needed by page header meta
+- `StudentLayoutContextView.block_display` — needed by page header meta
+
+**Mutation route rewiring status:** Deferred to Phase 7b (requires FEAT orchestration implementation, not view model wiring)
 
 ### Phases 8-10 (Verification, Legacy Deletion, Certification)
 
@@ -496,8 +546,8 @@ FEAT-IDEN-102 (enroll) → Use in auth → FEAT-IDEN-107 (revoke)
 | **3** | Primitive Operations | ✅ COMPLETE | Student + Teacher | Phase-3-Validation-Audit-Expanded | 1 (create) |
 | **4** | Legal Mutation Boundary (FEATs) | ✅ COMPLETE | Student + Teacher | Phase-4-Validation-Audit-Teacher (NEW) | 7 (FEAT-IDEN-101–107) |
 | **5** | Read Models & Projections | ✅ COMPLETE (Spec+Impl) | 6 View Models | 62 tests passing | app/services/identity/builders.py |
-| **6** | Application Surface Inventory | 📝 TODO | Identity Routes | 0 | 0 |
-| **7** | Rewire, Remove, or Collapse | 📝 TODO | Route Rewiring | 0 | 0 |
+| **6** | Application Surface Inventory | ✅ COMPLETE | 15 surfaces inventoried | 10 REWIRED, 5 VERIFIED | 2026-08-11 |
+| **7** | Rewire, Remove, or Collapse | ✅ COMPLETE (read-model) | 14 files, 5 view models wired | 6 legacy vars removed | 5 mutation routes → Phase 7b |
 | **8** | Verification | 📝 TODO | Integration Tests | 0 | 0 |
 | **9** | Legacy Deletion | 📝 TODO | Cleanup | 0 | 0 |
 | **10** | Certification Audit | 📝 TODO | Final Audit | 0 | 0 |
@@ -506,24 +556,22 @@ FEAT-IDEN-102 (enroll) → Use in auth → FEAT-IDEN-107 (revoke)
 
 ## Next Steps
 
-1. **Phase 5b Implementation:** Implement builder functions for 6 view models
-   - Location: `app/services/identity/builders.py`
-   - Scope: 6 builder functions + frozen dataclass definitions
-   - Testing: Unit tests for immutability, no ORM leakage, format verification
+1. **Phase 7b: Mutation Route Rewiring** (deferred)
+   - Rewire `claim_account()`, `setup_pin_passphrase()`, recovery routes to call FEAT orchestration
+   - Blocked on FEAT-IDEN-001/002/003/004 implementation (specs exist, orchestration layer pending)
+   - FEAT-IDEN-005 (class binding) specification still needed
 
-2. **Phase 5c Verification:** Audit templates to confirm view model usage
-   - Review each of 6 templates for remaining violations
-   - Document field mapping (template needs → view model provides)
+2. **Phase 8: Verification**
+   - Route-level integration tests proving context processors inject view models correctly
+   - Template render tests proving no `UndefinedError` on new view model fields
+   - 62 builder unit tests already pass
 
-3. **Create FEAT-IDEN-005 specification** (blocking Phase 6)
-   - Purpose: Authenticated class binding (M-005 primitive)
-   - Governs: Class switching for credentialed users
+3. **Phase 9: Legacy Deletion**
+   - Remove `current_admin` variable (already removed from context processor, verify no consumers)
+   - Audit for dead helper functions exposed by context processor merge
 
-4. **Phase 6** (Application Surface Inventory)
-   - Identify all routes, templates, APIs touching identity domain
-   - Map each to Phase 5 view models
-
-5. **Phase 7–10** (Rewire routes, verify, delete legacy code, final audit)
+4. **Phase 10: Certification Audit**
+   - Final DOM-IDEN compliance check per SOP-DEV-002a
 
 ---
 
@@ -562,7 +610,7 @@ FEAT-IDEN-102 (enroll) → Use in auth → FEAT-IDEN-107 (revoke)
 
 **Milestone 2:** Phase 5 (Read Models & Projections) SPECIFICATION + IMPLEMENTATION completed 2026-08-09
 
-**Status:** ✅ Phase 0-5 COMPLETE — Ready for Phase 6 (Application Surface Inventory)
+**Status:** ✅ Phase 0-7 (read-model) COMPLETE — Ready for Phase 8 (Verification)
 
 **Date:** 2026-08-09
 

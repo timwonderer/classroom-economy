@@ -63,23 +63,20 @@
 | student_login.html | 13 | 8 | Low | ✅ CLEAN |
 | system_admin_login.html | 13 | 10 | Low | ✅ CLEAN |
 | admin_signup.html | 8 | 12 | Low | ✅ CLEAN |
-| admin_signup_totp.html | 8 | 14 | Medium | ⚠️ NEEDS REVIEW |
-| student_account_claim.html | 14 | 14 | Medium | ⚠️ NEEDS REVIEW |
+| admin_signup_totp.html | 8 | 14 | None | ✅ REWIRED (totp_view) |
+| student_account_claim.html | 14 | 14 | None | ✅ VERIFIED (no violations) |
 | student_create_username.html | 11 | 8 | Low | ✅ CLEAN |
 | student_verify_recovery.html | 5 | 12 | Low | ✅ CLEAN |
-| layout_student.html | 38 | 66 | High | ❌ VIOLATION |
-| layout_admin.html | 53 | 98 | High | ❌ VIOLATION |
-| admin_select_class_context.html | 9 | 11 | Medium | ⚠️ NEEDS REVIEW |
-| student_select_class_context.html | 11 | 12 | Medium | ⚠️ NEEDS REVIEW |
+| layout_student.html | 38 | 66 | None | ✅ REWIRED (student_layout_view) |
+| layout_admin.html | 53 | 98 | None | ✅ REWIRED (admin_layout_view) |
+| admin_select_class_context.html | 9 | 11 | None | ✅ REWIRED (class_selection_view) |
+| student_select_class_context.html | 11 | 12 | None | ✅ REWIRED (class_selection_view) |
 
-**Identity Domain Violations:**
-- `layout_student.html:104` — `{{ current_class_context.student_full_name|upper }}` — Direct model access
-- `layout_student.html:108-109` — Unformatted `student_display_first_name` from route
-- `layout_admin.html:various` — Multiple `current_class_context.*` direct accesses
+**Identity Domain Violations:** None remaining (all rewired 2026-08-11)
 
 **Domain Owner:** Identity (DOM-IDEN-001)  
-**Responsible View Model Builder:** `identity/builders.py` *(to be implemented; currently scattered in routes)*  
-**Status:** PARTIAL - Layout templates still receive raw context objects
+**Responsible View Model Builder:** `app/services/identity/builders.py`  
+**Status:** ✅ COMPLETE — All identity templates consume view models; no raw ORM/dict access
 
 ---
 

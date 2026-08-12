@@ -94,17 +94,17 @@
         <div class="sidebar-scope-panel">
             <div class="sidebar-scope-time class-scoped-time"
                 id="admin-class-time"
-                data-timezone="{% if admin_current_class_context and admin_current_class_context.class_timezone != 'UTC' %}{{ admin_current_class_context.class_timezone }}{% endif %}"
+                data-timezone="{{ admin_layout_view.class_timezone }}"
                 data-empty-message="No classes yet. Official class time will appear after class creation."
                 data-unset-message="Official class time zone not set yet.">
             </div>
-            {% if current_admin_display_name %}
-            <div class="sidebar-scope-name">{{ current_admin_display_name|upper }}</div>
+            {% if admin_layout_view.teacher_display_name %}
+            <div class="sidebar-scope-name">{{ admin_layout_view.teacher_display_name }}</div>
             {% endif %}
-            {% if admin_current_class_context %}
+            {% if admin_layout_view.has_class_context %}
             <div class="sidebar-scope-context sidebar-scope-class-line">
-                <span>{{ admin_current_class_context.class_identifier }}</span>
-                <span class="sidebar-scope-meta-inline">{{ admin_current_class_context.join_code }}</span>
+                <span>{{ admin_layout_view.class_display_name }}</span>
+                <span class="sidebar-scope-meta-inline">{{ admin_layout_view.class_join_code }}</span>
             </div>
             {% else %}
             <div class="sidebar-scope-context">No classes created yet</div>

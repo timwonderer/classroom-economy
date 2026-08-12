@@ -254,9 +254,9 @@
             </div>
 
             <div class="qr-panel">
-                <img src="data:image/png;base64,{{ qr_b64 }}" alt="TOTP QR Code">
+                <img src="{{ totp_view.qr_code_data_uri }}" alt="TOTP QR Code">
                 <div class="text-secondary small mt-2">Or enter this code in your authenticator app</div>
-                <div class="manual-code">{{ totp_secret }}</div>
+                <div class="manual-code">{{ totp_view.totp_secret_display }}</div>
             </div>
 
             <form method="POST" autocomplete="off">

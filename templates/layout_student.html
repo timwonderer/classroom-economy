@@ -95,18 +95,18 @@
                 <div class="sidebar-scope-panel">
                     <div class="sidebar-scope-time class-scoped-time"
                         id="student-class-time"
-                        data-timezone="{{ current_class_context.class_timezone if current_class_context else '' }}"
+                        data-timezone="{{ student_layout_view.class_timezone }}"
                         data-empty-message="No classes yet. Official class time will appear after class access is added."
                         data-unset-message="Official class time zone not set yet.">
                     </div>
-                    {% if current_class_context %}
+                    {% if student_layout_view.has_class_context %}
                     <div class="sidebar-scope-name">
-                        {{ current_class_context.student_full_name|upper }}
+                        {{ student_layout_view.student_display_full_name }}
                     </div>
-                    <div class="sidebar-scope-context">{{ current_class_context.class_identifier }}</div>
-                    <div class="sidebar-scope-meta">{{ current_class_context.join_code }}</div>
-                    {% elif student_display_first_name %}
-                    <div class="sidebar-scope-name">{{ student_display_first_name|upper }}</div>
+                    <div class="sidebar-scope-context">{{ student_layout_view.class_display_name }}</div>
+                    <div class="sidebar-scope-meta">{{ student_layout_view.class_join_code }}</div>
+                    {% elif student_layout_view.student_display_first_name %}
+                    <div class="sidebar-scope-name">{{ student_layout_view.student_display_first_name|upper }}</div>
                     <div class="sidebar-scope-context">No classes available yet</div>
                     {% endif %}
                 </div>
@@ -205,12 +205,10 @@
                                 <span class="material-symbols-outlined">{{ resolved_page_icon }}</span>
                                 {{ resolved_page_title }}
                             </h1>
-                            {% if current_class_context %}
+                            {% if student_layout_view.has_class_context %}
                             <div class="meta">
-                                {{ current_class_context.teacher_name }} • {{ current_class_context.block_display }}
-                                <span class="badge bg-light text-dark ms-2">Join Code: {{
-                                    current_class_context.join_code
-                                    }}</span>
+                                {{ student_layout_view.teacher_display_name }} • {{ student_layout_view.block_display }}
+                                <span class="badge bg-light text-dark ms-2">Join Code: {{ student_layout_view.class_join_code }}</span>
                             </div>
                             {% endif %}
                         </div>
