@@ -71,6 +71,11 @@ from app.access import (
     resolve_student_class_switch_scope,
 )
 from app.services.attendance_service import get_class_attendance_status
+from app.services.class_configuration_query_service import (
+    get_class_economy,
+    get_class_economy_by_join_code,
+    get_banking_settings,
+)
 from app.services.entitlement_read_service import (
     get_entitlement_history,
     get_active_entitlements,
@@ -546,7 +551,7 @@ def claim_account():
         dedupe_code = (form.dedupe_code.data or "").strip().upper()
 
         # Resolve the ingress join code to its canonical class_id before any seat lookup.
-        class_row = ClassEconomy.query.filter_by(join_code=display_join_code).first()
+        class_row = get_class_economy_by_join_code(display_join_code)
         if not class_row:
             current_app.logger.warning(
                 f"Claim attempt failed: No class found for join_code={display_join_code}"
@@ -801,7 +806,7 @@ def add_class():
         dedupe_code = (form.dedupe_code.data or "").strip().upper()
 
         # Resolve class context
-        class_row = ClassEconomy.query.filter_by(join_code=display_join_code).first()
+        class_row = get_class_economy_by_join_code(display_join_code)
         if not class_row:
             flash("Invalid join code or all seats already claimed. Check with your teacher.", "danger")
             return redirect(_get_return_target())
@@ -1698,7 +1703,7 @@ def purchase_insurance(policy_id):
         flash("This insurance policy is missing its entitlement mapping.", "error")
         return redirect(url_for('student.student_insurance'))
     seat = db.session.get(Seat, context.seat_id)
-    banking_settings = BankingSettings.query.filter_by(class_id=context.class_id).first()
+    banking_settings = get_banking_settings(context.class_id)
     flash("Insurance purchase is not available from this surface.", "warning")
     return redirect(url_for('student.student_insurance'))
 
@@ -3553,8 +3558,7 @@ def help_support():
     init_default_categories()
 
     # Get student's issues for current class (last 20)
-    from app.models import ClassEconomy
-    class_economy = ClassEconomy.query.filter_by(class_id=class_context.class_id).first()
+    class_economy = get_class_economy(class_context.class_id)
     my_issues = Issue.query.filter_by(
         actor_public_id=student.public_id,
         class_public_id=class_economy.class_public_id if class_economy else "",

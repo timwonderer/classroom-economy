@@ -131,11 +131,9 @@ from app.services.insurance_policy_service import (
 # TODO (Phase 4): store_entitlement_service deleted
 # from app.services.store_entitlement_service import get_insurance_claim, get_last_entitlement_end_for_policy_version, derive_display_status
 from app.services.classroom_setup import (
-    create_class,
     create_class_with_roster,
     create_teacher_account_with_class,
     create_pending_student_seat,
-    create_student_seat_with_profile,
     delete_seat_with_profile,
     create_roster_student_seat,
     update_or_create_roster_seat,
@@ -153,6 +151,16 @@ from app.services.store_service import (
 )
 from app.services.view_model_builders import build_identity_profile_view, build_store_management_view
 from app.services.class_configuration_economic_service import build_economic_view
+from app.services.class_configuration_query_service import (
+    get_class_economy,
+    get_class_economy_by_join_code,
+    get_all_classes_by_teacher,
+    verify_teacher_owns_class,
+    get_payroll_settings,
+    get_rent_settings,
+    get_banking_settings,
+    get_hall_pass_settings,
+)
 from app.services.admin_identity_service import delete_admin_account_rows
 from app.services.admin_settings_service import create_rent_settings, create_banking_settings
 from app.services.issue_service import create_support_ticket
@@ -674,10 +682,7 @@ def resolve_admin_feature_join_code(feature_name: str, canonical_context=None) -
     enabled_join_codes = {option['join_code'] for option in options}
     current_class_id = (getattr(canonical_context, "class_id", None) or "").strip()
     if current_class_id:
-        current_class = ClassEconomy.query.filter_by(
-            user_id=canonical_context.user_id,
-            class_id=current_class_id,
-        ).first()
+        current_class = verify_teacher_owns_class(current_class_id, canonical_context.user_id)
         current_join_code = get_display_join_code(current_class.class_id) if current_class else None
         if current_join_code and current_join_code in enabled_join_codes:
             return current_join_code
@@ -982,7 +987,7 @@ def _build_payroll_preview_state(students, class_ids_by_block):
     for class_id, students_map in students_by_class_id.items():
         class_students = list(students_map.values())
 
-        economy = db.session.get(ClassEconomy, class_id)
+        economy = get_class_economy(class_id)
         if not economy:
             continue
 
@@ -1128,7 +1133,7 @@ def _require_payroll_feature_scope_from_request(
             f"Insufficient authority: Seat {canonical_seat.id} is role='{canonical_seat.role}', not 'teacher'."
         )
 
-    class_row = ClassEconomy.query.filter_by(class_id=resolved_class_id).first()
+    class_row = get_class_economy(resolved_class_id)
     available_blocks = [class_row.section] if class_row and class_row.section else []
 
     resolved_block = available_blocks[0] if available_blocks else None
@@ -1164,7 +1169,7 @@ def _class_exists(class_id):
     """Return True when a class identified by class_id still exists in ClassEconomy."""
     if not class_id:
         return False
-    return db.session.get(ClassEconomy, class_id) is not None
+    return get_class_economy(class_id) is not None
 
 
 def _assert_transaction_deletion_allowed(class_id, *, join_code_deletion=False):
@@ -1217,7 +1222,7 @@ def _hard_delete_class_scope(class_id, canonical_context):
         current_app.logger.critical("P0 INVARIANT VIOLATION: class deletion invoked without class_id.")
         raise InvariantViolation("class deletion requires canonical class_id")
 
-    class_row = db.session.get(ClassEconomy, class_id)
+    class_row = get_class_economy(class_id)
     if not class_row:
         return
 
@@ -1268,7 +1273,7 @@ def _hard_delete_class_scope(class_id, canonical_context):
         .filter(Transaction.class_id == class_id)
         .subquery()
     )
-    _class_row = ClassEconomy.query.filter_by(class_id=class_id).first()
+    _class_row = get_class_economy(class_id)
     _class_pub_id = _class_row.class_public_id if _class_row else None
     issue_ids_subq = (
         db.session.query(Issue.id)
@@ -1802,50 +1807,24 @@ def _remove_pending_class_timezone_confirmation(class_id: str):
     session.modified = True
 
 
-def _ensure_join_code_anchors(user_id, join_code, class_label=None, class_id=None, return_metadata: bool = False):
-    """Ensure the canonical class row and membership exist before child inserts."""
-    if not user_id or (not join_code and not class_id):
-        return (None, False, None) if return_metadata else None
 
-    economy = db.session.get(ClassEconomy, class_id) if class_id else None
-    created = False
-    if economy is not None:
-        if economy.user_id != user_id:
-            raise ValueError("Class belongs to a different teacher.")
-        if class_label and not economy.display_name:
-            economy.display_name = class_label
-        if economy.created_by_user_id is None:
-            economy.created_by_user_id = user_id
-    else:
-        economy = create_class(
-            user_id,
-            join_code=join_code,
-            display_name=class_label,
-        )
-        created = True
+# _ensure_join_code_anchors: DELETED — v1 bridge function that treated join_code
+# as primary identity (violates INV-IDEN-001: class_id is canonical, join_code is alias),
+# created classes outside the FEAT layer (violates DOM-CLASS-001: FEAT-CLASS-001 owns
+# class creation), and allowed join_code-first class creation (inverted authority).
+# Callers replaced with FEAT-CLASS-001 execute_create_class_boundary() for creation,
+# and get_class_economy() guards for existence checks.
 
-    teacher_seat = Seat.query.filter_by(
-        class_id=economy.class_id,
-        role="teacher",
-    ).first()
-    if teacher_seat is None:
-        raise RuntimeError("Teacher seat missing after class anchor creation.")
-
-    if return_metadata:
-        return economy.class_id, created, economy
-    return economy.class_id
-
-
-def _generate_unique_teacher_join_code(section: str) -> str:
-    """Generate a teacher-scoped join code."""
-    return generate_join_code()
+# _generate_unique_teacher_join_code: DELETED — join code generation is internal to
+# FEAT-CLASS-001; routes should not generate join codes independently.
 
 
 def _resolve_student_add_class_context(canonical_context, *, block_select: str, section: str | None) -> dict | None:
     """Resolve the target class for add-student flows, creating one when requested."""
+    from app.feats.class_configuration import execute_create_class_boundary
+
     if canonical_context is None or not getattr(canonical_context, "user_id", None):
         return None
-    user_id = canonical_context.user_id
 
     if block_select != '__CREATE_NEW__':
         return _resolve_admin_class_context(g.canonical_context)
@@ -1854,107 +1833,31 @@ def _resolve_student_add_class_context(canonical_context, *, block_select: str, 
         return None
 
     class_label = (request.form.get('class_name') or '').strip() or section
-    join_code = _generate_unique_teacher_join_code(section)
-    class_id, class_created, class_row = _ensure_join_code_anchors(
-        user_id,
-        join_code,
-        class_label=class_label,
-        return_metadata=True,
+    result = execute_create_class_boundary(
+        canonical_context=canonical_context,
+        class_name=class_label,
     )
+    if not result.success:
+        current_app.logger.error(
+            "FEAT-CLASS-001 failed in add-student class creation: %s", result.error_message
+        )
+        return None
+
+    class_row = get_class_economy(result.class_id)
     return {
-        'join_code': join_code,
-        'class_id': class_id,
+        'join_code': result.join_code,
+        'class_id': result.class_id,
         'block': section,
-        'class_created': class_created,
+        'class_created': True,
         'class_row': class_row,
     }
 
 
-def _link_student_to_admin(
-    student,
-    canonical_context,
-    *,
-    class_id: str | None = None,
-    class_label: str | None = None,
-    block: str | None = None,
-):
-    """
-    Ensure the given admin is associated with the student.
-    Creates the canonical student seat linkage for the admin's class.
-    """
-    if canonical_context is None or not getattr(canonical_context, "user_id", None):
-        return
-    user_id = canonical_context.user_id
 
-    # v2: block is display metadata only; class_id is the canonical scope
-    # Require explicit class_id or block parameter (don't fall back to student.block)
-    target_block = (block or "").strip().upper() if block else None
-
-    if not class_id and not target_block:
-        current_app.logger.warning(
-            "Cannot link student: requires explicit class_id or block parameter"
-        )
-        return
-
-    target_class_id = class_id
-    target_join_code = None
-
-    if not target_class_id:
-        existing_class = ClassEconomy.query.filter(
-            ClassEconomy.teacher_user_id == user_id,
-            ClassEconomy.class_id.in_(
-                [cid for cid in _get_class_ids_by_block(g.canonical_context, [target_block]).values() if cid]
-            ),
-        ).first()
-        if existing_class:
-            target_class_id = existing_class.class_id
-            target_join_code = existing_class.join_code
-        else:
-            from app.utils.join_code import generate_join_code as _gen_jc
-            target_join_code = _gen_jc()
-            target_class_id = _ensure_join_code_anchors(
-                user_id,
-                target_join_code,
-                class_label=class_label,
-            )
-
-    # 2. Ensure ClassEconomy record exists.
-    _ensure_join_code_anchors(user_id, target_join_code, class_label=class_label, class_id=target_class_id)
-
-    # 3. Create or update Seat record.
-    existing_seat = Seat.query.filter_by(
-        student_id=student.id,
-        class_id=target_class_id,
-    ).first()
-
-    if not existing_seat:
-        from app.hash_utils import hash_username_lookup as _h
-        _student_ip = getattr(student, 'identity_profile', None)
-        seat_first_name = (_student_ip.first_name if _student_ip else "") or ""
-        seat_last_name = (_student_ip.last_name if _student_ip else "") or ""
-        new_seat = create_student_seat_with_profile(
-            class_id=target_class_id,
-            first_name=seat_first_name,
-            last_name=seat_last_name,
-            student_id=student.id,
-            claimed_at=utc_now(),
-        )
-        new_seat.claim_first_name_hash = _h(seat_first_name.lower()) if seat_first_name else None
-        new_seat.claim_last_name_hash = _h(seat_last_name.lower()) if seat_last_name else None
-        new_seat.roster_fingerprint = _h(
-            f"{target_class_id}|{seat_first_name.lower()}|{seat_last_name.lower()}"
-        )
-        current_app.logger.info(
-            "Created claimed Seat for student %s, teacher %s, block %s",
-            student.id, user_id, target_block,
-        )
-    else:
-        if not existing_seat.claimed_at:
-            existing_seat.claimed_at = utc_now()
-        existing_seat.class_id = existing_seat.class_id or target_class_id
-        current_app.logger.info(
-            "Claimed existing Seat %s for student %s", existing_seat.id, student.id
-        )
+# _link_student_to_admin: DELETED — v1 bridge function that violated INV-IDEN-001
+# (join_code-first class creation), bypassed FEAT layer, and had a live bug
+# (passed user_id int where canonical_context object expected).
+# Callers replaced with FEAT-CLASS-002 execute_provision_student_seat().
 
 
 def _get_feature_settings(class_id=None):
@@ -2645,7 +2548,7 @@ def dashboard():
     # V2 canonical: scope everything through class_id from canonical context.
     teacher_class_ids = [
         c.class_id for c in
-        ClassEconomy.query.filter_by(teacher_user_id=current_user_id).all()
+        get_all_classes_by_teacher(current_user_id)
     ]
 
     seats = Seat.query.filter(Seat.class_id.in_(teacher_class_ids), Seat.role == 'student').all()
@@ -3635,7 +3538,7 @@ def settings():
                 admin.display_name = None  # Use canonical public_id as fallback
 
             # Update class labels for each ClassEconomy (canonical class label store)
-            teacher_classes = ClassEconomy.query.filter_by(teacher_user_id=user_id).all()
+            teacher_classes = get_all_classes_by_teacher(user_id)
             for cls in teacher_classes:
                 section_key = cls.section or cls.join_code or ''
                 class_label_key = f'class_label_{section_key}'
@@ -3865,7 +3768,7 @@ def _get_rent_privileges_for_student(student, class_id, seat_id):
     if not seat_id:
         return rent_privileges
 
-    rent_settings = RentSettings.query.filter_by(class_id=class_id).first()
+    rent_settings = get_rent_settings(class_id)
     if not rent_settings:
         return rent_privileges
 
@@ -3895,7 +3798,7 @@ def _get_rent_privileges_for_student(student, class_id, seat_id):
     # Read privilege items from canonical rent settings so mid-cycle edits
     # don't change what students see until next cycle.
     from app.services.store_service import get_frozen_privilege_items
-    rent_settings = RentSettings.query.filter_by(class_id=class_id).first()
+    rent_settings = get_rent_settings(class_id)
     if not rent_settings:
         return rent_privileges
 
@@ -4140,7 +4043,7 @@ def set_class_timezone(class_id: str):
             'message': 'Class scope mismatch. Switch class from the navigation to continue.',
         }), 403
 
-    class_row = ClassEconomy.query.filter_by(class_id=class_id, teacher_user_id=user_id).first()
+    class_row = verify_teacher_owns_class(class_id, user_id)
     if class_row is None:
         return jsonify({'status': 'error', 'message': 'Class not found.'}), 404
 
@@ -4427,7 +4330,7 @@ def adjust_hall_pass_entitlements(seat_id):
         abort(404)
 
     # Verify teacher owns this class
-    if not ClassEconomy.query.filter_by(class_id=target_seat.class_id, teacher_user_id=canonical_context.user_id).first():
+    if not verify_teacher_owns_class(target_seat.class_id, canonical_context.user_id):
         abort(404)
 
     action = (request.form.get('hall_pass_action') or '').strip().lower()
@@ -4495,7 +4398,7 @@ def edit_student():
         abort(404)
     if student.class_id != current_class_id:
         abort(404)
-    if not ClassEconomy.query.filter_by(class_id=current_class_id, teacher_user_id=user_id).first():
+    if not verify_teacher_owns_class(current_class_id, user_id):
         abort(404)
 
     # Get form data
@@ -4592,7 +4495,7 @@ def delete_student():
     student = db.session.get(Seat, seat_id)
     if not student:
         abort(404)
-    if not ClassEconomy.query.filter_by(class_id=student.class_id, teacher_user_id=g.canonical_context.user_id).first():
+    if not verify_teacher_owns_class(student.class_id, g.canonical_context.user_id):
         abort(404)
     student_name = student.identity_profile.full_name if student.identity_profile else str(student.id)
 
@@ -4683,7 +4586,7 @@ def delete_block():
                 "message": f"Block {section} has multiple classes. Delete by class explicitly."
             }), 400
 
-        class_row = db.session.get(ClassEconomy, class_ids[0])
+        class_row = get_class_economy(class_ids[0])
         if not class_row:
             return jsonify({"status": "error", "message": "Join code not found or access denied."}), 404
         _hard_delete_class_scope(class_row.class_id, g.canonical_context)
@@ -4955,8 +4858,9 @@ def add_individual_student():
                 notes=additional_notes or None,
             )
 
-            # Ensure ClassEconomy record exists before creating Seat
-            _ensure_join_code_anchors(user_id, join_code, class_id=class_id)
+            # Verify class exists before creating Seat
+            if not get_class_economy(class_id):
+                raise ValueError(f"Class {class_id} does not exist")
 
             new_seat = create_pending_student_seat(
                 class_id=class_id,
@@ -5076,11 +4980,18 @@ def add_manual_student():
                     flash(f"Student {first_name} {last_name} is already in your class.", "info")
                 else:
                     flash(f"Student {first_name} {last_name} already exists. Linking to your class.", "warning")
-                    _link_student_to_admin(
-                        existing_student,
-                        user_id,
+                    from app.feats.class_configuration import execute_provision_student_seat
+                    provision_result = execute_provision_student_seat(
+                        canonical_context=g.canonical_context,
                         class_id=class_id,
+                        first_name=first_name,
+                        last_name=last_name,
                     )
+                    if not provision_result.success:
+                        current_app.logger.error(
+                            "FEAT-CLASS-002 provision failed linking duplicate: %s",
+                            provision_result.error_message,
+                        )
                     if class_context.get('class_created'):
                         _queue_pending_class_timezone_confirmation(class_context.get('class_row'))
                 return redirect(url_for('admin.students'))
@@ -5093,8 +5004,9 @@ def add_manual_student():
                 last_name=last_name,
             )
 
-            # Ensure ClassEconomy record exists before creating Seat
-            _ensure_join_code_anchors(user_id, join_code, class_id=class_id)
+            # Verify class exists before creating Seat (class was resolved or created above)
+            if not get_class_economy(class_id):
+                raise ValueError(f"Class {class_id} does not exist")
 
             new_seat = create_pending_student_seat(
                 class_id=class_id,
@@ -5408,7 +5320,7 @@ def store_management():
     audit_per_page = 25
 
     join_code_label_map = {}
-    teacher_class_rows = ClassEconomy.query.filter_by(teacher_user_id=user_id).all()
+    teacher_class_rows = get_all_classes_by_teacher(user_id)
     for ce_row in teacher_class_rows:
         display_join_code = get_display_join_code(ce_row.class_id)
         if display_join_code and display_join_code not in join_code_label_map:
@@ -5844,7 +5756,7 @@ def rent_settings():
     settings_block = selected_scope['block']
 
     # Get or create rent settings for this class (class_id is the canonical scope; block column is display-only)
-    settings = RentSettings.query.filter_by(class_id=class_id).first()
+    settings = get_rent_settings(class_id)
 
     if request.method == 'POST':
         blocks_to_update = [class_id]
@@ -5871,7 +5783,7 @@ def rent_settings():
         with FEATContext("FEAT-SETTINGS-001", idempotency_key=idempotency_key):
             for block in blocks_to_update:
                 # block IS a class_id; query directly — no label-based lookup (INV-ARC-014)
-                block_settings = RentSettings.query.filter_by(class_id=block).first()
+                block_settings = get_rent_settings(block)
                 if not block_settings:
                     block_settings = create_rent_settings(class_id=block)
 
@@ -5998,7 +5910,7 @@ def rent_settings():
         # Apply parsed items to each class (blocks_to_update now contains class_ids)
         for block in blocks_to_update:
                 # block is now a class_id; fetch settings directly by class_id
-                block_settings = RentSettings.query.filter_by(class_id=block).first()
+                block_settings = get_rent_settings(block)
                 if not block_settings:
                     continue
 
@@ -6998,7 +6910,7 @@ def hall_pass():
             issued_passes.append(row)
 
     # Get available sections from ClassEconomy
-    class_row = ClassEconomy.query.filter_by(class_id=selected_class_id).first()
+    class_row = get_class_economy(selected_class_id)
     periods = [class_row.section] if class_row and class_row.section else []
 
     # Lazily generate the hall pass verification token if needed
@@ -7114,7 +7026,7 @@ def apply_economy_rebalance():
 
     checker = EconomyBalanceChecker(g.canonical_context.user_id, effective_block, class_id=getattr(payroll_settings, "class_id", None))
     effective_class_id = selected_scope.get("class_id")
-    effective_class = ClassEconomy.query.filter_by(class_id=effective_class_id).first() if effective_class_id else None
+    effective_class = get_class_economy(effective_class_id) if effective_class_id else None
     scoped_store_items = (
         StoreItem.query.filter_by(class_id=effective_class.class_id, is_active=True).all()
         if effective_class else []
@@ -7365,7 +7277,7 @@ def _build_payroll_event_display_rows(*, ctx, payroll_events, class_label=None):
         return []
 
     target_seat_ids = {event.target_seat_id for event in payroll_events}
-    class_row = ClassEconomy.query.filter_by(class_id=ctx.class_id).first()
+    class_row = get_class_economy(ctx.class_id)
     resolved_class_label = class_label or (
         class_row.display_name
         if class_row and class_row.display_name
@@ -7589,7 +7501,7 @@ def payroll():
     selected_join_code = selected_scope['join_code']
     selected_block = selected_scope['block']
     selected_class_id = selected_scope['class_id']
-    class_row = ClassEconomy.query.filter_by(class_id=selected_class_id).first()
+    class_row = get_class_economy(selected_class_id)
     class_label = (
         (class_row.display_name if class_row and class_row.display_name else None)
         or (f"Period {selected_block}" if selected_block else selected_join_code)
@@ -8601,7 +8513,7 @@ def upload_students():
                 flash("Select a class before syncing roster data.", "error")
                 return redirect(url_for("admin.students"))
 
-            class_row = ClassEconomy.query.filter_by(class_id=class_id, teacher_user_id=user_id).first()
+            class_row = verify_teacher_owns_class(class_id, user_id)
             if not class_row:
                 flash("Select a class before syncing roster data.", "error")
                 return redirect(url_for("admin.students"))
@@ -8775,7 +8687,7 @@ def upload_students():
                     # Check if this teacher already has a class for this block
                     if not force_new_class:
                         existing_class = ClassEconomy.query.filter_by(
-                            user_id=user_id,
+                            teacher_user_id=user_id,
                             section=block
                         ).first()
 
@@ -8787,20 +8699,20 @@ def upload_students():
                             raise ValueError(
                                 "Select an existing class before uploading roster data, or use the onboarding page to create a new class."
                             )
-                    else:
-                        new_code = generate_join_code()
-                        join_codes_by_block[block] = new_code
 
                 if block not in class_ids_by_block:
-                    class_id, class_created, class_row = _ensure_join_code_anchors(
-                        user_id,
-                        join_codes_by_block[block],
-                        class_label=class_name or block,
-                        return_metadata=True,
+                    # force_new_class path: create via FEAT-CLASS-001
+                    from app.feats.class_configuration import execute_create_class_boundary
+                    create_result = execute_create_class_boundary(
+                        canonical_context=g.canonical_context,
+                        class_name=class_name or block,
                     )
-                    class_ids_by_block[block] = class_id
-                    if class_created:
-                        created_class_rows_by_block[block] = class_row
+                    if not create_result.success:
+                        raise ValueError(f"Failed to create class for block {block}: {create_result.error_message}")
+                    class_ids_by_block[block] = create_result.class_id
+                    join_codes_by_block[block] = create_result.join_code
+                    class_row = get_class_economy(create_result.class_id)
+                    created_class_rows_by_block[block] = class_row
 
                 join_code = join_codes_by_block[block]
                 class_id = class_ids_by_block[block]
@@ -8928,7 +8840,7 @@ def export_class_roster():
         flash("Select a class before exporting roster.", "error")
         return redirect(url_for("admin.students"))
 
-    class_row = ClassEconomy.query.filter_by(class_id=class_id, teacher_user_id=user_id).first()
+    class_row = verify_teacher_owns_class(class_id, user_id)
     if not class_row:
         flash("Select a class before exporting roster.", "error")
         return redirect(url_for("admin.students"))
@@ -9298,7 +9210,7 @@ def bulk_adjust_hall_pass_entitlements():
                 errors.append(f"Student {seat_id} not found")
                 continue
 
-            if not ClassEconomy.query.filter_by(class_id=student.class_id, teacher_user_id=g.canonical_context.user_id).first():
+            if not verify_teacher_owns_class(student.class_id, g.canonical_context.user_id):
                 errors.append(f"Student {seat_id} not found")
                 continue
 
@@ -10593,7 +10505,7 @@ def api_economy_analyze():
         scoped_class_id = class_id
 
         if scoped_class_id:
-            rent_settings = RentSettings.query.filter_by(class_id=scoped_class_id).first()
+            rent_settings = get_rent_settings(scoped_class_id)
         else:
             rent_settings = (
                 RentSettings.query.filter(
@@ -11250,7 +11162,7 @@ def resolve_issue(issue_ref):
 
     issue_query = Issue.query.filter_by(id=issue_id)
     if class_id:
-        class_row = ClassEconomy.query.filter_by(class_id=class_id).first()
+        class_row = get_class_economy(class_id)
         if class_row:
             issue_query = issue_query.filter_by(class_public_id=class_row.class_public_id)
     issue = issue_query.first_or_404()
@@ -11388,7 +11300,7 @@ def escalate_issue(issue_ref):
 
     issue_query = Issue.query.filter_by(id=issue_id)
     if class_id:
-        class_row = ClassEconomy.query.filter_by(class_id=class_id).first()
+        class_row = get_class_economy(class_id)
         if class_row:
             issue_query = issue_query.filter_by(class_public_id=class_row.class_public_id)
     issue = issue_query.first_or_404()
@@ -11454,7 +11366,7 @@ def close_issue(issue_ref):
         abort(404)
     issue_query = Issue.query.filter_by(id=issue_id)
     if class_id:
-        class_row = ClassEconomy.query.filter_by(class_id=class_id).first()
+        class_row = get_class_economy(class_id)
         if class_row:
             issue_query = issue_query.filter_by(class_public_id=class_row.class_public_id)
     issue = issue_query.first_or_404()

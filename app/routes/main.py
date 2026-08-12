@@ -237,6 +237,7 @@ def verify_hall_pass(teacher_public_token):
     - Rotatable
     """
     from app.models import AttendanceReasonCode, AttendanceSession, ClassEconomy, HallPassLog, IdentityProfile, Seat
+    from app.services.class_configuration_query_service import get_all_classes_by_teacher, verify_teacher_owns_class
 
     _GENERIC_UNAVAILABLE = "Verification page not available."
 
@@ -251,11 +252,7 @@ def verify_hall_pass(teacher_public_token):
 
     # Build the display list from the teacher's classes; POST must still resolve
     # the selected class directly by class_id.
-    classes_rows = (
-        ClassEconomy.query.filter_by(teacher_user_id=teacher_user.id)
-        .order_by(ClassEconomy.display_name)
-        .all()
-    )
+    classes_rows = sorted(get_all_classes_by_teacher(teacher_user.id), key=lambda c: (c.display_name or ""))
     def _class_display_label(class_row):
         label_parts = [part for part in (class_row.section, class_row.display_name) if part]
         return " - ".join(label_parts) if label_parts else class_row.class_id
@@ -298,10 +295,7 @@ def verify_hall_pass(teacher_public_token):
     last_name_hash = hash_username_lookup(last_name_norm)
 
     # Validate selected class directly under the teacher's ownership boundary.
-    selected_class_row = ClassEconomy.query.filter_by(
-        class_id=selected_class_id,
-        user_id=teacher_user.id,
-    ).first()
+    selected_class_row = verify_teacher_owns_class(selected_class_id, teacher_user.id)
     if not selected_class_row:
         return render_template(
             'hall_pass_verify.html',

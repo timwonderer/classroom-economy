@@ -25,6 +25,12 @@ from app.auth import admin_required
 from app.models import (
     PayrollSettings, RentSettings, ClassEconomy, Seat
 )
+from app.services.class_configuration_query_service import (
+    get_all_classes_by_teacher,
+    get_class_economy,
+    get_payroll_settings,
+    get_rent_settings,
+)
 from app.models import Transaction
 from app.models import AuditEvent
 from app.services.ledger_service import get_available_balance
@@ -57,7 +63,7 @@ def get_teacher_class_options(user_id: int):
     if not user_id:
         return []
 
-    classes = ClassEconomy.query.filter_by(teacher_user_id=user_id).order_by(ClassEconomy.display_name).all()
+    classes = sorted(get_all_classes_by_teacher(user_id), key=lambda c: (c.display_name or ""))
 
     options = []
     for c in classes:
@@ -89,7 +95,7 @@ def resolve_current_class_context(user_id: int, class_id: str | None):
 
 
 def get_block_for_class_id(class_id: str):
-    class_row = db.session.get(ClassEconomy, class_id)
+    class_row = get_class_economy(class_id)
     if class_row and class_row.display_name:
         return class_row.display_name.strip().upper()
     return None
@@ -99,14 +105,7 @@ def _get_payroll_settings_for_class_id(class_id: str):
     """Resolve payroll settings for a selected class via class_id authority."""
     if not class_id:
         return None
-
-    return (
-        PayrollSettings.query.filter(
-            PayrollSettings.class_id == class_id,
-        )
-        .order_by(desc(PayrollSettings.block.isnot(None)))
-        .first()
-    )
+    return get_payroll_settings(class_id)
 
 
 def get_pay_cycle_days(class_id: str | None = None) -> int:
@@ -120,14 +119,7 @@ def _get_rent_settings_for_class_id(class_id: str):
     """Resolve rent settings for a selected class via class_id authority."""
     if not class_id:
         return None
-
-    return (
-        RentSettings.query.filter(
-            RentSettings.class_id == class_id,
-        )
-        
-        .first()
-    )
+    return get_rent_settings(class_id)
 
 
 def get_rent_cycle_days(class_id: str | None = None) -> int:
@@ -222,7 +214,7 @@ def dashboard():
         class_id = context.class_id
 
         # Resolve the active class directly from canonical class authority.
-        class_row = db.session.get(ClassEconomy, class_id)
+        class_row = get_class_economy(class_id)
         if not class_row:
             raise ContextResolutionError("Class not found")
         join_code = get_display_join_code(class_row.class_id)
@@ -411,7 +403,7 @@ def events():
         context = resolve_canonical_context()
         class_id = context.class_id
         from app.models import ClassEconomy
-        class_row = db.session.get(ClassEconomy, class_id)
+        class_row = get_class_economy(class_id)
         if not class_row:
             raise Exception("No class found")
         join_code = get_display_join_code(class_row.class_id)
@@ -467,7 +459,7 @@ def student_drill_down(student_id):
         return redirect(url_for('admin.students'))
 
     # Get class economy row
-    class_row = ClassEconomy.query.filter_by(class_id=class_id).first()
+    class_row = get_class_economy(class_id)
     if not class_row:
         flash('Class period not found.', 'warning')
         return redirect(url_for('admin.students'))
