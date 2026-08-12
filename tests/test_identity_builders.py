@@ -178,11 +178,11 @@ class TestStudentLayoutContextView:
         view = build_student_layout_context_view(meta)
         assert view.student_display_full_name == "ALEX JOHNSON"
 
-    def test_first_name_is_preserved_case(self):
-        """First name preserves original case for greeting-style display."""
+    def test_first_name_is_uppercased(self):
+        """First name is pre-formatted to uppercase for layout display."""
         meta = self._make_display_metadata(student_first_name="Casey")
         view = build_student_layout_context_view(meta)
-        assert view.student_display_first_name == "Casey"
+        assert view.student_display_first_name == "CASEY"
 
     def test_last_initial_extracted_correctly(self):
         """Last initial is single uppercase character from last name."""
