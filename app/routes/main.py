@@ -252,7 +252,7 @@ def verify_hall_pass(teacher_public_token):
 
     # Build the display list from the teacher's classes; POST must still resolve
     # the selected class directly by class_id.
-    classes_rows = get_all_classes_by_teacher(teacher_user.id)
+    classes_rows = sorted(get_all_classes_by_teacher(teacher_user.id), key=lambda c: (c.display_name or ""))
     def _class_display_label(class_row):
         label_parts = [part for part in (class_row.section, class_row.display_name) if part]
         return " - ".join(label_parts) if label_parts else class_row.class_id

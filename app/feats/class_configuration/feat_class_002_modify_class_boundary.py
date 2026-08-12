@@ -24,7 +24,7 @@ import uuid
 
 from app.extensions import db
 from app.feats.base import feat_shell
-from app.models import Seat, IdentityProfile
+from app.models import Seat
 from app.services.class_configuration_query_service import get_class_economy
 from app.services.context_resolver import CanonicalContext
 from app.services.classroom_setup import (
@@ -159,7 +159,7 @@ def _execute_modify_student_impl(
 
     # Validate teacher seat exists and belongs to class
     teacher_seat = db.session.get(Seat, canonical_context.seat_id)
-    if not teacher_seat or teacher_seat.class_id != class_id:
+    if not teacher_seat or teacher_seat.class_id != class_id or teacher_seat.role != "teacher" or teacher_seat.user_id != canonical_context.user_id:
         return ModifyStudentResult(
             success=False,
             correlation_id=corr_id,
@@ -307,7 +307,7 @@ def _execute_provision_student_seat_impl(
 
     # Validate teacher seat exists and belongs to class
     teacher_seat = db.session.get(Seat, canonical_context.seat_id)
-    if not teacher_seat or teacher_seat.class_id != class_id:
+    if not teacher_seat or teacher_seat.class_id != class_id or teacher_seat.role != "teacher" or teacher_seat.user_id != canonical_context.user_id:
         return ProvisionStudentSeatResult(
             success=False,
             correlation_id=corr_id,
@@ -442,7 +442,7 @@ def _execute_remove_student_seat_impl(
 
     # Validate teacher seat exists and belongs to class
     teacher_seat = db.session.get(Seat, canonical_context.seat_id)
-    if not teacher_seat or teacher_seat.class_id != class_id:
+    if not teacher_seat or teacher_seat.class_id != class_id or teacher_seat.role != "teacher" or teacher_seat.user_id != canonical_context.user_id:
         return RemoveStudentSeatResult(
             success=False,
             correlation_id=corr_id,

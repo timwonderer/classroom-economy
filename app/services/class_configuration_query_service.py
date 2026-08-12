@@ -90,7 +90,8 @@ def get_class_economy_by_join_code(join_code: str) -> Optional[ClassEconomy]:
     Returns:
         ClassEconomy instance or None if not found
     """
-    return ClassEconomy.query.filter_by(join_code=join_code).first()
+    normalized = join_code.strip().upper() if join_code else join_code
+    return ClassEconomy.query.filter_by(join_code=normalized).first()
 
 
 # ============================================================================

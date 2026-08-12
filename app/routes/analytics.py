@@ -63,7 +63,7 @@ def get_teacher_class_options(user_id: int):
     if not user_id:
         return []
 
-    classes = get_all_classes_by_teacher(user_id)
+    classes = sorted(get_all_classes_by_teacher(user_id), key=lambda c: (c.display_name or ""))
 
     options = []
     for c in classes:
