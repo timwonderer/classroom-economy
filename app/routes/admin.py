@@ -2587,7 +2587,6 @@ def select_class_context():
             return render_template(
                 "admin_select_class_context.html",
                 class_selection_view=class_selection_view,
-                class_options=raw_options,
             ), 400
 
         session["last_activity"] = utc_now().isoformat()
@@ -2603,7 +2602,6 @@ def select_class_context():
     return render_template(
         "admin_select_class_context.html",
         class_selection_view=class_selection_view,
-        class_options=raw_options,
     )
 
 @admin_bp.route('/')
@@ -3028,8 +3026,6 @@ def signup():
                 "admin_signup_totp.html",
                 form=totp_form,
                 totp_view=totp_view,
-                qr_b64=img_b64,
-                totp_secret=totp_secret
             )
         # Step 5: Validate entered TOTP code
         current_app.logger.info(f"TOTP code submitted (length: {len(totp_code)})")
@@ -3058,8 +3054,6 @@ def signup():
                 "admin_signup_totp.html",
                 form=totp_form,
                 totp_view=totp_view,
-                qr_b64=img_b64,
-                totp_secret=totp_secret
             )
         # Step 6: Create admin account and mark invite as used
         current_app.logger.info(f"TOTP verified. Creating admin account")
@@ -3090,8 +3084,6 @@ def signup():
                 "admin_signup_totp.html",
                 form=totp_form,
                 totp_view=totp_view,
-                qr_b64=img_b64,
-                totp_secret=totp_secret,
                 tos_agreed=False
             )
 

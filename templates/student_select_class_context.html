@@ -28,7 +28,7 @@
           <div class="mb-3">
             <label for="class_id" class="form-label">Available Classes</label>
             <select id="class_id" name="class_id" class="form-select" required>
-              <option value="" disabled selected>Select class</option>
+              <option value="" disabled{% if not class_selection_view.available_classes|selectattr('is_current')|list %} selected{% endif %}>Select class</option>
               {% for option in class_selection_view.available_classes %}
                 <option value="{{ option.class_id }}"{% if option.is_current %} selected{% endif %}>
                   {{ option.join_code }} - {{ option.display_name }}

@@ -3456,7 +3456,6 @@ def select_class_context():
     return render_template(
         'student_select_class_context.html',
         class_selection_view=class_selection_view,
-        class_options=seat_options,
     )
 
 

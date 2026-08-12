@@ -742,7 +742,6 @@ def create_app():
             from app.services.identity.builders import build_student_layout_context_view
             return {
                 'student_layout_view': build_student_layout_context_view(None),
-                'current_class_context': None,
                 'available_classes': [],
             }
 
