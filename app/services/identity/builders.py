@@ -228,7 +228,7 @@ class TOTPSetupView:
     issuer_name: str
     """Issuer name displayed in authenticator app.
 
-    Example: "Classroom Token Hub". Shown alongside account name when user adds
+    Example: "Classroom Economy Admin". Shown alongside account name when user adds
     TOTP to their authenticator, helping them identify the credential source.
     """
 
@@ -597,7 +597,7 @@ def build_totp_setup_view(
     qr_b64: str,
     backup_codes: list[str],
     *,
-    issuer_name: str = "Classroom Token Hub",
+    issuer_name: str = "Classroom Economy Admin",
 ) -> TOTPSetupView:
     """Build TOTPSetupView for admin_signup_totp.html.
 
