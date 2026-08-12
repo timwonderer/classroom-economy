@@ -9606,7 +9606,6 @@ def help_support():
 
     def _support_report_views(issues):
         """Build view-model dicts for the My Tickets list."""
-        from app.models import ClassEconomy
         views = []
         for issue in issues:
             explanation = issue.student_explanation or ''
@@ -10248,9 +10247,10 @@ def onboarding_status():
             'hall_pass': HallPassSettings.query.filter(
                 HallPassSettings.class_id.in_(sa.select(class_ids_subq))
             ).first() is not None,
-            'personalization': any(
-                c.display_name for c in get_all_classes_by_teacher(user_id)
-            ),
+            'personalization': ClassEconomy.query.filter(
+                ClassEconomy.teacher_user_id == user_id,
+                ClassEconomy.display_name.isnot(None),
+            ).first() is not None,
             'passkey': admin_has_passkeys(user_id),
         }
 
@@ -10859,7 +10859,7 @@ def _resolve_issue_identity(actor_public_id, class_public_id):
     Returns (student_display_name, class_label).  Falls back to truncated
     public IDs when canonical records are missing.
     """
-    from app.models import Seat, IdentityProfile, ClassEconomy
+    from app.models import Seat
 
     student_display_name = actor_public_id[:8] if actor_public_id else 'Unknown'
     class_label = None
@@ -11004,15 +11004,15 @@ def issues_queue():
     actor_ids = {i.actor_public_id for i in all_issues if i.actor_public_id}
     class_ids = {i.class_public_id for i in all_issues if i.class_public_id}
     
-    from app.models import Seat, ClassEconomy
-    
+    from app.models import Seat
+
     actor_dict = {}
     if actor_ids:
         seats = Seat.query.filter(Seat.public_id.in_(actor_ids)).all()
         for seat in seats:
             if seat.identity_profile:
                 actor_dict[seat.public_id] = seat.identity_profile.full_name
-                
+
     class_dict = {}
     if class_ids:
         from app.services.class_configuration_query_service import get_classes_by_public_ids
