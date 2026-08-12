@@ -542,7 +542,7 @@ def build_student_layout_context_view(
 
     return StudentLayoutContextView(
         student_display_full_name=full_name.upper() if full_name else "",
-        student_display_first_name=first,
+        student_display_first_name=first.upper() if first else "",
         student_display_last_initial=last_initial,
         has_class_context=has_class_context,
         class_display_name=class_display_name,
