@@ -2,7 +2,7 @@
 
 **Domain:** DOM-CLASS-001  
 **Phase:** 3 (Primitives — Core queries in service layer)  
-**Status:** READY FOR IMPLEMENTATION (2026-08-09)  
+**Status:** COMPLETE (implemented 2026-08-11; guide retained as historical reference)  
 **Authority:** INV-CORE-001 → INV-ARC-009/015/016 → DOM-CLASS-001/002/003 → SPEC-ECON-003 → Phase 3  
 **Version:** 1.0 (Comprehensive synthesis of CLASS_CONFIG_PHASE3_PLAN.md + Governance + Testing)
 
@@ -28,7 +28,7 @@ Phase 3 (Primitives) requires implementing **17 read-only query service function
 
 **Phase 3 Deliverables:**
 - ✅ 17 service functions with complete docstrings and type hints
-- ✅ ~51+ comprehensive tests (3 per function: happy path, empty state, multi-tenancy)
+- ✅ 55 comprehensive tests (3+ per function: happy path, empty state, multi-tenancy)
 - ✅ All routes refactored to use service layer (zero direct schema queries)
 - ✅ Multi-tenancy scoping enforced via class_id parameter
 - ✅ Temporal query support via canonical_temporal_resolver()
@@ -143,14 +143,18 @@ Phase 3 Service Functions
 
 ### B. Multi-Tenancy & Scoping Constraints
 
-**Hard Rule:** Every query must be scoped by `class_id` (never by `teacher_id` alone).
+**Hard Rule:** All class-scoped queries must filter by `class_id` (never by `teacher_id` alone).
 
 **Rationale:** CTH previously had a P0 multi-period data leak when queries used `teacher_id` without `class_id`. Phase 3 prevents this by design.
 
+**Exceptions:**
+- `get_all_classes_by_teacher(teacher_user_id)` — scoped by `teacher_user_id` by design (returns only classes owned by that teacher; no student data exposed)
+- `get_class_economy(class_id)` may also be looked up via `join_code` in ingress contexts, but the service function requires `class_id`
+
 **Implementation:**
-- All functions take `class_id` as first parameter (non-optional)
-- All queries include `.filter_by(class_id=class_id)` or equivalent
-- No function should accept `teacher_id` alone as a scope parameter
+- All class-scoped functions take `class_id` as first parameter (non-optional)
+- All class-scoped queries include `.filter_by(class_id=class_id)` or equivalent
+- `get_all_classes_by_teacher` is the sole exception, scoped by `teacher_user_id`
 - All tests must verify class-scoped queries with multi-class fixture data
 
 **Authority:** `.claude/rules/multi-tenancy.md`
@@ -177,8 +181,7 @@ Phase 3 Service Functions
 - `class_id` (FK to classes.class_id)
 - `feature` (String, e.g., 'payroll', 'hall_pass', 'rent')
 - `effective_at` (DateTime; temporal anchor—when does this feature take effect?)
-- `deleted_at` (DateTime, nullable; soft deletion marker)
-- `economic_version_id` (FK to economic-engine; links engine version for this feature)
+- `economic_version_id` (FK to economic-engine, nullable; links engine version for this feature; NULL = disabled)
 - Composite PK: `(class_id, feature, effective_at)`
 - **Immutable:** Rows never updated; new rows inserted for state changes
 
@@ -265,17 +268,14 @@ classroom = initialize_as_teacher("chemistry_p1", client, app)
 classroom, student = initialize_as_student("chemistry_p1", client, app, student_index=0)
 ```
 
-**All Phase 3 tests must use SPEC-TIME-001 temporal resolver:**
+**All Phase 3 tests must follow SPEC-TIME-001 temporal discipline:**
 
 ```python
+# Option A: Inject reference_time_utc via canonical_temporal_resolver
 from app.utils.canonical_temporal_resolver import (
     canonical_temporal_resolver,
     SYSTEM_LEVEL_EVALUATION,
-    CLASS_LEVEL_EVALUATION,
 )
-
-# Never: datetime.now(), utc_now(), or hardcoded times
-# Always: Inject reference_time_utc for reproducibility
 
 test_time = datetime(2026, 8, 9, 15, 30, 0, tzinfo=timezone.utc)
 result = canonical_temporal_resolver(
@@ -283,6 +283,13 @@ result = canonical_temporal_resolver(
     primitive="current_time",
     reference_time_utc=test_time  # ← Injected for test reproducibility
 )
+
+# Option B: Pass fixed timezone-aware UTC timestamps directly to effective_at
+# This is acceptable when testing query functions that accept effective_at
+reference_time = datetime(2099, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+engine = get_effective_economic_engine(class_id, "payroll", effective_at=reference_time)
+
+# NEVER: datetime.now(), datetime.utcnow(), or utc_now()
 ```
 
 **Authority:** SPEC-TEST-001 (canonical test initializer), SPEC-TIME-001 (canonical temporal resolver)
@@ -998,7 +1005,7 @@ def test_student_route_with_session(client, app):
 
 #### Initialization Guarantees
 
-```
+```text
 Step 1: provision_classroom()
 ├─ Calls production code (FEAT layer)
 ├─ Builds complete Teacher + Students + Class + Economy

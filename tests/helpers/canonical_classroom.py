@@ -104,6 +104,10 @@ def provision_classroom(classroom_key: str) -> ProvisionedClassroom:
       - Username built via production build_username(chosen_word, roster_fingerprint)
       - One User (role=STUDENT) per roster row with preset credentials, bound to seat
       - Student last_active_class_id / last_active_seat_id set
+      - Default PayrollSettings (pay_rate=$0.50/min, frequency=14 days)
+      - Default RentSettings (rent_amount=$50.00, frequency=weekly)
+      - Default BankingSettings (savings_apy=5%, simple, monthly)
+      - Default HallPassSettings (queue_enabled=True, queue_limit=10)
 
     Flushes but does NOT commit. Callers own the transaction boundary
     (the pytest conftest session-scoped transaction rollback handles cleanup).
