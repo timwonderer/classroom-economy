@@ -33,10 +33,6 @@ from app.services.class_configuration_query_service import (
     suggest_economic_mode,
     validate_payroll_rate,
 )
-from app.utils.canonical_temporal_resolver import (
-    canonical_temporal_resolver,
-    SYSTEM_LEVEL_EVALUATION,
-)
 from tests.helpers.classroom_initializer import initialize, initialize_as_teacher
 
 
@@ -112,14 +108,14 @@ class TestEconomicEngineQueries:
         """Temporal: can query engine state at specific times."""
         classroom = initialize("chemistry_p1", app)
 
-        # Query with current time should return the engine
-        now = datetime.now(timezone.utc)
-        engine_now = get_effective_economic_engine(classroom.class_id, "payroll", effective_at=now)
+        # Use a far-future reference time to ensure it's after class creation (SPEC-TIME-001)
+        reference_time = datetime(2099, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+        engine_now = get_effective_economic_engine(classroom.class_id, "payroll", effective_at=reference_time)
         assert engine_now is not None
 
-        # Query with a future timestamp (10 days from now) should also return the same engine
+        # Query with a later timestamp should return the same engine
         # (since we only have one engine version)
-        future_time = now + timedelta(days=10)
+        future_time = reference_time + timedelta(days=10)
         engine_future = get_effective_economic_engine(classroom.class_id, "payroll", effective_at=future_time)
         assert engine_future is not None
         assert engine_future.economic_version_id == engine_now.economic_version_id
@@ -221,17 +217,23 @@ class TestClassFeatureQueries:
         # Both should have features
         assert len(features1) > 0
         assert len(features2) > 0
+        # Each returned feature must belong to its respective class
+        for cf in features1.values():
+            assert cf.class_id == classroom1.class_id
+        for cf in features2.values():
+            assert cf.class_id == classroom2.class_id
 
     def test_get_class_features_with_historical_query(self, app):
-        """Temporal: can query historical feature state."""
+        """Temporal: features created today should not appear in historical query before creation."""
         classroom = initialize("chemistry_p1", app)
 
-        # Query with a past timestamp
-        past_time = datetime.now(timezone.utc) - timedelta(days=10)
+        # Query at a time well before class creation — no features should exist yet
+        past_time = datetime(2020, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
         features = get_class_features(classroom.class_id, effective_at=past_time)
 
-        # Should still return features
+        # Features were created "now", so querying 6+ years ago should return nothing
         assert isinstance(features, dict)
+        assert len(features) == 0
 
     # ========== get_class_feature Tests ==========
 
@@ -424,15 +426,19 @@ class TestDerivedValueQueries:
     # ========== calculate_cwi Tests ==========
 
     def test_calculate_cwi_returns_correct_calculation(self, app):
-        """Happy path: CWI calculation is correct."""
+        """Happy path: CWI = (pay_rate * 60) * expected_weekly_hours."""
         classroom = initialize("chemistry_p1", app)
 
         payroll = get_payroll_settings(classroom.class_id)
         cwi = calculate_cwi(classroom.class_id)
 
-        # CWI = pay_rate × expected_weekly_hours (teacher-configured reference)
-        expected_cwi = float(payroll.pay_rate) * float(payroll.expected_weekly_hours)
+        # CWI = hourly_rate * expected_weekly_hours
+        # pay_rate is $/minute, so hourly_rate = pay_rate * 60
+        hourly_rate = float(payroll.pay_rate) * 60
+        expected_cwi = hourly_rate * float(payroll.expected_weekly_hours)
         assert cwi == expected_cwi
+        # Sanity: CWI should be positive
+        assert cwi > 0
 
     def test_calculate_cwi_returns_none_for_missing_payroll(self, app):
         """Empty state: missing payroll settings returns None."""
@@ -527,11 +533,14 @@ class TestConfigurationStateQueries:
 
     def test_get_all_classes_by_teacher_ordered_by_creation(self, client, app):
         """Ordering: returns classes ordered by created_at DESC."""
-        classroom = initialize_as_teacher("chemistry_p1", client, app)
+        # Both classrooms share teacher_alice, so get_all_classes_by_teacher returns both
+        classroom1 = initialize_as_teacher("chemistry_p1", client, app)
+        classroom2 = initialize_as_teacher("ap_csp_p3", client, app)
 
-        classes = get_all_classes_by_teacher(classroom.teacher_user.id)
+        classes = get_all_classes_by_teacher(classroom1.teacher_user.id)
 
-        # Should be ordered by created_at DESC
+        # Must have at least 2 classes to verify ordering
+        assert len(classes) >= 2
         for i in range(len(classes) - 1):
             assert classes[i].created_at >= classes[i + 1].created_at
 
@@ -559,28 +568,33 @@ class TestGuidanceFunctions:
     # ========== validate_payroll_rate Tests ==========
 
     def test_validate_payroll_rate_accepts_valid_rate(self, app):
-        """Happy path: valid rate is accepted."""
+        """Happy path: valid rate is accepted with no warning."""
         is_valid, warning = validate_payroll_rate(10.0, "default")
         assert is_valid is True
+        assert warning is None
 
     def test_validate_payroll_rate_rejects_negative_rate(self, app):
         """Error handling: rejects negative rate."""
         is_valid, warning = validate_payroll_rate(-5.0, "default")
         assert is_valid is False
+        assert "positive" in warning.lower()
 
     def test_validate_payroll_rate_rejects_excessive_rate(self, app):
         """Error handling: rejects rate > $100/hr."""
         is_valid, warning = validate_payroll_rate(150.0, "default")
         assert is_valid is False
+        assert "$100" in warning
 
     def test_validate_payroll_rate_warns_tight_mode_high_rate(self, app):
         """Advisory: warns if tight mode with high rate."""
         is_valid, warning = validate_payroll_rate(15.0, "tight")
         assert is_valid is True
         assert warning is not None
+        assert "tight" in warning.lower() or "imbalance" in warning.lower()
 
     def test_validate_payroll_rate_warns_comfortable_mode_low_rate(self, app):
         """Advisory: warns if comfortable mode with low rate."""
         is_valid, warning = validate_payroll_rate(3.0, "comfortable")
         assert is_valid is True
         assert warning is not None
+        assert "comfortable" in warning.lower() or "restrictive" in warning.lower()
