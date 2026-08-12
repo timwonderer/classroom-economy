@@ -465,8 +465,10 @@ def feat_shell(feat_name: str):
                     seat_id = kwargs.get("seat_id") or "NOSEAT"
                     idempotency_key = f"feat:identity:recovery_generate:{seat_id}"
                 elif feat_name == "FEAT-IDEN-004" and request is not None:
+                    import hashlib
                     reset_code = (request.form.get("reset_code") or "").strip().upper()
-                    idempotency_key = f"feat:identity:recovery_lookup:{reset_code or 'NO_CODE'}"
+                    code_fingerprint = hashlib.sha256(reset_code.encode()).hexdigest()[:16] if reset_code else "NO_CODE"
+                    idempotency_key = f"feat:identity:recovery_lookup:{code_fingerprint}"
                 elif feat_name == "FEAT-IDEN-002" and request is not None:
                     reset_code = (request.form.get("reset_code") or "").strip().upper()
                     endpoint_name = request.endpoint or getattr(f, "__name__", None)

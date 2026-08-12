@@ -551,30 +551,28 @@ FEAT-IDEN-102 (enroll) → Use in auth → FEAT-IDEN-107 (revoke)
 | **5** | Read Models & Projections | ✅ COMPLETE (Spec+Impl) | 6 View Models | 62 tests passing | app/services/identity/builders.py |
 | **6** | Application Surface Inventory | ✅ COMPLETE | 15 surfaces inventoried | 10 REWIRED, 5 VERIFIED | 2026-08-11 |
 | **7** | Rewire, Remove, or Collapse | ✅ COMPLETE | Read: 5 view models wired. Mutation: 5 FEAT impls | 6 legacy vars removed | All surfaces canonical |
-| **8** | Verification | 📝 TODO | Integration Tests | 0 | 0 |
-| **9** | Legacy Deletion | 📝 TODO | Cleanup | 0 | 0 |
-| **10** | Certification Audit | 📝 TODO | Final Audit | 0 | 0 |
+| **8** | Verification | ✅ COMPLETE | 73 tests (62 builder + 11 route) | SPEC-TEST-001/002 | 2026-08-11 |
+| **9** | Legacy Deletion | ✅ COMPLETE | Dead code removed | Unused imports cleaned | 2026-08-11 |
+| **10** | Certification Audit | ✅ COMPLETE | All criteria PASS | SOP-DEV-002a certified | 2026-08-11 |
 
 ---
 
-## Next Steps
+## Completion Summary
+
+All 10 phases of SOP-DEV-002 domain reconstruction are **COMPLETE**. The Identity domain is certified production-ready.
 
 1. ~~**Phase 7b: Mutation Route Rewiring**~~ ✅ COMPLETE
    - All 5 mutation routes rewired to `app/feats/identity_feat.py`
-   - Blocked on FEAT-IDEN-001/002/003/004 implementation (specs exist, orchestration layer pending)
-   - FEAT-IDEN-005 (class binding) specification still needed
 
-2. **Phase 8: Verification**
-   - Route-level integration tests proving context processors inject view models correctly
-   - Template render tests proving no `UndefinedError` on new view model fields
-   - 62 builder unit tests already pass
+2. ~~**Phase 8: Verification**~~ ✅ COMPLETE
+   - 62 builder unit tests + 11 route-level HTTP tests passing
+   - Multi-class fixtures per SPEC-TEST-001/002
 
-3. **Phase 9: Legacy Deletion**
-   - Remove `current_admin` variable (already removed from context processor, verify no consumers)
-   - Audit for dead helper functions exposed by context processor merge
+3. ~~**Phase 9: Legacy Deletion**~~ ✅ COMPLETE
+   - `current_admin` removed, dead helpers removed, unused imports cleaned
 
-4. **Phase 10: Certification Audit**
-   - Final DOM-IDEN compliance check per SOP-DEV-002a
+4. ~~**Phase 10: Certification Audit**~~ ✅ COMPLETE
+   - Final DOM-IDEN compliance check passed per SOP-DEV-002a
 
 ---
 

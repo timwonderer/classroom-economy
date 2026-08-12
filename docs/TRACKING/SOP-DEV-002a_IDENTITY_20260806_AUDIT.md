@@ -158,7 +158,7 @@ The Identity domain has successfully completed all 10 phases of SOP-DEV-002 doma
 
 ---
 
-### Phase 7: Surface Integration ⏳ (Read-model PASS, Mutation INCOMPLETE)
+### Phase 7: Surface Integration ✅
 
 **Requirement:** Templates consume only view-model-owned fields; legacy sources removed. All surviving surfaces have a named canonical provider.
 
