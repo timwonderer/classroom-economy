@@ -22,7 +22,7 @@ from typing import Optional
 from sqlalchemy.exc import IntegrityError
 
 from app.extensions import db
-from app.models import ClassEconomy, Seat, User
+from app.models import Seat, User
 from app.utils.canonical_temporal_resolver import utc_now
 
 logger = logging.getLogger(__name__)
@@ -103,9 +103,10 @@ def resolve_seat_claim(
     infer existing User identities.
     """
     from app.hash_utils import hash_username_lookup
+    from app.services.class_configuration_query_service import get_class_economy_by_join_code
 
     # Step 1: Resolve class
-    class_row = ClassEconomy.query.filter_by(join_code=join_code).first()
+    class_row = get_class_economy_by_join_code(join_code)
     if not class_row:
         return SeatClaimResult(
             success=False,
@@ -389,9 +390,10 @@ def bind_authenticated_student_to_class(
     No new User creation — reuses the authenticated principal.
     """
     from app.hash_utils import hash_username_lookup
+    from app.services.class_configuration_query_service import get_class_economy_by_join_code
 
     # Step 1: Resolve class
-    class_row = ClassEconomy.query.filter_by(join_code=join_code).first()
+    class_row = get_class_economy_by_join_code(join_code)
     if not class_row:
         return ClassBindingResult(
             success=False,

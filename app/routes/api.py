@@ -61,6 +61,11 @@ from app.feats.store_purchase_feat import execute_store_purchase
 from app.feats.ledger_resolution_feat import build_intended_ledger_plan, resolve_intended_ledger_plan, apply_resolved_ledger_plan
 from app.services import store_service
 from app.services.entitlement_read_service import get_purchase_count, get_active_rent_grant
+from app.services.class_configuration_query_service import (
+    get_class_economy,
+    get_all_classes_by_teacher,
+    get_hall_pass_settings,
+)
 from app.services.entitlement_service import consume_entitlement, get_hall_pass_balance, grant_hall_passes
 from app.services.hall_pass_request_queue import (
     PendingHallPassRequest,
@@ -229,7 +234,7 @@ def _resolve_class_display_label(class_id, fallback_block=None):
     Resolve a stable class display label snapshot for audit logging.
     """
     if class_id:
-        class_economy = ClassEconomy.query.filter_by(class_id=class_id).first()
+        class_economy = get_class_economy(class_id)
         if class_economy:
             return class_economy.display_name or get_display_join_code(class_id)
 
@@ -1028,7 +1033,7 @@ def hall_pass_settings():
     if not class_id:
         return jsonify({"status": "error", "message": "Class context is required"}), 400
 
-    settings = HallPassSettings.query.filter_by(class_id=class_id).first()
+    settings = get_hall_pass_settings(class_id)
 
     return jsonify({
         "status": "success",
@@ -1157,7 +1162,7 @@ def hall_pass_history():
                 ] if part).strip()
                 or "Unknown"
             )
-            class_row = ClassEconomy.query.filter_by(class_id=record.class_id).first()
+            class_row = get_class_economy(record.class_id)
             attendance_rows = (
                 AttendanceSession.query.filter_by(
                     class_id=record.class_id,
@@ -1234,7 +1239,7 @@ def get_hall_pass_setup():
     if feature_scope and not feature_scope["enabled"]:
         return jsonify({"status": "error", "message": "Hall pass is disabled for this class"}), 403
 
-    settings = HallPassSettings.query.filter_by(class_id=scope["class_id"]).first()
+    settings = get_hall_pass_settings(scope["class_id"])
 
     if not settings:
         # Return default configuration
@@ -1304,7 +1309,7 @@ def save_hall_pass_setup():
         scope = _get_hall_pass_settings_scope(current_class_id)
         if not scope:
             return jsonify({"status": "error", "message": "Class scope not found"}), 404
-        settings = HallPassSettings.query.filter_by(class_id=scope["class_id"]).first()
+        settings = get_hall_pass_settings(scope["class_id"])
         if not settings:
             settings = _get_or_create_hall_pass_settings(scope["class_id"])
         if not settings:
@@ -1382,7 +1387,7 @@ def get_available_hall_pass_types():
         if requested_class_id and requested_class_id != resolved_class_id:
             return jsonify({"status": "error", "message": "class_id is out of scope for this session"}), 403
     elif requested_class_id:
-        class_row = ClassEconomy.query.filter_by(class_id=requested_class_id).first()
+        class_row = get_class_economy(requested_class_id)
         if class_row:
             resolved_class_id = class_row.class_id
 
@@ -1394,7 +1399,7 @@ def get_available_hall_pass_types():
 
     settings = None
     if resolved_class_id:
-        settings = HallPassSettings.query.filter_by(class_id=resolved_class_id).first()
+        settings = get_hall_pass_settings(resolved_class_id)
     feature_scope = resolve_feature_class_for_class(resolved_class_id, 'hall_pass')
     if not feature_scope or not feature_scope.get("enabled"):
         return jsonify({
@@ -1432,7 +1437,7 @@ def hall_pass_verification_active():
     if not teacher_user:
         return jsonify({"status": "error", "message": "Verification page not available."}), 404
 
-    class_rows = ClassEconomy.query.filter_by(teacher_user_id=teacher_user.id).all()
+    class_rows = get_all_classes_by_teacher(teacher_user.id)
     class_ids = [row.class_id for row in class_rows]
     class_by_id = {row.class_id: row for row in class_rows}
     passes = []
@@ -1788,7 +1793,7 @@ def handle_tap():
         ctx=context,
     )
 
-    class_row = db.session.get(ClassEconomy, class_id)
+    class_row = get_class_economy(class_id)
     settings_section = class_row.section if class_row and class_row.section else None
     rate_per_second = get_pay_rate_for_block(settings_section, class_id=class_id)
     projected_pay = duration * rate_per_second

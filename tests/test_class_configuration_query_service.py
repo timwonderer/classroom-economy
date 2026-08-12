@@ -16,6 +16,7 @@ from decimal import Decimal
 
 from app.services.class_configuration_query_service import (
     get_class_economy,
+    get_class_economy_by_join_code,
     get_effective_economic_engine,
     get_initial_economic_engine,
     get_economic_engine_history,
@@ -32,6 +33,7 @@ from app.services.class_configuration_query_service import (
     get_all_classes_by_teacher,
     suggest_economic_mode,
     validate_payroll_rate,
+    verify_teacher_owns_class,
 )
 from tests.helpers.classroom_initializer import initialize, initialize_as_teacher
 
@@ -593,3 +595,69 @@ class TestGuidanceFunctions:
         assert is_valid is True
         assert warning is not None
         assert "comfortable" in warning.lower() or "restrictive" in warning.lower()
+
+
+class TestGetClassEconomyByJoinCode:
+    """Test get_class_economy_by_join_code — happy path, normalization, not-found."""
+
+    # ========== get_class_economy_by_join_code Tests ==========
+
+    def test_happy_path_returns_class_for_exact_join_code(self, app):
+        """Happy path: exact join_code resolves to the correct ClassEconomy."""
+        classroom = initialize("chemistry_p1", app)
+
+        result = get_class_economy_by_join_code(classroom.join_code)
+
+        assert result is not None
+        assert result.class_id == classroom.class_id
+        assert result.join_code == classroom.join_code
+
+    def test_normalization_lowercase_and_whitespace(self, app):
+        """Normalization: lowercase + surrounding whitespace still resolves."""
+        classroom = initialize("biology_block_a", app)
+        # join_codes are uppercase; pass lowercase with spaces to verify normalization
+        dirty = "  " + classroom.join_code.lower() + "  "
+
+        result = get_class_economy_by_join_code(dirty)
+
+        assert result is not None
+        assert result.class_id == classroom.class_id
+
+    def test_not_found_returns_none(self, app):
+        """Empty state: unknown join_code returns None."""
+        result = get_class_economy_by_join_code("ZZZZZ-DOESNOTEXIST")
+        assert result is None
+
+
+class TestVerifyTeacherOwnsClass:
+    """Test verify_teacher_owns_class — owner, non-owner, missing class."""
+
+    # ========== verify_teacher_owns_class Tests ==========
+
+    def test_returns_class_when_teacher_user_id_matches(self, app):
+        """Happy path: teacher who owns the class gets ClassEconomy back."""
+        classroom = initialize("chemistry_p1", app)
+
+        result = verify_teacher_owns_class(classroom.class_id, classroom.teacher_user_id)
+
+        assert result is not None
+        assert result.class_id == classroom.class_id
+        assert result.teacher_user_id == classroom.teacher_user_id
+
+    def test_returns_none_for_non_owner_teacher(self, app):
+        """Authorization: teacher who does not own the class gets None."""
+        classroom1 = initialize("chemistry_p1", app)
+        classroom2 = initialize("biology_block_a", app)
+
+        # teacher of classroom2 should not own classroom1
+        result = verify_teacher_owns_class(classroom1.class_id, classroom2.teacher_user_id)
+
+        assert result is None
+
+    def test_returns_none_for_missing_class_id(self, app):
+        """Empty state: non-existent class_id returns None."""
+        classroom = initialize("chemistry_p1", app)
+
+        result = verify_teacher_owns_class("nonexistent-class-id", classroom.teacher_user_id)
+
+        assert result is None

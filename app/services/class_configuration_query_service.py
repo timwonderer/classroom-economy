@@ -78,6 +78,22 @@ def get_class_economy(class_id: str) -> Optional[ClassEconomy]:
     return ClassEconomy.query.filter_by(class_id=class_id).first()
 
 
+def get_class_economy_by_join_code(join_code: str) -> Optional[ClassEconomy]:
+    """Resolve a ClassEconomy from its public join_code alias.
+
+    Used for ingress flows (student claim, add class) where join_code
+    is the user-facing identifier. Resolves to class_id authority.
+
+    Args:
+        join_code: The user-facing join code string
+
+    Returns:
+        ClassEconomy instance or None if not found
+    """
+    normalized = join_code.strip().upper() if join_code else join_code
+    return ClassEconomy.query.filter_by(join_code=normalized).first()
+
+
 # ============================================================================
 # 2. ECONOMIC ENGINE QUERIES (3 functions)
 # ============================================================================
@@ -504,6 +520,30 @@ def get_all_classes_by_teacher(teacher_user_id: int) -> list[ClassEconomy]:
     ).order_by(
         ClassEconomy.created_at.desc()
     ).all()
+
+
+def verify_teacher_owns_class(class_id: str, teacher_user_id: int) -> Optional[ClassEconomy]:
+    """Verify a teacher owns a specific class and return it.
+
+    Common authorization guard used across admin routes. Returns the
+    ClassEconomy if the teacher owns it, None otherwise.
+
+    Args:
+        class_id: Class to check ownership of
+        teacher_user_id: The teacher's User.id
+
+    Returns:
+        ClassEconomy if teacher owns it, None otherwise
+
+    Example:
+        class_row = verify_teacher_owns_class(class_id, current_user.id)
+        if not class_row:
+            abort(403)
+    """
+    return ClassEconomy.query.filter_by(
+        class_id=class_id,
+        teacher_user_id=teacher_user_id,
+    ).first()
 
 
 # ============================================================================
