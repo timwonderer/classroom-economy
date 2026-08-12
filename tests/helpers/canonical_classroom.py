@@ -27,6 +27,7 @@ identity setup.
 """
 
 from dataclasses import dataclass, field
+from decimal import Decimal
 
 from app.extensions import db
 from app.feats.base import FEATContext
@@ -168,8 +169,6 @@ def provision_classroom(classroom_key: str) -> ProvisionedClassroom:
         # --- Default settings for newly created classroom ---
         # These are created by default so tests can query them.
         # In production, teachers would configure these via UI.
-        from decimal import Decimal
-
         payroll_settings = PayrollSettings(
             class_id=economy.class_id,
             pay_rate=Decimal('0.50'),  # $0.50 per minute

@@ -429,16 +429,11 @@ class TestDerivedValueQueries:
         """Happy path: CWI = (pay_rate * 60) * expected_weekly_hours."""
         classroom = initialize("chemistry_p1", app)
 
-        payroll = get_payroll_settings(classroom.class_id)
         cwi = calculate_cwi(classroom.class_id)
 
-        # CWI = hourly_rate * expected_weekly_hours
-        # pay_rate is $/minute, so hourly_rate = pay_rate * 60
-        hourly_rate = float(payroll.pay_rate) * 60
-        expected_cwi = hourly_rate * float(payroll.expected_weekly_hours)
-        assert cwi == expected_cwi
-        # Sanity: CWI should be positive
-        assert cwi > 0
+        # Canonical fixture: pay_rate=$0.50/min, expected_weekly_hours=5.0
+        # CWI = ($0.50 × 60) × 5.0 = $30.00 × 5.0 = $150.00/week
+        assert cwi == 150.0
 
     def test_calculate_cwi_returns_none_for_missing_payroll(self, app):
         """Empty state: missing payroll settings returns None."""
@@ -550,49 +545,49 @@ class TestGuidanceFunctions:
 
     # ========== suggest_economic_mode Tests ==========
 
-    def test_suggest_economic_mode_small_class_small_hours(self, app):
+    def test_suggest_economic_mode_small_class_small_hours(self):
         """Happy path: small class with limited hours → tight."""
         mode = suggest_economic_mode(class_size=5, weekly_hours=10)
         assert mode == "tight"
 
-    def test_suggest_economic_mode_medium_class(self, app):
+    def test_suggest_economic_mode_medium_class(self):
         """Happy path: medium class → default."""
         mode = suggest_economic_mode(class_size=20, weekly_hours=50)
         assert mode == "default"
 
-    def test_suggest_economic_mode_large_class_many_hours(self, app):
+    def test_suggest_economic_mode_large_class_many_hours(self):
         """Happy path: large class with many hours → comfortable."""
         mode = suggest_economic_mode(class_size=30, weekly_hours=100)
         assert mode == "comfortable"
 
     # ========== validate_payroll_rate Tests ==========
 
-    def test_validate_payroll_rate_accepts_valid_rate(self, app):
+    def test_validate_payroll_rate_accepts_valid_rate(self):
         """Happy path: valid rate is accepted with no warning."""
         is_valid, warning = validate_payroll_rate(10.0, "default")
         assert is_valid is True
         assert warning is None
 
-    def test_validate_payroll_rate_rejects_negative_rate(self, app):
+    def test_validate_payroll_rate_rejects_negative_rate(self):
         """Error handling: rejects negative rate."""
         is_valid, warning = validate_payroll_rate(-5.0, "default")
         assert is_valid is False
         assert "positive" in warning.lower()
 
-    def test_validate_payroll_rate_rejects_excessive_rate(self, app):
+    def test_validate_payroll_rate_rejects_excessive_rate(self):
         """Error handling: rejects rate > $100/hr."""
         is_valid, warning = validate_payroll_rate(150.0, "default")
         assert is_valid is False
         assert "$100" in warning
 
-    def test_validate_payroll_rate_warns_tight_mode_high_rate(self, app):
+    def test_validate_payroll_rate_warns_tight_mode_high_rate(self):
         """Advisory: warns if tight mode with high rate."""
         is_valid, warning = validate_payroll_rate(15.0, "tight")
         assert is_valid is True
         assert warning is not None
         assert "tight" in warning.lower() or "imbalance" in warning.lower()
 
-    def test_validate_payroll_rate_warns_comfortable_mode_low_rate(self, app):
+    def test_validate_payroll_rate_warns_comfortable_mode_low_rate(self):
         """Advisory: warns if comfortable mode with low rate."""
         is_valid, warning = validate_payroll_rate(3.0, "comfortable")
         assert is_valid is True

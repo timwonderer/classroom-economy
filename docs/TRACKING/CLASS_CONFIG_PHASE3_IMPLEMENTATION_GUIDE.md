@@ -123,7 +123,7 @@ Phase 3 is **COMPLETE** when:
 
 ### A. Authority Model (INV-CORE-001)
 
-```
+```text
 INV-CORE-001 (Foundational laws)
   ↓ governs all downstream specifications
 INV-ARC-009 (Domain authority for state)
@@ -178,7 +178,7 @@ Phase 3 Service Functions
 - `feature` (String, e.g., 'payroll', 'hall_pass', 'rent')
 - `effective_at` (DateTime; temporal anchor—when does this feature take effect?)
 - `deleted_at` (DateTime, nullable; soft deletion marker)
-- `economic_engine_id` (FK to economic-engine; links engine version for this feature)
+- `economic_version_id` (FK to economic-engine; links engine version for this feature)
 - Composite PK: `(class_id, feature, effective_at)`
 - **Immutable:** Rows never updated; new rows inserted for state changes
 
@@ -474,7 +474,7 @@ def get_effective_economic_engine(
     if not class_feature:
         return None
     
-    return db.session.get(EconomicEngine, class_feature.economic_engine_id)
+    return db.session.get(EconomicEngine, class_feature.economic_version_id)
 ```
 
 **Authority:** DOM-CLASS-002 § III (policy mode), DOM-CLASS-003 § II (policy versioning), SPEC-ECON-002 (feature-level effective_at semantics)
@@ -521,7 +521,7 @@ def get_initial_economic_engine(class_id: str) -> EconomicEngine | None:
     if not class_feature:
         return None
     
-    return db.session.get(EconomicEngine, class_feature.economic_engine_id)
+    return db.session.get(EconomicEngine, class_feature.economic_version_id)
 ```
 
 **Authority:** DOM-CLASS-003 § II (policy evolution), analytics context
@@ -906,19 +906,19 @@ def validate_payroll_rate(hourly_pay_rate: float, policy_mode: str) -> tuple[boo
 | 3 | `get_effective_economic_engine()` | class_id, feature, effective_at? | EconomicEngine\|None | DOM-CLASS-002/003, SPEC-ECON-002 |
 | 4 | `get_initial_economic_engine()` | class_id | EconomicEngine\|None | DOM-CLASS-003 (analytics) |
 | 5 | `get_economic_engine_history()` | class_id | list[EconomicEngine] | DOM-CLASS-003, INV-ARC-016 |
-| 5 | `get_class_features()` | class_id, effective_at? | dict[str, ClassFeature] | DOM-CLASS-001, SPEC-ECON-002 |
-| 6 | `get_class_feature()` | class_id, feature, effective_at? | ClassFeature\|None | DOM-CLASS-001 |
-| 7 | `get_class_feature_history()` | class_id, feature | list[ClassFeature] | DOM-CLASS-003 |
-| 8 | `get_payroll_settings()` | class_id | PayrollSettings\|None | DOM-CLASS-002 |
-| 9 | `get_rent_settings()` | class_id | RentSettings\|None | DOM-CLASS-002 |
-| 10 | `get_banking_settings()` | class_id | BankingSettings\|None | DOM-CLASS-002, SPEC-ECON-001 |
-| 11 | `get_hall_pass_settings()` | class_id | HallPassSettings\|None | DOM-CLASS-002 |
-| 12 | `calculate_cwi()` | class_id | float\|None | DOM-CLASS-002, SPEC-ECON-003 |
-| 13 | `get_policy_mode()` | class_id | str\|None | DOM-CLASS-002, SPEC-ECON-003 |
-| 14 | `is_feature_enabled()` | class_id, feature | bool | DOM-CLASS-001, SPEC-ECON-002 |
-| 15 | `get_all_classes_by_teacher()` | teacher_user_id | list[ClassEconomy] | DOM-CLASS-001 |
-| 16 | `suggest_economic_mode()` | class_size, weekly_hours | str | DOM-CLASS-002, SPEC-ECON-003 |
-| 17 | `validate_payroll_rate()` | hourly_pay_rate, policy_mode | (bool, str\|None) | DOM-CLASS-002, SPEC-ECON-003 |
+| 6 | `get_class_features()` | class_id, effective_at? | dict[str, ClassFeature] | DOM-CLASS-001, SPEC-ECON-002 |
+| 7 | `get_class_feature()` | class_id, feature, effective_at? | ClassFeature\|None | DOM-CLASS-001 |
+| 8 | `get_class_feature_history()` | class_id, feature | list[ClassFeature] | DOM-CLASS-003 |
+| 9 | `get_payroll_settings()` | class_id | PayrollSettings\|None | DOM-CLASS-002 |
+| 10 | `get_rent_settings()` | class_id | RentSettings\|None | DOM-CLASS-002 |
+| 11 | `get_banking_settings()` | class_id | BankingSettings\|None | DOM-CLASS-002, SPEC-ECON-001 |
+| 12 | `get_hall_pass_settings()` | class_id | HallPassSettings\|None | DOM-CLASS-002 |
+| 13 | `calculate_cwi()` | class_id | float\|None | DOM-CLASS-002, SPEC-ECON-003 |
+| 14 | `get_policy_mode()` | class_id | str\|None | DOM-CLASS-002, SPEC-ECON-003 |
+| 15 | `is_feature_enabled()` | class_id, feature | bool | DOM-CLASS-001, SPEC-ECON-002 |
+| 16 | `get_all_classes_by_teacher()` | teacher_user_id | list[ClassEconomy] | DOM-CLASS-001 |
+| 17 | `suggest_economic_mode()` | class_size, weekly_hours | str | DOM-CLASS-002, SPEC-ECON-003 |
+| 18 | `validate_payroll_rate()` | hourly_pay_rate, policy_mode | (bool, str\|None) | DOM-CLASS-002, SPEC-ECON-003 |
 
 **Total:** 17 functions (spec says "15+" — we have: 2 entity + 3 engine + 3 feature + 4 settings + 2 derived + 2 state + 1 initial = 17)
 
