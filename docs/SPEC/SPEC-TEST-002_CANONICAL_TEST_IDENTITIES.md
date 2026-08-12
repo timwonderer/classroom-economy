@@ -71,7 +71,7 @@ Those artifacts must always be created through production code paths. The fixtur
 Two roster rows containing identical names are not assumed to represent the same authenticated person.
 
 | Class | Name |
-|---|---|
+| --- | --- |
 | Chemistry | Ava Chen |
 | AP CSP | Ava Chen |
 
@@ -92,7 +92,7 @@ Different roster rows with identical student names may contain different teacher
 Four teachers are defined. Each owns one or more canonical classrooms.
 
 | Identifier | Username |
-|---|---|
+| --- | --- |
 | `teacher_alice` | `teacher.alice` |
 | `teacher_brian` | `teacher.brian` |
 | `teacher_carmen` | `teacher.carmen` |
@@ -146,7 +146,7 @@ Two classrooms owned by the same teacher contain matching roster names. No ident
 One classroom contains multiple students with identical full names. Teacher notes serve as the disambiguation signal.
 
 | Name | Teacher Note |
-|---|---|
+| --- | --- |
 | Alex Lee | Basketball |
 | Alex Lee | Glasses |
 
@@ -199,7 +199,7 @@ from tests.helpers.classroom_initializer import (
 If any self-test assertion fails, the test is aborted immediately via `pytest.fail()`. A test with invalid identity, scope, or context must never run.
 
 | Layer | Checks |
-|---|---|
+| --- | --- |
 | DB — ClassEconomy | `class_id` and `join_code` set; correct `user_id` |
 | DB — Teacher User | `user_role == TEACHER`; `username_hash` set; `last_active_class_id` and `last_active_seat_id` correct |
 | DB — Teacher Seat | `role == "teacher"`; `user_id` and `class_id` correct |
@@ -236,7 +236,7 @@ One legitimate exception: tests that require custom identity relationships beyon
 The following helpers are superseded for any test that requires canonical identity. New tests must not use these paths. Existing tests should be migrated.
 
 | Superseded helper | Reason |
-|---|---|
+| --- | --- |
 | `tests/helpers/v2_fixtures.py` — `seed_canonical_admin`, `make_admin` | No self-test; credentials constructed ad hoc |
 | `tests/helpers/class_scope.py` — `create_class_scope`, `make_student_identity`, `make_student_with_seat` | No self-test; DB state assembled manually |
 | `tests/helpers/admin_context.py` | Session set without DB or context verification |
