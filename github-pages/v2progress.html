@@ -1,0 +1,516 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Classroom Token Hub - Version 2 Progress Stream">
+    <title>v2 Progress - Classroom Token Hub</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-EVSTQN3/azprG1Anm3QDgpJLIm9Nao0Yz1ztcQTwFspd3yD65VohhpuuCOmLASjC" crossorigin="anonymous">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible+Next:wght@400;700&family=IBM+Plex+Mono:wght@300;400;500;600;700&family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" rel="stylesheet">
+    <link href="../static/css/tokens.css" rel="stylesheet">
+    <link href="./style.css" rel="stylesheet">
+    <style>
+        .v2-feature-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+            display: grid;
+            gap: 2rem;
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+        }
+
+        .v2-feature-card {
+            background-color: var(--surface);
+            padding: 2.25rem;
+            border-radius: 2px;
+            box-shadow: var(--shadow);
+            border-top: 6px solid var(--secondary-color);
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        .v2-feature-card .material-symbols-outlined {
+            color: var(--primary);
+            font-size: 2.5rem;
+            margin-bottom: 1.25rem;
+        }
+
+        .v2-feature-card h3 {
+            color: var(--text-primary);
+            font-size: 1.35rem;
+            margin-bottom: 0.85rem;
+            font-weight: 600;
+        }
+
+        .v2-feature-card p,
+        .v2-feature-card li {
+            color: var(--text-secondary);
+            font-size: 1.05rem;
+            line-height: 1.6;
+        }
+
+        .v2-feature-card p:last-child {
+            margin-bottom: 0;
+        }
+
+        .v2-feature-card ul {
+            margin: 0;
+            padding-left: 1.2rem;
+        }
+
+        .philosophy-section {
+            margin-bottom: 4.5rem;
+        }
+
+        .philosophy-heading {
+            color: var(--guardian-gray);
+            font-size: 2.25rem;
+            margin-bottom: 1rem;
+            font-weight: 600;
+            border-bottom: 2px solid var(--border-subtle);
+        }
+
+        .philosophy-text p {
+            font-size: 1.15rem;
+            color: var(--text-primary);
+            line-height: 1.75;
+            margin-bottom: 1.5rem;
+        }
+
+        .floating-back-widget {
+            position: fixed;
+            bottom: 2rem;
+            right: 2rem;
+            z-index: 1000;
+            background-color: var(--secondary-color);
+            color: white;
+            padding: 0.75rem 1.25rem;
+            border-radius: 50px;
+            box-shadow: var(--shadow-lg);
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            text-decoration: none;
+            font-weight: 500;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        .floating-back-widget:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 15px 25px -5px rgba(0, 0, 0, 0.2);
+            color: white;
+        }
+
+        .floating-back-widget .material-symbols-outlined {
+            font-size: 1.5rem;
+        }
+
+        .progress-stream {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+            display: grid;
+            gap: 0;
+        }
+
+        .progress-entry {
+            display: grid;
+            grid-template-columns: 140px 1fr;
+            gap: 2rem;
+            padding: 1.75rem 0;
+            border-bottom: 1px solid var(--border-subtle);
+        }
+
+        .progress-entry:first-child {
+            padding-top: 0;
+        }
+
+        .progress-entry:last-child {
+            border-bottom: none;
+        }
+
+        .progress-date {
+            color: var(--text-light);
+            font-size: 0.95rem;
+            font-weight: 500;
+            padding-top: 0.15rem;
+            white-space: nowrap;
+        }
+
+        .progress-body h3 {
+            color: var(--text-primary);
+            font-size: 1.15rem;
+            font-weight: 600;
+            margin: 0 0 0.5rem 0;
+        }
+
+        .progress-body p {
+            color: var(--text-secondary);
+            font-size: 1rem;
+            line-height: 1.6;
+            margin: 0;
+        }
+
+        .progress-tag {
+            display: inline-block;
+            font-size: 0.75rem;
+            font-weight: 600;
+            padding: 0.15rem 0.55rem;
+            border-radius: 2px;
+            margin-right: 0.5rem;
+            margin-bottom: 0.35rem;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+        }
+
+        .progress-tag--milestone {
+            background-color: var(--advisor-green);
+            color: white;
+        }
+
+        .progress-tag--architecture {
+            background-color: var(--steward-blue);
+            color: white;
+        }
+
+        .progress-tag--domain {
+            background-color: var(--secondary-color);
+            color: white;
+        }
+
+        .progress-tag--audit {
+            background-color: var(--guardian-gray);
+            color: white;
+        }
+
+        .progress-tag--setback {
+            background-color: #703436;
+            color: white;
+        }
+
+        .status-summary {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 1rem;
+        }
+
+        .status-card {
+            background-color: var(--surface);
+            padding: 1.5rem;
+            border-radius: 2px;
+            box-shadow: var(--shadow);
+            text-align: center;
+        }
+
+        .status-card .number {
+            font-size: 2.5rem;
+            font-weight: 700;
+            line-height: 1;
+            margin-bottom: 0.35rem;
+        }
+
+        .status-card .label {
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+        }
+
+        .status-card--certified .number {
+            color: var(--advisor-green);
+        }
+
+        .status-card--progress .number {
+            color: var(--secondary-color);
+        }
+
+        .status-card--remaining .number {
+            color: var(--text-light);
+        }
+
+        @media (max-width: 768px) {
+            .progress-entry {
+                grid-template-columns: 1fr;
+                gap: 0.35rem;
+            }
+        }
+    </style>
+</head>
+<body class="landing-page">
+    <main>
+        <section class="landing-hero">
+            <div class="landing-shell landing-hero-grid">
+                <div class="landing-brand">
+                    <div class="landing-brand-row">
+                        <span class="material-symbols-outlined" aria-hidden="true">local_atm</span>
+                        <span>CLASSROOM</span>
+                    </div>
+                    <div class="landing-brand-row">
+                        <span class="material-symbols-outlined" aria-hidden="true">store</span>
+                        <span>TOKEN</span>
+                    </div>
+                    <div class="landing-brand-row">
+                        <span class="material-symbols-outlined" aria-hidden="true">finance_mode</span>
+                        <span>HUB</span>
+                    </div>
+                </div>
+                <div class="landing-welcome">
+                    <h1>Version 2 Progress Report</h1>
+                    <small>From a solo teacher-developer to all teachers and student users of Classroom Token Hub</small>
+                    <a href="v2transition.html" target="_self" class="floating-back-widget">
+                        <span class="material-symbols-outlined" aria-hidden="true">arrow_circle_left</span>
+                        <span>Return to Transition Page</span>
+                    </a>
+                </div>
+            </div>
+        </section>
+
+        <section class="landing-content">
+            <div class="landing-shell">
+                <div class="philosophy-section">
+                    <div class="philosophy-text">
+                        <p>In April 2026, we made the decision to completely rebuild the architecture of Classroom Token Hub.</p>
+                        <p>From the start, this project was driven by ambition, aspiration, and perhaps a little bit of spite (of existing platforms). Version 1 was a proof of concept that demonstrated that <em>hey, maybe teachers can actually build their own platforms in ways that were supposed to be.</em> It was a challenging undertaking for sure, but it has also planted the seed for continuous improvement. <strong>This is why Version 2 was born.</strong></p>
+                        <p> Version 2 is a complete architectural reconstruction of Classroom Token Hub. This means the entire app has been completely bulldozed and rebuilt, starting from the drawing board and blueprints. The only thing that remains the same is the user experience. <em>For you, it feels like the same app, but runs just a bit smoother and stronger.</em></p>
+                        <p>Just like with many ambitious projects, we underestimated the amount of challenges and setbacks we would encounter during this transition. As a solo teacher-developer, the most important thing is to bring a platform that is fully functional and reliable to you and your students. We understand how important it is for you and your students to have a platform that you can depend on. It is clear to us that our delay is creating classroom routine disruptions right now and we sincerely apologize for that.</p>
+                        <p>We would like to invite you to follow our progress and setbacks so we are held accountable to you and your students.</p>
+                        <p><strong>Because we are building Classroom Token Hub to be your classroom economy system, <em>reimagined.</em></strong></p>
+                    </div>
+                </div>
+
+                <div class="philosophy-section">
+                    <h2 class="philosophy-heading">Current Status</h2>
+                    <div class="philosophy-text">
+                        <p>Classroom Token Hub v2.0 is divided into 10 core components. Each component is responsible for one core feature or functionality of the platform. We call these components <em>domains</em>. We redesigned the app around these domains to ensure every feature and function has exactly one way that could work so each action you take is consistent and predictable.</p>
+                    </div>
+                    <div class="status-summary mt-4">
+                        <div class="status-card status-card--certified">
+                            <div class="number">2</div>
+                            <div class="label">Domains Completed</div>
+                        </div>
+                        <div class="status-card status-card--progress">
+                            <div class="number">4</div>
+                            <div class="label">Domains In Progress</div>
+                        </div>
+                        <div class="status-card status-card--remaining">
+                            <div class="number">4</div>
+                            <div class="label">Domains Not Started</div>
+                        </div>
+                    </div>
+                    
+                </div>
+
+                <div class="philosophy-section">
+                    <h2 class="philosophy-heading">Version 2 Development Progress</h2>
+                    <div class="philosophy-text">
+                        <p>This section includes all significant developmental progress of Classroom Token Hub v2.0. We have included major events, milestones, progress, and setbacks to provide an honest record of this journey.</p>
+                    </div>
+                    <ol class="progress-stream mt-4">
+                        <li class="progress-entry">
+                            <div class="progress-date">Aug 11, 2026</div>
+                            <div class="progress-body">
+                                <div><span class="progress-tag progress-tag--domain">Domain</span></div>
+                                <h3>Identity domain reaches Phase 6-7 (second attempt)</h3>
+                                <p>After the Aug 6 certification was invalidated, Identity was rebuilt from scratch through proper SOP-DEV-002 sequencing. Phases 0-5 were re-done with corrected specifications, followed by Phase 6-7 view model wiring into context processors and templates. Phase 8-10 certification is still pending.</p>
+                            </div>
+                        </li>
+                        <li class="progress-entry">
+                            <div class="progress-date">Aug 11, 2026</div>
+                            <div class="progress-body">
+                                <div><span class="progress-tag progress-tag--domain">Domain</span></div>
+                                <h3>Class Configuration reaches Phase 4</h3>
+                                <p>Completed service layer queries and partial FEAT mutation boundary for the Class Configuration domain. Immutable economics engine and composite feature models are now persisted and queryable.</p>
+                            </div>
+                        </li>
+                        <li class="progress-entry">
+                            <div class="progress-date">Aug 9, 2026</div>
+                            <div class="progress-body">
+                                <div><span class="progress-tag progress-tag--setback">Setback</span></div>
+                                <h3>Identity domain specifications found to have critical gaps</h3>
+                                <p>During Phase 4-5 specification review, critical schema and enum mismatches were discovered between the domain spec (DOM-IDEN-002) and the actual implementation. Field names, table references, and mutability lifecycles were inconsistent. The entire specification layer had to be corrected before reconstruction could continue.</p>
+                            </div>
+                        </li>
+                        <li class="progress-entry">
+                            <div class="progress-date">Aug 7, 2026</div>
+                            <div class="progress-body">
+                                <div><span class="progress-tag progress-tag--setback">Setback</span></div>
+                                <h3>Template audit reveals 78+ violations across 96 templates</h3>
+                                <p>A full Jinja2 template inventory audit uncovered 78+ violations across the codebase, with 81% of templates non-compliant. Many templates were accessing raw database fields instead of view model properties, bypassing domain boundaries. Remediation began immediately for Store, Obligations, and Payroll domains.</p>
+                            </div>
+                        </li>
+                        <li class="progress-entry">
+                            <div class="progress-date">Aug 6, 2026</div>
+                            <div class="progress-body">
+                                <div><span class="progress-tag progress-tag--setback">Setback</span></div>
+                                <h3>Identity Phase 10 certification invalidated</h3>
+                                <p>An earlier attempt to certify the Identity domain at Phase 10 was invalidated after discovering that the specification layer had gaps. The domain had been pushed through phases without proper spec alignment, meaning downstream phases were built on an incorrect foundation. A full reconstruction was required.</p>
+                            </div>
+                        </li>
+                        <li class="progress-entry">
+                            <div class="progress-date">Aug 5, 2026</div>
+                            <div class="progress-body">
+                                <div><span class="progress-tag progress-tag--setback">Setback</span></div>
+                                <h3>Entitlement contract violations uncovered during Phase 8</h3>
+                                <p>Phase 8 test verification for Identity revealed hidden contract violations in the rent hall pass entitlement system. Tests that appeared to pass were relying on incorrect assumptions about entitlement grants. Multiple entitlement bugs had to be fixed and tests rewritten to v2 patterns before verification could continue.</p>
+                            </div>
+                        </li>
+                        <li class="progress-entry">
+                            <div class="progress-date">Aug 4, 2026</div>
+                            <div class="progress-body">
+                                <div><span class="progress-tag progress-tag--setback">Setback</span></div>
+                                <h3>Obligations Phase 10 certification found to have invalid checkmarks</h3>
+                                <p>A comprehensive audit of all 10 domains revealed that the Obligations domain's prior Phase 10 certification (from Jul 24) had invalid Phase 6-7 checkmarks. The domain had been marked as certified, but its route and template surfaces were not actually wired through view models. This was classified as a P0 blocker requiring immediate rework.</p>
+                            </div>
+                        </li>
+                        <li class="progress-entry">
+                            <div class="progress-date">Aug 4, 2026</div>
+                            <div class="progress-body">
+                                <div><span class="progress-tag progress-tag--milestone">Milestone</span></div>
+                                <h3>Store and Obligations domains certified (Phase 10)</h3>
+                                <p>After reworking the invalid Phase 6-7 checkmarks, the Obligations domain passed re-certification. Store &amp; Entitlements also completed Phase 6-7 wiring and passed certification. These are the only two domains currently production-ready.</p>
+                            </div>
+                        </li>
+                        <li class="progress-entry">
+                            <div class="progress-date">Jul 25, 2026</div>
+                            <div class="progress-body">
+                                <div><span class="progress-tag progress-tag--domain">Domain</span></div>
+                                <h3>Obligations domain full reconstruction</h3>
+                                <p>Rewired the entire Obligations domain from Phase 2 through Phase 9 in a single sprint. Migrated to canonical bill-cycle schema, built generic obligation view models, and removed all legacy code. Required a controlled demolition of existing route and template surfaces.</p>
+                            </div>
+                        </li>
+                        <li class="progress-entry">
+                            <div class="progress-date">Jul 24, 2026</div>
+                            <div class="progress-body">
+                                <div><span class="progress-tag progress-tag--setback">Setback</span></div>
+                                <h3>Obligations certification audit required three corrections</h3>
+                                <p>The first Phase 10 certification attempt for Obligations failed. The audit instruction itself had to be rewritten to match the DOM-OBL-001 contract. Remaining .satisfaction access patterns were found in student routes. It took three correction cycles before the audit passed.</p>
+                            </div>
+                        </li>
+                        <li class="progress-entry">
+                            <div class="progress-date">Jul 23, 2026</div>
+                            <div class="progress-body">
+                                <div><span class="progress-tag progress-tag--setback">Setback</span></div>
+                                <h3>Store domain audit fails twice before passing</h3>
+                                <p>The Store domain required four rounds of end-to-end audit. The first re-audit found 15 of 20 findings still open. A third round passed conditionally with 17 of 20 remediated but 1 blocking issue. Only on the fourth round did the domain reach 18 of 20 with the remaining 2 deferred as non-blocking.</p>
+                            </div>
+                        </li>
+                        <li class="progress-entry">
+                            <div class="progress-date">Jul 21, 2026</div>
+                            <div class="progress-body">
+                                <div><span class="progress-tag progress-tag--domain">Domain</span></div>
+                                <h3>Productivity domain rewired</h3>
+                                <p>Completed FEAT wiring for attendance and payroll surfaces. Built canonical temporal resolver and display metadata resolver. Three critical audit findings in the PROD domain had to be fixed during this process.</p>
+                            </div>
+                        </li>
+                        <li class="progress-entry">
+                            <div class="progress-date">Jul 16, 2026</div>
+                            <div class="progress-body">
+                                <div><span class="progress-tag progress-tag--setback">Setback</span></div>
+                                <h3>Runtime crash bugs discovered during legacy table removal</h3>
+                                <p>While removing 5 non-canonical model classes and dropping legacy identity tables, 2 TapEvent NameError crash bugs were uncovered. These were runtime failures that had been hidden because the legacy code paths were still active. The application now runs exclusively on v2 schema, but the transition surfaced issues that had been masked for months.</p>
+                            </div>
+                        </li>
+                        <li class="progress-entry">
+                            <div class="progress-date">Jul 15, 2026</div>
+                            <div class="progress-body">
+                                <div><span class="progress-tag progress-tag--architecture">Architecture</span></div>
+                                <h3>Constitutional schema audit enforced</h3>
+                                <p>Enforced DOM-CORE-002 compliance across all schema definitions. Canonicalized recovery tables. Stabilized the v2 test suite and established documentation standards for schema authority.</p>
+                            </div>
+                        </li>
+                        <li class="progress-entry">
+                            <div class="progress-date">Jul 14, 2026</div>
+                            <div class="progress-body">
+                                <div><span class="progress-tag progress-tag--architecture">Architecture</span></div>
+                                <h3>Class ID canonicalization sweep</h3>
+                                <p>Replaced join_code-based scoping with class_id across 80+ test fixtures and route handlers. Removed all implicit class creation patterns. Every query and test fixture now uses explicit class_id scoping.</p>
+                            </div>
+                        </li>
+                        <li class="progress-entry">
+                            <div class="progress-date">Jul 11, 2026</div>
+                            <div class="progress-body">
+                                <div><span class="progress-tag progress-tag--setback">Setback</span></div>
+                                <h3>Multiple fail-open security patterns discovered</h3>
+                                <p>Audit of helper functions revealed that several critical paths — collective goal progress, policy mode login, rent penalty reversal — were failing open instead of closed. If a lookup failed, the code continued executing instead of rejecting the action. All were rewritten to fail closed.</p>
+                            </div>
+                        </li>
+                        <li class="progress-entry">
+                            <div class="progress-date">Jul 1, 2026</div>
+                            <div class="progress-body">
+                                <div><span class="progress-tag progress-tag--milestone">Milestone</span></div>
+                                <h3>Version 1 end of service</h3>
+                                <p>Classroom Token Hub v1 was officially retired. All user data was deleted. No accounts or records were carried over to v2.</p>
+                            </div>
+                        </li>
+                        <li class="progress-entry">
+                            <div class="progress-date">May 9, 2026</div>
+                            <div class="progress-body">
+                                <div><span class="progress-tag progress-tag--setback">Setback</span></div>
+                                <h3>GET route integrity violations found in admin navigation</h3>
+                                <p>Discovered that several admin GET routes were performing database writes — violating the core invariant that GET handlers must be pure reads. These hidden side effects had been introduced incrementally during v1 and were only caught during the v2 compliance sweep.</p>
+                            </div>
+                        </li>
+                        <li class="progress-entry">
+                            <div class="progress-date">Apr 24, 2026</div>
+                            <div class="progress-body">
+                                <div><span class="progress-tag progress-tag--architecture">Architecture</span></div>
+                                <h3>FEAT context framework implemented</h3>
+                                <p>Introduced the Feature Execution Transaction (FEAT) framework to enforce atomic, traceable, and idempotent cross-domain mutations. All state changes now require explicit FEAT context.</p>
+                            </div>
+                        </li>
+                        <li class="progress-entry">
+                            <div class="progress-date">Apr 13, 2026</div>
+                            <div class="progress-body">
+                                <div><span class="progress-tag progress-tag--architecture">Architecture</span></div>
+                                <h3>Architectural invariants established</h3>
+                                <p>Published foundational invariant documents (INV-CORE-000, INV-ARC-019) defining what must always be true in the system. These invariants govern identity, multi-tenancy, mutation authority, and domain boundaries.</p>
+                            </div>
+                        </li>
+                        <li class="progress-entry">
+                            <div class="progress-date">Apr 5, 2026</div>
+                            <div class="progress-body">
+                                <div><span class="progress-tag progress-tag--milestone">Milestone</span></div>
+                                <h3>Version 2 reconstruction begins</h3>
+                                <p>After completing the v1 end-of-service page and finalizing the live-test rehearsal report, the decision was made to stop patching v1 and begin a complete architectural rewrite. The v2 branch was established as the sole development target.</p>
+                            </div>
+                        </li>
+                    </ol>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <footer class="landing-footer">
+        <div class="landing-shell landing-footer-grid">
+            <div class="landing-footer-links">
+                <a href="https://github.com/timwonderer/classroom-economy" target="_blank" rel="noopener">Project Repository</a>
+                <a href="https://github.com/timwonderer/classroom-economy/blob/main/CHANGELOG.md" target="_blank" rel="noopener">Changelog</a>
+            </div>
+            <div class="landing-footer-links">
+                <a href="./terms.html" target="_self">Terms of Service</a>
+                <a href="./privacy.html" target="_self">Privacy Policy</a>
+                <a href="./district.html" target="_self">District Partners</a>
+            </div>
+            <div class="landing-footer-links">
+                <a href="https://github.com/timwonderer/classroom-economy/blob/main/CONTRIBUTING.md" target="_blank" rel="noopener">Contributing</a>
+                <a href="https://polyformproject.org/licenses/noncommercial/1.0.0" target="_blank" rel="noopener">License</a>
+            </div>
+            <div class="landing-footer-meta">
+                <p>&copy; <span id="current-year"></span> Classroom Token Hub. Licensed under PolyForm Noncommercial v1.0.0</p>
+                <p><em>This app is developed, operated, maintained, and self-funded by a full-time high school teacher. As such, we do not display advertisements, use third-party tracking tools, or collect information about you unless it is necessary for the operation of the platform.</em></p>
+                <p><a class="text-decoration-none text-white" href="mailto:support@classroomtokenhub.com">Need help? Reach us at support@classroomtokenhub.com</a></p>
+            </div>
+        </div>
+    </footer>
+
+    <script>
+        (function () {
+            var yearElement = document.getElementById("current-year");
+            if (yearElement) {
+                yearElement.textContent = new Date().getFullYear();
+            }
+        })();
+    </script>
+</body>
+</html>
