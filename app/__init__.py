@@ -695,89 +695,110 @@ def create_app():
             return {'admin_feature_settings': ClassFeature.defaults_dict()}
 
     @app.context_processor
-    def inject_class_context():
-        """Inject current class context and available classes for student navigation."""
+    def inject_student_layout_view():
+        """Build StudentLayoutContextView for layout_student.html (Phase 6 identity wiring)."""
         try:
             from app.auth import get_current_seat, get_current_user
             from app.services.context_resolver import resolve_canonical_context
+            from app.services.identity.builders import build_student_layout_context_view
             from app.utils.display_metadata import get_or_resolve_display_metadata
+
+            bypass_flag = getattr(g, 'maintenance_bypass_active', False)
 
             current_seat_ctx = get_current_seat()
             current_user = get_current_user()
             if not current_seat_ctx or not current_user:
-                return {'current_class_context': None, 'available_classes': []}
+                return {
+                    'student_layout_view': build_student_layout_context_view(
+                        None, is_maintenance_bypass_active=bypass_flag,
+                    ),
+                    'available_classes': [],
+                }
 
             context = resolve_canonical_context()
             if not context or not getattr(context, "class_id", None):
-                return {'current_class_context': None, 'available_classes': []}
+                return {
+                    'student_layout_view': build_student_layout_context_view(
+                        None, is_maintenance_bypass_active=bypass_flag,
+                    ),
+                    'available_classes': [],
+                }
 
             display_metadata = get_or_resolve_display_metadata(context)
             if display_metadata is None:
-                return {'current_class_context': None, 'available_classes': []}
-            current_class_context = display_metadata.to_class_context()
+                return {
+                    'student_layout_view': build_student_layout_context_view(
+                        None, is_maintenance_bypass_active=bypass_flag,
+                    ),
+                    'available_classes': [],
+                }
+            view = build_student_layout_context_view(
+                display_metadata, is_maintenance_bypass_active=bypass_flag,
+            )
             available_classes = [display_metadata.to_available_class_option()]
 
             return {
-                'current_class_context': current_class_context,
+                'student_layout_view': view,
                 'available_classes': available_classes,
                 'current_seat': current_seat_ctx,
                 'display_metadata': display_metadata,
-                'student_display_first_name': display_metadata.student_first_name,
-                'student_name': display_metadata.student_full_name,
             }
         except Exception as e:
-            app.logger.warning(f"Could not load class context: {e}")
-            return {'current_class_context': None, 'available_classes': []}
+            app.logger.warning(f"Could not load student layout view: {e}")
+            from app.services.identity.builders import build_student_layout_context_view
+            return {
+                'student_layout_view': build_student_layout_context_view(None),
+                'available_classes': [],
+            }
 
     @app.context_processor
-    def inject_admin_class_context():
-        """Inject current class context and available classes for admin navigation."""
+    def inject_admin_layout_view():
+        """Build AdminLayoutContextView for layout_admin.html (Phase 6 identity wiring)."""
         try:
             from app.auth import get_current_user
             from app.services.context_resolver import resolve_canonical_context
+            from app.services.identity.builders import build_admin_layout_context_view
             from app.utils.display_metadata import get_or_resolve_display_metadata
+            from app.utils.display_name_session import get_admin_display_name_cache
 
             current_user = get_current_user()
             if not current_user or getattr(current_user.user_role, "value", current_user.user_role) != "teacher":
-                return {'admin_current_class_context': None, 'admin_available_classes': []}
+                return {
+                    'admin_layout_view': build_admin_layout_context_view(None, None),
+                    'admin_available_classes': [],
+                }
+
+            cached_name = get_admin_display_name_cache(user_id=current_user.id)
+            bypass_flag = getattr(g, 'maintenance_bypass_active', False)
 
             context = resolve_canonical_context()
             if not context or not getattr(context, "class_id", None):
-                return {'admin_current_class_context': None, 'admin_available_classes': []}
+                view = build_admin_layout_context_view(
+                    cached_name, None, is_maintenance_bypass_active=bypass_flag,
+                )
+                return {
+                    'admin_layout_view': view,
+                    'admin_available_classes': [],
+                }
 
             display_metadata = get_or_resolve_display_metadata(context)
-            if display_metadata is None:
-                return {'admin_current_class_context': None, 'admin_available_classes': []}
-            admin_current_class_context = display_metadata.to_class_context()
+            class_context = display_metadata.to_class_context() if display_metadata else None
 
+            view = build_admin_layout_context_view(
+                cached_name, class_context, is_maintenance_bypass_active=bypass_flag,
+            )
             return {
-                'admin_current_class_context': admin_current_class_context,
-                'admin_available_classes': [admin_current_class_context],
+                'admin_layout_view': view,
+                'admin_available_classes': [class_context] if class_context else [],
                 'display_metadata': display_metadata,
             }
         except Exception as e:
-            app.logger.warning(f"Could not load admin class context: {e}")
-            return {'admin_current_class_context': None, 'admin_available_classes': []}
-
-    @app.context_processor
-    def inject_current_admin():
-        """Inject current admin object into all templates."""
-        try:
-            from app.auth import get_current_user
-            from app.utils.display_name_session import (
-                get_admin_display_name_cache,
-                set_admin_display_name_cache,
-            )
-
-            user = get_current_user()
-            if user:
-                cached_name = get_admin_display_name_cache(user_id=user.id)
-                if cached_name:
-                    return {'current_admin': None, 'current_admin_display_name': cached_name}
-            return {'current_admin': None, 'current_admin_display_name': None}
-        except Exception as e:
-            app.logger.warning(f"Could not load current admin: {e}")
-            return {'current_admin': None, 'current_admin_display_name': None}
+            app.logger.warning(f"Could not load admin layout view: {e}")
+            from app.services.identity.builders import build_admin_layout_context_view
+            return {
+                'admin_layout_view': build_admin_layout_context_view(None, None),
+                'admin_available_classes': [],
+            }
 
     @app.context_processor
     def inject_current_sysadmin():
