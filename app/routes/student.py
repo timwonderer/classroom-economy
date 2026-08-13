@@ -378,7 +378,7 @@ def _prime_seat_teacher_display_name_cache(student_user_id: int) -> None:
     seat_owner_ids = []
     if class_ids:
         classes = ClassEconomy.query.filter(ClassEconomy.class_id.in_(class_ids)).all()
-        seat_owner_ids = sorted({c.user_id for c in classes if c.user_id})
+        seat_owner_ids = sorted({c.teacher_user_id for c in classes if c.teacher_user_id})
     if not seat_owner_ids:
         clear_teacher_display_name_cache()
         return

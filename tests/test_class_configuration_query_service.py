@@ -31,6 +31,10 @@ from app.services.class_configuration_query_service import (
     get_policy_mode,
     is_feature_enabled,
     get_all_classes_by_teacher,
+    get_teacher_class_by_section,
+    get_class_by_public_id,
+    get_classes_by_public_ids,
+    get_teacher_classes_by_ids,
     suggest_economic_mode,
     validate_payroll_rate,
     verify_teacher_owns_class,
@@ -627,6 +631,126 @@ class TestGetClassEconomyByJoinCode:
         """Empty state: unknown join_code returns None."""
         result = get_class_economy_by_join_code("ZZZZZ-DOESNOTEXIST")
         assert result is None
+
+
+class TestAdditionalClassLookupHelpers:
+    """Test newer class lookup helpers used by rewired admin routes."""
+
+    def test_get_teacher_class_by_section_returns_matching_owned_class(self, app):
+        """Happy path: teacher + section resolves the expected class."""
+        classroom = initialize("chemistry_p1", app)
+
+        result = get_teacher_class_by_section(
+            classroom.teacher_user_id,
+            classroom.economy.section,
+        )
+
+        assert result is not None
+        assert result.teacher_user_id == classroom.teacher_user_id
+        assert result.section == classroom.economy.section
+
+    def test_get_teacher_class_by_section_returns_none_for_missing_section(self, app):
+        """Empty state: unknown section returns None."""
+        classroom = initialize("chemistry_p1", app)
+
+        result = get_teacher_class_by_section(classroom.teacher_user_id, "missing-section")
+
+        assert result is None
+
+    def test_get_teacher_class_by_section_respects_teacher_scope(self, app):
+        """Multi-tenancy: same section name from another teacher is not returned."""
+        classroom1 = initialize("chemistry_p1", app)
+        classroom2 = initialize("biology_block_a", app)
+
+        result = get_teacher_class_by_section(
+            classroom2.teacher_user_id,
+            classroom1.economy.section,
+        )
+
+        assert result is None
+
+    def test_get_class_by_public_id_returns_matching_class(self, app):
+        """Happy path: class public id resolves to the owning ClassEconomy row."""
+        classroom = initialize("chemistry_p1", app)
+
+        result = get_class_by_public_id(classroom.economy.class_public_id)
+
+        assert result is not None
+        assert result.class_id == classroom.class_id
+
+    def test_get_class_by_public_id_returns_none_for_unknown_public_id(self, app):
+        """Empty state: unknown class public id returns None."""
+        assert get_class_by_public_id("missing-public-id") is None
+
+    def test_get_class_by_public_id_is_isolated_per_public_id(self, app):
+        """Multi-tenancy: each public id resolves only its own class."""
+        classroom1 = initialize("chemistry_p1", app)
+        classroom2 = initialize("biology_block_a", app)
+
+        result = get_class_by_public_id(classroom2.economy.class_public_id)
+
+        assert result is not None
+        assert result.class_id == classroom2.class_id
+        assert result.class_id != classroom1.class_id
+
+    def test_get_classes_by_public_ids_returns_all_matching_classes(self, app):
+        """Happy path: bulk public-id resolution returns all requested matches."""
+        classroom1 = initialize("chemistry_p1", app)
+        classroom2 = initialize("biology_block_a", app)
+
+        results = get_classes_by_public_ids([
+            classroom1.economy.class_public_id,
+            classroom2.economy.class_public_id,
+        ])
+
+        assert {row.class_id for row in results} == {classroom1.class_id, classroom2.class_id}
+
+    def test_get_classes_by_public_ids_returns_empty_for_empty_input(self, app):
+        """Empty state: empty input returns an empty list."""
+        assert get_classes_by_public_ids([]) == []
+
+    def test_get_classes_by_public_ids_ignores_unknown_public_ids(self, app):
+        """Multi-tenancy: unknown public ids are ignored without leaking extra rows."""
+        classroom = initialize("chemistry_p1", app)
+
+        results = get_classes_by_public_ids([
+            classroom.economy.class_public_id,
+            "missing-public-id",
+        ])
+
+        assert [row.class_id for row in results] == [classroom.class_id]
+
+    def test_get_teacher_classes_by_ids_returns_owned_classes_by_id(self, app):
+        """Happy path: teacher-owned classes are returned keyed by class_id."""
+        classroom1 = initialize("chemistry_p1", app)
+        classroom2 = initialize("ap_csp_p3", app)
+
+        results = get_teacher_classes_by_ids(
+            classroom1.teacher_user_id,
+            [classroom1.class_id, classroom2.class_id],
+        )
+
+        assert set(results.keys()) == {classroom1.class_id, classroom2.class_id}
+        assert results[classroom1.class_id].teacher_user_id == classroom1.teacher_user_id
+
+    def test_get_teacher_classes_by_ids_returns_empty_for_empty_input(self, app):
+        """Empty state: no class ids returns an empty mapping."""
+        classroom = initialize("chemistry_p1", app)
+
+        assert get_teacher_classes_by_ids(classroom.teacher_user_id, []) == {}
+
+    def test_get_teacher_classes_by_ids_filters_out_other_teachers(self, app):
+        """Multi-tenancy: bulk lookup returns only classes owned by the teacher."""
+        classroom1 = initialize("chemistry_p1", app)
+        classroom2 = initialize("biology_block_a", app)
+
+        results = get_teacher_classes_by_ids(
+            classroom1.teacher_user_id,
+            [classroom1.class_id, classroom2.class_id],
+        )
+
+        assert set(results.keys()) == {classroom1.class_id}
+        assert classroom2.class_id not in results
 
 
 class TestVerifyTeacherOwnsClass:
