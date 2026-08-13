@@ -11,7 +11,10 @@ This SOP defines how repository validation is executed and reported after the te
 ## II. Dependencies
 
 - `docs/INVARIANT/ARCHITECTURE/INV-ARC-017_GENERAL_TESTING_INVARIANTS.md`
-- `docs/TESTING/SOP-TEST-003_Test_Creation.md`
+- `docs/SPEC/SPEC-TEST-001_CANONICAL_TEST_INITIALIZER.md`
+- `docs/SPEC/SPEC-TEST-002_CANONICAL_TEST_IDENTITIES.md`
+- `docs/SPEC/SPEC-TIME-001_CANONICAL_TEMPORAL_RESOLVER.md`
+- `docs/STANDARD_OPERATING_PROCEDURES/TESTING/SOP-TEST-003_Test_Creation.md`
 - `docs/TRACKING/V2_Full_compliance_migration_plan.md`
 
 ## III. Canonical Test Scope Sets
@@ -82,6 +85,7 @@ The repository standardizes the following execution sets:
 - class-local time tests
 - deterministic boundary tests
 - scheduler or idempotency tests if applicable
+- use `SPEC-TIME-001` for canonical temporal authority and boundary setup
 
 ### 9. Documentation-Only Change
 

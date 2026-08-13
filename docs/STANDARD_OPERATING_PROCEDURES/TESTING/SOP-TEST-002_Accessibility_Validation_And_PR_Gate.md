@@ -12,7 +12,7 @@ This SOP defines how accessibility validation is executed, remediated, and repor
 
 - `docs/INVARIANT/ARCHITECTURE/INV-ARC-017_GENERAL_TESTING_INVARIANTS.md`
 - `docs/INVARIANT/ARCHITECTURE/INV-ARC-020_ACCESSIBILITY_REQUIREMENTS_AND_TEMPLATE_CONTRACT.md`
-- `docs/TESTING/SOP-TEST-001_Validation_Execution_And_Reporting.md`
+- `docs/STANDARD_OPERATING_PROCEDURES/TESTING/SOP-TEST-001_Validation_Execution_And_Reporting.md`
 
 ## III. Scope
 

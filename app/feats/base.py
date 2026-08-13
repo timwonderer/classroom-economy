@@ -97,8 +97,11 @@ FEAT_REGISTRY = {
     "FEAT-LED-002": {"domain": "Ledger", "blast_radius": "HIGH", "desc": "Void Transaction"},
     "FEAT-LED-003": {"domain": "Ledger", "blast_radius": "HIGH", "desc": "Settlement Sweep"},
     "FEAT-LED-004": {"domain": "Ledger", "blast_radius": "HIGH", "desc": "Payroll Execution"},
-    "FEAT-IDEN-001": {"domain": "Identity", "blast_radius": "LOW", "desc": "Teacher management"},
-    "FEAT-IDEN-002": {"domain": "Identity", "blast_radius": "HIGH", "desc": "Account Recovery"},
+    "FEAT-IDEN-001": {"domain": "Identity", "blast_radius": "LOW", "desc": "Unauthenticated Student Seat Claim"},
+    "FEAT-IDEN-002": {"domain": "Identity", "blast_radius": "HIGH", "desc": "Student Credential Setup"},
+    "FEAT-IDEN-003": {"domain": "Identity", "blast_radius": "MED", "desc": "Teacher Reset Code Generation"},
+    "FEAT-IDEN-004": {"domain": "Identity", "blast_radius": "HIGH", "desc": "Student Recovery Code Validation"},
+    "FEAT-IDEN-005": {"domain": "Identity", "blast_radius": "MED", "desc": "Authenticated Class Binding"},
     "FEAT-STOR-001": {"domain": "Store", "blast_radius": "MED", "desc": "Store Purchase and Entitlement Grant"},
     "FEAT-STOR-002": {"domain": "Store", "blast_radius": "MED", "desc": "Entitlement Terminal Lifecycle"},
     "FEAT-STOR-003": {"domain": "Store", "blast_radius": "MED", "desc": "Insurance Claim Lifecycle"},
@@ -458,6 +461,14 @@ def feat_shell(feat_name: str):
                     idempotency_key = f"feat:admin:{request.method.lower()}:{request.path}:{class_id}:{seat_id}"
                 elif feat_name == "FEAT-LED-003":
                     idempotency_key = "feat:ledger:settle_pending_transaction_contexts"
+                elif feat_name == "FEAT-IDEN-003" and request is not None:
+                    seat_id = kwargs.get("seat_id") or "NOSEAT"
+                    idempotency_key = f"feat:identity:recovery_generate:{seat_id}"
+                elif feat_name == "FEAT-IDEN-004" and request is not None:
+                    import hashlib
+                    reset_code = (request.form.get("reset_code") or "").strip().upper()
+                    code_fingerprint = hashlib.sha256(reset_code.encode()).hexdigest()[:16] if reset_code else "NO_CODE"
+                    idempotency_key = f"feat:identity:recovery_lookup:{code_fingerprint}"
                 elif feat_name == "FEAT-IDEN-002" and request is not None:
                     reset_code = (request.form.get("reset_code") or "").strip().upper()
                     endpoint_name = request.endpoint or getattr(f, "__name__", None)

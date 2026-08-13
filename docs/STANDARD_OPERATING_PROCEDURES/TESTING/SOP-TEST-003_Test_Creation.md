@@ -34,7 +34,10 @@ It complements `INV-ARC-017` and the testing execution SOPs. This document answe
 - `docs/INVARIANT/ARCHITECTURE/INV-ARC-007_GET_MUST_BE_PURE.md`
 - `docs/INVARIANT/ARCHITECTURE/INV-ARC-015_TEMPORAL_MODEL_AND_BOUNDARY_ENFORCEMENT.md`
 - `docs/INVARIANT/ARCHITECTURE/INV-ARC-020_ACCESSIBILITY_REQUIREMENTS_AND_TEMPLATE_CONTRACT.md`
-- `docs/TESTING/SOP-TEST-002_Accessibility_Validation_And_PR_Gate.md`
+- `docs/SPEC/SPEC-TEST-001_CANONICAL_TEST_INITIALIZER.md`
+- `docs/SPEC/SPEC-TEST-002_CANONICAL_TEST_IDENTITIES.md`
+- `docs/SPEC/SPEC-TIME-001_CANONICAL_TEMPORAL_RESOLVER.md`
+- `docs/STANDARD_OPERATING_PROCEDURES/TESTING/SOP-TEST-002_Accessibility_Validation_And_PR_Gate.md`
 - `docs/FEATURE-EXECUTION/FEAT-CORE-000_FEATURE_EXECUTION_CONSTITUTIONAL_DIRECTIVE.md`
 
 ## IV. Test Creation Principles
@@ -84,6 +87,7 @@ If the change touches one of these areas, the test must cover the corresponding 
 - authentication or recovery: fail-closed behavior and session integrity
 - documentation claims: runtime evidence must be available or newly produced
 - template accessibility: rendered structure, semantic linkage, and browser-visible contrast or ARIA behavior
+- canonical test identity and temporal contracts: use the SPEC-defined initializer, identity data, and temporal resolver rather than ad hoc test setup
 
 ## VII. Test Design Workflow
 
