@@ -39,6 +39,17 @@ class EconomicEngineEvolutionError(Exception):
     pass
 
 
+def _parse_effective_at_timestamp(effective_at: str):
+    """Parse ISO 8601 effective_at into a timezone-aware datetime."""
+    try:
+        effective_at_ts = dt.fromisoformat(effective_at)
+    except ValueError:
+        return None
+    if effective_at_ts.tzinfo is None:
+        effective_at_ts = effective_at_ts.replace(tzinfo=tz.utc)
+    return effective_at_ts
+
+
 @dataclass
 class EconomicEngineEvolutionResult:
     """Result of successful economic engine evolution."""
@@ -208,14 +219,20 @@ def _execute_transition_economic_policy_impl(
     # Use resolver to validate effective_at
     # If effective_at provided, resolver normalizes it; otherwise use current time
     if effective_at:
-        # Let resolver handle the timestamp normalization and comparison
-        # Use earlier_than to check if effective_at is before now
+        effective_at_ts = _parse_effective_at_timestamp(effective_at)
+        if effective_at_ts is None:
+            return EconomicEngineEvolutionResult(
+                success=False,
+                correlation_id="",
+                error_code="INVALID_EFFECTIVE_AT",
+                error_message="effective_at must be a valid ISO 8601 datetime string",
+            )
         try:
             earlier_eval = canonical_temporal_resolver(
                 CLASS_LEVEL_EVALUATION,
                 canonical_execution_context=canonical_context,
                 primitive="earlier_than",
-                candidate=effective_at,
+                candidate=effective_at_ts,
                 reference=timestamp_utc,
             )
             if earlier_eval.is_earlier:
@@ -224,18 +241,6 @@ def _execute_transition_economic_policy_impl(
                     correlation_id="",
                     error_code="INVALID_TEMPORAL_ORDER",
                     error_message=f"effective_at cannot be in the past",
-                )
-            # Parse effective_at into a proper datetime
-            try:
-                effective_at_ts = dt.fromisoformat(effective_at)
-                if effective_at_ts.tzinfo is None:
-                    effective_at_ts = effective_at_ts.replace(tzinfo=tz.utc)
-            except ValueError:
-                return EconomicEngineEvolutionResult(
-                    success=False,
-                    correlation_id="",
-                    error_code="INVALID_EFFECTIVE_AT",
-                    error_message="effective_at must be a valid ISO 8601 datetime string",
                 )
         except Exception as e:
             return EconomicEngineEvolutionResult(

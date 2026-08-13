@@ -13,11 +13,10 @@ def column_exists(table_name, column_name):
     """Check if a column exists in a table."""
     conn = op.get_bind()
     inspector = sa.inspect(conn)
-    try:
-        columns = [col['name'] for col in inspector.get_columns(table_name)]
-        return column_name in columns
-    except Exception:
+    if not inspector.has_table(table_name):
         return False
+    columns = [col['name'] for col in inspector.get_columns(table_name)]
+    return column_name in columns
 
 
 revision = '9d7f5e6c4b3a'
@@ -29,10 +28,10 @@ depends_on = None
 def upgrade():
     """Add deleted_at column to class_features table."""
     if not column_exists('class_features', 'deleted_at'):
-        op.add_column(
-            'class_features',
-            sa.Column('deleted_at', sa.DateTime(timezone=True), nullable=True)
-        )
+        with op.batch_alter_table('class_features') as batch_op:
+            batch_op.add_column(
+                sa.Column('deleted_at', sa.DateTime(timezone=True), nullable=True)
+            )
         print("✅ Added deleted_at column to class_features")
     else:
         print("⚠️  Column deleted_at already exists on class_features, skipping...")
@@ -41,7 +40,8 @@ def upgrade():
 def downgrade():
     """Remove deleted_at column from class_features table."""
     if column_exists('class_features', 'deleted_at'):
-        op.drop_column('class_features', 'deleted_at')
+        with op.batch_alter_table('class_features') as batch_op:
+            batch_op.drop_column('deleted_at')
         print("❌ Dropped deleted_at column from class_features")
     else:
         print("⚠️  Column deleted_at does not exist on class_features, skipping...")

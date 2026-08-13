@@ -8458,7 +8458,7 @@ def upload_students():
             return redirect(url_for("admin.dashboard"))
 
         if roster_sync:
-            from app.models import Seat, IdentityProfile, ClassEconomy
+            from app.models import Seat, IdentityProfile
             class_id = (getattr(getattr(g, "canonical_context", None), "class_id", None) or "").strip()
             if not class_id:
                 flash("Select a class before syncing roster data.", "error")

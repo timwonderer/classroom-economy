@@ -11,6 +11,8 @@ Tests follow SPEC-TEST-001 patterns:
 - Query service functions within app context
 """
 
+from datetime import datetime, timedelta, timezone
+
 import pytest
 
 from app.extensions import db
@@ -61,21 +63,21 @@ class TestFEATCLASS004FeatureEnablement:
             result = execute_enable_feature(
                 canonical_context=canonical_context,
                 class_id=classroom.class_id,
-                feature="payroll",
+                feature="insurance",
                 economic_version_id=initial_engine.economic_version_id,
-                correlation_id="test-enable-payroll",
+                correlation_id="test-enable-insurance",
             )
 
             # Assert: Success
             assert result.success is True
-            assert result.feature == "payroll"
+            assert result.feature == "insurance"
             assert result.class_id == classroom.class_id
             assert result.effective_at is not None
 
             # Verify: class_features row created with correct engine linkage
             cf = ClassFeature.query.filter_by(
                 class_id=classroom.class_id,
-                feature="payroll",
+                feature="insurance",
             ).first()
             assert cf is not None
             assert cf.deleted_at is None
@@ -120,7 +122,13 @@ class TestFEATCLASS004FeatureEnablement:
             assert len(insurance_rows) == 1, \
                 f"Expected 1 insurance row, got {len(insurance_rows)}"
 
-            row = insurance_rows[0]
+            row = ClassFeature.query.filter_by(
+                class_id=classroom.class_id,
+                feature="insurance",
+                effective_at=datetime.fromisoformat(result.effective_at),
+                deleted_at=None,
+            ).one_or_none()
+            assert row is not None
             assert row.economic_version_id == initial_engine.economic_version_id
             assert row.deleted_at is None
 
@@ -245,6 +253,7 @@ class TestFEATCLASS005EconomicEngineEvolution:
                 new_policy_mode="comfortable",
                 feature_list=["payroll", "rent"],
                 correlation_id="test-policy-transition",
+                idempotency_key="test-policy-transition",
             )
 
             # Assert: Success
@@ -287,11 +296,96 @@ class TestFEATCLASS005EconomicEngineEvolution:
                 class_id=classroom.class_id,
                 new_policy_mode="invalid_mode",
                 feature_list=["payroll"],
+                idempotency_key="test-policy-transition-invalid",
             )
 
             # Assert: Failure
             assert result.success is False
             assert result.error_code == "INVALID_POLICY_MODE"
+
+    def test_transition_policy_consecutive_versions(self, app):
+        """Back-to-back transitions preserve the economic-engine version chain."""
+        classroom = initialize("chemistry_p1", app)
+        with app.app_context():
+            initial_engine = get_initial_economic_engine(classroom.class_id)
+
+            canonical_context = CanonicalContext(
+                user_id=classroom.teacher_user.id,
+                class_id=classroom.class_id,
+                seat_id=classroom.teacher_seat.id,
+                actor_role="teacher",
+            )
+
+            for feature in ["rent"]:
+                result = execute_enable_feature(
+                    canonical_context=canonical_context,
+                    class_id=classroom.class_id,
+                    feature=feature,
+                    economic_version_id=initial_engine.economic_version_id,
+                )
+                assert result.success is True
+
+            first_transition = execute_transition_economic_policy(
+                canonical_context=canonical_context,
+                class_id=classroom.class_id,
+                new_policy_mode="comfortable",
+                feature_list=["payroll", "rent"],
+                correlation_id="test-policy-transition-1",
+                idempotency_key="test-policy-transition-1",
+            )
+            assert first_transition.success is True
+
+            second_transition = execute_transition_economic_policy(
+                canonical_context=canonical_context,
+                class_id=classroom.class_id,
+                new_policy_mode="tight",
+                feature_list=["payroll", "rent"],
+                correlation_id="test-policy-transition-2",
+                idempotency_key="test-policy-transition-2",
+            )
+            assert second_transition.success is True
+            assert second_transition.new_engine_id != first_transition.new_engine_id
+
+            latest_engine = EconomicEngine.query.filter_by(
+                economic_version_id=second_transition.new_engine_id
+            ).first()
+            assert latest_engine is not None
+            assert latest_engine.previous_version_id == first_transition.new_engine_id
+
+    def test_transition_policy_future_effective_at(self, app):
+        """Future-dated transitions persist the requested effective_at timestamp."""
+        classroom = initialize("chemistry_p1", app)
+        with app.app_context():
+            initial_engine = get_initial_economic_engine(classroom.class_id)
+
+            canonical_context = CanonicalContext(
+                user_id=classroom.teacher_user.id,
+                class_id=classroom.class_id,
+                seat_id=classroom.teacher_seat.id,
+                actor_role="teacher",
+            )
+
+            effective_at = (datetime.now(timezone.utc) + timedelta(days=1)).replace(microsecond=0)
+            result = execute_transition_economic_policy(
+                canonical_context=canonical_context,
+                class_id=classroom.class_id,
+                new_policy_mode="comfortable",
+                feature_list=["payroll"],
+                effective_at=effective_at.isoformat(),
+                correlation_id="test-policy-transition-future",
+                idempotency_key="test-policy-transition-future",
+            )
+
+            assert result.success is True
+            assert result.effective_at == effective_at.isoformat()
+
+            feature_row = ClassFeature.query.filter_by(
+                class_id=classroom.class_id,
+                feature="payroll",
+                economic_version_id=result.new_engine_id,
+                effective_at=effective_at,
+            ).one_or_none()
+            assert feature_row is not None
 
     def test_transition_policy_feature_not_enabled(self, app):
         """Test policy transition requires all features to be enabled.
@@ -315,6 +409,7 @@ class TestFEATCLASS005EconomicEngineEvolution:
                 class_id=classroom.class_id,
                 new_policy_mode="comfortable",
                 feature_list=["rent"],  # Never enabled
+                idempotency_key="test-policy-transition-feature-not-enabled",
             )
 
             # Assert: Failure - feature must be enabled before policy transition

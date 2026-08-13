@@ -41,6 +41,7 @@ class TestFEATCLASS001SetTimezone:
                 class_id=classroom.class_id,
                 timezone="America/Los_Angeles",
                 correlation_id="test-set-timezone",
+                idempotency_key="test-set-timezone",
             )
 
             assert result.success is True
@@ -66,6 +67,7 @@ class TestFEATCLASS001SetTimezone:
                 canonical_context=canonical_context,
                 class_id=classroom.class_id,
                 timezone="Not/A/Real/Timezone",
+                idempotency_key="test-invalid-timezone",
             )
 
             assert result.success is False
@@ -86,6 +88,7 @@ class TestFEATCLASS001SetTimezone:
                 canonical_context=canonical_context,
                 class_id=classroom.class_id,
                 timezone="America/New_York",
+                idempotency_key="test-set-timezone-idempotent-1",
             )
             assert result1.success is True
 
@@ -94,6 +97,7 @@ class TestFEATCLASS001SetTimezone:
                 canonical_context=canonical_context,
                 class_id=classroom.class_id,
                 timezone="America/New_York",
+                idempotency_key="test-set-timezone-idempotent-2",
             )
             assert result2.success is True
             assert result2.class_timezone == "America/New_York"
@@ -114,6 +118,7 @@ class TestFEATCLASS001SetTimezone:
                 canonical_context=canonical_context,
                 class_id=classroom.class_id,
                 timezone="America/Chicago",
+                idempotency_key="test-timezone-lock-1",
             )
             assert result1.success is True
 
@@ -122,6 +127,37 @@ class TestFEATCLASS001SetTimezone:
                 canonical_context=canonical_context,
                 class_id=classroom.class_id,
                 timezone="America/Denver",
+                idempotency_key="test-timezone-lock-2",
+            )
+
+            assert result2.success is False
+            assert result2.error_code == "TIMEZONE_ALREADY_SET"
+
+    def test_set_timezone_locked_after_setting_utc(self, app):
+        """Setting UTC explicitly locks the timezone against later changes."""
+        classroom = initialize("chemistry_p1", app)
+        with app.app_context():
+            canonical_context = CanonicalContext(
+                user_id=classroom.teacher_user.id,
+                class_id=classroom.class_id,
+                seat_id=classroom.teacher_seat.id,
+                actor_role="teacher",
+            )
+
+            result1 = execute_set_class_timezone(
+                canonical_context=canonical_context,
+                class_id=classroom.class_id,
+                timezone="UTC",
+                idempotency_key="test-timezone-utc-lock-1",
+            )
+            assert result1.success is True
+            assert result1.class_timezone == "Etc/UTC"
+
+            result2 = execute_set_class_timezone(
+                canonical_context=canonical_context,
+                class_id=classroom.class_id,
+                timezone="America/Denver",
+                idempotency_key="test-timezone-utc-lock-2",
             )
 
             assert result2.success is False
@@ -143,10 +179,35 @@ class TestFEATCLASS001SetTimezone:
                 canonical_context=student_context,
                 class_id=classroom.class_id,
                 timezone="America/Los_Angeles",
+                idempotency_key="test-timezone-not-teacher",
             )
 
             assert result.success is False
             assert result.error_code == "NOT_TEACHER"
+
+    def test_set_timezone_rejects_other_teachers_class(self, app):
+        """Teacher cannot configure timezone for another teacher's class."""
+        classroom = initialize("chemistry_p1", app)
+        other_classroom = initialize("biology_block_a", app)
+        with app.app_context():
+            assert other_classroom.teacher_user.id != classroom.teacher_user.id
+
+            canonical_context = CanonicalContext(
+                user_id=classroom.teacher_user.id,
+                class_id=classroom.class_id,
+                seat_id=classroom.teacher_seat.id,
+                actor_role="teacher",
+            )
+
+            result = execute_set_class_timezone(
+                canonical_context=canonical_context,
+                class_id=other_classroom.class_id,
+                timezone="America/Los_Angeles",
+                idempotency_key="test-timezone-other-class",
+            )
+
+            assert result.success is False
+            assert result.error_code == "CLASS_NOT_FOUND"
 
     def test_set_timezone_wrong_class(self, app):
         """Teacher cannot set timezone on a class they don't own."""
@@ -163,6 +224,7 @@ class TestFEATCLASS001SetTimezone:
                 canonical_context=canonical_context,
                 class_id="00000000-0000-0000-0000-000000000000",  # Non-existent class
                 timezone="America/Los_Angeles",
+                idempotency_key="test-timezone-missing-class",
             )
 
             assert result.success is False
