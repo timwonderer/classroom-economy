@@ -153,7 +153,6 @@ from app.services.view_model_builders import build_identity_profile_view, build_
 from app.services.class_configuration_economic_service import build_economic_view
 from app.services.class_configuration_query_service import (
     get_class_economy,
-    get_class_economy_by_join_code,
     get_all_classes_by_teacher,
     get_teacher_classes_by_ids,
     verify_teacher_owns_class,
@@ -3044,10 +3043,10 @@ def recover():
             return render_template("admin_recover.html", form=form)
 
         # ----------------------------------------------------------------
-        # Step 1: Establish class authority from the first explicit ingress boundary
+        # Step 1: Resolve join_code → class_id at the ingress boundary
         # ----------------------------------------------------------------
-        display_join_code = recovery_pairs[0][0]
-        first_class = get_class_economy_by_join_code(display_join_code)
+        display_join_code = recovery_pairs[0][0].strip().upper()
+        first_class = ClassEconomy.query.filter_by(join_code=display_join_code).first()
         if not first_class:
             current_app.logger.warning(
                 f"Admin recovery: initial join_code '{display_join_code}' not found"

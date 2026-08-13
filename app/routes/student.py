@@ -73,7 +73,6 @@ from app.access import (
 from app.services.attendance_service import get_class_attendance_status
 from app.services.class_configuration_query_service import (
     get_class_economy,
-    get_class_economy_by_join_code,
     get_banking_settings,
 )
 from app.services.entitlement_read_service import (
