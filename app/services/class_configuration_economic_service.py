@@ -14,7 +14,6 @@ from dataclasses import dataclass
 from typing import Any
 
 from app.services.class_configuration_query_service import (
-    calculate_cwi,
     get_payroll_settings,
     get_policy_mode,
     validate_payroll_rate,
@@ -34,15 +33,25 @@ class EconomicView:
     display_context: dict[str, Any]
 
 
+def _compute_cwi_from_payroll(payroll) -> float | None:
+    """Compute CWI directly from an already-fetched PayrollSettings row."""
+    if payroll is None:
+        return None
+    if payroll.expected_weekly_hours is None:
+        return None
+    hourly_rate = float(payroll.pay_rate) * 60
+    return hourly_rate * float(payroll.expected_weekly_hours)
+
+
 def build_economic_view(class_id: str) -> EconomicView:
     """Build presentation-ready economic guidance for a class.
 
     Uses real CWI, payroll settings, and policy mode from the query service.
     Pricing suggestions scale from CWI when available.
     """
-    cwi = calculate_cwi(class_id)
     payroll = get_payroll_settings(class_id)
     policy_mode = get_policy_mode(class_id)
+    cwi = _compute_cwi_from_payroll(payroll)
 
     warnings: list[str] = []
     display_context: dict[str, Any] = {}

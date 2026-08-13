@@ -10,19 +10,15 @@ ClassFeature, or EconomicEngine models directly.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
-from typing import Optional
 
 from app.services.class_configuration_query_service import (
     calculate_cwi,
     get_all_classes_by_teacher,
     get_class_economy,
     get_class_features,
-    get_payroll_settings,
     get_policy_mode,
-    suggest_economic_mode,
-    validate_payroll_rate,
 )
 
 

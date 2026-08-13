@@ -5,8 +5,7 @@ from __future__ import annotations
 import pytest
 
 from app.extensions import db
-from app.models import ClassFeature, EconomicEngine, PayrollSettings
-from app.feats.base import FEATContext
+from app.models import PayrollSettings
 from app.services.class_configuration_view_models import (
     ClassSummaryView,
     ClassConfigurationView,
@@ -143,9 +142,11 @@ class TestFeatureConfigurationView:
     def test_is_enabled_helper(self, app, classroom):
         with app.app_context():
             view = build_feature_configuration_view(classroom.class_id)
-            # At least one feature should be enabled in a provisioned classroom
-            enabled_count = sum(1 for f in view.features if f.enabled)
-            assert enabled_count >= 0  # sanity check structure works
+            # Verify is_enabled returns True for enabled features and False for others
+            for f in view.features:
+                assert view.is_enabled(f.feature) == f.enabled
+            # Unknown feature should return False
+            assert view.is_enabled("nonexistent_feature") is False
 
     def test_feature_state_frozen(self, app, classroom):
         with app.app_context():
