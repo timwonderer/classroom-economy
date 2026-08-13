@@ -3046,7 +3046,8 @@ def recover():
         # Step 1: Establish class authority from the first explicit ingress boundary
         # ----------------------------------------------------------------
         display_join_code = recovery_pairs[0][0]
-        first_class = get_class_economy_by_join_code(display_join_code)
+        normalized_code = display_join_code.strip().upper() if display_join_code else display_join_code
+        first_class = ClassEconomy.query.filter_by(join_code=normalized_code).first()
         if not first_class:
             current_app.logger.warning(
                 f"Admin recovery: initial join_code '{display_join_code}' not found"
