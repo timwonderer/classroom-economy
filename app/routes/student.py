@@ -378,7 +378,7 @@ def _prime_seat_teacher_display_name_cache(student_user_id: int) -> None:
     seat_owner_ids = []
     if class_ids:
         classes = ClassEconomy.query.filter(ClassEconomy.class_id.in_(class_ids)).all()
-        seat_owner_ids = sorted({c.user_id for c in classes if c.user_id})
+        seat_owner_ids = sorted({c.teacher_user_id for c in classes if c.teacher_user_id})
     if not seat_owner_ids:
         clear_teacher_display_name_cache()
         return
@@ -538,9 +538,8 @@ def claim_account():
     4. System finds the matching unclaimed Seat (via claim_first_name_hash / claim_last_name_hash)
     5. Stores seat_id in session; no DB writes until setup_pin_passphrase completes
     """
-    from app.models import ClassEconomy, Seat
-    from app.hash_utils import hash_username_lookup
     from app.utils.join_code import format_join_code
+    from app.feats.identity_feat import resolve_seat_claim
 
     form = StudentClaimAccountForm()
 
@@ -550,75 +549,22 @@ def claim_account():
         last_name = form.last_name.data.strip()
         dedupe_code = (form.dedupe_code.data or "").strip().upper()
 
-        # Resolve the ingress join code to its canonical class_id before any seat lookup.
-        class_row = get_class_economy_by_join_code(display_join_code)
-        if not class_row:
-            current_app.logger.warning(
-                f"Claim attempt failed: No class found for join_code={display_join_code}"
-            )
-            flash("Invalid join code or all seats already claimed. Check with your teacher.", "claim")
-            return redirect(url_for('student.claim_account'))
-
-        class_id = class_row.class_id
-
-        # Find all unclaimed seats with this class_id (unclaimed = user_id IS NULL, DOM-IDEN-002 §VIII)
-        unclaimed_seats = (
-            Seat.query
-            .filter(
-                Seat.class_id == class_id,
-                Seat.user_id.is_(None),
-            )
-            .all()
+        # FEAT-IDEN-001 verification phase: resolve credentials to unclaimed seat.
+        result = resolve_seat_claim(
+            join_code=display_join_code,
+            first_name=first_name,
+            last_name=last_name,
+            dedupe_code=dedupe_code,
         )
 
-        if not unclaimed_seats:
-            current_app.logger.warning(
-                f"Claim attempt failed: No unclaimed seats for class_id={class_id}"
-            )
-            flash("Invalid join code or all seats already claimed. Check with your teacher.", "claim")
+        if not result.success:
+            flash(result.error_message, "claim")
             return redirect(url_for('student.claim_account'))
-
-        claim_first_name_hash = hash_username_lookup(first_name.lower())
-        claim_last_name_hash = hash_username_lookup(last_name.lower())
-
-        matched_seats = []
-        for seat in unclaimed_seats:
-            if seat.claim_first_name_hash == claim_first_name_hash and seat.claim_last_name_hash == claim_last_name_hash:
-                matched_seats.append(seat)
-
-        if not matched_seats:
-            current_app.logger.warning(
-                f"Claim attempt failed for join_code={display_join_code}, "
-                f"first_name={first_name}, last_name={last_name}. "
-                f"No matching seat found."
-            )
-            flash("No matching account found. Please check your join code and credentials.", "claim")
-            return redirect(url_for('student.claim_account'))
-
-        matched_seat = None
-        if len(matched_seats) == 1:
-            matched_seat = matched_seats[0]
-        else:
-            if not dedupe_code:
-                flash(
-                    "Multiple students in this class share that name. Enter your deduplication code from your teacher.",
-                    "claim",
-                )
-                return redirect(url_for('student.claim_account'))
-            dedupe_matches = [
-                seat
-                for seat in matched_seats
-                if (seat.dedupe_code == dedupe_code)
-            ]
-            if len(dedupe_matches) != 1:
-                flash("Invalid deduplication code. Check with your teacher.", "claim")
-                return redirect(url_for('student.claim_account'))
-            matched_seat = dedupe_matches[0]
 
         # Store seat reference in session — no DB writes until setup_pin_passphrase completes.
         # User creation and seat binding happen atomically at the end of the setup flow
         # (DOM-IDEN-002 §VIII, seat.user_id stays NULL until claim is fully complete).
-        session['onboarding_seat_ref'] = matched_seat.id
+        session['onboarding_seat_ref'] = result.seat_id
         session.pop('onboarding_user_ref', None)
         session.pop('generated_username', None)
         session.pop('theme_prompt', None)
@@ -675,6 +621,8 @@ def setup_pin_passphrase():
     if user and user.pin_hash is not None and (user.reset_code is None or not user.reset_code_expires_at or ensure_utc(user.reset_code_expires_at) < utc_now()):
         flash("Invalid or already setup account.", "setup")
         return redirect(url_for('student.login'))
+    from app.feats.identity_feat import activate_student_credentials
+
     form = StudentPinPassphraseForm()
     if form.validate_on_submit():
         pin = form.pin.data
@@ -682,33 +630,22 @@ def setup_pin_passphrase():
         if not pin or not passphrase:
             flash("PIN and passphrase are required.", "setup")
             return redirect(url_for('student.setup_pin_passphrase'))
-        # Atomically write credentials and bind seat (DOM-IDEN-002 §VIII).
-        now = utc_now()
-        if user:
-            # Recovery path: User already exists, update credentials in place.
-            user.username_lookup_hash = hash_username_lookup(username)
-            user.username_hash = hash_username_lookup(username)
-            user.pin_hash = generate_password_hash(pin)
-            user.passphrase_hash = generate_password_hash(passphrase)
-            user.reset_code = None
-            user.reset_code_generated_at = None
-            user.reset_code_expires_at = None
-        else:
-            # New claim path: create canonical student User and bind the existing seat atomically.
-            try:
-                user = create_student_user_for_seat(
-                    seat,
-                    username=username,
-                    pin=pin,
-                    passphrase=passphrase,
-                )
-            except IntegrityError:
-                db.session.rollback()
-                flash("That username is already taken. Please go back and choose another word.", "setup")
+
+        # FEAT-IDEN-002: Activate credentials (handles both new claim and recovery paths).
+        result = activate_student_credentials(
+            seat_id=seat.id,
+            user_id=user.id if user else None,
+            username=username,
+            pin=pin,
+            passphrase=passphrase,
+        )
+
+        if not result.success:
+            flash(result.error_message, "setup")
+            if result.error_code == "USERNAME_TAKEN":
                 return redirect(url_for('student.create_username'))
-        if seat and user:
-            seat.user_id = user.id
-            seat.claimed_at = seat.claimed_at or now
+            return redirect(url_for('student.setup_pin_passphrase'))
+
         # Clear session onboarding keys
         session.pop('onboarding_seat_ref', None)
         session.pop('onboarding_user_ref', None)
@@ -730,10 +667,9 @@ def add_class():
     Each join_code is an independent universe. Credentials entered here
     are matched against the *new* class's own unclaimed roster seat.
     """
-    from app.models import ClassEconomy, Seat, IdentityProfile
+    from app.models import Seat
     from app.utils.join_code import format_join_code
     from app.forms import StudentAddClassForm
-    from app.hash_utils import hash_username_lookup
 
     context = resolve_canonical_context()
     if not context or getattr(context, "actor_role", None) != "student":
@@ -800,82 +736,29 @@ def add_class():
         return url_for(default_endpoint)
 
     if form.validate_on_submit():
+        from app.feats.identity_feat import bind_authenticated_student_to_class
+
         display_join_code = format_join_code(form.join_code.data)
         first_name = (form.first_name.data or "").strip()
         last_name = form.last_name.data.strip()
         dedupe_code = (form.dedupe_code.data or "").strip().upper()
 
-        # Resolve class context
-        class_row = get_class_economy_by_join_code(display_join_code)
-        if not class_row:
-            flash("Invalid join code or all seats already claimed. Check with your teacher.", "danger")
-            return redirect(_get_return_target())
-
-        class_id = class_row.class_id
-
-        # Find all unclaimed seats with this class_id
-        unclaimed_seats = (
-            Seat.query
-            .filter(
-                Seat.class_id == class_id,
-                Seat.claimed_at.is_(None)
-            )
-            .all()
+        # FEAT-IDEN-005: Bind authenticated student to new class.
+        result = bind_authenticated_student_to_class(
+            user_id=context.user_id,
+            join_code=display_join_code,
+            first_name=first_name,
+            last_name=last_name,
+            dedupe_code=dedupe_code,
         )
 
-        if not unclaimed_seats:
-            flash("Invalid join code or all seats already claimed. Check with your teacher.", "danger")
+        if not result.success:
+            category = "warning" if result.error_code == "SEAT_ALREADY_CLAIMED" else "danger"
+            flash(result.error_message, category)
             return redirect(_get_return_target())
 
-        claim_first_name_hash = hash_username_lookup(first_name.lower())
-        claim_last_name_hash = hash_username_lookup(last_name.lower())
-
-        matched_seats = []
-        for seat in unclaimed_seats:
-            if seat.claim_first_name_hash == claim_first_name_hash and seat.claim_last_name_hash == claim_last_name_hash:
-                matched_seats.append(seat)
-
-        if not matched_seats:
-            flash("No matching seat found. Please verify your join code and credentials with your teacher.", "danger")
-            return redirect(_get_return_target())
-
-        matched_seat = None
-        if len(matched_seats) == 1:
-            matched_seat = matched_seats[0]
-        else:
-            if not dedupe_code:
-                flash(
-                    "Multiple students in this class share that name. Enter your deduplication code from your teacher.",
-                    "danger",
-                )
-                return redirect(_get_return_target())
-            dedupe_matches = [
-                seat
-                for seat in matched_seats
-                if (seat.dedupe_code == dedupe_code)
-            ]
-            if len(dedupe_matches) != 1:
-                flash("Invalid deduplication code. Check with your teacher.", "danger")
-                return redirect(_get_return_target())
-            matched_seat = dedupe_matches[0]
-
-        # Check if student already has a Seat in this ClassEconomy (v2 canonical scoping)
-        if matched_seat.user_id is not None:
-            flash(f"This seat is already claimed. Contact your teacher.", "warning")
-            return redirect(_get_return_target())
-
-        # Bind this new seat to the authenticated user (student already has a User row).
-        matched_seat.user_id = student.user_id
-        matched_seat.claimed_at = utc_now()
-
-        try:
-            flash(f"Successfully added to Block {new_block}! You can now access this class from your dashboard.", "success")
-            return redirect(_get_return_target())
-        except Exception as e:
-            db.session.rollback()
-            current_app.logger.error(f"Error adding class for seat {student.id}: {str(e)}")
-            flash("An error occurred while adding the class. Please try again or contact your teacher.", "danger")
-            return redirect(_get_return_target())
+        flash("Successfully added to this class! You can now access it from your dashboard.", "success")
+        return redirect(_get_return_target())
 
     return render_template('student_add_class.html', form=form)
 

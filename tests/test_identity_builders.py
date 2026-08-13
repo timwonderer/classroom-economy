@@ -178,11 +178,11 @@ class TestStudentLayoutContextView:
         view = build_student_layout_context_view(meta)
         assert view.student_display_full_name == "ALEX JOHNSON"
 
-    def test_first_name_is_preserved_case(self):
-        """First name preserves original case for greeting-style display."""
+    def test_first_name_is_uppercased(self):
+        """First name is pre-formatted to uppercase for layout display."""
         meta = self._make_display_metadata(student_first_name="Casey")
         view = build_student_layout_context_view(meta)
-        assert view.student_display_first_name == "Casey"
+        assert view.student_display_first_name == "CASEY"
 
     def test_last_initial_extracted_correctly(self):
         """Last initial is single uppercase character from last name."""
@@ -269,9 +269,9 @@ class TestTOTPSetupView:
         assert len(lines) == 10
         assert lines[0] == codes[0]
 
-    def test_issuer_name_defaults_to_classroom_token_hub(self):
+    def test_issuer_name_defaults_to_classroom_economy_admin(self):
         view = self._sample_view()
-        assert view.issuer_name == "Classroom Token Hub"
+        assert view.issuer_name == "Classroom Economy Admin"
 
     def test_issuer_name_can_be_overridden(self):
         view = build_totp_setup_view(

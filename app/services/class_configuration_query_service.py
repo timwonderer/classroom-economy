@@ -185,6 +185,22 @@ def get_initial_economic_engine(class_id: str) -> Optional[EconomicEngine]:
     return db.session.get(EconomicEngine, class_feature.economic_version_id)
 
 
+def get_economic_engine_by_version(class_id: str, economic_version_id: str) -> Optional[EconomicEngine]:
+    """Get a specific EconomicEngine version by its ID, scoped to a class.
+
+    Args:
+        class_id: The class (UUID)
+        economic_version_id: The engine version UUID
+
+    Returns:
+        EconomicEngine if found and belongs to class, else None
+    """
+    return EconomicEngine.query.filter_by(
+        economic_version_id=economic_version_id,
+        class_id=class_id,
+    ).first()
+
+
 def get_economic_engine_history(class_id: str) -> list[EconomicEngine]:
     """Get all EconomicEngine versions for a class in chronological order.
 
@@ -544,6 +560,93 @@ def verify_teacher_owns_class(class_id: str, teacher_user_id: int) -> Optional[C
         class_id=class_id,
         teacher_user_id=teacher_user_id,
     ).first()
+
+
+def has_personalized_class(teacher_user_id: int) -> bool:
+    """Check if a teacher has at least one class with a display_name set.
+
+    Used for onboarding status checks. Uses an EXISTS-style query
+    (returns first match only) for constant-time performance.
+
+    Args:
+        teacher_user_id: The teacher's User.id
+
+    Returns:
+        True if any class owned by this teacher has a non-null display_name
+    """
+    return ClassEconomy.query.filter(
+        ClassEconomy.teacher_user_id == teacher_user_id,
+        ClassEconomy.display_name.isnot(None),
+    ).first() is not None
+
+
+def get_teacher_class_by_section(teacher_user_id: int, section: str) -> Optional[ClassEconomy]:
+    """Find a teacher's class by section name.
+
+    Used in bulk upload to match CSV rows to existing classes.
+
+    Args:
+        teacher_user_id: The teacher's User.id
+        section: The section/block name to match
+
+    Returns:
+        ClassEconomy if found, None otherwise
+    """
+    return ClassEconomy.query.filter_by(
+        teacher_user_id=teacher_user_id,
+        section=section,
+    ).first()
+
+
+def get_class_by_public_id(class_public_id: str) -> Optional[ClassEconomy]:
+    """Resolve a ClassEconomy from its public-facing ID.
+
+    Used in issue/support flows where class_public_id is the external reference.
+
+    Args:
+        class_public_id: The public-facing class identifier
+
+    Returns:
+        ClassEconomy if found, None otherwise
+    """
+    return ClassEconomy.query.filter_by(class_public_id=class_public_id).first()
+
+
+def get_classes_by_public_ids(class_public_ids: list[str]) -> list[ClassEconomy]:
+    """Bulk-resolve ClassEconomy rows from a list of public IDs.
+
+    Args:
+        class_public_ids: List of public-facing class identifiers
+
+    Returns:
+        List of matching ClassEconomy instances
+    """
+    if not class_public_ids:
+        return []
+    return ClassEconomy.query.filter(
+        ClassEconomy.class_public_id.in_(class_public_ids)
+    ).all()
+
+
+def get_teacher_classes_by_ids(
+    teacher_user_id: int, class_ids: list[str]
+) -> dict[str, ClassEconomy]:
+    """Bulk-fetch ClassEconomy rows owned by a teacher, keyed by class_id.
+
+    Args:
+        teacher_user_id: The teacher's User.id
+        class_ids: List of class_id values to fetch
+
+    Returns:
+        Dict mapping class_id → ClassEconomy for rows owned by this teacher
+    """
+    if not class_ids:
+        return {}
+    rows = ClassEconomy.query.filter(
+        ClassEconomy.teacher_user_id == teacher_user_id,
+        ClassEconomy.class_id.in_(class_ids),
+    ).all()
+    return {row.class_id: row for row in rows}
 
 
 # ============================================================================

@@ -344,7 +344,12 @@ def prevent_class_timezone_mutation(_mapper, _connection, target):
         return
 
     previous_values = [value for value in history.deleted if value is not None]
-    if previous_values and target.class_timezone != previous_values[0]:
+    previous_value = previous_values[0] if previous_values else None
+    if previous_value in {"", "UTC"}:
+        return
+    if previous_value and {previous_value, target.class_timezone} <= {"UTC", "Etc/UTC"}:
+        return
+    if previous_value and target.class_timezone != previous_value:
         raise ValueError("Class timezone is immutable once set.")
 
 
@@ -1550,6 +1555,7 @@ class ClassFeature(db.Model):
     feature = db.Column(db.String(32), nullable=False)
     economic_version_id = db.Column(db.String(36), nullable=True, index=True)
     effective_at = db.Column(db.DateTime(timezone=True), nullable=False, default=utc_now)
+    deleted_at = db.Column(db.DateTime(timezone=True), nullable=True)
     created_at = db.Column(db.DateTime(timezone=True), default=utc_now, nullable=False)
 
     __table_args__ = (
