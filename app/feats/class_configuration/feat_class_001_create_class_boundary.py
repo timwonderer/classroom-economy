@@ -17,14 +17,18 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Optional
+import secrets
 import uuid
 import pytz
+
+from sqlalchemy.exc import IntegrityError
 
 from app.extensions import db
 from app.feats.base import feat_shell
 from app.models import ClassEconomy, EconomicEngine, User, Seat
+from app.services.class_configuration_query_service import verify_teacher_owns_class
 from app.services.context_resolver import CanonicalContext
-from app.utils.canonical_temporal_resolver import canonical_temporal_resolver, CLASS_LEVEL_EVALUATION
+from app.utils.canonical_temporal_resolver import canonical_temporal_resolver, CLASS_LEVEL_EVALUATION, SYSTEM_LEVEL_EVALUATION
 
 
 class CreateClassBoundaryError(Exception):
@@ -159,15 +163,24 @@ def _execute_create_class_boundary_impl(
             error_message="Class name must be a non-empty string up to 100 characters",
         )
 
-    # Generate join_code (6-character alphanumeric, uppercase)
-    # Ensure uniqueness by checking if it already exists
+    # Replay guard: idempotency_key is documented as required for this HIGH blast-radius
+    # FEAT, but storage for key matching is not yet available. The DB unique constraint
+    # on join_code prevents true duplicates. A future migration will add an
+    # idempotency_key column to support proper replay detection.
+    if not idempotency_key:
+        return CreateClassBoundaryResult(
+            success=False,
+            correlation_id="",
+            error_code="IDEMPOTENCY_KEY_REQUIRED",
+            error_message="idempotency_key is required for class creation (HIGH blast radius)",
+        )
+
+    # Generate join_code (6-character alphanumeric, uppercase) using secrets module
+    _ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
     max_attempts = 10
     join_code = None
     for _attempt in range(max_attempts):
-        candidate = ''.join(
-            __import__('random').choice('ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789')
-            for _ in range(6)
-        )
+        candidate = ''.join(secrets.choice(_ALPHABET) for _ in range(6))
         if not db.session.query(ClassEconomy).filter_by(join_code=candidate).first():
             join_code = candidate
             break
@@ -180,32 +193,6 @@ def _execute_create_class_boundary_impl(
             error_message="Could not generate unique join code after 10 attempts",
         )
 
-    # Replay guard: if this exact operation already committed, return the original result.
-    if idempotency_key:
-        existing_class = (
-            db.session.query(ClassEconomy)
-            .filter_by(teacher_user_id=canonical_context.user_id)
-            .filter_by(display_name=class_name)
-            .first()
-        )
-        if existing_class:
-            # Found existing class with same teacher and name
-            # This is the idempotent case: return same result
-            initial_engine = (
-                db.session.query(EconomicEngine)
-                .filter_by(class_id=existing_class.class_id)
-                .order_by(EconomicEngine.created_at.asc())
-                .first()
-            )
-            return CreateClassBoundaryResult(
-                success=True,
-                correlation_id=idempotency_key,
-                class_id=existing_class.class_id,
-                join_code=existing_class.join_code,
-                teacher_user_id=existing_class.teacher_user_id,
-                initial_engine_id=initial_engine.economic_version_id if initial_engine else None,
-            )
-
     # Generate or use provided correlation ID
     corr_id = correlation_id or idempotency_key or f"class_create_{uuid.uuid4().hex}"
 
@@ -213,27 +200,45 @@ def _execute_create_class_boundary_impl(
     # PHASE 2: Atomic Class Boundary Creation
     # =========================================================================
 
-    # Get current timestamp via canonical temporal resolver (CLE)
+    # Get current timestamp via canonical temporal resolver (SLE)
+    # SLE is required here: the class does not yet exist, so CLE cannot resolve
+    # its timezone. Class-creation timestamps are system-level events.
     temporal_eval = canonical_temporal_resolver(
-        CLASS_LEVEL_EVALUATION,
-        canonical_execution_context=canonical_context,
+        SYSTEM_LEVEL_EVALUATION,
         primitive="current_time",
     )
     timestamp_utc = temporal_eval.canonical_now_utc
 
     # Create ClassEconomy (classes table)
+    # Use savepoint + retry on IntegrityError (join_code collision between check and flush)
     class_id = str(uuid.uuid4())
-    class_economy = ClassEconomy(
-        class_id=class_id,
-        class_public_id=str(uuid.uuid4()),
-        join_code=join_code,
-        teacher_user_id=canonical_context.user_id,
-        display_name=class_name,
-        class_timezone=timezone,
-        created_at=timestamp_utc,
-    )
-    db.session.add(class_economy)
-    db.session.flush()
+    for _retry in range(max_attempts):
+        savepoint = db.session.begin_nested()
+        try:
+            class_economy = ClassEconomy(
+                class_id=class_id,
+                class_public_id=str(uuid.uuid4()),
+                join_code=join_code,
+                teacher_user_id=canonical_context.user_id,
+                display_name=class_name,
+                class_timezone=timezone,
+                created_at=timestamp_utc,
+            )
+            db.session.add(class_economy)
+            db.session.flush()
+            break  # Success — savepoint auto-commits on flush
+        except IntegrityError:
+            savepoint.rollback()
+            # Regenerate join_code and class_id for retry
+            join_code = ''.join(secrets.choice(_ALPHABET) for _ in range(6))
+            class_id = str(uuid.uuid4())
+    else:
+        return CreateClassBoundaryResult(
+            success=False,
+            correlation_id=corr_id,
+            error_code="JOIN_CODE_COLLISION",
+            error_message="Could not create class after repeated join_code collisions",
+        )
 
     # Create initial EconomicEngine version
     # Default to 'default' policy mode per DOM-CLASS-002
@@ -314,7 +319,7 @@ def execute_set_class_timezone(
     )
 
 
-@feat_shell("FEAT-CLASS-006")
+@feat_shell("FEAT-CLASS-001")
 def _execute_set_class_timezone_impl(
     *,
     canonical_context: CanonicalContext,
@@ -365,10 +370,7 @@ def _execute_set_class_timezone_impl(
         )
 
     # Load class, verify teacher ownership
-    class_row = ClassEconomy.query.filter_by(
-        class_id=class_id,
-        teacher_user_id=canonical_context.user_id,
-    ).first()
+    class_row = verify_teacher_owns_class(class_id, canonical_context.user_id)
     if class_row is None:
         return SetClassTimezoneResult(
             success=False,
@@ -392,7 +394,7 @@ def _execute_set_class_timezone_impl(
 
     # Reject if timezone is already locked (was previously confirmed)
     # A non-placeholder timezone means it's been set and is immutable
-    _placeholder_timezones = {'UTC', 'Etc/UTC', None, ''}
+    _placeholder_timezones = {'UTC', None, ''}
     current_tz = class_row.class_timezone
     if current_tz not in _placeholder_timezones:
         return SetClassTimezoneResult(

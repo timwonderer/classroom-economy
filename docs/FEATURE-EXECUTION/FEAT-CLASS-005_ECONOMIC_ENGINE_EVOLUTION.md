@@ -99,10 +99,17 @@ Primary Key: `economic_version_id` (UUID)
 
 **Failure contract:**
 - `INVALID_POLICY_MODE`: new_policy_mode not in allowed values
-- `INVALID_CLASS`: class_id not found
+- `CLASS_NOT_FOUND`: class_id not found
 - `FEATURE_NOT_ENABLED`: One or more features in feature_list not currently enabled
 - `INVALID_TEMPORAL_ORDER`: effective_at violates temporal constraints
-- `DUPLICATE_STATE`: State row already exists at same effective_at
+- `INVALID_EFFECTIVE_AT`: effective_at is not a valid ISO 8601 datetime
+- `NO_CURRENT_ENGINE`: No economic engine version found for class
+- `INVALID_CONTEXT`: Missing canonical context
+- `CLASS_SCOPE_MISMATCH`: class_id does not match canonical context
+- `UNAUTHORIZED`: Actor is not a teacher
+- `SEAT_NOT_FOUND`: Teacher seat not found
+- `INVALID_FEATURE`: Feature name not in valid feature set
+- `INVALID_FEATURE_LIST`: feature_list must be a non-empty list
 
 ---
 

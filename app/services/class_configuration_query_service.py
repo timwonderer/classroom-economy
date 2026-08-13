@@ -185,6 +185,22 @@ def get_initial_economic_engine(class_id: str) -> Optional[EconomicEngine]:
     return db.session.get(EconomicEngine, class_feature.economic_version_id)
 
 
+def get_economic_engine_by_version(class_id: str, economic_version_id: str) -> Optional[EconomicEngine]:
+    """Get a specific EconomicEngine version by its ID, scoped to a class.
+
+    Args:
+        class_id: The class (UUID)
+        economic_version_id: The engine version UUID
+
+    Returns:
+        EconomicEngine if found and belongs to class, else None
+    """
+    return EconomicEngine.query.filter_by(
+        economic_version_id=economic_version_id,
+        class_id=class_id,
+    ).first()
+
+
 def get_economic_engine_history(class_id: str) -> list[EconomicEngine]:
     """Get all EconomicEngine versions for a class in chronological order.
 
@@ -544,6 +560,24 @@ def verify_teacher_owns_class(class_id: str, teacher_user_id: int) -> Optional[C
         class_id=class_id,
         teacher_user_id=teacher_user_id,
     ).first()
+
+
+def has_personalized_class(teacher_user_id: int) -> bool:
+    """Check if a teacher has at least one class with a display_name set.
+
+    Used for onboarding status checks. Uses an EXISTS-style query
+    (returns first match only) for constant-time performance.
+
+    Args:
+        teacher_user_id: The teacher's User.id
+
+    Returns:
+        True if any class owned by this teacher has a non-null display_name
+    """
+    return ClassEconomy.query.filter(
+        ClassEconomy.teacher_user_id == teacher_user_id,
+        ClassEconomy.display_name.isnot(None),
+    ).first() is not None
 
 
 def get_teacher_class_by_section(teacher_user_id: int, section: str) -> Optional[ClassEconomy]:

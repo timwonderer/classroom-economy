@@ -161,6 +161,7 @@ from app.services.class_configuration_query_service import (
     get_rent_settings,
     get_banking_settings,
     get_hall_pass_settings,
+    has_personalized_class,
 )
 from app.services.admin_identity_service import delete_admin_account_rows
 from app.services.admin_settings_service import create_rent_settings, create_banking_settings
@@ -627,7 +628,10 @@ def get_admin_feature_join_code_options(feature_name: str, canonical_context=Non
         return []
     resolved_admin_user_id = canonical_context.user_id
 
-    classes = get_all_classes_by_teacher(resolved_admin_user_id)
+    classes = sorted(
+        get_all_classes_by_teacher(resolved_admin_user_id),
+        key=lambda c: (c.display_name or "", c.class_id),
+    )
     options: list[dict[str, str]] = []
     seen_class_ids: set[str] = set()
     for cls in classes:
@@ -1791,6 +1795,7 @@ def _remove_pending_class_timezone_confirmation(class_id: str):
 def _resolve_student_add_class_context(canonical_context, *, block_select: str, section: str | None) -> dict | None:
     """Resolve the target class for add-student flows, creating one when requested."""
     from app.feats.class_configuration import execute_create_class_boundary
+    import uuid as _uuid
 
     if canonical_context is None or not getattr(canonical_context, "user_id", None):
         return None
@@ -1805,6 +1810,7 @@ def _resolve_student_add_class_context(canonical_context, *, block_select: str, 
     result = execute_create_class_boundary(
         canonical_context=canonical_context,
         class_name=class_label,
+        idempotency_key=f"feat:class:create:{canonical_context.user_id}:{_uuid.uuid4().hex}",
     )
     if not result.success:
         current_app.logger.error(
@@ -8582,20 +8588,24 @@ def upload_students():
         errors = 0
         duplicated = 0
 
-        # Track join codes for each block
         from app.models import Seat, IdentityProfile
-        from app.utils.join_code import generate_join_code
         from app.hash_utils import hash_username_lookup
         import random
         import string
 
-        # Get or generate join codes for each block in this upload
-        join_codes_by_block = {}
-        class_ids_by_block = {}
-        created_class_rows_by_block = {}
-        existing_rows_by_public_id = {}
-        requested_public_ids = set()
-        roster_rows = []
+        # v2: All CSV uploads target the current canonical class.
+        # block/period is display metadata only (INV-CORE) — never a scoping key.
+        class_id = (getattr(g.canonical_context, "class_id", None) or "").strip()
+        if not class_id:
+            flash("Select a class before uploading roster data.", "error")
+            return redirect(url_for("admin.students"))
+
+        class_row = verify_teacher_owns_class(class_id, user_id)
+        if not class_row:
+            flash("Class not found or you do not own it.", "error")
+            return redirect(url_for("admin.students"))
+
+        join_code = get_display_join_code(class_id)
 
         # Keep track of matched DB seats during this upload to avoid recreating them
         matched_seats = set()
@@ -8603,62 +8613,13 @@ def upload_students():
 
         for row in csv_input:
             try:
-                actor_public_id = (row.get('actor_public_id') or row.get('Actor Public ID') or '').strip()
                 first_name = (row.get('first_name') or row.get('First Name') or '').strip()
                 last_name = (row.get('last_name') or row.get('Last Name') or '').strip()
-                additional_notes = (row.get('notes') or row.get('Notes') or '').strip()
 
-                if not first_name and not last_name and not actor_public_id:
+                if not first_name and not last_name:
                     continue
                 if not first_name or not last_name:
                     raise ValueError("Missing required fields.")
-
-                roster_rows.append({
-                    "actor_public_id": actor_public_id or None,
-                    "first_name": first_name,
-                    "last_name": last_name,
-                    "notes": additional_notes or None,
-                })
-                if actor_public_id:
-                    requested_public_ids.add(actor_public_id)
-                    existing_rows_by_public_id[actor_public_id] = roster_rows[-1]
-
-                # Generate initials
-                first_initial = first_name[0].upper()
-                last_initial = last_name[0].upper()
-
-                # Get or generate join code for this teacher-block combination
-                if block not in join_codes_by_block:
-                    # Check if this teacher already has a class for this block
-                    if not force_new_class:
-                        from app.services.class_configuration_query_service import get_teacher_class_by_section
-                        existing_class = get_teacher_class_by_section(user_id, block)
-
-                        if existing_class:
-                            # Reuse existing join code and class_id
-                            join_codes_by_block[block] = existing_class.join_code
-                            class_ids_by_block[block] = existing_class.class_id
-                        else:
-                            raise ValueError(
-                                "Select an existing class before uploading roster data, or use the onboarding page to create a new class."
-                            )
-
-                if block not in class_ids_by_block:
-                    # force_new_class path: create via FEAT-CLASS-001
-                    from app.feats.class_configuration import execute_create_class_boundary
-                    create_result = execute_create_class_boundary(
-                        canonical_context=g.canonical_context,
-                        class_name=class_name or block,
-                    )
-                    if not create_result.success:
-                        raise ValueError(f"Failed to create class for block {block}: {create_result.error_message}")
-                    class_ids_by_block[block] = create_result.class_id
-                    join_codes_by_block[block] = create_result.join_code
-                    class_row = get_class_economy(create_result.class_id)
-                    created_class_rows_by_block[block] = class_row
-
-                join_code = join_codes_by_block[block]
-                class_id = class_ids_by_block[block]
 
                 claim_first_name_hash = hash_username_lookup(first_name.lower())
                 claim_last_name_hash = hash_username_lookup(last_name.lower())
@@ -8741,22 +8702,15 @@ def upload_students():
                 current_app.logger.error(f"Error processing row {row}: {e}")
                 errors += 1
 
-        for class_row in created_class_rows_by_block.values():
-            _queue_pending_class_timezone_confirmation(class_row)
-
-        # Build success message with join codes
+        # Build success message
         success_msg = f"{added_count} roster seats created successfully"
         if errors > 0:
             success_msg += f"\n{errors} rows could not be processed"
         if duplicated > 0:
             success_msg += f"\n{duplicated} duplicate seats skipped"
-
-        # Display join codes for each block
-        if join_codes_by_block:
-            success_msg += "\n\nJoin Codes by Period:\n"
-            for period, code in sorted(join_codes_by_block.items()):
-                success_msg += f"Period {period}: {code}\n"
-            success_msg += "\nShare these codes with your students so they can claim their accounts."
+        if join_code:
+            success_msg += f"\n\nJoin Code: {join_code}"
+            success_msg += "\nShare this code with your students so they can claim their accounts."
 
         flash(success_msg, "admin_success")
 
@@ -10247,10 +10201,7 @@ def onboarding_status():
             'hall_pass': HallPassSettings.query.filter(
                 HallPassSettings.class_id.in_(sa.select(class_ids_subq))
             ).first() is not None,
-            'personalization': ClassEconomy.query.filter(
-                ClassEconomy.teacher_user_id == user_id,
-                ClassEconomy.display_name.isnot(None),
-            ).first() is not None,
+            'personalization': has_personalized_class(user_id),
             'passkey': admin_has_passkeys(user_id),
         }
 

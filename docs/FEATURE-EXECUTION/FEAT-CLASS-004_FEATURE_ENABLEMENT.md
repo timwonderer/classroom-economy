@@ -96,10 +96,16 @@ Primary Key: `(class_id, feature, effective_at)`
 - Soft-deleted prior versions remain in table (audit trail)
 
 **Failure contract:**
-- `DUPLICATE_STATE`: Row with same (class_id, feature, effective_at) already exists
-- `INVALID_ECONOMIC_VERSION`: economic_version_id not found
-- `INVALID_CLASS`: class_id not found
+- `FEATURE_ALREADY_ENABLED`: Feature is already active for this class (disable first)
+- `ENGINE_VERSION_NOT_FOUND`: economic_version_id not found for class
+- `CLASS_NOT_FOUND`: class_id not found
 - `INVALID_TEMPORAL_ORDER`: effective_at violates temporal constraints
+- `INVALID_EFFECTIVE_AT`: effective_at is not a valid ISO 8601 datetime
+- `INVALID_CONTEXT`: Missing canonical context (class_id, seat_id)
+- `CLASS_SCOPE_MISMATCH`: class_id does not match canonical context
+- `UNAUTHORIZED`: Actor is not a teacher
+- `SEAT_NOT_FOUND`: Teacher seat not found or not in class scope
+- `INVALID_FEATURE`: Feature name not in valid feature set
 
 ### V.2 Disable Feature
 
@@ -122,7 +128,14 @@ Primary Key: `(class_id, feature, effective_at)`
 
 **Failure contract:**
 - `FEATURE_NOT_ENABLED`: No active version found
-- `INVALID_CLASS`: class_id not found
+- `CLASS_NOT_FOUND`: class_id not found
+- `INVALID_TEMPORAL_ORDER`: effective_at violates temporal constraints
+- `INVALID_EFFECTIVE_AT`: effective_at is not a valid ISO 8601 datetime
+- `INVALID_CONTEXT`: Missing canonical context
+- `CLASS_SCOPE_MISMATCH`: class_id does not match canonical context
+- `UNAUTHORIZED`: Actor is not a teacher
+- `SEAT_NOT_FOUND`: Teacher seat not found
+- `INVALID_FEATURE`: Feature name not in valid feature set
 
 ---
 

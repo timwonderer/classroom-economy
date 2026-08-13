@@ -116,8 +116,8 @@
 
 | Route | Path | HTTP | Tables | Current State | Required FEAT | View Model Needed | Status |
 |---|---|---|---|---|---|---|---|
-| `add_class` | `/student/add-class` | GET,POST | ClassEconomy | Direct `.query.filter_by(join_code=...)` | FEAT-CLASS-001 (link seat to class) + IDEN | ClassSelectionView | 🔴 NEEDS_REWIRE |
-| `claim_account` | `/student/claim-account` | GET,POST | ClassEconomy | Direct `.query` (join_code resolution) | FEAT-CLASS-001 (get class by join_code) + IDEN | AccountClaimView | 🔴 NEEDS_REWIRE |
+| `add_class` | `/student/add-class` | GET,POST | ClassEconomy | Direct `.query.filter_by(join_code=...)` | Identity domain (join-code ingress → DOM-IDEN-001) | ClassSelectionView | 🔴 NEEDS_REWIRE (Identity domain) |
+| `claim_account` | `/student/claim-account` | GET,POST | ClassEconomy | Direct `.query` (join_code resolution) | Identity domain (join-code ingress → DOM-IDEN-001) | AccountClaimView | 🔴 NEEDS_REWIRE (Identity domain) |
 | `purchase_insurance` | `/student/insurance/purchase/<int:policy_id>` | POST | BankingSettings | Direct query for banking settings | Read from class_configuration_query_service | InsurancePurchaseView | 🔴 NEEDS_REWIRE |
 
 ### READS (3 routes) — Verify calling service layer

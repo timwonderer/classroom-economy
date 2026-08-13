@@ -17,6 +17,7 @@ Natural idempotency on (class_id, feature, effective_at) primary key tuple in cl
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import datetime as dt, timezone as tz
 from typing import Optional
 import uuid
 
@@ -26,7 +27,7 @@ from app.models import ClassEconomy, EconomicEngine, ClassFeature, Seat
 from app.services.context_resolver import CanonicalContext
 from app.services.class_configuration_query_service import (
     get_class_economy,
-    get_initial_economic_engine,
+    get_economic_engine_history,
     is_feature_enabled,
 )
 from app.utils.canonical_temporal_resolver import canonical_temporal_resolver, CLASS_LEVEL_EVALUATION
@@ -223,8 +224,18 @@ def _execute_transition_economic_policy_impl(
                     error_code="INVALID_TEMPORAL_ORDER",
                     error_message=f"effective_at cannot be in the past",
                 )
-            # If not earlier, use the effective_at; resolver will normalize it
-            effective_at_ts = effective_at
+            # Parse effective_at into a proper datetime
+            try:
+                effective_at_ts = dt.fromisoformat(effective_at)
+                if effective_at_ts.tzinfo is None:
+                    effective_at_ts = effective_at_ts.replace(tzinfo=tz.utc)
+            except ValueError:
+                return EconomicEngineEvolutionResult(
+                    success=False,
+                    correlation_id="",
+                    error_code="INVALID_EFFECTIVE_AT",
+                    error_message="effective_at must be a valid ISO 8601 datetime string",
+                )
         except Exception as e:
             return EconomicEngineEvolutionResult(
                 success=False,
@@ -235,8 +246,8 @@ def _execute_transition_economic_policy_impl(
     else:
         effective_at_ts = timestamp_utc
 
-    # Idempotency check: look for existing class_features rows at same effective_at for all features
-    all_exist = True
+    # Idempotency check: identify which features already have rows at this effective_at
+    missing_features = []
     for feature in feature_list:
         existing_row = db.session.query(ClassFeature).filter_by(
             class_id=class_id,
@@ -244,26 +255,26 @@ def _execute_transition_economic_policy_impl(
             effective_at=effective_at_ts,
         ).first()
         if not existing_row:
-            all_exist = False
-            break
+            missing_features.append(feature)
 
-    if all_exist:
-        # All feature rows already exist at this effective_at: return idempotent result
+    if not missing_features:
+        # All feature rows already exist: full idempotent return
         new_engine = db.session.query(EconomicEngine).filter_by(
             class_id=class_id,
         ).order_by(EconomicEngine.created_at.desc()).first()
         return EconomicEngineEvolutionResult(
             success=True,
-            correlation_id=idempotency_key or f"engine_evolution_{uuid.uuid4().hex}",
+            correlation_id=idempotency_key or f"engine_evolution_idempotent_{class_id}",
             class_id=class_id,
             new_engine_id=new_engine.economic_version_id if new_engine else None,
             new_policy_mode=new_policy_mode,
             features_updated=sorted(feature_list),
-            effective_at=effective_at_ts.isoformat(),
+            effective_at=effective_at_ts.isoformat() if hasattr(effective_at_ts, 'isoformat') else effective_at_ts,
         )
 
-    # Get current engine version
-    current_engine = get_initial_economic_engine(class_id)
+    # Get current engine version (most recent first)
+    engine_history = get_economic_engine_history(class_id)
+    current_engine = engine_history[0] if engine_history else None
     if not current_engine:
         return EconomicEngineEvolutionResult(
             success=False,
@@ -291,8 +302,8 @@ def _execute_transition_economic_policy_impl(
     db.session.add(new_engine)
     db.session.flush()
 
-    # Create class_features rows linking all affected features to new engine version
-    for feature in feature_list:
+    # Create class_features rows only for features not yet persisted (partial replay safe)
+    for feature in missing_features:
         class_feature = ClassFeature(
             class_id=class_id,
             feature=feature,

@@ -16,16 +16,17 @@ Natural idempotency on (class_id, feature, effective_at) primary key tuple
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime as dt, timezone as tz
 from typing import Optional
 import uuid
 
 from app.extensions import db
 from app.feats.base import feat_shell
-from app.models import ClassEconomy, EconomicEngine, ClassFeature, Seat
+from app.models import ClassEconomy, ClassFeature, Seat
 from app.services.context_resolver import CanonicalContext
 from app.services.class_configuration_query_service import (
     get_class_economy,
-    get_initial_economic_engine,
+    get_economic_engine_by_version,
     is_feature_enabled,
 )
 from app.utils.canonical_temporal_resolver import canonical_temporal_resolver, CLASS_LEVEL_EVALUATION
@@ -201,6 +202,15 @@ def _execute_enable_feature_impl(
             error_message=f"Class {class_id} not found",
         )
 
+    # Check if feature is already enabled — reject duplicate enablement
+    if is_feature_enabled(class_id, feature):
+        return FeatureEnablementResult(
+            success=False,
+            correlation_id="",
+            error_code="FEATURE_ALREADY_ENABLED",
+            error_message=f"Feature '{feature}' is already enabled for class {class_id}. Disable first before re-enabling.",
+        )
+
     # Validate feature name
     valid_features = ClassFeature.feature_names()
     if feature not in valid_features:
@@ -212,10 +222,7 @@ def _execute_enable_feature_impl(
         )
 
     # Validate economic_version_id exists and belongs to this class
-    engine_version = db.session.query(EconomicEngine).filter_by(
-        economic_version_id=economic_version_id,
-        class_id=class_id,
-    ).first()
+    engine_version = get_economic_engine_by_version(class_id, economic_version_id)
     if not engine_version:
         return FeatureEnablementResult(
             success=False,
@@ -252,8 +259,18 @@ def _execute_enable_feature_impl(
                     error_code="INVALID_TEMPORAL_ORDER",
                     error_message=f"effective_at cannot be in the past",
                 )
-            # If not earlier, use the effective_at; resolver will normalize it
-            effective_at_ts = effective_at
+            # If not earlier, parse to datetime for consistent type handling
+            try:
+                effective_at_ts = dt.fromisoformat(effective_at)
+                if effective_at_ts.tzinfo is None:
+                    effective_at_ts = effective_at_ts.replace(tzinfo=tz.utc)
+            except ValueError:
+                return FeatureEnablementResult(
+                    success=False,
+                    correlation_id="",
+                    error_code="INVALID_EFFECTIVE_AT",
+                    error_message="effective_at must be a valid ISO 8601 datetime string",
+                )
         except Exception as e:
             return FeatureEnablementResult(
                 success=False,
@@ -274,7 +291,7 @@ def _execute_enable_feature_impl(
         # Row already exists: return idempotent result
         return FeatureEnablementResult(
             success=True,
-            correlation_id=idempotency_key or f"enable_feature_{uuid.uuid4().hex}",
+            correlation_id=idempotency_key or correlation_id or f"enable_feature_idempotent_{class_id}_{feature}",
             class_id=class_id,
             feature=feature,
             effective_at=effective_at_ts.isoformat(),
@@ -422,8 +439,18 @@ def _execute_disable_feature_impl(
                     error_code="INVALID_TEMPORAL_ORDER",
                     error_message=f"effective_at cannot be in the past",
                 )
-            # If not earlier, use the effective_at; resolver will normalize it
-            effective_at_ts = effective_at
+            # If not earlier, parse to datetime for consistent type handling
+            try:
+                effective_at_ts = dt.fromisoformat(effective_at)
+                if effective_at_ts.tzinfo is None:
+                    effective_at_ts = effective_at_ts.replace(tzinfo=tz.utc)
+            except ValueError:
+                return FeatureDisablementResult(
+                    success=False,
+                    correlation_id="",
+                    error_code="INVALID_EFFECTIVE_AT",
+                    error_message="effective_at must be a valid ISO 8601 datetime string",
+                )
         except Exception as e:
             return FeatureDisablementResult(
                 success=False,
@@ -445,7 +472,7 @@ def _execute_disable_feature_impl(
         # Disablement already exists at this effective_at: return idempotent result
         return FeatureDisablementResult(
             success=True,
-            correlation_id=idempotency_key or f"disable_feature_{uuid.uuid4().hex}",
+            correlation_id=idempotency_key or correlation_id or f"disable_feature_idempotent_{class_id}_{feature}",
             class_id=class_id,
             feature=feature,
             effective_at=effective_at_ts.isoformat(),
