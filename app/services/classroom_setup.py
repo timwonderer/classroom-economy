@@ -82,7 +82,7 @@ def create_teacher_account_with_class(
     """
     teacher = create_teacher(username, totp_secret=totp_secret)
     existing_class = ClassEconomy.query.filter_by(
-        user_id=teacher.id,
+        teacher_user_id=teacher.id,
         join_code=join_code,
     ).first()
     if existing_class is None:
