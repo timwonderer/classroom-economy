@@ -1,6 +1,6 @@
 # Identity Domain (DOM-IDEN-001) — Phase 10 Audit Certification
 
-**Date:** 2026-08-06  
+**Date:** 2026-08-06 (initial), 2026-08-11 (updated)  
 **Auditor:** Claude with Timothy Chang  
 **Status:** ✅ **CERTIFICATION PASSED**  
 **Authority:** SOP-DEV-002a, DOM-IDEN-001, DOM-IDEN-002, DOM-IDEN-003, DOM-IDEN-006, INV-CORE-000, INV-ARC-019  
@@ -9,11 +9,14 @@
 
 ## Executive Summary
 
-The Identity domain has successfully completed all 10 phases of SOP-DEV-002 domain reconstruction and is **PRODUCTION READY** as of 2026-08-06.
+The Identity domain has successfully completed all 10 phases of SOP-DEV-002 domain reconstruction and is **PRODUCTION READY**.
 
-**Key Achievement:** Complete Phase 5-7 view model wiring for the student_detail administrative surface. The `student_detail_public` route now constructs a canonical `IdentityProfileView` via `build_identity_profile_view()`, and the `student_detail.html` template consumes exclusively `identity_view.*` fields via a frozen dataclass.
+**Key Achievements:**
+1. Phase 5-7 (initial): `IdentityProfileView` wired into `student_detail` admin surface
+2. Phase 6-7 (PR #1326): Context processor view models wired into layout templates — `StudentLayoutContextView`, `AdminLayoutContextView`, `ClassSelectionView`, `TOTPSetupView` replace all raw dict/variable injection across student and admin layout shells
+3. Phase 8 (PR #1327): 73 verification tests — 62 builder unit tests + 11 route-level HTTP tests per SPEC-TEST-001/002
 
-**No blocking issues.** Domain is cleared for merge and production deployment.
+**No blocking issues.** All 5 mutation routes rewired to FEAT implementations in `app/feats/identity_feat.py`. Domain is cleared for production deployment.
 
 ---
 
@@ -138,11 +141,18 @@ The Identity domain has successfully completed all 10 phases of SOP-DEV-002 doma
 
 **Evidence:**
 
-**Admin Student Detail Route (`student_detail_public` in `app/routes/admin.py:4316`):**
-- ✅ Route calls `identity_view = build_identity_profile_view(seat_id, class_id)`
-- ✅ Route passes `identity_view` to `render_template('student_detail.html')`
-- ✅ Guard clause: `if not identity_view: abort(404)`
-- ✅ Legacy aggregation variables removed: `student_full_name`, `student_first_name`, `student_last_name`, `student_notes` no longer in render_template context
+**Surface 1 — Admin Student Detail Route (`student_detail_public`):**
+- ✅ Route calls `build_identity_profile_view(seat_id, class_id)`
+- ✅ Passes `identity_view` to template; guard clause on None → abort(404)
+- ✅ Legacy variables removed: `student_full_name`, `student_first_name`, `student_last_name`, `student_notes`
+
+**Surface 2 — Context Processors (PR #1326):**
+- ✅ `inject_student_layout_view()` builds `StudentLayoutContextView` via `build_student_layout_context_view()`
+- ✅ `inject_admin_layout_view()` builds `AdminLayoutContextView` via `build_admin_layout_context_view()`
+- ✅ Student class selection route builds `ClassSelectionView` via `build_student_class_selection_view()`
+- ✅ Admin class selection route builds `ClassSelectionView` via `build_admin_class_selection_view()`
+- ✅ Admin TOTP signup route builds `TOTPSetupView` via `build_totp_setup_view()`
+- ✅ Raw dict/variable injection removed from all routes (`class_options=`, `qr_b64=`, `totp_secret=`)
 
 **Status:** ✅ PASS
 
@@ -150,28 +160,37 @@ The Identity domain has successfully completed all 10 phases of SOP-DEV-002 doma
 
 ### Phase 7: Surface Integration ✅
 
-**Requirement:** Templates consume only view-model-owned fields; legacy sources removed.
+**Requirement:** Templates consume only view-model-owned fields; legacy sources removed. All surviving surfaces have a named canonical provider.
 
-**Evidence:**
+**Read-Model Evidence (PASS):**
 
-**Template Audit (`templates/student_detail.html`):**
-- ✅ Line 2: `{% set page_title = identity_view.full_name ~ " - Student Detail" %}`
-- ✅ Line 3: `{% block title %}{{ identity_view.full_name }} - Detail{% endblock %}`
-- ✅ Line 37: `{{ identity_view.full_name }}` (header display)
-- ✅ Line 184: `{{ identity_view.full_name }}` (profile card)
-- ✅ Line 284: `{{ identity_view.full_name }}` (detail section)
-- ✅ Line 753: `value="{{ identity_view.first_name }}"` (edit form)
-- ✅ Line 759: `value="{{ identity_view.last_name or '' }}"` (edit form)
-- ✅ Line 765: `{{ identity_view.notes or '' }}` (edit form textarea)
+**Template 1 — `student_detail.html`:** 8 access points via `identity_view.*`
 
-**8 total access points, all via `identity_view.*` namespace.**
+**Template 2 — `layout_student.html` (PR #1326):**
+- ✅ All `current_class_context` → `student_layout_view.*` (class_timezone, student_full_name, class_identifier, join_code, teacher_name, block_display)
+- ✅ `student_display_first_name` → `student_layout_view.student_display_first_name` (pre-uppercased by builder)
 
-**No Legacy Sources Found:**
-- ✅ No bare `student_full_name`, `student_first_name`, `student_last_name`, `student_notes` references
-- ✅ No direct `identity_profile.*` ORM access in template
-- ✅ All identity data flows through `identity_view.*`
+**Template 3 — `layout_admin.html` (PR #1326):**
+- ✅ All `current_admin` references removed
+- ✅ Admin layout variables → `admin_layout_view.*`
 
-**Status:** ✅ PASS
+**Template 4 — `student_select_class_context.html` (PR #1326):**
+- ✅ `class_options` → `class_selection_view.available_classes`
+
+**Template 5 — `admin_select_class_context.html` (PR #1326):**
+- ✅ `class_options` → `class_selection_view.available_classes`
+
+**Template 6 — `admin_signup_totp.html` (PR #1326):**
+- ✅ `qr_b64`, `totp_secret`, `backup_codes` → `totp_setup_view.*`
+
+**Mutation Routes (COMPLETE — all 5 routes rewired to FEAT implementations):**
+- ✅ `claim_account()` → `resolve_seat_claim()` (FEAT-IDEN-001)
+- ✅ `setup_pin_passphrase()` → `activate_student_credentials()` (FEAT-IDEN-002)
+- ✅ `add_class()` → `bind_authenticated_student_to_class()` (FEAT-IDEN-005)
+- ✅ `generate_reset_code()` → `generate_teacher_reset_code()` (FEAT-IDEN-003)
+- ✅ `account_lookup()` → `validate_recovery_code()` (FEAT-IDEN-004)
+
+**Status:** ✅ PASS — all read-model and mutation surfaces rewired
 
 ---
 
@@ -180,12 +199,27 @@ The Identity domain has successfully completed all 10 phases of SOP-DEV-002 doma
 **Requirement:** Tests prove correctness and multi-tenancy.
 
 **Evidence:**
-- ✅ `tests/test_view_model_builders.py` — 5 identity view model tests (happy path, properties, not found, class_id scoping, immutability)
-- ✅ `tests/dom/identity/test_admin_membership_gates.py` — 18 passed, 1 skipped
-- ✅ `tests/dom/identity/test_student_recovery.py` — 15 passed
-- ✅ `tests/dom/identity/test_identity_resolution.py` — identity resolution coverage
-- ✅ Multi-tenancy: `test_build_identity_profile_view_scoped_by_class_id` verifies class_id boundary isolation
-- ✅ No regressions: pre-existing failures fixed (entitlement_service seat_id bug, missing imports, v1 test patterns rewritten to v2)
+
+**Builder Unit Tests (62 tests in `tests/test_identity_builders.py`):**
+- ✅ `StudentLayoutContextView` — 15 tests (happy path, fallback, maintenance bypass, empty state)
+- ✅ `AdminLayoutContextView` — 8 tests (happy path, missing seat, missing profile)
+- ✅ `ClassSelectionView` — 8 tests (student/admin builders, empty classes, current class marking)
+- ✅ `TOTPSetupView` — 10 tests (construction, backup codes, issuer name)
+- ✅ `IdentityProfileView` — 5 tests (happy path, properties, scoping, immutability)
+- ✅ Remaining tests cover `AccountClaimView`, `ClassSwitcherOption`, edge cases
+
+**Route-Level HTTP Tests (11 tests in `tests/dom/identity/test_class_context_and_switching.py`):**
+- ✅ 4 view model injection tests via real HTTP GET requests (student dashboard, admin dashboard, student class selection, admin class selection)
+- ✅ 7 class switching API tests (successful switch, invalid class, unauthorized class, multi-class fixture per SPEC-TEST-001 §VIII)
+- ✅ All tests use `initialize_as_student()`/`initialize_as_teacher()` per SPEC-TEST-001
+- ✅ Multi-class fixtures use `provision_classroom()` + `Seat` creation per SPEC-TEST-002
+
+**Recovery Tests (15 tests in `tests/dom/identity/test_student_recovery.py`):**
+- ✅ Reset code generation and validation flows
+- ✅ Expired code rejection, credential clearing, onboarding redirect
+- ✅ Multi-tenancy: seat resolution scoped by user binding
+
+**Total: 88 tests (62 builder + 11 route-level + 15 recovery)**
 
 **Status:** ✅ PASS
 
@@ -196,22 +230,12 @@ The Identity domain has successfully completed all 10 phases of SOP-DEV-002 doma
 **Requirement:** Dead code removed; only canonical code remains.
 
 **Evidence:**
-
-**Full Route Sweep (2026-08-06):**
-- ✅ `app/routes/admin.py` — 30+ `identity_profile` accesses audited; all are legitimate ORM property reads for name display, sorting, CSV export, and seat creation
-- ✅ `app/routes/student.py` — 11 accesses audited; all are legitimate (student-facing display contexts, separate domain surfaces)
-- ✅ `app/routes/analytics.py` — 1 access; legitimate name display
-- ✅ `app/routes/recovery.py` — 1 access; legitimate display name for recovery flow
-- ✅ `app/utils/issue_helpers.py` — 4 accesses; legitimate seat resolution for issue system
-- ✅ `templates/admin_store.html` — 3 accesses; legitimate entitlement owner display
-- ✅ `templates/admin_students.html` — 4 accesses; legitimate roster display
-
-**Classification:** All remaining `identity_profile` accesses are simple ORM property reads (`.full_name`, `.first_name`, `.last_name`) consistent with DOM-IDEN-001 §V defining IdentityProfile as "human-facing display data." These are not ad-hoc aggregation loops or legacy compatibility code — they are the intended use of the IdentityProfile model across non-student-detail surfaces.
-
-**Dead Code Verification:**
-- ✅ No dead helper functions related to identity aggregation
-- ✅ No unused imports of identity-related modules
-- ✅ No dangling references to deleted `student_full_name`, `student_first_name`, `student_last_name`, `student_notes` variables in admin routes or templates
+- ✅ `current_admin` removed from context processors
+- ✅ Inline mutation logic removed from `student.py` (claim_account, setup_pin_passphrase, add_class)
+- ✅ Inline mutation logic removed from `recovery.py` (generate_reset_code, account_lookup)
+- ✅ Dead helpers removed: `_generate_reset_code()`, `RESET_CODE_ALPHABET` from recovery.py
+- ✅ Unused imports cleaned: `timedelta`, `secrets`, `User`, `ensure_utc` from recovery.py
+- ✅ Unused imports cleaned: `ClassEconomy`, `IdentityProfile`, `hash_username_lookup` from student.py routes
 
 **Status:** ✅ PASS
 
@@ -221,21 +245,19 @@ The Identity domain has successfully completed all 10 phases of SOP-DEV-002 doma
 
 **Requirement:** Production readiness certified.
 
-**Checklist:**
-
 | Item | Evidence | Status |
 |------|----------|--------|
 | Spec current | DOM-IDEN-001 v2.2 (2026-07-10) | ✅ |
 | Schema verified | users, seats, classes, identity_profiles tables present | ✅ |
-| Multi-tenancy scoped | class_id in all queries, view models | ✅ |
-| CSRF protection | Student detail form uses FlaskWTF | ✅ |
-| No PII leaks | IdentityProfile uses PIIEncryptedType for names | ✅ |
-| View models wired | Phase 6-7 audit passed | ✅ |
-| Templates refactored | All access via `identity_view.*` (8 points) | ✅ |
-| Tests pass | Identity domain tests passing | ✅ |
-| No legacy code | Full route sweep — no dead code found | ✅ |
-| Idempotency | FEAT contexts with idempotency keys | ✅ |
-| Documentation | DOM-IDEN-001, QA audit, certification docs | ✅ |
+| Multi-tenancy scoped | class_id in all queries, view models, FEATs | ✅ |
+| CSRF protection | Global `csrf.init_app(app)` enforcement; no route-level exemptions | ✅ |
+| PII encrypted at rest | IdentityProfile uses PIIEncryptedType for names | ✅ |
+| View models wired (read) | 5 view models in context processors + templates | ✅ |
+| Mutation routes wired | 5 routes → 5 FEAT implementations | ✅ |
+| Templates refactored | All read-model access via view models | ✅ |
+| Tests pass | 88 identity domain tests passing | ✅ |
+| Idempotency | FEAT contexts with idempotency keys (003/004 added) | ✅ |
+| Documentation | DOM-IDEN-001, QA audit, tracking docs | ✅ |
 
 **Status:** ✅ PASS
 
@@ -253,9 +275,11 @@ Other surfaces (roster lists, CSV exports, transaction logs, analytics) consume 
 
 ### Pre-Deployment ✅
 
-- [x] Phase 5-7 wiring complete
-- [x] Phase 9 legacy sweep complete
-- [x] All tests pass
+- [x] Phase 5-7 read-model wiring complete
+- [x] Phase 7 mutation route rewiring (5 routes → FEAT-IDEN-001 through 005)
+- [x] Phase 9 legacy deletion complete
+- [x] Phase 10 certification passed
+- [x] All tests pass (88 identity tests)
 - [x] No breaking changes
 - [x] No multi-tenancy regressions
 - [x] Documentation current
@@ -281,4 +305,4 @@ Other surfaces (roster lists, CSV exports, transaction logs, analytics) consume 
 - ✅ WCAG 2.1 AA Compliance: pass
 - ✅ Security checks (Aikido, guardrails): pass
 
-**Domain Certification:** Confirmed production-ready with all review feedback integrated.
+**Domain Certification:** ✅ Confirmed production-ready. All 10 phases complete, all review feedback integrated.
