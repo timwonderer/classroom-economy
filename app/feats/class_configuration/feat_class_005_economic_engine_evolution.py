@@ -27,6 +27,7 @@ from app.models import ClassEconomy, EconomicEngine, ClassFeature, Seat
 from app.services.context_resolver import CanonicalContext
 from app.services.class_configuration_query_service import (
     get_class_economy,
+    get_economic_engine_by_version,
     get_economic_engine_history,
     is_feature_enabled,
 )
@@ -258,16 +259,24 @@ def _execute_transition_economic_policy_impl(
             missing_features.append(feature)
 
     if not missing_features:
-        # All feature rows already exist: full idempotent return
-        new_engine = db.session.query(EconomicEngine).filter_by(
+        # All feature rows already exist: resolve engine from persisted ClassFeature
+        # Use the first feature's economic_version_id to find the actual engine
+        anchor_row = db.session.query(ClassFeature).filter_by(
             class_id=class_id,
-        ).order_by(EconomicEngine.created_at.desc()).first()
+            feature=feature_list[0],
+            effective_at=effective_at_ts,
+        ).first()
+        persisted_engine = None
+        if anchor_row and anchor_row.economic_version_id:
+            persisted_engine = get_economic_engine_by_version(
+                class_id, anchor_row.economic_version_id
+            )
         return EconomicEngineEvolutionResult(
             success=True,
             correlation_id=idempotency_key or f"engine_evolution_idempotent_{class_id}",
             class_id=class_id,
-            new_engine_id=new_engine.economic_version_id if new_engine else None,
-            new_policy_mode=new_policy_mode,
+            new_engine_id=persisted_engine.economic_version_id if persisted_engine else None,
+            new_policy_mode=persisted_engine.economy_policy_mode if persisted_engine else new_policy_mode,
             features_updated=sorted(feature_list),
             effective_at=effective_at_ts.isoformat() if hasattr(effective_at_ts, 'isoformat') else effective_at_ts,
         )

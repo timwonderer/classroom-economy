@@ -116,7 +116,6 @@ For mutations:
 
 ### Class Management
 - `get_all_classes_by_teacher(user_id: int) -> list[ClassEconomy]`
-- `get_class_economy_by_join_code(join_code: str) -> ClassEconomy | None`
 - **FEAT:** `execute_create_class_boundary()`
 
 ### Settings Queries
