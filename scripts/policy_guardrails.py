@@ -491,7 +491,10 @@ def run_checks(no_waivers: bool, diff_base: str | None, diff_head: str) -> tuple
         path_findings.extend(check_no_unscoped_audit_emit(path, tree, text))
 
         waivers = collect_waivers(path, text)
-        path_changed_lines = line_map.get(path) if line_map is not None else None
+        if line_map is not None:
+            path_changed_lines = line_map.get(path, set())
+        else:
+            path_changed_lines = None
         for f in path_findings:
             if path_changed_lines is not None and f.line not in path_changed_lines:
                 continue
