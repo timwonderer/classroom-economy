@@ -8,7 +8,7 @@
 
 This document defines the canonical testing invariants for the `codex/v2.0` rebuild. It standardizes what testing must prove, when testing is required, and which reporting behaviors are mandatory before a change can be represented as validated.
 
-Execution details, command sequences, and PR-operational gates belong in SOP documents, not here.
+Execution details, command sequences, and PR-operational gates belong in SOP documents, not here. Canonical test initializer, canonical identity, and canonical temporal behavior belong in SPEC documents, not here.
 
 ## II. Scope
 
@@ -37,8 +37,11 @@ Constitutional within `INV-ARC`. Derived from `INV-CORE-000` Section III.7, `No 
 - `docs/INVARIANT/ARCHITECTURE/INV-ARC-007_GET_MUST_BE_PURE.md`
 - `docs/INVARIANT/ARCHITECTURE/INV-ARC-015_TEMPORAL_MODEL_AND_BOUNDARY_ENFORCEMENT.md`
 - `docs/INVARIANT/ARCHITECTURE/INV-ARC-020_ACCESSIBILITY_REQUIREMENTS_AND_TEMPLATE_CONTRACT.md`
-- `docs/TESTING/SOP-TEST-001_Validation_Execution_And_Reporting.md`
-- `docs/TESTING/SOP-TEST-002_Accessibility_Validation_And_PR_Gate.md`
+- `docs/SPEC/SPEC-TEST-001_CANONICAL_TEST_INITIALIZER.md`
+- `docs/SPEC/SPEC-TEST-002_CANONICAL_TEST_IDENTITIES.md`
+- `docs/SPEC/SPEC-TIME-001_CANONICAL_TEMPORAL_RESOLVER.md`
+- `docs/STANDARD_OPERATING_PROCEDURES/TESTING/SOP-TEST-001_Validation_Execution_And_Reporting.md`
+- `docs/STANDARD_OPERATING_PROCEDURES/TESTING/SOP-TEST-002_Accessibility_Validation_And_PR_Gate.md`
 - `docs/FEATURE-EXECUTION/FEAT-CORE-000_FEATURE_EXECUTION_CONSTITUTIONAL_DIRECTIVE.md`
 
 ## V. Testing Invariants
@@ -53,6 +56,7 @@ Constitutional within `INV-ARC`. Derived from `INV-CORE-000` Section III.7, `No 
 8. Documentation may not assert runtime behavior, migration state, or validation status without supporting test evidence that already exists or is rerun for the claim.
 9. When a change affects scoping, authority, tenancy, migration safety, temporal boundaries, or template accessibility, the validation set must explicitly include that boundary.
 10. A partial run must not be represented as whole-scope validation.
+11. Canonical test setup must use the SPEC-defined initializer, identity scenarios, and temporal resolver when those contracts are in scope.
 
 ## VI. Required Coverage Categories
 
