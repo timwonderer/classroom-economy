@@ -8392,7 +8392,7 @@ def upload_students():
             )
 
         if force_new_class and not roster_sync:
-            from app.models import ClassEconomy, Seat, IdentityProfile
+            from app.models import Seat, IdentityProfile
             from app.utils.join_code import generate_join_code
             from app.hash_utils import hash_username_lookup
 
@@ -8583,7 +8583,7 @@ def upload_students():
         duplicated = 0
 
         # Track join codes for each block
-        from app.models import Seat, IdentityProfile, ClassEconomy
+        from app.models import Seat, IdentityProfile
         from app.utils.join_code import generate_join_code
         from app.hash_utils import hash_username_lookup
         import random
