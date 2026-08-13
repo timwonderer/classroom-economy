@@ -11,6 +11,7 @@ Consumers (Store, Obligations, etc.) consume EconomicView, not PayrollSettings.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from types import MappingProxyType
 from typing import Any
 
 from app.services.class_configuration_query_service import (
@@ -21,16 +22,16 @@ from app.services.class_configuration_query_service import (
 
 
 _CWI_PRICING_DIVISORS = {"low": 20.0, "medium": 10.0, "high": 5.0}
-_DEFAULT_PRICING = {"low": 5.0, "medium": 10.0, "high": 15.0}
+_DEFAULT_PRICING = MappingProxyType({"low": 5.0, "medium": 10.0, "high": 15.0})
 
 
 @dataclass(frozen=True)
 class EconomicView:
     """Presentation-ready economic guidance for consuming domains."""
-    suggested_pricing_range: dict[str, Any]
+    suggested_pricing_range: MappingProxyType
     economy_health: int
-    warnings: list[str]
-    display_context: dict[str, Any]
+    warnings: tuple[str, ...]
+    display_context: MappingProxyType
 
 
 def _compute_cwi_from_payroll(payroll) -> float | None:
@@ -62,10 +63,14 @@ def build_economic_view(class_id: str) -> EconomicView:
     if payroll:
         hourly_rate = float(payroll.pay_rate) * 60
         display_context["hourly_rate"] = hourly_rate
-        if policy_mode:
-            _, rate_warning = validate_payroll_rate(hourly_rate, policy_mode)
-            if rate_warning:
-                warnings.append(rate_warning)
+        is_valid, rate_warning = validate_payroll_rate(
+            hourly_rate,
+            policy_mode or "default",
+        )
+        if rate_warning:
+            warnings.append(rate_warning)
+        if not is_valid:
+            cwi = None
 
     if policy_mode:
         display_context["policy_mode"] = policy_mode
@@ -81,12 +86,14 @@ def build_economic_view(class_id: str) -> EconomicView:
         health = 50
         if payroll is None:
             warnings.append("Payroll not configured — economy health unknown")
+        elif payroll.expected_weekly_hours is None:
+            warnings.append("Expected weekly hours not set — economy health unknown")
 
     return EconomicView(
-        suggested_pricing_range=pricing,
+        suggested_pricing_range=MappingProxyType(pricing),
         economy_health=health,
-        warnings=warnings,
-        display_context=display_context,
+        warnings=tuple(warnings),
+        display_context=MappingProxyType(display_context),
     )
 
 

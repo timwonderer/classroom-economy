@@ -51,7 +51,7 @@ class ClassConfigurationView:
     created_at: datetime
     policy_mode: str | None
     cwi: float | None
-    features_enabled: list[str]
+    features_enabled: tuple[str, ...]
 
     @property
     def label(self) -> str:
@@ -70,7 +70,7 @@ class FeatureStateView:
 class FeatureConfigurationView:
     """All feature toggles for a class."""
     class_id: str
-    features: list[FeatureStateView]
+    features: tuple[FeatureStateView, ...]
 
     def is_enabled(self, feature: str) -> bool:
         for f in self.features:
@@ -127,7 +127,7 @@ def build_class_configuration_view(class_id: str) -> ClassConfigurationView | No
         return None
 
     features = get_class_features(class_id)
-    enabled_names = sorted(features.keys())
+    enabled_names = tuple(sorted(features.keys()))
 
     return ClassConfigurationView(
         class_id=economy.class_id,
@@ -148,14 +148,14 @@ def build_feature_configuration_view(class_id: str) -> FeatureConfigurationView:
     """Build feature enablement view for the feature settings page."""
     enabled_features = get_class_features(class_id)
 
-    feature_states = []
-    for name in KNOWN_FEATURES:
-        cf = enabled_features.get(name)
-        feature_states.append(FeatureStateView(
+    feature_states = tuple(
+        FeatureStateView(
             feature=name,
-            enabled=cf is not None,
-            effective_at=cf.effective_at if cf else None,
-        ))
+            enabled=enabled_features.get(name) is not None,
+            effective_at=enabled_features[name].effective_at if name in enabled_features else None,
+        )
+        for name in KNOWN_FEATURES
+    )
 
     return FeatureConfigurationView(
         class_id=class_id,

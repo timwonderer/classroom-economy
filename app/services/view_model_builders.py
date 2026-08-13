@@ -18,6 +18,8 @@ from app.extensions import db
 from app.models import EntitlementEvent, IdentityProfile, Seat
 from app.services.entitlement_read_service import get_entitlement_status
 from app.services.store_policy_resolver import StorePolicyResolver, PolicyNotFound
+from types import MappingProxyType
+
 from app.services.class_configuration_economic_service import EconomicView
 
 
@@ -305,10 +307,10 @@ class StoreManagementView:
     # Contains presentation concepts: pricing guidance, economy health, warnings.
     # Does NOT expose implementation details like expected_weekly_hours or CWI calculations.
     economic: EconomicView = field(default_factory=lambda: EconomicView(
-        suggested_pricing_range={},
+        suggested_pricing_range=MappingProxyType({}),
         economy_health=0,
-        warnings=[],
-        display_context={},
+        warnings=(),
+        display_context=MappingProxyType({}),
     ))
 
 
@@ -367,9 +369,9 @@ def build_store_management_view(
         selected_scope=selected_scope or {},
         feature_options=feature_options or [],
         economic=economic or EconomicView(
-            suggested_pricing_range={},
+            suggested_pricing_range=MappingProxyType({}),
             economy_health=0,
-            warnings=[],
-            display_context={},
+            warnings=(),
+            display_context=MappingProxyType({}),
         ),
     )

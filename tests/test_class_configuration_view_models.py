@@ -110,7 +110,7 @@ class TestClassConfigurationView:
             assert isinstance(view, ClassConfigurationView)
             assert view.class_id == classroom.class_id
             assert view.teacher_user_id == classroom.teacher_user_id
-            assert isinstance(view.features_enabled, list)
+            assert isinstance(view.features_enabled, tuple)
 
     def test_returns_none_for_missing_class(self, app):
         with app.app_context():
@@ -154,6 +154,13 @@ class TestFeatureConfigurationView:
             with pytest.raises(AttributeError):
                 view.features[0].enabled = False
 
+    def test_features_collection_immutable(self, app, classroom):
+        with app.app_context():
+            view = build_feature_configuration_view(classroom.class_id)
+            assert isinstance(view.features, tuple)
+            with pytest.raises(AttributeError):
+                view.features.append(None)
+
 
 # ---------------------------------------------------------------------------
 # EconomicView (real wiring)
@@ -185,6 +192,15 @@ class TestEconomicView:
             view = build_economic_view(classroom.class_id)
             with pytest.raises(AttributeError):
                 view.economy_health = 100
+
+    def test_collections_immutable(self, app, classroom):
+        with app.app_context():
+            view = build_economic_view(classroom.class_id)
+            assert isinstance(view.warnings, tuple)
+            with pytest.raises(TypeError):
+                view.suggested_pricing_range["new_tier"] = 99.0
+            with pytest.raises(TypeError):
+                view.display_context["hack"] = True
 
     def test_nonexistent_class_returns_defaults(self, app):
         with app.app_context():
