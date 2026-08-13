@@ -6,7 +6,7 @@
 
 **DOMAIN READINESS SNAPSHOT:**
 - ✅ **3 domains** Phase 10 certified (production-ready): Identity, Obligations, Store
-- 🔄 **1 domain** Phase 4 complete, Phase 5 pending: Class Config (core reads centralized in service layer; complex join/subquery reads pending; mutations through FEAT boundaries; view models next)
+- 🔄 **1 domain** Phase 5 complete, Phase 6-7 pending: Class Config (view models defined and tested; route wiring next)
 - 🔄 **2 domains** Phase 1 complete but blocked on Phase 2 (schema migrations pending): Ledger, Payroll
 - 🔄 **4 domains** Phase 0-1 only, not started: Operations, Interpretation, Policies, Support
 
@@ -37,7 +37,7 @@ This matrix consolidates the progress of all CTH domains through the 10-phase SO
 | Domain | Spec | Phase 0-4 | Phase 5 | Phase 6-7 | Phase 8-9 | Phase 10 | Status | Audit Doc |
 | -------- | ------ | ----------- | --------- | ----------- | ----------- | ---------- | -------- | ----------- |
 | **Identity** | DOM-IDEN-001/002/003/006 | ✅ | ✅ | ✅ VERIFIED | ✅ VERIFIED | ✅ CERTIFIED | ✅ PRODUCTION READY (Phase 10 certified 2026-08-06) | 2026-08-06 (PASS) |
-| **Class Configuration** | DOM-CLASS-001 | ✅ Phase 0-4 | ❌ Phase 5 | ❌ Phase 6-7 | ? | ❌ | 🔄 Phase 4 COMPLETE — core reads centralized; complex reads pending; mutations through FEAT boundaries | 2026-08-11 (Phase 4 COMPLETE) |
+| **Class Configuration** | DOM-CLASS-001 | ✅ Phase 0-4 | ✅ Phase 5 | ❌ Phase 6-7 | ? | ❌ | 🔄 Phase 5 COMPLETE — view models: ClassSummaryView, ClassConfigurationView, FeatureConfigurationView, EconomicView (real wiring); 16 tests passing | 2026-08-13 (Phase 5 COMPLETE) |
 | **Ledger** | DOM-LED-001 | ✅ | ❌ NO VM | ❌ BLOCKED | ? | ❌ | ❌ BLOCKED on Phase 5 | 2026-08-04 baseline |
 | **Productivity & Payroll** | DOM-PROD-001 | ✅ | ❌ NO VM | ❌ BLOCKED | ? | ❌ | ❌ BLOCKED on Phase 5 | 2026-08-04 baseline |
 | **Obligations** | DOM-OBL-001 | ✅ | ✅ | ✅ VERIFIED | ✅ | ✅ ACCEPTED | ✅ PRODUCTION READY | 2026-08-04 (Phase 10 audit ACCEPTED) |

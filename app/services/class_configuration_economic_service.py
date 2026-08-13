@@ -1,7 +1,7 @@
 """
 Class Configuration domain — Economic view for presentation consumers.
 
-Phase 5-7: Builds presentation-ready economic guidance for other domains.
+Phase 5: Builds presentation-ready economic guidance for other domains.
 Encapsulates CWI calculations, pricing recommendations, and economy health.
 This service is the authoritative source for economic presentation data.
 
@@ -13,62 +13,87 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from app.services.class_configuration_query_service import (
+    calculate_cwi,
+    get_payroll_settings,
+    get_policy_mode,
+    validate_payroll_rate,
+)
+
+
+_CWI_PRICING_DIVISORS = {"low": 20.0, "medium": 10.0, "high": 5.0}
+_DEFAULT_PRICING = {"low": 5.0, "medium": 10.0, "high": 15.0}
+
 
 @dataclass(frozen=True)
 class EconomicView:
-    """
-    Presentation-ready economic guidance for consuming domains.
-
-    Encapsulates:
-    - Suggested pricing ranges (based on economy health)
-    - Economy health indicators (sufficient liquidity, inflation concerns)
-    - Warnings for teachers (economy imbalances, thresholds)
-
-    Consumers do NOT see intermediate calculations (CWI, hourly rates, etc.).
-    They see only presentation concepts needed for the UI.
-    """
-    # Suggested pricing guidance for teachers
-    suggested_pricing_range: dict[str, Any]  # e.g., {"low": 5.0, "medium": 10.0, "high": 15.0}
-
-    # Economy health indicator (0-100)
-    economy_health: int  # 0 = critical, 100 = thriving
-
-    # Teacher-facing warnings (empty list if no issues)
+    """Presentation-ready economic guidance for consuming domains."""
+    suggested_pricing_range: dict[str, Any]
+    economy_health: int
     warnings: list[str]
-
-    # Context for UI
-    display_context: dict[str, Any]  # e.g., {"expected_weekly_hours": 5.0, "class_size": 20}
+    display_context: dict[str, Any]
 
 
 def build_economic_view(class_id: str) -> EconomicView:
+    """Build presentation-ready economic guidance for a class.
+
+    Uses real CWI, payroll settings, and policy mode from the query service.
+    Pricing suggestions scale from CWI when available.
     """
-    Build presentation-ready economic guidance for a class.
+    cwi = calculate_cwi(class_id)
+    payroll = get_payroll_settings(class_id)
+    policy_mode = get_policy_mode(class_id)
 
-    This is a stub implementation until the Class Configuration domain
-    implements full economic analysis. Returns placeholder values for now.
+    warnings: list[str] = []
+    display_context: dict[str, Any] = {}
 
-    Args:
-        class_id: The class to analyze
+    if payroll and payroll.expected_weekly_hours is not None:
+        display_context["expected_weekly_hours"] = float(payroll.expected_weekly_hours)
 
-    Returns:
-        EconomicView with presentation-ready guidance
+    if payroll:
+        hourly_rate = float(payroll.pay_rate) * 60
+        display_context["hourly_rate"] = hourly_rate
+        if policy_mode:
+            _, rate_warning = validate_payroll_rate(hourly_rate, policy_mode)
+            if rate_warning:
+                warnings.append(rate_warning)
 
-    TODO (Class Configuration domain, Phase 7+):
-    - Implement CWI calculations for the class
-    - Analyze balance distribution and inflation
-    - Generate pricing recommendations based on economy health
-    - Identify warnings (low liquidity, high inflation, etc.)
-    """
-    # STUB: Placeholder values until Class Configuration domain implements
+    if policy_mode:
+        display_context["policy_mode"] = policy_mode
+
+    if cwi is not None and cwi > 0:
+        pricing = {
+            tier: round(cwi / divisor, 2)
+            for tier, divisor in _CWI_PRICING_DIVISORS.items()
+        }
+        health = _estimate_health(cwi, policy_mode)
+    else:
+        pricing = dict(_DEFAULT_PRICING)
+        health = 50
+        if payroll is None:
+            warnings.append("Payroll not configured — economy health unknown")
+
     return EconomicView(
-        suggested_pricing_range={
-            "low": 5.0,
-            "medium": 10.0,
-            "high": 15.0,
-        },
-        economy_health=75,  # Placeholder: healthy economy
-        warnings=[],  # No warnings in stub implementation
-        display_context={
-            "expected_weekly_hours": 5.0,  # Placeholder default
-        },
+        suggested_pricing_range=pricing,
+        economy_health=health,
+        warnings=warnings,
+        display_context=display_context,
     )
+
+
+def _estimate_health(cwi: float, policy_mode: str | None) -> int:
+    """Heuristic economy health score based on CWI and policy mode."""
+    if policy_mode == "tight":
+        thresholds = (50, 150, 400)
+    elif policy_mode == "comfortable":
+        thresholds = (200, 600, 1500)
+    else:
+        thresholds = (100, 400, 1000)
+
+    if cwi < thresholds[0]:
+        return 25
+    if cwi < thresholds[1]:
+        return 50
+    if cwi < thresholds[2]:
+        return 75
+    return 90
