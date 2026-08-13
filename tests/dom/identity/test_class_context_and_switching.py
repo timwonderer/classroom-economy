@@ -5,17 +5,21 @@ real HTTP responses, and that the class switching API route works correctly.
 
 All tests use SPEC-TEST-001 canonical initializer. No synthetic context processor
 invocations — every assertion is against a real HTTP response produced by production code.
-"""
 
-from datetime import datetime, timezone
+Multi-class fixtures follow SPEC-TEST-001 §VIII: initialize() for base classroom,
+provision_classroom() for additional classes, _provision_roster_seat() for proper
+seat construction with IdentityProfile and claim hashes.
+"""
 
 import pytest
 
 from app.extensions import db
 from app.feats.base import FEATContext
 from app.models import Seat
+from app.utils.canonical_temporal_resolver import canonical_temporal_resolver, SYSTEM_LEVEL_EVALUATION
 from tests.helpers.classroom_initializer import initialize, initialize_as_student, initialize_as_teacher
-from tests.helpers.canonical_classroom import login_student, provision_classroom
+from tests.helpers.canonical_classroom import login_student, provision_classroom, _provision_roster_seat
+from tests.helpers.canonical_identities import CLASSROOMS
 from tests.dom.identity.helpers import student_switch_class
 
 
@@ -65,33 +69,47 @@ def test_student_no_session_gets_empty_view(client, app):
 
 
 # ---------------------------------------------------------------------------
+# Helpers: cross-class seat binding via production code
+# ---------------------------------------------------------------------------
+
+
+def _bind_user_to_class_seat(user, classroom, classroom_key, roster_row_index=0):
+    """Bind an existing User to a new seat in another class via production helpers.
+
+    Creates a proper Seat with IdentityProfile, claim hashes, and roster
+    fingerprint via _provision_roster_seat, then binds the user to it.
+    """
+    roster_row = CLASSROOMS[classroom_key]["roster"][roster_row_index]
+    seat = _provision_roster_seat(classroom.class_id, roster_row)
+    seat.user_id = user.id
+    seat.claimed_at = canonical_temporal_resolver(
+        SYSTEM_LEVEL_EVALUATION, primitive="current_time",
+    ).canonical_now_utc
+    db.session.flush()
+    return seat
+
+
+# ---------------------------------------------------------------------------
 # Class switching API tests (production route, canonical fixtures)
 # ---------------------------------------------------------------------------
 
 
 @pytest.fixture
 def multi_class_student(client, app):
-    """Student enrolled in 3 classes per SPEC-TEST-001 § VIII."""
+    """Student enrolled in 3 classes per SPEC-TEST-001 §VIII.
+
+    Uses initialize() for base classroom, provision_classroom() for additional
+    classes, and _provision_roster_seat() for proper seat construction with
+    IdentityProfile and claim hashes.
+    """
     classroom_a = initialize("chemistry_p1", app)
     classroom_b = provision_classroom("ap_csp_p3")
     classroom_c = provision_classroom("biology_block_a")
 
     student = classroom_a.students[0]
     with FEATContext("FEAT-IDEN-001", idempotency_key="test:multi-class-seats"):
-        seat_b = Seat(
-            user_id=student.user.id,
-            class_id=classroom_b.class_id,
-            role="student",
-            claimed_at=datetime.now(timezone.utc),
-        )
-        seat_c = Seat(
-            user_id=student.user.id,
-            class_id=classroom_c.class_id,
-            role="student",
-            claimed_at=datetime.now(timezone.utc),
-        )
-        db.session.add_all([seat_b, seat_c])
-        db.session.flush()
+        _bind_user_to_class_seat(student.user, classroom_b, "ap_csp_p3")
+        _bind_user_to_class_seat(student.user, classroom_c, "biology_block_a")
 
     login_student(client, student)
     return {
@@ -135,12 +153,9 @@ def test_switch_class_unclaimed_seat(client, app, multi_class_student):
     unclaimed_classroom = provision_classroom("duplicate_names")
     student = multi_class_student["student"]
     with FEATContext("FEAT-IDEN-001", idempotency_key="test:unclaimed-seat"):
-        unclaimed_seat = Seat(
-            user_id=student.user.id,
-            class_id=unclaimed_classroom.class_id,
-            role="student",
-        )
-        db.session.add(unclaimed_seat)
+        roster_row = CLASSROOMS["duplicate_names"]["roster"][0]
+        unclaimed_seat = _provision_roster_seat(unclaimed_classroom.class_id, roster_row)
+        unclaimed_seat.user_id = student.user.id
         db.session.flush()
 
     response = student_switch_class(client, unclaimed_classroom.class_id)
