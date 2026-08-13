@@ -153,6 +153,7 @@ from app.services.view_model_builders import build_identity_profile_view, build_
 from app.services.class_configuration_economic_service import build_economic_view
 from app.services.class_configuration_query_service import (
     get_class_economy,
+    get_class_economy_by_join_code,
     get_all_classes_by_teacher,
     get_teacher_classes_by_ids,
     verify_teacher_owns_class,
