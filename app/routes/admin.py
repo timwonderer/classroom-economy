@@ -3559,6 +3559,7 @@ def settings():
                     cls.display_name = new_display_name if new_display_name else None
                     cls.section = new_section if new_section else None
 
+        db.session.commit()
         display_name = teacher_profile.full_name if teacher_profile else admin.get_display_username()
         set_admin_display_name_cache(user_id=admin.id, display_name=display_name)
         flash("Settings updated successfully!", "success")
@@ -4870,6 +4871,7 @@ def add_individual_student():
             if class_context.get('class_created'):
                 _queue_pending_class_timezone_confirmation(class_context.get('class_row'))
 
+        db.session.commit()
     except Exception as e:
         db.session.rollback()
         current_app.logger.error("Error adding individual student")
@@ -5017,6 +5019,7 @@ def add_manual_student():
             if class_context.get('class_created'):
                 _queue_pending_class_timezone_confirmation(class_context.get('class_row'))
 
+        db.session.commit()
     except Exception as e:
         db.session.rollback()
         current_app.logger.error("Error creating manual student")
@@ -5120,6 +5123,7 @@ def store_management():
             # Set blocks using many-to-many relationship
             if form.blocks.data:
                 new_item.set_blocks(form.blocks.data)
+        db.session.commit()
         flash(f"'{new_item.name}' has been added to the store.", "success")
         return redirect(url_for('admin.store_management'))
 
@@ -5529,6 +5533,7 @@ def edit_store_item(item_id):
                 if not was_active or not item.collective_goal_instance_code:
                     # Issue new instance code
                     item.collective_goal_instance_code = generate_collective_goal_instance_code()
+        db.session.commit()
         flash(f"'{item.name}' has been updated.", "success")
         return redirect(url_for('admin.store_management'))
     payroll_settings = PayrollSettings.query.filter_by(class_id=selected_scope['class_id'], is_active=True).first()
@@ -5557,6 +5562,7 @@ def delete_store_item(item_id):
     with FEATContext("FEAT-SETTINGS-001", idempotency_key=idempotency_key):
         item = StoreItem.query.filter_by(id=item_id, class_id=selected_scope['class_id']).first_or_404()
         deactivate_store_item(item)
+    db.session.commit()
     flash(f"'{item.name}' has been deactivated and hidden from new purchases.", "success")
     return redirect(url_for('admin.store_management'))
 
@@ -5816,6 +5822,7 @@ def rent_settings():
                 block_settings.prevent_purchase_when_late = request.form.get('prevent_purchase_when_late') == 'on'
                 block_settings.bypass_cwi_warnings = request.form.get('bypass_cwi_warnings') == 'on'
 
+        db.session.commit()
         # Handle rent items (for all blocks in blocks_to_update)
         # Parse rent items from form once
         rent_item_indices = set()
@@ -6003,6 +6010,7 @@ def rent_settings():
                     flash("Some changes are locked because students have already paid rent this period. "
                           "Item type, use limits, and hall pass counts will apply next period.", "warning")
 
+        db.session.commit()
         # Rent settings are canonical; no policy-version snapshotting in v2.
         flash("Rent settings updated successfully!", "success")
         return redirect(url_for('admin.rent_settings'))
@@ -7210,6 +7218,7 @@ def economy_health():
         rebalance_preview = _build_rebalance_preview(
             g.canonical_context,
             selected_block,
+            g.canonical_context.class_id,
             checker,
             cwi_calc.cwi,
             rent_settings,
@@ -7515,11 +7524,6 @@ def payroll():
             if ((seat.class_economy.section if seat and seat.class_economy else '').strip().upper() == selected_block_upper)
         ]
     students = seats
-    payroll_class_options = [{
-        "class_id": selected_class_id,
-        "label": class_label,
-        "settings_key": selected_block,
-    }]
     # Check if payroll settings exist for the selected class scope
     has_settings = (
         PayrollSettings.query.filter_by(class_id=selected_class_id, block=selected_block)
@@ -7600,25 +7604,12 @@ def payroll():
 
     class_labels_by_block = {selected_block: class_label} if selected_block else {}
 
-    # Next payroll by canonical class scope.
-    next_payroll_by_block = []
-    for class_option in payroll_class_options:
-        class_id = class_option["class_id"]
-        block_students = [s for s in students if s.class_id == class_id]
-        block_estimate = sum(
-            payroll_summary_by_class_id.get(class_id, {}).get(s.id, Decimal("0.00"))
-            for s in block_students
-        ) if class_id else Decimal("0.00")
-        setting = settings_by_block.get(class_option["settings_key"], default_setting)
-        block_next_payroll = _compute_next_pay_date(setting, now_utc)
-        next_payroll_by_block.append({
-            'class_id': class_id,
-            'class_label': class_option["label"],
-            'next_date': block_next_payroll,  # Keep in UTC
-            'next_date_iso': format_utc_iso(block_next_payroll),
-            'estimate': block_estimate,
-            'display_estimate': f"${block_estimate:.2f}",
-        })
+    next_payroll_estimate = sum(
+        payroll_summary_by_class_id.get(selected_class_id, {}).get(s.id, Decimal("0.00"))
+        for s in students
+    ) if selected_class_id else Decimal("0.00")
+    next_payroll_date = _compute_next_pay_date(default_setting, now_utc)
+    display_next_payroll_estimate = f"${Decimal(str(next_payroll_estimate)):.2f}"
 
     # Student statistics
     student_stats = []
@@ -7798,8 +7789,6 @@ def payroll():
         payroll_events=payroll_history_events,
         class_label=class_label,
     )
-    join_codes_by_class_id = {selected_class_id: selected_join_code}
-
     # CWI Configuration - Get selected block from query param
     cwi_block = selected_block
     cwi_setting = None
@@ -7809,10 +7798,6 @@ def payroll():
             class_id=selected_scope['class_id'],
             block=cwi_block
         ).first()
-
-    # Build class scope to label map for payroll display
-    # This is needed because transactions are displayed per class scope
-    join_code_to_label = {selected_join_code: class_label}
 
     # Pre-format display values (Phase 1 Jinja2 remediation - no formatting in templates)
     display_payroll_updated_at = ""
@@ -7838,18 +7823,16 @@ def payroll():
         'admin_payroll.html',
         # Overview tab
         recent_payrolls=recent_payrolls,
-        join_code_to_label=join_code_to_label, # Pass lookup map
-        join_codes_by_class_id=join_codes_by_class_id,
-        next_payroll_date=next_pay_date_utc,  # Pass UTC timestamp
-        next_payroll_by_block=next_payroll_by_block,
-        total_payroll_estimate=total_payroll_estimate,
+        class_label=class_label,
+        next_payroll_date=next_payroll_date,  # Pass UTC timestamp
+        next_payroll_estimate=next_payroll_estimate,
+        display_next_payroll_estimate=display_next_payroll_estimate,
         display_total_payroll_estimate=display_total_payroll_estimate,
         payroll_updated_at=payroll_updated_at,
         display_payroll_updated_at=display_payroll_updated_at,
         total_students=len(students),
         avg_payout=avg_payout,
         display_avg_payout=display_avg_payout,
-        total_classes=len(payroll_class_options),
         # Settings tab
         settings_form=settings_form,
         block_settings=block_settings,
@@ -7874,9 +7857,6 @@ def payroll():
         # CWI Configuration
         cwi_block=cwi_block,
         cwi_setting=cwi_setting,
-        # General
-        payroll_class_options=payroll_class_options,
-        class_labels_by_block=class_labels_by_block,
         current_page="payroll",
         format_utc_iso=format_utc_iso,
         feature_options=feature_options,
@@ -8068,6 +8048,7 @@ def payroll_settings():
                 settings_data=settings_data,
             )
 
+        db.session.commit()
         if apply_to == 'all' or not selected_blocks:
             flash(f'Payroll settings ({settings_mode} mode) applied to all periods successfully!', 'success')
         else:
@@ -8174,6 +8155,7 @@ def update_expected_weekly_hours():
                     )
                     flash_message = f'Expected weekly hours set to {expected_weekly_hours} hours/week for {cwi_block}.'
 
+        db.session.commit()
         flash(flash_message, 'success')
 
     except ValueError:
@@ -8224,6 +8206,7 @@ def void_payroll_transaction(transaction_id):
 
             execute_void_transaction(transaction)
 
+        db.session.commit()
         return jsonify({'success': True, 'message': 'Transaction voided successfully'})
     except HTTPException:
         raise
@@ -8272,6 +8255,7 @@ def void_transactions_bulk():
                 if transaction and not transaction.is_void:
                     execute_void_transaction(transaction)
                     count += 1
+        db.session.commit()
         return jsonify({'success': True, 'message': f'{count} transaction(s) voided successfully'})
     except HTTPException:
         raise
@@ -8515,6 +8499,8 @@ def upload_students():
             except Exception as e:
                 current_app.logger.error(f"Error processing row {i+1}: {e}")
                 errors.append(f"Row {i+1}: {str(e)}")
+
+    db.session.commit()
 
     status = "success" if not errors else "partial"
     return jsonify(
@@ -8973,11 +8959,13 @@ def banking():
     settings_block = selected_scope['block']
 
     # Get current banking settings for this class
-    settings = None
-    if settings_block:
+    settings = BankingSettings.query.filter_by(
+        class_id=selected_scope['class_id'],
+        block=settings_block,
+    ).first()
+    if not settings and settings_block is None:
         settings = BankingSettings.query.filter_by(
             class_id=selected_scope['class_id'],
-            block=settings_block,
         ).first()
 
     # Create form and populate with existing data
@@ -9137,6 +9125,23 @@ def banking():
     )
     transaction_types = sorted([t[0] for t in transaction_types if t[0]])
 
+    # Compute recommended interest rate from CWI and doubling-time rule (SPEC-ECON-003 §5)
+    recommended_apy = None
+    cwi_value = None
+    doubling_years = None
+    payroll_settings = PayrollSettings.query.filter_by(
+        class_id=selected_class_id,
+    ).first()
+    if payroll_settings and payroll_settings.pay_rate and payroll_settings.expected_weekly_hours:
+        pay_rate_per_hour = float(payroll_settings.pay_rate) * 60
+        cwi_value = pay_rate_per_hour * float(payroll_settings.expected_weekly_hours)
+
+        economy = ClassEconomy.query.filter_by(class_id=selected_class_id).first()
+        mode = getattr(economy, 'economy_policy_mode', 'default') or 'default'
+        doubling_years_map = {'tight': 6, 'default': 4, 'comfortable': 2}
+        doubling_years = doubling_years_map.get(mode, 4)
+        # Max APY from doubling-time: 2 = (1 + r)^t → r = 2^(1/t) - 1
+        recommended_apy = round((2 ** (1 / doubling_years) - 1) * 100, 2)
 
     return render_template(
         'admin_banking.html',
@@ -9160,6 +9165,9 @@ def banking():
         format_utc_iso=format_utc_iso,
         teacher_blocks=teacher_blocks,
         selected_feature_scope=selected_scope,
+        recommended_apy=recommended_apy,
+        cwi_value=cwi_value,
+        doubling_years=doubling_years,
     )
 
 
@@ -9247,6 +9255,7 @@ def banking_settings_update():
                     )
                     settings.updated_at = utc_now()
 
+            db.session.commit()
             flash('Banking settings updated successfully!', 'success')
             current_app.logger.info(f"Banking settings updated by admin for {len(blocks_to_update)} class(es)")
         except SQLAlchemyError as e:
@@ -9526,6 +9535,7 @@ def help_support():
                     page_url=page_url,
                 )
 
+            db.session.commit()
             flash("Your support ticket has been submitted directly to system administration.", "success")
             return redirect(url_for('admin.help_support'))
         except SQLAlchemyError:
@@ -9586,7 +9596,10 @@ def feature_settings():
 @admin_bp.route('/feature-settings/update', methods=['POST'])
 @admin_required
 def update_class_feature_setting():
-    """Toggle a single feature for the current class via AJAX."""
+    """Toggle a single feature for the current class via FEAT-CLASS-004."""
+    from app.feats.class_configuration import execute_enable_feature, execute_disable_feature
+    from app.services.class_configuration_query_service import get_economic_engine_history
+
     class_id = g.canonical_context.class_id
     if not class_id:
         return jsonify({'status': 'error', 'message': 'No class selected.'}), 400
@@ -9600,24 +9613,37 @@ def update_class_feature_setting():
         if feature not in valid_features:
             return jsonify({'status': 'error', 'message': f'Unknown feature: {feature}'}), 400
 
-        current_features = get_class_feature_settings(None, class_id=class_id)
-        enabled_features = {
-            name for name in valid_features
-            if current_features and current_features["features"].get(f'{name}_enabled')
-        }
+        ctx = g.canonical_context
+
         if enabled:
-            enabled_features.add(feature)
+            engines = get_economic_engine_history(class_id)
+            if not engines:
+                return jsonify({'status': 'error', 'message': 'No economic engine found for class.'}), 400
+            latest_engine = engines[0]
+
+            result = execute_enable_feature(
+                canonical_context=ctx,
+                class_id=class_id,
+                feature=feature,
+                economic_version_id=latest_engine.economic_version_id,
+            )
         else:
-            enabled_features.discard(feature)
+            result = execute_disable_feature(
+                canonical_context=ctx,
+                class_id=class_id,
+                feature=feature,
+            )
 
-        payload_hash = hashlib.sha256(
-            json.dumps({"class_id": class_id, "feature": feature, "enabled": enabled}, sort_keys=True).encode("utf-8")
-        ).hexdigest()[:16]
-        idempotency_key = f"feat:class:feature-toggle:{class_id}:{payload_hash}"
+        if not result.success:
+            current_app.logger.error(f"FEAT-CLASS-004 {('enable' if enabled else 'disable')} failed: {result.error_code} — {result.error_message}")
+            return jsonify({
+                'status': 'error',
+                'message': result.error_message or 'Feature toggle failed.',
+            }), 400
 
-        db.session.rollback()
-        with FEATContext("FEAT-ADMN-001", idempotency_key=idempotency_key):
-            replace_enabled_class_features(class_id, enabled_features)
+        current_app.logger.info(f"FEAT-CLASS-004 {('enable' if enabled else 'disable')} succeeded for {feature}, committing...")
+        db.session.commit()
+        current_app.logger.info(f"FEAT-CLASS-004 commit completed for {feature}")
 
         return jsonify({
             'status': 'success',
@@ -9626,7 +9652,7 @@ def update_class_feature_setting():
 
     except Exception as e:
         db.session.rollback()
-        current_app.logger.error(f"Error updating feature setting: {e}")
+        current_app.logger.error(f"Error updating feature setting: {e}", exc_info=True)
         return jsonify({'status': 'error', 'message': 'An internal error occurred.'}), 500
 
 
@@ -9669,6 +9695,7 @@ def update_period_feature_settings(period):
         with FEATContext("FEAT-ADMN-001", idempotency_key=idempotency_key):
             replace_enabled_class_features(class_id, enabled_features)
 
+        db.session.commit()
         return jsonify({
             'status': 'success',
             'message': f'Settings updated for Period {period}',
@@ -9749,6 +9776,7 @@ def copy_feature_settings():
                 )
                 copied_count += 1
 
+        db.session.commit()
         return jsonify({
             'status': 'success',
             'message': f'Settings copied from Period {source_period} to {copied_count} period(s).'
@@ -10107,6 +10135,7 @@ def create_new_class():
         db.session.add(profile)
         db.session.flush()
 
+    db.session.commit()
     establish_teacher_session(db.session.get(User, user_id))
     flash(f"Class \"{class_display_name}\" created. You are now in the new class.", "success")
     return redirect(url_for('admin.dashboard'))

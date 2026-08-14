@@ -246,7 +246,6 @@
               <tr>
                 <th>Date</th>
                 <th>Student</th>
-                <th>Class</th>
                 <th>Type</th>
                 <th>Account</th>
                 <th>Amount</th>
@@ -267,8 +266,6 @@
                   <a href="{{ student_detail_url(tx.actor_public_id) }}">
                     {{ tx.student_name }}
                   </a>
-                </td>
-                <td>{{ class_labels_by_block.get(tx.student_block, tx.student_block) if tx.student_block else 'N/A' }}
                 </td>
                 <td>
                   {% if tx.type %}
@@ -369,7 +366,6 @@
               <tr>
                 <th width="130">Date</th>
                 <th>Student</th>
-                <th width="80">Class</th>
                 <th width="100">Type</th>
                 <th width="100">Account</th>
                 <th width="100" class="text-end">Amount</th>
@@ -392,8 +388,6 @@
                   <a href="{{ student_detail_url(tx.actor_public_id) }}">
                     {{ tx.student_name }}
                   </a>
-                </td>
-                <td>{{ class_labels_by_block.get(tx.student_block, tx.student_block) if tx.student_block else 'N/A' }}
                 </td>
                 <td>
                   {% if tx.type %}
@@ -490,6 +484,31 @@
   <div class="tab-pane fade" id="settings" role="tabpanel">
     <form method="POST" action="{{ url_for('admin.banking_settings_update') }}" id="bankingSettingsForm">
       {{ form.hidden_tag() }}
+
+      <!-- Interest Rate Guidance -->
+      {% if recommended_apy is not none and cwi_value is not none %}
+      <div class="alert alert-info mb-4">
+        <div class="d-flex align-items-start gap-2">
+          <span class="material-symbols-outlined mt-1">savings</span>
+          <div>
+            <h6 class="fw-bold mb-1">Recommended Interest Rate: {{ recommended_apy }}% APY</h6>
+            <p class="mb-1 small">Based on your pay settings, students earn about <strong>${{ "%.2f"|format(cwi_value) }}/week</strong> (CWI). This rate ensures savings take at least {{ doubling_years }} years to double — interest stays a bonus, not a replacement for earning wages.</p>
+            <p class="mb-0 small text-muted">
+              <strong>Hard limit:</strong> Weekly interest earned per student must stay below your CWI (${{ "%.2f"|format(cwi_value) }}). You can set a lower rate or skip interest entirely.
+            </p>
+          </div>
+        </div>
+      </div>
+      {% elif recommended_apy is none %}
+      <div class="alert alert-secondary mb-4">
+        <div class="d-flex align-items-start gap-2">
+          <span class="material-symbols-outlined mt-1">savings</span>
+          <div>
+            <p class="mb-0 small">Set up your payroll pay rate and expected weekly hours first — the system will then recommend an interest rate calibrated to your class economy.</p>
+          </div>
+        </div>
+      </div>
+      {% endif %}
 
       <div class="row">
         <!-- Interest Settings Card -->
@@ -607,8 +626,8 @@
         <!-- Overdraft Settings Card -->
         <div class="col-lg-6 mb-4">
           <div class="card shadow h-100">
-            <div class="card-header bg-secondary ">
-              <h5 class="mb-0"><span class="material-symbols-outlined me-2">shield</span>Overdraft Settings</h5>
+            <div class="card-header bg-secondary text-white">
+              <h5 class="mb-0 text-white"><span class="material-symbols-outlined me-2 text-white">shield</span>Overdraft Settings</h5>
             </div>
             <div class="card-body">
               <div class="mb-4">
