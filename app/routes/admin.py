@@ -131,7 +131,7 @@ from app.services.insurance_policy_service import (
 # TODO (Phase 4): store_entitlement_service deleted
 # from app.services.store_entitlement_service import get_insurance_claim, get_last_entitlement_end_for_policy_version, derive_display_status
 from app.services.classroom_setup import (
-    create_class_with_roster,
+
     create_teacher_account_with_class,
     create_pending_student_seat,
     delete_seat_with_profile,
@@ -161,6 +161,10 @@ from app.services.class_configuration_query_service import (
     get_banking_settings,
     get_hall_pass_settings,
     has_personalized_class,
+)
+from app.services.class_configuration_view_models import (
+    build_account_settings_page_view,
+    build_feature_settings_page_view,
 )
 from app.services.admin_identity_service import delete_admin_account_rows
 from app.services.admin_settings_service import create_rent_settings, create_banking_settings
@@ -3524,17 +3528,12 @@ def settings():
         return redirect(url_for('admin.settings'))
 
     # GET: Show settings form
-    # Derive blocks from ClassEconomy (canonical class anchor)
-    blocks = [
-        {'block': cls.section or cls.join_code or '', 'class_label': cls.display_name}
-        for cls in get_all_classes_by_teacher(user_id)
-    ]
+    class_view = build_account_settings_page_view(user_id)
 
-    # Pass admin object directly so template can call methods like get_display_username()
     return render_template(
         'admin_settings.html',
         admin=admin,
-        blocks=blocks,
+        view=class_view,
         current_page='settings',
         page_title='Account Personalization'
     )
@@ -8367,7 +8366,6 @@ def upload_students():
         flash("No file provided", "admin_error")
         return redirect(url_for('admin.students'))
 
-    force_new_class = request.form.get("force_new_class") == "1"
     roster_sync = request.form.get("roster_sync") == "1"
     confirm_roster_delete = request.form.get("confirm_roster_delete") == "1"
 
@@ -8396,66 +8394,6 @@ def upload_students():
                     "updated_at": utc_now(),
                 },
             )
-
-        if force_new_class and not roster_sync:
-            from app.models import Seat, IdentityProfile
-            from app.utils.join_code import generate_join_code
-            from app.hash_utils import hash_username_lookup
-
-            def _row_value(row, *keys):
-                for key in keys:
-                    value = row.get(key)
-                    if value is not None and str(value).strip():
-                        return _sanitize_roster_text(value)
-                return ""
-
-            stream = io.StringIO(content, newline=None)
-            csv_input = csv.DictReader(stream)
-            rows = []
-            class_sections = set()
-            class_names = set()
-            for row in csv_input:
-                first_name = _row_value(row, "first_name", "First Name")
-                last_name = _row_value(row, "last_name", "Last Name")
-                notes = _row_value(row, "notes", "Notes", "Additional Notes")
-                class_section = _row_value(row, "class_section", "Class Section", "Class Section Name", "Section")
-                class_name = _row_value(row, "class_name", "Class Name", "Class Names", "ClassName", "Class")
-                if class_section:
-                    class_sections.add(class_section.strip().upper())
-                if class_name:
-                    class_names.add(class_name.strip().lower())
-                if first_name or last_name or notes:
-                    rows.append({
-                        "first_name": first_name,
-                        "last_name": last_name,
-                        "notes": notes or None,
-                        "class_section": class_section or None,
-                        "class_name": class_name or None,
-                    })
-
-            if not rows:
-                flash("Template is empty. Add at least one student row before creating the class.", "error")
-                return redirect(url_for("admin.onboarding"))
-            if len(class_sections) > 1 or len(class_names) > 1:
-                flash("You can only create one class at a time", "error")
-                return redirect(url_for("admin.onboarding"))
-
-            join_code = generate_join_code()
-
-            class_name = next((row.get("class_name") for row in rows if row.get("class_name")), None)
-            if not class_name:
-                class_name = next((row.get("class_section") for row in rows if row.get("class_section")), None)
-            class_name = (class_name or "").strip() or "New Class"
-            class_row = create_class_with_roster(
-                user_id=user_id,
-                join_code=join_code,
-                class_name=class_name,
-                rows=rows,
-            )
-
-            establish_teacher_session(db.session.get(User, user_id))
-            flash("Class created and roster uploaded. You are now switched into the new class.", "admin_success")
-            return redirect(url_for("admin.dashboard"))
 
         if roster_sync:
             from app.models import Seat, IdentityProfile
@@ -9761,43 +9699,73 @@ def feature_settings():
     GET: Display feature settings page with toggles for each period
     POST: Update feature settings
     """
-    user_id = g.canonical_context.user_id
+    class_id = g.canonical_context.class_id
+    if not class_id:
+        flash("Please select a class first.", "warning")
+        return redirect(url_for("admin.select_class_context"))
 
-    # Get all configured periods for this teacher from class economy anchors.
-    periods = _get_teacher_blocks(g.canonical_context)
-    join_codes_by_period = _get_join_codes_by_block(g.canonical_context, periods)
-    class_id_by_period = {
-        block: class_id
-        for block, class_id in _get_class_ids_by_block(g.canonical_context, periods).items()
-        if class_id
-    }
-
-    period_settings = {}
-    for period in periods:
-        scoped_features = get_class_feature_settings(None, class_id=class_id_by_period.get(period))
-        period_settings[period] = scoped_features["features"] if scoped_features else ClassFeature.defaults_dict()
+    view = build_feature_settings_page_view(class_id)
+    if not view:
+        abort(404)
 
     return render_template(
         'admin_feature_settings.html',
         current_page='feature_settings',
-        periods=periods,
-        period_settings=period_settings,
-        join_codes_by_period=join_codes_by_period,
-        features_list=[
-            ('payroll_enabled', 'Payroll', 'payments', 'Time tracking and student payments'),
-            ('insurance_enabled', 'Insurance', 'shield', 'Insurance policies and claims'),
-            ('banking_enabled', 'Banking', 'account_balance', 'Savings accounts and interest'),
-            ('rent_enabled', 'Rent', 'home', 'Housing costs and payments'),
-            ('hall_pass_enabled', 'Hall Pass', 'confirmation_number', 'Bathroom and water break passes'),
-            ('store_enabled', 'Store', 'storefront', 'Marketplace for student rewards'),
-        ]
+        view=view,
     )
+
+
+@admin_bp.route('/feature-settings/update', methods=['POST'])
+@admin_required
+def update_class_feature_setting():
+    """Toggle a single feature for the current class via AJAX."""
+    class_id = g.canonical_context.class_id
+    if not class_id:
+        return jsonify({'status': 'error', 'message': 'No class selected.'}), 400
+
+    try:
+        data = request.get_json()
+        feature = data.get('feature', '').strip()
+        enabled = bool(data.get('enabled', False))
+
+        valid_features = {'payroll', 'insurance', 'banking', 'rent', 'hall_pass', 'store'}
+        if feature not in valid_features:
+            return jsonify({'status': 'error', 'message': f'Unknown feature: {feature}'}), 400
+
+        current_features = get_class_feature_settings(None, class_id=class_id)
+        enabled_features = {
+            name for name in valid_features
+            if current_features and current_features["features"].get(f'{name}_enabled')
+        }
+        if enabled:
+            enabled_features.add(feature)
+        else:
+            enabled_features.discard(feature)
+
+        payload_hash = hashlib.sha256(
+            json.dumps({"class_id": class_id, "feature": feature, "enabled": enabled}, sort_keys=True).encode("utf-8")
+        ).hexdigest()[:16]
+        idempotency_key = f"feat:class:feature-toggle:{class_id}:{payload_hash}"
+
+        db.session.rollback()
+        with FEATContext("FEAT-ADMN-001", idempotency_key=idempotency_key):
+            replace_enabled_class_features(class_id, enabled_features)
+
+        return jsonify({
+            'status': 'success',
+            'message': f'{feature} {"enabled" if enabled else "disabled"}.',
+        })
+
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Error updating feature setting: {e}")
+        return jsonify({'status': 'error', 'message': 'An internal error occurred.'}), 500
 
 
 @admin_bp.route('/feature-settings/period/<period>', methods=['POST'])
 @admin_required
 def update_period_feature_settings(period):
-    """Update feature settings for a specific period via AJAX."""
+    """Update feature settings for a specific period via AJAX (legacy)."""
     user_id = g.canonical_context.user_id
 
     try:
@@ -10219,8 +10187,61 @@ def onboarding_status():
 @admin_bp.route('/onboarding', methods=['GET'])
 @admin_required
 def onboarding():
-    """Teacher onboarding page for creating a brand-new class from a blank roster template."""
-    return render_template('admin_create_class.html')
+    """Redirect to the standalone create-class form."""
+    return redirect(url_for('admin.create_new_class'))
+
+
+@admin_bp.route('/create-class', methods=['GET', 'POST'])
+@admin_required
+def create_new_class():
+    """Create a new class for an authenticated teacher."""
+    if request.method == 'GET':
+        return render_template('admin_create_class_form.html')
+
+    ctx = g.canonical_context
+    user_id = ctx.user_id
+
+    class_display_name = request.form.get('class_display_name', '').strip()
+    section = request.form.get('section', '').strip() or None
+    teacher_display_name = request.form.get('teacher_display_name', '').strip()
+
+    if not class_display_name or not teacher_display_name:
+        flash("Class name and your display name are required.", "error")
+        return render_template('admin_create_class_form.html')
+
+    from app.utils.join_code import generate_join_code
+    from app.services.classroom_setup import create_class
+
+    join_code = generate_join_code()
+    payload_hash = hashlib.sha256(
+        f"{user_id}:{class_display_name}:{section}:{join_code}".encode("utf-8")
+    ).hexdigest()[:16]
+    idempotency_key = f"feat:class:create-class:{user_id}:{payload_hash}"
+
+    db.session.rollback()
+    with FEATContext("FEAT-CLASS-001", idempotency_key=idempotency_key):
+        economy = create_class(
+            user_id,
+            join_code=join_code,
+            display_name=class_display_name,
+            section=section,
+        )
+        teacher_seat = Seat.query.filter_by(
+            user_id=user_id, class_id=economy.class_id, role="teacher"
+        ).first()
+        profile = IdentityProfile(
+            seat_id=teacher_seat.id,
+            class_id=economy.class_id,
+            profile_type="teacher",
+            first_name=teacher_display_name,
+            last_name="",
+        )
+        db.session.add(profile)
+        db.session.flush()
+
+    establish_teacher_session(db.session.get(User, user_id))
+    flash(f"Class \"{class_display_name}\" created. You are now in the new class.", "success")
+    return redirect(url_for('admin.dashboard'))
 
 
 @admin_bp.route('/onboarding/skip', methods=['POST'])

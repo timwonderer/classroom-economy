@@ -55,25 +55,25 @@
                             This is how your class sections will appear to students
                         </p>
 
-                        {% if blocks %}
+                        {% if view.classes %}
                         <div class="row g-3">
-                            {% for block_data in blocks %}
+                            {% for cls in view.classes %}
                             <div class="col-md-6">
                                 <div class="card border">
                                     <div class="card-body">
-                                        <label for="class_label_{{ block_data.block }}" class="form-label">
-                                            <strong>Block/Period {{ block_data.block }}</strong>
+                                        <label for="{{ cls.form_key }}" class="form-label">
+                                            <strong>Block/Period {{ cls.section_key }}</strong>
                                         </label>
                                         <input
                                             type="text"
                                             class="form-control"
-                                            id="class_label_{{ block_data.block }}"
-                                            name="class_label_{{ block_data.block }}"
-                                            value="{{ block_data.class_label or '' }}"
+                                            id="{{ cls.form_key }}"
+                                            name="{{ cls.form_key }}"
+                                            value="{{ cls.current_label or '' }}"
                                             placeholder="e.g., Period 1, Honors Bio, AP Calc"
                                             maxlength="50">
                                         <div class="form-text">
-                                            This is what is being shown to students: <strong>{{ block_data.class_label or block_data.block }}</strong>
+                                            This is what is being shown to students: <strong>{{ cls.current_label or cls.display_fallback }}</strong>
                                         </div>
                                     </div>
                                 </div>

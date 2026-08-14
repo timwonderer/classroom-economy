@@ -7,14 +7,22 @@ import pytest
 from app.extensions import db
 from app.models import PayrollSettings
 from app.services.class_configuration_view_models import (
+    AccountSettingsPageView,
+    ClassLabelView,
     ClassSummaryView,
     ClassConfigurationView,
     FeatureConfigurationView,
+    FeatureDefinitionView,
+    FeatureSettingsPageView,
     FeatureStateView,
+    FeatureToggleView,
+    FEATURE_DEFINITIONS,
+    build_account_settings_page_view,
     build_class_summary_view,
     build_class_list_view,
     build_class_configuration_view,
     build_feature_configuration_view,
+    build_feature_settings_page_view,
 )
 from app.services.class_configuration_economic_service import (
     EconomicView,
@@ -207,3 +215,74 @@ class TestEconomicView:
             view = build_economic_view("nonexistent-class-id")
             assert isinstance(view, EconomicView)
             assert view.economy_health == 50
+
+
+# ---------------------------------------------------------------------------
+# FeatureSettingsPageView (Phase 6-7)
+# ---------------------------------------------------------------------------
+
+
+class TestFeatureSettingsPageView:
+
+    def test_build_returns_frozen_dataclass(self, app, classroom):
+        with app.app_context():
+            view = build_feature_settings_page_view(classroom.class_id)
+            assert isinstance(view, FeatureSettingsPageView)
+            with pytest.raises(AttributeError):
+                view.class_id = "mutated"
+
+    def test_class_scoped(self, app, classroom):
+        with app.app_context():
+            view = build_feature_settings_page_view(classroom.class_id)
+            assert view.class_id == classroom.class_id
+            assert view.class_label
+
+    def test_features_contain_toggle_views(self, app, classroom):
+        with app.app_context():
+            view = build_feature_settings_page_view(classroom.class_id)
+            assert len(view.features) == 6
+            for feat in view.features:
+                assert isinstance(feat, FeatureToggleView)
+                assert feat.feature_key
+                assert feat.name
+                assert feat.icon
+                assert isinstance(feat.enabled, bool)
+
+    def test_payroll_enabled_by_default(self, app, classroom):
+        with app.app_context():
+            view = build_feature_settings_page_view(classroom.class_id)
+            payroll = next(f for f in view.features if f.feature_key == "payroll")
+            assert payroll.enabled is True
+
+    def test_nonexistent_class_returns_none(self, app):
+        with app.app_context():
+            assert build_feature_settings_page_view("nonexistent") is None
+
+
+# ---------------------------------------------------------------------------
+# AccountSettingsPageView (Phase 6-7)
+# ---------------------------------------------------------------------------
+
+
+class TestAccountSettingsPageView:
+
+    def test_build_returns_frozen_dataclass(self, app, classroom):
+        with app.app_context():
+            view = build_account_settings_page_view(classroom.teacher_user.id)
+            assert isinstance(view, AccountSettingsPageView)
+            with pytest.raises(AttributeError):
+                view.classes = ()
+
+    def test_classes_contain_class_label_views(self, app, classroom):
+        with app.app_context():
+            view = build_account_settings_page_view(classroom.teacher_user.id)
+            assert len(view.classes) >= 1
+            for cls in view.classes:
+                assert isinstance(cls, ClassLabelView)
+                assert cls.section_key
+                assert cls.form_key.startswith("class_label_")
+
+    def test_empty_teacher_returns_empty_classes(self, app):
+        with app.app_context():
+            view = build_account_settings_page_view(999999)
+            assert view.classes == ()
