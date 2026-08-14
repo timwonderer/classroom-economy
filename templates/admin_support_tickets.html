@@ -19,15 +19,19 @@
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         <div class="mb-3">
                             <label for="class_id" class="form-label">This issue applies to:</label>
-                            <select class="form-select" id="class_id" name="class_id" required>
+                            <select class="form-select" id="class_id" name="class_id" required onchange="updateTicketScope()">
                                 {% for option in class_scope_options %}
-                                <option value="{{ option.class_id }}" {% if option.class_id == selected_class_id %}selected{% endif %}>
-                                    {{ option.label }} ({{
-                                    option.join_code
-                                }})
+                                <option value="{{ option.class_id }}"
+                                        data-class-public-id="{{ option.class_public_id }}"
+                                        {% if option.class_id == selected_class_id %}selected{% endif %}>
+                                    {{ option.label }}
                                 </option>
                                 {% endfor %}
+                                <option value="account">My own account</option>
                             </select>
+                        </div>
+                        <div id="ticket-scope-info" class="mb-3">
+                            <small class="text-muted" id="ticket-scope-text"></small>
                         </div>
 
                         <div class="mb-3">
@@ -100,7 +104,7 @@
                     <div class="text-center py-5">
                         <span class="material-symbols-outlined fs-1 text-muted">inbox</span>
                         <h6 class="mt-3 text-muted">No support tickets yet</h6>
-                        <p class="text-muted mb-0">Submit a class-scoped support ticket to contact sysadmin directly.</p>
+                        <p class="text-muted mb-0">All your current and past support tickets will appear here.</p>
                     </div>
                     {% endif %}
                 </div>
@@ -144,5 +148,21 @@ document.addEventListener('DOMContentLoaded', () => {
         }, true); // Use capture phase to catch invalid events from form fields
     }
 });
+
+function updateTicketScope() {
+    const select = document.getElementById('class_id');
+    const infoEl = document.getElementById('ticket-scope-text');
+    const selected = select.options[select.selectedIndex];
+    const actorPublicId = {{ actor_public_id | tojson }};
+
+    if (selected.value === 'account') {
+        infoEl.innerHTML = 'We will know you as: ' + actorPublicId;
+    } else {
+        const classPublicId = selected.getAttribute('data-class-public-id') || '';
+        infoEl.innerHTML = 'We will know you as: ' + actorPublicId + '<br>We will know your class as: ' + classPublicId;
+    }
+}
+// Run on page load
+updateTicketScope();
 </script>
 {% endblock %}

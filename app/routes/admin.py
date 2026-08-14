@@ -77,7 +77,7 @@ from app.auth import (
 )
 from app.services.context_resolver import CanonicalContext
 from app.forms import (
-    AdminLoginForm, AdminSignupForm, AdminTOTPConfirmForm, AdminRecoveryForm, AdminResetCredentialsForm, StoreItemForm,
+    AdminLoginForm, AdminSignupForm, AdminTOTPConfirmForm, AdminClassSetupForm, AdminRecoveryForm, AdminResetCredentialsForm, StoreItemForm,
     AdminClaimProcessForm, PayrollSettingsForm,
     ManualPaymentForm, BankingSettingsForm
 )
@@ -132,7 +132,9 @@ from app.services.insurance_policy_service import (
 # from app.services.store_entitlement_service import get_insurance_claim, get_last_entitlement_end_for_policy_version, derive_display_status
 from app.services.classroom_setup import (
     create_class_with_roster,
-    create_teacher_account_with_class,
+    create_class_without_user,
+    bind_teacher_to_class,
+    create_teacher,
     create_pending_student_seat,
     delete_seat_with_profile,
     create_roster_student_seat,
@@ -2806,12 +2808,27 @@ def login():
                     session["login_time"] = utc_now().isoformat()
                     session["last_activity"] = utc_now().isoformat()
                     session["admin_auth_username"] = username
-                    set_admin_display_name_cache(user_id=user.id, display_name=user.get_display_username())
+                    _login_display = user.get_display_username()
+                    if user.last_active_seat_id:
+                        _seat = db.session.get(Seat, user.last_active_seat_id)
+                        if _seat and _seat.identity_profile:
+                            _login_display = _seat.identity_profile.full_name
+                    set_admin_display_name_cache(user_id=user.id, display_name=_login_display)
                     flash("Admin login successful.")
                     next_url = request.args.get("next")
+                    # If user already has a last_active_class_id, go straight to dashboard
+                    if user.last_active_class_id and user.last_active_seat_id:
+                        return redirect(next_url or url_for("admin.dashboard"))
+
                     class_options = _get_validated_teacher_class_options(user.id)
                     if not class_options:
                         return redirect(url_for("admin.onboarding"))
+
+                    if len(class_options) == 1:
+                        only_class = class_options[0]
+                        user.last_active_class_id = only_class["class_id"]
+                        user.last_active_seat_id = only_class["seat_id"]
+                        return redirect(next_url or url_for("admin.dashboard"))
 
                     return redirect(url_for("admin.select_class_context"))
         flash("Invalid credentials or TOTP code.", "error")
@@ -2823,190 +2840,197 @@ def login():
 @admin_bp.route('/signup', methods=['GET', 'POST'])
 def signup():
     """
-    TOTP-only admin registration for v2.
-    Uses AdminSignupForm for initial signup, AdminTOTPConfirmForm for TOTP confirmation.
+    Teacher signup — 3-step class-first flow.
+
+    Step 1 (GET /signup): Class creation form (class name, section, teacher display name).
+    Step 1 (POST /signup with signup_step=class_setup): Creates ClassEconomy + Seat + IdentityProfile,
+        stashes seat_id/class_id in session, redirects to step 2.
+    Step 2 (POST /signup with username, no totp_code): Username validation, generates TOTP secret,
+        shows QR code.
+    Step 3 (POST /signup with totp_code): Validates TOTP, creates User, binds to seat/class,
+        redirects to login.
     """
     is_json = request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest"
 
-    # Check if this is TOTP confirmation (has totp_code field)
-    is_totp_submission = 'totp_code' in request.form
+    # ---- Determine which step we're on ----
+    signup_step = request.form.get("signup_step", "")
+    is_totp_submission = "totp_code" in request.form and signup_step != "class_setup"
+    is_class_setup = signup_step == "class_setup"
 
-    # Use appropriate form based on submission type
-    if is_totp_submission:
-        form = AdminTOTPConfirmForm()
-    else:
-        form = AdminSignupForm()
+    # ---- STEP 1: Class creation ----
+    if request.method == "GET" or (request.method == "POST" and is_class_setup):
+        from app.forms import AdminClassSetupForm
+        form = AdminClassSetupForm()
 
-    # Debug logging
-    if request.method == 'POST':
-        current_app.logger.info(f"Signup POST request received (TOTP submission: {is_totp_submission})")
-        current_app.logger.info(f"   Form data: username={request.form.get('username')}")
+        if request.method == "POST" and form.validate_on_submit():
+            # Validate ToS
+            if request.form.get("tos_agreed") != "true":
+                flash("You must agree to the Terms of Service and Privacy Policy.", "error")
+                return redirect(url_for("admin.signup"))
 
-    if form.validate_on_submit():
-        current_app.logger.info("Form validation passed")
-
-        # Get form data
-        if is_totp_submission:
-            # TOTP form has all fields as strings
-            username = normalize_auth_username(form.username.data)
-            totp_code = form.totp_code.data.strip()
-        else:
-            # Initial signup form
-            username = normalize_auth_username(form.username.data)
-            totp_code = ""
-
-        # Validate ToS for initial signup
-        # Validate ToS for initial signup
-        if not is_totp_submission and request.form.get('tos_agreed') != 'true':
-            flash("You must agree to the Terms of Service and Privacy Policy.", "error")
-            return redirect(url_for('admin.signup'))
-
-        # Step 1: Validate Turnstile for initial signup submit.
-        if not is_totp_submission:
-            turnstile_token = request.form.get('cf-turnstile-response') or request.form.get('turnstile_token')
+            # Validate Turnstile
+            turnstile_token = request.form.get("cf-turnstile-response") or request.form.get("turnstile_token")
             if not verify_turnstile_token(turnstile_token, get_real_ip()):
-                msg = "Security verification failed. Please complete Turnstile and try again."
-                if is_json:
-                    return jsonify(status="error", message=msg), 400
-                flash(msg, "error")
-                return redirect(url_for('admin.signup'))
+                flash("Security verification failed. Please complete Turnstile and try again.", "error")
+                return redirect(url_for("admin.signup"))
 
-        # Step 2: Check username uniqueness
-        if _auth_username_exists(username):
-            current_app.logger.warning("Admin signup failed: username already exists")
-            msg = "Username already exists."
-            if is_json:
-                return jsonify(status="error", message=msg), 400
-            flash(msg, "error")
-            return redirect(url_for('admin.signup'))
-        # Step 3: Generate TOTP secret and show QR code (if not already in session)
-        if "admin_totp_secret" not in session or session.get("admin_totp_username") != username:
-            totp_secret = pyotp.random_base32()
-            session["admin_totp_secret"] = totp_secret
-            session["admin_totp_username"] = username
-        else:
-            totp_secret = session["admin_totp_secret"]
-        totp_uri = pyotp.totp.TOTP(totp_secret).provisioning_uri(name=username, issuer_name="Classroom Economy Admin")
-        # Step 4: If no TOTP code submitted yet, show QR
-        if not totp_code:
-            # Generate QR code in-memory
-            img = qrcode.make(totp_uri)
-            buf = io.BytesIO()
-            img.save(buf, format='PNG')
-            buf.seek(0)
-            img_b64 = base64.b64encode(buf.read()).decode('utf-8')
-            # Populate form with data
-            totp_form = AdminTOTPConfirmForm()
-            totp_form.username.data = username
-            from app.services.identity.builders import build_totp_setup_view
-            totp_view = build_totp_setup_view(totp_secret, img_b64, [])
-            return render_template(
-                "admin_signup_totp.html",
-                form=totp_form,
-                totp_view=totp_view,
-            )
-        # Step 5: Validate entered TOTP code
-        current_app.logger.info(f"TOTP code submitted (length: {len(totp_code)})")
-        totp = pyotp.TOTP(totp_secret)
-        is_valid = totp.verify(totp_code)
-        current_app.logger.info(f"TOTP verification result: {is_valid}")
-        if not is_valid:
-            current_app.logger.warning(f"TOTP verification failed for user")
-            msg = "Invalid TOTP code. Please try again."
-            if is_json:
-                return jsonify(status="error", message=msg), 400
-            flash(msg, "error")
-            # Show QR again for retry
-            totp_uri = pyotp.totp.TOTP(totp_secret).provisioning_uri(name=username, issuer_name="Classroom Economy Admin")
-            img = qrcode.make(totp_uri)
-            buf = io.BytesIO()
-            img.save(buf, format='PNG')
-            buf.seek(0)
-            img_b64 = base64.b64encode(buf.read()).decode('utf-8')
-            # Populate form with data
-            totp_form = AdminTOTPConfirmForm()
-            totp_form.username.data = username
-            from app.services.identity.builders import build_totp_setup_view
-            totp_view = build_totp_setup_view(totp_secret, img_b64, [])
-            return render_template(
-                "admin_signup_totp.html",
-                form=totp_form,
-                totp_view=totp_view,
-            )
-        # Step 6: Create admin account and mark invite as used
-        current_app.logger.info(f"TOTP verified. Creating admin account")
-        # Check ToS acknowledgement
-        tos_agreed = request.form.get('tos_agreed') == 'true'
-        if not tos_agreed:
-            # Should have been caught by frontend, but safety check
-            current_app.logger.warning("Admin signup: ToS not agreed")
-            msg = "You must agree to the Terms of Service and Privacy Policy."
-            if is_json:
-                return jsonify(status="error", message=msg), 400
-            flash(msg, "error")
+            class_display_name = form.class_display_name.data.strip()
+            section = (form.section.data or "").strip() or None
+            first_name = form.first_name.data.strip()
+            last_name = form.last_name.data.strip()
 
-            # Show QR again for retry
-            totp_uri = pyotp.totp.TOTP(totp_secret).provisioning_uri(name=username, issuer_name="Classroom Economy Admin")
-            img = qrcode.make(totp_uri)
-            buf = io.BytesIO()
-            img.save(buf, format='PNG')
-            buf.seek(0)
-            img_b64 = base64.b64encode(buf.read()).decode('utf-8')
+            # Create class + seat (no user yet)
+            from app.utils.join_code import generate_join_code
+            join_code = generate_join_code()
 
-            # Populate form with data
-            totp_form = AdminTOTPConfirmForm()
-            totp_form.username.data = username
-            from app.services.identity.builders import build_totp_setup_view
-            totp_view = build_totp_setup_view(totp_secret, img_b64, [])
+            signup_idempotency_key = f"feat:iden:admin-signup-class:{join_code}"
+            with FEATContext("FEAT-IDEN-001", idempotency_key=signup_idempotency_key):
+                economy, teacher_seat = create_class_without_user(
+                    join_code=join_code,
+                    display_name=class_display_name,
+                    section=section,
+                    teacher_first_name=first_name,
+                    teacher_last_name=last_name,
+                )
+            db.session.commit()
+
+            # Stash in session for step 2/3
+            session["signup_class_id"] = economy.class_id
+            session["signup_seat_id"] = teacher_seat.id
+            current_app.logger.info(f"Signup step 1 complete: class={economy.class_id}, seat={teacher_seat.id}")
+
+            # Render step 2 (username form)
+            form = AdminSignupForm()
             return render_template(
-                "admin_signup_totp.html",
-                form=totp_form,
-                totp_view=totp_view,
-                tos_agreed=False
+                "admin_signup.html",
+                form=form,
+                turnstile_site_key=current_app.config.get("TURNSTILE_SITE_KEY"),
             )
 
-        # Encrypt TOTP secret before storing
-        encrypted_totp_secret = encrypt_totp(totp_secret)
-
-        salt, username_hash, username_lookup_hash = _build_admin_auth_fields(username)
-        new_user = User(
-            user_role=UserRole.TEACHER,
-            username_hash=username_hash,
-            username_lookup_hash=username_lookup_hash,
-            totp_secret_encrypted=encrypted_totp_secret,
-            hall_pass_verify_token=User.generate_verify_token(),
+        # GET: show step 1 (class creation)
+        return render_template(
+            "admin_signup_class.html",
+            form=form,
+            turnstile_site_key=current_app.config.get("TURNSTILE_SITE_KEY"),
         )
-        # Close any read-only transaction opened during validation before FEAT entry.
-        db.session.rollback()
 
-        signup_idempotency_key = f"feat:iden:admin-signup:{username}"
-        with FEATContext("FEAT-IDEN-001", idempotency_key=signup_idempotency_key):
-            initial_join_code = generate_join_code()
-            initial_display_name = username.strip() or "New Class"
-            new_user = create_teacher_account_with_class(
-                username=username,
-                totp_secret=totp_secret,
-                join_code=initial_join_code,
-                display_name=initial_display_name,
+    # ---- Guard: steps 2/3 require class context from step 1 ----
+    if not session.get("signup_class_id") or not session.get("signup_seat_id"):
+        flash("Please start by creating your class.", "error")
+        return redirect(url_for("admin.signup"))
+
+    # ---- STEP 2: Username ----
+    if not is_totp_submission:
+        form = AdminSignupForm()
+        if form.validate_on_submit():
+            username = normalize_auth_username(form.username.data)
+
+            if _auth_username_exists(username):
+                flash("Username already exists.", "error")
+                return render_template(
+                    "admin_signup.html",
+                    form=form,
+                    turnstile_site_key=current_app.config.get("TURNSTILE_SITE_KEY"),
+                )
+
+            # Generate TOTP secret
+            if "admin_totp_secret" not in session or session.get("admin_totp_username") != username:
+                totp_secret = pyotp.random_base32()
+                session["admin_totp_secret"] = totp_secret
+                session["admin_totp_username"] = username
+            else:
+                totp_secret = session["admin_totp_secret"]
+
+            totp_uri = pyotp.totp.TOTP(totp_secret).provisioning_uri(name=username, issuer_name="Classroom Economy Admin")
+            img = qrcode.make(totp_uri)
+            buf = io.BytesIO()
+            img.save(buf, format="PNG")
+            buf.seek(0)
+            img_b64 = base64.b64encode(buf.read()).decode("utf-8")
+
+            totp_form = AdminTOTPConfirmForm()
+            totp_form.username.data = username
+            from app.services.identity.builders import build_totp_setup_view
+            totp_view = build_totp_setup_view(totp_secret, img_b64, [])
+            return render_template(
+                "admin_signup_totp.html",
+                form=totp_form,
+                totp_view=totp_view,
             )
-        current_app.logger.info(f"Admin account created successfully")
-        # Clear session
+
+        # Invalid form submission — re-render step 2
+        return render_template(
+            "admin_signup.html",
+            form=form,
+            turnstile_site_key=current_app.config.get("TURNSTILE_SITE_KEY"),
+        )
+
+    # ---- STEP 3: TOTP verification → create User → bind to class ----
+    form = AdminTOTPConfirmForm()
+    if not form.validate_on_submit():
+        flash("Invalid submission. Please try again.", "error")
+        return redirect(url_for("admin.signup"))
+
+    username = normalize_auth_username(form.username.data)
+    totp_code = form.totp_code.data.strip()
+    totp_secret = session.get("admin_totp_secret")
+
+    if not totp_secret or session.get("admin_totp_username") != username:
+        flash("Session expired. Please start over.", "error")
+        return redirect(url_for("admin.signup"))
+
+    # Verify TOTP
+    totp = pyotp.TOTP(totp_secret)
+    if not totp.verify(totp_code):
+        flash("Invalid TOTP code. Please try again.", "error")
+        totp_uri = pyotp.totp.TOTP(totp_secret).provisioning_uri(name=username, issuer_name="Classroom Economy Admin")
+        img = qrcode.make(totp_uri)
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        buf.seek(0)
+        img_b64 = base64.b64encode(buf.read()).decode("utf-8")
+        totp_form = AdminTOTPConfirmForm()
+        totp_form.username.data = username
+        from app.services.identity.builders import build_totp_setup_view
+        totp_view = build_totp_setup_view(totp_secret, img_b64, [])
+        return render_template(
+            "admin_signup_totp.html",
+            form=totp_form,
+            totp_view=totp_view,
+        )
+
+    # Check ToS
+    tos_agreed = request.form.get("tos_agreed") == "true"
+    if not tos_agreed:
+        flash("You must agree to the Terms of Service and Privacy Policy.", "error")
+        return redirect(url_for("admin.signup"))
+
+    # Re-check username uniqueness (race condition guard)
+    if _auth_username_exists(username):
+        flash("Username was taken while you were signing up. Please choose another.", "error")
         session.pop("admin_totp_secret", None)
         session.pop("admin_totp_username", None)
-        msg = "Admin account created successfully! Please log in using your authenticator app."
-        if is_json:
-            return jsonify(status="success", message=msg)
-        flash(msg, "success")
-        return redirect(url_for("admin.login"))
-    # GET or invalid POST: render signup form with form instance (for CSRF)
-    if request.method == 'POST':
-        current_app.logger.warning("Form validation failed")
-        current_app.logger.warning(f"   Form errors: {form.errors}")
-    return render_template(
-        "admin_signup.html",
-        form=form,
-        turnstile_site_key=current_app.config.get("TURNSTILE_SITE_KEY"),
-    )
+        return redirect(url_for("admin.signup"))
+
+    # Create User and bind to class/seat
+    class_id = session["signup_class_id"]
+    seat_id = session["signup_seat_id"]
+
+    signup_idempotency_key = f"feat:iden:admin-signup-user:{username}"
+    with FEATContext("FEAT-IDEN-001", idempotency_key=signup_idempotency_key):
+        new_user = create_teacher(username, totp_secret=totp_secret)
+        bind_teacher_to_class(new_user, class_id=class_id, seat_id=seat_id)
+    db.session.commit()
+
+    # Clean up signup session keys
+    session.pop("admin_totp_secret", None)
+    session.pop("admin_totp_username", None)
+    session.pop("signup_class_id", None)
+    session.pop("signup_seat_id", None)
+
+    current_app.logger.info(f"Teacher signup complete: user={new_user.id}, class={class_id}, seat={seat_id}")
+    flash("Account created successfully! Please log in with your username and authenticator.", "success")
+    return redirect(url_for("admin.login"))
 
 
 @admin_bp.route('/recover', methods=['GET', 'POST'])
@@ -3487,31 +3511,43 @@ def settings():
     """Teacher account settings - configure display name and class labels."""
     ctx = g.canonical_context
     user_id = ctx.user_id
-    from app.models import User
-    user = db.session.get(User, user_id)
-    admin = User.query.filter_by(username_lookup_hash=user.username_lookup_hash, user_role=UserRole.TEACHER).first() if user else None
+    seat_id = ctx.seat_id
+    from app.models import User, Seat, IdentityProfile
+    admin = db.session.get(User, user_id)
     if not admin:
         abort(404)
+
+    teacher_seat = db.session.get(Seat, seat_id) if seat_id else None
+    teacher_profile = teacher_seat.identity_profile if teacher_seat else None
 
     if request.method == 'POST':
         form_pairs = sorted((key, value) for key, value in request.form.items())
         payload_hash = hashlib.sha256(repr(form_pairs).encode("utf-8")).hexdigest()[:16]
         idempotency_key = f"feat:iden:admin-settings:{user_id}:{payload_hash}"
 
-        # Ensure FEAT owns transaction boundary for this write path.
         db.session.rollback()
         with FEATContext("FEAT-IDEN-001", idempotency_key=idempotency_key):
-            user = db.session.get(User, user_id)
-            admin = User.query.filter_by(username_lookup_hash=user.username_lookup_hash, user_role=UserRole.TEACHER).first() if user else None
+            admin = db.session.get(User, user_id)
+            teacher_seat = db.session.get(Seat, seat_id) if seat_id else None
+            teacher_profile = teacher_seat.identity_profile if teacher_seat else None
 
-            # Update display name
-            display_name = request.form.get('display_name', '').strip()
-            if display_name:
-                admin.display_name = display_name
-            else:
-                admin.display_name = None  # Use canonical public_id as fallback
+            first_name = request.form.get('first_name', '').strip()
+            last_name = request.form.get('last_name', '').strip()
+            if teacher_profile:
+                if first_name:
+                    teacher_profile.first_name = first_name
+                if last_name:
+                    teacher_profile.last_name = last_name
+            elif teacher_seat and first_name:
+                teacher_profile = IdentityProfile(
+                    seat_id=teacher_seat.id,
+                    class_id=teacher_seat.class_id,
+                    profile_type='teacher',
+                    first_name=first_name,
+                    last_name=last_name or '',
+                )
+                db.session.add(teacher_profile)
 
-            # Update class labels for each ClassEconomy (canonical class label store)
             teacher_classes = get_all_classes_by_teacher(user_id)
             for cls in teacher_classes:
                 section_key = cls.section or cls.join_code or ''
@@ -3519,21 +3555,28 @@ def settings():
                 class_label = request.form.get(class_label_key, '').strip()
                 cls.display_name = class_label if class_label else None
 
-        set_admin_display_name_cache(user_id=admin.id, display_name=admin.get_display_name())
+        display_name = teacher_profile.full_name if teacher_profile else admin.get_display_username()
+        set_admin_display_name_cache(user_id=admin.id, display_name=display_name)
         flash("Settings updated successfully!", "success")
         return redirect(url_for('admin.settings'))
 
-    # GET: Show settings form
-    # Derive blocks from ClassEconomy (canonical class anchor)
+    teacher_classes = get_all_classes_by_teacher(user_id)
     blocks = [
         {'block': cls.section or cls.join_code or '', 'class_label': cls.display_name}
-        for cls in get_all_classes_by_teacher(user_id)
+        for cls in teacher_classes
+    ]
+    class_public_ids = [
+        {'public_id': cls.class_public_id, 'label': cls.section or cls.display_name or ''}
+        for cls in teacher_classes
+        if cls.class_public_id
     ]
 
-    # Pass admin object directly so template can call methods like get_display_username()
     return render_template(
         'admin_settings.html',
         admin=admin,
+        teacher_profile=teacher_profile,
+        actor_public_id=teacher_seat.public_id if teacher_seat else None,
+        class_public_ids=class_public_ids,
         blocks=blocks,
         current_page='settings',
         page_title='Account Personalization'
@@ -4021,11 +4064,13 @@ def set_class_timezone(class_id: str):
 
     try:
         idempotency_key = f"feat:iden:set-class-timezone:{user_id}:{class_id}:{timezone_name}"
-        # Route reads above may open an implicit transaction; clear it so FEAT owns the boundary.
-        db.session.rollback()
         with FEATContext("FEAT-IDEN-001", idempotency_key=idempotency_key):
+            # Re-fetch inside FEAT to ensure the object is tracked in this transaction.
+            fresh_class = db.session.get(ClassEconomy, class_id)
             # Persist an explicit confirmed UTC value distinct from default placeholder UTC.
-            class_row.class_timezone = 'Etc/UTC' if timezone_name == 'UTC' else timezone_name
+            fresh_class.class_timezone = 'Etc/UTC' if timezone_name == 'UTC' else timezone_name
+            db.session.flush()
+        db.session.commit()
     except Exception:
         current_app.logger.error(
             "Failed to set class timezone for class_id=%s", class_id
@@ -8453,7 +8498,26 @@ def upload_students():
                 rows=rows,
             )
 
-            establish_teacher_session(db.session.get(User, user_id))
+            t_first = request.form.get("teacher_first_name", "").strip()
+            t_last = request.form.get("teacher_last_name", "").strip()
+            if t_first:
+                teacher_seat = Seat.query.filter_by(
+                    user_id=user_id, class_id=class_row.class_id, role="teacher"
+                ).first()
+                if teacher_seat and not teacher_seat.identity_profile:
+                    from app.models import IdentityProfile
+                    profile = IdentityProfile(
+                        seat_id=teacher_seat.id,
+                        class_id=class_row.class_id,
+                        profile_type="teacher",
+                        first_name=t_first,
+                        last_name=t_last or "",
+                    )
+                    db.session.add(profile)
+                    db.session.flush()
+            db.session.commit()
+            establish_teacher_session(teacher)
+            session["class_id"] = class_row.class_id
             flash("Class created and roster uploaded. You are now switched into the new class.", "admin_success")
             return redirect(url_for("admin.dashboard"))
 
@@ -9554,9 +9618,13 @@ def help_support():
             'class_id': ce_row.class_id,
             'join_code': get_display_join_code(ce_row.class_id),
             'label': ce_row.display_name or get_display_join_code(ce_row.class_id),
+            'class_public_id': ce_row.class_public_id or '',
         }
         for ce_row in teacher_user_class_rows
     ]
+
+    teacher_seat = db.session.get(Seat, canonical_context.seat_id) if canonical_context.seat_id else None
+    actor_public_id = teacher_seat.public_id if teacher_seat else None
 
     def _support_report_views(issues):
         """Build view-model dicts for the My Tickets list."""
@@ -9666,6 +9734,7 @@ def help_support():
                 page_title='Help & Support',
                 selected_class_id=selected_class_id,
                 class_scope_options=class_scope_options,
+                actor_public_id=actor_public_id,
                 my_reports=my_reports,
                 help_content=HELP_ARTICLES['teacher'],
                 format_utc_iso=format_utc_iso,
@@ -9692,6 +9761,7 @@ def help_support():
                 page_title='Help & Support',
                 selected_class_id=selected_class_id,
                 class_scope_options=class_scope_options,
+                actor_public_id=actor_public_id,
                 my_reports=my_reports,
                 help_content=HELP_ARTICLES['teacher'],
                 format_utc_iso=format_utc_iso,
@@ -9745,6 +9815,7 @@ def help_support():
                          page_title='Help & Support',
                          selected_class_id=selected_class_id,
                          class_scope_options=class_scope_options,
+                         actor_public_id=actor_public_id,
                          my_reports=my_reports,
                          help_content=HELP_ARTICLES['teacher'],
                          format_utc_iso=format_utc_iso)

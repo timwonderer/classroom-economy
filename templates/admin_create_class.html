@@ -204,6 +204,24 @@
             {% endif %}
           {% endwith %}
 
+          <!-- Teacher Display Name -->
+          <div class="upload-card mb-4">
+            <div class="upload-title">Your Display Name</div>
+            <p class="upload-copy">You may enter anything in these two text fields. It can be "Ms." and "Ayala" or "Super" and "Teacher"</p>
+            <form id="onboarding-form" action="{{ url_for('admin.upload_students') }}" method="post" enctype="multipart/form-data">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <input type="hidden" name="force_new_class" value="1">
+              <div class="row g-3 mb-4">
+                <div class="col-md-6">
+                  <input type="text" class="form-control" id="teacher_first_name" name="teacher_first_name" required maxlength="100" placeholder="e.g., Ms.">
+                </div>
+                <div class="col-md-6">
+                  <input type="text" class="form-control" id="teacher_last_name" name="teacher_last_name" required maxlength="100" placeholder="e.g., Ayala">
+                </div>
+              </div>
+          </div>
+
+          <!-- Upload Roster -->
           <div class="upload-card">
             <div class="upload-title">Upload Student Roster</div>
             <ol class="upload-copy">
@@ -212,24 +230,19 @@
               <li>Click Upload my roster to complete the process</li>
             </ol>
 
-
-      
             <div class="template-box">
               <div class="d-flex flex-column flex-md-row gap-3 justify-content-between align-items-md-center">
                 <div>
                   <div class="fw-semibold mb-1">Class Roster</div>
                   <div class="text-muted small">Be sure to not change any of the existing titles or labels.</div>
                 </div>
-                <a class="btn btn-outline-primary" href="{{ url_for('admin.download_csv_template') }}">
+                <a class="btn btn-outline-primary" href="{{ url_for('admin.download_csv_template') }}" target="_blank">
                   <span class="material-symbols-outlined align-middle">download</span>
                   Download Template
                 </a>
               </div>
             </div>
 
-            <form action="{{ url_for('admin.upload_students') }}" method="post" enctype="multipart/form-data">
-              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-              <input type="hidden" name="force_new_class" value="1">
               <div class="mb-3">
                 <label for="csv_file" class="form-label fw-semibold">Upload completed roster CSV</label>
                 <input class="form-control form-control-lg" type="file" id="csv_file" name="csv_file" accept=".csv" required>

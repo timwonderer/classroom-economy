@@ -24,22 +24,35 @@
                             <span class="material-symbols-outlined" style="vertical-align: middle; font-size: 25px;">badge</span>
                             Display Name
                         </h5>
-                        <div class="mb-3">
-                            <label for="display_name" class="form-label">
-                                This is how your name will appear to others. Your custom display name is never shown to the developers or system administrators.
-                               
-                            </label>
-                            <input
-                                type="text"
-                                class="form-control"
-                                id="display_name"
-                                name="display_name"
-                                value="{{ admin.display_name or '' }}"
-                                placeholder="{{ admin.display_name or admin.get_display_username() }}"
-                                maxlength="100">
-                            <div class="form-text">
-                                If you don't change this, it will remain: <strong>{{ admin.display_name or admin.get_display_username() }}</strong>
+                        <p class="mb-3">
+                            This is how your name will appear to students. Your name is encrypted and never shown to developers or system administrators.
+                        </p>
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label for="first_name" class="form-label">First Name</label>
+                                <input
+                                    type="text"
+                                    class="form-control"
+                                    id="first_name"
+                                    name="first_name"
+                                    value="{{ teacher_profile.first_name if teacher_profile else '' }}"
+                                    placeholder="First name"
+                                    maxlength="100">
                             </div>
+                            <div class="col-md-6">
+                                <label for="last_name" class="form-label">Last Name</label>
+                                <input
+                                    type="text"
+                                    class="form-control"
+                                    id="last_name"
+                                    name="last_name"
+                                    value="{{ teacher_profile.last_name if teacher_profile else '' }}"
+                                    placeholder="Last name"
+                                    maxlength="100">
+                            </div>
+                        </div>
+                        <div class="form-text mt-2">
+                            Currently displaying as: <strong>{{ teacher_profile.full_name if teacher_profile else admin.get_display_username() }}</strong>
                         </div>
                     </div>
 
@@ -99,18 +112,24 @@
                         <div class="row">
                             <div class="col-md-6 mb-2">
                                 <small class="text-muted">Teacher ID:</small>
-                                <div><strong>{{ admin.display_name or admin.get_display_username() }}</strong></div>
-                                <small class="text-muted">When you file support tickets, this is what you will be known as.</small>
+                                <div><code class="user-select-all">{{ actor_public_id or 'N/A' }}</code></div>
                             </div>
                             <div class="col-md-6 mb-2">
                                 <small class="text-muted">Account Created:</small>
                                 <div><strong>{{ admin.created_at.strftime('%B %d, %Y') if admin.created_at else 'N/A' }}</strong></div>
                             </div>
-                            <div class="col-md-6 mb-2">
-                                <small class="text-muted">Last Login:</small>
-                                <div><strong>{{ admin.last_login.strftime('%B %d, %Y %I:%M %p') if admin.last_login else 'N/A' }}</strong></div>
-                            </div>
                         </div>
+                        {% if class_public_ids %}
+                        <div class="row mt-2">
+                            {% for cp in class_public_ids %}
+                            <div class="col-md-6 mb-2">
+                                <small class="text-muted">Class ID:</small>
+                                <div><code class="user-select-all">{{ cp.public_id }}</code></div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                        {% endif %}
+                        <small class="text-muted mt-2 d-block">These are what we would know you and your class as.</small>
                     </div>
 
                     <!-- Submit Button -->
