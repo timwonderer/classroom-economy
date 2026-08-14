@@ -2908,108 +2908,80 @@ def signup():
                 form=totp_form,
                 totp_view=totp_view,
             )
-        # Step 5: Validate entered TOTP code
-        current_app.logger.info(f"TOTP code submitted (length: {len(totp_code)})")
-        totp = pyotp.TOTP(totp_secret)
-        is_valid = totp.verify(totp_code)
-        current_app.logger.info(f"TOTP verification result: {is_valid}")
-        if not is_valid:
-            current_app.logger.warning(f"TOTP verification failed for user")
-            msg = "Invalid TOTP code. Please try again."
-            if is_json:
-                return jsonify(status="error", message=msg), 400
-            flash(msg, "error")
-            # Show QR again for retry
-            totp_uri = pyotp.totp.TOTP(totp_secret).provisioning_uri(name=username, issuer_name="Classroom Economy Admin")
-            img = qrcode.make(totp_uri)
-            buf = io.BytesIO()
-            img.save(buf, format='PNG')
-            buf.seek(0)
-            img_b64 = base64.b64encode(buf.read()).decode('utf-8')
-            # Populate form with data
-            totp_form = AdminTOTPConfirmForm()
-            totp_form.username.data = username
-            from app.services.identity.builders import build_totp_setup_view
-            totp_view = build_totp_setup_view(totp_secret, img_b64, [])
-            return render_template(
-                "admin_signup_totp.html",
-                form=totp_form,
-                totp_view=totp_view,
-            )
-        # Step 6: Create admin account and mark invite as used
-        current_app.logger.info(f"TOTP verified. Creating admin account")
-        # Check ToS acknowledgement
-        tos_agreed = request.form.get('tos_agreed') == 'true'
-        if not tos_agreed:
-            # Should have been caught by frontend, but safety check
-            current_app.logger.warning("Admin signup: ToS not agreed")
-            msg = "You must agree to the Terms of Service and Privacy Policy."
-            if is_json:
-                return jsonify(status="error", message=msg), 400
-            flash(msg, "error")
 
-            # Show QR again for retry
-            totp_uri = pyotp.totp.TOTP(totp_secret).provisioning_uri(name=username, issuer_name="Classroom Economy Admin")
-            img = qrcode.make(totp_uri)
-            buf = io.BytesIO()
-            img.save(buf, format='PNG')
-            buf.seek(0)
-            img_b64 = base64.b64encode(buf.read()).decode('utf-8')
-
-            # Populate form with data
-            totp_form = AdminTOTPConfirmForm()
-            totp_form.username.data = username
-            from app.services.identity.builders import build_totp_setup_view
-            totp_view = build_totp_setup_view(totp_secret, img_b64, [])
-            return render_template(
-                "admin_signup_totp.html",
-                form=totp_form,
-                totp_view=totp_view,
-                tos_agreed=False
-            )
-
-        # Encrypt TOTP secret before storing
-        encrypted_totp_secret = encrypt_totp(totp_secret)
-
-        salt, username_hash, username_lookup_hash = _build_admin_auth_fields(username)
-        new_user = User(
-            user_role=UserRole.TEACHER,
-            username_hash=username_hash,
-            username_lookup_hash=username_lookup_hash,
-            totp_secret_encrypted=encrypted_totp_secret,
-            hall_pass_verify_token=User.generate_verify_token(),
+        # Invalid form submission — re-render step 2
+        return render_template(
+            "admin_signup.html",
+            form=form,
+            turnstile_site_key=current_app.config.get("TURNSTILE_SITE_KEY"),
         )
-        # Close any read-only transaction opened during validation before FEAT entry.
-        db.session.rollback()
 
-        signup_idempotency_key = f"feat:iden:admin-signup:{username}"
-        with FEATContext("FEAT-IDEN-001", idempotency_key=signup_idempotency_key):
-            initial_join_code = generate_join_code()
-            initial_display_name = username.strip() or "New Class"
-            new_user = create_teacher_account_with_class(
-                username=username,
-                totp_secret=totp_secret,
-                join_code=initial_join_code,
-                display_name=initial_display_name,
-            )
-        current_app.logger.info(f"Admin account created successfully")
-        # Clear session
+    # ---- STEP 3: TOTP verification → create User → bind to class ----
+    form = AdminTOTPConfirmForm()
+    if not form.validate_on_submit():
+        flash("Invalid submission. Please try again.", "error")
+        return redirect(url_for("admin.signup"))
+
+    username = normalize_auth_username(form.username.data)
+    totp_code = form.totp_code.data.strip()
+    totp_secret = session.get("admin_totp_secret")
+
+    if not totp_secret or session.get("admin_totp_username") != username:
+        flash("Session expired. Please start over.", "error")
+        return redirect(url_for("admin.signup"))
+
+    # Verify TOTP
+    totp = pyotp.TOTP(totp_secret)
+    if not totp.verify(totp_code, valid_window=1):
+        flash("Invalid TOTP code. Please try again.", "error")
+        totp_uri = pyotp.totp.TOTP(totp_secret).provisioning_uri(name=username, issuer_name="Classroom Economy Admin")
+        img = qrcode.make(totp_uri)
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        buf.seek(0)
+        img_b64 = base64.b64encode(buf.read()).decode("utf-8")
+        totp_form = AdminTOTPConfirmForm()
+        totp_form.username.data = username
+        from app.services.identity.builders import build_totp_setup_view
+        totp_view = build_totp_setup_view(totp_secret, img_b64, [])
+        return render_template(
+            "admin_signup_totp.html",
+            form=totp_form,
+            totp_view=totp_view,
+        )
+
+    # Check ToS
+    tos_agreed = request.form.get("tos_agreed") == "true"
+    if not tos_agreed:
+        flash("You must agree to the Terms of Service and Privacy Policy.", "error")
+        return redirect(url_for("admin.signup"))
+
+    # Re-check username uniqueness (race condition guard)
+    if _auth_username_exists(username):
+        flash("Username was taken while you were signing up. Please choose another.", "error")
         session.pop("admin_totp_secret", None)
         session.pop("admin_totp_username", None)
-        msg = "Admin account created successfully! Please log in using your authenticator app."
-        if is_json:
-            return jsonify(status="success", message=msg)
-        flash(msg, "success")
-        return redirect(url_for("admin.login"))
-    # GET or invalid POST: render signup form with form instance (for CSRF)
-    if request.method == 'POST':
-        current_app.logger.warning("Form validation failed")
-        current_app.logger.warning(f"   Form errors: {form.errors}")
-    return render_template(
-        "admin_signup.html",
-        form=form,
-        turnstile_site_key=current_app.config.get("TURNSTILE_SITE_KEY"),
-    )
+        return redirect(url_for("admin.signup"))
+
+    # Create User and bind to class/seat
+    class_id = session["signup_class_id"]
+    seat_id = session["signup_seat_id"]
+
+    signup_idempotency_key = f"feat:iden:admin-signup-user:{username}"
+    with FEATContext("FEAT-IDEN-001", idempotency_key=signup_idempotency_key):
+        new_user = create_teacher(username, totp_secret=totp_secret)
+        bind_teacher_to_class(new_user, class_id=class_id, seat_id=seat_id)
+    db.session.commit()
+
+    # Clean up signup session keys
+    session.pop("admin_totp_secret", None)
+    session.pop("admin_totp_username", None)
+    session.pop("signup_class_id", None)
+    session.pop("signup_seat_id", None)
+
+    current_app.logger.info(f"Teacher signup complete: user={new_user.id}, class={class_id}, seat={seat_id}")
+    flash("Account created successfully! Please log in with your username and authenticator.", "success")
+    return redirect(url_for("admin.login"))
 
 
 @admin_bp.route('/recover', methods=['GET', 'POST'])

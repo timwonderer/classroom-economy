@@ -399,6 +399,7 @@ def create_roster_student_seat(
     class_id: str,
     first_name: str,
     last_name: str,
+    notes: str | None = None,
     dedupe_code: str | None = None,
     block: str | None = None,
     claim_first_name_hash=None,
@@ -426,6 +427,7 @@ def create_roster_student_seat(
         profile_type="student",
         first_name=first_name,
         last_name=last_name,
+        notes=notes,
     )
     db.session.add(profile)
     db.session.flush()
