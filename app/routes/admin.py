@@ -8441,60 +8441,6 @@ def attendance_log():
 
 # -------------------- STUDENT DATA IMPORT/EXPORT --------------------
 
-def _handle_roster_sync_csv():
-    """Handle multipart CSV roster sync posted to /upload-students with roster_sync=1."""
-    from app.models import Seat, IdentityProfile
-
-    user_id = g.canonical_context.user_id
-    class_id = (getattr(g.canonical_context, "class_id", None) or "").strip()
-    if not class_id:
-        flash("Select a class first.", "error")
-        return redirect(url_for("admin.students"))
-
-    class_row = verify_teacher_owns_class(class_id, user_id)
-    if not class_row:
-        flash("Class not found or you do not own it.", "error")
-        return redirect(url_for("admin.students"))
-
-    csv_file = request.files["csv_file"]
-    stream = io.StringIO(csv_file.stream.read().decode("utf-8"), newline=None)
-    reader = csv.DictReader(stream)
-
-    idempotency_hash = hashlib.sha256(
-        f"{class_id}:{csv_file.filename}".encode()
-    ).hexdigest()[:16]
-    idempotency_key = f"feat:iden:roster-sync:{user_id}:{idempotency_hash}"
-
-    updated_count = 0
-    with FEATContext("FEAT-IDEN-001", idempotency_key=idempotency_key):
-        for row in reader:
-            actor_public_id = (row.get("actor_public_id") or "").strip()
-            if not actor_public_id:
-                continue
-            seat = Seat.query.filter_by(class_id=class_id, public_id=actor_public_id).first()
-            if not seat:
-                continue
-            profile = IdentityProfile.query.filter_by(seat_id=seat.id).first()
-            if not profile:
-                continue
-            if "first_name" in row:
-                sanitized = _sanitize_roster_text(row["first_name"])
-                if sanitized:
-                    profile.first_name = sanitized
-            if "last_name" in row:
-                sanitized = _sanitize_roster_text(row["last_name"])
-                if sanitized:
-                    profile.last_name = sanitized
-            if "notes" in row:
-                profile.notes = _sanitize_roster_text(row["notes"]) or None
-            db.session.flush()
-            updated_count += 1
-
-    db.session.commit()
-    flash(f"Roster sync complete: {updated_count} student(s) updated.", "success")
-    return redirect(url_for("admin.students"))
-
-
 @admin_bp.route('/upload-students', methods=['POST'])
 @admin_required
 def upload_students():
@@ -8504,9 +8450,6 @@ def upload_students():
     Accepts: { "students": [{"first_name": ..., "last_name": ..., "notes": ...}, ...] }
     Creates Seat entries (unclaimed accounts) in the current class.
     """
-    if request.form.get("roster_sync") == "1" and "csv_file" in request.files:
-        return _handle_roster_sync_csv()
-
     data = request.get_json(silent=True)
     if not data or not isinstance(data.get("students"), list):
         return jsonify(status="error", message="Invalid request."), 400
