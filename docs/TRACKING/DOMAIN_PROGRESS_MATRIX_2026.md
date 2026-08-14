@@ -1,12 +1,12 @@
 # CTH Domain Reconstruction Progress Matrix
 
 **Status:** Active Canonical Tracker
-**Last Updated:** 2026-08-11 (Class Config Phase 4 COMPLETE; Identity Phase 10 CERTIFIED; 3 domains production-ready, 7 remaining)
+**Last Updated:** 2026-08-13 (Class Config Phase 5 COMPLETE; Identity Phase 10 CERTIFIED; 3 domains production-ready, 7 remaining)
 **Authority:** SOP-DEV-002a, INV-CORE-000, DOM-CORE-002
 
 **DOMAIN READINESS SNAPSHOT:**
 - ✅ **3 domains** Phase 10 certified (production-ready): Identity, Obligations, Store
-- 🔄 **1 domain** Phase 4 complete, Phase 5 pending: Class Config (core reads centralized in service layer; complex join/subquery reads pending; mutations through FEAT boundaries; view models next)
+- 🔄 **1 domain** Phase 5 complete, Phase 6-7 pending: Class Config (view models defined and tested; route wiring next)
 - 🔄 **2 domains** Phase 1 complete but blocked on Phase 2 (schema migrations pending): Ledger, Payroll
 - 🔄 **4 domains** Phase 0-1 only, not started: Operations, Interpretation, Policies, Support
 
@@ -37,7 +37,7 @@ This matrix consolidates the progress of all CTH domains through the 10-phase SO
 | Domain | Spec | Phase 0-4 | Phase 5 | Phase 6-7 | Phase 8-9 | Phase 10 | Status | Audit Doc |
 | -------- | ------ | ----------- | --------- | ----------- | ----------- | ---------- | -------- | ----------- |
 | **Identity** | DOM-IDEN-001/002/003/006 | ✅ | ✅ | ✅ VERIFIED | ✅ VERIFIED | ✅ CERTIFIED | ✅ PRODUCTION READY (Phase 10 certified 2026-08-06) | 2026-08-06 (PASS) |
-| **Class Configuration** | DOM-CLASS-001 | ✅ Phase 0-4 | ❌ Phase 5 | ❌ Phase 6-7 | ? | ❌ | 🔄 Phase 4 COMPLETE — core reads centralized; complex reads pending; mutations through FEAT boundaries | 2026-08-11 (Phase 4 COMPLETE) |
+| **Class Configuration** | DOM-CLASS-001 | ✅ Phase 0-4 | ✅ Phase 5 | ❌ Phase 6-7 | ? | ❌ | 🔄 Phase 5 COMPLETE — view models: ClassSummaryView, ClassConfigurationView, FeatureConfigurationView, EconomicView (real wiring); 16 tests passing | 2026-08-13 (Phase 5 COMPLETE) |
 | **Ledger** | DOM-LED-001 | ✅ | ❌ NO VM | ❌ BLOCKED | ? | ❌ | ❌ BLOCKED on Phase 5 | 2026-08-04 baseline |
 | **Productivity & Payroll** | DOM-PROD-001 | ✅ | ❌ NO VM | ❌ BLOCKED | ? | ❌ | ❌ BLOCKED on Phase 5 | 2026-08-04 baseline |
 | **Obligations** | DOM-OBL-001 | ✅ | ✅ | ✅ VERIFIED | ✅ | ✅ ACCEPTED | ✅ PRODUCTION READY | 2026-08-04 (Phase 10 audit ACCEPTED) |
@@ -68,7 +68,7 @@ This matrix consolidates the progress of all CTH domains through the 10-phase SO
 **AUDIT STATUS UPDATE (2026-08-08 REVISED):**
 
 - **Identity:** Phases 0-10 complete ✅ **PRODUCTION READY** (Phase 10 certified 2026-08-06)
-- **Class Config:** Phases 0-4 complete ✅ | Phase 5 **PENDING** (view models not yet defined)
+- **Class Config:** Phases 0-5 complete ✅ | Phase 6-7 **PENDING** (route/template wiring)
 - **Ledger:** Phases 0-1 complete | Phase 2 **PENDING** (schema migrations needed)
 - **Payroll:** Phases 0-1 complete | Phase 2 **PENDING** (schema migrations needed)
 - **Obligations:** Phases 0-10 complete ✅ **PRODUCTION READY** (Phase 10 audit ACCEPTED 2026-08-04)
@@ -105,7 +105,7 @@ Phase 6-7 completion is now measured via **field ownership**, not template struc
 
 | Domain | Why Blocked | Action Needed |
 | -------- | ------------ | --------------- |
-| **Class Configuration** | No ClassConfigurationView | Create dataclass + builder function |
+| **Class Configuration** | ✅ Phase 5 complete | ClassSummaryView, ClassConfigurationView, FeatureConfigurationView, EconomicView defined and tested |
 | **Ledger** | No LedgerBalanceView | Create dataclass + builder function |
 | **Payroll/Attendance** | No PayrollView or AttendanceView | Create 2 dataclasses + builder functions |
 | **Operations** | Phase 0-1 only; not yet at Phase 5 | Start Phase 0-5 implementation |
@@ -161,7 +161,7 @@ Phase 6-7 completion is now measured via **field ownership**, not template struc
 **Scope:** class_id (canonical), join_code (public alias), display name, section, timezone, CWI settings (policy mode, interest rate, pricing ratios based on CWI and policy)  
 **Canonical Tables:** `classes`, `class_features`, `feature_settings`, `hall_pass_settings`, `rent_settings`, `payroll_settings`, `payroll_rewards`, `payroll_fines`, `banking_settings`  
 **Phase:** ✅ Phase 0-4 COMPLETE | ❌ Phase 5-7 PENDING  
-**Status:** Phase 4 (Mutation Boundary) COMPLETE as of 2026-08-12; core reads centralized in service layer; mutations through FEAT boundaries; Phase 5 (view models) pending  
+**Status:** Phase 5 (Read Models) COMPLETE as of 2026-08-13; view models: ClassSummaryView, ClassConfigurationView, FeatureConfigurationView, EconomicView; 16+ tests passing; Phase 6-7 (route/template wiring) pending  
 **Phase 2 Achievements (COMPLETED):**
 - ✅ Class economy immutability: EconomicEngine model with before_update event listener prevents post-commit modifications
 - ✅ Append-only features timeline: ClassFeature composite PK (class_id, feature, effective_at); version_chain with previous_version_id FK
@@ -184,10 +184,10 @@ Phase 6-7 completion is now measured via **field ownership**, not template struc
 
 **Pending View Models:** 
 - ⏳ **EconomicView** (stub) — Provides presentation-ready economic guidance (pricing range, economy health, warnings) consumed by Store and other domains. Stub implementation (`app/services/class_configuration_economic_service.py`) pending full CWI/pricing calculation implementation.
-- ⏳ **ClassConfigurationView** — Settings presentation model pending Phase 5 implementation.
+- ✅ **ClassConfigurationView** — Settings presentation model implemented in Phase 5 (`app/services/class_configuration_view_models.py`).
 
 **Notes:** `join_code` is public alias for class_id; block/period is display-only metadata  
-**Next Action:** Phase 5 — Define ClassConfigurationView and EconomicView frozen dataclass view models
+**Next Action:** Phase 6-7 — Wire routes to construct view models; templates consume only view model fields
 
 ---
 
@@ -334,7 +334,7 @@ Phase 6-7 completion is now measured via **field ownership**, not template struc
 **Current Status:**
 
 - ✅ **3 domains PRODUCTION READY:** Identity (Phase 10 certified 2026-08-06), Obligations (Phase 10 ACCEPTED 2026-08-04), Store (Phase 10 certified 2026-08-04)
-- 🔄 **1 domain Phase 4 COMPLETE:** Class Config (core reads centralized; mutations through FEAT boundaries; Phase 5 view models pending)
+- 🔄 **1 domain Phase 5 COMPLETE:** Class Config (view models defined and tested; Phase 6-7 route/template wiring pending)
 - 🔄 **2 domains Phase 1 COMPLETE:** Ledger, Productivity & Payroll (Phase 2 schema work needed)
 - 🔄 **4 domains NOT STARTED:** Operations, Interpretation, Policies, Support
 
