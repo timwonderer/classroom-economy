@@ -77,7 +77,7 @@ from app.auth import (
 )
 from app.services.context_resolver import CanonicalContext
 from app.forms import (
-    AdminLoginForm, AdminSignupForm, AdminTOTPConfirmForm, AdminRecoveryForm, AdminResetCredentialsForm, StoreItemForm,
+    AdminLoginForm, AdminSignupForm, AdminTOTPConfirmForm, AdminClassSetupForm, AdminRecoveryForm, AdminResetCredentialsForm, StoreItemForm,
     AdminClaimProcessForm, PayrollSettingsForm,
     ManualPaymentForm, BankingSettingsForm
 )
@@ -131,8 +131,9 @@ from app.services.insurance_policy_service import (
 # TODO (Phase 4): store_entitlement_service deleted
 # from app.services.store_entitlement_service import get_insurance_claim, get_last_entitlement_end_for_policy_version, derive_display_status
 from app.services.classroom_setup import (
-
-    create_teacher_account_with_class,
+    create_class_without_user,
+    bind_teacher_to_class,
+    create_teacher,
     create_pending_student_seat,
     delete_seat_with_profile,
     create_roster_student_seat,
@@ -2809,12 +2810,27 @@ def login():
                     session["login_time"] = utc_now().isoformat()
                     session["last_activity"] = utc_now().isoformat()
                     session["admin_auth_username"] = username
-                    set_admin_display_name_cache(user_id=user.id, display_name=user.get_display_username())
+                    _login_display = user.get_display_username()
+                    if user.last_active_seat_id:
+                        _seat = db.session.get(Seat, user.last_active_seat_id)
+                        if _seat and _seat.identity_profile:
+                            _login_display = _seat.identity_profile.full_name
+                    set_admin_display_name_cache(user_id=user.id, display_name=_login_display)
                     flash("Admin login successful.")
                     next_url = request.args.get("next")
+                    # If user already has a last_active_class_id, go straight to dashboard
+                    if user.last_active_class_id and user.last_active_seat_id:
+                        return redirect(next_url or url_for("admin.dashboard"))
+
                     class_options = _get_validated_teacher_class_options(user.id)
                     if not class_options:
                         return redirect(url_for("admin.onboarding"))
+
+                    if len(class_options) == 1:
+                        only_class = class_options[0]
+                        user.last_active_class_id = only_class["class_id"]
+                        user.last_active_seat_id = only_class["seat_id"]
+                        return redirect(next_url or url_for("admin.dashboard"))
 
                     return redirect(url_for("admin.select_class_context"))
         flash("Invalid credentials or TOTP code.", "error")
@@ -2826,79 +2842,114 @@ def login():
 @admin_bp.route('/signup', methods=['GET', 'POST'])
 def signup():
     """
-    TOTP-only admin registration for v2.
-    Uses AdminSignupForm for initial signup, AdminTOTPConfirmForm for TOTP confirmation.
+    Teacher signup — 3-step class-first flow.
+
+    Step 1 (GET /signup): Class creation form (class name, section, teacher display name).
+    Step 1 (POST /signup with signup_step=class_setup): Creates ClassEconomy + Seat + IdentityProfile,
+        stashes seat_id/class_id in session, redirects to step 2.
+    Step 2 (POST /signup with username, no totp_code): Username validation, generates TOTP secret,
+        shows QR code.
+    Step 3 (POST /signup with totp_code): Validates TOTP, creates User, binds to seat/class,
+        redirects to login.
     """
     is_json = request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest"
 
-    # Check if this is TOTP confirmation (has totp_code field)
-    is_totp_submission = 'totp_code' in request.form
+    # ---- Determine which step we're on ----
+    signup_step = request.form.get("signup_step", "")
+    is_totp_submission = "totp_code" in request.form and signup_step != "class_setup"
+    is_class_setup = signup_step == "class_setup"
 
-    # Use appropriate form based on submission type
-    if is_totp_submission:
-        form = AdminTOTPConfirmForm()
-    else:
-        form = AdminSignupForm()
+    # ---- STEP 1: Class creation ----
+    if request.method == "GET" or (request.method == "POST" and is_class_setup):
+        from app.forms import AdminClassSetupForm
+        form = AdminClassSetupForm()
 
-    # Debug logging
-    if request.method == 'POST':
-        current_app.logger.info(f"Signup POST request received (TOTP submission: {is_totp_submission})")
-        current_app.logger.info(f"   Form data: username={request.form.get('username')}")
+        if request.method == "POST" and form.validate_on_submit():
+            # Validate ToS
+            if request.form.get("tos_agreed") != "true":
+                flash("You must agree to the Terms of Service and Privacy Policy.", "error")
+                return redirect(url_for("admin.signup"))
 
-    if form.validate_on_submit():
-        current_app.logger.info("Form validation passed")
-
-        # Get form data
-        if is_totp_submission:
-            # TOTP form has all fields as strings
-            username = normalize_auth_username(form.username.data)
-            totp_code = form.totp_code.data.strip()
-        else:
-            # Initial signup form
-            username = normalize_auth_username(form.username.data)
-            totp_code = ""
-
-        # Validate ToS for initial signup
-        # Validate ToS for initial signup
-        if not is_totp_submission and request.form.get('tos_agreed') != 'true':
-            flash("You must agree to the Terms of Service and Privacy Policy.", "error")
-            return redirect(url_for('admin.signup'))
-
-        # Step 1: Validate Turnstile for initial signup submit.
-        if not is_totp_submission:
-            turnstile_token = request.form.get('cf-turnstile-response') or request.form.get('turnstile_token')
+            # Validate Turnstile
+            turnstile_token = request.form.get("cf-turnstile-response") or request.form.get("turnstile_token")
             if not verify_turnstile_token(turnstile_token, get_real_ip()):
-                msg = "Security verification failed. Please complete Turnstile and try again."
-                if is_json:
-                    return jsonify(status="error", message=msg), 400
-                flash(msg, "error")
-                return redirect(url_for('admin.signup'))
+                flash("Security verification failed. Please complete Turnstile and try again.", "error")
+                return redirect(url_for("admin.signup"))
 
-        # Step 2: Check username uniqueness
-        if _auth_username_exists(username):
-            current_app.logger.warning("Admin signup failed: username already exists")
-            msg = "Username already exists."
-            if is_json:
-                return jsonify(status="error", message=msg), 400
-            flash(msg, "error")
-            return redirect(url_for('admin.signup'))
-        # Step 3: Generate TOTP secret and show QR code (if not already in session)
-        if "admin_totp_secret" not in session or session.get("admin_totp_username") != username:
-            totp_secret = pyotp.random_base32()
-            session["admin_totp_secret"] = totp_secret
-            session["admin_totp_username"] = username
-        else:
-            totp_secret = session["admin_totp_secret"]
-        totp_uri = pyotp.totp.TOTP(totp_secret).provisioning_uri(name=username, issuer_name="Classroom Economy Admin")
-        # Step 4: If no TOTP code submitted yet, show QR
-        if not totp_code:
-            # Generate QR code in-memory
+            class_display_name = form.class_display_name.data.strip()
+            section = (form.section.data or "").strip() or None
+            first_name = form.first_name.data.strip()
+            last_name = form.last_name.data.strip()
+
+            # Create class + seat (no user yet)
+            from app.utils.join_code import generate_join_code
+            join_code = generate_join_code()
+
+            signup_idempotency_key = f"feat:iden:admin-signup-class:{join_code}"
+            with FEATContext("FEAT-IDEN-001", idempotency_key=signup_idempotency_key):
+                economy, teacher_seat = create_class_without_user(
+                    join_code=join_code,
+                    display_name=class_display_name,
+                    section=section,
+                    teacher_first_name=first_name,
+                    teacher_last_name=last_name,
+                )
+            db.session.commit()
+
+            # Stash in session for step 2/3
+            session["signup_class_id"] = economy.class_id
+            session["signup_seat_id"] = teacher_seat.id
+            current_app.logger.info(f"Signup step 1 complete: class={economy.class_id}, seat={teacher_seat.id}")
+
+            # Render step 2 (username form)
+            form = AdminSignupForm()
+            return render_template(
+                "admin_signup.html",
+                form=form,
+                turnstile_site_key=current_app.config.get("TURNSTILE_SITE_KEY"),
+            )
+
+        # GET: show step 1 (class creation)
+        return render_template(
+            "admin_signup_class.html",
+            form=form,
+            turnstile_site_key=current_app.config.get("TURNSTILE_SITE_KEY"),
+        )
+
+    # ---- Guard: steps 2/3 require class context from step 1 ----
+    if not session.get("signup_class_id") or not session.get("signup_seat_id"):
+        flash("Please start by creating your class.", "error")
+        return redirect(url_for("admin.signup"))
+
+    # ---- STEP 2: Username ----
+    if not is_totp_submission:
+        form = AdminSignupForm()
+        if form.validate_on_submit():
+            username = normalize_auth_username(form.username.data)
+
+            if _auth_username_exists(username):
+                flash("Username already exists.", "error")
+                return render_template(
+                    "admin_signup.html",
+                    form=form,
+                    turnstile_site_key=current_app.config.get("TURNSTILE_SITE_KEY"),
+                )
+
+            # Generate TOTP secret
+            if "admin_totp_secret" not in session or session.get("admin_totp_username") != username:
+                totp_secret = pyotp.random_base32()
+                session["admin_totp_secret"] = totp_secret
+                session["admin_totp_username"] = username
+            else:
+                totp_secret = session["admin_totp_secret"]
+
+            totp_uri = pyotp.totp.TOTP(totp_secret).provisioning_uri(name=username, issuer_name="Classroom Economy Admin")
             img = qrcode.make(totp_uri)
             buf = io.BytesIO()
-            img.save(buf, format='PNG')
+            img.save(buf, format="PNG")
             buf.seek(0)
-            img_b64 = base64.b64encode(buf.read()).decode('utf-8')
-            # Populate form with data
+            img_b64 = base64.b64encode(buf.read()).decode("utf-8")
+
             totp_form = AdminTOTPConfirmForm()
             totp_form.username.data = username
             from app.services.identity.builders import build_totp_setup_view
@@ -2908,7 +2959,6 @@ def signup():
                 form=totp_form,
                 totp_view=totp_view,
             )
-
         # Invalid form submission — re-render step 2
         return render_template(
             "admin_signup.html",
@@ -2932,7 +2982,7 @@ def signup():
 
     # Verify TOTP
     totp = pyotp.TOTP(totp_secret)
-    if not totp.verify(totp_code, valid_window=1):
+    if not totp.verify(totp_code):
         flash("Invalid TOTP code. Please try again.", "error")
         totp_uri = pyotp.totp.TOTP(totp_secret).provisioning_uri(name=username, issuer_name="Classroom Economy Admin")
         img = qrcode.make(totp_uri)
@@ -3463,49 +3513,66 @@ def settings():
     """Teacher account settings - configure display name and class labels."""
     ctx = g.canonical_context
     user_id = ctx.user_id
-    from app.models import User
-    user = db.session.get(User, user_id)
-    admin = User.query.filter_by(username_lookup_hash=user.username_lookup_hash, user_role=UserRole.TEACHER).first() if user else None
+    seat_id = ctx.seat_id
+    from app.models import User, Seat, IdentityProfile
+    admin = db.session.get(User, user_id)
     if not admin:
         abort(404)
+
+    teacher_seat = db.session.get(Seat, seat_id) if seat_id else None
+    teacher_profile = teacher_seat.identity_profile if teacher_seat else None
 
     if request.method == 'POST':
         form_pairs = sorted((key, value) for key, value in request.form.items())
         payload_hash = hashlib.sha256(repr(form_pairs).encode("utf-8")).hexdigest()[:16]
         idempotency_key = f"feat:iden:admin-settings:{user_id}:{payload_hash}"
 
-        # Ensure FEAT owns transaction boundary for this write path.
         db.session.rollback()
         with FEATContext("FEAT-IDEN-001", idempotency_key=idempotency_key):
-            user = db.session.get(User, user_id)
-            admin = User.query.filter_by(username_lookup_hash=user.username_lookup_hash, user_role=UserRole.TEACHER).first() if user else None
+            admin = db.session.get(User, user_id)
+            teacher_seat = db.session.get(Seat, seat_id) if seat_id else None
+            teacher_profile = teacher_seat.identity_profile if teacher_seat else None
 
-            # Update display name
-            display_name = request.form.get('display_name', '').strip()
-            if display_name:
-                admin.display_name = display_name
-            else:
-                admin.display_name = None  # Use canonical public_id as fallback
+            first_name = request.form.get('first_name', '').strip()
+            last_name = request.form.get('last_name', '').strip()
+            if teacher_profile:
+                if first_name:
+                    teacher_profile.first_name = first_name
+                if last_name:
+                    teacher_profile.last_name = last_name
+            elif teacher_seat and first_name:
+                teacher_profile = IdentityProfile(
+                    seat_id=teacher_seat.id,
+                    class_id=teacher_seat.class_id,
+                    profile_type='teacher',
+                    first_name=first_name,
+                    last_name=last_name or '',
+                )
+                db.session.add(teacher_profile)
 
-            # Update class labels for each ClassEconomy (canonical class label store)
-            teacher_classes = get_all_classes_by_teacher(user_id)
-            for cls in teacher_classes:
-                section_key = cls.section or cls.join_code or ''
-                class_label_key = f'class_label_{section_key}'
-                class_label = request.form.get(class_label_key, '').strip()
-                cls.display_name = class_label if class_label else None
+            class_id = ctx.class_id
+            if class_id:
+                cls = db.session.get(ClassEconomy, class_id)
+                if cls:
+                    new_display_name = request.form.get('class_display_name', '').strip()
+                    new_section = request.form.get('class_section', '').strip()
+                    cls.display_name = new_display_name if new_display_name else None
+                    cls.section = new_section if new_section else None
 
-        set_admin_display_name_cache(user_id=admin.id, display_name=admin.get_display_name())
+        display_name = teacher_profile.full_name if teacher_profile else admin.get_display_username()
+        set_admin_display_name_cache(user_id=admin.id, display_name=display_name)
         flash("Settings updated successfully!", "success")
         return redirect(url_for('admin.settings'))
 
-    # GET: Show settings form
-    class_view = build_account_settings_page_view(user_id)
+    # GET: Show settings form (scoped to current class)
+    current_class = db.session.get(ClassEconomy, ctx.class_id) if ctx.class_id else None
 
     return render_template(
         'admin_settings.html',
         admin=admin,
-        view=class_view,
+        teacher_profile=teacher_profile,
+        teacher_public_id=teacher_seat.public_id if teacher_seat else None,
+        current_class=current_class,
         current_page='settings',
         page_title='Account Personalization'
     )
@@ -3992,11 +4059,13 @@ def set_class_timezone(class_id: str):
 
     try:
         idempotency_key = f"feat:iden:set-class-timezone:{user_id}:{class_id}:{timezone_name}"
-        # Route reads above may open an implicit transaction; clear it so FEAT owns the boundary.
-        db.session.rollback()
         with FEATContext("FEAT-IDEN-001", idempotency_key=idempotency_key):
+            # Re-fetch inside FEAT to ensure the object is tracked in this transaction.
+            fresh_class = db.session.get(ClassEconomy, class_id)
             # Persist an explicit confirmed UTC value distinct from default placeholder UTC.
-            class_row.class_timezone = 'Etc/UTC' if timezone_name == 'UTC' else timezone_name
+            fresh_class.class_timezone = 'Etc/UTC' if timezone_name == 'UTC' else timezone_name
+            db.session.flush()
+        db.session.commit()
     except Exception:
         current_app.logger.error(
             "Failed to set class timezone for class_id=%s", class_id
@@ -8328,214 +8397,62 @@ def attendance_log():
 @admin_required
 def upload_students():
     """
-    Upload student roster from CSV file.
+    Add students from the staging grid (JSON).
 
-    Creates Seat entries (unclaimed accounts) with join codes.
-    Students later claim their seat by providing the join code + credentials.
+    Accepts: { "students": [{"first_name": ..., "last_name": ..., "notes": ...}, ...] }
+    Creates Seat entries (unclaimed accounts) in the current class.
     """
-    file = request.files.get('csv_file')
-    if not file:
-        flash("No file provided", "admin_error")
-        return redirect(url_for('admin.students'))
+    data = request.get_json(silent=True)
+    if not data or not isinstance(data.get("students"), list):
+        return jsonify(status="error", message="Invalid request."), 400
 
-    roster_sync = request.form.get("roster_sync") == "1"
-    confirm_roster_delete = request.form.get("confirm_roster_delete") == "1"
+    rows = data["students"]
+    if not rows:
+        return jsonify(status="error", message="No students provided."), 400
 
-    # Read file content and remove BOM if present
-    content = file.stream.read().decode("UTF-8-sig")  # UTF-8-sig removes BOM
     user_id = g.canonical_context.user_id
-    idempotency_hash = hashlib.sha256(content.encode("utf-8")).hexdigest()[:16]
+    class_id = (getattr(g.canonical_context, "class_id", None) or "").strip()
+    if not class_id:
+        return jsonify(status="error", message="Select a class first."), 400
+
+    class_row = verify_teacher_owns_class(class_id, user_id)
+    if not class_row:
+        return jsonify(status="error", message="Class not found or you do not own it."), 400
+
+    join_code = get_display_join_code(class_id)
+
+    from app.models import Seat, IdentityProfile
+    from app.hash_utils import hash_username_lookup
+    import random
+    import string
+
+    idempotency_hash = hashlib.sha256(
+        "|".join(f"{r.get('first_name','')},{r.get('last_name','')}" for r in rows).encode()
+    ).hexdigest()[:16]
     idempotency_key = f"feat:iden:upload-students:{user_id}:{idempotency_hash}"
 
+    added_count = 0
+    errors = []
+    duplicated = 0
+    matched_seats = set()
+    name_counts_in_run = {}
+
     with FEATContext("FEAT-IDEN-001", idempotency_key=idempotency_key):
-        def _insert_identity_profile(*, seat_id: int, class_id: str | None, profile_type: str, first_name, last_name, notes):
-            db.session.execute(
-                sa.text(
-                    "INSERT INTO identity_profiles "
-                    "(seat_id, class_id, profile_type, first_name, last_name, notes, created_at, updated_at) "
-                    "VALUES (:seat_id, :class_id, :profile_type, :first_name, :last_name, :notes, :created_at, :updated_at)"
-                ),
-                {
-                    "seat_id": seat_id,
-                    "class_id": class_id,
-                    "profile_type": profile_type,
-                    "first_name": first_name,
-                    "last_name": last_name,
-                    "notes": notes,
-                    "created_at": utc_now(),
-                    "updated_at": utc_now(),
-                },
-            )
-
-        if roster_sync:
-            from app.models import Seat, IdentityProfile
-            class_id = (getattr(getattr(g, "canonical_context", None), "class_id", None) or "").strip()
-            if not class_id:
-                flash("Select a class before syncing roster data.", "error")
-                return redirect(url_for("admin.students"))
-
-            class_row = verify_teacher_owns_class(class_id, user_id)
-            if not class_row:
-                flash("Select a class before syncing roster data.", "error")
-                return redirect(url_for("admin.students"))
-
-            stream = io.StringIO(content, newline=None)
-            csv_input = csv.DictReader(stream)
-            rows = []
-            file_join_codes = set()
-            for row in csv_input:
-                row_join_code = _sanitize_roster_text(row.get("join_code") or row.get("Join Code") or "")
-                actor_public_id = _sanitize_roster_text(row.get("actor_public_id") or row.get("Actor Public ID") or "")
-                first_name = _sanitize_roster_text(row.get("first_name") or row.get("First Name") or "")
-                last_name = _sanitize_roster_text(row.get("last_name") or row.get("Last Name") or "")
-                notes = _sanitize_roster_text(row.get("notes") or row.get("Notes") or "")
-                # Balance columns are accepted for recordkeeping but never used for writes.
-                _ = row.get("checking_balance") or row.get("Checking Balance")
-                _ = row.get("savings_balance") or row.get("Savings Balance")
-                if row_join_code:
-                    file_join_codes.add(row_join_code)
-                if actor_public_id:
-                    rows.append({
-                        "join_code": row_join_code or None,
-                        "actor_public_id": actor_public_id,
-                        "first_name": first_name,
-                        "last_name": last_name,
-                        "notes": notes or None,
-                    })
-                elif first_name or last_name or notes:
-                    rows.append({
-                        "join_code": row_join_code or None,
-                        "actor_public_id": None,
-                        "first_name": first_name,
-                        "last_name": last_name,
-                        "notes": notes or None,
-                    })
-
-            if not file_join_codes:
-                flash("Roster file is missing join_code. Re-export the roster from the current class.", "error")
-                return redirect(url_for("admin.students"))
-            if len(file_join_codes) != 1:
-                flash("Roster file must contain exactly one join_code for one class.", "error")
-                return redirect(url_for("admin.students"))
-            file_join_code = next(iter(file_join_codes))
-            resolved_file_class_id = (
-                db.session.query(ClassEconomy.class_id)
-                .filter(ClassEconomy.class_id == class_id)
-                .scalar()
-            )
-            if not resolved_file_class_id or resolved_file_class_id != class_id:
-                flash("Roster file does not match the currently selected class. Switch class context and export again.", "error")
-                return redirect(url_for("admin.students"))
-
-            existing_seats = (
-                Seat.query
-                .filter(Seat.class_id == class_id, Seat.role == "student", Seat.public_id.isnot(None))
-                .all()
-            )
-            existing_by_public_id = {seat.public_id: seat for seat in existing_seats if seat.public_id}
-            requested_public_ids = {row["actor_public_id"] for row in rows if row["actor_public_id"]}
-            missing_seats = [seat for pid, seat in existing_by_public_id.items() if pid not in requested_public_ids]
-
-            if missing_seats and not confirm_roster_delete:
-                missing_names = []
-                for seat in missing_seats:
-                    profile = IdentityProfile.query.filter_by(seat_id=seat.id).first()
-                    display_name = " ".join(part for part in [getattr(profile, "first_name", None), getattr(profile, "last_name", None)] if part) or seat.public_id
-                    missing_names.append(display_name)
-                flash(
-                    "Roster is missing existing students: " + ", ".join(missing_names) +
-                    ". Re-upload the file with those rows removed only after confirming deletion.",
-                    "error",
-                )
-                return redirect(url_for("admin.students"))
-
-            added_count = 0
-            updated_count = 0
-            deleted_count = 0
-            for row in rows:
-                actor_public_id = row["actor_public_id"]
-                first_name = row["first_name"]
-                last_name = row["last_name"]
-                notes = row["notes"]
-                if actor_public_id and actor_public_id in existing_by_public_id:
-                    seat = existing_by_public_id[actor_public_id]
-                    update_or_create_roster_seat(
-                        class_id=class_id,
-                        first_name=first_name,
-                        last_name=last_name,
-                        notes=notes,
-                        existing_seat=seat,
-                    )
-                    updated_count += 1
-                    continue
-
-                if actor_public_id:
-                    # Unknown public_id: treat as add only if it is not already in the class.
-                    pass
-
-                update_or_create_roster_seat(
-                    class_id=class_id,
-                    first_name=first_name,
-                    last_name=last_name,
-                    notes=notes,
-                )
-                added_count += 1
-
-            if confirm_roster_delete and missing_seats:
-                for seat in missing_seats:
-                    delete_seat_with_profile(seat)
-                    deleted_count += 1
-
-            flash(
-                f"Roster synced: {updated_count} updated, {added_count} added, {deleted_count} deleted.",
-                "admin_success",
-            )
-            return redirect(url_for("admin.students"))
-
-        stream = io.StringIO(content, newline=None)
-        csv_input = csv.DictReader(stream)
-        added_count = 0
-        errors = 0
-        duplicated = 0
-
-        from app.models import Seat, IdentityProfile
-        from app.hash_utils import hash_username_lookup
-        import random
-        import string
-
-        # v2: All CSV uploads target the current canonical class.
-        # block/period is display metadata only (INV-CORE) — never a scoping key.
-        class_id = (getattr(g.canonical_context, "class_id", None) or "").strip()
-        if not class_id:
-            flash("Select a class before uploading roster data.", "error")
-            return redirect(url_for("admin.students"))
-
-        class_row = verify_teacher_owns_class(class_id, user_id)
-        if not class_row:
-            flash("Class not found or you do not own it.", "error")
-            return redirect(url_for("admin.students"))
-
-        join_code = get_display_join_code(class_id)
-
-        # Keep track of matched DB seats during this upload to avoid recreating them
-        matched_seats = set()
-        name_counts_in_run = {}  # (class_id, name_key) -> count
-
-        for row in csv_input:
+        for i, row in enumerate(rows):
             try:
-                first_name = (row.get('first_name') or row.get('First Name') or '').strip()
-                last_name = (row.get('last_name') or row.get('Last Name') or '').strip()
+                first_name = (row.get("first_name") or "").strip()
+                last_name = (row.get("last_name") or "").strip()
 
                 if not first_name and not last_name:
                     continue
                 if not first_name or not last_name:
-                    raise ValueError("Missing required fields.")
+                    errors.append(f"Row {i+1}: Missing first or last name.")
+                    continue
 
                 claim_first_name_hash = hash_username_lookup(first_name.lower())
                 claim_last_name_hash = hash_username_lookup(last_name.lower())
                 name_key = (first_name.lower(), last_name.lower())
 
-                # Find all seats in the DB for this class with the same name hashes.
                 db_seats = (
                     Seat.query
                     .join(IdentityProfile, IdentityProfile.seat_id == Seat.id)
@@ -8547,7 +8464,6 @@ def upload_students():
                     .all()
                 )
 
-                # Check if we can match this row to an unmatched existing seat in the DB
                 matched_seat = None
                 for s in db_seats:
                     if s.id not in matched_seats:
@@ -8556,16 +8472,9 @@ def upload_students():
                         break
 
                 if matched_seat:
-                    # This seat already exists, skip creating it
                     duplicated += 1
                     continue
 
-                # If we got here, we need to create a new Seat.
-                # Dedupe symmetry rule: once any duplicate exists in this class (either in the
-                # DB or created in this upload run), ALL seats with this name require a
-                # dedupe_code — including seats that already exist without one. This prevents
-                # the asymmetry where seat #1 is claimable without a code but seat #2 requires
-                # one.
                 total_existing = len(db_seats) + name_counts_in_run.get((class_id, name_key), 0)
                 is_collision = total_existing > 0
 
@@ -8574,20 +8483,16 @@ def upload_students():
                     alphabet = string.ascii_uppercase + string.digits
                     dedupe_code = "".join(random.choices(alphabet, k=4))
 
-                    # Backfill: if the first DB seat for this name still has no dedupe_code,
-                    # assign one now so it cannot be claimed without a code either.
                     for s in db_seats:
                         if s.dedupe_code is None:
                             backfill_code = "".join(random.choices(alphabet, k=4))
                             s.dedupe_code = backfill_code
-                            # Regenerate its fingerprint to be code-scoped too.
                             s.roster_fingerprint = hash_username_lookup(
                                 f"{class_id}|{first_name.lower()}|{last_name.lower()}|{backfill_code}"
                             )
 
                 name_counts_in_run[(class_id, name_key)] = name_counts_in_run.get((class_id, name_key), 0) + 1
 
-                # Roster fingerprint is class-scoped (INV-CORE: no cross-class correlators).
                 if dedupe_code:
                     roster_fingerprint = hash_username_lookup(
                         f"{class_id}|{first_name.lower()}|{last_name.lower()}|{dedupe_code}"
@@ -8597,8 +8502,7 @@ def upload_students():
                         f"{class_id}|{first_name.lower()}|{last_name.lower()}"
                     )
 
-                # Create Seat (unclaimed account)
-                seat = create_roster_student_seat(
+                create_roster_student_seat(
                     class_id=class_id,
                     first_name=first_name,
                     last_name=last_name,
@@ -8609,32 +8513,17 @@ def upload_students():
                 )
                 added_count += 1
             except Exception as e:
-                current_app.logger.error(f"Error processing row {row}: {e}")
-                errors += 1
+                current_app.logger.error(f"Error processing row {i+1}: {e}")
+                errors.append(f"Row {i+1}: {str(e)}")
 
-        # Build success message
-        success_msg = f"{added_count} roster seats created successfully"
-        if errors > 0:
-            success_msg += f"\n{errors} rows could not be processed"
-        if duplicated > 0:
-            success_msg += f"\n{duplicated} duplicate seats skipped"
-        if join_code:
-            success_msg += f"\n\nJoin Code: {join_code}"
-            success_msg += "\nShare this code with your students so they can claim their accounts."
-
-        flash(success_msg, "admin_success")
-
-    return redirect(url_for('admin.students'))
-
-
-@admin_bp.route('/download-csv-template')
-@admin_required
-def download_csv_template():
-    """
-    Serves the student_upload_template.csv from app/data/.
-    """
-    template_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "student_upload_template.csv")
-    return send_file(template_path, as_attachment=True, download_name="student_upload_template.csv", mimetype='text/csv')
+    status = "success" if not errors else "partial"
+    return jsonify(
+        status=status,
+        created=added_count,
+        duplicated=duplicated,
+        join_code=join_code,
+        errors=errors,
+    )
 
 
 @admin_bp.route('/export-class-roster')
@@ -9464,9 +9353,13 @@ def help_support():
             'class_id': ce_row.class_id,
             'join_code': get_display_join_code(ce_row.class_id),
             'label': ce_row.display_name or get_display_join_code(ce_row.class_id),
+            'class_public_id': ce_row.class_public_id or '',
         }
         for ce_row in teacher_user_class_rows
     ]
+
+    teacher_seat = db.session.get(Seat, canonical_context.seat_id) if canonical_context.seat_id else None
+    actor_public_id = teacher_seat.public_id if teacher_seat else None
 
     def _support_report_views(issues):
         """Build view-model dicts for the My Tickets list."""
@@ -9576,6 +9469,7 @@ def help_support():
                 page_title='Help & Support',
                 selected_class_id=selected_class_id,
                 class_scope_options=class_scope_options,
+                actor_public_id=actor_public_id,
                 my_reports=my_reports,
                 help_content=HELP_ARTICLES['teacher'],
                 format_utc_iso=format_utc_iso,
@@ -9602,6 +9496,7 @@ def help_support():
                 page_title='Help & Support',
                 selected_class_id=selected_class_id,
                 class_scope_options=class_scope_options,
+                actor_public_id=actor_public_id,
                 my_reports=my_reports,
                 help_content=HELP_ARTICLES['teacher'],
                 format_utc_iso=format_utc_iso,
@@ -9655,6 +9550,7 @@ def help_support():
                          page_title='Help & Support',
                          selected_class_id=selected_class_id,
                          class_scope_options=class_scope_options,
+                         actor_public_id=actor_public_id,
                          my_reports=my_reports,
                          help_content=HELP_ARTICLES['teacher'],
                          format_utc_iso=format_utc_iso)

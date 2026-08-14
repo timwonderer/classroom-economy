@@ -138,6 +138,8 @@ _CLASSLESS_ADMIN_ENDPOINTS = frozenset({
     'admin.create_class',
     'admin.onboarding',
     'admin.onboarding_status',
+    'admin.download_csv_template',
+    'admin.upload_students',
     'admin.onboarding_skip',
     'admin.onboarding_skip_task',
     'admin.onboarding_dismiss_widget',

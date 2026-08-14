@@ -94,6 +94,12 @@ class AdminTOTPConfirmForm(FlaskForm):
     totp_code = StringField('TOTP Code', validators=[DataRequired()])
     username = HiddenField(validators=[DataRequired()])
 
+class AdminClassSetupForm(FlaskForm):
+    class_display_name = StringField('Class Name', validators=[DataRequired()])
+    section = StringField('Section')
+    first_name = StringField('First Name', validators=[DataRequired()])
+    last_name = StringField('Last Name', validators=[DataRequired()])
+
 class AdminRecoveryForm(FlaskForm):
     """Recovery form — join_code[]/student_username[] pairs are submitted as arrays.
     This form only provides CSRF protection; no WTForms fields for the pair data."""

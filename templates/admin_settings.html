@@ -24,66 +24,79 @@
                             <span class="material-symbols-outlined" style="vertical-align: middle; font-size: 25px;">badge</span>
                             Display Name
                         </h5>
-                        <div class="mb-3">
-                            <label for="display_name" class="form-label">
-                                This is how your name will appear to others. Your custom display name is never shown to the developers or system administrators.
-                               
-                            </label>
-                            <input
-                                type="text"
-                                class="form-control"
-                                id="display_name"
-                                name="display_name"
-                                value="{{ admin.display_name or '' }}"
-                                placeholder="{{ admin.display_name or admin.get_display_username() }}"
-                                maxlength="100">
-                            <div class="form-text">
-                                If you don't change this, it will remain: <strong>{{ admin.display_name or admin.get_display_username() }}</strong>
+                        <p class="mb-3">
+                            This is how your name will appear to students. Your name is encrypted and never shown to developers or system administrators.
+                        </p>
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label for="first_name" class="form-label">First Name</label>
+                                <input
+                                    type="text"
+                                    class="form-control"
+                                    id="first_name"
+                                    name="first_name"
+                                    value="{{ teacher_profile.first_name if teacher_profile else '' }}"
+                                    placeholder="First name"
+                                    maxlength="100">
                             </div>
+                            <div class="col-md-6">
+                                <label for="last_name" class="form-label">Last Name</label>
+                                <input
+                                    type="text"
+                                    class="form-control"
+                                    id="last_name"
+                                    name="last_name"
+                                    value="{{ teacher_profile.last_name if teacher_profile else '' }}"
+                                    placeholder="Last name"
+                                    maxlength="100">
+                            </div>
+                        </div>
+                        <div class="form-text mt-2">
+                            Currently displaying as: <strong>{{ teacher_profile.full_name if teacher_profile else admin.get_display_username() }}</strong>
                         </div>
                     </div>
 
                     <hr class="my-4">
 
-                    <!-- Class Labels Section -->
+                    <!-- Class Settings Section -->
                     <div class="mb-4">
                         <h5 class="text-primary mb-3">
                             <span class="material-symbols-outlined" style="vertical-align: middle; font-size: 25px;">school</span>
-                            Class Labels
+                            Class Settings
                         </h5>
                         <p class="mb-3">
-                            This is how your class sections will appear to students
+                            Customize the display name and section for each of your classes.
                         </p>
 
-                        {% if view.classes %}
+                        {% if current_class %}
                         <div class="row g-3">
-                            {% for cls in view.classes %}
                             <div class="col-md-6">
-                                <div class="card border">
-                                    <div class="card-body">
-                                        <label for="{{ cls.form_key }}" class="form-label">
-                                            <strong>Block/Period {{ cls.section_key }}</strong>
-                                        </label>
-                                        <input
-                                            type="text"
-                                            class="form-control"
-                                            id="{{ cls.form_key }}"
-                                            name="{{ cls.form_key }}"
-                                            value="{{ cls.current_label or '' }}"
-                                            placeholder="e.g., Period 1, Honors Bio, AP Calc"
-                                            maxlength="50">
-                                        <div class="form-text">
-                                            This is what is being shown to students: <strong>{{ cls.current_label or cls.display_fallback }}</strong>
-                                        </div>
-                                    </div>
-                                </div>
+                                <label for="class_display_name" class="form-label fw-bold">Display Name</label>
+                                <input
+                                    type="text"
+                                    class="form-control"
+                                    id="class_display_name"
+                                    name="class_display_name"
+                                    value="{{ current_class.display_name or '' }}"
+                                    placeholder="e.g., Honors Bio, AP Calc"
+                                    maxlength="100">
                             </div>
-                            {% endfor %}
+                            <div class="col-md-6">
+                                <label for="class_section" class="form-label fw-bold">Section</label>
+                                <input
+                                    type="text"
+                                    class="form-control"
+                                    id="class_section"
+                                    name="class_section"
+                                    value="{{ current_class.section or '' }}"
+                                    placeholder="e.g., Period 1, Block A"
+                                    maxlength="50">
+                            </div>
                         </div>
                         {% else %}
                         <div class="alert alert-info">
                             <span class="material-symbols-outlined" style="vertical-align: middle;">info</span>
-                            No classes found. Upload a roster to get started.
+                            No class selected. Switch to a class to configure its settings.
                         </div>
                         {% endif %}
                     </div>
@@ -99,18 +112,22 @@
                         <div class="row">
                             <div class="col-md-6 mb-2">
                                 <small class="text-muted">Teacher ID:</small>
-                                <div><strong>{{ admin.display_name or admin.get_display_username() }}</strong></div>
-                                <small class="text-muted">When you file support tickets, this is what you will be known as.</small>
+                                <div><code class="user-select-all">{{ teacher_public_id or 'N/A' }}</code></div>
                             </div>
                             <div class="col-md-6 mb-2">
                                 <small class="text-muted">Account Created:</small>
                                 <div><strong>{{ admin.created_at.strftime('%B %d, %Y') if admin.created_at else 'N/A' }}</strong></div>
                             </div>
+                        </div>
+                        {% if current_class %}
+                        <div class="row mt-2">
                             <div class="col-md-6 mb-2">
-                                <small class="text-muted">Last Login:</small>
-                                <div><strong>{{ admin.last_login.strftime('%B %d, %Y %I:%M %p') if admin.last_login else 'N/A' }}</strong></div>
+                                <small class="text-muted">Class ID:</small>
+                                <div><code class="user-select-all">{{ current_class.class_public_id }}</code></div>
                             </div>
                         </div>
+                        {% endif %}
+                        <small class="text-muted mt-2 d-block">These identifiers are used for support and troubleshooting.</small>
                     </div>
 
                     <!-- Submit Button -->
