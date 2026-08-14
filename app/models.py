@@ -141,6 +141,8 @@ class User(db.Model):
         nullable=True,
         index=True,
     )
+    provisioning_expires_at = db.Column(db.DateTime(timezone=True), nullable=True, index=True)
+
     created_at = db.Column(db.DateTime(timezone=True), default=utc_now, nullable=False)
     updated_at = db.Column(db.DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False)
 
@@ -303,7 +305,7 @@ class ClassEconomy(db.Model):
     teacher_user_id = db.Column(
         db.Integer,
         db.ForeignKey('users.id', ondelete='CASCADE'),
-        nullable=False,
+        nullable=True,
         index=True,
     )
     display_name = db.Column(db.String(100), nullable=True)
