@@ -17,21 +17,46 @@ from tests.helpers.classroom_initializer import initialize, initialize_as_studen
 
 @pytest.fixture
 def two_class_ctx(client):
-    """Two canonical classes under one teacher; settings only on the second class."""
+    """Two canonical classes; settings only on the second class (ctx2).
+
+    provision_classroom creates default BankingSettings and RentSettings for both
+    classes. This fixture removes ctx1's settings (so isolation tests can assert
+    ctx1 returns None) and ensures ctx2 has the expected values (update-or-create).
+    """
     ctx1 = initialize("chemistry_p1", client.application)
     ctx2 = initialize("ap_csp_p3", client.application)
     student = ctx1.students[0]
 
-    db.session.add(BankingSettings(
-        class_id=ctx2.class_id,
-        overdraft_protection_enabled=True,
-        savings_apy=5.0,
-    ))
-    db.session.add(RentSettings(
-        class_id=ctx2.class_id,
-        rent_amount=100.0,
-    ))
-    db.session.flush()
+    with FEATContext("FEAT-IDEN-001", idempotency_key="test:two-class-ctx:setup"):
+        # Remove default settings for ctx1 so tests verify no cross-class bleed.
+        for bs in BankingSettings.query.filter_by(class_id=ctx1.class_id).all():
+            db.session.delete(bs)
+        for rs in RentSettings.query.filter_by(class_id=ctx1.class_id).all():
+            db.session.delete(rs)
+        db.session.flush()
+
+        # Ensure ctx2 has the expected settings (provision_classroom created defaults;
+        # update in place to avoid UNIQUE constraint violations).
+        bs2 = BankingSettings.query.filter_by(class_id=ctx2.class_id).first()
+        if bs2:
+            bs2.overdraft_protection_enabled = True
+            bs2.savings_apy = 5.0
+        else:
+            db.session.add(BankingSettings(
+                class_id=ctx2.class_id,
+                overdraft_protection_enabled=True,
+                savings_apy=5.0,
+            ))
+        rs2 = RentSettings.query.filter_by(class_id=ctx2.class_id).first()
+        if rs2:
+            rs2.rent_amount = 100.0
+        else:
+            db.session.add(RentSettings(
+                class_id=ctx2.class_id,
+                rent_amount=100.0,
+            ))
+        db.session.flush()
+
     return {
         "ctx": ctx1,
         "student_seat": student.seat,

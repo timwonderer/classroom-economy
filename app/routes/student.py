@@ -412,7 +412,8 @@ def get_rent_settings_for_context(context):
         .first()
     )
     if not current_cycle or not current_cycle.policy_uuid:
-        return None
+        # Fallback: direct class_id lookup when no BillCycle exists yet
+        return RentSettings.query.filter_by(class_id=class_id).first()
     return RentSettings.query.filter_by(policy_uuid=current_cycle.policy_uuid).first()
 
 
@@ -498,11 +499,6 @@ def is_feature_enabled(feature_name):
     Returns:
         bool: True if feature is enabled, False otherwise
     """
-    if feature_name == 'rent':
-        rent_settings = get_rent_settings_for_context(resolve_canonical_context())
-        if rent_settings:
-            return True
-
     context = resolve_canonical_context()
     if not context:
         return False

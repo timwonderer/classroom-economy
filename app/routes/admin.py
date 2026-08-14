@@ -2852,8 +2852,6 @@ def signup():
     Step 3 (POST /signup with totp_code): Validates TOTP, creates User, binds to seat/class,
         redirects to login.
     """
-    is_json = request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest"
-
     # ---- Determine which step we're on ----
     signup_step = request.form.get("signup_step", "")
     is_totp_submission = "totp_code" in request.form and signup_step != "class_setup"
@@ -2881,8 +2879,7 @@ def signup():
             first_name = form.first_name.data.strip()
             last_name = form.last_name.data.strip()
 
-            # Create class + seat (no user yet)
-            from app.utils.join_code import generate_join_code
+            # Create class + seat (no user yet) — use module-level generate_join_code so tests can patch it
             join_code = generate_join_code()
 
             signup_idempotency_key = f"feat:iden:admin-signup-class:{join_code}"
@@ -2896,17 +2893,28 @@ def signup():
                 )
             db.session.commit()
 
-            # Stash in session for step 2/3
+            # Stash in session for step 2
             session["signup_class_id"] = economy.class_id
             session["signup_seat_id"] = teacher_seat.id
-            current_app.logger.info(f"Signup step 1 complete: class={economy.class_id}, seat={teacher_seat.id}")
 
-            # Render step 2 (username form)
-            form = AdminSignupForm()
+            # Generate TOTP secret immediately — username is collected on the TOTP page
+            totp_secret = pyotp.random_base32()
+            session["admin_totp_secret"] = totp_secret
+
+            totp_uri = pyotp.totp.TOTP(totp_secret).provisioning_uri(name=join_code, issuer_name="Classroom Economy Admin")
+            img = qrcode.make(totp_uri)
+            buf = io.BytesIO()
+            img.save(buf, format="PNG")
+            buf.seek(0)
+            img_b64 = base64.b64encode(buf.read()).decode("utf-8")
+
+            totp_form = AdminTOTPConfirmForm()
+            from app.services.identity.builders import build_totp_setup_view
+            totp_view = build_totp_setup_view(totp_secret, img_b64, [])
             return render_template(
-                "admin_signup.html",
-                form=form,
-                turnstile_site_key=current_app.config.get("TURNSTILE_SITE_KEY"),
+                "admin_signup_totp.html",
+                form=totp_form,
+                totp_view=totp_view,
             )
 
         # GET: show step 1 (class creation)
@@ -2916,57 +2924,12 @@ def signup():
             turnstile_site_key=current_app.config.get("TURNSTILE_SITE_KEY"),
         )
 
-    # ---- Guard: steps 2/3 require class context from step 1 ----
+    # ---- Guard: step 2 requires class context from step 1 ----
     if not session.get("signup_class_id") or not session.get("signup_seat_id"):
         flash("Please start by creating your class.", "error")
         return redirect(url_for("admin.signup"))
 
-    # ---- STEP 2: Username ----
-    if not is_totp_submission:
-        form = AdminSignupForm()
-        if form.validate_on_submit():
-            username = normalize_auth_username(form.username.data)
-
-            if _auth_username_exists(username):
-                flash("Username already exists.", "error")
-                return render_template(
-                    "admin_signup.html",
-                    form=form,
-                    turnstile_site_key=current_app.config.get("TURNSTILE_SITE_KEY"),
-                )
-
-            # Generate TOTP secret
-            if "admin_totp_secret" not in session or session.get("admin_totp_username") != username:
-                totp_secret = pyotp.random_base32()
-                session["admin_totp_secret"] = totp_secret
-                session["admin_totp_username"] = username
-            else:
-                totp_secret = session["admin_totp_secret"]
-
-            totp_uri = pyotp.totp.TOTP(totp_secret).provisioning_uri(name=username, issuer_name="Classroom Economy Admin")
-            img = qrcode.make(totp_uri)
-            buf = io.BytesIO()
-            img.save(buf, format="PNG")
-            buf.seek(0)
-            img_b64 = base64.b64encode(buf.read()).decode("utf-8")
-
-            totp_form = AdminTOTPConfirmForm()
-            totp_form.username.data = username
-            from app.services.identity.builders import build_totp_setup_view
-            totp_view = build_totp_setup_view(totp_secret, img_b64, [])
-            return render_template(
-                "admin_signup_totp.html",
-                form=totp_form,
-                totp_view=totp_view,
-            )
-        # Invalid form submission — re-render step 2
-        return render_template(
-            "admin_signup.html",
-            form=form,
-            turnstile_site_key=current_app.config.get("TURNSTILE_SITE_KEY"),
-        )
-
-    # ---- STEP 3: TOTP verification → create User → bind to class ----
+    # ---- STEP 2: Username + TOTP verification → create User → bind to class ----
     form = AdminTOTPConfirmForm()
     if not form.validate_on_submit():
         flash("Invalid submission. Please try again.", "error")
@@ -2976,13 +2939,22 @@ def signup():
     totp_code = form.totp_code.data.strip()
     totp_secret = session.get("admin_totp_secret")
 
-    if not totp_secret or session.get("admin_totp_username") != username:
+    if not totp_secret:
         flash("Session expired. Please start over.", "error")
         return redirect(url_for("admin.signup"))
 
-    # Verify TOTP
+    if not username:
+        flash("Username is required.", "error")
+        return redirect(url_for("admin.signup"))
+
+    # Check username availability
+    if _auth_username_exists(username):
+        flash("Username already exists. Please choose another.", "error")
+        return redirect(url_for("admin.signup"))
+
+    # Verify TOTP with a 1-window tolerance
     totp = pyotp.TOTP(totp_secret)
-    if not totp.verify(totp_code):
+    if not totp.verify(totp_code, valid_window=1):
         flash("Invalid TOTP code. Please try again.", "error")
         totp_uri = pyotp.totp.TOTP(totp_secret).provisioning_uri(name=username, issuer_name="Classroom Economy Admin")
         img = qrcode.make(totp_uri)
@@ -2991,7 +2963,6 @@ def signup():
         buf.seek(0)
         img_b64 = base64.b64encode(buf.read()).decode("utf-8")
         totp_form = AdminTOTPConfirmForm()
-        totp_form.username.data = username
         from app.services.identity.builders import build_totp_setup_view
         totp_view = build_totp_setup_view(totp_secret, img_b64, [])
         return render_template(
@@ -3006,13 +2977,6 @@ def signup():
         flash("You must agree to the Terms of Service and Privacy Policy.", "error")
         return redirect(url_for("admin.signup"))
 
-    # Re-check username uniqueness (race condition guard)
-    if _auth_username_exists(username):
-        flash("Username was taken while you were signing up. Please choose another.", "error")
-        session.pop("admin_totp_secret", None)
-        session.pop("admin_totp_username", None)
-        return redirect(url_for("admin.signup"))
-
     # Create User and bind to class/seat
     class_id = session["signup_class_id"]
     seat_id = session["signup_seat_id"]
@@ -3025,11 +2989,10 @@ def signup():
 
     # Clean up signup session keys
     session.pop("admin_totp_secret", None)
-    session.pop("admin_totp_username", None)
     session.pop("signup_class_id", None)
     session.pop("signup_seat_id", None)
 
-    current_app.logger.info(f"Teacher signup complete: user={new_user.id}, class={class_id}, seat={seat_id}")
+    current_app.logger.info(f"Teacher signup complete: user={new_user.id if new_user else 'N/A'}, class={class_id}, seat={seat_id}")
     flash("Account created successfully! Please log in with your username and authenticator.", "success")
     return redirect(url_for("admin.login"))
 
@@ -4518,6 +4481,106 @@ def delete_student():
     return redirect(url_for('admin.students'))
 
 
+@admin_bp.route('/students/bulk-add', methods=['POST'])
+@admin_required
+def bulk_add_students():
+    """
+    Paste-based bulk student provisioning.
+
+    Accepts JSON body: {"students": [{"first_name": "...", "last_name": "...", "notes": "..."}]}
+    Returns JSON:
+      success → {"status": "success", "created": N, "join_code": "...", "errors": []}
+      error   → {"status": "error", "created": 0, "errors": [{"message": "..."}]}, 400
+    """
+    import uuid as _uuid
+    from app.feats.base import FEATContext as _FEATContext
+
+    data = request.get_json(silent=True)
+    if data is None or "students" not in data:
+        return jsonify({"status": "error", "created": 0, "errors": [{"message": "Missing students key"}]}), 400
+
+    raw_students = data["students"]
+    if not isinstance(raw_students, list) or len(raw_students) == 0:
+        return jsonify({"status": "error", "created": 0, "errors": [{"message": "No students provided"}]}), 400
+
+    ctx = g.canonical_context
+    class_id = ctx.class_id
+
+    class_economy = get_class_economy(class_id)
+    if not class_economy:
+        return jsonify({"status": "error", "created": 0, "errors": [{"message": "Class not found"}]}), 404
+
+    join_code = class_economy.join_code
+
+    def _strip_html(text):
+        return bleach.clean(str(text), tags=[], attributes={}, strip=True, strip_comments=True)
+
+    # Validate and sanitize rows; skip blank rows
+    processed = []
+    errors = []
+    for row in raw_students:
+        first_name = _strip_html((row.get("first_name") or "")).strip()
+        last_name = _strip_html((row.get("last_name") or "")).strip()
+        raw_notes = row.get("notes")
+        notes = _strip_html(raw_notes).strip() if raw_notes else None
+        if not notes:
+            notes = None
+
+        # Skip blank rows silently
+        if not first_name and not last_name:
+            continue
+
+        if not first_name:
+            errors.append({"message": "First name is required"})
+        elif not last_name:
+            errors.append({"message": "Last name is required"})
+        else:
+            processed.append({"first_name": first_name, "last_name": last_name, "notes": notes})
+
+    if errors:
+        return jsonify({"status": "error", "created": 0, "errors": errors}), 400
+
+    if not processed:
+        return jsonify({"status": "error", "created": 0, "errors": [{"message": "No valid students provided"}]}), 400
+
+    # Detect in-batch duplicates (same normalized first+last) and assign unique dedupe_codes
+    name_counts = defaultdict(list)
+    for i, student in enumerate(processed):
+        key = (student["first_name"].lower(), student["last_name"].lower())
+        name_counts[key].append(i)
+
+    dedupe_codes = [None] * len(processed)
+    for key, indices in name_counts.items():
+        if len(indices) > 1:
+            for idx in indices:
+                dedupe_codes[idx] = _uuid.uuid4().hex[:12]
+
+    # Create seats in FEAT context
+    batch_key = f"bulk-add:{class_id}:{_uuid.uuid4().hex}"
+    with _FEATContext("FEAT-CLASS-002", idempotency_key=batch_key):
+        for i, student in enumerate(processed):
+            fn = student["first_name"]
+            ln = student["last_name"]
+            create_roster_student_seat(
+                class_id=class_id,
+                first_name=fn,
+                last_name=ln,
+                notes=student["notes"],
+                dedupe_code=dedupe_codes[i],
+                claim_first_name_hash=hash_username_lookup(fn.lower()),
+                claim_last_name_hash=hash_username_lookup(ln.lower()),
+                roster_fingerprint=hash_username_lookup(f"{class_id}|{fn.lower()}|{ln.lower()}"),
+            )
+    db.session.commit()
+
+    return jsonify({
+        "status": "success",
+        "created": len(processed),
+        "join_code": join_code,
+        "errors": [],
+    })
+
+
 @admin_bp.route('/students/bulk-delete', methods=['POST'])
 @admin_required
 @feat_shell("FEAT-ADMN-001")
@@ -5721,7 +5784,6 @@ def _calculate_base_rent_amount(rent_settings: RentSettings, current_year: int, 
 
 
 @admin_bp.route('/rent-settings', methods=['GET', 'POST'])
-@feat_shell("FEAT-ADMN-001")
 @admin_required
 def rent_settings():
     """Configure rent settings."""
@@ -5905,8 +5967,10 @@ def rent_settings():
             item_data['store_price'] = store_price
             parsed_items.append(item_data)
 
-        # Apply parsed items to each class (blocks_to_update now contains class_ids)
-        for block in blocks_to_update:
+        idempotency_key_items = f"feat:rent:items-update:{selected_scope['class_id']}:{payload_hash}"
+        with FEATContext("FEAT-SETTINGS-001", idempotency_key=idempotency_key_items):
+            # Apply parsed items to each class (blocks_to_update now contains class_ids)
+            for block in blocks_to_update:
                 # block is now a class_id; fetch settings directly by class_id
                 block_settings = get_rent_settings(block)
                 if not block_settings:
@@ -8377,6 +8441,60 @@ def attendance_log():
 
 # -------------------- STUDENT DATA IMPORT/EXPORT --------------------
 
+def _handle_roster_sync_csv():
+    """Handle multipart CSV roster sync posted to /upload-students with roster_sync=1."""
+    from app.models import Seat, IdentityProfile
+
+    user_id = g.canonical_context.user_id
+    class_id = (getattr(g.canonical_context, "class_id", None) or "").strip()
+    if not class_id:
+        flash("Select a class first.", "error")
+        return redirect(url_for("admin.students"))
+
+    class_row = verify_teacher_owns_class(class_id, user_id)
+    if not class_row:
+        flash("Class not found or you do not own it.", "error")
+        return redirect(url_for("admin.students"))
+
+    csv_file = request.files["csv_file"]
+    stream = io.StringIO(csv_file.stream.read().decode("utf-8"), newline=None)
+    reader = csv.DictReader(stream)
+
+    idempotency_hash = hashlib.sha256(
+        f"{class_id}:{csv_file.filename}".encode()
+    ).hexdigest()[:16]
+    idempotency_key = f"feat:iden:roster-sync:{user_id}:{idempotency_hash}"
+
+    updated_count = 0
+    with FEATContext("FEAT-IDEN-001", idempotency_key=idempotency_key):
+        for row in reader:
+            actor_public_id = (row.get("actor_public_id") or "").strip()
+            if not actor_public_id:
+                continue
+            seat = Seat.query.filter_by(class_id=class_id, public_id=actor_public_id).first()
+            if not seat:
+                continue
+            profile = IdentityProfile.query.filter_by(seat_id=seat.id).first()
+            if not profile:
+                continue
+            if "first_name" in row:
+                sanitized = _sanitize_roster_text(row["first_name"])
+                if sanitized:
+                    profile.first_name = sanitized
+            if "last_name" in row:
+                sanitized = _sanitize_roster_text(row["last_name"])
+                if sanitized:
+                    profile.last_name = sanitized
+            if "notes" in row:
+                profile.notes = _sanitize_roster_text(row["notes"]) or None
+            db.session.flush()
+            updated_count += 1
+
+    db.session.commit()
+    flash(f"Roster sync complete: {updated_count} student(s) updated.", "success")
+    return redirect(url_for("admin.students"))
+
+
 @admin_bp.route('/upload-students', methods=['POST'])
 @admin_required
 def upload_students():
@@ -8386,6 +8504,9 @@ def upload_students():
     Accepts: { "students": [{"first_name": ..., "last_name": ..., "notes": ...}, ...] }
     Creates Seat entries (unclaimed accounts) in the current class.
     """
+    if request.form.get("roster_sync") == "1" and "csv_file" in request.files:
+        return _handle_roster_sync_csv()
+
     data = request.get_json(silent=True)
     if not data or not isinstance(data.get("students"), list):
         return jsonify(status="error", message="Invalid request."), 400
@@ -9227,6 +9348,10 @@ def banking_settings_update():
                         class_id=scope_for_block['class_id'],
                         block=block,
                     ).first()
+                    if not settings:
+                        settings = BankingSettings.query.filter_by(
+                            class_id=scope_for_block['class_id'],
+                        ).first()
                     if not settings:
                         settings = create_banking_settings(
                             class_id=scope_for_block['class_id'],
