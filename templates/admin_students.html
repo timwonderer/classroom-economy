@@ -294,12 +294,6 @@
       <span class="material-symbols-outlined me-1" style="vertical-align: middle;">group_add</span>Add Students
     </button>
   </li>
-  <li class="nav-item" role="presentation">
-    <button class="nav-link" id="individual-upload-tab" data-bs-toggle="tab" data-bs-target="#individual-upload"
-      type="button" role="tab">
-      <span class="material-symbols-outlined me-1" style="vertical-align: middle;">person_add</span>Individual Upload
-    </button>
-  </li>
 </ul>
 
 <div class="tab-content" id="studentTabContent">
@@ -820,7 +814,7 @@
       submitBtn.disabled = true;
       submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Adding...';
 
-      fetch('{{ url_for("admin.bulk_add_students") }}', {
+      fetch('{{ url_for("admin.upload_students") }}', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -866,72 +860,6 @@
   })();
   </script>
 
-  <!-- INDIVIDUAL UPLOAD TAB -->
-  <div class="tab-pane fade" id="individual-upload" role="tabpanel">
-    <div class="card shadow">
-      <div class="card-header bg-primary text-white">
-        <h2 class="mb-0 h5"><span class="material-symbols-outlined me-2"
-            style="vertical-align: middle;">person_add</span>Add Individual Student</h2>
-      </div>
-      <div class="card-body">
-        <div class="row justify-content-center">
-          <div class="col-lg-8">
-            <form action="{{ url_for('admin.add_individual_student') }}" method="post">
-              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-
-              <div class="card  mb-3">
-                <div class="card-header bg-primary text-white">
-                  <h3 class="mb-0 text-white h6"><span class="material-symbols-outlined me-2"
-                      style="vertical-align: middle;">person</span>Student Information</h3>
-                </div>
-                <div class="card-body">
-                  <div class="row">
-                    <div class="col-md-6 mb-3">
-                      <label for="first_name" class="form-label fw-bold">First Name <span
-                          class="text-danger">*</span></label>
-                      <input type="text" class="form-control" id="first_name" name="first_name" required>
-                    </div>
-                    <div class="col-md-6 mb-3">
-                      <label for="last_name" class="form-label fw-bold">Last Name <span
-                          class="text-danger">*</span></label>
-                      <input type="text" class="form-control" id="last_name" name="last_name" required>
-                    </div>
-                  </div>
-                  <div class="row">
-                    <div class="col-md-6 mb-3">
-                      <label class="form-label fw-bold">Class</label>
-                      <div class="form-control bg-light">{{ class_display_label }}</div>
-                      <input type="hidden" id="block_select" name="block_select" value="{{ current_class_section or current_class_id }}">
-                      <div class="form-text">Student will be added to the active class.</div>
-                    </div>
-                  </div>
-                  <div class="row">
-                    <div class="col-md-6 mb-3">
-                      <label for="class_name" class="form-label fw-bold">Class Name</label>
-                      <input type="text" class="form-control" id="class_name" name="class_name"
-                        placeholder="Optional display name for the class">
-                    </div>
-                    <div class="col-md-6 mb-3">
-                      <label for="additional_notes" class="form-label fw-bold">Additional Notes</label>
-                      <input type="text" class="form-control" id="additional_notes" name="additional_notes"
-                        placeholder="Optional notes for your import record">
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div class="d-grid">
-                <button type="submit" class="btn btn-primary btn-lg">
-                  <span class="material-symbols-outlined me-2" style="vertical-align: middle;">person_add</span>Add
-                  Student
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
 
 </div>
 
@@ -950,61 +878,45 @@
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <input type="hidden" id="edit_student_id" name="seat_id">
 
-          <!-- Basic Information -->
-          <div class="card border-primary mb-3">
-            <div class="card-header bg-primary-subtle text-primary">
-              <h3 class="mb-0 text-white h6"><span class="material-symbols-outlined me-2"
-                  style="vertical-align: middle;">person</span>Basic Information</h3>
+          <div class="row">
+            <div class="col-md-6 mb-3">
+              <label for="edit_first_name" class="form-label fw-bold">First Name</label>
+              <input type="text" class="form-control" id="edit_first_name" name="first_name" required>
+              <div class="form-text">Used for account claim process</div>
             </div>
-            <div class="card-body">
-              <div class="row">
-                <div class="col-md-6 mb-3">
-                  <label for="edit_first_name" class="form-label fw-bold">First Name</label>
-                  <input type="text" class="form-control" id="edit_first_name" name="first_name" required>
-                  <div class="form-text">Used for account claim process</div>
-                </div>
-                <div class="col-md-6 mb-3">
-                  <label for="edit_last_name" class="form-label fw-bold">Last Name</label>
-                  <input type="text" class="form-control" id="edit_last_name" name="last_name" required>
-                  <div class="form-text">Stored as the student's encrypted full last name</div>
-                </div>
-              </div>
-              <div class="mb-0">
-                <label for="edit_notes" class="form-label fw-bold">Notes</label>
-                <textarea class="form-control" id="edit_notes" name="notes" rows="3"
-                  placeholder="Optional teacher-facing note"></textarea>
-              </div>
+            <div class="col-md-6 mb-3">
+              <label for="edit_last_name" class="form-label fw-bold">Last Name</label>
+              <input type="text" class="form-control" id="edit_last_name" name="last_name" required>
+              <div class="form-text">Stored as the student's encrypted full last name</div>
             </div>
           </div>
-
-          <!-- Login Management -->
-          <div class="card border-primary mb-3">
-            <div class="card-header bg-primary-subtle">
-              <h3 class="mb-0 text-white h6"><span class="material-symbols-outlined me-2"
-                  style="vertical-align: middle;">key</span>Login Management</h3>
-            </div>
-            <div class="card-body">
-              <div class="d-flex justify-content-between align-items-center">
-                <div>
-                  <p class="mb-1 fw-bold">Reset Student Login</p>
-                  <p class="text-muted small mb-0">Forces student to go through account claim process again. Account
-                    data will be preserved.</p>
-                </div>
-                <div class="form-check form-switch">
-                  <input class="form-check-input" type="checkbox" id="edit_reset_login" name="reset_login"
-                    role="switch">
-                  <label class="form-check-label" for="edit_reset_login">Reset</label>
-                </div>
-              </div>
-              <div class="alert alert-warning mt-3 mb-0" id="reset_login_warning" style="display:none;">
-                <small><span class="material-symbols-outlined me-2"
-                    style="vertical-align: middle;">warning</span>Student will need to re-claim their account using
-                  their name and class section details.</small>
-              </div>
-            </div>
+          <div class="mb-3">
+            <label for="edit_notes" class="form-label fw-bold">Notes</label>
+            <textarea class="form-control" id="edit_notes" name="notes" rows="3"
+              placeholder="Optional teacher-facing note"></textarea>
           </div>
 
-          <div class="alert alert-info mb-0">
+          <hr>
+
+          <div class="d-flex justify-content-between align-items-center">
+            <div>
+              <p class="mb-1 fw-bold">Reset Student Login</p>
+              <p class="text-muted small mb-0">Forces student to go through account claim process again. Account
+                data will be preserved.</p>
+            </div>
+            <div class="form-check form-switch">
+              <input class="form-check-input" type="checkbox" id="edit_reset_login" name="reset_login"
+                role="switch">
+              <label class="form-check-label" for="edit_reset_login">Reset</label>
+            </div>
+          </div>
+          <div class="alert alert-warning mt-3 mb-0" id="reset_login_warning" style="display:none;">
+            <small><span class="material-symbols-outlined me-2"
+                style="vertical-align: middle;">warning</span>Student will need to re-claim their account using
+              their name and class section details.</small>
+          </div>
+
+          <div class="alert alert-info mt-3 mb-0">
             <small><span class="material-symbols-outlined me-2"
                 style="vertical-align: middle;">info</span><strong>Note:</strong> Changing the name will update what the
               student needs to enter during the account claim process.</small>
