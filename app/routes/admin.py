@@ -4553,7 +4553,7 @@ def bulk_add_students():
     for key, indices in name_counts.items():
         if len(indices) > 1:
             for idx in indices:
-                dedupe_codes[idx] = _uuid.uuid4().hex[:12]
+                dedupe_codes[idx] = _uuid.uuid4().hex[:8]
 
     # Create seats in FEAT context
     batch_key = f"bulk-add:{class_id}:{_uuid.uuid4().hex}"
@@ -9286,15 +9286,10 @@ def banking_settings_update():
                         requested_block=block,
                         allow_default=False,
                     )
-                    # Get or create settings for this class
+                    # Get or create settings for this class (class_id is canonical key; block is display metadata)
                     settings = BankingSettings.query.filter_by(
                         class_id=scope_for_block['class_id'],
-                        block=block,
                     ).first()
-                    if not settings:
-                        settings = BankingSettings.query.filter_by(
-                            class_id=scope_for_block['class_id'],
-                        ).first()
                     if not settings:
                         settings = create_banking_settings(
                             class_id=scope_for_block['class_id'],

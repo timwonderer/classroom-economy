@@ -19,9 +19,8 @@ def upsert_payroll_settings_for_blocks(
         if not class_id:
             raise ValueError(f"Missing class scope for payroll block '{block_value}'")
 
-        setting = PayrollSettings.query.filter_by(class_id=class_id, block=block_value).first()
-        if not setting:
-            setting = PayrollSettings.query.filter_by(class_id=class_id).first()
+        # class_id is canonical; block is display metadata only
+        setting = PayrollSettings.query.filter_by(class_id=class_id).first()
         if not setting:
             setting = PayrollSettings(class_id=class_id, block=block_value)
 
@@ -47,9 +46,8 @@ def update_expected_weekly_hours_for_blocks(
         if not class_id:
             raise ValueError(f"Missing class scope for payroll block '{block_value}'")
 
-        setting = PayrollSettings.query.filter_by(class_id=class_id, block=block_value).first()
-        if not setting:
-            setting = PayrollSettings.query.filter_by(class_id=class_id).first()
+        # class_id is canonical; block is display metadata only
+        setting = PayrollSettings.query.filter_by(class_id=class_id).first()
         if setting:
             setting.expected_weekly_hours = expected_weekly_hours
             setting.updated_at = utc_now()

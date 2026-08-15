@@ -542,8 +542,14 @@ class TestConfigurationStateQueries:
 
         # Must have at least 2 classes to verify ordering
         assert len(classes) >= 2
+        def _as_utc(dt):
+            if dt is None:
+                return dt
+            if dt.tzinfo is None:
+                return dt.replace(tzinfo=timezone.utc)
+            return dt
         for i in range(len(classes) - 1):
-            assert classes[i].created_at >= classes[i + 1].created_at
+            assert _as_utc(classes[i].created_at) >= _as_utc(classes[i + 1].created_at)
 
 
 class TestGuidanceFunctions:
