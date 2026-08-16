@@ -1762,7 +1762,11 @@ def handle_tap():
             reason_code=reason_code,
             idempotency_key=f"prod_attendance:{class_id}:{seat_id}:{normalized_action}:{secrets.token_hex(12)}",
         )
+        db.session.commit()
         current_app.logger.info("TAP success - seat %s class_id=%s action=%s", seat_id, class_id, action)
+    except ValueError as e:
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 409
     except SQLAlchemyError as e:
         db.session.rollback()
         current_app.logger.error(f"TAP failed for seat {seat_id}: {e}", exc_info=True)

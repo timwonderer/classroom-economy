@@ -696,9 +696,6 @@ class AttendanceSession(db.Model):
     target_user = db.relationship("User", foreign_keys=[target_user_id], post_update=True)
     actor_seat = db.relationship("Seat", foreign_keys=[actor_seat_id], post_update=True)
 
-    __table_args__ = (
-        db.Index('ix_attendance_sessions_target_user_id_active', 'target_user_id', unique=True, postgresql_where=sa.text("status = 'active' AND target_user_id IS NOT NULL")),
-    )
 
 
 # Legacy tap table removed; canonical replacement: attendance_sessions (DOM-PROD-001).
