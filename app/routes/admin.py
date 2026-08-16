@@ -88,6 +88,7 @@ from app.utils.economy_balance import EconomyBalanceChecker
 from app.utils.economy_policy import (
     POLICY_MODES,
     convert_weekly_amount_to_frequency,
+    get_active_policy_mode_for_class,
     get_class_feature_settings_for_class,
     get_insurance_premium_recommendation,
     get_class_feature_settings,
@@ -139,10 +140,7 @@ from app.services.classroom_setup import (
     create_roster_student_seat,
     update_or_create_roster_seat,
 )
-from app.services.payroll_settings_service import (
-    upsert_payroll_settings_for_blocks,
-    update_expected_weekly_hours_for_blocks,
-)
+from app.services.payroll_settings_service import upsert_payroll_settings
 from app.services.store_service import (
     create_store_item,
     deactivate_store_item,
@@ -953,7 +951,7 @@ def _get_class_ids_by_block(canonical_context, blocks):
     return {section: resolved_class_id for section, resolved_class_id in rows if resolved_class_id}
 
 
-def _build_payroll_preview_state(students, class_ids_by_block):
+def _build_payroll_preview_state(students):
     """Aggregate payroll preview data from PROD attendance/payroll facts."""
     students_by_class_id: dict[str, dict[int, Seat]] = defaultdict(dict)
 
@@ -1939,6 +1937,21 @@ def _serialize_economy_analysis_payload(analysis, *, snapshot=None, now_utc=None
         warning_items.append(warning_payload)
         warnings_by_level[warning.level.value].append(warning_payload)
 
+    if analysis.cwi is None:
+        # CWI unconfigured — return a stripped payload; consumers must render the
+        # "configure expected weekly hours on Economic Engine" warning.
+        return {
+            'status': 'cwi_unconfigured',
+            'cwi': None,
+            'is_balanced': False,
+            'budget_survival_test_passed': False,
+            'weekly_savings': 0,
+            'warnings': warnings_by_level,
+            'warning_items': warning_items,
+            'recommendations': {},
+            'cwi_breakdown': None,
+            'analysis_schedule': _economy_analysis_schedule(snapshot, now_utc=now_utc, frozen=frozen),
+        }
     return {
         'status': 'success',
         'cwi': _json_safe_value(analysis.cwi.cwi),
@@ -1975,13 +1988,16 @@ def _deserialize_economy_analysis_payload(payload):
             level=SimpleNamespace(value=warning.get('level', 'info')),
         ))
 
-    breakdown = payload.get('cwi_breakdown') or {}
-    cwi = SimpleNamespace(
-        cwi=payload.get('cwi'),
-        pay_rate_per_minute=breakdown.get('pay_rate_per_minute'),
-        expected_weekly_minutes=breakdown.get('expected_weekly_minutes'),
-        notes=breakdown.get('notes') or [],
-    )
+    breakdown = payload.get('cwi_breakdown')
+    if payload.get('status') == 'cwi_unconfigured' or not breakdown:
+        cwi = None
+    else:
+        cwi = SimpleNamespace(
+            cwi=payload.get('cwi'),
+            pay_rate_per_minute=breakdown.get('pay_rate_per_minute'),
+            expected_weekly_minutes=breakdown.get('expected_weekly_minutes'),
+            notes=breakdown.get('notes') or [],
+        )
     return SimpleNamespace(
         cwi=cwi,
         is_balanced=payload.get('is_balanced'),
@@ -1997,13 +2013,36 @@ def _current_economy_snapshot_inputs(checker, payroll_settings, expected_weekly_
     pay_rate = Decimal(str(payroll_settings.pay_rate or 0)).quantize(Decimal('0.0001'))
     source_hours = expected_weekly_hours
     if source_hours is None:
-        source_hours = payroll_settings.expected_weekly_hours if payroll_settings.expected_weekly_hours is not None else 5.0
+        # expected_weekly_hours lives on EconomicEngine (canonical per DOM-CLASS-002).
+        # Returns None when unconfigured — snapshot is undefined in that case.
+        source_hours = _resolve_expected_weekly_hours(payroll_settings)
+    if source_hours is None:
+        return None
     hours = Decimal(str(source_hours)).quantize(Decimal('0.01'))
     return {
         'policy_mode': checker.policy_mode,
         'pay_rate': pay_rate,
         'expected_hours': hours,
     }
+
+
+def _resolve_expected_weekly_hours(payroll_settings) -> float | None:
+    """Read expected_weekly_hours from the EconomicEngine governing payroll for this class.
+
+    Returns None when the teacher has not configured a value. CWI is undefined in
+    that case; callers must handle None (typically by disabling pricing guidance
+    with a warning that expected_weekly_hours must be set on the Economic Engine page).
+    """
+    try:
+        from app.services.class_configuration_query_service import get_effective_economic_engine
+        class_id = getattr(payroll_settings, 'class_id', None)
+        if class_id:
+            engine = get_effective_economic_engine(class_id, 'payroll')
+            if engine and engine.expected_weekly_hours is not None:
+                return float(engine.expected_weekly_hours)
+    except Exception:
+        pass
+    return None
 
 
 def _economy_snapshot_matches_inputs(snapshot, *, expected_inputs):
@@ -2035,6 +2074,17 @@ def _get_frozen_economy_analysis_payload(
         expected_weekly_hours=expected_weekly_hours,
     )
     class_id = getattr(payroll_settings, "class_id", None)
+    if expected_inputs is None:
+        # CWI is undefined without expected_weekly_hours on EconomicEngine.
+        # Return an empty analysis payload so consumers can render the
+        # "configure CWI to enable pricing recommendations" warning.
+        payload = {
+            'status': 'cwi_unconfigured',
+            'cwi': None,
+            'warnings': [],
+            'snapshot_cached': False,
+        }
+        return payload, None
     analysis = checker.analyze_economy(
         payroll_settings=payroll_settings,
         rent_settings=rent_settings,
@@ -2160,7 +2210,7 @@ def _is_bypassed_economy_warning(warning, rent_settings, insurance_policies, sto
     return False
 
 
-def _filter_economy_health_warnings(analysis, rent_settings, insurance_policies, fines, store_items, *, selected_block=None):
+def _filter_economy_health_warnings(analysis, rent_settings, insurance_policies, fines, store_items):
     filtered = []
     for warning in analysis.warnings if analysis else []:
         if not _is_actionable_economy_warning(warning):
@@ -2197,13 +2247,13 @@ def _filter_economy_health_warnings(analysis, rent_settings, insurance_policies,
         'Rent',
         len([w for w in filtered if w.feature == 'Rent']) if rent_settings else 0,
         'Adjust rent',
-        url_for('admin.rent_settings', settings_block=selected_block) if rent_settings else None,
+        url_for('admin.rent_settings') if rent_settings else None,
     )
     add_summary(
         'Insurance',
         len([w for w in filtered if w.feature in insurance_prefixes]),
         'Review insurance',
-        url_for('admin.insurance_management', settings_block=selected_block),
+        url_for('admin.insurance_management'),
     )
     add_summary(
         'Fees',
@@ -2222,8 +2272,10 @@ def _filter_economy_health_warnings(analysis, rent_settings, insurance_policies,
 
 
 def _build_policy_summary(class_scope, analysis, rent_settings, insurance_policies, fines, *, warnings=None):
+    # Policy mode is canonical on EconomicEngine (DOM-CLASS-002).
+    # FeatureSettings row is still used for `economy_policy_updated_at` display metadata.
     settings_row = get_feature_settings_row_for_class(class_scope.get('class_id'), create=False)
-    policy_mode = normalize_policy_mode(getattr(settings_row, 'economy_policy_mode', 'default'))
+    policy_mode = get_active_policy_mode_for_class(class_scope.get('class_id'))
 
     categories = []
 
@@ -2267,7 +2319,7 @@ def _extract_pending_rebalance_effective_at(policy_summary: dict) -> datetime | 
     return get_pending_policy_transition_effective_at(class_id)
 
 
-def _build_rebalance_preview(canonical_context, selected_block, class_id, checker, cwi, rent_settings, insurance_policies):
+def _build_rebalance_preview(canonical_context, class_id, checker, cwi, rent_settings, insurance_policies):
     preview_items = []
     recommendations = get_price_recommendation_context(checker.policy_mode, cwi) or {}
 
@@ -2288,7 +2340,6 @@ def _build_rebalance_preview(canonical_context, selected_block, class_id, checke
                 'apply_by_default': True,
                 'change': {
                     'type': 'rent',
-                    'block': selected_block,
                     'class_id': class_id,
                     'current_value': str(current_amount),
                     'new_value': str(recommended_amount),
@@ -2334,8 +2385,10 @@ def _build_insurance_recommendation_context(canonical_context, *, class_id=None,
     if not payroll_settings:
         return None
 
-    checker = EconomyBalanceChecker(canonical_context.user_id, None, class_id=getattr(payroll_settings, "class_id", None))
+    checker = EconomyBalanceChecker(canonical_context.user_id, class_id=getattr(payroll_settings, "class_id", None))
     cwi_calc = checker.calculate_cwi(payroll_settings)
+    if cwi_calc is None:
+        return None
     return get_insurance_premium_recommendation(
         checker.policy_mode,
         Decimal(str(cwi_calc.cwi)),
@@ -2343,29 +2396,21 @@ def _build_insurance_recommendation_context(canonical_context, *, class_id=None,
     )
 
 
-def _load_economy_rebalance_context(canonical_context, class_id, selected_block):
-    user_id = canonical_context.user_id
+def _load_economy_rebalance_context(canonical_context, class_id):
+    """Load class-scoped payroll/rent/insurance settings for economy rebalance.
+
+    Returns (payroll_settings, rent_settings, insurance_policies) for the canonical
+    class. All lookups are class_id-authoritative; no v1 block scoping.
+    """
     selected_class_id = (class_id or "").strip() or None
     if not selected_class_id:
         raise InvariantViolation("Missing canonical class_id for economy rebalance context.")
 
-    class_ids_query = db.session.query(ClassEconomy.class_id).filter_by(teacher_user_id=user_id)
-    payroll_query = PayrollSettings.query.filter(
-        PayrollSettings.class_id.in_(sa.select(class_ids_query.subquery())),
-        PayrollSettings.is_active.is_(True),
-    )
-    all_payroll_settings = payroll_query.order_by(PayrollSettings.block.asc()).all()
-    settings_by_block = {s.block: s for s in all_payroll_settings if s.block}
-
     payroll_settings = _resolve_payroll_settings_for_class_id(canonical_context, selected_class_id)
-    effective_block = selected_block
-
     rent_settings = _resolve_rent_settings_for_class_id(selected_class_id)
-
-    class_ids_query = db.session.query(ClassEconomy.class_id).filter_by(teacher_user_id=user_id)
     insurance_policies = []
 
-    return effective_block, payroll_settings, rent_settings, insurance_policies, all_payroll_settings
+    return payroll_settings, rent_settings, insurance_policies
 
 
 def _apply_rebalance_plan(canonical_context, settings_row, change_plan, activation_mode):
@@ -2668,10 +2713,8 @@ def dashboard():
             'status': log.status
         })
 
-    # --- Payroll Info ---
-    dashboard_blocks = sorted({b.strip() for s in seats for b in (s.block or "").split(',') if b.strip()})
-    dashboard_class_ids_by_block = _get_class_ids_by_block(g.canonical_context, dashboard_blocks)
-    payroll_preview = _build_payroll_preview_state(seats, dashboard_class_ids_by_block)
+    # --- Payroll Info (class-scoped via canonical seats) ---
+    payroll_preview = _build_payroll_preview_state(seats)
     payroll_summary = payroll_preview["total_summary"]
     payroll_updated_at = payroll_preview["latest_updated_at"]
     total_payroll_estimate = sum(payroll_summary.values())
@@ -3507,10 +3550,10 @@ def setup_recovery():
     return render_template('admin_setup_recovery.html')
 
 
-@admin_bp.route('/settings', methods=['GET', 'POST'])
+@admin_bp.route('/customizations', methods=['GET', 'POST'])
 @admin_required
-def settings():
-    """Teacher account settings - configure display name and class labels."""
+def customizations():
+    """Teacher account customizations - configure display name and class labels."""
     ctx = g.canonical_context
     user_id = ctx.user_id
     seat_id = ctx.seat_id
@@ -3563,19 +3606,19 @@ def settings():
         display_name = teacher_profile.full_name if teacher_profile else admin.get_display_username()
         set_admin_display_name_cache(user_id=admin.id, display_name=display_name)
         flash("Settings updated successfully!", "success")
-        return redirect(url_for('admin.settings'))
+        return redirect(url_for('admin.customizations'))
 
     # GET: Show settings form (scoped to current class)
     current_class = db.session.get(ClassEconomy, ctx.class_id) if ctx.class_id else None
 
     return render_template(
-        'admin_settings.html',
+        'admin_customizations.html',
         admin=admin,
         teacher_profile=teacher_profile,
         teacher_public_id=teacher_seat.public_id if teacher_seat else None,
         current_class=current_class,
-        current_page='settings',
-        page_title='Account Personalization'
+        current_page='customizations',
+        page_title='Class Customizations'
     )
 
 
@@ -3898,7 +3941,7 @@ def students():
     # Claimed students are resolved through Seat rows in the active class.
     active_seat_ids = sorted({
         s.id for s in class_seats
-        if s.user_id is not None and s.claimed_at is not None
+        if s.user_id is not None and s.claimed_at is not None and s.role == 'student'
     })
     all_students = (
         sorted(
@@ -5537,7 +5580,15 @@ def edit_store_item(item_id):
         flash(f"'{item.name}' has been updated.", "success")
         return redirect(url_for('admin.store_management'))
     payroll_settings = PayrollSettings.query.filter_by(class_id=selected_scope['class_id'], is_active=True).first()
-    return render_template('admin_edit_item.html', form=form, item=item, current_page="store", payroll_settings=payroll_settings, selected_feature_scope=selected_scope)
+    return render_template(
+        'admin_edit_item.html',
+        form=form,
+        item=item,
+        current_page="store",
+        payroll_settings=payroll_settings,
+        expected_weekly_hours=_resolve_expected_weekly_hours(payroll_settings) if payroll_settings else None,
+        selected_feature_scope=selected_scope,
+    )
 
 
 @admin_bp.route('/store/delete/<int:item_id>', methods=['POST'])
@@ -5721,7 +5772,6 @@ def _calculate_base_rent_amount(rent_settings: RentSettings, current_year: int, 
 
 
 @admin_bp.route('/rent-settings', methods=['GET', 'POST'])
-@feat_shell("FEAT-ADMN-001")
 @admin_required
 def rent_settings():
     """Configure rent settings."""
@@ -5738,89 +5788,73 @@ def rent_settings():
     if not feature_scope or not feature_scope["enabled"]:
         abort(404)
 
-    selected_scope = {
-        "class_id": class_row.class_id,
-        "join_code": get_display_join_code(class_row.class_id),
-        "block": (class_row.section or "").strip().upper() or None,
-        "label": class_row.display_name or class_row.section or get_display_join_code(class_row.class_id),
-    }
-    class_id = selected_scope['class_id']
+    class_id = class_row.class_id
     payroll_settings = PayrollSettings.query.filter_by(
         class_id=class_id,
         is_active=True,
     ).first()
-    teacher_blocks = [option['block'] for option in get_admin_feature_join_code_options('rent', canonical_context=g.canonical_context)]
-    settings_block = selected_scope['block']
 
-    # Get or create rent settings for this class (class_id is the canonical scope; block column is display-only)
+    # Get or create rent settings for this canonical class
     settings = get_rent_settings(class_id)
 
     if request.method == 'POST':
-        blocks_to_update = [class_id]
-
         payload_hash = hashlib.sha256(
             json.dumps(
-                    {
-                        "class_id": selected_scope["class_id"],
-                        "settings_block": settings_block,
-                        "blocks_to_update": sorted([b for b in blocks_to_update if b]),
-                        "form_keys": sorted(request.form.keys()),
-                    },
+                {
+                    "class_id": class_id,
+                    "form_keys": sorted(request.form.keys()),
+                },
                 sort_keys=True,
                 default=str,
             ).encode("utf-8")
         ).hexdigest()[:16]
-        idempotency_key = (
-            f"feat:rent:settings-update:{selected_scope['class_id']}:{payload_hash}"
-        )
+        idempotency_key = f"feat:rent:settings-update:{class_id}:{payload_hash}"
 
         # Per MAP-UI-001, rent policy configuration is Class Configuration domain (FEAT-SETTINGS-001),
         # not admin action (FEAT-ADMN-001). Policy updates define the contractual terms that cause
         # assessments to exist; this is Class Configuration authority, not Obligations mutation.
         with FEATContext("FEAT-SETTINGS-001", idempotency_key=idempotency_key):
-            for block in blocks_to_update:
-                # block IS a class_id; query directly — no label-based lookup (INV-ARC-014)
-                block_settings = get_rent_settings(block)
-                if not block_settings:
-                    block_settings = create_rent_settings(class_id=block)
+            block_settings = get_rent_settings(class_id)
+            if not block_settings:
+                block_settings = create_rent_settings(class_id=class_id)
 
-                # Rent amount and frequency
-                from app.models import _quantize_currency
-                block_settings.rent_amount = _quantize_currency(request.form.get('rent_amount', '50.0'))
-                block_settings.frequency_type = request.form.get('frequency_type', 'monthly')
+            # Rent amount and frequency
+            from app.models import _quantize_currency
+            block_settings.rent_amount = _quantize_currency(request.form.get('rent_amount', '50.0'))
+            block_settings.frequency_type = request.form.get('frequency_type', 'monthly')
 
-                if block_settings.frequency_type == 'custom':
-                    block_settings.custom_frequency_value = int(request.form.get('custom_frequency_value', 1))
-                    block_settings.custom_frequency_unit = request.form.get('custom_frequency_unit', 'days')
-                else:
-                    block_settings.custom_frequency_value = None
-                    block_settings.custom_frequency_unit = None
+            if block_settings.frequency_type == 'custom':
+                block_settings.custom_frequency_value = int(request.form.get('custom_frequency_value', 1))
+                block_settings.custom_frequency_unit = request.form.get('custom_frequency_unit', 'days')
+            else:
+                block_settings.custom_frequency_value = None
+                block_settings.custom_frequency_unit = None
 
-                # Due date settings
-                first_due_date_str = request.form.get('first_rent_due_date')
-                if first_due_date_str:
-                    block_settings.first_rent_due_date = datetime.strptime(first_due_date_str, '%Y-%m-%d')
-                else:
-                    block_settings.first_rent_due_date = None
+            # Due date settings
+            first_due_date_str = request.form.get('first_rent_due_date')
+            if first_due_date_str:
+                block_settings.first_rent_due_date = datetime.strptime(first_due_date_str, '%Y-%m-%d')
+            else:
+                block_settings.first_rent_due_date = None
 
-                block_settings.due_day_of_month = int(request.form.get('due_day_of_month', 1))
+            block_settings.due_day_of_month = int(request.form.get('due_day_of_month', 1))
 
-                # Grace period and late penalties
-                block_settings.grace_period_days = int(request.form.get('grace_period_days', 3))
-                block_settings.late_penalty_amount = _quantize_currency(request.form.get('late_penalty_amount', '10.0'))
-                block_settings.late_penalty_type = request.form.get('late_penalty_type', 'once')
+            # Grace period and late penalties
+            block_settings.grace_period_days = int(request.form.get('grace_period_days', 3))
+            block_settings.late_penalty_amount = _quantize_currency(request.form.get('late_penalty_amount', '10.0'))
+            block_settings.late_penalty_type = request.form.get('late_penalty_type', 'once')
 
-                if block_settings.late_penalty_type == 'recurring':
-                    block_settings.late_penalty_frequency_days = int(request.form.get('late_penalty_frequency_days', 7))
-                else:
-                    block_settings.late_penalty_frequency_days = None
+            if block_settings.late_penalty_type == 'recurring':
+                block_settings.late_penalty_frequency_days = int(request.form.get('late_penalty_frequency_days', 7))
+            else:
+                block_settings.late_penalty_frequency_days = None
 
-                # Student payment options
-                block_settings.bill_preview_enabled = request.form.get('bill_preview_enabled') == 'on'
-                block_settings.bill_preview_days = int(request.form.get('bill_preview_days', 7))
-                block_settings.allow_incremental_payment = request.form.get('allow_incremental_payment') == 'on'
-                block_settings.prevent_purchase_when_late = request.form.get('prevent_purchase_when_late') == 'on'
-                block_settings.bypass_cwi_warnings = request.form.get('bypass_cwi_warnings') == 'on'
+            # Student payment options
+            block_settings.bill_preview_enabled = request.form.get('bill_preview_enabled') == 'on'
+            block_settings.bill_preview_days = int(request.form.get('bill_preview_days', 7))
+            block_settings.allow_incremental_payment = request.form.get('allow_incremental_payment') == 'on'
+            block_settings.prevent_purchase_when_late = request.form.get('prevent_purchase_when_late') == 'on'
+            block_settings.bypass_cwi_warnings = request.form.get('bypass_cwi_warnings') == 'on'
 
         db.session.commit()
         # Handle rent items (for all blocks in blocks_to_update)
@@ -5905,29 +5939,20 @@ def rent_settings():
             item_data['store_price'] = store_price
             parsed_items.append(item_data)
 
-        # Apply parsed items to each class (blocks_to_update now contains class_ids)
-        for block in blocks_to_update:
-                # block is now a class_id; fetch settings directly by class_id
-                block_settings = get_rent_settings(block)
-                if not block_settings:
-                    continue
-
+        # Apply parsed items to the current class (canonical single-class scope)
+        idempotency_key_items = f"feat:rent:items-update:{class_id}:{payload_hash}"
+        with FEATContext("FEAT-SETTINGS-001", idempotency_key=idempotency_key_items):
+            block_settings = get_rent_settings(class_id)
+            if block_settings:
                 existing_items = (
                     StoreItem.query.filter(
-                        StoreItem.class_id == block_settings.class_id,
+                        StoreItem.class_id == class_id,
                         StoreItem.is_rent_linked.is_(True),
                     )
                     .order_by(StoreItem.id.asc())
                     .all()
                 )
-                existing_map = {}
-
-                # For the target class, map by ID; for other classes, map by name
-                if block == class_id:
-                    existing_map = {str(item.id): item for item in existing_items}
-                else:
-                    existing_map = {item.name: item for item in existing_items}
-
+                existing_map = {str(item.id): item for item in existing_items}
                 processed_items = set()
 
                 # Mid-period lock: detect if any student has paid rent for current coverage period
@@ -5936,7 +5961,7 @@ def rent_settings():
                 now = utc_now()
                 coverage_due = _calculate_rent_coverage_due_date(block_settings, now)
                 if coverage_due:
-                    current_bill_cycle = obligations_service.get_latest_bill_cycle_for_class(block_settings.class_id)
+                    current_bill_cycle = obligations_service.get_latest_bill_cycle_for_class(class_id)
                     paid_count = 0
                     if current_bill_cycle:
                         current_cycle_assessments = obligations_service.get_assessments_for_bill_cycle(
@@ -5951,13 +5976,7 @@ def rent_settings():
                         mid_period_locked = True
 
                 for item_data in parsed_items:
-                    target_item = None
-
-                    # Try to find matching existing item
-                    if block == class_id:
-                        target_item = existing_map.get(item_data['id'])
-                    else:
-                        target_item = existing_map.get(item_data['name'])
+                    target_item = existing_map.get(item_data['id'])
 
                     if target_item:
                         # Update existing - always allow cosmetic fields
@@ -5982,9 +6001,9 @@ def rent_settings():
                         processed_items.add(target_item)
                     else:
                         # Create new
-                        new_item = create_store_item(
+                        create_store_item(
                             user_id=user_id,
-                            class_id=block_settings.class_id,
+                            class_id=class_id,
                             name=item_data['name'],
                             description=item_data['description'] if item_data['description'] else None,
                             item_type='delayed',
@@ -5993,20 +6012,18 @@ def rent_settings():
                             is_active=item_data['is_available'],
                             is_rent_linked=True,
                         )
-                        # No need to add to processed_items as it's new
 
                 # Delete items that were not in the form (and thus not processed)
                 for item in existing_items:
                     if item not in processed_items:
-                        # If this item had a linked store item, deactivate it
                         if item.store_item_id:
                             deactivate_linked_store_item(item.store_item_id)
                         delete_rent_item(item)
 
                 # Sync to store
-                _sync_rent_items_to_store(block_settings, user_id, block_settings.class_id)
+                _sync_rent_items_to_store(block_settings, user_id, class_id)
 
-                if mid_period_locked and block == class_id:
+                if mid_period_locked:
                     flash("Some changes are locked because students have already paid rent this period. "
                           "Item type, use limits, and hall pass counts will apply next period.", "warning")
 
@@ -6064,12 +6081,6 @@ def rent_settings():
                 s['id'],
             )
         )
-
-    # Build class_labels_by_block dictionary
-    class_labels_by_block = _get_class_labels_for_blocks(g.canonical_context, teacher_blocks)
-
-    # Build join_codes_by_block dictionary
-    join_codes_by_block = _get_join_codes_by_block(g.canonical_context, teacher_blocks)
 
     # Calculate payroll warning
     payroll_warning = None
@@ -6200,10 +6211,7 @@ def rent_settings():
                           all_students=all_students,
                           payroll_warning=payroll_warning,
                           payroll_settings=payroll_settings,
-                          settings_block=settings_block,
-                          teacher_blocks=teacher_blocks,
-                          class_labels_by_block=class_labels_by_block,
-                          join_codes_by_block=join_codes_by_block,
+                          expected_weekly_hours=_resolve_expected_weekly_hours(payroll_settings) if payroll_settings else None,
                           rent_items=rent_items,
                           rent_active_for_period=rent_active_for_period,
                           period_label=period_label,
@@ -6218,8 +6226,7 @@ def rent_settings():
                           current_period_end=current_period_end,
                           next_due_date=next_due_date,
                           current_coverage_due_date=current_coverage_due_date,
-                          upcoming_coverage_due_date=upcoming_coverage_due_date,
-                          selected_feature_scope=selected_scope)
+                          upcoming_coverage_due_date=upcoming_coverage_due_date)
 
 
 @admin_bp.route('/rent-waiver/add', methods=['POST'])
@@ -6957,31 +6964,56 @@ def hall_pass_setup():
 @admin_required
 @feat_shell("FEAT-ADMN-001")
 def update_economy_policy():
-    user_id = g.canonical_context.user_id
-    current_class_id = g.canonical_context.class_id
-    feature_options = get_admin_feature_join_code_options('payroll', canonical_context=g.canonical_context)
-    selected_scope = next((option for option in feature_options if option.get('class_id') == current_class_id), None)
-    if not selected_scope:
-        abort(404)
-    policy_mode = normalize_policy_mode(request.form.get('policy_mode'))
-    settings_row = get_feature_settings_row_for_class(
-        selected_scope['class_id'],
-        create=True,
+    from app.feats.class_configuration.feat_class_005_economic_engine_evolution import (
+        execute_evolve_economic_engine,
     )
-    if not settings_row:
-        flash("Class scope not found for the selected period.", "warning")
-        return redirect(url_for('admin.economy_health'))
-    settings_row.economy_policy_mode = policy_mode
-    settings_row.economy_policy_updated_at = utc_now()
-    cancel_pending_policy_transitions(settings_row.class_id, actor_id=user_id)
+
+    ctx = g.canonical_context
+    user_id = ctx.user_id
+    class_id = ctx.class_id
+    if not class_id:
+        abort(404)
+
+    policy_mode = normalize_policy_mode(request.form.get('policy_mode'))
+
+    # Enumerate features actually enabled on this class (per ClassFeature rows).
+    # FEAT-CLASS-005 fails closed if any listed feature isn't currently enabled,
+    # so we filter through the authoritative check rather than trusting UI options.
+    from app.services.class_configuration_query_service import is_feature_enabled
+    all_features = ClassFeature.feature_names()
+    feature_list = [f for f in all_features if is_feature_enabled(class_id, f)]
+    if not feature_list:
+        flash("No features are enabled for this class yet.", "error")
+        return redirect(url_for('admin.economic_engine'))
+
+    result = execute_evolve_economic_engine(
+        canonical_context=ctx,
+        class_id=class_id,
+        updates={'economy_policy_mode': policy_mode},
+        feature_list=feature_list,
+        idempotency_key=f"feat:class-005:policy-mode:{class_id}:{policy_mode}",
+    )
+    if not result.success:
+        current_app.logger.error(
+            "FEAT-CLASS-005 policy-mode evolve failed: %s - %s",
+            result.error_code, result.error_message,
+        )
+        flash(f"Error updating economy policy: {result.error_message}", "error")
+        return redirect(url_for('admin.economic_engine'))
+
+    # Update display metadata on FeatureSettings (last-updated timestamp is UI-only).
+    # No explicit commit — FEAT-ADMN-001's @feat_shell context owns the transaction boundary.
+    settings_row = get_feature_settings_row_for_class(class_id, create=True)
+    if settings_row:
+        settings_row.economy_policy_updated_at = utc_now()
+    cancel_pending_policy_transitions(class_id, actor_id=user_id)
+
     current_app.logger.info(
-        "Economy policy mode changed teacher=%s block=%s mode=%s",
-        user_id,
-        selected_scope['block'],
-        policy_mode,
+        "Economy policy mode changed teacher=%s class_id=%s mode=%s",
+        user_id, class_id, policy_mode,
     )
     flash(f"Economy policy updated to {POLICY_MODES[policy_mode]['label']}.", "success")
-    return redirect(url_for('admin.economy_health', review_rebalance=1))
+    return redirect(url_for('admin.economic_engine', review_rebalance=1))
 
 
 @admin_bp.route('/economy-policy/rebalance', methods=['POST'])
@@ -7002,7 +7034,7 @@ def apply_economy_rebalance():
     )
     if not settings_row:
         flash("Class scope not found for the selected period.", "warning")
-        return redirect(url_for('admin.economy_health', review_rebalance=1))
+        return redirect(url_for('admin.economic_engine', review_rebalance=1))
     allowed_activation_modes = {
         REBALANCE_ACTIVATION_IMMEDIATE,
         REBALANCE_ACTIVATION_NEXT_RENEWAL,
@@ -7011,19 +7043,18 @@ def apply_economy_rebalance():
 
     if activation_mode not in allowed_activation_modes:
         flash("Invalid rebalance activation mode.", "warning")
-        return redirect(url_for('admin.economy_health', review_rebalance=1))
+        return redirect(url_for('admin.economic_engine', review_rebalance=1))
 
-    effective_block, payroll_settings, rent_settings, insurance_policies, _all_payroll_settings = _load_economy_rebalance_context(
+    payroll_settings, rent_settings, insurance_policies = _load_economy_rebalance_context(
         g.canonical_context,
         selected_scope['class_id'],
-        selected_scope['block'],
     )
 
     if not payroll_settings:
         flash("Payroll settings are required before a rebalance can be applied.", "warning")
-        return redirect(url_for('admin.economy_health', review_rebalance=1))
+        return redirect(url_for('admin.economic_engine', review_rebalance=1))
 
-    checker = EconomyBalanceChecker(g.canonical_context.user_id, effective_block, class_id=getattr(payroll_settings, "class_id", None))
+    checker = EconomyBalanceChecker(g.canonical_context.user_id, class_id=getattr(payroll_settings, "class_id", None))
     effective_class_id = selected_scope.get("class_id")
     effective_class = get_class_economy(effective_class_id) if effective_class_id else None
     scoped_store_items = (
@@ -7036,11 +7067,13 @@ def apply_economy_rebalance():
         insurance_policies=insurance_policies,
         fines=[],
         store_items=scoped_store_items,
-        expected_weekly_hours=payroll_settings.expected_weekly_hours if payroll_settings.expected_weekly_hours is not None else 5.0,
+        expected_weekly_hours=_resolve_expected_weekly_hours(payroll_settings),
     )
+    if analysis.cwi is None:
+        flash("Configure expected weekly hours on the Economic Engine page before running a rebalance.", "warning")
+        return redirect(url_for('admin.economic_engine'))
     preview_items = _build_rebalance_preview(
         g.canonical_context,
-        effective_block,
         selected_scope.get("class_id"),
         checker,
         analysis.cwi.cwi,
@@ -7056,11 +7089,11 @@ def apply_economy_rebalance():
 
     if not change_plan:
         flash("No rebalance changes were selected.", "warning")
-        return redirect(url_for('admin.economy_health', review_rebalance=1))
+        return redirect(url_for('admin.economic_engine', review_rebalance=1))
 
     if activation_mode == REBALANCE_ACTIVATION_IMMEDIATE and request.form.get('confirm_immediate') != 'yes':
         flash("Confirm the immediate change warning before applying now.", "warning")
-        return redirect(url_for('admin.economy_health', review_rebalance=1))
+        return redirect(url_for('admin.economic_engine', review_rebalance=1))
 
     if activation_mode == REBALANCE_ACTIVATION_IMMEDIATE:
         applied_labels = _apply_rebalance_plan(
@@ -7093,12 +7126,12 @@ def apply_economy_rebalance():
             "success",
         )
 
-    return redirect(url_for('admin.economy_health'))
+    return redirect(url_for('admin.economic_engine'))
 
 
-@admin_bp.route('/economy-health')
+@admin_bp.route('/economic-engine')
 @admin_required
-def economy_health():
+def economic_engine():
     """Show a holistic view of the current economy configuration and CWI health."""
     user_id = g.canonical_context.user_id
     current_class_id = g.canonical_context.class_id
@@ -7107,16 +7140,11 @@ def economy_health():
     if not selected_scope:
         abort(404)
 
-    blocks = _get_teacher_blocks(g.canonical_context)
-    # Always use per-class view since CWI is inherently class-scoped.
-    selected_block = selected_scope['block']
-
-    selected_block, payroll_settings, rent_settings, insurance_policies, all_payroll_settings = _load_economy_rebalance_context(
+    payroll_settings, rent_settings, insurance_policies = _load_economy_rebalance_context(
         g.canonical_context,
         selected_scope['class_id'],
-        selected_block,
     )
-    has_payroll_settings = len(all_payroll_settings) > 0
+    has_payroll_settings = payroll_settings is not None
 
     selected_class_id = selected_scope['class_id']
     fines = []
@@ -7168,11 +7196,11 @@ def economy_health():
     cwi_calc = None
     snapshot = None
     analysis_schedule = None
-    expected_hours = payroll_settings.expected_weekly_hours if payroll_settings and payroll_settings.expected_weekly_hours is not None else 5.0
+    expected_hours = _resolve_expected_weekly_hours(payroll_settings) if payroll_settings else None
     pay_rate_per_minute = payroll_settings.pay_rate if payroll_settings else None
 
-    if payroll_settings:
-        checker = EconomyBalanceChecker(user_id, selected_block, class_id=getattr(payroll_settings, "class_id", None))
+    if payroll_settings and expected_hours is not None:
+        checker = EconomyBalanceChecker(user_id, class_id=getattr(payroll_settings, "class_id", None))
         payload, snapshot = _get_frozen_economy_analysis_payload(
             user_id,
             checker,
@@ -7183,19 +7211,19 @@ def economy_health():
             store_items=store_items,
         )
         analysis = _deserialize_economy_analysis_payload(payload)
-        cwi_calc = analysis.cwi
-        analysis_schedule = analysis.analysis_schedule
-        pay_rate_per_minute = cwi_calc.pay_rate_per_minute
-        recommendations = analysis.recommendations
+        if analysis and analysis.cwi is not None:
+            cwi_calc = analysis.cwi
+            analysis_schedule = analysis.analysis_schedule
+            pay_rate_per_minute = cwi_calc.pay_rate_per_minute
+            recommendations = analysis.recommendations
 
-        actionable_warnings, warnings_by_level, warnings_by_feature, health_warning_summary = _filter_economy_health_warnings(
-            analysis,
-            rent_settings,
-            insurance_policies,
-            fines,
-            store_items,
-            selected_block=selected_block,
-        )
+            actionable_warnings, warnings_by_level, warnings_by_feature, health_warning_summary = _filter_economy_health_warnings(
+                analysis,
+                rent_settings,
+                insurance_policies,
+                fines,
+                store_items,
+            )
 
     policy_summary = _build_policy_summary(
         selected_scope,
@@ -7211,13 +7239,11 @@ def economy_health():
     if payroll_settings and show_rebalance_review and cwi_calc:
         checker = EconomyBalanceChecker(
             user_id,
-            selected_block,
             policy_mode=policy_summary['mode'],
             class_id=getattr(payroll_settings, "class_id", None),
         )
         rebalance_preview = _build_rebalance_preview(
             g.canonical_context,
-            selected_block,
             g.canonical_context.class_id,
             checker,
             cwi_calc.cwi,
@@ -7226,18 +7252,16 @@ def economy_health():
         )
 
     feature_links = {
-        'rent': url_for('admin.rent_settings', settings_block=selected_block),
-        'insurance': url_for('admin.insurance_management', settings_block=selected_block),
+        'rent': url_for('admin.rent_settings'),
+        'insurance': url_for('admin.insurance_management'),
         'fine': url_for('admin.payroll'),
         'store': url_for('admin.store_management'),
         'budget survival test': url_for('admin.payroll'),
     }
 
     return render_template(
-        'admin_economy_health.html',
-        current_page='economy_health',
-        blocks=blocks,
-        selected_block=selected_block,
+        'admin_economic_engine.html',
+        current_page='economic_engine',
         payroll_settings=payroll_settings,
         has_payroll_settings=has_payroll_settings,
         cwi_calc=cwi_calc,
@@ -7265,8 +7289,8 @@ def economy_health():
         feature_links=feature_links,
         payroll_link=url_for('admin.payroll'),
         banking_link=url_for('admin.banking'),
-        rent_link=url_for('admin.rent_settings', settings_block=selected_block),
-        insurance_link=url_for('admin.insurance_management', settings_block=selected_block),
+        rent_link=url_for('admin.rent_settings'),
+        insurance_link=url_for('admin.insurance_management'),
         store_link=url_for('admin.store_management'),
     )
 
@@ -7517,31 +7541,18 @@ def payroll():
         )
         .all()
     )
-    if selected_block:
-        selected_block_upper = selected_block.upper()
-        seats = [
-            seat for seat in seats
-            if ((seat.class_economy.section if seat and seat.class_economy else '').strip().upper() == selected_block_upper)
-        ]
     students = seats
-    # Check if payroll settings exist for the selected class scope
+    # Check if payroll settings exist for the canonical class
     has_settings = (
-        PayrollSettings.query.filter_by(class_id=selected_class_id, block=selected_block)
-        .first()
-        is not None
+        PayrollSettings.query.filter_by(class_id=selected_class_id).first() is not None
     )
     show_setup_banner = not has_settings
 
-    # Get payroll settings for this teacher, filtered to only include blocks with current students
-    block_settings = (
-        PayrollSettings.query.filter_by(
-            class_id=selected_class_id,
-            is_active=True,
-            block=selected_block,
-        ).all()
-        if selected_block
-        else []
-    )
+    # Get payroll settings for the canonical class
+    block_settings = PayrollSettings.query.filter_by(
+        class_id=selected_class_id,
+        is_active=True,
+    ).all()
 
     # Get first block's settings for form pre-population (no global settings)
     default_setting = block_settings[0] if block_settings else None
@@ -7577,11 +7588,9 @@ def payroll():
     # Next scheduled payroll calculation (keep in UTC for template)
     next_pay_date_utc = _compute_next_pay_date(default_setting, now_utc)
 
-    # Recent payroll activity
-    # CRITICAL: Filter by canonical class_id for class isolation.
+    # Recent payroll activity (class-scoped via canonical class_id)
     my_class_ids = [selected_class_id] if selected_class_id else []
-    class_ids_by_block = {selected_block: selected_class_id} if selected_block else {}
-    payroll_preview = _build_payroll_preview_state(students, class_ids_by_block)
+    payroll_preview = _build_payroll_preview_state(students)
     payroll_summary = payroll_preview["total_summary"]
     payroll_updated_at = payroll_preview["latest_updated_at"]
     payroll_anchor_by_class_id = payroll_preview["anchor_by_class_id"]
@@ -7717,10 +7726,8 @@ def payroll():
 
     # Initialize forms
     settings_form = PayrollSettingsForm()
-    settings_form.block.choices = (
-        [(selected_block, class_labels_by_block.get(selected_block, selected_block))]
-        if selected_block else []
-    )
+    # `block` field on the form is display-only metadata; no per-class choices in v2.
+    settings_form.block.choices = []
 
     manual_payment_form = ManualPaymentForm()
     # Quick stats
@@ -7789,15 +7796,10 @@ def payroll():
         payroll_events=payroll_history_events,
         class_label=class_label,
     )
-    # CWI Configuration - Get selected block from query param
-    cwi_block = selected_block
-    cwi_setting = None
-    if cwi_block:
-        # Get the payroll setting for this specific block
-        cwi_setting = PayrollSettings.query.filter_by(
-            class_id=selected_scope['class_id'],
-            block=cwi_block
-        ).first()
+    # CWI configuration is on the canonical PayrollSettings for this class.
+    cwi_setting = PayrollSettings.query.filter_by(
+        class_id=selected_scope['class_id'],
+    ).first()
 
     # Pre-format display values (Phase 1 Jinja2 remediation - no formatting in templates)
     display_payroll_updated_at = ""
@@ -7855,7 +7857,6 @@ def payroll():
         # History tab
         payroll_history=payroll_history,
         # CWI Configuration
-        cwi_block=cwi_block,
         cwi_setting=cwi_setting,
         current_page="payroll",
         format_utc_iso=format_utc_iso,
@@ -7867,33 +7868,22 @@ def payroll():
 @admin_bp.route('/payroll/settings', methods=['POST'])
 @admin_required
 def payroll_settings():
-    """Save payroll settings for a block or globally (Simple or Advanced mode)."""
+    """Save payroll settings for the canonical class context (Simple or Advanced mode)."""
     try:
         ctx = g.canonical_context
-        user_id = ctx.user_id
-        feature_options = get_admin_feature_join_code_options('payroll', canonical_context=g.canonical_context)
-        enabled_blocks = [option['block'] for option in feature_options if option.get('block')]
-        enabled_block_set = set(enabled_blocks)
-        class_id_by_block = {
-            option['block']: option['class_id']
-            for option in feature_options
-            if option.get('block') and option.get('class_id')
-        }
-        current_class_id = ctx.class_id
-        selected_scope = next((option for option in feature_options if option.get('class_id') == current_class_id), None)
-        if not selected_scope:
+        class_id = ctx.class_id
+        if not class_id:
             abort(404)
-
-        # Derive assignable blocks from canonical feature scopes, not student.block text.
-        blocks = enabled_blocks
 
         # Determine which mode we're in
         settings_mode = request.form.get('settings_mode', 'simple')
 
         # Shared fields
         from app.models import _quantize_currency
-        expected_weekly_hours_raw = request.form.get('expected_weekly_hours')
-        expected_weekly_hours = _quantize_currency(expected_weekly_hours_raw) if expected_weekly_hours_raw else Decimal('5.0')
+
+        # NOTE: `expected_weekly_hours` is a CWI parameter on EconomicEngine, not a payroll
+        # setting. It's edited via the /economy/update-expected-hours route which calls
+        # FEAT-CLASS-005. Do not accept it from the payroll settings form.
 
         # Parse form data based on mode
         if settings_mode == 'simple':
@@ -7911,9 +7901,6 @@ def payroll_settings():
             daily_limit_hours_raw = request.form.get('simple_daily_limit')
             daily_limit_hours = _quantize_currency(daily_limit_hours_raw) if daily_limit_hours_raw else None
 
-            apply_to = request.form.get('simple_apply_to', 'all')
-            selected_blocks = request.form.getlist('simple_blocks[]') if apply_to == 'selected' else blocks
-
             # Create settings dict for simple mode
             settings_data = {
                 'settings_mode': 'simple',
@@ -7921,7 +7908,6 @@ def payroll_settings():
                 'payroll_frequency_days': payroll_frequency_days,
                 'first_pay_date': first_pay_date,
                 'daily_limit_hours': daily_limit_hours,
-                'expected_weekly_hours': expected_weekly_hours,
                 'time_unit': 'minutes',
                 'pay_schedule_type': frequency,
                 'is_active': True,
@@ -7984,9 +7970,6 @@ def payroll_settings():
 
             rounding = request.form.get('adv_rounding', 'down')
 
-            apply_to = request.form.get('adv_apply_to', 'all')
-            selected_blocks = request.form.getlist('adv_blocks[]') if apply_to == 'selected' else blocks
-
             settings_data = {
                 'settings_mode': 'advanced',
                 'pay_rate': pay_rate_per_minute,
@@ -8004,55 +7987,29 @@ def payroll_settings():
                 'payroll_frequency_days': payroll_frequency_days,
                 'first_pay_date': first_pay_date,
                 'rounding_mode': rounding,
-                'expected_weekly_hours': expected_weekly_hours,
                 'is_active': True,
                 # Reset simple fields
                 'daily_limit_hours': None
             }
 
-        # Apply settings to selected blocks or all
-        # NO global settings - always scoped by block and resolved class context.
-        if apply_to == 'all' or not selected_blocks:
-            # Apply to all blocks (no global None)
-            target_blocks = blocks
-        else:
-            # Apply to selected blocks only
-            target_blocks = [str(block).strip().upper() for block in selected_blocks if str(block).strip()]
-
-        target_blocks = [block for block in target_blocks if block in enabled_block_set]
-        target_blocks = list(dict.fromkeys(target_blocks))
-        if not target_blocks:
-            raise ValueError("No valid payroll class scope selected")
-
         payload_hash = hashlib.sha256(
             json.dumps(
                 {
                     "settings_mode": settings_mode,
-                    "apply_to": apply_to,
-                    "target_blocks": sorted(target_blocks),
-                    "selected_scope_class_id": selected_scope["class_id"],
+                    "class_id": class_id,
                 },
                 sort_keys=True,
                 default=str,
             ).encode("utf-8")
         ).hexdigest()[:16]
-        idempotency_key = (
-            f"feat:class:payroll-settings:update:{selected_scope['class_id']}:{payload_hash}"
-        )
+        idempotency_key = f"feat:class:payroll-settings:update:{class_id}:{payload_hash}"
 
         db.session.rollback()
         with FEATContext("FEAT-ADMN-001", idempotency_key=idempotency_key):
-            upsert_payroll_settings_for_blocks(
-                class_id_by_block=class_id_by_block,
-                target_blocks=target_blocks,
-                settings_data=settings_data,
-            )
+            upsert_payroll_settings(class_id=class_id, settings_data=settings_data)
 
         db.session.commit()
-        if apply_to == 'all' or not selected_blocks:
-            flash(f'Payroll settings ({settings_mode} mode) applied to all periods successfully!', 'success')
-        else:
-            flash(f'Payroll settings ({settings_mode} mode) applied to {len(selected_blocks)} period(s) successfully!', 'success')
+        flash(f'Payroll settings ({settings_mode} mode) saved successfully!', 'success')
 
     except Exception as e:
         db.session.rollback()
@@ -8062,101 +8019,54 @@ def payroll_settings():
     return redirect(url_for('admin.payroll'))
 
 
-@admin_bp.route('/payroll/update-expected-hours', methods=['POST'])
+@admin_bp.route('/economy/update-expected-hours', methods=['POST'])
 @admin_required
 def update_expected_weekly_hours():
-    """Update the expected weekly hours for CWI calculation for a specific block or all blocks."""
+    """Update EconomicEngine.expected_weekly_hours (CWI parameter) via FEAT-CLASS-005.
+
+    Creates a new immutable EconomicEngine version with the updated value applied
+    on top of the current engine's snapshot. Per DOM-CLASS-002, this field lives on
+    the Economic Engine, not on payroll settings.
+    """
     try:
         from app.models import _quantize_currency
+        from app.feats.class_configuration.feat_class_005_economic_engine_evolution import (
+            execute_evolve_economic_engine,
+        )
+
         ctx = g.canonical_context
-        feature_options = get_admin_feature_join_code_options('payroll', canonical_context=g.canonical_context)
-        selected_scope = next((option for option in feature_options if option.get('class_id') == ctx.class_id), None)
-        if not selected_scope:
+        class_id = ctx.class_id
+        if not class_id:
             abort(404)
+
         expected_weekly_hours = _quantize_currency(request.form.get('expected_weekly_hours', '5.0'))
-        cwi_block = selected_scope['block']
-        apply_to_all = request.form.get('apply_to_all', 'false').lower() == 'true'
-        ctx = g.canonical_context
-        user_id = ctx.user_id
-        feature_options = get_admin_feature_join_code_options('payroll', canonical_context=g.canonical_context)
-        enabled_blocks = {option['block'] for option in feature_options if option.get('block')}
-        class_id_by_block = {
-            option['block']: option['class_id']
-            for option in feature_options
-            if option.get('block') and option.get('class_id')
-        }
 
         # Validate expected_weekly_hours is within a reasonable range (0.25 to 80)
         if not (0.25 <= expected_weekly_hours <= 80):
             flash('Expected weekly hours must be between 0.25 and 80.', 'error')
             return redirect(url_for('admin.payroll'))
 
-        payload_hash = hashlib.sha256(
-            json.dumps(
-                {
-                    "expected_weekly_hours": str(expected_weekly_hours),
-                    "cwi_block": cwi_block,
-                    "apply_to_all": apply_to_all,
-                },
-                sort_keys=True,
-                default=str,
-            ).encode("utf-8")
-        ).hexdigest()[:16]
         idempotency_key = (
-            f"feat:class:payroll-expected-hours:update:{selected_scope['class_id']}:{payload_hash}"
+            f"feat:class-005:expected-hours:{class_id}:{expected_weekly_hours}"
+        )
+        result = execute_evolve_economic_engine(
+            canonical_context=ctx,
+            class_id=class_id,
+            updates={'expected_weekly_hours': float(expected_weekly_hours)},
+            feature_list=['payroll'],
+            idempotency_key=idempotency_key,
         )
 
-        db.session.rollback()
-        with FEATContext("FEAT-ADMN-001", idempotency_key=idempotency_key):
-            if apply_to_all:
-                # Update all existing payroll settings
-                class_ids = [class_id_by_block[block] for block in enabled_blocks if block in class_id_by_block]
-                settings_to_update = (
-                    PayrollSettings.query
-                    .filter(
-                        PayrollSettings.class_id.in_(class_ids),
-                        PayrollSettings.block.in_(enabled_blocks),
-                    )
-                    .all()
-                )
-
-                if settings_to_update:
-                    for setting in settings_to_update:
-                        setting.expected_weekly_hours = expected_weekly_hours
-                    flash_message = f'Expected weekly hours updated to {expected_weekly_hours} hours/week for all classes.'
-                else:
-                    update_expected_weekly_hours_for_blocks(
-                        class_id_by_block=class_id_by_block,
-                        target_blocks=[cwi_block],
-                        expected_weekly_hours=expected_weekly_hours,
-                        default_pay_rate=Decimal('0.25'),
-                        payroll_frequency_days=14,
-                        settings_mode='simple',
-                    )
-                    flash_message = f'Expected weekly hours set to {expected_weekly_hours} hours/week for all classes.'
-            else:
-                # Update only the selected block
-                class_id = class_id_by_block.get(cwi_block)
-                if not class_id:
-                    abort(404)
-                block_setting = PayrollSettings.query.filter_by(class_id=class_id, block=cwi_block).first()
-
-                if block_setting:
-                    block_setting.expected_weekly_hours = expected_weekly_hours
-                    flash_message = f'Expected weekly hours updated to {expected_weekly_hours} hours/week for {cwi_block}.'
-                else:
-                    update_expected_weekly_hours_for_blocks(
-                        class_id_by_block=class_id_by_block,
-                        target_blocks=[cwi_block],
-                        expected_weekly_hours=expected_weekly_hours,
-                        default_pay_rate=Decimal('0.25'),
-                        payroll_frequency_days=14,
-                        settings_mode='simple',
-                    )
-                    flash_message = f'Expected weekly hours set to {expected_weekly_hours} hours/week for {cwi_block}.'
+        if not result.success:
+            current_app.logger.error(
+                f"FEAT-CLASS-005 evolve failed for expected_weekly_hours: "
+                f"{result.error_code} - {result.error_message}"
+            )
+            flash(f'Error updating expected weekly hours: {result.error_message}', 'error')
+            return redirect(url_for('admin.payroll'))
 
         db.session.commit()
-        flash(flash_message, 'success')
+        flash(f'Expected weekly hours set to {expected_weekly_hours} hours/week.', 'success')
 
     except ValueError:
         flash('Invalid expected weekly hours value', 'error')
@@ -8950,23 +8860,15 @@ def bulk_adjust_hall_pass_entitlements():
 def banking():
     """Banking management page with transactions and settings."""
     user_id = g.canonical_context.user_id
-    feature_options = get_admin_feature_join_code_options('banking', canonical_context=g.canonical_context)
     selected_scope = require_admin_feature_scope(
         'banking',
         canonical_context=g.canonical_context,
     )
-    teacher_blocks = [option['block'] for option in feature_options]
-    settings_block = selected_scope['block']
 
-    # Get current banking settings for this class
+    # Get current banking settings for the canonical class
     settings = BankingSettings.query.filter_by(
         class_id=selected_scope['class_id'],
-        block=settings_block,
     ).first()
-    if not settings and settings_block is None:
-        settings = BankingSettings.query.filter_by(
-            class_id=selected_scope['class_id'],
-        ).first()
 
     # Create form and populate with existing data
     form = BankingSettingsForm()
@@ -9106,15 +9008,6 @@ def banking():
     # Calculate average savings balance (across all students, including those with 0)
     average_savings_balance = total_savings / len(students) if len(students) > 0 else 0
 
-    # Get all blocks for filter
-    blocks = sorted(set(s.block for s in students))
-
-    # Build class_labels_by_block dictionary
-    class_labels_by_block = _get_class_labels_for_blocks(g.canonical_context, blocks)
-
-    # Build join_codes_by_block dictionary
-    join_codes_by_block = _get_join_codes_by_block(g.canonical_context, blocks)
-
     # Get transaction types for filter (filtered to this teacher's students)
     transaction_types = (
         db.session.query(Transaction.type)
@@ -9132,9 +9025,10 @@ def banking():
     payroll_settings = PayrollSettings.query.filter_by(
         class_id=selected_class_id,
     ).first()
-    if payroll_settings and payroll_settings.pay_rate and payroll_settings.expected_weekly_hours:
+    ewh = _resolve_expected_weekly_hours(payroll_settings) if payroll_settings else None
+    if payroll_settings and payroll_settings.pay_rate and ewh:
         pay_rate_per_hour = float(payroll_settings.pay_rate) * 60
-        cwi_value = pay_rate_per_hour * float(payroll_settings.expected_weekly_hours)
+        cwi_value = pay_rate_per_hour * float(ewh)
 
         economy = ClassEconomy.query.filter_by(class_id=selected_class_id).first()
         mode = getattr(economy, 'economy_policy_mode', 'default') or 'default'
@@ -9154,16 +9048,12 @@ def banking():
         students_with_savings=students_with_savings,
         total_students=len(students),
         average_savings_balance=average_savings_balance,
-        blocks=blocks,
-        class_labels_by_block=class_labels_by_block,
-        join_codes_by_block=join_codes_by_block,
         transaction_types=transaction_types,
         page=page,
         total_pages=total_pages,
         total_transactions=total_transactions,
         current_page="banking",
         format_utc_iso=format_utc_iso,
-        teacher_blocks=teacher_blocks,
         selected_feature_scope=selected_scope,
         recommended_apy=recommended_apy,
         cwi_value=cwi_value,
@@ -9185,16 +9075,13 @@ def banking_settings_update():
             'banking',
             canonical_context=g.canonical_context,
         )
-        settings_block = selected_scope['block']
-        blocks_to_update = [settings_block]
+        class_id = selected_scope["class_id"]
 
         try:
             payload_hash = hashlib.sha256(
                 json.dumps(
                     {
-                        "class_id": selected_scope["class_id"],
-                        "settings_block": settings_block,
-                        "blocks_to_update": sorted([b for b in blocks_to_update if b]),
+                        "class_id": class_id,
                         "savings_apy": str(form.savings_apy.data or 0),
                         "savings_monthly_rate": str(form.savings_monthly_rate.data or 0),
                         "interest_calculation_type": form.interest_calculation_type.data or 'simple',
@@ -9209,55 +9096,40 @@ def banking_settings_update():
                     default=str,
                 ).encode("utf-8")
             ).hexdigest()[:16]
-            idempotency_key = (
-                f"feat:banking:settings-update:{selected_scope['class_id']}:{payload_hash}"
-            )
+            idempotency_key = f"feat:banking:settings-update:{class_id}:{payload_hash}"
 
             db.session.rollback()
             with FEATContext("FEAT-ADMN-001", idempotency_key=idempotency_key):
-                for block in blocks_to_update:
-                    scope_for_block = require_admin_feature_scope(
-                        'banking',
-                        canonical_context=g.canonical_context,
-                        requested_block=block,
-                        allow_default=False,
-                    )
-                    # Get or create settings for this class
-                    settings = BankingSettings.query.filter_by(
-                        class_id=scope_for_block['class_id'],
-                        block=block,
-                    ).first()
-                    if not settings:
-                        settings = create_banking_settings(
-                            class_id=scope_for_block['class_id'],
-                            block=block,
-                        )
+                # Get or create banking settings for the canonical class
+                settings = BankingSettings.query.filter_by(class_id=class_id).first()
+                if not settings:
+                    settings = create_banking_settings(class_id=class_id)
 
-                    # Update settings from form
-                    settings.savings_apy = Decimal(str(form.savings_apy.data or 0)).quantize(Decimal('0.000001'))
-                    settings.savings_monthly_rate = Decimal(str(form.savings_monthly_rate.data or 0)).quantize(Decimal('0.000001'))
-                    settings.interest_calculation_type = form.interest_calculation_type.data or 'simple'
-                    settings.compound_frequency = form.compound_frequency.data or 'monthly'
-                    settings.interest_schedule_type = form.interest_schedule_type.data
-                    settings.interest_schedule_cycle_days = form.interest_schedule_cycle_days.data or 30
-                    settings.interest_payout_start_date = form.interest_payout_start_date.data
-                    settings.overdraft_protection_enabled = form.overdraft_protection_enabled.data
-                    settings.overdraft_fee_enabled = form.overdraft_fee_enabled.data
-                    settings.overdraft_fee_type = form.overdraft_fee_type.data
-                    settings.overdraft_fee_flat_amount = _quantize_currency(form.overdraft_fee_flat_amount.data or Decimal('0.00'))
-                    settings.overdraft_fee_progressive_1 = _quantize_currency(form.overdraft_fee_progressive_1.data or Decimal('0.00'))
-                    settings.overdraft_fee_progressive_2 = _quantize_currency(form.overdraft_fee_progressive_2.data or Decimal('0.00'))
-                    settings.overdraft_fee_progressive_3 = _quantize_currency(form.overdraft_fee_progressive_3.data or Decimal('0.00'))
-                    settings.overdraft_fee_progressive_cap = (
-                        _quantize_currency(form.overdraft_fee_progressive_cap.data)
-                        if form.overdraft_fee_progressive_cap.data is not None
-                        else None
-                    )
-                    settings.updated_at = utc_now()
+                # Update settings from form
+                settings.savings_apy = Decimal(str(form.savings_apy.data or 0)).quantize(Decimal('0.000001'))
+                settings.savings_monthly_rate = Decimal(str(form.savings_monthly_rate.data or 0)).quantize(Decimal('0.000001'))
+                settings.interest_calculation_type = form.interest_calculation_type.data or 'simple'
+                settings.compound_frequency = form.compound_frequency.data or 'monthly'
+                settings.interest_schedule_type = form.interest_schedule_type.data
+                settings.interest_schedule_cycle_days = form.interest_schedule_cycle_days.data or 30
+                settings.interest_payout_start_date = form.interest_payout_start_date.data
+                settings.overdraft_protection_enabled = form.overdraft_protection_enabled.data
+                settings.overdraft_fee_enabled = form.overdraft_fee_enabled.data
+                settings.overdraft_fee_type = form.overdraft_fee_type.data
+                settings.overdraft_fee_flat_amount = _quantize_currency(form.overdraft_fee_flat_amount.data or Decimal('0.00'))
+                settings.overdraft_fee_progressive_1 = _quantize_currency(form.overdraft_fee_progressive_1.data or Decimal('0.00'))
+                settings.overdraft_fee_progressive_2 = _quantize_currency(form.overdraft_fee_progressive_2.data or Decimal('0.00'))
+                settings.overdraft_fee_progressive_3 = _quantize_currency(form.overdraft_fee_progressive_3.data or Decimal('0.00'))
+                settings.overdraft_fee_progressive_cap = (
+                    _quantize_currency(form.overdraft_fee_progressive_cap.data)
+                    if form.overdraft_fee_progressive_cap.data is not None
+                    else None
+                )
+                settings.updated_at = utc_now()
 
             db.session.commit()
             flash('Banking settings updated successfully!', 'success')
-            current_app.logger.info(f"Banking settings updated by admin for {len(blocks_to_update)} class(es)")
+            current_app.logger.info(f"Banking settings updated by admin for class {class_id}")
         except SQLAlchemyError as e:
             db.session.rollback()
             current_app.logger.error(f"Failed to update banking settings: {e}")
@@ -10196,8 +10068,14 @@ def api_calculate_cwi():
         temp_settings = TempPayrollSettings(pay_rate_per_minute, expected_weekly_hours=expected_weekly_hours)
 
         # Calculate CWI
-        checker = EconomyBalanceChecker(user_id, block)
+        checker = EconomyBalanceChecker(user_id)
         cwi_calc = checker.calculate_cwi(temp_settings, expected_weekly_hours)
+        if cwi_calc is None:
+            return jsonify({
+                'status': 'cwi_unconfigured',
+                'message': 'Expected weekly hours not configured. Set it on the Economic Engine page to enable pricing recommendations.',
+                'cwi': None,
+            })
 
         recommendations = get_price_recommendation_context(checker.policy_mode, cwi_calc.cwi)
 
@@ -10304,7 +10182,7 @@ def api_economy_analyze():
                 'status': 'error',
                 'message': 'Please configure payroll settings first to calculate CWI.'
             }), 400
-        checker = EconomyBalanceChecker(user_id, None, class_id=getattr(payroll_settings, "class_id", None))
+        checker = EconomyBalanceChecker(user_id, class_id=getattr(payroll_settings, "class_id", None))
 
         # Get other economy features
         class_ids_query = db.session.query(ClassEconomy.class_id).filter_by(teacher_user_id=user_id)
@@ -10433,7 +10311,7 @@ def api_economy_validate(feature):
             })
 
         # Calculate CWI
-        checker = EconomyBalanceChecker(user_id, None, class_id=getattr(payroll_settings, "class_id", None))
+        checker = EconomyBalanceChecker(user_id, class_id=getattr(payroll_settings, "class_id", None))
         # Use expected_weekly_hours from payroll_settings, not from request
         cwi_calc = checker.calculate_cwi(payroll_settings)
         cwi = cwi_calc.cwi

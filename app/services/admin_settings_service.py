@@ -12,9 +12,9 @@ def create_rent_settings(*, class_id: str) -> RentSettings:
     return settings
 
 
-def create_banking_settings(*, class_id: str, block: str) -> BankingSettings:
-    """Create and flush a canonical banking settings row."""
-    settings = BankingSettings(class_id=class_id, block=block)
+def create_banking_settings(*, class_id: str) -> BankingSettings:
+    """Create and flush a canonical banking settings row scoped to class_id."""
+    settings = BankingSettings(class_id=class_id)
     db.session.add(settings)
     db.session.flush()
     return settings

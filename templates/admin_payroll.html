@@ -237,7 +237,7 @@
           <div class="col-6 col-md-3 mb-3">
             {% if next_payroll_date %}
             <h3 class="text-primary" style="font-size:1.2rem;">
-              <span class="local-timestamp" data-timestamp="{{ format_utc_iso(next_payroll_date) }}"></span>
+              {{ next_payroll_date|fmt_timestamp }}
             </h3>
             {% else %}
             <h3 class="text-muted" style="font-size:1.2rem;">Not set</h3>
@@ -249,9 +249,7 @@
             <small class="text-muted">Estimated Payout</small>
             {% if payroll_updated_at %}
             <div class="text-muted small" style="font-size: 0.75em;">
-              Updated: <span class="local-timestamp" data-timestamp="{{ format_utc_iso(payroll_updated_at) }}">
-                {{ display_payroll_updated_at }}
-              </span>
+              Updated: {{ payroll_updated_at|fmt_timestamp }}
             </div>
             {% endif %}
           </div>
@@ -289,7 +287,7 @@
               <tr>
                 <td>
                   {% if record.timestamp %}
-                  <span class="local-timestamp" data-timestamp="{{ format_utc_iso(record.timestamp) }}"></span>
+                  {{ record.timestamp|fmt_timestamp }}
                   {% else %}
                   N/A
                   {% endif %}
@@ -341,7 +339,7 @@
                 class="{% if entry.is_reversal %}table-secondary text-muted{% endif %}">
                 <td>
                   {% if entry.timestamp %}
-                  <span class="local-timestamp" data-timestamp="{{ format_utc_iso(entry.timestamp) }}"></span>
+                  {{ entry.timestamp|fmt_timestamp }}
                   {% else %}
                   —
                   {% endif %}
@@ -504,18 +502,7 @@
                     Leave blank for no limit.</small>
                 </div>
 
-                <!-- Expected Weekly Hours (for CWI calculation) -->
-                <div class="mb-3">
-                  <label for="simpleExpectedWeeklyHours" class="form-label fw-bold">Expected Weekly Hours:</label>
-                  <div class="input-group">
-                    <input type="number" class="form-control" id="simpleExpectedWeeklyHours"
-                      name="expected_weekly_hours" step="0.25" min="0.25" max="80" placeholder="5.0"
-                      value="{% if default_setting and default_setting.expected_weekly_hours %}{{ default_setting.expected_weekly_hours }}{% else %}5.0{% endif %}">
-                    <span class="input-group-text">hours/week</span>
-                  </div>
-                  <small class="text-muted">Expected class hours per week. Used to calculate CWI (Classroom Wage Index)
-                    for economy balance. Example: 5 classes/week × 60 min/class ÷ 60 = 5.0 hours/week</small>
-                </div>
+                <!-- Expected Weekly Hours moved to Economy Health page (CWI parameter on EconomicEngine). -->
 
               </div>
 
@@ -686,19 +673,7 @@
                   <small class="text-muted">If time doesn't reach next increment</small>
                 </div>
 
-                <!-- Expected Weekly Hours (for CWI calculation) -->
-                <div class="mb-3">
-                  <label for="expectedWeeklyHoursAdv" class="form-label fw-bold">Expected Weekly Hours:</label>
-                  <div class="input-group">
-                    <input type="number" class="form-control" id="expectedWeeklyHoursAdv" name="expected_weekly_hours"
-                      step="0.25" min="0.25" max="80" placeholder="5.0"
-                      value="{% if default_setting and default_setting.expected_weekly_hours %}{{ default_setting.expected_weekly_hours }}{% else %}5.0{% endif %}"
-                      {% if not default_setting or default_setting.settings_mode !='advanced' %}disabled{% endif %}>
-                    <span class="input-group-text">hours/week</span>
-                  </div>
-                  <small class="text-muted">Expected class hours per week. Used to calculate CWI (Classroom Wage Index)
-                    for economy balance. Example: 5 classes/week × 60 min/class ÷ 60 = 5.0 hours/week</small>
-                </div>
+                <!-- Expected Weekly Hours moved to Economy Health page (CWI parameter on EconomicEngine). -->
 
               </div>
 
@@ -920,8 +895,6 @@
     }
     {% endif %}
 
-    // Timestamp conversion handled by timezone-utils.js
-
     // Manual Payment Tab: Student Selection
     const selectAllCheckbox = document.getElementById('selectAllStudents');
     const selectedCountEl = document.getElementById('selectedCount');
@@ -990,33 +963,7 @@
   const settingsModeInput = document.getElementById('settingsModeInput');
   const simpleModeFields = document.getElementById('simpleModeFields');
   const advancedModeFields = document.getElementById('advancedModeFields');
-  const simpleExpectedWeeklyHours = document.getElementById('simpleExpectedWeeklyHours');
-  const expectedWeeklyHoursAdv = document.getElementById('expectedWeeklyHoursAdv');
-
-  // Function to sync expected weekly hours between modes
-  function syncExpectedHoursToAdvanced() {
-    if (simpleExpectedWeeklyHours && expectedWeeklyHoursAdv) {
-      expectedWeeklyHoursAdv.value = simpleExpectedWeeklyHours.value;
-    }
-  }
-
-  // Sync values when Simple mode field changes
-  if (simpleExpectedWeeklyHours) {
-    simpleExpectedWeeklyHours.addEventListener('input', function () {
-      if (expectedWeeklyHoursAdv) {
-        expectedWeeklyHoursAdv.value = this.value;
-      }
-    });
-  }
-
-  // Sync values when Advanced mode field changes
-  if (expectedWeeklyHoursAdv) {
-    expectedWeeklyHoursAdv.addEventListener('input', function () {
-      if (simpleExpectedWeeklyHours) {
-        simpleExpectedWeeklyHours.value = this.value;
-      }
-    });
-  }
+  // expected_weekly_hours moved to Economy Health page (CWI parameter on EconomicEngine).
 
   if (settingsModeToggle) {
     settingsModeToggle.addEventListener('change', function () {
@@ -1026,29 +973,11 @@
         advancedModeFields.style.display = 'block';
         settingsModeInput.value = 'advanced';
 
-        // Disable simple field (won't be submitted), enable advanced field
-        if (simpleExpectedWeeklyHours) {
-          simpleExpectedWeeklyHours.disabled = true;
-        }
-        if (expectedWeeklyHoursAdv) {
-          expectedWeeklyHoursAdv.disabled = false;
-        }
-
-        // Sync from Simple to Advanced when switching to Advanced mode
-        syncExpectedHoursToAdvanced();
       } else {
         // Simple mode
         simpleModeFields.style.display = 'block';
         advancedModeFields.style.display = 'none';
         settingsModeInput.value = 'simple';
-
-        // Enable simple field, disable advanced field (won't be submitted)
-        if (simpleExpectedWeeklyHours) {
-          simpleExpectedWeeklyHours.disabled = false;
-        }
-        if (expectedWeeklyHoursAdv) {
-          expectedWeeklyHoursAdv.disabled = true;
-        }
       }
 
       updateCWI();
