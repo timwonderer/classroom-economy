@@ -130,11 +130,21 @@ def upgrade():
     if table_exists('feature_settings') and table_exists('economic_engine'):
         print("\n📊 Migrating configuration data to economic_engine...")
 
+        # `payroll_settings.expected_weekly_hours` was later moved to `economic_engine`
+        # itself (see migration a4e8f19d7c31). Older schemas may still carry the column
+        # (backfill it if present); newer schemas created via the bootstrap from current
+        # models will not have it (select NULL in that case).
+        ps_hours_expr = (
+            "ps.expected_weekly_hours"
+            if column_exists('payroll_settings', 'expected_weekly_hours')
+            else "NULL::float"
+        )
+
         # Query existing configuration from legacy tables
-        rows_to_insert = conn.execute(text("""
+        rows_to_insert = conn.execute(text(f"""
             SELECT
                 fs.class_id,
-                ps.expected_weekly_hours,
+                {ps_hours_expr} AS expected_weekly_hours,
                 bs.savings_apy,
                 bs.interest_calculation_type,
                 bs.compound_frequency,

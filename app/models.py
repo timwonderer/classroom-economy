@@ -1488,9 +1488,9 @@ class PayrollSettings(db.Model):
     first_pay_date = db.Column(db.DateTime(timezone=True), nullable=True)  # First payday
     rounding_mode = db.Column(db.String(20), nullable=False, default='down')  # 'up' or 'down'
 
-    # Economy Balance Check Field
-    # NOTE: This is NOT used for actual payroll calculations - only for economy balance validation
-    expected_weekly_hours = db.Column(db.Float, nullable=True, default=5.0)  # Expected class hours per week
+    # NOTE: `expected_weekly_hours` was moved to `EconomicEngine.expected_weekly_hours`
+    # (canonical per DOM-CLASS-002). It is a CWI parameter, not a payroll parameter,
+    # and is mutated via FEAT-CLASS-005 (immutable versioned engine snapshots).
 
     def __repr__(self):
         return f'<PayrollSettings class_id={self.class_id} block={self.block or "Global"}>'

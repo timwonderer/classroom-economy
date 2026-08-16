@@ -165,6 +165,8 @@ class AnalyticsEngine:
             return 0.0
         
         cwi_calc = self.economy_checker.calculate_cwi(payroll_settings)
+        if cwi_calc is None:
+            return 0.0
         return cwi_calc.cwi
     
     def calculate_participation_rate(

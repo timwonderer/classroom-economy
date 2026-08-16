@@ -258,22 +258,27 @@ def get_class_features(
     """
     query_time = _resolve_query_time(effective_at)
 
-    # Query all ClassFeature rows for this class that are enabled at query_time
-    # Enabled = has economic_version_id and effective_at <= query_time
+    # Query ALL ClassFeature rows for this class effective at query_time,
+    # including disabled rows (economic_version_id IS NULL) so we can
+    # determine the latest state per feature.
     class_features = ClassFeature.query.filter(
         ClassFeature.class_id == class_id,
         ClassFeature.effective_at <= query_time,
-        ClassFeature.economic_version_id.isnot(None),
     ).all()
 
-    # Group by feature name, returning latest effective_at for each
-    result_dict = {}
+    # Group by feature name, keeping only the row with latest effective_at.
+    # A feature is enabled only if its latest row has economic_version_id set.
+    latest_by_feature: dict[str, ClassFeature] = {}
     for feature in class_features:
-        current = result_dict.get(feature.feature)
+        current = latest_by_feature.get(feature.feature)
         if current is None or feature.effective_at > current.effective_at:
-            result_dict[feature.feature] = feature
+            latest_by_feature[feature.feature] = feature
 
-    return result_dict
+    return {
+        name: row
+        for name, row in latest_by_feature.items()
+        if row.economic_version_id is not None
+    }
 
 
 def get_class_feature(
@@ -336,7 +341,8 @@ def get_class_feature_history(class_id: str, feature: str) -> list[ClassFeature]
 def get_payroll_settings(class_id: str) -> Optional[PayrollSettings]:
     """Get payroll configuration for a class.
 
-    Includes pay_rate ($/minute), expected_weekly_hours.
+    Includes pay_rate ($/minute). Note: expected_weekly_hours is a CWI parameter
+    on EconomicEngine, not on PayrollSettings — use `get_effective_economic_engine`.
 
     Args:
         class_id: The class (UUID)
@@ -348,15 +354,12 @@ def get_payroll_settings(class_id: str) -> Optional[PayrollSettings]:
         payroll = get_payroll_settings(classroom.class_id)
         if payroll:
             hourly = float(payroll.pay_rate) * 60
-            print(f"Rate: ${hourly}/hr, Expected hours: {payroll.expected_weekly_hours}")
+            print(f"Rate: ${hourly}/hr")
     """
     return PayrollSettings.query.filter_by(
         class_id=class_id,
         is_active=True,
-    ).order_by(
-        PayrollSettings.block.is_(None).desc(),
-        PayrollSettings.id.desc(),
-    ).first()
+    ).order_by(PayrollSettings.id.desc()).first()
 
 
 def get_rent_settings(class_id: str) -> Optional[RentSettings]:
@@ -397,10 +400,7 @@ def get_banking_settings(class_id: str) -> Optional[BankingSettings]:
     return BankingSettings.query.filter_by(
         class_id=class_id,
         is_active=True,
-    ).order_by(
-        BankingSettings.block.is_(None).desc(),
-        BankingSettings.id.desc(),
-    ).first()
+    ).order_by(BankingSettings.id.desc()).first()
 
 
 def get_hall_pass_settings(class_id: str) -> Optional[HallPassSettings]:
@@ -454,13 +454,13 @@ def calculate_cwi(class_id: str) -> Optional[float]:
     if not payroll:
         return None
 
-    # CWI combines teacher-configured pay rate with teacher-configured expected weekly hours
-    # pay_rate is $/minute → convert to $/hour first
-    if payroll.expected_weekly_hours is None:
+    # expected_weekly_hours is a CWI parameter on EconomicEngine (canonical per DOM-CLASS-002)
+    engine = get_effective_economic_engine(class_id, 'payroll')
+    if not engine or engine.expected_weekly_hours is None:
         return None
 
     hourly_rate = float(payroll.pay_rate) * 60
-    return hourly_rate * float(payroll.expected_weekly_hours)
+    return hourly_rate * float(engine.expected_weekly_hours)
 
 
 def get_policy_mode(class_id: str, feature: str = 'payroll') -> Optional[str]:
@@ -578,24 +578,6 @@ def has_personalized_class(teacher_user_id: int) -> bool:
         ClassEconomy.teacher_user_id == teacher_user_id,
         ClassEconomy.display_name.isnot(None),
     ).first() is not None
-
-
-def get_teacher_class_by_section(teacher_user_id: int, section: str) -> Optional[ClassEconomy]:
-    """Find a teacher's class by section name.
-
-    Used in bulk upload to match CSV rows to existing classes.
-
-    Args:
-        teacher_user_id: The teacher's User.id
-        section: The section/block name to match
-
-    Returns:
-        ClassEconomy if found, None otherwise
-    """
-    return ClassEconomy.query.filter_by(
-        teacher_user_id=teacher_user_id,
-        section=section,
-    ).first()
 
 
 def get_class_by_public_id(class_public_id: str) -> Optional[ClassEconomy]:
