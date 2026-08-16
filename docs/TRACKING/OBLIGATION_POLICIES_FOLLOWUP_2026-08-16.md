@@ -307,3 +307,60 @@ Every migration that drops a column MUST:
 **Author:** Claude Opus 4.7 (session assistant, under user direction)
 **Session date:** 2026-08-16
 **Post-mortem and safeguards added:** 2026-08-16, same session, after user challenge exposed the false PASS.
+
+---
+
+## VIII. Cross-domain finding surfaced during live browser test — FEAT-SHELL-DIRTY compliance gap
+
+### VIII.a What the log shows
+
+Every route decorated with `@feat_shell(...)` logs on each request:
+
+```
+WARNING in base [...]: FEAT-SHELL-DIRTY: Executing legacy logic in shell <FEAT-NAME>. Function=<fn>. Correlation=GENERATE
+```
+
+Observed during the 2026-08-16 live browser walkthrough on `/admin/login`, `/admin/api/economy/analyze`, and many other routes. Each hit represents a route that has NOT been migrated to the canonical FEAT pattern — it is running under a legacy containment shell.
+
+### VIII.b Scope (as of 2026-08-16)
+
+Grep `@feat_shell(` across `app/` yields **45 occurrences** distributed by FEAT identifier:
+
+| FEAT | Count | Owning domain |
+| --- | --- | --- |
+| FEAT-ADMN-001 | 14 | Admin surface (multi-domain) |
+| FEAT-SETTINGS-001 | 7 | Class Configuration |
+| FEAT-IDEN-001 | 7 | Identity |
+| FEAT-OPS-001 | 5 | Operations |
+| FEAT-OBL-003 | 4 | Obligations |
+| FEAT-SUP-001 | 3 | Support |
+| FEAT-STOR-003 | 3 | Store |
+| FEAT-STOR-002 | 3 | Store |
+| FEAT-OBL-001 | 3 | Obligations |
+| FEAT-LED-001 | 3 | Ledger |
+| FEAT-IDEN-002 | 3 | Identity |
+| FEAT-CLASS-002 | 3 | Class Configuration |
+| FEAT-STOR-001, FEAT-PROD-003, FEAT-PROD-001, FEAT-OBL-002, FEAT-LED-000, FEAT-CLASS-004, FEAT-CLASS-001, FEAT-ANLY-001 | 2 each | Various |
+| FEAT-STOR-004, FEAT-PROD-002, FEAT-LED-004, FEAT-LED-003, FEAT-IDEN-004, FEAT-IDEN-003, FEAT-CLASS-005 | 1 each | Various |
+
+### VIII.c Implication for domain certification
+
+Per `app/feats/base.py:426-496`, `@feat_shell` is explicitly documented as "Special decorator for legacy containment shells." It writes the DIRTY marker on every invocation as a compliance signal. Any route or FEAT still wrapped in `feat_shell` is v2-noncompliant.
+
+**This invalidates the 2026-07-26 Obligations Phase 10 audit** on stricter reading: `FEAT-OBL-001` (3 shells), `FEAT-OBL-002` (2 shells), `FEAT-OBL-003` (4 shells) — the Obligations domain has 9 shell wrappers still in place. A domain cannot be "production-ready" while it emits FEAT-SHELL-DIRTY on every mutation.
+
+**Same implication applies retroactively to Identity and Store Phase 10 certifications**: FEAT-IDEN-001 (7), FEAT-IDEN-002 (3), FEAT-IDEN-003 (1), FEAT-IDEN-004 (1) — 12 shells in Identity; FEAT-STOR-001 (2), FEAT-STOR-002 (3), FEAT-STOR-003 (3), FEAT-STOR-004 (1) — 9 shells in Store. Both certifications should be re-examined under the stricter gate.
+
+### VIII.d Required addition to Phase 10 gate (VII.3 amendment)
+
+Add to the mandatory Phase 10 gate (§VII.3):
+
+**§VII.3.5 Zero-shell-decorator gate.** No domain may pass Phase 10 while any FEAT owned by the domain (or any admin/route shell that mutates the domain's tables) still uses `@feat_shell(...)`. Migration path per FEAT is: replace `@feat_shell` with the canonical `@feat_wrapper` (or equivalent), guarantee mandatory ID resolution at the wrapper level, and remove the DIRTY log warning as the completion signal.
+
+### VIII.e Not remediated in this session
+
+Migrating 45 shell decorators across the codebase is a multi-branch project. Recording the gap here as a cross-cutting compliance blocker; explicit remediation is out of scope for `feat/paste-staging-grid` unless the user opens a dedicated branch for it.
+
+### VIII.f Related fix landed this session (in-scope)
+
+`/admin/api/economy/analyze` (fixed commit `a3a98d36`) still emits FEAT-SHELL-DIRTY on every hit — the fix only addressed the 400 caused by requiring client-supplied `class_id`. The route now correctly reads scope from `g.canonical_context`. The shell decorator remains and is one of the 14 FEAT-ADMN-001 shells above. Full migration deferred to the systemic sweep.

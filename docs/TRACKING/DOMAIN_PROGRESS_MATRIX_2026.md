@@ -5,12 +5,12 @@
 **Authority:** SOP-DEV-002a, INV-CORE-000, DOM-CORE-002
 
 **DOMAIN READINESS SNAPSHOT:**
-- ✅ **2 domains** Phase 10 certified (production-ready): Identity, Store
-- ⚠️ **1 domain** Phase 10 certified with known audit gap: Obligations (2026-07-26 audit missed cross-layer template sweep; templates + `rent_settings` mutation pattern flagged 2026-08-16)
-- 🔄 **1 domain** Phase 5 complete, Phase 6-7 partial: Class Config (view models defined; 4 of 12 MAP-UI-001 rows rewired; EconomicView stub still incomplete; 5 constitutional issues open)
+- ⚠️ **3 domains** Phase 10 certified but ALL flagged 2026-08-16 for FEAT-SHELL-DIRTY compliance gap (see `OBLIGATION_POLICIES_FOLLOWUP_2026-08-16.md` §VIII): Identity (12 shells), Store (9 shells), Obligations (9 shells + cross-layer template sweep gap + `rent_settings` mutation pattern violation). None satisfy the revised Phase 10 gate (§VII.3.5 zero-shell-decorator).
+- 🔄 **1 domain** Phase 5 complete, Phase 6-7 partial: Class Config (view models defined; 4 of 12 MAP-UI-001 rows rewired; EconomicView stub still incomplete; 5 constitutional issues open; 15 shell decorators outstanding — FEAT-CLASS-001×2, FEAT-CLASS-002×3, FEAT-CLASS-004×2, FEAT-CLASS-005×1, FEAT-SETTINGS-001×7)
 - 🔄 **2 domains** Phase 1 complete but blocked on Phase 2 (schema migrations pending): Ledger, Payroll
 - 🔄 **1 domain** Phase 0-1, doctrine substantially advanced 2026-08-16: Policies
 - 🔄 **3 domains** Phase 0-1 only, not started: Operations, Interpretation, Support
+- **Systemic:** 45 `@feat_shell(...)` decorators across `app/` — every hit logs FEAT-SHELL-DIRTY, marking the route/FEAT as v2-noncompliant. Any Phase 10 certification that did not enforce zero-shell must be re-examined.
 
 ---
 
