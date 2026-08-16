@@ -90,7 +90,7 @@
     --info: #35719a;
     --info-hover: #2e6285;
     --info-subtle: #e6f0f8;
-    --warning: #c08c15;
+    --warning: #D4A857;
     --warning-hover: #a87912;
     --warning-subtle: #fef8e6;
     --danger: #c0392b;
@@ -131,9 +131,9 @@ body.student-shell {
     --info: #356a9e;
     --info-hover: #2e5d8b;
     --info-subtle: #e8f0f8;
-    --warning: #b58a1a;
-    --warning-hover: #9e7816;
-    --warning-subtle: #fef8e6;
+    --warning: #D4A857;
+    --warning-hover: #b88f22;
+    --warning-subtle: #fbf3d6;
     --danger: #c44040;
     --danger-hover: #aa3636;
     --danger-subtle: #fce8e6;
@@ -179,9 +179,9 @@ body.sysadmin-shell {
     --info: #35719a;
     --info-hover: #2e6285;
     --info-subtle: #e6f0f8;
-    --warning: #c08c15;
-    --warning-hover: #a87912;
-    --warning-subtle: #fef8e6;
+    --warning: #D4A857;
+    --warning-hover: #b88f22;
+    --warning-subtle: #fbf3d6;
     --danger: #c0392b;
     --danger-hover: #a83024;
     --danger-subtle: #fce8e6;

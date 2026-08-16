@@ -71,10 +71,10 @@
 <div class="card shadow-sm {{ body_class }}">
   <div class="card-header bg-white py-3">
     <div class="d-flex justify-content-between align-items-center">
-      <h5 class="mb-0 fw-bold text-primary">
+      <h6 class="mb-0 fw-semibold text-primary">
         {% if icon %}<span class="material-symbols-outlined me-2 text-primary" style="vertical-align: text-bottom;">{{ icon }}</span>{% endif %}
         {{ title }}
-      </h5>
+      </h6>
       {% if header_actions %}<div class="d-flex align-items-center gap-2">{{ header_actions | safe }}</div>{% endif %}
     </div>
   </div>
@@ -102,10 +102,10 @@
 {% set _text_class = 'text-dark' if _level == 'warning' else 'text-white' %}
 <div class="card shadow-sm {{ body_class }}">
   <div class="card-header bg-{{ _level }} {{ _text_class }} py-3">
-    <h5 class="mb-0 fw-bold {{ _text_class }}">
+    <h6 class="mb-0 fw-semibold {{ _text_class }}">
       {% if icon %}<span class="material-symbols-outlined me-2" style="vertical-align: text-bottom;">{{ icon }}</span>{% endif %}
       {{ title }}
-    </h5>
+    </h6>
   </div>
   <div class="card-body">
     {{ caller() }}

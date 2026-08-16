@@ -210,10 +210,10 @@ class EconomyBalanceChecker {
             return (
                 `<div class="card shadow-sm mb-3">` +
                     `<div class="card-header bg-${level} ${textClass} py-3">` +
-                        `<h5 class="mb-0 fw-bold ${textClass}">` +
+                        `<h6 class="mb-0 fw-semibold ${textClass}">` +
                             `<span class="material-symbols-outlined me-2" style="vertical-align: text-bottom;">${icon}</span>` +
                             title +
-                        `</h5>` +
+                        `</h6>` +
                     `</div>` +
                     `<div class="card-body">${bodyHtml}</div>` +
                 `</div>`

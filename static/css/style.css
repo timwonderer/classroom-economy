@@ -24,7 +24,13 @@ h6 {
     font-family: var(--font-display);
 }
 
-/* Header headings should inherit section color (fix dark-on-dark card headers) */
+/* Card-header headings inherit color from the section header so text
+ * stays legible on colored backgrounds. Font-size and font-weight are
+ * NOT normalized here — templates control them per level:
+ *   - Top-level cards use <h5 class="fw-bold"> (larger, more prominent)
+ *   - Nested / alert cards use <h6 class="fw-semibold"> (calmer)
+ * Both classes are supplied at the template layer so the visual
+ * hierarchy is explicit in each site rather than hidden in CSS. */
 .card-header h1,
 .card-header h2,
 .card-header h3,
@@ -32,6 +38,7 @@ h6 {
 .card-header h5,
 .card-header h6 {
     color: inherit;
+    margin-bottom: 0;
 }
 
 a {
