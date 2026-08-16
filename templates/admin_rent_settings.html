@@ -968,7 +968,12 @@
 
 <script>
   (function () {
-    const studentPastDueData = {{ student_past_due_json | tojson }};
+    // student_past_due_json was removed from the rent_settings route in
+    // Phase 9 (commit 1af51474, 2026-07-25) — "UI no longer displays
+    // historical backlog". Default to {} so the past-due-scope UI
+    // renders without data. Restoring the past-due-periods waiver scope
+    // requires re-adding a backing query to the route.
+    const studentPastDueData = {{ (student_past_due_json | default({})) | tojson }};
     const studentSelect = document.getElementById('waiver_student_ids');
     const scopePastDue = document.getElementById('scope_past_due');
     const scopeCurrent = document.getElementById('scope_current');
