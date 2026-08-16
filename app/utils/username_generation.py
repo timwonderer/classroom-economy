@@ -45,7 +45,7 @@ def build_username(chosen_word: str, roster_fingerprint: str) -> str:
     """
     vocabulary = load_vocabulary()
     system_word_1, system_word_2 = random.sample(vocabulary, 2)
-    fingerprint_suffix = roster_fingerprint[-2:] if roster_fingerprint else "00"
+    fingerprint_suffix = (roster_fingerprint[-2:] if roster_fingerprint else "00").upper()
     return f"{system_word_1}-{chosen_word}-{system_word_2}{fingerprint_suffix}"
 
 
