@@ -386,22 +386,59 @@ class EconomyBalanceChecker {
         const rentMonthly = rec.rent || {};
         const rentWeekly = rec.rent_weekly || {};
 
-        // Frequency-aware selection: prefer whatever matches the visible
-        // rent-frequency <select>. Falls back to monthly.
+        // Frequency-aware selection: derive the correct band for whatever
+        // rent-frequency the teacher has picked. The payload only carries
+        // weekly and monthly buckets; other frequencies are converted
+        // proportionally from weekly (the smaller unit — avoids
+        // compounding month-length approximation).
         const freqEl = document.getElementById('frequency_type');
         const freq = (freqEl && freqEl.value) || 'monthly';
+        const customValueEl = document.getElementById('custom_frequency_value');
+        const customUnitEl = document.getElementById('custom_frequency_unit');
+        const customValue = customValueEl ? parseInt(customValueEl.value, 10) : NaN;
+        const customUnit = customUnitEl ? customUnitEl.value : '';
+
+        const scale = (band, factor) => (band && band.min != null ? {
+            min: band.min * factor,
+            max: band.max * factor,
+            recommended: band.recommended * factor,
+        } : {});
+
         let rentBand = rentMonthly;
         let periodLabel = 'per month';
-        if (freq === 'weekly') { rentBand = rentWeekly; periodLabel = 'per week'; }
-        else if (freq === 'daily' && rentWeekly.min != null) {
-            rentBand = {
-                min: rentWeekly.min / 7,
-                max: rentWeekly.max / 7,
-                recommended: rentWeekly.recommended / 7,
-            };
+        let showNote = false;
+
+        if (freq === 'weekly') {
+            rentBand = rentWeekly;
+            periodLabel = 'per week';
+        } else if (freq === 'daily') {
+            rentBand = scale(rentWeekly, 1 / 7);
             periodLabel = 'per day';
+        } else if (freq === 'biweekly') {
+            rentBand = scale(rentWeekly, 2);
+            periodLabel = 'every 2 weeks';
+        } else if (freq === 'custom') {
+            // Custom = <value> <unit>. Convert from weekly for days/weeks,
+            // from monthly for months (natural unit alignment).
+            if (Number.isFinite(customValue) && customValue > 0) {
+                if (customUnit === 'days') {
+                    rentBand = scale(rentWeekly, customValue / 7);
+                    periodLabel = `every ${customValue} day${customValue === 1 ? '' : 's'}`;
+                } else if (customUnit === 'weeks') {
+                    rentBand = scale(rentWeekly, customValue);
+                    periodLabel = `every ${customValue} week${customValue === 1 ? '' : 's'}`;
+                } else if (customUnit === 'months') {
+                    rentBand = scale(rentMonthly, customValue);
+                    periodLabel = `every ${customValue} month${customValue === 1 ? '' : 's'}`;
+                } else {
+                    // Unit not set yet — show monthly with a hint.
+                    showNote = true;
+                }
+            } else {
+                showNote = true;
+            }
         }
-        // (biweekly / custom deliberately fall through to monthly for now.)
+        // (else: monthly — the default.)
 
         let html = '<div class="cwi-info-box alert alert-info">';
         html += '<h6 class="mb-2"><i class="bi bi-info-circle-fill"></i> Classroom Wage Index (CWI)</h6>';
@@ -424,8 +461,8 @@ class EconomyBalanceChecker {
         }
         if (rentBand.recommended != null) {
             html += `<div class="mb-2">We recommend <strong>${fmt(rentBand.recommended)}</strong> ${periodLabel}`;
-            if (freq !== 'monthly' && freq !== 'weekly' && freq !== 'daily') {
-                html += ` <span class="text-muted small">(shown as monthly; adjust for your ${freq} cycle)</span>`;
+            if (showNote) {
+                html += ` <span class="text-muted small">(showing monthly — set your custom frequency to refine)</span>`;
             }
             html += '.</div>';
         }

@@ -1129,16 +1129,24 @@
     console.log('Payroll not configured yet, skipping CWI display');
   });
 
-  // Re-render the CWI recommendation box whenever the rent frequency changes,
-  // since the range/recommendation shown depends on the selected frequency.
-  const frequencyEl = document.getElementById('frequency_type');
-  if (frequencyEl) {
-    frequencyEl.addEventListener('change', function () {
+  // Re-render the CWI recommendation box whenever any rent-frequency input
+  // changes (dropdown, custom value, custom unit). The range/recommendation
+  // shown depends on the resolved frequency, so every input that can change
+  // that resolution must trigger a re-render.
+  const cwiFrequencyWatchers = [
+    { id: 'frequency_type', event: 'change' },
+    { id: 'custom_frequency_value', event: 'input' },
+    { id: 'custom_frequency_unit', event: 'change' },
+  ];
+  cwiFrequencyWatchers.forEach(({ id, event }) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.addEventListener(event, function () {
       if (cachedCWIAnalysis) {
         economyChecker.displayCWIInfo(cachedCWIAnalysis, '#cwi-info');
       }
     });
-  }
+  });
 
   // Re-validate rent when frequency changes
   const rentAmountInput = document.getElementById('rent_amount');
