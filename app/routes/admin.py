@@ -2145,9 +2145,17 @@ def _resolve_rent_settings_for_class_id(class_id, policy_uuid=None):
         .order_by(BillCycle.cycle_number.desc(), BillCycle.id.desc())
         .first()
     )
-    if not current_cycle or not current_cycle.policy_uuid:
-        return None
-    return RentSettings.query.filter_by(policy_uuid=current_cycle.policy_uuid).first()
+    if current_cycle and current_cycle.policy_uuid:
+        cycled = RentSettings.query.filter_by(policy_uuid=current_cycle.policy_uuid).first()
+        if cycled:
+            return cycled
+    # Fallback: no bill_cycle yet (brand-new class, or rent enabled but
+    # never assessed). Return the class's rent_settings row directly so
+    # downstream analyzers (economic engine, pricing recommendations,
+    # rebalance planner) can still evaluate the current configuration.
+    # Without this fallback, out-of-range rent goes undetected on any
+    # class that hasn't hit its first assessment yet.
+    return RentSettings.query.filter_by(class_id=class_id).first()
 
 
 def _resolve_banking_settings_for_class_id(class_id):
