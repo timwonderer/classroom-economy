@@ -6068,43 +6068,39 @@ def rent_settings():
     # Extract basic statistics from view model
     total_students = len(obligation_summary.student_rows) if obligation_summary else 0
 
-    # Active rent waivers as of now. Per DOM-OBL-001, coverage window is
-    # derived from the waiver's bill_cycle; the RentWaiverView projection
-    # resolves that derivation.
-    now = utc_now()
-    active_waivers = []
-    for waiver in obligations_service.get_active_rent_waivers_for_class(
-        class_id,
-        coverage_date=now,
-    ):
-        profile = IdentityProfile.query.filter_by(seat_id=waiver.seat_id).first() if waiver.seat_id else None
-        active_waivers.append(SimpleNamespace(
-            id=waiver.id,
-            student=SimpleNamespace(
-                full_name=profile.full_name if profile else 'Unknown',
-            ),
-            waiver_start_date=waiver.coverage_start_time,
-            waiver_end_date=waiver.coverage_end_time,
-            periods_count=_count_rent_waiver_periods(settings, waiver),
-            reason=None,  # DOM-OBL-001 does not specify a reason field on assessment events
-            created_at=waiver.timestamp,
-        ))
+    # Per DOM-OBL-001 §V.6, a waiver is a one-time immutable satisfaction
+    # of a specific already-assessed rent liability. The Waivers tab is
+    # organized around (a) the exact set of outstanding assessments a
+    # teacher can waive right now, and (b) a read-only audit log of
+    # waivers already applied. No "active waiver" or "future scope"
+    # concepts are surfaced.
+    from app.services.obligation_view_model import get_outstanding_rent_by_seat
+    outstanding_by_student = get_outstanding_rent_by_seat(class_id)
 
-    # Build all_students view model dicts for waiver form (no raw SQLAlchemy in templates).
-    all_students = []
-    if obligation_summary and obligation_summary.student_rows:
-        for row in obligation_summary.student_rows:
-            all_students.append({
-                'id': row['seat_id'],
-                'full_name': row['student_name'],
-                'block': '',
-            })
-        all_students.sort(
-            key=lambda s: (
-                s['full_name'].lower(),
-                s['id'],
-            )
+    waiver_history_raw = obligations_service.get_rent_waiver_history_for_class(
+        class_id, limit=100,
+    )
+    # Enrich with student_name for template rendering. Waiver-event
+    # amount is not persisted (DOM-OBL-001 §VII.1); resolve from the
+    # linked ASSESSMENT's frozen RentSettings via view model helpers if
+    # display is desired — for now the audit log shows seat + waived_at
+    # + due_at only, matching the domain's guarantees.
+    waiver_history = []
+    for row in waiver_history_raw:
+        profile = (
+            IdentityProfile.query.filter_by(seat_id=row['seat_id']).first()
+            if row['seat_id'] else None
         )
+        student_name = (
+            f"{profile.first_name} {profile.last_name}".strip()
+            if profile else f"Seat {row['seat_id']}"
+        )
+        waiver_history.append({
+            'correlation_id': row['correlation_id'],
+            'student_name': student_name,
+            'due_at': row['due_at'],
+            'waived_at': row['waived_at'],
+        })
 
     # Calculate payroll warning
     payroll_warning = None
@@ -6231,8 +6227,8 @@ def rent_settings():
     return render_template('admin_rent_settings.html',
                           settings=settings,
                           obligation_summary=obligation_summary,
-                          active_waivers=active_waivers,
-                          all_students=all_students,
+                          outstanding_by_student=outstanding_by_student,
+                          waiver_history=waiver_history,
                           payroll_warning=payroll_warning,
                           payroll_settings=payroll_settings,
                           expected_weekly_hours=_resolve_expected_weekly_hours(payroll_settings) if payroll_settings else None,
@@ -6248,98 +6244,109 @@ def rent_settings():
                           display_next_due_date=display_next_due_date,
                           current_period_start=current_period_start,
                           current_period_end=current_period_end,
-                          next_due_date=next_due_date,
-                          current_coverage_due_date=current_coverage_due_date,
-                          upcoming_coverage_due_date=upcoming_coverage_due_date)
+                          next_due_date=next_due_date)
 
 
 @admin_bp.route('/rent-waiver/add', methods=['POST'])
 @admin_required
 @feat_shell("FEAT-OBL-003")
 def add_rent_waiver():
-    """Add rent waiver for selected students (FEAT-OBL-003).
+    """Waive one or more specific outstanding rent assessments (FEAT-OBL-003).
 
-    Per DOM-OBL-001 §VI: WAIVED events close out outstanding remainder on RENT obligations.
+    Per DOM-OBL-001 §V.6: a waiver is a one-time immutable satisfaction of
+    a specific already-assessed rent liability. It does not create ongoing
+    state and does not affect later assessments. This route accepts the
+    exact `correlation_id`(s) the teacher selected in the UI — no "current
+    period," no "future periods," no scope inference.
+
+    Form contract:
+      - correlation_ids : repeated form field, one per checked assessment
+      - reason          : optional free-text (currently not persisted per
+                          DOM-OBL-001 §VII.1 — no reason field on
+                          assessment_events; captured here for future
+                          audit-log integration)
     """
     from app.feats.satisfy_obligation_feat import execute_satisfy_obligation_waiver
-    from app.services import obligations_service
 
     context = g.canonical_context
     class_id = context.class_id
     if not class_id:
         abort(404)
 
-    # Get seat IDs from request (format: student_ids multiple select)
-    seat_ids_to_waive = []
-    for seat_id_str in request.form.getlist('student_ids'):
-        try:
-            seat_ids_to_waive.append(int(seat_id_str))
-        except ValueError:
-            continue
+    correlation_ids = [
+        cid.strip() for cid in request.form.getlist('correlation_ids') if cid and cid.strip()
+    ]
 
-    if not seat_ids_to_waive:
-        flash("No students selected for waiver.", "warning")
-        return redirect(url_for('admin.rent_settings'))
+    if not correlation_ids:
+        flash("No assessments selected for waiver.", "warning")
+        return redirect(url_for('admin.rent_settings') + '#waivers')
 
-    # For each selected seat, find current rent assessment and waive it
     waived_count = 0
+    skipped_already_waived = 0
     failed_count = 0
 
-    for seat_id in seat_ids_to_waive:
+    for correlation_id in correlation_ids:
+        # Resolve the ASSESSMENT event first — verifies (a) it exists,
+        # (b) it belongs to this class (defense against cross-class
+        # correlation IDs in the payload), (c) it's a rent assessment.
+        assessment = (
+            db.session.query(ObligationAssessment)
+            .filter(
+                ObligationAssessment.correlation_id == correlation_id,
+                ObligationAssessment.class_id == class_id,
+                ObligationAssessment.obligation_type == 'RENT',
+                ObligationAssessment.event_type == 'ASSESSMENT',
+            )
+            .first()
+        )
+        if not assessment:
+            failed_count += 1
+            continue
+
+        # Idempotency: already waived is a no-op success (not a failure).
+        existing_waiver = (
+            db.session.query(ObligationAssessment)
+            .filter(
+                ObligationAssessment.correlation_id == correlation_id,
+                ObligationAssessment.event_type == 'WAIVED',
+            )
+            .first()
+        )
+        if existing_waiver:
+            skipped_already_waived += 1
+            continue
+
         try:
-            # Find the most recent ASSESSMENT event for this seat (current rent obligation)
-            assessment = (
-                db.session.query(ObligationAssessment)
-                .filter(
-                    ObligationAssessment.seat_id == seat_id,
-                    ObligationAssessment.class_id == class_id,
-                    ObligationAssessment.obligation_type == 'RENT',
-                    ObligationAssessment.event_type == 'ASSESSMENT',
-                )
-                .order_by(ObligationAssessment.created_at.desc())
-                .first()
-            )
-
-            if not assessment:
-                failed_count += 1
-                continue
-
-            # Check if already waived
-            existing_waiver = (
-                db.session.query(ObligationAssessment)
-                .filter(
-                    ObligationAssessment.correlation_id == assessment.correlation_id,
-                    ObligationAssessment.event_type == 'WAIVED',
-                )
-                .first()
-            )
-
-            if existing_waiver:
-                # Already waived, skip
-                continue
-
-            # Create WAIVED event via FEAT-OBL-003
             execute_satisfy_obligation_waiver(
-                correlation_id=assessment.correlation_id,
+                correlation_id=correlation_id,
                 class_id=class_id,
-                seat_id=seat_id,
+                seat_id=assessment.seat_id,
             )
             waived_count += 1
-
         except ValueError as e:
-            current_app.logger.warning(f"Failed to waive rent for seat {seat_id}: {e}")
+            current_app.logger.warning(
+                f"Failed to waive rent assessment {correlation_id}: {e}"
+            )
             failed_count += 1
 
     db.session.commit()
 
     if waived_count > 0:
-        flash(f"Waived rent for {waived_count} student(s).", "success")
+        flash(f"Waived {waived_count} rent assessment{'s' if waived_count != 1 else ''}.", "success")
+    if skipped_already_waived > 0:
+        flash(
+            f"Skipped {skipped_already_waived} assessment{'s' if skipped_already_waived != 1 else ''} already waived.",
+            "info",
+        )
     if failed_count > 0:
-        flash(f"Failed to waive rent for {failed_count} student(s).", "warning")
-    if waived_count == 0 and failed_count == 0:
+        flash(
+            f"Failed to waive {failed_count} assessment{'s' if failed_count != 1 else ''}.",
+            "warning",
+        )
+    if waived_count == 0 and skipped_already_waived == 0 and failed_count == 0:
         flash("No changes made.", "info")
 
-    return redirect(url_for('admin.rent_settings'))
+    return redirect(url_for('admin.rent_settings') + '#waivers')
 
 
 # -------------------- INSURANCE MANAGEMENT --------------------

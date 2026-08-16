@@ -447,39 +447,85 @@ def get_active_rent_waivers_for_class(
     class_id: str,
     coverage_date: datetime | None = None,
 ) -> list[RentWaiverView]:
-    """Return rent WAIVED events for a class whose coverage window contains coverage_date.
+    """DEPRECATED — "active waiver" is not a lawful concept.
 
-    A waiver satisfies exactly one assessment (shared correlation_id) which
-    belongs to exactly one bill_cycle. The bill_cycle defines the coverage
-    window [cycle_boundary_at, next_assessment_at). "Active" means
-    coverage_date falls in that window. When coverage_date is None, all
-    waivers with a resolvable window are returned. Waivers whose
-    bill_cycle_id is NULL are omitted (no derivable window).
+    Per DOM-OBL-001 §V.6, a waiver is a one-time immutable satisfaction
+    of a specific already-assessed liability. It does not create an
+    ongoing state and does not affect later assessments. Any UI that
+    presents waivers as "currently active" or as a lifecycle object
+    encodes the wrong domain semantics.
+
+    This helper is retained temporarily so existing callers do not
+    crash; it now returns the WAIVED-event history for the class, same
+    shape as `get_rent_waiver_history_for_class`, and the coverage_date
+    filter is ignored. New callers should use
+    `get_rent_waiver_history_for_class` directly.
+
+    TODO: remove after all callers migrate.
     """
+    return [
+        RentWaiverView(
+            id=w['id'],
+            seat_id=w['seat_id'],
+            correlation_id=w['correlation_id'],
+            timestamp=w['waived_at'],
+            coverage_start_time=w['due_at'],
+            coverage_end_time=w['due_at'],
+        )
+        for w in get_rent_waiver_history_for_class(class_id)
+    ]
+
+
+def get_rent_waiver_history_for_class(
+    class_id: str,
+    limit: int = 100,
+) -> list[dict]:
+    """Read-only audit list of rent waiver events for a class.
+
+    Per DOM-OBL-001 §V.6 a waiver is an immutable satisfaction of one
+    specific assessment. This helper returns that history in reverse
+    chronological order (most recent waiver first) so the teacher-facing
+    UI can present it as an audit log, not as active state.
+
+    Each row:
+
+        {
+            'id': int,                      # WAIVED event id
+            'correlation_id': str,          # links back to assessment
+            'seat_id': int,
+            'waived_at': datetime,          # WAIVED event timestamp
+            'due_at': datetime | None,      # from linked bill_cycle
+                                            # (assessment_at); None for
+                                            # immediate charges
+        }
+
+    Downstream renderers may resolve seat_id → student_name and
+    correlation_id → assessed_amount via their own view models; those
+    are presentation concerns and not persisted on the WAIVED event
+    per §VII.1 ("no amount is persisted here").
+    """
+    from app.models import ObligationAssessment, BillCycle
+
     q = (
         db.session.query(ObligationAssessment, BillCycle)
-        .join(BillCycle, ObligationAssessment.bill_cycle_id == BillCycle.id)
+        .outerjoin(BillCycle, ObligationAssessment.bill_cycle_id == BillCycle.id)
         .filter(
             ObligationAssessment.class_id == class_id,
             ObligationAssessment.obligation_type == 'RENT',
             ObligationAssessment.event_type == 'WAIVED',
         )
+        .order_by(ObligationAssessment.timestamp.desc())
+        .limit(limit)
     )
-    if coverage_date is not None:
-        q = q.filter(
-            BillCycle.cycle_boundary_at <= coverage_date,
-            BillCycle.next_assessment_at > coverage_date,
-        )
     return [
-        RentWaiverView(
-            id=waiver.id,
-            seat_id=waiver.seat_id,
-            correlation_id=waiver.correlation_id,
-            timestamp=waiver.timestamp,
-            coverage_start_time=cycle.cycle_boundary_at,
-            coverage_end_time=cycle.next_assessment_at,
-        )
-        for waiver, cycle in q.order_by(BillCycle.cycle_boundary_at.desc()).all()
+        {
+            'id': waiver.id,
+            'correlation_id': waiver.correlation_id,
+            'seat_id': waiver.seat_id,
+            'waived_at': waiver.timestamp,
+            'due_at': cycle.assessment_at if cycle else None,
+        }
+        for waiver, cycle in q.all()
     ]
 
 

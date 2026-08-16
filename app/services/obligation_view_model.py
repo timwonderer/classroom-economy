@@ -646,6 +646,81 @@ class RentStatusView:
     payment_history: list[object]  # Chronological list of events
 
 
+def get_outstanding_rent_by_seat(class_id: str) -> list[dict]:
+    """
+    Per-student outstanding rent projection for the class.
+
+    Returns a list of dicts, one per student who has at least one
+    outstanding rent assessment. Each dict:
+
+        {
+            'seat_id': int,
+            'student_name': str,
+            'outstanding_count': int,
+            'outstanding_total': Decimal,        # sum of remaining amounts
+            'assessments': [                     # oldest → newest
+                {
+                    'correlation_id': str,
+                    'assessment_id': int,
+                    'due_at': datetime,
+                    'assessed_amount': Decimal,
+                    'remaining_amount': Decimal, # assessed - total_paid
+                    'is_past_due': bool,
+                },
+                ...
+            ],
+        }
+
+    Per DOM-OBL-001 §V.6: waiver is a one-time satisfaction of a
+    specific already-assessed liability. This projection surfaces the
+    exact set of assessments a teacher can lawfully waive right now
+    (i.e. `is_outstanding = not is_satisfied`). Assessments already
+    satisfied — either by payment or by prior waiver — are excluded.
+
+    Sorted by student_name ascending. Empty list if no student has any
+    outstanding rent.
+    """
+    class_econ = db.session.query(ClassEconomy).filter_by(class_id=class_id).first()
+    if not class_econ:
+        return []
+
+    seats = db.session.query(Seat).filter_by(class_id=class_id, role='student').all()
+    rows: list[dict] = []
+    for seat in seats:
+        assessments = get_rent_assessments_for_seat_class(seat.id, class_id)
+        outstanding = [a for a in assessments if a.is_outstanding]
+        if not outstanding:
+            continue
+        profile = db.session.query(IdentityProfile).filter_by(seat_id=seat.id).first()
+        student_name = (
+            f"{profile.first_name} {profile.last_name}".strip()
+            if profile else f"Seat {seat.id}"
+        )
+        rows.append({
+            'seat_id': seat.id,
+            'student_name': student_name,
+            'outstanding_count': len(outstanding),
+            'outstanding_total': sum(
+                (a.assessed_amount - a.total_paid for a in outstanding),
+                Decimal('0.00'),
+            ),
+            'assessments': [
+                {
+                    'correlation_id': a.correlation_id,
+                    'assessment_id': a.assessment_id,
+                    'due_at': a.due_at,
+                    'assessed_amount': a.assessed_amount,
+                    'remaining_amount': a.assessed_amount - a.total_paid,
+                    'is_past_due': a.is_past_due,
+                }
+                for a in outstanding
+            ],
+        })
+
+    rows.sort(key=lambda r: (r['student_name'].lower(), r['seat_id']))
+    return rows
+
+
 def get_rent_assessments_for_seat_class(
     seat_id: int,
     class_id: str,
