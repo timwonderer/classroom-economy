@@ -51,10 +51,18 @@ def resolve_assessment_due_at(assessment: ObligationAssessment) -> datetime | No
     """Resolve the "due at" boundary for an assessment event.
 
     Per DOM-OBL-001 §VII.2, temporal boundaries are owned by
-    `bill_cycles`. For cyclic obligations (rent), the due boundary is
-    the bill_cycle.assessment_at that invoked this assessment. For
-    immediate charges (§II.C, no bill_cycle), the assessment is due at
-    creation time — return the event's canonical `timestamp`.
+    `bill_cycles`:
+
+    - `bill_cycle.assessment_at` = the actual assessment date for the
+      current cycle — the moment this rent became due.
+    - `bill_cycle.next_assessment_at` = pre-set scheduling for when the
+      NEXT cycle's assessment_at will fire. NOT the current cycle's due
+      boundary; do not confuse.
+
+    For cyclic obligations (rent), the due boundary is
+    `bill_cycle.assessment_at`. For immediate charges (§II.C, no
+    bill_cycle), the assessment is due at creation time — return the
+    event's canonical `timestamp`.
 
     Returns None only if both bill_cycle lookup fails and no timestamp
     exists on the assessment (should not occur for lawful rows).

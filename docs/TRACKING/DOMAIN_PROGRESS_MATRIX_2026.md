@@ -285,13 +285,17 @@ Phase 6-7 completion is now measured via **field ownership**, not template struc
 
 **Known audit gaps (2026-08-16):**
 
-1. **Cross-layer template sweep missed.** Backend routes `admin.reverse_cycle_penalties` (deleted `6c9c3857`) and `admin.remove_rent_waiver` (deleted `eeef3de7`) were removed for FEAT-OBL-003 immutability compliance, but corresponding UI in `templates/admin_rent_settings.html` was left behind. Every teacher-facing template touching the domain crashed on load with `werkzeug.routing.exceptions.BuildError`. Emergency-fixed in commit `053c20f4`; Playwright browser traversal now verifies all obligation teacher routes render clean under canonical context.
+1. **Cross-layer template sweep missed.** Backend routes `admin.reverse_cycle_penalties` (deleted `6c9c3857`) and `admin.remove_rent_waiver` (deleted `eeef3de7`) were removed for FEAT-OBL-003 immutability compliance, but corresponding UI in `templates/admin_rent_settings.html` was left behind. Every teacher-facing template touching the domain crashed on load with `werkzeug.routing.exceptions.BuildError`. Emergency-fixed in commit `053c20f4`.
 
 2. **`rent_settings` mutation-pattern violation of `DOM-POL-001 §VI`.** `rent_settings` is designed as a mutable singleton (`class_id` `unique=True`, `updated_at` `onupdate=utc_now`); all writers mutate the existing row in place. Under the now-clarified doctrine, `rent_settings` is a Policies-repository table and each teacher submission must produce a new immutable row with a new `policy_uuid`. Scope B remediation documented in follow-up doc; **not remediated in current branch**.
 
 3. **Dead schema removed (Scope A).** `rent_settings.active_version_id` and `rent_settings.next_version_id` (orphans of an abandoned rent-specific versioning attempt) dropped by migration `2978fdba914a`.
 
-**Next Action:** re-run Phase 10 for Obligations after Scope B remediation, with explicit cross-layer template sweep as a required gate and joint audit with Policies on any shared table.
+4. **Removed-column landmines across obligation code paths.** Static audit surfaced references to columns DOM-OBL-001 v2.5 removed from `ObligationAssessment` (`.assessed_at`, `.due_at`) across `app/routes/student.py`, `app/services/obligation_view_model.py`, and one route in `app/routes/admin.py`. All were pre-existing on the certified branch — the Phase 10 audit did not catch them because happy-path testing didn't exercise the crashing code paths. Missing helper `obligations_service.get_active_rent_waivers_for_class` (same class of bug — the prior fix `bf40e23e` on `claude/vigilant-tesla-758abf` orphaned) was ported. Two new resolvers (`resolve_assessment_amount`, `resolve_assessment_due_at`) added per DOM-OBL-001 §V.1 + §VII (amount from upstream policy via `policy_uuid`; due_at from `bill_cycle.assessment_at`). Fixed in commits `3e31acb2` and `29321eb3`.
+
+5. **Initial Playwright verification was a false positive.** The subagent-run harness reported PASS for all obligation teacher routes but was actually recording final-URL-after-redirect status, not requested-URL status. Silent auth redirects passed as PASS. See `OBLIGATION_POLICIES_FOLLOWUP_2026-08-16.md` §VI for full post-mortem and §VII for the mandatory harness contract going forward.
+
+**Next Action:** re-run Phase 10 for Obligations after Scope B remediation, with the revised Phase 10 gate (see follow-up doc §VII.3): mandatory cross-layer template sweep meeting harness contract §VII.1, mandatory view-model attribute-exercise test §VII.2, mandatory co-audit with Policies §VII.3, mandatory field-removal grep §VII.4.
 
 ---
 
