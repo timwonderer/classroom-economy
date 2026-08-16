@@ -1,4 +1,4 @@
-{% import "macros/help.html" as help %}
+{% import "macros/help.html" as docs %}
 <!DOCTYPE html>
 <html lang="en">
 
@@ -321,7 +321,7 @@
             <div class="page-header-actions">
                 {% if help_doc_path %}
                     <span class="d-none d-md-inline-flex">
-                        {{ help.help_link(help_doc_path, text="Guide", tooltip="View guide") }}
+                        {{ docs.help_link(help_doc_path, text="Guide", tooltip="View guide") }}
                     </span>
                 {% endif %}
                 {% block page_header_actions %}

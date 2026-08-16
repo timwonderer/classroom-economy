@@ -1,5 +1,5 @@
 {% extends "layout_student.html" %}
-{% import "macros/help.html" as help %}
+{% import "macros/help.html" as docs %}
 {% set current_page = "dashboard" %}
 {% block title %}Student Dashboard{% endblock %}
 {% block page_icon %}dashboard{% endblock %}
@@ -129,7 +129,7 @@
                 <span class="material-symbols-outlined text-primary me-2">analytics</span>
                 <h3 class="h5 fw-bold mb-0">Weekly Stats</h3>
             </div>
-            {{ help.help_icon("user-guides/diagnostics/student-attendance", "Learn about earning tokens") }}
+            {{ docs.help_icon("user-guides/diagnostics/student-attendance", "Learn about earning tokens") }}
         </div>
         <div class="row g-3">
             <div class="col-6 col-md-3">
@@ -173,7 +173,7 @@
             <div class="d-flex align-items-center gap-2">
                 <span class="material-symbols-outlined text-primary me-2">schedule</span>
                 <h3 class="h5 fw-bold mb-0">Attendance</h3>
-                {{ help.help_icon("user-guides/diagnostics/student-attendance", "Learn how attendance tracking works")
+                {{ docs.help_icon("user-guides/diagnostics/student-attendance", "Learn how attendance tracking works")
                 }}
             </div>
             <div class="badge bg-primary-subtle text-primary border border-primary-subtle rounded-pill px-3">
@@ -255,7 +255,7 @@
                     <div class="d-flex align-items-center gap-2">
                         <span class="material-symbols-outlined text-primary me-2 fs-3">account_balance_wallet</span>
                         <h3 class="h5 fw-bold mb-0 text-dark">Checking Account</h3>
-                        {{ help.help_icon("user-guides/diagnostics/student-money", "Learn about checking and savings")
+                        {{ docs.help_icon("user-guides/diagnostics/student-money", "Learn about checking and savings")
                         }}
                     </div>
                 </div>
@@ -280,7 +280,7 @@
                     <div class="d-flex align-items-center gap-2">
                         <span class="material-symbols-outlined text-success me-2 fs-3">savings</span>
                         <h3 class="h5 fw-bold mb-0 text-dark">Savings Account</h3>
-                        {{ help.help_icon("user-guides/diagnostics/student-money", "Learn about interest and savings")
+                        {{ docs.help_icon("user-guides/diagnostics/student-money", "Learn about interest and savings")
                         }}
                     </div>
                 </div>

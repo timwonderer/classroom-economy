@@ -1,5 +1,5 @@
 {% extends "layout_admin.html" %}
-{% import "macros/help.html" as help %}
+{% import "macros/help.html" as docs %}
 {% block page_title %}Economic Engine{% endblock %}
 {% block page_icon %}display_settings{% endblock %}
 {% set current_page = "economic_engine" %}
@@ -105,7 +105,7 @@
   <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-3">
     <div class="d-flex align-items-center gap-2">
       <p class="text-muted mb-0">The Economic Engine enforces economic policies, sets baseline for classroom earnings, provides pricing guidance, and surfaces possible pricing issues across the classroom economy.</p>
-      {{ help.help_icon("user-guides/diagnostics/teacher-attendance-payroll", "Economy health help") }}
+      {{ docs.help_icon("user-guides/diagnostics/teacher-attendance-payroll", "Economy health help") }}
     </div>
   
   </div>
