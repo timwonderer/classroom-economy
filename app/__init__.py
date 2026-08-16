@@ -417,9 +417,19 @@ def create_app():
 
     from app.utils.temporal_display import register_temporal_filters
     register_temporal_filters(app)
-    
+
     from app.utils.join_code import get_display_join_code
     app.jinja_env.globals['get_display_join_code'] = get_display_join_code
+
+    # Canonical support-content registry — see app/content/registry.py.
+    # Templates: {{ help('...') }}, {{ help_long('...').html }}.
+    # Python: from app.content import help_text (for flash / logs).
+    from app.content import help as _content_help
+    from app.content import help_long as _content_help_long
+    from app.content import init_content_registry as _init_content_registry
+    _init_content_registry(app)
+    app.jinja_env.globals['help'] = _content_help
+    app.jinja_env.globals['help_long'] = _content_help_long
 
     def is_maintenance_mode_enabled():
         """Return True when maintenance mode is enabled via environment variable."""
