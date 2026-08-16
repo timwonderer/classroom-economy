@@ -6390,7 +6390,6 @@ def _next_tenant_scoped_tier_id(seed, existing_ids):
 
 @admin_bp.route('/insurance', methods=['GET', 'POST'])
 @admin_required
-@feat_shell("FEAT-SETTINGS-001")
 def insurance_management():
     """Main insurance management dashboard."""
     user_id = g.canonical_context.user_id
@@ -6453,16 +6452,27 @@ def insurance_management():
             'is_active': False,
             'entitlement_item_id': None,
         }
-        new_version = create_policy_version(
-            class_id=selected_class_id,
-            actor_user_id=user_id,
-            payload=draft_payload,
-            source_version=None,
-            is_active=False,
-            activation_mode='manual',
-            status='applied',
-        )
-        db.session.commit()
+
+        # Wrap the mutation in an explicit FEAT context (same pattern as
+        # rent_settings POST). Idempotency key = class + title so a
+        # rapid double-submit of the same modal is a no-op; a genuinely
+        # different policy requires a different title. FEATContext owns
+        # the commit — do NOT call db.session.commit() here (that
+        # violates FEAT atomicity — see app/feats/base.py
+        # enforce_feat_context_on_commit).
+        title_hash = hashlib.sha256(title.encode()).hexdigest()[:16]
+        idempotency_key = f"feat:settings:insurance-new:{selected_class_id}:{title_hash}"
+        with FEATContext("FEAT-SETTINGS-001", idempotency_key=idempotency_key):
+            new_version = create_policy_version(
+                class_id=selected_class_id,
+                actor_user_id=user_id,
+                payload=draft_payload,
+                source_version=None,
+                is_active=False,
+                activation_mode='manual',
+                status='applied',
+            )
+
         flash(
             f"Draft policy \"{title}\" created. Fill in the premium, coverage, "
             f"and other terms below, then activate it when ready.",
