@@ -10164,9 +10164,21 @@ def api_economy_analyze():
     try:
         user_id = g.canonical_context.user_id
         data = request.get_json() or {}
-        class_id = (data.get('class_id') or '').strip() or None
+        # Per DOM-CORE-001 canonical context resolution: scope MUST come
+        # from the server-resolved canonical_context, not client input.
+        # Only honor an explicit class_id from the payload if it matches
+        # the canonical context (defensive; the client should not send
+        # class_id at all).
+        canonical_class_id = getattr(g.canonical_context, 'class_id', None)
+        payload_class_id = (data.get('class_id') or '').strip() or None
+        if payload_class_id and canonical_class_id and payload_class_id != canonical_class_id:
+            return jsonify({
+                'status': 'error',
+                'message': 'Class scope mismatch. Switch class from the navigation to continue.',
+            }), 403
+        class_id = canonical_class_id or payload_class_id
         if not class_id:
-            return jsonify({'status': 'error', 'message': 'class_id is required for economy analysis.'}), 400
+            return jsonify({'status': 'error', 'message': 'No active class scope for economy analysis.'}), 400
 
         try:
             payroll_settings = _resolve_admin_payroll_settings_for_class_id(g.canonical_context, class_id)
