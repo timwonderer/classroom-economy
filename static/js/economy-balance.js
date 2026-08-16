@@ -454,52 +454,62 @@ class EconomyBalanceChecker {
         }
         // (else: monthly — the default.)
 
-        let html = '<div class="cwi-info-box alert alert-info">';
-        html += '<h6 class="mb-2"><i class="bi bi-info-circle-fill"></i> Classroom Wage Index (CWI)</h6>';
+        // Percent-of-CWI derivation for the calculation-details line.
+        // rent bands are computed as cwi × ratio; the ratio is not exposed
+        // in the payload, so recover it here from the weekly band (weekly
+        // is the base unit — closest to CWI itself which is a weekly value).
+        const cwiValue = typeof cwiData.cwi === 'number' ? cwiData.cwi : null;
+        const pctLow = (cwiValue && rentWeekly.min != null)
+            ? ((rentWeekly.min / cwiValue) * 100).toFixed(0)
+            : null;
+        const pctHigh = (cwiValue && rentWeekly.max != null)
+            ? ((rentWeekly.max / cwiValue) * 100).toFixed(0)
+            : null;
 
-        // Line 1: CWI itself
-        html += `<div class="cwi-value mb-1">Your CWI (weekly expected income): <strong>${fmt(cwiData.cwi)}</strong></div>`;
+        // Top-level card visual: dark-green header (bg-primary, role-scoped),
+        // white body with the recommendation prose + collapsed calculation
+        // details. Mirrors templates/macros/cards.html top_card structure.
+        let html = '<div class="card shadow-sm">';
+        html += '<div class="card-header bg-primary text-white py-3">';
+        html += '<h5 class="mb-0 fw-bold text-white">';
+        html += '<span class="material-symbols-outlined me-2" style="vertical-align: text-bottom;">thumb_up</span>';
+        html += 'Pricing Recommendation';
+        html += '</h5>';
+        html += '</div>';
+        html += '<div class="card-body">';
 
-        // Line 2: Economic policy label
-        if (rec.policy_label) {
-            html += `<div class="mb-1">Your economic policy: <strong>${rec.policy_label}</strong>`;
-            if (rec.policy_mode && rec.policy_mode !== rec.policy_label) {
-                html += ` <span class="text-muted small">(${rec.policy_mode})</span>`;
-            }
-            html += '</div>';
-        }
-
-        // Line 3: Rent range + recommendation
+        // Primary sentence: range recommendation.
         if (rentBand.min != null && rentBand.max != null) {
-            html += `<div class="mb-1">Therefore your rent range is <strong>${fmt(rentBand.min)}&ndash;${fmt(rentBand.max)}</strong> ${periodLabel}.</div>`;
-        }
-        if (rentBand.recommended != null) {
-            html += `<div class="mb-2">We recommend <strong>${fmt(rentBand.recommended)}</strong> ${periodLabel}`;
+            html += `<p class="mb-2">Based on your current economic settings, we recommend setting <strong>rent</strong> to <strong>${fmt(rentBand.min)}&ndash;${fmt(rentBand.max)}</strong> ${periodLabel}`;
             if (showNote) {
                 html += ` <span class="text-muted small">(showing monthly — set your custom frequency to refine)</span>`;
             }
-            html += '.</div>';
+            html += '.</p>';
+        } else {
+            html += '<p class="mb-2 text-muted">Recommendation unavailable — insufficient data.</p>';
         }
 
-        // Collapsed: how we got there
+        // Collapsed: how we got there.
+        html += '<details class="mt-2">';
+        html += '<summary style="cursor: pointer;" class="fw-semibold text-primary">Calculation details</summary>';
+        html += '<div class="mt-2 small">';
+        html += `<div>Your current CWI is <strong>${fmt(cwiValue)}</strong> per week.</div>`;
+        if (rec.policy_label) {
+            html += `<div>You have selected <strong>${rec.policy_label}</strong> for your economic policy.</div>`;
+        }
+        if (pctLow && pctHigh) {
+            html += `<div>Those settings set <strong>rent</strong> to be <strong>${pctLow}%</strong> to <strong>${pctHigh}%</strong> of your CWI.</div>`;
+        }
         if (cwiData.cwi_breakdown || cwiData.breakdown) {
-            html += '<details class="mt-2">';
-            html += '<summary style="cursor: pointer;">Calculation Details</summary>';
-            html += '<div class="mt-2 small">';
             const breakdown = cwiData.cwi_breakdown || cwiData.breakdown;
-            html += `<div>Pay Rate: $${breakdown.pay_rate_per_hour?.toFixed(2) || 'N/A'}/hour</div>`;
-            html += `<div>Expected Hours: ${breakdown.expected_weekly_hours || 'N/A'} hours/week</div>`;
-            html += `<div>Total Weekly Minutes: ${breakdown.expected_weekly_minutes || 'N/A'} minutes</div>`;
-            if (rec.policy_label) {
-                const monthlyBand = rec.rent || {};
-                if (monthlyBand.min != null && monthlyBand.max != null) {
-                    html += `<div class="mt-1">Rent range from ${rec.policy_label} policy: ${fmt(monthlyBand.min)}&ndash;${fmt(monthlyBand.max)}/month (recommended ${fmt(monthlyBand.recommended)}/month).</div>`;
-                }
-            }
-            html += '</div></details>';
+            html += '<hr class="my-2">';
+            html += `<div class="text-muted">Pay Rate: $${breakdown.pay_rate_per_hour?.toFixed(2) || 'N/A'}/hour</div>`;
+            html += `<div class="text-muted">Expected Hours: ${breakdown.expected_weekly_hours || 'N/A'} hours/week</div>`;
         }
+        html += '</div></details>';
 
-        html += '</div>';
+        html += '</div>';  // card-body
+        html += '</div>';  // card
 
         container.innerHTML = html;
     }
