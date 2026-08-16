@@ -86,9 +86,13 @@ def get_obligation_payment_status(
 
     is_satisfied = has_waiver or (total_paid >= assessed_amount)
     is_outstanding = not is_satisfied
+    # Per DOM-OBL-001 §VII.2, due_at is derived from the linked bill_cycle
+    # (or from assessment.timestamp for immediate charges).
+    from app.services.obligations_service import resolve_assessment_due_at
+    due_at = resolve_assessment_due_at(assessment)
     is_past_due = (
-        is_outstanding and assessment.due_at
-        and db.session.query(db.func.now()).scalar() > assessment.due_at
+        is_outstanding and due_at
+        and db.session.query(db.func.now()).scalar() > due_at
     )
 
     return ObligationPaymentStatus(
@@ -693,16 +697,24 @@ def get_rent_assessments_for_seat_class(
                 has_waiver = True
                 waiver_event = event
 
-        # Derive satisfaction
-        assessed_amount = assessment.assessed_at or Decimal('0.00')
-        is_satisfied = has_waiver or (total_paid >= Decimal(str(assessed_amount)))
+        # Derive satisfaction per DOM-OBL-001 §V.1, §VII.1, §VIII: no
+        # amount or due-boundary is persisted on assessment_events. Amount
+        # comes from the upstream policy (RentSettings via policy_uuid);
+        # due_at is derived from the linked bill_cycle.
+        from app.services.obligations_service import (
+            resolve_assessment_amount,
+            resolve_assessment_due_at,
+        )
+        assessed_amount = resolve_assessment_amount(assessment)
+        due_at = resolve_assessment_due_at(assessment)
+        is_satisfied = has_waiver or (total_paid >= assessed_amount)
         is_outstanding = not is_satisfied
 
-        # Temporal check for past-due (caller can also check this via due_at)
+        # Temporal check for past-due
         is_past_due = (
             is_outstanding
-            and assessment.due_at
-            and db.session.query(db.func.now()).scalar() > assessment.due_at
+            and due_at
+            and db.session.query(db.func.now()).scalar() > due_at
         )
 
         view = RentAssessmentView(
@@ -710,8 +722,8 @@ def get_rent_assessments_for_seat_class(
             assessment_id=assessment.id,
             seat_id=seat_id,
             class_id=class_id,
-            due_at=assessment.due_at,
-            assessed_amount=Decimal(str(assessed_amount)),
+            due_at=due_at,
+            assessed_amount=assessed_amount,
             is_satisfied=is_satisfied,
             is_outstanding=is_outstanding,
             is_past_due=is_past_due,

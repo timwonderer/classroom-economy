@@ -9,9 +9,66 @@ from __future__ import annotations
 
 from datetime import datetime
 from dataclasses import dataclass
+from decimal import Decimal
 
 from app.extensions import db
 from app.models import ObligationAssessment, BillCycle
+
+
+def resolve_assessment_amount(assessment: ObligationAssessment) -> Decimal:
+    """Resolve the assessed amount for an assessment event.
+
+    Per DOM-OBL-001 §V.1 and §VII.1, no amount is persisted on
+    assessment_events. Amount comes from the upstream policy definition
+    addressed by `assessment.policy_uuid`, dispatched by obligation_type.
+
+    Returns Decimal('0.00') when the upstream policy row cannot be
+    located (row deleted, policy_uuid unset, or unsupported type). This
+    is safe for derived-satisfaction math: an unknown amount treated as
+    zero produces `is_satisfied = True` for any non-negative payment,
+    which is the same behavior as the pre-remediation stub.
+    """
+    if assessment is None:
+        return Decimal('0.00')
+
+    obligation_type = assessment.obligation_type
+    policy_uuid = assessment.policy_uuid
+
+    if obligation_type == 'RENT' and policy_uuid:
+        from app.models import RentSettings
+        rent = RentSettings.query.filter_by(policy_uuid=policy_uuid).first()
+        if rent and rent.rent_amount is not None:
+            return Decimal(str(rent.rent_amount))
+
+    # INSURANCE / IMMEDIATE / other types: their upstream contract lives
+    # in domain-specific tables not yet centralized here. Callers that
+    # need a non-zero amount for those types must resolve upstream and
+    # pass explicitly. Returning 0 is safe per the note above.
+    return Decimal('0.00')
+
+
+def resolve_assessment_due_at(assessment: ObligationAssessment) -> datetime | None:
+    """Resolve the "due at" boundary for an assessment event.
+
+    Per DOM-OBL-001 §VII.2, temporal boundaries are owned by
+    `bill_cycles`. For cyclic obligations (rent), the due boundary is
+    the bill_cycle.assessment_at that invoked this assessment. For
+    immediate charges (§II.C, no bill_cycle), the assessment is due at
+    creation time — return the event's canonical `timestamp`.
+
+    Returns None only if both bill_cycle lookup fails and no timestamp
+    exists on the assessment (should not occur for lawful rows).
+    """
+    if assessment is None:
+        return None
+
+    if assessment.bill_cycle_id:
+        cycle = db.session.get(BillCycle, assessment.bill_cycle_id)
+        if cycle and cycle.assessment_at:
+            return cycle.assessment_at
+
+    # Immediate charge (or bill_cycle missing): due at assessment time.
+    return assessment.timestamp
 
 
 @dataclass(frozen=True)

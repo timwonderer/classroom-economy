@@ -1822,7 +1822,7 @@ def view_policy(enrollment_id):
                 seat_id=context.seat_id,
                 policy_version_id=policy_version.id,
             )
-            .order_by(ObligationAssessment.assessed_at.desc(), ObligationAssessment.id.desc())
+            .order_by(ObligationAssessment.timestamp.desc(), ObligationAssessment.id.desc())
             .first()
         )
         coverage_start_date = getattr(coverage_row, "coverage_start_time", None)
@@ -2354,7 +2354,8 @@ def _total_paid_by_grace(assessments, grace_end_date):
 
         for payment_event in payment_events:
             # Only count payments made by grace end date
-            if payment_event.assessed_at and ensure_utc(payment_event.assessed_at) <= grace_end_date:
+            # (Per DOM-OBL-001 §VII.1, canonical event time is `timestamp`.)
+            if payment_event.timestamp and ensure_utc(payment_event.timestamp) <= grace_end_date:
                 if payment_event.ledger_transaction_id:
                     txn = db.session.get(Transaction, payment_event.ledger_transaction_id)
                     if txn and txn.type == 'credit':
@@ -2405,7 +2406,7 @@ def _get_effective_rent_amount_for_coverage_period(
             payment_dates = []
             for assessment in assessments:
                 payment_events = get_payment_events_for_assessment(assessment.id, class_id)
-                payment_dates.extend([p.assessed_at for p in payment_events if p.assessed_at])
+                payment_dates.extend([p.timestamp for p in payment_events if p.timestamp])
 
             if payment_dates:
                 earliest = min(payment_dates)
@@ -2564,20 +2565,23 @@ def _is_coverage_period_paid(
 
 def _get_active_rent_waiver_v2(seat_id, class_id, coverage_due_date):
     """Return the canonical WAIVED assessment for the given coverage period, if any."""
-    from app.services.obligations_service import get_rent_waivers_for_seat
-    from sqlalchemy import extract
+    from app.services.obligations_service import (
+        get_rent_waivers_for_seat,
+        resolve_assessment_due_at,
+    )
 
     if not seat_id or not class_id or not coverage_due_date:
         return None
 
-    # Get all waivers for this seat and find one matching the coverage month/year
+    # Per DOM-OBL-001 §VII, a WAIVED event's coverage period is derived
+    # from its linked bill_cycle (not stored on the event). Match by
+    # month/year against the resolved due boundary.
     waivers = get_rent_waivers_for_seat(seat_id, class_id)
     for waiver in waivers:
-        # Per DOM-OBL-001: WAIVED event's due_at indicates which coverage period was waived
-        # Match by month/year
-        if waiver.due_at:
-            if (waiver.due_at.month == coverage_due_date.month and
-                waiver.due_at.year == coverage_due_date.year):
+        waiver_due_at = resolve_assessment_due_at(waiver)
+        if waiver_due_at:
+            if (waiver_due_at.month == coverage_due_date.month and
+                waiver_due_at.year == coverage_due_date.year):
                 return waiver
 
     return None
