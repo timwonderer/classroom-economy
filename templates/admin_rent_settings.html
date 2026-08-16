@@ -197,8 +197,8 @@
 
     <!-- Current Settings Summary -->
     <div class="card shadow">
-      <div class="card-header bg-primary text-white">
-        <h2 class="mb-0 h5"><span class="material-symbols-outlined me-2">info</span>Current Rent Configuration</h2>
+      <div class="card-header bg-primary text-white py-3">
+        <h5 class="mb-0 fw-bold text-white"><span class="material-symbols-outlined me-2" style="vertical-align: text-bottom;">info</span>Current Rent Configuration</h5>
       </div>
       <div class="card-body">
         {# Rent is enabled by definition on this route (see comment above). #}
@@ -282,8 +282,8 @@
     <!-- Student Roster -->
     {% if obligation_summary and obligation_summary.student_rows %}
     <div class="card shadow mt-4">
-      <div class="card-header bg-light">
-        <h2 class="mb-0 h5"><span class="material-symbols-outlined me-2">group</span>Student Roster</h2>
+      <div class="card-header bg-primary text-white py-3">
+        <h5 class="mb-0 fw-bold text-white"><span class="material-symbols-outlined me-2" style="vertical-align: text-bottom;">group</span>Student Roster</h5>
       </div>
       <div class="card-body">
         <!-- Compute cycle divisor based on rent frequency -->
@@ -379,9 +379,13 @@
 
       <!-- Warning Banner (if applicable) -->
       {% if payroll_warning %}
-      <div class="alert alert-warning warning-banner mb-4">
-        <span class="material-symbols-outlined me-2">warning</span>
-        <strong>Warning:</strong> {{ payroll_warning }}
+      <div class="card shadow-sm mb-4">
+        <div class="card-header bg-warning text-dark py-3">
+          <h5 class="mb-0 fw-bold text-dark"><span class="material-symbols-outlined me-2" style="vertical-align: text-bottom;">warning</span>Payroll Configuration Warning</h5>
+        </div>
+        <div class="card-body">
+          {{ payroll_warning }}
+        </div>
       </div>
       {% endif %}
 
@@ -788,8 +792,8 @@
       <!-- Add Waiver Card -->
       <div class="col-lg-5 mb-4">
         <div class="card shadow">
-          <div class="card-header bg-primary text-white">
-            <h2 class="mb-0 h5"><span class="material-symbols-outlined me-2">add_circle</span>Add Rent Waiver</h2>
+          <div class="card-header bg-primary text-white py-3">
+            <h5 class="mb-0 fw-bold text-white"><span class="material-symbols-outlined me-2" style="vertical-align: text-bottom;">add_circle</span>Add Rent Waiver</h5>
           </div>
           <div class="card-body">
             <form method="POST" action="{{ url_for('admin.add_rent_waiver') }}" id="waiverForm">
@@ -881,8 +885,8 @@
       <!-- Active Waivers List -->
       <div class="col-lg-7 mb-4">
         <div class="card shadow">
-          <div class="card-header bg-info text-white">
-            <h2 class="mb-0 h5"><span class="material-symbols-outlined me-2">format_list_bulleted</span>Active Rent Waivers</h2>
+          <div class="card-header bg-primary text-white py-3">
+            <h5 class="mb-0 fw-bold text-white"><span class="material-symbols-outlined me-2" style="vertical-align: text-bottom;">format_list_bulleted</span>Active Rent Waivers</h5>
           </div>
           <div class="card-body">
             {% if active_waivers %}
