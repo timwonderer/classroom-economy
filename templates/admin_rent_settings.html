@@ -239,7 +239,7 @@
         {% endif %}
 
         <!-- Current Section -->
-        {% set current_students = [row for row in obligation_summary.student_rows if row.status in ['up_to_date', 'outstanding']] %}
+        {% set current_students = obligation_summary.student_rows | selectattr('status', 'in', ['up_to_date', 'outstanding']) | list %}
         {% if current_students %}
         <div class="mb-5">
           <h3 class="h5 mb-3">
@@ -267,7 +267,7 @@
         {% endif %}
 
         <!-- Behind Section -->
-        {% set behind_students = [row for row in obligation_summary.student_rows if row.status in ['past_due_grace', 'past_due_overdue']] %}
+        {% set behind_students = obligation_summary.student_rows | selectattr('status', 'in', ['past_due_grace', 'past_due_overdue']) | list %}
         {% if behind_students %}
         <div>
           <h3 class="h5 mb-3">
