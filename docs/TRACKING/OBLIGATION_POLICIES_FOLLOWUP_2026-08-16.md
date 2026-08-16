@@ -324,7 +324,20 @@ Observed during the 2026-08-16 live browser walkthrough on `/admin/login`, `/adm
 
 ### VIII.b Scope (as of 2026-08-16)
 
-Grep `@feat_shell(` across `app/` yields **45 occurrences** distributed by FEAT identifier:
+Grep `@feat_shell(` across `app/` yields **81 occurrences** (earlier count of 45 in this doc was `app/routes/` only and was mis-labelled as the total — corrected 2026-08-16 same day). Distribution by directory:
+
+| Directory | `@feat_shell` count |
+| --- | --- |
+| `app/routes/` | 50 |
+| `app/feats/` | 32 |
+| `app/utils/` | 5 |
+| `app/scheduled_tasks.py` | 4 |
+| `app/services/` | 3 |
+| `app/payroll.py` | 1 |
+| `app/cli_commands.py` | 1 |
+| **Total** | **81** |
+
+Distribution by FEAT identifier:
 
 | FEAT | Count | Owning domain |
 | --- | --- | --- |
@@ -359,7 +372,16 @@ Add to the mandatory Phase 10 gate (§VII.3):
 
 ### VIII.e Not remediated in this session
 
-Migrating 45 shell decorators across the codebase is a multi-branch project. Recording the gap here as a cross-cutting compliance blocker; explicit remediation is out of scope for `feat/paste-staging-grid` unless the user opens a dedicated branch for it.
+Migrating 81 shell decorators across the codebase is a multi-branch project. Recording the gap here as a cross-cutting compliance blocker; explicit remediation is out of scope for `feat/paste-staging-grid` unless the user opens a dedicated branch for it.
+
+**First migration landed 2026-08-16 (commit `e7d4764b`):** the insurance-new-policy path moved from `@feat_shell` on the route to a proper FEAT function (`app/feats/policy_reference_feat.py::execute_create_insurance_policy_draft`) decorated with `@requires_feat_context("FEAT-POL-001")`. That is the ONLY `@requires_feat_context` in the codebase — every other mutation site remains under `@feat_shell`. Established pattern for future sweeps:
+
+1. Route sheds its `@feat_shell` (no more DIRTY on GET loads).
+2. Move mutation into `app/feats/<domain>_feat.py::execute_<action>(...)` decorated with `@requires_feat_context("FEAT-<NAME>")`.
+3. Route calls the FEAT function with an explicit `idempotency_key`.
+4. If the route did reads before the mutation (autobegan the session transaction), add `db.session.commit()` after the FEAT call to persist the outer transaction — allowed because we're outside the FEAT at that point and the session has no dirty state after the FEAT's flush.
+
+Distinction worth naming: `@feat_shell` inside `app/feats/*.py` (32 occurrences) is often the FEAT's OWN legacy shell — it says "this FEAT hasn't been rewritten yet." `@feat_shell` on a ROUTE (50 occurrences) is the wrong shape — the route is pretending to be a FEAT. Route-side shells are the higher-priority migration target.
 
 ### VIII.f Related fix landed this session (in-scope)
 
