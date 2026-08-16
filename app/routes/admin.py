@@ -7038,6 +7038,7 @@ def update_economy_policy():
     settings_row.economy_policy_mode = policy_mode
     settings_row.economy_policy_updated_at = utc_now()
     cancel_pending_policy_transitions(settings_row.class_id, actor_id=user_id)
+    db.session.commit()
     current_app.logger.info(
         "Economy policy mode changed teacher=%s block=%s mode=%s",
         user_id,
@@ -7157,6 +7158,7 @@ def apply_economy_rebalance():
             "success",
         )
 
+    db.session.commit()  # @feat_shell uses begin_nested() due to autobegin from before_request; must commit explicitly
     return redirect(url_for('admin.economy_health'))
 
 
