@@ -22,14 +22,16 @@
                     <div class="mb-4">
                         <h5 class="text-primary mb-3">
                             <span class="material-symbols-outlined" style="vertical-align: middle; font-size: 25px;">badge</span>
-                            Display Name
+                            Teacher Display Name
                         </h5>
                         <p class="mb-3">
-                            This is how your name will appear to students. Your name is encrypted and never shown to developers or system administrators.
+                            Your display name is how your name appears to your students within this class. Because each class economy is independent of each other, your display name will not be shared across classes. </p>
+                            <p>
+                            You may enter anything into the two text fields below.
                         </p>
                         <div class="row g-3">
                             <div class="col-md-6">
-                                <label for="first_name" class="form-label">First Name</label>
+                                <label for="first_name" class="form-label">Display Name First Half</label>
                                 <input
                                     type="text"
                                     class="form-control"
@@ -40,7 +42,7 @@
                                     maxlength="100">
                             </div>
                             <div class="col-md-6">
-                                <label for="last_name" class="form-label">Last Name</label>
+                                <label for="last_name" class="form-label">Display Name Second Half</label>
                                 <input
                                     type="text"
                                     class="form-control"
@@ -62,16 +64,16 @@
                     <div class="mb-4">
                         <h5 class="text-primary mb-3">
                             <span class="material-symbols-outlined" style="vertical-align: middle; font-size: 25px;">school</span>
-                            Class Settings
+                            Class Display Settings
                         </h5>
                         <p class="mb-3">
-                            Customize the display name and section for each of your classes.
+                            Customize the display name and section for this class. These settings are purely cosmetic and do not affect any business behavior.
                         </p>
 
                         {% if current_class %}
                         <div class="row g-3">
                             <div class="col-md-6">
-                                <label for="class_display_name" class="form-label fw-bold">Display Name</label>
+                                <label for="class_display_name" class="form-label fw-bold">Class Display Name</label>
                                 <input
                                     type="text"
                                     class="form-control"
@@ -109,6 +111,9 @@
                             <span class="material-symbols-outlined" style="vertical-align: middle; font-size: 25px;">info</span>
                             Account Information
                         </h5>
+                        <p class="mb-3">
+                            When you submit a support ticket, you will be represented by your teacher ID and your class will be represented by its class ID. Please note that although we worked hard to remove use and storage of sensitive personal information, some account or class information may be stored in our logs. These logs are routinely removed from our servers and never shared with any third party. 
+                        </p>
                         <div class="row">
                             <div class="col-md-6 mb-2">
                                 <small class="text-muted">Teacher ID:</small>
