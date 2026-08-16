@@ -63,7 +63,7 @@ All domains listed below are bound by the following structural rules:
   - `*_settings`: Authoritative Directives (Rates, Schedules, Limits).
   - `class_features`: Authoritative Enablement State.
 - **Key Transitions**: `Update Policy`, `Toggle Feature`.
-- **Primary Schema**: `class_features` (feature enablement), `economic-engine` (class-level economic configuration and projection state — governs interest formulas, overdraft behavior, and other economy-wide rules per `DOM-CLASS-002`). Class Configuration does **not** own domain-specific policy definitions such as `rent_settings` (see `DOM-CLASS-001` §II and §V) — those are stored in the Policies repository (`DOM-POL-001`). Note: `banking_settings` content (savings APY, overdraft fees) is inherently a Class Config → `economic-engine` concern, not a Policies repository concern.
+- **Primary Schema**: `class_features` (feature enablement), `economic-engine` (class-level economic configuration and projection state — governs interest formulas, overdraft behavior, and other economy-wide rules per `DOM-CLASS-002`). Class Configuration does **not** own domain-specific policy definitions such as `rent_settings`, `payroll_settings`, or `hall_pass_settings` (see `DOM-CLASS-001` §II and §V) — those are stored in the Policies repository (`DOM-POL-001`). `banking_settings` content (savings APY, overdraft fees) is inherently a Class Config → `economic-engine` concern, not a Policies repository concern.
 
 ### 3. Productivity & Payroll (`DOM-PROD-001`)
 - **Authority**: Sovereign over productivity facts, hall-pass consumption records, and payroll business events.
@@ -135,7 +135,7 @@ All domains listed below are bound by the following structural rules:
   - Definition rows (`rent_settings`, `store_items`, insurance definitions, etc.): Immutable-after-insert version records.
   - Availability state per row: `IN_USE`, `HIDDEN`, `RETIRED`.
 - **Key Transitions**: none originated here. New definitions are inserted by the domain that initiates the change (Class Config UI submission, insurance authoring flow, etc.); Policies only exposes `Disable` / `Retire` availability projections (see `DOM-POL-001` §VIII).
-- **Primary Schema** (per `DOM-POL-001` §X boundary attribution): `rent_settings` (consumed by DOM-OBL-001), `store_items` / `store_item_visibility` (consumed by DOM-STORE-001), insurance policy definitions (consumed by Insurance flow). `banking_settings` is **not** in this repository (Class Config / `economic-engine` concern). `payroll_settings`, `payroll_rewards`, `payroll_fines`, and `hall_pass_settings` have unresolved ownership between DOM-CLASS-001 and DOM-PROD-001 and are not currently routed through Policies — consult those domain docs.
+- **Primary Schema** (per `DOM-POL-001` §X boundary attribution): `rent_settings` (consumed by DOM-OBL-001), `payroll_settings` / `payroll_rewards` / `payroll_fines` (consumed by DOM-PROD-001), `hall_pass_settings` (consumed by DOM-PROD-001), `store_items` / `store_item_visibility` (consumed by DOM-STORE-001), insurance policy definitions (consumed by Insurance flow). `banking_settings` is **not** in this repository — savings APY, overdraft fees, and interest formulas are inherently Class Config → `economic-engine` concerns per DOM-CLASS-001 / DOM-CLASS-002.
 - **Boundary**: rent enablement → Class Configuration; rent settings → Policies; rent bill cycles and assessments → Obligations. See `DOM-POL-001` §X for the full boundary table.
 
 ---

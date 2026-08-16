@@ -190,11 +190,18 @@ The intended boundary is:
 - rent enablement -> Class Configuration
 - rent settings -> Policies
 - rent-granted items -> Store and Entitlements
+- payroll enablement -> Class Configuration
+- payroll settings (wage rate, frequency, reward/fine catalog) -> Policies
+- payroll events -> Productivity & Payroll (`DOM-PROD-001`)
+- hall-pass enablement -> Class Configuration
+- hall-pass settings (allowed destinations, limits) -> Policies
+- hall-pass consumption records -> Productivity & Payroll (`DOM-PROD-001`)
 - store offerings -> Policies
 - insurance definitions -> Policies
 - insurance entitlement lifecycle -> Store and Entitlements
+- banking / interest / overdraft (savings APY, overdraft fees, interest formulas) -> Class Configuration / `economic-engine` (**not** Policies)
 
-This means Class Configuration decides whether a capability exists in the class, Policies defines the class-customized reference material for that capability, and the consuming domain owns the resulting fact.
+This means Class Configuration decides whether a capability exists in the class, Policies stores the class-customized reference material for that capability as immutable version rows, and the consuming operational domain owns the resulting fact.
 
 ## XI. Amendment
 
