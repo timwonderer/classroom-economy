@@ -279,3 +279,31 @@ Confirmed that the `due_at` and `viewable_at` parameters have been correctly rem
 The branch is behind `origin/codex/v2.0` by 1 commit:
 - `cc6e37fb` - chore(deps): bump redis from 7.4.0 to 8.0.1 (#1255)
 This is the single blocking issue preventing final approval.
+
+---
+
+## ADDENDUM — Certification Gap Surfaced 2026-08-16
+
+**Status:** ⚠️ This 2026-07-26 certification is **retained with a known audit gap**. The domain remains in service; a re-audit is recommended after Scope B remediation (see follow-up doc).
+
+**Trigger:** Every teacher-facing template touching the Obligations domain crashed on load with `werkzeug.routing.exceptions.BuildError` referencing `admin.reverse_cycle_penalties` and `admin.remove_rent_waiver`.
+
+**Root cause:** Two admin routes were intentionally deleted for FEAT-OBL-003 immutability compliance (commits `6c9c3857` on 2026-07-18 and `eeef3de7` on 2026-07-25), both **before** this Phase 10 certification. The Phase 10 audit did not perform a cross-layer reference check — no confirmation that surviving templates still resolved to living endpoints.
+
+**Additional finding:** Deeper investigation exposed a `rent_settings` mutation-pattern violation of `DOM-POL-001 §VI` (in-place edits of what should be an append-only versioned row). This gap was not visible to the 2026-07-26 audit because `rent_settings` is Policies-domain territory that this audit did not co-review, and because the `DOM-CORE-001` / `DOM-CORE-002` ownership contradiction (since corrected) had misattributed `rent_settings` in a way that could have plausibly routed the concern to Obligations. The violation was pre-existing, not introduced.
+
+**Emergency remediation (branch `fix/obligation-template-broken-urls`, merged into `feat/paste-staging-grid`):**
+
+- Commit `053c20f4` — orphan UI removed from `templates/admin_rent_settings.html`.
+- Commit `31be25a3` — dead schema columns `rent_settings.active_version_id` / `next_version_id` dropped by migration `2978fdba914a`.
+- Playwright headless browser traversal of every obligation-owned teacher-facing route under canonical test context: all render 200, no `BuildError` / `jinja2.exceptions` / console errors.
+
+**Not remediated in that branch:** the `rent_settings` mutation-pattern violation (Scope B). Requires model, route, scheduler, rebalancer, and migration changes. Documented in `docs/TRACKING/OBLIGATION_POLICIES_FOLLOWUP_2026-08-16.md` §III.
+
+**Required for re-audit acceptance:**
+
+1. Scope B remediation landed.
+2. Cross-layer template sweep (Playwright or equivalent real-browser traversal) becomes a mandatory Phase 10 gate.
+3. Joint sign-off with Policies domain (`DOM-POL-001`) on any table Obligations consumes.
+
+**Follow-up doc:** `docs/TRACKING/OBLIGATION_POLICIES_FOLLOWUP_2026-08-16.md`

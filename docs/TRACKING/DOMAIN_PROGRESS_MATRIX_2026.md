@@ -1,14 +1,16 @@
 # CTH Domain Reconstruction Progress Matrix
 
 **Status:** Active Canonical Tracker
-**Last Updated:** 2026-08-16 (Class Config Phase 7 PARTIAL — 4 of 12 MAP-UI-001 rows rewired; block-as-scope pattern eliminated from class-config surface; CWI unconfigured state properly handled; 5 constitutional issues surfaced; Identity Phase 10 CERTIFIED; 3 domains production-ready, 7 remaining)
+**Last Updated:** 2026-08-16 (Obligation Phase 10 audit GAP surfaced: cross-layer template sweep missed; emergency template fix + `rent_settings` dead-schema drop landed; Policies-domain doctrine substantially advanced — `policy_uuid` promoted to first-class in DOM-POL-001 §VI.0, all `*_settings` tables (rent/payroll/hall_pass/store/insurance) routed to DOM-POL-001; `banking_settings` routed to Class Config / economic-engine; no Banking domain. See `OBLIGATION_POLICIES_FOLLOWUP_2026-08-16.md`.)
 **Authority:** SOP-DEV-002a, INV-CORE-000, DOM-CORE-002
 
 **DOMAIN READINESS SNAPSHOT:**
-- ✅ **3 domains** Phase 10 certified (production-ready): Identity, Obligations, Store
+- ✅ **2 domains** Phase 10 certified (production-ready): Identity, Store
+- ⚠️ **1 domain** Phase 10 certified with known audit gap: Obligations (2026-07-26 audit missed cross-layer template sweep; templates + `rent_settings` mutation pattern flagged 2026-08-16)
 - 🔄 **1 domain** Phase 5 complete, Phase 6-7 partial: Class Config (view models defined; 4 of 12 MAP-UI-001 rows rewired; EconomicView stub still incomplete; 5 constitutional issues open)
 - 🔄 **2 domains** Phase 1 complete but blocked on Phase 2 (schema migrations pending): Ledger, Payroll
-- 🔄 **4 domains** Phase 0-1 only, not started: Operations, Interpretation, Policies, Support
+- 🔄 **1 domain** Phase 0-1, doctrine substantially advanced 2026-08-16: Policies
+- 🔄 **3 domains** Phase 0-1 only, not started: Operations, Interpretation, Support
 
 ---
 
@@ -40,11 +42,11 @@ This matrix consolidates the progress of all CTH domains through the 10-phase SO
 | **Class Configuration** | DOM-CLASS-001 | ✅ Phase 0-4 | ⚠️ Phase 5 (EconomicView stub) | 🔄 Phase 6-7 partial (4/12 rows) | ❌ | ❌ | 🔄 Phase 7 IN PROGRESS — settings routes (rent/banking/payroll/economic_engine) class_id-authoritative; CWI-unconfigured path fully handled; blocks-as-scope eliminated from class-config surface. 5 constitutional issues open. | 2026-08-16 update |
 | **Ledger** | DOM-LED-001 | ✅ | ❌ NO VM | ❌ BLOCKED | ? | ❌ | ❌ BLOCKED on Phase 5 | 2026-08-04 baseline |
 | **Productivity & Payroll** | DOM-PROD-001 | ✅ | ❌ NO VM | ❌ BLOCKED | ? | ❌ | ❌ BLOCKED on Phase 5 | 2026-08-04 baseline |
-| **Obligations** | DOM-OBL-001 | ✅ | ✅ | ✅ VERIFIED | ✅ | ✅ ACCEPTED | ✅ PRODUCTION READY | 2026-08-04 (Phase 10 audit ACCEPTED) |
+| **Obligations** | DOM-OBL-001 | ✅ | ✅ | ⚠️ REVERIFY | ✅ | ⚠️ AUDIT GAP | ⚠️ PRODUCTION READY with known Phase 10 audit gap (2026-08-16): cross-layer template sweep missed — orphan `url_for` targets crashed rent/insurance/fines pages, fixed emergency in `053c20f4`. `rent_settings` mutation-pattern violation of DOM-POL-001 §VI documented (Scope B remediation pending). See `OBLIGATION_POLICIES_FOLLOWUP_2026-08-16.md`. | 2026-08-04 (ACCEPTED) + 2026-08-16 (gap surfaced) |
 | **Store & Entitlements** | DOM-STORE-001 | ✅ | ✅ | ✅ VERIFIED | ✅ | ✅ | ✅ AUDITED (Phase 10 certified) | 2026-08-04 (PASS) |
 | **Operations** | DOM-OPS-001 | 🔄 | ❌ | — | — | ❌ | 🔄 NOT STARTED | N/A |
 | **Interpretation** | DOM-ITR-001 | 🔄 | ❌ | — | — | ❌ | 🔄 NOT STARTED | N/A |
-| **Policies** | DOM-POL-001 | 🔄 | ❌ | — | — | ❌ | 🔄 NOT STARTED | N/A |
+| **Policies** | DOM-POL-001 | 🔄 (doctrine advanced 2026-08-16) | ❌ | — | — | ❌ | 🔄 PHASE 0-1 — doctrine substantially advanced (`policy_uuid` = version §VI.0; Insert & Availability Contract §VI; all `*_settings` scope §X). Phase 2+ still blocked on prior-domain sequencing. | 2026-08-16 (`OBLIGATION_POLICIES_FOLLOWUP_2026-08-16.md`) |
 | **Support** | DOM-SUP-001 | 🔄 | ❌ | — | — | ❌ | 🔄 NOT STARTED | N/A |
 
 **Legend:**
@@ -276,12 +278,20 @@ Phase 6-7 completion is now measured via **field ownership**, not template struc
 
 **Scope:** Rent, insurance premiums, fines (assessment events, lifecycle, satisfaction, reversal; obligation tracking and settlement)  
 **Canonical Tables:** `assessment_events`, `obligation_lifecycle`, `obligation_satisfaction`, `obligation_reversal`, `entitlement_events`  
-**Phase:** ✅ 0-10 (COMPLETE & CERTIFIED)
-**Status:** ✅ **PRODUCTION READY** (Phase 10 audit ACCEPTED 2026-08-04)
-**Last Audit:** 2026-08-04 (ACCEPTED) — `docs/TRACKING/OBLIGATION_DOMAIN_QA_AUDIT_AUG_2026.md`
+**Phase:** ⚠️ 0-10 (CERTIFIED with known gap — reverify recommended)  
+**Status:** ⚠️ **PRODUCTION READY with known Phase 10 audit gap** (2026-07-26 audit ACCEPTED; 2026-08-16 gap surfaced)  
+**Last Audit:** 2026-08-04 (ACCEPTED) — `docs/TRACKING/OBLIGATION_DOMAIN_QA_AUDIT_AUG_2026.md`  
+**Follow-up findings:** 2026-08-16 — `docs/TRACKING/OBLIGATION_POLICIES_FOLLOWUP_2026-08-16.md`
 
-**Key Achievement:** Full canonical obligations domain with FEAT-wired mutations, immutable view models, and comprehensive Phase 10 certification
-**Next Action:** None — domain is production-ready
+**Known audit gaps (2026-08-16):**
+
+1. **Cross-layer template sweep missed.** Backend routes `admin.reverse_cycle_penalties` (deleted `6c9c3857`) and `admin.remove_rent_waiver` (deleted `eeef3de7`) were removed for FEAT-OBL-003 immutability compliance, but corresponding UI in `templates/admin_rent_settings.html` was left behind. Every teacher-facing template touching the domain crashed on load with `werkzeug.routing.exceptions.BuildError`. Emergency-fixed in commit `053c20f4`; Playwright browser traversal now verifies all obligation teacher routes render clean under canonical context.
+
+2. **`rent_settings` mutation-pattern violation of `DOM-POL-001 §VI`.** `rent_settings` is designed as a mutable singleton (`class_id` `unique=True`, `updated_at` `onupdate=utc_now`); all writers mutate the existing row in place. Under the now-clarified doctrine, `rent_settings` is a Policies-repository table and each teacher submission must produce a new immutable row with a new `policy_uuid`. Scope B remediation documented in follow-up doc; **not remediated in current branch**.
+
+3. **Dead schema removed (Scope A).** `rent_settings.active_version_id` and `rent_settings.next_version_id` (orphans of an abandoned rent-specific versioning attempt) dropped by migration `2978fdba914a`.
+
+**Next Action:** re-run Phase 10 for Obligations after Scope B remediation, with explicit cross-layer template sweep as a required gate and joint audit with Policies on any shared table.
 
 ---
 
@@ -334,12 +344,32 @@ Phase 6-7 completion is now measured via **field ownership**, not template struc
 
 #### Policies Domain (DOM-POL-001)
 
-**Scope:** Settings and versioning storage for each domain (NOT business logic, just persistence of configuration and version history)  
-**Canonical Tables:** Per-domain settings tables and versioning logs (structure determined by each domain's needs)  
-**Phase:** 🔄 0-1 (Spec review)  
-**Status:** NOT STARTED (blocked on prior domain audits)  
-**Dependency Chain:** All domains (each domain owns its settings, Policies just stores them) → **BLOCKED UNTIL PRIOR DOMAINS AUDITED**  
-**Notes:** This is a utility/persistence domain, not a business logic domain
+**Scope:** Append-only immutable repository of class-scoped policy definitions. Stores what other domains submit; does not originate mutation flows. Consumers reference each row by `policy_uuid` (which **is** the version identifier — no separate version pointer permitted).
+**Canonical Tables (per `DOM-POL-001 §X` boundary attribution):**
+
+- `rent_settings` — consumed by `DOM-OBL-001`
+- `payroll_settings`, `payroll_rewards`, `payroll_fines` — consumed by `DOM-PROD-001`
+- `hall_pass_settings` — consumed by `DOM-PROD-001` at grant time
+- `store_items`, `store_item_visibility` — consumed by `DOM-STORE-001`
+- Insurance policy definitions — consumed by Insurance operational flow
+
+**NOT in this repository:** `banking_settings` (savings APY, overdraft fees, interest formulas) is inherently Class Config → `economic-engine` per `DOM-CLASS-001` / `DOM-CLASS-002`; versioned under `DOM-CLASS-003` (`policy_versions` / `policy_transitions`), which is **economic-policy lineage only**, not domain-policy storage.
+
+**Phase:** 🔄 0-1 (Spec review; doctrine substantially advanced 2026-08-16)  
+**Status:** Doctrine now sufficient to begin Phase 2 planning; execution still blocked on prior-domain sequencing.
+
+**Doctrine advances (2026-08-16):**
+
+- ✅ `DOM-POL-001 §VI.0` — `policy_uuid` promoted to first-class definitional statement (**IS** the version; no separate pointer permitted).
+- ✅ `DOM-POL-001 §VI` — renamed from "Mutation Contract" to "Insert and Availability Contract"; Insert/Update collapsed to single Insert action.
+- ✅ `DOM-POL-001 §X` — boundary table extended to cover all policy `*_settings` tables and explicit exclusion of `banking_settings`.
+- ✅ `DOM-CORE-001` / `DOM-CORE-002` — ownership contradictions corrected; all `*_settings` tables routed through `DOM-POL-001`.
+- ✅ `DOM-PROD-001 §XII` — coordination bullets rewritten (payroll/hall-pass are Policies-stored, PROD-consumed).
+
+**Follow-up doc:** `docs/TRACKING/OBLIGATION_POLICIES_FOLLOWUP_2026-08-16.md`
+
+**Dependency Chain:** All consumer domains (Obligations, PROD, Store, Insurance) → Policies is subordinate to their audit sequencing.  
+**Notes:** Utility/persistence domain; no business logic. Phase 2 (persistence audit) is the natural next step once dependency chain unblocks.
 
 ---
 
