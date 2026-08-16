@@ -7,7 +7,7 @@ Contains session management helpers, authentication decorators, and timeout logi
 import urllib.parse
 import secrets
 from datetime import datetime, timedelta
-from app.utils.canonical_temporal_resolver import utc_now
+from app.utils.canonical_temporal_resolver import canonical_temporal_resolver, SYSTEM_LEVEL_EVALUATION
 from functools import wraps
 
 import sqlalchemy as sa
@@ -89,8 +89,12 @@ def _expire_system_admin_session():
     session.pop("force_sysadmin_username_migration", None)
 
 
+def _sle_now():
+    return canonical_temporal_resolver(SYSTEM_LEVEL_EVALUATION, primitive="current_time").canonical_now_utc
+
+
 def _system_admin_timeout_expired(last_activity) -> bool:
-    return (utc_now() - last_activity) > timedelta(minutes=SYSTEM_ADMIN_SESSION_TIMEOUT_MINUTES)
+    return (_sle_now() - last_activity) > timedelta(minutes=SYSTEM_ADMIN_SESSION_TIMEOUT_MINUTES)
 
 
 # -------------------- AUTHENTICATION DECORATORS --------------------
@@ -129,7 +133,19 @@ def login_required(f):
             return redirect(url_for('student.login', next=request.path))
 
         g.canonical_context = ctx
-        session['last_activity'] = utc_now().isoformat()
+
+        # Enforce DB-stored session expiry (User.current_session_expires_at)
+        from app.models import User
+        user = db.session.get(User, ctx.user_id) if ctx.user_id else None
+        if user and user.current_session_expires_at:
+            if _sle_now() >= user.current_session_expires_at:
+                session.clear()
+                if request.path.startswith('/api/'):
+                    return jsonify({"status": "error", "error": "Session expired"}), 401
+                flash("Your session has expired. Please log in again.", "info")
+                return redirect(url_for('student.login'))
+
+        session['last_activity'] = _sle_now().isoformat()
         return f(*args, **kwargs)
     return decorated_function
 
@@ -191,7 +207,7 @@ def admin_required(f):
 
         g.canonical_context = ctx
 
-        now = utc_now()
+        now = _sle_now()
         last_activity = session.get('last_activity')
 
         if last_activity:
@@ -235,10 +251,10 @@ def system_admin_required(f):
             return redirect(url_for('sysadmin.login', next=request.path))
 
         last_activity = session.get('last_activity')
-        now = utc_now()
+        now = _sle_now()
         if last_activity:
             last_activity = datetime.fromisoformat(last_activity)
-            last_activity = last_activity if last_activity.tzinfo else last_activity.replace(tzinfo=utc_now().tzinfo)
+            last_activity = last_activity if last_activity.tzinfo else last_activity.replace(tzinfo=_sle_now().tzinfo)
             if _system_admin_timeout_expired(last_activity):
                 _expire_system_admin_session()
                 if _is_grafana_proxy_subrequest():

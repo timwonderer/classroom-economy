@@ -114,6 +114,7 @@ from app.utils.join_code import get_display_join_code
 from app.utils.canonical_temporal_resolver import utc_now, ensure_utc
 from app.utils.canonical_temporal_resolver import (
     CLASS_LEVEL_EVALUATION,
+    SYSTEM_LEVEL_EVALUATION,
     canonical_temporal_resolver,
     ensure_utc,
     utc_now,
@@ -948,15 +949,16 @@ def dashboard():
 
 
     # --- Calculate remaining session time for frontend timer ---
+    sle_now = canonical_temporal_resolver(SYSTEM_LEVEL_EVALUATION, primitive="current_time").canonical_now_utc
     login_time = datetime.fromisoformat(session['login_time'])
     expiry_time = login_time + timedelta(minutes=SESSION_TIMEOUT_MINUTES)
-    session_remaining_seconds = max(0, int((expiry_time - utc_now()).total_seconds()))
+    session_remaining_seconds = max(0, int((expiry_time - sle_now).total_seconds()))
 
     # --- Get feature settings for this student ---
     feature_settings = get_feature_settings_for_student()
 
     # --- Check for pending recovery request ---
-    pending_recovery_code = get_pending_recovery_code_for_seat(student.id, utc_now())
+    pending_recovery_code = get_pending_recovery_code_for_seat(student.id, sle_now)
 
     # --- Calculate weekly/monthly analytics ---
     from app.models import AttendanceSession as _AttSession
@@ -3198,8 +3200,13 @@ def login():
         session.pop('generated_username', None)
         clear_teacher_display_name_cache()
 
-        session['login_time'] = utc_now().isoformat()
+        now = canonical_temporal_resolver(SYSTEM_LEVEL_EVALUATION, primitive="current_time").canonical_now_utc
+        session['login_time'] = now.isoformat()
         session['last_activity'] = session['login_time']
+
+        from app.auth import SESSION_TIMEOUT_MINUTES
+        user.current_session_started_at = now
+        user.current_session_expires_at = now + timedelta(minutes=SESSION_TIMEOUT_MINUTES)
 
         linked_user = user
 
@@ -3243,6 +3250,7 @@ def login():
             nonce = secrets.token_urlsafe(32)
             session['current_session_nonce'] = nonce
             linked_user.current_session_nonce = nonce
+            # No explicit commit — FEAT-IDEN-001's @feat_shell owns the transaction boundary.
             return redirect(url_for('student.select_class_context'))
 
         # Resolve the canonical seat for the selected class.
@@ -3263,6 +3271,7 @@ def login():
         linked_user.last_active_seat_id = target_seat.id
 
         # Establish canonical session (user_id + class_id + role + nonce).
+        # No explicit commit — FEAT-IDEN-001's @feat_shell owns the transaction boundary.
         establish_student_session(linked_user, class_id=valid_persisted_selection["class_id"])
         nonce = secrets.token_urlsafe(32)
         session['current_session_nonce'] = nonce
