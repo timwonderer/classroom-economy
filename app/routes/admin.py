@@ -6390,6 +6390,7 @@ def _next_tenant_scoped_tier_id(seed, existing_ids):
 
 @admin_bp.route('/insurance', methods=['GET', 'POST'])
 @admin_required
+@feat_shell("FEAT-SETTINGS-001")
 def insurance_management():
     """Main insurance management dashboard."""
     user_id = g.canonical_context.user_id
@@ -6453,25 +6454,27 @@ def insurance_management():
             'entitlement_item_id': None,
         }
 
-        # Wrap the mutation in an explicit FEAT context (same pattern as
-        # rent_settings POST). Idempotency key = class + title so a
-        # rapid double-submit of the same modal is a no-op; a genuinely
-        # different policy requires a different title. FEATContext owns
-        # the commit — do NOT call db.session.commit() here (that
-        # violates FEAT atomicity — see app/feats/base.py
-        # enforce_feat_context_on_commit).
-        title_hash = hashlib.sha256(title.encode()).hexdigest()[:16]
-        idempotency_key = f"feat:settings:insurance-new:{selected_class_id}:{title_hash}"
-        with FEATContext("FEAT-SETTINGS-001", idempotency_key=idempotency_key):
-            new_version = create_policy_version(
-                class_id=selected_class_id,
-                actor_user_id=user_id,
-                payload=draft_payload,
-                source_version=None,
-                is_active=False,
-                activation_mode='manual',
-                status='applied',
-            )
+        # Route runs inside @feat_shell("FEAT-SETTINGS-001") — matches
+        # edit_insurance_policy's pattern. That decorator sets up a
+        # FEATContext with begin_nested() (because the earlier reads
+        # in this handler already autobegan a session transaction). The
+        # explicit db.session.commit() below is required to persist the
+        # outer transaction; without it the SAVEPOINT release from the
+        # FEATContext exit leaves the row pending and it rolls back at
+        # end-of-request (the exact symptom of the prior 302→404 bug).
+        # This commit is allowed by the atomicity check in
+        # enforce_feat_context_on_commit via the
+        # session.in_nested_transaction() bypass.
+        new_version = create_policy_version(
+            class_id=selected_class_id,
+            actor_user_id=user_id,
+            payload=draft_payload,
+            source_version=None,
+            is_active=False,
+            activation_mode='manual',
+            status='applied',
+        )
+        db.session.commit()
 
         flash(
             f"Draft policy \"{title}\" created. Fill in the premium, coverage, "
