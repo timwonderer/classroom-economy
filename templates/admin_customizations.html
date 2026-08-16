@@ -1,7 +1,7 @@
 {% extends "layout_admin.html" %}
-{% set page_title = "Account Personalization" %}
-{% block title %}Account Personalization{% endblock %}
-{% set current_page = "settings" %}
+{% set page_title = "Class Customizations" %}
+{% block title %}Customizations{% endblock %}
+{% set current_page = "customizations" %}
 {% block page_icon %}style{% endblock %}
 
 {% block content %}
@@ -15,7 +15,7 @@
                 </h5>
             </div>
             <div class="card-body">
-                <form method="POST" action="{{ url_for('admin.settings') }}">
+                <form method="POST" action="{{ url_for('admin.customizations') }}">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
                     <!-- Display Name Section -->
