@@ -178,7 +178,7 @@ authority in v2 and must not be treated as canonical schema surfaces.
 - `class_features`
 - `economic-engine` — class-level economic configuration and projection state
 - `hall_pass_settings`
-`rent_settings` belongs to `DOM-OBL-001`; `payroll_settings`, `payroll_rewards`, and `payroll_fines` belong to `DOM-PROD-001`; and `banking_settings` belongs to the owning Banking domain. These tables are not Class Configuration authority.
+`rent_settings` is stored in `DOM-POL-001` as an immutable, append-only repository of rent policy definitions (the "how, when, and how much" of the rent contract). Policies does not originate mutations — it holds the version rows other domains produce. `DOM-OBL-001` consumes the current rent `policy_uuid` but does not own its definition; DOM-OBL-001 owns the bill cycle and assessment lifecycle only. `payroll_settings`, `payroll_rewards`, and `payroll_fines` belong to `DOM-PROD-001`; and `banking_settings` belongs to the owning Banking domain. These tables are not Class Configuration authority.
 
 **Prohibited:** No persisted compute-result caches (e.g., `payroll_cache`). Computed values are derived on read from authoritative event tables or recomputed by services.
 
@@ -293,6 +293,26 @@ authority in v2 and must not be treated as canonical schema surfaces.
 
 - `policy_versions`
 - `policy_transitions`
+
+---
+
+### 11. Policies (DOM-POL-001)
+
+**Purpose:** Serve as an append-only, immutable repository of class-scoped policy definitions that other domains reference by `policy_uuid`. Policies is the newest domain in the list and does **not** own mutation flows — it stores the immutable version references that operational and configuration domains produce and consume. The act of "changing rent" lives in the domain that initiates it; Policies just records the resulting immutable definition row and hands back a stable `policy_uuid`.
+
+**Tables:**
+
+- `rent_settings` — rent policy definitions (rate, cycle length, effective boundaries) as append-only version rows
+- `store_items` — purchasable / rent-linked entitlement offering definitions
+- `store_item_visibility` — per-class visibility state for store items
+- Insurance policy definitions (see Insurance-domain specs for exact table)
+
+**Boundary notes:**
+
+- Policies does not originate mutations. Other domains submit definitions through Policies; each submission creates a new `policy_uuid` (see `DOM-POL-001` §VI, Mutation Contract).
+- Rows are immutable after insert. Replacement is a new row, never an in-place edit. Mutable-singleton settings blobs are prohibited under `DOM-CLASS-003` §XI.4.
+- Downstream domains reference `policy_uuid` as a non-FK provenance locator and freeze any terms they need for standalone executability (see `DOM-POL-001` §V.A, §IX).
+- Rent example: Class Configuration owns the `rent` feature flag; Policies stores the immutable `rent_settings` version rows; Obligations (`DOM-OBL-001`) owns `bill_cycles` and `assessment_events` (the recurring act of charging rent) and references the current rent `policy_uuid` for provenance.
 
 ---
 
