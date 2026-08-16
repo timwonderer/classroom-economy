@@ -186,6 +186,25 @@ class EconomyBalanceChecker {
         // Alert-card visual: card wrapper + colored header + body.
         // Matches templates/macros/cards.html alert_card macro so the
         // JS-rendered alerts blend with server-rendered ones.
+        //
+        // Per-warning cards (not aggregated) — each warning carries its
+        // own title + message so the header describes the specific
+        // condition ("Rent setting might be too low") and the body
+        // carries the detailed prose ("The entered rent of $X is lower
+        // than the recommended minimum of $Y..."). Backends that emit
+        // only `message` (no `title`) fall back to a generic level title.
+        const genericTitle = {
+            critical: 'Critical Issue',
+            warning: 'Warning',
+            success: 'Looks Good',
+            info: 'Recommendations',
+        };
+        const iconForLevel = {
+            critical: 'error',
+            warning: 'info',
+            success: 'check_circle',
+            info: 'lightbulb',
+        };
         const alertCard = (level, title, icon, bodyHtml) => {
             const textClass = level === 'warning' ? 'text-dark' : 'text-white';
             return (
@@ -201,20 +220,22 @@ class EconomyBalanceChecker {
             );
         };
 
-        const bulletList = (items) => (
-            items.length === 1
-                ? `<div>${items[0].message}</div>`
-                : `<ul class="mb-0">${items.map(w => `<li>${w.message}</li>`).join('')}</ul>`
-        );
+        const renderWarningCards = (items, level) => {
+            items.forEach(w => {
+                const title = w.title || genericTitle[level] || 'Notice';
+                const icon = w.icon || iconForLevel[level] || 'info';
+                html += alertCard(level, title, icon, `<div>${w.message}</div>`);
+            });
+        };
 
         if (critical.length > 0) {
-            html += alertCard('danger', 'Critical Issues', 'error', bulletList(critical));
+            renderWarningCards(critical, 'danger');
         }
         if (warning.length > 0) {
-            html += alertCard('warning', 'Warnings', 'warning', bulletList(warning));
+            renderWarningCards(warning, 'warning');
         }
         if (success.length > 0 && critical.length === 0 && warning.length === 0) {
-            html += alertCard('success', 'Balance Check', 'check_circle', bulletList(success));
+            renderWarningCards(success, 'success');
         }
 
         // Display recommendations (skipped on pages that already show a
@@ -480,9 +501,9 @@ class EconomyBalanceChecker {
 
         // Primary sentence: range recommendation.
         if (rentBand.min != null && rentBand.max != null) {
-            html += `<p class="mb-2">Based on your current economic settings, we recommend setting <strong>rent</strong> to <strong>${fmt(rentBand.min)}&ndash;${fmt(rentBand.max)}</strong> ${periodLabel}`;
+            html += `<p class="mb-2">Based on your current economic settings, we recommend setting <strong>rent</strong> between <strong>${fmt(rentBand.min)}</strong> and <strong>${fmt(rentBand.max)}</strong> ${periodLabel}`;
             if (showNote) {
-                html += ` <span class="text-muted small">(showing monthly — set your custom frequency to refine)</span>`;
+                html += ` <span class="text-muted small">(shown as monthly — set your custom frequency to refine)</span>`;
             }
             html += '.</p>';
         } else {
@@ -493,18 +514,18 @@ class EconomyBalanceChecker {
         html += '<details class="mt-2">';
         html += '<summary style="cursor: pointer;" class="fw-semibold text-primary">Calculation details</summary>';
         html += '<div class="mt-2 small">';
-        html += `<div>Your current CWI is <strong>${fmt(cwiValue)}</strong> per week.</div>`;
+        html += `<div>Your current Classroom Wage Index (CWI) is <strong>${fmt(cwiValue)}</strong> per week.</div>`;
         if (rec.policy_label) {
-            html += `<div>You have selected <strong>${rec.policy_label}</strong> for your economic policy.</div>`;
+            html += `<div>You have selected the <strong>${rec.policy_label}</strong> economic policy.</div>`;
         }
         if (pctLow && pctHigh) {
-            html += `<div>Those settings set <strong>rent</strong> to be <strong>${pctLow}%</strong> to <strong>${pctHigh}%</strong> of your CWI.</div>`;
+            html += `<div>Under this policy, <strong>rent</strong> should fall between <strong>${pctLow}%</strong> and <strong>${pctHigh}%</strong> of your CWI.</div>`;
         }
         if (cwiData.cwi_breakdown || cwiData.breakdown) {
             const breakdown = cwiData.cwi_breakdown || cwiData.breakdown;
             html += '<hr class="my-2">';
-            html += `<div class="text-muted">Pay Rate: $${breakdown.pay_rate_per_hour?.toFixed(2) || 'N/A'}/hour</div>`;
-            html += `<div class="text-muted">Expected Hours: ${breakdown.expected_weekly_hours || 'N/A'} hours/week</div>`;
+            html += `<div class="text-muted">Pay rate: $${breakdown.pay_rate_per_hour?.toFixed(2) || 'N/A'} per hour</div>`;
+            html += `<div class="text-muted">Expected hours: ${breakdown.expected_weekly_hours || 'N/A'} per week</div>`;
         }
         html += '</div></details>';
 

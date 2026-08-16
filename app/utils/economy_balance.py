@@ -831,17 +831,31 @@ class EconomyBalanceChecker:
         if monthly_ratio < rent_min_ratio_monthly:
             warnings.append({
                 'level': 'warning',
-                'message': f"Rent amount is too low. To meet the recommended minimum, set rent to at least ${recommendations['min']:.2f} {frequency_label}.",
+                'title': 'Rent may be set too low',
+                'message': (
+                    f"The rent amount you entered (${rent_amount:.2f} {frequency_label}) is "
+                    f"below the recommended minimum of ${recommendations['min']:.2f} {frequency_label}. "
+                    f"This may reduce students' incentive to budget and save."
+                ),
             })
         elif monthly_ratio > rent_max_ratio_monthly:
             warnings.append({
                 'level': 'warning',
-                'message': f"Rent amount is too high. Students may struggle with other expenses. Set rent to at most ${recommendations['max']:.2f} {frequency_label}.",
+                'title': 'Rent may be set too high',
+                'message': (
+                    f"The rent amount you entered (${rent_amount:.2f} {frequency_label}) is "
+                    f"above the recommended maximum of ${recommendations['max']:.2f} {frequency_label}. "
+                    f"Students may have difficulty meeting their other obligations."
+                ),
             })
         else:
             warnings.append({
                 'level': 'success',
-                'message': f'Rent is balanced at ${rent_amount:.2f} {frequency_label} (${weekly_rent:.2f}/week)',
+                'title': 'Rent is balanced',
+                'message': (
+                    f"Rent is set to ${rent_amount:.2f} {frequency_label} "
+                    f"(${weekly_rent:.2f} per week), within the recommended range."
+                ),
             })
 
         return warnings, recommendations, float(ratio)
