@@ -47,7 +47,7 @@ def create_teacher(username: str, *, totp_secret: str | None = None) -> User:
         if existing.user_role != UserRole.TEACHER:
             raise ValueError("Username belongs to a non-teacher user")
         return existing
-    teacher = User(
+    user = User(
         user_role=UserRole.TEACHER,
         username_hash=u_hash,
         username_lookup_hash=u_lookup,
@@ -55,7 +55,7 @@ def create_teacher(username: str, *, totp_secret: str | None = None) -> User:
     )
     try:
         with db.session.begin_nested():
-            db.session.add(teacher)
+            db.session.add(user)
             db.session.flush()
     except IntegrityError:
         existing = User.query.filter_by(username_lookup_hash=u_lookup).first()
@@ -64,36 +64,7 @@ def create_teacher(username: str, *, totp_secret: str | None = None) -> User:
                 raise ValueError("Username belongs to a non-teacher user")
             return existing
         raise
-    return teacher
-
-
-def create_teacher_account_with_class(
-    *,
-    username: str,
-    totp_secret: str | None = None,
-    join_code: str,
-    display_name: str | None = None,
-    section: str | None = None,
-) -> User:
-    """Create the canonical teacher account and initial class.
-
-    Retry-safe: if the class already exists for this teacher and join_code,
-    returns the existing teacher without creating a duplicate class.
-    """
-    teacher = create_teacher(username, totp_secret=totp_secret)
-    existing_class = ClassEconomy.query.filter_by(
-        user_id=teacher.id,
-        join_code=join_code,
-    ).first()
-    if existing_class is None:
-        with db.session.begin_nested():
-            create_class(
-                teacher.id,
-                join_code=join_code,
-                display_name=display_name,
-                section=section,
-            )
-    return teacher
+    return user
 
 
 # ---------------------------------------------------------------------------
@@ -144,6 +115,80 @@ def create_class(
     db.session.flush()
 
     return economy
+
+
+def create_class_without_user(
+    *,
+    join_code: str,
+    display_name: str | None = None,
+    section: str | None = None,
+    teacher_first_name: str | None = None,
+    teacher_last_name: str | None = None,
+) -> tuple[ClassEconomy, Seat]:
+    """Create a class and teacher seat with NO user yet.
+
+    Used during the teacher signup flow where the class is created first,
+    before the teacher creates their username and TOTP credentials.
+    The teacher Seat is created with user_id=None (unclaimed).
+    An IdentityProfile is attached if display name is provided.
+
+    Returns (ClassEconomy, teacher Seat) so the caller can stash seat_id
+    in the session for later binding when the User is created.
+    """
+    class_id = str(uuid.uuid4())
+
+    economy = ClassEconomy(
+        class_id=class_id,
+        join_code=join_code,
+        teacher_user_id=None,
+        display_name=display_name,
+        section=section,
+    )
+    db.session.add(economy)
+    db.session.flush()
+
+    teacher_seat = Seat(
+        user_id=None,
+        class_id=class_id,
+        role="teacher",
+    )
+    db.session.add(teacher_seat)
+    db.session.flush()
+
+    if teacher_first_name:
+        profile = IdentityProfile(
+            seat_id=teacher_seat.id,
+            class_id=class_id,
+            profile_type="teacher",
+            first_name=teacher_first_name,
+            last_name=teacher_last_name or "",
+        )
+        db.session.add(profile)
+        db.session.flush()
+
+    return economy, teacher_seat
+
+
+def bind_teacher_to_class(user: User, *, class_id: str, seat_id: int) -> None:
+    """Bind a newly created User to an existing class and teacher seat.
+
+    Called after the teacher completes credential setup (username + TOTP).
+    Updates: Seat.user_id, ClassEconomy.teacher_user_id, User.last_active_*.
+    """
+    seat = db.session.get(Seat, seat_id)
+    if not seat or seat.class_id != class_id:
+        raise ValueError(f"Seat {seat_id} not found or does not belong to class {class_id}")
+
+    economy = ClassEconomy.query.filter_by(class_id=class_id).first()
+    if not economy:
+        raise ValueError(f"Class {class_id} not found")
+
+    seat.user_id = user.id
+    seat.claimed_at = utc_now()
+    economy.teacher_user_id = user.id
+    user.last_active_class_id = class_id
+    user.last_active_seat_id = seat_id
+    db.session.flush()
 
 
 # ---------------------------------------------------------------------------
@@ -399,6 +444,7 @@ def create_roster_student_seat(
     class_id: str,
     first_name: str,
     last_name: str,
+    notes: str | None = None,
     dedupe_code: str | None = None,
     block: str | None = None,
     claim_first_name_hash=None,
@@ -426,6 +472,7 @@ def create_roster_student_seat(
         profile_type="student",
         first_name=first_name,
         last_name=last_name,
+        notes=notes,
     )
     db.session.add(profile)
     db.session.flush()

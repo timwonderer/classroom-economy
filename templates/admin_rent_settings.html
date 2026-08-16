@@ -942,14 +942,11 @@
                     <td>{{ waiver.student.full_name }}</td>
                     <td>
                       {% if waiver.waiver_start_date == waiver.waiver_end_date %}
-                        <span class="local-timestamp"
-                          data-timestamp="{{ format_utc_iso(waiver.waiver_start_date) }}"></span>
+                        {{ waiver.waiver_start_date|fmt_timestamp }}
                       {% else %}
-                        <span class="local-timestamp"
-                          data-timestamp="{{ format_utc_iso(waiver.waiver_start_date) }}"></span>
+                        {{ waiver.waiver_start_date|fmt_timestamp }}
                         &ndash;
-                        <span class="local-timestamp"
-                          data-timestamp="{{ format_utc_iso(waiver.waiver_end_date) }}"></span>
+                        {{ waiver.waiver_end_date|fmt_timestamp }}
                         <small class="text-muted">({{ waiver.periods_count }} period{{ 's' if waiver.periods_count != 1 }})</small>
                       {% endif %}
                     </td>
@@ -1163,12 +1160,11 @@
       const economyChecker = new EconomyBalanceChecker({
         warningsContainer: '#economy-warnings',
         bypassSelector: '#bypass_cwi_warnings',
-        expectedWeeklyHours: {{ (payroll_settings.expected_weekly_hours if payroll_settings and payroll_settings.expected_weekly_hours is not none else 5.0) | float }}
+        expectedWeeklyHours: {{ (expected_weekly_hours if expected_weekly_hours is defined and expected_weekly_hours is not none else 5.0) | float }}
     });
 
-  // Display CWI info if payroll is configured.
-  const currentBlock = '{{ selected_feature_scope.block or "" }}';
-  economyChecker.analyzeEconomy(null, currentBlock).then(analysis => {
+  // Display CWI info if payroll is configured (class-scoped via canonical context on server).
+  economyChecker.analyzeEconomy().then(analysis => {
     economyChecker.displayCWIInfo(analysis, '#cwi-info');
   }).catch(err => {
     console.log('Payroll not configured yet, skipping CWI display');

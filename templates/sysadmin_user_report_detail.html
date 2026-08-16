@@ -62,7 +62,7 @@
                         <strong>Submitted:</strong>
                         <span class="ms-2">
                             {% if report.submitted_at %}
-                                <span class="local-timestamp" data-timestamp="{{ format_utc_iso(report.submitted_at) }}"></span>
+                                {{ report.submitted_at|fmt_timestamp }}
                             {% else %}
                                 N/A
                             {% endif %}
@@ -116,7 +116,7 @@
 
                     {% if report.reviewed_at %}
                     <div class="text-muted small">
-                        <span class="material-symbols-outlined me-1">schedule</span>Reviewed: <span class="local-timestamp" data-timestamp="{{ format_utc_iso(report.reviewed_at) }}"></span>
+                        <span class="material-symbols-outlined me-1">schedule</span>Reviewed: {{ report.reviewed_at|fmt_timestamp }}
                     </div>
                     {% endif %}
                 </div>

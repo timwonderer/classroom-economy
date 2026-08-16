@@ -193,7 +193,7 @@
 
                         <p class="text-muted small mb-2">
                             <strong>Purchased:</strong>
-                            <span class="local-timestamp" data-timestamp="{{ entitlement.display_purchased_date }}"></span>
+                            {{ entitlement.display_purchased_date|fmt_timestamp }}
                         </p>
 
                         {% if entitlement.has_expiry_date %}

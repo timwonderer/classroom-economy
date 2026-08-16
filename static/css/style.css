@@ -21,6 +21,7 @@ h6 {
     font-weight: 600;
     color: var(--text-primary);
     letter-spacing: -0.02em;
+    font-family: var(--font-display);
 }
 
 /* Header headings should inherit section color (fix dark-on-dark card headers) */

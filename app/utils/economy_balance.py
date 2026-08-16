@@ -133,19 +133,17 @@ class EconomyBalanceChecker:
     def __init__(
         self,
         user_id: int,
-        block: Optional[str] = None,
         policy_mode: Optional[str] = None,
         class_id: Optional[str] = None,
     ):
-        """
-        Initialize checker for a specific class owner and optional block.
+        """Initialize checker for a specific class owner.
 
         Args:
             user_id: The owning user ID
-            block: Optional block/period identifier for scoped settings
+            policy_mode: Optional explicit policy mode (else resolved from class_id)
+            class_id: The class scope for policy-mode resolution
         """
         self.user_id = user_id
-        self.block = block
         self.class_id = class_id
         resolved_mode_source = policy_mode
         if resolved_mode_source is None and class_id:
@@ -244,25 +242,44 @@ class EconomyBalanceChecker:
             return "high"
         return "balanced"
 
-    def calculate_cwi(self, payroll_settings, expected_weekly_hours: float = None) -> CWICalculation:
+    def calculate_cwi(self, payroll_settings, expected_weekly_hours: float = None) -> CWICalculation | None:
         """
         Calculate CWI (Classroom Wage Index) - expected weekly income for perfect attendance.
 
         Args:
-            payroll_settings: PayrollSettings model instance
-            expected_weekly_hours: Expected hours of attendance per week
-                                  If None, uses value from payroll_settings (default 5.0)
+            payroll_settings: PayrollSettings model instance (source of pay_rate only)
+            expected_weekly_hours: Expected hours of attendance per week.
+                                   If None, reads from the EconomicEngine version governing
+                                   the payroll feature for this class (authoritative source
+                                   per DOM-CLASS-002).
 
         Returns:
-            CWICalculation with breakdown
+            CWICalculation with breakdown, or None if `expected_weekly_hours` is
+            unconfigured on both the parameter and the EconomicEngine. Callers must
+            handle None (display "configure CWI on Economic Engine" warning; disable
+            pricing recommendations).
         """
         notes = []
 
-        # Get expected weekly hours from settings if not provided
+        # Get expected weekly hours from EconomicEngine (canonical source) if not provided
         from app.models import _quantize_currency
         if expected_weekly_hours is None:
-            expected_weekly_hours = _quantize_currency(payroll_settings.expected_weekly_hours or Decimal('5.0'))
-            notes.append(f"Using expected weekly hours from payroll settings: {expected_weekly_hours} hours")
+            try:
+                from app.services.class_configuration_query_service import (
+                    get_effective_economic_engine,
+                )
+                class_id = getattr(payroll_settings, 'class_id', None)
+                if class_id:
+                    engine = get_effective_economic_engine(class_id, 'payroll')
+                    if engine and engine.expected_weekly_hours is not None:
+                        expected_weekly_hours = _quantize_currency(engine.expected_weekly_hours)
+                        notes.append(f"Using expected weekly hours from EconomicEngine: {expected_weekly_hours} hours")
+            except Exception:
+                pass
+
+            if expected_weekly_hours is None:
+                # No configured value → CWI is undefined.
+                return None
         else:
             expected_weekly_hours = _quantize_currency(expected_weekly_hours)
             notes.append(f"Using provided expected weekly hours: {expected_weekly_hours} hours")
@@ -739,23 +756,17 @@ class EconomyBalanceChecker:
             custom_frequency_unit,
         )
 
-        if self.block:
-            # Block-scoped validation follows AGENTS monthly multipliers.
-            rent_min_ratio_monthly = Decimal(str(self.RENT_MIN_RATIO))
-            rent_max_ratio_monthly = Decimal(str(self.RENT_MAX_RATIO))
-            rent_recommended_ratio_monthly = Decimal(str(self.RENT_DEFAULT_RATIO))
-        else:
-            # Global validation preserves policy-mode weekly burden bands.
-            rent_min_ratio_weekly, rent_max_ratio_weekly, rent_recommended_ratio_weekly = self._ratio_band(
-                "rent_weekly",
-                self.RENT_MIN_RATIO,
-                self.RENT_MAX_RATIO,
-                self.RENT_DEFAULT_RATIO,
-            )
-            weeks_per_month = Decimal(str(self.AVERAGE_WEEKS_PER_MONTH))
-            rent_min_ratio_monthly = Decimal(str(rent_min_ratio_weekly)) * weeks_per_month
-            rent_max_ratio_monthly = Decimal(str(rent_max_ratio_weekly)) * weeks_per_month
-            rent_recommended_ratio_monthly = Decimal(str(rent_recommended_ratio_weekly)) * weeks_per_month
+        # Rent validation uses policy-mode weekly burden bands, converted to monthly.
+        rent_min_ratio_weekly, rent_max_ratio_weekly, rent_recommended_ratio_weekly = self._ratio_band(
+            "rent_weekly",
+            self.RENT_MIN_RATIO,
+            self.RENT_MAX_RATIO,
+            self.RENT_DEFAULT_RATIO,
+        )
+        weeks_per_month = Decimal(str(self.AVERAGE_WEEKS_PER_MONTH))
+        rent_min_ratio_monthly = Decimal(str(rent_min_ratio_weekly)) * weeks_per_month
+        rent_max_ratio_monthly = Decimal(str(rent_max_ratio_weekly)) * weeks_per_month
+        rent_recommended_ratio_monthly = Decimal(str(rent_recommended_ratio_weekly)) * weeks_per_month
 
         monthly_min = cwi * float(rent_min_ratio_monthly)
         monthly_max = cwi * float(rent_max_ratio_monthly)
@@ -1200,6 +1211,25 @@ class EconomyBalanceChecker:
         """
         # Calculate CWI
         cwi_calc = self.calculate_cwi(payroll_settings, expected_weekly_hours)
+        if cwi_calc is None:
+            # CWI is undefined without expected_weekly_hours; skip pricing analysis.
+            # Consumers should show a "configure CWI" warning and hide recommendations.
+            return EconomyBalance(
+                cwi=None,
+                is_balanced=False,
+                warnings=[BalanceWarning(
+                    feature="CWI",
+                    level=WarningLevel.WARNING,
+                    message="Expected weekly hours not configured. Set it on the Economic Engine page to enable pricing recommendations.",
+                    current_value=None,
+                    recommended_min=None,
+                    recommended_max=None,
+                    cwi_ratio=None,
+                )],
+                recommendations={},
+                budget_survival_test_passed=False,
+                weekly_savings=0.0,
+            )
         cwi = cwi_calc.cwi
 
         # Collect all warnings

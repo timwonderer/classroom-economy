@@ -82,6 +82,62 @@ class FeatureConfigurationView:
 KNOWN_FEATURES = ("payroll", "rent", "banking", "insurance", "hall_pass", "store")
 
 
+@dataclass(frozen=True)
+class FeatureDefinitionView:
+    """Static feature metadata for display."""
+    feature_id: str
+    name: str
+    icon: str
+    description: str
+
+
+FEATURE_DEFINITIONS = (
+    FeatureDefinitionView("payroll_enabled", "Payroll", "payments", "Time tracking and student payments"),
+    FeatureDefinitionView("insurance_enabled", "Insurance", "shield", "Insurance policies and claims"),
+    FeatureDefinitionView("banking_enabled", "Banking", "account_balance", "Savings accounts and interest"),
+    FeatureDefinitionView("rent_enabled", "Rent", "home", "Housing costs and payments"),
+    FeatureDefinitionView("hall_pass_enabled", "Hall Pass", "confirmation_number", "Bathroom and water break passes"),
+    FeatureDefinitionView("store_enabled", "Store", "storefront", "Marketplace for student rewards"),
+)
+
+
+@dataclass(frozen=True)
+class ClassLabelView:
+    """Class label for the account settings form."""
+    section_key: str
+    current_label: str | None
+    display_fallback: str
+
+    @property
+    def form_key(self) -> str:
+        return f"class_label_{self.section_key}"
+
+
+@dataclass(frozen=True)
+class FeatureSettingsPageView:
+    """Page view model for admin_feature_settings.html (single-class scoped)."""
+    class_id: str
+    class_label: str
+    features: tuple[FeatureToggleView, ...]
+
+
+@dataclass(frozen=True)
+class FeatureToggleView:
+    """Single feature toggle with metadata for display."""
+    feature_id: str
+    feature_key: str
+    name: str
+    icon: str
+    description: str
+    enabled: bool
+
+
+@dataclass(frozen=True)
+class AccountSettingsPageView:
+    """Page view model for admin_settings.html (CLASS-owned fields only)."""
+    classes: tuple[ClassLabelView, ...]
+
+
 # ---------------------------------------------------------------------------
 # Builders
 # ---------------------------------------------------------------------------
@@ -161,3 +217,46 @@ def build_feature_configuration_view(class_id: str) -> FeatureConfigurationView:
         class_id=class_id,
         features=feature_states,
     )
+
+
+def build_feature_settings_page_view(class_id: str) -> FeatureSettingsPageView | None:
+    """Build page view model for admin_feature_settings.html (single-class scoped)."""
+    economy = get_class_economy(class_id)
+    if not economy:
+        return None
+
+    feature_map = get_class_features(class_id)
+
+    toggles = tuple(
+        FeatureToggleView(
+            feature_id=defn.feature_id,
+            feature_key=defn.feature_id.replace("_enabled", ""),
+            name=defn.name,
+            icon=defn.icon,
+            description=defn.description,
+            enabled=(defn.feature_id.replace("_enabled", "") in feature_map),
+        )
+        for defn in FEATURE_DEFINITIONS
+    )
+
+    return FeatureSettingsPageView(
+        class_id=class_id,
+        class_label=economy.display_name or economy.section or economy.join_code,
+        features=toggles,
+    )
+
+
+def build_account_settings_page_view(teacher_user_id: int) -> AccountSettingsPageView:
+    """Build CLASS-owned fields for admin_settings.html."""
+    classes = get_all_classes_by_teacher(teacher_user_id)
+
+    class_labels = tuple(
+        ClassLabelView(
+            section_key=cls.section or cls.join_code or "",
+            current_label=cls.display_name,
+            display_fallback=cls.section or cls.join_code or "",
+        )
+        for cls in classes
+    )
+
+    return AccountSettingsPageView(classes=class_labels)

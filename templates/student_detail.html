@@ -322,8 +322,7 @@
                                 <td class="fw-bold">Last Activity:</td>
                                 <td>
                                     {% if latest_attendance_event.timestamp %}
-                                    <span class="local-timestamp"
-                                        data-timestamp="{{ format_utc_iso(latest_attendance_event.timestamp) }}"></span>
+                                    {{ latest_attendance_event.timestamp|fmt_timestamp }}
                                     {% else %}
                                     <span class="text-muted">N/A</span>
                                     {% endif %}
@@ -388,8 +387,7 @@
                             <tr {% if tx.is_void %}class="table-secondary text-decoration-line-through" {% endif %}>
                                 <td>
                                     {% if tx.timestamp %}
-                                    <span class="local-timestamp"
-                                        data-timestamp="{{ format_utc_iso(tx.timestamp) }}"></span>
+                                    {{ tx.timestamp|fmt_timestamp }}
                                     {% else %}
                                     <span class="text-muted">N/A</span>
                                     {% endif %}
@@ -457,8 +455,7 @@
                                 </td>
                                 <td>
                                     {% if ent.purchase_date %}
-                                    <span class="local-timestamp"
-                                        data-timestamp="{{ format_utc_iso(ent.purchase_date) }}"></span>
+                                    {{ ent.purchase_date|fmt_timestamp }}
                                     {% else %}
                                     <span class="text-muted">N/A</span>
                                     {% endif %}
@@ -525,8 +522,7 @@
                             <tr>
                                 <td>
                                     {% if tap.timestamp %}
-                                    <span class="local-timestamp"
-                                        data-timestamp="{{ format_utc_iso(tap.timestamp) }}"></span>
+                                    {{ tap.timestamp|fmt_timestamp }}
                                     {% else %}
                                     <span class="text-muted">N/A</span>
                                     {% endif %}
@@ -581,8 +577,7 @@
                                 <td class="fw-bold">Last Payment:</td>
                                 <td>
                                     {% if student.rent_last_paid %}
-                                    <span class="local-timestamp"
-                                        data-timestamp="{{ format_utc_iso(student.rent_last_paid) }}"></span>
+                                    {{ student.rent_last_paid|fmt_timestamp }}
                                     {% else %}
                                     <span class="text-muted">Never</span>
                                     {% endif %}
@@ -652,8 +647,7 @@
                             <tr>
                                 <td>
                                     {% if event.timestamp %}
-                                    <span class="local-timestamp"
-                                        data-timestamp="{{ format_utc_iso(event.timestamp) }}"></span>
+                                    {{ event.timestamp|fmt_timestamp }}
                                     {% else %}
                                     <span class="text-muted">N/A</span>
                                     {% endif %}
@@ -817,8 +811,6 @@
 {% endblock %}
 
 {% block extra_scripts %}
-<!-- Timestamp conversion handled by timezone-utils.js -->
-
 <script>
     // Edit modal - reset login checkbox toggle warning
     const resetLoginCheckbox = document.getElementById('edit_reset_login');

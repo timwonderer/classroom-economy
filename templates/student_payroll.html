@@ -69,7 +69,7 @@
                                 <tr>
                                     <td>
                                         {% if event.timestamp %}
-                                            <span class="local-timestamp" data-timestamp="{{ format_utc_iso(event.timestamp) }}" data-format="compact-date"></span>
+                                            {{ event.timestamp|fmt_compact_date }}
                                         {% else %}
                                             N/A
                                         {% endif %}
@@ -82,7 +82,7 @@
                                     </td>
                                     <td>
                                         {% if event.timestamp %}
-                                            <span class="local-timestamp" data-timestamp="{{ format_utc_iso(event.timestamp) }}" data-format="time"></span>
+                                            {{ event.timestamp|fmt_time }}
                                         {% else %}
                                             N/A
                                         {% endif %}
@@ -146,47 +146,6 @@
                                 <h5 class="mb-0 text-info">${{ "%.2f"|format(scoped_total_earnings) }}</h5>
                             </div>
                         </div>
-                        <div>
-                            <div class="d-flex justify-content-between align-items-center">
-                                <span class="text-muted">Active Classes</span>
-                                <h5 class="mb-0">{{ 1 if class_label else 0 }}</h5>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Class Breakdown -->
-            <div class="col-md-6 mb-4">
-                <div class="card">
-                    <div class="card-header">
-                        <span class="material-symbols-outlined">view_module</span> Class Breakdown
-                    </div>
-                    <div class="card-body">
-                        {% if class_label %}
-                        <div class="table-responsive">
-                            <table class="table table-sm">
-                                <thead>
-                                    <tr>
-                                        <th>Class</th>
-                                        <th>Unpaid Time</th>
-                                        <th>Projected</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <tr>
-                                        <td><strong>{{ class_label }}</strong></td>
-                                        <td>{{ (unpaid_seconds // 3600)|string + 'h ' + ((unpaid_seconds % 3600) // 60)|string + 'm' }}</td>
-                                        <td class="text-success">${{ "%.2f"|format(projected_pay) }}</td>
-                                    </tr>
-                                </tbody>
-                            </table>
-                        </div>
-                        {% else %}
-                        <div class="alert alert-info">
-                            <span class="material-symbols-outlined">info</span> No class selected.
-                        </div>
-                        {% endif %}
                     </div>
                 </div>
             </div>
@@ -243,25 +202,6 @@
                             <h1 class="display-4 text-success mb-0">${{ "%.2f"|format(projected_pay) }}</h1>
                             <small class="text-muted">Based on current unpaid time</small>
                         </div>
-                        <hr>
-                        <h6 class="mb-3">Breakdown by Class:</h6>
-                        {% if class_label %}
-                        <div class="mb-3 pb-3 border-bottom">
-                            <div class="d-flex justify-content-between align-items-center">
-                                <div>
-                                    <strong>{{ class_label }}</strong>
-                                    <div class="small text-muted">
-                                        {{ (unpaid_seconds // 3600)|string + 'h ' + ((unpaid_seconds % 3600) // 60)|string + 'm ' + (unpaid_seconds % 60)|string + 's' }}
-                                    </div>
-                                </div>
-                                <h5 class="mb-0 text-success">${{ "%.2f"|format(projected_pay) }}</h5>
-                            </div>
-                        </div>
-                        {% else %}
-                        <div class="alert alert-info">
-                            <span class="material-symbols-outlined">info</span> No class selected.
-                        </div>
-                        {% endif %}
                     </div>
                 </div>
             </div>

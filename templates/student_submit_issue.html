@@ -49,7 +49,7 @@
                                 <li><strong>Description:</strong> {{ transaction.description }}</li>
                                 <li><strong>Date:</strong>
                                 {% if transaction.timestamp %}
-                                    <span class="local-timestamp" data-timestamp="{{ format_utc_iso(transaction.timestamp) }}"></span>
+                                    {{ transaction.timestamp|fmt_timestamp }}
                                 {% else %}
                                     N/A
                                 {% endif %}

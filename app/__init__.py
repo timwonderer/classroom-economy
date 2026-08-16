@@ -414,6 +414,9 @@ def create_app():
     app.jinja_env.globals['min'] = min
     app.jinja_env.globals['max'] = max
     app.jinja_env.globals['format_utc_iso'] = format_utc_iso
+
+    from app.utils.temporal_display import register_temporal_filters
+    register_temporal_filters(app)
     
     from app.utils.join_code import get_display_join_code
     app.jinja_env.globals['get_display_join_code'] = get_display_join_code
@@ -650,6 +653,21 @@ def create_app():
         }
 
     # inject_view_as_student_status — REMOVED (prohibited feature)
+
+    @app.context_processor
+    def inject_display_timezone():
+        """Temporal Context layer: resolve display_timezone once per request (SPEC-TIME-001 / MAP-UI-002 §VII)."""
+        try:
+            from app.services.context_resolver import resolve_canonical_context
+            from app.models import ClassEconomy
+            ctx = resolve_canonical_context()
+            if ctx and getattr(ctx, 'class_id', None):
+                economy = db.session.get(ClassEconomy, ctx.class_id)
+                if economy and economy.class_timezone:
+                    return {'display_timezone': economy.class_timezone}
+            return {'display_timezone': 'UTC'}
+        except Exception:
+            return {'display_timezone': 'UTC'}
 
     @app.context_processor
     def inject_feature_settings():

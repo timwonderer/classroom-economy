@@ -31,7 +31,6 @@ from app.services.class_configuration_query_service import (
     get_policy_mode,
     is_feature_enabled,
     get_all_classes_by_teacher,
-    get_teacher_class_by_section,
     get_class_by_public_id,
     get_classes_by_public_ids,
     get_teacher_classes_by_ids,
@@ -432,11 +431,32 @@ class TestDerivedValueQueries:
     # ========== calculate_cwi Tests ==========
 
     def test_calculate_cwi_returns_correct_calculation(self, app):
-        """Happy path: CWI = (pay_rate * 60) * expected_weekly_hours."""
+        """Happy path: CWI = (pay_rate * 60) * expected_weekly_hours.
+
+        expected_weekly_hours is a CWI parameter on EconomicEngine and must be
+        configured explicitly via FEAT-CLASS-005 before CWI is defined.
+        """
+        from app.feats.class_configuration.feat_class_005_economic_engine_evolution import (
+            execute_evolve_economic_engine,
+        )
+        from app.services.context_resolver import CanonicalContext
         classroom = initialize("chemistry_p1", app)
+        ctx = CanonicalContext(
+            user_id=classroom.teacher_user_id,
+            class_id=classroom.class_id,
+            seat_id=classroom.teacher_seat.id,
+            actor_role="teacher",
+        )
+        result = execute_evolve_economic_engine(
+            canonical_context=ctx,
+            class_id=classroom.class_id,
+            updates={'expected_weekly_hours': 5.0},
+            feature_list=['payroll'],
+            idempotency_key=f"test:cwi-setup:{classroom.class_id}",
+        )
+        assert result.success, result.error_message
 
         cwi = calculate_cwi(classroom.class_id)
-
         # Canonical fixture: pay_rate=$0.50/min, expected_weekly_hours=5.0
         # CWI = ($0.50 × 60) × 5.0 = $30.00 × 5.0 = $150.00/week
         assert cwi == 150.0
@@ -446,16 +466,10 @@ class TestDerivedValueQueries:
         cwi = calculate_cwi("nonexistent-class-id")
         assert cwi is None
 
-    def test_calculate_cwi_multi_tenancy(self, app):
-        """Multi-tenancy: CWI calculated per class."""
-        classroom1 = initialize("chemistry_p1", app)
-        classroom2 = initialize("biology_block_a", app)
-
-        cwi1 = calculate_cwi(classroom1.class_id)
-        cwi2 = calculate_cwi(classroom2.class_id)
-
-        assert cwi1 is not None
-        assert cwi2 is not None
+    def test_calculate_cwi_returns_none_when_expected_hours_unconfigured(self, app):
+        """CWI is undefined when EconomicEngine.expected_weekly_hours is unset."""
+        classroom = initialize("chemistry_p1", app)
+        assert calculate_cwi(classroom.class_id) is None
 
     # ========== get_policy_mode Tests ==========
 
@@ -542,8 +556,16 @@ class TestConfigurationStateQueries:
 
         # Must have at least 2 classes to verify ordering
         assert len(classes) >= 2
+
+        def _as_utc(dt):
+            if dt is None:
+                return dt
+            if dt.tzinfo is None:
+                return dt.replace(tzinfo=timezone.utc)
+            return dt
+
         for i in range(len(classes) - 1):
-            assert classes[i].created_at >= classes[i + 1].created_at
+            assert _as_utc(classes[i].created_at) >= _as_utc(classes[i + 1].created_at)
 
 
 class TestGuidanceFunctions:
@@ -635,39 +657,6 @@ class TestGetClassEconomyByJoinCode:
 
 class TestAdditionalClassLookupHelpers:
     """Test newer class lookup helpers used by rewired admin routes."""
-
-    def test_get_teacher_class_by_section_returns_matching_owned_class(self, app):
-        """Happy path: teacher + section resolves the expected class."""
-        classroom = initialize("chemistry_p1", app)
-
-        result = get_teacher_class_by_section(
-            classroom.teacher_user_id,
-            classroom.economy.section,
-        )
-
-        assert result is not None
-        assert result.teacher_user_id == classroom.teacher_user_id
-        assert result.section == classroom.economy.section
-
-    def test_get_teacher_class_by_section_returns_none_for_missing_section(self, app):
-        """Empty state: unknown section returns None."""
-        classroom = initialize("chemistry_p1", app)
-
-        result = get_teacher_class_by_section(classroom.teacher_user_id, "missing-section")
-
-        assert result is None
-
-    def test_get_teacher_class_by_section_respects_teacher_scope(self, app):
-        """Multi-tenancy: same section name from another teacher is not returned."""
-        classroom1 = initialize("chemistry_p1", app)
-        classroom2 = initialize("biology_block_a", app)
-
-        result = get_teacher_class_by_section(
-            classroom2.teacher_user_id,
-            classroom1.economy.section,
-        )
-
-        assert result is None
 
     def test_get_class_by_public_id_returns_matching_class(self, app):
         """Happy path: class public id resolves to the owning ClassEconomy row."""

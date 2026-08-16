@@ -286,8 +286,7 @@
                             <tr {% if tx.is_void %}class="table-secondary text-decoration-line-through" {% endif %}>
                                 <td>
                                     {% if tx.timestamp %}
-                                    <span class="local-timestamp"
-                                        data-timestamp="{{ format_utc_iso(tx.timestamp) }}"></span>
+                                    {{ tx.timestamp|fmt_timestamp }}
                                     {% else %}
                                     N/A
                                     {% endif %}
@@ -347,8 +346,7 @@
                             <tr {% if tx.is_void %}class="table-secondary text-decoration-line-through" {% endif %}>
                                 <td>
                                     {% if tx.timestamp %}
-                                    <span class="local-timestamp"
-                                        data-timestamp="{{ format_utc_iso(tx.timestamp) }}"></span>
+                                    {{ tx.timestamp|fmt_timestamp }}
                                     {% else %}
                                     N/A
                                     {% endif %}

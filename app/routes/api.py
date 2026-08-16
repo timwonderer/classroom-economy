@@ -1141,12 +1141,14 @@ def hall_pass_history():
         offset = (page - 1) * page_size
         records = query.offset(offset).limit(page_size).all()
 
-        # Helper function to format timestamp as UTC with 'Z' suffix
+        from app.utils.temporal_display import format_timestamp as _fmt_display, resolve_display_timezone as _resolve_tz
+        _display_tz = _resolve_tz(context)
+
         def format_timestamp(dt):
             if not dt:
                 return None
-            return ensure_utc(dt).isoformat().replace('+00:00', 'Z')
-        
+            return _fmt_display(dt, _display_tz)
+
         # Format records for response
         records_data = []
         for record in records:
@@ -1646,8 +1648,11 @@ def attendance_history():
             student_class_label = seat_info['class_label'] or student_class_id or 'Unknown'
 
             timestamp_str = None
+            formatted_ts = None
             if record.timestamp:
                 timestamp_str = ensure_utc(record.timestamp).isoformat().replace('+00:00', 'Z')
+                from app.utils.temporal_display import format_timestamp as _format_ts, resolve_display_timezone as _resolve_tz
+                formatted_ts = _format_ts(record.timestamp, _resolve_tz(context))
 
             records_data.append({
                 "id": record.id,
@@ -1658,7 +1663,8 @@ def attendance_history():
                 "period": seat_info['period'],
                 "status": record.status,
                 "reason": record.reason_code,
-                "timestamp": timestamp_str
+                "timestamp": timestamp_str,
+                "formatted_timestamp": formatted_ts,
             })
 
         return jsonify({
@@ -1762,7 +1768,11 @@ def handle_tap():
             reason_code=reason_code,
             idempotency_key=f"prod_attendance:{class_id}:{seat_id}:{normalized_action}:{secrets.token_hex(12)}",
         )
+        db.session.commit()
         current_app.logger.info("TAP success - seat %s class_id=%s action=%s", seat_id, class_id, action)
+    except ValueError as e:
+        db.session.rollback()
+        return jsonify({"error": str(e)}), 409
     except SQLAlchemyError as e:
         db.session.rollback()
         current_app.logger.error(f"TAP failed for seat {seat_id}: {e}", exc_info=True)
@@ -1833,33 +1843,5 @@ def student_status():
 
 # -------------------- UTILITY API --------------------
 
-@api_bp.route('/set-timezone', methods=['POST'])
-def set_timezone():
-    """Store user's timezone in session for datetime formatting"""
-    now = utc_now()
-
-    # Check via V2 Canonical Context
-    context = getattr(g, "canonical_context", None)
-    if not context:
-        return jsonify({"status": "error", "message": "Unauthorized"}), 401
-
-    session['last_activity'] = now.isoformat()
-
-    data = request.get_json()
-    timezone_name = data.get('timezone')
-
-    if not timezone_name:
-        return jsonify({"status": "error", "message": "Timezone is required."}), 400
-
-    # Validate Timezone
-    if timezone_name not in pytz.all_timezones:
-         return jsonify({"status": "error", "message": "Invalid timezone."}), 400
-
-    # Store in session
-    session['timezone'] = timezone_name
-    current_app.logger.info(f"Timezone set to {timezone_name} for session")
-
-    return jsonify({"status": "success", "message": f"Timezone set to {timezone_name}."})
-
-
+    # set-timezone endpoint — REMOVED (SPEC-TIME-001: display timezone is server-supplied from ClassEconomy.class_timezone)
     # view_as_student_status endpoint — REMOVED (prohibited feature)

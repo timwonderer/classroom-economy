@@ -128,8 +128,7 @@
                             <td>
                                 <small>
                                     {% if log.timestamp %}
-                                    <span class="local-timestamp"
-                                        data-timestamp="{{ format_utc_iso(log.timestamp) }}"></span>
+                                    {{ log.timestamp|fmt_timestamp }}
                                     {% else %}N/A{% endif %}
                                 </small>
                             </td>
@@ -183,8 +182,7 @@
                         <div class="modal-body">
                             <div class="row g-3 mb-3">
                                 <div class="col-md-4"><strong>Timestamp:</strong><br>
-                                    {% if log.timestamp %}<span class="local-timestamp"
-                                        data-timestamp="{{ format_utc_iso(log.timestamp) }}"></span>{% else %}N/A{%
+                                    {% if log.timestamp %}{{ log.timestamp|fmt_timestamp }}{% else %}N/A{%
                                     endif %}
                                 </div>
                                 <div class="col-md-4">
@@ -323,8 +321,7 @@
                             <td class="ps-3">
                                 <small>
                                     {% if log.timestamp %}
-                                    <span class="local-timestamp"
-                                        data-timestamp="{{ format_utc_iso(log.timestamp) }}"></span>
+                                    {{ log.timestamp|fmt_timestamp }}
                                     {% else %}N/A{% endif %}
                                 </small>
                             </td>
@@ -381,8 +378,7 @@
                         <div class="modal-body">
                             <div class="row g-3 mb-3">
                                 <div class="col-md-4"><strong>Timestamp:</strong><br>
-                                    {% if log.timestamp %}<span class="local-timestamp"
-                                        data-timestamp="{{ format_utc_iso(log.timestamp) }}"></span>{% else %}N/A{%
+                                    {% if log.timestamp %}{{ log.timestamp|fmt_timestamp }}{% else %}N/A{%
                                     endif %}
                                 </div>
                                 <div class="col-md-4">

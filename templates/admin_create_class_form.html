@@ -1,0 +1,59 @@
+{% extends "layout_admin.html" %}
+{% set page_title = "Create New Class" %}
+{% block title %}Create New Class{% endblock %}
+{% set current_page = "create_class" %}
+{% block page_icon %}add_circle{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-lg-7 col-xl-6">
+    <div class="card shadow-sm">
+      <div class="card-header bg-primary text-white">
+        <h5 class="mb-0">
+          <span class="material-symbols-outlined" style="vertical-align: middle;">school</span>
+          Create a New Class
+        </h5>
+      </div>
+      <div class="card-body">
+        <p class="text-muted mb-4">
+          Set up a new class economy. You can upload a student roster after creation.
+        </p>
+
+        <form method="POST" action="{{ url_for('admin.create_new_class') }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+          <div class="mb-3">
+            <label for="class_display_name" class="form-label fw-semibold">Class Name</label>
+            <input type="text" class="form-control" id="class_display_name" name="class_display_name"
+                   placeholder="e.g., Aura Farming 101, AP Economics" maxlength="100" required>
+            <div class="form-text">This is how the class will appear to you and your students.</div>
+          </div>
+
+          <div class="mb-3">
+            <label for="section" class="form-label fw-semibold">Section / Period</label>
+            <input type="text" class="form-control" id="section" name="section"
+                   placeholder="e.g., Period 2, Block A" maxlength="50">
+            <div class="form-text">Optional. Helps distinguish multiple sections of the same class.</div>
+          </div>
+
+          <div class="mb-3">
+            <label for="teacher_display_name" class="form-label fw-semibold">Your Display Name</label>
+            <input type="text" class="form-control" id="teacher_display_name" name="teacher_display_name"
+                   placeholder="e.g., Mr. Smith, Ms. García" maxlength="100" required>
+            <div class="form-text">How students will see your name in this class.</div>
+          </div>
+
+          <hr class="my-4">
+
+          <div class="d-grid">
+            <button type="submit" class="btn btn-primary btn-lg">
+              <span class="material-symbols-outlined" style="vertical-align: middle;">add_circle</span>
+              Create Class
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -5,9 +5,9 @@
 /* ─── Shared Base Layer ─── */
 :root {
     /* Perspective: Professional yet warm */
-    --font-family: 'Inter', system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-    --font-display: 'Atkinson Hyperlegible Next', 'Inter', system-ui, -apple-system, "Segoe UI", sans-serif;
-    --font-data: 'IBM Plex Mono', 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+    --font-family: 'Inter', sans-serif;
+    --font-display: 'Atkinson Hyperlegible Next',  sans-serif;
+    --font-data: 'IBM Plex Mono', monospace;
 
     /* Bootstrap Overrides - Base */
     --bs-body-font-family: var(--font-family);
@@ -76,7 +76,7 @@
     --primary-subtle: #e8f0ef;
 
     /* Secondary: Gold */
-    --secondary: #8a6a1c;
+    --secondary:#D4A857;
     --secondary-hover: #735816;
     --secondary-text: var(--neutral-900);
     --secondary-subtle: #f9f5e6;
@@ -117,7 +117,7 @@ body.student-shell {
     --primary-subtle: #e8edf4;
 
     /* Secondary: Bronze/Brown */
-    --secondary: #8a643f;
+    --secondary: #D4A857;
     --secondary-hover: #725132;
     --secondary-text: var(--text-inverse);
     --secondary-subtle: #f4efe9;

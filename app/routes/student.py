@@ -114,6 +114,7 @@ from app.utils.join_code import get_display_join_code
 from app.utils.canonical_temporal_resolver import utc_now, ensure_utc
 from app.utils.canonical_temporal_resolver import (
     CLASS_LEVEL_EVALUATION,
+    SYSTEM_LEVEL_EVALUATION,
     canonical_temporal_resolver,
     ensure_utc,
     utc_now,
@@ -412,7 +413,8 @@ def get_rent_settings_for_context(context):
         .first()
     )
     if not current_cycle or not current_cycle.policy_uuid:
-        return None
+        # Fallback: direct class_id lookup when no BillCycle exists yet
+        return RentSettings.query.filter_by(class_id=class_id).first()
     return RentSettings.query.filter_by(policy_uuid=current_cycle.policy_uuid).first()
 
 
@@ -498,11 +500,6 @@ def is_feature_enabled(feature_name):
     Returns:
         bool: True if feature is enabled, False otherwise
     """
-    if feature_name == 'rent':
-        rent_settings = get_rent_settings_for_context(resolve_canonical_context())
-        if rent_settings:
-            return True
-
     context = resolve_canonical_context()
     if not context:
         return False
@@ -650,7 +647,7 @@ def setup_pin_passphrase():
         session.pop('onboarding_seat_ref', None)
         session.pop('onboarding_user_ref', None)
         session.pop('generated_username', None)
-        flash("Setup completed successfully!", "setup")
+        flash("You're all set! Log in with your new username and PIN to get started.", "success")
         return redirect(url_for('student.setup_complete'))
     return render_template('student_pin_setup.html', username=username, form=form)
 
@@ -757,8 +754,16 @@ def add_class():
             flash(result.error_message, category)
             return redirect(_get_return_target())
 
-        flash("Successfully added to this class! You can now access it from your dashboard.", "success")
-        return redirect(_get_return_target())
+        # Switch context to the newly claimed class.
+        # No explicit commit — the enclosing @feat_shell owns the transaction boundary.
+        new_seat = db.session.get(Seat, result.seat_id)
+        if new_seat:
+            user = db.session.get(User, context.user_id)
+            user.last_active_class_id = new_seat.class_id
+            user.last_active_seat_id = new_seat.id
+
+        flash("You're in! This class is now your active class.", "success")
+        return redirect(url_for('student.dashboard'))
 
     return render_template('student_add_class.html', form=form)
 
@@ -948,15 +953,16 @@ def dashboard():
 
 
     # --- Calculate remaining session time for frontend timer ---
+    sle_now = canonical_temporal_resolver(SYSTEM_LEVEL_EVALUATION, primitive="current_time").canonical_now_utc
     login_time = datetime.fromisoformat(session['login_time'])
     expiry_time = login_time + timedelta(minutes=SESSION_TIMEOUT_MINUTES)
-    session_remaining_seconds = max(0, int((expiry_time - utc_now()).total_seconds()))
+    session_remaining_seconds = max(0, int((expiry_time - sle_now).total_seconds()))
 
     # --- Get feature settings for this student ---
     feature_settings = get_feature_settings_for_student()
 
     # --- Check for pending recovery request ---
-    pending_recovery_code = get_pending_recovery_code_for_seat(student.id, utc_now())
+    pending_recovery_code = get_pending_recovery_code_for_seat(student.id, sle_now)
 
     # --- Calculate weekly/monthly analytics ---
     from app.models import AttendanceSession as _AttSession
@@ -3198,8 +3204,13 @@ def login():
         session.pop('generated_username', None)
         clear_teacher_display_name_cache()
 
-        session['login_time'] = utc_now().isoformat()
+        now = canonical_temporal_resolver(SYSTEM_LEVEL_EVALUATION, primitive="current_time").canonical_now_utc
+        session['login_time'] = now.isoformat()
         session['last_activity'] = session['login_time']
+
+        from app.auth import SESSION_TIMEOUT_MINUTES
+        user.current_session_started_at = now
+        user.current_session_expires_at = now + timedelta(minutes=SESSION_TIMEOUT_MINUTES)
 
         linked_user = user
 
@@ -3243,6 +3254,7 @@ def login():
             nonce = secrets.token_urlsafe(32)
             session['current_session_nonce'] = nonce
             linked_user.current_session_nonce = nonce
+            # No explicit commit — FEAT-IDEN-001's @feat_shell owns the transaction boundary.
             return redirect(url_for('student.select_class_context'))
 
         # Resolve the canonical seat for the selected class.
@@ -3263,6 +3275,7 @@ def login():
         linked_user.last_active_seat_id = target_seat.id
 
         # Establish canonical session (user_id + class_id + role + nonce).
+        # No explicit commit — FEAT-IDEN-001's @feat_shell owns the transaction boundary.
         establish_student_session(linked_user, class_id=valid_persisted_selection["class_id"])
         nonce = secrets.token_urlsafe(32)
         session['current_session_nonce'] = nonce

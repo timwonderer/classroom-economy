@@ -109,7 +109,7 @@
                             <h6 class="text-muted mb-2">Escalated</h6>
                             <p class="mb-0">
                                 <span class="material-symbols-outlined me-2">arrow_circle_up</span>
-                                <span class="local-timestamp" data-timestamp="{{ format_utc_iso(issue.escalated_at) }}"></span>
+                                {{ issue.escalated_at|fmt_timestamp }}
                             </p>
                         </div>
                         {% if issue.sysadmin_reviewed_at %}
@@ -117,7 +117,7 @@
                             <h6 class="text-muted mb-2">Reviewed</h6>
                             <p class="mb-0">
                                 <span class="material-symbols-outlined me-2">visibility</span>
-                                <span class="local-timestamp" data-timestamp="{{ format_utc_iso(issue.sysadmin_reviewed_at) }}"></span>
+                                {{ issue.sysadmin_reviewed_at|fmt_timestamp }}
                             </p>
                         </div>
                         {% endif %}
@@ -228,7 +228,7 @@
                                 <tbody>
                                     {% for trace in correlation_pack.request_trace_json %}
                                     <tr>
-                                        <td><span class="local-timestamp" data-timestamp="{{ trace.timestamp }}"></span></td>
+                                        <td>{{ trace.timestamp|fmt_timestamp }}</td>
                                         <td><code>{{ trace.method }}</code></td>
                                         <td><code>{{ trace.endpoint }}</code></td>
                                         <td>
@@ -253,7 +253,7 @@
                             <div class="list-group-item">
                                 <div class="d-flex justify-content-between">
                                     <strong>{{ error_ref.error_class }}</strong>
-                                    <small><span class="local-timestamp" data-timestamp="{{ error_ref.timestamp }}"></span></small>
+                                    <small>{{ error_ref.timestamp|fmt_timestamp }}</small>
                                 </div>
                                 <div class="small mt-1">
                                     <code>{{ error_ref.endpoint }}</code>
@@ -343,7 +343,7 @@
                                     </small>
                                 </div>
                                 <small class="text-muted">
-                                    <span class="local-timestamp" data-timestamp="{{ format_utc_iso(entry.changed_at) }}"></span>
+                                    {{ entry.changed_at|fmt_timestamp }}
                                 </small>
                             </div>
                         </div>
@@ -356,8 +356,6 @@
         </div>
     </div>
 </div>
-
-<script src="{{ static_url('js/timezone-utils.js') }}"></script>
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {

@@ -262,6 +262,45 @@ def record_attendance_session(
             raise ValueError("Attendance actor seat must belong to the canonical class.")
     target_user_id = target_seat.user_id
 
+    if status == "active":
+        from app.utils.canonical_temporal_resolver import canonical_temporal_resolver, CLASS_LEVEL_EVALUATION
+        cle = canonical_temporal_resolver(
+            CLASS_LEVEL_EVALUATION,
+            canonical_execution_context=ctx,
+            primitive="current_time",
+        )
+        class_today = cle.canonical_now.date()
+
+        # Reject if student already has done_for_day for this class today
+        done_today = AttendanceSession.query.filter(
+            AttendanceSession.target_user_id == target_user_id,
+            AttendanceSession.class_id == ctx.class_id,
+            AttendanceSession.reason_code == AttendanceReasonCode.DONE_FOR_DAY.value,
+            db.func.date(AttendanceSession.timestamp) == class_today,
+        ).first()
+        if done_today:
+            raise ValueError("Student is done for the day and cannot start work again until the next canonical day.")
+
+        # Close any existing active session with done_for_day
+        existing_active = AttendanceSession.query.filter(
+            AttendanceSession.target_user_id == target_user_id,
+            AttendanceSession.status == "active",
+        ).first()
+        if existing_active:
+            closing_row = AttendanceSession(
+                target_seat_id=existing_active.target_seat_id,
+                actor_seat_id=resolved_actor_seat_id,
+                class_id=existing_active.class_id,
+                target_user_id=target_user_id,
+                status="inactive",
+                reason_code=AttendanceReasonCode.DONE_FOR_DAY.value,
+                timestamp=event_time,
+                mechanism=mechanism,
+                hall_pass_id=None,
+            )
+            db.session.add(closing_row)
+            db.session.flush()
+
     resolved_reason_code = (
         reason_code.value if reason_code else AttendanceReasonCode.START_WORK.value
     ) if status == "active" else (

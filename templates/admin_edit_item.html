@@ -37,7 +37,7 @@
                 </div>
                 <div class="card-body">
                     <!-- Economy Balance Check -->
-                    <div id="economy-data" data-expected-weekly-hours="{{ (payroll_settings.expected_weekly_hours if payroll_settings and payroll_settings.expected_weekly_hours is not none else 5.0) | float }}" class="visually-hidden"></div>
+                    <div id="economy-data" data-expected-weekly-hours="{{ (expected_weekly_hours if expected_weekly_hours is defined and expected_weekly_hours is not none else 5.0) | float }}" class="visually-hidden"></div>
                     <div id="cwi-info" class="mb-3"></div>
 
                     <div class="row">

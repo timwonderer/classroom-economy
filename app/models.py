@@ -141,6 +141,8 @@ class User(db.Model):
         nullable=True,
         index=True,
     )
+    provisioning_expires_at = db.Column(db.DateTime(timezone=True), nullable=True, index=True)
+
     created_at = db.Column(db.DateTime(timezone=True), default=utc_now, nullable=False)
     updated_at = db.Column(db.DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False)
 
@@ -303,7 +305,7 @@ class ClassEconomy(db.Model):
     teacher_user_id = db.Column(
         db.Integer,
         db.ForeignKey('users.id', ondelete='CASCADE'),
-        nullable=False,
+        nullable=True,
         index=True,
     )
     display_name = db.Column(db.String(100), nullable=True)
@@ -694,9 +696,6 @@ class AttendanceSession(db.Model):
     target_user = db.relationship("User", foreign_keys=[target_user_id], post_update=True)
     actor_seat = db.relationship("Seat", foreign_keys=[actor_seat_id], post_update=True)
 
-    __table_args__ = (
-        db.Index('ix_attendance_sessions_target_user_id_active', 'target_user_id', unique=True, postgresql_where=sa.text("status = 'active' AND target_user_id IS NOT NULL")),
-    )
 
 
 # Legacy tap table removed; canonical replacement: attendance_sessions (DOM-PROD-001).
@@ -1489,9 +1488,9 @@ class PayrollSettings(db.Model):
     first_pay_date = db.Column(db.DateTime(timezone=True), nullable=True)  # First payday
     rounding_mode = db.Column(db.String(20), nullable=False, default='down')  # 'up' or 'down'
 
-    # Economy Balance Check Field
-    # NOTE: This is NOT used for actual payroll calculations - only for economy balance validation
-    expected_weekly_hours = db.Column(db.Float, nullable=True, default=5.0)  # Expected class hours per week
+    # NOTE: `expected_weekly_hours` was moved to `EconomicEngine.expected_weekly_hours`
+    # (canonical per DOM-CLASS-002). It is a CWI parameter, not a payroll parameter,
+    # and is mutated via FEAT-CLASS-005 (immutable versioned engine snapshots).
 
     def __repr__(self):
         return f'<PayrollSettings class_id={self.class_id} block={self.block or "Global"}>'

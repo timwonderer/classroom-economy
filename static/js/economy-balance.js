@@ -341,17 +341,12 @@ class EconomyBalanceChecker {
     /**
      * Get complete economy analysis
      */
-    async analyzeEconomy(expectedWeeklyHours = null, block = null) {
+    async analyzeEconomy(expectedWeeklyHours = null) {
         try {
             const requestBody = {};
 
-            // Include block if provided
-            if (block) {
-                requestBody.block = block;
-            }
-
-            // Note: expected_weekly_hours is read from payroll_settings by the backend
-            // If expectedWeeklyHours is explicitly provided, include it for override
+            // expected_weekly_hours is read from EconomicEngine by the backend.
+            // If explicitly provided (simulator), include it for override.
             if (expectedWeeklyHours !== null) {
                 requestBody.expected_weekly_hours = expectedWeeklyHours;
             }

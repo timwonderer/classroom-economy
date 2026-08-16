@@ -105,8 +105,7 @@
                                     <div class="text-muted" style="font-size:0.72rem;">
                                         {{ error.request_method }} {{ error.request_path }}
                                         {% if error.timestamp %}
-                                        · <span class="local-timestamp"
-                                            data-timestamp="{{ format_utc_iso(error.timestamp) }}"></span>
+                                        · {{ error.timestamp|fmt_timestamp }}
                                         {% endif %}
                                     </div>
                                 </div>
@@ -161,8 +160,7 @@
                             <td>
                                 <small class="text-muted">
                                     {% if admin.last_login %}
-                                    <span class="local-timestamp"
-                                        data-timestamp="{{ format_utc_iso(admin.last_login) }}"></span>
+                                    {{ admin.last_login|fmt_timestamp }}
                                     {% else %}
                                     Never
                                     {% endif %}
