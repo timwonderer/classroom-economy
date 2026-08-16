@@ -365,6 +365,8 @@ The following table is the canonical reference set for the Economic Engine.
 | Fine | 7% to 18% CWI | 5% to 15% CWI | 4% to 12% CWI |
 | Collective goal | 0.75x to 7x CWI | 1x to 8x CWI | 1.5x to 10x CWI |
 
+System-defined fines such as rent late fees and overdraft fees shall use the above table for reference when making recommendations. Actual configured fine amount shall persist on `economic_engine` for overdraft fines and `rent_settings` for rent late fees.
+
 Store tier reference:
 
 | Tier | Price Band |

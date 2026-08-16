@@ -31,7 +31,7 @@ This specification governs:
 - pending future policy visibility,
 - activation intent semantics.
 
-This specification applies to:
+This specification applies to the creation of domain-specific rows due to rebalancing actions that apply to:
 - rent policy,
 - insurance policy,
 - banking policy,
@@ -138,7 +138,7 @@ Operational domains remain sole authority over:
 Examples:
 - Rent domain owns rent cycle legality.
 - Insurance domain owns renewal legality.
-- Banking domain owns accrual rollover legality.
+
 
 ---
 
@@ -173,20 +173,13 @@ Policy activation behavior MUST NOT depend on:
 
 Represents immutable constitutional economics policy truth.
 
-A policy version defines the exact economic rules active for a:
-
-```
-(class_id, domain)
-```
-
-during a given operational period.
+A policy version defines the exact economic rules active for a `class_id` during a given operational period.
 
 Example fields:
 
 ```
 id
 class_id
-domain
 version_number
 policy_payload_json
 created_at
@@ -216,7 +209,6 @@ Example fields:
 ```
 id
 class_id
-domain
 source_policy_version_id
 target_policy_version_id
 activation_mode
@@ -228,6 +220,8 @@ correlation_id
 superseded_by_transition_id
 cancelled_at
 ```
+
+The `policy_transitions` and `policy_versions` tables only record the evolution of economic policies. For domain-specific versioning, consult DOM-POL-001. 
 
 
 ---
@@ -280,13 +274,13 @@ Economics governance MUST NOT encode:
 
 # VIII. Policy Supersession
 
-If a newer lawful economics policy version conflicts with an existing pending version in the same `(class_id, domain)` scope:
+If a newer lawful economics policy version conflicts with an existing pending version in the same `class_id` scope:
 
 ```
 new_transition.created_at > existing_pending_transition.created_at
 ```
 
-the older version MUST become `superseded`. If timestamps are equal or clock-skewed, the authoritative ordering MUST use a monotonic sequence or a documented total-order tie-breaker, such as the transition identifier. Exactly one pending version MUST be authoritative for each `(class_id, domain)` scope.
+the older version MUST become `superseded`. If timestamps are equal or clock-skewed, the authoritative ordering MUST use a monotonic sequence or a documented total-order tie-breaker, such as the transition identifier. Exactly one pending version MUST be authoritative for each `class_id` scope.
 
 The newer lawful version becomes authoritative.
 
@@ -303,14 +297,13 @@ Teacher-visible rebalance operations represent grouped class economics governanc
 Operationally:
 - each selected economic change SHALL create an independent economics policy version,
 - each operational domain SHALL retain sovereign activation legality,
-- rebalance execution SHALL NOT collapse multiple domains into single mutable state.
+- rebalance execution SHALL create a new policy version on respective domain-defined tables
 
 Examples:
-- rent economics policy version
-- insurance economics policy version
-- banking economics policy version
+- rent rebalance --> `rent_settings`
+- store pricing correction --> `store_items`
 
-Each version remains independently governed.
+Each change creates new immutable version rows with specific effective date
 
 ---
 
