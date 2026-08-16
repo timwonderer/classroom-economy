@@ -6390,7 +6390,6 @@ def _next_tenant_scoped_tier_id(seed, existing_ids):
 
 @admin_bp.route('/insurance', methods=['GET', 'POST'])
 @admin_required
-@feat_shell("FEAT-SETTINGS-001")
 def insurance_management():
     """Main insurance management dashboard."""
     user_id = g.canonical_context.user_id
@@ -6428,51 +6427,28 @@ def insurance_management():
             flash("Give your new policy a title before creating it.", "warning")
             return redirect(url_for('admin.insurance_management'))
 
-        draft_payload = {
-            'title': title,
-            'description': '',
-            'premium': '0.00',
-            'charge_frequency': 'monthly',
-            'autopay': True,
-            'waiting_period_days': 0,
-            'claim_time_limit_days': 0,
-            'max_claims_count': 0,
-            'max_claim_amount': None,
-            'max_payout_per_period': None,
-            'claim_type': 'transaction_monetary',
-            'tier_group': None,
-            'tier_name': None,
-            'tier_color': None,
-            'tier_level': None,
-            'bundle_with_policy_ids': [],
-            'bundle_discount_percent': None,
-            'bundle_discount_amount': None,
-            # HIDDEN by explicit caller request per FEAT-POL-001 §V.4.
-            # Prevents student-facing enrollment against an unconfigured
-            # policy. Teacher activates on the edit page when ready.
-            'is_active': False,
-            'entitlement_item_id': None,
-        }
+        # Mutation is delegated to a proper FEAT wrapper
+        # (execute_create_insurance_policy_draft) so this route no
+        # longer needs @feat_shell — GET loads therefore stop emitting
+        # FEAT-SHELL-DIRTY. Idempotency key is stable per class + title
+        # so a double-submit of the same modal is a no-op.
+        #
+        # The explicit db.session.commit() after the FEAT call handles
+        # the outer-transaction case: FEATContext's begin_nested() (used
+        # because the earlier reads in this handler autobegan a session
+        # transaction) only releases the SAVEPOINT; the outer txn still
+        # needs to commit for the row to persist. Allowed by the
+        # atomicity check because we are OUTSIDE the FEAT and the
+        # session has no dirty state after the FEAT's flush.
+        from app.feats.policy_reference_feat import execute_create_insurance_policy_draft
 
-        # Route runs inside @feat_shell("FEAT-SETTINGS-001") — matches
-        # edit_insurance_policy's pattern. That decorator sets up a
-        # FEATContext with begin_nested() (because the earlier reads
-        # in this handler already autobegan a session transaction). The
-        # explicit db.session.commit() below is required to persist the
-        # outer transaction; without it the SAVEPOINT release from the
-        # FEATContext exit leaves the row pending and it rolls back at
-        # end-of-request (the exact symptom of the prior 302→404 bug).
-        # This commit is allowed by the atomicity check in
-        # enforce_feat_context_on_commit via the
-        # session.in_nested_transaction() bypass.
-        new_version = create_policy_version(
+        title_hash = hashlib.sha256(title.encode()).hexdigest()[:16]
+        idempotency_key = f"feat:pol:insurance-new:{selected_class_id}:{title_hash}"
+        new_version = execute_create_insurance_policy_draft(
             class_id=selected_class_id,
             actor_user_id=user_id,
-            payload=draft_payload,
-            source_version=None,
-            is_active=False,
-            activation_mode='manual',
-            status='applied',
+            title=title,
+            idempotency_key=idempotency_key,
         )
         db.session.commit()
 
