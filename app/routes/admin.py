@@ -6046,7 +6046,8 @@ def rent_settings():
     # Extract basic statistics from view model
     total_students = len(obligation_summary.student_rows) if obligation_summary else 0
 
-    # Get active waivers (still needs manual query for waiver-specific fields not in view model)
+    # Active rent waivers as of now. Per DOM-OBL-001, coverage window is
+    # derived from the waiver's bill_cycle; the projection resolves it.
     now = utc_now()
     active_waivers = []
     for waiver in obligations_service.get_active_rent_waivers_for_class(
@@ -6062,8 +6063,8 @@ def rent_settings():
             waiver_start_date=waiver.coverage_start_time,
             waiver_end_date=waiver.coverage_end_time,
             periods_count=_count_rent_waiver_periods(settings, waiver),
-            reason=getattr(waiver, 'notes', None) or getattr(waiver, 'reason', None),
-            created_at=waiver.assessed_at,
+            reason=None,  # DOM-OBL-001 does not specify a reason field on assessment events
+            created_at=waiver.timestamp,
         ))
 
     # Build all_students view model dicts for waiver form (no raw SQLAlchemy in templates).

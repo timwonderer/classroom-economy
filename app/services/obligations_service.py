@@ -361,6 +361,65 @@ def get_rent_waivers_for_seat(
     )
 
 
+@dataclass(frozen=True)
+class RentWaiverView:
+    """Derived projection of a rent WAIVED event with its coverage window.
+
+    Per DOM-OBL-001 §VII: assessment events do not store coverage windows.
+    The window is derived from the linked bill_cycle (cycle_boundary_at,
+    next_assessment_at). This projection resolves that derivation once so
+    callers (admin views, helpers) can work with a stable shape.
+    """
+    id: int
+    seat_id: int
+    correlation_id: str
+    timestamp: datetime  # When the waiver was granted (event canonical timestamp)
+    coverage_start_time: datetime  # Derived from bill_cycle.cycle_boundary_at
+    coverage_end_time: datetime  # Derived from bill_cycle.next_assessment_at
+
+
+def get_active_rent_waivers_for_class(
+    class_id: str,
+    coverage_date: datetime | None = None,
+) -> list[RentWaiverView]:
+    """Return rent WAIVED events for a class whose coverage window contains coverage_date.
+
+    A waiver satisfies exactly one assessment (shared correlation_id) which
+    belongs to exactly one bill_cycle. The bill_cycle defines the coverage
+    window [cycle_boundary_at, next_assessment_at). "Active" means
+    coverage_date falls in that window. When coverage_date is None, all
+    waivers with a resolvable window are returned.
+
+    Waivers whose bill_cycle_id is NULL are omitted: without a cycle they
+    have no derivable coverage window.
+    """
+    q = (
+        db.session.query(ObligationAssessment, BillCycle)
+        .join(BillCycle, ObligationAssessment.bill_cycle_id == BillCycle.id)
+        .filter(
+            ObligationAssessment.class_id == class_id,
+            ObligationAssessment.obligation_type == 'RENT',
+            ObligationAssessment.event_type == 'WAIVED',
+        )
+    )
+    if coverage_date is not None:
+        q = q.filter(
+            BillCycle.cycle_boundary_at <= coverage_date,
+            BillCycle.next_assessment_at > coverage_date,
+        )
+    return [
+        RentWaiverView(
+            id=waiver.id,
+            seat_id=waiver.seat_id,
+            correlation_id=waiver.correlation_id,
+            timestamp=waiver.timestamp,
+            coverage_start_time=cycle.cycle_boundary_at,
+            coverage_end_time=cycle.next_assessment_at,
+        )
+        for waiver, cycle in q.order_by(BillCycle.cycle_boundary_at.desc()).all()
+    ]
+
+
 def get_cycle_rent_amount(
     class_id: str,
     coverage_month: int,
