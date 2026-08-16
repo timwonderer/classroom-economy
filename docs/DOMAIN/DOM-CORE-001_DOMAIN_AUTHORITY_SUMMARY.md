@@ -63,7 +63,7 @@ All domains listed below are bound by the following structural rules:
   - `*_settings`: Authoritative Directives (Rates, Schedules, Limits).
   - `class_features`: Authoritative Enablement State.
 - **Key Transitions**: `Update Policy`, `Toggle Feature`.
-- **Primary Schema**: `class_features` (feature enablement). Class Configuration does **not** own domain-specific policy definitions such as `rent_settings`, `payroll_settings`, `hall_pass_settings`, or `banking_settings` (see `DOM-CLASS-001` §II and §V) — those are stored in the Policies repository (`DOM-POL-001`) or the owning operational domain.
+- **Primary Schema**: `class_features` (feature enablement). Class Configuration does **not** own domain-specific policy definitions such as `rent_settings`, `payroll_settings`, `hall_pass_settings`, or `banking_settings` (see `DOM-CLASS-001` §II and §V) — those are stored in the Policies repository (`DOM-POL-001`) as immutable version rows and consumed by the owning operational domain.
 
 ### 3. Productivity & Payroll (`DOM-PROD-001`)
 - **Authority**: Sovereign over productivity facts, hall-pass consumption records, and payroll business events.
@@ -135,7 +135,7 @@ All domains listed below are bound by the following structural rules:
   - Definition rows (`rent_settings`, `store_items`, insurance definitions, etc.): Immutable-after-insert version records.
   - Availability state per row: `IN_USE`, `HIDDEN`, `RETIRED`.
 - **Key Transitions**: none originated here. New definitions are inserted by the domain that initiates the change (Class Config UI submission, insurance authoring flow, etc.); Policies only exposes `Disable` / `Retire` availability projections (see `DOM-POL-001` §VIII).
-- **Primary Schema**: `rent_settings`, `store_items`, `store_item_visibility`, insurance policy definitions.
+- **Primary Schema**: `rent_settings` (consumed by DOM-OBL-001), `payroll_settings` / `payroll_rewards` / `payroll_fines` (consumed by DOM-PROD-001), `hall_pass_settings` (consumed by DOM-PROD-001), `banking_settings` (consumed by Banking domain), `store_items` / `store_item_visibility` (consumed by DOM-STORE-001), insurance policy definitions (consumed by Insurance flow).
 - **Boundary**: rent enablement → Class Configuration; rent settings → Policies; rent bill cycles and assessments → Obligations. See `DOM-POL-001` §X for the full boundary table.
 
 ---
