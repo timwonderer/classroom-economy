@@ -22,6 +22,12 @@ class EconomyBalanceChecker {
         this.debounceDelay = options.debounceDelay || 500;
         this.debounceTimer = null;
         this.currentCWI = null;
+        // When true, displayWarnings() skips the Recommended Range / Ideal
+        // block for callers that already show that info elsewhere on the
+        // page (e.g. rent-settings' CWI helper box). Store-item tier
+        // recommendations still render, since no equivalent proactive
+        // display exists for them.
+        this.suppressRecommendationsEcho = options.suppressRecommendationsEcho === true;
 
         if (this.autoValidate) {
             this.initializeAutoValidation();
@@ -177,73 +183,81 @@ class EconomyBalanceChecker {
         const warning = warnings.filter(w => w.level === 'warning');
         const success = warnings.filter(w => w.level === 'success');
 
+        // Alert-card visual: card wrapper + colored header + body.
+        // Matches templates/macros/cards.html alert_card macro so the
+        // JS-rendered alerts blend with server-rendered ones.
+        const alertCard = (level, title, icon, bodyHtml) => {
+            const textClass = level === 'warning' ? 'text-dark' : 'text-white';
+            return (
+                `<div class="card shadow-sm mb-3">` +
+                    `<div class="card-header bg-${level} ${textClass} py-3">` +
+                        `<h5 class="mb-0 fw-bold ${textClass}">` +
+                            `<span class="material-symbols-outlined me-2" style="vertical-align: text-bottom;">${icon}</span>` +
+                            title +
+                        `</h5>` +
+                    `</div>` +
+                    `<div class="card-body">${bodyHtml}</div>` +
+                `</div>`
+            );
+        };
+
+        const bulletList = (items) => (
+            items.length === 1
+                ? `<div>${items[0].message}</div>`
+                : `<ul class="mb-0">${items.map(w => `<li>${w.message}</li>`).join('')}</ul>`
+        );
+
         if (critical.length > 0) {
-            html += '<div class="alert alert-danger mb-2">';
-            html += '<strong><i class="bi bi-exclamation-triangle-fill"></i> Critical Issues:</strong><ul class="mb-0 mt-1">';
-            critical.forEach(w => {
-                html += `<li>${w.message}</li>`;
-            });
-            html += '</ul></div>';
+            html += alertCard('danger', 'Critical Issues', 'error', bulletList(critical));
         }
-
         if (warning.length > 0) {
-            html += '<div class="alert alert-warning mb-2">';
-            html += '<strong><i class="bi bi-exclamation-circle-fill"></i> Warnings:</strong><ul class="mb-0 mt-1">';
-            warning.forEach(w => {
-                html += `<li>${w.message}</li>`;
-            });
-            html += '</ul></div>';
+            html += alertCard('warning', 'Warnings', 'warning', bulletList(warning));
         }
-
         if (success.length > 0 && critical.length === 0 && warning.length === 0) {
-            html += '<div class="alert alert-success mb-2">';
-            html += '<strong><i class="bi bi-check-circle-fill"></i> Balance Check:</strong><ul class="mb-0 mt-1">';
-            success.forEach(w => {
-                html += `<li>${w.message}</li>`;
-            });
-            html += '</ul></div>';
+            html += alertCard('success', 'Balance Check', 'check_circle', bulletList(success));
         }
 
-        // Display recommendations
+        // Display recommendations (skipped on pages that already show a
+        // proactive CWI recommendation elsewhere, per suppressRecommendationsEcho).
         if (recommendations && Object.keys(recommendations).length > 0) {
-            html += '<div class="alert alert-info mb-0">';
-            html += '<strong><i class="bi bi-lightbulb-fill"></i> Recommendations:</strong>';
-            html += '<div class="mt-2">';
+            let bodyHtml = '';
 
-            if (recommendations.min !== undefined && recommendations.max !== undefined) {
-                html += `<div class="recommendation-range">`;
-                html += `<strong>Recommended Range:</strong> $${recommendations.min} - $${recommendations.max}`;
+            if (!this.suppressRecommendationsEcho &&
+                recommendations.min !== undefined && recommendations.max !== undefined) {
+                bodyHtml += `<div class="recommendation-range">`;
+                bodyHtml += `<strong>Recommended Range:</strong> $${recommendations.min} - $${recommendations.max}`;
                 if (recommendations.frequency) {
-                    html += ` <span class="text-muted">per ${recommendations.frequency}</span>`;
+                    bodyHtml += ` <span class="text-muted">per ${recommendations.frequency}</span>`;
                 }
                 if (recommendations.recommended) {
-                    html += `<br><strong>Ideal:</strong> $${recommendations.recommended}`;
+                    bodyHtml += `<br><strong>Ideal:</strong> $${recommendations.recommended}`;
                     if (recommendations.frequency) {
-                        html += ` <span class="text-muted">per ${recommendations.frequency}</span>`;
+                        bodyHtml += ` <span class="text-muted">per ${recommendations.frequency}</span>`;
                     }
                 }
-                // Show weekly equivalent if frequency is not weekly
                 if (recommendations.frequency && recommendations.frequency !== 'weekly' &&
                     recommendations.min_weekly !== undefined) {
-                    html += `<br><small class="text-muted">Weekly equivalent: $${recommendations.min_weekly} - $${recommendations.max_weekly}</small>`;
+                    bodyHtml += `<br><small class="text-muted">Weekly equivalent: $${recommendations.min_weekly} - $${recommendations.max_weekly}</small>`;
                 }
-                html += `</div>`;
+                bodyHtml += `</div>`;
             }
 
             if (recommendations.tiers) {
-                html += '<div class="pricing-tiers mt-2">';
-                html += '<strong>Store Item Pricing Tiers:</strong>';
-                html += '<div class="row mt-1">';
+                bodyHtml += '<div class="pricing-tiers mt-2">';
+                bodyHtml += '<strong>Store Item Pricing Tiers:</strong>';
+                bodyHtml += '<div class="row mt-1">';
                 Object.entries(recommendations.tiers).forEach(([tier, range]) => {
-                    html += `<div class="col-6 col-md-3 mb-1">`;
-                    html += `<span class="badge bg-secondary">${tier.toUpperCase()}</span><br>`;
-                    html += `<small>$${range.min} - $${range.max}</small>`;
-                    html += `</div>`;
+                    bodyHtml += `<div class="col-6 col-md-3 mb-1">`;
+                    bodyHtml += `<span class="badge bg-secondary">${tier.toUpperCase()}</span><br>`;
+                    bodyHtml += `<small>$${range.min} - $${range.max}</small>`;
+                    bodyHtml += `</div>`;
                 });
-                html += '</div></div>';
+                bodyHtml += '</div></div>';
             }
 
-            html += '</div></div>';
+            if (bodyHtml.trim()) {
+                html += alertCard('info', 'Recommendations', 'lightbulb', bodyHtml);
+            }
         }
 
         html += '</div>';

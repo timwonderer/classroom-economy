@@ -1120,7 +1120,12 @@
       const economyChecker = new EconomyBalanceChecker({
         warningsContainer: '#economy-warnings',
         bypassSelector: '#bypass_cwi_warnings',
-        expectedWeeklyHours: {{ (expected_weekly_hours if expected_weekly_hours is defined and expected_weekly_hours is not none else 5.0) | float }}
+        expectedWeeklyHours: {{ (expected_weekly_hours if expected_weekly_hours is defined and expected_weekly_hours is not none else 5.0) | float }},
+        // The CWI helper box above already shows range + recommended
+        // proactively; suppress the JS Recommendations echo so the same
+        // numbers don't appear twice (and to avoid the rounding-drift
+        // between the two calculation paths).
+        suppressRecommendationsEcho: true,
     });
 
   // Display CWI info if payroll is configured (class-scoped via canonical context on server).
