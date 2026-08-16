@@ -413,7 +413,8 @@ def get_rent_settings_for_context(context):
         .first()
     )
     if not current_cycle or not current_cycle.policy_uuid:
-        return None
+        # Fallback: direct class_id lookup when no BillCycle exists yet
+        return RentSettings.query.filter_by(class_id=class_id).first()
     return RentSettings.query.filter_by(policy_uuid=current_cycle.policy_uuid).first()
 
 
@@ -499,11 +500,6 @@ def is_feature_enabled(feature_name):
     Returns:
         bool: True if feature is enabled, False otherwise
     """
-    if feature_name == 'rent':
-        rent_settings = get_rent_settings_for_context(resolve_canonical_context())
-        if rent_settings:
-            return True
-
     context = resolve_canonical_context()
     if not context:
         return False
@@ -651,7 +647,7 @@ def setup_pin_passphrase():
         session.pop('onboarding_seat_ref', None)
         session.pop('onboarding_user_ref', None)
         session.pop('generated_username', None)
-        flash("Setup completed successfully!", "setup")
+        flash("You're all set! Log in with your new username and PIN to get started.", "success")
         return redirect(url_for('student.setup_complete'))
     return render_template('student_pin_setup.html', username=username, form=form)
 
@@ -758,8 +754,16 @@ def add_class():
             flash(result.error_message, category)
             return redirect(_get_return_target())
 
-        flash("Successfully added to this class! You can now access it from your dashboard.", "success")
-        return redirect(_get_return_target())
+        # Switch context to the newly claimed class.
+        # No explicit commit — the enclosing @feat_shell owns the transaction boundary.
+        new_seat = db.session.get(Seat, result.seat_id)
+        if new_seat:
+            user = db.session.get(User, context.user_id)
+            user.last_active_class_id = new_seat.class_id
+            user.last_active_seat_id = new_seat.id
+
+        flash("You're in! This class is now your active class.", "success")
+        return redirect(url_for('student.dashboard'))
 
     return render_template('student_add_class.html', form=form)
 
