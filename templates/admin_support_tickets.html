@@ -93,7 +93,7 @@
                                 <span class="badge {% if report.status == 'new' %}bg-primary{% elif report.status == 'reviewed' %}bg-info{% elif report.status == 'closed' %}bg-secondary{% else %}bg-warning text-dark{% endif %}">{{ report.status|title }}</span>
                             </div>
                             <div class="small text-muted mt-1">
-                                Submitted <span class="local-timestamp" data-timestamp="{{ format_utc_iso(report.submitted_at) }}"></span>
+                                Submitted {{ report.submitted_at|fmt_timestamp }}
                                 • Category: {{ (entry.issue_category or report.report_type)|replace('_', ' ')|title }}
                             </div>
                             <p class="mb-0 mt-2">{{ entry.clean_description[:220] }}{% if entry.clean_description|length > 220 %}...{% endif %}</p>

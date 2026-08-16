@@ -162,8 +162,7 @@
                             <td>
                                 <small>
                                     {% if report.submitted_at %}
-                                    <span class="local-timestamp"
-                                        data-timestamp="{{ format_utc_iso(report.submitted_at) }}"></span>
+                                    {{ report.submitted_at|fmt_timestamp }}
                                     {% else %}N/A{% endif %}
                                 </small>
                             </td>
@@ -211,8 +210,7 @@
                     <div class="fw-semibold mb-1" style="font-size:0.9rem;">{{ report.title }}</div>
                     <div class="text-muted mb-2" style="font-size:0.75rem;">
                         {{ report_ref_for(report.id)[:12] }}...
-                        {% if report.submitted_at %} · <span class="local-timestamp"
-                            data-timestamp="{{ format_utc_iso(report.submitted_at) }}"></span>{% endif %}
+                        {% if report.submitted_at %} · {{ report.submitted_at|fmt_timestamp }}{% endif %}
                     </div>
                     <a href="{{ url_for('sysadmin.view_user_report', report_ref=report_ref_for(report.id)) }}"
                         class="btn btn-sm btn-outline-primary">View Report</a>
@@ -308,16 +306,13 @@
                                     <div class="text-muted mt-1" style="font-size:0.72rem;">
                                         {% if pill_id == 'pending' %}
                                         <span class="material-symbols-outlined me-1">arrow_circle_up</span>
-                                        Escalated <span class="local-timestamp"
-                                            data-timestamp="{{ format_utc_iso(issue.escalated_at) }}"></span>
+                                        Escalated {{ issue.escalated_at|fmt_timestamp }}
                                         {% elif pill_id == 'review' %}
                                         <span class="material-symbols-outlined me-1">visibility</span>
-                                        In review since <span class="local-timestamp"
-                                            data-timestamp="{{ format_utc_iso(issue.sysadmin_reviewed_at or issue.escalated_at) }}"></span>
+                                        In review since {{ issue.sysadmin_reviewed_at or issue.escalated_at|fmt_timestamp }}
                                         {% else %}
                                         <span class="material-symbols-outlined me-1">check_circle</span>
-                                        Resolved <span class="local-timestamp"
-                                            data-timestamp="{{ format_utc_iso(issue.sysadmin_resolved_at) }}"></span>
+                                        Resolved {{ issue.sysadmin_resolved_at|fmt_timestamp }}
                                         {% endif %}
                                     </div>
                                 </div>

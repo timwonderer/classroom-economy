@@ -103,7 +103,7 @@
                                 </p>
                                 <small class="text-muted">
                                     <span class="material-symbols-outlined me-1">arrow_circle_up</span>
-                                    Escalated <span class="local-timestamp" data-timestamp="{{ format_utc_iso(issue.escalated_at) }}"></span>
+                                    Escalated {{ issue.escalated_at|fmt_timestamp }}
                                 </small>
                             </div>
                             <div class="text-end">
@@ -155,7 +155,7 @@
                                 </p>
                                 <small class="text-muted">
                                     <span class="material-symbols-outlined me-1">visibility</span>
-                                    In review since <span class="local-timestamp" data-timestamp="{{ format_utc_iso(issue.sysadmin_reviewed_at or issue.escalated_at) }}"></span>
+                                    In review since {{ issue.sysadmin_reviewed_at or issue.escalated_at|fmt_timestamp }}
                                 </small>
                             </div>
                             <div class="text-end">
@@ -206,7 +206,7 @@
                                 </p>
                                 <small class="text-muted">
                                     <span class="material-symbols-outlined me-1">check_circle</span>
-                                    Resolved <span class="local-timestamp" data-timestamp="{{ format_utc_iso(issue.sysadmin_resolved_at) }}"></span>
+                                    Resolved {{ issue.sysadmin_resolved_at|fmt_timestamp }}
                                 </small>
                             </div>
                             <div class="text-end">
@@ -229,5 +229,4 @@
     </div>
 </div>
 
-<script src="{{ static_url('js/timezone-utils.js') }}"></script>
 {% endblock %}

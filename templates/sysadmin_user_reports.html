@@ -84,7 +84,7 @@
                                 </td>
                                 <td>
                                     {% if report.submitted_at %}
-                                        <span class="local-timestamp" data-timestamp="{{ format_utc_iso(report.submitted_at) }}"></span>
+                                        {{ report.submitted_at|fmt_timestamp }}
                                     {% else %}
                                         N/A
                                     {% endif %}

@@ -80,7 +80,7 @@
                             <h6 class="text-muted mb-2">Submitted</h6>
                             <p class="mb-0">
                                 <span class="material-symbols-outlined me-2">schedule</span>
-                                <span class="local-timestamp" data-timestamp="{{ format_utc_iso(issue.submitted_at) }}"></span>
+                                {{ issue.submitted_at|fmt_timestamp }}
                             </p>
                         </div>
                         {% if issue.teacher_reviewed_at %}
@@ -88,7 +88,7 @@
                             <h6 class="text-muted mb-2">First Reviewed</h6>
                             <p class="mb-0">
                                 <span class="material-symbols-outlined me-2">visibility</span>
-                                <span class="local-timestamp" data-timestamp="{{ format_utc_iso(issue.teacher_reviewed_at) }}"></span>
+                                {{ issue.teacher_reviewed_at|fmt_timestamp }}
                             </p>
                         </div>
                         {% endif %}
@@ -229,7 +229,7 @@
                                     {% endif %}
                                     <small class="text-muted">
                                         By {{ action.performed_by_type|title }} at
-                                        <span class="local-timestamp" data-timestamp="{{ format_utc_iso(action.created_at) }}"></span>
+                                        {{ action.created_at|fmt_timestamp }}
                                     </small>
                                 </div>
                             </div>
@@ -346,9 +346,9 @@
                     </div>
                     {% endif %}
                     <p class="text-muted small mb-0 mt-2">
-                        Escalated <span class="local-timestamp" data-timestamp="{{ format_utc_iso(issue.escalated_at) }}"></span>
+                        Escalated {{ issue.escalated_at|fmt_timestamp }}
                         {% if issue.sysadmin_resolved_at %}
-                        • Resolved <span class="local-timestamp" data-timestamp="{{ format_utc_iso(issue.sysadmin_resolved_at) }}"></span>
+                        • Resolved {{ issue.sysadmin_resolved_at|fmt_timestamp }}
                         {% endif %}
                     </p>
                 </div>
@@ -369,7 +369,7 @@
                     </div>
                     {% endif %}
                     <p class="text-muted small mb-0 mt-2">
-                        Escalated <span class="local-timestamp" data-timestamp="{{ format_utc_iso(issue.escalated_at) }}"></span>
+                        Escalated {{ issue.escalated_at|fmt_timestamp }}
                     </p>
                 </div>
             </div>
@@ -387,7 +387,7 @@
                     </div>
                     {% if issue.closed_at %}
                     <p class="text-muted small mb-0 mt-2">
-                        Closed <span class="local-timestamp" data-timestamp="{{ format_utc_iso(issue.closed_at) }}"></span>
+                        Closed {{ issue.closed_at|fmt_timestamp }}
                     </p>
                     {% endif %}
                 </div>
@@ -413,7 +413,7 @@
                                     <div class="fw-bold">{{ history.new_status|replace('_', ' ')|title }}</div>
                                     <small class="text-muted">
                                         By {{ history.changed_by_type|title }} •
-                                        <span class="local-timestamp" data-timestamp="{{ format_utc_iso(history.changed_at) }}"></span>
+                                        {{ history.changed_at|fmt_timestamp }}
                                     </small>
                                     {% if history.notes %}
                                     <p class="mb-0 small text-muted mt-1">{{ history.notes }}</p>
