@@ -391,7 +391,16 @@
 
       <div id="rentSettingsContainer">
 
-        <div class="accordion mb-4" id="rentSettingsAccordion">
+        <div class="card shadow mb-4">
+          <div class="card-header bg-primary text-white py-3">
+            <h5 class="mb-0 fw-bold text-white"><span class="material-symbols-outlined me-2" style="vertical-align: text-bottom;">tune</span>Rent Settings</h5>
+          </div>
+          <div class="card-body">
+            {# CWI helper lives at the top of the card so the recommendation
+               is always visible, not gated by the accordion open state. #}
+            <div id="cwi-info" class="mb-3"></div>
+
+            <div class="accordion accordion-rent-settings" id="rentSettingsAccordion">
 
           <!-- Amount & Frequency -->
           <div class="accordion-item">
@@ -405,9 +414,6 @@
             <div id="collapseAmount" class="accordion-collapse collapse show" aria-labelledby="headingAmount"
               data-bs-parent="#rentSettingsAccordion">
               <div class="accordion-body">
-                <!-- Economy Balance Check -->
-                <div id="cwi-info" class="mb-3"></div>
-
                 <div class="row">
                   <div class="col-md-6 mb-3">
                     <label for="rent_amount" class="form-label fw-bold">Rent Amount ($)</label>
@@ -775,12 +781,13 @@
             </div>
           </div>
 
-        </div>
-
-        <div class="text-end">
-          <button type="submit" class="btn btn-primary btn-lg">
-            <span class="material-symbols-outlined me-2">save</span>Save Settings
-          </button>
+            </div>
+          </div>
+          <div class="card-footer bg-white text-end py-3">
+            <button type="submit" class="btn btn-primary btn-lg">
+              <span class="material-symbols-outlined me-2">save</span>Save Settings
+            </button>
+          </div>
         </div>
       </div>
     </form>

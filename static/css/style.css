@@ -419,6 +419,51 @@ a:hover {
     border-radius: 0 0 calc(var(--radius-sm) - 1px) calc(var(--radius-sm) - 1px);
 }
 
+/* ─── Accordions inside cards ─── */
+/*
+ * Design system (2026-08-16):
+ *   Open panel  → white background, primary text (role-scoped)
+ *   Collapsed   → light-gray background, muted darker-gray text
+ * Bootstrap's default primary tinting is overridden to match the
+ * top-level card / nested card visual language.
+ */
+.accordion-item {
+    border: 1px solid var(--border-color);
+    background-color: var(--surface);
+}
+
+.accordion-button {
+    background-color: var(--neutral-100);
+    color: var(--neutral-700);
+    font-weight: 600;
+    box-shadow: none;
+    transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.accordion-button:not(.collapsed) {
+    background-color: var(--surface);
+    color: var(--primary);
+    box-shadow: inset 0 -1px 0 var(--border-color);
+}
+
+.accordion-button:not(.collapsed) .material-symbols-outlined {
+    color: var(--primary);
+}
+
+.accordion-button.collapsed .material-symbols-outlined {
+    color: var(--neutral-700);
+}
+
+.accordion-button:focus {
+    box-shadow: 0 0 0 0.15rem color-mix(in srgb, var(--primary) 25%, transparent);
+    border-color: transparent;
+}
+
+.accordion-body {
+    background-color: var(--surface);
+    color: var(--text-primary);
+}
+
 /* ─── Forms ─── */
 .form-control,
 .form-select {
