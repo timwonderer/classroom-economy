@@ -1725,10 +1725,24 @@ def _build_pending_class_timezone_payload(class_row: ClassEconomy) -> dict:
 
 
 def _class_timezone_needs_confirmation(class_row: ClassEconomy | None) -> bool:
+    """Confirmation is needed exactly when the class row has no valid
+    timezone written. Two checks, nothing else:
+
+    1. Is a timezone string present on the row?
+    2. Is that string a valid IANA timezone name?
+
+    Any valid IANA value — including 'UTC' or 'Etc/UTC' — is treated as
+    a written, valid choice and does NOT trigger the confirmation
+    modal. If the desired UX is to force teachers to pick a non-UTC
+    timezone, that intent must be enforced at class creation time by
+    not defaulting to 'UTC', not by re-prompting here.
+    """
     if class_row is None:
         return False
     timezone_name = (class_row.class_timezone or "").strip()
-    return timezone_name in ("", "UTC")
+    if not timezone_name:
+        return True
+    return timezone_name not in pytz.all_timezones_set
 
 
 def _queue_pending_class_timezone_confirmation(class_row: ClassEconomy | None):
@@ -3921,7 +3935,7 @@ def students():
     pending_ids = {item.get("class_id") for item in pending_class_timezone_confirmations if item.get("class_id")}
     if current_class_id and current_class_id not in pending_ids:
         class_row = verify_teacher_owns_class(current_class_id, user_id)
-        if class_row and (not class_row.class_timezone or class_row.class_timezone == 'UTC'):
+        if _class_timezone_needs_confirmation(class_row):
             pending_class_timezone_confirmations.append(_build_pending_class_timezone_payload(class_row))
 
     class_row = (
