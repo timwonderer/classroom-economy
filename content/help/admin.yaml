@@ -1,0 +1,42 @@
+# Admin support microcopy.
+#
+# Each entry: { kind: <see registry KINDS>, body: <plain text or {placeholder}> }.
+# Long-form content (offcanvas panels, modals) lives under content/help/long/**/*.md
+# and is authored as Markdown. See app/content/registry.py.
+#
+# Content IDs are presentation-independent: kind is metadata, never part of the key.
+
+# ---- Rent Settings (pilot) ----
+
+admin.rent.panel_title:
+  kind: title
+  body: How to&#58; Rent Management
+
+admin.rent.tooltip_privilege_vs_per_use:
+  kind: tooltip
+  body: >-
+    Privileges are ongoing, non-countable benefits (sit in teacher's chair,
+    choose music). Per-use items are countable services or goods (print
+    worksheet, borrow pencil, phone call home, late work pass).
+
+admin.rent.hint_grace_period:
+  kind: hint
+  body: Days after due date before late penalty applies
+
+admin.rent.hint_late_penalty_amount:
+  kind: hint
+  body: Fee charged for late payments
+
+admin.rent.hint_enable_toggle:
+  kind: hint
+  body: >-
+    When disabled, all rent-related features will be hidden from students
+    and no rent will be collected.
+
+admin.rent.alert_payroll_warning:
+  kind: alert
+  body: "Warning: {message}"
+
+admin.rent.empty_no_students:
+  kind: empty
+  body: No students in class yet.
