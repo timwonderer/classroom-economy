@@ -1120,11 +1120,25 @@
     });
 
   // Display CWI info if payroll is configured (class-scoped via canonical context on server).
+  // Cache the analysis so frequency changes can re-render without a network round-trip.
+  let cachedCWIAnalysis = null;
   economyChecker.analyzeEconomy().then(analysis => {
+    cachedCWIAnalysis = analysis;
     economyChecker.displayCWIInfo(analysis, '#cwi-info');
   }).catch(err => {
     console.log('Payroll not configured yet, skipping CWI display');
   });
+
+  // Re-render the CWI recommendation box whenever the rent frequency changes,
+  // since the range/recommendation shown depends on the selected frequency.
+  const frequencyEl = document.getElementById('frequency_type');
+  if (frequencyEl) {
+    frequencyEl.addEventListener('change', function () {
+      if (cachedCWIAnalysis) {
+        economyChecker.displayCWIInfo(cachedCWIAnalysis, '#cwi-info');
+      }
+    });
+  }
 
   // Re-validate rent when frequency changes
   const rentAmountInput = document.getElementById('rent_amount');

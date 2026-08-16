@@ -381,10 +381,56 @@ class EconomyBalanceChecker {
         const container = document.querySelector(containerId);
         if (!container) return;
 
-        let html = '<div class="cwi-info-box alert alert-info">';
-        html += '<h6><i class="bi bi-info-circle-fill"></i> Classroom Wage Index (CWI)</h6>';
-        html += `<div class="cwi-value">Weekly Expected Income: <strong>$${cwiData.cwi.toFixed(2)}</strong></div>`;
+        const fmt = (v) => (typeof v === 'number' ? `$${v.toFixed(2)}` : '—');
+        const rec = cwiData.recommendations || {};
+        const rentMonthly = rec.rent || {};
+        const rentWeekly = rec.rent_weekly || {};
 
+        // Frequency-aware selection: prefer whatever matches the visible
+        // rent-frequency <select>. Falls back to monthly.
+        const freqEl = document.getElementById('frequency_type');
+        const freq = (freqEl && freqEl.value) || 'monthly';
+        let rentBand = rentMonthly;
+        let periodLabel = 'per month';
+        if (freq === 'weekly') { rentBand = rentWeekly; periodLabel = 'per week'; }
+        else if (freq === 'daily' && rentWeekly.min != null) {
+            rentBand = {
+                min: rentWeekly.min / 7,
+                max: rentWeekly.max / 7,
+                recommended: rentWeekly.recommended / 7,
+            };
+            periodLabel = 'per day';
+        }
+        // (biweekly / custom deliberately fall through to monthly for now.)
+
+        let html = '<div class="cwi-info-box alert alert-info">';
+        html += '<h6 class="mb-2"><i class="bi bi-info-circle-fill"></i> Classroom Wage Index (CWI)</h6>';
+
+        // Line 1: CWI itself
+        html += `<div class="cwi-value mb-1">Your CWI (weekly expected income): <strong>${fmt(cwiData.cwi)}</strong></div>`;
+
+        // Line 2: Economic policy label
+        if (rec.policy_label) {
+            html += `<div class="mb-1">Your economic policy: <strong>${rec.policy_label}</strong>`;
+            if (rec.policy_mode && rec.policy_mode !== rec.policy_label) {
+                html += ` <span class="text-muted small">(${rec.policy_mode})</span>`;
+            }
+            html += '</div>';
+        }
+
+        // Line 3: Rent range + recommendation
+        if (rentBand.min != null && rentBand.max != null) {
+            html += `<div class="mb-1">Therefore your rent range is <strong>${fmt(rentBand.min)}&ndash;${fmt(rentBand.max)}</strong> ${periodLabel}.</div>`;
+        }
+        if (rentBand.recommended != null) {
+            html += `<div class="mb-2">We recommend <strong>${fmt(rentBand.recommended)}</strong> ${periodLabel}`;
+            if (freq !== 'monthly' && freq !== 'weekly' && freq !== 'daily') {
+                html += ` <span class="text-muted small">(shown as monthly; adjust for your ${freq} cycle)</span>`;
+            }
+            html += '.</div>';
+        }
+
+        // Collapsed: how we got there
         if (cwiData.cwi_breakdown || cwiData.breakdown) {
             html += '<details class="mt-2">';
             html += '<summary style="cursor: pointer;">Calculation Details</summary>';
@@ -393,6 +439,12 @@ class EconomyBalanceChecker {
             html += `<div>Pay Rate: $${breakdown.pay_rate_per_hour?.toFixed(2) || 'N/A'}/hour</div>`;
             html += `<div>Expected Hours: ${breakdown.expected_weekly_hours || 'N/A'} hours/week</div>`;
             html += `<div>Total Weekly Minutes: ${breakdown.expected_weekly_minutes || 'N/A'} minutes</div>`;
+            if (rec.policy_label) {
+                const monthlyBand = rec.rent || {};
+                if (monthlyBand.min != null && monthlyBand.max != null) {
+                    html += `<div class="mt-1">Rent range from ${rec.policy_label} policy: ${fmt(monthlyBand.min)}&ndash;${fmt(monthlyBand.max)}/month (recommended ${fmt(monthlyBand.recommended)}/month).</div>`;
+                }
+            }
             html += '</div></details>';
         }
 
