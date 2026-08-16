@@ -51,6 +51,10 @@ Required canonical context:
 
 For `PAYMENT`, the caller SHALL also provide the lawful `ledger_transaction_id`.
 
+Optional context:
+
+- `notes` — free-text metadata to persist on the resulting event row (see `DOM-OBL-001` §VII.1 `notes` column contract). NULL and empty string are equivalent. Not used by any legality check; informational only.
+
 ---
 
 ## IV. Orchestration Logic

@@ -6100,6 +6100,7 @@ def rent_settings():
             'student_name': student_name,
             'due_at': row['due_at'],
             'waived_at': row['waived_at'],
+            'notes': row['notes'],
         })
 
     # Calculate payroll warning
@@ -6261,10 +6262,11 @@ def add_rent_waiver():
 
     Form contract:
       - correlation_ids : repeated form field, one per checked assessment
-      - reason          : optional free-text (currently not persisted per
-                          DOM-OBL-001 §VII.1 — no reason field on
-                          assessment_events; captured here for future
-                          audit-log integration)
+      - notes           : optional free-text teacher note. Persisted on
+                          each resulting WAIVED event via the notes
+                          column added by DOM-OBL-001 §VII.1 (immutable
+                          after insert; informational only; visible to
+                          the teacher and the affected student).
     """
     from app.feats.satisfy_obligation_feat import execute_satisfy_obligation_waiver
 
@@ -6276,6 +6278,7 @@ def add_rent_waiver():
     correlation_ids = [
         cid.strip() for cid in request.form.getlist('correlation_ids') if cid and cid.strip()
     ]
+    notes = (request.form.get('notes') or '').strip() or None
 
     if not correlation_ids:
         flash("No assessments selected for waiver.", "warning")
@@ -6321,6 +6324,7 @@ def add_rent_waiver():
                 correlation_id=correlation_id,
                 class_id=class_id,
                 seat_id=assessment.seat_id,
+                notes=notes,
             )
             waived_count += 1
         except ValueError as e:

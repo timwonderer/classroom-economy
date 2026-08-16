@@ -901,12 +901,12 @@
                             </table>
                           </div>
                           <div class="mb-3">
-                            <label for="reason-{{ student.seat_id }}" class="form-label fw-semibold small">
-                              Reason (optional, for your records)
+                            <label for="notes-{{ student.seat_id }}" class="form-label fw-semibold small">
+                              Notes (optional, visible to you and the student)
                             </label>
                             <textarea class="form-control form-control-sm"
-                                      id="reason-{{ student.seat_id }}"
-                                      name="reason"
+                                      id="notes-{{ student.seat_id }}"
+                                      name="notes"
                                       rows="2"
                                       placeholder="e.g., excused absence during illness"></textarea>
                           </div>
@@ -948,6 +948,7 @@
                       <th>Student</th>
                       <th>Assessment period (due)</th>
                       <th>Waived on</th>
+                      <th>Notes</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -967,6 +968,13 @@
                         <span class="local-timestamp"
                               data-timestamp="{{ format_utc_iso(w.waived_at) }}"></span>
                       </td>
+                      <td>
+                        {% if w.notes %}
+                          {{ w.notes }}
+                        {% else %}
+                          <span class="text-muted">—</span>
+                        {% endif %}
+                      </td>
                     </tr>
                     {% endfor %}
                   </tbody>
@@ -982,16 +990,6 @@
 </div>
 
 <script>
-  // Waiver tab client-side machinery was removed 2026-08-16 alongside
-  // the Waivers UI redesign. The old JS drove a "scope selector"
-  // (past due / current / future) and a per-student past-due-periods
-  // picker fed by student_past_due_json. That model contradicted
-  // DOM-OBL-001 §V.6 (waiver is a one-time satisfaction of a specific
-  // already-assessed liability — no "future scope", no ongoing state).
-  // The new UI is server-rendered: an accordion of outstanding
-  // assessments per student, each row a plain checkbox that submits
-  // its correlation_id directly. No JS needed.
-
   // toggleRentSettings() was removed 2026-08-16 with the is_enabled toggle.
   // Rent feature enablement is owned by Class Features, not by rent_settings.
 

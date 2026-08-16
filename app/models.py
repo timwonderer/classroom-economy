@@ -1036,6 +1036,12 @@ class ObligationAssessment(db.Model):
     # Ledger linkage — required for PAYMENT events, NULL for others (per DOM-OBL-001 §VII.1)
     ledger_transaction_id = db.Column(db.Integer, db.ForeignKey('ledger_transaction.id', ondelete='SET NULL'), nullable=True, index=True)
 
+    # Optional teacher-entered note — DOM-OBL-001 §VII.1 notes column contract.
+    # Free-text metadata; immutable after insert; not consulted by any
+    # legality check. Informational only, visible to the teacher and the
+    # affected student.
+    notes = db.Column(db.Text, nullable=True)
+
     seat = db.relationship('Seat', backref=db.backref('obligation_assessments', passive_deletes=True), foreign_keys=[seat_id])
     policy_version = db.relationship('PolicyVersion', backref=db.backref('assessments', lazy='dynamic'))
     bill_cycle = db.relationship('BillCycle', backref=db.backref('assessments', passive_deletes=True))

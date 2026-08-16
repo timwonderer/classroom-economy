@@ -143,6 +143,8 @@ Waiver is rent-only.
 
 Waiver creates no Ledger movement.
 
+A waiver MAY carry a teacher-entered note explaining the reason. The note is optional, informational, and immutable after insert. It is not authoritative business truth — derived satisfaction rules (§VIII) do not consult it. It is stored solely so teachers and the affected student can later see why the waiver was granted. See §VII.1 `notes`.
+
 ### 7. Bill Cycle
 
 A bill cycle is a recurring temporal instruction that says which rent UUID is current for the class and when that cycle must be assessed again.
@@ -189,6 +191,7 @@ Key fields:
 - `policy_uuid` - lawful source policy locator
 - `bill_cycle_id` - nullable FK to `bill_cycles`
 - `ledger_transaction_id` - nullable FK to `ledger_transaction`; required for `PAYMENT`
+- `notes` - optional free-text metadata (see below)
 
 Rules:
 
@@ -198,6 +201,15 @@ Rules:
 - no amount is persisted here;
 - no paid/unpaid/overdue/satisfied/reversed flag is persisted here;
 - an assessment is immutable once lawfully written.
+
+Notes column contract:
+
+- `notes` is optional free-text metadata attached to any event row (`ASSESSMENT`, `PAYMENT`, or `WAIVED`).
+- `notes` is set at insert time by the FEAT that writes the event, from an actor-supplied string (typically a teacher's reason for a waiver, an admin's justification for a manual adjustment, etc.).
+- `notes` is immutable after insert, consistent with the general event immutability rule above.
+- `notes` is NOT authoritative business truth. No derived satisfaction rule (§VIII), no cross-domain contract, and no operational legality check MAY read `notes` to decide behavior. Its purpose is human-audit visibility only.
+- `notes` is visible to any actor who can see the underlying event (i.e., the teacher who administers the class, and the affected student for events on their own seat).
+- Callers that omit `notes` (or pass empty string) SHALL result in `NULL`. Empty and NULL are equivalent in semantics.
 
 ### 2. `bill_cycles`
 

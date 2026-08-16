@@ -497,6 +497,8 @@ def get_rent_waiver_history_for_class(
             'due_at': datetime | None,      # from linked bill_cycle
                                             # (assessment_at); None for
                                             # immediate charges
+            'notes': str | None,            # teacher-entered reason
+                                            # (DOM-OBL-001 §VII.1 notes)
         }
 
     Downstream renderers may resolve seat_id → student_name and
@@ -524,6 +526,7 @@ def get_rent_waiver_history_for_class(
             'seat_id': waiver.seat_id,
             'waived_at': waiver.timestamp,
             'due_at': cycle.assessment_at if cycle else None,
+            'notes': waiver.notes,
         }
         for waiver, cycle in q.all()
     ]
