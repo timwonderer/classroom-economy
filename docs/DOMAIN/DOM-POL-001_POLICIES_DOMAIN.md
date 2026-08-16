@@ -113,6 +113,19 @@ The following SHALL be derived and SHALL NOT be treated as canonical Policies tr
 
 ## VI. Insert and Availability Contract
 
+### 0. `policy_uuid` is the version
+
+`policy_uuid` **is** the version identifier for a policy definition. There is no separate version pointer, version number, or active/next-version column layered on top of it.
+
+- Each row in the Policies repository has exactly one immutable `policy_uuid`, assigned at insert and never rewritten.
+- Every new submission (first-time or resubmission of an existing family) produces a new row with a new `policy_uuid`.
+- Consumers pin provenance by recording the exact `policy_uuid` in force at the moment they created their operational fact (see `DOM-POL-001` §V.A and §VII).
+- Availability state (`IN_USE` / `HIDDEN` / `RETIRED`) is a mutable projection *over* the immutable row, not a version pointer.
+
+Any schema element that attempts to create an alternative "current version" or "next version" pointer alongside `policy_uuid` — whether a self-referential FK on a Policies table or an external version-tracking table — is redundant and prohibited. `DOM-CLASS-003` (`policy_versions` / `policy_transitions`) records economic-policy evolution only and is not a domain-policy versioning mechanism; per `DOM-CLASS-003` §11 and §224, domain-specific versioning belongs here.
+
+### 1. Repository behavior
+
 Policies is an append-only, immutable repository. It does not originate mutation flows on behalf of other domains — the domain that initiates a policy change (Class Config UI, insurance authoring flow, store curation flow, etc.) submits a new definition through Policies, and Policies records it as a new immutable row keyed by a new `policy_uuid`.
 
 FEAT-POL is the only surface through which rows enter or change availability in this repository.
