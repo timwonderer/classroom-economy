@@ -6390,6 +6390,7 @@ def _next_tenant_scoped_tier_id(seed, existing_ids):
 
 @admin_bp.route('/insurance', methods=['GET', 'POST'])
 @admin_required
+@feat_shell("FEAT-SETTINGS-001")
 def insurance_management():
     """Main insurance management dashboard."""
     user_id = g.canonical_context.user_id
@@ -6402,6 +6403,73 @@ def insurance_management():
     selected_scope = resolve_feature_class_for_class(selected_class_id, 'insurance')
     if not selected_scope or not selected_scope.get('enabled'):
         abort(404)
+
+    # POST = bootstrap a new insurance policy lineage per FEAT-POL-001 §V.
+    #
+    # Domain requirements consulted before writing this handler:
+    #
+    # - FEAT-CLASS-003 §VII delegates policy definition creation to
+    #   FEAT-POL-001. This route acts as that FEAT's caller.
+    # - FEAT-POL-001 §V ("New Policy") requires: create a new immutable
+    #   policy row, assign a new identifier, persist the family-specific
+    #   payload, and set availability. Default availability is IN_USE
+    #   "unless the caller explicitly requests HIDDEN."
+    # - Payload schema mirrors edit_insurance_policy so the edit page
+    #   can round-trip the row without missing keys.
+    # - Availability is deliberately requested as HIDDEN
+    #   (is_active=False) because the bootstrap payload is functionally
+    #   incomplete (premium $0, no coverage terms). Students never see
+    #   the policy until the teacher fills it in and explicitly
+    #   activates it via the edit page. This is the explicit exception
+    #   FEAT-POL-001 §V.4 accommodates.
+    if request.method == 'POST':
+        title = (request.form.get('title') or '').strip()
+        if not title:
+            flash("Give your new policy a title before creating it.", "warning")
+            return redirect(url_for('admin.insurance_management'))
+
+        draft_payload = {
+            'title': title,
+            'description': '',
+            'premium': '0.00',
+            'charge_frequency': 'monthly',
+            'autopay': True,
+            'waiting_period_days': 0,
+            'claim_time_limit_days': 0,
+            'max_claims_count': 0,
+            'max_claim_amount': None,
+            'max_payout_per_period': None,
+            'claim_type': 'transaction_monetary',
+            'tier_group': None,
+            'tier_name': None,
+            'tier_color': None,
+            'tier_level': None,
+            'bundle_with_policy_ids': [],
+            'bundle_discount_percent': None,
+            'bundle_discount_amount': None,
+            # HIDDEN by explicit caller request per FEAT-POL-001 §V.4.
+            # Prevents student-facing enrollment against an unconfigured
+            # policy. Teacher activates on the edit page when ready.
+            'is_active': False,
+            'entitlement_item_id': None,
+        }
+        new_version = create_policy_version(
+            class_id=selected_class_id,
+            actor_user_id=user_id,
+            payload=draft_payload,
+            source_version=None,
+            is_active=False,
+            activation_mode='manual',
+            status='applied',
+        )
+        db.session.commit()
+        flash(
+            f"Draft policy \"{title}\" created. Fill in the premium, coverage, "
+            f"and other terms below, then activate it when ready.",
+            "success",
+        )
+        return redirect(url_for('admin.edit_insurance_policy', policy_id=new_version.id))
+
     settings_block = class_context.get("block")
     active_class_label = selected_join_code
     policy_versions = [
