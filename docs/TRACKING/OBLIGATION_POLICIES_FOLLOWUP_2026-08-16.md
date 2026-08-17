@@ -314,7 +314,7 @@ Every migration that drops a column MUST:
 
 ### VIII.a What the log shows
 
-Every route decorated with `@feat_shell(...)` logs on each request:
+Every route decorated with `@requires_feat_context(...)` logs on each request:
 
 ```
 WARNING in base [...]: FEAT-SHELL-DIRTY: Executing legacy logic in shell <FEAT-NAME>. Function=<fn>. Correlation=GENERATE
@@ -324,9 +324,9 @@ Observed during the 2026-08-16 live browser walkthrough on `/admin/login`, `/adm
 
 ### VIII.b Scope (as of 2026-08-16)
 
-Grep `@feat_shell(` across `app/` yields **81 occurrences** (earlier count of 45 in this doc was `app/routes/` only and was mis-labelled as the total — corrected 2026-08-16 same day). Distribution by directory:
+Grep `@requires_feat_context(` across `app/` yields **81 occurrences** (earlier count of 45 in this doc was `app/routes/` only and was mis-labelled as the total — corrected 2026-08-16 same day). Distribution by directory:
 
-| Directory | `@feat_shell` count |
+| Directory | `@requires_feat_context` count |
 | --- | --- |
 | `app/routes/` | 50 |
 | `app/feats/` | 32 |
@@ -358,7 +358,7 @@ Distribution by FEAT identifier:
 
 ### VIII.c Implication for domain certification
 
-Per `app/feats/base.py:426-496`, `@feat_shell` is explicitly documented as "Special decorator for legacy containment shells." It writes the DIRTY marker on every invocation as a compliance signal. Any route or FEAT still wrapped in `feat_shell` is v2-noncompliant.
+Per `app/feats/base.py:426-496`, `@requires_feat_context` is explicitly documented as "Special decorator for legacy containment shells." It writes the DIRTY marker on every invocation as a compliance signal. Any route or FEAT still wrapped in `requires_feat_context` is v2-noncompliant.
 
 **This invalidates the 2026-07-26 Obligations Phase 10 audit** on stricter reading: `FEAT-OBL-001` (3 shells), `FEAT-OBL-002` (2 shells), `FEAT-OBL-003` (4 shells) — the Obligations domain has 9 shell wrappers still in place. A domain cannot be "production-ready" while it emits FEAT-SHELL-DIRTY on every mutation.
 
@@ -368,20 +368,20 @@ Per `app/feats/base.py:426-496`, `@feat_shell` is explicitly documented as "Spec
 
 Add to the mandatory Phase 10 gate (§VII.3):
 
-**§VII.3.5 Zero-shell-decorator gate.** No domain may pass Phase 10 while any FEAT owned by the domain (or any admin/route shell that mutates the domain's tables) still uses `@feat_shell(...)`. Migration path per FEAT is: replace `@feat_shell` with the canonical `@feat_wrapper` (or equivalent), guarantee mandatory ID resolution at the wrapper level, and remove the DIRTY log warning as the completion signal.
+**§VII.3.5 Zero-shell-decorator gate.** No domain may pass Phase 10 while any FEAT owned by the domain (or any admin/route shell that mutates the domain's tables) still uses `@requires_feat_context(...)`. Migration path per FEAT is: replace `@requires_feat_context` with the canonical `@feat_wrapper` (or equivalent), guarantee mandatory ID resolution at the wrapper level, and remove the DIRTY log warning as the completion signal.
 
 ### VIII.e Not remediated in this session
 
 Migrating 81 shell decorators across the codebase is a multi-branch project. Recording the gap here as a cross-cutting compliance blocker; explicit remediation is out of scope for `feat/paste-staging-grid` unless the user opens a dedicated branch for it.
 
-**First migration landed 2026-08-16 (commit `e7d4764b`):** the insurance-new-policy path moved from `@feat_shell` on the route to a proper FEAT function (`app/feats/policy_reference_feat.py::execute_create_insurance_policy_draft`) decorated with `@requires_feat_context("FEAT-POL-001")`. That is the ONLY `@requires_feat_context` in the codebase — every other mutation site remains under `@feat_shell`. Established pattern for future sweeps:
+**First migration landed 2026-08-16 (commit `e7d4764b`):** the insurance-new-policy path moved from `@requires_feat_context` on the route to a proper FEAT function (`app/feats/policy_reference_feat.py::execute_create_insurance_policy_draft`) decorated with `@requires_feat_context("FEAT-POL-001")`. That is the ONLY `@requires_feat_context` in the codebase — every other mutation site remains under `@requires_feat_context`. Established pattern for future sweeps:
 
-1. Route sheds its `@feat_shell` (no more DIRTY on GET loads).
+1. Route sheds its `@requires_feat_context` (no more DIRTY on GET loads).
 2. Move mutation into `app/feats/<domain>_feat.py::execute_<action>(...)` decorated with `@requires_feat_context("FEAT-<NAME>")`.
 3. Route calls the FEAT function with an explicit `idempotency_key`.
 4. If the route did reads before the mutation (autobegan the session transaction), add `db.session.commit()` after the FEAT call to persist the outer transaction — allowed because we're outside the FEAT at that point and the session has no dirty state after the FEAT's flush.
 
-Distinction worth naming: `@feat_shell` inside `app/feats/*.py` (32 occurrences) is often the FEAT's OWN legacy shell — it says "this FEAT hasn't been rewritten yet." `@feat_shell` on a ROUTE (50 occurrences) is the wrong shape — the route is pretending to be a FEAT. Route-side shells are the higher-priority migration target.
+Distinction worth naming: `@requires_feat_context` inside `app/feats/*.py` (32 occurrences) is often the FEAT's OWN legacy shell — it says "this FEAT hasn't been rewritten yet." `@requires_feat_context` on a ROUTE (50 occurrences) is the wrong shape — the route is pretending to be a FEAT. Route-side shells are the higher-priority migration target.
 
 ### VIII.f Related fix landed this session (in-scope)
 

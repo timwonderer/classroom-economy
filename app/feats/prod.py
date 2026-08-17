@@ -7,7 +7,7 @@ from datetime import datetime
 from sqlalchemy import func
 
 from app.extensions import db
-from app.feats.base import feat_shell, get_correlation_id
+from app.feats.base import requires_feat_context, get_correlation_id
 from app.models import (
     AttendanceReasonCode,
     AttendanceSession,
@@ -209,7 +209,7 @@ def _calculate_attendance_seconds_since(
     return evaluation.elapsed_seconds
 
 
-@feat_shell("FEAT-PROD-001")
+@requires_feat_context("FEAT-PROD-001")
 def record_attendance_session(
     *,
     ctx: CanonicalContext,
@@ -263,7 +263,6 @@ def record_attendance_session(
     target_user_id = target_seat.user_id
 
     if status == "active":
-        from app.utils.canonical_temporal_resolver import canonical_temporal_resolver, CLASS_LEVEL_EVALUATION
         cle = canonical_temporal_resolver(
             CLASS_LEVEL_EVALUATION,
             canonical_execution_context=ctx,
@@ -323,7 +322,7 @@ def record_attendance_session(
     return AttendanceSessionResult(session=session)
 
 
-@feat_shell("FEAT-PROD-002")
+@requires_feat_context("FEAT-PROD-002")
 def record_hall_pass_log(
     *,
     ctx: CanonicalContext,
@@ -482,7 +481,7 @@ def _record_payroll_event_impl(
     return PayrollEventResult(payroll_event=event, ledger_transaction=tx)
 
 
-@feat_shell("FEAT-PROD-003")
+@requires_feat_context("FEAT-PROD-003")
 def record_payroll_event(
     *,
     ctx: CanonicalContext,
@@ -510,7 +509,7 @@ def record_payroll_event(
     )
 
 
-@feat_shell("FEAT-PROD-003")
+@requires_feat_context("FEAT-PROD-003")
 def record_payroll_reversal(
     *,
     ctx: CanonicalContext,

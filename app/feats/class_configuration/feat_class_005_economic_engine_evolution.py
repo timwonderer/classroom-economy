@@ -26,7 +26,7 @@ from typing import Optional
 import uuid
 
 from app.extensions import db
-from app.feats.base import feat_shell
+from app.feats.base import requires_feat_context
 from app.models import ClassEconomy, EconomicEngine, ClassFeature, Seat
 from app.services.context_resolver import CanonicalContext
 from app.services.class_configuration_query_service import (
@@ -196,7 +196,7 @@ def execute_transition_economic_policy(
     )
 
 
-@feat_shell("FEAT-CLASS-005")
+@requires_feat_context("FEAT-CLASS-005")
 def _execute_evolve_economic_engine_impl(
     *,
     canonical_context: CanonicalContext,
@@ -208,7 +208,7 @@ def _execute_evolve_economic_engine_impl(
     idempotency_key: str | None = None,
 ) -> EconomicEngineEvolutionResult:
     """
-    Internal implementation wrapped in @feat_shell for context management.
+    Internal implementation wrapped in @requires_feat_context for context management.
     """
 
     # =========================================================================

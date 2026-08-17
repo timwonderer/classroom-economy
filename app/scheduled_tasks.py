@@ -6,13 +6,13 @@ Contains periodic tasks that run in the background to maintain system state.
 
 import logging
 import secrets
-from app.feats.base import feat_shell
+from app.feats.base import requires_feat_context
 from app.services.insurance_policy_service import delete_due_policy_lineages
 # TODO (Phase 4): insurance_billing deleted; move to Obligations domain
 # from app.utils.insurance_billing import get_insurance_billing_snapshot
 
 
-@feat_shell("FEAT-PROD-001")
+@requires_feat_context("FEAT-PROD-001")
 def enforce_daily_limits_job():
     """
     Scheduled job that checks active seats and records an inactive PROD event
@@ -219,7 +219,7 @@ def enforce_daily_limits_job():
         logger.error(f"Daily-limit enforcement job failed: {e}", exc_info=True)
 
 
-@feat_shell("FEAT-OPS-001")
+@requires_feat_context("FEAT-OPS-001")
 def database_maintenance_job():
     """
     Scheduled job that performs nightly database maintenance tasks.
@@ -274,7 +274,7 @@ def _derive_cycle_length_days(settings) -> int:
     return 30
 
 
-@feat_shell("FEAT-OBL-002")
+@requires_feat_context("FEAT-OBL-002")
 def run_rent_cycle_for_class(class_id: str, execution_time):
     """
     Execute one rent cycle for one class.
@@ -413,7 +413,7 @@ def _get_active_insurance_policy_version(class_id: str):
     )
 
 
-@feat_shell("FEAT-OBL-003")
+@requires_feat_context("FEAT-OBL-003")
 def run_insurance_cycle_for_class(class_id: str, execution_time):
     """Execute one insurance cycle for one class, evaluated per seat."""
     from app.extensions import db

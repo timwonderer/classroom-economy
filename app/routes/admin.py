@@ -48,7 +48,7 @@ import bleach
 from werkzeug.exceptions import HTTPException, NotFound
 
 from app.extensions import db, limiter
-from app.feats.base import feat_shell, FEATContext, InvariantViolation, generate_correlation_id
+from app.feats.base import FEATContext, InvariantViolation, generate_correlation_id
 from app.access.scope import Scope
 from app.access import AccessScopeDenied, resolve_scope
 from app.models import (
@@ -2844,7 +2844,6 @@ def give_bonus_all():
 
 @admin_bp.route('/login', methods=['GET', 'POST'])
 @limiter.limit("10 per minute")
-@feat_shell("FEAT-ADMN-001")
 def login():
     """Admin login with TOTP authentication."""
     session.pop("user_id", None)
@@ -4533,7 +4532,6 @@ def edit_student():
 @admin_bp.route('/student/archive', methods=['GET', 'POST'])
 @admin_bp.route('/student/delete', methods=['GET', 'POST'])
 @admin_required
-@feat_shell("FEAT-ADMN-001")
 def delete_student():
     """Remove a student from this teacher and delete fully if no links remain."""
     current_app.logger.info(f"Delete student route accessed. Method: {request.method}, Form data: {dict(request.form)}")
@@ -4585,7 +4583,6 @@ def delete_student():
 
 @admin_bp.route('/students/bulk-delete', methods=['POST'])
 @admin_required
-@feat_shell("FEAT-ADMN-001")
 def bulk_delete_students():
     """Remove multiple students from this teacher and delete true orphans."""
     data = request.get_json(silent=True) or {}
@@ -4624,7 +4621,6 @@ def bulk_delete_students():
 
 @admin_bp.route('/students/delete-block', methods=['POST'])
 @admin_required
-@feat_shell("FEAT-ADMN-001")
 def delete_block():
     """Backwards-compatible block deletion wrapper that resolves to join-code deletion."""
     data = request.get_json(silent=True) or {}
@@ -4676,7 +4672,6 @@ def delete_block():
 @admin_bp.route('/join-code/delete', methods=['POST'])
 @admin_bp.route('/join-code', methods=['DELETE'])
 @admin_required
-@feat_shell("FEAT-ADMN-001")
 def delete_join_code():
     """Hard-delete a class economy and all records scoped to the join code."""
     data = request.get_json(silent=True) or request.form
@@ -4725,7 +4720,6 @@ def delete_join_code():
 
 @admin_bp.route('/pending-students/delete', methods=['POST'])
 @admin_required
-@feat_shell("FEAT-ADMN-001")
 def delete_pending_student():
     """
     Delete a single pending student (unclaimed Seat entry).
@@ -4788,7 +4782,6 @@ def delete_pending_student():
 
 @admin_bp.route('/pending-students/bulk-delete', methods=['POST'])
 @admin_required
-@feat_shell("FEAT-ADMN-001")
 def bulk_delete_pending_students():
     """
     Delete multiple pending students (unclaimed Seat entries) at once.
@@ -4947,7 +4940,6 @@ def add_individual_student():
 
 @admin_bp.route('/student/add-manual', methods=['POST'])
 @admin_required
-@feat_shell("FEAT-ADMN-001")
 def add_manual_student():
     """Add a student with full manual configuration (advanced mode)."""
     try:
@@ -6250,7 +6242,6 @@ def rent_settings():
 
 @admin_bp.route('/rent-waiver/add', methods=['POST'])
 @admin_required
-@feat_shell("FEAT-OBL-003")
 def add_rent_waiver():
     """Waive one or more specific outstanding rent assessments (FEAT-OBL-003).
 
@@ -6429,7 +6420,7 @@ def insurance_management():
 
         # Mutation is delegated to a proper FEAT wrapper
         # (execute_create_insurance_policy_draft) so this route no
-        # longer needs @feat_shell — GET loads therefore stop emitting
+        # longer needs a route context — GET loads therefore stop emitting
         # FEAT-SHELL-DIRTY. Idempotency key is stable per class + title
         # so a double-submit of the same modal is a no-op.
         #
@@ -6492,7 +6483,6 @@ def insurance_management():
 
 @admin_bp.route('/insurance/edit/<int:policy_id>', methods=['GET', 'POST'])
 @admin_required
-@feat_shell("FEAT-SETTINGS-001")
 def edit_insurance_policy(policy_id):
     """Edit existing insurance policy."""
     class_id = g.canonical_context.class_id
@@ -6586,7 +6576,6 @@ def edit_insurance_policy(policy_id):
 
 @admin_bp.route('/insurance/deactivate/<int:policy_id>', methods=['POST'])
 @admin_required
-@feat_shell("FEAT-SETTINGS-001")
 def deactivate_insurance_policy(policy_id):
     """Deactivate an insurance policy."""
     class_id = g.canonical_context.class_id
@@ -6620,7 +6609,6 @@ def deactivate_insurance_policy(policy_id):
 
 @admin_bp.route('/insurance/delete/<int:policy_id>', methods=['POST'])
 @admin_required
-@feat_shell("FEAT-SETTINGS-001")
 def delete_insurance_policy(policy_id):
     """Delete an insurance policy and all associated data.
 
@@ -6658,7 +6646,6 @@ def delete_insurance_policy(policy_id):
 
 @admin_bp.route('/insurance/mass-remove/<int:policy_id>', methods=['POST'])
 @admin_required
-@feat_shell("FEAT-SETTINGS-001")
 def mass_remove_policy(policy_id):
     """Cancel insurance policy for multiple or all students."""
     flash("Insurance mass-removal is now expressed as policy deactivation/deletion scheduling in the class-config editor.", "info")
@@ -6855,7 +6842,6 @@ def transactions():
 
 @admin_bp.route('/void-transaction/<int:transaction_id>', methods=['POST'])
 @admin_required
-@feat_shell("FEAT-ADMN-001")
 def void_transaction(transaction_id):
     """Void a transaction."""
     requested_with = (request.headers.get("X-Requested-With") or "").strip().lower()
@@ -7054,7 +7040,6 @@ def hall_pass_setup():
 
 @admin_bp.route('/economy-policy', methods=['POST'])
 @admin_required
-@feat_shell("FEAT-ADMN-001")
 def update_economy_policy():
     from app.feats.class_configuration.feat_class_005_economic_engine_evolution import (
         execute_evolve_economic_engine,
@@ -7094,7 +7079,7 @@ def update_economy_policy():
         return redirect(url_for('admin.economic_engine'))
 
     # Update display metadata on FeatureSettings (last-updated timestamp is UI-only).
-    # No explicit commit — FEAT-ADMN-001's @feat_shell context owns the transaction boundary.
+    # No explicit commit — FEAT-ADMN-001's context owns the transaction boundary.
     settings_row = get_feature_settings_row_for_class(class_id, create=True)
     if settings_row:
         settings_row.economy_policy_updated_at = utc_now()
@@ -7110,7 +7095,6 @@ def update_economy_policy():
 
 @admin_bp.route('/economy-policy/rebalance', methods=['POST'])
 @admin_required
-@feat_shell("FEAT-ADMN-001")
 def apply_economy_rebalance():
     user_id = g.canonical_context.user_id
     current_class_id = g.canonical_context.class_id
@@ -8859,7 +8843,6 @@ def tap_in_students():
 
 @admin_bp.route('/students/bulk-adjust-hall-pass-entitlements', methods=['POST'])
 @admin_required
-@feat_shell("FEAT-STOR-001")
 def bulk_adjust_hall_pass_entitlements():
     """Bulk grant or remove hall-pass entitlements for selected students."""
     data = request.get_json()
@@ -10230,7 +10213,6 @@ def _resolve_admin_payroll_settings_for_class_id(canonical_context, class_id: st
 
 @admin_bp.route('/api/economy/analyze', methods=['POST'])
 @admin_required
-@feat_shell("FEAT-ADMN-001")
 def api_economy_analyze():
     """
     Perform comprehensive economy balance analysis.
@@ -10582,7 +10564,6 @@ def passkey_auth_start():
 
 
 @admin_bp.route('/passkey/auth/finish', methods=['POST'])
-@feat_shell("FEAT-ADMN-001")
 @limiter.limit("20 per minute")
 def passkey_auth_finish():
     """
@@ -10929,7 +10910,6 @@ def view_issue(issue_ref):
 
 
 @admin_bp.route('/issues/<issue_ref>/resolve', methods=['POST'])
-@feat_shell("FEAT-ADMN-001")
 @admin_required
 def resolve_issue(issue_ref):
     """
@@ -11059,6 +11039,7 @@ def resolve_issue(issue_ref):
         issue.teacher_resolved_at = utc_now()
         issue.teacher_notes = resolution_notes
 
+        db.session.commit()
         flash("Issue moved to final review. Close it after confirming classroom state.", "success")
         return redirect(url_for('admin.view_issue', issue_ref=make_opaque_ref('issue', issue.id)))
 
@@ -11141,7 +11122,6 @@ def escalate_issue(issue_ref):
 
 @admin_bp.route('/issues/<issue_ref>/close', methods=['POST'])
 @admin_required
-@feat_shell("FEAT-SUP-001")
 def close_issue(issue_ref):
     """Owner/admin-only closure after final review."""
     from app.models import Issue
@@ -11175,13 +11155,9 @@ def close_issue(issue_ref):
         return redirect(url_for('admin.view_issue', issue_ref=make_opaque_ref('issue', issue.id)))
 
     try:
-        if issue.teacher_notes:
-            issue.teacher_notes = f"{issue.teacher_notes}\n\nClosure Summary: {resolution_summary}"
-        else:
-            issue.teacher_notes = resolution_summary
-        issue.closed_at = utc_now()
-        issue.closed_by_type = 'teacher'
-        update_issue_status(issue, Issue.STATUS_CLOSED, 'teacher', teacher_public_id, notes=resolution_summary)
+        from app.feats.support_feat import execute_close_issue
+        execute_close_issue(issue, resolution_summary, teacher_public_id)
+        db.session.commit()
         flash("Issue closed.", "success")
     except Exception:
         db.session.rollback()

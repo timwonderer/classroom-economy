@@ -14,7 +14,7 @@ import pytest
 from app.extensions import db
 from app.models import Seat
 from app.services.context_resolver import CanonicalContext
-from app.feats.class_configuration.feat_class_002_modify_class_boundary import (
+from app.feats.identity_feat import (
     execute_modify_student,
     execute_provision_student_seat,
     execute_remove_student_seat,
@@ -61,7 +61,7 @@ class TestModifyStudent:
             student = classroom.students[0]
             ctx = _teacher_context(classroom)
 
-            result = execute_modify_student(
+            result = execute_modify_student(idempotency_key="modify-test", 
                 canonical_context=ctx,
                 class_id=classroom.class_id,
                 seat_id=student.seat_id,
@@ -79,7 +79,7 @@ class TestModifyStudent:
             student = classroom.students[0]
             student_ctx = _student_context(classroom, student)
 
-            result = execute_modify_student(
+            result = execute_modify_student(idempotency_key="modify-test", 
                 canonical_context=student_ctx,
                 class_id=classroom.class_id,
                 seat_id=student.seat_id,
@@ -97,7 +97,7 @@ class TestModifyStudent:
             student = classroom.students[0]
             ctx = _teacher_context(classroom)
 
-            result = execute_modify_student(
+            result = execute_modify_student(idempotency_key="modify-test", 
                 canonical_context=ctx,
                 class_id="different-class-id",
                 seat_id=student.seat_id,
@@ -115,7 +115,7 @@ class TestModifyStudent:
             student = classroom.students[0]
             ctx = _teacher_context(classroom)
 
-            result = execute_modify_student(
+            result = execute_modify_student(idempotency_key="modify-test", 
                 canonical_context=ctx,
                 class_id=classroom.class_id,
                 seat_id=student.seat_id,
@@ -141,7 +141,7 @@ class TestProvisionStudentSeat:
             classroom = provision_classroom("chemistry_p1")
             ctx = _teacher_context(classroom)
 
-            result = execute_provision_student_seat(
+            result = execute_provision_student_seat(idempotency_key="provision-test", 
                 canonical_context=ctx,
                 class_id=classroom.class_id,
                 first_name="New",
@@ -162,7 +162,7 @@ class TestProvisionStudentSeat:
             student = classroom.students[0]
             student_ctx = _student_context(classroom, student)
 
-            result = execute_provision_student_seat(
+            result = execute_provision_student_seat(idempotency_key="provision-test", 
                 canonical_context=student_ctx,
                 class_id=classroom.class_id,
                 first_name="Bad",
@@ -178,7 +178,7 @@ class TestProvisionStudentSeat:
             classroom = provision_classroom("chemistry_p1")
             ctx = _teacher_context(classroom)
 
-            result = execute_provision_student_seat(
+            result = execute_provision_student_seat(idempotency_key="provision-test", 
                 canonical_context=ctx,
                 class_id="wrong-class-id",
                 first_name="Name",
@@ -204,7 +204,7 @@ class TestRemoveStudentSeat:
             ctx = _teacher_context(classroom)
 
             # First provision a new unclaimed seat (no user_id set)
-            provision_result = execute_provision_student_seat(
+            provision_result = execute_provision_student_seat(idempotency_key="provision-test", 
                 canonical_context=ctx,
                 class_id=classroom.class_id,
                 first_name="Temp",
@@ -213,7 +213,7 @@ class TestRemoveStudentSeat:
             assert provision_result.success is True
             new_seat_id = provision_result.seat_id
 
-            result = execute_remove_student_seat(
+            result = execute_remove_student_seat(idempotency_key="remove-test", 
                 canonical_context=ctx,
                 class_id=classroom.class_id,
                 seat_id=new_seat_id,
@@ -228,7 +228,7 @@ class TestRemoveStudentSeat:
             classroom = provision_classroom("chemistry_p1")
             ctx = _teacher_context(classroom)
 
-            result = execute_remove_student_seat(
+            result = execute_remove_student_seat(idempotency_key="remove-test", 
                 canonical_context=ctx,
                 class_id=classroom.class_id,
                 seat_id=999999,
@@ -244,7 +244,7 @@ class TestRemoveStudentSeat:
             # Roster students are claimed (have user_id bound)
             claimed_student = classroom.students[0]
 
-            result = execute_remove_student_seat(
+            result = execute_remove_student_seat(idempotency_key="remove-test", 
                 canonical_context=ctx,
                 class_id=classroom.class_id,
                 seat_id=claimed_student.seat_id,
@@ -261,7 +261,7 @@ class TestRemoveStudentSeat:
             ctx = _teacher_context(classroom)
             claimed_student = classroom.students[0]
 
-            result = execute_remove_student_seat(
+            result = execute_remove_student_seat(idempotency_key="remove-test", 
                 canonical_context=ctx,
                 class_id=classroom.class_id,
                 seat_id=claimed_student.seat_id,
@@ -278,7 +278,7 @@ class TestRemoveStudentSeat:
             student = classroom.students[0]
             student_ctx = _student_context(classroom, student)
 
-            result = execute_remove_student_seat(
+            result = execute_remove_student_seat(idempotency_key="remove-test", 
                 canonical_context=student_ctx,
                 class_id=classroom.class_id,
                 seat_id=student.seat_id,
@@ -295,7 +295,7 @@ class TestRemoveStudentSeat:
             student = classroom.students[0]
             ctx = _teacher_context(classroom)
 
-            result = execute_remove_student_seat(
+            result = execute_remove_student_seat(idempotency_key="remove-test", 
                 canonical_context=ctx,
                 class_id="wrong-class-id",
                 seat_id=student.seat_id,

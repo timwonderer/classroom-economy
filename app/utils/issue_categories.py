@@ -6,7 +6,7 @@ Categories guide students to provide relevant context for their issues.
 
 from app.extensions import db
 from app.models import IssueCategory
-from app.feats.base import feat_shell
+from app.feats.base import requires_feat_context
 
 
 DEFAULT_TRANSACTION_CATEGORIES = [
@@ -88,7 +88,7 @@ DEFAULT_GENERAL_CATEGORIES = [
 ]
 
 
-@feat_shell("FEAT-SUP-001")
+@requires_feat_context("FEAT-SUP-001")
 def init_default_categories():
     """
     Initialize default issue categories in the database.

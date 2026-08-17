@@ -94,7 +94,7 @@ The Store & Entitlements domain has successfully completed all 10 phases of SOP-
 - ✅ Routes do NOT call `db.session.add()` directly on domain models
 - ✅ All store mutations via FEATs:
   - `FEAT-STOR-001` — Purchase & Entitlement Grant (via `execute_store_purchase()`)
-  - `FEAT-STOR-002` — Use/Redeem Item (via `feat_shell()` decorator)
+  - `FEAT-STOR-002` — Use/Redeem Item (via `requires_feat_context()` decorator)
   - `FEAT-STOR-004` — Grant Hall Pass Entitlements (via `execute_store_purchase()`)
 - ✅ FEAT contexts ensure idempotency and audit trail
 - ✅ No direct entitlement_service.py mutations; all go through FEATs

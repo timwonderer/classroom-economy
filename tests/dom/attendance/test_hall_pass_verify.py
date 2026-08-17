@@ -43,17 +43,26 @@ def _student_ctx(classroom, index: int = 0) -> CanonicalContext:
 
 
 def _seed_hall_pass_settings(classroom) -> None:
-    db.session.add(
-        HallPassSettings(
-            class_id=classroom.class_id,
-            queue_enabled=True,
-            queue_limit=50,
-            pass_types=[
-                {"name": "Bathroom", "simultaneous_limit": None, "enabled": True},
-                {"name": "Office", "simultaneous_limit": None, "enabled": True},
-            ],
+    settings = HallPassSettings.query.filter_by(class_id=classroom.class_id).first()
+    if settings:
+        settings.queue_enabled = True
+        settings.queue_limit = 50
+        settings.pass_types = [
+            {"name": "Bathroom", "simultaneous_limit": None, "enabled": True},
+            {"name": "Office", "simultaneous_limit": None, "enabled": True},
+        ]
+    else:
+        db.session.add(
+            HallPassSettings(
+                class_id=classroom.class_id,
+                queue_enabled=True,
+                queue_limit=50,
+                pass_types=[
+                    {"name": "Bathroom", "simultaneous_limit": None, "enabled": True},
+                    {"name": "Office", "simultaneous_limit": None, "enabled": True},
+                ],
+            )
         )
-    )
     db.session.flush()
 
 
@@ -327,9 +336,9 @@ def test_DOM_PROD_002__post_verify_finds_match_beyond_first_20_records(client, v
         classroom,
         student_index=0,
         hall_pass_id="HP-VERIFY-WINDOW-TARGET",
-        issued_at=now - timedelta(hours=2),
+        issued_at=now - timedelta(minutes=30),
     )
-    _mark_left(classroom, target_log, student_index=0, at_time=now - timedelta(hours=2))
+    _mark_left(classroom, target_log, student_index=0, at_time=now - timedelta(minutes=30))
 
     response = _post_verify(client, verification_context["token"], classroom)
 

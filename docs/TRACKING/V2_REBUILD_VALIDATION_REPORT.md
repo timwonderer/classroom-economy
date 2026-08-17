@@ -229,7 +229,7 @@
 - Closed remaining hall-pass admin mutation paths in attendance API:
   - Split `/api/hall-pass/settings` into:
     - `GET` read-only handler
-    - `POST` handler wrapped in `@feat_shell("FEAT-ATTN-001")`
+    - `POST` handler wrapped in `@requires_feat_context("FEAT-ATTN-001")`
   - Added FEAT wrappers for:
     - `/api/hall-pass/setup` `POST`
     - `/api/hall-pass/verify-token/rotate` `POST`
@@ -249,7 +249,7 @@
 - Expanded attendance FEAT ownership for remaining admin mutation routes:
   - `app/routes/api.py:/api/admin/tap-entries/<event_id> DELETE` now delegates soft-delete mutation to `app/feats/attendance.py:soft_delete_tap_entry(...)`.
   - `app/routes/api.py:/api/admin/student-block-settings POST` now delegates canonical toggle mutation to `app/feats/attendance.py:set_student_block_tap_enabled(...)`.
-  - `app/routes/api.py:/api/admin/block-tap-settings POST` is now explicitly wrapped with `@feat_shell("FEAT-ATTN-001")` and uses FEAT helper mutation path per seat.
+  - `app/routes/api.py:/api/admin/block-tap-settings POST` is now explicitly wrapped with `@requires_feat_context("FEAT-ATTN-001")` and uses FEAT helper mutation path per seat.
 - Preserved tenancy fail-closed behavior while FEAT-izing:
   - `set_student_block_tap_enabled(...)` now detects legacy `StudentBlock(student_id, period)` rows and only promotes rows that can be proven in-scope for the current class.
   - out-of-scope or null-scope legacy rows now raise `PermissionError`, which routes map back to prior expected API behavior:
@@ -353,7 +353,7 @@
 ### Post-Report Update (2026-05-24, `codex/v2.0`)
 
 - Closed the FEAT compliance finding for economy snapshot persistence:
-  - `app/routes/admin.py` `/api/economy/analyze` is now wrapped in `@feat_shell("FEAT-ADMN-001")`
+  - `app/routes/admin.py` `/api/economy/analyze` is now wrapped in `@requires_feat_context("FEAT-ADMN-001")`
   - `_get_frozen_economy_analysis_payload(...)` no longer calls `db.session.commit()`; it uses `db.session.flush()` and relies on FEAT transaction ownership
   - analyze endpoint error path now explicitly calls `db.session.rollback()` before returning `500`
 - Validation:
@@ -821,7 +821,7 @@ surface until a seat-scoped analytics schema replaces it.
 | Phase 1 adversarial scorecard — claimed PASS (2026-05-14) | ⚠️ SEE NOTE BELOW |
 | INV-ARC-007: `GET /api/student-status` split into GET + `POST /reconcile` | ✅ COMPLETE |
 | INV-ARC-007: GET-path snapshot commit | ✅ RESOLVED — `_get_frozen_economy_analysis_payload()` commit was guarded by `persist_snapshot=True` and only reachable from the POST route, not any GET handler; confirmed fully non-GET-path from the start. INV-ARC-007 fully closed. |
-| FEAT bypass: `api_economy_analyze()` not FEAT-wrapped | ✅ RESOLVED — Post-report update (2026-05-24): `@feat_shell("FEAT-ADMN-001")` added at `admin.py:12020`; `_get_frozen_economy_analysis_payload()` replaced `db.session.commit()` with `flush()`; FEAT context owns the commit. Zero `db.session.commit()` remain in `admin.py`. |
+| FEAT bypass: `api_economy_analyze()` not FEAT-wrapped | ✅ RESOLVED — Post-report update (2026-05-24): `@requires_feat_context("FEAT-ADMN-001")` added at `admin.py:12020`; `_get_frozen_economy_analysis_payload()` replaced `db.session.commit()` with `flush()`; FEAT context owns the commit. Zero `db.session.commit()` remain in `admin.py`. |
 | `admin.py` decomposition into sub-blueprints | ❌ NOT DONE — 12,862 lines; no `admin_roster.py`, `admin_finance.py`, etc. exist |
 | Backup/restore rehearsal | ❌ NOT DONE |
 | Operator sign-off flow (`user_invite_tokens`) | ❌ NOT DONE |
@@ -878,7 +878,7 @@ The FEAT execution layer is the most thoroughly completed component. Revised ass
 | Check | Status | Evidence |
 |---|---|---|
 | `FEATContext` class with commit ownership | ✅ COMPLETE | `base.py:107–244` |
-| `feat_shell()` decorator for legacy-wrapped routes | ✅ COMPLETE | `base.py:392–425` |
+| `requires_feat_context()` decorator for legacy-wrapped routes | ✅ COMPLETE | `base.py:392–425` |
 | `FEATContextError` on unauthorized flush/commit | ✅ COMPLETE | `before_flush` + `before_commit` hooks at app boot |
 | `init_feat_enforcement(app)` called at boot | ✅ COMPLETE | `app/__init__.py` |
 | FEAT registry with all domain codes | ✅ COMPLETE | LED-001/002/003/004, IDEN-001/002, STOR-001/002/003/004/005, ATTN-001/002, ADMN-001, OBL-001 |
@@ -886,7 +886,7 @@ The FEAT execution layer is the most thoroughly completed component. Revised ass
 | Store mutations (create, edit, delete) FEAT-wrapped | ✅ VERIFIED | `admin.py:5571` (FEAT-STOR-001), `5974` (FEAT-STOR-001), `6023` (FEAT-STOR-003) |
 | Banking settings update FEAT-wrapped | ✅ VERIFIED | `admin.py:10910` (FEAT-ADMN-001) |
 | `db.session.commit()` in `student.py`, `analytics.py`, `api.py`, `system_admin.py` | ✅ 0 violations | Confirmed |
-| `db.session.commit()` in `admin.py` | ✅ 0 violations | Post-report update (2026-05-24): `@feat_shell("FEAT-ADMN-001")` added to `api_economy_analyze()` at `admin.py:12020`; `admin.py:2107` is now `.first()` read — commit replaced by flush under FEAT ownership. Violation type was FEAT bypass (POST path), not GET-path (INV-ARC-007 was never violated). |
+| `db.session.commit()` in `admin.py` | ✅ 0 violations | Post-report update (2026-05-24): `@requires_feat_context("FEAT-ADMN-001")` added to `api_economy_analyze()` at `admin.py:12020`; `admin.py:2107` is now `.first()` read — commit replaced by flush under FEAT ownership. Violation type was FEAT bypass (POST path), not GET-path (INV-ARC-007 was never violated). |
 | `audit_protected()` writes to cryptographic chain | ✅ FUNCTIONAL | Targets `audit_events` table (lineage chain), not canonical `audit_log` |
 | Transaction enforcement hook mandates FEAT context | ✅ `models.py:903–1062` — `FEATContextError` if ledger mutation outside FEAT |
 
@@ -937,7 +937,7 @@ other legacy analytics annotations pending the seat-scoped analytics cutover.
 | Invariant | Status | Notes |
 |---|---|---|
 | **INV-ARC-007** (no write-on-GET) | ✅ FULLY CLOSED | No GET-path commits remain. `admin.py:2107` was only reachable from POST route — INV-ARC-007 was never violated at that site. GET/POST reconcile split complete at `api.py:2940` (`def reconcile_student_status` at `api.py:2943`). |
-| **FEAT bypass** (POST `/api/economy/analyze`) | ✅ RESOLVED | Post-report update (2026-05-24): `@feat_shell("FEAT-ADMN-001")` added at `admin.py:12020`; `db.session.commit()` replaced with flush. Zero bare commits remain in `admin.py`. |
+| **FEAT bypass** (POST `/api/economy/analyze`) | ✅ RESOLVED | Post-report update (2026-05-24): `@requires_feat_context("FEAT-ADMN-001")` added at `admin.py:12020`; `db.session.commit()` replaced with flush. Zero bare commits remain in `admin.py`. |
 | **INV-ARC-014** (no label-based routing) | ❌ NOT CLOSED | `block` still used as scope key in `RentSettings` queries and admin route scope resolution; tracked in `V2_CLASS_ID_INVARIANT_BACKLOG.md` |
 | **INV-ARC-015** (class-local time everywhere) | ✅ SUBSTANTIALLY COMPLETE | All critical paths (rent, insurance, attendance, analytics) use class-local time helpers |
 | **INV-CORE** (FEAT-only mutation) | ✅ ENFORCED RUNTIME | Before-flush/before-commit hooks active; no remaining route-level commits in admin/student/analytics/api/system_admin route surfaces. |
@@ -966,7 +966,7 @@ The first report contained several characterizations that this deeper analysis r
 
 8. **`balance_service.py` interface gap (Revision 7 closure)** — The earlier gap remains closed for active call paths: `balance_service.py` exposes canonical batching (`(class_id, seat_id)` and `(student_id, class_id)`), admin route consumers were migrated off `(student_id, join_code)` batching, and the legacy `get_batch_balances(join_codes, student_ids)` wrapper was removed. Follow-on Wave 5 table consolidation has now also landed (Revision 8).
 
-9. **INV-ARC-007 / FEAT violation reclassification and closure (Revision 4)** — Prior versions mischaracterized the `admin.py:2107` commit as a "GET-path write (INV-ARC-007)." Code inspection confirms the commit was inside `_get_frozen_economy_analysis_payload()` guarded by `persist_snapshot=True`, and the only caller passing that flag was the POST route `api_economy_analyze()`. The GET `economy_health` route never triggers the commit branch — INV-ARC-007 was never violated at this site. The actual issue was a FEAT bypass on the POST endpoint. Per the post-report update (2026-05-24), this FEAT bypass is also now resolved: `@feat_shell("FEAT-ADMN-001")` added at `admin.py:12020`, commit replaced with flush. All FEAT and INV-ARC-007 items are fully closed with 0 `db.session.commit()` remaining in `admin.py`.
+9. **INV-ARC-007 / FEAT violation reclassification and closure (Revision 4)** — Prior versions mischaracterized the `admin.py:2107` commit as a "GET-path write (INV-ARC-007)." Code inspection confirms the commit was inside `_get_frozen_economy_analysis_payload()` guarded by `persist_snapshot=True`, and the only caller passing that flag was the POST route `api_economy_analyze()`. The GET `economy_health` route never triggers the commit branch — INV-ARC-007 was never violated at this site. The actual issue was a FEAT bypass on the POST endpoint. Per the post-report update (2026-05-24), this FEAT bypass is also now resolved: `@requires_feat_context("FEAT-ADMN-001")` added at `admin.py:12020`, commit replaced with flush. All FEAT and INV-ARC-007 items are fully closed with 0 `db.session.commit()` remaining in `admin.py`.
 
 ---
 
@@ -974,7 +974,7 @@ The first report contained several characterizations that this deeper analysis r
 
 1. ~~**Re-run adversarial harness against clean seeded state**~~ — **RESOLVED** (2026-05-25): full Phase 1 rerun now PASS; cross-class unexpected violations cleared, expected synthetic injection classified, lineage PASS, runtime PASS.
 
-2. ~~**Wrap `/api/economy/analyze` in a FEAT context**~~ — **RESOLVED** (2026-05-24): `@feat_shell("FEAT-ADMN-001")` added at `admin.py:12020`; `_get_frozen_economy_analysis_payload()` commit replaced with flush. Zero bare commits remain in `admin.py`. All FEAT and INV-ARC-007 items are now closed.
+2. ~~**Wrap `/api/economy/analyze` in a FEAT context**~~ — **RESOLVED** (2026-05-24): `@requires_feat_context("FEAT-ADMN-001")` added at `admin.py:12020`; `_get_frozen_economy_analysis_payload()` commit replaced with flush. Zero bare commits remain in `admin.py`. All FEAT and INV-ARC-007 items are now closed.
 
 3. ~~**Resolve prior migration-chain blocker and re-run full upgrade validation**~~ — **RESOLVED** (2026-05-27): `a91cf11e8b2d` now drops dependent legacy policy state before `teacher_id` removal; `flask db upgrade` reaches `b1c2d3e4f5a6 (head)`.
 

@@ -16,7 +16,7 @@
 - `StorePurchaseError`: Exception class for purchase failures
 - `StorePurchaseResult`: Dataclass with result schema (success, correlation_id, quantity_granted, entitlement_ids, error_code, error_message)
 - `execute_store_purchase()`: Public entry point (no decorator)
-- `_execute_store_purchase_impl()`: @feat_shell wrapped implementation
+- `_execute_store_purchase_impl()`: @requires_feat_context wrapped implementation
 
 **Implementation Phases:**
 1. ✅ **Phase 1: Read-Only Validation**
@@ -33,7 +33,7 @@
 3. ✅ **Phase 3: Atomic EntitlementEvent Grants**
    - Creates N distinct EntitlementEvent rows for quantity N
    - Each row: unique event_id, shared entitlement_id (lineage), same correlation_id
-   - All mutations in single transaction (managed by @feat_shell)
+   - All mutations in single transaction (managed by @requires_feat_context)
    - Uses canonical_temporal_resolver for UTC timestamp
 
 4. ✅ **Phase 4: Instant-Use Coordination**
@@ -41,7 +41,7 @@
    - Same transaction boundary as GRANTED events
 
 **Architectural Compliance:**
-- ✅ Uses `@feat_shell("FEAT-STOR-001")` decorator
+- ✅ Uses `@requires_feat_context("FEAT-STOR-001")` decorator
 - ✅ Uses `CanonicalContext` (not direct identity access)
 - ✅ Uses `canonical_temporal_resolver` (not get_class_now/to_class_time)
 - ✅ Immutable EntitlementEvent design (no mutable quantity field)
@@ -192,7 +192,7 @@ The original phase-3 notes recorded a route-wiring gap that has since been super
 
 ### A. Transaction Management
 
-FEAT-STOR-001 uses `@feat_shell("FEAT-STOR-001")` which:
+FEAT-STOR-001 uses `@requires_feat_context("FEAT-STOR-001")` which:
 - Creates one DB transaction boundary (top-level FEAT owns transaction)
 - Commits all mutations (Ledger + Store) together
 - Rolls back on any failure

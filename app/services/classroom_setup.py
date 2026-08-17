@@ -352,8 +352,7 @@ def create_student_seat_with_profile(
     seat = Seat(
         class_id=class_id,
         role="student",
-        claimed_at=claimed_at,
-        student_id=student_id,
+        user_id=student_id,
     )
     db.session.add(seat)
     db.session.flush()

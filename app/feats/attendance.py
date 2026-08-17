@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from app.extensions import db
+from app.feats.base import requires_feat_context
 from app.models import HallPassSettings
 from app.utils.canonical_temporal_resolver import ensure_utc, utc_now
 
@@ -22,6 +23,7 @@ def _get_or_create_hall_pass_settings(*, class_id: str):
     return settings
 
 
+@requires_feat_context("FEAT-SETTINGS-001")
 def update_hall_pass_queue_settings(
     *,
     user_id: int,
@@ -29,6 +31,8 @@ def update_hall_pass_queue_settings(
     queue_enabled=None,
     queue_limit=None,
     updated_at=None,
+    correlation_id: str | None = None,
+    idempotency_key: str | None = None,
 ) -> HallPassSettings:
     """Update class-scoped queue settings for hall-pass management."""
     settings = _get_or_create_hall_pass_settings(class_id=class_id)
@@ -52,6 +56,7 @@ def update_hall_pass_queue_settings(
     return settings
 
 
+@requires_feat_context("FEAT-SETTINGS-001")
 def save_hall_pass_setup_config(
     *,
     user_id: int,
@@ -59,6 +64,8 @@ def save_hall_pass_setup_config(
     hall_pass_enabled: bool,
     pass_types: list[dict],
     updated_at=None,
+    correlation_id: str | None = None,
+    idempotency_key: str | None = None,
 ) -> HallPassSettings:
     """Persist class-scoped hall-pass configuration payload."""
     settings = _get_or_create_hall_pass_settings(class_id=class_id)
@@ -72,7 +79,13 @@ def save_hall_pass_setup_config(
     return settings
 
 
-def rotate_teacher_hall_pass_verify_token(*, user_id: int) -> str:
+@requires_feat_context("FEAT-SETTINGS-001")
+def rotate_teacher_hall_pass_verify_token(
+    *,
+    user_id: int,
+    correlation_id: str | None = None,
+    idempotency_key: str | None = None,
+) -> str:
     """Rotate and persist a teacher hall-pass verification token on canonical User."""
     from app.models import User
     teacher_user = db.session.get(User, user_id)

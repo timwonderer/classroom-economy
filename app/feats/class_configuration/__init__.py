@@ -21,12 +21,7 @@ from .feat_class_001_create_class_boundary import (
     SetClassTimezoneResult,
 )
 from .feat_class_002_modify_class_boundary import (
-    execute_modify_student,
-    execute_provision_student_seat,
-    execute_remove_student_seat,
-    ModifyStudentResult,
-    ProvisionStudentSeatResult,
-    RemoveStudentSeatResult,
+    execute_delete_class_boundary,
 )
 from .feat_class_004_feature_enablement import (
     execute_enable_feature,

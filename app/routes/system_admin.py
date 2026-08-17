@@ -24,7 +24,7 @@ from werkzeug.exceptions import BadRequest, Unauthorized, Forbidden, NotFound, S
 import pyotp
 
 from app.extensions import db, limiter
-from app.feats.base import feat_shell
+
 from app.models import (
     Seat, PasskeyCredential,
     Transaction, TransactionStatus, HallPassLog,
@@ -174,7 +174,6 @@ def auth_check():
 
 @sysadmin_bp.route('/login', methods=['GET', 'POST'])
 @limiter.limit("10 per minute", methods=["POST"])
-@feat_shell("FEAT-OPS-001")
 def login():
     """System admin login with TOTP authentication."""
     session.pop("user_id", None)
@@ -209,13 +208,17 @@ def login():
                 if totp_valid:
                     # Canonical session — no extinct keys
                     establish_sysadmin_session(user)
-                    nonce = secrets.token_urlsafe(32)
+                    from app.feats.operations_feat import execute_sysadmin_login_success
+                    nonce = execute_sysadmin_login_success(
+                        user=user,
+                        idempotency_key=f"feat:ops:login:{user.id}",
+                    )
                     session["current_session_nonce"] = nonce
-                    user.current_session_nonce = nonce
                     session["sysadmin_auth_username"] = username
                     session['last_activity'] = utc_now().isoformat()
                     # Establish global maintenance bypass for subsequent role testing.
                     session['maintenance_global_bypass'] = True
+                    db.session.commit()
                     flash("System admin login successful.")
                     next_url = request.args.get("next")
                     redirect_target = None
@@ -366,7 +369,6 @@ def passkey_auth_start():
 
 
 @sysadmin_bp.route('/passkey/auth/finish', methods=['POST'])
-@feat_shell("FEAT-OPS-001")
 @limiter.limit("20 per minute")
 def passkey_auth_finish():
     """
@@ -398,18 +400,23 @@ def passkey_auth_finish():
         if not user or getattr(user.user_role, "value", user.user_role) != "sysadmin":
             return jsonify({"error": "Invalid user ID"}), 401
         now = utc_now()
-        touch_admin_credentials_last_used(user.id, now)
+
+        from app.feats.operations_feat import execute_sysadmin_passkey_auth_success
+        nonce = execute_sysadmin_passkey_auth_success(
+            user=user,
+            now=now,
+            idempotency_key=f"feat:ops:passkey:{user.id}:{now.timestamp()}",
+        )
 
         # Create session — canonical keys only
         establish_sysadmin_session(user)
-        nonce = secrets.token_urlsafe(32)
         session["current_session_nonce"] = nonce
-        user.current_session_nonce = nonce
         session["sysadmin_auth_username"] = (
             session.get("passkey_sysadmin_auth_username") or f"sysadmin_{user.id}"
         )
         session['last_activity'] = now.isoformat()
         session['maintenance_global_bypass'] = True
+        db.session.commit()
 
         # Determine redirect URL
         next_url = request.args.get("next")
@@ -1363,7 +1370,6 @@ def start_review_escalated_issue(issue_ref):
 
 
 @sysadmin_bp.route('/issues/<issue_ref>/resolve', methods=['POST'])
-@feat_shell("FEAT-OPS-001")
 @system_admin_required
 def resolve_escalated_issue(issue_ref):
     """Mark technical fix complete, optionally issue bug bounty, then return to teacher-admin final review."""
@@ -1404,60 +1410,16 @@ def resolve_escalated_issue(issue_ref):
                 flash("Reward amount must be greater than 0.", "error")
                 return redirect(url_for('sysadmin.view_escalated_issue', issue_ref=make_opaque_ref('issue', issue.id)))
 
-        old_status = issue.status
-        issue.status = Issue.STATUS_DEV_RESOLVED
-        issue.sysadmin_resolved_at = utc_now()
-        issue.sysadmin_notes = resolution_note
-        issue.sysadmin_id = sysadmin_user_id
-        issue.eligible_for_reward = eligible_for_reward
-
-        if reward_amount_value is not None:
-            # Resolve internal identity from external-facing public IDs.
-            reward_seat = Seat.query.filter_by(public_id=issue.actor_public_id).first()
-            if not reward_seat:
-                flash("Cannot issue reward: actor seat not found.", "error")
-                return redirect(url_for('system_admin.view_issue', issue_id=issue.id))
-            reward_class = ClassEconomy.query.filter_by(class_public_id=issue.class_public_id).first()
-            reward_transaction = ledger_service.create_pending_transaction(
-                seat_id=reward_seat.id,
-                class_id=reward_class.class_id if reward_class else None,
-                target_seat_id=reward_seat.id,
-                actor_seat_id=reward_seat.id,
-                mechanism="system",
-                user_id=reward_seat.user_id,
-                amount=reward_amount_value,
-                account_type='checking',
-                description=f"Bug Reward (Issue #{issue.id})",
-                type='bug_reward',
-            )
-
-            record_resolution_action(
-                issue,
-                action_type='bug_reward_issued',
-                performed_by_type='sysadmin',
-                performed_by_public_id=None,
-                action_description=f"Issued bug reward while resolving issue #{issue.id}",
-                related_transaction_id=reward_transaction.id,
-                amount_changed=float(reward_amount_value),
-                before_value='0.00',
-                after_value=str(reward_amount_value),
-            )
-
-        # Record status change
-        from app.utils.issue_helpers import record_status_change
-        reward_note = (
-            f" | Bug reward: ${reward_amount_value:.2f}"
-            if reward_amount_value is not None
-            else ""
+        from app.feats.operations_feat import execute_resolve_escalated_issue
+        execute_resolve_escalated_issue(
+            issue=issue,
+            resolution_note=resolution_note,
+            sysadmin_user_id=sysadmin_user_id,
+            eligible_for_reward=eligible_for_reward,
+            reward_amount_value=reward_amount_value,
+            idempotency_key=f"feat:ops:resolve_issue:{issue.id}:{sysadmin_user_id}",
         )
-        record_status_change(
-            issue,
-            old_status,
-            Issue.STATUS_DEV_RESOLVED,
-            'sysadmin',
-            None,  # sysadmin acts outside class scope; identified by issue.sysadmin_id
-            notes=f"{resolution_note}{reward_note}",
-        )
+        db.session.commit()
         if reward_amount_value is not None:
             flash(
                 f"Technical fix recorded, bug reward of ${reward_amount_value:.2f} issued, and ticket returned to teacher review.",

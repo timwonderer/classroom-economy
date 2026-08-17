@@ -10,7 +10,7 @@
 - 🔄 **2 domains** Phase 1 complete but blocked on Phase 2 (schema migrations pending): Ledger, Payroll
 - 🔄 **1 domain** Phase 0-1, doctrine substantially advanced 2026-08-16: Policies
 - 🔄 **3 domains** Phase 0-1 only, not started: Operations, Interpretation, Support
-- **Systemic:** 45 `@feat_shell(...)` decorators across `app/` — every hit logs FEAT-SHELL-DIRTY, marking the route/FEAT as v2-noncompliant. Any Phase 10 certification that did not enforce zero-shell must be re-examined.
+- **Systemic:** 45 `@requires_feat_context(...)` decorators across `app/` — every hit logs FEAT-SHELL-DIRTY, marking the route/FEAT as v2-noncompliant. Any Phase 10 certification that did not enforce zero-shell must be re-examined.
 
 ---
 
@@ -179,8 +179,8 @@ Phase 6-7 completion is now measured via **field ownership**, not template struc
 - ✅ Teacher-facing guidance functions (suggest_economic_mode, validate_payroll_rate)
 
 **Phase 4 Achievements (COMPLETED 2026-08-12):**
-- ✅ Core reads centralized: 21 direct ClassEconomy.query calls replaced with service layer functions (1 mutation-only call remains inside @feat_shell)
-- ✅ Mutations through FEAT boundaries: all class-config writes use @feat_shell or FEATContext
+- ✅ Core reads centralized: 21 direct ClassEconomy.query calls replaced with service layer functions (1 mutation-only call remains inside @requires_feat_context)
+- ✅ Mutations through FEAT boundaries: all class-config writes use @requires_feat_context or FEATContext
 - ✅ 4 new service helpers: get_teacher_classes_by_ids, get_class_by_public_id, get_classes_by_public_ids (get_teacher_class_by_section removed 2026-08-16 as dead v1 helper)
 - ✅ Fixed stale ClassEconomy.user_id → teacher_user_id references
 - ✅ Fixed full-table-scan anti-pattern in recovery route

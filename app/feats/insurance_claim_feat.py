@@ -24,7 +24,7 @@ from datetime import datetime
 import uuid
 
 from app.extensions import db
-from app.feats.base import feat_shell
+from app.feats.base import requires_feat_context
 from app.models import Seat, EntitlementEvent, PendingAction, Transaction
 from app.services.context_resolver import CanonicalContext
 from app.services import ledger_service
@@ -104,7 +104,7 @@ def submit_insurance_claim(
     )
 
 
-@feat_shell("FEAT-STOR-003")
+@requires_feat_context("FEAT-STOR-003")
 def _submit_insurance_claim_impl(
     *,
     canonical_context: CanonicalContext,
@@ -355,7 +355,7 @@ def resolve_insurance_claim(
     )
 
 
-@feat_shell("FEAT-STOR-003")
+@requires_feat_context("FEAT-STOR-003")
 def _resolve_insurance_claim_impl(
     *,
     canonical_context: CanonicalContext,

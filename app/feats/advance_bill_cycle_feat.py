@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from app.extensions import db
 from app.models import BillCycle
 from app.services import obligations_service
-from app.feats.base import feat_shell, FEATContext
+from app.feats.base import requires_feat_context, FEATContext
 
 
 @dataclass
@@ -98,7 +98,7 @@ def advance_bill_cycle(
     return bill_cycle
 
 
-@feat_shell("FEAT-OBL-002")
+@requires_feat_context("FEAT-OBL-002")
 def execute_advance_bill_cycle(
     class_id: str,
     internal_ref: str,

@@ -20,7 +20,7 @@ from flask import Blueprint, session, jsonify, request, flash, redirect, url_for
 from sqlalchemy import desc
 
 from app.extensions import db, limiter
-from app.feats.base import feat_shell
+
 from app.auth import admin_required
 from app.models import (
     PayrollSettings, RentSettings, ClassEconomy, Seat
@@ -372,7 +372,6 @@ def api_alerts():
 
 @analytics_bp.route('/alert/<int:alert_id>/acknowledge', methods=['POST'])
 @admin_required
-@feat_shell("FEAT-ANLY-001")
 def acknowledge_alert(alert_id):
     """
     Mark an alert as acknowledged by the teacher.

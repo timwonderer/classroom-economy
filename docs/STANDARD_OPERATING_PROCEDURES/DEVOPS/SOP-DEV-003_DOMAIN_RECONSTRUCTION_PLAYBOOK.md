@@ -352,9 +352,9 @@ Create a FEAT for each domain mutation:
 ```python
 # app/feats/[domain]_feats.py
 
-from app.feats.base import feat_shell, FEATContext
+from app.feats.base import requires_feat_context, FEATContext
 
-@feat_shell("FEAT-[DOMAIN]-001")
+@requires_feat_context("FEAT-[DOMAIN]-001")
 def create_[domain]_assessment(
     seat_id: UUID,
     class_id: UUID,
@@ -384,7 +384,7 @@ def create_[domain]_assessment(
         FeatureDisabledError: If domain feature disabled
         DuplicateAssessmentError: If duplicate idempotency_key detected
     """
-    # Inside @feat_shell, you have access to FEATContext
+    # Inside @requires_feat_context, you have access to FEATContext
     # Mutations are wrapped atomically
     
     # 1. Check idempotency
@@ -431,7 +431,7 @@ def create_[domain]_assessment(
 ```
 
 **Key Principles:**
-- Wrapped in `@feat_shell("FEAT-NAME")` decorator
+- Wrapped in `@requires_feat_context("FEAT-NAME")` decorator
 - Takes `idempotency_key` parameter (for exactly-once semantics)
 - Returns immutable result (ID, not object)
 - Audit logged with `correlation_id`

@@ -10,9 +10,9 @@ from app.utils.seat_scope import transaction_scope_filter
 logger = logging.getLogger(__name__)
 
 
-from app.feats.base import feat_shell
+from app.feats.base import requires_feat_context
 
-@feat_shell("FEAT-LED-003")
+@requires_feat_context("FEAT-LED-003")
 def settle_pending_transaction_contexts(*args, **kwargs):
     """FEAT-Shell for transaction settlement sweep."""
     return _settle_pending_transaction_contexts_legacy(*args, **kwargs)

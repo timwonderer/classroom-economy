@@ -60,9 +60,9 @@ if [ "$COUNT" -gt 0 ]; then
         fi
     done
 
-    # SHELL COVERAGE CHECK: Tier 1 files must have at least one @feat_shell
+    # SHELL COVERAGE CHECK: Tier 1 files must have at least one @requires_feat_context
     for file in "${TIER1_FILES[@]}"; do
-        if ! grep -q "@feat_shell" "$file" && ! grep -q "@requires_feat_context" "$file"; then
+        if ! grep -q "@requires_feat_context" "$file"; then
             echo "🚨 COVERAGE MISSING: $file has zero FEAT shell coverage."
             TIER1_VIOLATIONS=$((TIER1_VIOLATIONS + 1))
         fi

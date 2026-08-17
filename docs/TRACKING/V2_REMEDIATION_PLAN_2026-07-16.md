@@ -188,7 +188,7 @@ result = enroll_student_seat(
 
 # app/feats/identity_feat.py — FEAT delegates to service
 def enroll_student_seat(ctx: FEATContext, *, user_id: int, class_id: str):
-    with feat_shell(ctx):
+    with requires_feat_context(ctx):
         return identity_service.create_seat(user_id=user_id, class_id=class_id)
 
 # app/services/identity_service.py — service owns db.session

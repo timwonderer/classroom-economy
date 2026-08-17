@@ -28,7 +28,10 @@ class UsedDelayedPurchaseNotVoidable(ValueError):
     pass
 
 
-def execute_void_transaction(tx: Transaction) -> VoidTransactionResult:
+from app.feats.base import requires_feat_context
+
+@requires_feat_context("FEAT-LED-002")
+def execute_void_transaction(tx: Transaction, correlation_id: str | None = None, idempotency_key: str | None = None) -> VoidTransactionResult:
     """Ledger-led FEAT for transaction void orchestration."""
     is_pending = tx.status == TransactionStatus.PENDING
 

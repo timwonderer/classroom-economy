@@ -3,8 +3,8 @@ FEAT-POL-001: Policy Reference Management (insurance policy family).
 
 Implements the "New Policy" and future policy-lifecycle actions from
 FEAT-POL-001 §V–§VIII for the insurance policy family. Route handlers
-call these functions directly instead of wrapping themselves in
-`@feat_shell` — that keeps the FEAT boundary tight around the mutation
+call these functions directly instead of wrapping themselves in a
+context — that keeps the FEAT boundary tight around the mutation
 and stops the DIRTY warning from firing on GET loads.
 
 Authority:

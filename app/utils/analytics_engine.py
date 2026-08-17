@@ -40,7 +40,7 @@ from app.utils.economy_policy import (
     get_policy_profile,
 )
 from app.utils.join_code import get_display_join_code
-from app.feats.base import feat_shell
+from app.feats.base import requires_feat_context
 import logging
 
 
@@ -525,7 +525,7 @@ class AnalyticsEngine:
         
         return alerts
     
-    @feat_shell("FEAT-ANLY-001")
+    @requires_feat_context("FEAT-ANLY-001")
     def create_snapshot(
         self,
         window_type: str,

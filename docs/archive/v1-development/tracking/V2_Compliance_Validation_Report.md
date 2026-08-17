@@ -44,7 +44,7 @@ The current `codex/wave7-closure-p0-remediation` session rewrote the authoritati
 ### P0-1 · `FEAT-OBL-002` unregistered in `FEAT_REGISTRY`
 **Files:** `app/feats/rent_cycle_feat.py:20`, `app/feats/base.py:103–108`
 
-`execute_scheduled_rent_charge` is decorated with `@feat_shell("FEAT-OBL-002")`, but `FEAT-OBL-002` does not appear in `FEAT_REGISTRY` in `base.py` (only `FEAT-OBL-001` is registered). `FEATContext.__init__` raises:
+`execute_scheduled_rent_charge` is decorated with `@requires_feat_context("FEAT-OBL-002")`, but `FEAT-OBL-002` does not appear in `FEAT_REGISTRY` in `base.py` (only `FEAT-OBL-001` is registered). `FEATContext.__init__` raises:
 
 ```
 FEATContextError: FATAL: FEAT code FEAT-OBL-002 is not in the canonical registry.
@@ -94,7 +94,7 @@ These are confirmed GET routes that commit to the database outside any `FEATCont
 ### P2-1 · Redundant bare `db.session.commit()` in `run_rent_cycle_for_class`
 **File:** `app/scheduled_tasks.py:258`
 
-An outer `db.session.commit()` fires after each `execute_scheduled_rent_charge` call. Since `feat_shell` already commits and exits before returning, this fires on a clean session (no dirty state) and does not crash — but it is architecturally incorrect. Once P0-1 is resolved, this outer commit should be removed.
+An outer `db.session.commit()` fires after each `execute_scheduled_rent_charge` call. Since `requires_feat_context` already commits and exits before returning, this fires on a clean session (no dirty state) and does not crash — but it is architecturally incorrect. Once P0-1 is resolved, this outer commit should be removed.
 
 ### P2-2 · Residual INV-ARC-014 label-based filter: `Student.block == block_q`
 **File:** `app/routes/admin.py:10786`

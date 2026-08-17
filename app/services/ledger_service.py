@@ -7,7 +7,7 @@ from app.models import LedgerBalanceSnapshot, Seat, Transaction, TransactionStat
 from app.utils.seat_scope import transaction_scope_filter
 from app.utils.canonical_temporal_resolver import ensure_utc, utc_now
 from app.utils.transaction_idempotency import create_idempotent_transaction
-from app.feats.base import feat_shell, audit_protected
+from app.feats.base import requires_feat_context, audit_protected
 
 # Protected fields captured in the audit payload for every ledger write
 _TRANSACTION_AUDIT_FIELDS = [
@@ -263,7 +263,7 @@ def compensate_posted_transaction(
     return reversal_tx
 
 
-@feat_shell("FEAT-LED-001")
+@requires_feat_context("FEAT-LED-001")
 def create_transfer_pair(
     *,
     seat_id: int,
@@ -304,7 +304,7 @@ def create_transfer_pair(
     return withdraw_tx, deposit_tx
 
 
-@feat_shell("FEAT-LED-001")
+@requires_feat_context("FEAT-LED-001")
 def apply_overdraft_fee_if_needed(*args, **kwargs):
     """FEAT-Shell for overdraft fee application."""
     from app.feats.base import is_nested_feat
@@ -352,7 +352,7 @@ def _apply_overdraft_fee_if_needed(
     return result.get("accepted", False), resolved_plan.overdraft_fee_amount
 
 
-@feat_shell("FEAT-LED-001")
+@requires_feat_context("FEAT-LED-001")
 def apply_monthly_savings_interest(*args, **kwargs):
     """FEAT-Shell for monthly savings interest application."""
     from app.feats.base import is_nested_feat

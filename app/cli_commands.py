@@ -6,11 +6,11 @@ This module is retained as a registration point for future CLI commands.
 
 import click
 
-from app.feats.base import feat_shell
+from app.feats.base import requires_feat_context
 
 
 @click.command('normalize-claim-credentials')
-@feat_shell("FEAT-IDEN-001")
+@requires_feat_context("FEAT-IDEN-001")
 def normalize_claim_credentials_command():
     """No-op: seat claim credential normalization is no longer needed.
 

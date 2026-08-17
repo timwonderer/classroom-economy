@@ -167,11 +167,11 @@ and this project follows semantic versioning principles.
 - **`/api/approve-redemption` and `/api/reject-redemption` now route through
   `FEAT-STOR-006`** — both routes were dead in production runtime prior to
   this change: they performed `db.session.add(RedemptionAuditLog(...))` and
-  mutated `StudentItem.status` without a `@feat_shell` decorator, so the
+  mutated `StudentItem.status` without a `@requires_feat_context` decorator, so the
   `before_flush` constitutional enforcement raised `FEATContextError` and
   returned HTTP 500 with zero rows persisting. The breakage was invisible to
   CI because `tests/conftest.py` wraps every test in `FEATBypass`. Both
-  routes now wear `@feat_shell("FEAT-STOR-006")`, delegate all mutation to
+  routes now wear `@requires_feat_context("FEAT-STOR-006")`, delegate all mutation to
   the new FEAT module, and narrow their exception handling to
   `RedemptionDispositionError` (mapped to HTTP 409). Infrastructure errors
   propagate to the FEAT shell for rollback rather than being swallowed.

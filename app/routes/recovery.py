@@ -3,7 +3,7 @@ from flask import Blueprint, render_template, request, redirect, url_for, flash,
 from app.extensions import db, limiter
 from app.models import Seat
 from app.auth import admin_required
-from app.feats.base import feat_shell
+
 
 recovery_bp = Blueprint('recovery', __name__, url_prefix='/recovery')
 
@@ -20,7 +20,6 @@ def _recovery_rate_limit():
 
 @recovery_bp.route('/admin/generate-code/<int:seat_id>', methods=['POST'])
 @admin_required
-@feat_shell("FEAT-IDEN-003")
 def generate_reset_code(seat_id):
     """
     Step 1 — Teacher Initiates Reset (DOM-IDEN-002 §IX).
@@ -32,7 +31,9 @@ def generate_reset_code(seat_id):
     result = generate_teacher_reset_code(
         seat_id=seat_id,
         teacher_user_id=g.canonical_context.user_id,
+        idempotency_key=f"feat:iden:reset:{seat_id}",
     )
+    db.session.commit()
 
     if not result.success:
         flash(result.error_message, "error")
@@ -62,7 +63,6 @@ def landing():
 
 @recovery_bp.route('/lookup', methods=['GET', 'POST'])
 @limiter.limit(_recovery_rate_limit)
-@feat_shell("FEAT-IDEN-004")
 def account_lookup():
     """
     Step 2 — Student Submits Reset Code (DOM-IDEN-002 §IX).
@@ -78,7 +78,11 @@ def account_lookup():
 
         from app.feats.identity_feat import validate_recovery_code
 
-        result = validate_recovery_code(reset_code=reset_code)
+        result = validate_recovery_code(
+            reset_code=reset_code,
+            idempotency_key=f"feat:iden:lookup:{reset_code}",
+        )
+        db.session.commit()
 
         if not result.success:
             session.pop('recovery_student_ref', None)

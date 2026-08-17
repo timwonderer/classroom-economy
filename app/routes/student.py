@@ -104,7 +104,7 @@ from app.services.recovery_service import (
     set_recovery_code_verified,
 )
 from app.services.classroom_setup import create_student_user_for_seat
-from app.feats.base import feat_shell
+
 from app.feats.rent_payment_feat import execute_rent_payment
 from app.feats.transfer_feat import execute_account_transfer
 from app.feats.store_purchase_feat import execute_store_purchase
@@ -523,7 +523,6 @@ def calculate_scoped_balances(seat_id: int | None, class_id: str | None) -> tupl
 # -------------------- STUDENT ONBOARDING --------------------
 
 @student_bp.route('/claim-account', methods=['GET', 'POST'])
-@feat_shell("FEAT-IDEN-001")
 def claim_account():
     """
     PAGE 1: Claim Account - Verify identity using join code to begin setup.
@@ -573,7 +572,6 @@ def claim_account():
 
 
 @student_bp.route('/create-username', methods=['GET', 'POST'])
-@feat_shell("FEAT-IDEN-002")
 def create_username():
     """PAGE 2: Create Username - Generate themed username."""
     # Only allow if claimed
@@ -606,7 +604,6 @@ def create_username():
 
 
 @student_bp.route('/setup-pin-passphrase', methods=['GET', 'POST'])
-@feat_shell("FEAT-IDEN-001")
 def setup_pin_passphrase():
     """PAGE 3: Setup PIN & Passphrase - Secure the account."""
     # Only allow if claimed and username generated
@@ -635,7 +632,9 @@ def setup_pin_passphrase():
             username=username,
             pin=pin,
             passphrase=passphrase,
+            idempotency_key=f"feat:iden:setup:{seat.id}",
         )
+        db.session.commit()
 
         if not result.success:
             flash(result.error_message, "setup")
@@ -656,7 +655,6 @@ def setup_pin_passphrase():
 
 @student_bp.route('/add-class', methods=['GET', 'POST'])
 @login_required
-@feat_shell("FEAT-IDEN-001")
 def add_class():
     """
     Allow logged-in students to add a new class by entering a join code.
@@ -678,45 +676,48 @@ def add_class():
 
     def _is_safe_url(target: str) -> bool:
         """
-        Wrapper around the shared is_safe_url helper to make the sanitizer
-        explicit within this view. Ensures that only same-origin or relative
-        URLs are treated as safe redirect targets.
+        Validates whether the target URL is safe to redirect to.
+        Checks scheme, netloc, and whether it's an internal route.
         """
-        try:
-            return bool(target) and is_safe_url(target)
-        except Exception:
-            # In case the helper raises for malformed URLs, treat as unsafe.
-            return False
+        from urllib.parse import urlparse, urljoin
+        ref_url = urlparse(request.host_url)
+        test_url = urlparse(urljoin(request.host_url, target))
+        return test_url.scheme in ('http', 'https') and ref_url.netloc == test_url.netloc
 
-    def _get_return_target(default_endpoint: str = 'student.dashboard'):
+    def _normalize_and_validate_internal_target(target: str) -> str | None:
         """
-        Return the safest place to redirect back to after add-class attempts.
-
-        Prioritize an explicit `next` value, fall back to referrer, then dashboard.
-
-        Security: All redirect targets are validated with _is_safe_url() and
-        additionally restricted to internal, relative URLs (no scheme or host)
-        to prevent open redirect vulnerabilities.
+        Normalizes a target URL into an internal route if it maps to the app.
+        Rejects external URLs by returning None.
         """
-        def _normalize_and_validate_internal_target(raw_target: str) -> str | None:
-            """
-            Ensure the target is an internal relative URL:
-            - strip backslashes, which some browsers treat like slashes
-            - disallow any scheme or netloc
-            Returns the cleaned path if valid, otherwise None.
-            """
-            if not raw_target:
-                return None
-            # Normalize backslashes to reduce browser inconsistencies
-            cleaned = raw_target.replace('\\', '')
-            parsed = urlparse(cleaned)
-            # Require relative URL: no scheme and no netloc
-            if parsed.scheme or parsed.netloc:
-                return None
-            return cleaned
+        from urllib.parse import urlparse
+        parsed = urlparse(target)
 
-        # 1) Explicit next parameter (form or query string)
-        next_url = request.form.get('next') or request.args.get('next')
+        # If it's just a path, it's considered internal. Check if it exists.
+        if not parsed.netloc:
+            # We don't have a perfect way to verify the route exists without app context tricks,
+            # but relying on `_is_safe_url` covers the major host spoofing cases.
+            return target
+
+        # If it has a netloc, ensure it matches our host.
+        request_host = urlparse(request.host_url).netloc
+        if parsed.netloc == request_host:
+            # Reconstruct the path portion safely.
+            normalized = parsed.path
+            if parsed.query:
+                normalized += f"?{parsed.query}"
+            return normalized
+
+        return None
+
+    def _get_safe_redirect(default_endpoint='student.select_class_context'):
+        """
+        Determines the safest redirect URL based on:
+        1. 'next' query parameter (highest priority).
+        2. 'Referer' header.
+        3. Fallback to `default_endpoint`.
+        """
+        # 1) Next parameter, after validation
+        next_url = request.args.get('next')
         if next_url and _is_safe_url(next_url):
             internal_next = _normalize_and_validate_internal_target(next_url)
             if internal_next:
@@ -747,15 +748,16 @@ def add_class():
             first_name=first_name,
             last_name=last_name,
             dedupe_code=dedupe_code,
+            idempotency_key=f"feat:iden:add:{context.user_id}:{display_join_code}",
         )
+        db.session.commit()
 
         if not result.success:
             category = "warning" if result.error_code == "SEAT_ALREADY_CLAIMED" else "danger"
             flash(result.error_message, category)
-            return redirect(_get_return_target())
+            return redirect(_get_safe_redirect())
 
         # Switch context to the newly claimed class.
-        # No explicit commit — the enclosing @feat_shell owns the transaction boundary.
         new_seat = db.session.get(Seat, result.seat_id)
         if new_seat:
             user = db.session.get(User, context.user_id)
@@ -1599,7 +1601,6 @@ def purchase_insurance(policy_id):
 
 @student_bp.route('/insurance/cancel/<int:enrollment_id>', methods=['POST'])
 @login_required
-@feat_shell("FEAT-OBL-001")
 def cancel_insurance(enrollment_id):
     """Cancel insurance policy."""
     flash("Insurance cancellation is not available from the current policy surface.", "warning")
@@ -1608,7 +1609,6 @@ def cancel_insurance(enrollment_id):
 
 @student_bp.route('/insurance/claim/<int:policy_id>', methods=['GET', 'POST'])
 @login_required
-@feat_shell("FEAT-STOR-003")
 def file_claim(policy_id):
     """File insurance claim."""
     context = resolve_canonical_context()
@@ -1658,6 +1658,7 @@ def file_claim(policy_id):
                 "policy_claim_type": payload.get("claim_type"),
             },
         )
+        db.session.commit()
         flash(result.error_message or "Insurance claim submitted.", "success" if result.success else "error")
         return redirect(url_for("student.student_insurance"))
     placeholder_policy = SimpleNamespace(
@@ -2866,7 +2867,6 @@ def rent():
 
 @student_bp.route('/rent/pay/<period>', methods=['POST'])
 @login_required
-@feat_shell("FEAT-OBL-001")
 def rent_pay(period):
     """Process rent payment for a specific period."""
     context = resolve_canonical_context()
@@ -3128,6 +3128,7 @@ def rent_pay(period):
         now=now,
         calculate_due_dates_fn=_calculate_due_dates,
     )
+    db.session.commit()
     current_app.logger.info(
         "rent_pay after execute: transaction_id=%s payment_id=%s",
         result.transaction_id,
@@ -3155,7 +3156,6 @@ def rent_pay(period):
 
 @student_bp.route('/login', methods=['GET', 'POST'])
 @limiter.limit("60 per minute")
-@feat_shell("FEAT-IDEN-001")
 def login():
     """Student login with username and PIN."""
     form = StudentLoginForm()
@@ -3258,7 +3258,7 @@ def login():
             nonce = secrets.token_urlsafe(32)
             session['current_session_nonce'] = nonce
             linked_user.current_session_nonce = nonce
-            # No explicit commit — FEAT-IDEN-001's @feat_shell owns the transaction boundary.
+            db.session.commit()
             return redirect(url_for('student.select_class_context'))
 
         # Resolve the canonical seat for the selected class.
@@ -3279,8 +3279,8 @@ def login():
         linked_user.last_active_seat_id = target_seat.id
 
         # Establish canonical session (user_id + class_id + role + nonce).
-        # No explicit commit — FEAT-IDEN-001's @feat_shell owns the transaction boundary.
         establish_student_session(linked_user, class_id=valid_persisted_selection["class_id"])
+        db.session.commit()
         nonce = secrets.token_urlsafe(32)
         session['current_session_nonce'] = nonce
         linked_user.current_session_nonce = nonce
@@ -3301,7 +3301,6 @@ def login():
 
 
 @student_bp.route('/select-class-context', methods=['GET', 'POST'])
-@feat_shell("FEAT-IDEN-001")
 def select_class_context():
     """Explicit class-selection gate when no durable class context exists.
 
@@ -3375,7 +3374,6 @@ def logout():
 
 @student_bp.route('/switch-class/<class_id>', methods=['POST'])
 @login_required
-@feat_shell("FEAT-IDEN-001")
 def switch_class(class_id):
     """Switch to a different class using class_id as the stable backend reference."""
     from app.models import Seat
@@ -3397,6 +3395,7 @@ def switch_class(class_id):
         class_id=resolved_switch.scope.class_id, 
         seat_id=seat.id,
     )
+    db.session.commit()
 
     # Get teacher name for response
     teacher_cache = get_teacher_display_name_cache()
@@ -3655,7 +3654,6 @@ def report_attendance_session_issue(attendance_session_id):
 
 @student_bp.route('/verify-recovery/<int:code_id>', methods=['GET', 'POST'])
 @login_required
-@feat_shell("FEAT-IDEN-002")
 def verify_recovery(code_id):
     """
     Student verification page for teacher account recovery.
@@ -3709,6 +3707,7 @@ def verify_recovery(code_id):
         set_recovery_code_verified(code_id, hash_hmac(code.encode(), b''), verified_at)
         recovery_code.code_hash = "verified"
         recovery_code.verified_at = verified_at
+        db.session.commit()
 
         current_app.logger.info(f"Student {student.id} verified recovery request {recovery_code.recovery_request_id}")
 
@@ -3725,7 +3724,6 @@ def verify_recovery(code_id):
 
 @student_bp.route('/dismiss-recovery/<int:code_id>', methods=['POST'])
 @login_required
-@feat_shell("FEAT-IDEN-002")
 def dismiss_recovery(code_id):
     """
     Dismiss the recovery notification banner.
@@ -3741,6 +3739,7 @@ def dismiss_recovery(code_id):
 
     # Mark as dismissed
     dismiss_recovery_code_row(code_id)
+    db.session.commit()
 
     flash("Recovery notification dismissed. You can still verify later from your notifications.", "info")
     return redirect(url_for('student.dashboard'))

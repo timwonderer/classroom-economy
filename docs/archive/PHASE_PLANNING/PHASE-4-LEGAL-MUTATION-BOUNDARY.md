@@ -209,7 +209,7 @@ execute_store_purchase(
 ┌─ FEAT-STOR-004 Wrapper ─────────────────────┐
 │  resolve_canonical_context()                │
 │  ↓                                          │
-│  ┌─ @feat_shell Transaction Boundary ──┐   │
+│  ┌─ @requires_feat_context Transaction Boundary ──┐   │
 │  │ 1. Read-only validation             │   │
 │  │ 2. resolve_store_item(policy_uuid)  │   │
 │  │ 3. Create N EntitlementEvent rows   │   │
@@ -227,7 +227,7 @@ Atomicity: Single transaction per FEAT call
 ┌─ FEAT-STOR-001 Wrapper ─────────────────────┐
 │  resolve_canonical_context()                │
 │  ↓                                          │
-│  ┌─ @feat_shell Transaction Boundary ──┐   │
+│  ┌─ @requires_feat_context Transaction Boundary ──┐   │
 │  │ Phase 1: Read-only validation       │   │
 │  │ Phase 2: resolve_store_item()       │   │
 │  │ Phase 3: Create N GRANTED events    │   │

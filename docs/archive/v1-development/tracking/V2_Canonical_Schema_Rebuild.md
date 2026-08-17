@@ -118,7 +118,7 @@ Every FEAT in `app/feats/` mutates one or more domains. Each must be rewritten t
 - `insurance_purchase_feat.py`: opens `ObligationLifecycle` (premium schedule) + writes initial `ObligationSatisfaction`.
 - `insurance_claim_feat.py`: writes `EntitlementEvent` (claim issuance) + `LedgerTransaction` (payout, category=SYSTEM).
 - `admin_adjustment_feat.py`: writes `LedgerTransaction` with `category=ADJUSTMENT`.
-- `app/feats/base.py` (`feat_shell`): tighten to require `actor_user_id`, `actor_seat_id`, `class_id`, `idempotency_key`; emit a single `OperationalEvent` + `AuditLog` row per execution.
+- `app/feats/base.py` (`requires_feat_context`): tighten to require `actor_user_id`, `actor_seat_id`, `class_id`, `idempotency_key`; emit a single `OperationalEvent` + `AuditLog` row per execution.
 
 **Critical files:** all of `app/feats/*.py`.
 
