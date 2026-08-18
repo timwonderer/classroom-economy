@@ -1,14 +1,14 @@
 """
 Economy Balance Checker - Centralized CWI Calculator and Balance Validator
 
-This module implements the AGENTS financial setup specification for the Classroom Economy App.
-It provides tools to:
+This module implements the economic-calculation authority SPEC-ECON-003 for
+the Classroom Economy App. It provides tools to:
 - Calculate CWI (Classroom Wage Index) dynamically
 - Validate economy settings against standard ratios
 - Generate teacher recommendations for balanced configurations
 - Warn when settings deviate from CWI guidelines
 
-Reference: AGENTS financial setup.md
+Reference: SPEC-ECON-003 (Economic Engine Calculation & Reference Specification).
 """
 
 from typing import Dict, List, Optional, Tuple, Any
@@ -739,7 +739,7 @@ class EconomyBalanceChecker:
         The input amount is normalized to weekly for ratio checking.
 
         Recommendation source depends on scope:
-        - block-scoped validation uses AGENTS monthly multipliers
+        - block-scoped validation uses SPEC-ECON-003 monthly multipliers
           (2.0x-2.5x weekly CWI, with 2.25x default)
         - global validation uses policy-mode weekly burden bands converted to
           monthly-equivalent values

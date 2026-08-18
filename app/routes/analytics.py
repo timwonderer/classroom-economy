@@ -197,7 +197,7 @@ def dashboard():
     """
     Main analytics dashboard.
 
-    Per spec section 4.1:
+    per SPEC-ITR-001:
     - System health metrics always visible
     - Readable in under 5 seconds
     - Aggregated at class level
@@ -394,7 +394,7 @@ def events():
     """
     Display contextual analytics events for the currently selected class period.
 
-    Per spec section 5.2:
+    per SPEC-ITR-001:
     - Shows rent changes, wage changes, inflation events, etc.
     - Provides context for understanding metric changes.
     """
@@ -446,7 +446,7 @@ def student_drill_down(student_id):
     """
     Drill-down view for individual student vs CWI.
     
-    Per spec section 4.3:
+    per SPEC-ITR-001:
     - Only available after user interaction (not default view)
     - Must be contextualized with CWI expectations
     - Must explain why the metric matters
