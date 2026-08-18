@@ -1,14 +1,14 @@
 """
 Analytics routes for teachers.
 
-Implements the analytics dashboard per analytics-specification.md.
+Governing authority: DOM-ITR-001 (Interpretation Domain) and SPEC-ITR-001
+(Interpretation Observation Specification). Route handlers in this module
+render Interpretation outputs computed by app/utils/analytics_engine.py.
 
-Key Principles:
-- System health metrics always visible (5-second readability)
-- Visual alerts only (no automatic notifications)
-- No Drilldown. Period. All analytics should be displayed as aggregates.
-- All metrics CWI-relative
-- Trends over snapshots
+Current runtime is in known noncompliance with several DOM v1.2 invariants
+(threshold ownership, alert-content prescription, historical-configuration
+binding); see DOM-ITR-001 §XIII.b and §XIII.c for the inventory tracked
+for downstream remediation.
 """
 
 from datetime import datetime, timedelta

@@ -1,22 +1,16 @@
 from __future__ import annotations
 
 """
-Analytics Engine for Classroom Economy
+Analytics Engine for Classroom Economy.
 
-Implements analytics computation per docs/technical-reference/analytics-specification.md.
+Governing authority: DOM-ITR-001 (Interpretation Domain) and SPEC-ITR-001
+(Interpretation Observation Specification). This module implements compute
+for Interpretation outputs; the read-only compute FEAT is canonically named
+FEAT-ITR-001 in DOM-ITR-001 §VIII (currently registered under a legacy
+name in app/feats/base.py; rename tracked in DOM-ITR-001 §XIII.b).
 
-Core Principles:
-- All monetary metrics are CWI-relative (not absolute)
-- Trends matter more than totals
-- System health focus, not student ranking
-- No leaderboards or comparative student ranking
-- Metrics precomputed and cached by time window
-- 5-second readability target for system health metrics
-
-Per spec section 4.2:
-- Must be trend-based
-- Must include directionality (improving/worsening)
-- Must never default to blaming students
+Current runtime is in known noncompliance with several DOM v1.2 invariants;
+see DOM-ITR-001 §XIII.b for the inventory tracked for downstream remediation.
 """
 
 from datetime import datetime, timezone

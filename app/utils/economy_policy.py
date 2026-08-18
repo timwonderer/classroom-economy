@@ -59,11 +59,6 @@ TRANSACTION_DEFAULTS = {
         },
     },
 }
-VARIABLE_MONETARY_RISK_FACTORS = {
-    "tight": Decimal("0.20"),
-    "default": Decimal("0.15"),
-    "comfortable": Decimal("0.12"),
-}
 FEATURE_FLAGS = {
     "payroll",
     "insurance",
@@ -309,8 +304,9 @@ def get_insurance_premium_recommendation(
     This helper is the backend source for the values shown in economy-health style
     recommendations and insurance setup/edit guidance. It follows the policy-mode
     profile ratios, which in turn implement the documented economics contract:
-    - docs/FEATURES/ECONOMY/FEAT-ECON-001_Policy_Mode_and_Rebalancer.md
+    - docs/FEATURE-EXECUTION/FEAT-ECON-001_ECONOMIC_POLICY_TRANSITION_EXECUTION_AND_ACTIVATION_ORCHESTRATION.md
     - docs/DOMAIN/DOM-CLASS-003_ECONOMIC_POLICY.md
+    - docs/SPEC/SPEC-ECON-003_ECONOMIC_ENGINE_CALCULATION_AND_REFERENCE_SPECIFICATION.md
     """
     recommendation_context = get_price_recommendation_context(mode, cwi)
     if recommendation_context is None:
@@ -344,10 +340,6 @@ def get_tier_waiting_period_days(tier_rank: Optional[int]) -> int:
     except (TypeError, ValueError):
         normalized_rank = None
     return int(TIER_WAITING_PERIOD_DAYS.get(normalized_rank, TRANSACTION_DEFAULTS["non_tiered"]["waiting_period_days"]))
-
-
-def get_variable_monetary_risk_factor(mode: Optional[str]) -> Decimal:
-    return VARIABLE_MONETARY_RISK_FACTORS.get(normalize_policy_mode(mode), VARIABLE_MONETARY_RISK_FACTORS[POLICY_MODE_DEFAULT])
 
 
 def get_transaction_tier_multipliers_by_level() -> Dict[str, float]:

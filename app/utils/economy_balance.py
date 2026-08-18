@@ -33,7 +33,7 @@ class WarningLevel(Enum):
 
 
 class PricingTier(Enum):
-    """Store item pricing tiers per AGENTS spec"""
+    """Store item pricing tiers per SPEC-ECON-003 §4.8 (store tier reference)."""
     BASIC = "basic"           # 0.02-0.05 * CWI
     STANDARD = "standard"     # 0.05-0.10 * CWI
     PREMIUM = "premium"       # 0.10-0.25 * CWI
@@ -79,7 +79,7 @@ class EconomyBalanceChecker:
     """
     Centralized tool for calculating CWI and validating economy balance.
 
-    All monetary values in the Classroom Economy must scale from CWI per AGENTS spec.
+    All monetary values in the Classroom Economy must scale from CWI per SPEC-ECON-003 §4.1 (CWI derivation) and §6.2 (Class-Relative Comparison).
     This class provides the single source of truth for:
     - CWI calculation
     - Ratio-based validation
@@ -87,7 +87,7 @@ class EconomyBalanceChecker:
     - Balance warnings
     """
 
-    # Standard ratios from AGENTS specification
+    # Standard ratios; canonical reference per SPEC-ECON-003 §4 and §8 (Canonical Economic Reference Table)
     RENT_MIN_RATIO = 2.0
     RENT_MAX_RATIO = 2.5
     RENT_DEFAULT_RATIO = 2.25
@@ -1143,7 +1143,7 @@ class EconomyBalanceChecker:
         average_store_spending: Optional[float] = None
     ) -> Tuple[bool, float]:
         """
-        Perform Budget Survival Test per AGENTS spec.
+        Perform Budget Survival Test per SPEC-ECON-003 §4.2 (weekly savings target) and §7 (Economic Coherence Rules).
 
         A student with perfect attendance must be able to save at least 10% of CWI weekly.
 
