@@ -23,7 +23,7 @@ from typing import Optional
 import uuid
 
 from app.extensions import db
-from app.feats.base import feat_shell, FEATContext, get_correlation_id
+from app.feats.base import requires_feat_context, FEATContext, get_correlation_id
 from app.feats.ledger_resolution_feat import (
     build_intended_ledger_plan,
     resolve_intended_ledger_plan,
@@ -89,7 +89,7 @@ def execute_store_purchase(
     )
 
 
-@feat_shell("FEAT-STOR-001")
+@requires_feat_context("FEAT-STOR-001")
 def _execute_store_purchase_impl(
     *,
     canonical_context: CanonicalContext,
@@ -100,7 +100,7 @@ def _execute_store_purchase_impl(
     instant_use: bool = False,
 ) -> StorePurchaseResult:
     """
-    Internal implementation wrapped in @feat_shell for context management.
+    Internal implementation wrapped in @requires_feat_context for context management.
 
     Exact resolution: accept policy_uuid and resolve without inference.
     """
