@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from decimal import Decimal
 
 from app.extensions import db
-from app.feats.base import feat_shell
+from app.feats.base import requires_feat_context
 from app.models import ClassEconomy, Seat
 from app.services import ledger_service
 from app.models import _quantize_currency
@@ -53,7 +53,7 @@ def build_intended_ledger_plan(
     )
 
 
-@feat_shell("FEAT-LED-000")
+@requires_feat_context("FEAT-LED-000")
 def resolve_intended_ledger_plan(
     *,
     plan: IntendedLedgerPlan,
@@ -226,7 +226,7 @@ def _calculate_overdraft_fee_amount(*, seat, banking_settings, force: bool = Fal
     return Decimal("0.00")
 
 
-@feat_shell("FEAT-LED-000")
+@requires_feat_context("FEAT-LED-000")
 def apply_resolved_ledger_plan(
     *,
     resolved_plan: ResolvedLedgerPlan,
