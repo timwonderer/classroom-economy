@@ -474,7 +474,6 @@ def use_item():
             details=details,
             idempotency_key=f"feat:stor:use_imm:{entitlement.entitlement_id}",
         )
-        db.session.commit()
         return jsonify({"status": "success", "message": f"You used {store_item.name}."})
 
     if store_item.item_type == 'hall_pass':
@@ -503,7 +502,6 @@ def use_item():
         action_payload=action_payload,
         idempotency_key=f"feat:stor:use_req:{entitlement.entitlement_id}",
     )
-    db.session.commit()
     return jsonify({"status": "success", "message": f"You have requested to use {store_item.name}. Awaiting admin approval."})
 
 
@@ -560,7 +558,6 @@ def approve_redemption():
             ctx=ctx,
             idempotency_key=f"feat:stor:appr_req:{entitlement.entitlement_id}",
         )
-        db.session.commit()
     except (SQLAlchemyError, ValueError) as e:
         current_app.logger.info(
             "Redemption approval failed for entitlement %s: %s",
@@ -612,7 +609,6 @@ def reject_redemption():
             pending_action=pending_action,
             idempotency_key=f"feat:stor:rej_req:{entitlement.entitlement_id}",
         )
-        db.session.commit()
     except (SQLAlchemyError, ValueError) as e:
         current_app.logger.info(
             "Redemption rejection failed for entitlement %s: %s",
