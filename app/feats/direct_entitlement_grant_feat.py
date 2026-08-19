@@ -24,7 +24,7 @@ from typing import Optional
 import uuid
 
 from app.extensions import db
-from app.feats.base import feat_shell
+from app.feats.base import requires_feat_context
 from app.models import Seat, EntitlementEvent, StoreProduct
 from app.services.context_resolver import CanonicalContext
 from app.services.store_policy_resolver import (
@@ -90,7 +90,7 @@ def execute_direct_grant(
     )
 
 
-@feat_shell("FEAT-STOR-004")
+@requires_feat_context("FEAT-STOR-004")
 def _execute_direct_grant_impl(
     *,
     canonical_context: CanonicalContext,
@@ -101,7 +101,7 @@ def _execute_direct_grant_impl(
     idempotency_key: str | None = None,
 ) -> DirectGrantResult:
     """
-    Internal implementation wrapped in @feat_shell for context management.
+    Internal implementation wrapped in @requires_feat_context for context management.
 
     Exact resolution: accept policy_uuid and resolve without inference.
     """
