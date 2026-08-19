@@ -56,7 +56,7 @@ from app.routes.student import (
     _is_student_coverage_period_paid,
 )
 from app.services.context_resolver import resolve_canonical_context, ContextResolutionError
-from app.feats.base import FEATContext
+from app.feats.base import feat_shell, FEATContext
 from app.feats.store_purchase_feat import execute_store_purchase
 from app.feats.ledger_resolution_feat import build_intended_ledger_plan, resolve_intended_ledger_plan, apply_resolved_ledger_plan
 from app.services import store_service
@@ -1023,6 +1023,7 @@ def hall_pass_settings():
 
 @api_bp.route('/hall-pass/settings', methods=['POST'])
 @admin_required
+@feat_shell("FEAT-SETTINGS-001")
 def update_hall_pass_settings():
     """Update hall pass queue settings (admin only)."""
     context = getattr(g, "canonical_context", None)
@@ -1040,7 +1041,6 @@ def update_hall_pass_settings():
             queue_limit=data.get("queue_limit") if "queue_limit" in data else None,
             updated_at=utc_now(),
         )
-        db.session.commit()
     except ValueError as exc:
         _log_api_client_error("update_hall_pass_settings", exc, extra=f"class_id={class_id}")
         return jsonify({"status": "error", "message": "Hall pass settings are invalid."}), 400
@@ -1238,6 +1238,7 @@ def get_hall_pass_setup():
 
 @api_bp.route('/hall-pass/setup', methods=['POST'])
 @admin_required
+@feat_shell("FEAT-SETTINGS-001")
 def save_hall_pass_setup():
     """Save teacher's hall pass configuration"""
     user_id = g.canonical_context.user_id
@@ -1304,7 +1305,6 @@ def save_hall_pass_setup():
             pass_types=pass_types,
             updated_at=utc_now(),
         )
-        db.session.commit()
 
         return jsonify({
             "status": "success",
@@ -1321,6 +1321,7 @@ def save_hall_pass_setup():
 
 @api_bp.route('/hall-pass/verify-token/rotate', methods=['POST'])
 @admin_required
+@feat_shell("FEAT-SETTINGS-001")
 def rotate_hall_pass_verify_token():
     """
     Rotate the teacher's hall pass public verification token.
@@ -1333,7 +1334,6 @@ def rotate_hall_pass_verify_token():
 
     try:
         token = feat_rotate_teacher_hall_pass_verify_token(user_id=user_id)
-        db.session.commit()
     except LookupError as exc:
         _log_api_client_error("rotate_hall_pass_verify_token", exc, extra=f"user_id={user_id}")
         return jsonify({"status": "error", "message": "Hall pass verification settings were not found."}), 404
