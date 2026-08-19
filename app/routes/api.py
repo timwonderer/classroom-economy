@@ -41,7 +41,7 @@ from app.auth import (
 )
 from app.access import AccessScopeDenied, resolve_scope
 from app.services.context_resolver import ContextResolutionError, resolve_canonical_context
-from app.feats.base import feat_shell
+
 from app.feats.attendance import (
     rotate_teacher_hall_pass_verify_token as feat_rotate_teacher_hall_pass_verify_token,
     save_hall_pass_setup_config as feat_save_hall_pass_setup_config,
@@ -417,7 +417,6 @@ def purchase_item():
 
 @api_bp.route('/use-item', methods=['POST'])
 @login_required
-@feat_shell("FEAT-STOR-002")
 def use_item():
     context = getattr(g, "canonical_context", None)
     if not context:
@@ -463,22 +462,19 @@ def use_item():
         terminal = _entitlement_terminal_event(entitlement.entitlement_id)
         if terminal:
             return jsonify({"status": "error", "message": "This item is not available for redemption."}), 400
-        consume_entitlement(
+        from app.feats.entitlement_lifecycle_feat import execute_use_item_immediate
+        execute_use_item_immediate(
             entitlement_id=entitlement.entitlement_id,
             class_id=entitlement.class_id,
             target_seat_id=entitlement.target_seat_id,
-            actor_seat_id=entitlement.target_seat_id,
             product_id=entitlement.product_id,
             entitlement_type=entitlement.entitlement_type,
             acquisition_type=entitlement.acquisition_type,
-            correlation_id=f"immediate_use_{entitlement.entitlement_id}",
-            payload={
-                "outcome": "APPROVED",
-                "source": "api.use_item",
-                "item_type": store_item.item_type,
-                "details": details or None,
-            },
+            item_type=store_item.item_type,
+            details=details,
+            idempotency_key=f"feat:stor:use_imm:{entitlement.entitlement_id}",
         )
+        db.session.commit()
         return jsonify({"status": "success", "message": f"You used {store_item.name}."})
 
     if store_item.item_type == 'hall_pass':
@@ -499,21 +495,20 @@ def use_item():
             "details": details or None,
         }
 
-    pending_action = PendingAction(
+    from app.feats.entitlement_lifecycle_feat import execute_use_item_request
+    execute_use_item_request(
         class_id=entitlement.class_id,
         seat_id=student.id,
         entitlement_id=entitlement.entitlement_id,
-        correlation_id=f"pending_{entitlement.entitlement_id}_{uuid.uuid4().hex}",
-        authoritative_feat="FEAT-STOR-002",
-        payload=action_payload,
+        action_payload=action_payload,
+        idempotency_key=f"feat:stor:use_req:{entitlement.entitlement_id}",
     )
-    db.session.add(pending_action)
+    db.session.commit()
     return jsonify({"status": "success", "message": f"You have requested to use {store_item.name}. Awaiting admin approval."})
 
 
 @api_bp.route('/approve-redemption', methods=['POST'])
 @admin_required
-@feat_shell("FEAT-STOR-002")
 def approve_redemption():
     """
     Approve a pending redemption request.
@@ -557,33 +552,15 @@ def approve_redemption():
             return jsonify({"status": "error", "message": "Redemption request is no longer pending and cannot be approved."}), 409
 
         ctx = g.canonical_context
-        if store_item.item_type == 'hall_pass':
-            record_hall_pass_log(
-                ctx=ctx,
-                requested_by_seat_id=entitlement.target_seat_id,
-                approved_by_seat_id=ctx.seat_id,
-                destination=str((pending_action.payload or {}).get("destination") or "Hall Pass"),
-                reason=str((pending_action.payload or {}).get("details") or ""),
-                idempotency_key=pending_action.correlation_id,
-            )
-        else:
-            consume_entitlement(
-                entitlement_id=entitlement.entitlement_id,
-                class_id=entitlement.class_id,
-                target_seat_id=entitlement.target_seat_id,
-                actor_seat_id=ctx.seat_id,
-                product_id=entitlement.product_id,
-                entitlement_type=entitlement.entitlement_type,
-                acquisition_type=entitlement.acquisition_type,
-                correlation_id=pending_action.correlation_id,
-                payload={
-                    "outcome": "APPROVED",
-                    "source": "api.approve_redemption",
-                    "item_type": store_item.item_type,
-                    "details": (pending_action.payload or {}).get("details") or None,
-                },
-            )
-        db.session.delete(pending_action)
+        from app.feats.entitlement_lifecycle_feat import execute_approve_redemption
+        execute_approve_redemption(
+            entitlement=entitlement,
+            store_item=store_item,
+            pending_action=pending_action,
+            ctx=ctx,
+            idempotency_key=f"feat:stor:appr_req:{entitlement.entitlement_id}",
+        )
+        db.session.commit()
     except (SQLAlchemyError, ValueError) as e:
         current_app.logger.info(
             "Redemption approval failed for entitlement %s: %s",
@@ -600,7 +577,6 @@ def approve_redemption():
 
 @api_bp.route('/reject-redemption', methods=['POST'])
 @admin_required
-@feat_shell("FEAT-STOR-002")
 def reject_redemption():
     """Reject a pending redemption request without terminating the entitlement."""
     data = request.get_json(silent=True) or {}
@@ -631,7 +607,12 @@ def reject_redemption():
         if not pending_action:
             return jsonify({"status": "error", "message": "Redemption request could not be rejected in its current state."}), 409
 
-        db.session.delete(pending_action)
+        from app.feats.entitlement_lifecycle_feat import execute_reject_redemption
+        execute_reject_redemption(
+            pending_action=pending_action,
+            idempotency_key=f"feat:stor:rej_req:{entitlement.entitlement_id}",
+        )
+        db.session.commit()
     except (SQLAlchemyError, ValueError) as e:
         current_app.logger.info(
             "Redemption rejection failed for entitlement %s: %s",
@@ -1046,7 +1027,6 @@ def hall_pass_settings():
 
 @api_bp.route('/hall-pass/settings', methods=['POST'])
 @admin_required
-@feat_shell("FEAT-SETTINGS-001")
 def update_hall_pass_settings():
     """Update hall pass queue settings (admin only)."""
     context = getattr(g, "canonical_context", None)
@@ -1064,6 +1044,7 @@ def update_hall_pass_settings():
             queue_limit=data.get("queue_limit") if "queue_limit" in data else None,
             updated_at=utc_now(),
         )
+        db.session.commit()
     except ValueError as exc:
         _log_api_client_error("update_hall_pass_settings", exc, extra=f"class_id={class_id}")
         return jsonify({"status": "error", "message": "Hall pass settings are invalid."}), 400
@@ -1261,7 +1242,6 @@ def get_hall_pass_setup():
 
 @api_bp.route('/hall-pass/setup', methods=['POST'])
 @admin_required
-@feat_shell("FEAT-SETTINGS-001")
 def save_hall_pass_setup():
     """Save teacher's hall pass configuration"""
     user_id = g.canonical_context.user_id
@@ -1328,6 +1308,7 @@ def save_hall_pass_setup():
             pass_types=pass_types,
             updated_at=utc_now(),
         )
+        db.session.commit()
 
         return jsonify({
             "status": "success",
@@ -1344,7 +1325,6 @@ def save_hall_pass_setup():
 
 @api_bp.route('/hall-pass/verify-token/rotate', methods=['POST'])
 @admin_required
-@feat_shell("FEAT-SETTINGS-001")
 def rotate_hall_pass_verify_token():
     """
     Rotate the teacher's hall pass public verification token.
@@ -1357,6 +1337,7 @@ def rotate_hall_pass_verify_token():
 
     try:
         token = feat_rotate_teacher_hall_pass_verify_token(user_id=user_id)
+        db.session.commit()
     except LookupError as exc:
         _log_api_client_error("rotate_hall_pass_verify_token", exc, extra=f"user_id={user_id}")
         return jsonify({"status": "error", "message": "Hall pass verification settings were not found."}), 404
