@@ -13,7 +13,7 @@ from typing import Literal
 from app.extensions import db
 from app.models import ObligationAssessment
 from app.services import obligations_service
-from app.feats.base import feat_shell, FEATContext
+from app.feats.base import requires_feat_context, FEATContext
 
 
 @dataclass
@@ -128,7 +128,7 @@ def satisfy_obligation(
     return satisfaction
 
 
-@feat_shell("FEAT-OBL-003")
+@requires_feat_context("FEAT-OBL-003")
 def execute_satisfy_obligation_payment(
     correlation_id: str,
     class_id: str,
@@ -156,7 +156,7 @@ def execute_satisfy_obligation_payment(
     return satisfy_obligation(request, context=FEATContext("FEAT-OBL-003"))
 
 
-@feat_shell("FEAT-OBL-003")
+@requires_feat_context("FEAT-OBL-003")
 def execute_satisfy_obligation_waiver(
     correlation_id: str,
     class_id: str,
