@@ -1,6 +1,21 @@
 # Pytest Baseline — Commit `dc5e0efb`
 
-**Purpose:** Objective failure fingerprint captured immediately after the FEAT-shell decorator migration (81 legacy `@feat_shell` usages → 0, converted to `@requires_feat_context`). This baseline is the durable comparison target for the upcoming stacked-PR series. Every downstream PR MUST diff its pytest results against §2 of this document. Evidence strength must match the claim — §1 and §2 are objective facts; §3 is explicitly labeled hypothesis.
+## 0. Superseded as Regression-Diff Target (2026-08-19)
+
+This baseline was fingerprinted on the `feat-context-correction` reference branch, which diverged from `feat/paste-staging-grid` — the branch the stacked-PR series merges into. Multiple grid-side failures do not appear here (e.g., the `Seat`-schema failures on `test_feat_class_002_modify_class_boundary.py` that PR 2 encountered, plus ~15 other grid-only failures).
+
+**Authoritative regression-diff target for PR 2 and all subsequent PRs in the FEAT-context-correction stack is now `docs/TRACKING/PYTEST_BASELINE_1b455734.md`.**
+
+This document is retained as historical evidence of what the reference snapshot looked like at the time the FEAT-shell full-sweep was captured. The fingerprint in §2 below remains useful for:
+
+- Understanding the state of the reference branch when the migration approach was designed.
+- Diff analysis: comparing this reference against `PYTEST_BASELINE_1b455734.md` shows ~21 tests fixed on grid since divergence, ~23 new-on-grid failures, and ~26 persistent failures — see §4 of the `1b455734` doc for the categorization.
+
+**Do not use this document as a PR-regression comparison target.** If evaluating whether a PR introduced a new failure, diff against `PYTEST_BASELINE_1b455734.md`, not this one.
+
+---
+
+**Original Purpose (retained below for reference):** Objective failure fingerprint captured immediately after the FEAT-shell decorator migration (81 legacy `@feat_shell` usages → 0, converted to `@requires_feat_context`). This baseline is the durable comparison target for the upcoming stacked-PR series. Every downstream PR MUST diff its pytest results against §2 of this document. Evidence strength must match the claim — §1 and §2 are objective facts; §3 is explicitly labeled hypothesis.
 
 **Do not edit** the fingerprint sections after this document is committed. Add supersession notes at the bottom if the baseline is retired.
 
