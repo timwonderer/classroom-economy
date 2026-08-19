@@ -21,7 +21,7 @@ from typing import Optional
 import uuid
 
 from app.extensions import db
-from app.feats.base import feat_shell
+from app.feats.base import requires_feat_context
 from app.models import ClassEconomy, ClassFeature, Seat
 from app.services.context_resolver import CanonicalContext
 from app.services.class_configuration_query_service import (
@@ -147,7 +147,7 @@ def execute_disable_feature(
     )
 
 
-@feat_shell("FEAT-CLASS-004")
+@requires_feat_context("FEAT-CLASS-004")
 def _execute_enable_feature_impl(
     *,
     canonical_context: CanonicalContext,
@@ -159,7 +159,7 @@ def _execute_enable_feature_impl(
     idempotency_key: str | None = None,
 ) -> FeatureEnablementResult:
     """
-    Internal implementation wrapped in @feat_shell for context management.
+    Internal implementation wrapped in @requires_feat_context for context management.
     """
 
     # =========================================================================
@@ -332,7 +332,7 @@ def _execute_enable_feature_impl(
     )
 
 
-@feat_shell("FEAT-CLASS-004")
+@requires_feat_context("FEAT-CLASS-004")
 def _execute_disable_feature_impl(
     *,
     canonical_context: CanonicalContext,
@@ -343,7 +343,7 @@ def _execute_disable_feature_impl(
     idempotency_key: str | None = None,
 ) -> FeatureDisablementResult:
     """
-    Internal implementation wrapped in @feat_shell for context management.
+    Internal implementation wrapped in @requires_feat_context for context management.
     """
 
     # =========================================================================

@@ -24,7 +24,7 @@ import pytz
 from sqlalchemy.exc import IntegrityError
 
 from app.extensions import db
-from app.feats.base import feat_shell
+from app.feats.base import requires_feat_context
 from app.models import ClassEconomy, EconomicEngine, User, Seat
 from app.services.class_configuration_query_service import verify_teacher_owns_class
 from app.services.context_resolver import CanonicalContext
@@ -86,7 +86,7 @@ def execute_create_class_boundary(
     )
 
 
-@feat_shell("FEAT-CLASS-001")
+@requires_feat_context("FEAT-CLASS-001")
 def _execute_create_class_boundary_impl(
     *,
     canonical_context: CanonicalContext,
@@ -97,7 +97,7 @@ def _execute_create_class_boundary_impl(
     idempotency_key: str | None = None,
 ) -> CreateClassBoundaryResult:
     """
-    Internal implementation wrapped in @feat_shell for context management.
+    Internal implementation wrapped in @requires_feat_context for context management.
     """
 
     # =========================================================================
@@ -325,7 +325,7 @@ def execute_set_class_timezone(
     )
 
 
-@feat_shell("FEAT-CLASS-001")
+@requires_feat_context("FEAT-CLASS-001")
 def _execute_set_class_timezone_impl(
     *,
     canonical_context: CanonicalContext,
