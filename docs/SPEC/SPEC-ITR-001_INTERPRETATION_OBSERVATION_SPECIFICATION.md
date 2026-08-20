@@ -599,7 +599,7 @@ For clarity, and to prevent implementations from over-reaching:
 - No numeric thresholds for any candidate (§14.4).
 - No alert content or `suggested_action` text (§14.5).
 - No persistence schema for Interpretation outputs — see `DOM-ITR-001` §VIII, §IX, and §X.9. Materialize FEAT is a separate future contract.
-- No FEAT registry rename in code — `FEAT-ITR-001` is authorized as the canonical name in `DOM-ITR-001` §VIII; the code-side rename from `FEAT-ANLY-001` is deferred per `DOM-ITR-001` §XIII.b.
+- FEAT registry rename in code — landed. `FEAT-ITR-001` is now the canonical name in `app/feats/base.py` per `DOM-ITR-001` §VIII; the previous `FEAT-ANLY-001` alias has been removed. Consumer sites (`app/utils/analytics_engine.py`, `app/routes/analytics.py`) updated in the same slice.
 - No axis assignments — the Behavioral / Structural frame is retired by `DOM-ITR-001` v1.2 §IV.
 - No trend indicators — no prior-snapshot source exists per `DOM-ITR-001` §XIII.a.
 - No composite scores, no state ladders, no severity taxonomies (Q9 §13.2).
