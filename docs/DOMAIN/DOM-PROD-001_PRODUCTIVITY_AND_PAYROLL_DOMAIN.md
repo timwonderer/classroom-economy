@@ -365,6 +365,7 @@ Rules:
 - `manual_credit` and `reversal` events do not participate in payroll-window boundary derivation.
 - `reversal` events must carry the same `correlation_id` as the original event they reverse.
 - `policy_version_id` is immutable and must identify the payroll policy version used to evaluate the event.
+- `policy_uuid` is immutable and must record the exact domain-policy identifier used to evaluate the event; `policy_version_id` remains the internal lineage pointer where present.
 - The row must identify the productivity window and settlement intent that authorized any downstream ledger write.
 - The row must not duplicate ledger monetary truth beyond what is necessary for business provenance.
 - `payroll_event_type` carries the event semantics, so no separate lifecycle `status` column is permitted on the canonical table.

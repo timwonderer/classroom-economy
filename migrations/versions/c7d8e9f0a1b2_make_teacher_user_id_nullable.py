@@ -37,9 +37,14 @@ def upgrade():
 
 def downgrade():
     if column_exists('classes', 'teacher_user_id'):
-        # Backfill NULLs before making NOT NULL (safety)
-        op.execute("DELETE FROM classes WHERE teacher_user_id IS NULL")
+        orphan_count = op.get_bind().execute(sa.text(
+            "SELECT COUNT(*) FROM classes WHERE teacher_user_id IS NULL"
+        )).scalar()
+        if orphan_count:
+            raise RuntimeError(
+                f"Cannot make classes.teacher_user_id NOT NULL: {orphan_count} ownerless classes remain"
+            )
         op.alter_column('classes', 'teacher_user_id',
                         existing_type=sa.Integer(),
                         nullable=False)
-        print("✅ Made teacher_user_id NOT NULL on classes (deleted orphaned rows)")
+        print("✅ Made teacher_user_id NOT NULL on classes")

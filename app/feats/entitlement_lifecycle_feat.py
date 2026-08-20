@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from typing import Any
-from datetime import datetime
 
 from app.extensions import db
 from app.feats.base import requires_feat_context
@@ -54,12 +53,11 @@ def execute_use_item_request(
     idempotency_key: str | None = None,
 ) -> None:
     """Create a pending action for item use request."""
-    import uuid
     pending_action = PendingAction(
         class_id=class_id,
         seat_id=seat_id,
         entitlement_id=entitlement_id,
-        correlation_id=correlation_id or f"pending_{entitlement_id}_{uuid.uuid4().hex}",
+        correlation_id=correlation_id or idempotency_key or f"pending_{entitlement_id}",
         authoritative_feat="FEAT-STOR-002",
         payload=action_payload,
     )

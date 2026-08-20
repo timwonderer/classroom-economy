@@ -3,9 +3,9 @@ FEAT-POL-001: Policy Reference Management (insurance policy family).
 
 Implements the "New Policy" and future policy-lifecycle actions from
 FEAT-POL-001 §V–§VIII for the insurance policy family. Route handlers
-call these functions directly instead of wrapping themselves in
-`@feat_shell` — that keeps the FEAT boundary tight around the mutation
-and stops the DIRTY warning from firing on GET loads.
+call these functions directly instead of wrapping themselves in a FEAT
+boundary. Placing the canonical FEAT boundary here keeps the mutation tight
+around the domain operation and stops the DIRTY warning from firing on GET loads.
 
 Authority:
 - FEAT-POL-001 §V ("New Policy") — creating a new immutable definition
@@ -80,7 +80,6 @@ def execute_create_insurance_policy_draft(
     payload = {
         **INSURANCE_DRAFT_PAYLOAD_DEFAULTS,
         "title": title,
-        "is_active": False,  # HIDDEN per §V.4 exception (see docstring above)
     }
     return create_policy_version(
         class_id=class_id,

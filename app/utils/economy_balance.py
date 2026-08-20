@@ -15,6 +15,9 @@ from typing import Dict, List, Optional, Tuple, Any
 from dataclasses import dataclass
 from enum import Enum
 from decimal import Decimal
+import logging
+
+logger = logging.getLogger(__name__)
 
 from app.utils.economy_policy import (
     get_active_policy_mode,
@@ -275,7 +278,10 @@ class EconomyBalanceChecker:
                         expected_weekly_hours = _quantize_currency(engine.expected_weekly_hours)
                         notes.append(f"Using expected weekly hours from EconomicEngine: {expected_weekly_hours} hours")
             except Exception:
-                pass
+                logger.exception(
+                    "Failed to resolve expected_weekly_hours from EconomicEngine for class_id=%s",
+                    getattr(payroll_settings, 'class_id', None),
+                )
 
             if expected_weekly_hours is None:
                 # No configured value → CWI is undefined.

@@ -4,7 +4,7 @@ import json
 from decimal import Decimal
 
 from app.extensions import db
-from app.models import PayrollSettings, PolicyVersion
+from app.models import ClassEconomy, PayrollSettings, PolicyVersion
 from app.utils.canonical_temporal_resolver import utc_now
 
 
@@ -37,6 +37,12 @@ def _activate_payroll_policy_version(class_id: str, setting: PayrollSettings) ->
     version_number auto-increments per class+domain.
     """
     now = utc_now()
+
+    # Serialize version allocation per class, including the first activation
+    # where no existing PolicyVersion row exists yet.
+    db.session.query(ClassEconomy.class_id).filter(
+        ClassEconomy.class_id == class_id,
+    ).with_for_update().one()
 
     # Deactivate any existing active payroll version(s).
     existing_active = PolicyVersion.query.filter_by(

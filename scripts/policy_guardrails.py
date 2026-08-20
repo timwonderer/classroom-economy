@@ -282,34 +282,6 @@ def check_student_context_fallback(path: pathlib.Path, tree: ast.AST) -> list[Fi
     return findings
 
 
-def check_feat_shell_commit(path: pathlib.Path, tree: ast.AST, text: str) -> list[Finding]:
-    findings: list[Finding] = []
-    lines = text.splitlines()
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.FunctionDef):
-            continue
-        has_feat_shell = False
-        for dec in node.decorator_list:
-            if isinstance(dec, ast.Call) and call_name(dec) == "feat_shell":
-                has_feat_shell = True
-                break
-        if not has_feat_shell:
-            continue
-        for sub in ast.walk(node):
-            if isinstance(sub, ast.Call) and call_name(sub).startswith("db.session.commit"):
-                ln = line_of(sub)
-                src = lines[ln - 1] if 0 < ln <= len(lines) else ""
-                if "FEAT-AUTHORIZED-SHELL" in src:
-                    continue
-                findings.append(Finding(
-                    "FEAT_SHELL_NO_COMMIT",
-                    path,
-                    ln,
-                    f"feat_shell function '{node.name}' commits directly",
-                ))
-    return findings
-
-
 def check_tap_event_null_scope(path: pathlib.Path, text: str) -> list[Finding]:
     findings: list[Finding] = []
     if rel(path) != "app/models.py":
@@ -483,7 +455,6 @@ def run_checks(no_waivers: bool, diff_base: str | None, diff_head: str) -> tuple
         path_findings.extend(check_write_on_get(path, tree))
         path_findings.extend(check_scope_fallback(path, text))
         path_findings.extend(check_student_context_fallback(path, tree))
-        path_findings.extend(check_feat_shell_commit(path, tree, text))
         path_findings.extend(check_tap_event_null_scope(path, text))
         path_findings.extend(check_no_audit_update_delete(path, text))
         path_findings.extend(check_no_lineage_backfill_on_read(path, tree, text))

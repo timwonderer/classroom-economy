@@ -155,7 +155,7 @@
                                 </p>
                                 <small class="text-muted">
                                     <span class="material-symbols-outlined me-1">visibility</span>
-                                    In review since {{ issue.sysadmin_reviewed_at or issue.escalated_at|fmt_timestamp }}
+                                    In review since {{ (issue.sysadmin_reviewed_at or issue.escalated_at)|fmt_timestamp }}
                                 </small>
                             </div>
                             <div class="text-end">

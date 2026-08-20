@@ -161,6 +161,8 @@ def execute_satisfy_obligation_waiver(
     correlation_id: str,
     class_id: str,
     seat_id: int,
+    *,
+    idempotency_key: str,
     notes: str | None = None,
 ) -> ObligationAssessment:
     """

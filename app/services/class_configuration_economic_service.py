@@ -18,6 +18,7 @@ from app.services.class_configuration_query_service import (
     get_effective_economic_engine,
     get_payroll_settings,
     get_policy_mode,
+    resolve_expected_weekly_hours,
     validate_payroll_rate,
 )
 
@@ -37,18 +38,14 @@ class EconomicView:
 
 def _resolve_expected_weekly_hours(class_id: str) -> float | None:
     """Read expected_weekly_hours from the EconomicEngine governing payroll."""
-    engine = get_effective_economic_engine(class_id, 'payroll')
-    if engine and engine.expected_weekly_hours is not None:
-        return float(engine.expected_weekly_hours)
-    return None
+    return resolve_expected_weekly_hours(class_id)
 
 
 def _compute_cwi_from_payroll(payroll, expected_weekly_hours) -> float | None:
     """Compute CWI given already-resolved payroll row and expected_weekly_hours."""
     if payroll is None or expected_weekly_hours is None:
         return None
-    hourly_rate = float(payroll.pay_rate) * 60
-    return hourly_rate * float(expected_weekly_hours)
+    return (float(payroll.pay_rate) * 60) * float(expected_weekly_hours)
 
 
 def build_economic_view(class_id: str) -> EconomicView:

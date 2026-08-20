@@ -119,9 +119,10 @@
             </a>
 
             {% set classroom_open = current_page in ['students', 'attendance', 'hall_pass', 'announcements', 'issues'] %}
-            {% set economy_open = current_page in ['economy_health', 'payroll', 'store', 'banking', 'analytics'] %}
+            {% set economy_open = current_page in ['economic_engine', 'payroll', 'store', 'banking', 'analytics'] %}
             {% set bills_open = current_page in ['rent', 'insurance'] %}
-            {% set settings_open = current_page in ['settings', 'passkey_settings', 'feature_settings', 'account_delete'] %}
+            {% set settings_open = current_page in ['settings', 'passkey_settings', 'account_delete'] %}
+            {% set class_tools_open = current_page in ['customizations', 'feature_settings'] %}
 
             <!-- Dropdown Navigation -->
             <div class="d-flex flex-column gap-2 mt-2">
@@ -196,6 +197,28 @@
                         </a>
                     </div>
                 </div>
+
+                <hr class="nav-divider my-1">
+
+                <!-- Class Tools (active-class scoped) -->
+                <div class="dropdown">
+                    <button class="nav-accordion-btn dropdown-toggle w-100 d-flex align-items-center justify-content-between{% if class_tools_open %} show{% endif %}" type="button" data-bs-toggle="dropdown" data-bs-display="static" aria-expanded="{{ 'true' if class_tools_open else 'false' }}">
+                        <span class="d-flex align-items-center gap-2">
+                            <span class="material-symbols-outlined">tune</span>
+                            Class Tools
+                        </span>
+                    </button>
+                    <div class="dropdown-menu position-static w-100 p-0 bg-transparent border-0{% if class_tools_open %} show{% endif %}">
+                        <a href="{{ url_for('admin.customizations') }}" class="nav-link nav-sub-link d-flex align-items-center gap-2 {% if current_page == 'customizations' %}active{% endif %}">
+                            <span class="material-symbols-outlined">style</span> Customizations
+                        </a>
+                        <a href="{{ url_for('admin.feature_settings') }}" class="nav-link nav-sub-link d-flex align-items-center gap-2 {% if current_page == 'feature_settings' %}active{% endif %}">
+                            <span class="material-symbols-outlined">tune</span> Economy Features
+                        </a>
+                    </div>
+                </div>
+
+                <hr class="nav-divider my-1">
             </div>
 
             <a href="{{ url_for('admin.help_support') }}" class="nav-link nav-support-link d-flex align-items-center gap-2 {% if current_page == 'help' %}active{% endif %}">
@@ -218,12 +241,14 @@
                     <span class="material-symbols-outlined align-middle me-1" style="font-size: 18px;">error</span>
                     <span class="admin-class-switch-error-text"></span>
                 </div>
+            </div>
+            {% endif %}
+            <div class="sidebar-switcher">
                 <a href="{{ url_for('admin.create_new_class') }}" class="nav-link mt-1 d-flex align-items-center gap-2">
                     <span class="material-symbols-outlined" style="font-size: 18px;">add_circle</span>
                     Create New Class
                 </a>
             </div>
-            {% endif %}
 
             <div class="dropdown mt-3">
                 <button class="nav-accordion-btn dropdown-toggle w-100 d-flex align-items-center justify-content-between{% if settings_open %} show{% endif %}" type="button" data-bs-toggle="dropdown" data-bs-display="static" aria-expanded="{{ 'true' if settings_open else 'false' }}">
@@ -233,14 +258,8 @@
                     </span>
                 </button>
                 <div class="dropdown-menu position-static w-100 p-0 bg-transparent border-0{% if settings_open %} show{% endif %}">
-                    <a href="{{ url_for('admin.customizations') }}" class="nav-link nav-sub-link d-flex align-items-center gap-2 {% if current_page == 'customizations' %}active{% endif %}">
-                        <span class="material-symbols-outlined">style</span> Customizations
-                    </a>
                     <a href="{{ url_for('admin.passkey_settings') }}" class="nav-link nav-sub-link d-flex align-items-center gap-2 {% if current_page == 'passkey_settings' %}active{% endif %}">
                         <span class="material-symbols-outlined">fingerprint</span> Passkey
-                    </a>
-                    <a href="{{ url_for('admin.feature_settings') }}" class="nav-link nav-sub-link d-flex align-items-center gap-2 {% if current_page == 'feature_settings' %}active{% endif %}">
-                        <span class="material-symbols-outlined">tune</span> Economy Features
                     </a>
                     <a href="{{ url_for('admin.account_delete') }}" class="nav-link nav-sub-link d-flex align-items-center gap-2 {% if current_page == 'account_delete' %}active{% endif %}">
                         <span class="material-symbols-outlined">person_cancel</span> Account Deletion
@@ -264,7 +283,7 @@
                 'attendance': 'user-guides/diagnostics/teacher/attendance-payroll',
                 'payroll': 'user-guides/diagnostics/teacher/attendance-payroll',
                 'payroll_history': 'user-guides/diagnostics/teacher/attendance-payroll',
-                'economy_health': 'user-guides/diagnostics/teacher/attendance-payroll',
+                'economic_engine': 'user-guides/diagnostics/teacher/attendance-payroll',
                 'store': 'user-guides/diagnostics/teacher/store',
                 'banking': 'user-guides/diagnostics/teacher/transactions-banking',
                 'transactions': 'user-guides/diagnostics/teacher/transactions-banking',
@@ -284,7 +303,7 @@
                 'admin.attendance_log': 'user-guides/diagnostics/teacher/attendance-payroll',
                 'admin.payroll': 'user-guides/diagnostics/teacher/attendance-payroll',
                 'admin.payroll_history': 'user-guides/diagnostics/teacher/attendance-payroll',
-                'admin.economy_health': 'user-guides/diagnostics/teacher/attendance-payroll',
+                'admin.economic_engine': 'user-guides/diagnostics/teacher/attendance-payroll',
                 'admin.store_management': 'user-guides/diagnostics/teacher/store',
                 'admin.transactions': 'user-guides/diagnostics/teacher/transactions-banking',
                 'admin.banking': 'user-guides/diagnostics/teacher/transactions-banking',

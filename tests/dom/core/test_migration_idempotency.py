@@ -91,7 +91,7 @@ def test_migration_1ef03001fb2a_idempotency(test_db):
 
 def test_migration_w2x3y4z5a6b7_idempotency(test_db):
     """Test that the canonical settings tables no longer expose legacy teacher scoping."""
-    tables = ["rent_settings", "payroll_settings", "banking_settings", "hall_pass_settings"]
+    tables = ["rent_settings", "payroll_settings", "hall_pass_settings"]
 
     inspector = inspect(db.engine)
     for table in tables:

@@ -1,6 +1,5 @@
 """
 Admin routes for Classroom Token Hub.
-
 Contains all admin/teacher-facing functionality including dashboard, student management,
 store management, insurance, payroll, attendance tracking, and data import/export.
 """
@@ -48,11 +47,11 @@ import bleach
 from werkzeug.exceptions import HTTPException, NotFound
 
 from app.extensions import db, limiter
-from app.feats.base import feat_shell, FEATContext, InvariantViolation, generate_correlation_id
+from app.feats.base import requires_feat_context, FEATContext, InvariantViolation, generate_correlation_id
 from app.access.scope import Scope
 from app.access import AccessScopeDenied, resolve_scope
 from app.models import (
-    ClassEconomy, Transaction, TransactionStatus, AttendanceSession, StoreItem, StoreItemVisibility,
+    ClassEconomy, EconomicEngine, Transaction, TransactionStatus, AttendanceSession, StoreItem, StoreItemVisibility,
     # Legacy tap table removed; use attendance_sessions (DOM-PROD-001).
     # StudentItem removed — student_items unauthorized; use store_purchases + redemption_events (DOM-STORE-001)
     # StoreItemBlock removed — store_item_blocks unauthorized; use store_item_visibility (DOM-STORE-001)
@@ -61,7 +60,6 @@ from app.models import (
     # StorePurchase, Entitlement, EntitlementConsumption, GrantType, RedemptionEvent, etc. deleted per Phase 2 migration
     RentSettings,
     HallPassLog, HallPassSettings, PayrollSettings,
-    BankingSettings,
     ClassFeature,
     Announcement, Issue, IssueCategory, IssueStatusHistory, IssueResolutionAction, Seat,
     LedgerBalanceSnapshot, User, UserRole, _quantize_currency,
@@ -79,7 +77,7 @@ from app.services.context_resolver import CanonicalContext
 from app.forms import (
     AdminLoginForm, AdminSignupForm, AdminTOTPConfirmForm, AdminClassSetupForm, AdminRecoveryForm, AdminResetCredentialsForm, StoreItemForm,
     AdminClaimProcessForm, PayrollSettingsForm,
-    ManualPaymentForm, BankingSettingsForm
+    ManualPaymentForm
 )
 # Import utility functions
 from app.utils.helpers import is_safe_url, format_utc_iso, generate_anonymous_code, render_template_with_fallback as render_template
@@ -132,8 +130,6 @@ from app.services.insurance_policy_service import (
 # TODO (Phase 4): store_entitlement_service deleted
 # from app.services.store_entitlement_service import get_insurance_claim, get_last_entitlement_end_for_policy_version, derive_display_status
 from app.services.classroom_setup import (
-    create_class_without_user,
-    bind_teacher_to_class,
     create_teacher,
     create_pending_student_seat,
     delete_seat_with_profile,
@@ -157,7 +153,7 @@ from app.services.class_configuration_query_service import (
     verify_teacher_owns_class,
     get_payroll_settings,
     get_rent_settings,
-    get_banking_settings,
+    get_current_economic_engine,
     get_hall_pass_settings,
     has_personalized_class,
 )
@@ -166,7 +162,7 @@ from app.services.class_configuration_view_models import (
     build_feature_settings_page_view,
 )
 from app.services.admin_identity_service import delete_admin_account_rows
-from app.services.admin_settings_service import create_rent_settings, create_banking_settings
+from app.services.admin_settings_service import create_rent_settings
 from app.services.issue_service import create_support_ticket
 from app.utils.ip_handler import get_real_ip
 from app.utils.turnstile import verify_turnstile_token
@@ -189,17 +185,21 @@ from app.utils.auth_username import (
 )
 from app.utils.student_deletion import (
     hard_delete_student_if_orphaned,
-    remove_student_from_teacher_scope,
 )
 from app.utils.seat_scope import seat_scoped_filter, transaction_scope_filter
 from app.feats.admin_adjustment_feat import execute_admin_adjustments
+from app.feats.identity_feat import (
+    remove_student_from_teacher_scope as execute_identity_student_detach,
+    remove_pending_student_seat,
+)
 from app.feats.prod import record_attendance_session, record_payroll_event
-from app.feats.direct_entitlement_grant_feat import execute_direct_grant
+from app.feats.direct_entitlement_grant_feat import execute_direct_grant, execute_hall_pass_adjustment
 # execute_insurance_claim_resolution removed — insurance_claim_feat.py deleted; insurance feature broken pending DOM-OBL-001 migration
 from app.feats.transaction_void_feat import (
     ImmediatePurchaseNotVoidable,
     UsedDelayedPurchaseNotVoidable,
     execute_void_transaction,
+    execute_void_transactions,
 )
 from app.hash_utils import get_random_salt, hash_hmac, hash_username, hash_username_lookup
 from app.attendance import (
@@ -1179,7 +1179,14 @@ def _remove_student_from_teacher_scope(student, user_id):
     association is removed. The student record is hard-deleted only when it no
     longer has any canonical class-seat links.
     """
-    return remove_student_from_teacher_scope(student.id, user_id)
+    context = g.canonical_context
+    return execute_identity_student_detach(
+        canonical_context=context,
+        seat_id=student.id,
+        teacher_user_id=user_id,
+        correlation_id=generate_correlation_id(),
+        idempotency_key=f"identity:detach:{context.class_id}:{student.id}",
+    )
 
 
 def _delete_transactions_for_class(class_id, *, join_code_deletion=False):
@@ -1188,7 +1195,8 @@ def _delete_transactions_for_class(class_id, *, join_code_deletion=False):
     return Transaction.query.filter_by(class_id=class_id).delete(synchronize_session=False)
 
 
-def _hard_delete_class_scope(class_id, canonical_context):
+@requires_feat_context("FEAT-CLASS-001")
+def _hard_delete_class_scope(*, class_id, canonical_context, correlation_id, idempotency_key):
     """
     Permanently remove records scoped to a destroyed class.
 
@@ -1202,6 +1210,10 @@ def _hard_delete_class_scope(class_id, canonical_context):
     if not class_id:
         current_app.logger.critical("P0 INVARIANT VIOLATION: class deletion invoked without class_id.")
         raise InvariantViolation("class deletion requires canonical class_id")
+
+    # Append-only history is a within-universe invariant.  Explicit class-universe
+    # destruction is the authorized lifecycle exception for immutable history rows.
+    db.session.execute(text("SET LOCAL cth.class_universe_destroying = 'on'"))
 
     class_row = get_class_economy(class_id)
     if not class_row:
@@ -1370,9 +1382,6 @@ def _delete_teacher_settings_activity_and_audit_rows(canonical_context):
     class_ids_subq = db.session.query(ClassEconomy.class_id).filter(
         ClassEconomy.teacher_user_id == user_id
     ).subquery()
-    BankingSettings.query.filter(
-        BankingSettings.class_id.in_(sa.select(class_ids_subq))
-    ).delete(synchronize_session=False)
     HallPassSettings.query.filter(
         HallPassSettings.class_id.in_(sa.select(class_ids_subq))
     ).delete(synchronize_session=False)
@@ -1492,7 +1501,12 @@ def _hard_delete_teacher_account_scope(canonical_context):
 
     # Required ordering: all join-code-scoped data is destroyed before admin account deletion.
     for class_id in class_ids:
-        _hard_delete_class_scope(class_id, canonical_context)
+        _hard_delete_class_scope(
+            class_id=class_id,
+            canonical_context=canonical_context,
+            correlation_id=generate_correlation_id(),
+            idempotency_key=f"class:destroy:{class_id}",
+        )
 
     _delete_teacher_residual_ownership_rows(canonical_context)
     _delete_teacher_settings_activity_and_audit_rows(canonical_context)
@@ -1809,46 +1823,21 @@ def _remove_pending_class_timezone_confirmation(class_id: str):
 
 
 def _resolve_student_add_class_context(canonical_context, *, block_select: str, section: str | None) -> dict | None:
-    """Resolve the target class for add-student flows, creating one when requested."""
-    from app.feats.class_configuration import execute_create_class_boundary
-    import uuid as _uuid
+    """Resolve an existing target class for the IDENTITY add-student flow."""
 
     if canonical_context is None or not getattr(canonical_context, "user_id", None):
         return None
 
-    if block_select != '__CREATE_NEW__':
-        return _resolve_admin_class_context(g.canonical_context)
-
-    if not section:
+    if block_select == '__CREATE_NEW__':
         return None
-
-    class_label = (request.form.get('class_name') or '').strip() or section
-    result = execute_create_class_boundary(
-        canonical_context=canonical_context,
-        class_name=class_label,
-        idempotency_key=f"feat:class:create:{canonical_context.user_id}:{_uuid.uuid4().hex}",
-    )
-    if not result.success:
-        current_app.logger.error(
-            "FEAT-CLASS-001 failed in add-student class creation: %s", result.error_message
-        )
-        return None
-
-    class_row = get_class_economy(result.class_id)
-    return {
-        'join_code': result.join_code,
-        'class_id': result.class_id,
-        'block': section,
-        'class_created': True,
-        'class_row': class_row,
-    }
+    return _resolve_admin_class_context(g.canonical_context)
 
 
 
 # _link_student_to_admin: DELETED — v1 bridge function that violated INV-IDEN-001
 # (join_code-first class creation), bypassed FEAT layer, and had a live bug
 # (passed user_id int where canonical_context object expected).
-# Callers replaced with FEAT-CLASS-002 execute_provision_student_seat().
+# Roster seat provisioning is owned by FEAT-IDEN-006.
 
 
 def _get_feature_settings(class_id=None):
@@ -2047,16 +2036,9 @@ def _resolve_expected_weekly_hours(payroll_settings) -> float | None:
     that case; callers must handle None (typically by disabling pricing guidance
     with a warning that expected_weekly_hours must be set on the Economic Engine page).
     """
-    try:
-        from app.services.class_configuration_query_service import get_effective_economic_engine
-        class_id = getattr(payroll_settings, 'class_id', None)
-        if class_id:
-            engine = get_effective_economic_engine(class_id, 'payroll')
-            if engine and engine.expected_weekly_hours is not None:
-                return float(engine.expected_weekly_hours)
-    except Exception:
-        pass
-    return None
+    from app.services.class_configuration_query_service import resolve_expected_weekly_hours
+    class_id = getattr(payroll_settings, 'class_id', None)
+    return resolve_expected_weekly_hours(class_id) if class_id else None
 
 
 def _economy_snapshot_matches_inputs(snapshot, *, expected_inputs):
@@ -2158,17 +2140,12 @@ def _resolve_rent_settings_for_class_id(class_id, policy_uuid=None):
     return RentSettings.query.filter_by(class_id=class_id).first()
 
 
-def _resolve_banking_settings_for_class_id(class_id):
+def _resolve_economic_engine_for_class_id(class_id):
     if not class_id:
         return None
-    return (
-        BankingSettings.query.filter(
-            BankingSettings.class_id == class_id,
-            BankingSettings.is_active.is_(True),
-        )
-        .order_by(desc(BankingSettings.block.isnot(None)))
-        .first()
-    )
+    return EconomicEngine.query.filter_by(class_id=class_id).order_by(
+        EconomicEngine.created_at.desc(), EconomicEngine.economic_version_id.desc()
+    ).first()
 
 
 def _format_money(value):
@@ -2512,7 +2489,6 @@ def _get_validated_teacher_class_options(user_id: int) -> list[dict]:
 
 
 @admin_bp.route('/select-class-context', methods=['GET', 'POST'])
-@admin_required
 def select_class_context():
     """Explicit teacher class-selection gate before dashboard access."""
     ctx = getattr(g, "canonical_context", None)
@@ -2807,11 +2783,6 @@ def give_bonus_all():
     seats = Seat.query.filter(Seat.class_id.in_(sa.select(class_ids_subq)), Seat.role == 'student').all()
     user_id = ctx.user_id
 
-    banking_settings = (
-        BankingSettings.query
-        .filter(BankingSettings.class_id.in_(sa.select(class_ids_subq)))
-        .first()
-    )
     adjustments = []
 
     for seat in seats:
@@ -2827,7 +2798,6 @@ def give_bonus_all():
     result = execute_admin_adjustments(
         ctx=ctx,
         adjustments=adjustments,
-        banking_settings=banking_settings,
         actor_seat_id=ctx.seat_id,
     )
     message = f"Bonus/Payroll posted to {result.applied_count} student(s)!"
@@ -2844,7 +2814,6 @@ def give_bonus_all():
 
 @admin_bp.route('/login', methods=['GET', 'POST'])
 @limiter.limit("10 per minute")
-@feat_shell("FEAT-ADMN-001")
 def login():
     """Admin login with TOTP authentication."""
     session.pop("user_id", None)
@@ -2910,12 +2879,12 @@ def signup():
     Teacher signup — 3-step class-first flow.
 
     Step 1 (GET /signup): Class creation form (class name, section, teacher display name).
-    Step 1 (POST /signup with signup_step=class_setup): Creates ClassEconomy + Seat + IdentityProfile,
-        stashes seat_id/class_id in session, redirects to step 2.
+    Step 1 (POST /signup with signup_step=class_setup): Validates and stages
+        class/display data in session; no database row is created.
     Step 2 (POST /signup with username, no totp_code): Username validation, generates TOTP secret,
         shows QR code.
-    Step 3 (POST /signup with totp_code): Validates TOTP, creates User, binds to seat/class,
-        redirects to login.
+    Step 3 (POST /signup with totp_code): Validates TOTP, atomically creates
+        User + Class + teacher Seat + class-scoped display profile, then redirects.
     """
     is_json = request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest"
 
@@ -2946,25 +2915,14 @@ def signup():
             first_name = form.first_name.data.strip()
             last_name = form.last_name.data.strip()
 
-            # Create class + seat (no user yet)
-            from app.utils.join_code import generate_join_code
-            join_code = generate_join_code()
-
-            signup_idempotency_key = f"feat:iden:admin-signup-class:{join_code}"
-            with FEATContext("FEAT-IDEN-001", idempotency_key=signup_idempotency_key):
-                economy, teacher_seat = create_class_without_user(
-                    join_code=join_code,
-                    display_name=class_display_name,
-                    section=section,
-                    teacher_first_name=first_name,
-                    teacher_last_name=last_name,
-                )
-            db.session.commit()
-
-            # Stash in session for step 2/3
-            session["signup_class_id"] = economy.class_id
-            session["signup_seat_id"] = teacher_seat.id
-            current_app.logger.info(f"Signup step 1 complete: class={economy.class_id}, seat={teacher_seat.id}")
+            # Stage only. The class, teacher, seat, and profile are created
+            # together after username and TOTP verification.
+            for stale_key in ("signup_class_id", "signup_seat_id"):
+                session.pop(stale_key, None)
+            session["signup_class_display_name"] = class_display_name
+            session["signup_section"] = section
+            session["signup_teacher_first_name"] = first_name
+            session["signup_teacher_last_name"] = last_name
 
             # Render step 2 (username form)
             form = AdminSignupForm()
@@ -2982,7 +2940,7 @@ def signup():
         )
 
     # ---- Guard: steps 2/3 require class context from step 1 ----
-    if not session.get("signup_class_id") or not session.get("signup_seat_id"):
+    if not session.get("signup_class_display_name") or not session.get("signup_teacher_first_name"):
         flash("Please start by creating your class.", "error")
         return redirect(url_for("admin.signup"))
 
@@ -2993,7 +2951,7 @@ def signup():
             username = normalize_auth_username(form.username.data)
 
             if _auth_username_exists(username):
-                flash("Username already exists.", "error")
+                flash("Username is not available. Please choose another.", "error")
                 return render_template(
                     "admin_signup.html",
                     form=form,
@@ -3073,28 +3031,42 @@ def signup():
 
     # Re-check username uniqueness (race condition guard)
     if _auth_username_exists(username):
-        flash("Username was taken while you were signing up. Please choose another.", "error")
+        flash("Username is not available. Please choose another.", "error")
         session.pop("admin_totp_secret", None)
         session.pop("admin_totp_username", None)
         return redirect(url_for("admin.signup"))
 
-    # Create User and bind to class/seat
-    class_id = session["signup_class_id"]
-    seat_id = session["signup_seat_id"]
-
-    signup_idempotency_key = f"feat:iden:admin-signup-user:{username}"
-    with FEATContext("FEAT-IDEN-001", idempotency_key=signup_idempotency_key):
-        new_user = create_teacher(username, totp_secret=totp_secret)
-        bind_teacher_to_class(new_user, class_id=class_id, seat_id=seat_id)
-    db.session.commit()
+    # Atomically create the teacher identity and class boundary.
+    from app.services.classroom_setup import create_class
+    from app.utils.join_code import generate_join_code
+    signup_idempotency_key = f"feat:iden:admin-signup:{username}"
+    try:
+        with FEATContext("FEAT-IDEN-001", idempotency_key=signup_idempotency_key):
+            new_user = create_teacher(username, totp_secret=totp_secret)
+            economy = create_class(
+                new_user.id,
+                join_code=generate_join_code(),
+                display_name=session["signup_class_display_name"],
+                section=session.get("signup_section"),
+                teacher_first_name=session["signup_teacher_first_name"],
+                teacher_last_name=session.get("signup_teacher_last_name"),
+            )
+    except ValueError:
+        db.session.rollback()
+        flash("Username is not available. Please choose another.", "error")
+        session.pop("admin_totp_secret", None)
+        session.pop("admin_totp_username", None)
+        return redirect(url_for("admin.signup"))
 
     # Clean up signup session keys
     session.pop("admin_totp_secret", None)
     session.pop("admin_totp_username", None)
-    session.pop("signup_class_id", None)
-    session.pop("signup_seat_id", None)
+    session.pop("signup_class_display_name", None)
+    session.pop("signup_section", None)
+    session.pop("signup_teacher_first_name", None)
+    session.pop("signup_teacher_last_name", None)
 
-    current_app.logger.info(f"Teacher signup complete: user={new_user.id}, class={class_id}, seat={seat_id}")
+    current_app.logger.info(f"Teacher signup complete: user={new_user.id}, class={economy.class_id}")
     flash("Account created successfully! Please log in with your username and authenticator.", "success")
     return redirect(url_for("admin.login"))
 
@@ -3624,7 +3596,6 @@ def customizations():
                     cls.display_name = new_display_name if new_display_name else None
                     cls.section = new_section if new_section else None
 
-        db.session.commit()
         display_name = teacher_profile.full_name if teacher_profile else admin.get_display_username()
         set_admin_display_name_cache(user_id=admin.id, display_name=display_name)
         flash("Settings updated successfully!", "success")
@@ -4087,6 +4058,7 @@ def set_current_class():
 
 @admin_bp.route('/classes/<class_id>/timezone', methods=['POST'])
 @admin_required
+@requires_feat_context("FEAT-CLASS-001")
 def set_class_timezone(class_id: str):
     """Set the immutable timezone for a newly created class."""
     data = request.get_json(silent=True) or {}
@@ -4131,7 +4103,6 @@ def set_class_timezone(class_id: str):
             # Persist an explicit confirmed UTC value distinct from default placeholder UTC.
             fresh_class.class_timezone = 'Etc/UTC' if timezone_name == 'UTC' else timezone_name
             db.session.flush()
-        db.session.commit()
     except Exception:
         current_app.logger.error(
             "Failed to set class timezone for class_id=%s", class_id
@@ -4444,6 +4415,7 @@ def adjust_hall_pass_entitlements(seat_id):
 
 @admin_bp.route('/student/edit', methods=['POST'])
 @admin_required
+@requires_feat_context("FEAT-IDEN-006")
 def edit_student():
     """Edit student basic information."""
     seat_id = request.form.get('seat_id', type=int)
@@ -4514,7 +4486,6 @@ def edit_student():
                   f"Give this code to the student.", "warning")
 
     try:
-        db.session.commit()
         if name_changed:
             flash(f"Successfully updated {student_profile.full_name}'s information.", "success")
     except Exception as e:
@@ -4533,7 +4504,6 @@ def edit_student():
 @admin_bp.route('/student/archive', methods=['GET', 'POST'])
 @admin_bp.route('/student/delete', methods=['GET', 'POST'])
 @admin_required
-@feat_shell("FEAT-ADMN-001")
 def delete_student():
     """Remove a student from this teacher and delete fully if no links remain."""
     current_app.logger.info(f"Delete student route accessed. Method: {request.method}, Form data: {dict(request.form)}")
@@ -4585,7 +4555,6 @@ def delete_student():
 
 @admin_bp.route('/students/bulk-delete', methods=['POST'])
 @admin_required
-@feat_shell("FEAT-ADMN-001")
 def bulk_delete_students():
     """Remove multiple students from this teacher and delete true orphans."""
     data = request.get_json(silent=True) or {}
@@ -4624,7 +4593,6 @@ def bulk_delete_students():
 
 @admin_bp.route('/students/delete-block', methods=['POST'])
 @admin_required
-@feat_shell("FEAT-ADMN-001")
 def delete_block():
     """Backwards-compatible block deletion wrapper that resolves to join-code deletion."""
     data = request.get_json(silent=True) or {}
@@ -4653,7 +4621,12 @@ def delete_block():
         class_row = get_class_economy(class_ids[0])
         if not class_row:
             return jsonify({"status": "error", "message": "Join code not found or access denied."}), 404
-        _hard_delete_class_scope(class_row.class_id, g.canonical_context)
+        _hard_delete_class_scope(
+            class_id=class_row.class_id,
+            canonical_context=g.canonical_context,
+            correlation_id=generate_correlation_id(),
+            idempotency_key=f"class:destroy:{class_row.class_id}",
+        )
 
         if class_ids:
             Seat.query.filter(
@@ -4676,7 +4649,6 @@ def delete_block():
 @admin_bp.route('/join-code/delete', methods=['POST'])
 @admin_bp.route('/join-code', methods=['DELETE'])
 @admin_required
-@feat_shell("FEAT-ADMN-001")
 def delete_join_code():
     """Hard-delete a class economy and all records scoped to the join code."""
     data = request.get_json(silent=True) or request.form
@@ -4709,7 +4681,12 @@ def delete_join_code():
     try:
         if not class_row:
             return jsonify({"status": "error", "message": "Join code not found or access denied."}), 404
-        _hard_delete_class_scope(class_row.class_id, g.canonical_context)
+        _hard_delete_class_scope(
+            class_id=class_row.class_id,
+            canonical_context=g.canonical_context,
+            correlation_id=generate_correlation_id(),
+            idempotency_key=f"class:destroy:{class_row.class_id}",
+        )
         return jsonify({
             "status": "success",
             "message": f"Join code {display_join_code} and all scoped records were permanently deleted."
@@ -4725,7 +4702,6 @@ def delete_join_code():
 
 @admin_bp.route('/pending-students/delete', methods=['POST'])
 @admin_required
-@feat_shell("FEAT-ADMN-001")
 def delete_pending_student():
     """
     Delete a single pending student (unclaimed Seat entry).
@@ -4762,7 +4738,7 @@ def delete_pending_student():
             return jsonify({"status": "error", "message": "Pending student not found or access denied."}), 404
 
         # Verify it's actually unclaimed
-        if seat_entry.claimed_at is not None or seat_entry.student_id is not None:
+        if seat_entry.claimed_at is not None or seat_entry.user_id is not None:
             return jsonify({
                 "status": "error",
                 "message": "This seat has already been claimed. Use the regular student deletion route instead."
@@ -4775,7 +4751,14 @@ def delete_pending_student():
         )
 
         # Delete the Seat entry (this is the only record for unclaimed seats)
-        delete_seat_with_profile(seat_entry)
+        result = remove_pending_student_seat(
+            canonical_context=g.canonical_context,
+            seat_id=seat_entry.id,
+            correlation_id=generate_correlation_id(),
+            idempotency_key=f"identity:pending-remove:{g.canonical_context.class_id}:{seat_entry.id}",
+        )
+        if result != "REMOVED":
+            return jsonify({"status": "error", "message": "Pending student could not be removed."}), 409
         return jsonify({
             "status": "success",
             "message": f"Successfully deleted pending student {student_name}."
@@ -4788,7 +4771,6 @@ def delete_pending_student():
 
 @admin_bp.route('/pending-students/bulk-delete', methods=['POST'])
 @admin_required
-@feat_shell("FEAT-ADMN-001")
 def bulk_delete_pending_students():
     """
     Delete multiple pending students (unclaimed Seat entries) at once.
@@ -4816,10 +4798,20 @@ def bulk_delete_pending_students():
                 cid for cid in _get_class_ids_by_block(g.canonical_context, [section]).values() if cid
             ]
             if block_class_ids:
-                deleted_count = Seat.query.filter(
+                pending_seats = Seat.query.filter(
                     Seat.class_id.in_(block_class_ids),
                     Seat.claimed_at.is_(None),
-                ).delete(synchronize_session=False)
+                    Seat.user_id.is_(None),
+                ).all()
+                for seat_entry in pending_seats:
+                    result = remove_pending_student_seat(
+                        canonical_context=g.canonical_context,
+                        seat_id=seat_entry.id,
+                        correlation_id=generate_correlation_id(),
+                        idempotency_key=f"identity:pending-remove:{g.canonical_context.class_id}:{seat_entry.id}",
+                    )
+                    if result == "REMOVED":
+                        deleted_count += 1
         else:
             # Delete specific Seat entries
             for seat_id in seat_ids:
@@ -4835,9 +4827,15 @@ def bulk_delete_pending_students():
 
                 if seat_entry:
                     # Verify it's actually unclaimed
-                    if seat_entry.claimed_at is None and seat_entry.student_id is None:
-                        delete_seat_with_profile(seat_entry)
-                        deleted_count += 1
+                    if seat_entry.claimed_at is None and seat_entry.user_id is None:
+                        result = remove_pending_student_seat(
+                            canonical_context=g.canonical_context,
+                            seat_id=seat_entry.id,
+                            correlation_id=generate_correlation_id(),
+                            idempotency_key=f"identity:pending-remove:{g.canonical_context.class_id}:{seat_entry.id}",
+                        )
+                        if result == "REMOVED":
+                            deleted_count += 1
 
         message = f"Successfully deleted {deleted_count} pending student(s)."
         if section:
@@ -4862,14 +4860,13 @@ def add_individual_student():
         first_name = request.form.get('first_name', '').strip()
         last_name = request.form.get('last_name', '').strip()
         block_select = (request.form.get('block_select') or '').strip()
-        new_block_name = request.form.get('new_block_name', '').strip().upper()
         additional_notes = (request.form.get('additional_notes') or '').strip()
 
         if not all([first_name, last_name, block_select]):
             flash("All fields are required.", "error")
             return redirect(url_for('admin.students'))
 
-        section = new_block_name if block_select == '__CREATE_NEW__' else block_select.upper()
+        section = block_select.upper()
         # Student.block is VARCHAR(10) in the DB; enforce before insert to avoid flush-time errors.
         if len(section) > 10:
             flash("Class section name must be 10 characters or fewer.", "error")
@@ -4936,7 +4933,6 @@ def add_individual_student():
             if class_context.get('class_created'):
                 _queue_pending_class_timezone_confirmation(class_context.get('class_row'))
 
-        db.session.commit()
     except Exception as e:
         db.session.rollback()
         current_app.logger.error("Error adding individual student")
@@ -4947,7 +4943,6 @@ def add_individual_student():
 
 @admin_bp.route('/student/add-manual', methods=['POST'])
 @admin_required
-@feat_shell("FEAT-ADMN-001")
 def add_manual_student():
     """Add a student with full manual configuration (advanced mode)."""
     try:
@@ -5045,49 +5040,46 @@ def add_manual_student():
                     flash(f"Student {first_name} {last_name} is already in your class.", "info")
                 else:
                     flash(f"Student {first_name} {last_name} already exists. Linking to your class.", "warning")
-                    from app.feats.class_configuration import execute_provision_student_seat
+                    from app.feats.identity_feat import execute_provision_student_seat
                     provision_result = execute_provision_student_seat(
                         canonical_context=g.canonical_context,
                         class_id=class_id,
                         first_name=first_name,
                         last_name=last_name,
+                        dedupe_code=dedupe_key,
+                        has_received_rent_exemption=not rent_enabled,
+                        correlation_id=f"corr_iden_roster_{class_id}_{uuid.uuid4().hex}",
+                        idempotency_key=f"feat:iden:roster-seat:{class_id}:{dedupe_key}",
                     )
                     if not provision_result.success:
                         current_app.logger.error(
-                            "FEAT-CLASS-002 provision failed linking duplicate: %s",
+                            "FEAT-IDEN-006 provision failed linking duplicate: %s",
                             provision_result.error_message,
                         )
                     if class_context.get('class_created'):
                         _queue_pending_class_timezone_confirmation(class_context.get('class_row'))
                 return redirect(url_for('admin.students'))
 
-        with FEATContext("FEAT-IDEN-001", idempotency_key=f"admin:add-manual-student:{class_id}:{first_name}:{last_name}:{dedupe_key}"):
-            # Seat only — no User until student completes claim (DOM-IDEN-002 §VIII).
-            profile = IdentityProfile(
-                profile_type='student',
-                first_name=first_name,
-                last_name=last_name,
-            )
+        from app.feats.identity_feat import execute_provision_student_seat
+        provision_result = execute_provision_student_seat(
+            canonical_context=g.canonical_context,
+            class_id=class_id,
+            first_name=first_name,
+            last_name=last_name,
+            dedupe_code=dedupe_key,
+            has_received_rent_exemption=not rent_enabled,
+            correlation_id=f"corr_iden_roster_{class_id}_{uuid.uuid4().hex}",
+            idempotency_key=f"feat:iden:roster-seat:{class_id}:{dedupe_key}",
+        )
+        if not provision_result.success:
+            raise ValueError(provision_result.error_message or "Student seat provisioning failed")
 
-            # Verify class exists before creating Seat (class was resolved or created above)
-            if not get_class_economy(class_id):
-                raise ValueError(f"Class {class_id} does not exist")
+        if class_context.get('class_created'):
+            _queue_pending_class_timezone_confirmation(class_context.get('class_row'))
 
-            new_seat = create_pending_student_seat(
-                class_id=class_id,
-                dedupe_code=dedupe_key,
-                has_received_rent_exemption=not rent_enabled,
-            )
-
-            profile.seat_id = new_seat.id
-
-            if class_context.get('class_created'):
-                _queue_pending_class_timezone_confirmation(class_context.get('class_row'))
-
-        db.session.commit()
     except Exception as e:
         db.session.rollback()
-        current_app.logger.error("Error creating manual student")
+        current_app.logger.error("Error creating manual student: %s", e)
         flash(f"Cannot create student due to internal error", "error")
 
     return redirect(url_for('admin.students'))
@@ -5113,6 +5105,7 @@ def generate_collective_goal_instance_code():
 
 @admin_bp.route('/store', methods=['GET', 'POST'])
 @admin_required
+@requires_feat_context("FEAT-STOR-001")
 def store_management():
     """Manage store items - view, create, edit, delete."""
     user_id = g.canonical_context.user_id
@@ -5188,11 +5181,9 @@ def store_management():
             # Set blocks using many-to-many relationship
             if form.blocks.data:
                 new_item.set_blocks(form.blocks.data)
-        db.session.commit()
         flash(f"'{new_item.name}' has been added to the store.", "success")
         return redirect(url_for('admin.store_management'))
 
-    # Get items for this teacher only.
     items = [
         item for item in StoreItem.query.filter_by(class_id=selected_scope['class_id']).order_by(StoreItem.name).all()
         if not item.blocks_list or selected_block in {b.strip().upper() for b in item.blocks_list if b}
@@ -5532,6 +5523,7 @@ def store_management():
 
 @admin_bp.route('/store/edit/<int:item_id>', methods=['GET', 'POST'])
 @admin_required
+@requires_feat_context("FEAT-STOR-001")
 def edit_store_item(item_id):
     """Edit an existing store item."""
     user_id = g.canonical_context.user_id
@@ -5598,12 +5590,10 @@ def edit_store_item(item_id):
                 if not was_active or not item.collective_goal_instance_code:
                     # Issue new instance code
                     item.collective_goal_instance_code = generate_collective_goal_instance_code()
-        db.session.commit()
         flash(f"'{item.name}' has been updated.", "success")
         return redirect(url_for('admin.store_management'))
     payroll_settings = PayrollSettings.query.filter_by(class_id=selected_scope['class_id'], is_active=True).first()
     return render_template(
-        'admin_edit_item.html',
         form=form,
         item=item,
         current_page="store",
@@ -5616,6 +5606,7 @@ def edit_store_item(item_id):
 @admin_bp.route('/store/delete/<int:item_id>', methods=['POST'])
 @admin_bp.route('/item/deactivate/<int:item_id>', methods=['POST'])
 @admin_required
+@requires_feat_context("FEAT-STOR-001")
 def delete_store_item(item_id):
     """Deactivate a store item (soft delete)."""
     user_id = g.canonical_context.user_id
@@ -5635,7 +5626,6 @@ def delete_store_item(item_id):
     with FEATContext("FEAT-SETTINGS-001", idempotency_key=idempotency_key):
         item = StoreItem.query.filter_by(id=item_id, class_id=selected_scope['class_id']).first_or_404()
         deactivate_store_item(item)
-    db.session.commit()
     flash(f"'{item.name}' has been deactivated and hidden from new purchases.", "success")
     return redirect(url_for('admin.store_management'))
 
@@ -5795,6 +5785,7 @@ def _calculate_base_rent_amount(rent_settings: RentSettings, current_year: int, 
 
 @admin_bp.route('/rent-settings', methods=['GET', 'POST'])
 @admin_required
+@requires_feat_context("FEAT-OBL-003")
 def rent_settings():
     """Configure rent settings."""
     user_id = g.canonical_context.user_id
@@ -5878,14 +5869,12 @@ def rent_settings():
             block_settings.prevent_purchase_when_late = request.form.get('prevent_purchase_when_late') == 'on'
             block_settings.bypass_cwi_warnings = request.form.get('bypass_cwi_warnings') == 'on'
 
-        db.session.commit()
         # Handle rent items (for all blocks in blocks_to_update)
         # Parse rent items from form once
         rent_item_indices = set()
         for key in request.form.keys():
             if key.startswith('rent_item_name_'):
                 idx = key.split('_')[-1]
-                rent_item_indices.add(idx)
 
         parsed_items = []
         for idx in sorted(rent_item_indices):
@@ -6049,7 +6038,6 @@ def rent_settings():
                     flash("Some changes are locked because students have already paid rent this period. "
                           "Item type, use limits, and hall pass counts will apply next period.", "warning")
 
-        db.session.commit()
         # Rent settings are canonical; no policy-version snapshotting in v2.
         flash("Rent settings updated successfully!", "success")
         return redirect(url_for('admin.rent_settings'))
@@ -6057,7 +6045,6 @@ def rent_settings():
     # Use view model to get student obligation summary (encapsulates all aggregation)
     from app.services.obligation_view_model import (
         build_class_obligation_summary,
-        add_display_formatting_to_class_obligation_summary,
     )
 
     obligation_summary = build_class_obligation_summary(class_id, 'RENT')
@@ -6250,7 +6237,7 @@ def rent_settings():
 
 @admin_bp.route('/rent-waiver/add', methods=['POST'])
 @admin_required
-@feat_shell("FEAT-OBL-003")
+@requires_feat_context("FEAT-OBL-003")
 def add_rent_waiver():
     """Waive one or more specific outstanding rent assessments (FEAT-OBL-003).
 
@@ -6324,6 +6311,7 @@ def add_rent_waiver():
                 correlation_id=correlation_id,
                 class_id=class_id,
                 seat_id=assessment.seat_id,
+                idempotency_key=f"feat:obl:waiver:{class_id}:{correlation_id}",
                 notes=notes,
             )
             waived_count += 1
@@ -6333,7 +6321,6 @@ def add_rent_waiver():
             )
             failed_count += 1
 
-    db.session.commit()
 
     if waived_count > 0:
         flash(f"Waived {waived_count} rent assessment{'s' if waived_count != 1 else ''}.", "success")
@@ -6390,6 +6377,7 @@ def _next_tenant_scoped_tier_id(seed, existing_ids):
 
 @admin_bp.route('/insurance', methods=['GET', 'POST'])
 @admin_required
+@requires_feat_context("FEAT-POL-001")
 def insurance_management():
     """Main insurance management dashboard."""
     user_id = g.canonical_context.user_id
@@ -6429,16 +6417,9 @@ def insurance_management():
 
         # Mutation is delegated to a proper FEAT wrapper
         # (execute_create_insurance_policy_draft) so this route no
-        # longer needs @feat_shell — GET loads therefore stop emitting
-        # FEAT-SHELL-DIRTY. Idempotency key is stable per class + title
+        # GET loads do not open a mutation boundary.
+        # Idempotency key is stable per class + title.
         # so a double-submit of the same modal is a no-op.
-        #
-        # The explicit db.session.commit() after the FEAT call handles
-        # the outer-transaction case: FEATContext's begin_nested() (used
-        # because the earlier reads in this handler autobegan a session
-        # transaction) only releases the SAVEPOINT; the outer txn still
-        # needs to commit for the row to persist. Allowed by the
-        # atomicity check because we are OUTSIDE the FEAT and the
         # session has no dirty state after the FEAT's flush.
         from app.feats.policy_reference_feat import execute_create_insurance_policy_draft
 
@@ -6450,7 +6431,6 @@ def insurance_management():
             title=title,
             idempotency_key=idempotency_key,
         )
-        db.session.commit()
 
         flash(
             f"Draft policy \"{title}\" created. Fill in the premium, coverage, "
@@ -6460,7 +6440,6 @@ def insurance_management():
         return redirect(url_for('admin.edit_insurance_policy', policy_id=new_version.id))
 
     settings_block = class_context.get("block")
-    active_class_label = selected_join_code
     policy_versions = [
         SimpleNamespace(
             id=version.id,
@@ -6492,7 +6471,7 @@ def insurance_management():
 
 @admin_bp.route('/insurance/edit/<int:policy_id>', methods=['GET', 'POST'])
 @admin_required
-@feat_shell("FEAT-SETTINGS-001")
+@requires_feat_context("FEAT-POL-001")
 def edit_insurance_policy(policy_id):
     """Edit existing insurance policy."""
     class_id = g.canonical_context.class_id
@@ -6562,7 +6541,6 @@ def edit_insurance_policy(policy_id):
             is_active=True,
             expires_at=None,
         )
-        db.session.commit()
         flash(f"Insurance policy '{payload['title']}' updated.", "success")
         return redirect(url_for("admin.insurance_management"))
     return render_template(
@@ -6586,7 +6564,7 @@ def edit_insurance_policy(policy_id):
 
 @admin_bp.route('/insurance/deactivate/<int:policy_id>', methods=['POST'])
 @admin_required
-@feat_shell("FEAT-SETTINGS-001")
+@requires_feat_context("FEAT-POL-001")
 def deactivate_insurance_policy(policy_id):
     """Deactivate an insurance policy."""
     class_id = g.canonical_context.class_id
@@ -6613,19 +6591,17 @@ def deactivate_insurance_policy(policy_id):
         is_active=True,
         expires_at=None,
     )
-    db.session.commit()
     flash("Insurance policy deactivated.", "success")
     return redirect(url_for('admin.insurance_management'))
 
 
 @admin_bp.route('/insurance/delete/<int:policy_id>', methods=['POST'])
 @admin_required
-@feat_shell("FEAT-SETTINGS-001")
+@requires_feat_context("FEAT-POL-001")
 def delete_insurance_policy(policy_id):
     """Delete an insurance policy and all associated data.
 
     Since each teacher has their own policy instances (identified by policy_code),
-    this safely deletes only the current teacher's policy data without affecting
     other teachers.
     """
     class_id = g.canonical_context.class_id
@@ -6651,21 +6627,18 @@ def delete_insurance_policy(policy_id):
         is_active=True,
         expires_at=None,
     )
-    db.session.commit()
     flash("Insurance policy deletion scheduled.", "success")
     return redirect(url_for('admin.insurance_management'))
 
 
 @admin_bp.route('/insurance/mass-remove/<int:policy_id>', methods=['POST'])
 @admin_required
-@feat_shell("FEAT-SETTINGS-001")
 def mass_remove_policy(policy_id):
     """Cancel insurance policy for multiple or all students."""
     flash("Insurance mass-removal is now expressed as policy deactivation/deletion scheduling in the class-config editor.", "info")
     return redirect(url_for('admin.insurance_management'))
 
 
-@admin_bp.route('/insurance/student-policy/<int:enrollment_id>')
 @admin_required
 def view_student_policy(enrollment_id):
     """View student's policy enrollment details and claims history."""
@@ -6855,7 +6828,6 @@ def transactions():
 
 @admin_bp.route('/void-transaction/<int:transaction_id>', methods=['POST'])
 @admin_required
-@feat_shell("FEAT-ADMN-001")
 def void_transaction(transaction_id):
     """Void a transaction."""
     requested_with = (request.headers.get("X-Requested-With") or "").strip().lower()
@@ -6882,7 +6854,11 @@ def void_transaction(transaction_id):
         if tx.class_id != ctx.class_id:
             raise access_policy_service.AccessPolicyDenied(reason_code="foreign_class_scope", message="You do not have permission to void this transaction.")
 
-        execute_void_transaction(tx)
+        execute_void_transaction(
+            tx,
+            correlation_id=f"{tx.correlation_id}:void:{transaction_id}",
+            idempotency_key=f"feat:ledger:void:{ctx.class_id}:{transaction_id}",
+        )
         current_app.logger.info(f"Transaction {transaction_id} voided")
     except (AccessScopeDenied, access_policy_service.AccessPolicyDenied) as e:
         db.session.rollback()
@@ -7054,7 +7030,7 @@ def hall_pass_setup():
 
 @admin_bp.route('/economy-policy', methods=['POST'])
 @admin_required
-@feat_shell("FEAT-ADMN-001")
+@requires_feat_context("FEAT-CLASS-005")
 def update_economy_policy():
     from app.feats.class_configuration.feat_class_005_economic_engine_evolution import (
         execute_evolve_economic_engine,
@@ -7094,7 +7070,7 @@ def update_economy_policy():
         return redirect(url_for('admin.economic_engine'))
 
     # Update display metadata on FeatureSettings (last-updated timestamp is UI-only).
-    # No explicit commit — FEAT-ADMN-001's @feat_shell context owns the transaction boundary.
+    # The canonical FEAT-CLASS-005 context owns the transaction boundary.
     settings_row = get_feature_settings_row_for_class(class_id, create=True)
     if settings_row:
         settings_row.economy_policy_updated_at = utc_now()
@@ -7110,7 +7086,7 @@ def update_economy_policy():
 
 @admin_bp.route('/economy-policy/rebalance', methods=['POST'])
 @admin_required
-@feat_shell("FEAT-ADMN-001")
+@requires_feat_context("FEAT-CLASS-005")
 def apply_economy_rebalance():
     user_id = g.canonical_context.user_id
     current_class_id = g.canonical_context.class_id
@@ -7245,7 +7221,7 @@ def economic_engine():
         if selected_class_id else []
     )
 
-    banking_settings = _resolve_banking_settings_for_class_id(selected_class_id) if selected_class_id else None
+    economic_engine = _resolve_economic_engine_for_class_id(selected_class_id) if selected_class_id else None
 
     def summarize_banking(settings):
         if not settings:
@@ -7258,8 +7234,8 @@ def economic_engine():
 
         # Keep as Decimal for precise comparison
         from app.models import _quantize_currency
-        apy = _quantize_currency(settings.savings_apy or Decimal('0'))
-        payout = settings.interest_schedule_type or 'monthly'
+        apy = _quantize_currency((settings.interest_rate or Decimal('0')) * Decimal('100'))
+        payout = settings.interest_payout_frequency or 'monthly'
 
         if apy <= Decimal('0'):
             level = 'warning'
@@ -7363,8 +7339,8 @@ def economic_engine():
         insurance_count=len(insurance_policies),
         store_item_count=len(store_items),
         fine_count=len(fines),
-        banking_settings=banking_settings,
-        banking_summary=summarize_banking(banking_settings),
+        banking_settings=economic_engine,
+        banking_summary=summarize_banking(economic_engine),
         analysis=analysis,
         warnings_by_level=warnings_by_level,
         warnings_by_feature=warnings_by_feature,
@@ -8100,7 +8076,6 @@ def payroll_settings():
         with FEATContext("FEAT-ADMN-001", idempotency_key=idempotency_key):
             upsert_payroll_settings(class_id=class_id, settings_data=settings_data)
 
-        db.session.commit()
         flash(f'Payroll settings ({settings_mode} mode) saved successfully!', 'success')
 
     except Exception as e:
@@ -8157,7 +8132,6 @@ def update_expected_weekly_hours():
             flash(f'Error updating expected weekly hours: {result.error_message}', 'error')
             return redirect(url_for('admin.payroll'))
 
-        db.session.commit()
         flash(f'Expected weekly hours set to {expected_weekly_hours} hours/week.', 'success')
 
     except ValueError:
@@ -8195,20 +8169,22 @@ def void_payroll_transaction(transaction_id):
             f"feat:led:payroll-void:{selected_scope['class_id']}:{transaction.id}"
         )
         db.session.rollback()
-        with FEATContext("FEAT-LED-004", idempotency_key=idempotency_key):
-            transaction = (
-                Transaction.query
-                .filter(Transaction.id == transaction_id)
-                .filter(Transaction.class_id == selected_scope['class_id'])
-                .first_or_404()
-            )
+        transaction = (
+            Transaction.query
+            .filter(Transaction.id == transaction_id)
+            .filter(Transaction.class_id == selected_scope['class_id'])
+            .first_or_404()
+        )
 
-            if transaction.is_void:
-                return jsonify({'success': False, 'message': 'Transaction is already voided'}), 400
+        if transaction.is_void:
+            return jsonify({'success': False, 'message': 'Transaction is already voided'}), 400
 
-            execute_void_transaction(transaction)
+        execute_void_transaction(
+            transaction,
+            correlation_id=f"{transaction.correlation_id}:void:{transaction_id}",
+            idempotency_key=idempotency_key,
+        )
 
-        db.session.commit()
         return jsonify({'success': True, 'message': 'Transaction voided successfully'})
     except HTTPException:
         raise
@@ -8244,20 +8220,23 @@ def void_transactions_bulk():
             f"feat:led:payroll-void-bulk:{selected_scope['class_id']}:{payload_hash}"
         )
 
-        count = 0
         db.session.rollback()
-        with FEATContext("FEAT-LED-004", idempotency_key=idempotency_key):
-            for tx_id in transaction_ids:
-                transaction = (
-                    Transaction.query
-                    .filter(Transaction.id == int(tx_id))
-                    .filter(Transaction.class_id == selected_scope['class_id'])
-                    .first()
-                )
-                if transaction and not transaction.is_void:
-                    execute_void_transaction(transaction)
-                    count += 1
-        db.session.commit()
+        transactions_to_void = []
+        for tx_id in transaction_ids:
+            transaction = (
+                Transaction.query
+                .filter(Transaction.id == int(tx_id))
+                .filter(Transaction.class_id == selected_scope['class_id'])
+                .first()
+            )
+            if transaction and not transaction.is_void:
+                transactions_to_void.append(transaction)
+        execute_void_transactions(
+            transactions_to_void,
+            correlation_id=f"corr_void_bulk_{selected_scope['class_id']}_{uuid.uuid4().hex}",
+            idempotency_key=idempotency_key,
+        )
+        count = len(transactions_to_void)
         return jsonify({'success': True, 'message': f'{count} transaction(s) voided successfully'})
     except HTTPException:
         raise
@@ -8381,6 +8360,7 @@ def attendance_log():
 
 @admin_bp.route('/upload-students', methods=['POST'])
 @admin_required
+@requires_feat_context("FEAT-IDEN-006")
 def upload_students():
     """
     Add students from the staging grid (JSON).
@@ -8501,8 +8481,6 @@ def upload_students():
             except Exception as e:
                 current_app.logger.error(f"Error processing row {i+1}: {e}")
                 errors.append(f"Row {i+1}: {str(e)}")
-
-    db.session.commit()
 
     status = "success" if not errors else "partial"
     return jsonify(
@@ -8859,7 +8837,6 @@ def tap_in_students():
 
 @admin_bp.route('/students/bulk-adjust-hall-pass-entitlements', methods=['POST'])
 @admin_required
-@feat_shell("FEAT-STOR-001")
 def bulk_adjust_hall_pass_entitlements():
     """Bulk grant or remove hall-pass entitlements for selected students."""
     data = request.get_json()
@@ -8899,15 +8876,23 @@ def bulk_adjust_hall_pass_entitlements():
                 continue
 
             if update_type == 'add':
-                grant_hall_passes(
-                    student,
-                    value,
+                execute_hall_pass_adjustment(
+                    canonical_context=g.canonical_context,
+                    target_seat_id=student.id,
+                    quantity=value,
+                    operation="add",
+                    correlation_id=generate_correlation_id(),
+                    idempotency_key=f"store:hall-pass-adjust:{student.class_id}:{student.id}:add",
                 )
             else:
                 try:
-                    remove_hall_passes(
-                        student,
-                        value,
+                    execute_hall_pass_adjustment(
+                        canonical_context=g.canonical_context,
+                        target_seat_id=student.id,
+                        quantity=value,
+                        operation="remove",
+                        correlation_id=generate_correlation_id(),
+                        idempotency_key=f"store:hall-pass-adjust:{student.class_id}:{student.id}:remove",
                     )
                 except ValueError as exc:
                     errors.append(f"Student {student.id}: {exc}")
@@ -8950,291 +8935,16 @@ def bulk_adjust_hall_pass_entitlements():
 @admin_bp.route('/banking')
 @admin_required
 def banking():
-    """Banking management page with transactions and settings."""
-    user_id = g.canonical_context.user_id
-    selected_scope = require_admin_feature_scope(
-        'banking',
-        canonical_context=g.canonical_context,
-    )
-
-    # Get current banking settings for the canonical class
-    settings = BankingSettings.query.filter_by(
-        class_id=selected_scope['class_id'],
-    ).first()
-
-    # Create form and populate with existing data
-    form = BankingSettingsForm()
-    if settings:
-        form.savings_apy.data = settings.savings_apy
-        form.savings_monthly_rate.data = settings.savings_monthly_rate
-        form.interest_calculation_type.data = settings.interest_calculation_type or 'simple'
-        form.compound_frequency.data = settings.compound_frequency or 'monthly'
-        form.interest_schedule_type.data = settings.interest_schedule_type
-        form.interest_schedule_cycle_days.data = settings.interest_schedule_cycle_days
-        form.interest_payout_start_date.data = settings.interest_payout_start_date
-        form.overdraft_protection_enabled.data = settings.overdraft_protection_enabled
-        form.overdraft_fee_enabled.data = settings.overdraft_fee_enabled
-        form.overdraft_fee_type.data = settings.overdraft_fee_type
-        form.overdraft_fee_flat_amount.data = settings.overdraft_fee_flat_amount
-        form.overdraft_fee_progressive_1.data = settings.overdraft_fee_progressive_1
-        form.overdraft_fee_progressive_2.data = settings.overdraft_fee_progressive_2
-        form.overdraft_fee_progressive_3.data = settings.overdraft_fee_progressive_3
-        form.overdraft_fee_progressive_cap.data = settings.overdraft_fee_progressive_cap
-
-    # Get filter and pagination parameters
-    student_q = request.args.get('student', '').strip()
-    account_q = request.args.get('account', '')
-    type_q = request.args.get('type', '')
-    start_date = request.args.get('start_date')
-    end_date = request.args.get('end_date')
-    page = int(request.args.get('page', 1))
-    per_page = 50
-
-    # Get admin's class_ids
-    user_id = g.canonical_context.user_id
-    # Base query joining Transaction with Seat for seat-scoped filtering
-    query = (
-        db.session.query(Transaction, Seat)
-        .join(Seat, Transaction.seat_id == Seat.id)
-        .filter(Transaction.class_id == selected_scope["class_id"])
-    )
-
-    # Apply filters
-    if student_q:
-        # Since first_name is encrypted, we cannot use `ilike`.
-        # We must fetch students, decrypt names, and filter in Python.
-        matching_student_ids = []
-        # Handle if the query is a student ID
-        if student_q.isdigit():
-            matching_student_ids.append(int(student_q))
-
-        # Handle if the query is a name
-        all_students = Seat.query.filter(
-            Seat.class_id.in_(teacher_class_ids),
-            Seat.claimed_at.isnot(None),
-        ).all()
-        for seat in all_students:
-            _ip = seat.identity_profile
-            if student_q.lower() in (_ip.full_name if _ip else "").lower() and seat.user_id:
-                matching_student_ids.append(seat.user_id)
-
-        # If there are any matches (by ID or name), filter the query
-        if matching_student_ids:
-            query = query.filter(Seat.user_id.in_(matching_student_ids))
-        else:
-            # If no students match, return no results
-            query = query.filter(sa.false())
-
-    if account_q:
-        query = query.filter(Transaction.account_type == account_q)
-    if type_q:
-        query = query.filter(Transaction.type == type_q)
-    if start_date:
-        try:
-            start_date_obj = datetime.strptime(start_date, '%Y-%m-%d')
-            query = query.filter(Transaction.timestamp >= start_date_obj)
-        except ValueError:
-            flash("Invalid start date format. Please use YYYY-MM-DD.", "danger")
-    if end_date:
-        # P1-1 Fix: Prevent SQL injection by validating and parsing date in Python
-        try:
-            end_date_obj = datetime.strptime(end_date, '%Y-%m-%d')
-            # Add one day to include entire end_date (safe in Python, not SQL)
-            end_date_inclusive = end_date_obj + timedelta(days=1)
-            query = query.filter(Transaction.timestamp < end_date_inclusive)
-        except ValueError:
-            flash("Invalid end date format. Please use YYYY-MM-DD.", "danger")
-
-    # Count total for pagination
-    total_transactions = query.count()
-    total_pages = math.ceil(total_transactions / per_page) if total_transactions else 1
-
-    # Get paginated results
-    recent_transactions = (
-        query.order_by(Transaction.timestamp.desc())
-        .limit(per_page)
-        .offset((page - 1) * per_page)
-        .all()
-    )
-
-    # Build transaction list for template
-    transactions = []
-    for tx, seat in recent_transactions:
-        _ip = seat.identity_profile if seat else None
-        transactions.append({
-            'id': tx.id,
-            'timestamp': tx.timestamp,
-            'actor_public_id': seat.public_id if seat else None,
-            'student_name': (_ip.full_name if _ip else str(seat.id if seat else "")),
-            'student_block': seat.class_economy.section if seat and seat.class_economy else None,
-            'amount': tx.amount,
-            'account_type': tx.account_type,
-            'description': tx.description,
-            'type': tx.type,
-            'is_void': tx.is_void
-        })
-
-    # Get all students for stats
-    selected_class_id = selected_scope['class_id']
-    students = [
-        seat for seat in Seat.query.filter(
-            Seat.class_id == selected_class_id,
-            Seat.role == 'student',
-        ).all()
-        if seat.claimed_at is not None
-    ]
-
-    # Calculate banking stats through the ledger authority for the selected class only.
-    total_checking = Decimal('0.00')
-    total_savings = Decimal('0.00')
-    students_with_savings = 0
-    for student in students:
-        seat_id = student.id
-        checking_balance, savings_balance = get_available_balances(seat_id, selected_class_id)
-        total_checking += checking_balance
-        total_savings += savings_balance
-        if savings_balance > 0:
-            students_with_savings += 1
-    total_deposits = total_checking + total_savings
-
-    # Calculate average savings balance (across all students, including those with 0)
-    average_savings_balance = total_savings / len(students) if len(students) > 0 else 0
-
-    # Get transaction types for filter (filtered to this teacher's students)
-    transaction_types = (
-        db.session.query(Transaction.type)
-        .filter(Transaction.class_id == selected_class_id)
-        .filter(Transaction.type.isnot(None))
-        .distinct()
-        .all()
-    )
-    transaction_types = sorted([t[0] for t in transaction_types if t[0]])
-
-    # Compute recommended interest rate from CWI and doubling-time rule (SPEC-ECON-003 §5)
-    recommended_apy = None
-    cwi_value = None
-    doubling_years = None
-    payroll_settings = PayrollSettings.query.filter_by(
-        class_id=selected_class_id,
-    ).first()
-    ewh = _resolve_expected_weekly_hours(payroll_settings) if payroll_settings else None
-    if payroll_settings and payroll_settings.pay_rate and ewh:
-        pay_rate_per_hour = float(payroll_settings.pay_rate) * 60
-        cwi_value = pay_rate_per_hour * float(ewh)
-
-        economy = ClassEconomy.query.filter_by(class_id=selected_class_id).first()
-        mode = getattr(economy, 'economy_policy_mode', 'default') or 'default'
-        doubling_years_map = {'tight': 6, 'default': 4, 'comfortable': 2}
-        doubling_years = doubling_years_map.get(mode, 4)
-        # Max APY from doubling-time: 2 = (1 + r)^t → r = 2^(1/t) - 1
-        recommended_apy = round((2 ** (1 / doubling_years) - 1) * 100, 2)
-
-    return render_template(
-        'admin_banking.html',
-        settings=settings,
-        form=form,
-        transactions=transactions,
-        total_checking=total_checking,
-        total_savings=total_savings,
-        total_deposits=total_deposits,
-        students_with_savings=students_with_savings,
-        total_students=len(students),
-        average_savings_balance=average_savings_balance,
-        transaction_types=transaction_types,
-        page=page,
-        total_pages=total_pages,
-        total_transactions=total_transactions,
-        current_page="banking",
-        format_utc_iso=format_utc_iso,
-        selected_feature_scope=selected_scope,
-        recommended_apy=recommended_apy,
-        cwi_value=cwi_value,
-        doubling_years=doubling_years,
-    )
+    """Redirect to the canonical Economic Engine banking configuration."""
+    return redirect(url_for('admin.economic_engine'))
 
 
 @admin_bp.route('/banking/settings', methods=['POST'])
 @admin_required
 def banking_settings_update():
-    """Update banking settings for a specific class or all classes."""
-    from app.models import _quantize_currency
+    """Redirect legacy banking writes to the canonical Economic Engine page."""
+    return redirect(url_for('admin.economic_engine'))
 
-    user_id = g.canonical_context.user_id
-    form = BankingSettingsForm()
-
-    if form.validate_on_submit():
-        selected_scope = require_admin_feature_scope(
-            'banking',
-            canonical_context=g.canonical_context,
-        )
-        class_id = selected_scope["class_id"]
-
-        try:
-            payload_hash = hashlib.sha256(
-                json.dumps(
-                    {
-                        "class_id": class_id,
-                        "savings_apy": str(form.savings_apy.data or 0),
-                        "savings_monthly_rate": str(form.savings_monthly_rate.data or 0),
-                        "interest_calculation_type": form.interest_calculation_type.data or 'simple',
-                        "compound_frequency": form.compound_frequency.data or 'monthly',
-                        "interest_schedule_type": form.interest_schedule_type.data,
-                        "interest_schedule_cycle_days": form.interest_schedule_cycle_days.data or 30,
-                        "overdraft_protection_enabled": bool(form.overdraft_protection_enabled.data),
-                        "overdraft_fee_enabled": bool(form.overdraft_fee_enabled.data),
-                        "overdraft_fee_type": form.overdraft_fee_type.data,
-                    },
-                    sort_keys=True,
-                    default=str,
-                ).encode("utf-8")
-            ).hexdigest()[:16]
-            idempotency_key = f"feat:banking:settings-update:{class_id}:{payload_hash}"
-
-            db.session.rollback()
-            with FEATContext("FEAT-ADMN-001", idempotency_key=idempotency_key):
-                # Get or create banking settings for the canonical class
-                settings = BankingSettings.query.filter_by(class_id=class_id).first()
-                if not settings:
-                    settings = create_banking_settings(class_id=class_id)
-
-                # Update settings from form
-                settings.savings_apy = Decimal(str(form.savings_apy.data or 0)).quantize(Decimal('0.000001'))
-                settings.savings_monthly_rate = Decimal(str(form.savings_monthly_rate.data or 0)).quantize(Decimal('0.000001'))
-                settings.interest_calculation_type = form.interest_calculation_type.data or 'simple'
-                settings.compound_frequency = form.compound_frequency.data or 'monthly'
-                settings.interest_schedule_type = form.interest_schedule_type.data
-                settings.interest_schedule_cycle_days = form.interest_schedule_cycle_days.data or 30
-                settings.interest_payout_start_date = form.interest_payout_start_date.data
-                settings.overdraft_protection_enabled = form.overdraft_protection_enabled.data
-                settings.overdraft_fee_enabled = form.overdraft_fee_enabled.data
-                settings.overdraft_fee_type = form.overdraft_fee_type.data
-                settings.overdraft_fee_flat_amount = _quantize_currency(form.overdraft_fee_flat_amount.data or Decimal('0.00'))
-                settings.overdraft_fee_progressive_1 = _quantize_currency(form.overdraft_fee_progressive_1.data or Decimal('0.00'))
-                settings.overdraft_fee_progressive_2 = _quantize_currency(form.overdraft_fee_progressive_2.data or Decimal('0.00'))
-                settings.overdraft_fee_progressive_3 = _quantize_currency(form.overdraft_fee_progressive_3.data or Decimal('0.00'))
-                settings.overdraft_fee_progressive_cap = (
-                    _quantize_currency(form.overdraft_fee_progressive_cap.data)
-                    if form.overdraft_fee_progressive_cap.data is not None
-                    else None
-                )
-                settings.updated_at = utc_now()
-
-            db.session.commit()
-            flash('Banking settings updated successfully!', 'success')
-            current_app.logger.info(f"Banking settings updated by admin for class {class_id}")
-        except SQLAlchemyError as e:
-            db.session.rollback()
-            current_app.logger.error(f"Failed to update banking settings: {e}")
-            flash('Error updating banking settings.', 'error')
-    else:
-        for field, errors in form.errors.items():
-            for error in errors:
-                flash(f'{field}: {error}', 'error')
-
-    return redirect(url_for('admin.banking'))
-
-
-# -------------------- DELETION REQUESTS --------------------
 
 @admin_bp.route('/account-delete', methods=['GET', 'POST'])
 @limiter.limit("3 per hour")
@@ -9499,7 +9209,6 @@ def help_support():
                     page_url=page_url,
                 )
 
-            db.session.commit()
             flash("Your support ticket has been submitted directly to system administration.", "success")
             return redirect(url_for('admin.help_support'))
         except SQLAlchemyError:
@@ -9559,6 +9268,7 @@ def feature_settings():
 
 @admin_bp.route('/feature-settings/update', methods=['POST'])
 @admin_required
+@requires_feat_context("FEAT-CLASS-004")
 def update_class_feature_setting():
     """Toggle a single feature for the current class via FEAT-CLASS-004."""
     from app.feats.class_configuration import execute_enable_feature, execute_disable_feature
@@ -9606,7 +9316,6 @@ def update_class_feature_setting():
             }), 400
 
         current_app.logger.info(f"FEAT-CLASS-004 {('enable' if enabled else 'disable')} succeeded for {feature}, committing...")
-        db.session.commit()
         current_app.logger.info(f"FEAT-CLASS-004 commit completed for {feature}")
 
         return jsonify({
@@ -9622,6 +9331,7 @@ def update_class_feature_setting():
 
 @admin_bp.route('/feature-settings/period/<period>', methods=['POST'])
 @admin_required
+@requires_feat_context("FEAT-CLASS-004")
 def update_period_feature_settings(period):
     """Update feature settings for a specific period via AJAX (legacy)."""
     user_id = g.canonical_context.user_id
@@ -9659,7 +9369,6 @@ def update_period_feature_settings(period):
         with FEATContext("FEAT-ADMN-001", idempotency_key=idempotency_key):
             replace_enabled_class_features(class_id, enabled_features)
 
-        db.session.commit()
         return jsonify({
             'status': 'success',
             'message': f'Settings updated for Period {period}',
@@ -9674,8 +9383,8 @@ def update_period_feature_settings(period):
 
 @admin_bp.route('/feature-settings/copy', methods=['POST'])
 @admin_required
+@requires_feat_context("FEAT-CLASS-004")
 def copy_feature_settings():
-    """Copy feature settings from one period to other periods."""
     user_id = g.canonical_context.user_id
 
     try:
@@ -9740,7 +9449,6 @@ def copy_feature_settings():
                 )
                 copied_count += 1
 
-        db.session.commit()
         return jsonify({
             'status': 'success',
             'message': f'Settings copied from Period {source_period} to {copied_count} period(s).'
@@ -9758,7 +9466,6 @@ def copy_feature_settings():
 @admin_required
 def announcements():
     """
-    Manage class announcements for the currently selected class context.
     """
     user_id = g.canonical_context.user_id
     class_context = _resolve_admin_class_context(g.canonical_context)
@@ -10019,8 +9726,8 @@ def onboarding_status():
             'store': StoreItem.query.filter(
                 StoreItem.class_id.in_(sa.select(class_ids_subq))
             ).count() > 0,
-            'banking': BankingSettings.query.filter(
-                BankingSettings.class_id.in_(sa.select(class_ids_subq))
+            'banking': EconomicEngine.query.filter(
+                EconomicEngine.class_id.in_(sa.select(class_ids_subq))
             ).first() is not None,
             'rent': RentSettings.query.with_entities(RentSettings.id).filter(
                 RentSettings.class_id.in_(sa.select(class_ids_subq))
@@ -10053,10 +9760,11 @@ def onboarding():
 
 @admin_bp.route('/create-class', methods=['GET', 'POST'])
 @admin_required
+@requires_feat_context("FEAT-CLASS-001")
 def create_new_class():
     """Create a new class for an authenticated teacher."""
     if request.method == 'GET':
-        return render_template('admin_create_class_form.html')
+        return render_template('admin_create_class_standalone.html')
 
     ctx = g.canonical_context
     user_id = ctx.user_id
@@ -10067,7 +9775,7 @@ def create_new_class():
 
     if not class_display_name or not teacher_display_name:
         flash("Class name and your display name are required.", "error")
-        return render_template('admin_create_class_form.html')
+        return render_template('admin_create_class_standalone.html')
 
     from app.utils.join_code import generate_join_code
     from app.services.classroom_setup import create_class
@@ -10085,21 +9793,9 @@ def create_new_class():
             join_code=join_code,
             display_name=class_display_name,
             section=section,
+            teacher_first_name=teacher_display_name,
         )
-        teacher_seat = Seat.query.filter_by(
-            user_id=user_id, class_id=economy.class_id, role="teacher"
-        ).first()
-        profile = IdentityProfile(
-            seat_id=teacher_seat.id,
-            class_id=economy.class_id,
-            profile_type="teacher",
-            first_name=teacher_display_name,
-            last_name="",
-        )
-        db.session.add(profile)
-        db.session.flush()
 
-    db.session.commit()
     establish_teacher_session(db.session.get(User, user_id))
     flash(f"Class \"{class_display_name}\" created. You are now in the new class.", "success")
     return redirect(url_for('admin.dashboard'))
@@ -10230,7 +9926,6 @@ def _resolve_admin_payroll_settings_for_class_id(canonical_context, class_id: st
 
 @admin_bp.route('/api/economy/analyze', methods=['POST'])
 @admin_required
-@feat_shell("FEAT-ADMN-001")
 def api_economy_analyze():
     """
     Perform comprehensive economy balance analysis.
@@ -10582,7 +10277,7 @@ def passkey_auth_start():
 
 
 @admin_bp.route('/passkey/auth/finish', methods=['POST'])
-@feat_shell("FEAT-ADMN-001")
+@requires_feat_context("FEAT-OPS-001")
 @limiter.limit("20 per minute")
 def passkey_auth_finish():
     """
@@ -10815,7 +10510,10 @@ def issues_queue():
 
     # INV-ARC-007: keep GET route read-only.
     if not getattr(g, "read_only", False):
-        init_default_categories()
+        init_default_categories(
+            correlation_id=f"corr_support_categories_{uuid.uuid4().hex}",
+            idempotency_key="feat:sup:categories:initialize",
+        )
 
     # Filter by the active class scope; v2 issues are class-scoped student records.
     if class_id:
@@ -10929,7 +10627,7 @@ def view_issue(issue_ref):
 
 
 @admin_bp.route('/issues/<issue_ref>/resolve', methods=['POST'])
-@feat_shell("FEAT-ADMN-001")
+@requires_feat_context("FEAT-SUP-001")
 @admin_required
 def resolve_issue(issue_ref):
     """
@@ -11141,7 +10839,7 @@ def escalate_issue(issue_ref):
 
 @admin_bp.route('/issues/<issue_ref>/close', methods=['POST'])
 @admin_required
-@feat_shell("FEAT-SUP-001")
+@requires_feat_context("FEAT-SUP-001")
 def close_issue(issue_ref):
     """Owner/admin-only closure after final review."""
     from app.models import Issue

@@ -31,6 +31,7 @@ from app.feats.ledger_resolution_feat import (
 )
 from app.models import Seat, EntitlementEvent, ClassEconomy
 from app.services.context_resolver import CanonicalContext
+from app.services.class_configuration_query_service import get_current_economic_engine
 from app.services.store_policy_resolver import StorePolicyResolver, PolicyNotFound, PolicyParseError, PolicyValidationError
 from app.utils.canonical_temporal_resolver import canonical_temporal_resolver, CLASS_LEVEL_EVALUATION
 
@@ -228,10 +229,11 @@ def _execute_store_purchase_impl(
         source_account="checking",
         target_account="store_purchase",
     )
+    economic_engine = get_current_economic_engine(canonical_context.class_id)
     ledger_idempotency_key = idempotency_key or f"store-purchase:{corr_id}:ledger-plan"
     resolved_plan = resolve_intended_ledger_plan(
         plan=intended_plan,
-        banking_settings=None,
+        economic_engine=economic_engine,
         idempotency_key=ledger_idempotency_key,
         allow_recovery_transfer=True,
     )
@@ -245,7 +247,7 @@ def _execute_store_purchase_impl(
         )
     ledger_result = apply_resolved_ledger_plan(
         resolved_plan=resolved_plan,
-        banking_settings=None,
+        economic_engine=economic_engine,
         idempotency_key=ledger_idempotency_key,
     )
     if not ledger_result.get("accepted", False):

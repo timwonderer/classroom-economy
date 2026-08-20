@@ -25,7 +25,7 @@ from app.models import (
 from app.utils.ip_handler import get_real_ip
 from app.services.tlcp import create_ticket_correlation_pack
 from app.services.ledger_service import get_available_balances
-from app.feats.base import feat_shell
+from app.feats.base import requires_feat_context
 
 
 def resolve_public_id_for_user(user_id, class_id):
@@ -119,10 +119,10 @@ def create_context_snapshot(actor, class_id, related_transaction_id=None, relate
     return snapshot
 
 
-@feat_shell("FEAT-SUP-001")
+@requires_feat_context("FEAT-SUP-001")
 def create_issue(actor, user_id, class_id, category_id, explanation, expected_outcome=None,
                  related_transaction_id=None, related_record_type=None, related_record_id=None,
-                 include_recent_error=True):
+                 include_recent_error=True, *, correlation_id: str, idempotency_key: str):
     """
     Create a new issue submission.
 

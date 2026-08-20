@@ -151,7 +151,7 @@ def login_required(f):
 
 
 _CLASSLESS_ADMIN_ENDPOINTS = frozenset({
-    'admin.create_class',
+    'admin.create_new_class',
     'admin.onboarding',
     'admin.onboarding_status',
     'admin.download_csv_template',

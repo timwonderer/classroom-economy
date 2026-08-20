@@ -83,6 +83,24 @@ def _validate_engine_field(field_name: str, value):
     elif field_name == 'interest_payout_frequency':
         if value is not None and value not in _VALID_PAYOUT_FREQS:
             return False, f"interest_payout_frequency must be one of {_VALID_PAYOUT_FREQS}"
+    elif field_name == 'flat_overdraft_fee':
+        try:
+            if value is not None and float(value) < 0:
+                return False, "flat_overdraft_fee must be >= 0"
+        except (TypeError, ValueError):
+            return False, "flat_overdraft_fee must be numeric"
+    elif field_name == 'progressive_overdraft_fee':
+        if value is not None:
+            if not isinstance(value, dict) or set(value) != {'tier_1', 'tier_2', 'tier_3'}:
+                return False, "progressive_overdraft_fee must contain tier_1, tier_2, and tier_3"
+            try:
+                if any(float(value[tier]) < 0 for tier in ('tier_1', 'tier_2', 'tier_3')):
+                    return False, "progressive_overdraft_fee tiers must be >= 0"
+            except (TypeError, ValueError, KeyError):
+                return False, "progressive_overdraft_fee tiers must be numeric"
+    elif field_name == 'overdraft_protection_enabled':
+        if not isinstance(value, bool):
+            return False, "overdraft_protection_enabled must be boolean"
     else:
         return False, f"'{field_name}' is not a valid EconomicEngine field for FEAT-CLASS-005"
     return True, None
@@ -97,6 +115,9 @@ _CARRY_FORWARD_FIELDS = (
     'compound_frequency',
     'interest_accrual_frequency',
     'interest_payout_frequency',
+    'flat_overdraft_fee',
+    'progressive_overdraft_fee',
+    'overdraft_protection_enabled',
 )
 
 
@@ -151,7 +172,9 @@ def execute_evolve_economic_engine(
                  Supported keys:
                      economy_policy_mode, expected_weekly_hours, interest_rate,
                      interest_calculation_type, compound_frequency,
-                     interest_accrual_frequency, interest_payout_frequency
+                     interest_accrual_frequency, interest_payout_frequency,
+                     flat_overdraft_fee, progressive_overdraft_fee,
+                     overdraft_protection_enabled
         feature_list: List of features affected by this transition (e.g., ['payroll', 'rent'])
         effective_at: When this transition takes effect (default: canonical_now, ISO 8601 string)
         correlation_id: Optional; generated if not provided
@@ -276,7 +299,11 @@ def _execute_evolve_economic_engine_impl(
             return EconomicEngineEvolutionResult(
                 success=False,
                 correlation_id="",
-                error_code="INVALID_UPDATES",
+                error_code=(
+                    "INVALID_POLICY_MODE"
+                    if field_name == "economy_policy_mode"
+                    else "INVALID_UPDATES"
+                ),
                 error_message=err,
             )
 

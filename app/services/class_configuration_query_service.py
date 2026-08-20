@@ -14,7 +14,6 @@ from typing import Optional
 
 from app.extensions import db
 from app.models import (
-    BankingSettings,
     ClassEconomy,
     ClassFeature,
     EconomicEngine,
@@ -150,6 +149,16 @@ def get_effective_economic_engine(
     return db.session.get(EconomicEngine, class_feature.economic_version_id)
 
 
+def get_current_economic_engine(class_id: str) -> Optional[EconomicEngine]:
+    """Return the newest class Economic Engine snapshot."""
+    return (
+        EconomicEngine.query
+        .filter_by(class_id=class_id)
+        .order_by(EconomicEngine.created_at.desc(), EconomicEngine.economic_version_id.desc())
+        .first()
+    )
+
+
 def get_initial_economic_engine(class_id: str) -> Optional[EconomicEngine]:
     """Get the original (first) EconomicEngine created for a class.
 
@@ -261,18 +270,27 @@ def get_class_features(
     # Query ALL ClassFeature rows for this class effective at query_time,
     # including disabled rows (economic_version_id IS NULL) so we can
     # determine the latest state per feature.
-    class_features = ClassFeature.query.filter(
-        ClassFeature.class_id == class_id,
-        ClassFeature.effective_at <= query_time,
-    ).all()
-
-    # Group by feature name, keeping only the row with latest effective_at.
-    # A feature is enabled only if its latest row has economic_version_id set.
-    latest_by_feature: dict[str, ClassFeature] = {}
-    for feature in class_features:
-        current = latest_by_feature.get(feature.feature)
-        if current is None or feature.effective_at > current.effective_at:
-            latest_by_feature[feature.feature] = feature
+    latest_subquery = (
+        db.session.query(
+            ClassFeature.feature,
+            db.func.max(ClassFeature.effective_at).label('max_effective_at'),
+        )
+        .filter(ClassFeature.class_id == class_id, ClassFeature.effective_at <= query_time)
+        .group_by(ClassFeature.feature)
+        .subquery()
+    )
+    class_features = (
+        db.session.query(ClassFeature)
+        .join(latest_subquery, db.and_(
+            ClassFeature.feature == latest_subquery.c.feature,
+            ClassFeature.effective_at == latest_subquery.c.max_effective_at,
+        ))
+        .filter(ClassFeature.class_id == class_id)
+        .order_by(ClassFeature.feature, ClassFeature.id.desc())
+        .distinct(ClassFeature.feature)
+        .all()
+    )
+    latest_by_feature = {feature.feature: feature for feature in class_features}
 
     return {
         name: row
@@ -381,28 +399,6 @@ def get_rent_settings(class_id: str) -> Optional[RentSettings]:
     return RentSettings.query.filter_by(class_id=class_id).first()
 
 
-def get_banking_settings(class_id: str) -> Optional[BankingSettings]:
-    """Get banking configuration for a class.
-
-    Includes savings_apy, interest_calculation_type, interest_schedule_type.
-
-    Args:
-        class_id: The class (UUID)
-
-    Returns:
-        BankingSettings instance or None
-
-    Example:
-        banking = get_banking_settings(classroom.class_id)
-        if banking:
-            print(f"Savings APY: {banking.savings_apy}%, Schedule: {banking.interest_schedule_type}")
-    """
-    return BankingSettings.query.filter_by(
-        class_id=class_id,
-        is_active=True,
-    ).order_by(BankingSettings.id.desc()).first()
-
-
 def get_hall_pass_settings(class_id: str) -> Optional[HallPassSettings]:
     """Get hall pass configuration for a class.
 
@@ -417,9 +413,9 @@ def get_hall_pass_settings(class_id: str) -> Optional[HallPassSettings]:
     Example:
         hp = get_hall_pass_settings(classroom.class_id)
         if hp:
-            print(f"Queue enabled: {hp.queue_enabled}, Limit: {hp.queue_limit}")
+            print(f"Queue limit: {hp.max_queue_limit}")
     """
-    return HallPassSettings.query.filter_by(class_id=class_id).first()
+    return HallPassSettings.query.filter_by(class_id=class_id).order_by(HallPassSettings.effective_date.desc()).first()
 
 
 # ============================================================================
@@ -455,12 +451,20 @@ def calculate_cwi(class_id: str) -> Optional[float]:
         return None
 
     # expected_weekly_hours is a CWI parameter on EconomicEngine (canonical per DOM-CLASS-002)
-    engine = get_effective_economic_engine(class_id, 'payroll')
-    if not engine or engine.expected_weekly_hours is None:
+    expected_weekly_hours = resolve_expected_weekly_hours(class_id)
+    if expected_weekly_hours is None:
         return None
 
     hourly_rate = float(payroll.pay_rate) * 60
-    return hourly_rate * float(engine.expected_weekly_hours)
+    return hourly_rate * expected_weekly_hours
+
+
+def resolve_expected_weekly_hours(class_id: str) -> Optional[float]:
+    """Return the canonical Economic Engine expected-hours value for payroll."""
+    engine = get_effective_economic_engine(class_id, 'payroll')
+    if engine is None or engine.expected_weekly_hours is None:
+        return None
+    return float(engine.expected_weekly_hours)
 
 
 def get_policy_mode(class_id: str, feature: str = 'payroll') -> Optional[str]:

@@ -25,7 +25,7 @@ from app.services.class_configuration_query_service import (
     get_class_feature_history,
     get_payroll_settings,
     get_rent_settings,
-    get_banking_settings,
+    get_current_economic_engine,
     get_hall_pass_settings,
     calculate_cwi,
     get_policy_mode,
@@ -368,29 +368,29 @@ class TestSettingsQueries:
         assert rent2 is not None
         assert rent1.class_id != rent2.class_id
 
-    # ========== get_banking_settings Tests ==========
+    # ========== get_current_economic_engine Tests ==========
 
-    def test_get_banking_settings_returns_banking_data(self, app):
-        """Happy path: returns banking settings."""
+    def test_get_current_economic_engine_returns_banking_data(self, app):
+        """Happy path: returns the current Economic Engine policy."""
         classroom = initialize("chemistry_p1", app)
 
-        banking = get_banking_settings(classroom.class_id)
+        banking = get_current_economic_engine(classroom.class_id)
 
         assert banking is not None
         assert banking.class_id == classroom.class_id
 
-    def test_get_banking_settings_returns_none_for_missing_class(self, app):
+    def test_get_current_economic_engine_returns_none_for_missing_class(self, app):
         """Empty state: non-existent class returns None."""
-        banking = get_banking_settings("nonexistent-class-id")
+        banking = get_current_economic_engine("nonexistent-class-id")
         assert banking is None
 
-    def test_get_banking_settings_multi_tenancy(self, app):
+    def test_get_current_economic_engine_multi_tenancy(self, app):
         """Multi-tenancy: banking settings isolated by class_id."""
         classroom1 = initialize("chemistry_p1", app)
         classroom2 = initialize("biology_block_a", app)
 
-        banking1 = get_banking_settings(classroom1.class_id)
-        banking2 = get_banking_settings(classroom2.class_id)
+        banking1 = get_current_economic_engine(classroom1.class_id)
+        banking2 = get_current_economic_engine(classroom2.class_id)
 
         assert banking1 is not None
         assert banking2 is not None

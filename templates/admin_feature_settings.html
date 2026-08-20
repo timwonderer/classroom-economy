@@ -55,11 +55,7 @@
   <div class="card-body">
     <div class="d-flex flex-wrap gap-2">
       {% for feat in view.features %}
-      {% if feat.enabled %}
-      <span class="badge bg-success">{{ feat.name }}</span>
-      {% else %}
-      <span class="badge bg-danger">{{ feat.name }}</span>
-      {% endif %}
+      <span class="badge {{ 'bg-success' if feat.enabled else 'bg-danger' }}" data-feature-badge="{{ feat.feature_key }}">{{ feat.name }}</span>
       {% endfor %}
     </div>
   </div>
@@ -96,15 +92,9 @@ function updateFeature(toggle) {
 }
 
 function updateStatusBadge(feature, enabled) {
-  const badges = document.querySelectorAll('.badge');
-  badges.forEach(badge => {
-    const featureNames = {
-      'payroll': 'Payroll', 'insurance': 'Insurance', 'banking': 'Banking',
-      'rent': 'Rent', 'hall_pass': 'Hall Pass', 'store': 'Store'
-    };
-    if (badge.textContent.trim() === featureNames[feature]) {
-      badge.className = enabled ? 'badge bg-success' : 'badge bg-danger';
-    }
+  document.querySelectorAll(`[data-feature-badge="${feature}"]`).forEach(badge => {
+    badge.classList.toggle('bg-success', enabled);
+    badge.classList.toggle('bg-danger', !enabled);
   });
 }
 </script>

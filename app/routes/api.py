@@ -23,7 +23,7 @@ from werkzeug.security import check_password_hash
 from app.extensions import db, limiter
 from app.models import (
     StoreItem, Transaction, TransactionStatus, AttendanceSession,
-    AttendanceReasonCode, HallPassLog, HallPassSettings, BankingSettings,
+    AttendanceReasonCode, HallPassLog, HallPassSettings,
     # Legacy tap models are unauthorized; use attendance_sessions (DOM-PROD-001).
     # StoreItemBlock removed — store_item_blocks unauthorized; use store_item_visibility (DOM-STORE-001)
     StoreItemVisibility, User,
@@ -56,7 +56,7 @@ from app.routes.student import (
     _is_student_coverage_period_paid,
 )
 from app.services.context_resolver import resolve_canonical_context, ContextResolutionError
-from app.feats.base import feat_shell, FEATContext
+from app.feats.base import FEATContext, requires_feat_context
 from app.feats.store_purchase_feat import execute_store_purchase
 from app.feats.ledger_resolution_feat import build_intended_ledger_plan, resolve_intended_ledger_plan, apply_resolved_ledger_plan
 from app.services import store_service
@@ -1015,15 +1015,14 @@ def hall_pass_settings():
     return jsonify({
         "status": "success",
         "settings": {
-            "queue_enabled": settings.queue_enabled if settings else True,
-            "queue_limit": settings.queue_limit if settings else 10
+            "max_queue_limit": settings.max_queue_limit if settings else 10,
+            "pass_type_payload": settings.get_pass_types() if settings else HallPassSettings.get_default_pass_types()
         }
     })
 
 
 @api_bp.route('/hall-pass/settings', methods=['POST'])
 @admin_required
-@feat_shell("FEAT-SETTINGS-001")
 def update_hall_pass_settings():
     """Update hall pass queue settings (admin only)."""
     context = getattr(g, "canonical_context", None)
@@ -1036,10 +1035,10 @@ def update_hall_pass_settings():
         settings = feat_update_hall_pass_queue_settings(
             user_id=context.user_id if context else None,
             class_id=class_id,
-            join_code=None,
-            queue_enabled=data.get("queue_enabled") if "queue_enabled" in data else None,
-            queue_limit=data.get("queue_limit") if "queue_limit" in data else None,
+            max_queue_limit=data.get("max_queue_limit", 10),
             updated_at=utc_now(),
+            correlation_id=f"corr_settings_queue_{uuid.uuid4().hex}",
+            idempotency_key=f"feat:settings:hall-pass-queue:{context.user_id}:{class_id}:{uuid.uuid4().hex}",
         )
     except ValueError as exc:
         _log_api_client_error("update_hall_pass_settings", exc, extra=f"class_id={class_id}")
@@ -1049,8 +1048,9 @@ def update_hall_pass_settings():
         "status": "success",
         "message": "Settings updated successfully",
         "settings": {
-            "queue_enabled": settings.queue_enabled,
-            "queue_limit": settings.queue_limit,
+            "max_queue_limit": settings.max_queue_limit,
+            "pass_type_payload": settings.get_pass_types(),
+            "effective_queue_limit": settings.effective_queue_limit,
         }
     })
 
@@ -1225,20 +1225,19 @@ def get_hall_pass_setup():
         return jsonify({
             "status": "success",
             "hall_pass_enabled": True,
-            "pass_types": HallPassSettings.get_default_pass_types()
+            "pass_type_payload": HallPassSettings.get_default_pass_types()
         })
 
     # Return configured pass types with fallback to defaults
     return jsonify({
         "status": "success",
-        "hall_pass_enabled": settings.queue_enabled,
-        "pass_types": settings.get_pass_types()
+        "hall_pass_enabled": True,
+        "pass_type_payload": settings.get_pass_types()
     })
 
 
 @api_bp.route('/hall-pass/setup', methods=['POST'])
 @admin_required
-@feat_shell("FEAT-SETTINGS-001")
 def save_hall_pass_setup():
     """Save teacher's hall pass configuration"""
     user_id = g.canonical_context.user_id
@@ -1248,7 +1247,7 @@ def save_hall_pass_setup():
     if not current_class_id:
         return jsonify({"status": "error", "message": "Active class context is required"}), 400
 
-    pass_types = data.get('pass_types', [])
+    pass_types = data.get('pass_type_payload', [])
     hall_pass_enabled = data.get('hall_pass_enabled', True)
 
     # Validate hall_pass_enabled
@@ -1262,38 +1261,24 @@ def save_hall_pass_setup():
     for pt in pass_types:
         if not isinstance(pt, dict):
             return jsonify({"status": "error", "message": "Each pass type must be an object"}), 400
-        if 'name' not in pt:
-            return jsonify({"status": "error", "message": "Each pass type must have a name"}), 400
-        if not pt['name'].strip():
+        if set(pt) != {'pass_name', 'max_queue', 'consume_pass'}:
+            return jsonify({"status": "error", "message": "Each pass type must contain pass_name, max_queue, and consume_pass"}), 400
+        if not isinstance(pt['pass_name'], str) or not pt['pass_name'].strip():
             return jsonify({"status": "error", "message": "Pass type name cannot be empty"}), 400
 
         # Validate enabled (defaults to True if not provided)
-        if 'enabled' not in pt:
-            pt['enabled'] = True
-        if not isinstance(pt['enabled'], bool):
-            return jsonify({"status": "error", "message": "enabled must be a boolean"}), 400
-
-        # Validate queue_limit and simultaneous_limit (can be None or positive integer)
-        for field in ['queue_limit', 'simultaneous_limit']:
-            if field in pt and pt[field] is not None:
-                try:
-                    val = int(pt[field])
-                    if val < 0:
-                        return jsonify({"status": "error", "message": f"{field} must be non-negative"}), 400
-                    pt[field] = val
-                except (ValueError, TypeError):
-                    return jsonify({"status": "error", "message": f"{field} must be a number or blank"}), 400
+        if (
+            not isinstance(pt['consume_pass'], bool)
+            or not isinstance(pt['max_queue'], int)
+            or isinstance(pt['max_queue'], bool)
+            or pt['max_queue'] < 0
+        ):
+            return jsonify({"status": "error", "message": "Invalid pass type limits"}), 400
 
     try:
         scope = _get_hall_pass_settings_scope(current_class_id)
         if not scope:
             return jsonify({"status": "error", "message": "Class scope not found"}), 404
-        settings = get_hall_pass_settings(scope["class_id"])
-        if not settings:
-            settings = _get_or_create_hall_pass_settings(scope["class_id"])
-        if not settings:
-            return jsonify({"status": "error", "message": "Class scope not found"}), 404
-
         feature_scope = resolve_feature_class_for_class(scope["class_id"], 'hall_pass')
         if feature_scope and not feature_scope["enabled"]:
             return jsonify({"status": "error", "message": "Hall pass is disabled for this class"}), 403
@@ -1302,15 +1287,24 @@ def save_hall_pass_setup():
             user_id=user_id,
             class_id=scope["class_id"],
             hall_pass_enabled=hall_pass_enabled,
-            pass_types=pass_types,
+            pass_type_payload=pass_types,
+            max_queue_limit=int(data.get('max_queue_limit', 10)),
             updated_at=utc_now(),
+            correlation_id=f"corr_settings_setup_{uuid.uuid4().hex}",
+            idempotency_key=f"feat:settings:hall-pass-setup:{user_id}:{scope['class_id']}:{uuid.uuid4().hex}",
         )
 
         return jsonify({
             "status": "success",
             "message": "Hall pass configuration saved successfully",
-            "hall_pass_enabled": settings.queue_enabled,
-            "pass_types": settings.get_pass_types()
+            "hall_pass_enabled": hall_pass_enabled,
+            "pass_type_payload": settings.get_pass_types(),
+            "policy_uuid": settings.policy_uuid,
+            "effective_queue_limit": settings.effective_queue_limit,
+            "queue_limit_notice": (
+                f"Per-pass limits reduce effective queue capacity to {settings.effective_queue_limit}."
+                if settings.effective_queue_limit < settings.max_queue_limit else None
+            ),
         })
 
     except Exception as e:
@@ -1321,7 +1315,6 @@ def save_hall_pass_setup():
 
 @api_bp.route('/hall-pass/verify-token/rotate', methods=['POST'])
 @admin_required
-@feat_shell("FEAT-SETTINGS-001")
 def rotate_hall_pass_verify_token():
     """
     Rotate the teacher's hall pass public verification token.
@@ -1333,7 +1326,11 @@ def rotate_hall_pass_verify_token():
     user_id = g.canonical_context.user_id
 
     try:
-        token = feat_rotate_teacher_hall_pass_verify_token(user_id=user_id)
+        token = feat_rotate_teacher_hall_pass_verify_token(
+            user_id=user_id,
+            correlation_id=f"corr_settings_token_{uuid.uuid4().hex}",
+            idempotency_key=f"feat:settings:hall-pass-token:{user_id}:{uuid.uuid4().hex}",
+        )
     except LookupError as exc:
         _log_api_client_error("rotate_hall_pass_verify_token", exc, extra=f"user_id={user_id}")
         return jsonify({"status": "error", "message": "Hall pass verification settings were not found."}), 404
@@ -1390,16 +1387,19 @@ def get_available_hall_pass_types():
         # Return defaults if not configured
         return jsonify({
             "status": "success",
-            "pass_types": HallPassSettings.get_default_pass_types()
+            "pass_type_payload": HallPassSettings.get_default_pass_types()
         })
 
     # Return just the names for enabled pass types
     pass_types = settings.get_pass_types()
-    enabled_pass_types = [{"name": pt["name"]} for pt in pass_types if pt.get("enabled", True)]
+    enabled_pass_types = [
+        {"pass_name": pt["pass_name"], "max_queue": pt["max_queue"], "consume_pass": pt["consume_pass"]}
+        for pt in pass_types
+    ]
 
     return jsonify({
         "status": "success",
-        "pass_types": enabled_pass_types
+        "pass_type_payload": enabled_pass_types
     })
 
 
@@ -1662,6 +1662,7 @@ def attendance_history():
 
 @api_bp.route('/tap', methods=['POST'])
 @limiter.limit("100 per minute")
+@requires_feat_context("FEAT-PROD-001")
 def handle_tap():
     data = request.get_json(silent=True) or {}
     safe_data = {k: ('***' if k == 'pin' else v) for k, v in data.items()}
@@ -1745,11 +1746,17 @@ def handle_tap():
             reason_code=reason_code,
             idempotency_key=f"prod_attendance:{class_id}:{seat_id}:{normalized_action}:{secrets.token_hex(12)}",
         )
-        db.session.commit()
         current_app.logger.info("TAP success - seat %s class_id=%s action=%s", seat_id, class_id, action)
     except ValueError as e:
         db.session.rollback()
-        return jsonify({"error": str(e)}), 409
+        current_app.logger.warning(
+            "TAP rejected for seat %s class_id=%s action=%s: %s",
+            seat_id,
+            class_id,
+            action,
+            e,
+        )
+        return jsonify({"error": "Unable to record the attendance request."}), 409
     except SQLAlchemyError as e:
         db.session.rollback()
         current_app.logger.error(f"TAP failed for seat {seat_id}: {e}", exc_info=True)

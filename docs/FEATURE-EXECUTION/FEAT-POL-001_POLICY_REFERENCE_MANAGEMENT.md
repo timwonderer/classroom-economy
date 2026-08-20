@@ -159,6 +159,26 @@ The intended boundary is:
 
 This means Class Configuration decides whether a capability exists in the class, Policies defines the class-customized reference material for that capability, and the consuming domain owns the resulting fact.
 
+### XII.A Hall-Pass Policy Family
+
+Hall-pass settings are immutable policy definitions. Each submission creates a
+new row with a new `policy_uuid`, `class_id`, `max_queue_limit`,
+`pass_type_payload`, and `effective_date`.
+
+`pass_type_payload` is teacher-provided and each entry SHALL contain exactly:
+
+- `pass_name`;
+- `max_queue`;
+- `consume_pass` (boolean).
+
+The effective queue capacity is the lower of the class-wide
+`max_queue_limit` and the sum of the per-pass `max_queue` values. A teacher
+submission SHALL notify the teacher when per-pass limits reduce the effective
+capacity below the configured class-wide limit.
+
+The student break-reason selector SHALL read the active hall-pass policy
+payload. Historical policy rows SHALL remain readable for provenance.
+
 ## XIII. Amendment
 
 Revisions must remain consistent with `DOM-CLASS-001`, the consuming operational domain, and the governing FEAT and temporal invariants.

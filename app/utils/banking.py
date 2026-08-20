@@ -10,14 +10,7 @@ from app.utils.seat_scope import transaction_scope_filter
 logger = logging.getLogger(__name__)
 
 
-from app.feats.base import feat_shell
-
-@feat_shell("FEAT-LED-003")
-def settle_pending_transaction_contexts(*args, **kwargs):
-    """FEAT-Shell for transaction settlement sweep."""
-    return _settle_pending_transaction_contexts_legacy(*args, **kwargs)
-
-def _settle_pending_transaction_contexts_legacy(limit: int | None = None) -> dict[str, int]:
+def settle_pending_transaction_contexts(limit: int | None = None) -> dict[str, int]:
     """
     Sweep each seat/class context with unsettled ledger activity.
 

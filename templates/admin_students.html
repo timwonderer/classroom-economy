@@ -616,9 +616,9 @@
             </thead>
             <tbody id="staging-body">
               <tr class="staging-row">
-                <td><input type="text" class="form-control form-control-sm staging-fn" placeholder="First Name"></td>
-                <td><input type="text" class="form-control form-control-sm staging-ln" placeholder="Last Name"></td>
-                <td><input type="text" class="form-control form-control-sm staging-notes" placeholder="Notes (optional)"></td>
+                <td><input type="text" class="form-control form-control-sm staging-fn" placeholder="First Name" aria-label="First name"></td>
+                <td><input type="text" class="form-control form-control-sm staging-ln" placeholder="Last Name" aria-label="Last name"></td>
+                <td><input type="text" class="form-control form-control-sm staging-notes" placeholder="Notes (optional)" aria-label="Notes"></td>
                 <td class="text-center"><button type="button" class="btn btn-outline-danger btn-sm remove-row-btn" title="Remove row">&times;</button></td>
               </tr>
             </tbody>
@@ -661,12 +661,32 @@
     function createRow(fn, ln, notes) {
       const tr = document.createElement('tr');
       tr.className = 'staging-row';
-      tr.innerHTML = `
-        <td><input type="text" class="form-control form-control-sm staging-fn" placeholder="First Name" value="${escapeHtml(fn || '')}"></td>
-        <td><input type="text" class="form-control form-control-sm staging-ln" placeholder="Last Name" value="${escapeHtml(ln || '')}"></td>
-        <td><input type="text" class="form-control form-control-sm staging-notes" placeholder="Notes (optional)" value="${escapeHtml(notes || '')}"></td>
-        <td class="text-center"><button type="button" class="btn btn-outline-danger btn-sm remove-row-btn" title="Remove row">&times;</button></td>
-      `;
+      const fields = [
+        { cls: 'staging-fn', placeholder: 'First Name', label: 'First name', value: fn || '' },
+        { cls: 'staging-ln', placeholder: 'Last Name', label: 'Last name', value: ln || '' },
+        { cls: 'staging-notes', placeholder: 'Notes (optional)', label: 'Notes', value: notes || '' }
+      ];
+      fields.forEach(field => {
+        const td = document.createElement('td');
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.className = 'form-control form-control-sm ' + field.cls;
+        input.placeholder = field.placeholder;
+        input.setAttribute('aria-label', field.label);
+        input.value = field.value;
+        td.appendChild(input);
+        tr.appendChild(td);
+      });
+      const actionTd = document.createElement('td');
+      actionTd.className = 'text-center';
+      const removeBtn = document.createElement('button');
+      removeBtn.type = 'button';
+      removeBtn.className = 'btn btn-outline-danger btn-sm remove-row-btn';
+      removeBtn.title = 'Remove row';
+      removeBtn.setAttribute('aria-label', 'Remove row');
+      removeBtn.textContent = '\u00d7';
+      actionTd.appendChild(removeBtn);
+      tr.appendChild(actionTd);
       return tr;
     }
 
@@ -792,6 +812,7 @@
     // Add row
     addRowBtn.addEventListener('click', function() {
       tbody.appendChild(createRow('', '', ''));
+      updateState();
     });
 
     // Clear all

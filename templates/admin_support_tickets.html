@@ -152,14 +152,20 @@ document.addEventListener('DOMContentLoaded', () => {
 function updateTicketScope() {
     const select = document.getElementById('class_id');
     const infoEl = document.getElementById('ticket-scope-text');
+    if (!select || !infoEl) return;
     const selected = select.options[select.selectedIndex];
+    if (!selected) { infoEl.textContent = ''; return; }
     const actorPublicId = {{ actor_public_id | tojson }};
 
     if (selected.value === 'account') {
-        infoEl.innerHTML = 'We will know you as: ' + actorPublicId;
+        infoEl.textContent = 'We will know you as: ' + actorPublicId;
     } else {
         const classPublicId = selected.getAttribute('data-class-public-id') || '';
-        infoEl.innerHTML = 'We will know you as: ' + actorPublicId + '<br>We will know your class as: ' + classPublicId;
+        infoEl.replaceChildren(
+            document.createTextNode('We will know you as: ' + actorPublicId),
+            document.createElement('br'),
+            document.createTextNode('We will know your class as: ' + classPublicId)
+        );
     }
 }
 // Run on page load

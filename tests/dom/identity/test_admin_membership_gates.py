@@ -5,7 +5,6 @@ import pytest
 from app.extensions import db
 from app.feats.base import FEATContext
 from app.models import (
-    BankingSettings,
     ClassEconomy,
     IdentityProfile,
     Issue,
@@ -429,22 +428,6 @@ def test_DOM_IDEN_001__banking_page_ignores_request_block_selector(client):
     with FEATContext("FEAT-IDEN-001", idempotency_key="admin-membership:banking-page-block"):
         class_row_a = initialize("chemistry_p1", client.application)
         class_row_b = initialize("biology_block_a", client.application)
-        db.session.add(
-            BankingSettings(
-                class_id=class_row_a.class_id,
-                block="A",
-                savings_apy=4.5,
-                savings_monthly_rate=0.0,
-            )
-        )
-        db.session.add(
-            BankingSettings(
-                class_id=class_row_b.class_id,
-                block="B",
-                savings_apy=7.5,
-                savings_monthly_rate=0.0,
-            )
-        )
 
     admin = class_row_a.teacher_user
     teacher_seat = _teacher_seat(class_row_a)

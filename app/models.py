@@ -381,6 +381,11 @@ class EconomicEngine(db.Model):
     compound_frequency = db.Column(db.String(20), nullable=True)
     interest_accrual_frequency = db.Column(db.String(20), nullable=True)
     interest_payout_frequency = db.Column(db.String(20), nullable=True)
+    # Canonical internal fines per SPEC-ECON-003 §4.6.1. Exactly one form may
+    # be configured for a policy: a flat amount or a tiered JSON schedule.
+    flat_overdraft_fee = db.Column(db.Numeric(precision=12, scale=2), nullable=True)
+    progressive_overdraft_fee = db.Column(db.JSON, nullable=True)
+    overdraft_protection_enabled = db.Column(db.Boolean, nullable=True)
 
     # Economic policy
     economy_policy_mode = db.Column(
@@ -407,6 +412,11 @@ class EconomicEngine(db.Model):
         db.CheckConstraint("economy_policy_mode IN ('tight', 'default', 'comfortable')", name='ck_economic_engine_mode'),
         db.CheckConstraint('expected_weekly_hours IS NULL OR expected_weekly_hours > 0', name='ck_economic_engine_hours'),
         db.CheckConstraint('interest_rate IS NULL OR (interest_rate >= 0 AND interest_rate <= 1.0)', name='ck_economic_engine_rate'),
+        db.CheckConstraint('flat_overdraft_fee IS NULL OR flat_overdraft_fee >= 0', name='ck_economic_engine_flat_overdraft_fee'),
+        db.CheckConstraint(
+            'NOT (flat_overdraft_fee IS NOT NULL AND progressive_overdraft_fee IS NOT NULL)',
+            name='ck_economic_engine_overdraft_fee_exclusive',
+        ),
         db.CheckConstraint("interest_calculation_type IS NULL OR interest_calculation_type IN ('simple', 'compound')", name='ck_economic_engine_calc_type'),
         db.CheckConstraint("compound_frequency IS NULL OR compound_frequency IN ('never', 'daily', 'weekly', 'monthly')", name='ck_economic_engine_compound_freq'),
         db.CheckConstraint("interest_accrual_frequency IS NULL OR interest_accrual_frequency IN ('daily', 'weekly', 'monthly')", name='ck_economic_engine_accrual_freq'),
@@ -708,6 +718,7 @@ class HallPassLog(db.Model):
     requested_by_seat_id = db.Column(db.Integer, db.ForeignKey('seats.id', ondelete='SET NULL'), nullable=False, index=True)
     approved_by_seat_id = db.Column(db.Integer, db.ForeignKey('seats.id', ondelete='SET NULL'), nullable=False, index=True)
     correlation_id = db.Column(db.String(100), nullable=False, index=True)
+    policy_uuid = db.Column(db.String(36), nullable=False, index=True)
     # FK-style reference to EntitlementEvent.entitlement_id for the consumed pass.
     hall_pass_id = db.Column(db.String(100), nullable=False, unique=False, index=True)
     destination = db.Column(db.String(255), nullable=True)
@@ -731,6 +742,7 @@ class PayrollEvent(db.Model):
     correlation_id = db.Column(db.String(100), nullable=False, index=True)
     idempotency_key = db.Column(db.String(255), nullable=False, index=True)
     policy_version_id = db.Column(db.Integer, db.ForeignKey('policy_versions.id', ondelete='RESTRICT'), nullable=False, index=True)
+    policy_uuid = db.Column(db.String(36), nullable=False, index=True)
     mechanism = db.Column(db.String(20), nullable=False, default="TEACHER")
     payroll_event_type = db.Column(db.String(20), nullable=False)
     recorded_at = db.Column(db.DateTime(timezone=True), default=utc_now, nullable=False, index=True)
@@ -744,39 +756,32 @@ class PayrollEvent(db.Model):
 class HallPassSettings(db.Model):
     __tablename__ = 'hall_pass_settings'
     id = db.Column(db.Integer, primary_key=True)
-    class_id = db.Column(db.String(36), db.ForeignKey('classes.class_id', ondelete='CASCADE'), nullable=False, unique=True, index=True)
-
-    # Queue system toggle
-    queue_enabled = db.Column(db.Boolean, default=True, nullable=False)
-
-    # Queue limit (when queue + currently out >= this number, restrict certain passes)
-    queue_limit = db.Column(db.Integer, default=10, nullable=False)
-
-    # Pass type configurations stored as JSON.
-    pass_types = db.Column(db.JSON, nullable=True)
-
-    created_at = db.Column(db.DateTime(timezone=True), default=utc_now)
-    updated_at = db.Column(db.DateTime(timezone=True), default=utc_now, onupdate=utc_now)
+    policy_uuid = db.Column(db.String(36), unique=True, nullable=False, index=True, default=lambda: str(uuid.uuid4()))
+    class_id = db.Column(db.String(36), db.ForeignKey('classes.class_id', ondelete='CASCADE'), nullable=False, index=True)
+    max_queue_limit = db.Column(db.Integer, nullable=False, default=10)
+    pass_type_payload = db.Column(db.JSON, nullable=False, default=list)
+    effective_date = db.Column(db.DateTime(timezone=True), default=utc_now, nullable=False, index=True)
 
     @staticmethod
     def get_default_pass_types():
         """Return default pass types when teacher hasn't configured any."""
         return [
-            {"name": "Bathroom", "queue_limit": None, "simultaneous_limit": None, "enabled": True},
-            {"name": "Water Fountain", "queue_limit": None, "simultaneous_limit": None, "enabled": True},
-            {"name": "Office", "queue_limit": None, "simultaneous_limit": None, "enabled": True},
-            {"name": "Nurse", "queue_limit": None, "simultaneous_limit": None, "enabled": True},
-            {"name": "Counselor", "queue_limit": None, "simultaneous_limit": None, "enabled": True}
+            {"pass_name": "Bathroom", "max_queue": 10, "consume_pass": True},
+            {"pass_name": "Water Fountain", "max_queue": 10, "consume_pass": True},
+            {"pass_name": "Office", "max_queue": 10, "consume_pass": True},
+            {"pass_name": "Nurse", "max_queue": 10, "consume_pass": True},
+            {"pass_name": "Counselor", "max_queue": 10, "consume_pass": True}
         ]
 
     def get_pass_types(self):
         """Get pass types, defaulting to the built-in set when unset."""
-        if not self.pass_types:
+        if not self.pass_type_payload:
             return self.get_default_pass_types()
+        return self.pass_type_payload
 
-        for pt in self.pass_types:
-            pt.setdefault('enabled', True)
-        return self.pass_types
+    @property
+    def effective_queue_limit(self):
+        return min(self.max_queue_limit, sum(item.get("max_queue", 0) for item in self.get_pass_types()))
 
 
 # Persisted compute-result caches are explicitly prohibited by DOM-CORE-002
@@ -1505,47 +1510,6 @@ class PayrollSettings(db.Model):
 # Adjustment state overlaps payroll rewards and fines
 
 
-# ---- Banking Settings Model ----
-class BankingSettings(db.Model):
-    __tablename__ = 'banking_settings'
-    id = db.Column(db.Integer, primary_key=True)
-    class_id = db.Column(db.String(36), db.ForeignKey('classes.class_id', ondelete='CASCADE'), nullable=False, index=True)
-    block = db.Column(db.String(10), nullable=True)  # NULL = global default, otherwise period/block identifier
-
-    # Interest settings for savings
-    savings_apy = db.Column(db.Numeric(precision=8, scale=6), default=Decimal('0.000000'))  # Annual Percentage Yield (e.g., 5.0 for 5%)
-    savings_monthly_rate = db.Column(db.Numeric(precision=8, scale=6), default=Decimal('0.000000'))  # Monthly rate (calculated or custom)
-    interest_calculation_type = db.Column(db.String(20), default='simple')  # 'simple' or 'compound'
-    compound_frequency = db.Column(db.String(20), default='monthly')  # 'daily', 'weekly', 'monthly'
-
-    # Interest payout schedule
-    interest_schedule_type = db.Column(db.String(20), default='monthly')  # 'weekly', 'monthly'
-    interest_schedule_cycle_days = db.Column(db.Integer, default=30)  # For monthly: 30 day cycle
-    interest_payout_start_date = db.Column(db.DateTime(timezone=True), nullable=True)  # Starting date for payouts
-
-    # Overdraft protection
-    overdraft_protection_enabled = db.Column(db.Boolean, default=False)  # If enabled, savings covers checking
-
-    # Overdraft/NSF fees
-    overdraft_fee_enabled = db.Column(db.Boolean, default=False)  # Enable/disable overdraft fees
-    overdraft_fee_type = db.Column(db.String(20), default='flat')  # 'flat' or 'progressive'
-    overdraft_fee_flat_amount = db.Column(db.Numeric(precision=12, scale=2), default=Decimal('0.00'))  # Flat fee per transaction
-
-    # Progressive fee settings
-    overdraft_fee_progressive_1 = db.Column(db.Numeric(precision=12, scale=2), default=Decimal('0.00'))  # First tier fee
-    overdraft_fee_progressive_2 = db.Column(db.Numeric(precision=12, scale=2), default=Decimal('0.00'))  # Second tier fee
-    overdraft_fee_progressive_3 = db.Column(db.Numeric(precision=12, scale=2), default=Decimal('0.00'))  # Third tier fee
-    overdraft_fee_progressive_cap = db.Column(db.Numeric(precision=12, scale=2), nullable=True)  # Maximum total fees per period
-
-    # Metadata
-    is_active = db.Column(db.Boolean, default=True)
-    created_at = db.Column(db.DateTime(timezone=True), default=utc_now)
-    updated_at = db.Column(db.DateTime(timezone=True), default=utc_now, onupdate=utc_now)
-
-    def __repr__(self):
-        return f'<BankingSettings APY:{self.savings_apy}% OD:{self.overdraft_protection_enabled}>'
-
-
 # -------------------- FEATURE SETTINGS MODEL --------------------
 class ClassFeature(db.Model):
     """Append-only timeline of feature enablement/disablement per class."""
@@ -1686,6 +1650,7 @@ class PolicyVersion(db.Model):
     __tablename__ = 'policy_versions'
 
     id = db.Column(db.Integer, primary_key=True)
+    policy_uuid = db.Column(db.String(36), unique=True, nullable=False, index=True, default=lambda: str(uuid.uuid4()))
     class_id = db.Column(
         db.String(36),
         db.ForeignKey('classes.class_id', ondelete='CASCADE'),

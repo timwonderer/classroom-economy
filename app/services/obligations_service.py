@@ -10,6 +10,7 @@ from __future__ import annotations
 from datetime import datetime
 from dataclasses import dataclass
 from decimal import Decimal
+from typing import Optional
 
 from app.extensions import db
 from app.models import ObligationAssessment, BillCycle
@@ -439,8 +440,8 @@ class RentWaiverView:
     seat_id: int
     correlation_id: str
     timestamp: datetime  # When the waiver was granted (event canonical timestamp)
-    coverage_start_time: datetime  # Derived from bill_cycle.cycle_boundary_at
-    coverage_end_time: datetime  # Derived from bill_cycle.next_assessment_at
+    coverage_start_time: Optional[datetime]  # Derived from bill_cycle.cycle_boundary_at
+    coverage_end_time: Optional[datetime]  # Derived from bill_cycle.next_assessment_at
 
 
 def get_active_rent_waivers_for_class(
@@ -456,23 +457,29 @@ def get_active_rent_waivers_for_class(
     encodes the wrong domain semantics.
 
     This helper is retained temporarily so existing callers do not
-    crash; it now returns the WAIVED-event history for the class, same
-    shape as `get_rent_waiver_history_for_class`, and the coverage_date
-    filter is ignored. New callers should use
-    `get_rent_waiver_history_for_class` directly.
+    crash; it returns the WAIVED-event history with the actual bill-cycle
+    coverage bounds. New callers should use `get_rent_waiver_history_for_class`
+    directly.
 
     TODO: remove after all callers migrate.
     """
+    waivers = get_rent_waiver_history_for_class(class_id)
+    if coverage_date is not None:
+        waivers = [
+            w for w in waivers
+            if w['coverage_start_time'] and w['coverage_end_time']
+            and w['coverage_start_time'] <= coverage_date < w['coverage_end_time']
+        ]
     return [
         RentWaiverView(
             id=w['id'],
             seat_id=w['seat_id'],
             correlation_id=w['correlation_id'],
             timestamp=w['waived_at'],
-            coverage_start_time=w['due_at'],
-            coverage_end_time=w['due_at'],
+            coverage_start_time=w['coverage_start_time'],
+            coverage_end_time=w['coverage_end_time'],
         )
-        for w in get_rent_waiver_history_for_class(class_id)
+        for w in waivers
     ]
 
 
@@ -526,6 +533,8 @@ def get_rent_waiver_history_for_class(
             'seat_id': waiver.seat_id,
             'waived_at': waiver.timestamp,
             'due_at': cycle.assessment_at if cycle else None,
+            'coverage_start_time': cycle.cycle_boundary_at if cycle else None,
+            'coverage_end_time': cycle.next_assessment_at if cycle else None,
             'notes': waiver.notes,
         }
         for waiver, cycle in q.all()

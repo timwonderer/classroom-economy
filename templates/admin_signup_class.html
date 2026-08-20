@@ -115,7 +115,7 @@
             {% endwith %}
 
             <form method="POST" action="{{ url_for('admin.signup') }}">
-                {{ form.csrf_token if form and form.csrf_token }}
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
 
                 <div class="mb-3">
                     <label for="class_display_name" class="form-label">Class Name</label>
@@ -129,11 +129,11 @@
 
                 <div class="row g-3 mb-4">
                     <div class="col-6">
-                        <label for="first_name" class="form-label">Your Display Name</label>
+                        <label for="first_name" class="form-label">Your first name</label>
                         <input id="first_name" name="first_name" type="text" required autocomplete="off" class="form-control" placeholder="e.g., Ms.">
                     </div>
                     <div class="col-6">
-                        <label for="last_name" class="form-label">&nbsp;</label>
+                        <label for="last_name" class="form-label visually-hidden">Your last name</label>
                         <input id="last_name" name="last_name" type="text" required autocomplete="off" class="form-control" placeholder="e.g., Ayala">
                     </div>
                 </div>
@@ -191,6 +191,7 @@
                     </div>
                 </div>
                 <div class="modal-footer">
+                    <a href="{{ url_for('admin.login') }}" class="btn btn-outline-secondary">Decline and return to login</a>
                     <button type="button" class="btn btn-primary" id="tosContinueBtn" disabled>Continue</button>
                 </div>
             </div>

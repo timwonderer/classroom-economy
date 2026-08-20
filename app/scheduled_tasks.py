@@ -6,13 +6,13 @@ Contains periodic tasks that run in the background to maintain system state.
 
 import logging
 import secrets
-from app.feats.base import feat_shell
+from app.feats.base import requires_feat_context
 from app.services.insurance_policy_service import delete_due_policy_lineages
 # TODO (Phase 4): insurance_billing deleted; move to Obligations domain
 # from app.utils.insurance_billing import get_insurance_billing_snapshot
 
 
-@feat_shell("FEAT-PROD-001")
+@requires_feat_context("FEAT-PROD-001")
 def enforce_daily_limits_job():
     """
     Scheduled job that checks active seats and records an inactive PROD event
@@ -219,7 +219,7 @@ def enforce_daily_limits_job():
         logger.error(f"Daily-limit enforcement job failed: {e}", exc_info=True)
 
 
-@feat_shell("FEAT-OPS-001")
+@requires_feat_context("FEAT-OPS-001")
 def database_maintenance_job():
     """
     Scheduled job that performs nightly database maintenance tasks.
@@ -251,253 +251,8 @@ def database_maintenance_job():
         db.session.rollback()
         logger.error(f"Database maintenance job failed: {e}", exc_info=True)
 
-
-def _derive_cycle_length_days(settings) -> int:
-    """Resolve cycle length in days from rent settings."""
-    configured = int(getattr(settings, "cycle_length_days", 0) or 0)
-    if configured > 0:
-        return configured
-
-    frequency = (getattr(settings, "frequency_type", "monthly") or "monthly").lower()
-    if frequency == "daily":
-        return 1
-    if frequency == "weekly":
-        return 7
-    if frequency == "custom":
-        unit = (getattr(settings, "custom_frequency_unit", "days") or "days").lower()
-        value = int(getattr(settings, "custom_frequency_value", 1) or 1)
-        if unit.startswith("week"):
-            return max(1, value * 7)
-        if unit.startswith("month"):
-            return max(1, value * 30)
-        return max(1, value)
-    return 30
-
-
-@feat_shell("FEAT-OBL-002")
-def run_rent_cycle_for_class(class_id: str, execution_time):
-    """
-    Execute one rent cycle for one class.
-
-    Actor model: seat_id + class_id only.
-    """
-    from app.extensions import db
-    from app.models import RentSettings, Seat, ObligationAssessment
-    from app.feats.rent_cycle_feat import execute_scheduled_rent_charge
-    from datetime import timedelta
-    from app.utils.canonical_temporal_resolver import utc_now
-
-    execution_time = execution_time or utc_now()
-
-    settings = (
-        RentSettings.query
-        .filter_by(class_id=class_id)
-        .order_by(RentSettings.updated_at.desc())
-        .first()
-    )
-    if not settings:
-        return {"status": "skipped", "reason": "rent_disabled_or_missing", "class_id": class_id}
-
-    cycle_length_days = _derive_cycle_length_days(settings)
-    settings.cycle_length_days = cycle_length_days
-
-    rent_configured_at = settings.rent_configured_at or settings.updated_at or utc_now()
-    if not settings.rent_effective_at:
-        settings.rent_effective_at = rent_configured_at + timedelta(days=cycle_length_days)
-        db.session.flush()
-
-    # Ensure timestamps are timezone-aware for all operations
-    from datetime import datetime as _dt, timezone as _tz
-    from app.utils.canonical_temporal_resolver import _get_class_timezone, ensure_utc
-
-    rent_effective_at = ensure_utc(settings.rent_effective_at)
-    execution_time = ensure_utc(execution_time)
-
-    if execution_time < rent_effective_at:
-        return {"status": "skipped", "reason": "before_effective_at", "class_id": class_id}
-
-    # Freeze deterministic class-local cycle boundary for the full execution.
-    # Use class-local date arithmetic (not UTC seconds) so DST transitions
-    # don't shift cycle boundaries.
-    class_tz = _get_class_timezone(class_id)
-    effective_local = rent_effective_at.astimezone(class_tz)
-    exec_local = execution_time.astimezone(class_tz)
-    elapsed_days = (exec_local.date() - effective_local.date()).days
-    cycles_completed = elapsed_days // cycle_length_days
-    cycle_start_date = effective_local.date() + timedelta(days=cycles_completed * cycle_length_days)
-    cycle_start = class_tz.localize(
-        _dt.combine(cycle_start_date, effective_local.time())
-    ).astimezone(_tz.utc)
-
-    claimed_seats = Seat.query.filter(
-        Seat.class_id == class_id,
-        Seat.claimed_at.is_not(None),
-    ).all()
-
-    charged = 0
-    exempted = 0
-    skipped_existing = 0
-
-    for seat in claimed_seats:
-        if (
-            seat.claimed_at
-            and seat.claimed_at >= rent_configured_at
-            and not seat.has_received_rent_exemption
-        ):
-            seat.has_received_rent_exemption = True
-            exempted += 1
-            continue
-
-        idem_key = f"rent_cycle:{class_id}:{seat.id}:{cycle_start.isoformat()}"
-        existing = ObligationAssessment.query.filter_by(
-            class_id=class_id,
-            seat_id=seat.id,
-            cycle_idempotency_key=idem_key,
-            obligation_type="RENT",
-        ).first()
-        if existing:
-            skipped_existing += 1
-            continue
-
-        execute_scheduled_rent_charge(
-            seat=seat,
-            settings=settings,
-            class_id=class_id,
-            execution_time=cycle_start,
-            idempotency_key=idem_key,
-        )
-        charged += 1
-
-    db.session.flush()  # FEAT-AUTHORIZED-SHELL
-    return {
-        "status": "ok",
-        "class_id": class_id,
-        "charged": charged,
-        "exempted": exempted,
-        "skipped_existing": skipped_existing,
-    }
-
-
-def run_rent_cycle_scheduler(execution_time=None):
-    """
-    Iterate all rent-enabled classes and execute one rent cycle per class.
-    """
-    from app.models import RentSettings
-    # TODO(SPEC-TIME-001): Legacy OBL scheduler exception.
-    # Switch this to canonical_temporal_resolver during OBL rewiring instead of widening
-    # the current PROD slice.
-    from app.utils.canonical_temporal_resolver import utc_now
-
-    execution_time = execution_time or utc_now()
-    class_ids = [
-        class_id for (class_id,) in
-        RentSettings.query.filter(
-            
-            RentSettings.class_id.is_not(None),
-        ).with_entities(RentSettings.class_id).distinct().all()
-    ]
-
-    outcomes = []
-    for class_id in class_ids:
-        outcomes.append(run_rent_cycle_for_class(class_id, execution_time))
-    return outcomes
-
-
-def _get_active_insurance_policy_version(class_id: str):
-    from app.models import PolicyVersion
-
-    return (
-        PolicyVersion.query.filter_by(class_id=class_id, domain="insurance", is_active=True)
-        .order_by(PolicyVersion.version_number.desc(), PolicyVersion.id.desc())
-        .first()
-    )
-
-
-@feat_shell("FEAT-OBL-003")
-def run_insurance_cycle_for_class(class_id: str, execution_time):
-    """Execute one insurance cycle for one class, evaluated per seat."""
-    from app.extensions import db
-    from app.models import ObligationAssessment, Seat
-    from app.feats.insurance_cycle_feat import execute_scheduled_insurance_charge
-    # TODO(SPEC-TIME-001): Legacy insurance/OBL scheduler exception.
-    # Switch this to canonical_temporal_resolver when that domain slice is rewired.
-    from app.utils.canonical_temporal_resolver import utc_now
-
-    execution_time = execution_time or utc_now()
-    policy_version = _get_active_insurance_policy_version(class_id)
-    if not policy_version:
-        return {"status": "skipped", "reason": "insurance_disabled_or_missing", "class_id": class_id}
-
-    try:
-        snapshot = get_insurance_billing_snapshot(policy_version)
-    except NameError:
-        return {
-            "status": "skipped",
-            "reason": "insurance_billing_helper_unavailable",
-            "class_id": class_id,
-        }
-    seats = Seat.query.filter(
-        Seat.class_id == class_id,
-        Seat.role == "student",
-        Seat.claimed_at.is_not(None),
-    ).all()
-
-    charged = 0
-    skipped_existing = 0
-
-    for seat in seats:
-        idem_key = f"insurance_cycle:{class_id}:{seat.id}:{execution_time.isoformat()}"
-        existing = ObligationAssessment.query.filter_by(
-            class_id=class_id,
-            seat_id=seat.id,
-            cycle_idempotency_key=idem_key,
-            obligation_type="INSURANCE_PREMIUM",
-        ).first()
-        if existing:
-            skipped_existing += 1
-            continue
-
-        execute_scheduled_insurance_charge(
-            seat=seat,
-            policy_version=policy_version,
-            class_id=class_id,
-            execution_time=execution_time,
-            idempotency_key=idem_key,
-        )
-        charged += 1
-
-    db.session.flush()
-    return {
-        "status": "ok",
-        "class_id": class_id,
-        "charged": charged,
-        "skipped_existing": skipped_existing,
-        "cycle_length_days": snapshot["cycle_length_days"],
-    }
-
-
-def run_insurance_cycle_scheduler(execution_time=None):
-    """Iterate all insurance-enabled classes and execute one insurance cycle per class."""
-    from app.models import PolicyVersion
-    # TODO(SPEC-TIME-001): Legacy insurance/OBL scheduler exception.
-    # Switch this to canonical_temporal_resolver when that domain slice is rewired.
-    from app.utils.canonical_temporal_resolver import utc_now
-
-    execution_time = execution_time or utc_now()
-    class_ids = [
-        class_id for (class_id,) in
-        PolicyVersion.query.filter_by(domain="insurance", is_active=True)
-        .with_entities(PolicyVersion.class_id)
-        .distinct()
-        .all()
-    ]
-
-    outcomes = []
-    for class_id in class_ids:
-        outcomes.append(run_insurance_cycle_for_class(class_id, execution_time))
-    delete_due_policy_lineages(execution_time=execution_time)
-    return outcomes
-
+# Rent and insurance cycle callbacks are intentionally absent until their
+# domain-owned FEAT entry points are rebuilt and covered by production-path tests.
 
 def run_audit_invariant_check_job():
     """Nightly audit chain integrity verification.
@@ -551,14 +306,6 @@ def init_scheduled_tasks(app):
         with app.app_context():
             database_maintenance_job()
 
-    def run_scheduled_rent_cycles():
-        with app.app_context():
-            run_rent_cycle_scheduler()
-
-    def run_scheduled_insurance_cycles():
-        with app.app_context():
-            run_insurance_cycle_scheduler()
-
     def run_audit_invariant_check():
         with app.app_context():
             run_audit_invariant_check_job()
@@ -587,28 +334,6 @@ def init_scheduled_tasks(app):
             max_instances=1  # Prevent overlapping executions
         )
 
-        scheduler.add_job(
-            func=run_scheduled_rent_cycles,
-            trigger='cron',
-            hour='*',
-            minute=5,
-            id='run_rent_cycles',
-            name='Run class-scoped rent cycles',
-            replace_existing=True,
-            max_instances=1
-        )
-
-        scheduler.add_job(
-            func=run_scheduled_insurance_cycles,
-            trigger='cron',
-            hour='*',
-            minute=10,
-            id='run_insurance_cycles',
-            name='Run seat-scoped insurance cycles',
-            replace_existing=True,
-            max_instances=1
-        )
-
         # Nightly audit chain integrity check — runs at 3 AM UTC (after maintenance)
         scheduler.add_job(
             func=run_audit_invariant_check,
@@ -624,8 +349,7 @@ def init_scheduled_tasks(app):
         scheduler.start()
         logger.info(
             "Scheduled tasks initialized: daily-limit enforcement (hourly), "
-            "database maintenance (2 AM UTC), rent cycles (hourly), "
-            "insurance cycles (hourly), "
+            "database maintenance (2 AM UTC), "
             "audit invariant check (3 AM UTC)"
         )
     else:

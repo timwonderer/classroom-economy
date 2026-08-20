@@ -7,8 +7,9 @@ Create Date: 2026-08-15 11:00:00
 Per DOM-CLASS-002, `expected_weekly_hours` is a CWI parameter that lives on the
 canonical, immutable `economic_engine` table, not on `payroll_settings`. Mutation
 occurs via FEAT-CLASS-005 (new engine version). This migration drops the duplicate
-column from payroll_settings after backfilling any surviving values into the
-current EconomicEngine row for each class.
+column from payroll_settings WITHOUT backfill. EconomicEngine is append-only, so
+backfill would require new engine versions. This is pre-launch cleanup; teachers
+re-enter the value through the EconomicEngine-backed UI.
 """
 from alembic import op
 import sqlalchemy as sa

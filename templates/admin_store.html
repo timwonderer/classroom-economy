@@ -242,7 +242,7 @@
               <tr>
                 <td>{{ entitlement.student_name }}</td>
                 <td>{{ entitlement.store_item.name }}</td>
-                <td><small class="text-muted">{{ entitlement.purchased_at|fmt_timestamp }}</small></td>
+                <td><small class="text-muted">{{ entitlement.purchased_at|fmt_timestamp if entitlement.purchased_at else 'N/A' }}</small></td>
                 <td>
                   <small class="text-muted">-</small>
                 </td>
@@ -299,7 +299,7 @@
                 <td>{{ entitlement.student_name }}</td>
                 <td>{{ entitlement.store_item.name }}</td>
                 <td>${{ "%.2f"|format(entitlement.store_item.price) }}</td>
-                <td><small class="text-muted">{{ entitlement.purchased_at|fmt_timestamp }}</small></td>
+                <td><small class="text-muted">{{ entitlement.purchased_at|fmt_timestamp if entitlement.purchased_at else 'N/A' }}</small></td>
                 <td>
                   {% if entitlement.status == 'purchased' %}
                     <span class="badge bg-success">Purchased</span>

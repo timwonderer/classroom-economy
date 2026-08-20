@@ -36,7 +36,7 @@ This document does not govern:
 - visibility behavior,
 - or other execution semantics.
 
-The exact specification for interest and compounding rules as well as overdraft behavior belongs in SPEC level documentations.
+The exact specification for interest and compounding rules as well as overdraft behavior belongs in SPEC-level documentation.
 
 ## III. Authority Level
 

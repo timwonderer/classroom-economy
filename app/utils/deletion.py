@@ -14,7 +14,7 @@ from app.models import (
     # RedemptionAuditLog removed — redemption_audit_logs unauthorized; use redemption_events (DOM-STORE-001)
     # StoreItemBlock removed — store_item_blocks unauthorized; use store_item_visibility (DOM-STORE-001)
 )
-from app.feats.base import feat_shell, InvariantViolation
+from app.feats.base import InvariantViolation
 
 logger = logging.getLogger(__name__)
 
@@ -50,7 +50,6 @@ def _assert_class_scope_integrity(class_id: str) -> None:
             f"class_id NULL rows detected for class_id={class_id}: {', '.join(violations)}"
         )
 
-@feat_shell("FEAT-OPS-001")
 def collapse_universe(class_id: str, reason: str, actor_membership_id: Optional[int]) -> bool:
     """
     Canonical destruction primitive for a class economy.

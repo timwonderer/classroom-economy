@@ -122,7 +122,7 @@ The following SHALL be derived and SHALL NOT be treated as canonical Policies tr
 - Consumers pin provenance by recording the exact `policy_uuid` in force at the moment they created their operational fact (see `DOM-POL-001` §V.A and §VII).
 - Availability state (`IN_USE` / `HIDDEN` / `RETIRED`) is a mutable projection *over* the immutable row, not a version pointer.
 
-Any schema element that attempts to create an alternative "current version" or "next version" pointer alongside `policy_uuid` — whether a self-referential FK on a Policies table or an external version-tracking table — is redundant and prohibited. `DOM-CLASS-003` (`policy_versions` / `policy_transitions`) records economic-policy evolution only and is not a domain-policy versioning mechanism; per `DOM-CLASS-003` §11 and §224, domain-specific versioning belongs here.
+Any schema element that attempts to create an alternative "current version" or "next version" pointer alongside `policy_uuid` — whether a self-referential FK on a Policies table or an external version-tracking table — is redundant and prohibited. `DOM-CLASS-003` (`policy_versions` / `policy_transitions`) records economic-policy evolution only and is not a domain-policy versioning mechanism; per `DOM-CLASS-003` §V, domain-specific versioning belongs here.
 
 ### 1. Repository behavior
 

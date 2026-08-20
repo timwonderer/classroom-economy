@@ -90,8 +90,9 @@ def get_obligation_payment_status(
     # (or from assessment.timestamp for immediate charges).
     from app.services.obligations_service import resolve_assessment_due_at
     due_at = resolve_assessment_due_at(assessment)
-    is_past_due = (
-        is_outstanding and due_at
+    is_past_due = bool(
+        is_outstanding
+        and due_at
         and db.session.query(db.func.now()).scalar() > due_at
     )
 
@@ -786,7 +787,7 @@ def get_rent_assessments_for_seat_class(
         is_outstanding = not is_satisfied
 
         # Temporal check for past-due
-        is_past_due = (
+        is_past_due = bool(
             is_outstanding
             and due_at
             and db.session.query(db.func.now()).scalar() > due_at

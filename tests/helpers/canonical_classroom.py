@@ -39,7 +39,7 @@ from app.models import (
     User,
     PayrollSettings,
     RentSettings,
-    BankingSettings,
+    EconomicEngine,
     HallPassSettings,
 )
 from app.services.classroom_setup import (
@@ -106,7 +106,7 @@ def provision_classroom(classroom_key: str) -> ProvisionedClassroom:
       - Student last_active_class_id / last_active_seat_id set
       - Default PayrollSettings (pay_rate=$0.50/min, frequency=14 days)
       - Default RentSettings (rent_amount=$50.00, frequency=weekly)
-      - Default BankingSettings (savings_apy=5%, simple, monthly)
+      - Default EconomicEngine (5% annual interest, simple, monthly)
       - Default HallPassSettings (queue_enabled=True, queue_limit=10)
 
     Flushes but does NOT commit. Callers own the transaction boundary
@@ -124,7 +124,18 @@ def provision_classroom(classroom_key: str) -> ProvisionedClassroom:
     with FEATContext("FEAT-IDEN-001", idempotency_key=idempotency_key):
 
         # --- Teacher account ---
-        teacher_user = create_teacher(teacher_def["username"])
+        # Production signup never retrieves an existing account. Test fixtures
+        # may provision multiple classes for one canonical teacher, however;
+        # reuse the already-created fixture principal only for that explicit
+        # multi-class setup, then create the additional Class Boundary through
+        # the normal production service.
+        teacher_lookup = hash_username_lookup(teacher_def["username"])
+        teacher_user = User.query.filter_by(
+            username_lookup_hash=teacher_lookup,
+            user_role="teacher",
+        ).first()
+        if teacher_user is None:
+            teacher_user = create_teacher(teacher_def["username"])
 
         # --- Class (creates teacher Seat + sets last_active pointers) ---
         economy = create_class(
@@ -187,18 +198,18 @@ def provision_classroom(classroom_key: str) -> ProvisionedClassroom:
         )
         db.session.add(rent_settings)
 
-        banking_settings = BankingSettings(
+        economic_engine = EconomicEngine(
             class_id=economy.class_id,
-            savings_apy=Decimal('5.000000'),  # 5% APY
+            interest_rate=Decimal('0.050000'),  # 5% annual rate
             interest_calculation_type="simple",
-            interest_schedule_type="monthly",
+            interest_payout_frequency="monthly",
         )
-        db.session.add(banking_settings)
+        db.session.add(economic_engine)
 
         hall_pass_settings = HallPassSettings(
             class_id=economy.class_id,
-            queue_enabled=True,
-            queue_limit=10,
+            max_queue_limit=10,
+            pass_type_payload=HallPassSettings.get_default_pass_types(),
         )
         db.session.add(hall_pass_settings)
         db.session.flush()

@@ -5,10 +5,13 @@ from decimal import Decimal
 
 from app.extensions import db
 from app.feats.base import requires_feat_context
-from app.models import ClassEconomy, Seat
+from app.models import ClassEconomy, Seat, EconomicEngine
 from app.services import ledger_service
 from app.models import _quantize_currency
 from decimal import InvalidOperation
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -57,7 +60,7 @@ def build_intended_ledger_plan(
 def resolve_intended_ledger_plan(
     *,
     plan: IntendedLedgerPlan,
-    banking_settings=None,
+    economic_engine: EconomicEngine | None,
     idempotency_key: str | None = None,
     force_overdraft_fee: bool = False,
     allow_recovery_transfer: bool = True,
@@ -81,10 +84,10 @@ def resolve_intended_ledger_plan(
         )
 
     if debit_amount <= Decimal("0.00"):
-        if banking_settings and banking_settings.overdraft_fee_enabled and force_overdraft_fee:
+        if economic_engine and force_overdraft_fee:
             fee_amount = _calculate_overdraft_fee_amount(
                 seat=seat,
-                banking_settings=banking_settings,
+                economic_engine=economic_engine,
                 force=True,
             )
             if fee_amount > 0:
@@ -108,20 +111,7 @@ def resolve_intended_ledger_plan(
         )
 
     shortfall = debit_amount - checking_balance
-    allowed = bool(
-        banking_settings
-        and banking_settings.overdraft_protection_enabled
-        and savings_balance >= shortfall
-    )
-
-    if allowed:
-        return ResolvedLedgerPlan(
-            outcome="ACCEPT",
-            intended_plan=plan,
-            notes=[f"checking={checking_balance} savings={savings_balance}"],
-        )
-
-    if banking_settings and banking_settings.overdraft_protection_enabled and allow_recovery_transfer and shortfall > 0:
+    if allow_recovery_transfer and economic_engine is not None and economic_engine.overdraft_protection_enabled is True and shortfall > 0:
         if savings_balance >= shortfall:
             return ResolvedLedgerPlan(
                 outcome="TRANSFORM",
@@ -131,10 +121,10 @@ def resolve_intended_ledger_plan(
                 notes=["savings recovery transfer"],
             )
 
-    if banking_settings and banking_settings.overdraft_fee_enabled and (force_overdraft_fee or shortfall > 0 or checking_balance < 0):
+    if economic_engine and (force_overdraft_fee or shortfall > 0 or checking_balance < 0):
         fee_amount = _calculate_overdraft_fee_amount(
             seat=seat,
-            banking_settings=banking_settings,
+            economic_engine=economic_engine,
             force=force_overdraft_fee or shortfall > 0 or checking_balance < 0,
         )
         if fee_amount > 0:
@@ -158,8 +148,8 @@ def _get_available_balances(seat: Seat) -> tuple[Decimal, Decimal]:
     return ledger_service.get_available_balances(seat.id, seat.class_id)
 
 
-def _calculate_overdraft_fee_amount(*, seat, banking_settings, force: bool = False) -> Decimal:
-    if not banking_settings or not banking_settings.overdraft_fee_enabled:
+def _calculate_overdraft_fee_amount(*, seat, economic_engine, force: bool = False) -> Decimal:
+    if not economic_engine:
         return Decimal("0.00")
 
     current_balance = _quantize_currency(
@@ -172,10 +162,10 @@ def _calculate_overdraft_fee_amount(*, seat, banking_settings, force: bool = Fal
     if not force and current_balance >= Decimal("0.00"):
         return Decimal("0.00")
 
-    if banking_settings.overdraft_fee_type == "flat":
-        return _quantize_currency(banking_settings.overdraft_fee_flat_amount)
+    if economic_engine.flat_overdraft_fee is not None:
+        return _quantize_currency(economic_engine.flat_overdraft_fee)
 
-    if banking_settings.overdraft_fee_type == "progressive":
+    if economic_engine.progressive_overdraft_fee is not None:
         from types import SimpleNamespace
         from app.utils.canonical_temporal_resolver import (
             canonical_temporal_resolver, CLASS_LEVEL_EVALUATION,
@@ -200,28 +190,26 @@ def _calculate_overdraft_fee_amount(*, seat, banking_settings, force: bool = Fal
 
         overdraft_fee_count = Transaction.query.filter(*fee_filters).count()
 
-        if overdraft_fee_count == 0:
-            fee_amount = _quantize_currency(banking_settings.overdraft_fee_progressive_1 or 0)
-        elif overdraft_fee_count == 1:
-            fee_amount = _quantize_currency(banking_settings.overdraft_fee_progressive_2 or 0)
-        else:
-            fee_amount = _quantize_currency(banking_settings.overdraft_fee_progressive_3 or 0)
-
-        if banking_settings.overdraft_fee_progressive_cap:
-            from sqlalchemy import func
-            from app.models import Transaction
-
-            total_fees_this_month = db.session.query(func.sum(Transaction.amount)).filter(
-                Transaction.seat_id == seat.id,
-                Transaction.class_id == seat.class_id,
-                Transaction.type == "overdraft_fee",
-                Transaction.timestamp >= month_start_utc,
-            ).scalar()
-            total_fees_this_month = _quantize_currency(total_fees_this_month) if total_fees_this_month else Decimal("0.00")
-            cap = _quantize_currency(banking_settings.overdraft_fee_progressive_cap)
-            if abs(total_fees_this_month) + fee_amount > cap:
-                fee_amount = max(Decimal("0.00"), cap - abs(total_fees_this_month))
-        return fee_amount
+        tier = "tier_1" if overdraft_fee_count == 0 else "tier_2" if overdraft_fee_count == 1 else "tier_3"
+        schedule = economic_engine.progressive_overdraft_fee
+        if not isinstance(schedule, dict):
+            logger.error("Malformed progressive_overdraft_fee for class %s", seat.class_id)
+            return Decimal("0.00")
+        raw_rate = schedule.get(tier)
+        if raw_rate is None:
+            return Decimal("0.00")
+        try:
+            rate = Decimal(str(raw_rate).strip().rstrip("%")) / Decimal("100")
+        except (InvalidOperation, ValueError):
+            logger.error("Unparseable progressive_overdraft_fee rate %r for class %s", raw_rate, seat.class_id)
+            return Decimal("0.00")
+        if rate < 0:
+            return Decimal("0.00")
+        from app.services.class_configuration_query_service import calculate_cwi
+        cwi = calculate_cwi(seat.class_id)
+        if cwi is None:
+            return Decimal("0.00")
+        return _quantize_currency(Decimal(str(cwi)) * rate)
 
     return Decimal("0.00")
 
@@ -230,9 +218,14 @@ def _calculate_overdraft_fee_amount(*, seat, banking_settings, force: bool = Fal
 def apply_resolved_ledger_plan(
     *,
     resolved_plan: ResolvedLedgerPlan,
-    banking_settings=None,
+    economic_engine: EconomicEngine | None,
     idempotency_key: str | None = None,
 ):
+    """Apply a resolved plan; economic_engine is the snapshot paired with resolve.
+
+    It is intentionally accepted to keep resolve/apply signatures symmetric and
+    to make the caller's policy snapshot explicit at the transaction boundary.
+    """
     seat = db.session.get(Seat, resolved_plan.intended_plan.seat_id)
     if not seat or seat.class_id != resolved_plan.intended_plan.class_id:
         return {"accepted": False, "reason": "invalid_scope"}

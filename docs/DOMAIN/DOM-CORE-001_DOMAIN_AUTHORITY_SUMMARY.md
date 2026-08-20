@@ -134,7 +134,7 @@ All domains listed below are bound by the following structural rules:
 - **State Classification**:
   - Definition rows (`rent_settings`, `store_items`, insurance definitions, etc.): Immutable-after-insert version records.
   - Availability state per row: `IN_USE`, `HIDDEN`, `RETIRED`.
-- **Key Transitions**: none originated here. New definitions are inserted by the domain that initiates the change (Class Config UI submission, insurance authoring flow, etc.); Policies only exposes `Disable` / `Retire` availability projections (see `DOM-POL-001` §VIII).
+  - **Key Transitions**: none originated here. New definitions are inserted by the domain that initiates the change (Class Config UI submission, insurance authoring flow, etc.); Policies exposes the complete FEAT-POL action set—`Insert`, `Disable`, `Retire`, and dependency-safe `Delete`—as repository operations (see `DOM-POL-001` §§VI, VIII).
 - **Primary Schema** (per `DOM-POL-001` §X boundary attribution): `rent_settings` (consumed by DOM-OBL-001), `payroll_settings` / `payroll_rewards` / `payroll_fines` (consumed by DOM-PROD-001), `hall_pass_settings` (consumed by DOM-PROD-001), `store_items` / `store_item_visibility` (consumed by DOM-STORE-001), insurance policy definitions (consumed by Insurance flow). `banking_settings` is **not** in this repository — savings APY, overdraft fees, and interest formulas are inherently Class Config → `economic-engine` concerns per DOM-CLASS-001 / DOM-CLASS-002.
 - **Boundary**: rent enablement → Class Configuration; rent settings → Policies; rent bill cycles and assessments → Obligations. See `DOM-POL-001` §X for the full boundary table.
 

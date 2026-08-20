@@ -47,10 +47,17 @@ def foreign_key_exists(table_name, fk_name):
 
 
 def upgrade():
+    def foreign_keys_by_column(table_name, column_name):
+        return [
+            fk for fk in sa.inspect(op.get_bind()).get_foreign_keys(table_name)
+            if column_name in fk.get('constrained_columns', [])
+        ]
     # Step 1: Drop FK on old column name (teacher_id or user_id)
-    if foreign_key_exists('classes', 'fk_classes_teacher_id_users'):
-        op.drop_constraint('fk_classes_teacher_id_users', 'classes', type_='foreignkey')
-        print("✅ Dropped FK fk_classes_teacher_id_users")
+    for old_column in ('teacher_id', 'user_id'):
+        for fk in foreign_keys_by_column('classes', old_column):
+            if fk.get('name'):
+                op.drop_constraint(fk['name'], 'classes', type_='foreignkey')
+                print(f"✅ Dropped FK {fk['name']}")
 
     # Step 2: Drop old index
     if index_exists('classes', 'ix_classes_teacher_id'):
@@ -78,7 +85,7 @@ def upgrade():
         print("✅ Created index ix_classes_teacher_user_id")
 
     # Step 5: Create FK on new column name
-    if not foreign_key_exists('classes', 'fk_classes_teacher_user_id_users'):
+    if not foreign_keys_by_column('classes', 'teacher_user_id'):
         op.create_foreign_key(
             'fk_classes_teacher_user_id_users',
             'classes', 'users',

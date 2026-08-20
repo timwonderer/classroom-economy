@@ -7,7 +7,8 @@ from app.models import LedgerBalanceSnapshot, Seat, Transaction, TransactionStat
 from app.utils.seat_scope import transaction_scope_filter
 from app.utils.canonical_temporal_resolver import ensure_utc, utc_now
 from app.utils.transaction_idempotency import create_idempotent_transaction
-from app.feats.base import feat_shell, audit_protected
+from app.feats.base import audit_protected
+from app.services.class_configuration_query_service import get_current_economic_engine
 
 # Protected fields captured in the audit payload for every ledger write
 _TRANSACTION_AUDIT_FIELDS = [
@@ -263,7 +264,6 @@ def compensate_posted_transaction(
     return reversal_tx
 
 
-@feat_shell("FEAT-LED-001")
 def create_transfer_pair(
     *,
     seat_id: int,
@@ -304,21 +304,13 @@ def create_transfer_pair(
     return withdraw_tx, deposit_tx
 
 
-@feat_shell("FEAT-LED-001")
 def apply_overdraft_fee_if_needed(*args, **kwargs):
-    """FEAT-Shell for overdraft fee application."""
-    from app.feats.base import is_nested_feat
-    res = _apply_overdraft_fee_if_needed(*args, **kwargs)
-    if not is_nested_feat():
-        db.session.commit() # FEAT-AUTHORIZED-SHELL
-    else:
-        db.session.flush() # FEAT-LEGACY-WRAP: parent owns commit
-    return res
+    """Execute the Ledger overdraft command; the caller owns the FEAT transaction."""
+    return _apply_overdraft_fee_if_needed(*args, **kwargs)
 
 
 def _apply_overdraft_fee_if_needed(
     seat,
-    banking_settings,
     *,
     force=False,
     idempotency_key: str | None = None,
@@ -337,31 +329,25 @@ def _apply_overdraft_fee_if_needed(
         debit_amount=Decimal("0.00"),
         description="Overdraft fee",
     )
+    economic_engine = get_current_economic_engine(seat.class_id)
     resolved_plan = resolve_intended_ledger_plan(
         plan=intended_plan,
-        banking_settings=banking_settings,
+        economic_engine=economic_engine,
         idempotency_key=idempotency_key,
         force_overdraft_fee=force,
         allow_recovery_transfer=False,
     )
     result = apply_resolved_ledger_plan(
         resolved_plan=resolved_plan,
-        banking_settings=banking_settings,
+        economic_engine=economic_engine,
         idempotency_key=idempotency_key,
     )
     return result.get("accepted", False), resolved_plan.overdraft_fee_amount
 
 
-@feat_shell("FEAT-LED-001")
 def apply_monthly_savings_interest(*args, **kwargs):
-    """FEAT-Shell for monthly savings interest application."""
-    from app.feats.base import is_nested_feat
-    res = _apply_monthly_savings_interest(*args, **kwargs)
-    if not is_nested_feat():
-        db.session.commit() # FEAT-AUTHORIZED-SHELL
-    else:
-        db.session.flush() # FEAT-LEGACY-WRAP: parent owns commit
-    return res
+    """Execute the Ledger interest command; the caller owns the FEAT transaction."""
+    return _apply_monthly_savings_interest(*args, **kwargs)
 
 
 def _apply_monthly_savings_interest(seat, *, annual_rate=Decimal("0.045")):

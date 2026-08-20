@@ -37,9 +37,9 @@
     title: header text (rendered as h5 fw-bold, matches attendance-log)
     icon: optional Material Symbols icon name
     header_actions: optional HTML string rendered right-aligned in the header
-                    (buttons, badges, links). Kept simple to avoid nested
-                    calls; complex actions can be inlined by wrapping the
-                    macro or writing the card directly.
+                    (buttons, badges, links). This value must contain only
+                    static, template-authored markup. Dynamic text must be
+                    escaped with |e before it is passed to this parameter.
     body_class: optional extra classes on the wrapper (e.g. 'mb-3')
 #}
 {% macro top_card(title, icon=None, header_actions='', body_class='') %}

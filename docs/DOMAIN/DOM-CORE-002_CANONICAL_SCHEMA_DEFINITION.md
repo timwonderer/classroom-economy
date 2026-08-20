@@ -317,7 +317,7 @@ Policy definition tables — `rent_settings`, `payroll_settings`, `payroll_rewar
 **Boundary notes:**
 
 - Policies does not originate mutations. Other domains submit definitions through Policies; each submission creates a new `policy_uuid` (see `DOM-POL-001` §VI, Insert and Availability Contract).
-- Rows are immutable after insert. Replacement is a new row, never an in-place edit. Mutable-singleton settings blobs are prohibited under `DOM-CLASS-003` §XI.4.
+- Rows are immutable after insert. Replacement is a new row, never an in-place edit. Mutable-singleton settings blobs are prohibited under `DOM-CLASS-003` §V.
 - Downstream domains reference `policy_uuid` as a non-FK provenance locator and freeze any terms they need for standalone executability (see `DOM-POL-001` §V.A, §IX).
 - Rent example: Class Configuration owns the `rent` feature flag (`class_features`); Policies stores the immutable `rent_settings` version rows; Obligations (`DOM-OBL-001`) owns `bill_cycles` and `assessment_events` (the recurring act of charging rent) and references the current rent `policy_uuid` for provenance.
 - Payroll example: Class Configuration owns the `payroll` feature flag; Policies stores `payroll_settings` / `payroll_rewards` / `payroll_fines` version rows; `DOM-PROD-001` owns `payroll_event` and references the current payroll `policy_uuid` at run time.

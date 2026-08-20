@@ -194,13 +194,13 @@ class EconomyBalanceChecker {
         // than the recommended minimum of $Y..."). Backends that emit
         // only `message` (no `title`) fall back to a generic level title.
         const genericTitle = {
-            critical: 'Critical Issue',
+            danger: 'Critical Issue',
             warning: 'Warning',
             success: 'Looks Good',
             info: 'Recommendations',
         };
         const iconForLevel = {
-            critical: 'error',
+            danger: 'error',
             warning: 'info',
             success: 'check_circle',
             info: 'lightbulb',
@@ -430,7 +430,7 @@ class EconomyBalanceChecker {
         const freq = (freqEl && freqEl.value) || 'monthly';
         const customValueEl = document.getElementById('custom_frequency_value');
         const customUnitEl = document.getElementById('custom_frequency_unit');
-        const customValue = customValueEl ? parseInt(customValueEl.value, 10) : NaN;
+        const customValue = customValueEl ? parseFloat(customValueEl.value) : NaN;
         const customUnit = customUnitEl ? customUnitEl.value : '';
 
         const scale = (band, factor) => (band && band.min != null ? {

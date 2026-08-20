@@ -1099,7 +1099,9 @@
     cachedCWIAnalysis = analysis;
     economyChecker.displayCWIInfo(analysis, '#cwi-info');
   }).catch(err => {
-    console.log('Payroll not configured yet, skipping CWI display');
+    console.warn('CWI analysis unavailable; rent guidance will remain unavailable.', err);
+    const info = document.querySelector('#cwi-info');
+    if (info) info.textContent = 'CWI guidance is temporarily unavailable. Please try again.';
   });
 
   // Re-render the CWI recommendation box whenever any rent-frequency input

@@ -309,7 +309,7 @@
                                         Escalated {{ issue.escalated_at|fmt_timestamp }}
                                         {% elif pill_id == 'review' %}
                                         <span class="material-symbols-outlined me-1">visibility</span>
-                                        In review since {{ issue.sysadmin_reviewed_at or issue.escalated_at|fmt_timestamp }}
+                                        In review since {{ (issue.sysadmin_reviewed_at or issue.escalated_at)|fmt_timestamp }}
                                         {% else %}
                                         <span class="material-symbols-outlined me-1">check_circle</span>
                                         Resolved {{ issue.sysadmin_resolved_at|fmt_timestamp }}

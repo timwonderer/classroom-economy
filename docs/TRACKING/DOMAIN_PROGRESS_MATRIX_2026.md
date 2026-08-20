@@ -1,16 +1,16 @@
 # CTH Domain Reconstruction Progress Matrix
 
 **Status:** Active Canonical Tracker
-**Last Updated:** 2026-08-16 (Obligation Phase 10 audit GAP surfaced: cross-layer template sweep missed; emergency template fix + `rent_settings` dead-schema drop landed; Policies-domain doctrine substantially advanced — `policy_uuid` promoted to first-class in DOM-POL-001 §VI.0, all `*_settings` tables (rent/payroll/hall_pass/store/insurance) routed to DOM-POL-001; `banking_settings` routed to Class Config / economic-engine; no Banking domain. See `OBLIGATION_POLICIES_FOLLOWUP_2026-08-16.md`.)
+**Last Updated:** 2026-08-20 (FEAT-context reconstruction residual audit: live `feat_shell` usage is now zero; route/service mutations are being reconciled against their owning FEAT boundaries. Remaining work is tracked in `FEAT_CONTEXT_STACK_HANDOFF.md`, including documentation reconciliation, orphaned scheduler text, and production-path coverage.)
 **Authority:** SOP-DEV-002a, INV-CORE-000, DOM-CORE-002
 
 **DOMAIN READINESS SNAPSHOT:**
-- ⚠️ **3 domains** Phase 10 certified but ALL flagged 2026-08-16 for FEAT-SHELL-DIRTY compliance gap (see `OBLIGATION_POLICIES_FOLLOWUP_2026-08-16.md` §VIII): Identity (12 shells), Store (9 shells), Obligations (9 shells + cross-layer template sweep gap + `rent_settings` mutation pattern violation). None satisfy the revised Phase 10 gate (§VII.3.5 zero-shell-decorator).
-- 🔄 **1 domain** Phase 5 complete, Phase 6-7 partial: Class Config (view models defined; 4 of 12 MAP-UI-001 rows rewired; EconomicView stub still incomplete; 5 constitutional issues open; 15 shell decorators outstanding — FEAT-CLASS-001×2, FEAT-CLASS-002×3, FEAT-CLASS-004×2, FEAT-CLASS-005×1, FEAT-SETTINGS-001×7)
+- 🔄 **3 domains** retain Phase 10 documentation/runtime reconciliation work: Identity, Store, Obligations. The legacy shell gate is satisfied in the current checkout, but certification remains subject to production-path evidence and historical-document reconciliation.
+- 🔄 **1 domain** Phase 5 complete, Phase 6-7 partial: Class Config (view models defined; remaining surface and documentation rows are tracked in the FEAT-context handoff).
 - 🔄 **2 domains** Phase 1 complete but blocked on Phase 2 (schema migrations pending): Ledger, Payroll
 - 🔄 **1 domain** Phase 0-1, doctrine substantially advanced 2026-08-16: Policies
 - 🔄 **3 domains** Phase 0-1 only, not started: Operations, Interpretation, Support
-- **Systemic:** 45 `@feat_shell(...)` decorators across `app/` — every hit logs FEAT-SHELL-DIRTY, marking the route/FEAT as v2-noncompliant. Any Phase 10 certification that did not enforce zero-shell must be re-examined.
+- **Systemic:** zero live `@feat_shell` decorators remain under `app/`; `feat_shell()` and shell-only guardrails have been removed. This is necessary but not sufficient for Phase 10 certification; each residual surface still requires owning-FEAT and production-path evidence.
 
 ---
 
@@ -179,8 +179,8 @@ Phase 6-7 completion is now measured via **field ownership**, not template struc
 - ✅ Teacher-facing guidance functions (suggest_economic_mode, validate_payroll_rate)
 
 **Phase 4 Achievements (COMPLETED 2026-08-12):**
-- ✅ Core reads centralized: 21 direct ClassEconomy.query calls replaced with service layer functions (1 mutation-only call remains inside @feat_shell)
-- ✅ Mutations through FEAT boundaries: all class-config writes use @feat_shell or FEATContext
+- ✅ Core reads centralized: 21 direct ClassEconomy.query calls replaced with service layer functions
+- ✅ Mutations through FEAT boundaries: class-config writes use `requires_feat_context` or an explicit FEAT orchestrator; route-level commits are not used as transaction boundaries
 - ✅ 4 new service helpers: get_teacher_classes_by_ids, get_class_by_public_id, get_classes_by_public_ids (get_teacher_class_by_section removed 2026-08-16 as dead v1 helper)
 - ✅ Fixed stale ClassEconomy.user_id → teacher_user_id references
 - ✅ Fixed full-table-scan anti-pattern in recovery route

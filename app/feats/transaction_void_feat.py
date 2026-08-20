@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 
 from app.extensions import db
+from app.feats.base import requires_feat_context
 from app.models import EntitlementEvent, StoreItem, Transaction, TransactionStatus
 from app.services import ledger_service, obligations_service
 # TODO (Phase 4): store_entitlement_service deleted; must query EntitlementEvent directly
@@ -28,9 +29,26 @@ class UsedDelayedPurchaseNotVoidable(ValueError):
     pass
 
 
-def execute_void_transaction(tx: Transaction) -> VoidTransactionResult:
+@requires_feat_context("FEAT-LED-002")
+def execute_void_transaction(
+    tx: Transaction,
+    *,
+    correlation_id: str,
+    idempotency_key: str,
+    reason: str = "ADMIN_CORRECTION",
+) -> VoidTransactionResult:
     """Ledger-led FEAT for transaction void orchestration."""
+    return _execute_void_transaction_impl(tx, reason=reason)
+
+
+@requires_feat_context("FEAT-LED-002")
+def execute_void_transactions(transactions: list[Transaction], *, correlation_id: str, idempotency_key: str, reason: str = "ADMIN_CORRECTION") -> list[VoidTransactionResult]:
+    return [_execute_void_transaction_impl(tx, reason=reason) for tx in transactions]
+
+
+def _execute_void_transaction_impl(tx: Transaction, *, reason: str) -> VoidTransactionResult:
     is_pending = tx.status == TransactionStatus.PENDING
+    void_description = f"Void refund for transaction #{tx.id} ({reason}): {tx.description}"[:255]
 
     if tx.type == 'purchase':
         _void_purchase(tx)
@@ -42,7 +60,7 @@ def execute_void_transaction(tx: Transaction) -> VoidTransactionResult:
         reversal_tx = ledger_service.compensate_posted_transaction(
             tx,
             idempotency_key=void_refund_key(tx.id),
-            description=f"Void refund for transaction #{tx.id}: {tx.description}",
+            description=void_description,
         )
         if is_pending:
             ledger_service.void_pending_transaction(tx)
@@ -52,7 +70,7 @@ def execute_void_transaction(tx: Transaction) -> VoidTransactionResult:
         reversal_tx = ledger_service.compensate_posted_transaction(
             tx,
             idempotency_key=void_refund_key(tx.id),
-            description=f"Void refund for transaction #{tx.id}: {tx.description}",
+            description=void_description,
         )
 
     return VoidTransactionResult(

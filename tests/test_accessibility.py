@@ -218,6 +218,9 @@ def _render_page(template_path: Path, client) -> str:
     if "components/" in template_path.as_posix():
         pytest.skip("Component templates are fragments; audit the final page instead.")
 
+    if "macros/" in template_path.as_posix():
+        pytest.skip("Macro templates are fragments; audit the final page instead.")
+
     html = template_path.read_text(encoding="utf-8")
     if "{% extends" in html:
         pytest.skip("Template is a fragment rendered via a parent layout; audit the final page instead.")
