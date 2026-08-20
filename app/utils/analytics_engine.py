@@ -5,9 +5,8 @@ Analytics Engine for Classroom Economy.
 
 Governing authority: DOM-ITR-001 (Interpretation Domain) and SPEC-ITR-001
 (Interpretation Observation Specification). This module implements compute
-for Interpretation outputs; the read-only compute FEAT is canonically named
-FEAT-ITR-001 in DOM-ITR-001 §VIII (currently registered under a legacy
-name in app/feats/base.py; rename tracked in DOM-ITR-001 §XIII.b).
+for Interpretation outputs; the read-only compute FEAT is registered as
+FEAT-ITR-001 in app/feats/base.py per DOM-ITR-001 §VIII.
 
 Current runtime is in known noncompliance with several DOM v1.2 invariants;
 see DOM-ITR-001 §XIII.b for the inventory tracked for downstream remediation.
@@ -34,7 +33,7 @@ from app.utils.economy_policy import (
     get_policy_profile,
 )
 from app.utils.join_code import get_display_join_code
-from app.feats.base import feat_shell
+from app.feats.base import requires_feat_context
 import logging
 
 
@@ -519,7 +518,7 @@ class AnalyticsEngine:
         
         return alerts
     
-    @feat_shell("FEAT-ANLY-001")
+    @requires_feat_context("FEAT-ITR-001")
     def create_snapshot(
         self,
         window_type: str,

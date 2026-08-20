@@ -297,7 +297,7 @@ Non-normative appendix. Records the divergences between doctrine and current run
 
 | Element | Doctrinal Requirement | Runtime Behavior |
 |---|---|---|
-| FEAT name for Compute | Compute Interpretation FEAT is `FEAT-ITR-001` under the Interpretation domain namespace. | Currently registered as `FEAT-ANLY-001` under a non-canonical `"Analytics"` domain string in `app/feats/base.py`. Rename authorized but deferred. |
+| ~~FEAT name for Compute~~ | ~~Compute Interpretation FEAT is `FEAT-ITR-001` under the Interpretation domain namespace.~~ | **RESOLVED.** Registered as `FEAT-ITR-001` under the `"Interpretation"` domain in `app/feats/base.py`. Consumer sites (`app/utils/analytics_engine.py`, `app/routes/analytics.py`) updated in the same slice. |
 | Historical Configuration Binding | §VII requires historical windows to be evaluated against their authoritative historical configuration. | Runtime evaluates historical windows against compute-time configuration. Doctrine violation, not a specification gap. |
 | Completed-cycle window discipline | §VII requires completed cycles only. | Runtime accepts arbitrary caller-supplied windows without enforcement. |
 | Output Property Declaration (INV-ITR-012) | Every output SHALL declare Semantic Kind, Subject / Observation Basis / Aggregation, and Reference Dependency. | Current outputs declare none of these. |
