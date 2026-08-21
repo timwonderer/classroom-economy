@@ -291,13 +291,7 @@
   <li class="nav-item" role="presentation">
     <button class="nav-link" id="bulk-upload-tab" data-bs-toggle="tab" data-bs-target="#bulk-upload" type="button"
       role="tab">
-      <span class="material-symbols-outlined me-1" style="vertical-align: middle;">cloud_upload</span>Bulk Upload
-    </button>
-  </li>
-  <li class="nav-item" role="presentation">
-    <button class="nav-link" id="individual-upload-tab" data-bs-toggle="tab" data-bs-target="#individual-upload"
-      type="button" role="tab">
-      <span class="material-symbols-outlined me-1" style="vertical-align: middle;">person_add</span>Individual Upload
+      <span class="material-symbols-outlined me-1" style="vertical-align: middle;">group_add</span>Add Students
     </button>
   </li>
 </ul>
@@ -586,143 +580,307 @@
     </div>
   </div>
 
-  <!-- BULK UPLOAD TAB -->
+  <!-- ADD STUDENTS TAB (paste-based staging grid) -->
   <div class="tab-pane fade" id="bulk-upload" role="tabpanel">
     <div class="card shadow">
       <div class="card-header bg-success text-white">
-        <h2 class="mb-0 h5"><span class="material-symbols-outlined me-2"
-            style="vertical-align: middle;">cloud_upload</span>Bulk Student Upload</h2>
+        <h2 class="mb-0 h5">
+          <span class="material-symbols-outlined me-2" style="vertical-align: middle;">group_add</span>Add Students
+        </h2>
       </div>
       <div class="card-body">
-        <div class="row">
-          <div class="col-lg-6 mb-4">
-            <div class="card h-100" style="border: 2px solid var(--primary);">
-              <div class="card-header bg-primary text-white">
-                <h3 class="mb-0 text-white h6"><span
-                    class="material-symbols-outlined me-2 align-middle">info</span>Instructions</h3>
-              </div>
-              <div class="card-body">
-                <ol class="mb-3">
-                  <li class="mb-2">Download the CSV template using the button below</li>
-                  <a href="{{ url_for('admin.download_csv_template') }}" class="btn btn-outline-primary">
-                    <span class="material-symbols-outlined me-2" style="vertical-align: middle;">download</span>Download
-                    Template
-                  </a>
+        <p class="text-muted mb-3">
+          Copy student names from Excel or Google Sheets and paste below.
+          Supports 2 columns (First Name, Last Name) or 3 columns (First Name, Last Name, Notes).
+          You can also type directly into the grid.
+        </p>
 
-                  <li class="mb-2">Fill in student information (First Name, Last Name, Class Section, Class Name,
-                    Additional Notes)</li>
-                  <li class="mb-2">Save the file as CSV format</li>
-                  <li class="mb-2">Upload the completed file</li>
-                </ol>
-                <div class="alert alert-warning mb-0">
-                  <strong><span class="material-symbols-outlined me-2"
-                      style="vertical-align: middle;">warning</span>Important:</strong>
-                  <ul class="mb-0 mt-2">
-                    <li>Do not modify the header row</li>
-                    <li>Class Section is required for each row</li>
-                    <li>Duplicate students will be automatically skipped</li>
-                  </ul>
-                </div>
-              </div>
-            </div>
-          </div>
-          <div class="col-lg-6 mb-4">
-            <div class="card h-100">
-              <div class="card-header text-dark"
-                style="background-color: var(--secondary);border-color: var(--secondary); border-style:solid; border-width:2px;">
-                <h3 class="mb-0 text-muted h6"><span class="material-symbols-outlined me-2"
-                    style="vertical-align: middle;">cloud_upload</span>Upload File</h3>
-              </div>
-              <div class="card-body" style="border-color: var(--secondary); border-style:solid; border-width: 2px;">
-                <form action="{{ url_for('admin.upload_students') }}" method="post" enctype="multipart/form-data">
-                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                  <div class="mb-3">
-                    <label for="csv_file" class="form-label fw-bold">Select CSV File</label>
-                    <input class="form-control form-control-lg" type="file" name="csv_file" id="csv_file" accept=".csv"
-                      required>
-                    <div class="form-text">Only .csv files are accepted</div>
-                  </div>
-                  <div class="d-grid gap-2">
-                    <button type="submit" class="btn btn-warning text-white btn-lg">
-                      <span class="material-symbols-outlined me-2"
-                        style="vertical-align: middle;">cloud_upload</span>Upload Students
-                    </button>
-                  </div>
-                </form>
-              </div>
-            </div>
-          </div>
+        <div id="duplicate-warning" class="alert alert-warning d-none mb-3">
+          <span class="material-symbols-outlined me-1" style="vertical-align: middle;">warning</span>
+          <strong>Duplicate names detected.</strong>
+          Students with identical names will receive dedupe codes for account claiming.
+          If these students have differentiating middle names or initials, you may add them to the
+          First Name or Last Name field to avoid the duplicate-name claim flow.
+          <em>You may still submit — identically named students are valid.</em>
         </div>
+
+        <div class="table-responsive">
+          <table class="table table-bordered mb-0" id="staging-grid">
+            <thead class="table-light">
+              <tr>
+                <th style="width: 30%;">First Name <span class="text-danger">*</span></th>
+                <th style="width: 30%;">Last Name <span class="text-danger">*</span></th>
+                <th style="width: 30%;">Notes</th>
+                <th style="width: 10%;"></th>
+              </tr>
+            </thead>
+            <tbody id="staging-body">
+              <tr class="staging-row">
+                <td><input type="text" class="form-control form-control-sm staging-fn" placeholder="First Name" aria-label="First name"></td>
+                <td><input type="text" class="form-control form-control-sm staging-ln" placeholder="Last Name" aria-label="Last name"></td>
+                <td><input type="text" class="form-control form-control-sm staging-notes" placeholder="Notes (optional)" aria-label="Notes"></td>
+                <td class="text-center"><button type="button" class="btn btn-outline-danger btn-sm remove-row-btn" title="Remove row">&times;</button></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="d-flex justify-content-between align-items-center mt-3">
+          <button type="button" class="btn btn-outline-secondary btn-sm" id="add-row-btn">
+            <span class="material-symbols-outlined me-1" style="vertical-align: middle; font-size: 18px;">add</span>Add Row
+          </button>
+          <span class="text-muted small" id="row-count">0 students staged</span>
+        </div>
+
+        <hr class="my-3">
+
+        <div class="d-flex justify-content-end gap-2">
+          <button type="button" class="btn btn-outline-secondary" id="clear-grid-btn">Clear All</button>
+          <button type="button" class="btn btn-primary btn-lg" id="submit-students-btn" disabled>
+            <span class="material-symbols-outlined me-1" style="vertical-align: middle;">group_add</span>
+            Add Students
+          </button>
+        </div>
+
+        <div id="submit-result" class="mt-3 d-none"></div>
       </div>
     </div>
   </div>
 
-  <!-- INDIVIDUAL UPLOAD TAB -->
-  <div class="tab-pane fade" id="individual-upload" role="tabpanel">
-    <div class="card shadow">
-      <div class="card-header bg-primary text-white">
-        <h2 class="mb-0 h5"><span class="material-symbols-outlined me-2"
-            style="vertical-align: middle;">person_add</span>Add Individual Student</h2>
-      </div>
-      <div class="card-body">
-        <div class="row justify-content-center">
-          <div class="col-lg-8">
-            <form action="{{ url_for('admin.add_individual_student') }}" method="post">
-              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <script>
+  (function() {
+    const tbody = document.getElementById('staging-body');
+    const addRowBtn = document.getElementById('add-row-btn');
+    const clearBtn = document.getElementById('clear-grid-btn');
+    const submitBtn = document.getElementById('submit-students-btn');
+    const rowCountEl = document.getElementById('row-count');
+    const dupeWarning = document.getElementById('duplicate-warning');
+    const resultEl = document.getElementById('submit-result');
+    const csrfToken = document.querySelector('meta[name="csrf-token"]');
 
-              <div class="card  mb-3">
-                <div class="card-header bg-primary text-white">
-                  <h3 class="mb-0 text-white h6"><span class="material-symbols-outlined me-2"
-                      style="vertical-align: middle;">person</span>Student Information</h3>
-                </div>
-                <div class="card-body">
-                  <div class="row">
-                    <div class="col-md-6 mb-3">
-                      <label for="first_name" class="form-label fw-bold">First Name <span
-                          class="text-danger">*</span></label>
-                      <input type="text" class="form-control" id="first_name" name="first_name" required>
-                    </div>
-                    <div class="col-md-6 mb-3">
-                      <label for="last_name" class="form-label fw-bold">Last Name <span
-                          class="text-danger">*</span></label>
-                      <input type="text" class="form-control" id="last_name" name="last_name" required>
-                    </div>
-                  </div>
-                  <div class="row">
-                    <div class="col-md-6 mb-3">
-                      <label class="form-label fw-bold">Class</label>
-                      <div class="form-control bg-light">{{ class_display_label }}</div>
-                      <input type="hidden" id="block_select" name="block_select" value="{{ current_class_section or current_class_id }}">
-                      <div class="form-text">Student will be added to the active class.</div>
-                    </div>
-                  </div>
-                  <div class="row">
-                    <div class="col-md-6 mb-3">
-                      <label for="class_name" class="form-label fw-bold">Class Name</label>
-                      <input type="text" class="form-control" id="class_name" name="class_name"
-                        placeholder="Optional display name for the class">
-                    </div>
-                    <div class="col-md-6 mb-3">
-                      <label for="additional_notes" class="form-label fw-bold">Additional Notes</label>
-                      <input type="text" class="form-control" id="additional_notes" name="additional_notes"
-                        placeholder="Optional notes for your import record">
-                    </div>
-                  </div>
-                </div>
-              </div>
+    function createRow(fn, ln, notes) {
+      const tr = document.createElement('tr');
+      tr.className = 'staging-row';
+      const fields = [
+        { cls: 'staging-fn', placeholder: 'First Name', label: 'First name', value: fn || '' },
+        { cls: 'staging-ln', placeholder: 'Last Name', label: 'Last name', value: ln || '' },
+        { cls: 'staging-notes', placeholder: 'Notes (optional)', label: 'Notes', value: notes || '' }
+      ];
+      fields.forEach(field => {
+        const td = document.createElement('td');
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.className = 'form-control form-control-sm ' + field.cls;
+        input.placeholder = field.placeholder;
+        input.setAttribute('aria-label', field.label);
+        input.value = field.value;
+        td.appendChild(input);
+        tr.appendChild(td);
+      });
+      const actionTd = document.createElement('td');
+      actionTd.className = 'text-center';
+      const removeBtn = document.createElement('button');
+      removeBtn.type = 'button';
+      removeBtn.className = 'btn btn-outline-danger btn-sm remove-row-btn';
+      removeBtn.title = 'Remove row';
+      removeBtn.setAttribute('aria-label', 'Remove row');
+      removeBtn.textContent = '\u00d7';
+      actionTd.appendChild(removeBtn);
+      tr.appendChild(actionTd);
+      return tr;
+    }
 
-              <div class="d-grid">
-                <button type="submit" class="btn btn-primary btn-lg">
-                  <span class="material-symbols-outlined me-2" style="vertical-align: middle;">person_add</span>Add
-                  Student
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
+    function escapeHtml(str) {
+      const div = document.createElement('div');
+      div.textContent = str;
+      return div.innerHTML;
+    }
+
+    function getValidRows() {
+      const rows = [];
+      tbody.querySelectorAll('.staging-row').forEach((tr, i) => {
+        const fn = (tr.querySelector('.staging-fn').value || '').trim();
+        const ln = (tr.querySelector('.staging-ln').value || '').trim();
+        const notes = (tr.querySelector('.staging-notes').value || '').trim();
+        if (fn || ln) {
+          rows.push({ index: i, first_name: fn, last_name: ln, notes: notes || null, tr: tr });
+        }
+      });
+      return rows;
+    }
+
+    function canonicalFingerprint(fn, ln) {
+      return fn.toLowerCase() + '|' + ln.toLowerCase();
+    }
+
+    function updateState() {
+      const rows = getValidRows();
+      const count = rows.filter(r => r.first_name && r.last_name).length;
+      rowCountEl.textContent = count + ' student' + (count !== 1 ? 's' : '') + ' staged';
+      submitBtn.disabled = count === 0;
+
+      // Clear all duplicate highlights
+      tbody.querySelectorAll('.staging-row').forEach(tr => {
+        tr.classList.remove('table-warning');
+        tr.querySelectorAll('.staging-fn, .staging-ln').forEach(input => {
+          input.classList.remove('is-warning');
+        });
+      });
+
+      // Batch-local duplicate detection (advisory — server fingerprinting is authoritative)
+      const fpGroups = {};
+      rows.forEach(r => {
+        if (r.first_name && r.last_name) {
+          const fp = canonicalFingerprint(r.first_name, r.last_name);
+          if (!fpGroups[fp]) fpGroups[fp] = [];
+          fpGroups[fp].push(r.tr);
+        }
+      });
+
+      let hasDupes = false;
+      Object.values(fpGroups).forEach(group => {
+        if (group.length > 1) {
+          hasDupes = true;
+          group.forEach(tr => {
+            tr.classList.add('table-warning');
+          });
+        }
+      });
+
+      dupeWarning.classList.toggle('d-none', !hasDupes);
+    }
+
+    // Paste handler
+    tbody.addEventListener('paste', function(e) {
+      const text = (e.clipboardData || window.clipboardData).getData('text');
+      if (!text) return;
+
+      const lines = text.split(/\r?\n/).filter(line => line.trim());
+      if (lines.length <= 1 && !text.includes('\t')) return; // Single value, let default paste handle it
+
+      e.preventDefault();
+
+      // Parse tab-separated rows
+      const parsed = [];
+      lines.forEach(line => {
+        const cols = line.split('\t');
+        const fn = (cols[0] || '').trim();
+        const ln = (cols[1] || '').trim();
+        const notes = (cols[2] || '').trim();
+        if (fn || ln) {
+          parsed.push({ fn, ln, notes });
+        }
+      });
+
+      if (!parsed.length) return;
+
+      // Remove empty rows from grid before adding pasted data
+      tbody.querySelectorAll('.staging-row').forEach(tr => {
+        const fn = tr.querySelector('.staging-fn').value.trim();
+        const ln = tr.querySelector('.staging-ln').value.trim();
+        if (!fn && !ln) tr.remove();
+      });
+
+      parsed.forEach(({ fn, ln, notes }) => {
+        tbody.appendChild(createRow(fn, ln, notes));
+      });
+
+      // Ensure at least one empty row at the end for continued typing
+      tbody.appendChild(createRow('', '', ''));
+
+      updateState();
+    });
+
+    // Input change handler
+    tbody.addEventListener('input', updateState);
+
+    // Remove row
+    tbody.addEventListener('click', function(e) {
+      if (e.target.closest('.remove-row-btn')) {
+        const row = e.target.closest('.staging-row');
+        if (tbody.querySelectorAll('.staging-row').length > 1) {
+          row.remove();
+        } else {
+          row.querySelector('.staging-fn').value = '';
+          row.querySelector('.staging-ln').value = '';
+          row.querySelector('.staging-notes').value = '';
+        }
+        updateState();
+      }
+    });
+
+    // Add row
+    addRowBtn.addEventListener('click', function() {
+      tbody.appendChild(createRow('', '', ''));
+      updateState();
+    });
+
+    // Clear all
+    clearBtn.addEventListener('click', function() {
+      tbody.innerHTML = '';
+      tbody.appendChild(createRow('', '', ''));
+      resultEl.classList.add('d-none');
+      updateState();
+    });
+
+    // Submit
+    submitBtn.addEventListener('click', function() {
+      const rows = getValidRows();
+      const students = rows
+        .filter(r => r.first_name && r.last_name)
+        .map(r => ({ first_name: r.first_name, last_name: r.last_name, notes: r.notes }));
+
+      if (!students.length) return;
+
+      submitBtn.disabled = true;
+      submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Adding...';
+
+      fetch('{{ url_for("admin.upload_students") }}', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': csrfToken ? csrfToken.content : ''
+        },
+        body: JSON.stringify({ students: students })
+      })
+      .then(r => r.json())
+      .then(data => {
+        if (data.status === 'success' || data.status === 'partial') {
+          let msg = data.created + ' student' + (data.created !== 1 ? 's' : '') + ' added successfully.';
+          if (data.join_code) {
+            msg += ' Join Code: <strong>' + escapeHtml(data.join_code) + '</strong>';
+          }
+          if (data.errors && data.errors.length > 0) {
+            msg += '<br><small class="text-danger">' + data.errors.length + ' row(s) had errors.</small>';
+          }
+          resultEl.innerHTML = '<div class="alert alert-success">' + msg + '</div>';
+          resultEl.classList.remove('d-none');
+
+          // Clear the grid on full success
+          if (data.status === 'success') {
+            tbody.innerHTML = '';
+            tbody.appendChild(createRow('', '', ''));
+            updateState();
+          }
+        } else {
+          resultEl.innerHTML = '<div class="alert alert-danger">' + escapeHtml(data.message || 'Failed to add students.') + '</div>';
+          resultEl.classList.remove('d-none');
+        }
+      })
+      .catch(() => {
+        resultEl.innerHTML = '<div class="alert alert-danger">Network error. Please try again.</div>';
+        resultEl.classList.remove('d-none');
+      })
+      .finally(() => {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = '<span class="material-symbols-outlined me-1" style="vertical-align: middle;">group_add</span>Add Students';
+      });
+    });
+
+    updateState();
+  })();
+  </script>
+
 
 </div>
 
@@ -741,61 +899,45 @@
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <input type="hidden" id="edit_student_id" name="seat_id">
 
-          <!-- Basic Information -->
-          <div class="card border-primary mb-3">
-            <div class="card-header bg-primary-subtle text-primary">
-              <h3 class="mb-0 text-white h6"><span class="material-symbols-outlined me-2"
-                  style="vertical-align: middle;">person</span>Basic Information</h3>
+          <div class="row">
+            <div class="col-md-6 mb-3">
+              <label for="edit_first_name" class="form-label fw-bold">First Name</label>
+              <input type="text" class="form-control" id="edit_first_name" name="first_name" required>
+              <div class="form-text">Used for account claim process</div>
             </div>
-            <div class="card-body">
-              <div class="row">
-                <div class="col-md-6 mb-3">
-                  <label for="edit_first_name" class="form-label fw-bold">First Name</label>
-                  <input type="text" class="form-control" id="edit_first_name" name="first_name" required>
-                  <div class="form-text">Used for account claim process</div>
-                </div>
-                <div class="col-md-6 mb-3">
-                  <label for="edit_last_name" class="form-label fw-bold">Last Name</label>
-                  <input type="text" class="form-control" id="edit_last_name" name="last_name" required>
-                  <div class="form-text">Stored as the student's encrypted full last name</div>
-                </div>
-              </div>
-              <div class="mb-0">
-                <label for="edit_notes" class="form-label fw-bold">Notes</label>
-                <textarea class="form-control" id="edit_notes" name="notes" rows="3"
-                  placeholder="Optional teacher-facing note"></textarea>
-              </div>
+            <div class="col-md-6 mb-3">
+              <label for="edit_last_name" class="form-label fw-bold">Last Name</label>
+              <input type="text" class="form-control" id="edit_last_name" name="last_name" required>
+              <div class="form-text">Stored as the student's encrypted full last name</div>
             </div>
           </div>
-
-          <!-- Login Management -->
-          <div class="card border-primary mb-3">
-            <div class="card-header bg-primary-subtle">
-              <h3 class="mb-0 text-white h6"><span class="material-symbols-outlined me-2"
-                  style="vertical-align: middle;">key</span>Login Management</h3>
-            </div>
-            <div class="card-body">
-              <div class="d-flex justify-content-between align-items-center">
-                <div>
-                  <p class="mb-1 fw-bold">Reset Student Login</p>
-                  <p class="text-muted small mb-0">Forces student to go through account claim process again. Account
-                    data will be preserved.</p>
-                </div>
-                <div class="form-check form-switch">
-                  <input class="form-check-input" type="checkbox" id="edit_reset_login" name="reset_login"
-                    role="switch">
-                  <label class="form-check-label" for="edit_reset_login">Reset</label>
-                </div>
-              </div>
-              <div class="alert alert-warning mt-3 mb-0" id="reset_login_warning" style="display:none;">
-                <small><span class="material-symbols-outlined me-2"
-                    style="vertical-align: middle;">warning</span>Student will need to re-claim their account using
-                  their name and class section details.</small>
-              </div>
-            </div>
+          <div class="mb-3">
+            <label for="edit_notes" class="form-label fw-bold">Notes</label>
+            <textarea class="form-control" id="edit_notes" name="notes" rows="3"
+              placeholder="Optional teacher-facing note"></textarea>
           </div>
 
-          <div class="alert alert-info mb-0">
+          <hr>
+
+          <div class="d-flex justify-content-between align-items-center">
+            <div>
+              <p class="mb-1 fw-bold">Reset Student Login</p>
+              <p class="text-muted small mb-0">Forces student to go through account claim process again. Account
+                data will be preserved.</p>
+            </div>
+            <div class="form-check form-switch">
+              <input class="form-check-input" type="checkbox" id="edit_reset_login" name="reset_login"
+                role="switch">
+              <label class="form-check-label" for="edit_reset_login">Reset</label>
+            </div>
+          </div>
+          <div class="alert alert-warning mt-3 mb-0" id="reset_login_warning" style="display:none;">
+            <small><span class="material-symbols-outlined me-2"
+                style="vertical-align: middle;">warning</span>Student will need to re-claim their account using
+              their name and class section details.</small>
+          </div>
+
+          <div class="alert alert-info mt-3 mb-0">
             <small><span class="material-symbols-outlined me-2"
                 style="vertical-align: middle;">info</span><strong>Note:</strong> Changing the name will update what the
               student needs to enter during the account claim process.</small>
@@ -1602,7 +1744,7 @@
     }
 
     let queueIndex = 0;
-    const detectedTimezone = (window.TimezoneUtils?.detectTimezone?.() || 'America/Los_Angeles');
+    const detectedTimezone = '{{ display_timezone }}';
 
     function formatCurrentTime(timezoneName) {
       const now = new Date();

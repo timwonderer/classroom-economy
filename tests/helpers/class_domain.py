@@ -120,12 +120,17 @@ def update_payroll_settings(client, **form_data: Any):
 
 
 def update_expected_weekly_hours(client, expected_weekly_hours: str, *, apply_to_all: bool = False):
-    """POST /admin/payroll/update-expected-hours."""
+    """POST /admin/economy/update-expected-hours.
+
+    This value lives on EconomicEngine (canonical per DOM-CLASS-002), not on
+    payroll_settings. The route creates a new immutable engine version via
+    FEAT-CLASS-005. The `apply_to_all` param is retained for form compatibility
+    but is no longer meaningful (teacher context is always exactly one class).
+    """
     return client.post(
-        "/admin/payroll/update-expected-hours",
+        "/admin/economy/update-expected-hours",
         data={
             "expected_weekly_hours": expected_weekly_hours,
-            "apply_to_all": "true" if apply_to_all else "false",
         },
         follow_redirects=False,
     )

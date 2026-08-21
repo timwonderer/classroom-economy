@@ -15,7 +15,7 @@ A new Class Boundary consists of:
 - one Class;
 - one Teacher Seat;
 - required class configuration;
-- optionally, an initial set of unclaimed Student Seats.
+- no Student Seats; roster operations are separate IDENTITY workflows.
 
 This workflow SHALL be used for:
 
@@ -81,8 +81,7 @@ The workflow SHALL execute in the following order.
 1. Create the Class.
 2. Provision the Teacher Seat.
 3. Initialize required class configuration.
-4. Optionally provision the initial student roster.
-5. Update:
+4. Update:
    - `last_active_class_id`
    - `last_active_seat_id`
 6. Transition immediately into the newly created Class Boundary.
@@ -91,43 +90,32 @@ Successful completion SHALL always leave the teacher operating within the newly 
 
 ---
 
-## V. Initial Student Provisioning
+## V. Roster Boundary
 
-Provisioning an initial roster is optional.
-
-Each accepted student SHALL provision:
-
-- one Student Seat;
-- one IdentityProfile;
-- required claim artifacts.
-
-Student Users SHALL NOT be provisioned by this workflow.
-
-Student account creation remains owned by FEAT-IDEN-001.
+This workflow SHALL NOT provision, modify, or remove Student Seats or
+IdentityProfiles. Roster upload and paste-grid operations are separate
+IDENTITY-domain operations and SHALL execute only after the teacher has
+entered the newly created Class Boundary.
 
 ---
 
-## VI. Initial Roster Interpretation
+## VI. Class Creation Inputs
 
-If an initial roster template is supplied, this FEAT SHALL interpret fields as follows.
+Class creation SHALL interpret only class-boundary inputs, including the
+teacher's class-scoped display metadata. No roster template is accepted by
+this workflow.
 
 | Field | Interpretation |
 |--------|----------------|
-| First Name | Read. Used to initialize IdentityProfile. |
-| Last Name | Read. Used to initialize IdentityProfile. |
-| Additional Notes | Read. Used to initialize IdentityProfile. |
 | Class Name | Read only to initialize the newly created Class display value. |
 | Section | Read only to initialize the newly created Class display value. |
-| actor_public_id | Ignored. |
-| Unknown columns | Ignored. |
 
 Class Name and Section SHALL:
 
 - initialize display configuration only;
 - never determine class identity;
 - never determine class membership;
-- never partition uploaded students;
-- never create additional Classes.
+- never determine class membership.
 
 If multiple display values are detected, explicit teacher resolution SHALL be required before provisioning continues.
 

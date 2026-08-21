@@ -16,9 +16,9 @@ from app.models import Seat
 from app.services.context_resolver import CanonicalContext
 from app.feats.class_configuration.feat_class_002_modify_class_boundary import (
     execute_modify_student,
-    execute_provision_student_seat,
     execute_remove_student_seat,
 )
+from app.feats.identity_feat import execute_provision_student_seat
 from tests.helpers.canonical_classroom import provision_classroom
 
 
@@ -67,6 +67,8 @@ class TestModifyStudent:
                 seat_id=student.seat_id,
                 first_name="Updated",
                 last_name="Name",
+                correlation_id="test:iden:modify:happy",
+                idempotency_key="test:iden:modify:happy",
             )
 
             assert result.success is True
@@ -85,6 +87,8 @@ class TestModifyStudent:
                 seat_id=student.seat_id,
                 first_name="Hacker",
                 last_name="Attempt",
+                correlation_id="test:iden:modify:unauthorized",
+                idempotency_key="test:iden:modify:unauthorized",
             )
 
             assert result.success is False
@@ -103,6 +107,8 @@ class TestModifyStudent:
                 seat_id=student.seat_id,
                 first_name="Name",
                 last_name="Change",
+                correlation_id="test:iden:modify:scope",
+                idempotency_key="test:iden:modify:scope",
             )
 
             assert result.success is False
@@ -121,6 +127,8 @@ class TestModifyStudent:
                 seat_id=student.seat_id,
                 first_name="   ",
                 last_name="Valid",
+                correlation_id="test:iden:modify:invalid",
+                idempotency_key="test:iden:modify:invalid",
             )
 
             assert result.success is False
@@ -128,12 +136,12 @@ class TestModifyStudent:
 
 
 # ---------------------------------------------------------------------------
-# FEAT-CLASS-002: execute_provision_student_seat
+# FEAT-IDEN-006: execute_provision_student_seat
 # ---------------------------------------------------------------------------
 
 
 class TestProvisionStudentSeat:
-    """Tests for execute_provision_student_seat."""
+    """Tests for the IDENTITY-owned existing-class seat provisioning FEAT."""
 
     def test_happy_path_creates_new_seat(self, app):
         """Happy path: teacher can provision a new student seat."""
@@ -146,6 +154,10 @@ class TestProvisionStudentSeat:
                 class_id=classroom.class_id,
                 first_name="New",
                 last_name="Student",
+                dedupe_code="NEWSTU01",
+                has_received_rent_exemption=False,
+                correlation_id="test:iden:provision:new",
+                idempotency_key="test:iden:provision:new",
             )
 
             assert result.success is True
@@ -167,6 +179,10 @@ class TestProvisionStudentSeat:
                 class_id=classroom.class_id,
                 first_name="Bad",
                 last_name="Actor",
+                dedupe_code="BADACT01",
+                has_received_rent_exemption=False,
+                correlation_id="test:iden:provision:bad-actor",
+                idempotency_key="test:iden:provision:bad-actor",
             )
 
             assert result.success is False
@@ -183,6 +199,10 @@ class TestProvisionStudentSeat:
                 class_id="wrong-class-id",
                 first_name="Name",
                 last_name="Here",
+                dedupe_code="SCOPE001",
+                has_received_rent_exemption=False,
+                correlation_id="test:iden:provision:scope",
+                idempotency_key="test:iden:provision:scope",
             )
 
             assert result.success is False
@@ -209,6 +229,10 @@ class TestRemoveStudentSeat:
                 class_id=classroom.class_id,
                 first_name="Temp",
                 last_name="Student",
+                dedupe_code="TEMPSTU1",
+                has_received_rent_exemption=False,
+                correlation_id="test:iden:provision:remove",
+                idempotency_key="test:iden:provision:remove",
             )
             assert provision_result.success is True
             new_seat_id = provision_result.seat_id
@@ -217,6 +241,8 @@ class TestRemoveStudentSeat:
                 canonical_context=ctx,
                 class_id=classroom.class_id,
                 seat_id=new_seat_id,
+                correlation_id="test:iden:remove:happy",
+                idempotency_key="test:iden:remove:happy",
             )
 
             assert result.success is True
@@ -232,6 +258,8 @@ class TestRemoveStudentSeat:
                 canonical_context=ctx,
                 class_id=classroom.class_id,
                 seat_id=999999,
+                correlation_id="test:iden:remove:missing",
+                idempotency_key="test:iden:remove:missing",
             )
 
             assert result.success is True
@@ -249,6 +277,8 @@ class TestRemoveStudentSeat:
                 class_id=classroom.class_id,
                 seat_id=claimed_student.seat_id,
                 force=False,
+                correlation_id="test:iden:remove:claimed",
+                idempotency_key="test:iden:remove:claimed",
             )
 
             assert result.success is False
@@ -266,6 +296,8 @@ class TestRemoveStudentSeat:
                 class_id=classroom.class_id,
                 seat_id=claimed_student.seat_id,
                 force=True,
+                correlation_id="test:iden:remove:forced",
+                idempotency_key="test:iden:remove:forced",
             )
 
             assert result.success is True
@@ -283,6 +315,8 @@ class TestRemoveStudentSeat:
                 class_id=classroom.class_id,
                 seat_id=student.seat_id,
                 force=True,
+                correlation_id="test:iden:remove:unauthorized",
+                idempotency_key="test:iden:remove:unauthorized",
             )
 
             assert result.success is False
@@ -299,6 +333,8 @@ class TestRemoveStudentSeat:
                 canonical_context=ctx,
                 class_id="wrong-class-id",
                 seat_id=student.seat_id,
+                correlation_id="test:iden:remove:scope",
+                idempotency_key="test:iden:remove:scope",
             )
 
             assert result.success is False

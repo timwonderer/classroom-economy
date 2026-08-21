@@ -21,9 +21,16 @@ h6 {
     font-weight: 600;
     color: var(--text-primary);
     letter-spacing: -0.02em;
+    font-family: var(--font-display);
 }
 
-/* Header headings should inherit section color (fix dark-on-dark card headers) */
+/* Card-header headings inherit color from the section header so text
+ * stays legible on colored backgrounds. Font-size and font-weight are
+ * NOT normalized here — templates control them per level:
+ *   - Top-level cards use <h5 class="fw-bold"> (larger, more prominent)
+ *   - Nested / alert cards use <h6 class="fw-semibold"> (calmer)
+ * Both classes are supplied at the template layer so the visual
+ * hierarchy is explicit in each site rather than hidden in CSS. */
 .card-header h1,
 .card-header h2,
 .card-header h3,
@@ -31,6 +38,7 @@ h6 {
 .card-header h5,
 .card-header h6 {
     color: inherit;
+    margin-bottom: 0;
 }
 
 a {
@@ -416,6 +424,51 @@ a:hover {
     border-top: 1px solid var(--border-color);
     padding: 1rem 1.25rem;
     border-radius: 0 0 calc(var(--radius-sm) - 1px) calc(var(--radius-sm) - 1px);
+}
+
+/* ─── Accordions inside cards ─── */
+/*
+ * Design system (2026-08-16):
+ *   Open panel  → white background, primary text (role-scoped)
+ *   Collapsed   → light-gray background, muted darker-gray text
+ * Bootstrap's default primary tinting is overridden to match the
+ * top-level card / nested card visual language.
+ */
+.accordion-item {
+    border: 1px solid var(--border-color);
+    background-color: var(--surface);
+}
+
+.accordion-button {
+    background-color: var(--neutral-100);
+    color: var(--neutral-700);
+    font-weight: 600;
+    box-shadow: none;
+    transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.accordion-button:not(.collapsed) {
+    background-color: var(--surface);
+    color: var(--primary);
+    box-shadow: inset 0 -1px 0 var(--border-color);
+}
+
+.accordion-button:not(.collapsed) .material-symbols-outlined {
+    color: var(--primary);
+}
+
+.accordion-button.collapsed .material-symbols-outlined {
+    color: var(--neutral-700);
+}
+
+.accordion-button:focus {
+    box-shadow: 0 0 0 0.15rem color-mix(in srgb, var(--primary) 25%, transparent);
+    border-color: transparent;
+}
+
+.accordion-body {
+    background-color: var(--surface);
+    color: var(--text-primary);
 }
 
 /* ─── Forms ─── */

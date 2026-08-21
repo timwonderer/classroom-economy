@@ -24,7 +24,7 @@ import pytz
 from sqlalchemy.exc import IntegrityError
 
 from app.extensions import db
-from app.feats.base import feat_shell
+from app.feats.base import requires_feat_context
 from app.models import ClassEconomy, EconomicEngine, User, Seat
 from app.services.class_configuration_query_service import verify_teacher_owns_class
 from app.services.context_resolver import CanonicalContext
@@ -54,6 +54,7 @@ def execute_create_class_boundary(
     canonical_context: CanonicalContext,
     class_name: str,
     timezone: str = "UTC",
+    expected_weekly_hours: float | None = None,
     correlation_id: str | None = None,
     idempotency_key: str | None = None,
 ) -> CreateClassBoundaryResult:
@@ -64,6 +65,8 @@ def execute_create_class_boundary(
         canonical_context: CanonicalContext with user_id, class_id (ignored), seat_id, actor_role="teacher"
         class_name: Display name for the class (e.g., "Period 3 Economics")
         timezone: IANA timezone for class-local time evaluation (default: "UTC")
+        expected_weekly_hours: Optional initial value for EconomicEngine.expected_weekly_hours
+                               (used for CWI calculation). Defaults to None (unset).
         correlation_id: Optional; generated if not provided
         idempotency_key: Required (HIGH blast radius). Format: feat:class:create:<teacher_user_id>:<join_code>
 
@@ -77,22 +80,24 @@ def execute_create_class_boundary(
         canonical_context=canonical_context,
         class_name=class_name,
         timezone=timezone,
+        expected_weekly_hours=expected_weekly_hours,
         correlation_id=correlation_id,
         idempotency_key=idempotency_key,
     )
 
 
-@feat_shell("FEAT-CLASS-001")
+@requires_feat_context("FEAT-CLASS-001")
 def _execute_create_class_boundary_impl(
     *,
     canonical_context: CanonicalContext,
     class_name: str,
     timezone: str = "UTC",
+    expected_weekly_hours: float | None = None,
     correlation_id: str | None = None,
     idempotency_key: str | None = None,
 ) -> CreateClassBoundaryResult:
     """
-    Internal implementation wrapped in @feat_shell for context management.
+    Internal implementation wrapped in @requires_feat_context for context management.
     """
 
     # =========================================================================
@@ -247,6 +252,7 @@ def _execute_create_class_boundary_impl(
         economic_version_id=initial_engine_id,
         class_id=class_id,
         economy_policy_mode='default',
+        expected_weekly_hours=expected_weekly_hours,
         previous_version_id=None,  # Initial version has no predecessor
         created_at=timestamp_utc,
     )
@@ -319,7 +325,7 @@ def execute_set_class_timezone(
     )
 
 
-@feat_shell("FEAT-CLASS-001")
+@requires_feat_context("FEAT-CLASS-001")
 def _execute_set_class_timezone_impl(
     *,
     canonical_context: CanonicalContext,

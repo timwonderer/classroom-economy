@@ -94,6 +94,12 @@ class AdminTOTPConfirmForm(FlaskForm):
     totp_code = StringField('TOTP Code', validators=[DataRequired()])
     username = HiddenField(validators=[DataRequired()])
 
+class AdminClassSetupForm(FlaskForm):
+    class_display_name = StringField('Class Name', validators=[DataRequired(), Length(max=100)])
+    section = StringField('Section', validators=[Optional(), Length(max=50)])
+    first_name = StringField('First Name', validators=[DataRequired(), Length(max=100)])
+    last_name = StringField('Last Name', validators=[DataRequired(), Length(max=100)])
+
 class AdminRecoveryForm(FlaskForm):
     """Recovery form — join_code[]/student_username[] pairs are submitted as arrays.
     This form only provides CSRF protection; no WTForms fields for the pair data."""
@@ -180,51 +186,6 @@ class ManualPaymentForm(FlaskForm):
     submit = SubmitField('Apply')
 
 
-# -------------------- BANKING FORMS --------------------
-class BankingSettingsForm(FlaskForm):
-    # Interest settings
-    rate_input_mode = SelectField('Interest Rate Input Mode', choices=[
-        ('apy', 'Annual Percentage Yield (APY)'),
-        ('monthly', 'Monthly Interest Rate')
-    ], default='apy')
-    savings_apy = FloatField('Annual Percentage Yield (APY %)', validators=[Optional()], default=0.0)
-    savings_monthly_rate = FloatField('Monthly Interest Rate (%)', validators=[Optional()], default=0.0)
-    interest_calculation_type = SelectField('Interest Calculation Type', choices=[
-        ('simple', 'Simple Interest'),
-        ('compound', 'Compound Interest')
-    ], default='simple', validators=[DataRequired()])
-    compound_frequency = SelectField('Compounding Frequency', choices=[
-        ('daily', 'Daily'),
-        ('weekly', 'Weekly'),
-        ('monthly', 'Monthly')
-    ], default='monthly', validators=[Optional()])
-
-    # Interest payout schedule
-    interest_schedule_type = SelectField('Interest Payout Schedule', choices=[
-        ('weekly', 'Weekly'),
-        ('monthly', 'Monthly (30 day cycle)')
-    ], default='monthly', validators=[DataRequired()])
-    interest_schedule_cycle_days = IntegerField('Cycle Days (for monthly)', default=30, validators=[Optional()])
-    interest_payout_start_date = DateField('Starting Date', format='%Y-%m-%d', validators=[Optional()])
-
-    # Overdraft protection
-    overdraft_protection_enabled = BooleanField('Enable Overdraft Protection (Savings covers Checking)', default=False)
-
-    # Overdraft fees
-    overdraft_fee_enabled = BooleanField('Enable Overdraft/NSF Fees', default=False)
-    overdraft_fee_type = SelectField('Fee Type', choices=[
-        ('flat', 'Flat Fee per Transaction'),
-        ('progressive', 'Progressive Fee per Transaction')
-    ], default='flat')
-    overdraft_fee_flat_amount = FloatField('Flat Fee Amount ($)', default=0.0, validators=[Optional()])
-
-    # Progressive fee tiers
-    overdraft_fee_progressive_1 = FloatField('1st Overdraft Fee ($)', default=0.0, validators=[Optional()])
-    overdraft_fee_progressive_2 = FloatField('2nd Overdraft Fee ($)', default=0.0, validators=[Optional()])
-    overdraft_fee_progressive_3 = FloatField('3rd+ Overdraft Fee ($)', default=0.0, validators=[Optional()])
-    overdraft_fee_progressive_cap = FloatField('Fee Cap per Period ($, optional)', validators=[Optional()])
-
-    submit = SubmitField('Save Banking Settings')
 
 
 class StudentAddClassForm(FlaskForm):

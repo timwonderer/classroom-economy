@@ -1,14 +1,16 @@
 # CTH Domain Reconstruction Progress Matrix
 
 **Status:** Active Canonical Tracker
-**Last Updated:** 2026-08-13 (Class Config Phase 5 COMPLETE; Identity Phase 10 CERTIFIED; 3 domains production-ready, 7 remaining)
+**Last Updated:** 2026-08-20 (FEAT-context reconstruction residual audit: live `feat_shell` usage is now zero; route/service mutations are being reconciled against their owning FEAT boundaries. Remaining work is tracked in `FEAT_CONTEXT_STACK_HANDOFF.md`, including documentation reconciliation, orphaned scheduler text, and production-path coverage.)
 **Authority:** SOP-DEV-002a, INV-CORE-000, DOM-CORE-002
 
 **DOMAIN READINESS SNAPSHOT:**
-- ✅ **3 domains** Phase 10 certified (production-ready): Identity, Obligations, Store
-- 🔄 **1 domain** Phase 5 complete, Phase 6-7 pending: Class Config (view models defined and tested; route wiring next)
+- 🔄 **3 domains** retain Phase 10 documentation/runtime reconciliation work: Identity, Store, Obligations. The legacy shell gate is satisfied in the current checkout, but certification remains subject to production-path evidence and historical-document reconciliation.
+- 🔄 **1 domain** Phase 5 complete, Phase 6-7 partial: Class Config (view models defined; remaining surface and documentation rows are tracked in the FEAT-context handoff).
 - 🔄 **2 domains** Phase 1 complete but blocked on Phase 2 (schema migrations pending): Ledger, Payroll
-- 🔄 **4 domains** Phase 0-1 only, not started: Operations, Interpretation, Policies, Support
+- 🔄 **1 domain** Phase 0-1, doctrine substantially advanced 2026-08-16: Policies
+- 🔄 **3 domains** Phase 0-1 only, not started: Operations, Interpretation, Support
+- **Systemic:** zero live `@feat_shell` decorators remain under `app/`; `feat_shell()` and shell-only guardrails have been removed. This is necessary but not sufficient for Phase 10 certification; each residual surface still requires owning-FEAT and production-path evidence.
 
 ---
 
@@ -37,14 +39,14 @@ This matrix consolidates the progress of all CTH domains through the 10-phase SO
 | Domain | Spec | Phase 0-4 | Phase 5 | Phase 6-7 | Phase 8-9 | Phase 10 | Status | Audit Doc |
 | -------- | ------ | ----------- | --------- | ----------- | ----------- | ---------- | -------- | ----------- |
 | **Identity** | DOM-IDEN-001/002/003/006 | ✅ | ✅ | ✅ VERIFIED | ✅ VERIFIED | ✅ CERTIFIED | ✅ PRODUCTION READY (Phase 10 certified 2026-08-06) | 2026-08-06 (PASS) |
-| **Class Configuration** | DOM-CLASS-001 | ✅ Phase 0-4 | ✅ Phase 5 | ❌ Phase 6-7 | ? | ❌ | 🔄 Phase 5 COMPLETE — view models: ClassSummaryView, ClassConfigurationView, FeatureConfigurationView, EconomicView (real wiring); 16 tests passing | 2026-08-13 (Phase 5 COMPLETE) |
+| **Class Configuration** | DOM-CLASS-001 | ✅ Phase 0-4 | ⚠️ Phase 5 (EconomicView stub) | 🔄 Phase 6-7 partial (4/12 rows) | ❌ | ❌ | 🔄 Phase 7 IN PROGRESS — settings routes (rent/banking/payroll/economic_engine) class_id-authoritative; CWI-unconfigured path fully handled; blocks-as-scope eliminated from class-config surface. 5 constitutional issues open. | 2026-08-16 update |
 | **Ledger** | DOM-LED-001 | ✅ | ❌ NO VM | ❌ BLOCKED | ? | ❌ | ❌ BLOCKED on Phase 5 | 2026-08-04 baseline |
 | **Productivity & Payroll** | DOM-PROD-001 | ✅ | ❌ NO VM | ❌ BLOCKED | ? | ❌ | ❌ BLOCKED on Phase 5 | 2026-08-04 baseline |
-| **Obligations** | DOM-OBL-001 | ✅ | ✅ | ✅ VERIFIED | ✅ | ✅ ACCEPTED | ✅ PRODUCTION READY | 2026-08-04 (Phase 10 audit ACCEPTED) |
+| **Obligations** | DOM-OBL-001 | ✅ | ✅ | ⚠️ REVERIFY | ✅ | ⚠️ AUDIT GAP | ⚠️ PRODUCTION READY with known Phase 10 audit gap (2026-08-16): cross-layer template sweep missed — orphan `url_for` targets crashed rent/insurance/fines pages, fixed emergency in `053c20f4`. `rent_settings` mutation-pattern violation of DOM-POL-001 §VI documented (Scope B remediation pending). See `OBLIGATION_POLICIES_FOLLOWUP_2026-08-16.md`. | 2026-08-04 (ACCEPTED) + 2026-08-16 (gap surfaced) |
 | **Store & Entitlements** | DOM-STORE-001 | ✅ | ✅ | ✅ VERIFIED | ✅ | ✅ | ✅ AUDITED (Phase 10 certified) | 2026-08-04 (PASS) |
 | **Operations** | DOM-OPS-001 | 🔄 | ❌ | — | — | ❌ | 🔄 NOT STARTED | N/A |
 | **Interpretation** | DOM-ITR-001 | 🔄 | ❌ | — | — | ❌ | 🔄 NOT STARTED | N/A |
-| **Policies** | DOM-POL-001 | 🔄 | ❌ | — | — | ❌ | 🔄 NOT STARTED | N/A |
+| **Policies** | DOM-POL-001 | 🔄 (doctrine advanced 2026-08-16) | ❌ | — | — | ❌ | 🔄 PHASE 0-1 — doctrine substantially advanced (`policy_uuid` = version §VI.0; Insert & Availability Contract §VI; all `*_settings` scope §X). Phase 2+ still blocked on prior-domain sequencing. | 2026-08-16 (`OBLIGATION_POLICIES_FOLLOWUP_2026-08-16.md`) |
 | **Support** | DOM-SUP-001 | 🔄 | ❌ | — | — | ❌ | 🔄 NOT STARTED | N/A |
 
 **Legend:**
@@ -68,7 +70,7 @@ This matrix consolidates the progress of all CTH domains through the 10-phase SO
 **AUDIT STATUS UPDATE (2026-08-08 REVISED):**
 
 - **Identity:** Phases 0-10 complete ✅ **PRODUCTION READY** (Phase 10 certified 2026-08-06)
-- **Class Config:** Phases 0-5 complete ✅ | Phase 6-7 **PENDING** (route/template wiring)
+- **Class Config:** Phases 0-5 complete ✅ (Phase 5 with EconomicView stub caveat) | Phase 6-7 **PARTIAL** — 4 of 12 MAP-UI-001 rows rewired (2026-08-16)
 - **Ledger:** Phases 0-1 complete | Phase 2 **PENDING** (schema migrations needed)
 - **Payroll:** Phases 0-1 complete | Phase 2 **PENDING** (schema migrations needed)
 - **Obligations:** Phases 0-10 complete ✅ **PRODUCTION READY** (Phase 10 audit ACCEPTED 2026-08-04)
@@ -105,7 +107,7 @@ Phase 6-7 completion is now measured via **field ownership**, not template struc
 
 | Domain | Why Blocked | Action Needed |
 | -------- | ------------ | --------------- |
-| **Class Configuration** | ✅ Phase 5 complete | ClassSummaryView, ClassConfigurationView, FeatureConfigurationView, EconomicView defined and tested |
+| **Class Configuration** | 🔄 Phase 6-7 PARTIAL (2026-08-16) | 4/12 MAP-UI-001 rows rewired (rent/banking/payroll/economic_engine settings surfaces). EconomicView still stub. 6 rows still `NEEDS_REWIRE` (dashboard, create_class, settings, feature_settings, delete_join_code, students). 2 rows `VERIFY_ONLY` (set_current_class, feature settings read). |
 | **Ledger** | No LedgerBalanceView | Create dataclass + builder function |
 | **Payroll/Attendance** | No PayrollView or AttendanceView | Create 2 dataclasses + builder functions |
 | **Operations** | Phase 0-1 only; not yet at Phase 5 | Start Phase 0-5 implementation |
@@ -158,10 +160,11 @@ Phase 6-7 completion is now measured via **field ownership**, not template struc
 
 #### Class Configuration Domain (DOM-CLASS-001)
 
-**Scope:** class_id (canonical), join_code (public alias), display name, section, timezone, CWI settings (policy mode, interest rate, pricing ratios based on CWI and policy)  
-**Canonical Tables:** `classes`, `class_features`, `feature_settings`, `hall_pass_settings`, `rent_settings`, `payroll_settings`, `payroll_rewards`, `payroll_fines`, `banking_settings`  
-**Phase:** ✅ Phase 0-4 COMPLETE | ❌ Phase 5-7 PENDING  
-**Status:** Phase 5 (Read Models) COMPLETE as of 2026-08-13; view models: ClassSummaryView, ClassConfigurationView, FeatureConfigurationView, EconomicView; 16+ tests passing; Phase 6-7 (route/template wiring) pending  
+**Scope:** class_id (canonical), join_code (public alias), display name, section, timezone, CWI settings (policy mode, expected_weekly_hours on EconomicEngine, pricing ratios based on CWI and policy)  
+**Canonical Tables:** `classes`, `class_features`, `economic_engine`, `feature_settings`, `hall_pass_settings`, `rent_settings`, `payroll_settings`, `payroll_rewards`, `payroll_fines`, `banking_settings`  
+**Phase:** ✅ Phase 0-4 COMPLETE | ⚠️ Phase 5 (EconomicView stub) | 🔄 Phase 6-7 PARTIAL | ❌ Phase 8-10  
+**Status:** Phase 7 in progress. Settings surfaces (rent, banking, payroll, economic_engine) rewired class_id-authoritative. `expected_weekly_hours` migrated from PayrollSettings to canonical EconomicEngine. `block`-as-scope pattern eliminated from all class-config-owned routes/services. CWI-unconfigured state renders warning path (no fallback). Test suite: 96/96 passing.  
+
 **Phase 2 Achievements (COMPLETED):**
 - ✅ Class economy immutability: EconomicEngine model with before_update event listener prevents post-commit modifications
 - ✅ Append-only features timeline: ClassFeature composite PK (class_id, feature, effective_at); version_chain with previous_version_id FK
@@ -176,18 +179,73 @@ Phase 6-7 completion is now measured via **field ownership**, not template struc
 - ✅ Teacher-facing guidance functions (suggest_economic_mode, validate_payroll_rate)
 
 **Phase 4 Achievements (COMPLETED 2026-08-12):**
-- ✅ Core reads centralized: 21 direct ClassEconomy.query calls replaced with service layer functions (1 mutation-only call remains inside @feat_shell)
-- ✅ Mutations through FEAT boundaries: all class-config writes use @feat_shell or FEATContext
-- ✅ 4 new service helpers: get_teacher_classes_by_ids, get_teacher_class_by_section, get_class_by_public_id, get_classes_by_public_ids
+- ✅ Core reads centralized: 21 direct ClassEconomy.query calls replaced with service layer functions
+- ✅ Mutations through FEAT boundaries: class-config writes use `requires_feat_context` or an explicit FEAT orchestrator; route-level commits are not used as transaction boundaries
+- ✅ 4 new service helpers: get_teacher_classes_by_ids, get_class_by_public_id, get_classes_by_public_ids (get_teacher_class_by_section removed 2026-08-16 as dead v1 helper)
 - ✅ Fixed stale ClassEconomy.user_id → teacher_user_id references
 - ✅ Fixed full-table-scan anti-pattern in recovery route
 
-**Pending View Models:** 
-- ⏳ **EconomicView** (stub) — Provides presentation-ready economic guidance (pricing range, economy health, warnings) consumed by Store and other domains. Stub implementation (`app/services/class_configuration_economic_service.py`) pending full CWI/pricing calculation implementation.
-- ✅ **ClassConfigurationView** — Settings presentation model implemented in Phase 5 (`app/services/class_configuration_view_models.py`).
+**Phase 6-7 Achievements (PARTIAL, 2026-08-16 session):**
+- ✅ FEAT-CLASS-005 generalized from policy-mode-only to arbitrary EconomicEngine field updates (`execute_evolve_economic_engine(updates={...})`); carry-forward semantics; `execute_transition_economic_policy()` retained as backward-compat wrapper
+- ✅ FEAT-CLASS-001 accepts optional initial `expected_weekly_hours`
+- ✅ `PayrollSettings.expected_weekly_hours` column DROPPED (migration `a4e8f19d7c31`); canonical location is `EconomicEngine.expected_weekly_hours` per DOM-CLASS-002
+- ✅ `calculate_cwi()` refactored to read from `EconomicEngine` via `get_effective_economic_engine('payroll')`; returns `None` when unconfigured (no fallback)
+- ✅ `analyze_economy()` returns empty analysis with WARNING when CWI unconfigured; economic_engine page shows "configure expected weekly hours" alert
+- ✅ New route `/admin/economy/update-expected-hours` → `FEAT-CLASS-005` (was `/admin/payroll/update-expected-hours` writing to PayrollSettings)
+- ✅ `update_economy_policy` route now writes via `FEAT-CLASS-005` (was writing directly to `FeatureSettings.economy_policy_mode`); reads via `get_active_policy_mode_for_class()` (EconomicEngine-backed)
+- ✅ `upsert_payroll_settings` auto-creates active `PolicyVersion` snapshot for payroll domain (was blocking `/admin/run_payroll` with "No active payroll policy version")
+- ✅ Rewired settings routes to class_id-only (removed `blocks_to_update` pattern, `for block in blocks_to_update:` loops, `selected_scope['block']` usage): `rent_settings`, `banking_settings_update`, `payroll_settings`, `update_expected_weekly_hours`
+- ✅ Rewired `EconomyBalanceChecker(user_id, block=..., class_id=...)` → `(user_id, class_id=...)`. Deleted `self.block` mode switch — rent validation always uses policy-mode weekly bands. Updated 7 call sites.
+- ✅ Rewired `_load_economy_rebalance_context(ctx, class_id, selected_block)` → `(ctx, class_id)`. Removed cross-class `all_payroll_settings` aggregation.
+- ✅ Rewired `_build_rebalance_preview` and `_filter_economy_health_warnings` — removed `selected_block` params
+- ✅ Rewired `_build_payroll_preview_state(students, class_ids_by_block)` → `(students)` — dead parameter removed
+- ✅ Cleaned `economic_engine`, `payroll`, `banking`, `rent_settings` routes: removed `teacher_blocks`, `settings_block`, `class_labels_by_block`, `join_codes_by_block`, `dashboard_blocks`, `class_ids_by_block`, `selected_block`, `cwi_block` local variables and template kwargs
+- ✅ Removed `PayrollSettings.block.is_(None).desc()` and `BankingSettings.block.is_(None).desc()` orderings (v1 artifacts)
+- ✅ Rent recommendation display bug fixed: template was using `recommendations.rent` (monthly) with "per week" label; corrected to `recommendations.rent_weekly`
+- ✅ Removed 5.0 fallback for `expected_weekly_hours` — CWI now returns None, pricing recommendations disabled with warning, features still work
 
-**Notes:** `join_code` is public alias for class_id; block/period is display-only metadata  
-**Next Action:** Phase 6-7 — Wire routes to construct view models; templates consume only view model fields
+**MAP-UI-001 Row Status (12 rows):**
+| # | Row | Status | Notes |
+|---|---|---|---|
+| 153 | Create class (`admin.create_class`) | ❌ NEEDS_REWIRE | Not touched 2026-08-16 |
+| 154 | View class list (`admin.dashboard`) | ❌ NEEDS_REWIRE | Not touched |
+| 155 | Select current class (`admin.set_current_class`) | ⏳ VERIFY_ONLY | Not verified |
+| 156 | Enable feature (`admin.feature_settings` POST) | ❌ NEEDS_REWIRE | Not touched |
+| 157 | Disable feature (`admin.feature_settings` POST) | ❌ NEEDS_REWIRE | Not touched |
+| 158 | Transition economic policy (`admin.apply_economy_rebalance`) | ✅ REWIRED (2026-08-16) | Now via `execute_evolve_economic_engine` w/ CWI guard |
+| 159 | Update timezone (`admin.set_class_timezone`) | ⚠️ CONFLICT | DOM-CLASS-001 §V says timezone is immutable; row must be reconciled |
+| 160 | View class configuration (`admin.customizations` / renamed from `admin.settings`) | ❌ NEEDS_REWIRE | Route renamed 2026-08-15; view model wiring pending |
+| 161 | View feature configuration status | ⏳ VERIFY_ONLY | Not verified |
+| 162 | View class economy dashboard (`admin.economic_engine`) | ✅ REWIRED (2026-08-16) | Fully class_id-authoritative; CWI-unconfigured state handled |
+| 163 | View enrollment/students (`admin.students`) | ❌ NEEDS_REWIRE | Not touched |
+| 164 | Delete class / join code (`admin.delete_join_code`) | ❌ NEEDS_REWIRE | Not touched; retention policy unpinned |
+| (bonus) | Update `expected_weekly_hours` (`admin.update_expected_weekly_hours`) | ✅ REWIRED (2026-08-16) | Via FEAT-CLASS-005 |
+| (bonus) | Update economic policy mode (`admin.update_economy_policy`) | ✅ REWIRED (2026-08-16) | Via FEAT-CLASS-005 |
+
+**Pending View Models:**
+- ⏳ **EconomicView** — Full pricing/CWI/economy-health calculator still pending. Current impl in `class_configuration_economic_service.py` populates `display_context` with `expected_weekly_hours` (from EconomicEngine), `hourly_rate`, `policy_mode`; suggests low/medium/high pricing tiers; has warning strings. Consumers (Store) partially wired but need broader adoption verification.
+- ✅ **ClassConfigurationView**, **ClassSummaryView**, **FeatureConfigurationView** — Implemented Phase 5
+
+**Constitutional Issues Surfaced (must reconcile before Phase 10 audit):**
+1. **Timezone mutation contradiction** — DOM-CLASS-001 §V says `timezone` "MUST NOT be mutated afterward"; MAP-UI-001 row 159 lists `admin.set_class_timezone` action. Resolve: remove the route, or amend DOM-CLASS-001, or restrict to controlled engine-evolution decision.
+2. **Class deletion semantics** — DOM-CLASS-001 §VII.1 says class deletion removes class + all class-owned config rows; MAP-UI-001 §IX.7 defers hard vs soft delete to DOM-CLASS-002 retention + INV-ARC-016. Retention policy must be pinned.
+3. **`FEAT-CLASS-002` namespace collision** — MAP-UI-001 row 159 references TBD `FEAT-CLASS-002` for class-boundary work; Matrix "Misclassified FEATs" uses same identifier for the identity-domain reclassification. Pick one.
+4. **`FEAT-CLASS-003` split incomplete** — insurance feature toggle stays in CLASS; policy definitions/entitlements move to Store per DOM-STORE-001. Confirm class-level toggle FEAT scope.
+5. **`EconomicView` stub completion** — flagged as blocker for Store consumer certification. Current implementation is partial.
+
+**Legacy v1 Helpers Still Present (Phase 9 deletion targets, out-of-scope for class-config domain):**
+`_get_teacher_blocks`, `_resolve_block_class_ids`, `_get_class_labels_for_blocks`, `_get_join_codes_by_block`, `_get_class_ids_by_block` remain in `admin.py`. Still consumed by dashboard, hall_pass, insurance, attendance_log, and transfer routes (each is a different domain). Removal requires domain-specific rewrites and is not blocking class-config Phase 7 completion.
+
+**Notes:** `join_code` is public alias for class_id; block/period is display-only metadata; timezone is class-immutable per constitutional spec (row 159 conflict noted above).  
+
+**Next Actions (in order):**
+1. Complete `EconomicView` full implementation (Phase 5 residual)
+2. Reconcile 5 constitutional issues above (either amend specs or align code)
+3. Rewire remaining 6 MAP-UI-001 rows: `create_class`, `dashboard`, `customizations`, `feature_settings` (enable/disable), `students`, `delete_join_code`
+4. Verify 2 `VERIFY_ONLY` rows: `set_current_class`, feature settings read
+5. Record Phase 8 verification commands per row (12 rows × command evidence)
+6. Phase 9 legacy deletion (direct `ClassEconomy.query`, legacy template variables, dead `blocks` helpers where feasible per neighboring domains)
+7. Run SOP-DEV-002a Phase 10 certification audit → produce `SOP-DEV-002a_CLASS_CONFIG_YYYYMMDD_AUDIT.md`
 
 ---
 
@@ -220,12 +278,24 @@ Phase 6-7 completion is now measured via **field ownership**, not template struc
 
 **Scope:** Rent, insurance premiums, fines (assessment events, lifecycle, satisfaction, reversal; obligation tracking and settlement)  
 **Canonical Tables:** `assessment_events`, `obligation_lifecycle`, `obligation_satisfaction`, `obligation_reversal`, `entitlement_events`  
-**Phase:** ✅ 0-10 (COMPLETE & CERTIFIED)
-**Status:** ✅ **PRODUCTION READY** (Phase 10 audit ACCEPTED 2026-08-04)
-**Last Audit:** 2026-08-04 (ACCEPTED) — `docs/TRACKING/OBLIGATION_DOMAIN_QA_AUDIT_AUG_2026.md`
+**Phase:** ⚠️ 0-10 (CERTIFIED with known gap — reverify recommended)  
+**Status:** ⚠️ **PRODUCTION READY with known Phase 10 audit gap** (2026-07-26 audit ACCEPTED; 2026-08-16 gap surfaced)  
+**Last Audit:** 2026-08-04 (ACCEPTED) — `docs/TRACKING/OBLIGATION_DOMAIN_QA_AUDIT_AUG_2026.md`  
+**Follow-up findings:** 2026-08-16 — `docs/TRACKING/OBLIGATION_POLICIES_FOLLOWUP_2026-08-16.md`
 
-**Key Achievement:** Full canonical obligations domain with FEAT-wired mutations, immutable view models, and comprehensive Phase 10 certification
-**Next Action:** None — domain is production-ready
+**Known audit gaps (2026-08-16):**
+
+1. **Cross-layer template sweep missed.** Backend routes `admin.reverse_cycle_penalties` (deleted `6c9c3857`) and `admin.remove_rent_waiver` (deleted `eeef3de7`) were removed for FEAT-OBL-003 immutability compliance, but corresponding UI in `templates/admin_rent_settings.html` was left behind. Every teacher-facing template touching the domain crashed on load with `werkzeug.routing.exceptions.BuildError`. Emergency-fixed in commit `053c20f4`.
+
+2. **`rent_settings` mutation-pattern violation of `DOM-POL-001 §VI`.** `rent_settings` is designed as a mutable singleton (`class_id` `unique=True`, `updated_at` `onupdate=utc_now`); all writers mutate the existing row in place. Under the now-clarified doctrine, `rent_settings` is a Policies-repository table and each teacher submission must produce a new immutable row with a new `policy_uuid`. Scope B remediation documented in follow-up doc; **not remediated in current branch**.
+
+3. **Dead schema removed (Scope A).** `rent_settings.active_version_id` and `rent_settings.next_version_id` (orphans of an abandoned rent-specific versioning attempt) dropped by migration `2978fdba914a`.
+
+4. **Removed-column landmines across obligation code paths.** Static audit surfaced references to columns DOM-OBL-001 v2.5 removed from `ObligationAssessment` (`.assessed_at`, `.due_at`) across `app/routes/student.py`, `app/services/obligation_view_model.py`, and one route in `app/routes/admin.py`. All were pre-existing on the certified branch — the Phase 10 audit did not catch them because happy-path testing didn't exercise the crashing code paths. Missing helper `obligations_service.get_active_rent_waivers_for_class` (same class of bug — the prior fix `bf40e23e` on `claude/vigilant-tesla-758abf` orphaned) was ported. Two new resolvers (`resolve_assessment_amount`, `resolve_assessment_due_at`) added per DOM-OBL-001 §V.1 + §VII (amount from upstream policy via `policy_uuid`; due_at from `bill_cycle.assessment_at`). Fixed in commits `3e31acb2` and `29321eb3`.
+
+5. **Initial Playwright verification was a false positive.** The subagent-run harness reported PASS for all obligation teacher routes but was actually recording final-URL-after-redirect status, not requested-URL status. Silent auth redirects passed as PASS. See `OBLIGATION_POLICIES_FOLLOWUP_2026-08-16.md` §VI for full post-mortem and §VII for the mandatory harness contract going forward.
+
+**Next Action:** re-run Phase 10 for Obligations after Scope B remediation, with the revised Phase 10 gate (see follow-up doc §VII.3): mandatory cross-layer template sweep meeting harness contract §VII.1, mandatory view-model attribute-exercise test §VII.2, mandatory co-audit with Policies §VII.3, mandatory field-removal grep §VII.4.
 
 ---
 
@@ -278,12 +348,32 @@ Phase 6-7 completion is now measured via **field ownership**, not template struc
 
 #### Policies Domain (DOM-POL-001)
 
-**Scope:** Settings and versioning storage for each domain (NOT business logic, just persistence of configuration and version history)  
-**Canonical Tables:** Per-domain settings tables and versioning logs (structure determined by each domain's needs)  
-**Phase:** 🔄 0-1 (Spec review)  
-**Status:** NOT STARTED (blocked on prior domain audits)  
-**Dependency Chain:** All domains (each domain owns its settings, Policies just stores them) → **BLOCKED UNTIL PRIOR DOMAINS AUDITED**  
-**Notes:** This is a utility/persistence domain, not a business logic domain
+**Scope:** Append-only immutable repository of class-scoped policy definitions. Stores what other domains submit; does not originate mutation flows. Consumers reference each row by `policy_uuid` (which **is** the version identifier — no separate version pointer permitted).
+**Canonical Tables (per `DOM-POL-001 §X` boundary attribution):**
+
+- `rent_settings` — consumed by `DOM-OBL-001`
+- `payroll_settings`, `payroll_rewards`, `payroll_fines` — consumed by `DOM-PROD-001`
+- `hall_pass_settings` — consumed by `DOM-PROD-001` at grant time
+- `store_items`, `store_item_visibility` — consumed by `DOM-STORE-001`
+- Insurance policy definitions — consumed by Insurance operational flow
+
+**NOT in this repository:** `banking_settings` (savings APY, overdraft fees, interest formulas) is inherently Class Config → `economic-engine` per `DOM-CLASS-001` / `DOM-CLASS-002`; versioned under `DOM-CLASS-003` (`policy_versions` / `policy_transitions`), which is **economic-policy lineage only**, not domain-policy storage.
+
+**Phase:** 🔄 0-1 (Spec review; doctrine substantially advanced 2026-08-16)  
+**Status:** Doctrine now sufficient to begin Phase 2 planning; execution still blocked on prior-domain sequencing.
+
+**Doctrine advances (2026-08-16):**
+
+- ✅ `DOM-POL-001 §VI.0` — `policy_uuid` promoted to first-class definitional statement (**IS** the version; no separate pointer permitted).
+- ✅ `DOM-POL-001 §VI` — renamed from "Mutation Contract" to "Insert and Availability Contract"; Insert/Update collapsed to single Insert action.
+- ✅ `DOM-POL-001 §X` — boundary table extended to cover all policy `*_settings` tables and explicit exclusion of `banking_settings`.
+- ✅ `DOM-CORE-001` / `DOM-CORE-002` — ownership contradictions corrected; all `*_settings` tables routed through `DOM-POL-001`.
+- ✅ `DOM-PROD-001 §XII` — coordination bullets rewritten (payroll/hall-pass are Policies-stored, PROD-consumed).
+
+**Follow-up doc:** `docs/TRACKING/OBLIGATION_POLICIES_FOLLOWUP_2026-08-16.md`
+
+**Dependency Chain:** All consumer domains (Obligations, PROD, Store, Insurance) → Policies is subordinate to their audit sequencing.  
+**Notes:** Utility/persistence domain; no business logic. Phase 2 (persistence audit) is the natural next step once dependency chain unblocks.
 
 ---
 
@@ -447,6 +537,34 @@ The following tracking documents remain for historical reference but are **super
 
 ---
 
-**Last Updated:** 2026-08-06 (Identity Phase 10 CERTIFIED; 3 domains production-ready)
+## Cross-Cutting: SPEC-TIME-001 Browser Timezone Compliance (2026-08-14)
+
+**Status:** ✅ COMPLETE
+
+**Change:** Removed `static/js/timezone-utils.js` and `/api/set-timezone` endpoint. All timestamp display now uses server-side Jinja filters (`fmt_timestamp`, `fmt_date`, `fmt_compact_date`, `fmt_time`) via `app/utils/temporal_display.py`, compliant with SPEC-TIME-001 and MAP-UI-002 §VII.
+
+**What was removed:**
+- `static/js/timezone-utils.js` — browser-side timezone detection (prohibited by SPEC-TIME-001 §XII)
+- `/api/set-timezone` endpoint — stored browser-detected timezone in session (violated INV-ARC-015 §VI.4)
+- `window.TimezoneUtils` JS API — all callers migrated to server-formatted timestamps
+- `local-timestamp` CSS class pattern — client-side timestamp conversion replaced with server-rendered output
+- Service worker cache entry for `timezone-utils.js`
+
+**What was added:**
+- `app/utils/temporal_display.py` — SPEC-TIME-001 compliant formatting functions and Jinja filters
+- `inject_display_timezone` context processor — resolves `ClassEconomy.class_timezone` once per request (Temporal Context layer per MAP-UI-002 §VII)
+- Server-formatted `formatted_timestamp` field in attendance history and hall pass history APIs
+
+**Affected templates:** All templates that previously used `local-timestamp` spans (60+ occurrences across admin, student, and sysadmin shells).
+
+**Spec compliance:**
+- Display timezone = `ClassEconomy.class_timezone` for CLE, `UTC` for SLE (SPEC-TIME-001 §X)
+- No browser timezone detection (SPEC-TIME-001 §XII)
+- No hardcoded `America/Los_Angeles` (SPEC-TIME-001 §XII)
+- Temporal Context resolved once at request boundary, not queried from Jinja (MAP-UI-002 §VII, §IX)
+
+---
+
+**Last Updated:** 2026-08-14 (SPEC-TIME-001 browser timezone compliance; Identity Phase 10 CERTIFIED; 3 domains production-ready)
 **Maintained By:** Development Team
 **Canonical:** YES (This matrix is the single source of truth for domain progress)

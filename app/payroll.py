@@ -224,15 +224,4 @@ def _get_batch_last_payroll_times(seat_ids, allowed_class_ids):
 
 
 
-from app.feats.base import feat_shell
 from app.utils.canonical_temporal_resolver import utc_now
-
-
-@feat_shell("FEAT-LED-004")
-def get_cached_payroll_with_meta(class_id, seat_ids, last_payroll_time):
-    """Calculate payroll directly without persisted cache state."""
-    if not class_id:
-        raise ValueError("Class scope (class_id) must be explicitly provided.")
-
-    summary = calculate_payroll_breakdown(class_id, seat_ids, last_payroll_time)
-    return summary, utc_now()

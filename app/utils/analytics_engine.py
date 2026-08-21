@@ -1,22 +1,15 @@
 from __future__ import annotations
 
 """
-Analytics Engine for Classroom Economy
+Analytics Engine for Classroom Economy.
 
-Implements analytics computation per docs/technical-reference/analytics-specification.md.
+Governing authority: DOM-ITR-001 (Interpretation Domain) and SPEC-ITR-001
+(Interpretation Observation Specification). This module implements compute
+for Interpretation outputs; the read-only compute FEAT is registered as
+FEAT-ITR-001 in app/feats/base.py per DOM-ITR-001 §VIII.
 
-Core Principles:
-- All monetary metrics are CWI-relative (not absolute)
-- Trends matter more than totals
-- System health focus, not student ranking
-- No leaderboards or comparative student ranking
-- Metrics precomputed and cached by time window
-- 5-second readability target for system health metrics
-
-Per spec section 4.2:
-- Must be trend-based
-- Must include directionality (improving/worsening)
-- Must never default to blaming students
+Current runtime is in known noncompliance with several DOM v1.2 invariants;
+see DOM-ITR-001 §XIII.b for the inventory tracked for downstream remediation.
 """
 
 from datetime import datetime, timezone
@@ -40,13 +33,13 @@ from app.utils.economy_policy import (
     get_policy_profile,
 )
 from app.utils.join_code import get_display_join_code
-from app.feats.base import feat_shell
+from app.feats.base import requires_feat_context
 import logging
 
 
 @dataclass
 class SystemHealthMetrics:
-    """System health metrics (always visible per spec section 4.1)"""
+    """System health metrics (always visible per SPEC-ITR-001)"""
     participation_rate: float  # % of students who were active
     money_velocity: float  # Transactions per student per day
     cwi_deviation_within_20pct: float  # % of students within ±20% of expected CWI
@@ -58,7 +51,7 @@ class SystemHealthMetrics:
 
 @dataclass
 class TrendMetrics:
-    """Drift & anomaly metrics (trend-based per spec section 4.2)"""
+    """Drift & anomaly metrics (trend-based per SPEC-ITR-001)"""
     balance_trend: str  # 'increasing', 'stable', 'decreasing'
     velocity_trend: str  # 'increasing', 'stable', 'decreasing'
     participation_trend: str  # 'increasing', 'stable', 'decreasing'
@@ -89,7 +82,7 @@ class AnalyticsEngine:
     """
     Core analytics computation engine.
     
-    Implements observability model per spec section 2:
+    Implements observability model per SPEC-ITR-001:
     - Surface signals, not raw data
     - Highlight anomalies, not totals
     - Favor trends over snapshots
@@ -165,6 +158,8 @@ class AnalyticsEngine:
             return 0.0
         
         cwi_calc = self.economy_checker.calculate_cwi(payroll_settings)
+        if cwi_calc is None:
+            return 0.0
         return cwi_calc.cwi
     
     def calculate_participation_rate(
@@ -265,7 +260,7 @@ class AnalyticsEngine:
         """
         Calculate % of students within CWI deviation bands.
         
-        Per spec section 3.2 and 4.1:
+        per SPEC-ITR-001:
         - All monetary analytics must be CWI-relative
         - Report % of students within defined CWI bands (±20%)
         
@@ -368,7 +363,7 @@ class AnalyticsEngine:
             'increasing', 'stable', or 'decreasing'.
         
         Notes:
-            Per spec sections 4.1 and 4.2, these are class-level, auto-updating,
+            per SPEC-ITR-001, these are class-level, auto-updating,
             readable within 5 seconds, and trend-based with clear directionality.
         """
         if previous_value is None or previous_value == 0:
@@ -391,7 +386,7 @@ class AnalyticsEngine:
         """
         Compute all system health metrics for a time window.
         
-        Per spec section 4.1:
+        per SPEC-ITR-001:
         - Aggregated at class level
         - Auto-updating
         - Readable in under 5 seconds
@@ -428,7 +423,7 @@ class AnalyticsEngine:
         """
         Compute trend indicators by comparing to previous period.
         
-        Per spec section 4.2:
+        per SPEC-ITR-001:
         - Must be trend-based
         - Must include directionality (improving/worsening)
         - Must never default to blaming students
@@ -471,7 +466,7 @@ class AnalyticsEngine:
         """
         Generate alerts based on metrics and thresholds.
         
-        Per spec section 6:
+        per SPEC-ITR-001:
         - Visual alerts only (not notifications)
         - Explain what changed, why it matters, suggest interventions
         - Never shame students, prescribe discipline, or trigger penalties
@@ -523,7 +518,7 @@ class AnalyticsEngine:
         
         return alerts
     
-    @feat_shell("FEAT-ANLY-001")
+    @requires_feat_context("FEAT-ITR-001")
     def create_snapshot(
         self,
         window_type: str,

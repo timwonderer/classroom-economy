@@ -8,175 +8,78 @@
 <div class="card shadow mb-4">
   <div class="card-header bg-info text-white">
     <h5 class="mb-0">
-      <span class="material-symbols-outlined me-2" style="vertical-align: middle;">calendar_view_day</span>
-      Per-Period Feature Settings
+      <span class="material-symbols-outlined me-2" style="vertical-align: middle;">tune</span>
+      Feature Settings — {{ view.class_label }}
     </h5>
   </div>
   <div class="card-body">
-    {% if periods %}
-    <p class="text-muted mb-4">Feature toggles are the sole authority for each class period.</p>
+    <p class="text-muted mb-4">Feature toggles are the sole authority for this class. Changes are saved automatically.</p>
 
-    <div class="mb-4">
-      <label class="form-label fw-bold">Select Period:</label>
-      <div class="d-flex flex-wrap gap-2">
-        {% for period in periods %}
-        <button type="button" class="btn btn-outline-primary period-badge" data-period="{{ period | e }}" id="period-btn-{{ period | e }}">
-          Period {{ period }}
-        </button>
-        {% endfor %}
-      </div>
-    </div>
-
-    <div id="periodSettingsPanel" style="display: none;">
-      <hr>
-      <h6 class="mb-3">
-        <span class="material-symbols-outlined me-1" style="vertical-align: middle;">edit</span>
-        Settings for Period: <span id="selectedPeriodName" class="text-primary"></span>
-      </h6>
-
-      <div class="d-flex flex-column gap-2" id="periodFeatureToggles">
-        {% for feature_id, feature_name, feature_icon, feature_desc in features_list %}
-        <div class="card h-100">
-          <div class="card-body py-3 d-flex align-items-center justify-content-between gap-3">
-            <div class="d-flex align-items-center gap-3">
-              <span class="material-symbols-outlined text-primary">{{ feature_icon }}</span>
-              <div class="mb-0">
-                <div class="fw-semibold">{{ feature_name }}</div>
-                <small class="text-muted">{{ feature_desc }}</small>
-              </div>
-            </div>
-            <div class="form-check form-switch mb-0">
-              <input class="form-check-input period-feature-toggle" type="checkbox"
-                     id="period_{{ feature_id }}" data-feature="{{ feature_id.replace('_enabled', '') }}" aria-label="{{ feature_name }}"
-                     onchange="updatePeriodFeature(this)">
+    <div class="d-flex flex-column gap-2">
+      {% for feat in view.features %}
+      <div class="card h-100">
+        <div class="card-body py-3 d-flex align-items-center justify-content-between gap-3">
+          <div class="d-flex align-items-center gap-3">
+            <span class="material-symbols-outlined text-primary">{{ feat.icon }}</span>
+            <div class="mb-0">
+              <div class="fw-semibold">{{ feat.name }}</div>
+              <small class="text-muted">{{ feat.description }}</small>
             </div>
           </div>
+          <div class="form-check form-switch mb-0">
+            <input class="form-check-input feature-toggle" type="checkbox"
+                   id="toggle_{{ feat.feature_key }}" data-feature="{{ feat.feature_key }}"
+                   aria-label="{{ feat.name }}"
+                   {% if feat.enabled %}checked{% endif %}
+                   onchange="updateFeature(this)">
+          </div>
         </div>
-        {% endfor %}
       </div>
-
-      <div class="mt-3 text-muted small">
-        <span class="material-symbols-outlined" style="vertical-align: middle;">sync</span>
-        Changes are saved automatically.
-      </div>
+      {% endfor %}
     </div>
 
-    {% else %}
-    <div class="alert alert-info">
-      <span class="material-symbols-outlined me-2" style="vertical-align: middle;">info</span>
-      No periods configured yet. Upload a student roster to create periods.
+    <div class="mt-3 text-muted small">
+      <span class="material-symbols-outlined" style="vertical-align: middle;">sync</span>
+      Changes are saved automatically.
     </div>
-    {% endif %}
   </div>
 </div>
 
-{% if periods %}
 <div class="card shadow">
   <div class="card-header bg-secondary text-white">
     <h5 class="mb-0">
       <span class="material-symbols-outlined me-2" style="vertical-align: middle;">summarize</span>
-      Settings Summary
+      Current Status
     </h5>
   </div>
   <div class="card-body">
-    <div class="table-responsive">
-      <table class="table table-hover">
-        <thead>
-          <tr>
-            <th>Period</th>
-            <th>Enabled Features</th>
-            <th>Disabled Features</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for period in periods %}
-          <tr>
-            <td><strong>Period {{ period }}</strong></td>
-            <td>
-              {% set settings = period_settings.get(period, {}) %}
-              <div class="d-flex flex-wrap gap-1">
-                {% for feature_id, feature_name, _, _ in features_list %}
-                {% if settings.get(feature_id, True) %}
-                <span class="badge bg-success">{{ feature_name }}</span>
-                {% endif %}
-                {% endfor %}
-              </div>
-            </td>
-            <td>
-              {% set settings = period_settings.get(period, {}) %}
-              <div class="d-flex flex-wrap gap-1">
-                {% for feature_id, feature_name, _, _ in features_list %}
-                {% if not settings.get(feature_id, True) %}
-                <span class="badge bg-danger">{{ feature_name }}</span>
-                {% endif %}
-                {% endfor %}
-              </div>
-            </td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
+    <div class="d-flex flex-wrap gap-2">
+      {% for feat in view.features %}
+      <span class="badge {{ 'bg-success' if feat.enabled else 'bg-danger' }}" data-feature-badge="{{ feat.feature_key }}">{{ feat.name }}</span>
+      {% endfor %}
     </div>
   </div>
 </div>
-{% endif %}
 
 <script>
-const periodSettings = {{ period_settings | tojson | safe }};
-let selectedPeriod = null;
-
-function sanitizePeriodId(period) {
-  return period.replace(/[^a-zA-Z0-9-_]/g, '');
-}
-
-function selectPeriod(period) {
-  selectedPeriod = period;
-  const safePeriodId = sanitizePeriodId(period);
-
-  document.querySelectorAll('.period-badge').forEach(btn => btn.classList.remove('active'));
-  const periodBtn = document.getElementById('period-btn-' + safePeriodId);
-  if (periodBtn) periodBtn.classList.add('active');
-
-  document.getElementById('periodSettingsPanel').style.display = 'block';
-  document.getElementById('selectedPeriodName').textContent = period;
-
-  const settings = periodSettings[period] || {};
-  document.querySelectorAll('.period-feature-toggle').forEach(toggle => {
-    const feature = toggle.dataset.feature + '_enabled';
-    toggle.checked = settings[feature] !== false;
-  });
-}
-
-document.addEventListener('DOMContentLoaded', function() {
-  document.querySelectorAll('.period-badge').forEach(btn => {
-    btn.addEventListener('click', function() {
-      const period = this.dataset.period;
-      if (period) selectPeriod(period);
-    });
-  });
-});
-
-function updatePeriodFeature(toggle) {
-  if (!selectedPeriod) return;
-
+function updateFeature(toggle) {
   const feature = toggle.dataset.feature;
   const enabled = toggle.checked;
   const csrfTokenMeta = document.querySelector('meta[name="csrf-token"]');
   const csrfToken = csrfTokenMeta ? csrfTokenMeta.content : '';
 
-  fetch(`/admin/feature-settings/period/${encodeURIComponent(selectedPeriod)}`, {
+  fetch('{{ url_for("admin.update_class_feature_setting") }}', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       'X-CSRFToken': csrfToken
     },
-    body: JSON.stringify({ [feature]: enabled })
+    body: JSON.stringify({ feature: feature, enabled: enabled })
   })
   .then(response => response.json())
   .then(data => {
     if (data.status === 'success') {
-      if (!periodSettings[selectedPeriod]) periodSettings[selectedPeriod] = {};
-      periodSettings[selectedPeriod][feature + '_enabled'] = enabled;
+      updateStatusBadge(feature, enabled);
     } else {
       alert('Error: ' + data.message);
       toggle.checked = !enabled;
@@ -185,6 +88,13 @@ function updatePeriodFeature(toggle) {
   .catch(() => {
     alert('Failed to save setting.');
     toggle.checked = !enabled;
+  });
+}
+
+function updateStatusBadge(feature, enabled) {
+  document.querySelectorAll(`[data-feature-badge="${feature}"]`).forEach(badge => {
+    badge.classList.toggle('bg-success', enabled);
+    badge.classList.toggle('bg-danger', !enabled);
   });
 }
 </script>

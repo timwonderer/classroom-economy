@@ -229,6 +229,7 @@ class TestSatisfyObligation:
                 correlation_id=assessment.correlation_id,
                 class_id=class_id,
                 seat_id=seat_id,
+                idempotency_key=f"test:waiver:{assessment.correlation_id}",
             )
 
             db.session.commit()
@@ -264,4 +265,5 @@ class TestSatisfyObligation:
                     correlation_id=assessment.correlation_id,
                     class_id=class_id,
                     seat_id=seat_id,
+                    idempotency_key=f"test:waiver:{assessment.correlation_id}",
                 )

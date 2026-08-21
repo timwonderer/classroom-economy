@@ -6,6 +6,7 @@ from decimal import Decimal
 from app.extensions import db
 from app.services.context_resolver import CanonicalContext
 from app.services import ledger_service
+from app.services.class_configuration_query_service import get_current_economic_engine
 from app.feats.ledger_resolution_feat import build_intended_ledger_plan, resolve_intended_ledger_plan, apply_resolved_ledger_plan
 
 
@@ -20,13 +21,13 @@ def execute_admin_adjustments(
     *,
     ctx: CanonicalContext,
     adjustments: list[dict],
-    banking_settings=None,
     actor_seat_id: int,
 ) -> AdminAdjustmentResult:
     """Ledger-led FEAT for bulk admin-created adjustments."""
     applied_count = 0
     declined_count = 0
     fee_count = 0
+    economic_engine = get_current_economic_engine(ctx.class_id)
 
     for adjustment in adjustments:
         seat = adjustment.get("seat")
@@ -53,7 +54,7 @@ def execute_admin_adjustments(
             )
             resolved_plan = resolve_intended_ledger_plan(
                 plan=intended_plan,
-                banking_settings=banking_settings,
+                economic_engine=economic_engine,
                 idempotency_key=f"admin-adjustment:{seat.id}:{class_id}:{amount}:resolve",
                 force_overdraft_fee=True,
                 allow_recovery_transfer=True,
@@ -65,7 +66,7 @@ def execute_admin_adjustments(
                 fee_count += 1
             apply_resolved_ledger_plan(
                 resolved_plan=resolved_plan,
-                banking_settings=banking_settings,
+                economic_engine=economic_engine,
                 idempotency_key=f"admin-adjustment:{seat.id}:{class_id}:{amount}:fee",
             )
 

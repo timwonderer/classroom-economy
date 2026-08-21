@@ -1,0 +1,177 @@
+{% extends "layout_admin.html" %}
+{% set page_title = "Class Customizations" %}
+{% block title %}Customizations{% endblock %}
+{% set current_page = "customizations" %}
+{% block page_icon %}style{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-lg-8 offset-lg-2">
+        <div class="card shadow-sm">
+            <div class="card-header bg-primary text-white" >
+                <h5 class="mb-0">
+                    <span class="material-symbols-outlined" style="vertical-align: middle;">display_settings</span>
+                    Display Settings
+                </h5>
+            </div>
+            <div class="card-body">
+                <form method="POST" action="{{ url_for('admin.customizations') }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+                    <!-- Display Name Section -->
+                    <div class="mb-4">
+                        <h5 class="text-primary mb-3">
+                            <span class="material-symbols-outlined" style="vertical-align: middle; font-size: 25px;">badge</span>
+                            Teacher Display Name
+                        </h5>
+                        <p class="mb-3">
+                            Your display name is how your name appears to your students within this class. Because each class economy is independent of each other, your display name will not be shared across classes. </p>
+                            <p>
+                            You may enter anything into the two text fields below.
+                        </p>
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label for="first_name" class="form-label">Display Name First Half</label>
+                                <input
+                                    type="text"
+                                    class="form-control"
+                                    id="first_name"
+                                    name="first_name"
+                                    value="{{ teacher_profile.first_name if teacher_profile else '' }}"
+                                    placeholder="First name"
+                                    maxlength="100">
+                            </div>
+                            <div class="col-md-6">
+                                <label for="last_name" class="form-label">Display Name Second Half</label>
+                                <input
+                                    type="text"
+                                    class="form-control"
+                                    id="last_name"
+                                    name="last_name"
+                                    value="{{ teacher_profile.last_name if teacher_profile else '' }}"
+                                    placeholder="Last name"
+                                    maxlength="100">
+                            </div>
+                        </div>
+                        <div class="form-text mt-2">
+                            Currently displaying as: <strong>{{ teacher_profile.full_name if teacher_profile else admin.get_display_username() }}</strong>
+                        </div>
+                    </div>
+
+                    <hr class="my-4">
+
+                    <!-- Class Settings Section -->
+                    <div class="mb-4">
+                        <h5 class="text-primary mb-3">
+                            <span class="material-symbols-outlined" style="vertical-align: middle; font-size: 25px;">school</span>
+                            Class Display Settings
+                        </h5>
+                        <p class="mb-3">
+                            Customize the display name and section for this class. These settings are purely cosmetic and do not affect any business behavior.
+                        </p>
+
+                        {% if current_class %}
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label for="class_display_name" class="form-label fw-bold">Class Display Name</label>
+                                <input
+                                    type="text"
+                                    class="form-control"
+                                    id="class_display_name"
+                                    name="class_display_name"
+                                    value="{{ current_class.display_name or '' }}"
+                                    placeholder="e.g., Honors Bio, AP Calc"
+                                    maxlength="100">
+                            </div>
+                            <div class="col-md-6">
+                                <label for="class_section" class="form-label fw-bold">Section</label>
+                                <input
+                                    type="text"
+                                    class="form-control"
+                                    id="class_section"
+                                    name="class_section"
+                                    value="{{ current_class.section or '' }}"
+                                    placeholder="e.g., Period 1, Block A"
+                                    maxlength="50">
+                            </div>
+                        </div>
+                        {% else %}
+                        <div class="alert alert-info">
+                            <span class="material-symbols-outlined" style="vertical-align: middle;">info</span>
+                            No class selected. Switch to a class to configure its settings.
+                        </div>
+                        {% endif %}
+                    </div>
+
+                    <hr class="my-4">
+
+                    <!-- Account Info (Read-only) -->
+                    <div class="mb-4">
+                        <h5 class="text-primary mb-3">
+                            <span class="material-symbols-outlined" style="vertical-align: middle; font-size: 25px;">info</span>
+                            Account Information
+                        </h5>
+                        <p class="mb-3">
+                            When you submit a support ticket, you will be represented by your teacher ID and your class will be represented by its class ID. Please note that although we worked hard to remove use and storage of sensitive personal information, some account or class information may be stored in our logs. These logs are routinely removed from our servers and never shared with any third party. 
+                        </p>
+                        <div class="row">
+                            <div class="col-md-6 mb-2">
+                                <small class="text-muted">Teacher ID:</small>
+                                <div><code class="user-select-all">{{ teacher_public_id or 'N/A' }}</code></div>
+                            </div>
+                            <div class="col-md-6 mb-2">
+                                <small class="text-muted">Account Created:</small>
+                                <div><strong>{{ admin.created_at.strftime('%B %d, %Y') if admin.created_at else 'N/A' }}</strong></div>
+                            </div>
+                        </div>
+                        {% if current_class %}
+                        <div class="row mt-2">
+                            <div class="col-md-6 mb-2">
+                                <small class="text-muted">Class ID:</small>
+                                <div><code class="user-select-all">{{ current_class.class_public_id }}</code></div>
+                            </div>
+                        </div>
+                        {% endif %}
+                        <small class="text-muted mt-2 d-block">These identifiers are used for support and troubleshooting.</small>
+                    </div>
+
+                    <!-- Submit Button -->
+                    <div class="d-grid gap-2">
+                        <button type="submit" class="btn btn-primary btn-lg">
+                            <span class="material-symbols-outlined" style="vertical-align: middle;">save</span>
+                            Save Settings
+                        </button>
+                    </div>
+                </form>
+
+                <hr class="my-4">
+
+                <!-- Reset Getting Started Widget Section -->
+                <div class="mb-4">
+                    <h5 class="text-primary mb-3">
+                        <span class="material-symbols-outlined" style="vertical-align: middle; font-size: 25px;">restart_alt</span>
+                        Getting Started Widget
+                    </h5>
+                    <p class="text-muted mb-3">
+                        Show the getting started widget again if you dismissed it or want to review setup tasks.
+                    </p>
+                    <button type="button" class="btn btn-outline-secondary" onclick="showGettingStartedWidget()">
+                        <span class="material-symbols-outlined" style="vertical-align: middle;">refresh</span>
+                        Show Getting Started Widget
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function showGettingStartedWidget() {
+    // Remove the dismissal from localStorage
+    const dismissKey = 'getting_started_dismissed_{{ admin.id }}';
+    localStorage.removeItem(dismissKey);
+    alert('Getting started widget will appear when you return to the dashboard.');
+    window.location.href = '{{ url_for("admin.dashboard") }}';
+}
+</script>
+{% endblock %}

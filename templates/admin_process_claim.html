@@ -51,7 +51,7 @@
           <dt class="col-sm-4">Filed Date:</dt>
           <dd class="col-sm-8">
             {% if claim.filed_date %}
-              <span class="local-timestamp" data-timestamp="{{ format_utc_iso(claim.submitted_at) }}"></span>
+              {{ claim.filed_date|fmt_timestamp }}
             {% else %}
               N/A
             {% endif %}

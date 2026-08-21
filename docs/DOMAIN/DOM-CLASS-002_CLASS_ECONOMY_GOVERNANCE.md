@@ -15,6 +15,7 @@ This document establishes:
 - the class economy supports `tight`, `default`, and `comfortable` modes,
 - class economy configuration belongs to Class Configuration,
 - rebalance actions are class-economy events,
+- bank-related businesses are part of class configuration,
 - behavioral calculations are defined by the relevant `SPEC-ECON-*` documents.
 
 ## II. Scope
@@ -34,6 +35,8 @@ This document does not govern:
 - analytics metrics,
 - visibility behavior,
 - or other execution semantics.
+
+The exact specification for interest and compounding rules as well as overdraft behavior belongs in SPEC-level documentation.
 
 ## III. Authority Level
 

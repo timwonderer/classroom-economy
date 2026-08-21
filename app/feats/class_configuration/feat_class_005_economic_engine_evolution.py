@@ -1,8 +1,9 @@
 """
-FEAT-CLASS-005: Economic Engine Evolution (v1.0)
+FEAT-CLASS-005: Economic Engine Evolution (v1.1)
 
-Orchestrates economic policy transitions per DOM-CLASS-002:
-- Creates new immutable EconomicEngine version with new policy_mode
+Orchestrates economic engine field transitions per DOM-CLASS-002:
+- Creates new immutable EconomicEngine version with any subset of updated fields
+- Carries forward all unchanged fields from the current engine
 - Links all affected features to new engine version via class_features rows
 - Preserves complete version chain via previous_version_id
 - Supports future-law scheduling via effective_at per SPEC-ECON-002
@@ -12,6 +13,9 @@ Sole lawful writer for: economic_engine table + class_features rows for affected
 
 MED Blast Radius: Idempotency_key recommended but not required
 Natural idempotency on (class_id, feature, effective_at) primary key tuple in class_features
+
+v1.1 (2026-08-15): Generalized from policy-mode-only to arbitrary EconomicEngine field
+updates. `execute_transition_economic_policy` retained as backward-compat wrapper.
 """
 
 from __future__ import annotations
@@ -22,7 +26,7 @@ from typing import Optional
 import uuid
 
 from app.extensions import db
-from app.feats.base import feat_shell
+from app.feats.base import requires_feat_context
 from app.models import ClassEconomy, EconomicEngine, ClassFeature, Seat
 from app.services.context_resolver import CanonicalContext
 from app.services.class_configuration_query_service import (
@@ -37,6 +41,84 @@ from app.utils.canonical_temporal_resolver import canonical_temporal_resolver, C
 class EconomicEngineEvolutionError(Exception):
     """Raised when engine evolution validation or execution fails."""
     pass
+
+
+# Whitelist of EconomicEngine fields that may be mutated via FEAT-CLASS-005,
+# with validators. Any field not listed here cannot be updated through this FEAT.
+_VALID_POLICY_MODES = ('tight', 'default', 'comfortable')
+_VALID_CALC_TYPES = ('simple', 'compound')
+_VALID_COMPOUND_FREQS = ('never', 'daily', 'weekly', 'monthly')
+_VALID_ACCRUAL_FREQS = ('daily', 'weekly', 'monthly')
+_VALID_PAYOUT_FREQS = ('weekly', 'monthly')
+
+
+def _validate_engine_field(field_name: str, value):
+    """Validate a single EconomicEngine field update. Returns (ok, error_message)."""
+    if field_name == 'economy_policy_mode':
+        if value not in _VALID_POLICY_MODES:
+            return False, f"economy_policy_mode must be one of {_VALID_POLICY_MODES}"
+    elif field_name == 'expected_weekly_hours':
+        try:
+            v = float(value)
+        except (TypeError, ValueError):
+            return False, "expected_weekly_hours must be numeric"
+        if v <= 0:
+            return False, "expected_weekly_hours must be > 0"
+    elif field_name == 'interest_rate':
+        try:
+            v = float(value)
+        except (TypeError, ValueError):
+            return False, "interest_rate must be numeric"
+        if v < 0 or v > 1.0:
+            return False, "interest_rate must be between 0 and 1.0"
+    elif field_name == 'interest_calculation_type':
+        if value is not None and value not in _VALID_CALC_TYPES:
+            return False, f"interest_calculation_type must be one of {_VALID_CALC_TYPES}"
+    elif field_name == 'compound_frequency':
+        if value is not None and value not in _VALID_COMPOUND_FREQS:
+            return False, f"compound_frequency must be one of {_VALID_COMPOUND_FREQS}"
+    elif field_name == 'interest_accrual_frequency':
+        if value is not None and value not in _VALID_ACCRUAL_FREQS:
+            return False, f"interest_accrual_frequency must be one of {_VALID_ACCRUAL_FREQS}"
+    elif field_name == 'interest_payout_frequency':
+        if value is not None and value not in _VALID_PAYOUT_FREQS:
+            return False, f"interest_payout_frequency must be one of {_VALID_PAYOUT_FREQS}"
+    elif field_name == 'flat_overdraft_fee':
+        try:
+            if value is not None and float(value) < 0:
+                return False, "flat_overdraft_fee must be >= 0"
+        except (TypeError, ValueError):
+            return False, "flat_overdraft_fee must be numeric"
+    elif field_name == 'progressive_overdraft_fee':
+        if value is not None:
+            if not isinstance(value, dict) or set(value) != {'tier_1', 'tier_2', 'tier_3'}:
+                return False, "progressive_overdraft_fee must contain tier_1, tier_2, and tier_3"
+            try:
+                if any(float(value[tier]) < 0 for tier in ('tier_1', 'tier_2', 'tier_3')):
+                    return False, "progressive_overdraft_fee tiers must be >= 0"
+            except (TypeError, ValueError, KeyError):
+                return False, "progressive_overdraft_fee tiers must be numeric"
+    elif field_name == 'overdraft_protection_enabled':
+        if not isinstance(value, bool):
+            return False, "overdraft_protection_enabled must be boolean"
+    else:
+        return False, f"'{field_name}' is not a valid EconomicEngine field for FEAT-CLASS-005"
+    return True, None
+
+
+# Fields carried forward from the current engine when creating a new version.
+_CARRY_FORWARD_FIELDS = (
+    'economy_policy_mode',
+    'expected_weekly_hours',
+    'interest_rate',
+    'interest_calculation_type',
+    'compound_frequency',
+    'interest_accrual_frequency',
+    'interest_payout_frequency',
+    'flat_overdraft_fee',
+    'progressive_overdraft_fee',
+    'overdraft_protection_enabled',
+)
 
 
 def _parse_effective_at_timestamp(effective_at: str):
@@ -57,11 +139,59 @@ class EconomicEngineEvolutionResult:
     correlation_id: str
     class_id: Optional[str] = None
     new_engine_id: Optional[str] = None
-    new_policy_mode: Optional[str] = None
+    new_policy_mode: Optional[str] = None  # Kept for backward compat with policy-mode callers
+    updates_applied: dict = field(default_factory=dict)  # Full set of fields written
     features_updated: list[str] = field(default_factory=list)
     effective_at: Optional[str] = None  # ISO 8601 timestamp
     error_code: Optional[str] = None
     error_message: Optional[str] = None
+
+
+def execute_evolve_economic_engine(
+    *,
+    canonical_context: CanonicalContext,
+    class_id: str,
+    updates: dict,
+    feature_list: list[str],
+    effective_at: str | None = None,
+    correlation_id: str | None = None,
+    idempotency_key: str | None = None,
+) -> EconomicEngineEvolutionResult:
+    """
+    Execute lawful teacher-directed EconomicEngine field evolution.
+
+    Creates a new immutable EconomicEngine version with the requested field updates
+    applied on top of the current engine's values, and links the specified features
+    to the new version via class_features rows.
+
+    Args:
+        canonical_context: CanonicalContext with user_id, class_id, seat_id, actor_role="teacher"
+        class_id: Class to modify
+        updates: Dict of EconomicEngine field name → new value. Fields not present
+                 are carried forward from the current engine. Whitelist enforced.
+                 Supported keys:
+                     economy_policy_mode, expected_weekly_hours, interest_rate,
+                     interest_calculation_type, compound_frequency,
+                     interest_accrual_frequency, interest_payout_frequency,
+                     flat_overdraft_fee, progressive_overdraft_fee,
+                     overdraft_protection_enabled
+        feature_list: List of features affected by this transition (e.g., ['payroll', 'rent'])
+        effective_at: When this transition takes effect (default: canonical_now, ISO 8601 string)
+        correlation_id: Optional; generated if not provided
+        idempotency_key: Optional replay guard
+
+    Returns:
+        EconomicEngineEvolutionResult with success status and engine details.
+    """
+    return _execute_evolve_economic_engine_impl(
+        canonical_context=canonical_context,
+        class_id=class_id,
+        updates=updates,
+        feature_list=feature_list,
+        effective_at=effective_at,
+        correlation_id=correlation_id,
+        idempotency_key=idempotency_key,
+    )
 
 
 def execute_transition_economic_policy(
@@ -74,29 +204,14 @@ def execute_transition_economic_policy(
     correlation_id: str | None = None,
     idempotency_key: str | None = None,
 ) -> EconomicEngineEvolutionResult:
+    """Backward-compat wrapper: policy-mode-only transition.
+
+    Prefer `execute_evolve_economic_engine(updates={...})` for new callers.
     """
-    Execute lawful teacher-directed economic policy transition.
-
-    Args:
-        canonical_context: CanonicalContext with user_id, class_id, seat_id, actor_role="teacher"
-        class_id: Class to modify
-        new_policy_mode: Target mode ('tight', 'default', 'comfortable')
-        feature_list: List of features affected by this transition (e.g., ['payroll', 'rent'])
-        effective_at: When this policy transition takes effect (default: canonical_now, ISO 8601 string)
-        correlation_id: Optional; generated if not provided
-        idempotency_key: Optional replay guard
-
-    Returns:
-        EconomicEngineEvolutionResult with success status and engine details
-
-    Contract: Teacher authority and class scope are validated via CanonicalContext.
-    All affected features must currently be enabled.
-    Engine versions are immutable once committed; policy evolution is versioned history.
-    """
-    return _execute_transition_economic_policy_impl(
+    return _execute_evolve_economic_engine_impl(
         canonical_context=canonical_context,
         class_id=class_id,
-        new_policy_mode=new_policy_mode,
+        updates={'economy_policy_mode': new_policy_mode},
         feature_list=feature_list,
         effective_at=effective_at,
         correlation_id=correlation_id,
@@ -104,19 +219,19 @@ def execute_transition_economic_policy(
     )
 
 
-@feat_shell("FEAT-CLASS-005")
-def _execute_transition_economic_policy_impl(
+@requires_feat_context("FEAT-CLASS-005")
+def _execute_evolve_economic_engine_impl(
     *,
     canonical_context: CanonicalContext,
     class_id: str,
-    new_policy_mode: str,
+    updates: dict,
     feature_list: list[str],
     effective_at: str | None = None,
     correlation_id: str | None = None,
     idempotency_key: str | None = None,
 ) -> EconomicEngineEvolutionResult:
     """
-    Internal implementation wrapped in @feat_shell for context management.
+    Internal implementation wrapped in @requires_feat_context for context management.
     """
 
     # =========================================================================
@@ -170,15 +285,27 @@ def _execute_transition_economic_policy_impl(
             error_message=f"Class {class_id} not found",
         )
 
-    # Validate policy mode
-    valid_modes = ('tight', 'default', 'comfortable')
-    if new_policy_mode not in valid_modes:
+    # Validate updates dict: non-empty and every field passes its validator
+    if not updates or not isinstance(updates, dict):
         return EconomicEngineEvolutionResult(
             success=False,
             correlation_id="",
-            error_code="INVALID_POLICY_MODE",
-            error_message=f"Policy mode '{new_policy_mode}' is not valid. Must be one of: {', '.join(valid_modes)}",
+            error_code="INVALID_UPDATES",
+            error_message="updates must be a non-empty dict of EconomicEngine field → value",
         )
+    for field_name, value in updates.items():
+        ok, err = _validate_engine_field(field_name, value)
+        if not ok:
+            return EconomicEngineEvolutionResult(
+                success=False,
+                correlation_id="",
+                error_code=(
+                    "INVALID_POLICY_MODE"
+                    if field_name == "economy_policy_mode"
+                    else "INVALID_UPDATES"
+                ),
+                error_message=err,
+            )
 
     # Validate feature_list is not empty
     if not feature_list or not isinstance(feature_list, list):
@@ -281,7 +408,8 @@ def _execute_transition_economic_policy_impl(
             correlation_id=idempotency_key or f"engine_evolution_idempotent_{class_id}",
             class_id=class_id,
             new_engine_id=persisted_engine.economic_version_id if persisted_engine else None,
-            new_policy_mode=persisted_engine.economy_policy_mode if persisted_engine else new_policy_mode,
+            new_policy_mode=persisted_engine.economy_policy_mode if persisted_engine else updates.get('economy_policy_mode'),
+            updates_applied=dict(updates),
             features_updated=sorted(feature_list),
             effective_at=effective_at_ts.isoformat() if hasattr(effective_at_ts, 'isoformat') else effective_at_ts,
         )
@@ -304,14 +432,22 @@ def _execute_transition_economic_policy_impl(
     # PHASE 2: Atomic Economic Engine Evolution
     # =========================================================================
 
-    # Create new EconomicEngine version
+    # Create new EconomicEngine version: carry forward every field from the current
+    # engine, then overwrite with requested updates. This preserves the invariant
+    # that each version is a complete self-describing snapshot.
     new_engine_id = str(uuid.uuid4())
+    carried_fields = {
+        field_name: getattr(current_engine, field_name)
+        for field_name in _CARRY_FORWARD_FIELDS
+    }
+    carried_fields.update(updates)
+
     new_engine = EconomicEngine(
         economic_version_id=new_engine_id,
         class_id=class_id,
-        economy_policy_mode=new_policy_mode,
         previous_version_id=current_engine.economic_version_id,  # Link to previous version
         created_at=timestamp_utc,
+        **carried_fields,
     )
     db.session.add(new_engine)
     db.session.flush()
@@ -335,7 +471,8 @@ def _execute_transition_economic_policy_impl(
         correlation_id=corr_id,
         class_id=class_id,
         new_engine_id=new_engine_id,
-        new_policy_mode=new_policy_mode,
+        new_policy_mode=carried_fields.get('economy_policy_mode'),
+        updates_applied=dict(updates),
         features_updated=sorted(feature_list),
         effective_at=effective_at_ts.isoformat(),
         error_code=None,

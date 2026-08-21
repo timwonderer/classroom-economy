@@ -179,6 +179,19 @@ Formula:
 ```text
 fine = CWI × fine_rate
 ```
+#### 4.6.1 Internal Fines
+
+Fines such as overdraft or non-sufficient funds (NSF) fees and late fees shall use the same formula as generic classroom fines recommendations. These recommendations shall surface the recommended price range of the fines, not a single recommended price.
+
+Economic engine table shall persist the chosen overdraft fee under `flat_overdraft_fee` or persist the precomputed `progressive_overdraft_fee` as json object with the following fine schedule
+
+| Economic Mode | Tier 1 | Tier 2 | Tier 3|
+| --- | --- | --- | --- |
+| `tight` | 7% CWI | 12.5% CWI | 18% CWI |
+| `default` | 5% CWI | 10% CWI | 15% CWI|
+| `comfortable` | 4% CWI | 8% CWI | 12% CWI |
+
+Internal fines are only active if their value is not `NULL` for the economic policy being enforced. When disabling fines, the backend shall create a new economic policy with the value set to `NULL`
 
 ---
 
@@ -364,6 +377,8 @@ The following table is the canonical reference set for the Economic Engine.
 | Insurance premium | 6% to 14% CWI | 5% to 12% CWI | 4% to 10% CWI |
 | Fine | 7% to 18% CWI | 5% to 15% CWI | 4% to 12% CWI |
 | Collective goal | 0.75x to 7x CWI | 1x to 8x CWI | 1.5x to 10x CWI |
+
+System-defined fines such as rent late fees and overdraft fees shall use the above table for reference when making recommendations. Actual configured fine amount shall persist on `economic_engine` for overdraft fines and `rent_settings` for rent late fees.
 
 Store tier reference:
 

@@ -38,7 +38,7 @@ def create_ledger_idempotent_transaction(
     type: str,
     description: str,
     target_seat_id: int | None = None,
-    actor_seat_id: int,
+    actor_seat_id: int | None = None,
     mechanism: str = "self",
     original_transaction_id: int | None = None,
     policy_id: int | None = None,
@@ -70,7 +70,7 @@ def create_ledger_pending_transaction(
     type: str,
     description: str,
     target_seat_id: int | None = None,
-    actor_seat_id: int,
+    actor_seat_id: int | None = None,
     mechanism: str = "self",
     original_transaction_id: int | None = None,
     policy_id: int | None = None,
@@ -133,10 +133,9 @@ def apply_ledger_monthly_savings_interest(seat, *, annual_rate: Decimal = Decima
     return ledger_service.apply_monthly_savings_interest(seat, annual_rate=annual_rate)
 
 
-def apply_ledger_overdraft_fee_if_needed(seat, banking_settings, *, force: bool = False, idempotency_key: str | None = None):
+def apply_ledger_overdraft_fee_if_needed(seat, *, force: bool = False, idempotency_key: str | None = None):
     return ledger_service.apply_overdraft_fee_if_needed(
         seat,
-        banking_settings,
         force=force,
         idempotency_key=idempotency_key,
     )

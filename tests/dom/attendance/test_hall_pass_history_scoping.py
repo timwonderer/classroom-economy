@@ -24,9 +24,8 @@ def _teacher_ctx(classroom) -> CanonicalContext:
 def _seed_hall_pass_settings(classroom) -> None:
     settings = HallPassSettings(
         class_id=classroom.class_id,
-        queue_enabled=True,
-        queue_limit=10,
-        pass_types=[{"name": "Bathroom", "simultaneous_limit": None, "enabled": True}],
+        max_queue_limit=10,
+        pass_type_payload=[{"pass_name": "Bathroom", "max_queue": 10, "consume_pass": True}],
     )
     from app.extensions import db
 

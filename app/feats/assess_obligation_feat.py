@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from app.extensions import db
 from app.models import ObligationAssessment
 from app.services import obligations_service
-from app.feats.base import feat_shell, FEATContext
+from app.feats.base import requires_feat_context, FEATContext
 
 
 @dataclass
@@ -101,7 +101,7 @@ def assess_obligation(
     return assessment
 
 
-@feat_shell("FEAT-OBL-001")
+@requires_feat_context("FEAT-OBL-001")
 def execute_assess_obligation(
     seat_id: int,
     class_id: str,
@@ -117,7 +117,7 @@ def execute_assess_obligation(
     Public FEAT interface for obligation assessment.
 
     Callable from routes and other FEATs. Wraps assess_obligation() with
-    context and transaction management per feat_shell.
+    context and transaction management per requires_feat_context.
 
     Returns the immutable ASSESSMENT row.
     """

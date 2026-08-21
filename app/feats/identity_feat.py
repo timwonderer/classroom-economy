@@ -6,6 +6,7 @@ FEAT-IDEN-002: Student Credential Setup (activate credentials on pre-provisioned
 FEAT-IDEN-003: Teacher Reset Code Generation
 FEAT-IDEN-004: Student Recovery Code Validation (clear credentials, redirect to setup)
 FEAT-IDEN-005: Authenticated Class Binding (logged-in student adds a new class)
+FEAT-IDEN-006: Provision Student Seat in Existing Class
 
 All mutations are atomic per FEAT-CORE-000. Routes call these functions
 instead of performing inline domain operations.
@@ -23,9 +24,48 @@ from sqlalchemy.exc import IntegrityError
 
 from app.extensions import db
 from app.models import Seat, User
+from app.services.class_configuration_query_service import get_class_economy
+from app.services.classroom_setup import create_student_seat_with_profile, delete_seat_with_profile
+from app.services.context_resolver import CanonicalContext
+from app.feats.base import requires_feat_context
 from app.utils.canonical_temporal_resolver import utc_now
 
 logger = logging.getLogger(__name__)
+
+
+@requires_feat_context("FEAT-IDEN-006")
+def remove_student_from_teacher_scope(
+    *,
+    canonical_context: CanonicalContext,
+    seat_id: int,
+    teacher_user_id: int,
+    correlation_id: str,
+    idempotency_key: str,
+) -> bool:
+    """Detach one student seat from a teacher's class-owned identity scope."""
+    if not canonical_context or canonical_context.user_id != teacher_user_id:
+        raise ValueError("canonical teacher context is required for student detachment")
+    from app.utils.student_deletion import remove_student_from_teacher_scope as _remove
+    return _remove(seat_id, teacher_user_id)
+
+
+@requires_feat_context("FEAT-IDEN-006")
+def remove_pending_student_seat(
+    *,
+    canonical_context: CanonicalContext,
+    seat_id: int,
+    correlation_id: str,
+    idempotency_key: str,
+) -> str:
+    """Delete an unclaimed roster seat and its class-scoped identity profile."""
+    seat = db.session.get(Seat, seat_id)
+    if not seat or seat.class_id != canonical_context.class_id:
+        return "NOT_FOUND"
+    if seat.role != "student" or seat.claimed_at is not None or seat.user_id is not None:
+        return "CLAIMED"
+    delete_seat_with_profile(seat)
+    db.session.flush()
+    return "REMOVED"
 
 RESET_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 
@@ -79,6 +119,55 @@ class ClassBindingResult:
     seat_id: Optional[int] = None
     error_code: Optional[str] = None
     error_message: Optional[str] = None
+
+
+@dataclass(frozen=True)
+class ProvisionStudentSeatResult:
+    """Result of FEAT-IDEN-006 student-seat provisioning."""
+    success: bool
+    correlation_id: str
+    seat_id: Optional[int] = None
+    error_code: Optional[str] = None
+    error_message: Optional[str] = None
+
+
+@requires_feat_context("FEAT-IDEN-006")
+def execute_provision_student_seat(
+    *,
+    canonical_context: CanonicalContext,
+    class_id: str,
+    first_name: str,
+    last_name: str,
+    notes: str | None = None,
+    dedupe_code: str,
+    has_received_rent_exemption: bool,
+    correlation_id: str,
+    idempotency_key: str,
+) -> ProvisionStudentSeatResult:
+    """Provision an unclaimed student seat and identity profile in a class."""
+    corr_id = correlation_id
+
+    if not canonical_context or not canonical_context.seat_id or not canonical_context.class_id:
+        return ProvisionStudentSeatResult(False, corr_id, error_code="INVALID_CONTEXT", error_message="Missing canonical context (class_id, seat_id)")
+    if class_id != canonical_context.class_id:
+        return ProvisionStudentSeatResult(False, corr_id, error_code="CLASS_SCOPE_MISMATCH", error_message=f"Class ID in context ({canonical_context.class_id}) does not match provided class_id ({class_id})")
+    if getattr(canonical_context, "actor_role", None) != "teacher":
+        return ProvisionStudentSeatResult(False, corr_id, error_code="UNAUTHORIZED", error_message="Only teachers can provision student seats")
+
+    teacher_seat = db.session.get(Seat, canonical_context.seat_id)
+    if not teacher_seat or teacher_seat.class_id != class_id or teacher_seat.role != "teacher" or teacher_seat.user_id != canonical_context.user_id:
+        return ProvisionStudentSeatResult(False, corr_id, error_code="TEACHER_SEAT_NOT_FOUND", error_message="Teacher seat not found or not in class scope")
+    if not get_class_economy(class_id):
+        return ProvisionStudentSeatResult(False, corr_id, error_code="CLASS_NOT_FOUND", error_message=f"Class {class_id} not found")
+    if not isinstance(first_name, str) or not first_name.strip() or not isinstance(last_name, str) or not last_name.strip():
+        return ProvisionStudentSeatResult(False, corr_id, error_code="INVALID_NAME", error_message="first_name and last_name must be non-empty strings")
+    if not isinstance(dedupe_code, str) or len(dedupe_code) > 8:
+        return ProvisionStudentSeatResult(False, corr_id, error_code="INVALID_DEDUPE_CODE", error_message="dedupe_code must be at most 8 characters")
+
+    new_seat = create_student_seat_with_profile(class_id=class_id, first_name=first_name.strip(), last_name=last_name.strip(), notes=notes)
+    new_seat.dedupe_code = dedupe_code
+    new_seat.has_received_rent_exemption = has_received_rent_exemption
+    return ProvisionStudentSeatResult(True, corr_id, seat_id=new_seat.id)
 
 
 # ---------------------------------------------------------------------------
@@ -176,6 +265,7 @@ def resolve_seat_claim(
 # FEAT-IDEN-002: Student Credential Setup
 # ---------------------------------------------------------------------------
 
+@requires_feat_context("FEAT-IDEN-002")
 def activate_student_credentials(
     *,
     seat_id: int,
@@ -183,6 +273,8 @@ def activate_student_credentials(
     username: str,
     pin: str,
     passphrase: str,
+    correlation_id: str,
+    idempotency_key: str,
 ) -> CredentialSetupResult:
     """
     FEAT-IDEN-002: Activate login credentials on a student User.
@@ -254,10 +346,13 @@ def activate_student_credentials(
 # FEAT-IDEN-003: Teacher Reset Code Generation
 # ---------------------------------------------------------------------------
 
+@requires_feat_context("FEAT-IDEN-003")
 def generate_teacher_reset_code(
     *,
     seat_id: int,
     teacher_user_id: int,
+    correlation_id: str,
+    idempotency_key: str,
 ) -> ResetCodeResult:
     """
     FEAT-IDEN-003: Teacher initiates password reset for a student.
@@ -322,9 +417,12 @@ def generate_teacher_reset_code(
 # FEAT-IDEN-004: Student Recovery Code Validation
 # ---------------------------------------------------------------------------
 
+@requires_feat_context("FEAT-IDEN-004")
 def validate_recovery_code(
     *,
     reset_code: str,
+    correlation_id: str,
+    idempotency_key: str,
 ) -> RecoveryLookupResult:
     """
     FEAT-IDEN-004: Student submits reset code to recover account.
@@ -395,6 +493,7 @@ def validate_recovery_code(
 # FEAT-IDEN-005: Authenticated Class Binding
 # ---------------------------------------------------------------------------
 
+@requires_feat_context("FEAT-IDEN-005")
 def bind_authenticated_student_to_class(
     *,
     user_id: int,
@@ -402,6 +501,8 @@ def bind_authenticated_student_to_class(
     first_name: str,
     last_name: str,
     dedupe_code: str = "",
+    correlation_id: str,
+    idempotency_key: str,
 ) -> ClassBindingResult:
     """
     FEAT-IDEN-005: Authenticated student adds a new class.

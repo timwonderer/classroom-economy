@@ -22,6 +22,12 @@ class EconomyBalanceChecker {
         this.debounceDelay = options.debounceDelay || 500;
         this.debounceTimer = null;
         this.currentCWI = null;
+        // When true, displayWarnings() skips the Recommended Range / Ideal
+        // block for callers that already show that info elsewhere on the
+        // page (e.g. rent-settings' CWI helper box). Store-item tier
+        // recommendations still render, since no equivalent proactive
+        // display exists for them.
+        this.suppressRecommendationsEcho = options.suppressRecommendationsEcho === true;
 
         if (this.autoValidate) {
             this.initializeAutoValidation();
@@ -177,73 +183,102 @@ class EconomyBalanceChecker {
         const warning = warnings.filter(w => w.level === 'warning');
         const success = warnings.filter(w => w.level === 'success');
 
+        // Alert-card visual: card wrapper + colored header + body.
+        // Matches templates/macros/cards.html alert_card macro so the
+        // JS-rendered alerts blend with server-rendered ones.
+        //
+        // Per-warning cards (not aggregated) — each warning carries its
+        // own title + message so the header describes the specific
+        // condition ("Rent setting might be too low") and the body
+        // carries the detailed prose ("The entered rent of $X is lower
+        // than the recommended minimum of $Y..."). Backends that emit
+        // only `message` (no `title`) fall back to a generic level title.
+        const genericTitle = {
+            danger: 'Critical Issue',
+            warning: 'Warning',
+            success: 'Looks Good',
+            info: 'Recommendations',
+        };
+        const iconForLevel = {
+            danger: 'error',
+            warning: 'info',
+            success: 'check_circle',
+            info: 'lightbulb',
+        };
+        const alertCard = (level, title, icon, bodyHtml) => {
+            const textClass = level === 'warning' ? 'text-dark' : 'text-white';
+            return (
+                `<div class="card shadow-sm mb-3">` +
+                    `<div class="card-header bg-${level} ${textClass} py-3">` +
+                        `<h6 class="mb-0 fw-semibold ${textClass}">` +
+                            `<span class="material-symbols-outlined me-2" style="vertical-align: text-bottom;">${icon}</span>` +
+                            title +
+                        `</h6>` +
+                    `</div>` +
+                    `<div class="card-body">${bodyHtml}</div>` +
+                `</div>`
+            );
+        };
+
+        const renderWarningCards = (items, level) => {
+            items.forEach(w => {
+                const title = w.title || genericTitle[level] || 'Notice';
+                const icon = w.icon || iconForLevel[level] || 'info';
+                html += alertCard(level, title, icon, `<div>${w.message}</div>`);
+            });
+        };
+
         if (critical.length > 0) {
-            html += '<div class="alert alert-danger mb-2">';
-            html += '<strong><i class="bi bi-exclamation-triangle-fill"></i> Critical Issues:</strong><ul class="mb-0 mt-1">';
-            critical.forEach(w => {
-                html += `<li>${w.message}</li>`;
-            });
-            html += '</ul></div>';
+            renderWarningCards(critical, 'danger');
         }
-
         if (warning.length > 0) {
-            html += '<div class="alert alert-warning mb-2">';
-            html += '<strong><i class="bi bi-exclamation-circle-fill"></i> Warnings:</strong><ul class="mb-0 mt-1">';
-            warning.forEach(w => {
-                html += `<li>${w.message}</li>`;
-            });
-            html += '</ul></div>';
+            renderWarningCards(warning, 'warning');
         }
-
         if (success.length > 0 && critical.length === 0 && warning.length === 0) {
-            html += '<div class="alert alert-success mb-2">';
-            html += '<strong><i class="bi bi-check-circle-fill"></i> Balance Check:</strong><ul class="mb-0 mt-1">';
-            success.forEach(w => {
-                html += `<li>${w.message}</li>`;
-            });
-            html += '</ul></div>';
+            renderWarningCards(success, 'success');
         }
 
-        // Display recommendations
+        // Display recommendations (skipped on pages that already show a
+        // proactive CWI recommendation elsewhere, per suppressRecommendationsEcho).
         if (recommendations && Object.keys(recommendations).length > 0) {
-            html += '<div class="alert alert-info mb-0">';
-            html += '<strong><i class="bi bi-lightbulb-fill"></i> Recommendations:</strong>';
-            html += '<div class="mt-2">';
+            let bodyHtml = '';
 
-            if (recommendations.min !== undefined && recommendations.max !== undefined) {
-                html += `<div class="recommendation-range">`;
-                html += `<strong>Recommended Range:</strong> $${recommendations.min} - $${recommendations.max}`;
+            if (!this.suppressRecommendationsEcho &&
+                recommendations.min !== undefined && recommendations.max !== undefined) {
+                bodyHtml += `<div class="recommendation-range">`;
+                bodyHtml += `<strong>Recommended Range:</strong> $${recommendations.min} - $${recommendations.max}`;
                 if (recommendations.frequency) {
-                    html += ` <span class="text-muted">per ${recommendations.frequency}</span>`;
+                    bodyHtml += ` <span class="text-muted">per ${recommendations.frequency}</span>`;
                 }
                 if (recommendations.recommended) {
-                    html += `<br><strong>Ideal:</strong> $${recommendations.recommended}`;
+                    bodyHtml += `<br><strong>Ideal:</strong> $${recommendations.recommended}`;
                     if (recommendations.frequency) {
-                        html += ` <span class="text-muted">per ${recommendations.frequency}</span>`;
+                        bodyHtml += ` <span class="text-muted">per ${recommendations.frequency}</span>`;
                     }
                 }
-                // Show weekly equivalent if frequency is not weekly
                 if (recommendations.frequency && recommendations.frequency !== 'weekly' &&
                     recommendations.min_weekly !== undefined) {
-                    html += `<br><small class="text-muted">Weekly equivalent: $${recommendations.min_weekly} - $${recommendations.max_weekly}</small>`;
+                    bodyHtml += `<br><small class="text-muted">Weekly equivalent: $${recommendations.min_weekly} - $${recommendations.max_weekly}</small>`;
                 }
-                html += `</div>`;
+                bodyHtml += `</div>`;
             }
 
             if (recommendations.tiers) {
-                html += '<div class="pricing-tiers mt-2">';
-                html += '<strong>Store Item Pricing Tiers:</strong>';
-                html += '<div class="row mt-1">';
+                bodyHtml += '<div class="pricing-tiers mt-2">';
+                bodyHtml += '<strong>Store Item Pricing Tiers:</strong>';
+                bodyHtml += '<div class="row mt-1">';
                 Object.entries(recommendations.tiers).forEach(([tier, range]) => {
-                    html += `<div class="col-6 col-md-3 mb-1">`;
-                    html += `<span class="badge bg-secondary">${tier.toUpperCase()}</span><br>`;
-                    html += `<small>$${range.min} - $${range.max}</small>`;
-                    html += `</div>`;
+                    bodyHtml += `<div class="col-6 col-md-3 mb-1">`;
+                    bodyHtml += `<span class="badge bg-secondary">${tier.toUpperCase()}</span><br>`;
+                    bodyHtml += `<small>$${range.min} - $${range.max}</small>`;
+                    bodyHtml += `</div>`;
                 });
-                html += '</div></div>';
+                bodyHtml += '</div></div>';
             }
 
-            html += '</div></div>';
+            if (bodyHtml.trim()) {
+                html += alertCard('info', 'Recommendations', 'lightbulb', bodyHtml);
+            }
         }
 
         html += '</div>';
@@ -341,17 +376,12 @@ class EconomyBalanceChecker {
     /**
      * Get complete economy analysis
      */
-    async analyzeEconomy(expectedWeeklyHours = null, block = null) {
+    async analyzeEconomy(expectedWeeklyHours = null) {
         try {
             const requestBody = {};
 
-            // Include block if provided
-            if (block) {
-                requestBody.block = block;
-            }
-
-            // Note: expected_weekly_hours is read from payroll_settings by the backend
-            // If expectedWeeklyHours is explicitly provided, include it for override
+            // expected_weekly_hours is read from EconomicEngine by the backend.
+            // If explicitly provided (simulator), include it for override.
             if (expectedWeeklyHours !== null) {
                 requestBody.expected_weekly_hours = expectedWeeklyHours;
             }
@@ -386,22 +416,121 @@ class EconomyBalanceChecker {
         const container = document.querySelector(containerId);
         if (!container) return;
 
-        let html = '<div class="cwi-info-box alert alert-info">';
-        html += '<h6><i class="bi bi-info-circle-fill"></i> Classroom Wage Index (CWI)</h6>';
-        html += `<div class="cwi-value">Weekly Expected Income: <strong>$${cwiData.cwi.toFixed(2)}</strong></div>`;
+        const fmt = (v) => (typeof v === 'number' ? `$${v.toFixed(2)}` : '—');
+        const rec = cwiData.recommendations || {};
+        const rentMonthly = rec.rent || {};
+        const rentWeekly = rec.rent_weekly || {};
 
-        if (cwiData.cwi_breakdown || cwiData.breakdown) {
-            html += '<details class="mt-2">';
-            html += '<summary style="cursor: pointer;">Calculation Details</summary>';
-            html += '<div class="mt-2 small">';
-            const breakdown = cwiData.cwi_breakdown || cwiData.breakdown;
-            html += `<div>Pay Rate: $${breakdown.pay_rate_per_hour?.toFixed(2) || 'N/A'}/hour</div>`;
-            html += `<div>Expected Hours: ${breakdown.expected_weekly_hours || 'N/A'} hours/week</div>`;
-            html += `<div>Total Weekly Minutes: ${breakdown.expected_weekly_minutes || 'N/A'} minutes</div>`;
-            html += '</div></details>';
+        // Frequency-aware selection: derive the correct band for whatever
+        // rent-frequency the teacher has picked. The payload only carries
+        // weekly and monthly buckets; other frequencies are converted
+        // proportionally from weekly (the smaller unit — avoids
+        // compounding month-length approximation).
+        const freqEl = document.getElementById('frequency_type');
+        const freq = (freqEl && freqEl.value) || 'monthly';
+        const customValueEl = document.getElementById('custom_frequency_value');
+        const customUnitEl = document.getElementById('custom_frequency_unit');
+        const customValue = customValueEl ? parseFloat(customValueEl.value) : NaN;
+        const customUnit = customUnitEl ? customUnitEl.value : '';
+
+        const scale = (band, factor) => (band && band.min != null ? {
+            min: band.min * factor,
+            max: band.max * factor,
+            recommended: band.recommended * factor,
+        } : {});
+
+        let rentBand = rentMonthly;
+        let periodLabel = 'per month';
+        let showNote = false;
+
+        if (freq === 'weekly') {
+            rentBand = rentWeekly;
+            periodLabel = 'per week';
+        } else if (freq === 'daily') {
+            rentBand = scale(rentWeekly, 1 / 7);
+            periodLabel = 'per day';
+        } else if (freq === 'biweekly') {
+            rentBand = scale(rentWeekly, 2);
+            periodLabel = 'every 2 weeks';
+        } else if (freq === 'custom') {
+            // Custom = <value> <unit>. Convert from weekly for days/weeks,
+            // from monthly for months (natural unit alignment).
+            if (Number.isFinite(customValue) && customValue > 0) {
+                if (customUnit === 'days') {
+                    rentBand = scale(rentWeekly, customValue / 7);
+                    periodLabel = `every ${customValue} day${customValue === 1 ? '' : 's'}`;
+                } else if (customUnit === 'weeks') {
+                    rentBand = scale(rentWeekly, customValue);
+                    periodLabel = `every ${customValue} week${customValue === 1 ? '' : 's'}`;
+                } else if (customUnit === 'months') {
+                    rentBand = scale(rentMonthly, customValue);
+                    periodLabel = `every ${customValue} month${customValue === 1 ? '' : 's'}`;
+                } else {
+                    // Unit not set yet — show monthly with a hint.
+                    showNote = true;
+                }
+            } else {
+                showNote = true;
+            }
+        }
+        // (else: monthly — the default.)
+
+        // Percent-of-CWI derivation for the calculation-details line.
+        // rent bands are computed as cwi × ratio; the ratio is not exposed
+        // in the payload, so recover it here from the weekly band (weekly
+        // is the base unit — closest to CWI itself which is a weekly value).
+        const cwiValue = typeof cwiData.cwi === 'number' ? cwiData.cwi : null;
+        const pctLow = (cwiValue && rentWeekly.min != null)
+            ? ((rentWeekly.min / cwiValue) * 100).toFixed(0)
+            : null;
+        const pctHigh = (cwiValue && rentWeekly.max != null)
+            ? ((rentWeekly.max / cwiValue) * 100).toFixed(0)
+            : null;
+
+        // Top-level card visual: dark-green header (bg-primary, role-scoped),
+        // white body with the recommendation prose + collapsed calculation
+        // details. Mirrors templates/macros/cards.html top_card structure.
+        let html = '<div class="card shadow-sm">';
+        html += '<div class="card-header bg-primary text-white py-3">';
+        html += '<h5 class="mb-0 fw-bold text-white">';
+        html += '<span class="material-symbols-outlined me-2" style="vertical-align: text-bottom;">thumb_up</span>';
+        html += 'Pricing Recommendation';
+        html += '</h5>';
+        html += '</div>';
+        html += '<div class="card-body">';
+
+        // Primary sentence: range recommendation.
+        if (rentBand.min != null && rentBand.max != null) {
+            html += `<p class="mb-2">Based on your current economic settings, we recommend setting <strong>rent</strong> between <strong>${fmt(rentBand.min)}</strong> and <strong>${fmt(rentBand.max)}</strong> ${periodLabel}`;
+            if (showNote) {
+                html += ` <span class="text-muted small">(shown as monthly — set your custom frequency to refine)</span>`;
+            }
+            html += '.</p>';
+        } else {
+            html += '<p class="mb-2 text-muted">Recommendation unavailable — insufficient data.</p>';
         }
 
-        html += '</div>';
+        // Collapsed: how we got there.
+        html += '<details class="mt-2">';
+        html += '<summary style="cursor: pointer;" class="fw-semibold text-primary">Calculation details</summary>';
+        html += '<div class="mt-2 small">';
+        html += `<div>Your current Classroom Wage Index (CWI) is <strong>${fmt(cwiValue)}</strong> per week.</div>`;
+        if (rec.policy_label) {
+            html += `<div>You have selected the <strong>${rec.policy_label}</strong> economic policy.</div>`;
+        }
+        if (pctLow && pctHigh) {
+            html += `<div>Under this policy, <strong>rent</strong> should fall between <strong>${pctLow}%</strong> and <strong>${pctHigh}%</strong> of your CWI.</div>`;
+        }
+        if (cwiData.cwi_breakdown || cwiData.breakdown) {
+            const breakdown = cwiData.cwi_breakdown || cwiData.breakdown;
+            html += '<hr class="my-2">';
+            html += `<div class="text-muted">Pay rate: $${breakdown.pay_rate_per_hour?.toFixed(2) || 'N/A'} per hour</div>`;
+            html += `<div class="text-muted">Expected hours: ${breakdown.expected_weekly_hours || 'N/A'} per week</div>`;
+        }
+        html += '</div></details>';
+
+        html += '</div>';  // card-body
+        html += '</div>';  // card
 
         container.innerHTML = html;
     }

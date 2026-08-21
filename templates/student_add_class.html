@@ -77,6 +77,20 @@
                         {% endfor %}
                     </div>
 
+                    <div class="mb-3">
+                        <label for="dedupe_code" class="form-label">
+                            <span class="material-symbols-outlined align-middle" style="font-size: 1.2rem;">fingerprint</span>
+                            Deduplication Code <span class="text-muted fw-normal">(optional)</span>
+                        </label>
+                        {{ form.dedupe_code(class="form-control", placeholder="Example: A1B2", autocomplete="off") }}
+                        <small class="form-text text-muted">
+                            Only needed if another student in this class shares your name. Your teacher will provide this code.
+                        </small>
+                        {% for error in form.dedupe_code.errors %}
+                            <div class="text-danger small mt-1">{{ error }}</div>
+                        {% endfor %}
+                    </div>
+
                     <div class="d-grid gap-2">
                         <button type="submit" class="btn btn-primary btn-lg">
                             <span class="material-symbols-outlined align-middle">add_circle</span>

@@ -23,7 +23,7 @@ from werkzeug.security import check_password_hash
 from app.extensions import db, limiter
 from app.models import (
     StoreItem, Transaction, TransactionStatus, AttendanceSession,
-    AttendanceReasonCode, HallPassLog, HallPassSettings, BankingSettings,
+    AttendanceReasonCode, HallPassLog, HallPassSettings,
     # Legacy tap models are unauthorized; use attendance_sessions (DOM-PROD-001).
     # StoreItemBlock removed — store_item_blocks unauthorized; use store_item_visibility (DOM-STORE-001)
     StoreItemVisibility, User,
@@ -41,7 +41,7 @@ from app.auth import (
 )
 from app.access import AccessScopeDenied, resolve_scope
 from app.services.context_resolver import ContextResolutionError, resolve_canonical_context
-from app.feats.base import feat_shell
+
 from app.feats.attendance import (
     rotate_teacher_hall_pass_verify_token as feat_rotate_teacher_hall_pass_verify_token,
     save_hall_pass_setup_config as feat_save_hall_pass_setup_config,
@@ -56,7 +56,7 @@ from app.routes.student import (
     _is_student_coverage_period_paid,
 )
 from app.services.context_resolver import resolve_canonical_context, ContextResolutionError
-from app.feats.base import FEATContext
+from app.feats.base import FEATContext, requires_feat_context
 from app.feats.store_purchase_feat import execute_store_purchase
 from app.feats.ledger_resolution_feat import build_intended_ledger_plan, resolve_intended_ledger_plan, apply_resolved_ledger_plan
 from app.services import store_service
@@ -417,7 +417,6 @@ def purchase_item():
 
 @api_bp.route('/use-item', methods=['POST'])
 @login_required
-@feat_shell("FEAT-STOR-002")
 def use_item():
     context = getattr(g, "canonical_context", None)
     if not context:
@@ -463,21 +462,17 @@ def use_item():
         terminal = _entitlement_terminal_event(entitlement.entitlement_id)
         if terminal:
             return jsonify({"status": "error", "message": "This item is not available for redemption."}), 400
-        consume_entitlement(
+        from app.feats.entitlement_lifecycle_feat import execute_use_item_immediate
+        execute_use_item_immediate(
             entitlement_id=entitlement.entitlement_id,
             class_id=entitlement.class_id,
             target_seat_id=entitlement.target_seat_id,
-            actor_seat_id=entitlement.target_seat_id,
             product_id=entitlement.product_id,
             entitlement_type=entitlement.entitlement_type,
             acquisition_type=entitlement.acquisition_type,
-            correlation_id=f"immediate_use_{entitlement.entitlement_id}",
-            payload={
-                "outcome": "APPROVED",
-                "source": "api.use_item",
-                "item_type": store_item.item_type,
-                "details": details or None,
-            },
+            item_type=store_item.item_type,
+            details=details,
+            idempotency_key=f"feat:stor:use_imm:{entitlement.entitlement_id}",
         )
         return jsonify({"status": "success", "message": f"You used {store_item.name}."})
 
@@ -499,21 +494,19 @@ def use_item():
             "details": details or None,
         }
 
-    pending_action = PendingAction(
+    from app.feats.entitlement_lifecycle_feat import execute_use_item_request
+    execute_use_item_request(
         class_id=entitlement.class_id,
         seat_id=student.id,
         entitlement_id=entitlement.entitlement_id,
-        correlation_id=f"pending_{entitlement.entitlement_id}_{uuid.uuid4().hex}",
-        authoritative_feat="FEAT-STOR-002",
-        payload=action_payload,
+        action_payload=action_payload,
+        idempotency_key=f"feat:stor:use_req:{entitlement.entitlement_id}",
     )
-    db.session.add(pending_action)
     return jsonify({"status": "success", "message": f"You have requested to use {store_item.name}. Awaiting admin approval."})
 
 
 @api_bp.route('/approve-redemption', methods=['POST'])
 @admin_required
-@feat_shell("FEAT-STOR-002")
 def approve_redemption():
     """
     Approve a pending redemption request.
@@ -557,33 +550,14 @@ def approve_redemption():
             return jsonify({"status": "error", "message": "Redemption request is no longer pending and cannot be approved."}), 409
 
         ctx = g.canonical_context
-        if store_item.item_type == 'hall_pass':
-            record_hall_pass_log(
-                ctx=ctx,
-                requested_by_seat_id=entitlement.target_seat_id,
-                approved_by_seat_id=ctx.seat_id,
-                destination=str((pending_action.payload or {}).get("destination") or "Hall Pass"),
-                reason=str((pending_action.payload or {}).get("details") or ""),
-                idempotency_key=pending_action.correlation_id,
-            )
-        else:
-            consume_entitlement(
-                entitlement_id=entitlement.entitlement_id,
-                class_id=entitlement.class_id,
-                target_seat_id=entitlement.target_seat_id,
-                actor_seat_id=ctx.seat_id,
-                product_id=entitlement.product_id,
-                entitlement_type=entitlement.entitlement_type,
-                acquisition_type=entitlement.acquisition_type,
-                correlation_id=pending_action.correlation_id,
-                payload={
-                    "outcome": "APPROVED",
-                    "source": "api.approve_redemption",
-                    "item_type": store_item.item_type,
-                    "details": (pending_action.payload or {}).get("details") or None,
-                },
-            )
-        db.session.delete(pending_action)
+        from app.feats.entitlement_lifecycle_feat import execute_approve_redemption
+        execute_approve_redemption(
+            entitlement=entitlement,
+            store_item=store_item,
+            pending_action=pending_action,
+            ctx=ctx,
+            idempotency_key=f"feat:stor:appr_req:{entitlement.entitlement_id}",
+        )
     except (SQLAlchemyError, ValueError) as e:
         current_app.logger.info(
             "Redemption approval failed for entitlement %s: %s",
@@ -600,7 +574,6 @@ def approve_redemption():
 
 @api_bp.route('/reject-redemption', methods=['POST'])
 @admin_required
-@feat_shell("FEAT-STOR-002")
 def reject_redemption():
     """Reject a pending redemption request without terminating the entitlement."""
     data = request.get_json(silent=True) or {}
@@ -631,7 +604,11 @@ def reject_redemption():
         if not pending_action:
             return jsonify({"status": "error", "message": "Redemption request could not be rejected in its current state."}), 409
 
-        db.session.delete(pending_action)
+        from app.feats.entitlement_lifecycle_feat import execute_reject_redemption
+        execute_reject_redemption(
+            pending_action=pending_action,
+            idempotency_key=f"feat:stor:rej_req:{entitlement.entitlement_id}",
+        )
     except (SQLAlchemyError, ValueError) as e:
         current_app.logger.info(
             "Redemption rejection failed for entitlement %s: %s",
@@ -1038,15 +1015,14 @@ def hall_pass_settings():
     return jsonify({
         "status": "success",
         "settings": {
-            "queue_enabled": settings.queue_enabled if settings else True,
-            "queue_limit": settings.queue_limit if settings else 10
+            "max_queue_limit": settings.max_queue_limit if settings else 10,
+            "pass_type_payload": settings.get_pass_types() if settings else HallPassSettings.get_default_pass_types()
         }
     })
 
 
 @api_bp.route('/hall-pass/settings', methods=['POST'])
 @admin_required
-@feat_shell("FEAT-SETTINGS-001")
 def update_hall_pass_settings():
     """Update hall pass queue settings (admin only)."""
     context = getattr(g, "canonical_context", None)
@@ -1059,10 +1035,10 @@ def update_hall_pass_settings():
         settings = feat_update_hall_pass_queue_settings(
             user_id=context.user_id if context else None,
             class_id=class_id,
-            join_code=None,
-            queue_enabled=data.get("queue_enabled") if "queue_enabled" in data else None,
-            queue_limit=data.get("queue_limit") if "queue_limit" in data else None,
+            max_queue_limit=data.get("max_queue_limit", 10),
             updated_at=utc_now(),
+            correlation_id=f"corr_settings_queue_{uuid.uuid4().hex}",
+            idempotency_key=f"feat:settings:hall-pass-queue:{context.user_id}:{class_id}:{uuid.uuid4().hex}",
         )
     except ValueError as exc:
         _log_api_client_error("update_hall_pass_settings", exc, extra=f"class_id={class_id}")
@@ -1072,8 +1048,9 @@ def update_hall_pass_settings():
         "status": "success",
         "message": "Settings updated successfully",
         "settings": {
-            "queue_enabled": settings.queue_enabled,
-            "queue_limit": settings.queue_limit,
+            "max_queue_limit": settings.max_queue_limit,
+            "pass_type_payload": settings.get_pass_types(),
+            "effective_queue_limit": settings.effective_queue_limit,
         }
     })
 
@@ -1141,12 +1118,14 @@ def hall_pass_history():
         offset = (page - 1) * page_size
         records = query.offset(offset).limit(page_size).all()
 
-        # Helper function to format timestamp as UTC with 'Z' suffix
+        from app.utils.temporal_display import format_timestamp as _fmt_display, resolve_display_timezone as _resolve_tz
+        _display_tz = _resolve_tz(context)
+
         def format_timestamp(dt):
             if not dt:
                 return None
-            return ensure_utc(dt).isoformat().replace('+00:00', 'Z')
-        
+            return _fmt_display(dt, _display_tz)
+
         # Format records for response
         records_data = []
         for record in records:
@@ -1246,20 +1225,19 @@ def get_hall_pass_setup():
         return jsonify({
             "status": "success",
             "hall_pass_enabled": True,
-            "pass_types": HallPassSettings.get_default_pass_types()
+            "pass_type_payload": HallPassSettings.get_default_pass_types()
         })
 
     # Return configured pass types with fallback to defaults
     return jsonify({
         "status": "success",
-        "hall_pass_enabled": settings.queue_enabled,
-        "pass_types": settings.get_pass_types()
+        "hall_pass_enabled": True,
+        "pass_type_payload": settings.get_pass_types()
     })
 
 
 @api_bp.route('/hall-pass/setup', methods=['POST'])
 @admin_required
-@feat_shell("FEAT-SETTINGS-001")
 def save_hall_pass_setup():
     """Save teacher's hall pass configuration"""
     user_id = g.canonical_context.user_id
@@ -1269,7 +1247,7 @@ def save_hall_pass_setup():
     if not current_class_id:
         return jsonify({"status": "error", "message": "Active class context is required"}), 400
 
-    pass_types = data.get('pass_types', [])
+    pass_types = data.get('pass_type_payload', [])
     hall_pass_enabled = data.get('hall_pass_enabled', True)
 
     # Validate hall_pass_enabled
@@ -1283,38 +1261,24 @@ def save_hall_pass_setup():
     for pt in pass_types:
         if not isinstance(pt, dict):
             return jsonify({"status": "error", "message": "Each pass type must be an object"}), 400
-        if 'name' not in pt:
-            return jsonify({"status": "error", "message": "Each pass type must have a name"}), 400
-        if not pt['name'].strip():
+        if set(pt) != {'pass_name', 'max_queue', 'consume_pass'}:
+            return jsonify({"status": "error", "message": "Each pass type must contain pass_name, max_queue, and consume_pass"}), 400
+        if not isinstance(pt['pass_name'], str) or not pt['pass_name'].strip():
             return jsonify({"status": "error", "message": "Pass type name cannot be empty"}), 400
 
         # Validate enabled (defaults to True if not provided)
-        if 'enabled' not in pt:
-            pt['enabled'] = True
-        if not isinstance(pt['enabled'], bool):
-            return jsonify({"status": "error", "message": "enabled must be a boolean"}), 400
-
-        # Validate queue_limit and simultaneous_limit (can be None or positive integer)
-        for field in ['queue_limit', 'simultaneous_limit']:
-            if field in pt and pt[field] is not None:
-                try:
-                    val = int(pt[field])
-                    if val < 0:
-                        return jsonify({"status": "error", "message": f"{field} must be non-negative"}), 400
-                    pt[field] = val
-                except (ValueError, TypeError):
-                    return jsonify({"status": "error", "message": f"{field} must be a number or blank"}), 400
+        if (
+            not isinstance(pt['consume_pass'], bool)
+            or not isinstance(pt['max_queue'], int)
+            or isinstance(pt['max_queue'], bool)
+            or pt['max_queue'] < 0
+        ):
+            return jsonify({"status": "error", "message": "Invalid pass type limits"}), 400
 
     try:
         scope = _get_hall_pass_settings_scope(current_class_id)
         if not scope:
             return jsonify({"status": "error", "message": "Class scope not found"}), 404
-        settings = get_hall_pass_settings(scope["class_id"])
-        if not settings:
-            settings = _get_or_create_hall_pass_settings(scope["class_id"])
-        if not settings:
-            return jsonify({"status": "error", "message": "Class scope not found"}), 404
-
         feature_scope = resolve_feature_class_for_class(scope["class_id"], 'hall_pass')
         if feature_scope and not feature_scope["enabled"]:
             return jsonify({"status": "error", "message": "Hall pass is disabled for this class"}), 403
@@ -1323,15 +1287,24 @@ def save_hall_pass_setup():
             user_id=user_id,
             class_id=scope["class_id"],
             hall_pass_enabled=hall_pass_enabled,
-            pass_types=pass_types,
+            pass_type_payload=pass_types,
+            max_queue_limit=int(data.get('max_queue_limit', 10)),
             updated_at=utc_now(),
+            correlation_id=f"corr_settings_setup_{uuid.uuid4().hex}",
+            idempotency_key=f"feat:settings:hall-pass-setup:{user_id}:{scope['class_id']}:{uuid.uuid4().hex}",
         )
 
         return jsonify({
             "status": "success",
             "message": "Hall pass configuration saved successfully",
-            "hall_pass_enabled": settings.queue_enabled,
-            "pass_types": settings.get_pass_types()
+            "hall_pass_enabled": hall_pass_enabled,
+            "pass_type_payload": settings.get_pass_types(),
+            "policy_uuid": settings.policy_uuid,
+            "effective_queue_limit": settings.effective_queue_limit,
+            "queue_limit_notice": (
+                f"Per-pass limits reduce effective queue capacity to {settings.effective_queue_limit}."
+                if settings.effective_queue_limit < settings.max_queue_limit else None
+            ),
         })
 
     except Exception as e:
@@ -1342,7 +1315,6 @@ def save_hall_pass_setup():
 
 @api_bp.route('/hall-pass/verify-token/rotate', methods=['POST'])
 @admin_required
-@feat_shell("FEAT-SETTINGS-001")
 def rotate_hall_pass_verify_token():
     """
     Rotate the teacher's hall pass public verification token.
@@ -1354,7 +1326,11 @@ def rotate_hall_pass_verify_token():
     user_id = g.canonical_context.user_id
 
     try:
-        token = feat_rotate_teacher_hall_pass_verify_token(user_id=user_id)
+        token = feat_rotate_teacher_hall_pass_verify_token(
+            user_id=user_id,
+            correlation_id=f"corr_settings_token_{uuid.uuid4().hex}",
+            idempotency_key=f"feat:settings:hall-pass-token:{user_id}:{uuid.uuid4().hex}",
+        )
     except LookupError as exc:
         _log_api_client_error("rotate_hall_pass_verify_token", exc, extra=f"user_id={user_id}")
         return jsonify({"status": "error", "message": "Hall pass verification settings were not found."}), 404
@@ -1411,16 +1387,19 @@ def get_available_hall_pass_types():
         # Return defaults if not configured
         return jsonify({
             "status": "success",
-            "pass_types": HallPassSettings.get_default_pass_types()
+            "pass_type_payload": HallPassSettings.get_default_pass_types()
         })
 
     # Return just the names for enabled pass types
     pass_types = settings.get_pass_types()
-    enabled_pass_types = [{"name": pt["name"]} for pt in pass_types if pt.get("enabled", True)]
+    enabled_pass_types = [
+        {"pass_name": pt["pass_name"], "max_queue": pt["max_queue"], "consume_pass": pt["consume_pass"]}
+        for pt in pass_types
+    ]
 
     return jsonify({
         "status": "success",
-        "pass_types": enabled_pass_types
+        "pass_type_payload": enabled_pass_types
     })
 
 
@@ -1646,8 +1625,11 @@ def attendance_history():
             student_class_label = seat_info['class_label'] or student_class_id or 'Unknown'
 
             timestamp_str = None
+            formatted_ts = None
             if record.timestamp:
                 timestamp_str = ensure_utc(record.timestamp).isoformat().replace('+00:00', 'Z')
+                from app.utils.temporal_display import format_timestamp as _format_ts, resolve_display_timezone as _resolve_tz
+                formatted_ts = _format_ts(record.timestamp, _resolve_tz(context))
 
             records_data.append({
                 "id": record.id,
@@ -1658,7 +1640,8 @@ def attendance_history():
                 "period": seat_info['period'],
                 "status": record.status,
                 "reason": record.reason_code,
-                "timestamp": timestamp_str
+                "timestamp": timestamp_str,
+                "formatted_timestamp": formatted_ts,
             })
 
         return jsonify({
@@ -1679,6 +1662,7 @@ def attendance_history():
 
 @api_bp.route('/tap', methods=['POST'])
 @limiter.limit("100 per minute")
+@requires_feat_context("FEAT-PROD-001")
 def handle_tap():
     data = request.get_json(silent=True) or {}
     safe_data = {k: ('***' if k == 'pin' else v) for k, v in data.items()}
@@ -1763,6 +1747,16 @@ def handle_tap():
             idempotency_key=f"prod_attendance:{class_id}:{seat_id}:{normalized_action}:{secrets.token_hex(12)}",
         )
         current_app.logger.info("TAP success - seat %s class_id=%s action=%s", seat_id, class_id, action)
+    except ValueError as e:
+        db.session.rollback()
+        current_app.logger.warning(
+            "TAP rejected for seat %s class_id=%s action=%s: %s",
+            seat_id,
+            class_id,
+            action,
+            e,
+        )
+        return jsonify({"error": "Unable to record the attendance request."}), 409
     except SQLAlchemyError as e:
         db.session.rollback()
         current_app.logger.error(f"TAP failed for seat {seat_id}: {e}", exc_info=True)
@@ -1833,33 +1827,5 @@ def student_status():
 
 # -------------------- UTILITY API --------------------
 
-@api_bp.route('/set-timezone', methods=['POST'])
-def set_timezone():
-    """Store user's timezone in session for datetime formatting"""
-    now = utc_now()
-
-    # Check via V2 Canonical Context
-    context = getattr(g, "canonical_context", None)
-    if not context:
-        return jsonify({"status": "error", "message": "Unauthorized"}), 401
-
-    session['last_activity'] = now.isoformat()
-
-    data = request.get_json()
-    timezone_name = data.get('timezone')
-
-    if not timezone_name:
-        return jsonify({"status": "error", "message": "Timezone is required."}), 400
-
-    # Validate Timezone
-    if timezone_name not in pytz.all_timezones:
-         return jsonify({"status": "error", "message": "Invalid timezone."}), 400
-
-    # Store in session
-    session['timezone'] = timezone_name
-    current_app.logger.info(f"Timezone set to {timezone_name} for session")
-
-    return jsonify({"status": "success", "message": f"Timezone set to {timezone_name}."})
-
-
+    # set-timezone endpoint — REMOVED (SPEC-TIME-001: display timezone is server-supplied from ClassEconomy.class_timezone)
     # view_as_student_status endpoint — REMOVED (prohibited feature)

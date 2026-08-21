@@ -185,7 +185,7 @@
                                         <small class="text-muted">
                                             Submitted
                                             {% if issue.submitted_at %}
-                                                <span class="local-timestamp" data-timestamp="{{ format_utc_iso(issue.submitted_at) }}"></span>
+                                                {{ issue.submitted_at|fmt_timestamp }}
                                             {% else %}
                                                 N/A
                                             {% endif %}

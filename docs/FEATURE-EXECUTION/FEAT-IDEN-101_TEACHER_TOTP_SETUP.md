@@ -14,6 +14,16 @@ This FEAT activates TOTP (Time-based One-Time Password) two-factor authenticatio
 
 This FEAT generates a TOTP secret, stores it encrypted on the `User` record, and provides QR code and backup codes for the teacher to secure.
 
+### Initial signup orchestration
+
+Initial teacher signup is class-first at the workflow level: class metadata and
+teacher display metadata are staged, then username and TOTP are collected. No
+class, seat, or user row is durable before TOTP verification succeeds. The
+final signup transaction creates the teacher `User`, `ClassEconomy`, teacher
+`Seat`, and class-scoped `IdentityProfile` together. This FEAT's existing-user
+execution context applies to TOTP reconfiguration; it is not permission to
+attach initial signup to an existing teacher account.
+
 **Governing Authority:**
 - DOM-IDEN-003 §III.B (Teacher Authentication - TOTP Required)
 - DOM-IDEN-003 §IV (Teacher Recovery with Student-Verified Codes)

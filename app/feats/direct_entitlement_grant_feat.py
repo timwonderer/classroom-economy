@@ -24,7 +24,7 @@ from typing import Optional
 import uuid
 
 from app.extensions import db
-from app.feats.base import feat_shell
+from app.feats.base import requires_feat_context
 from app.models import Seat, EntitlementEvent, StoreProduct
 from app.services.context_resolver import CanonicalContext
 from app.services.store_policy_resolver import (
@@ -40,6 +40,43 @@ from app.utils.canonical_temporal_resolver import canonical_temporal_resolver, C
 class DirectGrantError(Exception):
     """Raised when direct grant validation or execution fails."""
     pass
+
+
+@requires_feat_context("FEAT-STOR-004")
+def execute_hall_pass_adjustment(
+    *,
+    canonical_context: CanonicalContext,
+    target_seat_id: int,
+    quantity: int,
+    operation: str,
+    correlation_id: str,
+    idempotency_key: str,
+) -> int:
+    """Append a teacher-directed hall-pass grant or revocation event."""
+    target = db.session.get(Seat, target_seat_id)
+    if not target or target.class_id != canonical_context.class_id:
+        raise ValueError("Target seat is outside the canonical class scope")
+    if operation not in {"add", "remove"}:
+        raise ValueError("Unsupported hall-pass adjustment operation")
+    from app.services.entitlement_service import get_hall_pass_balance, grant_hall_passes, remove_hall_passes
+    if operation == "add":
+        existing = EntitlementEvent.query.filter_by(
+            class_id=canonical_context.class_id,
+            target_seat_id=target_seat_id,
+            entitlement_type="HALL_PASS",
+            correlation_id=idempotency_key,
+        ).first()
+        if existing:
+            return get_hall_pass_balance(target.id, target.class_id)
+    if operation == "add":
+        return grant_hall_passes(
+            target,
+            quantity,
+            actor_seat_id=canonical_context.seat_id,
+            correlation_id=idempotency_key,
+            acquisition_type="GRANT",
+        )
+    return remove_hall_passes(target, quantity)
 
 
 @dataclass
@@ -90,7 +127,7 @@ def execute_direct_grant(
     )
 
 
-@feat_shell("FEAT-STOR-004")
+@requires_feat_context("FEAT-STOR-004")
 def _execute_direct_grant_impl(
     *,
     canonical_context: CanonicalContext,
@@ -101,7 +138,7 @@ def _execute_direct_grant_impl(
     idempotency_key: str | None = None,
 ) -> DirectGrantResult:
     """
-    Internal implementation wrapped in @feat_shell for context management.
+    Internal implementation wrapped in @requires_feat_context for context management.
 
     Exact resolution: accept policy_uuid and resolve without inference.
     """

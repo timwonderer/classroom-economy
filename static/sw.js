@@ -1,9 +1,8 @@
-const CACHE_NAME = 'classroom-token-hub-v7';
+const CACHE_NAME = 'classroom-token-hub-v8';
 const STATIC_ASSETS = [
   '/static/manifest.json',
   '/static/images/icon-192.png',
   '/static/images/icon-512.png',
-  '/static/js/timezone-utils.js',
   '/static/css/style.css',
   '/offline'
 ];

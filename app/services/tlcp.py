@@ -213,7 +213,7 @@ def persist_request_trace(
         ).delete(synchronize_session=False)
 
         sess.query(AuditEvent).filter(
-            AuditEvent.created_at < ttl_cutoff
+            AuditEvent.created_at_utc < ttl_cutoff
         ).delete(synchronize_session=False)
 
 
@@ -261,7 +261,7 @@ def has_recent_error_for_actor(
         .filter(
             AuditEvent.actor_type == actor_type,
             AuditEvent.actor_public_id == actor_public_id,
-            AuditEvent.created_at >= cutoff,
+            AuditEvent.created_at_utc >= cutoff,
         )
         .first()
         is not None
@@ -314,10 +314,10 @@ def create_ticket_correlation_pack(
         AuditEvent.query.filter(
             AuditEvent.actor_type == actor_type,
             AuditEvent.actor_public_id == actor_public_id,
-            AuditEvent.created_at >= error_window_start,
-            AuditEvent.created_at <= ticket_created_at,
+            AuditEvent.created_at_utc >= error_window_start,
+            AuditEvent.created_at_utc <= ticket_created_at,
         )
-        .order_by(AuditEvent.created_at.desc(), AuditEvent.id.desc())
+        .order_by(AuditEvent.created_at_utc.desc(), AuditEvent.id.desc())
     )
     error_rows = errors_query.limit(trace_limit).all() if include_recent_error else []
 
@@ -327,9 +327,9 @@ def create_ticket_correlation_pack(
             AuditEvent.query.filter(
                 AuditEvent.actor_type == actor_type,
                 AuditEvent.actor_public_id == actor_public_id,
-                AuditEvent.created_at >= ttl_cutoff,
+                AuditEvent.created_at_utc >= ttl_cutoff,
             )
-            .order_by(AuditEvent.created_at.desc(), AuditEvent.id.desc())
+            .order_by(AuditEvent.created_at_utc.desc(), AuditEvent.id.desc())
             .first()
         )
         if latest_error:

@@ -46,11 +46,10 @@ def _seed_hall_pass_settings(classroom) -> None:
     db.session.add(
         HallPassSettings(
             class_id=classroom.class_id,
-            queue_enabled=True,
-            queue_limit=50,
-            pass_types=[
-                {"name": "Bathroom", "simultaneous_limit": None, "enabled": True},
-                {"name": "Office", "simultaneous_limit": None, "enabled": True},
+            max_queue_limit=50,
+            pass_type_payload=[
+                {"pass_name": "Bathroom", "max_queue": 50, "consume_pass": True},
+                {"pass_name": "Office", "max_queue": 50, "consume_pass": True},
             ],
         )
     )

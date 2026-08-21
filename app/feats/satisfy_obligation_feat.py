@@ -13,7 +13,7 @@ from typing import Literal
 from app.extensions import db
 from app.models import ObligationAssessment
 from app.services import obligations_service
-from app.feats.base import feat_shell, FEATContext
+from app.feats.base import requires_feat_context, FEATContext
 
 
 @dataclass
@@ -24,6 +24,7 @@ class SatisfyObligationRequest:
     seat_id: int
     method: Literal['PAYMENT', 'WAIVED']  # Satisfaction method
     ledger_transaction_id: int | None = None  # Required for PAYMENT, NULL for WAIVED
+    notes: str | None = None  # Optional free-text note (DOM-OBL-001 §VII.1 notes contract)
 
 
 def satisfy_obligation(
@@ -98,6 +99,9 @@ def satisfy_obligation(
 
     # Phase 2: Mutation (atomic transaction)
 
+    # Normalize notes: empty string ≡ NULL per DOM-OBL-001 §VII.1.
+    notes_value = (request.notes or '').strip() or None
+
     satisfaction = ObligationAssessment(
         seat_id=request.seat_id,
         class_id=request.class_id,
@@ -110,6 +114,7 @@ def satisfy_obligation(
         # timestamp is set automatically by default=utc_now
         # For PAYMENT, reference the Ledger transaction
         ledger_transaction_id=request.ledger_transaction_id if request.method == 'PAYMENT' else None,
+        notes=notes_value,
     )
 
     db.session.add(satisfaction)
@@ -123,7 +128,7 @@ def satisfy_obligation(
     return satisfaction
 
 
-@feat_shell("FEAT-OBL-003")
+@requires_feat_context("FEAT-OBL-003")
 def execute_satisfy_obligation_payment(
     correlation_id: str,
     class_id: str,
@@ -151,11 +156,14 @@ def execute_satisfy_obligation_payment(
     return satisfy_obligation(request, context=FEATContext("FEAT-OBL-003"))
 
 
-@feat_shell("FEAT-OBL-003")
+@requires_feat_context("FEAT-OBL-003")
 def execute_satisfy_obligation_waiver(
     correlation_id: str,
     class_id: str,
     seat_id: int,
+    *,
+    idempotency_key: str,
+    notes: str | None = None,
 ) -> ObligationAssessment:
     """
     Public FEAT interface for rent obligation waiver.
@@ -165,6 +173,14 @@ def execute_satisfy_obligation_waiver(
 
     Waiver is rent-only and creates no Ledger movement.
 
+    Args:
+        correlation_id: assessment to satisfy
+        class_id: canonical class scope
+        seat_id: seat owning the assessment
+        notes: optional teacher-entered reason, persisted on the WAIVED
+               event per DOM-OBL-001 §VII.1 notes contract. NULL/empty
+               are equivalent.
+
     Returns the immutable WAIVED satisfaction row.
     """
     request = SatisfyObligationRequest(
@@ -173,5 +189,6 @@ def execute_satisfy_obligation_waiver(
         seat_id=seat_id,
         method='WAIVED',
         ledger_transaction_id=None,
+        notes=notes,
     )
     return satisfy_obligation(request, context=FEATContext("FEAT-OBL-003"))

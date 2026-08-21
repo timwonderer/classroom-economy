@@ -7,7 +7,7 @@ from datetime import datetime
 from sqlalchemy import func
 
 from app.extensions import db
-from app.feats.base import feat_shell, get_correlation_id
+from app.feats.base import requires_feat_context, get_correlation_id
 from app.models import (
     AttendanceReasonCode,
     AttendanceSession,
@@ -15,6 +15,7 @@ from app.models import (
     HallPassLog,
     HallPassSettings,
     PayrollEvent,
+    PolicyVersion,
     PayrollSettings,
     Seat,
     Transaction,
@@ -99,14 +100,22 @@ def _enforce_hall_pass_settings(
     ctx: CanonicalContext,
     destination: str,
     reference_time_utc,
-) -> None:
-    settings = HallPassSettings.query.filter_by(class_id=ctx.class_id).first()
+) -> str:
+    settings = (
+        HallPassSettings.query
+        .filter(
+            HallPassSettings.class_id == ctx.class_id,
+            HallPassSettings.effective_date <= reference_time_utc,
+        )
+        .order_by(HallPassSettings.effective_date.desc(), HallPassSettings.id.desc())
+        .first()
+    )
     pass_types = settings.get_pass_types() if settings else HallPassSettings.get_default_pass_types()
     normalized_destination = (destination or "").strip().lower()
     pass_type = next(
         (
             item for item in pass_types
-            if (item.get("name") or "").strip().lower() == normalized_destination
+            if (item.get("pass_name") or "").strip().lower() == normalized_destination
         ),
         None,
     )
@@ -133,12 +142,11 @@ def _enforce_hall_pass_settings(
         if _latest_hall_pass_attendance_state(log) == "left"
     ]
 
-    queue_limit = getattr(settings, "queue_limit", None) if settings else None
-    queue_enabled = getattr(settings, "queue_enabled", True) if settings else True
-    if queue_enabled and queue_limit is not None and len(currently_out) >= int(queue_limit):
+    queue_limit = min(settings.max_queue_limit, sum(item.get("max_queue", 0) for item in pass_types)) if settings else None
+    if queue_limit is not None and len(currently_out) >= int(queue_limit):
         raise ValueError("Hall-pass queue limit reached.")
 
-    simultaneous_limit = pass_type.get("simultaneous_limit") if pass_type else None
+    simultaneous_limit = pass_type.get("max_queue") if pass_type else None
     if simultaneous_limit is not None:
         destination_out = [
             log for log in currently_out
@@ -146,6 +154,7 @@ def _enforce_hall_pass_settings(
         ]
         if len(destination_out) >= int(simultaneous_limit):
             raise ValueError("Hall-pass destination limit reached.")
+    return settings.policy_uuid if settings else "default"
 
 
 def _last_payroll_event_time(*, seat_id: int, class_id: str) -> datetime | None:
@@ -209,7 +218,7 @@ def _calculate_attendance_seconds_since(
     return evaluation.elapsed_seconds
 
 
-@feat_shell("FEAT-PROD-001")
+@requires_feat_context("FEAT-PROD-001")
 def record_attendance_session(
     *,
     ctx: CanonicalContext,
@@ -262,6 +271,45 @@ def record_attendance_session(
             raise ValueError("Attendance actor seat must belong to the canonical class.")
     target_user_id = target_seat.user_id
 
+    if status == "active":
+        day_bounds = canonical_temporal_resolver(
+            CLASS_LEVEL_EVALUATION,
+            canonical_execution_context=ctx,
+            primitive="evaluation_day_boundaries",
+            reference_time_utc=event_time,
+        )
+
+        # Reject if student already has done_for_day for this class today
+        done_today = AttendanceSession.query.filter(
+            AttendanceSession.target_user_id == target_user_id,
+            AttendanceSession.class_id == ctx.class_id,
+            AttendanceSession.reason_code == AttendanceReasonCode.DONE_FOR_DAY.value,
+            AttendanceSession.timestamp >= day_bounds.boundary_start_utc,
+            AttendanceSession.timestamp < day_bounds.boundary_end_utc,
+        ).first()
+        if done_today:
+            raise ValueError("Student is done for the day and cannot start work again until the next canonical day.")
+
+        # Close any existing active session with done_for_day
+        existing_active = AttendanceSession.query.filter(
+            AttendanceSession.target_seat_id == resolved_target_seat_id,
+            AttendanceSession.class_id == ctx.class_id,
+        ).order_by(AttendanceSession.timestamp.desc(), AttendanceSession.id.desc()).first()
+        if existing_active is not None and existing_active.status == "active":
+            closing_row = AttendanceSession(
+                target_seat_id=existing_active.target_seat_id,
+                actor_seat_id=resolved_actor_seat_id,
+                class_id=existing_active.class_id,
+                target_user_id=target_user_id,
+                status="inactive",
+                reason_code=AttendanceReasonCode.DONE_FOR_DAY.value,
+                timestamp=event_time,
+                mechanism=mechanism,
+                hall_pass_id=None,
+            )
+            db.session.add(closing_row)
+            db.session.flush()
+
     resolved_reason_code = (
         reason_code.value if reason_code else AttendanceReasonCode.START_WORK.value
     ) if status == "active" else (
@@ -284,7 +332,7 @@ def record_attendance_session(
     return AttendanceSessionResult(session=session)
 
 
-@feat_shell("FEAT-PROD-002")
+@requires_feat_context("FEAT-PROD-002")
 def record_hall_pass_log(
     *,
     ctx: CanonicalContext,
@@ -303,7 +351,7 @@ def record_hall_pass_log(
         reference_time_utc=reference_time_utc,
     )
     now = evaluation.canonical_now_utc
-    _enforce_hall_pass_settings(
+    policy_uuid = _enforce_hall_pass_settings(
         ctx=ctx,
         destination=destination,
         reference_time_utc=now,
@@ -328,6 +376,7 @@ def record_hall_pass_log(
         timestamp=now,
         hall_pass_id=consume_event.entitlement_id,
         correlation_id=consume_event.correlation_id,
+        policy_uuid=policy_uuid,
         destination=destination,
     )
     db.session.add(log)
@@ -352,6 +401,9 @@ def _record_payroll_event_impl(
     ctx = _require_context(ctx)
     if policy_version_id is None:
         raise ValueError("FEAT-PROD-003 requires a payroll policy_version_id.")
+    policy_version = db.session.get(PolicyVersion, policy_version_id)
+    if policy_version is None or policy_version.class_id != ctx.class_id:
+        raise ValueError("FEAT-PROD-003 requires a payroll policy version owned by the current class.")
     evaluation = canonical_temporal_resolver(
         CLASS_LEVEL_EVALUATION,
         canonical_execution_context=ctx,
@@ -416,6 +468,7 @@ def _record_payroll_event_impl(
         correlation_id=correlation_id,
         idempotency_key=idempotency_key,
         policy_version_id=policy_version_id,
+        policy_uuid=policy_version.policy_uuid,
         mechanism=mechanism,
         payroll_event_type=payroll_event_type,
         recorded_at=recorded_at,
@@ -443,7 +496,7 @@ def _record_payroll_event_impl(
     return PayrollEventResult(payroll_event=event, ledger_transaction=tx)
 
 
-@feat_shell("FEAT-PROD-003")
+@requires_feat_context("FEAT-PROD-003")
 def record_payroll_event(
     *,
     ctx: CanonicalContext,
@@ -471,7 +524,7 @@ def record_payroll_event(
     )
 
 
-@feat_shell("FEAT-PROD-003")
+@requires_feat_context("FEAT-PROD-003")
 def record_payroll_reversal(
     *,
     ctx: CanonicalContext,

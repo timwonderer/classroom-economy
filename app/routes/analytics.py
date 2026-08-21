@@ -1,14 +1,14 @@
 """
 Analytics routes for teachers.
 
-Implements the analytics dashboard per analytics-specification.md.
+Governing authority: DOM-ITR-001 (Interpretation Domain) and SPEC-ITR-001
+(Interpretation Observation Specification). Route handlers in this module
+render Interpretation outputs computed by app/utils/analytics_engine.py.
 
-Key Principles:
-- System health metrics always visible (5-second readability)
-- Visual alerts only (no automatic notifications)
-- No Drilldown. Period. All analytics should be displayed as aggregates.
-- All metrics CWI-relative
-- Trends over snapshots
+Current runtime is in known noncompliance with several DOM v1.2 invariants
+(threshold ownership, alert-content prescription, historical-configuration
+binding); see DOM-ITR-001 §XIII.b and §XIII.c for the inventory tracked
+for downstream remediation.
 """
 
 from datetime import datetime, timedelta
@@ -20,7 +20,7 @@ from flask import Blueprint, session, jsonify, request, flash, redirect, url_for
 from sqlalchemy import desc
 
 from app.extensions import db, limiter
-from app.feats.base import feat_shell
+from app.feats.base import requires_feat_context
 from app.auth import admin_required
 from app.models import (
     PayrollSettings, RentSettings, ClassEconomy, Seat
@@ -197,7 +197,7 @@ def dashboard():
     """
     Main analytics dashboard.
 
-    Per spec section 4.1:
+    per SPEC-ITR-001:
     - System health metrics always visible
     - Readable in under 5 seconds
     - Aggregated at class level
@@ -372,7 +372,7 @@ def api_alerts():
 
 @analytics_bp.route('/alert/<int:alert_id>/acknowledge', methods=['POST'])
 @admin_required
-@feat_shell("FEAT-ANLY-001")
+@requires_feat_context("FEAT-ITR-001")
 def acknowledge_alert(alert_id):
     """
     Mark an alert as acknowledged by the teacher.
@@ -394,7 +394,7 @@ def events():
     """
     Display contextual analytics events for the currently selected class period.
 
-    Per spec section 5.2:
+    per SPEC-ITR-001:
     - Shows rent changes, wage changes, inflation events, etc.
     - Provides context for understanding metric changes.
     """
@@ -446,7 +446,7 @@ def student_drill_down(student_id):
     """
     Drill-down view for individual student vs CWI.
     
-    Per spec section 4.3:
+    per SPEC-ITR-001:
     - Only available after user interaction (not default view)
     - Must be contextualized with CWI expectations
     - Must explain why the metric matters

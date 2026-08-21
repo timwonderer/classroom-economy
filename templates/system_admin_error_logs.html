@@ -69,7 +69,7 @@
                   <td>
                     <small>
                       {% if log.timestamp %}
-                        <span class="local-timestamp" data-timestamp="{{ format_utc_iso(log.timestamp) }}"></span>
+                        {{ log.timestamp|fmt_timestamp }}
                       {% else %}
                         N/A
                       {% endif %}
@@ -116,7 +116,7 @@
                         <div class="mb-3">
                           <strong>Timestamp:</strong>
                           {% if log.timestamp %}
-                            <span class="local-timestamp" data-timestamp="{{ format_utc_iso(log.timestamp) }}"></span>
+                            {{ log.timestamp|fmt_timestamp }}
                           {% else %}
                             N/A
                           {% endif %}

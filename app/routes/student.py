@@ -9,6 +9,7 @@ import json
 import random
 import secrets
 import re
+import uuid
 from collections import defaultdict
 from calendar import monthrange
 from datetime import datetime, timedelta, timezone
@@ -28,7 +29,7 @@ from app.models import (
     Transaction, TransactionStatus, AttendanceSession, StoreItem, StoreItemVisibility,
     # StoreItemBlock removed — store_item_blocks unauthorized; use store_item_visibility (DOM-STORE-001)
     RentSettings,
-    BankingSettings, ClassFeature, Issue, Seat, User, UserRole, PendingAction,
+    ClassFeature, Issue, Seat, User, UserRole, PendingAction,
     ClassEconomy, IdentityProfile, PayrollEvent, PolicyVersion, StoreProduct, _quantize_currency
 )
 from app.auth import (
@@ -74,7 +75,7 @@ from app.services.attendance_service import get_class_attendance_status
 from app.services.class_configuration_query_service import (
     get_class_economy,
     get_class_economy_by_join_code,
-    get_banking_settings,
+    get_current_economic_engine,
 )
 from app.services.entitlement_read_service import (
     get_entitlement_history,
@@ -104,7 +105,7 @@ from app.services.recovery_service import (
     set_recovery_code_verified,
 )
 from app.services.classroom_setup import create_student_user_for_seat
-from app.feats.base import feat_shell
+from app.feats.base import requires_feat_context
 from app.feats.rent_payment_feat import execute_rent_payment
 from app.feats.transfer_feat import execute_account_transfer
 from app.feats.store_purchase_feat import execute_store_purchase
@@ -114,6 +115,7 @@ from app.utils.join_code import get_display_join_code
 from app.utils.canonical_temporal_resolver import utc_now, ensure_utc
 from app.utils.canonical_temporal_resolver import (
     CLASS_LEVEL_EVALUATION,
+    SYSTEM_LEVEL_EVALUATION,
     canonical_temporal_resolver,
     ensure_utc,
     utc_now,
@@ -412,7 +414,8 @@ def get_rent_settings_for_context(context):
         .first()
     )
     if not current_cycle or not current_cycle.policy_uuid:
-        return None
+        # Fallback: direct class_id lookup when no BillCycle exists yet
+        return RentSettings.query.filter_by(class_id=class_id).first()
     return RentSettings.query.filter_by(policy_uuid=current_cycle.policy_uuid).first()
 
 
@@ -435,32 +438,6 @@ def _get_rent_coverage_window(settings, coverage_due_date):
     period_delta = _get_rent_period_delta(settings)
     end = _add_rent_period(start, period_delta)
     return (start, end)
-
-
-def get_banking_settings_for_context(context):
-    """Return banking settings scoped strictly to the current class_id."""
-    if not context:
-        return None
-
-    if isinstance(context, dict):
-        class_id = context.get('class_id')
-    else:
-        class_id = getattr(context, 'class_id', None)
-
-    seat = get_current_seat()
-    current_block = seat.class_economy.section.strip().upper() if seat and seat.class_economy and seat.class_economy.section else ""
-    if not class_id:
-        return None
-
-    base_query = BankingSettings.query.filter(
-        BankingSettings.class_id == class_id,
-    )
-    if current_block:
-        scoped = base_query.filter(func.upper(BankingSettings.block) == current_block).first()
-        if scoped:
-            return scoped
-
-    return base_query.filter(BankingSettings.block.is_(None)).first()
 
 
 def get_feature_settings_for_student():
@@ -498,11 +475,6 @@ def is_feature_enabled(feature_name):
     Returns:
         bool: True if feature is enabled, False otherwise
     """
-    if feature_name == 'rent':
-        rent_settings = get_rent_settings_for_context(resolve_canonical_context())
-        if rent_settings:
-            return True
-
     context = resolve_canonical_context()
     if not context:
         return False
@@ -526,7 +498,6 @@ def calculate_scoped_balances(seat_id: int | None, class_id: str | None) -> tupl
 # -------------------- STUDENT ONBOARDING --------------------
 
 @student_bp.route('/claim-account', methods=['GET', 'POST'])
-@feat_shell("FEAT-IDEN-001")
 def claim_account():
     """
     PAGE 1: Claim Account - Verify identity using join code to begin setup.
@@ -576,7 +547,6 @@ def claim_account():
 
 
 @student_bp.route('/create-username', methods=['GET', 'POST'])
-@feat_shell("FEAT-IDEN-002")
 def create_username():
     """PAGE 2: Create Username - Generate themed username."""
     # Only allow if claimed
@@ -609,7 +579,6 @@ def create_username():
 
 
 @student_bp.route('/setup-pin-passphrase', methods=['GET', 'POST'])
-@feat_shell("FEAT-IDEN-001")
 def setup_pin_passphrase():
     """PAGE 3: Setup PIN & Passphrase - Secure the account."""
     # Only allow if claimed and username generated
@@ -638,6 +607,8 @@ def setup_pin_passphrase():
             username=username,
             pin=pin,
             passphrase=passphrase,
+            correlation_id=f"corr_iden_credentials_{seat.id}_{uuid.uuid4().hex}",
+            idempotency_key=f"feat:iden:credentials:{seat.id}:{username}",
         )
 
         if not result.success:
@@ -650,7 +621,7 @@ def setup_pin_passphrase():
         session.pop('onboarding_seat_ref', None)
         session.pop('onboarding_user_ref', None)
         session.pop('generated_username', None)
-        flash("Setup completed successfully!", "setup")
+        flash("You're all set! Log in with your new username and PIN to get started.", "success")
         return redirect(url_for('student.setup_complete'))
     return render_template('student_pin_setup.html', username=username, form=form)
 
@@ -659,7 +630,6 @@ def setup_pin_passphrase():
 
 @student_bp.route('/add-class', methods=['GET', 'POST'])
 @login_required
-@feat_shell("FEAT-IDEN-001")
 def add_class():
     """
     Allow logged-in students to add a new class by entering a join code.
@@ -750,6 +720,8 @@ def add_class():
             first_name=first_name,
             last_name=last_name,
             dedupe_code=dedupe_code,
+            correlation_id=f"corr_iden_bind_{context.user_id}_{uuid.uuid4().hex}",
+            idempotency_key=f"feat:iden:bind-class:{context.user_id}:{display_join_code}",
         )
 
         if not result.success:
@@ -757,8 +729,16 @@ def add_class():
             flash(result.error_message, category)
             return redirect(_get_return_target())
 
-        flash("Successfully added to this class! You can now access it from your dashboard.", "success")
-        return redirect(_get_return_target())
+        # Switch context to the newly claimed class.
+        # The IDENTITY FEAT owns the mutation transaction boundary.
+        new_seat = db.session.get(Seat, result.seat_id)
+        if new_seat:
+            user = db.session.get(User, context.user_id)
+            user.last_active_class_id = new_seat.class_id
+            user.last_active_seat_id = new_seat.id
+
+        flash("You're in! This class is now your active class.", "success")
+        return redirect(url_for('student.dashboard'))
 
     return render_template('student_add_class.html', form=form)
 
@@ -948,15 +928,16 @@ def dashboard():
 
 
     # --- Calculate remaining session time for frontend timer ---
+    sle_now = canonical_temporal_resolver(SYSTEM_LEVEL_EVALUATION, primitive="current_time").canonical_now_utc
     login_time = datetime.fromisoformat(session['login_time'])
     expiry_time = login_time + timedelta(minutes=SESSION_TIMEOUT_MINUTES)
-    session_remaining_seconds = max(0, int((expiry_time - utc_now()).total_seconds()))
+    session_remaining_seconds = max(0, int((expiry_time - sle_now).total_seconds()))
 
     # --- Get feature settings for this student ---
     feature_settings = get_feature_settings_for_student()
 
     # --- Check for pending recovery request ---
-    pending_recovery_code = get_pending_recovery_code_for_seat(student.id, utc_now())
+    pending_recovery_code = get_pending_recovery_code_for_seat(student.id, sle_now)
 
     # --- Calculate weekly/monthly analytics ---
     from app.models import AttendanceSession as _AttSession
@@ -1255,7 +1236,7 @@ def transfer():
 
         # CRITICAL FIX: Calculate balances using canonical seat/class scoping
         checking_balance, savings_balance = calculate_scoped_balances(context.seat_id, context.class_id)
-        banking_settings = get_banking_settings_for_context(context)
+        economic_engine = get_current_economic_engine(context.class_id)
 
         if from_account == to_account:
             if is_json:
@@ -1287,14 +1268,14 @@ def transfer():
             )
             resolved_plan = resolve_intended_ledger_plan(
                 plan=intended_plan,
-                banking_settings=banking_settings,
+                economic_engine=economic_engine,
                 idempotency_key=f"student-transfer:{seat_id}:{class_id}:{amount}:{from_account}:{to_account}:resolve",
                 force_overdraft_fee=True,
                 allow_recovery_transfer=False,
             )
             apply_resolved_ledger_plan(
                 resolved_plan=resolved_plan,
-                banking_settings=banking_settings,
+                economic_engine=economic_engine,
                 idempotency_key=f"student-transfer:{seat_id}:{class_id}:{amount}:{from_account}:{to_account}",
             )
 
@@ -1346,13 +1327,13 @@ def transfer():
     checking_transactions = [t for t in transactions if t.account_type == 'checking']
     savings_transactions = [t for t in transactions if t.account_type == 'savings']
 
-    # Get banking settings for interest rate display
-    settings = get_banking_settings_for_context(context)
-    # Convert APY to decimal rate (e.g., 5% = 0.05)
+    # Economic Engine is the sole authority for savings policy.
+    settings = get_current_economic_engine(context.class_id)
     from app.models import _quantize_currency
-    annual_rate = _quantize_currency(settings.savings_apy / Decimal('100')) if settings and settings.savings_apy is not None else Decimal('0.045')
-    calculation_type = settings.interest_calculation_type if settings else 'simple'
-    compound_frequency = settings.compound_frequency if settings else 'monthly'
+    annual_rate = _quantize_currency(settings.interest_rate) if settings and settings.interest_rate is not None else Decimal('0.045')
+    monthly_interest_rate = annual_rate / Decimal('12')
+    calculation_type = settings.interest_calculation_type if settings and settings.interest_calculation_type else 'simple'
+    compound_frequency = settings.compound_frequency if settings and settings.compound_frequency else 'monthly'
 
     # Calculate forecast interest based on settings
     # CRITICAL FIX v3: Calculate BOTH checking and savings balances using canonical seat/class scoping
@@ -1416,6 +1397,8 @@ def transfer():
                          forecast_interest=forecast_interest,
         scoped_total_earnings=_get_total_earnings_for_seat(student.id, class_id=context.class_id),
                          settings=settings,
+                         monthly_interest_rate=monthly_interest_rate,
+                         annual_interest_rate=annual_rate,
                          calculation_type=calculation_type,
                          compound_frequency=compound_frequency,
                          projection_months=projection_months,
@@ -1586,14 +1569,12 @@ def purchase_insurance(policy_id):
         flash("This insurance policy is missing its entitlement mapping.", "error")
         return redirect(url_for('student.student_insurance'))
     seat = db.session.get(Seat, context.seat_id)
-    banking_settings = get_banking_settings(context.class_id)
     flash("Insurance purchase is not available from this surface.", "warning")
     return redirect(url_for('student.student_insurance'))
 
 
 @student_bp.route('/insurance/cancel/<int:enrollment_id>', methods=['POST'])
 @login_required
-@feat_shell("FEAT-OBL-001")
 def cancel_insurance(enrollment_id):
     """Cancel insurance policy."""
     flash("Insurance cancellation is not available from the current policy surface.", "warning")
@@ -1602,7 +1583,6 @@ def cancel_insurance(enrollment_id):
 
 @student_bp.route('/insurance/claim/<int:policy_id>', methods=['GET', 'POST'])
 @login_required
-@feat_shell("FEAT-STOR-003")
 def file_claim(policy_id):
     """File insurance claim."""
     context = resolve_canonical_context()
@@ -1816,7 +1796,7 @@ def view_policy(enrollment_id):
                 seat_id=context.seat_id,
                 policy_version_id=policy_version.id,
             )
-            .order_by(ObligationAssessment.assessed_at.desc(), ObligationAssessment.id.desc())
+            .order_by(ObligationAssessment.timestamp.desc(), ObligationAssessment.id.desc())
             .first()
         )
         coverage_start_date = getattr(coverage_row, "coverage_start_time", None)
@@ -2348,7 +2328,8 @@ def _total_paid_by_grace(assessments, grace_end_date):
 
         for payment_event in payment_events:
             # Only count payments made by grace end date
-            if payment_event.assessed_at and ensure_utc(payment_event.assessed_at) <= grace_end_date:
+            # (Per DOM-OBL-001 §VII.1, canonical event time is `timestamp`.)
+            if payment_event.timestamp and ensure_utc(payment_event.timestamp) <= grace_end_date:
                 if payment_event.ledger_transaction_id:
                     txn = db.session.get(Transaction, payment_event.ledger_transaction_id)
                     if txn and txn.type == 'credit':
@@ -2399,7 +2380,7 @@ def _get_effective_rent_amount_for_coverage_period(
             payment_dates = []
             for assessment in assessments:
                 payment_events = get_payment_events_for_assessment(assessment.id, class_id)
-                payment_dates.extend([p.assessed_at for p in payment_events if p.assessed_at])
+                payment_dates.extend([p.timestamp for p in payment_events if p.timestamp])
 
             if payment_dates:
                 earliest = min(payment_dates)
@@ -2558,20 +2539,23 @@ def _is_coverage_period_paid(
 
 def _get_active_rent_waiver_v2(seat_id, class_id, coverage_due_date):
     """Return the canonical WAIVED assessment for the given coverage period, if any."""
-    from app.services.obligations_service import get_rent_waivers_for_seat
-    from sqlalchemy import extract
+    from app.services.obligations_service import (
+        get_rent_waivers_for_seat,
+        resolve_assessment_due_at,
+    )
 
     if not seat_id or not class_id or not coverage_due_date:
         return None
 
-    # Get all waivers for this seat and find one matching the coverage month/year
+    # Per DOM-OBL-001 §VII, a WAIVED event's coverage period is derived
+    # from its linked bill_cycle (not stored on the event). Match by
+    # month/year against the resolved due boundary.
     waivers = get_rent_waivers_for_seat(seat_id, class_id)
     for waiver in waivers:
-        # Per DOM-OBL-001: WAIVED event's due_at indicates which coverage period was waived
-        # Match by month/year
-        if waiver.due_at:
-            if (waiver.due_at.month == coverage_due_date.month and
-                waiver.due_at.year == coverage_due_date.year):
+        waiver_due_at = resolve_assessment_due_at(waiver)
+        if waiver_due_at:
+            if (waiver_due_at.month == coverage_due_date.month and
+                waiver_due_at.year == coverage_due_date.year):
                 return waiver
 
     return None
@@ -2856,7 +2840,7 @@ def rent():
 
 @student_bp.route('/rent/pay/<period>', methods=['POST'])
 @login_required
-@feat_shell("FEAT-OBL-001")
+@requires_feat_context("FEAT-OBL-003")
 def rent_pay(period):
     """Process rent payment for a specific period."""
     context = resolve_canonical_context()
@@ -3050,7 +3034,7 @@ def rent_pay(period):
         payment_amount = remaining_amount
 
     # Get banking settings for overdraft handling (reuse class context from above)
-    banking_settings = get_banking_settings_for_context(context)
+    economic_engine = get_current_economic_engine(context.class_id)
 
     from app.models import Seat
     seat = db.session.get(Seat, seat_id)
@@ -3066,7 +3050,7 @@ def rent_pay(period):
     )
     resolved_plan = resolve_intended_ledger_plan(
         plan=intended_plan,
-        banking_settings=banking_settings,
+        economic_engine=economic_engine,
         idempotency_key=f"rent_payment:{seat.id}:{class_id}:{period}:{coverage_year}-{coverage_month}:{payment_amount}:resolve",
         force_overdraft_fee=False,
         allow_recovery_transfer=True,
@@ -3075,11 +3059,11 @@ def rent_pay(period):
         "rent_pay overdraft gate: outcome=%s shortfall=%s banking_enabled=%s payment_amount=%s",
         resolved_plan.outcome,
         resolved_plan.shortfall,
-        getattr(banking_settings, "overdraft_protection_enabled", None) if banking_settings else None,
+        getattr(economic_engine, "overdraft_protection_enabled", None) if economic_engine else None,
         payment_amount,
     )
     if resolved_plan.outcome == "DENY":
-        if banking_settings and banking_settings.overdraft_protection_enabled:
+        if economic_engine and economic_engine.overdraft_protection_enabled is True:
             message = (f"Insufficient funds in both checking and savings. You need "
                        f"${payment_amount:.2f} but have ${checking_balance + savings_balance:.2f}.")
         else:
@@ -3113,7 +3097,7 @@ def rent_pay(period):
         current_month=current_month,
         current_year=current_year,
         payment_due_date=payment_due_date,
-        banking_settings=banking_settings,
+        economic_engine=economic_engine,
         overdraft_shortfall=overdraft_shortfall,
         now=now,
         calculate_due_dates_fn=_calculate_due_dates,
@@ -3145,7 +3129,7 @@ def rent_pay(period):
 
 @student_bp.route('/login', methods=['GET', 'POST'])
 @limiter.limit("60 per minute")
-@feat_shell("FEAT-IDEN-001")
+@requires_feat_context("FEAT-IDEN-001")
 def login():
     """Student login with username and PIN."""
     form = StudentLoginForm()
@@ -3198,8 +3182,13 @@ def login():
         session.pop('generated_username', None)
         clear_teacher_display_name_cache()
 
-        session['login_time'] = utc_now().isoformat()
+        now = canonical_temporal_resolver(SYSTEM_LEVEL_EVALUATION, primitive="current_time").canonical_now_utc
+        session['login_time'] = now.isoformat()
         session['last_activity'] = session['login_time']
+
+        from app.auth import SESSION_TIMEOUT_MINUTES
+        user.current_session_started_at = now
+        user.current_session_expires_at = now + timedelta(minutes=SESSION_TIMEOUT_MINUTES)
 
         linked_user = user
 
@@ -3243,6 +3232,7 @@ def login():
             nonce = secrets.token_urlsafe(32)
             session['current_session_nonce'] = nonce
             linked_user.current_session_nonce = nonce
+            # The surrounding FEAT-IDEN-001 context owns the transaction boundary.
             return redirect(url_for('student.select_class_context'))
 
         # Resolve the canonical seat for the selected class.
@@ -3263,6 +3253,7 @@ def login():
         linked_user.last_active_seat_id = target_seat.id
 
         # Establish canonical session (user_id + class_id + role + nonce).
+        # The surrounding FEAT-IDEN-001 context owns the transaction boundary.
         establish_student_session(linked_user, class_id=valid_persisted_selection["class_id"])
         nonce = secrets.token_urlsafe(32)
         session['current_session_nonce'] = nonce
@@ -3284,7 +3275,6 @@ def login():
 
 
 @student_bp.route('/select-class-context', methods=['GET', 'POST'])
-@feat_shell("FEAT-IDEN-001")
 def select_class_context():
     """Explicit class-selection gate when no durable class context exists.
 
@@ -3358,7 +3348,7 @@ def logout():
 
 @student_bp.route('/switch-class/<class_id>', methods=['POST'])
 @login_required
-@feat_shell("FEAT-IDEN-001")
+@requires_feat_context("FEAT-IDEN-001")
 def switch_class(class_id):
     """Switch to a different class using class_id as the stable backend reference."""
     from app.models import Seat
@@ -3438,7 +3428,10 @@ def help_support():
         return redirect(url_for('student.dashboard'))
 
     # Initialize default categories if they don't exist
-    init_default_categories()
+    init_default_categories(
+        correlation_id=f"corr_support_categories_{uuid.uuid4().hex}",
+        idempotency_key="feat:sup:categories:initialize",
+    )
 
     # Get student's issues for current class (last 20)
     class_economy = get_class_economy(class_context.class_id)
@@ -3490,6 +3483,8 @@ def submit_general_issue():
                 explanation=form.explanation.data,
                 expected_outcome=form.expected_outcome.data,
                 include_recent_error=include_recent_error,
+                correlation_id=f"corr_support_issue_{class_context.class_id}_{uuid.uuid4().hex}",
+                idempotency_key=f"feat:sup:issue:{class_context.class_id}:general:{class_context.seat_id}:{uuid.uuid4().hex}",
             )
 
             flash("Your issue has been submitted. Your teacher will review it soon.", "success")
@@ -3552,6 +3547,8 @@ def report_transaction_issue(transaction_id):
                 related_transaction_id=transaction_id,
                 related_record_type='transaction',
                 include_recent_error=include_recent_error,
+                correlation_id=f"corr_support_issue_{class_context.class_id}_{uuid.uuid4().hex}",
+                idempotency_key=f"feat:sup:issue:{class_context.class_id}:transaction:{transaction_id}:{uuid.uuid4().hex}",
             )
 
             flash("Your transaction issue has been submitted. Your teacher will review it soon.", "success")
@@ -3615,6 +3612,8 @@ def report_attendance_session_issue(attendance_session_id):
                 related_record_type='attendance_session',
                 related_record_id=attendance_session_id,
                 include_recent_error=include_recent_error,
+                correlation_id=f"corr_support_issue_{class_context.class_id}_{uuid.uuid4().hex}",
+                idempotency_key=f"feat:sup:issue:{class_context.class_id}:attendance:{attendance_session_id}:{uuid.uuid4().hex}",
             )
 
             flash("Your attendance issue has been submitted. Your teacher will review it soon.", "success")
@@ -3638,7 +3637,7 @@ def report_attendance_session_issue(attendance_session_id):
 
 @student_bp.route('/verify-recovery/<int:code_id>', methods=['GET', 'POST'])
 @login_required
-@feat_shell("FEAT-IDEN-002")
+@requires_feat_context("FEAT-IDEN-002")
 def verify_recovery(code_id):
     """
     Student verification page for teacher account recovery.
@@ -3708,7 +3707,7 @@ def verify_recovery(code_id):
 
 @student_bp.route('/dismiss-recovery/<int:code_id>', methods=['POST'])
 @login_required
-@feat_shell("FEAT-IDEN-002")
+@requires_feat_context("FEAT-IDEN-002")
 def dismiss_recovery(code_id):
     """
     Dismiss the recovery notification banner.

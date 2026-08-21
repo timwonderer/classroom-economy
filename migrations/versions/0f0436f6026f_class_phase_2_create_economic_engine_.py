@@ -130,20 +130,35 @@ def upgrade():
     if table_exists('feature_settings') and table_exists('economic_engine'):
         print("\n📊 Migrating configuration data to economic_engine...")
 
-        # Query existing configuration from legacy tables
-        rows_to_insert = conn.execute(text("""
+        # `payroll_settings.expected_weekly_hours` was later moved to `economic_engine`
+        # itself (see migration a4e8f19d7c31). Older schemas may still carry the column
+        # (backfill it if present); newer schemas created via the bootstrap from current
+        # models will not have it (select NULL in that case).
+        ps_hours_expr = (
+            "ps.expected_weekly_hours"
+            if column_exists('payroll_settings', 'expected_weekly_hours')
+            else "NULL::float"
+        )
+
+        # Query existing configuration from legacy tables.  BankingSettings may
+        # already have been removed on a reconstructed database; in that case
+        # preserve explicit NULLs and do not resurrect the retired table.
+        if table_exists('banking_settings'):
+            banking_select = "bs.savings_apy, bs.interest_calculation_type, bs.compound_frequency, bs.interest_schedule_type"
+            banking_join = "LEFT JOIN banking_settings bs ON fs.class_id = bs.class_id AND bs.block IS NULL"
+        else:
+            banking_select = "NULL::numeric, NULL::varchar, NULL::varchar, NULL::varchar"
+            banking_join = ""
+        rows_to_insert = conn.execute(text(f"""
             SELECT
                 fs.class_id,
-                ps.expected_weekly_hours,
-                bs.savings_apy,
-                bs.interest_calculation_type,
-                bs.compound_frequency,
-                bs.interest_schedule_type,
+                {ps_hours_expr} AS expected_weekly_hours,
+                {banking_select},
                 fs.economy_policy_mode,
                 fs.created_at
             FROM feature_settings fs
             LEFT JOIN payroll_settings ps ON fs.class_id = ps.class_id AND ps.block IS NULL
-            LEFT JOIN banking_settings bs ON fs.class_id = bs.class_id AND bs.block IS NULL
+            {banking_join}
             WHERE NOT EXISTS (SELECT 1 FROM economic_engine WHERE economic_engine.class_id = fs.class_id)
         """)).fetchall()
 

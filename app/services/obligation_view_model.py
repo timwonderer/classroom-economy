@@ -86,9 +86,14 @@ def get_obligation_payment_status(
 
     is_satisfied = has_waiver or (total_paid >= assessed_amount)
     is_outstanding = not is_satisfied
-    is_past_due = (
-        is_outstanding and assessment.due_at
-        and db.session.query(db.func.now()).scalar() > assessment.due_at
+    # Per DOM-OBL-001 §VII.2, due_at is derived from the linked bill_cycle
+    # (or from assessment.timestamp for immediate charges).
+    from app.services.obligations_service import resolve_assessment_due_at
+    due_at = resolve_assessment_due_at(assessment)
+    is_past_due = bool(
+        is_outstanding
+        and due_at
+        and db.session.query(db.func.now()).scalar() > due_at
     )
 
     return ObligationPaymentStatus(
@@ -642,6 +647,81 @@ class RentStatusView:
     payment_history: list[object]  # Chronological list of events
 
 
+def get_outstanding_rent_by_seat(class_id: str) -> list[dict]:
+    """
+    Per-student outstanding rent projection for the class.
+
+    Returns a list of dicts, one per student who has at least one
+    outstanding rent assessment. Each dict:
+
+        {
+            'seat_id': int,
+            'student_name': str,
+            'outstanding_count': int,
+            'outstanding_total': Decimal,        # sum of remaining amounts
+            'assessments': [                     # oldest → newest
+                {
+                    'correlation_id': str,
+                    'assessment_id': int,
+                    'due_at': datetime,
+                    'assessed_amount': Decimal,
+                    'remaining_amount': Decimal, # assessed - total_paid
+                    'is_past_due': bool,
+                },
+                ...
+            ],
+        }
+
+    Per DOM-OBL-001 §V.6: waiver is a one-time satisfaction of a
+    specific already-assessed liability. This projection surfaces the
+    exact set of assessments a teacher can lawfully waive right now
+    (i.e. `is_outstanding = not is_satisfied`). Assessments already
+    satisfied — either by payment or by prior waiver — are excluded.
+
+    Sorted by student_name ascending. Empty list if no student has any
+    outstanding rent.
+    """
+    class_econ = db.session.query(ClassEconomy).filter_by(class_id=class_id).first()
+    if not class_econ:
+        return []
+
+    seats = db.session.query(Seat).filter_by(class_id=class_id, role='student').all()
+    rows: list[dict] = []
+    for seat in seats:
+        assessments = get_rent_assessments_for_seat_class(seat.id, class_id)
+        outstanding = [a for a in assessments if a.is_outstanding]
+        if not outstanding:
+            continue
+        profile = db.session.query(IdentityProfile).filter_by(seat_id=seat.id).first()
+        student_name = (
+            f"{profile.first_name} {profile.last_name}".strip()
+            if profile else f"Seat {seat.id}"
+        )
+        rows.append({
+            'seat_id': seat.id,
+            'student_name': student_name,
+            'outstanding_count': len(outstanding),
+            'outstanding_total': sum(
+                (a.assessed_amount - a.total_paid for a in outstanding),
+                Decimal('0.00'),
+            ),
+            'assessments': [
+                {
+                    'correlation_id': a.correlation_id,
+                    'assessment_id': a.assessment_id,
+                    'due_at': a.due_at,
+                    'assessed_amount': a.assessed_amount,
+                    'remaining_amount': a.assessed_amount - a.total_paid,
+                    'is_past_due': a.is_past_due,
+                }
+                for a in outstanding
+            ],
+        })
+
+    rows.sort(key=lambda r: (r['student_name'].lower(), r['seat_id']))
+    return rows
+
+
 def get_rent_assessments_for_seat_class(
     seat_id: int,
     class_id: str,
@@ -693,16 +773,24 @@ def get_rent_assessments_for_seat_class(
                 has_waiver = True
                 waiver_event = event
 
-        # Derive satisfaction
-        assessed_amount = assessment.assessed_at or Decimal('0.00')
-        is_satisfied = has_waiver or (total_paid >= Decimal(str(assessed_amount)))
+        # Derive satisfaction per DOM-OBL-001 §V.1, §VII.1, §VIII: no
+        # amount or due-boundary is persisted on assessment_events. Amount
+        # comes from the upstream policy (RentSettings via policy_uuid);
+        # due_at is derived from the linked bill_cycle.
+        from app.services.obligations_service import (
+            resolve_assessment_amount,
+            resolve_assessment_due_at,
+        )
+        assessed_amount = resolve_assessment_amount(assessment)
+        due_at = resolve_assessment_due_at(assessment)
+        is_satisfied = has_waiver or (total_paid >= assessed_amount)
         is_outstanding = not is_satisfied
 
-        # Temporal check for past-due (caller can also check this via due_at)
-        is_past_due = (
+        # Temporal check for past-due
+        is_past_due = bool(
             is_outstanding
-            and assessment.due_at
-            and db.session.query(db.func.now()).scalar() > assessment.due_at
+            and due_at
+            and db.session.query(db.func.now()).scalar() > due_at
         )
 
         view = RentAssessmentView(
@@ -710,8 +798,8 @@ def get_rent_assessments_for_seat_class(
             assessment_id=assessment.id,
             seat_id=seat_id,
             class_id=class_id,
-            due_at=assessment.due_at,
-            assessed_amount=Decimal(str(assessed_amount)),
+            due_at=due_at,
+            assessed_amount=assessed_amount,
             is_satisfied=is_satisfied,
             is_outstanding=is_outstanding,
             is_past_due=is_past_due,

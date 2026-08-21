@@ -15,8 +15,10 @@ from types import MappingProxyType
 from typing import Any
 
 from app.services.class_configuration_query_service import (
+    get_effective_economic_engine,
     get_payroll_settings,
     get_policy_mode,
+    resolve_expected_weekly_hours,
     validate_payroll_rate,
 )
 
@@ -34,14 +36,16 @@ class EconomicView:
     display_context: MappingProxyType
 
 
-def _compute_cwi_from_payroll(payroll) -> float | None:
-    """Compute CWI directly from an already-fetched PayrollSettings row."""
-    if payroll is None:
+def _resolve_expected_weekly_hours(class_id: str) -> float | None:
+    """Read expected_weekly_hours from the EconomicEngine governing payroll."""
+    return resolve_expected_weekly_hours(class_id)
+
+
+def _compute_cwi_from_payroll(payroll, expected_weekly_hours) -> float | None:
+    """Compute CWI given already-resolved payroll row and expected_weekly_hours."""
+    if payroll is None or expected_weekly_hours is None:
         return None
-    if payroll.expected_weekly_hours is None:
-        return None
-    hourly_rate = float(payroll.pay_rate) * 60
-    return hourly_rate * float(payroll.expected_weekly_hours)
+    return (float(payroll.pay_rate) * 60) * float(expected_weekly_hours)
 
 
 def build_economic_view(class_id: str) -> EconomicView:
@@ -52,13 +56,14 @@ def build_economic_view(class_id: str) -> EconomicView:
     """
     payroll = get_payroll_settings(class_id)
     policy_mode = get_policy_mode(class_id)
-    cwi = _compute_cwi_from_payroll(payroll)
+    expected_weekly_hours = _resolve_expected_weekly_hours(class_id)
+    cwi = _compute_cwi_from_payroll(payroll, expected_weekly_hours)
 
     warnings: list[str] = []
     display_context: dict[str, Any] = {}
 
-    if payroll and payroll.expected_weekly_hours is not None:
-        display_context["expected_weekly_hours"] = float(payroll.expected_weekly_hours)
+    if expected_weekly_hours is not None:
+        display_context["expected_weekly_hours"] = expected_weekly_hours
 
     if payroll:
         hourly_rate = float(payroll.pay_rate) * 60
@@ -86,7 +91,7 @@ def build_economic_view(class_id: str) -> EconomicView:
         health = 50
         if payroll is None:
             warnings.append("Payroll not configured — economy health unknown")
-        elif payroll.expected_weekly_hours is None:
+        elif expected_weekly_hours is None:
             warnings.append("Expected weekly hours not set — economy health unknown")
 
     return EconomicView(

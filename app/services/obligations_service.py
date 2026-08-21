@@ -9,9 +9,75 @@ from __future__ import annotations
 
 from datetime import datetime
 from dataclasses import dataclass
+from decimal import Decimal
+from typing import Optional
 
 from app.extensions import db
 from app.models import ObligationAssessment, BillCycle
+
+
+def resolve_assessment_amount(assessment: ObligationAssessment) -> Decimal:
+    """Resolve the assessed amount for an assessment event.
+
+    Per DOM-OBL-001 §V.1 and §VII.1, no amount is persisted on
+    assessment_events. Amount comes from the upstream policy definition
+    addressed by `assessment.policy_uuid`, dispatched by obligation_type.
+
+    Returns Decimal('0.00') when the upstream policy row cannot be
+    located (row deleted, policy_uuid unset, or unsupported type). This
+    is safe for derived-satisfaction math: an unknown amount treated as
+    zero produces `is_satisfied = True` for any non-negative payment,
+    which is the same behavior as the pre-remediation stub.
+    """
+    if assessment is None:
+        return Decimal('0.00')
+
+    obligation_type = assessment.obligation_type
+    policy_uuid = assessment.policy_uuid
+
+    if obligation_type == 'RENT' and policy_uuid:
+        from app.models import RentSettings
+        rent = RentSettings.query.filter_by(policy_uuid=policy_uuid).first()
+        if rent and rent.rent_amount is not None:
+            return Decimal(str(rent.rent_amount))
+
+    # INSURANCE / IMMEDIATE / other types: their upstream contract lives
+    # in domain-specific tables not yet centralized here. Callers that
+    # need a non-zero amount for those types must resolve upstream and
+    # pass explicitly. Returning 0 is safe per the note above.
+    return Decimal('0.00')
+
+
+def resolve_assessment_due_at(assessment: ObligationAssessment) -> datetime | None:
+    """Resolve the "due at" boundary for an assessment event.
+
+    Per DOM-OBL-001 §VII.2, temporal boundaries are owned by
+    `bill_cycles`:
+
+    - `bill_cycle.assessment_at` = the actual assessment date for the
+      current cycle — the moment this rent became due.
+    - `bill_cycle.next_assessment_at` = pre-set scheduling for when the
+      NEXT cycle's assessment_at will fire. NOT the current cycle's due
+      boundary; do not confuse.
+
+    For cyclic obligations (rent), the due boundary is
+    `bill_cycle.assessment_at`. For immediate charges (§II.C, no
+    bill_cycle), the assessment is due at creation time — return the
+    event's canonical `timestamp`.
+
+    Returns None only if both bill_cycle lookup fails and no timestamp
+    exists on the assessment (should not occur for lawful rows).
+    """
+    if assessment is None:
+        return None
+
+    if assessment.bill_cycle_id:
+        cycle = db.session.get(BillCycle, assessment.bill_cycle_id)
+        if cycle and cycle.assessment_at:
+            return cycle.assessment_at
+
+    # Immediate charge (or bill_cycle missing): due at assessment time.
+    return assessment.timestamp
 
 
 @dataclass(frozen=True)
@@ -359,6 +425,120 @@ def get_rent_waivers_for_seat(
         .order_by(ObligationAssessment.timestamp.desc())
         .all()
     )
+
+
+@dataclass(frozen=True)
+class RentWaiverView:
+    """Derived projection of a rent WAIVED event with its coverage window.
+
+    Per DOM-OBL-001 §VII, assessment events do not store coverage windows.
+    The window is derived from the linked bill_cycle
+    (cycle_boundary_at, next_assessment_at). This projection resolves the
+    derivation once so callers work with a stable shape.
+    """
+    id: int
+    seat_id: int
+    correlation_id: str
+    timestamp: datetime  # When the waiver was granted (event canonical timestamp)
+    coverage_start_time: Optional[datetime]  # Derived from bill_cycle.cycle_boundary_at
+    coverage_end_time: Optional[datetime]  # Derived from bill_cycle.next_assessment_at
+
+
+def get_active_rent_waivers_for_class(
+    class_id: str,
+    coverage_date: datetime | None = None,
+) -> list[RentWaiverView]:
+    """DEPRECATED — "active waiver" is not a lawful concept.
+
+    Per DOM-OBL-001 §V.6, a waiver is a one-time immutable satisfaction
+    of a specific already-assessed liability. It does not create an
+    ongoing state and does not affect later assessments. Any UI that
+    presents waivers as "currently active" or as a lifecycle object
+    encodes the wrong domain semantics.
+
+    This helper is retained temporarily so existing callers do not
+    crash; it returns the WAIVED-event history with the actual bill-cycle
+    coverage bounds. New callers should use `get_rent_waiver_history_for_class`
+    directly.
+
+    TODO: remove after all callers migrate.
+    """
+    waivers = get_rent_waiver_history_for_class(class_id)
+    if coverage_date is not None:
+        waivers = [
+            w for w in waivers
+            if w['coverage_start_time'] and w['coverage_end_time']
+            and w['coverage_start_time'] <= coverage_date < w['coverage_end_time']
+        ]
+    return [
+        RentWaiverView(
+            id=w['id'],
+            seat_id=w['seat_id'],
+            correlation_id=w['correlation_id'],
+            timestamp=w['waived_at'],
+            coverage_start_time=w['coverage_start_time'],
+            coverage_end_time=w['coverage_end_time'],
+        )
+        for w in waivers
+    ]
+
+
+def get_rent_waiver_history_for_class(
+    class_id: str,
+    limit: int = 100,
+) -> list[dict]:
+    """Read-only audit list of rent waiver events for a class.
+
+    Per DOM-OBL-001 §V.6 a waiver is an immutable satisfaction of one
+    specific assessment. This helper returns that history in reverse
+    chronological order (most recent waiver first) so the teacher-facing
+    UI can present it as an audit log, not as active state.
+
+    Each row:
+
+        {
+            'id': int,                      # WAIVED event id
+            'correlation_id': str,          # links back to assessment
+            'seat_id': int,
+            'waived_at': datetime,          # WAIVED event timestamp
+            'due_at': datetime | None,      # from linked bill_cycle
+                                            # (assessment_at); None for
+                                            # immediate charges
+            'notes': str | None,            # teacher-entered reason
+                                            # (DOM-OBL-001 §VII.1 notes)
+        }
+
+    Downstream renderers may resolve seat_id → student_name and
+    correlation_id → assessed_amount via their own view models; those
+    are presentation concerns and not persisted on the WAIVED event
+    per §VII.1 ("no amount is persisted here").
+    """
+    from app.models import ObligationAssessment, BillCycle
+
+    q = (
+        db.session.query(ObligationAssessment, BillCycle)
+        .outerjoin(BillCycle, ObligationAssessment.bill_cycle_id == BillCycle.id)
+        .filter(
+            ObligationAssessment.class_id == class_id,
+            ObligationAssessment.obligation_type == 'RENT',
+            ObligationAssessment.event_type == 'WAIVED',
+        )
+        .order_by(ObligationAssessment.timestamp.desc())
+        .limit(limit)
+    )
+    return [
+        {
+            'id': waiver.id,
+            'correlation_id': waiver.correlation_id,
+            'seat_id': waiver.seat_id,
+            'waived_at': waiver.timestamp,
+            'due_at': cycle.assessment_at if cycle else None,
+            'coverage_start_time': cycle.cycle_boundary_at if cycle else None,
+            'coverage_end_time': cycle.next_assessment_at if cycle else None,
+            'notes': waiver.notes,
+        }
+        for waiver, cycle in q.all()
+    ]
 
 
 def get_cycle_rent_amount(

@@ -1,6 +1,5 @@
 """
 Admin routes for Classroom Token Hub.
-
 Contains all admin/teacher-facing functionality including dashboard, student management,
 store management, insurance, payroll, attendance tracking, and data import/export.
 """
@@ -48,11 +47,11 @@ import bleach
 from werkzeug.exceptions import HTTPException, NotFound
 
 from app.extensions import db, limiter
-from app.feats.base import feat_shell, FEATContext, InvariantViolation, generate_correlation_id
+from app.feats.base import requires_feat_context, FEATContext, InvariantViolation, generate_correlation_id
 from app.access.scope import Scope
 from app.access import AccessScopeDenied, resolve_scope
 from app.models import (
-    ClassEconomy, Transaction, TransactionStatus, AttendanceSession, StoreItem, StoreItemVisibility,
+    ClassEconomy, EconomicEngine, Transaction, TransactionStatus, AttendanceSession, StoreItem, StoreItemVisibility,
     # Legacy tap table removed; use attendance_sessions (DOM-PROD-001).
     # StudentItem removed — student_items unauthorized; use store_purchases + redemption_events (DOM-STORE-001)
     # StoreItemBlock removed — store_item_blocks unauthorized; use store_item_visibility (DOM-STORE-001)
@@ -61,7 +60,6 @@ from app.models import (
     # StorePurchase, Entitlement, EntitlementConsumption, GrantType, RedemptionEvent, etc. deleted per Phase 2 migration
     RentSettings,
     HallPassLog, HallPassSettings, PayrollSettings,
-    BankingSettings,
     ClassFeature,
     Announcement, Issue, IssueCategory, IssueStatusHistory, IssueResolutionAction, Seat,
     LedgerBalanceSnapshot, User, UserRole, _quantize_currency,
@@ -77,9 +75,9 @@ from app.auth import (
 )
 from app.services.context_resolver import CanonicalContext
 from app.forms import (
-    AdminLoginForm, AdminSignupForm, AdminTOTPConfirmForm, AdminRecoveryForm, AdminResetCredentialsForm, StoreItemForm,
+    AdminLoginForm, AdminSignupForm, AdminTOTPConfirmForm, AdminClassSetupForm, AdminRecoveryForm, AdminResetCredentialsForm, StoreItemForm,
     AdminClaimProcessForm, PayrollSettingsForm,
-    ManualPaymentForm, BankingSettingsForm
+    ManualPaymentForm
 )
 # Import utility functions
 from app.utils.helpers import is_safe_url, format_utc_iso, generate_anonymous_code, render_template_with_fallback as render_template
@@ -88,6 +86,7 @@ from app.utils.economy_balance import EconomyBalanceChecker
 from app.utils.economy_policy import (
     POLICY_MODES,
     convert_weekly_amount_to_frequency,
+    get_active_policy_mode_for_class,
     get_class_feature_settings_for_class,
     get_insurance_premium_recommendation,
     get_class_feature_settings,
@@ -131,17 +130,13 @@ from app.services.insurance_policy_service import (
 # TODO (Phase 4): store_entitlement_service deleted
 # from app.services.store_entitlement_service import get_insurance_claim, get_last_entitlement_end_for_policy_version, derive_display_status
 from app.services.classroom_setup import (
-    create_class_with_roster,
-    create_teacher_account_with_class,
+    create_teacher,
     create_pending_student_seat,
     delete_seat_with_profile,
     create_roster_student_seat,
     update_or_create_roster_seat,
 )
-from app.services.payroll_settings_service import (
-    upsert_payroll_settings_for_blocks,
-    update_expected_weekly_hours_for_blocks,
-)
+from app.services.payroll_settings_service import upsert_payroll_settings
 from app.services.store_service import (
     create_store_item,
     deactivate_store_item,
@@ -158,12 +153,16 @@ from app.services.class_configuration_query_service import (
     verify_teacher_owns_class,
     get_payroll_settings,
     get_rent_settings,
-    get_banking_settings,
+    get_current_economic_engine,
     get_hall_pass_settings,
     has_personalized_class,
 )
+from app.services.class_configuration_view_models import (
+    build_account_settings_page_view,
+    build_feature_settings_page_view,
+)
 from app.services.admin_identity_service import delete_admin_account_rows
-from app.services.admin_settings_service import create_rent_settings, create_banking_settings
+from app.services.admin_settings_service import create_rent_settings
 from app.services.issue_service import create_support_ticket
 from app.utils.ip_handler import get_real_ip
 from app.utils.turnstile import verify_turnstile_token
@@ -186,17 +185,21 @@ from app.utils.auth_username import (
 )
 from app.utils.student_deletion import (
     hard_delete_student_if_orphaned,
-    remove_student_from_teacher_scope,
 )
 from app.utils.seat_scope import seat_scoped_filter, transaction_scope_filter
 from app.feats.admin_adjustment_feat import execute_admin_adjustments
+from app.feats.identity_feat import (
+    remove_student_from_teacher_scope as execute_identity_student_detach,
+    remove_pending_student_seat,
+)
 from app.feats.prod import record_attendance_session, record_payroll_event
-from app.feats.direct_entitlement_grant_feat import execute_direct_grant
+from app.feats.direct_entitlement_grant_feat import execute_direct_grant, execute_hall_pass_adjustment
 # execute_insurance_claim_resolution removed — insurance_claim_feat.py deleted; insurance feature broken pending DOM-OBL-001 migration
 from app.feats.transaction_void_feat import (
     ImmediatePurchaseNotVoidable,
     UsedDelayedPurchaseNotVoidable,
     execute_void_transaction,
+    execute_void_transactions,
 )
 from app.hash_utils import get_random_salt, hash_hmac, hash_username, hash_username_lookup
 from app.attendance import (
@@ -948,7 +951,7 @@ def _get_class_ids_by_block(canonical_context, blocks):
     return {section: resolved_class_id for section, resolved_class_id in rows if resolved_class_id}
 
 
-def _build_payroll_preview_state(students, class_ids_by_block):
+def _build_payroll_preview_state(students):
     """Aggregate payroll preview data from PROD attendance/payroll facts."""
     students_by_class_id: dict[str, dict[int, Seat]] = defaultdict(dict)
 
@@ -1176,7 +1179,14 @@ def _remove_student_from_teacher_scope(student, user_id):
     association is removed. The student record is hard-deleted only when it no
     longer has any canonical class-seat links.
     """
-    return remove_student_from_teacher_scope(student.id, user_id)
+    context = g.canonical_context
+    return execute_identity_student_detach(
+        canonical_context=context,
+        seat_id=student.id,
+        teacher_user_id=user_id,
+        correlation_id=generate_correlation_id(),
+        idempotency_key=f"identity:detach:{context.class_id}:{student.id}",
+    )
 
 
 def _delete_transactions_for_class(class_id, *, join_code_deletion=False):
@@ -1185,7 +1195,8 @@ def _delete_transactions_for_class(class_id, *, join_code_deletion=False):
     return Transaction.query.filter_by(class_id=class_id).delete(synchronize_session=False)
 
 
-def _hard_delete_class_scope(class_id, canonical_context):
+@requires_feat_context("FEAT-CLASS-001")
+def _hard_delete_class_scope(*, class_id, canonical_context, correlation_id, idempotency_key):
     """
     Permanently remove records scoped to a destroyed class.
 
@@ -1199,6 +1210,10 @@ def _hard_delete_class_scope(class_id, canonical_context):
     if not class_id:
         current_app.logger.critical("P0 INVARIANT VIOLATION: class deletion invoked without class_id.")
         raise InvariantViolation("class deletion requires canonical class_id")
+
+    # Append-only history is a within-universe invariant.  Explicit class-universe
+    # destruction is the authorized lifecycle exception for immutable history rows.
+    db.session.execute(text("SET LOCAL cth.class_universe_destroying = 'on'"))
 
     class_row = get_class_economy(class_id)
     if not class_row:
@@ -1367,9 +1382,6 @@ def _delete_teacher_settings_activity_and_audit_rows(canonical_context):
     class_ids_subq = db.session.query(ClassEconomy.class_id).filter(
         ClassEconomy.teacher_user_id == user_id
     ).subquery()
-    BankingSettings.query.filter(
-        BankingSettings.class_id.in_(sa.select(class_ids_subq))
-    ).delete(synchronize_session=False)
     HallPassSettings.query.filter(
         HallPassSettings.class_id.in_(sa.select(class_ids_subq))
     ).delete(synchronize_session=False)
@@ -1489,7 +1501,12 @@ def _hard_delete_teacher_account_scope(canonical_context):
 
     # Required ordering: all join-code-scoped data is destroyed before admin account deletion.
     for class_id in class_ids:
-        _hard_delete_class_scope(class_id, canonical_context)
+        _hard_delete_class_scope(
+            class_id=class_id,
+            canonical_context=canonical_context,
+            correlation_id=generate_correlation_id(),
+            idempotency_key=f"class:destroy:{class_id}",
+        )
 
     _delete_teacher_residual_ownership_rows(canonical_context)
     _delete_teacher_settings_activity_and_audit_rows(canonical_context)
@@ -1722,10 +1739,24 @@ def _build_pending_class_timezone_payload(class_row: ClassEconomy) -> dict:
 
 
 def _class_timezone_needs_confirmation(class_row: ClassEconomy | None) -> bool:
+    """Confirmation is needed exactly when the class row has no valid
+    timezone written. Two checks, nothing else:
+
+    1. Is a timezone string present on the row?
+    2. Is that string a valid IANA timezone name?
+
+    Any valid IANA value — including 'UTC' or 'Etc/UTC' — is treated as
+    a written, valid choice and does NOT trigger the confirmation
+    modal. If the desired UX is to force teachers to pick a non-UTC
+    timezone, that intent must be enforced at class creation time by
+    not defaulting to 'UTC', not by re-prompting here.
+    """
     if class_row is None:
         return False
     timezone_name = (class_row.class_timezone or "").strip()
-    return timezone_name in ("", "UTC")
+    if not timezone_name:
+        return True
+    return timezone_name not in pytz.all_timezones_set
 
 
 def _queue_pending_class_timezone_confirmation(class_row: ClassEconomy | None):
@@ -1792,46 +1823,21 @@ def _remove_pending_class_timezone_confirmation(class_id: str):
 
 
 def _resolve_student_add_class_context(canonical_context, *, block_select: str, section: str | None) -> dict | None:
-    """Resolve the target class for add-student flows, creating one when requested."""
-    from app.feats.class_configuration import execute_create_class_boundary
-    import uuid as _uuid
+    """Resolve an existing target class for the IDENTITY add-student flow."""
 
     if canonical_context is None or not getattr(canonical_context, "user_id", None):
         return None
 
-    if block_select != '__CREATE_NEW__':
-        return _resolve_admin_class_context(g.canonical_context)
-
-    if not section:
+    if block_select == '__CREATE_NEW__':
         return None
-
-    class_label = (request.form.get('class_name') or '').strip() or section
-    result = execute_create_class_boundary(
-        canonical_context=canonical_context,
-        class_name=class_label,
-        idempotency_key=f"feat:class:create:{canonical_context.user_id}:{_uuid.uuid4().hex}",
-    )
-    if not result.success:
-        current_app.logger.error(
-            "FEAT-CLASS-001 failed in add-student class creation: %s", result.error_message
-        )
-        return None
-
-    class_row = get_class_economy(result.class_id)
-    return {
-        'join_code': result.join_code,
-        'class_id': result.class_id,
-        'block': section,
-        'class_created': True,
-        'class_row': class_row,
-    }
+    return _resolve_admin_class_context(g.canonical_context)
 
 
 
 # _link_student_to_admin: DELETED — v1 bridge function that violated INV-IDEN-001
 # (join_code-first class creation), bypassed FEAT layer, and had a live bug
 # (passed user_id int where canonical_context object expected).
-# Callers replaced with FEAT-CLASS-002 execute_provision_student_seat().
+# Roster seat provisioning is owned by FEAT-IDEN-006.
 
 
 def _get_feature_settings(class_id=None):
@@ -1934,6 +1940,21 @@ def _serialize_economy_analysis_payload(analysis, *, snapshot=None, now_utc=None
         warning_items.append(warning_payload)
         warnings_by_level[warning.level.value].append(warning_payload)
 
+    if analysis.cwi is None:
+        # CWI unconfigured — return a stripped payload; consumers must render the
+        # "configure expected weekly hours on Economic Engine" warning.
+        return {
+            'status': 'cwi_unconfigured',
+            'cwi': None,
+            'is_balanced': False,
+            'budget_survival_test_passed': False,
+            'weekly_savings': 0,
+            'warnings': warnings_by_level,
+            'warning_items': warning_items,
+            'recommendations': {},
+            'cwi_breakdown': None,
+            'analysis_schedule': _economy_analysis_schedule(snapshot, now_utc=now_utc, frozen=frozen),
+        }
     return {
         'status': 'success',
         'cwi': _json_safe_value(analysis.cwi.cwi),
@@ -1970,13 +1991,16 @@ def _deserialize_economy_analysis_payload(payload):
             level=SimpleNamespace(value=warning.get('level', 'info')),
         ))
 
-    breakdown = payload.get('cwi_breakdown') or {}
-    cwi = SimpleNamespace(
-        cwi=payload.get('cwi'),
-        pay_rate_per_minute=breakdown.get('pay_rate_per_minute'),
-        expected_weekly_minutes=breakdown.get('expected_weekly_minutes'),
-        notes=breakdown.get('notes') or [],
-    )
+    breakdown = payload.get('cwi_breakdown')
+    if payload.get('status') == 'cwi_unconfigured' or not breakdown:
+        cwi = None
+    else:
+        cwi = SimpleNamespace(
+            cwi=payload.get('cwi'),
+            pay_rate_per_minute=breakdown.get('pay_rate_per_minute'),
+            expected_weekly_minutes=breakdown.get('expected_weekly_minutes'),
+            notes=breakdown.get('notes') or [],
+        )
     return SimpleNamespace(
         cwi=cwi,
         is_balanced=payload.get('is_balanced'),
@@ -1992,13 +2016,29 @@ def _current_economy_snapshot_inputs(checker, payroll_settings, expected_weekly_
     pay_rate = Decimal(str(payroll_settings.pay_rate or 0)).quantize(Decimal('0.0001'))
     source_hours = expected_weekly_hours
     if source_hours is None:
-        source_hours = payroll_settings.expected_weekly_hours if payroll_settings.expected_weekly_hours is not None else 5.0
+        # expected_weekly_hours lives on EconomicEngine (canonical per DOM-CLASS-002).
+        # Returns None when unconfigured — snapshot is undefined in that case.
+        source_hours = _resolve_expected_weekly_hours(payroll_settings)
+    if source_hours is None:
+        return None
     hours = Decimal(str(source_hours)).quantize(Decimal('0.01'))
     return {
         'policy_mode': checker.policy_mode,
         'pay_rate': pay_rate,
         'expected_hours': hours,
     }
+
+
+def _resolve_expected_weekly_hours(payroll_settings) -> float | None:
+    """Read expected_weekly_hours from the EconomicEngine governing payroll for this class.
+
+    Returns None when the teacher has not configured a value. CWI is undefined in
+    that case; callers must handle None (typically by disabling pricing guidance
+    with a warning that expected_weekly_hours must be set on the Economic Engine page).
+    """
+    from app.services.class_configuration_query_service import resolve_expected_weekly_hours
+    class_id = getattr(payroll_settings, 'class_id', None)
+    return resolve_expected_weekly_hours(class_id) if class_id else None
 
 
 def _economy_snapshot_matches_inputs(snapshot, *, expected_inputs):
@@ -2030,6 +2070,17 @@ def _get_frozen_economy_analysis_payload(
         expected_weekly_hours=expected_weekly_hours,
     )
     class_id = getattr(payroll_settings, "class_id", None)
+    if expected_inputs is None:
+        # CWI is undefined without expected_weekly_hours on EconomicEngine.
+        # Return an empty analysis payload so consumers can render the
+        # "configure CWI to enable pricing recommendations" warning.
+        payload = {
+            'status': 'cwi_unconfigured',
+            'cwi': None,
+            'warnings': [],
+            'snapshot_cached': False,
+        }
+        return payload, None
     analysis = checker.analyze_economy(
         payroll_settings=payroll_settings,
         rent_settings=rent_settings,
@@ -2076,22 +2127,25 @@ def _resolve_rent_settings_for_class_id(class_id, policy_uuid=None):
         .order_by(BillCycle.cycle_number.desc(), BillCycle.id.desc())
         .first()
     )
-    if not current_cycle or not current_cycle.policy_uuid:
-        return None
-    return RentSettings.query.filter_by(policy_uuid=current_cycle.policy_uuid).first()
+    if current_cycle and current_cycle.policy_uuid:
+        cycled = RentSettings.query.filter_by(policy_uuid=current_cycle.policy_uuid).first()
+        if cycled:
+            return cycled
+    # Fallback: no bill_cycle yet (brand-new class, or rent enabled but
+    # never assessed). Return the class's rent_settings row directly so
+    # downstream analyzers (economic engine, pricing recommendations,
+    # rebalance planner) can still evaluate the current configuration.
+    # Without this fallback, out-of-range rent goes undetected on any
+    # class that hasn't hit its first assessment yet.
+    return RentSettings.query.filter_by(class_id=class_id).first()
 
 
-def _resolve_banking_settings_for_class_id(class_id):
+def _resolve_economic_engine_for_class_id(class_id):
     if not class_id:
         return None
-    return (
-        BankingSettings.query.filter(
-            BankingSettings.class_id == class_id,
-            BankingSettings.is_active.is_(True),
-        )
-        .order_by(desc(BankingSettings.block.isnot(None)))
-        .first()
-    )
+    return EconomicEngine.query.filter_by(class_id=class_id).order_by(
+        EconomicEngine.created_at.desc(), EconomicEngine.economic_version_id.desc()
+    ).first()
 
 
 def _format_money(value):
@@ -2155,7 +2209,7 @@ def _is_bypassed_economy_warning(warning, rent_settings, insurance_policies, sto
     return False
 
 
-def _filter_economy_health_warnings(analysis, rent_settings, insurance_policies, fines, store_items, *, selected_block=None):
+def _filter_economy_health_warnings(analysis, rent_settings, insurance_policies, fines, store_items):
     filtered = []
     for warning in analysis.warnings if analysis else []:
         if not _is_actionable_economy_warning(warning):
@@ -2192,13 +2246,13 @@ def _filter_economy_health_warnings(analysis, rent_settings, insurance_policies,
         'Rent',
         len([w for w in filtered if w.feature == 'Rent']) if rent_settings else 0,
         'Adjust rent',
-        url_for('admin.rent_settings', settings_block=selected_block) if rent_settings else None,
+        url_for('admin.rent_settings') if rent_settings else None,
     )
     add_summary(
         'Insurance',
         len([w for w in filtered if w.feature in insurance_prefixes]),
         'Review insurance',
-        url_for('admin.insurance_management', settings_block=selected_block),
+        url_for('admin.insurance_management'),
     )
     add_summary(
         'Fees',
@@ -2217,8 +2271,10 @@ def _filter_economy_health_warnings(analysis, rent_settings, insurance_policies,
 
 
 def _build_policy_summary(class_scope, analysis, rent_settings, insurance_policies, fines, *, warnings=None):
+    # Policy mode is canonical on EconomicEngine (DOM-CLASS-002).
+    # FeatureSettings row is still used for `economy_policy_updated_at` display metadata.
     settings_row = get_feature_settings_row_for_class(class_scope.get('class_id'), create=False)
-    policy_mode = normalize_policy_mode(getattr(settings_row, 'economy_policy_mode', 'default'))
+    policy_mode = get_active_policy_mode_for_class(class_scope.get('class_id'))
 
     categories = []
 
@@ -2262,7 +2318,7 @@ def _extract_pending_rebalance_effective_at(policy_summary: dict) -> datetime | 
     return get_pending_policy_transition_effective_at(class_id)
 
 
-def _build_rebalance_preview(canonical_context, selected_block, class_id, checker, cwi, rent_settings, insurance_policies):
+def _build_rebalance_preview(canonical_context, class_id, checker, cwi, rent_settings, insurance_policies):
     preview_items = []
     recommendations = get_price_recommendation_context(checker.policy_mode, cwi) or {}
 
@@ -2283,7 +2339,6 @@ def _build_rebalance_preview(canonical_context, selected_block, class_id, checke
                 'apply_by_default': True,
                 'change': {
                     'type': 'rent',
-                    'block': selected_block,
                     'class_id': class_id,
                     'current_value': str(current_amount),
                     'new_value': str(recommended_amount),
@@ -2329,8 +2384,10 @@ def _build_insurance_recommendation_context(canonical_context, *, class_id=None,
     if not payroll_settings:
         return None
 
-    checker = EconomyBalanceChecker(canonical_context.user_id, None, class_id=getattr(payroll_settings, "class_id", None))
+    checker = EconomyBalanceChecker(canonical_context.user_id, class_id=getattr(payroll_settings, "class_id", None))
     cwi_calc = checker.calculate_cwi(payroll_settings)
+    if cwi_calc is None:
+        return None
     return get_insurance_premium_recommendation(
         checker.policy_mode,
         Decimal(str(cwi_calc.cwi)),
@@ -2338,29 +2395,21 @@ def _build_insurance_recommendation_context(canonical_context, *, class_id=None,
     )
 
 
-def _load_economy_rebalance_context(canonical_context, class_id, selected_block):
-    user_id = canonical_context.user_id
+def _load_economy_rebalance_context(canonical_context, class_id):
+    """Load class-scoped payroll/rent/insurance settings for economy rebalance.
+
+    Returns (payroll_settings, rent_settings, insurance_policies) for the canonical
+    class. All lookups are class_id-authoritative; no v1 block scoping.
+    """
     selected_class_id = (class_id or "").strip() or None
     if not selected_class_id:
         raise InvariantViolation("Missing canonical class_id for economy rebalance context.")
 
-    class_ids_query = db.session.query(ClassEconomy.class_id).filter_by(teacher_user_id=user_id)
-    payroll_query = PayrollSettings.query.filter(
-        PayrollSettings.class_id.in_(sa.select(class_ids_query.subquery())),
-        PayrollSettings.is_active.is_(True),
-    )
-    all_payroll_settings = payroll_query.order_by(PayrollSettings.block.asc()).all()
-    settings_by_block = {s.block: s for s in all_payroll_settings if s.block}
-
     payroll_settings = _resolve_payroll_settings_for_class_id(canonical_context, selected_class_id)
-    effective_block = selected_block
-
     rent_settings = _resolve_rent_settings_for_class_id(selected_class_id)
-
-    class_ids_query = db.session.query(ClassEconomy.class_id).filter_by(teacher_user_id=user_id)
     insurance_policies = []
 
-    return effective_block, payroll_settings, rent_settings, insurance_policies, all_payroll_settings
+    return payroll_settings, rent_settings, insurance_policies
 
 
 def _apply_rebalance_plan(canonical_context, settings_row, change_plan, activation_mode):
@@ -2440,7 +2489,6 @@ def _get_validated_teacher_class_options(user_id: int) -> list[dict]:
 
 
 @admin_bp.route('/select-class-context', methods=['GET', 'POST'])
-@admin_required
 def select_class_context():
     """Explicit teacher class-selection gate before dashboard access."""
     ctx = getattr(g, "canonical_context", None)
@@ -2663,10 +2711,8 @@ def dashboard():
             'status': log.status
         })
 
-    # --- Payroll Info ---
-    dashboard_blocks = sorted({b.strip() for s in seats for b in (s.block or "").split(',') if b.strip()})
-    dashboard_class_ids_by_block = _get_class_ids_by_block(g.canonical_context, dashboard_blocks)
-    payroll_preview = _build_payroll_preview_state(seats, dashboard_class_ids_by_block)
+    # --- Payroll Info (class-scoped via canonical seats) ---
+    payroll_preview = _build_payroll_preview_state(seats)
     payroll_summary = payroll_preview["total_summary"]
     payroll_updated_at = payroll_preview["latest_updated_at"]
     total_payroll_estimate = sum(payroll_summary.values())
@@ -2737,11 +2783,6 @@ def give_bonus_all():
     seats = Seat.query.filter(Seat.class_id.in_(sa.select(class_ids_subq)), Seat.role == 'student').all()
     user_id = ctx.user_id
 
-    banking_settings = (
-        BankingSettings.query
-        .filter(BankingSettings.class_id.in_(sa.select(class_ids_subq)))
-        .first()
-    )
     adjustments = []
 
     for seat in seats:
@@ -2757,7 +2798,6 @@ def give_bonus_all():
     result = execute_admin_adjustments(
         ctx=ctx,
         adjustments=adjustments,
-        banking_settings=banking_settings,
         actor_seat_id=ctx.seat_id,
     )
     message = f"Bonus/Payroll posted to {result.applied_count} student(s)!"
@@ -2774,7 +2814,6 @@ def give_bonus_all():
 
 @admin_bp.route('/login', methods=['GET', 'POST'])
 @limiter.limit("10 per minute")
-@feat_shell("FEAT-ADMN-001")
 def login():
     """Admin login with TOTP authentication."""
     session.pop("user_id", None)
@@ -2805,12 +2844,27 @@ def login():
                     session["login_time"] = utc_now().isoformat()
                     session["last_activity"] = utc_now().isoformat()
                     session["admin_auth_username"] = username
-                    set_admin_display_name_cache(user_id=user.id, display_name=user.get_display_username())
+                    _login_display = user.get_display_username()
+                    if user.last_active_seat_id:
+                        _seat = db.session.get(Seat, user.last_active_seat_id)
+                        if _seat and _seat.identity_profile:
+                            _login_display = _seat.identity_profile.full_name
+                    set_admin_display_name_cache(user_id=user.id, display_name=_login_display)
                     flash("Admin login successful.")
                     next_url = request.args.get("next")
+                    # If user already has a last_active_class_id, go straight to dashboard
+                    if user.last_active_class_id and user.last_active_seat_id:
+                        return redirect(next_url or url_for("admin.dashboard"))
+
                     class_options = _get_validated_teacher_class_options(user.id)
                     if not class_options:
                         return redirect(url_for("admin.onboarding"))
+
+                    if len(class_options) == 1:
+                        only_class = class_options[0]
+                        user.last_active_class_id = only_class["class_id"]
+                        user.last_active_seat_id = only_class["seat_id"]
+                        return redirect(next_url or url_for("admin.dashboard"))
 
                     return redirect(url_for("admin.select_class_context"))
         flash("Invalid credentials or TOTP code.", "error")
@@ -2822,190 +2876,199 @@ def login():
 @admin_bp.route('/signup', methods=['GET', 'POST'])
 def signup():
     """
-    TOTP-only admin registration for v2.
-    Uses AdminSignupForm for initial signup, AdminTOTPConfirmForm for TOTP confirmation.
+    Teacher signup — 3-step class-first flow.
+
+    Step 1 (GET /signup): Class creation form (class name, section, teacher display name).
+    Step 1 (POST /signup with signup_step=class_setup): Validates and stages
+        class/display data in session; no database row is created.
+    Step 2 (POST /signup with username, no totp_code): Username validation, generates TOTP secret,
+        shows QR code.
+    Step 3 (POST /signup with totp_code): Validates TOTP, atomically creates
+        User + Class + teacher Seat + class-scoped display profile, then redirects.
     """
     is_json = request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest"
 
-    # Check if this is TOTP confirmation (has totp_code field)
-    is_totp_submission = 'totp_code' in request.form
+    # ---- Determine which step we're on ----
+    signup_step = request.form.get("signup_step", "")
+    is_totp_submission = "totp_code" in request.form and signup_step != "class_setup"
+    is_class_setup = signup_step == "class_setup"
 
-    # Use appropriate form based on submission type
-    if is_totp_submission:
-        form = AdminTOTPConfirmForm()
-    else:
-        form = AdminSignupForm()
+    # ---- STEP 1: Class creation ----
+    if request.method == "GET" or (request.method == "POST" and is_class_setup):
+        from app.forms import AdminClassSetupForm
+        form = AdminClassSetupForm()
 
-    # Debug logging
-    if request.method == 'POST':
-        current_app.logger.info(f"Signup POST request received (TOTP submission: {is_totp_submission})")
-        current_app.logger.info(f"   Form data: username={request.form.get('username')}")
+        if request.method == "POST" and form.validate_on_submit():
+            # Validate ToS
+            if request.form.get("tos_agreed") != "true":
+                flash("You must agree to the Terms of Service and Privacy Policy.", "error")
+                return redirect(url_for("admin.signup"))
 
-    if form.validate_on_submit():
-        current_app.logger.info("Form validation passed")
-
-        # Get form data
-        if is_totp_submission:
-            # TOTP form has all fields as strings
-            username = normalize_auth_username(form.username.data)
-            totp_code = form.totp_code.data.strip()
-        else:
-            # Initial signup form
-            username = normalize_auth_username(form.username.data)
-            totp_code = ""
-
-        # Validate ToS for initial signup
-        # Validate ToS for initial signup
-        if not is_totp_submission and request.form.get('tos_agreed') != 'true':
-            flash("You must agree to the Terms of Service and Privacy Policy.", "error")
-            return redirect(url_for('admin.signup'))
-
-        # Step 1: Validate Turnstile for initial signup submit.
-        if not is_totp_submission:
-            turnstile_token = request.form.get('cf-turnstile-response') or request.form.get('turnstile_token')
+            # Validate Turnstile
+            turnstile_token = request.form.get("cf-turnstile-response") or request.form.get("turnstile_token")
             if not verify_turnstile_token(turnstile_token, get_real_ip()):
-                msg = "Security verification failed. Please complete Turnstile and try again."
-                if is_json:
-                    return jsonify(status="error", message=msg), 400
-                flash(msg, "error")
-                return redirect(url_for('admin.signup'))
+                flash("Security verification failed. Please complete Turnstile and try again.", "error")
+                return redirect(url_for("admin.signup"))
 
-        # Step 2: Check username uniqueness
-        if _auth_username_exists(username):
-            current_app.logger.warning("Admin signup failed: username already exists")
-            msg = "Username already exists."
-            if is_json:
-                return jsonify(status="error", message=msg), 400
-            flash(msg, "error")
-            return redirect(url_for('admin.signup'))
-        # Step 3: Generate TOTP secret and show QR code (if not already in session)
-        if "admin_totp_secret" not in session or session.get("admin_totp_username") != username:
-            totp_secret = pyotp.random_base32()
-            session["admin_totp_secret"] = totp_secret
-            session["admin_totp_username"] = username
-        else:
-            totp_secret = session["admin_totp_secret"]
-        totp_uri = pyotp.totp.TOTP(totp_secret).provisioning_uri(name=username, issuer_name="Classroom Economy Admin")
-        # Step 4: If no TOTP code submitted yet, show QR
-        if not totp_code:
-            # Generate QR code in-memory
-            img = qrcode.make(totp_uri)
-            buf = io.BytesIO()
-            img.save(buf, format='PNG')
-            buf.seek(0)
-            img_b64 = base64.b64encode(buf.read()).decode('utf-8')
-            # Populate form with data
-            totp_form = AdminTOTPConfirmForm()
-            totp_form.username.data = username
-            from app.services.identity.builders import build_totp_setup_view
-            totp_view = build_totp_setup_view(totp_secret, img_b64, [])
-            return render_template(
-                "admin_signup_totp.html",
-                form=totp_form,
-                totp_view=totp_view,
-            )
-        # Step 5: Validate entered TOTP code
-        current_app.logger.info(f"TOTP code submitted (length: {len(totp_code)})")
-        totp = pyotp.TOTP(totp_secret)
-        is_valid = totp.verify(totp_code)
-        current_app.logger.info(f"TOTP verification result: {is_valid}")
-        if not is_valid:
-            current_app.logger.warning(f"TOTP verification failed for user")
-            msg = "Invalid TOTP code. Please try again."
-            if is_json:
-                return jsonify(status="error", message=msg), 400
-            flash(msg, "error")
-            # Show QR again for retry
-            totp_uri = pyotp.totp.TOTP(totp_secret).provisioning_uri(name=username, issuer_name="Classroom Economy Admin")
-            img = qrcode.make(totp_uri)
-            buf = io.BytesIO()
-            img.save(buf, format='PNG')
-            buf.seek(0)
-            img_b64 = base64.b64encode(buf.read()).decode('utf-8')
-            # Populate form with data
-            totp_form = AdminTOTPConfirmForm()
-            totp_form.username.data = username
-            from app.services.identity.builders import build_totp_setup_view
-            totp_view = build_totp_setup_view(totp_secret, img_b64, [])
-            return render_template(
-                "admin_signup_totp.html",
-                form=totp_form,
-                totp_view=totp_view,
-            )
-        # Step 6: Create admin account and mark invite as used
-        current_app.logger.info(f"TOTP verified. Creating admin account")
-        # Check ToS acknowledgement
-        tos_agreed = request.form.get('tos_agreed') == 'true'
-        if not tos_agreed:
-            # Should have been caught by frontend, but safety check
-            current_app.logger.warning("Admin signup: ToS not agreed")
-            msg = "You must agree to the Terms of Service and Privacy Policy."
-            if is_json:
-                return jsonify(status="error", message=msg), 400
-            flash(msg, "error")
+            class_display_name = form.class_display_name.data.strip()
+            section = (form.section.data or "").strip() or None
+            first_name = form.first_name.data.strip()
+            last_name = form.last_name.data.strip()
 
-            # Show QR again for retry
-            totp_uri = pyotp.totp.TOTP(totp_secret).provisioning_uri(name=username, issuer_name="Classroom Economy Admin")
-            img = qrcode.make(totp_uri)
-            buf = io.BytesIO()
-            img.save(buf, format='PNG')
-            buf.seek(0)
-            img_b64 = base64.b64encode(buf.read()).decode('utf-8')
+            # Stage only. The class, teacher, seat, and profile are created
+            # together after username and TOTP verification.
+            for stale_key in ("signup_class_id", "signup_seat_id"):
+                session.pop(stale_key, None)
+            session["signup_class_display_name"] = class_display_name
+            session["signup_section"] = section
+            session["signup_teacher_first_name"] = first_name
+            session["signup_teacher_last_name"] = last_name
 
-            # Populate form with data
-            totp_form = AdminTOTPConfirmForm()
-            totp_form.username.data = username
-            from app.services.identity.builders import build_totp_setup_view
-            totp_view = build_totp_setup_view(totp_secret, img_b64, [])
+            # Render step 2 (username form)
+            form = AdminSignupForm()
             return render_template(
-                "admin_signup_totp.html",
-                form=totp_form,
-                totp_view=totp_view,
-                tos_agreed=False
+                "admin_signup.html",
+                form=form,
+                turnstile_site_key=current_app.config.get("TURNSTILE_SITE_KEY"),
             )
 
-        # Encrypt TOTP secret before storing
-        encrypted_totp_secret = encrypt_totp(totp_secret)
-
-        salt, username_hash, username_lookup_hash = _build_admin_auth_fields(username)
-        new_user = User(
-            user_role=UserRole.TEACHER,
-            username_hash=username_hash,
-            username_lookup_hash=username_lookup_hash,
-            totp_secret_encrypted=encrypted_totp_secret,
-            hall_pass_verify_token=User.generate_verify_token(),
+        # GET: show step 1 (class creation)
+        return render_template(
+            "admin_signup_class.html",
+            form=form,
+            turnstile_site_key=current_app.config.get("TURNSTILE_SITE_KEY"),
         )
-        # Close any read-only transaction opened during validation before FEAT entry.
-        db.session.rollback()
 
-        signup_idempotency_key = f"feat:iden:admin-signup:{username}"
-        with FEATContext("FEAT-IDEN-001", idempotency_key=signup_idempotency_key):
-            initial_join_code = generate_join_code()
-            initial_display_name = username.strip() or "New Class"
-            new_user = create_teacher_account_with_class(
-                username=username,
-                totp_secret=totp_secret,
-                join_code=initial_join_code,
-                display_name=initial_display_name,
+    # ---- Guard: steps 2/3 require class context from step 1 ----
+    if not session.get("signup_class_display_name") or not session.get("signup_teacher_first_name"):
+        flash("Please start by creating your class.", "error")
+        return redirect(url_for("admin.signup"))
+
+    # ---- STEP 2: Username ----
+    if not is_totp_submission:
+        form = AdminSignupForm()
+        if form.validate_on_submit():
+            username = normalize_auth_username(form.username.data)
+
+            if _auth_username_exists(username):
+                flash("Username is not available. Please choose another.", "error")
+                return render_template(
+                    "admin_signup.html",
+                    form=form,
+                    turnstile_site_key=current_app.config.get("TURNSTILE_SITE_KEY"),
+                )
+
+            # Generate TOTP secret
+            if "admin_totp_secret" not in session or session.get("admin_totp_username") != username:
+                totp_secret = pyotp.random_base32()
+                session["admin_totp_secret"] = totp_secret
+                session["admin_totp_username"] = username
+            else:
+                totp_secret = session["admin_totp_secret"]
+
+            totp_uri = pyotp.totp.TOTP(totp_secret).provisioning_uri(name=username, issuer_name="Classroom Economy Admin")
+            img = qrcode.make(totp_uri)
+            buf = io.BytesIO()
+            img.save(buf, format="PNG")
+            buf.seek(0)
+            img_b64 = base64.b64encode(buf.read()).decode("utf-8")
+
+            totp_form = AdminTOTPConfirmForm()
+            totp_form.username.data = username
+            from app.services.identity.builders import build_totp_setup_view
+            totp_view = build_totp_setup_view(totp_secret, img_b64, [])
+            return render_template(
+                "admin_signup_totp.html",
+                form=totp_form,
+                totp_view=totp_view,
             )
-        current_app.logger.info(f"Admin account created successfully")
-        # Clear session
+        # Invalid form submission — re-render step 2
+        return render_template(
+            "admin_signup.html",
+            form=form,
+            turnstile_site_key=current_app.config.get("TURNSTILE_SITE_KEY"),
+        )
+
+    # ---- STEP 3: TOTP verification → create User → bind to class ----
+    form = AdminTOTPConfirmForm()
+    if not form.validate_on_submit():
+        flash("Invalid submission. Please try again.", "error")
+        return redirect(url_for("admin.signup"))
+
+    username = normalize_auth_username(form.username.data)
+    totp_code = form.totp_code.data.strip()
+    totp_secret = session.get("admin_totp_secret")
+
+    if not totp_secret or session.get("admin_totp_username") != username:
+        flash("Session expired. Please start over.", "error")
+        return redirect(url_for("admin.signup"))
+
+    # Verify TOTP
+    totp = pyotp.TOTP(totp_secret)
+    if not totp.verify(totp_code):
+        flash("Invalid TOTP code. Please try again.", "error")
+        totp_uri = pyotp.totp.TOTP(totp_secret).provisioning_uri(name=username, issuer_name="Classroom Economy Admin")
+        img = qrcode.make(totp_uri)
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        buf.seek(0)
+        img_b64 = base64.b64encode(buf.read()).decode("utf-8")
+        totp_form = AdminTOTPConfirmForm()
+        totp_form.username.data = username
+        from app.services.identity.builders import build_totp_setup_view
+        totp_view = build_totp_setup_view(totp_secret, img_b64, [])
+        return render_template(
+            "admin_signup_totp.html",
+            form=totp_form,
+            totp_view=totp_view,
+        )
+
+    # Check ToS
+    tos_agreed = request.form.get("tos_agreed") == "true"
+    if not tos_agreed:
+        flash("You must agree to the Terms of Service and Privacy Policy.", "error")
+        return redirect(url_for("admin.signup"))
+
+    # Re-check username uniqueness (race condition guard)
+    if _auth_username_exists(username):
+        flash("Username is not available. Please choose another.", "error")
         session.pop("admin_totp_secret", None)
         session.pop("admin_totp_username", None)
-        msg = "Admin account created successfully! Please log in using your authenticator app."
-        if is_json:
-            return jsonify(status="success", message=msg)
-        flash(msg, "success")
-        return redirect(url_for("admin.login"))
-    # GET or invalid POST: render signup form with form instance (for CSRF)
-    if request.method == 'POST':
-        current_app.logger.warning("Form validation failed")
-        current_app.logger.warning(f"   Form errors: {form.errors}")
-    return render_template(
-        "admin_signup.html",
-        form=form,
-        turnstile_site_key=current_app.config.get("TURNSTILE_SITE_KEY"),
-    )
+        return redirect(url_for("admin.signup"))
+
+    # Atomically create the teacher identity and class boundary.
+    from app.services.classroom_setup import create_class
+    from app.utils.join_code import generate_join_code
+    signup_idempotency_key = f"feat:iden:admin-signup:{username}"
+    try:
+        with FEATContext("FEAT-IDEN-001", idempotency_key=signup_idempotency_key):
+            new_user = create_teacher(username, totp_secret=totp_secret)
+            economy = create_class(
+                new_user.id,
+                join_code=generate_join_code(),
+                display_name=session["signup_class_display_name"],
+                section=session.get("signup_section"),
+                teacher_first_name=session["signup_teacher_first_name"],
+                teacher_last_name=session.get("signup_teacher_last_name"),
+            )
+    except ValueError:
+        db.session.rollback()
+        flash("Username is not available. Please choose another.", "error")
+        session.pop("admin_totp_secret", None)
+        session.pop("admin_totp_username", None)
+        return redirect(url_for("admin.signup"))
+
+    # Clean up signup session keys
+    session.pop("admin_totp_secret", None)
+    session.pop("admin_totp_username", None)
+    session.pop("signup_class_display_name", None)
+    session.pop("signup_section", None)
+    session.pop("signup_teacher_first_name", None)
+    session.pop("signup_teacher_last_name", None)
+
+    current_app.logger.info(f"Teacher signup complete: user={new_user.id}, class={economy.class_id}")
+    flash("Account created successfully! Please log in with your username and authenticator.", "success")
+    return redirect(url_for("admin.login"))
 
 
 @admin_bp.route('/recover', methods=['GET', 'POST'])
@@ -3481,62 +3544,74 @@ def setup_recovery():
     return render_template('admin_setup_recovery.html')
 
 
-@admin_bp.route('/settings', methods=['GET', 'POST'])
+@admin_bp.route('/customizations', methods=['GET', 'POST'])
 @admin_required
-def settings():
-    """Teacher account settings - configure display name and class labels."""
+def customizations():
+    """Teacher account customizations - configure display name and class labels."""
     ctx = g.canonical_context
     user_id = ctx.user_id
-    from app.models import User
-    user = db.session.get(User, user_id)
-    admin = User.query.filter_by(username_lookup_hash=user.username_lookup_hash, user_role=UserRole.TEACHER).first() if user else None
+    seat_id = ctx.seat_id
+    from app.models import User, Seat, IdentityProfile
+    admin = db.session.get(User, user_id)
     if not admin:
         abort(404)
+
+    teacher_seat = db.session.get(Seat, seat_id) if seat_id else None
+    teacher_profile = teacher_seat.identity_profile if teacher_seat else None
 
     if request.method == 'POST':
         form_pairs = sorted((key, value) for key, value in request.form.items())
         payload_hash = hashlib.sha256(repr(form_pairs).encode("utf-8")).hexdigest()[:16]
         idempotency_key = f"feat:iden:admin-settings:{user_id}:{payload_hash}"
 
-        # Ensure FEAT owns transaction boundary for this write path.
         db.session.rollback()
         with FEATContext("FEAT-IDEN-001", idempotency_key=idempotency_key):
-            user = db.session.get(User, user_id)
-            admin = User.query.filter_by(username_lookup_hash=user.username_lookup_hash, user_role=UserRole.TEACHER).first() if user else None
+            admin = db.session.get(User, user_id)
+            teacher_seat = db.session.get(Seat, seat_id) if seat_id else None
+            teacher_profile = teacher_seat.identity_profile if teacher_seat else None
 
-            # Update display name
-            display_name = request.form.get('display_name', '').strip()
-            if display_name:
-                admin.display_name = display_name
-            else:
-                admin.display_name = None  # Use canonical public_id as fallback
+            first_name = request.form.get('first_name', '').strip()
+            last_name = request.form.get('last_name', '').strip()
+            if teacher_profile:
+                if first_name:
+                    teacher_profile.first_name = first_name
+                if last_name:
+                    teacher_profile.last_name = last_name
+            elif teacher_seat and first_name:
+                teacher_profile = IdentityProfile(
+                    seat_id=teacher_seat.id,
+                    class_id=teacher_seat.class_id,
+                    profile_type='teacher',
+                    first_name=first_name,
+                    last_name=last_name or '',
+                )
+                db.session.add(teacher_profile)
 
-            # Update class labels for each ClassEconomy (canonical class label store)
-            teacher_classes = get_all_classes_by_teacher(user_id)
-            for cls in teacher_classes:
-                section_key = cls.section or cls.join_code or ''
-                class_label_key = f'class_label_{section_key}'
-                class_label = request.form.get(class_label_key, '').strip()
-                cls.display_name = class_label if class_label else None
+            class_id = ctx.class_id
+            if class_id:
+                cls = db.session.get(ClassEconomy, class_id)
+                if cls:
+                    new_display_name = request.form.get('class_display_name', '').strip()
+                    new_section = request.form.get('class_section', '').strip()
+                    cls.display_name = new_display_name if new_display_name else None
+                    cls.section = new_section if new_section else None
 
-        set_admin_display_name_cache(user_id=admin.id, display_name=admin.get_display_name())
+        display_name = teacher_profile.full_name if teacher_profile else admin.get_display_username()
+        set_admin_display_name_cache(user_id=admin.id, display_name=display_name)
         flash("Settings updated successfully!", "success")
-        return redirect(url_for('admin.settings'))
+        return redirect(url_for('admin.customizations'))
 
-    # GET: Show settings form
-    # Derive blocks from ClassEconomy (canonical class anchor)
-    blocks = [
-        {'block': cls.section or cls.join_code or '', 'class_label': cls.display_name}
-        for cls in get_all_classes_by_teacher(user_id)
-    ]
+    # GET: Show settings form (scoped to current class)
+    current_class = db.session.get(ClassEconomy, ctx.class_id) if ctx.class_id else None
 
-    # Pass admin object directly so template can call methods like get_display_username()
     return render_template(
-        'admin_settings.html',
+        'admin_customizations.html',
         admin=admin,
-        blocks=blocks,
-        current_page='settings',
-        page_title='Account Personalization'
+        teacher_profile=teacher_profile,
+        teacher_public_id=teacher_seat.public_id if teacher_seat else None,
+        current_class=current_class,
+        current_page='customizations',
+        page_title='Class Customizations'
     )
 
 
@@ -3839,7 +3914,7 @@ def students():
     pending_ids = {item.get("class_id") for item in pending_class_timezone_confirmations if item.get("class_id")}
     if current_class_id and current_class_id not in pending_ids:
         class_row = verify_teacher_owns_class(current_class_id, user_id)
-        if class_row and (not class_row.class_timezone or class_row.class_timezone == 'UTC'):
+        if _class_timezone_needs_confirmation(class_row):
             pending_class_timezone_confirmations.append(_build_pending_class_timezone_payload(class_row))
 
     class_row = (
@@ -3859,7 +3934,7 @@ def students():
     # Claimed students are resolved through Seat rows in the active class.
     active_seat_ids = sorted({
         s.id for s in class_seats
-        if s.user_id is not None and s.claimed_at is not None
+        if s.user_id is not None and s.claimed_at is not None and s.role == 'student'
     })
     all_students = (
         sorted(
@@ -3983,6 +4058,7 @@ def set_current_class():
 
 @admin_bp.route('/classes/<class_id>/timezone', methods=['POST'])
 @admin_required
+@requires_feat_context("FEAT-CLASS-001")
 def set_class_timezone(class_id: str):
     """Set the immutable timezone for a newly created class."""
     data = request.get_json(silent=True) or {}
@@ -4021,11 +4097,12 @@ def set_class_timezone(class_id: str):
 
     try:
         idempotency_key = f"feat:iden:set-class-timezone:{user_id}:{class_id}:{timezone_name}"
-        # Route reads above may open an implicit transaction; clear it so FEAT owns the boundary.
-        db.session.rollback()
         with FEATContext("FEAT-IDEN-001", idempotency_key=idempotency_key):
+            # Re-fetch inside FEAT to ensure the object is tracked in this transaction.
+            fresh_class = db.session.get(ClassEconomy, class_id)
             # Persist an explicit confirmed UTC value distinct from default placeholder UTC.
-            class_row.class_timezone = 'Etc/UTC' if timezone_name == 'UTC' else timezone_name
+            fresh_class.class_timezone = 'Etc/UTC' if timezone_name == 'UTC' else timezone_name
+            db.session.flush()
     except Exception:
         current_app.logger.error(
             "Failed to set class timezone for class_id=%s", class_id
@@ -4338,6 +4415,7 @@ def adjust_hall_pass_entitlements(seat_id):
 
 @admin_bp.route('/student/edit', methods=['POST'])
 @admin_required
+@requires_feat_context("FEAT-IDEN-006")
 def edit_student():
     """Edit student basic information."""
     seat_id = request.form.get('seat_id', type=int)
@@ -4408,7 +4486,6 @@ def edit_student():
                   f"Give this code to the student.", "warning")
 
     try:
-        db.session.commit()
         if name_changed:
             flash(f"Successfully updated {student_profile.full_name}'s information.", "success")
     except Exception as e:
@@ -4427,7 +4504,6 @@ def edit_student():
 @admin_bp.route('/student/archive', methods=['GET', 'POST'])
 @admin_bp.route('/student/delete', methods=['GET', 'POST'])
 @admin_required
-@feat_shell("FEAT-ADMN-001")
 def delete_student():
     """Remove a student from this teacher and delete fully if no links remain."""
     current_app.logger.info(f"Delete student route accessed. Method: {request.method}, Form data: {dict(request.form)}")
@@ -4479,7 +4555,6 @@ def delete_student():
 
 @admin_bp.route('/students/bulk-delete', methods=['POST'])
 @admin_required
-@feat_shell("FEAT-ADMN-001")
 def bulk_delete_students():
     """Remove multiple students from this teacher and delete true orphans."""
     data = request.get_json(silent=True) or {}
@@ -4518,7 +4593,6 @@ def bulk_delete_students():
 
 @admin_bp.route('/students/delete-block', methods=['POST'])
 @admin_required
-@feat_shell("FEAT-ADMN-001")
 def delete_block():
     """Backwards-compatible block deletion wrapper that resolves to join-code deletion."""
     data = request.get_json(silent=True) or {}
@@ -4547,7 +4621,12 @@ def delete_block():
         class_row = get_class_economy(class_ids[0])
         if not class_row:
             return jsonify({"status": "error", "message": "Join code not found or access denied."}), 404
-        _hard_delete_class_scope(class_row.class_id, g.canonical_context)
+        _hard_delete_class_scope(
+            class_id=class_row.class_id,
+            canonical_context=g.canonical_context,
+            correlation_id=generate_correlation_id(),
+            idempotency_key=f"class:destroy:{class_row.class_id}",
+        )
 
         if class_ids:
             Seat.query.filter(
@@ -4570,7 +4649,6 @@ def delete_block():
 @admin_bp.route('/join-code/delete', methods=['POST'])
 @admin_bp.route('/join-code', methods=['DELETE'])
 @admin_required
-@feat_shell("FEAT-ADMN-001")
 def delete_join_code():
     """Hard-delete a class economy and all records scoped to the join code."""
     data = request.get_json(silent=True) or request.form
@@ -4603,7 +4681,12 @@ def delete_join_code():
     try:
         if not class_row:
             return jsonify({"status": "error", "message": "Join code not found or access denied."}), 404
-        _hard_delete_class_scope(class_row.class_id, g.canonical_context)
+        _hard_delete_class_scope(
+            class_id=class_row.class_id,
+            canonical_context=g.canonical_context,
+            correlation_id=generate_correlation_id(),
+            idempotency_key=f"class:destroy:{class_row.class_id}",
+        )
         return jsonify({
             "status": "success",
             "message": f"Join code {display_join_code} and all scoped records were permanently deleted."
@@ -4619,7 +4702,6 @@ def delete_join_code():
 
 @admin_bp.route('/pending-students/delete', methods=['POST'])
 @admin_required
-@feat_shell("FEAT-ADMN-001")
 def delete_pending_student():
     """
     Delete a single pending student (unclaimed Seat entry).
@@ -4656,7 +4738,7 @@ def delete_pending_student():
             return jsonify({"status": "error", "message": "Pending student not found or access denied."}), 404
 
         # Verify it's actually unclaimed
-        if seat_entry.claimed_at is not None or seat_entry.student_id is not None:
+        if seat_entry.claimed_at is not None or seat_entry.user_id is not None:
             return jsonify({
                 "status": "error",
                 "message": "This seat has already been claimed. Use the regular student deletion route instead."
@@ -4669,7 +4751,14 @@ def delete_pending_student():
         )
 
         # Delete the Seat entry (this is the only record for unclaimed seats)
-        delete_seat_with_profile(seat_entry)
+        result = remove_pending_student_seat(
+            canonical_context=g.canonical_context,
+            seat_id=seat_entry.id,
+            correlation_id=generate_correlation_id(),
+            idempotency_key=f"identity:pending-remove:{g.canonical_context.class_id}:{seat_entry.id}",
+        )
+        if result != "REMOVED":
+            return jsonify({"status": "error", "message": "Pending student could not be removed."}), 409
         return jsonify({
             "status": "success",
             "message": f"Successfully deleted pending student {student_name}."
@@ -4682,7 +4771,6 @@ def delete_pending_student():
 
 @admin_bp.route('/pending-students/bulk-delete', methods=['POST'])
 @admin_required
-@feat_shell("FEAT-ADMN-001")
 def bulk_delete_pending_students():
     """
     Delete multiple pending students (unclaimed Seat entries) at once.
@@ -4710,10 +4798,20 @@ def bulk_delete_pending_students():
                 cid for cid in _get_class_ids_by_block(g.canonical_context, [section]).values() if cid
             ]
             if block_class_ids:
-                deleted_count = Seat.query.filter(
+                pending_seats = Seat.query.filter(
                     Seat.class_id.in_(block_class_ids),
                     Seat.claimed_at.is_(None),
-                ).delete(synchronize_session=False)
+                    Seat.user_id.is_(None),
+                ).all()
+                for seat_entry in pending_seats:
+                    result = remove_pending_student_seat(
+                        canonical_context=g.canonical_context,
+                        seat_id=seat_entry.id,
+                        correlation_id=generate_correlation_id(),
+                        idempotency_key=f"identity:pending-remove:{g.canonical_context.class_id}:{seat_entry.id}",
+                    )
+                    if result == "REMOVED":
+                        deleted_count += 1
         else:
             # Delete specific Seat entries
             for seat_id in seat_ids:
@@ -4729,9 +4827,15 @@ def bulk_delete_pending_students():
 
                 if seat_entry:
                     # Verify it's actually unclaimed
-                    if seat_entry.claimed_at is None and seat_entry.student_id is None:
-                        delete_seat_with_profile(seat_entry)
-                        deleted_count += 1
+                    if seat_entry.claimed_at is None and seat_entry.user_id is None:
+                        result = remove_pending_student_seat(
+                            canonical_context=g.canonical_context,
+                            seat_id=seat_entry.id,
+                            correlation_id=generate_correlation_id(),
+                            idempotency_key=f"identity:pending-remove:{g.canonical_context.class_id}:{seat_entry.id}",
+                        )
+                        if result == "REMOVED":
+                            deleted_count += 1
 
         message = f"Successfully deleted {deleted_count} pending student(s)."
         if section:
@@ -4756,14 +4860,13 @@ def add_individual_student():
         first_name = request.form.get('first_name', '').strip()
         last_name = request.form.get('last_name', '').strip()
         block_select = (request.form.get('block_select') or '').strip()
-        new_block_name = request.form.get('new_block_name', '').strip().upper()
         additional_notes = (request.form.get('additional_notes') or '').strip()
 
         if not all([first_name, last_name, block_select]):
             flash("All fields are required.", "error")
             return redirect(url_for('admin.students'))
 
-        section = new_block_name if block_select == '__CREATE_NEW__' else block_select.upper()
+        section = block_select.upper()
         # Student.block is VARCHAR(10) in the DB; enforce before insert to avoid flush-time errors.
         if len(section) > 10:
             flash("Class section name must be 10 characters or fewer.", "error")
@@ -4840,7 +4943,6 @@ def add_individual_student():
 
 @admin_bp.route('/student/add-manual', methods=['POST'])
 @admin_required
-@feat_shell("FEAT-ADMN-001")
 def add_manual_student():
     """Add a student with full manual configuration (advanced mode)."""
     try:
@@ -4938,48 +5040,46 @@ def add_manual_student():
                     flash(f"Student {first_name} {last_name} is already in your class.", "info")
                 else:
                     flash(f"Student {first_name} {last_name} already exists. Linking to your class.", "warning")
-                    from app.feats.class_configuration import execute_provision_student_seat
+                    from app.feats.identity_feat import execute_provision_student_seat
                     provision_result = execute_provision_student_seat(
                         canonical_context=g.canonical_context,
                         class_id=class_id,
                         first_name=first_name,
                         last_name=last_name,
+                        dedupe_code=dedupe_key,
+                        has_received_rent_exemption=not rent_enabled,
+                        correlation_id=f"corr_iden_roster_{class_id}_{uuid.uuid4().hex}",
+                        idempotency_key=f"feat:iden:roster-seat:{class_id}:{dedupe_key}",
                     )
                     if not provision_result.success:
                         current_app.logger.error(
-                            "FEAT-CLASS-002 provision failed linking duplicate: %s",
+                            "FEAT-IDEN-006 provision failed linking duplicate: %s",
                             provision_result.error_message,
                         )
                     if class_context.get('class_created'):
                         _queue_pending_class_timezone_confirmation(class_context.get('class_row'))
                 return redirect(url_for('admin.students'))
 
-        with FEATContext("FEAT-IDEN-001", idempotency_key=f"admin:add-manual-student:{class_id}:{first_name}:{last_name}:{dedupe_key}"):
-            # Seat only — no User until student completes claim (DOM-IDEN-002 §VIII).
-            profile = IdentityProfile(
-                profile_type='student',
-                first_name=first_name,
-                last_name=last_name,
-            )
+        from app.feats.identity_feat import execute_provision_student_seat
+        provision_result = execute_provision_student_seat(
+            canonical_context=g.canonical_context,
+            class_id=class_id,
+            first_name=first_name,
+            last_name=last_name,
+            dedupe_code=dedupe_key,
+            has_received_rent_exemption=not rent_enabled,
+            correlation_id=f"corr_iden_roster_{class_id}_{uuid.uuid4().hex}",
+            idempotency_key=f"feat:iden:roster-seat:{class_id}:{dedupe_key}",
+        )
+        if not provision_result.success:
+            raise ValueError(provision_result.error_message or "Student seat provisioning failed")
 
-            # Verify class exists before creating Seat (class was resolved or created above)
-            if not get_class_economy(class_id):
-                raise ValueError(f"Class {class_id} does not exist")
-
-            new_seat = create_pending_student_seat(
-                class_id=class_id,
-                dedupe_code=dedupe_key,
-                has_received_rent_exemption=not rent_enabled,
-            )
-
-            profile.seat_id = new_seat.id
-
-            if class_context.get('class_created'):
-                _queue_pending_class_timezone_confirmation(class_context.get('class_row'))
+        if class_context.get('class_created'):
+            _queue_pending_class_timezone_confirmation(class_context.get('class_row'))
 
     except Exception as e:
         db.session.rollback()
-        current_app.logger.error("Error creating manual student")
+        current_app.logger.error("Error creating manual student: %s", e)
         flash(f"Cannot create student due to internal error", "error")
 
     return redirect(url_for('admin.students'))
@@ -5005,6 +5105,7 @@ def generate_collective_goal_instance_code():
 
 @admin_bp.route('/store', methods=['GET', 'POST'])
 @admin_required
+@requires_feat_context("FEAT-STOR-001")
 def store_management():
     """Manage store items - view, create, edit, delete."""
     user_id = g.canonical_context.user_id
@@ -5083,7 +5184,6 @@ def store_management():
         flash(f"'{new_item.name}' has been added to the store.", "success")
         return redirect(url_for('admin.store_management'))
 
-    # Get items for this teacher only.
     items = [
         item for item in StoreItem.query.filter_by(class_id=selected_scope['class_id']).order_by(StoreItem.name).all()
         if not item.blocks_list or selected_block in {b.strip().upper() for b in item.blocks_list if b}
@@ -5423,6 +5523,7 @@ def store_management():
 
 @admin_bp.route('/store/edit/<int:item_id>', methods=['GET', 'POST'])
 @admin_required
+@requires_feat_context("FEAT-STOR-001")
 def edit_store_item(item_id):
     """Edit an existing store item."""
     user_id = g.canonical_context.user_id
@@ -5492,12 +5593,20 @@ def edit_store_item(item_id):
         flash(f"'{item.name}' has been updated.", "success")
         return redirect(url_for('admin.store_management'))
     payroll_settings = PayrollSettings.query.filter_by(class_id=selected_scope['class_id'], is_active=True).first()
-    return render_template('admin_edit_item.html', form=form, item=item, current_page="store", payroll_settings=payroll_settings, selected_feature_scope=selected_scope)
+    return render_template(
+        form=form,
+        item=item,
+        current_page="store",
+        payroll_settings=payroll_settings,
+        expected_weekly_hours=_resolve_expected_weekly_hours(payroll_settings) if payroll_settings else None,
+        selected_feature_scope=selected_scope,
+    )
 
 
 @admin_bp.route('/store/delete/<int:item_id>', methods=['POST'])
 @admin_bp.route('/item/deactivate/<int:item_id>', methods=['POST'])
 @admin_required
+@requires_feat_context("FEAT-STOR-001")
 def delete_store_item(item_id):
     """Deactivate a store item (soft delete)."""
     user_id = g.canonical_context.user_id
@@ -5675,8 +5784,8 @@ def _calculate_base_rent_amount(rent_settings: RentSettings, current_year: int, 
 
 
 @admin_bp.route('/rent-settings', methods=['GET', 'POST'])
-@feat_shell("FEAT-ADMN-001")
 @admin_required
+@requires_feat_context("FEAT-OBL-003")
 def rent_settings():
     """Configure rent settings."""
     user_id = g.canonical_context.user_id
@@ -5692,89 +5801,73 @@ def rent_settings():
     if not feature_scope or not feature_scope["enabled"]:
         abort(404)
 
-    selected_scope = {
-        "class_id": class_row.class_id,
-        "join_code": get_display_join_code(class_row.class_id),
-        "block": (class_row.section or "").strip().upper() or None,
-        "label": class_row.display_name or class_row.section or get_display_join_code(class_row.class_id),
-    }
-    class_id = selected_scope['class_id']
+    class_id = class_row.class_id
     payroll_settings = PayrollSettings.query.filter_by(
         class_id=class_id,
         is_active=True,
     ).first()
-    teacher_blocks = [option['block'] for option in get_admin_feature_join_code_options('rent', canonical_context=g.canonical_context)]
-    settings_block = selected_scope['block']
 
-    # Get or create rent settings for this class (class_id is the canonical scope; block column is display-only)
+    # Get or create rent settings for this canonical class
     settings = get_rent_settings(class_id)
 
     if request.method == 'POST':
-        blocks_to_update = [class_id]
-
         payload_hash = hashlib.sha256(
             json.dumps(
-                    {
-                        "class_id": selected_scope["class_id"],
-                        "settings_block": settings_block,
-                        "blocks_to_update": sorted([b for b in blocks_to_update if b]),
-                        "form_keys": sorted(request.form.keys()),
-                    },
+                {
+                    "class_id": class_id,
+                    "form_keys": sorted(request.form.keys()),
+                },
                 sort_keys=True,
                 default=str,
             ).encode("utf-8")
         ).hexdigest()[:16]
-        idempotency_key = (
-            f"feat:rent:settings-update:{selected_scope['class_id']}:{payload_hash}"
-        )
+        idempotency_key = f"feat:rent:settings-update:{class_id}:{payload_hash}"
 
         # Per MAP-UI-001, rent policy configuration is Class Configuration domain (FEAT-SETTINGS-001),
         # not admin action (FEAT-ADMN-001). Policy updates define the contractual terms that cause
         # assessments to exist; this is Class Configuration authority, not Obligations mutation.
         with FEATContext("FEAT-SETTINGS-001", idempotency_key=idempotency_key):
-            for block in blocks_to_update:
-                # block IS a class_id; query directly — no label-based lookup (INV-ARC-014)
-                block_settings = get_rent_settings(block)
-                if not block_settings:
-                    block_settings = create_rent_settings(class_id=block)
+            block_settings = get_rent_settings(class_id)
+            if not block_settings:
+                block_settings = create_rent_settings(class_id=class_id)
 
-                # Rent amount and frequency
-                from app.models import _quantize_currency
-                block_settings.rent_amount = _quantize_currency(request.form.get('rent_amount', '50.0'))
-                block_settings.frequency_type = request.form.get('frequency_type', 'monthly')
+            # Rent amount and frequency
+            from app.models import _quantize_currency
+            block_settings.rent_amount = _quantize_currency(request.form.get('rent_amount', '50.0'))
+            block_settings.frequency_type = request.form.get('frequency_type', 'monthly')
 
-                if block_settings.frequency_type == 'custom':
-                    block_settings.custom_frequency_value = int(request.form.get('custom_frequency_value', 1))
-                    block_settings.custom_frequency_unit = request.form.get('custom_frequency_unit', 'days')
-                else:
-                    block_settings.custom_frequency_value = None
-                    block_settings.custom_frequency_unit = None
+            if block_settings.frequency_type == 'custom':
+                block_settings.custom_frequency_value = int(request.form.get('custom_frequency_value', 1))
+                block_settings.custom_frequency_unit = request.form.get('custom_frequency_unit', 'days')
+            else:
+                block_settings.custom_frequency_value = None
+                block_settings.custom_frequency_unit = None
 
-                # Due date settings
-                first_due_date_str = request.form.get('first_rent_due_date')
-                if first_due_date_str:
-                    block_settings.first_rent_due_date = datetime.strptime(first_due_date_str, '%Y-%m-%d')
-                else:
-                    block_settings.first_rent_due_date = None
+            # Due date settings
+            first_due_date_str = request.form.get('first_rent_due_date')
+            if first_due_date_str:
+                block_settings.first_rent_due_date = datetime.strptime(first_due_date_str, '%Y-%m-%d')
+            else:
+                block_settings.first_rent_due_date = None
 
-                block_settings.due_day_of_month = int(request.form.get('due_day_of_month', 1))
+            block_settings.due_day_of_month = int(request.form.get('due_day_of_month', 1))
 
-                # Grace period and late penalties
-                block_settings.grace_period_days = int(request.form.get('grace_period_days', 3))
-                block_settings.late_penalty_amount = _quantize_currency(request.form.get('late_penalty_amount', '10.0'))
-                block_settings.late_penalty_type = request.form.get('late_penalty_type', 'once')
+            # Grace period and late penalties
+            block_settings.grace_period_days = int(request.form.get('grace_period_days', 3))
+            block_settings.late_penalty_amount = _quantize_currency(request.form.get('late_penalty_amount', '10.0'))
+            block_settings.late_penalty_type = request.form.get('late_penalty_type', 'once')
 
-                if block_settings.late_penalty_type == 'recurring':
-                    block_settings.late_penalty_frequency_days = int(request.form.get('late_penalty_frequency_days', 7))
-                else:
-                    block_settings.late_penalty_frequency_days = None
+            if block_settings.late_penalty_type == 'recurring':
+                block_settings.late_penalty_frequency_days = int(request.form.get('late_penalty_frequency_days', 7))
+            else:
+                block_settings.late_penalty_frequency_days = None
 
-                # Student payment options
-                block_settings.bill_preview_enabled = request.form.get('bill_preview_enabled') == 'on'
-                block_settings.bill_preview_days = int(request.form.get('bill_preview_days', 7))
-                block_settings.allow_incremental_payment = request.form.get('allow_incremental_payment') == 'on'
-                block_settings.prevent_purchase_when_late = request.form.get('prevent_purchase_when_late') == 'on'
-                block_settings.bypass_cwi_warnings = request.form.get('bypass_cwi_warnings') == 'on'
+            # Student payment options
+            block_settings.bill_preview_enabled = request.form.get('bill_preview_enabled') == 'on'
+            block_settings.bill_preview_days = int(request.form.get('bill_preview_days', 7))
+            block_settings.allow_incremental_payment = request.form.get('allow_incremental_payment') == 'on'
+            block_settings.prevent_purchase_when_late = request.form.get('prevent_purchase_when_late') == 'on'
+            block_settings.bypass_cwi_warnings = request.form.get('bypass_cwi_warnings') == 'on'
 
         # Handle rent items (for all blocks in blocks_to_update)
         # Parse rent items from form once
@@ -5782,7 +5875,6 @@ def rent_settings():
         for key in request.form.keys():
             if key.startswith('rent_item_name_'):
                 idx = key.split('_')[-1]
-                rent_item_indices.add(idx)
 
         parsed_items = []
         for idx in sorted(rent_item_indices):
@@ -5858,29 +5950,20 @@ def rent_settings():
             item_data['store_price'] = store_price
             parsed_items.append(item_data)
 
-        # Apply parsed items to each class (blocks_to_update now contains class_ids)
-        for block in blocks_to_update:
-                # block is now a class_id; fetch settings directly by class_id
-                block_settings = get_rent_settings(block)
-                if not block_settings:
-                    continue
-
+        # Apply parsed items to the current class (canonical single-class scope)
+        idempotency_key_items = f"feat:rent:items-update:{class_id}:{payload_hash}"
+        with FEATContext("FEAT-SETTINGS-001", idempotency_key=idempotency_key_items):
+            block_settings = get_rent_settings(class_id)
+            if block_settings:
                 existing_items = (
                     StoreItem.query.filter(
-                        StoreItem.class_id == block_settings.class_id,
+                        StoreItem.class_id == class_id,
                         StoreItem.is_rent_linked.is_(True),
                     )
                     .order_by(StoreItem.id.asc())
                     .all()
                 )
-                existing_map = {}
-
-                # For the target class, map by ID; for other classes, map by name
-                if block == class_id:
-                    existing_map = {str(item.id): item for item in existing_items}
-                else:
-                    existing_map = {item.name: item for item in existing_items}
-
+                existing_map = {str(item.id): item for item in existing_items}
                 processed_items = set()
 
                 # Mid-period lock: detect if any student has paid rent for current coverage period
@@ -5889,7 +5972,7 @@ def rent_settings():
                 now = utc_now()
                 coverage_due = _calculate_rent_coverage_due_date(block_settings, now)
                 if coverage_due:
-                    current_bill_cycle = obligations_service.get_latest_bill_cycle_for_class(block_settings.class_id)
+                    current_bill_cycle = obligations_service.get_latest_bill_cycle_for_class(class_id)
                     paid_count = 0
                     if current_bill_cycle:
                         current_cycle_assessments = obligations_service.get_assessments_for_bill_cycle(
@@ -5904,13 +5987,7 @@ def rent_settings():
                         mid_period_locked = True
 
                 for item_data in parsed_items:
-                    target_item = None
-
-                    # Try to find matching existing item
-                    if block == class_id:
-                        target_item = existing_map.get(item_data['id'])
-                    else:
-                        target_item = existing_map.get(item_data['name'])
+                    target_item = existing_map.get(item_data['id'])
 
                     if target_item:
                         # Update existing - always allow cosmetic fields
@@ -5935,9 +6012,9 @@ def rent_settings():
                         processed_items.add(target_item)
                     else:
                         # Create new
-                        new_item = create_store_item(
+                        create_store_item(
                             user_id=user_id,
-                            class_id=block_settings.class_id,
+                            class_id=class_id,
                             name=item_data['name'],
                             description=item_data['description'] if item_data['description'] else None,
                             item_type='delayed',
@@ -5946,20 +6023,18 @@ def rent_settings():
                             is_active=item_data['is_available'],
                             is_rent_linked=True,
                         )
-                        # No need to add to processed_items as it's new
 
                 # Delete items that were not in the form (and thus not processed)
                 for item in existing_items:
                     if item not in processed_items:
-                        # If this item had a linked store item, deactivate it
                         if item.store_item_id:
                             deactivate_linked_store_item(item.store_item_id)
                         delete_rent_item(item)
 
                 # Sync to store
-                _sync_rent_items_to_store(block_settings, user_id, block_settings.class_id)
+                _sync_rent_items_to_store(block_settings, user_id, class_id)
 
-                if mid_period_locked and block == class_id:
+                if mid_period_locked:
                     flash("Some changes are locked because students have already paid rent this period. "
                           "Item type, use limits, and hall pass counts will apply next period.", "warning")
 
@@ -5970,7 +6045,6 @@ def rent_settings():
     # Use view model to get student obligation summary (encapsulates all aggregation)
     from app.services.obligation_view_model import (
         build_class_obligation_summary,
-        add_display_formatting_to_class_obligation_summary,
     )
 
     obligation_summary = build_class_obligation_summary(class_id, 'RENT')
@@ -5981,47 +6055,40 @@ def rent_settings():
     # Extract basic statistics from view model
     total_students = len(obligation_summary.student_rows) if obligation_summary else 0
 
-    # Get active waivers (still needs manual query for waiver-specific fields not in view model)
-    now = utc_now()
-    active_waivers = []
-    for waiver in obligations_service.get_active_rent_waivers_for_class(
-        class_id,
-        coverage_date=now,
-    ):
-        profile = IdentityProfile.query.filter_by(seat_id=waiver.seat_id).first() if waiver.seat_id else None
-        active_waivers.append(SimpleNamespace(
-            id=waiver.id,
-            student=SimpleNamespace(
-                full_name=profile.full_name if profile else 'Unknown',
-            ),
-            waiver_start_date=waiver.coverage_start_time,
-            waiver_end_date=waiver.coverage_end_time,
-            periods_count=_count_rent_waiver_periods(settings, waiver),
-            reason=getattr(waiver, 'notes', None) or getattr(waiver, 'reason', None),
-            created_at=waiver.assessed_at,
-        ))
+    # Per DOM-OBL-001 §V.6, a waiver is a one-time immutable satisfaction
+    # of a specific already-assessed rent liability. The Waivers tab is
+    # organized around (a) the exact set of outstanding assessments a
+    # teacher can waive right now, and (b) a read-only audit log of
+    # waivers already applied. No "active waiver" or "future scope"
+    # concepts are surfaced.
+    from app.services.obligation_view_model import get_outstanding_rent_by_seat
+    outstanding_by_student = get_outstanding_rent_by_seat(class_id)
 
-    # Build all_students view model dicts for waiver form (no raw SQLAlchemy in templates).
-    all_students = []
-    if obligation_summary and obligation_summary.student_rows:
-        for row in obligation_summary.student_rows:
-            all_students.append({
-                'id': row['seat_id'],
-                'full_name': row['student_name'],
-                'block': '',
-            })
-        all_students.sort(
-            key=lambda s: (
-                s['full_name'].lower(),
-                s['id'],
-            )
+    waiver_history_raw = obligations_service.get_rent_waiver_history_for_class(
+        class_id, limit=100,
+    )
+    # Enrich with student_name for template rendering. Waiver-event
+    # amount is not persisted (DOM-OBL-001 §VII.1); resolve from the
+    # linked ASSESSMENT's frozen RentSettings via view model helpers if
+    # display is desired — for now the audit log shows seat + waived_at
+    # + due_at only, matching the domain's guarantees.
+    waiver_history = []
+    for row in waiver_history_raw:
+        profile = (
+            IdentityProfile.query.filter_by(seat_id=row['seat_id']).first()
+            if row['seat_id'] else None
         )
-
-    # Build class_labels_by_block dictionary
-    class_labels_by_block = _get_class_labels_for_blocks(g.canonical_context, teacher_blocks)
-
-    # Build join_codes_by_block dictionary
-    join_codes_by_block = _get_join_codes_by_block(g.canonical_context, teacher_blocks)
+        student_name = (
+            f"{profile.first_name} {profile.last_name}".strip()
+            if profile else f"Seat {row['seat_id']}"
+        )
+        waiver_history.append({
+            'correlation_id': row['correlation_id'],
+            'student_name': student_name,
+            'due_at': row['due_at'],
+            'waived_at': row['waived_at'],
+            'notes': row['notes'],
+        })
 
     # Calculate payroll warning
     payroll_warning = None
@@ -6148,14 +6215,11 @@ def rent_settings():
     return render_template('admin_rent_settings.html',
                           settings=settings,
                           obligation_summary=obligation_summary,
-                          active_waivers=active_waivers,
-                          all_students=all_students,
+                          outstanding_by_student=outstanding_by_student,
+                          waiver_history=waiver_history,
                           payroll_warning=payroll_warning,
                           payroll_settings=payroll_settings,
-                          settings_block=settings_block,
-                          teacher_blocks=teacher_blocks,
-                          class_labels_by_block=class_labels_by_block,
-                          join_codes_by_block=join_codes_by_block,
+                          expected_weekly_hours=_resolve_expected_weekly_hours(payroll_settings) if payroll_settings else None,
                           rent_items=rent_items,
                           rent_active_for_period=rent_active_for_period,
                           period_label=period_label,
@@ -6168,99 +6232,112 @@ def rent_settings():
                           display_next_due_date=display_next_due_date,
                           current_period_start=current_period_start,
                           current_period_end=current_period_end,
-                          next_due_date=next_due_date,
-                          current_coverage_due_date=current_coverage_due_date,
-                          upcoming_coverage_due_date=upcoming_coverage_due_date,
-                          selected_feature_scope=selected_scope)
+                          next_due_date=next_due_date)
 
 
 @admin_bp.route('/rent-waiver/add', methods=['POST'])
 @admin_required
-@feat_shell("FEAT-OBL-003")
+@requires_feat_context("FEAT-OBL-003")
 def add_rent_waiver():
-    """Add rent waiver for selected students (FEAT-OBL-003).
+    """Waive one or more specific outstanding rent assessments (FEAT-OBL-003).
 
-    Per DOM-OBL-001 §VI: WAIVED events close out outstanding remainder on RENT obligations.
+    Per DOM-OBL-001 §V.6: a waiver is a one-time immutable satisfaction of
+    a specific already-assessed rent liability. It does not create ongoing
+    state and does not affect later assessments. This route accepts the
+    exact `correlation_id`(s) the teacher selected in the UI — no "current
+    period," no "future periods," no scope inference.
+
+    Form contract:
+      - correlation_ids : repeated form field, one per checked assessment
+      - notes           : optional free-text teacher note. Persisted on
+                          each resulting WAIVED event via the notes
+                          column added by DOM-OBL-001 §VII.1 (immutable
+                          after insert; informational only; visible to
+                          the teacher and the affected student).
     """
     from app.feats.satisfy_obligation_feat import execute_satisfy_obligation_waiver
-    from app.services import obligations_service
 
     context = g.canonical_context
     class_id = context.class_id
     if not class_id:
         abort(404)
 
-    # Get seat IDs from request (format: student_ids multiple select)
-    seat_ids_to_waive = []
-    for seat_id_str in request.form.getlist('student_ids'):
-        try:
-            seat_ids_to_waive.append(int(seat_id_str))
-        except ValueError:
-            continue
+    correlation_ids = [
+        cid.strip() for cid in request.form.getlist('correlation_ids') if cid and cid.strip()
+    ]
+    notes = (request.form.get('notes') or '').strip() or None
 
-    if not seat_ids_to_waive:
-        flash("No students selected for waiver.", "warning")
-        return redirect(url_for('admin.rent_settings'))
+    if not correlation_ids:
+        flash("No assessments selected for waiver.", "warning")
+        return redirect(url_for('admin.rent_settings') + '#waivers')
 
-    # For each selected seat, find current rent assessment and waive it
     waived_count = 0
+    skipped_already_waived = 0
     failed_count = 0
 
-    for seat_id in seat_ids_to_waive:
+    for correlation_id in correlation_ids:
+        # Resolve the ASSESSMENT event first — verifies (a) it exists,
+        # (b) it belongs to this class (defense against cross-class
+        # correlation IDs in the payload), (c) it's a rent assessment.
+        assessment = (
+            db.session.query(ObligationAssessment)
+            .filter(
+                ObligationAssessment.correlation_id == correlation_id,
+                ObligationAssessment.class_id == class_id,
+                ObligationAssessment.obligation_type == 'RENT',
+                ObligationAssessment.event_type == 'ASSESSMENT',
+            )
+            .first()
+        )
+        if not assessment:
+            failed_count += 1
+            continue
+
+        # Idempotency: already waived is a no-op success (not a failure).
+        existing_waiver = (
+            db.session.query(ObligationAssessment)
+            .filter(
+                ObligationAssessment.correlation_id == correlation_id,
+                ObligationAssessment.event_type == 'WAIVED',
+            )
+            .first()
+        )
+        if existing_waiver:
+            skipped_already_waived += 1
+            continue
+
         try:
-            # Find the most recent ASSESSMENT event for this seat (current rent obligation)
-            assessment = (
-                db.session.query(ObligationAssessment)
-                .filter(
-                    ObligationAssessment.seat_id == seat_id,
-                    ObligationAssessment.class_id == class_id,
-                    ObligationAssessment.obligation_type == 'RENT',
-                    ObligationAssessment.event_type == 'ASSESSMENT',
-                )
-                .order_by(ObligationAssessment.created_at.desc())
-                .first()
-            )
-
-            if not assessment:
-                failed_count += 1
-                continue
-
-            # Check if already waived
-            existing_waiver = (
-                db.session.query(ObligationAssessment)
-                .filter(
-                    ObligationAssessment.correlation_id == assessment.correlation_id,
-                    ObligationAssessment.event_type == 'WAIVED',
-                )
-                .first()
-            )
-
-            if existing_waiver:
-                # Already waived, skip
-                continue
-
-            # Create WAIVED event via FEAT-OBL-003
             execute_satisfy_obligation_waiver(
-                correlation_id=assessment.correlation_id,
+                correlation_id=correlation_id,
                 class_id=class_id,
-                seat_id=seat_id,
+                seat_id=assessment.seat_id,
+                idempotency_key=f"feat:obl:waiver:{class_id}:{correlation_id}",
+                notes=notes,
             )
             waived_count += 1
-
         except ValueError as e:
-            current_app.logger.warning(f"Failed to waive rent for seat {seat_id}: {e}")
+            current_app.logger.warning(
+                f"Failed to waive rent assessment {correlation_id}: {e}"
+            )
             failed_count += 1
 
-    db.session.commit()
 
     if waived_count > 0:
-        flash(f"Waived rent for {waived_count} student(s).", "success")
+        flash(f"Waived {waived_count} rent assessment{'s' if waived_count != 1 else ''}.", "success")
+    if skipped_already_waived > 0:
+        flash(
+            f"Skipped {skipped_already_waived} assessment{'s' if skipped_already_waived != 1 else ''} already waived.",
+            "info",
+        )
     if failed_count > 0:
-        flash(f"Failed to waive rent for {failed_count} student(s).", "warning")
-    if waived_count == 0 and failed_count == 0:
+        flash(
+            f"Failed to waive {failed_count} assessment{'s' if failed_count != 1 else ''}.",
+            "warning",
+        )
+    if waived_count == 0 and skipped_already_waived == 0 and failed_count == 0:
         flash("No changes made.", "info")
 
-    return redirect(url_for('admin.rent_settings'))
+    return redirect(url_for('admin.rent_settings') + '#waivers')
 
 
 # -------------------- INSURANCE MANAGEMENT --------------------
@@ -6300,6 +6377,7 @@ def _next_tenant_scoped_tier_id(seed, existing_ids):
 
 @admin_bp.route('/insurance', methods=['GET', 'POST'])
 @admin_required
+@requires_feat_context("FEAT-POL-001")
 def insurance_management():
     """Main insurance management dashboard."""
     user_id = g.canonical_context.user_id
@@ -6312,8 +6390,56 @@ def insurance_management():
     selected_scope = resolve_feature_class_for_class(selected_class_id, 'insurance')
     if not selected_scope or not selected_scope.get('enabled'):
         abort(404)
+
+    # POST = bootstrap a new insurance policy lineage per FEAT-POL-001 §V.
+    #
+    # Domain requirements consulted before writing this handler:
+    #
+    # - FEAT-CLASS-003 §VII delegates policy definition creation to
+    #   FEAT-POL-001. This route acts as that FEAT's caller.
+    # - FEAT-POL-001 §V ("New Policy") requires: create a new immutable
+    #   policy row, assign a new identifier, persist the family-specific
+    #   payload, and set availability. Default availability is IN_USE
+    #   "unless the caller explicitly requests HIDDEN."
+    # - Payload schema mirrors edit_insurance_policy so the edit page
+    #   can round-trip the row without missing keys.
+    # - Availability is deliberately requested as HIDDEN
+    #   (is_active=False) because the bootstrap payload is functionally
+    #   incomplete (premium $0, no coverage terms). Students never see
+    #   the policy until the teacher fills it in and explicitly
+    #   activates it via the edit page. This is the explicit exception
+    #   FEAT-POL-001 §V.4 accommodates.
+    if request.method == 'POST':
+        title = (request.form.get('title') or '').strip()
+        if not title:
+            flash("Give your new policy a title before creating it.", "warning")
+            return redirect(url_for('admin.insurance_management'))
+
+        # Mutation is delegated to a proper FEAT wrapper
+        # (execute_create_insurance_policy_draft) so this route no
+        # GET loads do not open a mutation boundary.
+        # Idempotency key is stable per class + title.
+        # so a double-submit of the same modal is a no-op.
+        # session has no dirty state after the FEAT's flush.
+        from app.feats.policy_reference_feat import execute_create_insurance_policy_draft
+
+        title_hash = hashlib.sha256(title.encode()).hexdigest()[:16]
+        idempotency_key = f"feat:pol:insurance-new:{selected_class_id}:{title_hash}"
+        new_version = execute_create_insurance_policy_draft(
+            class_id=selected_class_id,
+            actor_user_id=user_id,
+            title=title,
+            idempotency_key=idempotency_key,
+        )
+
+        flash(
+            f"Draft policy \"{title}\" created. Fill in the premium, coverage, "
+            f"and other terms below, then activate it when ready.",
+            "success",
+        )
+        return redirect(url_for('admin.edit_insurance_policy', policy_id=new_version.id))
+
     settings_block = class_context.get("block")
-    active_class_label = selected_join_code
     policy_versions = [
         SimpleNamespace(
             id=version.id,
@@ -6345,7 +6471,7 @@ def insurance_management():
 
 @admin_bp.route('/insurance/edit/<int:policy_id>', methods=['GET', 'POST'])
 @admin_required
-@feat_shell("FEAT-SETTINGS-001")
+@requires_feat_context("FEAT-POL-001")
 def edit_insurance_policy(policy_id):
     """Edit existing insurance policy."""
     class_id = g.canonical_context.class_id
@@ -6415,7 +6541,6 @@ def edit_insurance_policy(policy_id):
             is_active=True,
             expires_at=None,
         )
-        db.session.commit()
         flash(f"Insurance policy '{payload['title']}' updated.", "success")
         return redirect(url_for("admin.insurance_management"))
     return render_template(
@@ -6439,7 +6564,7 @@ def edit_insurance_policy(policy_id):
 
 @admin_bp.route('/insurance/deactivate/<int:policy_id>', methods=['POST'])
 @admin_required
-@feat_shell("FEAT-SETTINGS-001")
+@requires_feat_context("FEAT-POL-001")
 def deactivate_insurance_policy(policy_id):
     """Deactivate an insurance policy."""
     class_id = g.canonical_context.class_id
@@ -6466,19 +6591,17 @@ def deactivate_insurance_policy(policy_id):
         is_active=True,
         expires_at=None,
     )
-    db.session.commit()
     flash("Insurance policy deactivated.", "success")
     return redirect(url_for('admin.insurance_management'))
 
 
 @admin_bp.route('/insurance/delete/<int:policy_id>', methods=['POST'])
 @admin_required
-@feat_shell("FEAT-SETTINGS-001")
+@requires_feat_context("FEAT-POL-001")
 def delete_insurance_policy(policy_id):
     """Delete an insurance policy and all associated data.
 
     Since each teacher has their own policy instances (identified by policy_code),
-    this safely deletes only the current teacher's policy data without affecting
     other teachers.
     """
     class_id = g.canonical_context.class_id
@@ -6504,21 +6627,18 @@ def delete_insurance_policy(policy_id):
         is_active=True,
         expires_at=None,
     )
-    db.session.commit()
     flash("Insurance policy deletion scheduled.", "success")
     return redirect(url_for('admin.insurance_management'))
 
 
 @admin_bp.route('/insurance/mass-remove/<int:policy_id>', methods=['POST'])
 @admin_required
-@feat_shell("FEAT-SETTINGS-001")
 def mass_remove_policy(policy_id):
     """Cancel insurance policy for multiple or all students."""
     flash("Insurance mass-removal is now expressed as policy deactivation/deletion scheduling in the class-config editor.", "info")
     return redirect(url_for('admin.insurance_management'))
 
 
-@admin_bp.route('/insurance/student-policy/<int:enrollment_id>')
 @admin_required
 def view_student_policy(enrollment_id):
     """View student's policy enrollment details and claims history."""
@@ -6708,7 +6828,6 @@ def transactions():
 
 @admin_bp.route('/void-transaction/<int:transaction_id>', methods=['POST'])
 @admin_required
-@feat_shell("FEAT-ADMN-001")
 def void_transaction(transaction_id):
     """Void a transaction."""
     requested_with = (request.headers.get("X-Requested-With") or "").strip().lower()
@@ -6735,7 +6854,11 @@ def void_transaction(transaction_id):
         if tx.class_id != ctx.class_id:
             raise access_policy_service.AccessPolicyDenied(reason_code="foreign_class_scope", message="You do not have permission to void this transaction.")
 
-        execute_void_transaction(tx)
+        execute_void_transaction(
+            tx,
+            correlation_id=f"{tx.correlation_id}:void:{transaction_id}",
+            idempotency_key=f"feat:ledger:void:{ctx.class_id}:{transaction_id}",
+        )
         current_app.logger.info(f"Transaction {transaction_id} voided")
     except (AccessScopeDenied, access_policy_service.AccessPolicyDenied) as e:
         db.session.rollback()
@@ -6907,38 +7030,63 @@ def hall_pass_setup():
 
 @admin_bp.route('/economy-policy', methods=['POST'])
 @admin_required
-@feat_shell("FEAT-ADMN-001")
+@requires_feat_context("FEAT-CLASS-005")
 def update_economy_policy():
-    user_id = g.canonical_context.user_id
-    current_class_id = g.canonical_context.class_id
-    feature_options = get_admin_feature_join_code_options('payroll', canonical_context=g.canonical_context)
-    selected_scope = next((option for option in feature_options if option.get('class_id') == current_class_id), None)
-    if not selected_scope:
-        abort(404)
-    policy_mode = normalize_policy_mode(request.form.get('policy_mode'))
-    settings_row = get_feature_settings_row_for_class(
-        selected_scope['class_id'],
-        create=True,
+    from app.feats.class_configuration.feat_class_005_economic_engine_evolution import (
+        execute_evolve_economic_engine,
     )
-    if not settings_row:
-        flash("Class scope not found for the selected period.", "warning")
-        return redirect(url_for('admin.economy_health'))
-    settings_row.economy_policy_mode = policy_mode
-    settings_row.economy_policy_updated_at = utc_now()
-    cancel_pending_policy_transitions(settings_row.class_id, actor_id=user_id)
+
+    ctx = g.canonical_context
+    user_id = ctx.user_id
+    class_id = ctx.class_id
+    if not class_id:
+        abort(404)
+
+    policy_mode = normalize_policy_mode(request.form.get('policy_mode'))
+
+    # Enumerate features actually enabled on this class (per ClassFeature rows).
+    # FEAT-CLASS-005 fails closed if any listed feature isn't currently enabled,
+    # so we filter through the authoritative check rather than trusting UI options.
+    from app.services.class_configuration_query_service import is_feature_enabled
+    all_features = ClassFeature.feature_names()
+    feature_list = [f for f in all_features if is_feature_enabled(class_id, f)]
+    if not feature_list:
+        flash("No features are enabled for this class yet.", "error")
+        return redirect(url_for('admin.economic_engine'))
+
+    result = execute_evolve_economic_engine(
+        canonical_context=ctx,
+        class_id=class_id,
+        updates={'economy_policy_mode': policy_mode},
+        feature_list=feature_list,
+        idempotency_key=f"feat:class-005:policy-mode:{class_id}:{policy_mode}",
+    )
+    if not result.success:
+        current_app.logger.error(
+            "FEAT-CLASS-005 policy-mode evolve failed: %s - %s",
+            result.error_code, result.error_message,
+        )
+        flash(f"Error updating economy policy: {result.error_message}", "error")
+        return redirect(url_for('admin.economic_engine'))
+
+    # Update display metadata on FeatureSettings (last-updated timestamp is UI-only).
+    # The canonical FEAT-CLASS-005 context owns the transaction boundary.
+    settings_row = get_feature_settings_row_for_class(class_id, create=True)
+    if settings_row:
+        settings_row.economy_policy_updated_at = utc_now()
+    cancel_pending_policy_transitions(class_id, actor_id=user_id)
+
     current_app.logger.info(
-        "Economy policy mode changed teacher=%s block=%s mode=%s",
-        user_id,
-        selected_scope['block'],
-        policy_mode,
+        "Economy policy mode changed teacher=%s class_id=%s mode=%s",
+        user_id, class_id, policy_mode,
     )
     flash(f"Economy policy updated to {POLICY_MODES[policy_mode]['label']}.", "success")
-    return redirect(url_for('admin.economy_health', review_rebalance=1))
+    return redirect(url_for('admin.economic_engine', review_rebalance=1))
 
 
 @admin_bp.route('/economy-policy/rebalance', methods=['POST'])
 @admin_required
-@feat_shell("FEAT-ADMN-001")
+@requires_feat_context("FEAT-CLASS-005")
 def apply_economy_rebalance():
     user_id = g.canonical_context.user_id
     current_class_id = g.canonical_context.class_id
@@ -6954,7 +7102,7 @@ def apply_economy_rebalance():
     )
     if not settings_row:
         flash("Class scope not found for the selected period.", "warning")
-        return redirect(url_for('admin.economy_health', review_rebalance=1))
+        return redirect(url_for('admin.economic_engine', review_rebalance=1))
     allowed_activation_modes = {
         REBALANCE_ACTIVATION_IMMEDIATE,
         REBALANCE_ACTIVATION_NEXT_RENEWAL,
@@ -6963,19 +7111,18 @@ def apply_economy_rebalance():
 
     if activation_mode not in allowed_activation_modes:
         flash("Invalid rebalance activation mode.", "warning")
-        return redirect(url_for('admin.economy_health', review_rebalance=1))
+        return redirect(url_for('admin.economic_engine', review_rebalance=1))
 
-    effective_block, payroll_settings, rent_settings, insurance_policies, _all_payroll_settings = _load_economy_rebalance_context(
+    payroll_settings, rent_settings, insurance_policies = _load_economy_rebalance_context(
         g.canonical_context,
         selected_scope['class_id'],
-        selected_scope['block'],
     )
 
     if not payroll_settings:
         flash("Payroll settings are required before a rebalance can be applied.", "warning")
-        return redirect(url_for('admin.economy_health', review_rebalance=1))
+        return redirect(url_for('admin.economic_engine', review_rebalance=1))
 
-    checker = EconomyBalanceChecker(g.canonical_context.user_id, effective_block, class_id=getattr(payroll_settings, "class_id", None))
+    checker = EconomyBalanceChecker(g.canonical_context.user_id, class_id=getattr(payroll_settings, "class_id", None))
     effective_class_id = selected_scope.get("class_id")
     effective_class = get_class_economy(effective_class_id) if effective_class_id else None
     scoped_store_items = (
@@ -6988,11 +7135,13 @@ def apply_economy_rebalance():
         insurance_policies=insurance_policies,
         fines=[],
         store_items=scoped_store_items,
-        expected_weekly_hours=payroll_settings.expected_weekly_hours if payroll_settings.expected_weekly_hours is not None else 5.0,
+        expected_weekly_hours=_resolve_expected_weekly_hours(payroll_settings),
     )
+    if analysis.cwi is None:
+        flash("Configure expected weekly hours on the Economic Engine page before running a rebalance.", "warning")
+        return redirect(url_for('admin.economic_engine'))
     preview_items = _build_rebalance_preview(
         g.canonical_context,
-        effective_block,
         selected_scope.get("class_id"),
         checker,
         analysis.cwi.cwi,
@@ -7008,11 +7157,11 @@ def apply_economy_rebalance():
 
     if not change_plan:
         flash("No rebalance changes were selected.", "warning")
-        return redirect(url_for('admin.economy_health', review_rebalance=1))
+        return redirect(url_for('admin.economic_engine', review_rebalance=1))
 
     if activation_mode == REBALANCE_ACTIVATION_IMMEDIATE and request.form.get('confirm_immediate') != 'yes':
         flash("Confirm the immediate change warning before applying now.", "warning")
-        return redirect(url_for('admin.economy_health', review_rebalance=1))
+        return redirect(url_for('admin.economic_engine', review_rebalance=1))
 
     if activation_mode == REBALANCE_ACTIVATION_IMMEDIATE:
         applied_labels = _apply_rebalance_plan(
@@ -7045,12 +7194,12 @@ def apply_economy_rebalance():
             "success",
         )
 
-    return redirect(url_for('admin.economy_health'))
+    return redirect(url_for('admin.economic_engine'))
 
 
-@admin_bp.route('/economy-health')
+@admin_bp.route('/economic-engine')
 @admin_required
-def economy_health():
+def economic_engine():
     """Show a holistic view of the current economy configuration and CWI health."""
     user_id = g.canonical_context.user_id
     current_class_id = g.canonical_context.class_id
@@ -7059,16 +7208,11 @@ def economy_health():
     if not selected_scope:
         abort(404)
 
-    blocks = _get_teacher_blocks(g.canonical_context)
-    # Always use per-class view since CWI is inherently class-scoped.
-    selected_block = selected_scope['block']
-
-    selected_block, payroll_settings, rent_settings, insurance_policies, all_payroll_settings = _load_economy_rebalance_context(
+    payroll_settings, rent_settings, insurance_policies = _load_economy_rebalance_context(
         g.canonical_context,
         selected_scope['class_id'],
-        selected_block,
     )
-    has_payroll_settings = len(all_payroll_settings) > 0
+    has_payroll_settings = payroll_settings is not None
 
     selected_class_id = selected_scope['class_id']
     fines = []
@@ -7077,7 +7221,7 @@ def economy_health():
         if selected_class_id else []
     )
 
-    banking_settings = _resolve_banking_settings_for_class_id(selected_class_id) if selected_class_id else None
+    economic_engine = _resolve_economic_engine_for_class_id(selected_class_id) if selected_class_id else None
 
     def summarize_banking(settings):
         if not settings:
@@ -7090,8 +7234,8 @@ def economy_health():
 
         # Keep as Decimal for precise comparison
         from app.models import _quantize_currency
-        apy = _quantize_currency(settings.savings_apy or Decimal('0'))
-        payout = settings.interest_schedule_type or 'monthly'
+        apy = _quantize_currency((settings.interest_rate or Decimal('0')) * Decimal('100'))
+        payout = settings.interest_payout_frequency or 'monthly'
 
         if apy <= Decimal('0'):
             level = 'warning'
@@ -7120,11 +7264,11 @@ def economy_health():
     cwi_calc = None
     snapshot = None
     analysis_schedule = None
-    expected_hours = payroll_settings.expected_weekly_hours if payroll_settings and payroll_settings.expected_weekly_hours is not None else 5.0
+    expected_hours = _resolve_expected_weekly_hours(payroll_settings) if payroll_settings else None
     pay_rate_per_minute = payroll_settings.pay_rate if payroll_settings else None
 
-    if payroll_settings:
-        checker = EconomyBalanceChecker(user_id, selected_block, class_id=getattr(payroll_settings, "class_id", None))
+    if payroll_settings and expected_hours is not None:
+        checker = EconomyBalanceChecker(user_id, class_id=getattr(payroll_settings, "class_id", None))
         payload, snapshot = _get_frozen_economy_analysis_payload(
             user_id,
             checker,
@@ -7135,19 +7279,19 @@ def economy_health():
             store_items=store_items,
         )
         analysis = _deserialize_economy_analysis_payload(payload)
-        cwi_calc = analysis.cwi
-        analysis_schedule = analysis.analysis_schedule
-        pay_rate_per_minute = cwi_calc.pay_rate_per_minute
-        recommendations = analysis.recommendations
+        if analysis and analysis.cwi is not None:
+            cwi_calc = analysis.cwi
+            analysis_schedule = analysis.analysis_schedule
+            pay_rate_per_minute = cwi_calc.pay_rate_per_minute
+            recommendations = analysis.recommendations
 
-        actionable_warnings, warnings_by_level, warnings_by_feature, health_warning_summary = _filter_economy_health_warnings(
-            analysis,
-            rent_settings,
-            insurance_policies,
-            fines,
-            store_items,
-            selected_block=selected_block,
-        )
+            actionable_warnings, warnings_by_level, warnings_by_feature, health_warning_summary = _filter_economy_health_warnings(
+                analysis,
+                rent_settings,
+                insurance_policies,
+                fines,
+                store_items,
+            )
 
     policy_summary = _build_policy_summary(
         selected_scope,
@@ -7163,13 +7307,12 @@ def economy_health():
     if payroll_settings and show_rebalance_review and cwi_calc:
         checker = EconomyBalanceChecker(
             user_id,
-            selected_block,
             policy_mode=policy_summary['mode'],
             class_id=getattr(payroll_settings, "class_id", None),
         )
         rebalance_preview = _build_rebalance_preview(
             g.canonical_context,
-            selected_block,
+            g.canonical_context.class_id,
             checker,
             cwi_calc.cwi,
             rent_settings,
@@ -7177,18 +7320,16 @@ def economy_health():
         )
 
     feature_links = {
-        'rent': url_for('admin.rent_settings', settings_block=selected_block),
-        'insurance': url_for('admin.insurance_management', settings_block=selected_block),
+        'rent': url_for('admin.rent_settings'),
+        'insurance': url_for('admin.insurance_management'),
         'fine': url_for('admin.payroll'),
         'store': url_for('admin.store_management'),
         'budget survival test': url_for('admin.payroll'),
     }
 
     return render_template(
-        'admin_economy_health.html',
-        current_page='economy_health',
-        blocks=blocks,
-        selected_block=selected_block,
+        'admin_economic_engine.html',
+        current_page='economic_engine',
         payroll_settings=payroll_settings,
         has_payroll_settings=has_payroll_settings,
         cwi_calc=cwi_calc,
@@ -7198,8 +7339,8 @@ def economy_health():
         insurance_count=len(insurance_policies),
         store_item_count=len(store_items),
         fine_count=len(fines),
-        banking_settings=banking_settings,
-        banking_summary=summarize_banking(banking_settings),
+        banking_settings=economic_engine,
+        banking_summary=summarize_banking(economic_engine),
         analysis=analysis,
         warnings_by_level=warnings_by_level,
         warnings_by_feature=warnings_by_feature,
@@ -7216,8 +7357,8 @@ def economy_health():
         feature_links=feature_links,
         payroll_link=url_for('admin.payroll'),
         banking_link=url_for('admin.banking'),
-        rent_link=url_for('admin.rent_settings', settings_block=selected_block),
-        insurance_link=url_for('admin.insurance_management', settings_block=selected_block),
+        rent_link=url_for('admin.rent_settings'),
+        insurance_link=url_for('admin.insurance_management'),
         store_link=url_for('admin.store_management'),
     )
 
@@ -7468,36 +7609,18 @@ def payroll():
         )
         .all()
     )
-    if selected_block:
-        selected_block_upper = selected_block.upper()
-        seats = [
-            seat for seat in seats
-            if ((seat.class_economy.section if seat and seat.class_economy else '').strip().upper() == selected_block_upper)
-        ]
     students = seats
-    payroll_class_options = [{
-        "class_id": selected_class_id,
-        "label": class_label,
-        "settings_key": selected_block,
-    }]
-    # Check if payroll settings exist for the selected class scope
+    # Check if payroll settings exist for the canonical class
     has_settings = (
-        PayrollSettings.query.filter_by(class_id=selected_class_id, block=selected_block)
-        .first()
-        is not None
+        PayrollSettings.query.filter_by(class_id=selected_class_id).first() is not None
     )
     show_setup_banner = not has_settings
 
-    # Get payroll settings for this teacher, filtered to only include blocks with current students
-    block_settings = (
-        PayrollSettings.query.filter_by(
-            class_id=selected_class_id,
-            is_active=True,
-            block=selected_block,
-        ).all()
-        if selected_block
-        else []
-    )
+    # Get payroll settings for the canonical class
+    block_settings = PayrollSettings.query.filter_by(
+        class_id=selected_class_id,
+        is_active=True,
+    ).all()
 
     # Get first block's settings for form pre-population (no global settings)
     default_setting = block_settings[0] if block_settings else None
@@ -7533,11 +7656,9 @@ def payroll():
     # Next scheduled payroll calculation (keep in UTC for template)
     next_pay_date_utc = _compute_next_pay_date(default_setting, now_utc)
 
-    # Recent payroll activity
-    # CRITICAL: Filter by canonical class_id for class isolation.
+    # Recent payroll activity (class-scoped via canonical class_id)
     my_class_ids = [selected_class_id] if selected_class_id else []
-    class_ids_by_block = {selected_block: selected_class_id} if selected_block else {}
-    payroll_preview = _build_payroll_preview_state(students, class_ids_by_block)
+    payroll_preview = _build_payroll_preview_state(students)
     payroll_summary = payroll_preview["total_summary"]
     payroll_updated_at = payroll_preview["latest_updated_at"]
     payroll_anchor_by_class_id = payroll_preview["anchor_by_class_id"]
@@ -7560,25 +7681,12 @@ def payroll():
 
     class_labels_by_block = {selected_block: class_label} if selected_block else {}
 
-    # Next payroll by canonical class scope.
-    next_payroll_by_block = []
-    for class_option in payroll_class_options:
-        class_id = class_option["class_id"]
-        block_students = [s for s in students if s.class_id == class_id]
-        block_estimate = sum(
-            payroll_summary_by_class_id.get(class_id, {}).get(s.id, Decimal("0.00"))
-            for s in block_students
-        ) if class_id else Decimal("0.00")
-        setting = settings_by_block.get(class_option["settings_key"], default_setting)
-        block_next_payroll = _compute_next_pay_date(setting, now_utc)
-        next_payroll_by_block.append({
-            'class_id': class_id,
-            'class_label': class_option["label"],
-            'next_date': block_next_payroll,  # Keep in UTC
-            'next_date_iso': format_utc_iso(block_next_payroll),
-            'estimate': block_estimate,
-            'display_estimate': f"${block_estimate:.2f}",
-        })
+    next_payroll_estimate = sum(
+        payroll_summary_by_class_id.get(selected_class_id, {}).get(s.id, Decimal("0.00"))
+        for s in students
+    ) if selected_class_id else Decimal("0.00")
+    next_payroll_date = _compute_next_pay_date(default_setting, now_utc)
+    display_next_payroll_estimate = f"${Decimal(str(next_payroll_estimate)):.2f}"
 
     # Student statistics
     student_stats = []
@@ -7686,10 +7794,8 @@ def payroll():
 
     # Initialize forms
     settings_form = PayrollSettingsForm()
-    settings_form.block.choices = (
-        [(selected_block, class_labels_by_block.get(selected_block, selected_block))]
-        if selected_block else []
-    )
+    # `block` field on the form is display-only metadata; no per-class choices in v2.
+    settings_form.block.choices = []
 
     manual_payment_form = ManualPaymentForm()
     # Quick stats
@@ -7758,21 +7864,10 @@ def payroll():
         payroll_events=payroll_history_events,
         class_label=class_label,
     )
-    join_codes_by_class_id = {selected_class_id: selected_join_code}
-
-    # CWI Configuration - Get selected block from query param
-    cwi_block = selected_block
-    cwi_setting = None
-    if cwi_block:
-        # Get the payroll setting for this specific block
-        cwi_setting = PayrollSettings.query.filter_by(
-            class_id=selected_scope['class_id'],
-            block=cwi_block
-        ).first()
-
-    # Build class scope to label map for payroll display
-    # This is needed because transactions are displayed per class scope
-    join_code_to_label = {selected_join_code: class_label}
+    # CWI configuration is on the canonical PayrollSettings for this class.
+    cwi_setting = PayrollSettings.query.filter_by(
+        class_id=selected_scope['class_id'],
+    ).first()
 
     # Pre-format display values (Phase 1 Jinja2 remediation - no formatting in templates)
     display_payroll_updated_at = ""
@@ -7798,18 +7893,16 @@ def payroll():
         'admin_payroll.html',
         # Overview tab
         recent_payrolls=recent_payrolls,
-        join_code_to_label=join_code_to_label, # Pass lookup map
-        join_codes_by_class_id=join_codes_by_class_id,
-        next_payroll_date=next_pay_date_utc,  # Pass UTC timestamp
-        next_payroll_by_block=next_payroll_by_block,
-        total_payroll_estimate=total_payroll_estimate,
+        class_label=class_label,
+        next_payroll_date=next_payroll_date,  # Pass UTC timestamp
+        next_payroll_estimate=next_payroll_estimate,
+        display_next_payroll_estimate=display_next_payroll_estimate,
         display_total_payroll_estimate=display_total_payroll_estimate,
         payroll_updated_at=payroll_updated_at,
         display_payroll_updated_at=display_payroll_updated_at,
         total_students=len(students),
         avg_payout=avg_payout,
         display_avg_payout=display_avg_payout,
-        total_classes=len(payroll_class_options),
         # Settings tab
         settings_form=settings_form,
         block_settings=block_settings,
@@ -7832,11 +7925,7 @@ def payroll():
         # History tab
         payroll_history=payroll_history,
         # CWI Configuration
-        cwi_block=cwi_block,
         cwi_setting=cwi_setting,
-        # General
-        payroll_class_options=payroll_class_options,
-        class_labels_by_block=class_labels_by_block,
         current_page="payroll",
         format_utc_iso=format_utc_iso,
         feature_options=feature_options,
@@ -7847,33 +7936,22 @@ def payroll():
 @admin_bp.route('/payroll/settings', methods=['POST'])
 @admin_required
 def payroll_settings():
-    """Save payroll settings for a block or globally (Simple or Advanced mode)."""
+    """Save payroll settings for the canonical class context (Simple or Advanced mode)."""
     try:
         ctx = g.canonical_context
-        user_id = ctx.user_id
-        feature_options = get_admin_feature_join_code_options('payroll', canonical_context=g.canonical_context)
-        enabled_blocks = [option['block'] for option in feature_options if option.get('block')]
-        enabled_block_set = set(enabled_blocks)
-        class_id_by_block = {
-            option['block']: option['class_id']
-            for option in feature_options
-            if option.get('block') and option.get('class_id')
-        }
-        current_class_id = ctx.class_id
-        selected_scope = next((option for option in feature_options if option.get('class_id') == current_class_id), None)
-        if not selected_scope:
+        class_id = ctx.class_id
+        if not class_id:
             abort(404)
-
-        # Derive assignable blocks from canonical feature scopes, not student.block text.
-        blocks = enabled_blocks
 
         # Determine which mode we're in
         settings_mode = request.form.get('settings_mode', 'simple')
 
         # Shared fields
         from app.models import _quantize_currency
-        expected_weekly_hours_raw = request.form.get('expected_weekly_hours')
-        expected_weekly_hours = _quantize_currency(expected_weekly_hours_raw) if expected_weekly_hours_raw else Decimal('5.0')
+
+        # NOTE: `expected_weekly_hours` is a CWI parameter on EconomicEngine, not a payroll
+        # setting. It's edited via the /economy/update-expected-hours route which calls
+        # FEAT-CLASS-005. Do not accept it from the payroll settings form.
 
         # Parse form data based on mode
         if settings_mode == 'simple':
@@ -7891,9 +7969,6 @@ def payroll_settings():
             daily_limit_hours_raw = request.form.get('simple_daily_limit')
             daily_limit_hours = _quantize_currency(daily_limit_hours_raw) if daily_limit_hours_raw else None
 
-            apply_to = request.form.get('simple_apply_to', 'all')
-            selected_blocks = request.form.getlist('simple_blocks[]') if apply_to == 'selected' else blocks
-
             # Create settings dict for simple mode
             settings_data = {
                 'settings_mode': 'simple',
@@ -7901,7 +7976,6 @@ def payroll_settings():
                 'payroll_frequency_days': payroll_frequency_days,
                 'first_pay_date': first_pay_date,
                 'daily_limit_hours': daily_limit_hours,
-                'expected_weekly_hours': expected_weekly_hours,
                 'time_unit': 'minutes',
                 'pay_schedule_type': frequency,
                 'is_active': True,
@@ -7964,9 +8038,6 @@ def payroll_settings():
 
             rounding = request.form.get('adv_rounding', 'down')
 
-            apply_to = request.form.get('adv_apply_to', 'all')
-            selected_blocks = request.form.getlist('adv_blocks[]') if apply_to == 'selected' else blocks
-
             settings_data = {
                 'settings_mode': 'advanced',
                 'pay_rate': pay_rate_per_minute,
@@ -7984,54 +8055,28 @@ def payroll_settings():
                 'payroll_frequency_days': payroll_frequency_days,
                 'first_pay_date': first_pay_date,
                 'rounding_mode': rounding,
-                'expected_weekly_hours': expected_weekly_hours,
                 'is_active': True,
                 # Reset simple fields
                 'daily_limit_hours': None
             }
 
-        # Apply settings to selected blocks or all
-        # NO global settings - always scoped by block and resolved class context.
-        if apply_to == 'all' or not selected_blocks:
-            # Apply to all blocks (no global None)
-            target_blocks = blocks
-        else:
-            # Apply to selected blocks only
-            target_blocks = [str(block).strip().upper() for block in selected_blocks if str(block).strip()]
-
-        target_blocks = [block for block in target_blocks if block in enabled_block_set]
-        target_blocks = list(dict.fromkeys(target_blocks))
-        if not target_blocks:
-            raise ValueError("No valid payroll class scope selected")
-
         payload_hash = hashlib.sha256(
             json.dumps(
                 {
                     "settings_mode": settings_mode,
-                    "apply_to": apply_to,
-                    "target_blocks": sorted(target_blocks),
-                    "selected_scope_class_id": selected_scope["class_id"],
+                    "class_id": class_id,
                 },
                 sort_keys=True,
                 default=str,
             ).encode("utf-8")
         ).hexdigest()[:16]
-        idempotency_key = (
-            f"feat:class:payroll-settings:update:{selected_scope['class_id']}:{payload_hash}"
-        )
+        idempotency_key = f"feat:class:payroll-settings:update:{class_id}:{payload_hash}"
 
         db.session.rollback()
         with FEATContext("FEAT-ADMN-001", idempotency_key=idempotency_key):
-            upsert_payroll_settings_for_blocks(
-                class_id_by_block=class_id_by_block,
-                target_blocks=target_blocks,
-                settings_data=settings_data,
-            )
+            upsert_payroll_settings(class_id=class_id, settings_data=settings_data)
 
-        if apply_to == 'all' or not selected_blocks:
-            flash(f'Payroll settings ({settings_mode} mode) applied to all periods successfully!', 'success')
-        else:
-            flash(f'Payroll settings ({settings_mode} mode) applied to {len(selected_blocks)} period(s) successfully!', 'success')
+        flash(f'Payroll settings ({settings_mode} mode) saved successfully!', 'success')
 
     except Exception as e:
         db.session.rollback()
@@ -8041,100 +8086,53 @@ def payroll_settings():
     return redirect(url_for('admin.payroll'))
 
 
-@admin_bp.route('/payroll/update-expected-hours', methods=['POST'])
+@admin_bp.route('/economy/update-expected-hours', methods=['POST'])
 @admin_required
 def update_expected_weekly_hours():
-    """Update the expected weekly hours for CWI calculation for a specific block or all blocks."""
+    """Update EconomicEngine.expected_weekly_hours (CWI parameter) via FEAT-CLASS-005.
+
+    Creates a new immutable EconomicEngine version with the updated value applied
+    on top of the current engine's snapshot. Per DOM-CLASS-002, this field lives on
+    the Economic Engine, not on payroll settings.
+    """
     try:
         from app.models import _quantize_currency
+        from app.feats.class_configuration.feat_class_005_economic_engine_evolution import (
+            execute_evolve_economic_engine,
+        )
+
         ctx = g.canonical_context
-        feature_options = get_admin_feature_join_code_options('payroll', canonical_context=g.canonical_context)
-        selected_scope = next((option for option in feature_options if option.get('class_id') == ctx.class_id), None)
-        if not selected_scope:
+        class_id = ctx.class_id
+        if not class_id:
             abort(404)
+
         expected_weekly_hours = _quantize_currency(request.form.get('expected_weekly_hours', '5.0'))
-        cwi_block = selected_scope['block']
-        apply_to_all = request.form.get('apply_to_all', 'false').lower() == 'true'
-        ctx = g.canonical_context
-        user_id = ctx.user_id
-        feature_options = get_admin_feature_join_code_options('payroll', canonical_context=g.canonical_context)
-        enabled_blocks = {option['block'] for option in feature_options if option.get('block')}
-        class_id_by_block = {
-            option['block']: option['class_id']
-            for option in feature_options
-            if option.get('block') and option.get('class_id')
-        }
 
         # Validate expected_weekly_hours is within a reasonable range (0.25 to 80)
         if not (0.25 <= expected_weekly_hours <= 80):
             flash('Expected weekly hours must be between 0.25 and 80.', 'error')
             return redirect(url_for('admin.payroll'))
 
-        payload_hash = hashlib.sha256(
-            json.dumps(
-                {
-                    "expected_weekly_hours": str(expected_weekly_hours),
-                    "cwi_block": cwi_block,
-                    "apply_to_all": apply_to_all,
-                },
-                sort_keys=True,
-                default=str,
-            ).encode("utf-8")
-        ).hexdigest()[:16]
         idempotency_key = (
-            f"feat:class:payroll-expected-hours:update:{selected_scope['class_id']}:{payload_hash}"
+            f"feat:class-005:expected-hours:{class_id}:{expected_weekly_hours}"
+        )
+        result = execute_evolve_economic_engine(
+            canonical_context=ctx,
+            class_id=class_id,
+            updates={'expected_weekly_hours': float(expected_weekly_hours)},
+            feature_list=['payroll'],
+            idempotency_key=idempotency_key,
         )
 
-        db.session.rollback()
-        with FEATContext("FEAT-ADMN-001", idempotency_key=idempotency_key):
-            if apply_to_all:
-                # Update all existing payroll settings
-                class_ids = [class_id_by_block[block] for block in enabled_blocks if block in class_id_by_block]
-                settings_to_update = (
-                    PayrollSettings.query
-                    .filter(
-                        PayrollSettings.class_id.in_(class_ids),
-                        PayrollSettings.block.in_(enabled_blocks),
-                    )
-                    .all()
-                )
+        if not result.success:
+            current_app.logger.error(
+                f"FEAT-CLASS-005 evolve failed for expected_weekly_hours: "
+                f"{result.error_code} - {result.error_message}"
+            )
+            flash(f'Error updating expected weekly hours: {result.error_message}', 'error')
+            return redirect(url_for('admin.payroll'))
 
-                if settings_to_update:
-                    for setting in settings_to_update:
-                        setting.expected_weekly_hours = expected_weekly_hours
-                    flash_message = f'Expected weekly hours updated to {expected_weekly_hours} hours/week for all classes.'
-                else:
-                    update_expected_weekly_hours_for_blocks(
-                        class_id_by_block=class_id_by_block,
-                        target_blocks=[cwi_block],
-                        expected_weekly_hours=expected_weekly_hours,
-                        default_pay_rate=Decimal('0.25'),
-                        payroll_frequency_days=14,
-                        settings_mode='simple',
-                    )
-                    flash_message = f'Expected weekly hours set to {expected_weekly_hours} hours/week for all classes.'
-            else:
-                # Update only the selected block
-                class_id = class_id_by_block.get(cwi_block)
-                if not class_id:
-                    abort(404)
-                block_setting = PayrollSettings.query.filter_by(class_id=class_id, block=cwi_block).first()
-
-                if block_setting:
-                    block_setting.expected_weekly_hours = expected_weekly_hours
-                    flash_message = f'Expected weekly hours updated to {expected_weekly_hours} hours/week for {cwi_block}.'
-                else:
-                    update_expected_weekly_hours_for_blocks(
-                        class_id_by_block=class_id_by_block,
-                        target_blocks=[cwi_block],
-                        expected_weekly_hours=expected_weekly_hours,
-                        default_pay_rate=Decimal('0.25'),
-                        payroll_frequency_days=14,
-                        settings_mode='simple',
-                    )
-                    flash_message = f'Expected weekly hours set to {expected_weekly_hours} hours/week for {cwi_block}.'
-
-        flash(flash_message, 'success')
+        flash(f'Expected weekly hours set to {expected_weekly_hours} hours/week.', 'success')
 
     except ValueError:
         flash('Invalid expected weekly hours value', 'error')
@@ -8171,18 +8169,21 @@ def void_payroll_transaction(transaction_id):
             f"feat:led:payroll-void:{selected_scope['class_id']}:{transaction.id}"
         )
         db.session.rollback()
-        with FEATContext("FEAT-LED-004", idempotency_key=idempotency_key):
-            transaction = (
-                Transaction.query
-                .filter(Transaction.id == transaction_id)
-                .filter(Transaction.class_id == selected_scope['class_id'])
-                .first_or_404()
-            )
+        transaction = (
+            Transaction.query
+            .filter(Transaction.id == transaction_id)
+            .filter(Transaction.class_id == selected_scope['class_id'])
+            .first_or_404()
+        )
 
-            if transaction.is_void:
-                return jsonify({'success': False, 'message': 'Transaction is already voided'}), 400
+        if transaction.is_void:
+            return jsonify({'success': False, 'message': 'Transaction is already voided'}), 400
 
-            execute_void_transaction(transaction)
+        execute_void_transaction(
+            transaction,
+            correlation_id=f"{transaction.correlation_id}:void:{transaction_id}",
+            idempotency_key=idempotency_key,
+        )
 
         return jsonify({'success': True, 'message': 'Transaction voided successfully'})
     except HTTPException:
@@ -8219,19 +8220,23 @@ def void_transactions_bulk():
             f"feat:led:payroll-void-bulk:{selected_scope['class_id']}:{payload_hash}"
         )
 
-        count = 0
         db.session.rollback()
-        with FEATContext("FEAT-LED-004", idempotency_key=idempotency_key):
-            for tx_id in transaction_ids:
-                transaction = (
-                    Transaction.query
-                    .filter(Transaction.id == int(tx_id))
-                    .filter(Transaction.class_id == selected_scope['class_id'])
-                    .first()
-                )
-                if transaction and not transaction.is_void:
-                    execute_void_transaction(transaction)
-                    count += 1
+        transactions_to_void = []
+        for tx_id in transaction_ids:
+            transaction = (
+                Transaction.query
+                .filter(Transaction.id == int(tx_id))
+                .filter(Transaction.class_id == selected_scope['class_id'])
+                .first()
+            )
+            if transaction and not transaction.is_void:
+                transactions_to_void.append(transaction)
+        execute_void_transactions(
+            transactions_to_void,
+            correlation_id=f"corr_void_bulk_{selected_scope['class_id']}_{uuid.uuid4().hex}",
+            idempotency_key=idempotency_key,
+        )
+        count = len(transactions_to_void)
         return jsonify({'success': True, 'message': f'{count} transaction(s) voided successfully'})
     except HTTPException:
         raise
@@ -8355,277 +8360,65 @@ def attendance_log():
 
 @admin_bp.route('/upload-students', methods=['POST'])
 @admin_required
+@requires_feat_context("FEAT-IDEN-006")
 def upload_students():
     """
-    Upload student roster from CSV file.
+    Add students from the staging grid (JSON).
 
-    Creates Seat entries (unclaimed accounts) with join codes.
-    Students later claim their seat by providing the join code + credentials.
+    Accepts: { "students": [{"first_name": ..., "last_name": ..., "notes": ...}, ...] }
+    Creates Seat entries (unclaimed accounts) in the current class.
     """
-    file = request.files.get('csv_file')
-    if not file:
-        flash("No file provided", "admin_error")
-        return redirect(url_for('admin.students'))
+    data = request.get_json(silent=True)
+    if not data or not isinstance(data.get("students"), list):
+        return jsonify(status="error", message="Invalid request."), 400
 
-    force_new_class = request.form.get("force_new_class") == "1"
-    roster_sync = request.form.get("roster_sync") == "1"
-    confirm_roster_delete = request.form.get("confirm_roster_delete") == "1"
+    rows = data["students"]
+    if not rows:
+        return jsonify(status="error", message="No students provided."), 400
 
-    # Read file content and remove BOM if present
-    content = file.stream.read().decode("UTF-8-sig")  # UTF-8-sig removes BOM
     user_id = g.canonical_context.user_id
-    idempotency_hash = hashlib.sha256(content.encode("utf-8")).hexdigest()[:16]
+    class_id = (getattr(g.canonical_context, "class_id", None) or "").strip()
+    if not class_id:
+        return jsonify(status="error", message="Select a class first."), 400
+
+    class_row = verify_teacher_owns_class(class_id, user_id)
+    if not class_row:
+        return jsonify(status="error", message="Class not found or you do not own it."), 400
+
+    join_code = get_display_join_code(class_id)
+
+    from app.models import Seat, IdentityProfile
+    from app.hash_utils import hash_username_lookup
+    import random
+    import string
+
+    idempotency_hash = hashlib.sha256(
+        "|".join(f"{r.get('first_name','')},{r.get('last_name','')}" for r in rows).encode()
+    ).hexdigest()[:16]
     idempotency_key = f"feat:iden:upload-students:{user_id}:{idempotency_hash}"
 
+    added_count = 0
+    errors = []
+    duplicated = 0
+    matched_seats = set()
+    name_counts_in_run = {}
+
     with FEATContext("FEAT-IDEN-001", idempotency_key=idempotency_key):
-        def _insert_identity_profile(*, seat_id: int, class_id: str | None, profile_type: str, first_name, last_name, notes):
-            db.session.execute(
-                sa.text(
-                    "INSERT INTO identity_profiles "
-                    "(seat_id, class_id, profile_type, first_name, last_name, notes, created_at, updated_at) "
-                    "VALUES (:seat_id, :class_id, :profile_type, :first_name, :last_name, :notes, :created_at, :updated_at)"
-                ),
-                {
-                    "seat_id": seat_id,
-                    "class_id": class_id,
-                    "profile_type": profile_type,
-                    "first_name": first_name,
-                    "last_name": last_name,
-                    "notes": notes,
-                    "created_at": utc_now(),
-                    "updated_at": utc_now(),
-                },
-            )
-
-        if force_new_class and not roster_sync:
-            from app.models import Seat, IdentityProfile
-            from app.utils.join_code import generate_join_code
-            from app.hash_utils import hash_username_lookup
-
-            def _row_value(row, *keys):
-                for key in keys:
-                    value = row.get(key)
-                    if value is not None and str(value).strip():
-                        return _sanitize_roster_text(value)
-                return ""
-
-            stream = io.StringIO(content, newline=None)
-            csv_input = csv.DictReader(stream)
-            rows = []
-            class_sections = set()
-            class_names = set()
-            for row in csv_input:
-                first_name = _row_value(row, "first_name", "First Name")
-                last_name = _row_value(row, "last_name", "Last Name")
-                notes = _row_value(row, "notes", "Notes", "Additional Notes")
-                class_section = _row_value(row, "class_section", "Class Section", "Class Section Name", "Section")
-                class_name = _row_value(row, "class_name", "Class Name", "Class Names", "ClassName", "Class")
-                if class_section:
-                    class_sections.add(class_section.strip().upper())
-                if class_name:
-                    class_names.add(class_name.strip().lower())
-                if first_name or last_name or notes:
-                    rows.append({
-                        "first_name": first_name,
-                        "last_name": last_name,
-                        "notes": notes or None,
-                        "class_section": class_section or None,
-                        "class_name": class_name or None,
-                    })
-
-            if not rows:
-                flash("Template is empty. Add at least one student row before creating the class.", "error")
-                return redirect(url_for("admin.onboarding"))
-            if len(class_sections) > 1 or len(class_names) > 1:
-                flash("You can only create one class at a time", "error")
-                return redirect(url_for("admin.onboarding"))
-
-            join_code = generate_join_code()
-
-            class_name = next((row.get("class_name") for row in rows if row.get("class_name")), None)
-            if not class_name:
-                class_name = next((row.get("class_section") for row in rows if row.get("class_section")), None)
-            class_name = (class_name or "").strip() or "New Class"
-            class_row = create_class_with_roster(
-                user_id=user_id,
-                join_code=join_code,
-                class_name=class_name,
-                rows=rows,
-            )
-
-            establish_teacher_session(db.session.get(User, user_id))
-            flash("Class created and roster uploaded. You are now switched into the new class.", "admin_success")
-            return redirect(url_for("admin.dashboard"))
-
-        if roster_sync:
-            from app.models import Seat, IdentityProfile
-            class_id = (getattr(getattr(g, "canonical_context", None), "class_id", None) or "").strip()
-            if not class_id:
-                flash("Select a class before syncing roster data.", "error")
-                return redirect(url_for("admin.students"))
-
-            class_row = verify_teacher_owns_class(class_id, user_id)
-            if not class_row:
-                flash("Select a class before syncing roster data.", "error")
-                return redirect(url_for("admin.students"))
-
-            stream = io.StringIO(content, newline=None)
-            csv_input = csv.DictReader(stream)
-            rows = []
-            file_join_codes = set()
-            for row in csv_input:
-                row_join_code = _sanitize_roster_text(row.get("join_code") or row.get("Join Code") or "")
-                actor_public_id = _sanitize_roster_text(row.get("actor_public_id") or row.get("Actor Public ID") or "")
-                first_name = _sanitize_roster_text(row.get("first_name") or row.get("First Name") or "")
-                last_name = _sanitize_roster_text(row.get("last_name") or row.get("Last Name") or "")
-                notes = _sanitize_roster_text(row.get("notes") or row.get("Notes") or "")
-                # Balance columns are accepted for recordkeeping but never used for writes.
-                _ = row.get("checking_balance") or row.get("Checking Balance")
-                _ = row.get("savings_balance") or row.get("Savings Balance")
-                if row_join_code:
-                    file_join_codes.add(row_join_code)
-                if actor_public_id:
-                    rows.append({
-                        "join_code": row_join_code or None,
-                        "actor_public_id": actor_public_id,
-                        "first_name": first_name,
-                        "last_name": last_name,
-                        "notes": notes or None,
-                    })
-                elif first_name or last_name or notes:
-                    rows.append({
-                        "join_code": row_join_code or None,
-                        "actor_public_id": None,
-                        "first_name": first_name,
-                        "last_name": last_name,
-                        "notes": notes or None,
-                    })
-
-            if not file_join_codes:
-                flash("Roster file is missing join_code. Re-export the roster from the current class.", "error")
-                return redirect(url_for("admin.students"))
-            if len(file_join_codes) != 1:
-                flash("Roster file must contain exactly one join_code for one class.", "error")
-                return redirect(url_for("admin.students"))
-            file_join_code = next(iter(file_join_codes))
-            resolved_file_class_id = (
-                db.session.query(ClassEconomy.class_id)
-                .filter(ClassEconomy.class_id == class_id)
-                .scalar()
-            )
-            if not resolved_file_class_id or resolved_file_class_id != class_id:
-                flash("Roster file does not match the currently selected class. Switch class context and export again.", "error")
-                return redirect(url_for("admin.students"))
-
-            existing_seats = (
-                Seat.query
-                .filter(Seat.class_id == class_id, Seat.role == "student", Seat.public_id.isnot(None))
-                .all()
-            )
-            existing_by_public_id = {seat.public_id: seat for seat in existing_seats if seat.public_id}
-            requested_public_ids = {row["actor_public_id"] for row in rows if row["actor_public_id"]}
-            missing_seats = [seat for pid, seat in existing_by_public_id.items() if pid not in requested_public_ids]
-
-            if missing_seats and not confirm_roster_delete:
-                missing_names = []
-                for seat in missing_seats:
-                    profile = IdentityProfile.query.filter_by(seat_id=seat.id).first()
-                    display_name = " ".join(part for part in [getattr(profile, "first_name", None), getattr(profile, "last_name", None)] if part) or seat.public_id
-                    missing_names.append(display_name)
-                flash(
-                    "Roster is missing existing students: " + ", ".join(missing_names) +
-                    ". Re-upload the file with those rows removed only after confirming deletion.",
-                    "error",
-                )
-                return redirect(url_for("admin.students"))
-
-            added_count = 0
-            updated_count = 0
-            deleted_count = 0
-            for row in rows:
-                actor_public_id = row["actor_public_id"]
-                first_name = row["first_name"]
-                last_name = row["last_name"]
-                notes = row["notes"]
-                if actor_public_id and actor_public_id in existing_by_public_id:
-                    seat = existing_by_public_id[actor_public_id]
-                    update_or_create_roster_seat(
-                        class_id=class_id,
-                        first_name=first_name,
-                        last_name=last_name,
-                        notes=notes,
-                        existing_seat=seat,
-                    )
-                    updated_count += 1
-                    continue
-
-                if actor_public_id:
-                    # Unknown public_id: treat as add only if it is not already in the class.
-                    pass
-
-                update_or_create_roster_seat(
-                    class_id=class_id,
-                    first_name=first_name,
-                    last_name=last_name,
-                    notes=notes,
-                )
-                added_count += 1
-
-            if confirm_roster_delete and missing_seats:
-                for seat in missing_seats:
-                    delete_seat_with_profile(seat)
-                    deleted_count += 1
-
-            flash(
-                f"Roster synced: {updated_count} updated, {added_count} added, {deleted_count} deleted.",
-                "admin_success",
-            )
-            return redirect(url_for("admin.students"))
-
-        stream = io.StringIO(content, newline=None)
-        csv_input = csv.DictReader(stream)
-        added_count = 0
-        errors = 0
-        duplicated = 0
-
-        from app.models import Seat, IdentityProfile
-        from app.hash_utils import hash_username_lookup
-        import random
-        import string
-
-        # v2: All CSV uploads target the current canonical class.
-        # block/period is display metadata only (INV-CORE) — never a scoping key.
-        class_id = (getattr(g.canonical_context, "class_id", None) or "").strip()
-        if not class_id:
-            flash("Select a class before uploading roster data.", "error")
-            return redirect(url_for("admin.students"))
-
-        class_row = verify_teacher_owns_class(class_id, user_id)
-        if not class_row:
-            flash("Class not found or you do not own it.", "error")
-            return redirect(url_for("admin.students"))
-
-        join_code = get_display_join_code(class_id)
-
-        # Keep track of matched DB seats during this upload to avoid recreating them
-        matched_seats = set()
-        name_counts_in_run = {}  # (class_id, name_key) -> count
-
-        for row in csv_input:
+        for i, row in enumerate(rows):
             try:
-                first_name = (row.get('first_name') or row.get('First Name') or '').strip()
-                last_name = (row.get('last_name') or row.get('Last Name') or '').strip()
+                first_name = (row.get("first_name") or "").strip()
+                last_name = (row.get("last_name") or "").strip()
 
                 if not first_name and not last_name:
                     continue
                 if not first_name or not last_name:
-                    raise ValueError("Missing required fields.")
+                    errors.append(f"Row {i+1}: Missing first or last name.")
+                    continue
 
                 claim_first_name_hash = hash_username_lookup(first_name.lower())
                 claim_last_name_hash = hash_username_lookup(last_name.lower())
                 name_key = (first_name.lower(), last_name.lower())
 
-                # Find all seats in the DB for this class with the same name hashes.
                 db_seats = (
                     Seat.query
                     .join(IdentityProfile, IdentityProfile.seat_id == Seat.id)
@@ -8637,7 +8430,6 @@ def upload_students():
                     .all()
                 )
 
-                # Check if we can match this row to an unmatched existing seat in the DB
                 matched_seat = None
                 for s in db_seats:
                     if s.id not in matched_seats:
@@ -8646,16 +8438,9 @@ def upload_students():
                         break
 
                 if matched_seat:
-                    # This seat already exists, skip creating it
                     duplicated += 1
                     continue
 
-                # If we got here, we need to create a new Seat.
-                # Dedupe symmetry rule: once any duplicate exists in this class (either in the
-                # DB or created in this upload run), ALL seats with this name require a
-                # dedupe_code — including seats that already exist without one. This prevents
-                # the asymmetry where seat #1 is claimable without a code but seat #2 requires
-                # one.
                 total_existing = len(db_seats) + name_counts_in_run.get((class_id, name_key), 0)
                 is_collision = total_existing > 0
 
@@ -8664,20 +8449,16 @@ def upload_students():
                     alphabet = string.ascii_uppercase + string.digits
                     dedupe_code = "".join(random.choices(alphabet, k=4))
 
-                    # Backfill: if the first DB seat for this name still has no dedupe_code,
-                    # assign one now so it cannot be claimed without a code either.
                     for s in db_seats:
                         if s.dedupe_code is None:
                             backfill_code = "".join(random.choices(alphabet, k=4))
                             s.dedupe_code = backfill_code
-                            # Regenerate its fingerprint to be code-scoped too.
                             s.roster_fingerprint = hash_username_lookup(
                                 f"{class_id}|{first_name.lower()}|{last_name.lower()}|{backfill_code}"
                             )
 
                 name_counts_in_run[(class_id, name_key)] = name_counts_in_run.get((class_id, name_key), 0) + 1
 
-                # Roster fingerprint is class-scoped (INV-CORE: no cross-class correlators).
                 if dedupe_code:
                     roster_fingerprint = hash_username_lookup(
                         f"{class_id}|{first_name.lower()}|{last_name.lower()}|{dedupe_code}"
@@ -8687,8 +8468,7 @@ def upload_students():
                         f"{class_id}|{first_name.lower()}|{last_name.lower()}"
                     )
 
-                # Create Seat (unclaimed account)
-                seat = create_roster_student_seat(
+                create_roster_student_seat(
                     class_id=class_id,
                     first_name=first_name,
                     last_name=last_name,
@@ -8699,32 +8479,17 @@ def upload_students():
                 )
                 added_count += 1
             except Exception as e:
-                current_app.logger.error(f"Error processing row {row}: {e}")
-                errors += 1
+                current_app.logger.error(f"Error processing row {i+1}: {e}")
+                errors.append(f"Row {i+1}: {str(e)}")
 
-        # Build success message
-        success_msg = f"{added_count} roster seats created successfully"
-        if errors > 0:
-            success_msg += f"\n{errors} rows could not be processed"
-        if duplicated > 0:
-            success_msg += f"\n{duplicated} duplicate seats skipped"
-        if join_code:
-            success_msg += f"\n\nJoin Code: {join_code}"
-            success_msg += "\nShare this code with your students so they can claim their accounts."
-
-        flash(success_msg, "admin_success")
-
-    return redirect(url_for('admin.students'))
-
-
-@admin_bp.route('/download-csv-template')
-@admin_required
-def download_csv_template():
-    """
-    Serves the student_upload_template.csv from app/data/.
-    """
-    template_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "student_upload_template.csv")
-    return send_file(template_path, as_attachment=True, download_name="student_upload_template.csv", mimetype='text/csv')
+    status = "success" if not errors else "partial"
+    return jsonify(
+        status=status,
+        created=added_count,
+        duplicated=duplicated,
+        join_code=join_code,
+        errors=errors,
+    )
 
 
 @admin_bp.route('/export-class-roster')
@@ -9072,7 +8837,6 @@ def tap_in_students():
 
 @admin_bp.route('/students/bulk-adjust-hall-pass-entitlements', methods=['POST'])
 @admin_required
-@feat_shell("FEAT-STOR-001")
 def bulk_adjust_hall_pass_entitlements():
     """Bulk grant or remove hall-pass entitlements for selected students."""
     data = request.get_json()
@@ -9112,15 +8876,23 @@ def bulk_adjust_hall_pass_entitlements():
                 continue
 
             if update_type == 'add':
-                grant_hall_passes(
-                    student,
-                    value,
+                execute_hall_pass_adjustment(
+                    canonical_context=g.canonical_context,
+                    target_seat_id=student.id,
+                    quantity=value,
+                    operation="add",
+                    correlation_id=generate_correlation_id(),
+                    idempotency_key=f"store:hall-pass-adjust:{student.class_id}:{student.id}:add",
                 )
             else:
                 try:
-                    remove_hall_passes(
-                        student,
-                        value,
+                    execute_hall_pass_adjustment(
+                        canonical_context=g.canonical_context,
+                        target_seat_id=student.id,
+                        quantity=value,
+                        operation="remove",
+                        correlation_id=generate_correlation_id(),
+                        idempotency_key=f"store:hall-pass-adjust:{student.class_id}:{student.id}:remove",
                     )
                 except ValueError as exc:
                     errors.append(f"Student {student.id}: {exc}")
@@ -9163,306 +8935,16 @@ def bulk_adjust_hall_pass_entitlements():
 @admin_bp.route('/banking')
 @admin_required
 def banking():
-    """Banking management page with transactions and settings."""
-    user_id = g.canonical_context.user_id
-    feature_options = get_admin_feature_join_code_options('banking', canonical_context=g.canonical_context)
-    selected_scope = require_admin_feature_scope(
-        'banking',
-        canonical_context=g.canonical_context,
-    )
-    teacher_blocks = [option['block'] for option in feature_options]
-    settings_block = selected_scope['block']
-
-    # Get current banking settings for this class
-    settings = None
-    if settings_block:
-        settings = BankingSettings.query.filter_by(
-            class_id=selected_scope['class_id'],
-            block=settings_block,
-        ).first()
-
-    # Create form and populate with existing data
-    form = BankingSettingsForm()
-    if settings:
-        form.savings_apy.data = settings.savings_apy
-        form.savings_monthly_rate.data = settings.savings_monthly_rate
-        form.interest_calculation_type.data = settings.interest_calculation_type or 'simple'
-        form.compound_frequency.data = settings.compound_frequency or 'monthly'
-        form.interest_schedule_type.data = settings.interest_schedule_type
-        form.interest_schedule_cycle_days.data = settings.interest_schedule_cycle_days
-        form.interest_payout_start_date.data = settings.interest_payout_start_date
-        form.overdraft_protection_enabled.data = settings.overdraft_protection_enabled
-        form.overdraft_fee_enabled.data = settings.overdraft_fee_enabled
-        form.overdraft_fee_type.data = settings.overdraft_fee_type
-        form.overdraft_fee_flat_amount.data = settings.overdraft_fee_flat_amount
-        form.overdraft_fee_progressive_1.data = settings.overdraft_fee_progressive_1
-        form.overdraft_fee_progressive_2.data = settings.overdraft_fee_progressive_2
-        form.overdraft_fee_progressive_3.data = settings.overdraft_fee_progressive_3
-        form.overdraft_fee_progressive_cap.data = settings.overdraft_fee_progressive_cap
-
-    # Get filter and pagination parameters
-    student_q = request.args.get('student', '').strip()
-    account_q = request.args.get('account', '')
-    type_q = request.args.get('type', '')
-    start_date = request.args.get('start_date')
-    end_date = request.args.get('end_date')
-    page = int(request.args.get('page', 1))
-    per_page = 50
-
-    # Get admin's class_ids
-    user_id = g.canonical_context.user_id
-    # Base query joining Transaction with Seat for seat-scoped filtering
-    query = (
-        db.session.query(Transaction, Seat)
-        .join(Seat, Transaction.seat_id == Seat.id)
-        .filter(Transaction.class_id == selected_scope["class_id"])
-    )
-
-    # Apply filters
-    if student_q:
-        # Since first_name is encrypted, we cannot use `ilike`.
-        # We must fetch students, decrypt names, and filter in Python.
-        matching_student_ids = []
-        # Handle if the query is a student ID
-        if student_q.isdigit():
-            matching_student_ids.append(int(student_q))
-
-        # Handle if the query is a name
-        all_students = Seat.query.filter(
-            Seat.class_id.in_(teacher_class_ids),
-            Seat.claimed_at.isnot(None),
-        ).all()
-        for seat in all_students:
-            _ip = seat.identity_profile
-            if student_q.lower() in (_ip.full_name if _ip else "").lower() and seat.user_id:
-                matching_student_ids.append(seat.user_id)
-
-        # If there are any matches (by ID or name), filter the query
-        if matching_student_ids:
-            query = query.filter(Seat.user_id.in_(matching_student_ids))
-        else:
-            # If no students match, return no results
-            query = query.filter(sa.false())
-
-    if account_q:
-        query = query.filter(Transaction.account_type == account_q)
-    if type_q:
-        query = query.filter(Transaction.type == type_q)
-    if start_date:
-        try:
-            start_date_obj = datetime.strptime(start_date, '%Y-%m-%d')
-            query = query.filter(Transaction.timestamp >= start_date_obj)
-        except ValueError:
-            flash("Invalid start date format. Please use YYYY-MM-DD.", "danger")
-    if end_date:
-        # P1-1 Fix: Prevent SQL injection by validating and parsing date in Python
-        try:
-            end_date_obj = datetime.strptime(end_date, '%Y-%m-%d')
-            # Add one day to include entire end_date (safe in Python, not SQL)
-            end_date_inclusive = end_date_obj + timedelta(days=1)
-            query = query.filter(Transaction.timestamp < end_date_inclusive)
-        except ValueError:
-            flash("Invalid end date format. Please use YYYY-MM-DD.", "danger")
-
-    # Count total for pagination
-    total_transactions = query.count()
-    total_pages = math.ceil(total_transactions / per_page) if total_transactions else 1
-
-    # Get paginated results
-    recent_transactions = (
-        query.order_by(Transaction.timestamp.desc())
-        .limit(per_page)
-        .offset((page - 1) * per_page)
-        .all()
-    )
-
-    # Build transaction list for template
-    transactions = []
-    for tx, seat in recent_transactions:
-        _ip = seat.identity_profile if seat else None
-        transactions.append({
-            'id': tx.id,
-            'timestamp': tx.timestamp,
-            'actor_public_id': seat.public_id if seat else None,
-            'student_name': (_ip.full_name if _ip else str(seat.id if seat else "")),
-            'student_block': seat.class_economy.section if seat and seat.class_economy else None,
-            'amount': tx.amount,
-            'account_type': tx.account_type,
-            'description': tx.description,
-            'type': tx.type,
-            'is_void': tx.is_void
-        })
-
-    # Get all students for stats
-    selected_class_id = selected_scope['class_id']
-    students = [
-        seat for seat in Seat.query.filter(
-            Seat.class_id == selected_class_id,
-            Seat.role == 'student',
-        ).all()
-        if seat.claimed_at is not None
-    ]
-
-    # Calculate banking stats through the ledger authority for the selected class only.
-    total_checking = Decimal('0.00')
-    total_savings = Decimal('0.00')
-    students_with_savings = 0
-    for student in students:
-        seat_id = student.id
-        checking_balance, savings_balance = get_available_balances(seat_id, selected_class_id)
-        total_checking += checking_balance
-        total_savings += savings_balance
-        if savings_balance > 0:
-            students_with_savings += 1
-    total_deposits = total_checking + total_savings
-
-    # Calculate average savings balance (across all students, including those with 0)
-    average_savings_balance = total_savings / len(students) if len(students) > 0 else 0
-
-    # Get all blocks for filter
-    blocks = sorted(set(s.block for s in students))
-
-    # Build class_labels_by_block dictionary
-    class_labels_by_block = _get_class_labels_for_blocks(g.canonical_context, blocks)
-
-    # Build join_codes_by_block dictionary
-    join_codes_by_block = _get_join_codes_by_block(g.canonical_context, blocks)
-
-    # Get transaction types for filter (filtered to this teacher's students)
-    transaction_types = (
-        db.session.query(Transaction.type)
-        .filter(Transaction.class_id == selected_class_id)
-        .filter(Transaction.type.isnot(None))
-        .distinct()
-        .all()
-    )
-    transaction_types = sorted([t[0] for t in transaction_types if t[0]])
-
-
-    return render_template(
-        'admin_banking.html',
-        settings=settings,
-        form=form,
-        transactions=transactions,
-        total_checking=total_checking,
-        total_savings=total_savings,
-        total_deposits=total_deposits,
-        students_with_savings=students_with_savings,
-        total_students=len(students),
-        average_savings_balance=average_savings_balance,
-        blocks=blocks,
-        class_labels_by_block=class_labels_by_block,
-        join_codes_by_block=join_codes_by_block,
-        transaction_types=transaction_types,
-        page=page,
-        total_pages=total_pages,
-        total_transactions=total_transactions,
-        current_page="banking",
-        format_utc_iso=format_utc_iso,
-        teacher_blocks=teacher_blocks,
-        selected_feature_scope=selected_scope,
-    )
+    """Redirect to the canonical Economic Engine banking configuration."""
+    return redirect(url_for('admin.economic_engine'))
 
 
 @admin_bp.route('/banking/settings', methods=['POST'])
 @admin_required
 def banking_settings_update():
-    """Update banking settings for a specific class or all classes."""
-    from app.models import _quantize_currency
+    """Redirect legacy banking writes to the canonical Economic Engine page."""
+    return redirect(url_for('admin.economic_engine'))
 
-    user_id = g.canonical_context.user_id
-    form = BankingSettingsForm()
-
-    if form.validate_on_submit():
-        selected_scope = require_admin_feature_scope(
-            'banking',
-            canonical_context=g.canonical_context,
-        )
-        settings_block = selected_scope['block']
-        blocks_to_update = [settings_block]
-
-        try:
-            payload_hash = hashlib.sha256(
-                json.dumps(
-                    {
-                        "class_id": selected_scope["class_id"],
-                        "settings_block": settings_block,
-                        "blocks_to_update": sorted([b for b in blocks_to_update if b]),
-                        "savings_apy": str(form.savings_apy.data or 0),
-                        "savings_monthly_rate": str(form.savings_monthly_rate.data or 0),
-                        "interest_calculation_type": form.interest_calculation_type.data or 'simple',
-                        "compound_frequency": form.compound_frequency.data or 'monthly',
-                        "interest_schedule_type": form.interest_schedule_type.data,
-                        "interest_schedule_cycle_days": form.interest_schedule_cycle_days.data or 30,
-                        "overdraft_protection_enabled": bool(form.overdraft_protection_enabled.data),
-                        "overdraft_fee_enabled": bool(form.overdraft_fee_enabled.data),
-                        "overdraft_fee_type": form.overdraft_fee_type.data,
-                    },
-                    sort_keys=True,
-                    default=str,
-                ).encode("utf-8")
-            ).hexdigest()[:16]
-            idempotency_key = (
-                f"feat:banking:settings-update:{selected_scope['class_id']}:{payload_hash}"
-            )
-
-            db.session.rollback()
-            with FEATContext("FEAT-ADMN-001", idempotency_key=idempotency_key):
-                for block in blocks_to_update:
-                    scope_for_block = require_admin_feature_scope(
-                        'banking',
-                        canonical_context=g.canonical_context,
-                        requested_block=block,
-                        allow_default=False,
-                    )
-                    # Get or create settings for this class
-                    settings = BankingSettings.query.filter_by(
-                        class_id=scope_for_block['class_id'],
-                        block=block,
-                    ).first()
-                    if not settings:
-                        settings = create_banking_settings(
-                            class_id=scope_for_block['class_id'],
-                            block=block,
-                        )
-
-                    # Update settings from form
-                    settings.savings_apy = Decimal(str(form.savings_apy.data or 0)).quantize(Decimal('0.000001'))
-                    settings.savings_monthly_rate = Decimal(str(form.savings_monthly_rate.data or 0)).quantize(Decimal('0.000001'))
-                    settings.interest_calculation_type = form.interest_calculation_type.data or 'simple'
-                    settings.compound_frequency = form.compound_frequency.data or 'monthly'
-                    settings.interest_schedule_type = form.interest_schedule_type.data
-                    settings.interest_schedule_cycle_days = form.interest_schedule_cycle_days.data or 30
-                    settings.interest_payout_start_date = form.interest_payout_start_date.data
-                    settings.overdraft_protection_enabled = form.overdraft_protection_enabled.data
-                    settings.overdraft_fee_enabled = form.overdraft_fee_enabled.data
-                    settings.overdraft_fee_type = form.overdraft_fee_type.data
-                    settings.overdraft_fee_flat_amount = _quantize_currency(form.overdraft_fee_flat_amount.data or Decimal('0.00'))
-                    settings.overdraft_fee_progressive_1 = _quantize_currency(form.overdraft_fee_progressive_1.data or Decimal('0.00'))
-                    settings.overdraft_fee_progressive_2 = _quantize_currency(form.overdraft_fee_progressive_2.data or Decimal('0.00'))
-                    settings.overdraft_fee_progressive_3 = _quantize_currency(form.overdraft_fee_progressive_3.data or Decimal('0.00'))
-                    settings.overdraft_fee_progressive_cap = (
-                        _quantize_currency(form.overdraft_fee_progressive_cap.data)
-                        if form.overdraft_fee_progressive_cap.data is not None
-                        else None
-                    )
-                    settings.updated_at = utc_now()
-
-            flash('Banking settings updated successfully!', 'success')
-            current_app.logger.info(f"Banking settings updated by admin for {len(blocks_to_update)} class(es)")
-        except SQLAlchemyError as e:
-            db.session.rollback()
-            current_app.logger.error(f"Failed to update banking settings: {e}")
-            flash('Error updating banking settings.', 'error')
-    else:
-        for field, errors in form.errors.items():
-            for error in errors:
-                flash(f'{field}: {error}', 'error')
-
-    return redirect(url_for('admin.banking'))
-
-
-# -------------------- DELETION REQUESTS --------------------
 
 @admin_bp.route('/account-delete', methods=['GET', 'POST'])
 @limiter.limit("3 per hour")
@@ -9554,9 +9036,13 @@ def help_support():
             'class_id': ce_row.class_id,
             'join_code': get_display_join_code(ce_row.class_id),
             'label': ce_row.display_name or get_display_join_code(ce_row.class_id),
+            'class_public_id': ce_row.class_public_id or '',
         }
         for ce_row in teacher_user_class_rows
     ]
+
+    teacher_seat = db.session.get(Seat, canonical_context.seat_id) if canonical_context.seat_id else None
+    actor_public_id = teacher_seat.public_id if teacher_seat else None
 
     def _support_report_views(issues):
         """Build view-model dicts for the My Tickets list."""
@@ -9666,6 +9152,7 @@ def help_support():
                 page_title='Help & Support',
                 selected_class_id=selected_class_id,
                 class_scope_options=class_scope_options,
+                actor_public_id=actor_public_id,
                 my_reports=my_reports,
                 help_content=HELP_ARTICLES['teacher'],
                 format_utc_iso=format_utc_iso,
@@ -9692,6 +9179,7 @@ def help_support():
                 page_title='Help & Support',
                 selected_class_id=selected_class_id,
                 class_scope_options=class_scope_options,
+                actor_public_id=actor_public_id,
                 my_reports=my_reports,
                 help_content=HELP_ARTICLES['teacher'],
                 format_utc_iso=format_utc_iso,
@@ -9745,6 +9233,7 @@ def help_support():
                          page_title='Help & Support',
                          selected_class_id=selected_class_id,
                          class_scope_options=class_scope_options,
+                         actor_public_id=actor_public_id,
                          my_reports=my_reports,
                          help_content=HELP_ARTICLES['teacher'],
                          format_utc_iso=format_utc_iso)
@@ -9761,43 +9250,90 @@ def feature_settings():
     GET: Display feature settings page with toggles for each period
     POST: Update feature settings
     """
-    user_id = g.canonical_context.user_id
+    class_id = g.canonical_context.class_id
+    if not class_id:
+        flash("Please select a class first.", "warning")
+        return redirect(url_for("admin.select_class_context"))
 
-    # Get all configured periods for this teacher from class economy anchors.
-    periods = _get_teacher_blocks(g.canonical_context)
-    join_codes_by_period = _get_join_codes_by_block(g.canonical_context, periods)
-    class_id_by_period = {
-        block: class_id
-        for block, class_id in _get_class_ids_by_block(g.canonical_context, periods).items()
-        if class_id
-    }
-
-    period_settings = {}
-    for period in periods:
-        scoped_features = get_class_feature_settings(None, class_id=class_id_by_period.get(period))
-        period_settings[period] = scoped_features["features"] if scoped_features else ClassFeature.defaults_dict()
+    view = build_feature_settings_page_view(class_id)
+    if not view:
+        abort(404)
 
     return render_template(
         'admin_feature_settings.html',
         current_page='feature_settings',
-        periods=periods,
-        period_settings=period_settings,
-        join_codes_by_period=join_codes_by_period,
-        features_list=[
-            ('payroll_enabled', 'Payroll', 'payments', 'Time tracking and student payments'),
-            ('insurance_enabled', 'Insurance', 'shield', 'Insurance policies and claims'),
-            ('banking_enabled', 'Banking', 'account_balance', 'Savings accounts and interest'),
-            ('rent_enabled', 'Rent', 'home', 'Housing costs and payments'),
-            ('hall_pass_enabled', 'Hall Pass', 'confirmation_number', 'Bathroom and water break passes'),
-            ('store_enabled', 'Store', 'storefront', 'Marketplace for student rewards'),
-        ]
+        view=view,
     )
+
+
+@admin_bp.route('/feature-settings/update', methods=['POST'])
+@admin_required
+@requires_feat_context("FEAT-CLASS-004")
+def update_class_feature_setting():
+    """Toggle a single feature for the current class via FEAT-CLASS-004."""
+    from app.feats.class_configuration import execute_enable_feature, execute_disable_feature
+    from app.services.class_configuration_query_service import get_economic_engine_history
+
+    class_id = g.canonical_context.class_id
+    if not class_id:
+        return jsonify({'status': 'error', 'message': 'No class selected.'}), 400
+
+    try:
+        data = request.get_json()
+        feature = data.get('feature', '').strip()
+        enabled = bool(data.get('enabled', False))
+
+        valid_features = {'payroll', 'insurance', 'banking', 'rent', 'hall_pass', 'store'}
+        if feature not in valid_features:
+            return jsonify({'status': 'error', 'message': f'Unknown feature: {feature}'}), 400
+
+        ctx = g.canonical_context
+
+        if enabled:
+            engines = get_economic_engine_history(class_id)
+            if not engines:
+                return jsonify({'status': 'error', 'message': 'No economic engine found for class.'}), 400
+            latest_engine = engines[0]
+
+            result = execute_enable_feature(
+                canonical_context=ctx,
+                class_id=class_id,
+                feature=feature,
+                economic_version_id=latest_engine.economic_version_id,
+            )
+        else:
+            result = execute_disable_feature(
+                canonical_context=ctx,
+                class_id=class_id,
+                feature=feature,
+            )
+
+        if not result.success:
+            current_app.logger.error(f"FEAT-CLASS-004 {('enable' if enabled else 'disable')} failed: {result.error_code} — {result.error_message}")
+            return jsonify({
+                'status': 'error',
+                'message': result.error_message or 'Feature toggle failed.',
+            }), 400
+
+        current_app.logger.info(f"FEAT-CLASS-004 {('enable' if enabled else 'disable')} succeeded for {feature}, committing...")
+        current_app.logger.info(f"FEAT-CLASS-004 commit completed for {feature}")
+
+        return jsonify({
+            'status': 'success',
+            'message': f'{feature} {"enabled" if enabled else "disabled"}.',
+        })
+
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Error updating feature setting: {e}", exc_info=True)
+        return jsonify({'status': 'error', 'message': 'An internal error occurred.'}), 500
 
 
 @admin_bp.route('/feature-settings/period/<period>', methods=['POST'])
 @admin_required
+@requires_feat_context("FEAT-CLASS-004")
 def update_period_feature_settings(period):
-    """Update feature settings for a specific period via AJAX."""
+    """Update feature settings for a specific period via AJAX (legacy)."""
     user_id = g.canonical_context.user_id
 
     try:
@@ -9847,8 +9383,8 @@ def update_period_feature_settings(period):
 
 @admin_bp.route('/feature-settings/copy', methods=['POST'])
 @admin_required
+@requires_feat_context("FEAT-CLASS-004")
 def copy_feature_settings():
-    """Copy feature settings from one period to other periods."""
     user_id = g.canonical_context.user_id
 
     try:
@@ -9930,7 +9466,6 @@ def copy_feature_settings():
 @admin_required
 def announcements():
     """
-    Manage class announcements for the currently selected class context.
     """
     user_id = g.canonical_context.user_id
     class_context = _resolve_admin_class_context(g.canonical_context)
@@ -10191,8 +9726,8 @@ def onboarding_status():
             'store': StoreItem.query.filter(
                 StoreItem.class_id.in_(sa.select(class_ids_subq))
             ).count() > 0,
-            'banking': BankingSettings.query.filter(
-                BankingSettings.class_id.in_(sa.select(class_ids_subq))
+            'banking': EconomicEngine.query.filter(
+                EconomicEngine.class_id.in_(sa.select(class_ids_subq))
             ).first() is not None,
             'rent': RentSettings.query.with_entities(RentSettings.id).filter(
                 RentSettings.class_id.in_(sa.select(class_ids_subq))
@@ -10219,8 +9754,51 @@ def onboarding_status():
 @admin_bp.route('/onboarding', methods=['GET'])
 @admin_required
 def onboarding():
-    """Teacher onboarding page for creating a brand-new class from a blank roster template."""
-    return render_template('admin_create_class.html')
+    """Redirect to the standalone create-class form."""
+    return redirect(url_for('admin.create_new_class'))
+
+
+@admin_bp.route('/create-class', methods=['GET', 'POST'])
+@admin_required
+@requires_feat_context("FEAT-CLASS-001")
+def create_new_class():
+    """Create a new class for an authenticated teacher."""
+    if request.method == 'GET':
+        return render_template('admin_create_class_standalone.html')
+
+    ctx = g.canonical_context
+    user_id = ctx.user_id
+
+    class_display_name = request.form.get('class_display_name', '').strip()
+    section = request.form.get('section', '').strip() or None
+    teacher_display_name = request.form.get('teacher_display_name', '').strip()
+
+    if not class_display_name or not teacher_display_name:
+        flash("Class name and your display name are required.", "error")
+        return render_template('admin_create_class_standalone.html')
+
+    from app.utils.join_code import generate_join_code
+    from app.services.classroom_setup import create_class
+
+    join_code = generate_join_code()
+    payload_hash = hashlib.sha256(
+        f"{user_id}:{class_display_name}:{section}:{join_code}".encode("utf-8")
+    ).hexdigest()[:16]
+    idempotency_key = f"feat:class:create-class:{user_id}:{payload_hash}"
+
+    db.session.rollback()
+    with FEATContext("FEAT-CLASS-001", idempotency_key=idempotency_key):
+        economy = create_class(
+            user_id,
+            join_code=join_code,
+            display_name=class_display_name,
+            section=section,
+            teacher_first_name=teacher_display_name,
+        )
+
+    establish_teacher_session(db.session.get(User, user_id))
+    flash(f"Class \"{class_display_name}\" created. You are now in the new class.", "success")
+    return redirect(url_for('admin.dashboard'))
 
 
 @admin_bp.route('/onboarding/skip', methods=['POST'])
@@ -10278,8 +9856,14 @@ def api_calculate_cwi():
         temp_settings = TempPayrollSettings(pay_rate_per_minute, expected_weekly_hours=expected_weekly_hours)
 
         # Calculate CWI
-        checker = EconomyBalanceChecker(user_id, block)
+        checker = EconomyBalanceChecker(user_id)
         cwi_calc = checker.calculate_cwi(temp_settings, expected_weekly_hours)
+        if cwi_calc is None:
+            return jsonify({
+                'status': 'cwi_unconfigured',
+                'message': 'Expected weekly hours not configured. Set it on the Economic Engine page to enable pricing recommendations.',
+                'cwi': None,
+            })
 
         recommendations = get_price_recommendation_context(checker.policy_mode, cwi_calc.cwi)
 
@@ -10342,7 +9926,6 @@ def _resolve_admin_payroll_settings_for_class_id(canonical_context, class_id: st
 
 @admin_bp.route('/api/economy/analyze', methods=['POST'])
 @admin_required
-@feat_shell("FEAT-ADMN-001")
 def api_economy_analyze():
     """
     Perform comprehensive economy balance analysis.
@@ -10352,9 +9935,21 @@ def api_economy_analyze():
     try:
         user_id = g.canonical_context.user_id
         data = request.get_json() or {}
-        class_id = (data.get('class_id') or '').strip() or None
+        # Per DOM-CORE-001 canonical context resolution: scope MUST come
+        # from the server-resolved canonical_context, not client input.
+        # Only honor an explicit class_id from the payload if it matches
+        # the canonical context (defensive; the client should not send
+        # class_id at all).
+        canonical_class_id = getattr(g.canonical_context, 'class_id', None)
+        payload_class_id = (data.get('class_id') or '').strip() or None
+        if payload_class_id and canonical_class_id and payload_class_id != canonical_class_id:
+            return jsonify({
+                'status': 'error',
+                'message': 'Class scope mismatch. Switch class from the navigation to continue.',
+            }), 403
+        class_id = canonical_class_id or payload_class_id
         if not class_id:
-            return jsonify({'status': 'error', 'message': 'class_id is required for economy analysis.'}), 400
+            return jsonify({'status': 'error', 'message': 'No active class scope for economy analysis.'}), 400
 
         try:
             payroll_settings = _resolve_admin_payroll_settings_for_class_id(g.canonical_context, class_id)
@@ -10386,7 +9981,7 @@ def api_economy_analyze():
                 'status': 'error',
                 'message': 'Please configure payroll settings first to calculate CWI.'
             }), 400
-        checker = EconomyBalanceChecker(user_id, None, class_id=getattr(payroll_settings, "class_id", None))
+        checker = EconomyBalanceChecker(user_id, class_id=getattr(payroll_settings, "class_id", None))
 
         # Get other economy features
         class_ids_query = db.session.query(ClassEconomy.class_id).filter_by(teacher_user_id=user_id)
@@ -10515,7 +10110,7 @@ def api_economy_validate(feature):
             })
 
         # Calculate CWI
-        checker = EconomyBalanceChecker(user_id, None, class_id=getattr(payroll_settings, "class_id", None))
+        checker = EconomyBalanceChecker(user_id, class_id=getattr(payroll_settings, "class_id", None))
         # Use expected_weekly_hours from payroll_settings, not from request
         cwi_calc = checker.calculate_cwi(payroll_settings)
         cwi = cwi_calc.cwi
@@ -10682,7 +10277,7 @@ def passkey_auth_start():
 
 
 @admin_bp.route('/passkey/auth/finish', methods=['POST'])
-@feat_shell("FEAT-ADMN-001")
+@requires_feat_context("FEAT-OPS-001")
 @limiter.limit("20 per minute")
 def passkey_auth_finish():
     """
@@ -10915,7 +10510,10 @@ def issues_queue():
 
     # INV-ARC-007: keep GET route read-only.
     if not getattr(g, "read_only", False):
-        init_default_categories()
+        init_default_categories(
+            correlation_id=f"corr_support_categories_{uuid.uuid4().hex}",
+            idempotency_key="feat:sup:categories:initialize",
+        )
 
     # Filter by the active class scope; v2 issues are class-scoped student records.
     if class_id:
@@ -11029,7 +10627,7 @@ def view_issue(issue_ref):
 
 
 @admin_bp.route('/issues/<issue_ref>/resolve', methods=['POST'])
-@feat_shell("FEAT-ADMN-001")
+@requires_feat_context("FEAT-SUP-001")
 @admin_required
 def resolve_issue(issue_ref):
     """
@@ -11241,7 +10839,7 @@ def escalate_issue(issue_ref):
 
 @admin_bp.route('/issues/<issue_ref>/close', methods=['POST'])
 @admin_required
-@feat_shell("FEAT-SUP-001")
+@requires_feat_context("FEAT-SUP-001")
 def close_issue(issue_ref):
     """Owner/admin-only closure after final review."""
     from app.models import Issue

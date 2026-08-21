@@ -365,6 +365,7 @@ Rules:
 - `manual_credit` and `reversal` events do not participate in payroll-window boundary derivation.
 - `reversal` events must carry the same `correlation_id` as the original event they reverse.
 - `policy_version_id` is immutable and must identify the payroll policy version used to evaluate the event.
+- `policy_uuid` is immutable and must record the exact domain-policy identifier used to evaluate the event; `policy_version_id` remains the internal lineage pointer where present.
 - The row must identify the productivity window and settlement intent that authorized any downstream ledger write.
 - The row must not duplicate ledger monetary truth beyond what is necessary for business provenance.
 - `payroll_event_type` carries the event semantics, so no separate lifecycle `status` column is permitted on the canonical table.
@@ -375,8 +376,8 @@ Rules:
 
 - **Payroll FEAT ownership**: The payroll FEAT is a coordinator, not the authority over payroll meaning. It consumes productivity facts from this domain and posts monetary facts through Ledger.
 - **Ledger coordination**: All payroll monetary effects must go through `FEAT-LED-000` and `FEAT-LED-001`.
-- **Class Configuration coordination**: Wage rate, frequency, and payroll policy inputs are owned by Class Configuration.
-- **Hall-pass settings coordination**: `hall_pass_settings` is owned and mutated by Class Configuration. `FEAT-PROD-002` reads it before granting a hall pass because those settings constrain whether a PROD hall-pass event may be written.
+- **Policies coordination (payroll)**: Wage rate, frequency, reward/fine catalog, and other payroll policy inputs are stored in the Policies repository (`DOM-POL-001`) as immutable `payroll_settings` / `payroll_rewards` / `payroll_fines` version rows. Class Configuration decides whether the `payroll` capability is enabled in the class (`class_features`); Policies stores the class-customized definition; `DOM-PROD-001` reads the current payroll `policy_uuid` at run time to write `payroll_event` rows.
+- **Policies coordination (hall pass)**: `hall_pass_settings` is stored in the Policies repository (`DOM-POL-001`) as immutable version rows. Class Configuration decides whether the `hall_pass` capability is enabled; Policies stores the definition (allowed destinations, limits); `FEAT-PROD-002` reads the current hall-pass `policy_uuid` before granting a pass because those settings constrain whether a PROD hall-pass event may be written.
 - **Obligations coordination**: Hall-pass entitlement quotas remain owned by Obligations, and fine/debit manual deductions belong there rather than in `DOM-PROD`.
 - **Store coordination**: Store-owned entitlements and redemption state remain separate from productivity and payroll history.
 - **Reversal coordination**: Reversal of a payroll-originated monetary fact must consult this domain's authoritative business record before the reversal may proceed.

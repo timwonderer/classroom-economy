@@ -15,7 +15,6 @@ from __future__ import annotations
 
 from flask import Flask
 
-from app.feats.base import FEATContext
 from app.utils.issue_categories import init_default_categories
 from tests.helpers.classroom_initializer import (
     ProvisionedClassroom,
@@ -86,5 +85,7 @@ def create_class_announcement(
 
 def seed_support_issue_categories() -> int:
     """Seed the production default issue categories used by Support routes."""
-    with FEATContext("FEAT-SUP-001", idempotency_key="support-domain:default-issue-categories"):
-        return init_default_categories()
+    return init_default_categories(
+        correlation_id="test:sup:categories",
+        idempotency_key="test:sup:categories",
+    )

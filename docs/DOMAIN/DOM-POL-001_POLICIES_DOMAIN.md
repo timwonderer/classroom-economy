@@ -111,23 +111,37 @@ The following SHALL be derived and SHALL NOT be treated as canonical Policies tr
 - remaining limits;
 - downstream business facts.
 
-## VI. Mutation Contract
+## VI. Insert and Availability Contract
 
-FEAT-POL is the only mutation surface for this domain.
+### 0. `policy_uuid` is the version
+
+`policy_uuid` **is** the version identifier for a policy definition. There is no separate version pointer, version number, or active/next-version column layered on top of it.
+
+- Each row in the Policies repository has exactly one immutable `policy_uuid`, assigned at insert and never rewritten.
+- Every new submission (first-time or resubmission of an existing family) produces a new row with a new `policy_uuid`.
+- Consumers pin provenance by recording the exact `policy_uuid` in force at the moment they created their operational fact (see `DOM-POL-001` §V.A and §VII).
+- Availability state (`IN_USE` / `HIDDEN` / `RETIRED`) is a mutable projection *over* the immutable row, not a version pointer.
+
+Any schema element that attempts to create an alternative "current version" or "next version" pointer alongside `policy_uuid` — whether a self-referential FK on a Policies table or an external version-tracking table — is redundant and prohibited. `DOM-CLASS-003` (`policy_versions` / `policy_transitions`) records economic-policy evolution only and is not a domain-policy versioning mechanism; per `DOM-CLASS-003` §V, domain-specific versioning belongs here.
+
+### 1. Repository behavior
+
+Policies is an append-only, immutable repository. It does not originate mutation flows on behalf of other domains — the domain that initiates a policy change (Class Config UI, insurance authoring flow, store curation flow, etc.) submits a new definition through Policies, and Policies records it as a new immutable row keyed by a new `policy_uuid`.
+
+FEAT-POL is the only surface through which rows enter or change availability in this repository.
 
 It supports only these user-visible actions:
 
-1. New: insert a new policy row with a new `policy_uuid`
-2. Update: submit a new policy version, which always creates a new `policy_uuid`
-3. Disable: mark a policy `HIDDEN`
-4. Retire: mark a policy `RETIRED`
-5. Delete: remove a retired policy row after all live dependencies have drained
+1. Insert: record a new policy definition row with a new `policy_uuid` (may be a first-time submission or a resubmission of an existing family)
+2. Disable: mark an existing row `HIDDEN` (availability projection only; the definition payload is untouched)
+3. Retire: mark an existing row `RETIRED` (availability projection only; the definition payload is untouched)
+4. Delete: remove a retired policy row after all live dependencies have drained
 
-Any change to a policy settings submission creates a new policy UUID. The backend MUST NOT infer whether a change is meaningful. A teacher submission is a new contract.
+Any submission — first-time or resubmission — produces a new `policy_uuid`. The backend MUST NOT infer whether a change is meaningful; a submission is a new contract.
 
-Definition payload columns are not updated in place.
+Definition payload columns are immutable after insert. There is no "update in place."
 
-When a teacher resubmits Rent Settings, Store Items, Insurance settings, or any other policy family, the result is a new immutable version.
+When a teacher resubmits Rent Settings, Store Items, Insurance settings, or any other policy family, the result is a new immutable row with a new `policy_uuid`. Prior rows remain readable for provenance.
 
 `HIDDEN` means temporarily unavailable for new selection and may later return to `IN_USE`.
 `RETIRED` means permanently unavailable for new selection and may remain readable while live dependencies drain.
@@ -189,11 +203,18 @@ The intended boundary is:
 - rent enablement -> Class Configuration
 - rent settings -> Policies
 - rent-granted items -> Store and Entitlements
+- payroll enablement -> Class Configuration
+- payroll settings (wage rate, frequency, reward/fine catalog) -> Policies
+- payroll events -> Productivity & Payroll (`DOM-PROD-001`)
+- hall-pass enablement -> Class Configuration
+- hall-pass settings (allowed destinations, limits) -> Policies
+- hall-pass consumption records -> Productivity & Payroll (`DOM-PROD-001`)
 - store offerings -> Policies
 - insurance definitions -> Policies
 - insurance entitlement lifecycle -> Store and Entitlements
+- banking / interest / overdraft (savings APY, overdraft fees, interest formulas) -> Class Configuration / `economic-engine` (**not** Policies)
 
-This means Class Configuration decides whether a capability exists in the class, Policies defines the class-customized reference material for that capability, and the consuming domain owns the resulting fact.
+This means Class Configuration decides whether a capability exists in the class, Policies stores the class-customized reference material for that capability as immutable version rows, and the consuming operational domain owns the resulting fact.
 
 ## XI. Amendment
 

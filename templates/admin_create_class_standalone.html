@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Create New Class</title>
+  <link href="{{ static_url('css/tokens.css') }}" rel="stylesheet">
+  <link href="{{ static_url('css/style.css') }}" rel="stylesheet">
+</head>
+<body>
+  <main class="container py-5" style="max-width: 720px;">
+    <h1>Create a new class</h1>
+    <p class="text-muted">Create the class first. You can add students after entering the new class.</p>
+    <form method="POST" action="{{ url_for('admin.create_new_class') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="mb-3">
+        <label for="class_display_name" class="form-label">Class name</label>
+        <input id="class_display_name" name="class_display_name" class="form-control" maxlength="100" required>
+      </div>
+      <div class="mb-3">
+        <label for="section" class="form-label">Section / period</label>
+        <input id="section" name="section" class="form-control" maxlength="50">
+      </div>
+      <div class="mb-4">
+        <label for="teacher_display_name" class="form-label">Your display name in this class</label>
+        <input id="teacher_display_name" name="teacher_display_name" class="form-control" maxlength="100" required>
+      </div>
+      <button type="submit" class="btn btn-primary">Create class</button>
+    </form>
+  </main>
+</body>
+</html>

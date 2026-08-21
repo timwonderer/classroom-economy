@@ -35,7 +35,7 @@
                                     <td>
                                         <small>
                                             {% if error.timestamp %}
-                                                <span class="local-timestamp" data-timestamp="{{ format_utc_iso(error.timestamp) }}" data-format="time"></span>
+                                                {{ error.timestamp|fmt_time }}
                                             {% else %}
                                                 N/A
                                             {% endif %}

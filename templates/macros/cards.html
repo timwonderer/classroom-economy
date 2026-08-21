@@ -1,0 +1,114 @@
+{#
+  Canonical card + alert macros.
+
+  Design system (2026-08-16):
+
+  - TOP-LEVEL CARD: primary-colored header with white text. Role color is
+    resolved automatically by the token system (`--primary` is advisor
+    green for teacher, steward blue for student, guardian gray for
+    sysadmin). Header uses h5 sized text with the current attendance-log
+    shadow/border treatment.
+
+  - NESTED CARD (inside a top-level card, or an accordion item, or any
+    embedded panel): white header with primary text color. Same
+    role-scoped `--primary` token drives the text color.
+
+  - ALERT-AS-CARD: alerts are now cards whose header carries the
+    semantic color (success / warning / danger / info) and short title,
+    with the alert body in the card body. Replaces raw `<div class="alert">`.
+
+  All three surface types share the same shadow + border treatment
+  (defined in static/css/style.css `.card`).
+#}
+
+
+{#
+  Top-level card. Renders a `card shadow` wrapper with a `bg-primary
+  text-white` header. Use for the outermost card on a page section.
+
+  Usage:
+    {% import 'macros/cards.html' as cards %}
+    {% call cards.top_card('Attendance History', icon='history') %}
+      <div class="card-body">...</div>
+      <div class="card-body">...more sections...</div>
+    {% endcall %}
+
+  Args:
+    title: header text (rendered as h5 fw-bold, matches attendance-log)
+    icon: optional Material Symbols icon name
+    header_actions: optional HTML string rendered right-aligned in the header
+                    (buttons, badges, links). This value must contain only
+                    static, template-authored markup. Dynamic text must be
+                    escaped with |e before it is passed to this parameter.
+    body_class: optional extra classes on the wrapper (e.g. 'mb-3')
+#}
+{% macro top_card(title, icon=None, header_actions='', body_class='') %}
+<div class="card shadow {{ body_class }}">
+  <div class="card-header bg-primary text-white py-3">
+    <div class="d-flex justify-content-between align-items-center">
+      <h5 class="mb-0 fw-bold text-white">
+        {% if icon %}<span class="material-symbols-outlined me-2" style="vertical-align: text-bottom;">{{ icon }}</span>{% endif %}
+        {{ title }}
+      </h5>
+      {% if header_actions %}<div class="d-flex align-items-center gap-2">{{ header_actions | safe }}</div>{% endif %}
+    </div>
+  </div>
+  {{ caller() }}
+</div>
+{% endmacro %}
+
+
+{#
+  Nested card. White header, primary text color. Use inside a top_card
+  or wherever a secondary panel is needed.
+
+  Usage:
+    {% call cards.nested_card('Rent Amount & Frequency', icon='attach_money') %}
+      <div class="card-body">...</div>
+    {% endcall %}
+#}
+{% macro nested_card(title, icon=None, header_actions='', body_class='') %}
+<div class="card shadow-sm {{ body_class }}">
+  <div class="card-header bg-white py-3">
+    <div class="d-flex justify-content-between align-items-center">
+      <h6 class="mb-0 fw-semibold text-primary">
+        {% if icon %}<span class="material-symbols-outlined me-2 text-primary" style="vertical-align: text-bottom;">{{ icon }}</span>{% endif %}
+        {{ title }}
+      </h6>
+      {% if header_actions %}<div class="d-flex align-items-center gap-2">{{ header_actions | safe }}</div>{% endif %}
+    </div>
+  </div>
+  {{ caller() }}
+</div>
+{% endmacro %}
+
+
+{#
+  Alert-as-card. Semantic-colored header with title, body content in
+  card-body. Replaces raw <div class="alert alert-*"> usage.
+
+  Levels: 'success', 'warning', 'danger', 'info'. Warning renders with
+  dark text (per CSS `.card-header.bg-warning` rule); others render
+  white text.
+
+  Usage:
+    {% call cards.alert_card('warning', 'Payroll not configured', icon='warning') %}
+      Set expected weekly hours on the Economic Engine page to unlock
+      pricing recommendations.
+    {% endcall %}
+#}
+{% macro alert_card(level, title, icon=None, body_class='') %}
+{% set _level = level if level in ['success', 'warning', 'danger', 'info'] else 'info' %}
+{% set _text_class = 'text-dark' if _level == 'warning' else 'text-white' %}
+<div class="card shadow-sm {{ body_class }}">
+  <div class="card-header bg-{{ _level }} {{ _text_class }} py-3">
+    <h6 class="mb-0 fw-semibold {{ _text_class }}">
+      {% if icon %}<span class="material-symbols-outlined me-2" style="vertical-align: text-bottom;">{{ icon }}</span>{% endif %}
+      {{ title }}
+    </h6>
+  </div>
+  <div class="card-body">
+    {{ caller() }}
+  </div>
+</div>
+{% endmacro %}

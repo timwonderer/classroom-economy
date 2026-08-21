@@ -542,8 +542,7 @@ function renderHistoryTable(records) {
     }
 
     const html = records.map(record => {
-        // Use centralized timezone utility for consistent formatting
-        const formattedTime = window.TimezoneUtils?.formatTimestamp(record.request_time) || record.request_time || '—';
+        const formattedTime = record.request_time || '—';
 
         let statusBadge = '';
         switch (record.status) {

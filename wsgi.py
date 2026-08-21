@@ -199,7 +199,11 @@ def create_sysadmin():
             totp_secret_encrypted=encrypted_totp_secret,
         )
         db.session.add(user)
-        db.session.commit()
+        db.session.flush()
+
+    # The FEAT context owns the atomic commit boundary; the CLI only renders
+    # the generated credentials after the FEAT has completed successfully.
+    db.session.commit()
 
     # Display results
     print(f"\nSystem admin '{username}' created successfully.")

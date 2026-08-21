@@ -196,7 +196,7 @@
                                 </p>
                                 <small class="text-muted">
                                     <span class="material-symbols-outlined me-1">schedule</span>
-                                    Submitted <span class="local-timestamp" data-timestamp="{{ format_utc_iso(issue.submitted_at) }}"></span>
+                                    Submitted {{ issue.submitted_at|fmt_timestamp }}
                                     {% if issue.class_label %}
                                     | <span class="material-symbols-outlined me-1">door_front</span>{{ issue.class_label }}
                                     {% endif %}
@@ -247,7 +247,7 @@
                                 </p>
                                 <small class="text-muted">
                                     <span class="material-symbols-outlined me-1">fact_check</span>
-                                    Updated <span class="local-timestamp" data-timestamp="{{ format_utc_iso(issue.updated_at) }}"></span>
+                                    Updated {{ issue.updated_at|fmt_timestamp }}
                                 </small>
                             </div>
                             <div class="text-end">
@@ -292,7 +292,7 @@
                                 </p>
                                 <small class="text-muted">
                                     <span class="material-symbols-outlined me-1">arrow_circle_up</span>
-                                    Escalated <span class="local-timestamp" data-timestamp="{{ format_utc_iso(issue.escalated_at) }}"></span>
+                                    Escalated {{ issue.escalated_at|fmt_timestamp }}
                                 </small>
                             </div>
                             <div class="text-end">

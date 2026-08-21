@@ -86,8 +86,7 @@
                         <div class="mb-3 pb-3 border-bottom">
                             <div class="d-flex justify-content-between align-items-center">
                                 <span class="text-muted">Monthly Interest Rate</span>
-                                <div class="h5 mb-0 text-primary">{% if settings %}{{
-                                    "%.2f"|format(settings.savings_monthly_rate) }}%{% else %}4.5%{% endif %}</div>
+                                <div class="h5 mb-0 text-primary">{{ "%.2f"|format(monthly_interest_rate * 100) }}%</div>
                             </div>
                         </div>
                         <div class="mb-3 pb-3 border-bottom">
@@ -121,7 +120,7 @@
                     <small class="text-muted">
                         Projection based on current balance of <strong>${{ "%.2f"|format(savings_balance) }}</strong>
                         with
-                        {{ "%.2f"|format((settings.savings_apy if settings else 4.5)) }}% annual {{ calculation_type }}
+                        {{ "%.2f"|format(annual_interest_rate * 100) }}% annual {{ calculation_type }}
                         interest
                         {% if calculation_type == 'compound' %}(compounded {{ compound_frequency }}){% endif %}
                     </small>
@@ -230,7 +229,7 @@
                 <div class="alert alert-info mt-3">
                     <span class="material-symbols-outlined">info</span> <strong>Tip:</strong> Your savings account earns
                     {% if settings %}
-                    {{ '%.2f'|format(settings.savings_apy) }}% annual {{ calculation_type }} interest
+                    {{ '%.2f'|format(annual_interest_rate * 100) }}% annual {{ calculation_type }} interest
                     {% if calculation_type == 'compound' %}
                     (compounded {{ compound_frequency }})
                     {% endif %}
@@ -286,8 +285,7 @@
                             <tr {% if tx.is_void %}class="table-secondary text-decoration-line-through" {% endif %}>
                                 <td>
                                     {% if tx.timestamp %}
-                                    <span class="local-timestamp"
-                                        data-timestamp="{{ format_utc_iso(tx.timestamp) }}"></span>
+                                    {{ tx.timestamp|fmt_timestamp }}
                                     {% else %}
                                     N/A
                                     {% endif %}
@@ -347,8 +345,7 @@
                             <tr {% if tx.is_void %}class="table-secondary text-decoration-line-through" {% endif %}>
                                 <td>
                                     {% if tx.timestamp %}
-                                    <span class="local-timestamp"
-                                        data-timestamp="{{ format_utc_iso(tx.timestamp) }}"></span>
+                                    {{ tx.timestamp|fmt_timestamp }}
                                     {% else %}
                                     N/A
                                     {% endif %}

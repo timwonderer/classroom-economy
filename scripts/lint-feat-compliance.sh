@@ -21,8 +21,53 @@ TIER1_FILES=(
 
 echo "🔍 Checking for FEAT Constitutional violations..."
 
-# Grep for illegal commits, ignoring authorized legacy wraps and shell-authorized commits
-VIOLATIONS=$(grep -r "db.session.commit()" app --exclude-dir=$EXCLUDE_DIR -n | grep -v "# FEAT-LEGACY-WRAP" | grep -v "# FEAT-AUTHORIZED-SHELL" || true)
+# Identify commits whose enclosing function has no canonical FEAT context.
+VIOLATIONS=$(python3 - <<'PY'
+import ast
+from pathlib import Path
+
+class CommitVisitor(ast.NodeVisitor):
+    def __init__(self, path):
+        self.path = path
+        self.function_depth = 0
+        self.lines = []
+    def visit_FunctionDef(self, node):
+        self._visit_function(node)
+    def visit_AsyncFunctionDef(self, node):
+        self._visit_function(node)
+    def _visit_function(self, node):
+        has_feat = any(
+            isinstance(dec, ast.Call)
+            and getattr(dec.func, 'id', None) == 'requires_feat_context'
+            for dec in node.decorator_list
+        )
+        if not has_feat:
+            for sub in node.body:
+                if isinstance(sub, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                    continue
+                for call in ast.walk(sub):
+                    if (isinstance(call, ast.Call) and isinstance(call.func, ast.Attribute)
+                            and call.func.attr == 'commit'
+                            and isinstance(call.func.value, ast.Attribute)
+                            and call.func.value.attr == 'session'):
+                        self.lines.append(f'{self.path}:{call.lineno}:        db.session.commit()')
+        for child in node.body:
+            if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                self.visit(child)
+
+for path in Path('app').rglob('*.py'):
+    if str(path).startswith('app/feats/'):
+        continue
+    try:
+        tree = ast.parse(path.read_text(), filename=str(path))
+    except SyntaxError:
+        continue
+    visitor = CommitVisitor(path)
+    visitor.visit(tree)
+    for line in visitor.lines:
+        print(line)
+PY
+)
 COUNT=$(echo "$VIOLATIONS" | grep -v "^$" | wc -l | xargs)
 
 # Grep for direct Transaction instantiation (must use create_idempotent_transaction)
@@ -60,16 +105,16 @@ if [ "$COUNT" -gt 0 ]; then
         fi
     done
 
-    # SHELL COVERAGE CHECK: Tier 1 files must have at least one @feat_shell
+    # FEAT COVERAGE CHECK: Tier 1 files must have at least one canonical FEAT boundary
     for file in "${TIER1_FILES[@]}"; do
-        if ! grep -q "@feat_shell" "$file" && ! grep -q "@requires_feat_context" "$file"; then
-            echo "🚨 COVERAGE MISSING: $file has zero FEAT shell coverage."
+        if ! grep -q "@requires_feat_context" "$file"; then
+            echo "🚨 COVERAGE MISSING: $file has zero canonical FEAT coverage."
             TIER1_VIOLATIONS=$((TIER1_VIOLATIONS + 1))
         fi
     done
 
     if [ "$TIER1_VIOLATIONS" -gt 0 ]; then
-        echo "❌ Wave 1 blocked: Critical files contain direct commits or lack shell coverage."
+        echo "❌ Wave 1 blocked: Critical files contain direct commits or lack FEAT coverage."
         if [ "$FEAT_STRICT_LINT" = "true" ]; then
             exit 1
         fi

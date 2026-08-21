@@ -251,8 +251,6 @@
         return div.innerHTML;
     }
 
-    // Use centralized timezone utility for timestamp formatting
-    const formatTimestamp = window.TimezoneUtils.formatTimestamp;
 
     // Get status badge HTML (status is validated server-side but we escape for defense in depth)
     function getStatusBadge(status) {
@@ -331,7 +329,7 @@
             </td>
             <td><span class="badge bg-primary-subtle text-primary">${escapeHtml(record.student_class_label) || '—'}</span></td>
             <td><span class="badge bg-info-subtle text-info">${escapeHtml(record.period)}</span></td>
-            <td><span class="text-muted small">${formatTimestamp(record.timestamp)}</span></td>
+            <td><span class="text-muted small">${escapeHtml(record.formatted_timestamp) || '—'}</span></td>
             <td>${getStatusBadge(record.status)}</td>
             <td class="text-muted small">${escapeHtml(record.reason) || '—'}</td>
         </tr>
