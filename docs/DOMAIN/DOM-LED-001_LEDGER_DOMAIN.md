@@ -106,6 +106,8 @@ An optimization for rapid solvency checks.
 - **Pending Logic**: `PENDING` totals are derived on-demand from the transaction log for UI display. They are never stored on the transaction row.
 - **Reversal Chaining**: Chained reversals are prohibited. Corrections of corrections shall be handled as fresh transactions, not updates to prior rows.
 
+
+
 ## X. Amendment
 
 Revisions to this document must:

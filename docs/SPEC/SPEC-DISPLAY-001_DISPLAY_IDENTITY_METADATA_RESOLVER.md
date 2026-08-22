@@ -2,7 +2,7 @@
 
 | Reference Number | Version | Effective Date | Supersedes | Authority Level |
 |------------------|---------|----------------|------------|-----------------|
-| SPEC-DISPLAY-001 | 1.0 | 2026-07-21 | None | Implementation Spec |
+| SPEC-DISPLAY-001 | 1.0 | 2026-07-21 | None | Normative |
 
 ---
 
