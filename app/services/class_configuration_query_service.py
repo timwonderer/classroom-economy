@@ -286,7 +286,7 @@ def get_class_features(
             ClassFeature.effective_at == latest_subquery.c.max_effective_at,
         ))
         .filter(ClassFeature.class_id == class_id)
-        .order_by(ClassFeature.feature, ClassFeature.id.desc())
+        .order_by(ClassFeature.feature, ClassFeature.effective_at.desc())
         .distinct(ClassFeature.feature)
         .all()
     )

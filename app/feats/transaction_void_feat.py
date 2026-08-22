@@ -29,6 +29,18 @@ class UsedDelayedPurchaseNotVoidable(ValueError):
     pass
 
 
+class ObligationTransactionNotVoidable(ValueError):
+    """Raised when a void/reversal is attempted on an obligation-related transaction.
+
+    Per SPEC-OPS-001 §VII and INV-OPS-008, obligation-related monetary transactions
+    are neither voidable nor reversible. This is determined by provenance, not
+    representation. Monetary remediation, where authorized, must occur through a
+    new, independently authorized adjustment transaction (INV-OPS-009); it must
+    never carry machine semantics asserting reversal of the obligation.
+    """
+    pass
+
+
 @requires_feat_context("FEAT-LED-002")
 def execute_void_transaction(
     tx: Transaction,
@@ -47,13 +59,24 @@ def execute_void_transactions(transactions: list[Transaction], *, correlation_id
 
 
 def _execute_void_transaction_impl(tx: Transaction, *, reason: str) -> VoidTransactionResult:
+    # SPEC-OPS-001 §VII / INV-OPS-008: obligation-related monetary transactions are
+    # neither voidable nor reversible. Reject at the canonical void/reversal boundary
+    # BEFORE any compensating transaction can be created, so no ledger mutation occurs
+    # on rejection. Obligation-relatedness is determined by provenance (an obligation
+    # event references this ledger transaction), not by transaction representation/type.
+    if obligations_service.is_obligation_related_transaction(tx.id):
+        raise ObligationTransactionNotVoidable(
+            f"Transaction #{tx.id} is obligation-related. Under SPEC-OPS-001 "
+            "(INV-OPS-008), obligation-related monetary transactions are neither "
+            "voidable nor reversible; monetary remediation must be a new, "
+            "independently authorized adjustment (INV-OPS-009)."
+        )
+
     is_pending = tx.status == TransactionStatus.PENDING
     void_description = f"Void refund for transaction #{tx.id} ({reason}): {tx.description}"[:255]
 
     if tx.type == 'purchase':
         _void_purchase(tx)
-    elif tx.type == 'Rent Payment':
-        _void_rent_payment(tx)
 
     reversal_tx = None
     if tx.type == 'purchase':
@@ -154,28 +177,3 @@ def _void_purchase(tx: Transaction) -> None:
     )
     # Canonical entitlement state is authoritative; the void path only records
     # the compensating ledger effect here.
-
-
-def _void_rent_payment(tx: Transaction) -> None:
-    if not tx.class_id:
-        raise ValueError("Transaction is missing class scope (class_id) and cannot be voided safely.")
-    
-    rent_payments = obligations_service.get_paid_rent_assessments_for_cycle(
-        tx.class_id,
-        tx.timestamp.month if tx.timestamp else utc_now().month,
-        tx.timestamp.year if tx.timestamp else utc_now().year,
-        seat_ids=[tx.seat_id],
-    )
-
-    rent_payments = [
-        payment for payment in rent_payments
-        if payment.satisfaction and payment.satisfaction.amount_paid == abs(tx.amount or Decimal('0.00'))
-    ]
-
-    if rent_payments:
-        tx_ts = ensure_utc(tx.timestamp) if tx.timestamp else utc_now()
-        matched_rent_payment = min(
-            rent_payments,
-            key=lambda p: abs((ensure_utc(p.satisfaction.satisfied_at or tx.timestamp or utc_now()) - tx_ts).total_seconds())
-        )
-        obligations_service.remove_rent_payment_assessment(matched_rent_payment.id)
