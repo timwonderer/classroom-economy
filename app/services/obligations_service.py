@@ -334,6 +334,101 @@ def get_assessments_for_bill_cycle(
     return query.order_by(ObligationAssessment.timestamp.asc()).all()
 
 
+def get_paid_rent_assessments_for_cycle(
+    class_id: str,
+    coverage_month: int,
+    coverage_year: int,
+    seat_ids: list[int] | None = None,
+) -> list[ObligationAssessment]:
+    """Return PAID RENT ASSESSMENT events for a coverage cycle.
+
+    Canonical semantics (DOM-OBL-001 §VII/§VIII): obligations are event-sourced
+    and identity-blind by type. A RENT ASSESSMENT is *paid* iff it has at least
+    one PAYMENT satisfaction event sharing its correlation_id. The coverage cycle
+    is resolved via bill_cycles whose cycle_boundary_at falls in the requested
+    (coverage_month, coverage_year), scoped to the class for multi-tenancy.
+
+    Note: this replaces a removed pre-v2.5 helper that was a thin alias returning
+    *all* rent assessments regardless of payment. The canonical "paid" filter
+    (payment evidence) is applied here so callers observing "has paid rent" get
+    the meaning the name promises.
+
+    Args:
+        class_id: Class scope (multi-tenancy boundary).
+        coverage_month: Calendar month the cycle covers (1-12).
+        coverage_year: Calendar year the cycle covers.
+        seat_ids: Optional restriction to specific seats.
+
+    Returns:
+        List of paid RENT ASSESSMENT events (each exposes .seat, .id,
+        .correlation_id), in assessment-timestamp order.
+    """
+    from sqlalchemy import extract
+
+    matching_bill_cycle_ids = [
+        row[0]
+        for row in (
+            db.session.query(BillCycle.id)
+            .filter(
+                BillCycle.class_id == class_id,
+                extract('month', BillCycle.cycle_boundary_at) == coverage_month,
+                extract('year', BillCycle.cycle_boundary_at) == coverage_year,
+            )
+            .all()
+        )
+    ]
+    if not matching_bill_cycle_ids:
+        return []
+
+    query = (
+        db.session.query(ObligationAssessment)
+        .filter(
+            ObligationAssessment.class_id == class_id,
+            ObligationAssessment.obligation_type == 'RENT',
+            ObligationAssessment.event_type == 'ASSESSMENT',
+            ObligationAssessment.bill_cycle_id.in_(matching_bill_cycle_ids),
+        )
+    )
+    if seat_ids:
+        query = query.filter(ObligationAssessment.seat_id.in_(seat_ids))
+
+    assessments = query.order_by(ObligationAssessment.timestamp.asc()).all()
+
+    # Canonical paid-filter: keep only assessments with a PAYMENT satisfaction event.
+    return [
+        assessment
+        for assessment in assessments
+        if any(
+            event.event_type == 'PAYMENT'
+            for event in get_satisfaction_events(assessment.correlation_id)
+        )
+    ]
+
+
+def is_obligation_related_transaction(transaction_id: int | None) -> bool:
+    """Return True iff a ledger transaction has obligation provenance.
+
+    Per SPEC-OPS-001 §VII (INV-OPS-008), obligation-relatedness is determined by
+    *provenance*, not representation: a monetary transaction is obligation-related
+    iff an obligation event (assessment_events) references it via
+    ``ledger_transaction_id``. Such transactions are neither voidable nor
+    reversible; monetary remediation must be a new, independently authorized
+    adjustment (INV-OPS-009).
+
+    Args:
+        transaction_id: Ledger transaction id to test (None → False).
+
+    Returns:
+        True if any obligation event references this transaction, else False.
+    """
+    if transaction_id is None:
+        return False
+    return (
+        db.session.query(ObligationAssessment.id)
+        .filter(ObligationAssessment.ledger_transaction_id == transaction_id)
+        .first()
+        is not None
+    )
 
 
 def get_payment_events_for_assessment(
