@@ -7,12 +7,13 @@ Success criteria: template renders (status 200) and contains expected content.
 
 import pytest
 from flask import url_for
-from app.models import RentSettings, Transaction, ObligationAssessment
+from app.models import Transaction, ObligationAssessment
 from app.extensions import db
 from app.utils.canonical_temporal_resolver import utc_now
 from app.feats.base import FEATContext
 from decimal import Decimal
 from tests.helpers.classroom_initializer import initialize
+from tests.helpers.class_domain import customize_rent_settings
 
 
 @pytest.fixture
@@ -27,20 +28,20 @@ def obligations_test_context(app, client):
     classroom = initialize("chemistry_p1", app)
 
     with app.app_context():
+        # Get first student from canonical classroom
+        student = classroom.students[0]
+
+        # Customize the canonical RentSettings row (provision_classroom seeds
+        # exactly one per class; the schema enforces one-rent-policy-per-class).
+        settings = customize_rent_settings(
+            classroom.class_id,
+            rent_amount=Decimal('100.00'),
+            frequency_type='monthly',
+            grace_period_days=3,
+            late_penalty_amount=Decimal('10.00'),
+        )
+
         with FEATContext("FEAT-TEST-OBL-SETUP"):  # Test FEAT for phase 8 verification setup
-            # Get first student from canonical classroom
-            student = classroom.students[0]
-
-            # Create rent settings for this class
-            settings = RentSettings(
-                class_id=classroom.class_id,
-                rent_amount=Decimal('100.00'),
-                grace_period_days=3,
-                late_penalty_amount=Decimal('10.00')
-            )
-            db.session.add(settings)
-            db.session.flush()
-
             # Create sample ledger transaction for payment
             transaction = Transaction(
                 seat_id=student.seat.id,
@@ -63,9 +64,7 @@ def obligations_test_context(app, client):
                 correlation_id="assess-001-2026-01",
                 event_type='ASSESSMENT',
                 obligation_type="RENT",
-                due_at=utc_now(),
-                viewable_at=utc_now(),
-                assessed_at=utc_now(),
+                timestamp=utc_now(),
             )
             db.session.add(assessment)
             db.session.flush()
@@ -79,7 +78,7 @@ def obligations_test_context(app, client):
                 event_type='PAYMENT',
                 obligation_type="RENT",
                 ledger_transaction_id=transaction.id,
-                assessed_at=utc_now(),
+                timestamp=utc_now(),
             )
             db.session.add(payment)
             db.session.flush()
@@ -152,7 +151,7 @@ class TestObligationsSurfaces:
                     if txn:
                         # This should work without schema errors
                         amount = txn.amount if txn.type == 'credit' else Decimal('0.00')
-                        payment_date = payment.assessed_at
+                        payment_date = payment.timestamp
                         assert amount == Decimal('100.00'), "Amount should come from Ledger"
                         assert payment_date is not None, "Payment date should be accessible"
 
@@ -168,11 +167,14 @@ class TestObligationsSurfaces:
             # (They shouldn't even access it—they're entitlement-owned)
             # This is a sanity check that obligations didn't break insurance
 
-            # Query insurance claims to ensure no schema conflicts
-            from app.models import InsuranceClaim
+            # Query pending insurance claims to ensure no schema conflicts.
+            # Per DOM-STORE-001 v3.0, the legacy InsuranceClaim model is removed;
+            # pending insurance claims are entitlement-owned and live in
+            # PendingAction (§VII.B).
+            from app.models import PendingAction
 
             # These queries should work without crashing
-            claims = InsuranceClaim.query.filter_by(class_id=ctx['class_id']).all()
+            claims = PendingAction.query.filter_by(class_id=ctx['class_id']).all()
 
             # No assertion needed—if these crash, the test fails
             print(f"✅ A3: Insurance marketplace queries work ({len(claims)} claims)")

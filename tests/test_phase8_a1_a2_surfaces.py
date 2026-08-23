@@ -23,6 +23,7 @@ from app.services.obligations_service import (
 )
 from app.services.obligation_view_model import get_total_paid_for_obligation
 from tests.helpers.classroom_initializer import initialize_as_student, initialize_as_teacher
+from tests.helpers.class_domain import customize_rent_settings, enable_class_feature
 
 
 class TestA1StudentRentSurface:
@@ -45,17 +46,21 @@ class TestA1StudentRentSurface:
         # Provision canonical classroom (TEST-IDEN-001)
         classroom, student = initialize_as_student("chemistry_p1", client, app, student_index=0)
 
-        # Create rent settings for this class WITHIN app context and FEAT (DOM-CLASS-001 authority)
+        # Customize the canonical rent settings row (provision_classroom seeds
+        # exactly one per class; one-rent-policy-per-class is schema-enforced).
         with app.app_context():
-            with FEATContext("FEAT-TEST-SETUP", idempotency_key="a1-route-test"):
-                settings = RentSettings(
-                    class_id=classroom.class_id,
-                    rent_amount=Decimal('100.00'),
-                    grace_period_days=3,
-                    late_penalty_amount=Decimal('10.00'),
-                )
-                db.session.add(settings)
-                db.session.flush()
+            customize_rent_settings(
+                classroom.class_id,
+                rent_amount=Decimal('100.00'),
+                frequency_type='monthly',
+                grace_period_days=3,
+                late_penalty_amount=Decimal('10.00'),
+            )
+            # The rent surface 404s unless the 'rent' feature is enabled.
+            # provision_classroom enables only 'payroll' by default
+            # (_seed_default_class_features), so enable rent via the canonical
+            # FEAT-SETTINGS-001 route wrapper.
+            enable_class_feature(class_id=classroom.class_id, feature='rent')
 
         # Student session is already live from initialize_as_student
         # Call the rent route
@@ -86,17 +91,17 @@ class TestA1StudentRentSurface:
             class_id = classroom.class_id
             seat_id = student.seat.id
 
-            # Create rent settings (DOM-CLASS-001 authority)
-            with FEATContext("FEAT-TEST-SETUP", idempotency_key="a1-test-setup"):
-                settings = RentSettings(
-                    class_id=class_id,
-                    rent_amount=Decimal('100.00'),
-                    grace_period_days=3,
-                    late_penalty_amount=Decimal('10.00'),
-                )
-                db.session.add(settings)
-                db.session.flush()
+            # Customize the canonical rent settings row (one per class).
+            customize_rent_settings(
+                class_id,
+                rent_amount=Decimal('100.00'),
+                frequency_type='monthly',
+                grace_period_days=3,
+                late_penalty_amount=Decimal('10.00'),
+            )
 
+            # Create rent-related obligation events (DOM-OBL-001 authority)
+            with FEATContext("FEAT-TEST-SETUP", idempotency_key="a1-test-setup"):
                 now = utc_now()
 
                 # Create BillCycle for January 2026 (DOM-OBL-001 §VII.3)
@@ -104,6 +109,7 @@ class TestA1StudentRentSurface:
                 from app.models import BillCycle
                 cycle_boundary = datetime(2026, 1, 31, 23, 59, 59, tzinfo=utc_now().tzinfo)
                 bill_cycle = BillCycle(
+                    class_id=class_id,  # NOT NULL: multi-tenancy scoping (DOM-OBL-001 §VII.3)
                     internal_ref=f"rent:{class_id}:2026-01",
                     cycle_number=1,
                     cycle_boundary_at=cycle_boundary,
@@ -200,16 +206,16 @@ class TestA1StudentRentSurface:
             seat_id = student.seat.id
             assessment_id = None
 
-            with FEATContext("FEAT-TEST-SETUP", idempotency_key="a1-test-ledger"):
-                settings = RentSettings(
-                    class_id=class_id,
-                    rent_amount=Decimal('100.00'),
-                    grace_period_days=3,
-                    late_penalty_amount=Decimal('10.00'),
-                )
-                db.session.add(settings)
-                db.session.flush()
+            # Customize the canonical rent settings row (one per class).
+            customize_rent_settings(
+                class_id,
+                rent_amount=Decimal('100.00'),
+                frequency_type='monthly',
+                grace_period_days=3,
+                late_penalty_amount=Decimal('10.00'),
+            )
 
+            with FEATContext("FEAT-TEST-SETUP", idempotency_key="a1-test-ledger"):
                 now = utc_now()
 
                 # Create ASSESSMENT (per DOM-OBL-001)
@@ -354,17 +360,16 @@ class TestA2AdminRentSettings:
         # Provision classroom with teacher session (TEST-IDEN-001)
         classroom = initialize_as_teacher("chemistry_p1", client, app)
 
-        # Create rent settings for this class WITHIN app context and FEAT (DOM-CLASS-001 authority)
+        # Customize the canonical rent settings row (provision_classroom seeds
+        # exactly one per class; one-rent-policy-per-class is schema-enforced).
         with app.app_context():
-            with FEATContext("FEAT-TEST-SETUP", idempotency_key="a2-route-test"):
-                settings = RentSettings(
-                    class_id=classroom.class_id,
-                    rent_amount=Decimal('100.00'),
-                    grace_period_days=3,
-                    late_penalty_amount=Decimal('10.00'),
-                )
-                db.session.add(settings)
-                db.session.flush()
+            customize_rent_settings(
+                classroom.class_id,
+                rent_amount=Decimal('100.00'),
+                frequency_type='monthly',
+                grace_period_days=3,
+                late_penalty_amount=Decimal('10.00'),
+            )
 
         # Teacher session is already live from initialize_as_teacher
         # Call the rent settings route
@@ -392,16 +397,14 @@ class TestA2AdminRentSettings:
             classroom = initialize("chemistry_p1", app)
             class_id = classroom.class_id
 
-            with FEATContext("FEAT-TEST-SETUP", idempotency_key="a2-test-scoping"):
-                # Create rent settings for the class (DOM-CLASS-001 authority)
-                settings = RentSettings(
-                    class_id=class_id,
-                    rent_amount=Decimal('100.00'),
-                    grace_period_days=3,
-                    late_penalty_amount=Decimal('10.00'),
-                )
-                db.session.add(settings)
-                db.session.flush()
+            # Customize the canonical rent settings row (one per class).
+            customize_rent_settings(
+                class_id,
+                rent_amount=Decimal('100.00'),
+                frequency_type='monthly',
+                grace_period_days=3,
+                late_penalty_amount=Decimal('10.00'),
+            )
 
             # Verify: querying by class_id returns the settings
             result = RentSettings.query.filter_by(class_id=class_id).first()
@@ -430,17 +433,16 @@ class TestA2AdminRentSettings:
             class_id = classroom.class_id
             seat_id = student.seat.id
 
-            with FEATContext("FEAT-TEST-SETUP", idempotency_key="a2-test-integration"):
-                # Set rent amount via DOM-CLASS-001
-                settings = RentSettings(
-                    class_id=class_id,
-                    rent_amount=Decimal('100.00'),
-                    grace_period_days=3,
-                    late_penalty_amount=Decimal('10.00'),
-                )
-                db.session.add(settings)
-                db.session.flush()
+            # Customize the canonical rent settings row (one per class).
+            customize_rent_settings(
+                class_id,
+                rent_amount=Decimal('100.00'),
+                frequency_type='monthly',
+                grace_period_days=3,
+                late_penalty_amount=Decimal('10.00'),
+            )
 
+            with FEATContext("FEAT-TEST-SETUP", idempotency_key="a2-test-integration"):
                 # Create assessment via DOM-OBL-001
                 now = utc_now()
                 assessment = ObligationAssessment(

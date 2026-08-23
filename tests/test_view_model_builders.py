@@ -52,7 +52,6 @@ def classroom(app):
                 },
                 created_by_seat_id=classroom.teacher_seat_id,
             )
-        db.session.commit()
         return classroom, purchase_policy, grant_policy
 
 

@@ -30,7 +30,7 @@ def setup_test_class_and_students(app):
                 class_id='test-class-001',
                 section='A',
                 display_name='Test Class',
-                user_id=teacher.id,
+                teacher_user_id=teacher.id,
                 join_code='TEST123',
             )
             db.session.add(class_econ)

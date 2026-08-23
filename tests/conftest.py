@@ -559,6 +559,18 @@ def app(request):
             _rebuild_database_state()
             yield flask_app
         finally:
+            # Defensive cleanup: a fixture/setup exception (e.g. an IntegrityError
+            # raised mid-flush) can leave the session's outer transaction open and
+            # the DBAPI connection "idle in transaction", holding locks that would
+            # block the next test's DROP SCHEMA CASCADE indefinitely. Roll back
+            # before releasing the session/connection so it returns to the pool
+            # clean and reusable. This is test-harness cleanup only and does not
+            # relax FEAT-INTEGRITY enforcement (that guards commits/flushes, not
+            # teardown rollbacks).
+            try:
+                db.session.rollback()
+            except Exception:
+                pass
             db.session.remove()
             if lock_conn is not None:
                 lock_conn.execute(
@@ -582,8 +594,15 @@ def client(app):
     
     client = flask_app.test_client()
     yield client
-    
+
     limiter.reset()
+    # Defensive cleanup: roll back any transaction left open by a failed
+    # fixture/setup before releasing the session, so the connection returns to
+    # the pool clean (see the `app` fixture teardown for rationale).
+    try:
+        db.session.rollback()
+    except Exception:
+        pass
     db.session.remove()
     ctx.pop()
 

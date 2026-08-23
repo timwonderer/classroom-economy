@@ -10515,11 +10515,13 @@ def issues_queue():
             idempotency_key="feat:sup:categories:initialize",
         )
 
-    # Filter by the active class scope; v2 issues are class-scoped student records.
+    # Filter by the active class scope; v2 issues are class-scoped by class_public_id.
     if class_id:
-        issues_query = Issue.query.filter_by(class_id=class_id)
+        class_row = get_class_economy(class_id)
+        active_class_public_id = class_row.class_public_id if class_row else None
+        issues_query = Issue.query.filter_by(class_public_id=active_class_public_id)
     else:
-        issues_query = Issue.query.filter_by(class_id=None)
+        issues_query = Issue.query.filter_by(class_public_id=None)
 
     # Get issues by status.
     pending_rows = issues_query.filter(
@@ -10604,7 +10606,9 @@ def view_issue(issue_ref):
 
     issue_query = Issue.query.filter_by(id=issue_id)
     if class_id:
-        issue_query = issue_query.filter_by(class_id=class_id)
+        class_row = get_class_economy(class_id)
+        if class_row:
+            issue_query = issue_query.filter_by(class_public_id=class_row.class_public_id)
     issue = issue_query.first_or_404()
 
     name, label = _resolve_issue_identity(issue.actor_public_id, issue.class_public_id)
