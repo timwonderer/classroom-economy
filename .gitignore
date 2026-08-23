@@ -56,3 +56,7 @@ patch.py
 fix_*.py
 debug_*.py
 pytest_result/
+ocp.db
+ocp.db-*
+ocp.db-shm
+ocp.db-wal
