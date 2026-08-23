@@ -145,6 +145,38 @@ def update_rent_settings(client, **form_data: Any):
     )
 
 
+def customize_rent_settings(class_id: str, **fields: Any):
+    """Customize the canonical RentSettings row for a class.
+
+    ``provision_classroom`` seeds exactly one RentSettings per class, and the
+    schema enforces a one-rent-policy-per-class invariant via a unique
+    ``class_id`` (``ix_rent_settings_class_id``). Tests must therefore NOT
+    INSERT a second row; they customize the already-provisioned canonical row.
+
+    This is the highest-level authorized setup mechanism available for tests
+    without a live teacher session (route-driven tests should use
+    ``update_rent_settings`` instead). The mutation is performed through the
+    canonical setup-FEAT boundary (FEAT-TEST-SETUP) so it does not bypass
+    FEAT-INTEGRITY enforcement.
+    """
+    from app.models import RentSettings
+
+    with FEATContext(
+        "FEAT-TEST-SETUP",
+        idempotency_key=f"rent_settings:customize:{class_id}",
+    ):
+        settings = RentSettings.query.filter_by(class_id=class_id).first()
+        if settings is None:
+            raise AssertionError(
+                f"No canonical RentSettings found for class {class_id}; "
+                "provision_classroom is expected to seed exactly one."
+            )
+        for key, value in fields.items():
+            setattr(settings, key, value)
+        db.session.flush()
+    return settings
+
+
 def manual_payroll(
     client,
     *,

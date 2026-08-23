@@ -12,7 +12,7 @@ from app.models import (
 from app.utils.opaque_refs import make_opaque_ref
 from app.feats.base import FEATContext
 from tests.dom.interpretation.helpers import (
-    create_sysadmin_via_cli,
+    create_sysadmin,
     login_sysadmin,
     sysadmin_reward_issue_state,
 )
@@ -20,8 +20,8 @@ from tests.dom.interpretation.helpers import (
 
 def test_DOM_SUP_001__sysadmin_resolve_issue_issues_bug_reward_transaction(client, app):
     classroom, student, issue = sysadmin_reward_issue_state(client, app)
-    sysadmin, sysadmin_secret = create_sysadmin_via_cli(app, username="sysadmin_issue_reward")
-    login_sysadmin(client, "sysadmin_issue_reward", sysadmin_secret)
+    sysadmin = create_sysadmin(username="sysadmin_issue_reward")
+    login_sysadmin(client, "sysadmin_issue_reward", sysadmin.id)
 
     issue_ref = make_opaque_ref("issue", issue.id)
     resp = client.post(

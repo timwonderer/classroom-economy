@@ -39,7 +39,6 @@ from app.models import (
     User,
     PayrollSettings,
     RentSettings,
-    EconomicEngine,
     HallPassSettings,
 )
 from app.services.classroom_setup import (
@@ -106,7 +105,8 @@ def provision_classroom(classroom_key: str) -> ProvisionedClassroom:
       - Student last_active_class_id / last_active_seat_id set
       - Default PayrollSettings (pay_rate=$0.50/min, frequency=14 days)
       - Default RentSettings (rent_amount=$50.00, frequency=weekly)
-      - Default EconomicEngine (5% annual interest, simple, monthly)
+      - Root EconomicEngine seeded by the ClassEconomy after_insert listener
+        (single canonical root; policy/interest set later via FEAT-CLASS-005)
       - Default HallPassSettings (queue_enabled=True, queue_limit=10)
 
     Flushes but does NOT commit. Callers own the transaction boundary
@@ -198,13 +198,12 @@ def provision_classroom(classroom_key: str) -> ProvisionedClassroom:
         )
         db.session.add(rent_settings)
 
-        economic_engine = EconomicEngine(
-            class_id=economy.class_id,
-            interest_rate=Decimal('0.050000'),  # 5% annual rate
-            interest_calculation_type="simple",
-            interest_payout_frequency="monthly",
-        )
-        db.session.add(economic_engine)
+        # NOTE: The root EconomicEngine is seeded automatically by the
+        # ClassEconomy after_insert listener (single canonical root creator).
+        # The harness must NOT create a competing root here — doing so produced
+        # two previous_version_id=None roots per class and broke version-chain
+        # resolution (get_economic_engine_history/current returned the orphan).
+        # Interest/policy values are set post-creation via FEAT-CLASS-005.
 
         hall_pass_settings = HallPassSettings(
             class_id=economy.class_id,

@@ -416,7 +416,7 @@ class TestGetActiveRentGrant:
                 acquisition_type="PERK",
                 product_id=101,
                 timestamp=datetime.utcnow(),
-                actor_seat_id=None,
+                actor_seat_id=teacher_seat_id,
                 correlation_id=str(uuid.uuid4()),
             )
 
@@ -454,7 +454,7 @@ class TestGetActiveRentGrant:
                 acquisition_type="PERK",
                 product_id=101,
                 timestamp=datetime.utcnow(),
-                actor_seat_id=None,
+                actor_seat_id=teacher_seat_id,
                 correlation_id=str(uuid.uuid4()),
             )
 
@@ -469,7 +469,7 @@ class TestGetActiveRentGrant:
                 acquisition_type="PERK",
                 product_id=101,
                 timestamp=datetime.utcnow() + timedelta(seconds=1),
-                actor_seat_id=None,
+                actor_seat_id=teacher_seat_id,
                 correlation_id=str(uuid.uuid4()),
             )
 
@@ -561,7 +561,7 @@ class TestIsEntitlementExercisable:
                 acquisition_type="PURCHASE",
                 product_id=101,
                 timestamp=datetime.utcnow(),
-                actor_seat_id=None,
+                actor_seat_id=teacher_seat_id,
                 correlation_id=str(uuid.uuid4()),
             )
 
@@ -595,7 +595,7 @@ class TestIsEntitlementExercisable:
                 acquisition_type="PURCHASE",
                 product_id=101,
                 timestamp=datetime.utcnow(),
-                actor_seat_id=None,
+                actor_seat_id=teacher_seat_id,
                 correlation_id=str(uuid.uuid4()),
             )
 
@@ -610,7 +610,7 @@ class TestIsEntitlementExercisable:
                 acquisition_type="PURCHASE",
                 product_id=101,
                 timestamp=datetime.utcnow() + timedelta(seconds=1),
-                actor_seat_id=None,
+                actor_seat_id=teacher_seat_id,
                 correlation_id=str(uuid.uuid4()),
             )
 
@@ -661,7 +661,7 @@ class TestGetEntitlementLineageTerminalEvent:
                 acquisition_type="PURCHASE",
                 product_id=101,
                 timestamp=datetime.utcnow(),
-                actor_seat_id=None,
+                actor_seat_id=teacher_seat_id,
                 correlation_id=str(uuid.uuid4()),
             )
 

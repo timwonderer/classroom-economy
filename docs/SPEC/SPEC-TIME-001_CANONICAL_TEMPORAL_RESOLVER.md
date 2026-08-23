@@ -49,7 +49,7 @@ The resolver must remain business-blind. It must not contain payroll, obligation
 Every resolver call must declare one evaluation type.
 
 | Type | Name | Temporal Authority | Required Context |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `SLE` | System-Level Evaluation | UTC | None |
 | `CLE` | Class-Level Evaluation | Canonical Class Timezone | `CanonicalContext` with `class_id` |
 
@@ -108,7 +108,7 @@ The resolver may accept UTC-aware timestamps from persistence, but callers must 
 The resolver must reject or normalize inputs as follows:
 
 | Input Condition | Required Behavior |
-|---|---|
+| --- | --- |
 | UTC-aware timestamp | Accept |
 | timezone-aware non-UTC timestamp | Normalize through temporal authority |
 | naive timestamp | Reject unless the specific test-only pathway explicitly supplies authority |
@@ -126,7 +126,7 @@ Every primitive returns a `CanonicalTemporalEvaluation` object.
 Minimum fields:
 
 | Field | Type | Meaning |
-|---|---|---|
+| --- | --- | --- |
 | `evaluation_type` | `SLE` or `CLE` | Evaluation category |
 | `temporal_authority` | string | `UTC` for SLE or IANA timezone for CLE |
 | `canonical_now` | datetime | Current timestamp in the resolved authority |
@@ -211,7 +211,7 @@ Accepts:
 Returns:
 
 | Result Field | Meaning |
-|---|---|
+| --- | --- |
 | `canonical_now` | Current timestamp in the resolved temporal authority |
 | `canonical_now_utc` | Same instant in UTC |
 | `display_timezone` | Timezone browser may use for display |
@@ -230,7 +230,7 @@ Determine whether one timestamp is earlier than another under canonical temporal
 Accepts:
 
 | Input | Required | Notes |
-|---|---|---|
+| --- | --- | --- |
 | `candidate` | Yes | Timestamp being evaluated |
 | `reference` | Yes | Timestamp being compared against |
 
@@ -249,7 +249,7 @@ Determine whether one timestamp is later than another under canonical temporal a
 Accepts:
 
 | Input | Required | Notes |
-|---|---|---|
+| --- | --- | --- |
 | `candidate` | Yes | Timestamp being evaluated |
 | `reference` | Yes | Timestamp being compared against |
 
@@ -268,7 +268,7 @@ Determine whether a timestamp falls inside a canonical temporal window.
 Accepts:
 
 | Input | Required | Notes |
-|---|---|---|
+| --- | --- | --- |
 | `candidate` | Yes | Timestamp being evaluated |
 | `start_boundary` | Yes | Inclusive start boundary |
 | `end_boundary` | Yes | Exclusive end boundary |
@@ -293,7 +293,7 @@ Measure exact elapsed time from a supplied timestamp until canonical now.
 Accepts:
 
 | Input | Required | Notes |
-|---|---|---|
+| --- | --- | --- |
 | `start` | Yes | Starting timestamp |
 | `reference_time_utc` | No | Evaluation anchor; if omitted, resolver obtains current UTC time internally |
 
@@ -317,7 +317,7 @@ Measure exact remaining time from canonical now until a supplied timestamp.
 Accepts:
 
 | Input | Required | Notes |
-|---|---|---|
+| --- | --- | --- |
 | `target` | Yes | Target timestamp |
 | `reference_time_utc` | No | Evaluation anchor; if omitted, resolver obtains current UTC time internally |
 
@@ -364,14 +364,14 @@ Derive canonical start/end boundaries for an evaluation day.
 Accepts:
 
 | Input | Required | Notes |
-|---|---|---|
+| --- | --- | --- |
 | `evaluation_date` | No | If omitted, derive current evaluation day |
 | `reference_time_utc` | No | Used only when `evaluation_date` is omitted |
 
 Returns:
 
 | Result Field | Meaning |
-|---|---|
+| --- | --- |
 | `boundary_start` | Start of evaluation day in resolved authority |
 | `boundary_end` | End of evaluation day in resolved authority |
 | `boundary_start_utc` | Start boundary converted to UTC for DB queries |
@@ -438,14 +438,14 @@ Construct a new timestamp by shifting a supplied timestamp by an exact elapsed d
 Accepts:
 
 | Input | Required | Notes |
-|---|---|---|
+| --- | --- | --- |
 | `timestamp` | Yes | Timestamp being shifted |
 | `elapsed_seconds` | Yes | Signed integer number of seconds to shift |
 
 Returns:
 
 | Result Field | Meaning |
-|---|---|
+| --- | --- |
 | `shifted_timestamp` | Shifted timestamp in the resolved temporal authority |
 | `shifted_timestamp_utc` | Same shifted instant converted to UTC for persistence/correlation |
 
@@ -478,14 +478,14 @@ Derive canonical start/end boundaries for a calendar period under the selected t
 Accepts:
 
 | Input | Required | Notes |
-|---|---|---|
+| --- | --- | --- |
 | `period` | Yes | `day`, `week`, or `month` |
 | `reference_time_utc` | No | If omitted, resolver obtains current UTC time internally |
 
 Returns:
 
 | Result Field | Meaning |
-|---|---|
+| --- | --- |
 | `period` | Normalized period name |
 | `boundary_start` | Start of the period in resolved authority |
 | `boundary_end` | Exclusive end of the period in resolved authority |
@@ -507,7 +507,7 @@ Rules:
 `canonical_temporal_resolver` is responsible for resolving and supplying the authoritative display timezone.
 
 | Surface | Display Timezone |
-|---|---|
+| --- | --- |
 | SLE page or system surface | `UTC` |
 | CLE page or class-scoped surface | Canonical Class Timezone |
 

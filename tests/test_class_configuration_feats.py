@@ -279,6 +279,31 @@ class TestFEATCLASS005EconomicEngineEvolution:
                 ).first()
                 assert cf is not None
 
+    def test_new_class_has_exactly_one_root_economic_engine(self, app):
+        """Regression: a newly provisioned class must have exactly ONE root
+        EconomicEngine (previous_version_id IS NULL).
+
+        Two independent producers previously seeded competing roots per class
+        (the ClassEconomy after_insert listener AND, separately, FEAT-CLASS-001
+        / the test harness). That broke version-chain resolution because
+        history/current queries returned an orphan root. The listener is now the
+        single canonical root creator.
+        """
+        classroom = initialize("chemistry_p1", app)
+        with app.app_context():
+            roots = EconomicEngine.query.filter_by(
+                class_id=classroom.class_id,
+                previous_version_id=None,
+            ).all()
+            assert len(roots) == 1
+
+            # The single root must be the feature-linked initial engine, and it
+            # must be a genuine root (no predecessor).
+            initial_engine = get_initial_economic_engine(classroom.class_id)
+            assert initial_engine is not None
+            assert initial_engine.previous_version_id is None
+            assert roots[0].economic_version_id == initial_engine.economic_version_id
+
     def test_transition_policy_invalid_mode(self, app):
         """Test policy transition rejects invalid policy mode."""
         classroom = initialize("chemistry_p1", app)

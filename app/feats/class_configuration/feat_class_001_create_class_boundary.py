@@ -25,8 +25,11 @@ from sqlalchemy.exc import IntegrityError
 
 from app.extensions import db
 from app.feats.base import requires_feat_context
-from app.models import ClassEconomy, EconomicEngine, User, Seat
-from app.services.class_configuration_query_service import verify_teacher_owns_class
+from app.models import ClassEconomy, User, Seat
+from app.services.class_configuration_query_service import (
+    get_initial_economic_engine,
+    verify_teacher_owns_class,
+)
 from app.services.context_resolver import CanonicalContext
 from app.utils.canonical_temporal_resolver import canonical_temporal_resolver, CLASS_LEVEL_EVALUATION, SYSTEM_LEVEL_EVALUATION
 
@@ -245,23 +248,19 @@ def _execute_create_class_boundary_impl(
             error_message="Could not create class after repeated join_code collisions",
         )
 
-    # Create initial EconomicEngine version
-    # Default to 'default' policy mode per DOM-CLASS-002
-    initial_engine_id = str(uuid.uuid4())
-    initial_engine = EconomicEngine(
-        economic_version_id=initial_engine_id,
-        class_id=class_id,
-        economy_policy_mode='default',
-        expected_weekly_hours=expected_weekly_hours,
-        previous_version_id=None,  # Initial version has no predecessor
-        created_at=timestamp_utc,
-    )
-    db.session.add(initial_engine)
-    db.session.flush()
-
-    # ClassFeature rows are seeded by ORM event listener on ClassEconomy creation
-    # (see @event.listens_for(ClassEconomy, "after_insert") in models.py)
-    # This ensures default feature set is created with proper effective_at timestamps
+    # The root EconomicEngine (economy_policy_mode='default', previous_version_id=None)
+    # and its default ClassFeature rows are seeded atomically by the ORM event listener
+    # on ClassEconomy insert (see @event.listens_for(ClassEconomy, "after_insert") in
+    # models.py). That listener is the single canonical creator of the root version;
+    # FEAT-CLASS-001 owns orchestration only and MUST NOT create a competing root
+    # (ECON-CONST-005: operational domains must not mutate policy lineage directly).
+    #
+    # We therefore read back the listener-seeded root rather than minting a second one.
+    # `expected_weekly_hours` is not applied at root creation; it is set post-creation
+    # via FEAT-CLASS-005 (economic engine evolution), the sole lawful writer for engine
+    # evolution.
+    initial_engine = get_initial_economic_engine(class_id)
+    initial_engine_id = initial_engine.economic_version_id if initial_engine else None
 
     return CreateClassBoundaryResult(
         success=True,
