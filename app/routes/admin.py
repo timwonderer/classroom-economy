@@ -7985,6 +7985,7 @@ def update_expected_weekly_hours():
     """
     try:
         from app.models import _quantize_currency
+        from app.services.class_configuration_query_service import is_feature_enabled
         from app.feats.class_configuration.feat_class_005_economic_engine_evolution import (
             execute_evolve_economic_engine,
         )
@@ -7999,7 +8000,19 @@ def update_expected_weekly_hours():
         # Validate expected_weekly_hours is within a reasonable range (0.25 to 80)
         if not (0.25 <= expected_weekly_hours <= 80):
             flash('Expected weekly hours must be between 0.25 and 80.', 'error')
-            return redirect(url_for('admin.payroll'))
+            return redirect(url_for('admin.economic_engine'))
+
+        # expected_weekly_hours is a CWI parameter on the Economic Engine and is
+        # explicitly meant to be settable BEFORE payroll is configured (the UI says
+        # so). Hardcoding feature_list=['payroll'] made FEAT-CLASS-005 fail closed
+        # (FEATURE_NOT_ENABLED) whenever payroll wasn't enabled, so the value never
+        # persisted. Mirror the economy-policy path: relink the features actually
+        # enabled on this class, filtered through the authoritative check.
+        all_features = ClassFeature.feature_names()
+        feature_list = [f for f in all_features if is_feature_enabled(class_id, f)]
+        if not feature_list:
+            flash("No features are enabled for this class yet.", "error")
+            return redirect(url_for('admin.economic_engine'))
 
         idempotency_key = (
             f"feat:class-005:expected-hours:{class_id}:{expected_weekly_hours}"
@@ -8008,7 +8021,7 @@ def update_expected_weekly_hours():
             canonical_context=ctx,
             class_id=class_id,
             updates={'expected_weekly_hours': float(expected_weekly_hours)},
-            feature_list=['payroll'],
+            feature_list=feature_list,
             idempotency_key=idempotency_key,
         )
 
@@ -8018,7 +8031,7 @@ def update_expected_weekly_hours():
                 f"{result.error_code} - {result.error_message}"
             )
             flash(f'Error updating expected weekly hours: {result.error_message}', 'error')
-            return redirect(url_for('admin.payroll'))
+            return redirect(url_for('admin.economic_engine'))
 
         flash(f'Expected weekly hours set to {expected_weekly_hours} hours/week.', 'success')
 
@@ -8029,7 +8042,7 @@ def update_expected_weekly_hours():
         current_app.logger.error(f"Error updating expected weekly hours: {e}")
         flash(f'Error updating expected weekly hours', 'error')
 
-    return redirect(url_for('admin.payroll'))
+    return redirect(url_for('admin.economic_engine'))
 
 
 # -------------------- PAYROLL REWARDS & FINES --------------------

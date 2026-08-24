@@ -43,7 +43,9 @@ def test_DOM_CLASS_001__expected_weekly_hours_update_writes_to_economic_engine(c
     response = update_expected_weekly_hours(client, "7.5")
 
     assert response.status_code == 302
-    assert response.headers["Location"].endswith("/admin/payroll")
+    # expected_weekly_hours lives on the Economic Engine (DOM-CLASS-002), so the
+    # route redirects back to the economic-engine surface, not payroll.
+    assert response.headers["Location"].endswith("/admin/economic-engine")
 
     # The new engine version governing payroll for this class should carry 7.5
     engine = get_effective_economic_engine(class_row.class_id, "payroll")

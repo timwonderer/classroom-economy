@@ -297,7 +297,7 @@
                 <form method="post" action="{{ url_for('admin.update_expected_weekly_hours') }}">
                   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                   <div class="input-group">
-                    <label class="visually-hidden" for="expected-weekly-hours">Expected weekly hours</label><input id="expected-weekly-hours" type="number" step="0.25" min="0.25" max="80" name="expected_weekly_hours" class="form-control" value="{{ expected_hours }}">
+                    <label class="visually-hidden" for="expected-weekly-hours">Expected weekly hours</label><input id="expected-weekly-hours" type="number" step="0.01" min="0.25" max="80" name="expected_weekly_hours" class="form-control" value="{{ expected_hours }}">
                     <button class="btn btn-primary" type="submit">Update</button>
                   </div>
                 </form>
@@ -324,7 +324,7 @@
             <form method="post" action="{{ url_for('admin.update_expected_weekly_hours') }}">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
               <div class="input-group">
-                <label class="visually-hidden" for="expected-weekly-hours-empty">Expected weekly hours</label><input id="expected-weekly-hours-empty" type="number" step="0.25" min="0.25" max="80" name="expected_weekly_hours" class="form-control" placeholder="e.g. 5.0">
+                <label class="visually-hidden" for="expected-weekly-hours-empty">Expected weekly hours</label><input id="expected-weekly-hours-empty" type="number" step="0.01" min="0.25" max="80" name="expected_weekly_hours" class="form-control" placeholder="e.g. 5.0">
                 <button class="btn btn-primary" type="submit">Save</button>
               </div>
             </form>
