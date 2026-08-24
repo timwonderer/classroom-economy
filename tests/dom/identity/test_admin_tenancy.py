@@ -4,9 +4,10 @@ from itsdangerous import URLSafeTimedSerializer
 from app import db
 from app.feats.base import FEATContext
 from app.feats.prod import record_attendance_session
-from app.models import AttendanceReasonCode, AttendanceSession, ClassEconomy, PayrollSettings, Seat, Transaction, User
+from app.models import AttendanceReasonCode, AttendanceSession, ClassEconomy, Seat, Transaction, User
 from app.scheduled_tasks import enforce_daily_limits_job
 from app.services.context_resolver import CanonicalContext
+from app.services.payroll_settings_service import upsert_payroll_settings
 from tests.helpers.classroom_initializer import initialize
 from tests.helpers.canonical_session import set_canonical_context
 from tests.dom.identity.helpers import admin_get_students
@@ -43,6 +44,30 @@ def _seed_active_attendance(classroom, seat: Seat, *, started_at: datetime) -> A
         reference_time_utc=started_at,
     )
     return result.session
+
+
+def _configure_daily_limit(class_id: str, *, daily_limit_hours: float, idempotency_key: str) -> None:
+    """Configure the class's canonical payroll settings with a daily limit.
+
+    Uses the sole canonical writer (`upsert_payroll_settings`), which updates the
+    single class-scoped PayrollSettings row in place (DOM-CLASS-001: `class_id` is
+    the sole scoping key, one active row per class). This mirrors how a teacher
+    configures limits in production; it must NOT insert a second active row, which
+    would violate `uq_payroll_settings_active_scope` and produce the "Ambiguous
+    PayrollSettings scope" fatal that this fixture previously provoked.
+    """
+    with FEATContext("FEAT-ADMN-001", idempotency_key=idempotency_key):
+        upsert_payroll_settings(
+            class_id=class_id,
+            settings_data={
+                "block": None,
+                "is_active": True,
+                "settings_mode": "simple",
+                "daily_limit_hours": daily_limit_hours,
+                "pay_rate": 0.25,
+                "payroll_frequency_days": 14,
+            },
+        )
 
 
 def _build_student_detail_public_url(client, teacher_user: User, student_user: User, *, class_id: str) -> str:
@@ -185,17 +210,11 @@ def test_DOM_IDEN_001__enforce_daily_limits_ignores_other_class_activity(client)
     shared_seat_b = class_b.students[0].seat
     started_at = datetime.now(timezone.utc) - timedelta(hours=2)
 
-    with FEATContext("FEAT-ADMN-001", idempotency_key="admin_tenancy:daily_limit_seed"):
-        db.session.add(PayrollSettings(
-            class_id=class_a.class_id,
-            block=None,
-            is_active=True,
-            settings_mode="simple",
-            daily_limit_hours=0.001,
-            pay_rate=0.25,
-            payroll_frequency_days=14,
-        ))
-        db.session.flush()
+    _configure_daily_limit(
+        class_a.class_id,
+        daily_limit_hours=0.001,
+        idempotency_key="admin_tenancy:daily_limit_seed",
+    )
     _seed_active_attendance(class_b, shared_seat_b, started_at=started_at)
     db.session.commit()
 
@@ -223,17 +242,11 @@ def test_DOM_IDEN_001__enforce_daily_limits_taps_out_when_limit_reached_in_scope
     daily_limit_hours = 0.001
     expected_limit_seconds = int(daily_limit_hours * 3600)
 
-    with FEATContext("FEAT-ADMN-001", idempotency_key="admin_tenancy:limit_seed"):
-        db.session.add(PayrollSettings(
-            class_id=class_scope.class_id,
-            block=None,
-            is_active=True,
-            settings_mode="simple",
-            daily_limit_hours=daily_limit_hours,
-            pay_rate=0.25,
-            payroll_frequency_days=14,
-        ))
-        db.session.flush()
+    _configure_daily_limit(
+        class_scope.class_id,
+        daily_limit_hours=daily_limit_hours,
+        idempotency_key="admin_tenancy:limit_seed",
+    )
     _seed_active_attendance(class_scope, seat, started_at=started_at)
     db.session.commit()
 
@@ -260,17 +273,11 @@ def test_DOM_IDEN_001__enforce_daily_limits_does_not_duplicate_closed_session(cl
     started_at = datetime.now(timezone.utc) - timedelta(hours=2)
     daily_limit_hours = 0.001
 
-    with FEATContext("FEAT-ADMN-001", idempotency_key="admin_tenancy:limit_idempotency_seed"):
-        db.session.add(PayrollSettings(
-            class_id=class_scope.class_id,
-            block=None,
-            is_active=True,
-            settings_mode="simple",
-            daily_limit_hours=daily_limit_hours,
-            pay_rate=0.25,
-            payroll_frequency_days=14,
-        ))
-        db.session.flush()
+    _configure_daily_limit(
+        class_scope.class_id,
+        daily_limit_hours=daily_limit_hours,
+        idempotency_key="admin_tenancy:limit_idempotency_seed",
+    )
     _seed_active_attendance(class_scope, seat, started_at=started_at)
     db.session.commit()
 

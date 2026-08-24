@@ -402,13 +402,28 @@ def test_DOM_IDEN_001__banking_page_ignores_request_block_selector(client):
 
 
 def test_DOM_IDEN_006__class_scoped_post_rejects_request_class_mismatch(client):
-    """Payroll settings POST with mismatched join_code should use canonical context, not request join_code."""
+    """Payroll settings POST with mismatched join_code must write the canonical
+    class, never the request-supplied join_code.
+
+    Both classrooms are provisioned with a default PayrollSettings row
+    (``pay_rate == $0.50/min``), so the security property is verified by VALUE,
+    not row-count: the mismatched request class (class_b) must remain at its
+    provisioned default (proving the POST never touched it), while the canonical
+    class (class_a) must reflect the posted rate (proving canonical context won).
+    Counting rows would be a weaker check — provisioning already creates a
+    class_b row, so a wrongful write would not change the count.
+    """
+    from decimal import Decimal
+
     class_a = initialize("chemistry_p1", client.application)
     class_b = initialize("biology_block_a", client.application)
     admin = class_a.teacher_user
     teacher_seat = _teacher_seat(class_a)
     with client.session_transaction() as sess:
         set_canonical_context(sess, user_id=admin.id, class_id=class_a.class_id, seat_id=teacher_seat.id, role="admin")
+
+    provisioned_rate = Decimal("0.50")  # $0.50/min default from provision_classroom
+    posted_rate = Decimal("15.0") / Decimal("60")  # 15.0/hr → per-minute storage
 
     response = client.post(
         "/admin/payroll/settings",
@@ -423,7 +438,19 @@ def test_DOM_IDEN_006__class_scoped_post_rejects_request_class_mismatch(client):
     )
 
     assert response.status_code == 302
+
+    db.session.expire_all()
     class_b_settings = db.session.query(PayrollSettings).filter(
         PayrollSettings.class_id == class_b.class_id,
-    ).count()
-    assert class_b_settings == 0, "Payroll settings must not be created for mismatched class"
+    ).one()
+    assert class_b_settings.pay_rate == provisioned_rate, (
+        "Mismatched request class must be untouched: canonical context, not "
+        "the request join_code, governs the write target"
+    )
+
+    class_a_settings = db.session.query(PayrollSettings).filter(
+        PayrollSettings.class_id == class_a.class_id,
+    ).one()
+    assert class_a_settings.pay_rate == posted_rate, (
+        "Canonical class must receive the posted payroll update"
+    )

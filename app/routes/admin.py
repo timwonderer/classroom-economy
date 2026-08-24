@@ -7854,8 +7854,26 @@ def payroll_settings():
             first_pay_date_str = request.form.get('simple_first_pay_date')
             first_pay_date = datetime.strptime(first_pay_date_str, '%Y-%m-%d') if first_pay_date_str else None
 
-            daily_limit_hours_raw = request.form.get('simple_daily_limit')
-            daily_limit_hours = _quantize_currency(daily_limit_hours_raw) if daily_limit_hours_raw else None
+            # Daily time limit is entered as whole hours + whole minutes (minute is the
+            # realistic minimum unit) and recombined into the decimal-hours the Float
+            # column and payroll consumers expect (int(hours * 3600) seconds).
+            dl_hours_raw = (request.form.get('simple_daily_limit_hours') or '').strip()
+            dl_minutes_raw = (request.form.get('simple_daily_limit_minutes') or '').strip()
+            if not dl_hours_raw and not dl_minutes_raw:
+                daily_limit_hours = None
+            else:
+                try:
+                    dl_hours_val = int(dl_hours_raw) if dl_hours_raw else 0
+                except ValueError:
+                    dl_hours_val = 0
+                try:
+                    dl_minutes_val = int(dl_minutes_raw) if dl_minutes_raw else 0
+                except ValueError:
+                    dl_minutes_val = 0
+                dl_hours_val = max(dl_hours_val, 0)
+                dl_minutes_val = min(max(dl_minutes_val, 0), 59)
+                total_hours = dl_hours_val + dl_minutes_val / 60.0
+                daily_limit_hours = total_hours if total_hours > 0 else None
 
             # Create settings dict for simple mode
             settings_data = {

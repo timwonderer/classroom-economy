@@ -486,16 +486,35 @@
 
                 <!-- Daily Limit -->
                 <div class="mb-3">
-                  <label for="simpleDailyLimit" class="form-label fw-bold">Daily Time Limit:</label>
-                  <div class="input-group">
-                    <input type="number" class="form-control" id="simpleDailyLimit" name="simple_daily_limit" step="0.5"
-                      placeholder="8.0"
-                      value="{% if default_setting and default_setting.daily_limit_hours %}{{ default_setting.daily_limit_hours }}{% endif %}">
-                    <span class="input-group-text">hours/day</span>
+                  <label class="form-label fw-bold">Daily Time Limit:</label>
+                  {# Stored as decimal hours (Float column). Split into whole hours + whole
+                     minutes for entry: a minute is the realistic minimum unit, so both fields
+                     are integers and no fractional-hour "step" gate is needed. The server
+                     recombines them into decimal hours. #}
+                  {% set dl_total = default_setting.daily_limit_hours if (default_setting and default_setting.daily_limit_hours) else None %}
+                  {% set dl_hours = (dl_total | int) if dl_total else '' %}
+                  {% set dl_minutes = (((dl_total - (dl_total | int)) * 60) | round | int) if dl_total else '' %}
+                  <div class="row g-2">
+                    <div class="col">
+                      <div class="input-group">
+                        <input type="number" class="form-control" id="simpleDailyLimitHours"
+                          name="simple_daily_limit_hours" min="0" step="1" placeholder="8"
+                          value="{{ dl_hours }}">
+                        <span class="input-group-text">hours</span>
+                      </div>
+                    </div>
+                    <div class="col">
+                      <div class="input-group">
+                        <input type="number" class="form-control" id="simpleDailyLimitMinutes"
+                          name="simple_daily_limit_minutes" min="0" max="59" step="1" placeholder="0"
+                          value="{{ dl_minutes }}">
+                        <span class="input-group-text">min</span>
+                      </div>
+                    </div>
                   </div>
-                  <small class="text-muted">Maximum hours a student can earn per day. Students will be auto-tapped-out
+                  <small class="text-muted">Maximum time a student can earn per day. Students will be auto-tapped-out
                     when this limit is reached and prevented from tapping in until the next day. Resets at midnight PST.
-                    Leave blank for no limit.</small>
+                    Leave both blank for no limit.</small>
                 </div>
 
                 <!-- Expected Weekly Hours moved to Economy Health page (CWI parameter on EconomicEngine). -->
@@ -1070,7 +1089,8 @@
       nextMonday.setDate(today.getDate() + ((1 + 7 - today.getDay()) % 7 || 7));
       document.getElementById('simpleFirstPayDate').value = nextMonday.toISOString().split('T')[0];
 
-      document.getElementById('simpleDailyLimit').value = '8';
+      document.getElementById('simpleDailyLimitHours').value = '8';
+      document.getElementById('simpleDailyLimitMinutes').value = '0';
 
       // Check "All Periods" by default
       const simpleApplyAll = document.getElementById('simpleApplyAll');
@@ -1146,7 +1166,8 @@
       const payRate = parseFloat(document.getElementById('simplePayRate')?.value) || 0;
       const frequency = document.getElementById('simpleFrequency')?.value || 'biweekly';
       const firstPayDate = document.getElementById('simpleFirstPayDate')?.value;
-      const dailyLimit = document.getElementById('simpleDailyLimit')?.value;
+      const dailyLimitHours = parseInt(document.getElementById('simpleDailyLimitHours')?.value, 10) || 0;
+      const dailyLimitMinutes = parseInt(document.getElementById('simpleDailyLimitMinutes')?.value, 10) || 0;
 
       summaryHTML = `<p class="mb-2">Students get paid <strong>$${payRate.toFixed(2)}</strong> per hour.</p>`;
 
@@ -1163,8 +1184,11 @@
       }
       summaryHTML += '.</p>';
 
-      if (dailyLimit) {
-        summaryHTML += `<p class="mb-1">Students will tap out after <strong>${dailyLimit} hours</strong> per day (resets at 12:00 AM PST).</p>`;
+      if (dailyLimitHours || dailyLimitMinutes) {
+        const parts = [];
+        if (dailyLimitHours) parts.push(`${dailyLimitHours} hour${dailyLimitHours === 1 ? '' : 's'}`);
+        if (dailyLimitMinutes) parts.push(`${dailyLimitMinutes} minute${dailyLimitMinutes === 1 ? '' : 's'}`);
+        summaryHTML += `<p class="mb-1">Students will tap out after <strong>${parts.join(' ')}</strong> per day (resets at 12:00 AM PST).</p>`;
       }
     }
 
