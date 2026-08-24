@@ -891,6 +891,16 @@ def create_app():
         if request.path.startswith('/static/'):
             return response
 
+        # Dynamic app responses carry per-user / per-class state (e.g. the
+        # timezone-confirmation modal queue is baked into the rendered HTML).
+        # With no directive, browsers heuristically cache these and replay a
+        # stale page — which made server-side fixes appear "un-fixed" until a
+        # manual cache clear. Force no-store so dynamic HTML is never cached.
+        # (/static/ returns early above and keeps its long-lived caching.)
+        response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+        response.headers['Pragma'] = 'no-cache'
+        response.headers['Expires'] = '0'
+
         # Public embeddable pages
         # Only the office verification page is embeddable.
         is_embeddable = request.path.startswith('/verify/hallpass/')
