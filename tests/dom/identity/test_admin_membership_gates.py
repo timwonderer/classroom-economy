@@ -18,7 +18,6 @@ from tests.helpers.canonical_session import set_canonical_context
 from tests.helpers.classroom_initializer import initialize
 from tests.dom.identity.helpers import (
     admin_add_individual_student,
-    admin_add_manual_student,
     admin_delete_join_code,
     admin_create_store_item,
     admin_edit_student,
@@ -197,45 +196,6 @@ def test_DOM_IDEN_007__add_individual_student_creates_single_student_seat_for_ne
     assert new_seat is not None
     assert new_seat.claimed_at is None
     assert ClassEconomy.query.filter_by(class_id=new_seat.class_id).first().join_code == class_row.join_code
-    assert new_seat.dedupe_code is not None
-
-
-def test_DOM_IDEN_007__add_manual_student_creates_single_student_seat_for_new_student(client):
-    with FEATContext("FEAT-IDEN-001", idempotency_key="admin-membership:student-single-manual"):
-        class_row = initialize("chemistry_p1", client.application)
-
-    admin = class_row.teacher_user
-    teacher_seat = _teacher_seat(class_row)
-    with client.session_transaction() as sess:
-        set_canonical_context(sess, user_id=admin.id, class_id=class_row.class_id, seat_id=teacher_seat.id, role="admin")
-
-    initial_student_count = db.session.query(Seat).filter(Seat.role == "student").count()
-    initial_student_seat_count = db.session.query(Seat).filter(Seat.class_id == class_row.class_id, Seat.role == "student").count()
-
-    response = admin_add_manual_student(
-        client,
-        first_name="Manualuniq",
-        last_name="Seatuniq",
-        dob="2010-03-04",
-        block="B",
-        username="",
-        pin="",
-        passphrase="",
-        hall_passes="0",
-    )
-
-    assert response.status_code == 302
-    assert db.session.query(Seat).filter(Seat.role == "student").count() == initial_student_count + 1
-    assert db.session.query(Seat).filter(Seat.class_id == class_row.class_id, Seat.role == "student").count() == initial_student_seat_count + 1
-
-    new_seat = (
-        db.session.query(Seat)
-        .filter(Seat.class_id == class_row.class_id, Seat.role == "student")
-        .order_by(Seat.id.desc())
-        .first()
-    )
-    assert new_seat is not None
-    assert new_seat.claimed_at is None
     assert new_seat.dedupe_code is not None
 
 

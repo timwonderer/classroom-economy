@@ -322,12 +322,10 @@ ADMIN_FEATURE_PATH_PREFIXES = {
 
 ADMIN_CLASS_CONTEXT_ENDPOINTS = {
     'admin.add_individual_student',
-    'admin.add_manual_student',
 }
 
 ADMIN_CLASS_CONTEXT_REDIRECTS = {
     'admin.add_individual_student': 'admin.students',
-    'admin.add_manual_student': 'admin.students',
 }
 
 
@@ -4971,150 +4969,6 @@ def add_individual_student():
         db.session.rollback()
         current_app.logger.error("Error adding individual student")
         flash(f"Cannot add student due to internal error", "error")
-
-    return redirect(url_for('admin.students'))
-
-
-@admin_bp.route('/student/add-manual', methods=['POST'])
-@admin_required
-def add_manual_student():
-    """Add a student with full manual configuration (advanced mode)."""
-    try:
-        from werkzeug.security import generate_password_hash
-
-        first_name = request.form.get('first_name', '').strip()
-        last_name = request.form.get('last_name', '').strip()
-        dob_str = request.form.get('dob', '').strip()
-        section = request.form.get('block', '').strip().upper()
-        username = request.form.get('username', '').strip()
-        pin = request.form.get('pin', '').strip()
-        passphrase = request.form.get('passphrase', '').strip()
-        hall_passes = int(request.form.get('hall_passes', 3))
-        rent_enabled = request.form.get('rent_enabled') == 'on'
-        setup_complete = request.form.get('setup_complete') == 'on'
-
-        if not all([first_name, last_name, dob_str, section]):
-            flash("Required fields missing.", "error")
-            return redirect(url_for('admin.students'))
-
-        # Generate initials
-        first_initial = first_name[0].upper()
-        last_initial = last_name[0].upper()
-
-        # Parse DOB and calculate sum
-        try:
-            dob_date = _parse_dob_date(dob_str)
-            dob_sum = parse_dob_input(dob_str)
-        except ValueError:
-            flash("Invalid date of birth. Please use the date picker.", "error")
-            return redirect(url_for('admin.students'))
-
-        # Generate salt
-        salt = get_random_salt()
-
-        # Compute first_half_hash using canonical claim credential (first initial + DOB sum)
-        first_half_hash = compute_primary_claim_hash(first_initial, dob_sum, salt)
-        second_half_hash = hash_hmac(str(dob_sum).encode(), salt)
-
-        # Compute last_name_hash_by_part for fuzzy matching
-        last_name_parts = hash_last_name_parts(last_name, salt)
-
-        user_id = g.canonical_context.user_id
-        class_context = _resolve_student_add_class_context(
-            g.canonical_context,
-            block_select=section,
-            section=section,
-        )
-        if not class_context:
-            flash("Select a class before making changes.", "error")
-            return redirect(url_for('admin.students'))
-
-        join_code = class_context['join_code']
-        class_id = class_context['class_id']
-        dedupe_key = _build_teacher_block_dedupe_key(class_id, first_name, last_name)
-        dob_sum_hash = hash_hmac(str(dob_sum).encode(), salt)
-
-        existing_seat_in_class = Seat.query.filter_by(
-            class_id=class_id,
-            dedupe_code=dedupe_key,
-        ).first()
-        if existing_seat_in_class:
-            flash(f"Student {first_name} {last_name} is already in your class.", "info")
-            return redirect(url_for('admin.students'))
-
-        # Check for duplicates globally.
-        potential_duplicates = (
-            Seat.query
-            .join(IdentityProfile, IdentityProfile.seat_id == Seat.id)
-            .filter(
-                IdentityProfile.first_name == first_name,
-            )
-            .all()
-        )
-
-        for existing_student in potential_duplicates:
-            # Verify credential matches.
-            credential_matches, is_primary, canonical_hash = match_claim_hash(
-                existing_student.first_half_hash if existing_student.identity_profile else None,
-                first_initial,
-                last_initial,
-                dob_sum,
-                existing_student.salt,
-            )
-
-            if credential_matches:
-                if canonical_hash and not is_primary:
-                    existing_student.first_half_hash = canonical_hash
-                user_id = g.canonical_context.user_id
-                existing_class_seat = Seat.query.filter_by(
-                    user_id=existing_student.user_id,
-                    class_id=class_id,
-                ).first()
-                if existing_class_seat and existing_class_seat.claimed_at:
-                    flash(f"Student {first_name} {last_name} is already in your class.", "info")
-                else:
-                    flash(f"Student {first_name} {last_name} already exists. Linking to your class.", "warning")
-                    from app.feats.identity_feat import execute_provision_student_seat
-                    provision_result = execute_provision_student_seat(
-                        canonical_context=g.canonical_context,
-                        class_id=class_id,
-                        first_name=first_name,
-                        last_name=last_name,
-                        dedupe_code=dedupe_key,
-                        has_received_rent_exemption=not rent_enabled,
-                        correlation_id=f"corr_iden_roster_{class_id}_{uuid.uuid4().hex}",
-                        idempotency_key=f"feat:iden:roster-seat:{class_id}:{dedupe_key}",
-                    )
-                    if not provision_result.success:
-                        current_app.logger.error(
-                            "FEAT-IDEN-006 provision failed linking duplicate: %s",
-                            provision_result.error_message,
-                        )
-                    if class_context.get('class_created'):
-                        _queue_pending_class_timezone_confirmation(class_context.get('class_row'))
-                return redirect(url_for('admin.students'))
-
-        from app.feats.identity_feat import execute_provision_student_seat
-        provision_result = execute_provision_student_seat(
-            canonical_context=g.canonical_context,
-            class_id=class_id,
-            first_name=first_name,
-            last_name=last_name,
-            dedupe_code=dedupe_key,
-            has_received_rent_exemption=not rent_enabled,
-            correlation_id=f"corr_iden_roster_{class_id}_{uuid.uuid4().hex}",
-            idempotency_key=f"feat:iden:roster-seat:{class_id}:{dedupe_key}",
-        )
-        if not provision_result.success:
-            raise ValueError(provision_result.error_message or "Student seat provisioning failed")
-
-        if class_context.get('class_created'):
-            _queue_pending_class_timezone_confirmation(class_context.get('class_row'))
-
-    except Exception as e:
-        db.session.rollback()
-        current_app.logger.error("Error creating manual student: %s", e)
-        flash(f"Cannot create student due to internal error", "error")
 
     return redirect(url_for('admin.students'))
 

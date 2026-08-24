@@ -119,35 +119,6 @@ def admin_add_individual_student(
     )
 
 
-def admin_add_manual_student(
-    client: FlaskClient,
-    *,
-    first_name: str,
-    last_name: str,
-    dob: str,
-    block: str,
-    username: str = "",
-    pin: str = "",
-    passphrase: str = "",
-    hall_passes: str = "3",
-    follow_redirects: bool = False,
-):
-    return client.post(
-        "/admin/student/add-manual",
-        data={
-            "first_name": first_name,
-            "last_name": last_name,
-            "dob": dob,
-            "block": block,
-            "username": username,
-            "pin": pin,
-            "passphrase": passphrase,
-            "hall_passes": hall_passes,
-        },
-        follow_redirects=follow_redirects,
-    )
-
-
 def admin_edit_student(
     client: FlaskClient,
     *,
