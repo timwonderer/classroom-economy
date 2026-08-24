@@ -1511,6 +1511,26 @@ class PayrollSettings(db.Model):
     # (canonical per DOM-CLASS-002). It is a CWI parameter, not a payroll parameter,
     # and is mutated via FEAT-CLASS-005 (immutable versioned engine snapshots).
 
+    __table_args__ = (
+        # One canonical *active* payroll settings row per resolution scope.
+        # DOM-CLASS-001 / INV-ARC-019: `class_id` is the sole scoping key and the
+        # canonical writer (`upsert_payroll_settings`) updates a single row in
+        # place. The reader (`payroll._fetch_single_active_setting`) still scopes
+        # by (class_id, block) and treats >1 active row as fatal ("Ambiguous
+        # PayrollSettings scope"). Without this guard duplicates are possible —
+        # e.g. the TOCTOU race where two concurrent upserts both observe no row
+        # and both INSERT. NULL block is the class-global scope, so it is
+        # normalized via COALESCE to a single sentinel; a class may still hold one
+        # global row AND one block-specific row (distinct scopes) simultaneously.
+        db.Index(
+            'uq_payroll_settings_active_scope',
+            'class_id',
+            sa.text("COALESCE(block, '')"),
+            unique=True,
+            postgresql_where=sa.text('is_active IS TRUE'),
+        ),
+    )
+
     def __repr__(self):
         return f'<PayrollSettings class_id={self.class_id} block={self.block or "Global"}>'
 
