@@ -3,6 +3,7 @@ import logging
 from flask import g
 from sqlalchemy.exc import IntegrityError
 from app import db
+from app.feats.base import FEATContext
 from app.models import Transaction, TransactionStatus, LedgerBalanceSnapshot, AccountType, ClassEconomy, Seat
 from app.utils.canonical_temporal_resolver import utc_now
 from app.utils.seat_scope import transaction_scope_filter
@@ -14,7 +15,18 @@ def settle_pending_transaction_contexts(limit: int | None = None) -> dict[str, i
     """
     Sweep each seat/class context with unsettled ledger activity.
 
-    Each context is committed independently so one failure does not stop the run.
+    Each context is settled inside its own FEAT-LED-003 (Settlement Sweep)
+    transaction boundary, so the settlement is durably committed and one
+    context's failure does not stop the run. Establishing the FEAT context is
+    mandatory: settlement mutates Transaction and LedgerBalanceSnapshot rows,
+    and FEAT-INTEGRITY blocks any flush/commit of mutated state outside a
+    verified FEAT context (see app/feats/base.py). Without this boundary the
+    standalone scheduled sweep (scripts/settle_pending_transactions.py) would
+    raise on the first flush and settle nothing.
+
+    When invoked while another FEAT is already active (composed automation),
+    each FEAT-LED-003 boundary nests as a savepoint under that parent, which
+    owns the durable commit.
     """
     context_query = (
         db.session.query(Transaction.seat_id, Transaction.class_id)
@@ -34,17 +46,20 @@ def settle_pending_transaction_contexts(limit: int | None = None) -> dict[str, i
     )
     if limit is not None:
         context_query = context_query.limit(limit)
- 
+
     settled_contexts = 0
     failed_contexts = 0
- 
-    # Materialize the contexts before iterating because the loop commits per
-    # context, which invalidates server-side cursors on PostgreSQL.
+
+    # Materialize the contexts before iterating because each context commits
+    # independently, which invalidates server-side cursors on PostgreSQL.
     pending_contexts = context_query.all()
- 
+
     for seat_id, class_id in pending_contexts:
         try:
-            with db.session.begin_nested():
+            with FEATContext(
+                "FEAT-LED-003",
+                idempotency_key=f"settlement-sweep:{class_id}:{seat_id}",
+            ):
                 settle_balances(seat_id, class_id)
             settled_contexts += 1
         except Exception:
@@ -54,7 +69,7 @@ def settle_pending_transaction_contexts(limit: int | None = None) -> dict[str, i
                 seat_id,
                 class_id,
             )
- 
+
     return {
         "settled_contexts": settled_contexts,
         "failed_contexts": failed_contexts,

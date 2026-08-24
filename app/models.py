@@ -637,7 +637,15 @@ def _enforce_transaction_integrity(_mapper, _connection, target):
     bypass_correlation = bool(getattr(target, "correlation_id", None)) and str(target.correlation_id).startswith("bypass_test_")
 
     if is_tier_1 and not bypass_correlation:
-         if target.correlation_id != get_correlation_id():
+         # Correlation enforcement is INSERT-only, mirroring the mixed-correlation
+         # split above (see the rationale at "Session Isolation"). On UPDATE the
+         # row's correlation_id is historical provenance from the FEAT that
+         # ORIGINATED it and legitimately differs from the active Tier-1 FEAT's
+         # correlation — the active operation's identity is captured by feat_code.
+         # Firing this on UPDATE made every cross-FEAT ledger mutation (settlement
+         # under FEAT-LED-003, void under FEAT-LED-002, reversal linkage)
+         # impossible; that contradiction was previously masked by FEATBypass.
+         if is_new and target.correlation_id != get_correlation_id():
               raise ValueError(f"FATAL: Correlation mismatch in {feat_name}. Record={target.correlation_id}, Context={get_correlation_id()}")
 
          # 2. Assert Identity Anchors (seat_id + class_id are the clean-break authority)

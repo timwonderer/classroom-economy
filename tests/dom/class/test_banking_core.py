@@ -157,23 +157,34 @@ def test_DOM_CLASS_001__void_posted_transaction_creates_reversal(client, app):
 
 
 def test_DOM_CLASS_001__settlement_sweep_processes_each_pending_context_once(client, app):
+    """The settlement sweep is scheduled automation run standalone (see
+    scripts/settle_pending_transactions.py) with NO ambient FEAT context.
+
+    It must therefore establish its own FEAT-LED-003 boundary per seat/class
+    context so the settlement is durably committed. This test mirrors production:
+    pending activity is created/committed through a FEAT, then the sweep is
+    invoked OUTSIDE any FEAT context. Evidence proves: two eligible contexts
+    settle exactly once, a second sweep does not re-settle them, and class
+    boundaries stay intact.
+    """
+    # --- Arrange: create pending activity through a FEAT (as production does) ---
     with FEATContext("FEAT-IDEN-001", idempotency_key="banking-core:test-settlement-sweep"):
         student_one_class = initialize("chemistry_p1", app)
         student_two_class = initialize("biology_block_a", app)
-        student_one_seat = student_one_class.students[0].seat
-        student_one_user = student_one_class.students[0].user
-        student_two_seat = student_two_class.students[0].seat
-        student_two_user = student_two_class.students[0].user
+        student_one_seat_id = student_one_class.students[0].seat.id
+        student_one_user_id = student_one_class.students[0].user.id
+        student_two_seat_id = student_two_class.students[0].seat.id
+        student_two_user_id = student_two_class.students[0].user.id
         class_id_one = student_one_class.class_id
         class_id_two = student_two_class.class_id
 
         db.session.add_all([
             Transaction(
-                user_id=student_one_user.id,
+                user_id=student_one_user_id,
                 class_id=class_id_one,
-                seat_id=student_one_seat.id,
-                target_seat_id=student_one_seat.id,
-                actor_seat_id=student_one_seat.id,
+                seat_id=student_one_seat_id,
+                target_seat_id=student_one_seat_id,
+                actor_seat_id=student_one_seat_id,
                 mechanism="self",
                 amount=Decimal("12.34"),
                 account_type="checking",
@@ -182,11 +193,11 @@ def test_DOM_CLASS_001__settlement_sweep_processes_each_pending_context_once(cli
                 description="Pending A",
             ),
             Transaction(
-                user_id=student_one_user.id,
+                user_id=student_one_user_id,
                 class_id=class_id_one,
-                seat_id=student_one_seat.id,
-                target_seat_id=student_one_seat.id,
-                actor_seat_id=student_one_seat.id,
+                seat_id=student_one_seat_id,
+                target_seat_id=student_one_seat_id,
+                actor_seat_id=student_one_seat_id,
                 mechanism="self",
                 amount=Decimal("1.66"),
                 account_type="savings",
@@ -195,11 +206,11 @@ def test_DOM_CLASS_001__settlement_sweep_processes_each_pending_context_once(cli
                 description="Pending A savings",
             ),
             Transaction(
-                user_id=student_two_user.id,
+                user_id=student_two_user_id,
                 class_id=class_id_two,
-                seat_id=student_two_seat.id,
-                target_seat_id=student_two_seat.id,
-                actor_seat_id=student_two_seat.id,
+                seat_id=student_two_seat_id,
+                target_seat_id=student_two_seat_id,
+                actor_seat_id=student_two_seat_id,
                 mechanism="self",
                 amount=Decimal("9.99"),
                 account_type="checking",
@@ -210,17 +221,57 @@ def test_DOM_CLASS_001__settlement_sweep_processes_each_pending_context_once(cli
         ])
         db.session.flush()
 
-        summary = settle_pending_transaction_contexts()
+    # --- Act: run the sweep standalone, exactly like the scheduled cron script ---
+    summary = settle_pending_transaction_contexts()
 
-        assert summary == {"settled_contexts": 0, "failed_contexts": 2}
+    # Two distinct seat/class contexts settle exactly once each; none fail.
+    assert summary == {"settled_contexts": 2, "failed_contexts": 0}
 
+    # --- Assert: settlement is durably persisted (survives beyond the sweep) ---
+    db.session.expire_all()
     posted_statuses = {
         (tx.user_id, tx.class_id, tx.account_type): tx.status
         for tx in Transaction.query.all()
     }
-    assert posted_statuses[(student_one_user.id, class_id_one, "checking")] == TransactionStatus.PENDING
-    assert posted_statuses[(student_one_user.id, class_id_one, "savings")] == TransactionStatus.PENDING
-    assert posted_statuses[(student_two_user.id, class_id_two, "checking")] == TransactionStatus.PENDING
+    assert posted_statuses[(student_one_user_id, class_id_one, "checking")] == TransactionStatus.POSTED
+    assert posted_statuses[(student_one_user_id, class_id_one, "savings")] == TransactionStatus.POSTED
+    assert posted_statuses[(student_two_user_id, class_id_two, "checking")] == TransactionStatus.POSTED
+
+    # Each context's balance cache reflects its own transactions only (class isolation).
+    cache_one = BalanceCache.query.filter_by(
+        seat_id=student_one_seat_id, class_id=class_id_one
+    ).first()
+    assert cache_one is not None
+    assert cache_one.posted_checking_balance_cents == 1234
+    assert cache_one.posted_savings_balance_cents == 166
+
+    cache_two = BalanceCache.query.filter_by(
+        seat_id=student_two_seat_id, class_id=class_id_two
+    ).first()
+    assert cache_two is not None
+    assert cache_two.posted_checking_balance_cents == 999
+    # Class two never accrued class one's savings deposit.
+    assert cache_two.posted_savings_balance_cents == 0
+
+    # --- Idempotency: a second sweep finds no eligible contexts and settles nothing ---
+    summary_again = settle_pending_transaction_contexts()
+    assert summary_again == {"settled_contexts": 0, "failed_contexts": 0}
+
+    db.session.expire_all()
+    assert (
+        BalanceCache.query.filter_by(seat_id=student_one_seat_id, class_id=class_id_one)
+        .first()
+        .posted_checking_balance_cents
+        == 1234
+    )
+    assert (
+        BalanceCache.query.filter_by(seat_id=student_two_seat_id, class_id=class_id_two)
+        .first()
+        .posted_checking_balance_cents
+        == 999
+    )
+    for tx in Transaction.query.all():
+        assert tx.status == TransactionStatus.POSTED
 
 
 def test_DOM_CLASS_001__settlement_script_returns_nonzero_when_failures(monkeypatch):
