@@ -309,7 +309,13 @@ class ClassEconomy(db.Model):
         index=True,
     )
     display_name = db.Column(db.String(100), nullable=True)
-    class_timezone = db.Column(db.String(64), nullable=False, default='UTC', server_default='UTC')
+    # Blank/NULL until the teacher confirms a timezone. A NULL value is the
+    # single canonical "unset" sentinel (see _class_timezone_needs_confirmation
+    # and the admin_students.html confirmation modal). Do NOT default to a
+    # placeholder like 'UTC' — that made an unconfirmed class indistinguishable
+    # from a class the teacher deliberately set to UTC, which caused the
+    # timezone-confirmation loop. Confirmed-UTC is persisted as 'Etc/UTC'.
+    class_timezone = db.Column(db.String(64), nullable=True)
     created_at = db.Column(db.DateTime(timezone=True), default=utc_now, nullable=False)
 
     features = db.relationship('ClassFeature', backref='class_economy', cascade='all, delete-orphan', lazy='dynamic')

@@ -56,7 +56,7 @@ def execute_create_class_boundary(
     *,
     canonical_context: CanonicalContext,
     class_name: str,
-    timezone: str = "UTC",
+    timezone: Optional[str] = None,
     expected_weekly_hours: float | None = None,
     correlation_id: str | None = None,
     idempotency_key: str | None = None,
@@ -67,7 +67,10 @@ def execute_create_class_boundary(
     Args:
         canonical_context: CanonicalContext with user_id, class_id (ignored), seat_id, actor_role="teacher"
         class_name: Display name for the class (e.g., "Period 3 Economics")
-        timezone: IANA timezone for class-local time evaluation (default: "UTC")
+        timezone: IANA timezone for class-local time evaluation. Default None
+                  (unset) — the class is created with a blank timezone and the
+                  teacher confirms it via the one-time confirmation modal. Do
+                  not pass a placeholder like "UTC" at creation.
         expected_weekly_hours: Optional initial value for EconomicEngine.expected_weekly_hours
                                (used for CWI calculation). Defaults to None (unset).
         correlation_id: Optional; generated if not provided
@@ -94,7 +97,7 @@ def _execute_create_class_boundary_impl(
     *,
     canonical_context: CanonicalContext,
     class_name: str,
-    timezone: str = "UTC",
+    timezone: Optional[str] = None,
     expected_weekly_hours: float | None = None,
     correlation_id: str | None = None,
     idempotency_key: str | None = None,
@@ -145,9 +148,12 @@ def _execute_create_class_boundary_impl(
             error_message="Teacher user not found",
         )
 
-    # Validate timezone
+    # Validate timezone. None/blank is the canonical "unset" state (the teacher
+    # confirms the timezone after creation via the confirmation modal); only a
+    # provided value must be a valid IANA name.
+    normalized_timezone = (timezone or "").strip() or None
     try:
-        if timezone not in pytz.all_timezones_set:
+        if normalized_timezone is not None and normalized_timezone not in pytz.all_timezones_set:
             return CreateClassBoundaryResult(
                 success=False,
                 correlation_id="",

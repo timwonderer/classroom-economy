@@ -4058,7 +4058,6 @@ def set_current_class():
 
 @admin_bp.route('/classes/<class_id>/timezone', methods=['POST'])
 @admin_required
-@requires_feat_context("FEAT-CLASS-001")
 def set_class_timezone(class_id: str):
     """Set the immutable timezone for a newly created class."""
     data = request.get_json(silent=True) or {}

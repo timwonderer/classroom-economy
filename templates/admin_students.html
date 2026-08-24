@@ -1708,7 +1708,11 @@
     const timezoneConfirmationQueue = Array.isArray(pendingClassTimezoneConfirmations)
       ? [...pendingClassTimezoneConfirmations]
       : [];
-    const unresolvedCurrentTimezone = ['', 'UTC', 'Etc/UTC'].includes((currentClassTimezone || '').trim());
+    // Canonical "unset" is a blank timezone only. The layout view builder maps a
+    // missing/placeholder value (NULL or legacy 'UTC') to '' , while a teacher who
+    // deliberately confirms UTC is persisted as 'Etc/UTC' and must be treated as
+    // resolved (no modal). Treating 'Etc/UTC' as unset here caused the loop.
+    const unresolvedCurrentTimezone = ((currentClassTimezone || '').trim() === '');
     const inferredClassId = currentClassId || document.getElementById('admin-class-switcher-select')?.value || '';
     const inferredClassIdentifier = currentClassIdentifier || document.querySelector('.sidebar-scope-context')?.textContent?.trim() || 'this class';
     if (timezoneConfirmationQueue.length === 0 && unresolvedCurrentTimezone && inferredClassId) {

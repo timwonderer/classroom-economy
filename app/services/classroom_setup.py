@@ -67,7 +67,7 @@ def create_class(
     join_code: str,
     display_name: str | None = None,
     section: str | None = None,
-    class_timezone: str = "UTC",
+    class_timezone: str | None = None,
     teacher_first_name: str | None = None,
     teacher_last_name: str | None = None,
 ) -> ClassEconomy:
@@ -88,7 +88,8 @@ def create_class(
         teacher_user_id=user_id,
         display_name=display_name,
         section=section,
-        class_timezone=class_timezone,
+        # None/blank until the teacher confirms a timezone (canonical unset).
+        class_timezone=(class_timezone or "").strip() or None,
     )
     db.session.add(economy)
     db.session.flush()
