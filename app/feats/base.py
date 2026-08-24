@@ -58,6 +58,105 @@ def is_nested_feat() -> bool:
     """Check if the current FEAT is nested inside another FEAT."""
     return hasattr(_feat_context, "stack") and len(_feat_context.stack) > 0
 
+
+def _resolve_session(session):
+    """Return the underlying SQLAlchemy ``Session`` for transaction introspection.
+
+    ``db.session`` is a ``scoped_session`` proxy, and (in SQLAlchemy 2.0) it does
+    NOT proxy ``in_transaction``/``in_nested_transaction``/``get_transaction``.
+    Calling the proxy yields the thread-local ``Session``, which does expose them.
+    Passing an already-resolved ``Session`` is a no-op.
+    """
+    if hasattr(session, "get_transaction"):
+        return session
+    if callable(session):
+        try:
+            return session()
+        except Exception:  # noqa: BLE001
+            return session
+    return session
+
+
+def is_discardable_read_autobegin(session) -> bool:
+    """Return True only for an incidental read-only autobegin transaction.
+
+    SQLAlchemy opens a transaction implicitly on the first read of a session
+    (``origin == AUTOBEGIN``). In request handling this happens in Flask's
+    ``before_request`` canonical-context resolution, well before any route body
+    runs. If a *top-level* FEAT then opens while that autobegin is live, the FEAT
+    takes a ``begin_nested()`` SAVEPOINT instead of a top-level ``begin()`` — and
+    releasing a savepoint is NOT a commit, so the FEAT's mutations are silently
+    discarded at request teardown (FEAT-ENTRY logged, but never
+    FEAT-COMMIT-OWNERSHIP).
+
+    Such an autobegin provably carries no writes: the ``before_flush`` guard in
+    this module forbids flushing mutated state outside a verified FEAT context,
+    so any un-owned DML would already have raised. Discarding it is therefore
+    lossless, and lets the FEAT own a real top-level transaction whose commit
+    persists.
+
+    The predicate is deliberately narrow. It returns False — leaving the existing
+    ``begin_nested()`` behavior intact — for every state that is NOT an incidental
+    read autobegin:
+
+    * pending ORM mutation (``session.new``/``dirty``/``deleted`` non-empty);
+    * an explicit ``session.begin()`` boundary (``origin == BEGIN``);
+    * an active SAVEPOINT / nested transaction;
+    * any state where the transaction origin cannot be positively confirmed.
+    """
+    session = _resolve_session(session)
+
+    # Pending ORM mutation must never be discarded.
+    if session.new or session.dirty or session.deleted:
+        return False
+
+    # A flush clears session.new/dirty/deleted, but the emitted INSERT/UPDATE/DELETE
+    # still lives in the open transaction as uncommitted DML. The ``before_flush``
+    # listener records this on ``session.info`` so a post-flush transaction is never
+    # mistaken for a clean read autobegin and silently rolled back.
+    if session.info.get("_txn_dml_flushed"):
+        return False
+
+    # An active SAVEPOINT is an intentional nested boundary, not a read autobegin.
+    if bool(getattr(session, "in_nested_transaction", lambda: False)()):
+        return False
+
+    try:
+        root = session.get_transaction()
+    except Exception:  # noqa: BLE001 — scoped-session states may reject introspection
+        return False
+    if root is None:
+        return False
+
+    origin = getattr(root, "origin", None)
+    # Positive confirmation only: discard exclusively when the root transaction
+    # was opened implicitly by an autobegin. Anything else (BEGIN, BEGIN_NESTED,
+    # SUBTRANSACTION, or an unreadable origin) is preserved.
+    return getattr(origin, "name", None) == "AUTOBEGIN"
+
+
+def _is_top_level_autobegin(session) -> bool:
+    """True when the session's live root transaction is a top-level AUTOBEGIN.
+
+    Unlike ``is_discardable_read_autobegin`` this makes no claim about whether the
+    autobegin is clean — it only confirms the transaction origin is AUTOBEGIN and
+    that no savepoint is currently active. A top-level FEAT uses this to recognise
+    an autobegin that already carries pending/flushed writes so it can ADOPT and
+    commit that transaction rather than nest a savepoint under it (which would
+    never commit the underlying writes).
+    """
+    session = _resolve_session(session)
+    if bool(getattr(session, "in_nested_transaction", lambda: False)()):
+        return False
+    try:
+        root = session.get_transaction()
+    except Exception:  # noqa: BLE001
+        return False
+    if root is None:
+        return False
+    origin = getattr(root, "origin", None)
+    return getattr(origin, "name", None) == "AUTOBEGIN"
+
 class GuardReason(Enum):
     """Central registry of standard guard failure reasons."""
     INSUFFICIENT_FUNDS = auto()
@@ -192,6 +291,7 @@ class FEATContext:
         self.flush_count = 0
         self._owns_transaction = False
         self._transaction_ctx = None
+        self._adopted_transaction = False
 
     def __enter__(self):
         if not hasattr(_feat_context, "stack"):
@@ -225,14 +325,40 @@ class FEATContext:
         # FEAT is the transaction boundary: top-level FEAT owns exactly one DB transaction.
         self._owns_transaction = not is_nested_feat()
         if self._owns_transaction:
-            session_has_txn = bool(getattr(db.session, "in_transaction", lambda: False)())
-            try:
-                self._transaction_ctx = db.session.begin_nested() if session_has_txn else db.session.begin()
-            except InvalidRequestError:
-                # Some scoped-session states may report no active transaction but still reject begin().
-                self._transaction_ctx = db.session.begin_nested()
-            self._transaction_ctx.__enter__()
-        
+            _sess = _resolve_session(db.session)
+            session_has_txn = bool(getattr(_sess, "in_transaction", lambda: False)())
+            if not session_has_txn:
+                # Fresh session: the FEAT owns a real top-level begin().
+                self._transaction_ctx = db.session.begin()
+                self._transaction_ctx.__enter__()
+            elif is_discardable_read_autobegin(db.session):
+                # Incidental read-only autobegin (clean: no pending mutation, no
+                # flushed DML, not a savepoint, not an explicit BEGIN). Discard it so
+                # the FEAT owns a real begin() whose commit persists — rather than a
+                # begin_nested() savepoint whose release is not a commit and would
+                # silently drop the FEAT's writes.
+                db.session.rollback()
+                self._transaction_ctx = db.session.begin()
+                self._transaction_ctx.__enter__()
+            elif _is_top_level_autobegin(_sess):
+                # An autobegin that already carries pending/flushed writes made before
+                # this FEAT opened. It must NOT be discarded (that would lose the
+                # writes) and must NOT be buried under a savepoint (releasing the
+                # savepoint would never commit the underlying autobegin, also losing
+                # the writes). Instead the top-level FEAT ADOPTS the autobegin as its
+                # owned transaction and commits it on exit, folding those pending
+                # writes into the FEAT's single atomic top-level commit.
+                self._transaction_ctx = _sess.get_transaction()
+                self._adopted_transaction = True
+            else:
+                # An explicit non-FEAT BEGIN or an already-active SAVEPOINT: preserve
+                # that outer boundary and layer a savepoint on top of it.
+                try:
+                    self._transaction_ctx = db.session.begin_nested()
+                except InvalidRequestError:
+                    self._transaction_ctx = db.session.begin_nested()
+                self._transaction_ctx.__enter__()
+
         self.log_event("FEAT-ENTRY", {
             "feat": self.feat_name,
             "correlation_id": self.correlation_id,
@@ -441,6 +567,15 @@ def init_feat_enforcement(app):
         """
         Prevents session flushes (SQL emission) outside a FEAT context.
         """
+        # Record that this transaction now carries flushed DML. Once a flush emits
+        # INSERT/UPDATE/DELETE, session.new/dirty/deleted are cleared, so those
+        # collections can no longer distinguish "clean read autobegin" from
+        # "transaction with uncommitted writes". is_discardable_read_autobegin()
+        # consults this flag so it never rolls back a transaction that has already
+        # persisted pending DML (e.g. a caller that flushed before opening a FEAT).
+        if session.new or session.dirty or session.deleted:
+            session.info["_txn_dml_flushed"] = True
+
         is_bypass = get_active_feat_name() == "FEAT-BYPASS-LEGACY"
         if is_bypass or is_system_audit_authority():
             pass  # allowed paths
@@ -487,4 +622,26 @@ def init_feat_enforcement(app):
                 "Only FEAT orchestrator transaction boundary may commit."
             )
 
-        increment_commit_count()
+        # Savepoint releases (begin_nested) also emit before_commit but are NOT
+        # top-level commits. The multiple-commit tripwire must only count real
+        # orchestrator commits; otherwise any FEAT that legitimately uses a
+        # savepoint internally (e.g. race-safe row creation in settle_balances)
+        # would false-trip on HIGH blast-radius FEATs. This mirrors the
+        # atomicity rule above, which already exempts nested transactions.
+        if not session.in_nested_transaction():
+            increment_commit_count()
+
+    @event.listens_for(db.session, "after_commit")
+    def clear_dml_flag_after_commit(session):
+        """Reset the flushed-DML marker once the transaction is durably committed.
+
+        The flag lives on ``session.info`` (which outlives individual
+        transactions), so it must be cleared at each transaction boundary or a
+        stale value would suppress a later legitimate read-autobegin discard.
+        """
+        session.info.pop("_txn_dml_flushed", None)
+
+    @event.listens_for(db.session, "after_rollback")
+    def clear_dml_flag_after_rollback(session):
+        """Reset the flushed-DML marker when the transaction is rolled back."""
+        session.info.pop("_txn_dml_flushed", None)
