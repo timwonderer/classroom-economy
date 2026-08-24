@@ -24,6 +24,7 @@ from tests.dom.identity.helpers import (
     admin_get_transactions,
     admin_get_banking,
     admin_get_store,
+    admin_get_issues,
     admin_update_payroll_settings,
     admin_set_current_class,
 )
@@ -80,7 +81,6 @@ def test_DOM_IDEN_006__delete_class_requires_confirmation(client):
     assert ClassEconomy.query.filter_by(class_id=class_row.class_id).first() is None
 
 
-@pytest.mark.skip(reason="Issue model uses class_public_id not class_id; issues_queue route filters on non-existent class_id column — requires Issues domain reconstruction")
 def test_DOM_IDEN_006__issues_queue_respects_current_class_membership_scope(client):
     with FEATContext("FEAT-IDEN-001", idempotency_key="admin-membership:issues-gate-admin"):
         class_a = initialize("chemistry_p1", client.application)
@@ -134,7 +134,7 @@ def test_DOM_IDEN_006__issues_queue_respects_current_class_membership_scope(clie
 
     with client.session_transaction() as sess:
         set_canonical_context(sess, user_id=admin.id, class_id=class_a.class_id, seat_id=_teacher_seat(class_a).id, role="admin")
-    response = admin_get_store(client)
+    response = admin_get_issues(client)
     assert response.status_code == 200
     assert b"Issue for class A" in response.data
     assert b"Issue for class B" not in response.data

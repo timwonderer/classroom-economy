@@ -9022,7 +9022,17 @@ def help_support():
         if not selected_class_id:
             flash("Please select one of your classes before submitting a support ticket.", "error")
             return redirect(url_for('admin.help_support'))
-        class_label = selected_class_label or selected_join_code or 'Unknown'
+
+        # Scope is a BINARY choice, never an arbitrary class selection: the issue
+        # is either about the active class (canonical_context.class_id) or about
+        # the teacher's own account (no class). We only read whether the form
+        # asked for 'account' — we NEVER trust a class id from the form, so the
+        # single-active-context invariant holds (no other class is reachable here).
+        is_account_scope = request.form.get('class_id', '').strip() == 'account'
+        ticket_class_public_id = None if is_account_scope else selected_class_id
+        class_label = 'My account' if is_account_scope else (
+            selected_class_label or selected_join_code or 'Unknown'
+        )
 
         if issue_category not in category_to_report_type:
             flash("Please select a valid support ticket category.", "error")
@@ -9078,11 +9088,15 @@ def help_support():
                 form_page_url=page_url,
             )
         anonymous_code = generate_anonymous_code(f"admin:{user_id}")
-        metadata_header = _build_scope_metadata(selected_class_id, class_label or 'Unknown', issue_category)
+        metadata_header = _build_scope_metadata(
+            'account' if is_account_scope else selected_class_id,
+            class_label or 'Unknown',
+            issue_category,
+        )
         scoped_description = f"{metadata_header}\n\n{description}"
 
         try:
-            with FEATContext("FEAT-SUP-001", idempotency_key=f"admin_help_support:{user_id}:{selected_class_id}:{title}"):
+            with FEATContext("FEAT-SUP-001", idempotency_key=f"admin_help_support:{user_id}:{'account' if is_account_scope else selected_class_id}:{title}"):
                 category = IssueCategory.query.filter_by(
                     name=category_to_report_type[issue_category],
                 ).first()
@@ -9090,7 +9104,7 @@ def help_support():
                     category = IssueCategory.query.first()
                 create_support_ticket(
                     actor_public_id=anonymous_code,
-                    class_public_id=selected_class_id,
+                    class_public_id=ticket_class_public_id,
                     category_id=category.id,
                     scoped_description=scoped_description,
                     expected_behavior=expected_behavior,

@@ -175,6 +175,10 @@ def admin_get_attendance_log(client: FlaskClient, *, follow_redirects: bool = Fa
     return client.get("/admin/attendance-log", follow_redirects=follow_redirects)
 
 
+def admin_get_issues(client: FlaskClient, *, follow_redirects: bool = False):
+    return client.get("/admin/issues", follow_redirects=follow_redirects)
+
+
 def api_get_attendance_history(client: FlaskClient):
     return client.get("/api/attendance/history")
 

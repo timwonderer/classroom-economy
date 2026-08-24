@@ -17,21 +17,29 @@
 
                     <form method="POST" action="{{ url_for('admin.help_support') }}">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        {# Single-context invariant: a class-scoped surface must reference ONLY the
+                           active class. The switcher in the nav is the one sanctioned place to change
+                           class; this scoped body must not expose (or appear to select) other classes.
+                           The issue can be about EITHER the active class OR the teacher's own account,
+                           so this offers exactly two options — the active class and "My account".
+                           No other class is reachable, so the single-active-context invariant holds. #}
+                        {% set active_class = (class_scope_options | selectattr('class_id', 'equalto', selected_class_id) | first) %}
                         <div class="mb-3">
                             <label for="class_id" class="form-label">This issue applies to:</label>
-                            <select class="form-select" id="class_id" name="class_id" required onchange="updateTicketScope()">
-                                {% for option in class_scope_options %}
-                                <option value="{{ option.class_id }}"
-                                        data-class-public-id="{{ option.class_public_id }}"
-                                        {% if option.class_id == selected_class_id %}selected{% endif %}>
-                                    {{ option.label }}
+                            <select class="form-select" id="class_id" name="class_id"
+                                    onchange="updateTicketScope()">
+                                <option value="{{ selected_class_id }}"
+                                        data-class-public-id="{{ active_class.class_public_id if active_class else '' }}" selected>
+                                    {{ active_class.label if active_class else 'Your active class' }}
                                 </option>
-                                {% endfor %}
-                                <option value="account">My own account</option>
+                                <option value="account">My account (not class-specific)</option>
                             </select>
                         </div>
                         <div id="ticket-scope-info" class="mb-3">
-                            <small class="text-muted" id="ticket-scope-text"></small>
+                            <small class="text-muted" id="ticket-scope-text">
+                                We will know you as: {{ actor_public_id }}<br>
+                                We will know your class as: {{ active_class.class_public_id if active_class else '' }}
+                            </small>
                         </div>
 
                         <div class="mb-3">
@@ -152,7 +160,10 @@ document.addEventListener('DOMContentLoaded', () => {
 function updateTicketScope() {
     const select = document.getElementById('class_id');
     const infoEl = document.getElementById('ticket-scope-text');
-    if (!select || !infoEl) return;
+    // Scope is now fixed to the active class and rendered server-side. If the
+    // control is no longer a <select> (read-only single-context), leave the
+    // server-rendered text untouched.
+    if (!select || !select.options || !infoEl) return;
     const selected = select.options[select.selectedIndex];
     if (!selected) { infoEl.textContent = ''; return; }
     const actorPublicId = {{ actor_public_id | tojson }};
