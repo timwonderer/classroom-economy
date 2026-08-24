@@ -2921,8 +2921,11 @@ def signup():
 
             class_display_name = form.class_display_name.data.strip()
             section = (form.section.data or "").strip() or None
-            first_name = form.first_name.data.strip()
-            last_name = form.last_name.data.strip()
+            # "Your display name" is one label over two boxes; the backend stores
+            # a first + last name. Same two-box capture as the authenticated
+            # add-class path.
+            teacher_first_name = form.first_name.data.strip()
+            teacher_last_name = form.last_name.data.strip()
 
             # Stage only. The class, teacher, seat, and profile are created
             # together after username and TOTP verification.
@@ -2930,8 +2933,8 @@ def signup():
                 session.pop(stale_key, None)
             session["signup_class_display_name"] = class_display_name
             session["signup_section"] = section
-            session["signup_teacher_first_name"] = first_name
-            session["signup_teacher_last_name"] = last_name
+            session["signup_teacher_first_name"] = teacher_first_name
+            session["signup_teacher_last_name"] = teacher_last_name
 
             # Render step 2 (username form)
             form = AdminSignupForm()
@@ -9791,22 +9794,23 @@ def onboarding():
 
 @admin_bp.route('/create-class', methods=['GET', 'POST'])
 @admin_required
-@requires_feat_context("FEAT-CLASS-001")
 def create_new_class():
     """Create a new class for an authenticated teacher."""
     if request.method == 'GET':
-        return render_template('admin_create_class_standalone.html')
+        return render_template('admin_create_class.html')
 
     ctx = g.canonical_context
     user_id = ctx.user_id
 
     class_display_name = request.form.get('class_display_name', '').strip()
     section = request.form.get('section', '').strip() or None
-    teacher_display_name = request.form.get('teacher_display_name', '').strip()
+    # "Your display name" is one label over two boxes (first + last).
+    teacher_first_name = request.form.get('first_name', '').strip()
+    teacher_last_name = request.form.get('last_name', '').strip()
 
-    if not class_display_name or not teacher_display_name:
+    if not class_display_name or not teacher_first_name or not teacher_last_name:
         flash("Class name and your display name are required.", "error")
-        return render_template('admin_create_class_standalone.html')
+        return render_template('admin_create_class.html')
 
     from app.utils.join_code import generate_join_code
     from app.services.classroom_setup import create_class
@@ -9824,7 +9828,8 @@ def create_new_class():
             join_code=join_code,
             display_name=class_display_name,
             section=section,
-            teacher_first_name=teacher_display_name,
+            teacher_first_name=teacher_first_name,
+            teacher_last_name=teacher_last_name,
         )
 
     establish_teacher_session(db.session.get(User, user_id))

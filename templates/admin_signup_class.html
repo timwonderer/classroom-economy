@@ -117,26 +117,7 @@
             <form method="POST" action="{{ url_for('admin.signup') }}">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
 
-                <div class="mb-3">
-                    <label for="class_display_name" class="form-label">Class Name</label>
-                    <input id="class_display_name" name="class_display_name" type="text" required autocomplete="off" class="form-control" placeholder="e.g., Chemistry, Math Period 3">
-                </div>
-
-                <div class="mb-3">
-                    <label for="section" class="form-label">Section <span class="fw-normal text-muted">(optional)</span></label>
-                    <input id="section" name="section" type="text" autocomplete="off" class="form-control" placeholder="e.g., Period 1, Block A">
-                </div>
-
-                <div class="row g-3 mb-4">
-                    <div class="col-6">
-                        <label for="first_name" class="form-label">Your first name</label>
-                        <input id="first_name" name="first_name" type="text" required autocomplete="off" class="form-control" placeholder="e.g., Ms.">
-                    </div>
-                    <div class="col-6">
-                        <label for="last_name" class="form-label visually-hidden">Your last name</label>
-                        <input id="last_name" name="last_name" type="text" required autocomplete="off" class="form-control" placeholder="e.g., Ayala">
-                    </div>
-                </div>
+                {% include '_class_setup_fields.html' %}
 
                 {% if turnstile_site_key %}
                 <div class="mb-3">

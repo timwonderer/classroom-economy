@@ -1,0 +1,42 @@
+{# Shared class-creation fields — presentation only.
+
+   Genuinely common to BOTH surfaces that create a class:
+     - first-class onboarding  (admin_signup_class.html)
+     - authenticated add-class (admin_create_class.html)
+
+   Owns ONLY the class-identity inputs (class name + section). It deliberately
+   does NOT own the <form> tag, CSRF token, form action, teacher name capture,
+   ToS/Turnstile, submit/cancel buttons, navigation, or any terminal behavior —
+   each parent surface owns those context-specific concerns and their distinct
+   authority/security requirements. #}
+<div class="mb-3">
+    <label for="class_display_name" class="form-label">Class Name</label>
+    <input id="class_display_name" name="class_display_name" type="text" required autocomplete="off"
+           maxlength="100" class="form-control" placeholder="e.g., Chemistry, Math Period 3">
+</div>
+
+<div class="mb-3">
+    <label for="section" class="form-label">Section <span class="fw-normal text-muted">(optional)</span></label>
+    <input id="section" name="section" type="text" autocomplete="off" maxlength="50"
+           class="form-control" placeholder="e.g., Period 1, Block A">
+</div>
+
+<div class="mb-3">
+    {# "Your display name" is ONE label over TWO boxes. The backend needs a first
+       and last name, but the two-box framing under a single friendly label lets a
+       teacher enter whatever they want (Mr. Jones, Sam Jones, Chief Jones, Sam theMan).
+       Per-box labels are visually-hidden so both inputs sit on one shared baseline. #}
+    <label class="form-label d-block" id="teacher_display_name_label">Your display name</label>
+    <div class="row g-2" role="group" aria-labelledby="teacher_display_name_label">
+        <div class="col">
+            <label for="first_name" class="visually-hidden">First name</label>
+            <input id="first_name" name="first_name" type="text" required autocomplete="off"
+                   maxlength="100" class="form-control" placeholder="e.g., Ms.">
+        </div>
+        <div class="col">
+            <label for="last_name" class="visually-hidden">Last name</label>
+            <input id="last_name" name="last_name" type="text" required autocomplete="off"
+                   maxlength="100" class="form-control" placeholder="e.g., Ayala">
+        </div>
+    </div>
+</div>

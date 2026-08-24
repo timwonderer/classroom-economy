@@ -97,6 +97,11 @@ class AdminTOTPConfirmForm(FlaskForm):
 class AdminClassSetupForm(FlaskForm):
     class_display_name = StringField('Class Name', validators=[DataRequired(), Length(max=100)])
     section = StringField('Section', validators=[Optional(), Length(max=50)])
+    # "Your display name" is a SINGLE label presented over TWO boxes (first + last).
+    # The backend requires first + last; the two-box framing under one label lets a
+    # teacher enter whatever they want (Mr. Jones, Sam Jones, Chief Jones, ...).
+    # Shared shape with the authenticated add-class surface via
+    # templates/_class_setup_fields.html.
     first_name = StringField('First Name', validators=[DataRequired(), Length(max=100)])
     last_name = StringField('Last Name', validators=[DataRequired(), Length(max=100)])
 
