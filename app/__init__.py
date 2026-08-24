@@ -805,9 +805,24 @@ def create_app():
             view = build_admin_layout_context_view(
                 cached_name, class_context, is_maintenance_bypass_active=bypass_flag,
             )
+            # Switcher must list EVERY class the teacher owns, not just the
+            # active one. Sourcing it from the single current class_context made
+            # the dropdown render exactly one option (the class you're already
+            # on), so switching was impossible. Display-only metadata; read-only.
+            from app.services.class_configuration_query_service import (
+                get_all_classes_by_teacher,
+            )
+            available_classes = [
+                {
+                    'class_id': class_row.class_id,
+                    'class_identifier': class_row.display_name or class_row.join_code,
+                    'is_current': class_row.class_id == context.class_id,
+                }
+                for class_row in get_all_classes_by_teacher(context.user_id)
+            ]
             return {
                 'admin_layout_view': view,
-                'admin_available_classes': [class_context] if class_context else [],
+                'admin_available_classes': available_classes,
                 'display_metadata': display_metadata,
             }
         except Exception as e:

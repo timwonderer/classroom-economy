@@ -2489,6 +2489,7 @@ def _get_validated_teacher_class_options(user_id: int) -> list[dict]:
 
 
 @admin_bp.route('/select-class-context', methods=['GET', 'POST'])
+@requires_feat_context("FEAT-IDEN-001")
 def select_class_context():
     """Explicit teacher class-selection gate before dashboard access."""
     ctx = getattr(g, "canonical_context", None)
@@ -2516,8 +2517,15 @@ def select_class_context():
 
         session["last_activity"] = utc_now().isoformat()
         user = db.session.get(User, ctx.user_id)
-        if user and user.last_active_class_id != selected["class_id"]:
+        if user:
+            # Move BOTH canonical pointers together. Updating last_active_class_id
+            # alone leaves last_active_seat_id pointing at the previous class's
+            # teacher seat, which the context resolver rejects with ContextMismatch
+            # (seat.class_id != last_active_class_id) — the class switch then fails.
+            # `selected["seat_id"]` is the teacher seat for the newly chosen class,
+            # validated by _get_validated_teacher_class_options.
             user.last_active_class_id = selected["class_id"]
+            user.last_active_seat_id = selected["seat_id"]
         return redirect(url_for("admin.dashboard"))
 
     from app.services.identity.builders import build_admin_class_selection_view
@@ -2814,6 +2822,7 @@ def give_bonus_all():
 
 @admin_bp.route('/login', methods=['GET', 'POST'])
 @limiter.limit("10 per minute")
+@requires_feat_context("FEAT-IDEN-001")
 def login():
     """Admin login with TOTP authentication."""
     session.pop("user_id", None)
@@ -4052,6 +4061,29 @@ def set_current_class():
     class_row = verify_teacher_owns_class(class_id, user_id)
     if class_row is None:
         return jsonify({'status': 'error', 'message': 'Access denied'}), 403
+
+    # Resolve the teacher's canonical seat in the target class. Both pointers must
+    # move together: setting last_active_class_id without last_active_seat_id leaves
+    # the seat pointing at the previous class, and the context resolver then rejects
+    # the mismatch (ContextMismatch) — the switch silently fails on the next request.
+    target_seat = Seat.query.filter_by(
+        class_id=class_id, user_id=user_id, role="teacher"
+    ).first()
+    if target_seat is None:
+        return jsonify({'status': 'error', 'message': 'Access denied'}), 403
+
+    try:
+        idempotency_key = f"feat:iden:set-current-class:{user_id}:{class_id}"
+        with FEATContext("FEAT-IDEN-001", idempotency_key=idempotency_key):
+            user = db.session.get(User, user_id)
+            user.last_active_class_id = class_id
+            user.last_active_seat_id = target_seat.id
+            db.session.flush()
+    except Exception:
+        current_app.logger.error(
+            "Failed to switch current class for user_id=%s class_id=%s", user_id, class_id
+        )
+        return jsonify({'status': 'error', 'message': 'Unable to switch classes right now.'}), 500
 
     return jsonify({'status': 'success'}), 200
 

@@ -178,6 +178,14 @@ def test_switch_class_rejects_missing_runtime_seat(client, app, multi_class_stud
     student = multi_class_student["student"]
     Seat.query.filter_by(user_id=student.user.id).delete(synchronize_session=False)
     db.session.flush()
+    # Bulk delete with synchronize_session=False leaves stale Seat/User objects in
+    # the identity map. A real production switch is a fresh request with a fresh
+    # session, so it would observe the committed post-delete state (including the
+    # ON DELETE SET NULL cascade that nulls users.last_active_seat_id). Expire the
+    # identity map so this in-process request sees that same truth; otherwise the
+    # auth boundary reads a phantom cached seat and never exercises fail-closed
+    # resolution (INV-ARC-008 no-seat-fallback / INV-ARC-013 membership-by-existence).
+    db.session.expire_all()
 
     target_class_id = multi_class_student["classrooms"]["B"].class_id
     response = student_switch_class(client, target_class_id)
