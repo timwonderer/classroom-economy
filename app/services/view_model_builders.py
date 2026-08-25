@@ -287,7 +287,11 @@ class StoreManagementView:
     # Collective items progress (owned by Store domain)
     collective_progress_by_item: dict[int, list[dict]]
 
-    # Class/block labels (owned by Class Configuration domain)
+    # Display-only label map for the single active class (owned by Class
+    # Configuration domain). Keyed by the class's section label purely for
+    # rendering per-item block badges. section/block is display metadata and is
+    # NEVER a scoping key; this map holds at most one entry (the active class)
+    # and must not be used to enumerate a teacher's classes.
     class_labels_by_block: dict[str, str]
 
     # Redemption audit (owned by Store domain)

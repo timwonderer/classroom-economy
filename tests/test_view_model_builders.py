@@ -20,6 +20,7 @@ from app.services.view_model_builders import (
 from app.feats.store_purchase_feat import execute_store_purchase
 from app.feats.direct_entitlement_grant_feat import execute_direct_grant
 from tests.helpers.canonical_classroom import provision_classroom
+from tests.helpers.ledger import create_ledger_pending_transaction
 
 
 @pytest.fixture
@@ -52,6 +53,31 @@ def classroom(app):
                 },
                 created_by_seat_id=classroom.teacher_seat_id,
             )
+        # Fund the purchasing student through the canonical ledger write path so the
+        # priced DELAYED_USE purchase (4.50 x up-to-2 = 9.00) is accepted by the
+        # Ledger instead of being denied INSUFFICIENT_FUNDS. A pending credit is
+        # sufficient: available balance = posted + pending delta, so the store
+        # purchase FEAT sees funds without a separate settlement pass. We use the
+        # lowest-level canonical producer (ledger_service.create_pending_transaction)
+        # rather than hand-constructing balance rows.
+        student = classroom.students[0]
+        with FEATContext("FEAT-TEST-SETUP", idempotency_key="phase5-view-models:fund-student"):
+            create_ledger_pending_transaction(
+                seat_id=student.seat_id,
+                class_id=classroom.class_id,
+                user_id=student.user_id,
+                amount=Decimal("100.00"),
+                account_type="checking",
+                type="payroll",
+                description="Test funding for store purchase",
+            )
+        # Persist the canonical producer's output durably. create_store_product
+        # only flushes inside the FEAT-TEST-SETUP transaction boundary; without a
+        # real commit the StoreProduct rows are rolled back when this fixture's
+        # app_context pops, leaving the read paths (which run in a fresh
+        # app_context/session) unable to see any policy. This mirrors the sibling
+        # store fixtures (e.g. test_feat_stor_001_purchase.py).
+        db.session.commit()
         return classroom, purchase_policy, grant_policy
 
 

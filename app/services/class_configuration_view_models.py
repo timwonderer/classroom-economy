@@ -15,7 +15,6 @@ from datetime import datetime
 
 from app.services.class_configuration_query_service import (
     calculate_cwi,
-    get_all_classes_by_teacher,
     get_class_economy,
     get_class_features,
     get_policy_mode,
@@ -102,18 +101,6 @@ FEATURE_DEFINITIONS = (
 
 
 @dataclass(frozen=True)
-class ClassLabelView:
-    """Class label for the account settings form."""
-    section_key: str
-    current_label: str | None
-    display_fallback: str
-
-    @property
-    def form_key(self) -> str:
-        return f"class_label_{self.section_key}"
-
-
-@dataclass(frozen=True)
 class FeatureSettingsPageView:
     """Page view model for admin_feature_settings.html (single-class scoped)."""
     class_id: str
@@ -130,12 +117,6 @@ class FeatureToggleView:
     icon: str
     description: str
     enabled: bool
-
-
-@dataclass(frozen=True)
-class AccountSettingsPageView:
-    """Page view model for admin_settings.html (CLASS-owned fields only)."""
-    classes: tuple[ClassLabelView, ...]
 
 
 # ---------------------------------------------------------------------------
@@ -157,23 +138,6 @@ def build_class_summary_view(class_id: str) -> ClassSummaryView | None:
         timezone=economy.class_timezone,
         created_at=economy.created_at,
     )
-
-
-def build_class_list_view(teacher_user_id: int) -> list[ClassSummaryView]:
-    """Build summary views for all classes owned by a teacher."""
-    classes = get_all_classes_by_teacher(teacher_user_id)
-    return [
-        ClassSummaryView(
-            class_id=c.class_id,
-            class_public_id=c.class_public_id,
-            join_code=c.join_code,
-            display_name=c.display_name,
-            section=c.section,
-            timezone=c.class_timezone,
-            created_at=c.created_at,
-        )
-        for c in classes
-    ]
 
 
 def build_class_configuration_view(class_id: str) -> ClassConfigurationView | None:
@@ -244,19 +208,3 @@ def build_feature_settings_page_view(class_id: str) -> FeatureSettingsPageView |
         class_label=economy.display_name or economy.section or economy.join_code,
         features=toggles,
     )
-
-
-def build_account_settings_page_view(teacher_user_id: int) -> AccountSettingsPageView:
-    """Build CLASS-owned fields for admin_settings.html."""
-    classes = get_all_classes_by_teacher(teacher_user_id)
-
-    class_labels = tuple(
-        ClassLabelView(
-            section_key=cls.section or cls.join_code or "",
-            current_label=cls.display_name,
-            display_fallback=cls.section or cls.join_code or "",
-        )
-        for cls in classes
-    )
-
-    return AccountSettingsPageView(classes=class_labels)

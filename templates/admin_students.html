@@ -595,13 +595,22 @@
           You can also type directly into the grid.
         </p>
 
-        <div id="duplicate-warning" class="alert alert-warning d-none mb-3">
-          <span class="material-symbols-outlined me-1" style="vertical-align: middle;">warning</span>
-          <strong>Duplicate names detected.</strong>
-          Students with identical names will receive dedupe codes for account claiming.
-          If these students have differentiating middle names or initials, you may add them to the
-          First Name or Last Name field to avoid the duplicate-name claim flow.
-          <em>You may still submit — identically named students are valid.</em>
+        <div id="duplicate-warning" class="card border-warning d-none mb-3">
+          <div class="card-header bg-warning-subtle d-flex align-items-center">
+            <span class="material-symbols-outlined me-2 align-middle">warning</span>
+            <h3 class="mb-0 text-dark h6 fs-4">More than one student has the same name</h3>
+          </div>
+          <div class="card-body">
+            <p class="mb-2">
+              We highlighted students in your roster who share the same name. If this is correct,
+              you can submit the roster as is. Classroom Token Hub will give each student a unique
+              code to use when claiming their account.
+            </p>
+            <p class="mb-0">
+              You can also add a middle name, initial, or other name to either name field to make
+              them easier to tell apart.
+            </p>
+          </div>
         </div>
 
         <div class="table-responsive">

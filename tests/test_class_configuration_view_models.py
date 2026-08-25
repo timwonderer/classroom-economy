@@ -7,8 +7,6 @@ import pytest
 from app.extensions import db
 from app.models import PayrollSettings
 from app.services.class_configuration_view_models import (
-    AccountSettingsPageView,
-    ClassLabelView,
     ClassSummaryView,
     ClassConfigurationView,
     FeatureConfigurationView,
@@ -17,9 +15,7 @@ from app.services.class_configuration_view_models import (
     FeatureStateView,
     FeatureToggleView,
     FEATURE_DEFINITIONS,
-    build_account_settings_page_view,
     build_class_summary_view,
-    build_class_list_view,
     build_class_configuration_view,
     build_feature_configuration_view,
     build_feature_settings_page_view,
@@ -71,37 +67,6 @@ class TestClassSummaryView:
                 assert view.label == view.section
             else:
                 assert view.label == view.join_code
-
-
-class TestClassListView:
-
-    def test_returns_all_teacher_classes(self, app, classroom):
-        with app.app_context():
-            views = build_class_list_view(classroom.teacher_user_id)
-            assert len(views) >= 1
-            class_ids = [v.class_id for v in views]
-            assert classroom.class_id in class_ids
-
-    def test_returns_empty_for_unknown_teacher(self, app):
-        with app.app_context():
-            assert build_class_list_view(999999) == []
-
-    def test_multi_tenancy_isolation(self, app):
-        with app.app_context():
-            cr1 = provision_classroom("chemistry_p1")
-            cr2 = provision_classroom("biology_block_a")
-            db.session.commit()
-
-            list1 = build_class_list_view(cr1.teacher_user_id)
-            list2 = build_class_list_view(cr2.teacher_user_id)
-
-            ids1 = {v.class_id for v in list1}
-            ids2 = {v.class_id for v in list2}
-
-            assert cr1.class_id in ids1
-            assert cr2.class_id not in ids1
-            assert cr2.class_id in ids2
-            assert cr1.class_id not in ids2
 
 
 # ---------------------------------------------------------------------------
@@ -257,32 +222,3 @@ class TestFeatureSettingsPageView:
     def test_nonexistent_class_returns_none(self, app):
         with app.app_context():
             assert build_feature_settings_page_view("nonexistent") is None
-
-
-# ---------------------------------------------------------------------------
-# AccountSettingsPageView (Phase 6-7)
-# ---------------------------------------------------------------------------
-
-
-class TestAccountSettingsPageView:
-
-    def test_build_returns_frozen_dataclass(self, app, classroom):
-        with app.app_context():
-            view = build_account_settings_page_view(classroom.teacher_user.id)
-            assert isinstance(view, AccountSettingsPageView)
-            with pytest.raises(AttributeError):
-                view.classes = ()
-
-    def test_classes_contain_class_label_views(self, app, classroom):
-        with app.app_context():
-            view = build_account_settings_page_view(classroom.teacher_user.id)
-            assert len(view.classes) >= 1
-            for cls in view.classes:
-                assert isinstance(cls, ClassLabelView)
-                assert cls.section_key
-                assert cls.form_key.startswith("class_label_")
-
-    def test_empty_teacher_returns_empty_classes(self, app):
-        with app.app_context():
-            view = build_account_settings_page_view(999999)
-            assert view.classes == ()

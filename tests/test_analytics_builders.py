@@ -12,9 +12,10 @@ not manual ZoneInfo conversion. Builders require canonical_execution_context wit
 """
 
 import pytest
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 from types import SimpleNamespace
+from tests.helpers.canonical_classroom import provision_classroom
 from app.services.analytics.builders import (
     build_metric_snapshot_view,
     build_alert_card_view,
@@ -400,25 +401,32 @@ class TestRecentEventView:
         assert result is None
 
     def test_recent_event_view_formats_timestamp(self, app):
-        """Test that event timestamp is pre-formatted as string using SPEC-TIME-001 canonical resolver."""
-        # Create a mock context with class_id (required by SPEC-TIME-001)
-        mock_context = SimpleNamespace(class_id="test-class-123")
+        """Test that event timestamp is pre-formatted as string using SPEC-TIME-001 canonical resolver.
 
-        event = SimpleNamespace(
-            id=1,
-            description="Test event",
-            event_type="transaction",
-            created_at_utc=datetime(2026, 8, 5, 14, 30, 0),
-            old_value=None,
-            new_value=None,
-        )
+        SPEC-TIME-001 requires (a) a real ClassEconomy so the class-local timezone
+        authority can be resolved, and (b) a timezone-aware UTC timestamp (naive
+        timestamps are rejected). We provision a class via the canonical producer and
+        supply an aware UTC instant; the builder must then format the class-local date.
+        """
+        with app.app_context():
+            classroom = provision_classroom("chemistry_p1")
+            context = SimpleNamespace(class_id=classroom.class_id)
 
-        event_view = build_recent_event_view(event, mock_context)
+            event = SimpleNamespace(
+                id=1,
+                description="Test event",
+                event_type="transaction",
+                created_at_utc=datetime(2026, 8, 5, 14, 30, 0, tzinfo=timezone.utc),
+                old_value=None,
+                new_value=None,
+            )
 
-        assert event_view is not None
-        assert isinstance(event_view.display_timestamp, str)
-        assert "Aug" in event_view.display_timestamp
-        assert ":" in event_view.display_timestamp  # Has time
+            event_view = build_recent_event_view(event, context)
+
+            assert event_view is not None
+            assert isinstance(event_view.display_timestamp, str)
+            assert "Aug" in event_view.display_timestamp
+            assert ":" in event_view.display_timestamp  # Has time
 
     def test_recent_event_view_formats_numeric_values(self, app):
         """Test that numeric values are pre-formatted as currency."""

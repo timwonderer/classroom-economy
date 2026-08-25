@@ -148,6 +148,7 @@ from app.services.view_model_builders import build_identity_profile_view, build_
 from app.services.class_configuration_economic_service import build_economic_view
 from app.services.class_configuration_query_service import (
     get_class_economy,
+    get_class_economy_by_join_code,
     get_all_classes_by_teacher,
     get_teacher_classes_by_ids,
     verify_teacher_owns_class,
@@ -158,7 +159,6 @@ from app.services.class_configuration_query_service import (
     has_personalized_class,
 )
 from app.services.class_configuration_view_models import (
-    build_account_settings_page_view,
     build_feature_settings_page_view,
 )
 from app.services.admin_identity_service import delete_admin_account_rows
@@ -623,50 +623,59 @@ def is_admin_feature_enabled(canonical_context: CanonicalContext, feature_name: 
     return bool(scope["enabled"]) if scope else False
 
 
-def get_admin_feature_join_code_options(feature_name: str, canonical_context=None) -> list[dict[str, str]]:
-    if canonical_context is None or not getattr(canonical_context, "user_id", None):
-        return []
-    resolved_admin_user_id = canonical_context.user_id
+def _build_active_feature_scope(feature_name: str, canonical_context=None) -> dict[str, str] | None:
+    """Resolve the feature scope for the SINGLE active canonical class.
 
-    classes = sorted(
-        get_all_classes_by_teacher(resolved_admin_user_id),
-        key=lambda c: (c.display_name or "", c.class_id),
+    A class-local capability may act on exactly one class: the active class of
+    the request context (``g.canonical_context.class_id``). Enumerating the
+    teacher's other classes here — the old block/multi-class fan-out — is a
+    cross-tenant isolation violation (INV-ARC-004 V.1). Teacher ownership is
+    necessary but never sufficient: we verify ownership AND bind to the one
+    active class. Class switching happens ONLY through the nav-bar context
+    switcher (INV-ARC-010); no feature surface may switch or enumerate classes.
+
+    Returns the scope dict for the active class when the feature is enabled
+    there, else ``None``.
+    """
+    if canonical_context is None or not getattr(canonical_context, "user_id", None):
+        return None
+    active_class_id = (getattr(canonical_context, "class_id", None) or "").strip()
+    if not active_class_id:
+        return None
+    class_row = verify_teacher_owns_class(active_class_id, canonical_context.user_id)
+    if not class_row:
+        return None
+    scope = resolve_feature_class_for_class(active_class_id, feature_name)
+    if not scope or not scope["enabled"]:
+        return None
+    normalized_block = (class_row.section or "").strip().upper()
+    label = class_row.display_name or (
+        f"Period {normalized_block}" if normalized_block else scope["join_code"]
     )
-    options: list[dict[str, str]] = []
-    seen_class_ids: set[str] = set()
-    for cls in classes:
-        class_id, section, display_name = cls.class_id, cls.section, cls.display_name
-        if not class_id or class_id in seen_class_ids:
-            continue
-        seen_class_ids.add(class_id)
-        scope = resolve_feature_class_for_class(class_id, feature_name)
-        if not scope or not scope["enabled"]:
-            continue
-        normalized_block = (section or "").strip().upper()
-        label = display_name or (f"Period {normalized_block}" if normalized_block else scope["join_code"])
-        options.append({
-            'join_code': scope["join_code"],
-            'class_id': scope["class_id"],
-            'block': normalized_block,
-            'label': label,
-        })
-    return options
+    return {
+        'join_code': scope["join_code"],
+        'class_id': scope["class_id"],
+        'block': normalized_block,
+        'label': label,
+    }
+
+
+def get_admin_feature_join_code_options(feature_name: str, canonical_context=None) -> list[dict[str, str]]:
+    """Feature scope options for the active class ONLY (at most one entry).
+
+    Historically this enumerated every class owned by the teacher, which powered
+    illegal per-feature class selectors (INV-ARC-004 V.1/V.3). It now returns at
+    most one entry — the single active canonical class — so no feature surface
+    can reconstruct or switch across a teacher's class set. The nav-bar context
+    switcher is the sole legal class switcher.
+    """
+    scope = _build_active_feature_scope(feature_name, canonical_context)
+    return [scope] if scope else []
 
 
 def resolve_admin_feature_join_code(feature_name: str, canonical_context=None) -> str | None:
-    if canonical_context is None or not getattr(canonical_context, "user_id", None):
-        return None
-
-    options = get_admin_feature_join_code_options(feature_name, canonical_context=canonical_context)
-    enabled_join_codes = {option['join_code'] for option in options}
-    current_class_id = (getattr(canonical_context, "class_id", None) or "").strip()
-    if current_class_id:
-        current_class = verify_teacher_owns_class(current_class_id, canonical_context.user_id)
-        current_join_code = get_display_join_code(current_class.class_id) if current_class else None
-        if current_join_code and current_join_code in enabled_join_codes:
-            return current_join_code
-
-    return options[0]['join_code'] if options else None
+    scope = _build_active_feature_scope(feature_name, canonical_context)
+    return scope['join_code'] if scope else None
 
 
 def require_admin_feature_scope(
@@ -676,27 +685,17 @@ def require_admin_feature_scope(
     requested_block: str | None = None,
     allow_default: bool = True,
 ) -> dict:
-    if canonical_context is None or not getattr(canonical_context, "user_id", None):
+    """Resolve the active class's feature scope, or 404.
+
+    ``requested_block`` is intentionally IGNORED for class resolution: a
+    block/section label is display-only metadata and may never resolve, group,
+    or switch classes (INV-ARC-004 V.2). The scope is always bound to the single
+    active canonical class of the request context.
+    """
+    scope = _build_active_feature_scope(feature_name, canonical_context)
+    if not scope:
         abort(404)
-
-    options = get_admin_feature_join_code_options(feature_name, canonical_context=canonical_context)
-    if not options:
-        abort(404)
-
-    options_by_block = {option['block']: option for option in options if option.get('block')}
-
-    normalized_block = (requested_block or '').strip().upper()
-
-    if normalized_block:
-        option = options_by_block.get(normalized_block)
-        if not option:
-            abort(404)
-        return option
-
-    if not allow_default:
-        abort(404)
-
-    return options[0]
+    return scope
 
 
 def _parse_dob_date(dob_str):
@@ -768,61 +767,11 @@ def _build_admin_auth_fields(username: str, *, existing_salt: bytes | None = Non
 # -------------------- DASHBOARD & QUICK ACTIONS --------------------
 
 
-def _get_teacher_blocks(canonical_context):
-    """Get sorted list of blocks from the current teacher user's Seat roster."""
-    if canonical_context is None or not getattr(canonical_context, "user_id", None):
-        return []
-    user_id = canonical_context.user_id
-    class_id = (getattr(canonical_context, "class_id", None) or "").strip() or None
-
-    # Derive blocks from ClassEconomy (canonical class anchor) for the current teacher.
-    query = (
-        db.session.query(ClassEconomy.section)
-        .filter(
-            ClassEconomy.teacher_user_id == user_id,
-            ClassEconomy.section.isnot(None),
-        )
-    )
-    if class_id:
-        query = query.filter(ClassEconomy.class_id == class_id)
-    rows = query.all()
-    return sorted({(section or "").strip().upper() for (section,) in rows if (section or "").strip()})
-
-
 def _get_teacher_seat_for_class(class_id: str):
     """Return the teacher seat for a class, if present."""
     if not class_id:
         return None
     return Seat.query.filter_by(class_id=class_id, role="teacher").order_by(Seat.id.asc()).first()
-
-
-def _resolve_block_class_ids(canonical_context, blocks):
-    """Resolve display labels to canonical class IDs for the current teacher."""
-    if canonical_context is None or not getattr(canonical_context, "user_id", None) or not blocks:
-        return []
-
-    user_id = canonical_context.user_id
-    class_id = (getattr(canonical_context, "class_id", None) or "").strip() or None
-    rows = (
-        db.session.query(ClassEconomy.section, ClassEconomy.class_id)
-        .filter(
-            ClassEconomy.teacher_user_id == user_id,
-            ClassEconomy.class_id.isnot(None),
-        )
-        .all()
-    )
-    wanted_blocks = {(block or "").strip().upper() for block in blocks if (block or "").strip()}
-    if not wanted_blocks:
-        return []
-
-    resolved_class_ids = [
-        resolved_class_id
-        for section, resolved_class_id in rows
-        if (section or "").strip().upper() in wanted_blocks and resolved_class_id
-    ]
-    if class_id:
-        resolved_class_ids = [resolved_class_id for resolved_class_id in resolved_class_ids if resolved_class_id == class_id]
-    return resolved_class_ids
 
 
 def _count_rent_waiver_periods(settings, waiver) -> int:
@@ -886,67 +835,13 @@ def _populate_policy_from_form(policy, form, *, next_tier_category_id=None):
     policy.tier_level = form.tier_level.data or None
     policy.is_active = form.is_active.data
 
-def _get_class_labels_for_blocks(canonical_context, blocks):
-    """Return mapping of block -> class display_name for the given admin without N+1 queries."""
-
-    if canonical_context is None or not getattr(canonical_context, "user_id", None) or not blocks:
-        return {}
-
-    class_ids = _resolve_block_class_ids(canonical_context, blocks)
-    if not class_ids:
-        return {block: block for block in blocks}
-
-    rows = (
-        db.session.query(ClassEconomy.section, ClassEconomy.display_name)
-        .filter(ClassEconomy.class_id.in_(class_ids))
-        .all()
-    )
-    labels = {section: (display_name or section) for section, display_name in rows}
-
-    for block in blocks:
-        labels.setdefault(block, block)
-
-    return labels
-
-
-def _get_join_codes_by_block(canonical_context, blocks):
-    """Return mapping of block -> join_code for the given admin without N+1 queries."""
-
-    if canonical_context is None or not getattr(canonical_context, "user_id", None) or not blocks:
-        return {}
-
-    class_ids = _resolve_block_class_ids(canonical_context, blocks)
-    if not class_ids:
-        return {}
-
-    rows = (
-        db.session.query(ClassEconomy.section, ClassEconomy.class_id)
-        .filter(ClassEconomy.class_id.in_(class_ids))
-        .all()
-    )
-    return {
-        section: get_display_join_code(resolved_class_id)
-        for section, resolved_class_id in rows
-        if resolved_class_id and get_display_join_code(resolved_class_id)
-    }
-
-
-def _get_class_ids_by_block(canonical_context, blocks):
-    """Return mapping of block -> class_id for the given admin without N+1 queries."""
-
-    if canonical_context is None or not getattr(canonical_context, "user_id", None) or not blocks:
-        return {}
-
-    class_ids = _resolve_block_class_ids(canonical_context, blocks)
-    if not class_ids:
-        return {}
-
-    rows = (
-        db.session.query(ClassEconomy.section, ClassEconomy.class_id)
-        .filter(ClassEconomy.class_id.in_(class_ids))
-        .all()
-    )
-    return {section: resolved_class_id for section, resolved_class_id in rows if resolved_class_id}
+# NOTE: The block-resolution helpers (_get_teacher_blocks, _resolve_block_class_ids,
+# _get_class_labels_for_blocks, _get_join_codes_by_block, _get_class_ids_by_block)
+# were removed. block/section is display-only metadata and can never resolve to a
+# class (one section may map to multiple classes owned by the same teacher).
+# Reconstructing "all classes owned by this teacher" from a section label is a
+# class-isolation violation. All surfaces now operate on the single active
+# canonical class (g.canonical_context.class_id).
 
 
 def _build_payroll_preview_state(students):
@@ -1271,10 +1166,6 @@ def _hard_delete_class_scope(*, class_id, canonical_context, correlation_id, ide
         .filter(Issue.class_public_id == _class_pub_id)
         .subquery()
     )
-    class_blocks = _get_teacher_blocks(g.canonical_context)
-    if class_blocks and scoped_student_ids:
-        pass
-
     # Class-scoped records
     PendingAction.query.filter(
         PendingAction.class_id == class_id,
@@ -1305,46 +1196,48 @@ def _hard_delete_class_scope(*, class_id, canonical_context, correlation_id, ide
     PayrollSettings.query.filter(PayrollSettings.class_id == class_id).delete(synchronize_session=False)
     RentSettings.query.filter(RentSettings.class_id == class_id).delete(synchronize_session=False)
 
-    # Remove store items that no longer have any canonical visibility rows for this class.
-    if class_blocks:
-        visible_seat_ids_for_class = (
-            db.session.query(StoreItemVisibility.seat_id)
-            .join(Seat, Seat.id == StoreItemVisibility.seat_id)
-            .filter(Seat.class_id == class_id)
-            .subquery()
-        )
-        StoreItemVisibility.query.filter(
-            StoreItemVisibility.seat_id.in_(sa.select(visible_seat_ids_for_class))
-        ).delete(synchronize_session=False)
+    # Remove store items and their visibility/entitlement rows for this class.
+    # This is unconditional: destroying a class always tears down its store
+    # catalog. (Previously gated on teacher block/section labels, which is
+    # display-only metadata and never a valid precondition for cleanup.)
+    visible_seat_ids_for_class = (
+        db.session.query(StoreItemVisibility.seat_id)
+        .join(Seat, Seat.id == StoreItemVisibility.seat_id)
+        .filter(Seat.class_id == class_id)
+        .subquery()
+    )
+    StoreItemVisibility.query.filter(
+        StoreItemVisibility.seat_id.in_(sa.select(visible_seat_ids_for_class))
+    ).delete(synchronize_session=False)
 
-        deletable_store_item_ids = (
-            db.session.query(StoreItem.id)
-            .filter(StoreItem.class_id == class_id)
-            .outerjoin(StoreItemVisibility, StoreItem.id == StoreItemVisibility.store_item_id)
-            .filter(StoreItemVisibility.store_item_id.is_(None))
-            .subquery()
-        )
-        class_item_entitlement_ids = (
-            db.session.query(EntitlementEvent.entitlement_id)
-            .filter(
-                EntitlementEvent.product_id.in_(sa.select(deletable_store_item_ids)),
-                EntitlementEvent.class_id == class_id,
-                EntitlementEvent.event_type == "GRANTED",
-                EntitlementEvent.acquisition_type == "PURCHASE",
-            )
-            .subquery()
-        )
-        PendingAction.query.filter(
-            PendingAction.class_id == class_id,
-            PendingAction.entitlement_id.in_(sa.select(class_item_entitlement_ids))
-        ).delete(synchronize_session=False)
-        EntitlementEvent.query.filter(
-            EntitlementEvent.class_id == class_id,
+    deletable_store_item_ids = (
+        db.session.query(StoreItem.id)
+        .filter(StoreItem.class_id == class_id)
+        .outerjoin(StoreItemVisibility, StoreItem.id == StoreItemVisibility.store_item_id)
+        .filter(StoreItemVisibility.store_item_id.is_(None))
+        .subquery()
+    )
+    class_item_entitlement_ids = (
+        db.session.query(EntitlementEvent.entitlement_id)
+        .filter(
             EntitlementEvent.product_id.in_(sa.select(deletable_store_item_ids)),
-        ).delete(synchronize_session=False)
-        StoreItem.query.filter(
-            StoreItem.id.in_(sa.select(deletable_store_item_ids))
-        ).delete(synchronize_session=False)
+            EntitlementEvent.class_id == class_id,
+            EntitlementEvent.event_type == "GRANTED",
+            EntitlementEvent.acquisition_type == "PURCHASE",
+        )
+        .subquery()
+    )
+    PendingAction.query.filter(
+        PendingAction.class_id == class_id,
+        PendingAction.entitlement_id.in_(sa.select(class_item_entitlement_ids))
+    ).delete(synchronize_session=False)
+    EntitlementEvent.query.filter(
+        EntitlementEvent.class_id == class_id,
+        EntitlementEvent.product_id.in_(sa.select(deletable_store_item_ids)),
+    ).delete(synchronize_session=False)
+    StoreItem.query.filter(
+        StoreItem.id.in_(sa.select(deletable_store_item_ids))
+    ).delete(synchronize_session=False)
 
     # Seats/ownership for this class
     Seat.query.filter(Seat.class_id == class_id).delete(synchronize_session=False)
@@ -2573,13 +2466,13 @@ def dashboard():
     # INV-ARC-007: dashboard GET must remain read-only.
     # Daily-limit auto tap-out is handled by scheduled tasks only.
 
-    # V2 canonical: scope everything through class_id from canonical context.
-    teacher_class_ids = [
-        c.class_id for c in
-        get_all_classes_by_teacher(current_user_id)
-    ]
+    # V2 canonical single-context invariant: every dashboard metric is scoped to
+    # exactly one class — the active canonical class (current_class_id, validated
+    # above). Teacher ownership authorizes access to the class but never widens
+    # the read to other classes the teacher owns.
+    active_class_id = current_class_id
 
-    seats = Seat.query.filter(Seat.class_id.in_(teacher_class_ids), Seat.role == 'student').all()
+    seats = Seat.query.filter(Seat.class_id == active_class_id, Seat.role == 'student').all()
     total_students = len(seats)
 
     # Seat-based name lookup for templates (keyed by seat_id)
@@ -2606,7 +2499,7 @@ def dashboard():
     pending_redemptions_count = (
         PendingAction.query
         .filter(
-            PendingAction.class_id.in_(teacher_class_ids),
+            PendingAction.class_id == active_class_id,
             PendingAction.authoritative_feat == "FEAT-STOR-002",
             EntitlementEvent.event_type == "GRANTED",
         )
@@ -2626,7 +2519,7 @@ def dashboard():
             request_time=ent.granted_at,
         )
         for ent in EntitlementEvent.query.filter(
-            EntitlementEvent.class_id.in_(teacher_class_ids),
+            EntitlementEvent.class_id == active_class_id,
             EntitlementEvent.event_type == "GRANTED",
             EntitlementEvent.acquisition_type == "PURCHASE",
         ).order_by(EntitlementEvent.timestamp.desc()).limit(5).all()
@@ -2647,7 +2540,7 @@ def dashboard():
         .join(EntitlementEvent, EntitlementEvent.entitlement_id == PendingAction.entitlement_id)
         .join(StoreItem, StoreItem.id == EntitlementEvent.product_id)
         .filter(
-            PendingAction.class_id.in_(teacher_class_ids),
+            PendingAction.class_id == active_class_id,
             PendingAction.authoritative_feat == "FEAT-STOR-002",
         )
         .order_by(PendingAction.submitted_at.desc())
@@ -2669,7 +2562,7 @@ def dashboard():
     # Recent transactions (limited to 5 for display)
     recent_transactions = (
         Transaction.query
-        .filter(Transaction.class_id.in_(teacher_class_ids))
+        .filter(Transaction.class_id == active_class_id)
         .filter_by(is_void=False)
         .order_by(Transaction.timestamp.desc())
         .limit(5)
@@ -2681,7 +2574,7 @@ def dashboard():
     today_start_db = ensure_utc(_day_bounds.boundary_start_utc)
     total_transactions_today = (
         Transaction.query
-        .filter(Transaction.class_id.in_(teacher_class_ids))
+        .filter(Transaction.class_id == active_class_id)
         .filter(
             Transaction.timestamp >= today_start_db,
             Transaction.is_void == False,
@@ -3129,6 +3022,12 @@ def recover():
             return render_template("admin_recover.html", form=form)
 
         recovered_account_id = first_class.teacher_user_id
+        # NOTE (INV-ARC-004): this is a PRE-AUTH, account-level identity challenge —
+        # not a class-local runtime capability. Enumerating the account's classes is
+        # intrinsic to verifying "you own this account" (the applicant must reproduce
+        # the full class set exactly, below). No class-scoped data is read or written
+        # across boundaries here, so the one-tenant-per-request rule for class-local
+        # operations does not apply to this identity-verification path.
         active_classes = get_all_classes_by_teacher(recovered_account_id)
         class_by_id = {c.class_id: c for c in active_classes if c.class_id}
 
@@ -3639,177 +3538,11 @@ def logout():
 
 # -------------------- Rent privilege helpers --------------------
 
-def _build_rent_privileges_by_block(user_id, blocks, class_ids_by_block, students_by_block):
-    """
-    Build a dict {(seat_id, block): [privileges]} using batched queries to avoid N+1 issues.
-    """
-    # Use UTC-aware datetime to match database-stored UTC expiry dates.
-    now = utc_now()
-    student_rent_privileges = {}
-
-    # 1. Fetch all RentSettings for the teacher and blocks in a single query.
-    target_blocks = [b for b in blocks if b != "Unassigned" and b in class_ids_by_block]
-    if not target_blocks:
-        return student_rent_privileges
-
-    target_class_ids = [class_ids_by_block[b] for b in target_blocks if class_ids_by_block.get(b)]
-    # Use projected columns only; local dev DB may not have newer RentSettings fields yet.
-    rent_settings_rows = (
-        db.session.query(
-            RentSettings.id,
-            RentSettings.class_id,
-            RentSettings.first_rent_due_date,
-            RentSettings.frequency_type,
-            RentSettings.custom_frequency_value,
-            RentSettings.custom_frequency_unit,
-            RentSettings.due_day_of_month,
-            RentSettings.grace_period_days,
-        )
-        .filter(RentSettings.class_id.in_(target_class_ids))
-        .all()
-    )
-    all_rent_settings = [
-        SimpleNamespace(
-            id=row.id,
-            class_id=row.class_id,
-            first_rent_due_date=row.first_rent_due_date,
-            frequency_type=row.frequency_type,
-            custom_frequency_value=row.custom_frequency_value,
-            custom_frequency_unit=row.custom_frequency_unit,
-            due_day_of_month=row.due_day_of_month,
-            grace_period_days=row.grace_period_days,
-        )
-        for row in rent_settings_rows
-    ]
-    settings_by_block = {
-        block: next((rs for rs in all_rent_settings if rs.class_id == class_ids_by_block.get(block)), None)
-        for block in target_blocks
-    }
-
-    if not settings_by_block:
-        return student_rent_privileges
-
-    from app.services.store_service import get_frozen_privilege_items
-    frozen_items_by_class_id = {}
-    all_store_item_ids = set()
-    for block, rent_settings in settings_by_block.items():
-        frozen_privs = get_frozen_privilege_items(rent_settings)
-        class_id_val = class_ids_by_block.get(block)
-        frozen_items_by_class_id[class_id_val] = frozen_privs
-        for fp in frozen_privs:
-            if fp.get('store_item_id'):
-                all_store_item_ids.add(fp['store_item_id'])
-
-    # 3. Collect all student IDs across all blocks and calculate coverage periods
-    all_student_ids = set()
-    payment_filters = []
-    from app.routes.student import _calculate_rent_coverage_due_date
-
-    for block in target_blocks:
-        rent_settings = settings_by_block.get(block)
-        if not rent_settings:
-            continue
-
-        block_students = students_by_block.get(block, [])
-        if not block_students:
-            continue
-
-        block_student_ids = [student.id for student in block_students]
-        all_student_ids.update(block_student_ids)
-
-        # Calculate current coverage period (pre-paid system)
-        # Use the most recently PASSED due date so that payments made for
-        # period N are found even after the calendar month rolls over but
-        # before the next due date arrives.
-        from app.routes.student import _calculate_rent_coverage_due_date
-        coverage_due_date = _calculate_rent_coverage_due_date(rent_settings, now)
-        if not coverage_due_date:
-            continue
-        coverage_month = coverage_due_date.month
-        coverage_year = coverage_due_date.year
-
-        join_code = join_codes_by_block[block]
-        class_id = class_ids_by_block.get(block)
-        if not class_id:
-            continue
-        payment_filters.append((class_id, coverage_month, coverage_year))
-
-    if not all_student_ids:
-        return student_rent_privileges
-
-    # 4. Fetch all relevant RentPayments in a single query each
-    paid_seat_ids_by_block = defaultdict(set)
-    if payment_filters:
-        from app.services.obligations_service import get_paid_rent_assessments_for_cycle
-        for class_id, coverage_month, coverage_year in payment_filters:
-            assessments = get_paid_rent_assessments_for_cycle(
-                class_id,
-                coverage_month,
-                coverage_year,
-            )
-            for assessment in assessments:
-                if assessment.seat and assessment.seat.id is not None:
-                    for block, block_class_id in class_id_by_block.items():
-                        if block_class_id == class_id:
-                            paid_seat_ids_by_block[block].add(assessment.seat.id)
-
-    # 5. Fetch all relevant entitlement grant rows in a single query each
-    items_by_seat = defaultdict(set)
-    if all_store_item_ids:
-        student_items = (
-            EntitlementEvent.query.filter(
-                EntitlementEvent.target_seat_id.in_(sa.select(Seat.id).where(Seat.user_id.in_(list(all_student_ids)))),
-                EntitlementEvent.product_id.in_(list(all_store_item_ids)),
-                EntitlementEvent.event_type == "GRANTED",
-                EntitlementEvent.acquisition_type.in_(["PURCHASE", "PERK"]),
-            )
-            .with_entities(EntitlementEvent.target_seat_id, EntitlementEvent.product_id)
-            .all()
-        )
-
-        for seat_id, store_item_id in student_items:
-            if seat_id is not None:
-                items_by_seat[seat_id].add(store_item_id)
-
-    # 6. Process the data in memory within the loop
-    for block in target_blocks:
-        rent_settings = settings_by_block.get(block)
-        if not rent_settings:
-            continue
-
-        block_class_id = class_id_by_block.get(block)
-        per_period_items = frozen_items_by_class_id.get(block_class_id, [])
-        if not per_period_items:
-            continue
-
-        block_students = students_by_block.get(block, [])
-        paid_seat_ids = paid_seat_ids_by_block.get(block, set())
-
-        for student in block_students:
-            privileges = []
-            seat_id = student.identity_profile.seat_id if student.identity_profile and student.identity_profile.seat_id else None
-            has_paid_rent = seat_id in paid_seat_ids if seat_id else False
-            student_store_items = items_by_seat.get(seat_id, set()) if seat_id else set()
-
-            for frozen_item in per_period_items:
-                source = None
-
-                if has_paid_rent:
-                    source = 'rent'
-                elif frozen_item.get('store_item_id') and frozen_item['store_item_id'] in student_store_items:
-                    source = 'purchased'
-
-                if source:
-                    privileges.append({
-                        'name': frozen_item['name'],
-                        'source': source
-                    })
-
-            if privileges:
-                key = (seat_id or student.id, block)
-                student_rent_privileges[key] = privileges
-
-    return student_rent_privileges
+# NOTE: _build_rent_privileges_by_block was removed. It reconstructed rent
+# privileges across a teacher's blocks (a block -> multiple-class fan-out), which
+# is a class-isolation violation. block/section is display-only metadata and can
+# never resolve to a class. Rent privileges are now computed per active class via
+# _get_rent_privileges_for_student below, scoped to g.canonical_context.class_id.
 
 
 def _get_rent_privileges_for_student(student, class_id, seat_id):
@@ -3903,14 +3636,12 @@ def students():
 
     current_class_id = g.canonical_context.class_id
     if not current_class_id:
-        teacher_classes = sorted(
-            get_all_classes_by_teacher(user_id),
-            key=lambda c: (c.display_name or "", c.class_id),
-        )
-        if not teacher_classes:
-            flash("Create a class before managing students.", "error")
-            return redirect(url_for('admin.dashboard'))
-        current_class_id = teacher_classes[0].class_id
+        # Class isolation (INV-ARC-004 V.1): never substitute an arbitrary class
+        # from the teacher's class set for the active class. If no class is
+        # active in the request context, send the teacher to the dashboard where
+        # the nav-bar context switcher (INV-ARC-010) establishes the active class.
+        flash("Select a class to manage its students.", "info")
+        return redirect(url_for('admin.dashboard'))
 
     # Single-context invariant: timezone prompt on this page must only target current class.
     if current_class_id:
@@ -4623,59 +4354,10 @@ def bulk_delete_students():
         return jsonify({"status": "error", "message": "An error occurred while deleting students. Please try again."}), 500
 
 
-@admin_bp.route('/students/delete-block', methods=['POST'])
-@admin_required
-def delete_block():
-    """Backwards-compatible block deletion wrapper that resolves to join-code deletion."""
-    data = request.get_json(silent=True) or {}
-    section = data.get('block', '').strip().upper()
-    user_id = g.canonical_context.user_id
-
-    if not section:
-        return jsonify({"status": "error", "message": "No block specified."}), 400
-
-    gate_error = _validate_destruction_gate(data, expected_phrase=f"DELETE BLOCK {section}")
-    if gate_error:
-        return gate_error
-
-    try:
-        class_ids = [
-            cid for cid in _get_class_ids_by_block(g.canonical_context, [section]).values() if cid
-        ]
-        if not class_ids:
-            return jsonify({"status": "success", "message": f"No class found for Block {section}. Nothing to delete."})
-        if len(class_ids) > 1:
-            return jsonify({
-                "status": "error",
-                "message": f"Block {section} has multiple classes. Delete by class explicitly."
-            }), 400
-
-        class_row = get_class_economy(class_ids[0])
-        if not class_row:
-            return jsonify({"status": "error", "message": "Join code not found or access denied."}), 404
-        _hard_delete_class_scope(
-            class_id=class_row.class_id,
-            canonical_context=g.canonical_context,
-            correlation_id=generate_correlation_id(),
-            idempotency_key=f"class:destroy:{class_row.class_id}",
-        )
-
-        if class_ids:
-            Seat.query.filter(
-                Seat.class_id.in_(class_ids),
-                Seat.claimed_at.is_(None),
-            ).delete(synchronize_session=False)
-        return jsonify({
-            "status": "success",
-            "message": f"Successfully deleted class Block {section} and scoped records."
-        })
-    except InvariantViolation:
-        db.session.rollback()
-        raise
-    except Exception as e:
-        db.session.rollback()
-        current_app.logger.error(f"Error deleting block {section}: {e}")
-        return jsonify({"status": "error", "message": "An error occurred while deleting the block. Please try again."}), 500
+# NOTE: The legacy `/students/delete-block` endpoint was removed. Block/section
+# is display-only and cannot identify a class (one section may map to multiple
+# classes), so deletion must always target an explicit canonical class_id via
+# the join-code deletion route below.
 
 
 @admin_bp.route('/join-code/delete', methods=['POST'])
@@ -4690,11 +4372,10 @@ def delete_join_code():
     if not display_join_code:
         return jsonify({"status": "error", "message": "join_code is required."}), 400
 
-    class_rows = get_all_classes_by_teacher(user_id)
-    class_row = next(
-        (row for row in class_rows if (get_display_join_code(row.class_id) or "").upper() == display_join_code),
-        None,
-    )
+    # Resolve the join_code alias directly to its one canonical class, then
+    # gate on ownership. Never enumerate the teacher's class set to find it —
+    # that reconstruction is a cross-tenant isolation violation (INV-ARC-004).
+    class_row = get_class_economy_by_join_code(display_join_code)
     if not class_row or not _admin_owns_class(g.canonical_context, class_row.class_id):
         return jsonify({"status": "error", "message": "Join code not found or access denied."}), 403
 
@@ -4807,71 +4488,64 @@ def bulk_delete_pending_students():
     """
     Delete multiple pending students (unclaimed Seat entries) at once.
 
-    This route ensures comprehensive cleanup with no leftover traces.
-    Accepts a list of Seat IDs or a block name to delete all pending students in that block.
+    Operates strictly within the single active canonical class
+    (``g.canonical_context.class_id``). Accepts an explicit list of Seat IDs
+    (each validated to belong to the active class), or ``all_pending: true`` to
+    remove every unclaimed seat in the active class. block/section is never used
+    as a scoping key.
     """
-    data = request.get_json()
+    data = request.get_json() or {}
     seat_ids = data.get('seat_ids', [])
-    section = data.get('block', '').strip().upper()
-    user_id = g.canonical_context.user_id
+    delete_all_pending = bool(data.get('all_pending'))
 
-    if not seat_ids and not section:
+    active_class_id = (getattr(g.canonical_context, "class_id", None) or "").strip() or None
+    if not active_class_id:
+        return jsonify({"status": "error", "message": "Class context required."}), 400
+
+    if not seat_ids and not delete_all_pending:
         return jsonify({
             "status": "error",
-            "message": "Either seat_ids or block must be provided."
+            "message": "Either seat_ids or all_pending must be provided."
         }), 400
 
     try:
         deleted_count = 0
 
-        if section:
-            # Delete all unclaimed Seat entries for this teacher and section
-            block_class_ids = [
-                cid for cid in _get_class_ids_by_block(g.canonical_context, [section]).values() if cid
-            ]
-            if block_class_ids:
-                pending_seats = Seat.query.filter(
-                    Seat.class_id.in_(block_class_ids),
-                    Seat.claimed_at.is_(None),
-                    Seat.user_id.is_(None),
-                ).all()
-                for seat_entry in pending_seats:
+        if delete_all_pending:
+            # Remove every unclaimed seat in the active class only.
+            pending_seats = Seat.query.filter(
+                Seat.class_id == active_class_id,
+                Seat.claimed_at.is_(None),
+                Seat.user_id.is_(None),
+            ).all()
+            for seat_entry in pending_seats:
+                result = remove_pending_student_seat(
+                    canonical_context=g.canonical_context,
+                    seat_id=seat_entry.id,
+                    correlation_id=generate_correlation_id(),
+                    idempotency_key=f"identity:pending-remove:{active_class_id}:{seat_entry.id}",
+                )
+                if result == "REMOVED":
+                    deleted_count += 1
+        else:
+            # Delete specific seats — each must belong to the active class.
+            for seat_id in seat_ids:
+                seat_entry = Seat.query.filter(
+                    Seat.id == seat_id,
+                    Seat.class_id == active_class_id,
+                ).first()
+
+                if seat_entry and seat_entry.claimed_at is None and seat_entry.user_id is None:
                     result = remove_pending_student_seat(
                         canonical_context=g.canonical_context,
                         seat_id=seat_entry.id,
                         correlation_id=generate_correlation_id(),
-                        idempotency_key=f"identity:pending-remove:{g.canonical_context.class_id}:{seat_entry.id}",
+                        idempotency_key=f"identity:pending-remove:{active_class_id}:{seat_entry.id}",
                     )
                     if result == "REMOVED":
                         deleted_count += 1
-        else:
-            # Delete specific Seat entries
-            for seat_id in seat_ids:
-                seat_entry = (
-                    Seat.query
-                    .join(ClassEconomy, ClassEconomy.class_id == Seat.class_id)
-                    .filter(
-                        Seat.id == seat_id,
-                        ClassEconomy.teacher_user_id == user_id,
-                    )
-                    .first()
-                )
-
-                if seat_entry:
-                    # Verify it's actually unclaimed
-                    if seat_entry.claimed_at is None and seat_entry.user_id is None:
-                        result = remove_pending_student_seat(
-                            canonical_context=g.canonical_context,
-                            seat_id=seat_entry.id,
-                            correlation_id=generate_correlation_id(),
-                            idempotency_key=f"identity:pending-remove:{g.canonical_context.class_id}:{seat_entry.id}",
-                        )
-                        if result == "REMOVED":
-                            deleted_count += 1
 
         message = f"Successfully deleted {deleted_count} pending student(s)."
-        if section:
-            message = f"Successfully deleted {deleted_count} pending student(s) from Block {section}."
 
         return jsonify({
             "status": "success",
@@ -5010,8 +4684,15 @@ def store_management():
     blocks = [option['block'] for option in feature_options if option.get('block')]
     form.blocks.choices = [(block, f"Period {block}") for block in blocks]
 
-    # Build class_labels_by_block dictionary for template
-    class_labels_by_block = _get_class_labels_for_blocks(g.canonical_context, blocks)
+    # Display-only label map for the single active class. block/section is
+    # never a scoping key; this is a pure {section -> display_name} lookup for
+    # the one canonical class in scope (selected_scope['class_id']).
+    _active_ce = get_class_economy(selected_scope['class_id'])
+    class_labels_by_block = {}
+    if _active_ce and (_active_ce.section or "").strip():
+        class_labels_by_block[(_active_ce.section or "").strip().upper()] = (
+            _active_ce.display_name or (_active_ce.section or "").strip().upper()
+        )
 
     if form.validate_on_submit():
         submitted_blocks = {block.strip().upper() for block in (form.blocks.data or []) if block}
@@ -5265,13 +4946,6 @@ def store_management():
     audit_end_date = request.args.get('audit_end_date', '').strip()
     audit_page = max(1, request.args.get('audit_page', 1, type=int))
     audit_per_page = 25
-
-    join_code_label_map = {}
-    teacher_class_rows = get_all_classes_by_teacher(user_id)
-    for ce_row in teacher_class_rows:
-        display_join_code = get_display_join_code(ce_row.class_id)
-        if display_join_code and display_join_code not in join_code_label_map:
-            join_code_label_map[display_join_code] = ce_row.display_name or display_join_code
 
     parsed_audit_action = audit_action.upper() if audit_action else None
 
@@ -8272,23 +7946,21 @@ def payroll_manual_payment():
 @admin_bp.route('/attendance-log')
 @admin_required
 def attendance_log():
-    """View complete attendance log."""
-    # Attendance history is now seat-scoped; derive periods from canonical session rows.
-    periods = _get_teacher_blocks(g.canonical_context)
+    """View complete attendance log for the active class.
 
-    # Get distinct blocks from Students for this admin's students
-    blocks = _get_teacher_blocks(g.canonical_context)
-
-    # Build class_labels_by_block dictionary
-    user_id = g.canonical_context.user_id
-    class_labels_by_block = _get_class_labels_for_blocks(g.canonical_context, blocks)
+    Records are loaded client-side from ``/api/attendance/history``, which is
+    scoped to exactly one canonical ``class_id`` (the active class). This view
+    only renders the shell; it derives nothing from teacher-wide block/section
+    metadata (block/section is display-only and never a scoping key).
+    """
+    active_class_id = (getattr(g.canonical_context, "class_id", None) or "").strip() or None
+    if not active_class_id:
+        flash("Select a class to view its attendance log.", "warning")
+        return redirect(url_for('admin.index'))
 
     return render_template(
         'admin_attendance_log.html',
-        periods=periods,
-        blocks=blocks,
-        class_labels_by_block=class_labels_by_block,
-        current_page="attendance"
+        current_page="attendance",
     )
 
 
@@ -8531,36 +8203,23 @@ def export_students():
             'earnings': earnings_total,
         }
 
-    # Prefetch active insurances to avoid N+1 queries
+    # Prefetch active insurances to avoid N+1 queries.
+    # (Insurance policy prefetch is not yet wired; kept empty rather than
+    # reconstructing a teacher-wide class set.)
     active_insurances_map = {}
-    if user_id and seat_ids:
-        class_ids_subq = db.session.query(ClassEconomy.class_id).filter_by(teacher_user_id=user_id).subquery()
-        pass
 
     for seat in seats:
+        # Every seat here already belongs to the single active class, so its
+        # section is just a display label pulled off that class row.
         export_block = seat.class_economy.section if seat and seat.class_economy else None
-        if selected_class_id:
-            scoped_seat = next((s for s in seats if s.class_id == selected_class_id and s.user_id == seat.user_id), None)
-            if scoped_seat and scoped_seat.class_economy and scoped_seat.class_economy.section:
-                export_block = scoped_seat.class_economy.section
 
         active_insurance = active_insurances_map.get(seat.id)
         insurance_name = active_insurance.policy.title if active_insurance else 'None'
 
-        if selected_join_code:
-            checking_balance, savings_balance = get_available_balances(seat.id, selected_class_id)
-            total_earnings = Decimal(str(sum(
-                row.amount for row in Transaction.query.filter(
-                    Transaction.seat_id == seat.id,
-                    Transaction.class_id == selected_class_id,
-                    Transaction.type == 'payroll',
-                ).all()
-            )))
-        else:
-            scoped_balances = scoped_balances_by_student.get(seat.id, {})
-            checking_balance = scoped_balances.get('checking', Decimal('0.00'))
-            savings_balance = scoped_balances.get('savings', Decimal('0.00'))
-            total_earnings = scoped_balances.get('earnings', Decimal('0.00'))
+        scoped_balances = scoped_balances_by_student.get(seat.id, {})
+        checking_balance = scoped_balances.get('checking', Decimal('0.00'))
+        savings_balance = scoped_balances.get('savings', Decimal('0.00'))
+        total_earnings = scoped_balances.get('earnings', Decimal('0.00'))
 
         writer.writerow([
             _sanitize_csv_field(seat.identity_profile.first_name if seat.identity_profile else ''),
@@ -8960,24 +8619,39 @@ def help_support():
     user_id = canonical_context.user_id
     selected_class_id = canonical_context.class_id
 
-    teacher_user_class_rows = get_all_classes_by_teacher(user_id)
-    selected_option = next(({
-        'class_id': ce_row.class_id,
-        'join_code': get_display_join_code(ce_row.class_id),
-        'label': ce_row.display_name or get_display_join_code(ce_row.class_id),
-    } for ce_row in teacher_user_class_rows if ce_row.class_id == selected_class_id), None)
+    # Class isolation (INV-ARC-004 V.1): resolve ONLY the single active class.
+    # This support surface previously enumerated every class the teacher owned to
+    # render a per-feature class selector — an illegal in-feature class switcher.
+    # The POST already refuses any form-supplied class id (scope is a binary
+    # active-class vs account choice), so the active class is the only reachable
+    # scope; the option list is capped at that one class.
+    active_class_row = (
+        verify_teacher_owns_class(selected_class_id, user_id) if selected_class_id else None
+    )
+    selected_option = (
+        {
+            'class_id': active_class_row.class_id,
+            'join_code': get_display_join_code(active_class_row.class_id),
+            'label': active_class_row.display_name or get_display_join_code(active_class_row.class_id),
+        }
+        if active_class_row
+        else None
+    )
     selected_join_code = (selected_option["join_code"] if selected_option else get_display_join_code(selected_class_id) or "").strip()
     selected_class_label = selected_option["label"] if selected_option else None
 
-    class_scope_options = [
-        {
-            'class_id': ce_row.class_id,
-            'join_code': get_display_join_code(ce_row.class_id),
-            'label': ce_row.display_name or get_display_join_code(ce_row.class_id),
-            'class_public_id': ce_row.class_public_id or '',
-        }
-        for ce_row in teacher_user_class_rows
-    ]
+    class_scope_options = (
+        [
+            {
+                'class_id': active_class_row.class_id,
+                'join_code': get_display_join_code(active_class_row.class_id),
+                'label': active_class_row.display_name or get_display_join_code(active_class_row.class_id),
+                'class_public_id': active_class_row.class_public_id or '',
+            }
+        ]
+        if active_class_row
+        else []
+    )
 
     teacher_seat = db.session.get(Seat, canonical_context.seat_id) if canonical_context.seat_id else None
     actor_public_id = teacher_seat.public_id if teacher_seat else None
@@ -9288,135 +8962,12 @@ def update_class_feature_setting():
         return jsonify({'status': 'error', 'message': 'An internal error occurred.'}), 500
 
 
-@admin_bp.route('/feature-settings/period/<period>', methods=['POST'])
-@admin_required
-@requires_feat_context("FEAT-CLASS-004")
-def update_period_feature_settings(period):
-    """Update feature settings for a specific period via AJAX (legacy)."""
-    user_id = g.canonical_context.user_id
-
-    try:
-        data = request.get_json()
-        period = period.strip().upper()
-
-        class_id = (
-            next(iter([cid for cid in _get_class_ids_by_block(g.canonical_context, [period]).values() if cid]), None)
-        )
-        if not class_id:
-            return jsonify({'status': 'error', 'message': 'Class scope not found for this period.'}), 400
-
-        current_features = get_class_feature_settings(None, class_id=class_id)
-        enabled_features = {
-            feature_name
-            for feature_name in ('payroll', 'insurance', 'banking', 'rent', 'hall_pass', 'store')
-            if current_features and current_features["features"].get(f'{feature_name}_enabled')
-        }
-        for feature_name in ('payroll', 'insurance', 'banking', 'rent', 'hall_pass', 'store'):
-            if feature_name in data:
-                if bool(data[feature_name]):
-                    enabled_features.add(feature_name)
-                else:
-                    enabled_features.discard(feature_name)
-
-        payload_hash = hashlib.sha256(
-            json.dumps({"period": period, "data": data}, sort_keys=True, default=str).encode("utf-8")
-        ).hexdigest()[:16]
-        idempotency_key = f"feat:class:feature-settings:update:{class_id}:{payload_hash}"
-
-        # Ensure FEAT owns transaction boundary for feature-toggle writes.
-        db.session.rollback()
-        with FEATContext("FEAT-ADMN-001", idempotency_key=idempotency_key):
-            replace_enabled_class_features(class_id, enabled_features)
-
-        return jsonify({
-            'status': 'success',
-            'message': f'Settings updated for Period {period}',
-            'settings': get_class_feature_settings(None, class_id=class_id)["features"]
-        })
-
-    except Exception as e:
-        db.session.rollback()
-        current_app.logger.error(f"Error updating period feature settings: {e}")
-        return jsonify({'status': 'error', 'message': 'An internal error occurred.'}), 500
-
-
-@admin_bp.route('/feature-settings/copy', methods=['POST'])
-@admin_required
-@requires_feat_context("FEAT-CLASS-004")
-def copy_feature_settings():
-    user_id = g.canonical_context.user_id
-
-    try:
-        data = request.get_json()
-        source_period = data.get('source_period', '').strip().upper()
-        target_periods = [p.strip().upper() for p in data.get('target_periods', [])]
-
-        if not source_period or not target_periods:
-            return jsonify({
-                'status': 'error',
-                'message': 'Source period and at least one target period are required.'
-            }), 400
-
-        # Get source settings
-        source_class_id = (
-            next(iter([cid for cid in _get_class_ids_by_block(g.canonical_context, [source_period]).values() if cid]), None)
-        )
-        if not source_class_id:
-            return jsonify({
-                'status': 'error',
-                'message': f'Class scope not found for period {source_period}.'
-            }), 400
-        source_dict = get_class_feature_settings(None, class_id=source_class_id)["features"]
-
-        payload_hash = hashlib.sha256(
-            json.dumps(
-                {"source_period": source_period, "target_periods": target_periods},
-                sort_keys=True,
-                default=str,
-            ).encode("utf-8")
-        ).hexdigest()[:16]
-        idempotency_key = (
-            f"feat:class:feature-settings:copy:{source_class_id}:{payload_hash}"
-        )
-
-        # Ensure FEAT owns transaction boundary for feature-toggle writes.
-        db.session.rollback()
-
-        # Copy to target periods
-        copied_count = 0
-        with FEATContext("FEAT-ADMN-001", idempotency_key=idempotency_key):
-            for period in target_periods:
-                if period == source_period:
-                    continue  # Skip copying to self
-
-                target_class_id = (
-                    next(iter([cid for cid in _get_class_ids_by_block(g.canonical_context, [period]).values() if cid]), None)
-                )
-                if not target_class_id:
-                    return jsonify({
-                        'status': 'error',
-                        'message': f'Class scope not found for period {period}.'
-                    }), 400
-
-                replace_enabled_class_features(
-                    target_class_id,
-                    {
-                        feature_name
-                        for feature_name in ('payroll', 'insurance', 'banking', 'rent', 'hall_pass', 'store')
-                        if source_dict.get(f'{feature_name}_enabled')
-                    },
-                )
-                copied_count += 1
-
-        return jsonify({
-            'status': 'success',
-            'message': f'Settings copied from Period {source_period} to {copied_count} period(s).'
-        })
-
-    except Exception as e:
-        db.session.rollback()
-        current_app.logger.error(f"Error copying feature settings: {e}")
-        return jsonify({'status': 'error', 'message': 'Failed to copy settings due to an internal error.'}), 500
+# NOTE: The legacy `/feature-settings/period/<period>` and `/feature-settings/copy`
+# endpoints were removed. Feature toggles are class-local and flow through
+# `/feature-settings/update` (update_class_feature_setting), which operates on the
+# single active canonical class via FEAT-CLASS-004. block/section could never
+# identify a class, and copying settings across a teacher's classes is exactly the
+# teacher-wide behavior that is prohibited outside the hall-pass verifier capability.
 
 
 # -------------------- ANNOUNCEMENTS --------------------
@@ -9665,36 +9216,49 @@ def onboarding_status():
     """
     user_id = g.canonical_context.user_id
     try:
-        class_ids_subq = db.session.query(ClassEconomy.class_id).filter_by(teacher_user_id=user_id).subquery()
+        # V2 single-context invariant: onboarding completion reflects the ACTIVE
+        # canonical class only. "Have you configured payroll/store/rent yet?" is a
+        # per-class question — a teacher who owns several classes onboards each one
+        # independently. Passkey enrollment is the sole account-level item.
+        active_class_id = (getattr(g.canonical_context, "class_id", None) or "").strip() or None
 
-        completion = {
-            'roster': (
+        if not active_class_id:
+            roster_done = payroll_done = store_done = banking_done = rent_done = hall_pass_done = False
+        else:
+            roster_done = (
                 db.session.query(Seat.id)
-                .join(ClassEconomy, ClassEconomy.class_id == Seat.class_id)
                 .filter(
-                    ClassEconomy.teacher_user_id == user_id,
+                    Seat.class_id == active_class_id,
                     Seat.role == "student",
                     Seat.user_id.isnot(None),
                     Seat.claimed_at.isnot(None),
                 )
                 .count()
-            ) > 0,
-            'payroll': PayrollSettings.query.filter(
-                PayrollSettings.class_id.in_(sa.select(class_ids_subq))
-            ).first() is not None,
-            'store': StoreItem.query.filter(
-                StoreItem.class_id.in_(sa.select(class_ids_subq))
-            ).count() > 0,
-            'banking': EconomicEngine.query.filter(
-                EconomicEngine.class_id.in_(sa.select(class_ids_subq))
-            ).first() is not None,
-            'rent': RentSettings.query.with_entities(RentSettings.id).filter(
-                RentSettings.class_id.in_(sa.select(class_ids_subq))
-            ).first() is not None,
+            ) > 0
+            payroll_done = PayrollSettings.query.filter(
+                PayrollSettings.class_id == active_class_id
+            ).first() is not None
+            store_done = StoreItem.query.filter(
+                StoreItem.class_id == active_class_id
+            ).count() > 0
+            banking_done = EconomicEngine.query.filter(
+                EconomicEngine.class_id == active_class_id
+            ).first() is not None
+            rent_done = RentSettings.query.with_entities(RentSettings.id).filter(
+                RentSettings.class_id == active_class_id
+            ).first() is not None
+            hall_pass_done = HallPassSettings.query.filter(
+                HallPassSettings.class_id == active_class_id
+            ).first() is not None
+
+        completion = {
+            'roster': roster_done,
+            'payroll': payroll_done,
+            'store': store_done,
+            'banking': banking_done,
+            'rent': rent_done,
             'insurance': False,
-            'hall_pass': HallPassSettings.query.filter(
-                HallPassSettings.class_id.in_(sa.select(class_ids_subq))
-            ).first() is not None,
+            'hall_pass': hall_pass_done,
             'personalization': has_personalized_class(user_id),
             'passkey': admin_has_passkeys(user_id),
         }
@@ -9848,39 +9412,21 @@ def api_calculate_cwi():
 
 def _resolve_admin_payroll_settings_for_class_id(canonical_context, class_id: str | None):
     """
-    Resolve payroll settings with class-first precedence when a class is selected.
+    Resolve the active payroll settings row for exactly one canonical class.
 
-    - If class_id is provided: resolve settings for that canonical class scope.
-    - If class_id is absent: resolve first active settings row across admin-owned classes.
+    V2 single-context invariant: a payroll resolution is always bound to one
+    class_id. There is no teacher-wide fallback — with no class in scope there is
+    no class whose payroll to resolve, so we return None.
     """
-    if class_id:
-        scoped_settings = (
-            PayrollSettings.query.filter(
-                PayrollSettings.class_id == class_id,
-                PayrollSettings.is_active.is_(True),
-            )
-            .order_by(desc(PayrollSettings.block.isnot(None)))
-            .first()
-        )
-        if scoped_settings:
-            return scoped_settings
+    if not class_id:
+        return None
 
-        return (
-            PayrollSettings.query.filter(
-                PayrollSettings.class_id == class_id,
-                PayrollSettings.is_active.is_(True),
-            )
-            .first()
-        )
-
-    user_id = canonical_context.user_id if canonical_context and getattr(canonical_context, "user_id", None) else None
-    class_ids_subq = db.session.query(ClassEconomy.class_id).filter_by(teacher_user_id=user_id).subquery()
     return (
-        PayrollSettings.query
-        .filter(
-            PayrollSettings.class_id.in_(sa.select(class_ids_subq)),
+        PayrollSettings.query.filter(
+            PayrollSettings.class_id == class_id,
             PayrollSettings.is_active.is_(True),
         )
+        .order_by(desc(PayrollSettings.block.isnot(None)))
         .first()
     )
 
@@ -9944,29 +9490,17 @@ def api_economy_analyze():
             }), 400
         checker = EconomyBalanceChecker(user_id, class_id=getattr(payroll_settings, "class_id", None))
 
-        # Get other economy features
-        class_ids_query = db.session.query(ClassEconomy.class_id).filter_by(teacher_user_id=user_id)
-        scoped_class_id = class_id
-
-        if scoped_class_id:
-            rent_settings = get_rent_settings(scoped_class_id)
-        else:
-            rent_settings = (
-                RentSettings.query.filter(
-                    RentSettings.class_id.in_(sa.select(class_ids_query.subquery())),
-                )
-                .first()
-            )
+        # V2 single-context invariant: economy analysis runs against exactly one
+        # class (class_id is guaranteed non-empty by the guard above). Every
+        # feature read below is bound to that single class_id.
+        rent_settings = get_rent_settings(class_id)
 
         insurance_policies_query = []
         fines_query = []
         store_items_query = StoreItem.query.filter(
-            StoreItem.class_id.in_(sa.select(class_ids_query.subquery())),
+            StoreItem.class_id == class_id,
             StoreItem.is_active.is_(True),
         )
-
-        if scoped_class_id:
-            store_items_query = store_items_query.filter(StoreItem.class_id == scoped_class_id)
 
         insurance_policies = insurance_policies_query
         fines = fines_query

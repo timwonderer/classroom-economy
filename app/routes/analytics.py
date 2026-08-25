@@ -26,10 +26,10 @@ from app.models import (
     PayrollSettings, RentSettings, ClassEconomy, Seat
 )
 from app.services.class_configuration_query_service import (
-    get_all_classes_by_teacher,
     get_class_economy,
     get_payroll_settings,
     get_rent_settings,
+    verify_teacher_owns_class,
 )
 from app.models import Transaction
 from app.models import AuditEvent
@@ -59,38 +59,40 @@ def _anchor_window_end(now_utc: datetime, class_id: str) -> datetime:
     )
     return bounds.boundary_start_utc
 
-def get_teacher_class_options(user_id: int):
+def _active_class_option(user_id: int, class_id: str | None):
+    """Build the option dict for the single active class, or None.
+
+    Class isolation (INV-ARC-004 V.1): the analytics dashboard operates on the
+    one active canonical class. Ownership is verified, but the class acted upon
+    comes from the request context — never from enumerating the teacher's
+    classes. Block/section is display-only (V.2) and is not a scope key.
+    """
     if not user_id:
-        return []
-
-    classes = sorted(get_all_classes_by_teacher(user_id), key=lambda c: (c.display_name or ""))
-
-    options = []
-    for c in classes:
-        options.append({
-            'class_id': c.class_id,
-            'join_code': c.join_code,
-            'block': (c.display_name or '').strip().upper(),
-            'label': c.display_name or c.join_code
-        })
-
-    return options
+        return None
+    resolved_class_id = (class_id or '').strip()
+    if not resolved_class_id:
+        return None
+    class_row = verify_teacher_owns_class(resolved_class_id, user_id)
+    if not class_row:
+        return None
+    return {
+        'class_id': class_row.class_id,
+        'join_code': class_row.join_code,
+        'block': (class_row.display_name or '').strip().upper(),
+        'label': class_row.display_name or class_row.join_code,
+    }
 
 
 def resolve_current_class_context(user_id: int, class_id: str | None):
-    """Resolve the requested class context using explicit class_id authority."""
-    available_classes = get_teacher_class_options(user_id)
-    by_class_id = {
-        (item.get('class_id') or ''): item
-        for item in available_classes
-        if item.get('class_id')
-    }
+    """Resolve the active class context using explicit class_id authority.
 
-    selected = by_class_id.get((class_id or '').strip())
-
-    if not selected:
-        return None, available_classes
-
+    Returns ``(selected, available_classes)`` where ``available_classes`` is
+    capped at the single active class. There is no per-feature class switcher:
+    the sole legal class switcher is the nav-bar context switcher
+    (INV-ARC-010).
+    """
+    selected = _active_class_option(user_id, class_id)
+    available_classes = [selected] if selected else []
     return selected, available_classes
 
 

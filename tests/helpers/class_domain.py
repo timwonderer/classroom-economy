@@ -242,22 +242,3 @@ def tap_out_students(client, seat_ids: list[int] | None = None, *, tap_out_all: 
     )
 
 
-def update_feature_settings_for_period(client, period: str, **features: Any):
-    """POST /admin/feature-settings/period/<period>."""
-    return client.post(
-        f"/admin/feature-settings/period/{period}",
-        json=features,
-        follow_redirects=False,
-    )
-
-
-def copy_feature_settings(client, *, source_period: str, target_periods: list[str]):
-    """POST /admin/feature-settings/copy."""
-    return client.post(
-        "/admin/feature-settings/copy",
-        json={
-            "source_period": source_period,
-            "target_periods": target_periods,
-        },
-        follow_redirects=False,
-    )

@@ -251,34 +251,6 @@ def _get_or_create_hall_pass_settings(class_id):
     return feat_get_or_create_hall_pass_settings(class_id=class_id)
 
 
-def _get_teacher_class_scope(canonical_context):
-    """Return (class_id_scope_subquery, has_class_scope) for a canonical teacher context."""
-    if canonical_context is None or not getattr(canonical_context, "user_id", None):
-        return None, False
-
-    user_id = canonical_context.user_id
-    class_id_scope = (
-        db.session.query(Seat.class_id)
-        .filter(
-            Seat.user_id == user_id,
-            Seat.role == 'teacher',
-            Seat.class_id.isnot(None),
-        )
-        .distinct()
-        .subquery()
-    )
-    has_class_scope = db.session.query(
-        sa.exists().where(
-            sa.and_(
-                Seat.user_id == user_id,
-                Seat.role == 'teacher',
-                Seat.class_id.isnot(None),
-            )
-        )
-    ).scalar()
-    return class_id_scope, has_class_scope
-
-
 def _admin_has_class_scope(canonical_context, class_id):
     """Return True when admin owns the class_id via active admin membership."""
     if canonical_context is None or not getattr(canonical_context, "user_id", None) or not class_id:
@@ -294,17 +266,6 @@ def _admin_has_class_scope(canonical_context, class_id):
             )
         )
     ).scalar()
-
-
-def _apply_admin_class_scope(query, model, canonical_context):
-    """Apply class_id tenant scoping. In V2, class_id is the primary anchor."""
-    class_id_scope, has_class_scope = _get_teacher_class_scope(canonical_context)
-    if has_class_scope:
-        return query.filter(
-            model.class_id.isnot(None),
-            model.class_id.in_(sa.select(class_id_scope)),
-        )
-    return query
 
 
 # -------------------- TIPS API --------------------
@@ -1416,6 +1377,10 @@ def hall_pass_verification_active():
     if not teacher_user:
         return jsonify({"status": "error", "message": "Verification page not available."}), 404
 
+    # SANCTIONED cross-class exception (INV-ARC-004 V.3): the hall-pass
+    # verification capability is the ONLY runtime path allowed to span a
+    # teacher's classes. It is token-authorized, read-only, and limited to the
+    # current class-local day. No other surface may reconstruct a class set.
     class_rows = get_all_classes_by_teacher(teacher_user.id)
     class_ids = [row.class_id for row in class_rows]
     class_by_id = {row.class_id: row for row in class_rows}
