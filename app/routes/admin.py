@@ -2818,6 +2818,20 @@ def signup():
             teacher_first_name = form.first_name.data.strip()
             teacher_last_name = form.last_name.data.strip()
 
+            # Timezone is a required creation step: validate/canonicalize now so
+            # the class is staged born-confirmed. Fail closed on a bad value.
+            from app.services.classroom_setup import canonicalize_class_timezone
+            try:
+                class_timezone = canonicalize_class_timezone(form.class_timezone.data)
+            except ValueError:
+                flash("Please choose a valid time zone for your class.", "error")
+                return render_template(
+                    "admin_signup_class.html",
+                    form=form,
+                    timezone_choices=pytz.common_timezones,
+                    turnstile_site_key=current_app.config.get("TURNSTILE_SITE_KEY"),
+                )
+
             # Stage only. The class, teacher, seat, and profile are created
             # together after username and TOTP verification.
             for stale_key in ("signup_class_id", "signup_seat_id"):
@@ -2826,6 +2840,7 @@ def signup():
             session["signup_section"] = section
             session["signup_teacher_first_name"] = teacher_first_name
             session["signup_teacher_last_name"] = teacher_last_name
+            session["signup_class_timezone"] = class_timezone
 
             # Render step 2 (username form)
             form = AdminSignupForm()
@@ -2835,15 +2850,20 @@ def signup():
                 turnstile_site_key=current_app.config.get("TURNSTILE_SITE_KEY"),
             )
 
-        # GET: show step 1 (class creation)
+        # GET (and invalid step-1 POST fall-through): show step 1 (class creation)
         return render_template(
             "admin_signup_class.html",
             form=form,
+            timezone_choices=pytz.common_timezones,
             turnstile_site_key=current_app.config.get("TURNSTILE_SITE_KEY"),
         )
 
     # ---- Guard: steps 2/3 require class context from step 1 ----
-    if not session.get("signup_class_display_name") or not session.get("signup_teacher_first_name"):
+    if (
+        not session.get("signup_class_display_name")
+        or not session.get("signup_teacher_first_name")
+        or not session.get("signup_class_timezone")
+    ):
         flash("Please start by creating your class.", "error")
         return redirect(url_for("admin.signup"))
 
@@ -2951,6 +2971,7 @@ def signup():
                 join_code=generate_join_code(),
                 display_name=session["signup_class_display_name"],
                 section=session.get("signup_section"),
+                class_timezone=session["signup_class_timezone"],
                 teacher_first_name=session["signup_teacher_first_name"],
                 teacher_last_name=session.get("signup_teacher_last_name"),
             )
@@ -2968,6 +2989,7 @@ def signup():
     session.pop("signup_section", None)
     session.pop("signup_teacher_first_name", None)
     session.pop("signup_teacher_last_name", None)
+    session.pop("signup_class_timezone", None)
 
     current_app.logger.info(f"Teacher signup complete: user={new_user.id}, class={economy.class_id}")
     flash("Account created successfully! Please log in with your username and authenticator.", "success")
@@ -9286,7 +9308,10 @@ def onboarding():
 def create_new_class():
     """Create a new class for an authenticated teacher."""
     if request.method == 'GET':
-        return render_template('admin_create_class.html')
+        return render_template(
+            'admin_create_class.html',
+            timezone_choices=pytz.common_timezones,
+        )
 
     ctx = g.canonical_context
     user_id = ctx.user_id
@@ -9299,10 +9324,24 @@ def create_new_class():
 
     if not class_display_name or not teacher_first_name or not teacher_last_name:
         flash("Class name and your display name are required.", "error")
-        return render_template('admin_create_class.html')
+        return render_template(
+            'admin_create_class.html',
+            timezone_choices=pytz.common_timezones,
+        )
 
     from app.utils.join_code import generate_join_code
-    from app.services.classroom_setup import create_class
+    from app.services.classroom_setup import create_class, canonicalize_class_timezone
+
+    # Timezone is a required creation step (born-confirmed invariant). Validate
+    # and canonicalize before creating anything; fail closed on a bad value.
+    try:
+        class_timezone = canonicalize_class_timezone(request.form.get('class_timezone'))
+    except ValueError:
+        flash("Please choose a valid time zone for your class.", "error")
+        return render_template(
+            'admin_create_class.html',
+            timezone_choices=pytz.common_timezones,
+        )
 
     join_code = generate_join_code()
     payload_hash = hashlib.sha256(
@@ -9317,6 +9356,7 @@ def create_new_class():
             join_code=join_code,
             display_name=class_display_name,
             section=section,
+            class_timezone=class_timezone,
             teacher_first_name=teacher_first_name,
             teacher_last_name=teacher_last_name,
         )

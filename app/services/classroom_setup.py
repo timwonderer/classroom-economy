@@ -18,10 +18,37 @@ All functions flush but do NOT commit. Callers own the transaction boundary.
 import secrets
 import uuid
 
+import pytz
+
 from app.extensions import db
 from app.models import ClassEconomy, IdentityProfile, Seat, User, UserRole
 from app.utils.auth_username import build_hashed_username_fields
 from app.utils.canonical_temporal_resolver import utc_now
+
+
+def canonicalize_class_timezone(class_timezone: str | None) -> str:
+    """Validate and canonicalize a class timezone at creation.
+
+    Enforces the class-creation invariant: a class is never born
+    timezone-less. There is no silent UTC default — a blank/missing value
+    fails closed so that a missing timezone cannot acquire authority through
+    fallback. An explicit UTC selection is canonicalized to 'Etc/UTC'; any
+    other value must be a valid IANA name and persists exactly as given.
+
+    Raises:
+        ValueError: if the timezone is blank/missing or not a valid IANA name.
+    """
+    normalized = (class_timezone or "").strip()
+    if not normalized:
+        raise ValueError(
+            "class_timezone is required: a class cannot be created without a "
+            "confirmed timezone"
+        )
+    if normalized == "UTC":
+        normalized = "Etc/UTC"
+    if normalized not in pytz.all_timezones_set:
+        raise ValueError(f"'{class_timezone}' is not a valid IANA timezone")
+    return normalized
 
 
 # ---------------------------------------------------------------------------
@@ -79,7 +106,12 @@ def create_class(
       3. User updated: last_active_class_id, last_active_seat_id
 
     Returns the ClassEconomy instance (economy.class_id is the canonical anchor).
+
+    Raises ValueError (fail-closed) if class_timezone is blank/missing or not a
+    valid IANA name — a class is never born timezone-less.
     """
+    resolved_timezone = canonicalize_class_timezone(class_timezone)
+
     class_id = str(uuid.uuid4())
 
     economy = ClassEconomy(
@@ -88,8 +120,8 @@ def create_class(
         teacher_user_id=user_id,
         display_name=display_name,
         section=section,
-        # None/blank until the teacher confirms a timezone (canonical unset).
-        class_timezone=(class_timezone or "").strip() or None,
+        # Born confirmed: a valid IANA timezone is required at creation.
+        class_timezone=resolved_timezone,
     )
     db.session.add(economy)
     db.session.flush()

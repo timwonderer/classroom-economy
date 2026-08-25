@@ -143,6 +143,10 @@ def provision_classroom(classroom_key: str) -> ProvisionedClassroom:
             join_code=join_code,
             display_name=classroom_def["display_name"],
             section=classroom_def.get("section"),
+            # Classes are born timezone-confirmed. Fixtures supply a concrete
+            # IANA zone (overridable per-definition) so provisioned classrooms
+            # match the production creation invariant.
+            class_timezone=classroom_def.get("class_timezone", "America/Los_Angeles"),
         )
 
         teacher_seat = Seat.query.filter_by(

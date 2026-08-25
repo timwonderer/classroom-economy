@@ -67,10 +67,10 @@ def execute_create_class_boundary(
     Args:
         canonical_context: CanonicalContext with user_id, class_id (ignored), seat_id, actor_role="teacher"
         class_name: Display name for the class (e.g., "Period 3 Economics")
-        timezone: IANA timezone for class-local time evaluation. Default None
-                  (unset) — the class is created with a blank timezone and the
-                  teacher confirms it via the one-time confirmation modal. Do
-                  not pass a placeholder like "UTC" at creation.
+        timezone: IANA timezone for class-local time evaluation. REQUIRED — a
+                  class is never born timezone-less. Blank/missing fails closed
+                  (no silent UTC default); an explicit "UTC" is canonicalized to
+                  "Etc/UTC"; any other value must be a valid IANA name.
         expected_weekly_hours: Optional initial value for EconomicEngine.expected_weekly_hours
                                (used for CWI calculation). Defaults to None (unset).
         correlation_id: Optional; generated if not provided
@@ -148,24 +148,25 @@ def _execute_create_class_boundary_impl(
             error_message="Teacher user not found",
         )
 
-    # Validate timezone. None/blank is the canonical "unset" state (the teacher
-    # confirms the timezone after creation via the confirmation modal); only a
-    # provided value must be a valid IANA name.
-    normalized_timezone = (timezone or "").strip() or None
+    # Validate timezone via the single shared canonicalizer. The class-creation
+    # invariant is enforced here identically to the create_class() service path:
+    # a class is never born timezone-less (blank/missing fails closed, no silent
+    # UTC default), an explicit UTC selection is canonicalized to 'Etc/UTC', and
+    # any other value must be a valid IANA name. We reuse the validation LOGIC
+    # rather than duplicating it; we do NOT delegate the constructor itself,
+    # because create_class() also creates a teacher Seat/IdentityProfile and
+    # rebinds last_active pointers — this FEAT boundary creates only the class
+    # for an already-seated teacher, so calling create_class() here would
+    # double-create a seat and corrupt those pointers.
+    from app.services.classroom_setup import canonicalize_class_timezone
     try:
-        if normalized_timezone is not None and normalized_timezone not in pytz.all_timezones_set:
-            return CreateClassBoundaryResult(
-                success=False,
-                correlation_id="",
-                error_code="INVALID_TIMEZONE",
-                error_message=f"Timezone '{timezone}' is not a valid IANA timezone",
-            )
-    except Exception as e:
+        normalized_timezone = canonicalize_class_timezone(timezone)
+    except ValueError as e:
         return CreateClassBoundaryResult(
             success=False,
             correlation_id="",
-            error_code="TIMEZONE_VALIDATION_ERROR",
-            error_message=f"Error validating timezone: {str(e)}",
+            error_code="INVALID_TIMEZONE",
+            error_message=str(e),
         )
 
     # Validate class_name
@@ -235,7 +236,7 @@ def _execute_create_class_boundary_impl(
                 join_code=join_code,
                 teacher_user_id=canonical_context.user_id,
                 display_name=class_name,
-                class_timezone=timezone,
+                class_timezone=normalized_timezone,
                 created_at=timestamp_utc,
             )
             db.session.add(class_economy)

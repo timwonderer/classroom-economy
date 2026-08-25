@@ -104,6 +104,11 @@ class AdminClassSetupForm(FlaskForm):
     # templates/_class_setup_fields.html.
     first_name = StringField('First Name', validators=[DataRequired(), Length(max=100)])
     last_name = StringField('Last Name', validators=[DataRequired(), Length(max=100)])
+    # Timezone is a REQUIRED creation step (born-confirmed invariant). IANA
+    # validity is enforced canonically in the create_class() service via
+    # canonicalize_class_timezone(); DataRequired only guarantees a nonblank
+    # selection reaches the backend.
+    class_timezone = StringField('Time Zone', validators=[DataRequired()])
 
 class AdminRecoveryForm(FlaskForm):
     """Recovery form — join_code[]/student_username[] pairs are submitted as arrays.

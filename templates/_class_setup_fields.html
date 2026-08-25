@@ -22,6 +22,37 @@
 </div>
 
 <div class="mb-3">
+    {# Timezone is a REQUIRED creation step, not a post-hoc confirmation. The
+       class is born with a confirmed class-local timezone, which anchors
+       payroll, rent, and attendance day boundaries. It is set once at creation
+       and cannot be changed afterward. Both class-creation surfaces expose this
+       same control via this shared partial. #}
+    <label for="class_timezone" class="form-label">Time Zone</label>
+    <select id="class_timezone" name="class_timezone" required class="form-select">
+        <option value="">Select your time zone…</option>
+        {% for tz in timezone_choices %}
+        <option value="{{ tz }}">{{ tz }}</option>
+        {% endfor %}
+    </select>
+    <div class="form-text">Sets this class's local time for payroll, rent, and attendance. This can't be changed later.</div>
+</div>
+<script>
+    // Pre-select the teacher's detected timezone as a convenience default. The
+    // teacher can still choose another; server-side validation is authoritative.
+    (function () {
+        var sel = document.getElementById('class_timezone');
+        if (!sel || sel.value) return;
+        try {
+            var detected = Intl.DateTimeFormat().resolvedOptions().timeZone;
+            if (!detected) return;
+            for (var i = 0; i < sel.options.length; i++) {
+                if (sel.options[i].value === detected) { sel.selectedIndex = i; return; }
+            }
+        } catch (e) { /* no-op: teacher selects manually */ }
+    })();
+</script>
+
+<div class="mb-3">
     {# "Your display name" is ONE label over TWO boxes. The backend needs a first
        and last name, but the two-box framing under a single friendly label lets a
        teacher enter whatever they want (Mr. Jones, Sam Jones, Chief Jones, Sam theMan).
