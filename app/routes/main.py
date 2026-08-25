@@ -5,9 +5,10 @@ Contains public-facing utility routes including health checks, legal pages,
 debug endpoints, and public hall pass verification.
 """
 
+import os
 import unicodedata
 from types import SimpleNamespace
-from flask import Blueprint, redirect, url_for, jsonify, current_app, session, request
+from flask import Blueprint, redirect, url_for, jsonify, current_app, session, request, send_from_directory
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -54,10 +55,31 @@ def home():
         elif role == 'student':
             return redirect(url_for('student.dashboard'))
     else:
-        # Default: Redirect to marketing site
-        # Use environment variable or default to the canonical domain
-        marketing_url = current_app.config.get('MARKETING_SITE_URL', 'https://classroomtokenhub.com')
-        return redirect(marketing_url)
+        # Default: send unauthenticated visitors to the landing page. When a
+        # MARKETING_SITE_URL is configured (production GitHub Pages host), use it;
+        # otherwise serve the locally-bundled landing so the certification
+        # environment stays entirely on the local origin.
+        marketing_url = current_app.config.get('MARKETING_SITE_URL')
+        if marketing_url:
+            return redirect(marketing_url)
+        # Serve the locally-bundled landing so the certification environment
+        # stays entirely on the local origin. Relative asset paths in the
+        # landing HTML (./style.css, ./learnmore.html) resolve under /gh/.
+        return redirect(url_for('main.github_pages_asset', filename='landing.html'))
+
+
+# -------------------- LOCAL LANDING / GITHUB-PAGES ASSETS --------------------
+
+def _github_pages_dir():
+    """Absolute path to the bundled ``github-pages/`` static marketing site."""
+    return os.path.join(current_app.root_path, os.pardir, 'github-pages')
+
+
+@main_bp.route('/gh/<path:filename>')
+def github_pages_asset(filename):
+    """Serve the bundled github-pages landing site (landing.html, style.css,
+    learnmore.html, etc.) from the local origin for the certification run."""
+    return send_from_directory(_github_pages_dir(), filename)
 
 
 @main_bp.route('/health')
@@ -250,8 +272,10 @@ def verify_hall_pass(teacher_public_token):
             message=_GENERIC_UNAVAILABLE
         ), 404
 
-    # Build the display list from the teacher's classes; POST must still resolve
-    # the selected class directly by class_id.
+    # SANCTIONED cross-class exception (INV-ARC-004 V.3): the hall-pass
+    # verification page is the ONLY runtime surface allowed to span a teacher's
+    # classes. It is token-authorized and read-only; the POST below still
+    # resolves the selected class directly by class_id.
     classes_rows = sorted(get_all_classes_by_teacher(teacher_user.id), key=lambda c: (c.display_name or ""))
     def _class_display_label(class_row):
         label_parts = [part for part in (class_row.section, class_row.display_name) if part]
