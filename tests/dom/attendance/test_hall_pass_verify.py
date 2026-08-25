@@ -12,7 +12,11 @@ from app.feats.prod import record_attendance_session, record_hall_pass_log
 from app.models import AttendanceReasonCode, HallPassSettings, User
 from app.services.context_resolver import CanonicalContext
 from app.services.entitlement_service import grant_hall_passes
-from app.utils.canonical_temporal_resolver import SYSTEM_LEVEL_EVALUATION, canonical_temporal_resolver
+from app.utils.canonical_temporal_resolver import (
+    CLASS_LEVEL_EVALUATION,
+    SYSTEM_LEVEL_EVALUATION,
+    canonical_temporal_resolver,
+)
 from tests.helpers.classroom_initializer import initialize, initialize_as_teacher
 
 
@@ -308,27 +312,54 @@ def test_DOM_PROD_002__post_verify_old_pass_not_shown(client, verification_conte
 
 
 def test_DOM_PROD_002__post_verify_finds_match_beyond_first_20_records(client, verification_context):
-    """Matching search must not be truncated by an arbitrary fixed result window."""
+    """Matching search must not be truncated by an arbitrary fixed result window.
+
+    The window the lookup must not truncate is the set of *records* scanned
+    (HallPassLog rows in today's class-local window), not the set of students
+    currently out. So the padding here is 25 approved pass records for another
+    student, each newer than the target. They are not marked as departures, so
+    they never enter the "currently out" set: the legitimate per-destination
+    simultaneous queue limit (enforced at issuance in
+    _enforce_hall_pass_settings) is respected — 25 students out to one
+    destination at once is an impossible state, not the scenario under test.
+    The target pass is the oldest record, so if a fixed result window were ever
+    reintroduced on the lookup the oldest matching record would be dropped and
+    this test would fail.
+    """
     classroom = verification_context["classroom"]
-    now = _current_utc()
 
-    for i in range(25):
-        log = _issue_hall_pass(
-            classroom,
-            student_index=1,
-            hall_pass_id=f"HP-VERIFY-WINDOW-{i}",
-            destination="Office",
-            issued_at=now - timedelta(minutes=i),
-        )
-        _mark_left(classroom, log, student_index=1, at_time=now - timedelta(minutes=i))
+    # Anchor every record to today's canonical class-local day so the fixture
+    # is deterministic regardless of wall-clock time. Using the same
+    # CLASS_LEVEL_EVALUATION authority the verifier uses guarantees these
+    # timestamps land inside the window the lookup scans, and it introduces no
+    # default/hardcoded timezone.
+    day_bounds = canonical_temporal_resolver(
+        CLASS_LEVEL_EVALUATION,
+        canonical_execution_context=_teacher_ctx(classroom),
+        primitive="evaluation_day_boundaries",
+    )
+    day_start = day_bounds.boundary_start_utc
 
+    # Target is the OLDEST record in today's window (day_start + 1 minute).
+    target_at = day_start + timedelta(minutes=1)
     target_log = _issue_hall_pass(
         classroom,
         student_index=0,
         hall_pass_id="HP-VERIFY-WINDOW-TARGET",
-        issued_at=now - timedelta(hours=2),
+        issued_at=target_at,
     )
-    _mark_left(classroom, target_log, student_index=0, at_time=now - timedelta(hours=2))
+    _mark_left(classroom, target_log, student_index=0, at_time=target_at)
+
+    # 25 padding records for another student, each strictly NEWER than the
+    # target but still within the same canonical day (day_start + 2..26 min).
+    for i in range(25):
+        _issue_hall_pass(
+            classroom,
+            student_index=1,
+            hall_pass_id=f"HP-VERIFY-WINDOW-{i}",
+            destination="Office",
+            issued_at=day_start + timedelta(minutes=2 + i),
+        )
 
     response = _post_verify(client, verification_context["token"], classroom)
 
