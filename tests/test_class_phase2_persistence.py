@@ -1,844 +1,681 @@
 """
 CLASS Phase 2 Persistence Tests
 
-Comprehensive tests verifying immutability of economic versions, version chain integrity,
-append-only class_features timeline, and constraint enforcement per DOM-CLASS-001 and
-DOM-CLASS-002 authority.
+Verifies the persistence-layer invariants of the versioned economic engine and the
+append-only class_features timeline per DOM-CLASS-001 / DOM-CLASS-002 authority:
 
-Per SPEC-TEST-001: All fixtures use canonical initializer (initialize).
-Per SPEC-TIME-001: All temporal logic uses canonical_temporal_resolver.
+  1. Exactly one EconomicEngine root per class (previous_version_id IS NULL).
+  2. Historical versions are immutable (no in-place UPDATE).
+  3. previous_version_id lineage stays within the owning class.
+  4. Referenced versions cannot be deleted (RESTRICT / append-only enforcement).
+  5. class_features is an append-only history.
+  6. Effective-version resolution returns the latest enabled row per feature.
+  7. In-place mutation / deletion of historical rows is prohibited.
 
-PHASE D STATUS (Test Execution):
-⏳ BLOCKED by Phase 3 FEAT implementation
-   Root cause: v2 FEAT-INTEGRITY enforcement requires all DB mutations through FEAT context
-   Current behavior: Direct db.session.add/commit raises FEATContextError
-   Solution: Phase 3 must define FEAT-ECON-001 orchestration layer for economic engine creation
+Rewrite note (Priority A, 2026-08-23)
+-------------------------------------
+These tests were previously module-skipped because they mutated state via direct
+`db.session.add`/`commit` on domain models, which v2 FEAT-INTEGRITY enforcement
+(app/feats/base.py) now blocks outside a verified FEAT context.
 
-   When Phase 3 FEATs are complete:
-   1. Update tests to call FEATs instead of direct db.session mutations
-   2. Run full test suite to verify Phase 2 persistence layer
-   3. Verify schema constraints and immutability TRIGGERs work correctly
+The invariants split into two categories, tested through two lawful mechanisms:
+
+* Valid-state / behavioral invariants (1, 3, 5, 6) are established through the
+  CANONICAL PRODUCERS: the ClassEconomy after_insert listener seeds the single
+  root engine + default 'payroll' feature; FEAT-CLASS-004 enables/disables
+  features; FEAT-CLASS-005 evolves the engine into new immutable versions. No
+  direct ORM mutation of domain models occurs.
+
+* Persistence-ENFORCEMENT invariants (2, 4, 7 + CHECK/PK constraints) test that
+  the DATABASE rejects illegal states. Canonical producers cannot exercise these
+  — they validate inputs and never emit illegal rows. The only faithful way to
+  probe the persistence boundary is to issue raw SQL through
+  `db.session.execute(text(...))`. Raw SQL does not populate
+  session.new/dirty/deleted, so it is NOT the ORM-object mutation that
+  FEAT-INTEGRITY guards; it reaches the DB boundary directly, which is exactly
+  what a persistence-constraint test must do. Assertions are unchanged in
+  strength — illegal writes must still raise.
+
+Phase 2d immutability triggers (economic_engine_no_update/no_delete,
+class_features_no_update/no_delete) are present on the test database and raise
+`InternalError` ("... immutable ...") on any UPDATE/DELETE. They are unconditional
+and therefore SUBSUME the RESTRICT foreign keys: no historical row can be deleted
+at all. Tests for deletion-prevention assert the block and note that the trigger
+is the proximate enforcer with RESTRICT as defense-in-depth.
+
+Class hard-deletion vs. append-only history (see the two cascade tests):
+EconomicEngine.class_id and ClassFeature.class_id declare `ondelete='CASCADE'`.
+The append-only no_delete triggers are NOT an absolute bar — they yield to the
+sanctioned session flag `cth.class_universe_destroying='on'`, which the canonical
+hard-deletion path `_hard_delete_class_scope` (app/routes/admin.py) sets via
+`SET LOCAL` before deleting the `classes` row. A naive `DELETE FROM classes`
+(without the flag) is correctly blocked; the canonical boundary permits the
+cascade. The cascade tests drive that canonical flag+delete boundary and assert
+the owned engine/feature history is physically removed.
+
+Per SPEC-TEST-001: classroom state is provisioned via the canonical initializer.
+Per SPEC-TIME-001: temporal values come from canonical_temporal_resolver.
 """
-import pytest
-
-# Skip entire module pending Phase 3 FEAT definitions
-pytestmark = pytest.mark.skip(
-    reason="Awaiting Phase 3 FEAT-ECON-* definitions. Tests use direct db.session mutations which are blocked by v2 FEAT-INTEGRITY enforcement."
-)
+import uuid
 from datetime import timedelta
-from decimal import Decimal
-from sqlalchemy.exc import IntegrityError
 
-from app.models import EconomicEngine, ClassFeature, ClassEconomy
+import pytest
+from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError, InternalError
+
+from app.models import EconomicEngine, ClassFeature
 from app.extensions import db
+from app.services.class_configuration_query_service import get_initial_economic_engine
+from app.services.context_resolver import CanonicalContext
+from app.feats.class_configuration.feat_class_004_feature_enablement import (
+    execute_enable_feature,
+    execute_disable_feature,
+)
+from app.feats.class_configuration.feat_class_005_economic_engine_evolution import (
+    execute_evolve_economic_engine,
+)
 from app.utils.canonical_temporal_resolver import (
     canonical_temporal_resolver,
-    CLASS_LEVEL_EVALUATION,
     SYSTEM_LEVEL_EVALUATION,
 )
 from tests.helpers.classroom_initializer import initialize
 
 
+# --------------------------------------------------------------------------- #
+# Fixtures / helpers
+# --------------------------------------------------------------------------- #
+
 @pytest.fixture
 def classroom(app):
     """Provision a canonical test classroom per SPEC-TEST-001.
 
-    Returns ProvisionedClassroom with:
-    - class_id, join_code, teacher_user, teacher_seat, economy, students[]
+    The ClassEconomy after_insert listener seeds exactly one root EconomicEngine
+    (previous_version_id IS NULL) and enables only the 'payroll' feature.
     """
     return initialize("chemistry_p1", app)
 
 
+def _now():
+    return canonical_temporal_resolver(
+        SYSTEM_LEVEL_EVALUATION, primitive="current_time"
+    ).canonical_now_utc
+
+
+def _ctx(classroom):
+    return CanonicalContext(
+        user_id=classroom.teacher_user.id,
+        class_id=classroom.class_id,
+        seat_id=classroom.teacher_seat.id,
+        actor_role="teacher",
+    )
+
+
+def _raw_insert_engine(class_id, *, version_id=None, mode="default",
+                       previous_version_id=None, **fields):
+    """Insert an economic_engine row via raw SQL, bypassing the ORM (and thus
+    FEAT-INTEGRITY) to probe DB-level constraints directly. Returns version id.
+
+    Raises the underlying DB error (IntegrityError / InternalError) on violation.
+    """
+    version_id = version_id or str(uuid.uuid4())
+    cols = {
+        "economic_version_id": version_id,
+        "class_id": class_id,
+        "economy_policy_mode": mode,
+        "previous_version_id": previous_version_id,
+        "created_at": _now(),
+    }
+    cols.update(fields)
+    col_names = ", ".join(cols.keys())
+    placeholders = ", ".join(f":{k}" for k in cols.keys())
+    db.session.execute(
+        text(f"INSERT INTO economic_engine ({col_names}) VALUES ({placeholders})"),
+        cols,
+    )
+    db.session.commit()
+    return version_id
+
+
+def _raw_insert_feature(class_id, feature, effective_at, *, economic_version_id=None):
+    """Insert a class_features row via raw SQL. Returns nothing; raises on violation."""
+    cols = {
+        "class_id": class_id,
+        "feature": feature,
+        "effective_at": effective_at,
+        "economic_version_id": economic_version_id,
+        "deleted_at": None,
+        "created_at": _now(),
+    }
+    col_names = ", ".join(cols.keys())
+    placeholders = ", ".join(f":{k}" for k in cols.keys())
+    db.session.execute(
+        text(f"INSERT INTO class_features ({col_names}) VALUES ({placeholders})"),
+        cols,
+    )
+    db.session.commit()
+
+
+# --------------------------------------------------------------------------- #
+# Invariant 2 & 7: EconomicEngine immutability
+# --------------------------------------------------------------------------- #
+
 class TestEconomicEngineImmutability:
-    """Verify EconomicEngine versions are immutable after creation."""
+    """Historical EconomicEngine versions are immutable after persistence."""
 
     def test_economic_engine_created_successfully(self, app, classroom):
-        """Test that EconomicEngine version can be created."""
+        """A configured engine version is created through the canonical evolution
+        FEAT and persists its field values."""
         with app.app_context():
-            version = EconomicEngine(
-                economic_version_id="v1",
-                class_id=classroom.class_id,
-                expected_weekly_hours=40.0,
-                interest_rate=Decimal("0.05"),
-                interest_calculation_type="simple",
-                economy_policy_mode="default",
-            )
-            db.session.add(version)
-            db.session.commit()
+            root = get_initial_economic_engine(classroom.class_id)
+            assert root is not None
 
-            retrieved = EconomicEngine.query.get("v1")
-            assert retrieved is not None
-            assert retrieved.expected_weekly_hours == 40.0
-            assert retrieved.interest_rate == Decimal("0.05")
-            assert retrieved.economy_policy_mode == "default"
+            result = execute_evolve_economic_engine(
+                canonical_context=_ctx(classroom),
+                class_id=classroom.class_id,
+                updates={
+                    "expected_weekly_hours": 40.0,
+                    "interest_rate": 0.05,
+                    "interest_calculation_type": "simple",
+                    "economy_policy_mode": "comfortable",
+                },
+                feature_list=["payroll"],  # only payroll is enabled by default
+                idempotency_key="phase2-create",
+            )
+            assert result.success is True, result.error_message
+
+            created = EconomicEngine.query.get(result.new_engine_id)
+            assert created is not None
+            assert float(created.expected_weekly_hours) == 40.0
+            assert float(created.interest_rate) == 0.05
+            assert created.interest_calculation_type == "simple"
+            assert created.economy_policy_mode == "comfortable"
 
     def test_economic_engine_prevents_field_modification(self, app, classroom):
-        """Test that SQLAlchemy event prevents modification of EconomicEngine fields."""
+        """An in-place UPDATE of a persisted engine row is rejected by the
+        append-only immutability trigger (invariant 2/7)."""
         with app.app_context():
-            version = EconomicEngine(
-                economic_version_id="v2",
-                class_id=classroom.class_id,
-                expected_weekly_hours=40.0,
-                economy_policy_mode="default",
-            )
-            db.session.add(version)
-            db.session.commit()
+            root = get_initial_economic_engine(classroom.class_id)
 
-            # Attempt to modify field should raise RuntimeError on commit
-            version.expected_weekly_hours = 50.0
-            with pytest.raises(RuntimeError, match="immutable"):
+            with pytest.raises(InternalError, match="immutable"):
+                db.session.execute(
+                    text("UPDATE economic_engine SET expected_weekly_hours = 50 "
+                         "WHERE economic_version_id = :v"),
+                    {"v": root.economic_version_id},
+                )
                 db.session.commit()
             db.session.rollback()
 
-    def test_economic_engine_can_set_field_before_commit(self, app, classroom):
-        """Test that fields can be set during construction, but not after commit."""
-        with app.app_context():
-            # Construction allows field setting
-            version = EconomicEngine(
-                economic_version_id="v3",
-                class_id=classroom.class_id,
-                expected_weekly_hours=40.0,
-                economy_policy_mode="default",
-            )
-            # Can set before commit
-            version.expected_weekly_hours = 45.0
-            db.session.add(version)
-            db.session.commit()
+            # Row is unchanged.
+            still = EconomicEngine.query.get(root.economic_version_id)
+            assert still.expected_weekly_hours == root.expected_weekly_hours
 
-            # But cannot modify after commit
-            version.expected_weekly_hours = 50.0
-            with pytest.raises(RuntimeError, match="immutable"):
-                db.session.commit()
-            db.session.rollback()
+    def test_economic_engine_mutation_path_is_new_version(self, app, classroom):
+        """The lawful way to 'change' configuration is a NEW version; the prior
+        version is left untouched (append-only lineage, invariant 3/7)."""
+        with app.app_context():
+            root = get_initial_economic_engine(classroom.class_id)
+            root_id = root.economic_version_id
+            root_mode = root.economy_policy_mode
+
+            result = execute_evolve_economic_engine(
+                canonical_context=_ctx(classroom),
+                class_id=classroom.class_id,
+                updates={"economy_policy_mode": "tight"},
+                feature_list=["payroll"],
+                idempotency_key="phase2-newversion",
+            )
+            assert result.success is True, result.error_message
+            assert result.new_engine_id != root_id
+
+            # Prior version is unchanged; new version carries the update and links back.
+            prior = EconomicEngine.query.get(root_id)
+            assert prior.economy_policy_mode == root_mode
+            new = EconomicEngine.query.get(result.new_engine_id)
+            assert new.economy_policy_mode == "tight"
+            assert new.previous_version_id == root_id
 
     def test_economic_engine_null_fields_preserved(self, app, classroom):
-        """Test that NULL configuration fields preserve 'not specified' semantics."""
+        """The seeded root engine preserves NULL 'not specified' banking fields."""
         with app.app_context():
-            version = EconomicEngine(
-                economic_version_id="v4",
-                class_id=classroom.class_id,
-                expected_weekly_hours=None,  # Not specified
-                interest_rate=None,  # Not specified
-                interest_calculation_type=None,
-                compound_frequency=None,
-                economy_policy_mode="default",
-            )
-            db.session.add(version)
-            db.session.commit()
+            root = get_initial_economic_engine(classroom.class_id)
+            assert root.interest_rate is None
+            assert root.interest_calculation_type is None
+            assert root.compound_frequency is None
+            assert root.interest_accrual_frequency is None
 
-            retrieved = EconomicEngine.query.get("v4")
-            assert retrieved.expected_weekly_hours is None
-            assert retrieved.interest_rate is None
-            assert retrieved.interest_calculation_type is None
-            assert retrieved.compound_frequency is None
 
+# --------------------------------------------------------------------------- #
+# Invariant 1, 3, 4: version chain integrity
+# --------------------------------------------------------------------------- #
 
 class TestEconomicEngineVersionChain:
-    """Verify version chain integrity and RESTRICT FK behavior."""
+    """Version chain integrity and deletion-prevention behavior."""
+
+    def test_exactly_one_root_per_class(self, app, classroom):
+        """A provisioned class has exactly one root engine (invariant 1)."""
+        with app.app_context():
+            roots = EconomicEngine.query.filter_by(
+                class_id=classroom.class_id, previous_version_id=None
+            ).all()
+            assert len(roots) == 1
+            initial = get_initial_economic_engine(classroom.class_id)
+            assert roots[0].economic_version_id == initial.economic_version_id
 
     def test_version_chain_creation(self, app, classroom):
-        """Test creating a chain of economic versions."""
+        """Successive evolutions build a same-class previous_version_id chain
+        (invariant 3), rooted at the single NULL-predecessor root."""
         with app.app_context():
-            # Version 1
-            v1 = EconomicEngine(
-                economic_version_id="v1",
-                class_id=classroom.class_id,
-                economy_policy_mode="default",
-                previous_version_id=None,
+            root = get_initial_economic_engine(classroom.class_id)
+            ctx = _ctx(classroom)
+
+            r1 = execute_evolve_economic_engine(
+                canonical_context=ctx, class_id=classroom.class_id,
+                updates={"economy_policy_mode": "comfortable"},
+                feature_list=["payroll"], idempotency_key="chain-1",
             )
-            db.session.add(v1)
-            db.session.commit()
+            assert r1.success is True, r1.error_message
 
-            # Version 2 (references v1)
-            v2 = EconomicEngine(
-                economic_version_id="v2",
-                class_id=classroom.class_id,
-                economy_policy_mode="comfortable",
-                previous_version_id="v1",
+            r2 = execute_evolve_economic_engine(
+                canonical_context=ctx, class_id=classroom.class_id,
+                updates={"economy_policy_mode": "tight"},
+                feature_list=["payroll"], idempotency_key="chain-2",
             )
-            db.session.add(v2)
-            db.session.commit()
+            assert r2.success is True, r2.error_message
 
-            # Version 3 (references v2)
-            v3 = EconomicEngine(
-                economic_version_id="v3",
-                class_id=classroom.class_id,
-                economy_policy_mode="tight",
-                previous_version_id="v2",
-            )
-            db.session.add(v3)
-            db.session.commit()
-
-            # Verify chain traversal
-            retrieved_v3 = EconomicEngine.query.get("v3")
-            assert retrieved_v3.previous_version_id == "v2"
-            retrieved_v2 = EconomicEngine.query.get(retrieved_v3.previous_version_id)
-            assert retrieved_v2.previous_version_id == "v1"
-            retrieved_v1 = EconomicEngine.query.get(retrieved_v2.previous_version_id)
-            assert retrieved_v1.previous_version_id is None
-
-    def test_restrict_constraint_prevents_deletion_of_referenced_version(self, app, classroom):
-        """Test that RESTRICT FK constraint prevents deletion of versions in use."""
-        with app.app_context():
-            v1 = EconomicEngine(
-                economic_version_id="v1",
-                class_id=classroom.class_id,
-                economy_policy_mode="default",
-            )
-            db.session.add(v1)
-            db.session.commit()
-
-            v2 = EconomicEngine(
-                economic_version_id="v2",
-                class_id=classroom.class_id,
-                economy_policy_mode="comfortable",
-                previous_version_id="v1",  # v2 references v1
-            )
-            db.session.add(v2)
-            db.session.commit()
-
-            # Attempt to delete v1 should fail (RESTRICT FK)
-            db.session.delete(v1)
-            with pytest.raises(IntegrityError):
-                db.session.commit()
-            db.session.rollback()
+            v3 = EconomicEngine.query.get(r2.new_engine_id)
+            v2 = EconomicEngine.query.get(v3.previous_version_id)
+            v1 = EconomicEngine.query.get(v2.previous_version_id)
+            assert v2.economic_version_id == r1.new_engine_id
+            assert v1.economic_version_id == root.economic_version_id
+            assert v1.previous_version_id is None
+            # Whole chain stays within the owning class.
+            for v in (v1, v2, v3):
+                assert v.class_id == classroom.class_id
 
     def test_first_version_has_null_previous_id(self, app, classroom):
-        """Test that first version has NULL previous_version_id."""
+        """The root version has a NULL previous_version_id (invariant 1/3)."""
         with app.app_context():
-            v1 = EconomicEngine(
-                economic_version_id="v1",
-                class_id=classroom.class_id,
-                economy_policy_mode="default",
-            )
-            db.session.add(v1)
-            db.session.commit()
+            root = get_initial_economic_engine(classroom.class_id)
+            assert root.previous_version_id is None
 
-            retrieved = EconomicEngine.query.get("v1")
-            assert retrieved.previous_version_id is None
+    def test_referenced_version_cannot_be_deleted(self, app, classroom):
+        """A version referenced by a later version cannot be deleted (invariant 4).
 
-    def test_cascade_delete_on_class_deletion(self, app, teacher):
-        """Test that deleting a class cascades to economic versions."""
+        Proximate enforcer is the append-only no_delete trigger, which subsumes
+        the RESTRICT foreign key (no historical version is deletable at all)."""
         with app.app_context():
-            # Create class
-            cls = ClassEconomy(
-                class_id="temp-class",
-                class_public_id="temp-public",
-                join_code="TEMP123",
-                teacher_user_id=teacher.id,
+            root = get_initial_economic_engine(classroom.class_id)
+            r = execute_evolve_economic_engine(
+                canonical_context=_ctx(classroom), class_id=classroom.class_id,
+                updates={"economy_policy_mode": "comfortable"},
+                feature_list=["payroll"], idempotency_key="restrict-1",
             )
-            db.session.add(cls)
-            db.session.commit()
+            assert r.success is True, r.error_message
 
-            # Create version
-            version = EconomicEngine(
-                economic_version_id="temp-v1",
-                class_id="temp-class",
-                economy_policy_mode="default",
+            with pytest.raises(InternalError, match="immutable"):
+                db.session.execute(
+                    text("DELETE FROM economic_engine WHERE economic_version_id = :v"),
+                    {"v": root.economic_version_id},
+                )
+                db.session.commit()
+            db.session.rollback()
+
+            assert EconomicEngine.query.get(root.economic_version_id) is not None
+
+    def test_same_class_lineage_enforced_by_composite_fk(self, app, classroom):
+        """previous_version_id must reference a version IN THE SAME CLASS.
+
+        The composite FK (class_id, previous_version_id) -> (class_id,
+        economic_version_id) rejects a raw INSERT whose previous_version_id names
+        a version id that does not exist under this class_id (invariant 3)."""
+        with app.app_context():
+            with pytest.raises(IntegrityError):
+                _raw_insert_engine(
+                    classroom.class_id,
+                    previous_version_id="nonexistent-version-id",
+                )
+            db.session.rollback()
+
+    def test_cascade_delete_on_class_deletion(self, app, classroom):
+        """Deleting a class through the CANONICAL universe-destruction boundary
+        physically removes its EconomicEngine history.
+
+        The append-only economic_engine_no_delete trigger is not an absolute bar:
+        it yields to the sanctioned session flag `cth.class_universe_destroying`.
+        The canonical hard-deletion path `_hard_delete_class_scope`
+        (app/routes/admin.py) runs `SET LOCAL cth.class_universe_destroying='on'`
+        and then deletes the `classes` row; the ondelete='CASCADE' foreign key on
+        `economic_engine.class_id` removes the owned engine versions, which the
+        trigger now permits. This test drives that exact boundary (flag + class
+        row delete) rather than a naive `DELETE FROM classes`."""
+        with app.app_context():
+            cid = classroom.class_id
+
+            # Grow the version chain so the cascade must remove root + child.
+            r = execute_evolve_economic_engine(
+                canonical_context=_ctx(classroom), class_id=cid,
+                updates={"economy_policy_mode": "comfortable"},
+                feature_list=["payroll"], idempotency_key="cascade-ee",
             )
-            db.session.add(version)
+            assert r.success is True, r.error_message
+            assert EconomicEngine.query.filter_by(class_id=cid).count() >= 2
+
+            # Canonical destruction boundary: authorize immutable-history deletion
+            # for this class universe, then delete the class row in the same
+            # transaction (CASCADE removes the engine versions).
+            db.session.execute(text("SET LOCAL cth.class_universe_destroying = 'on'"))
+            db.session.execute(
+                text("DELETE FROM classes WHERE class_id = :cid"), {"cid": cid}
+            )
             db.session.commit()
 
-            # Verify version exists
-            assert EconomicEngine.query.get("temp-v1") is not None
+            db.session.expire_all()
+            assert EconomicEngine.query.filter_by(class_id=cid).count() == 0
 
-            # Delete class
-            db.session.delete(cls)
-            db.session.commit()
 
-            # Verify version was cascaded
-            assert EconomicEngine.query.get("temp-v1") is None
-
+# --------------------------------------------------------------------------- #
+# Invariant 5 & 6: class_features append-only timeline
+# --------------------------------------------------------------------------- #
 
 class TestClassFeatureAppendOnly:
-    """Verify append-only class_features timeline semantics."""
+    """Append-only class_features timeline and effective-version resolution."""
 
     def test_multiple_feature_entries_same_class_feature(self, app, classroom):
-        """Test that multiple rows can exist for same class+feature (append-only)."""
+        """Enable then disable a feature: two append-only rows for the same
+        (class_id, feature) with distinct effective_at (invariant 5)."""
         with app.app_context():
-            now = canonical_temporal_resolver(
-            SYSTEM_LEVEL_EVALUATION,
-            primitive="current_time"
-        ).canonical_now_utc
+            ctx = _ctx(classroom)
+            root = get_initial_economic_engine(classroom.class_id)
 
-            # Entry 1: Enable feature at T0
-            f1 = ClassFeature(
-                class_id=classroom.class_id,
-                feature="banking",
-                economic_version_id="v1",
-                effective_at=now,
+            enabled = execute_enable_feature(
+                canonical_context=ctx, class_id=classroom.class_id,
+                feature="banking", economic_version_id=root.economic_version_id,
+                correlation_id="append-enable",
             )
-            db.session.add(f1)
-            db.session.commit()
+            assert enabled.success is True, enabled.error_message
 
-            # Entry 2: Disable feature at T1 (same class+feature, different effective_at)
-            f2 = ClassFeature(
-                class_id=classroom.class_id,
-                feature="banking",
-                economic_version_id=None,  # NULL = disabled
-                effective_at=now + timedelta(days=1),
+            disabled = execute_disable_feature(
+                canonical_context=ctx, class_id=classroom.class_id,
+                feature="banking", correlation_id="append-disable",
             )
-            db.session.add(f2)
-            db.session.commit()
+            assert disabled.success is True, disabled.error_message
 
-            # Query should return both entries
-            all_entries = ClassFeature.query.filter_by(
-                class_id=classroom.class_id,
-                feature="banking"
+            rows = ClassFeature.query.filter_by(
+                class_id=classroom.class_id, feature="banking"
             ).all()
-            assert len(all_entries) == 2
+            assert len(rows) == 2
 
     def test_composite_primary_key_uniqueness(self, app, classroom):
-        """Test that composite PK (class_id, feature, effective_at) enforces uniqueness."""
+        """Composite PK (class_id, feature, effective_at) rejects a duplicate row.
+
+        Probed at the DB boundary via raw SQL — INSERT is not intercepted by the
+        append-only triggers (which guard UPDATE/DELETE only)."""
         with app.app_context():
-            now = canonical_temporal_resolver(
-            SYSTEM_LEVEL_EVALUATION,
-            primitive="current_time"
-        ).canonical_now_utc
-
-            f1 = ClassFeature(
-                class_id=classroom.class_id,
-                feature="banking",
-                economic_version_id="v1",
-                effective_at=now,
+            root = get_initial_economic_engine(classroom.class_id)
+            at = _now()
+            _raw_insert_feature(
+                classroom.class_id, "banking", at,
+                economic_version_id=root.economic_version_id,
             )
-            db.session.add(f1)
-            db.session.commit()
-
-            # Try to insert duplicate (same class_id, feature, effective_at)
-            f2 = ClassFeature(
-                class_id=classroom.class_id,
-                feature="banking",
-                economic_version_id="v2",
-                effective_at=now,  # Same effective_at
-            )
-            db.session.add(f2)
-
             with pytest.raises(IntegrityError):
-                db.session.commit()
+                _raw_insert_feature(
+                    classroom.class_id, "banking", at,
+                    economic_version_id=root.economic_version_id,
+                )
             db.session.rollback()
 
-    def test_enabled_names_for_class_latest_only(self, app, classroom):
-        """Test that enabled_names_for_class returns only latest enabled features."""
+    def test_effective_version_resolution_latest_enabled(self, app, classroom):
+        """enabled_names_for_class resolves the latest effective row per feature
+        (invariant 6). Evolving banking to a new version keeps it enabled."""
         with app.app_context():
-            now = canonical_temporal_resolver(
-            SYSTEM_LEVEL_EVALUATION,
-            primitive="current_time"
-        ).canonical_now_utc
-            version1_id = "v1"
-            version2_id = "v2"
+            ctx = _ctx(classroom)
+            root = get_initial_economic_engine(classroom.class_id)
 
-            # Create versions
-            v1 = EconomicEngine(
-                economic_version_id=version1_id,
-                class_id=classroom.class_id,
-                economy_policy_mode="default",
+            enabled = execute_enable_feature(
+                canonical_context=ctx, class_id=classroom.class_id,
+                feature="banking", economic_version_id=root.economic_version_id,
+                correlation_id="resolve-enable",
             )
-            v2 = EconomicEngine(
-                economic_version_id=version2_id,
-                class_id=classroom.class_id,
-                economy_policy_mode="default",
+            assert enabled.success is True, enabled.error_message
+
+            # Evolve: append a later banking row linked to a new engine version.
+            evolved = execute_evolve_economic_engine(
+                canonical_context=ctx, class_id=classroom.class_id,
+                updates={"economy_policy_mode": "comfortable"},
+                feature_list=["banking"], idempotency_key="resolve-evolve",
             )
-            db.session.add(v1)
-            db.session.add(v2)
-            db.session.commit()
+            assert evolved.success is True, evolved.error_message
 
-            # Enable banking at T0 with v1
-            f1 = ClassFeature(
-                class_id=classroom.class_id,
-                feature="banking",
-                economic_version_id=version1_id,
-                effective_at=now,
+            names = ClassFeature.enabled_names_for_class(classroom.class_id)
+            assert "banking" in names
+            # The resolved banking row points at the newest engine version.
+            latest = (
+                ClassFeature.query.filter_by(
+                    class_id=classroom.class_id, feature="banking"
+                )
+                .order_by(ClassFeature.effective_at.desc())
+                .first()
             )
-            db.session.add(f1)
-            db.session.commit()
+            assert latest.economic_version_id == evolved.new_engine_id
 
-            # Enable payroll at T0 (no version = disabled)
-            f2 = ClassFeature(
-                class_id=classroom.class_id,
-                feature="payroll",
-                economic_version_id=None,
-                effective_at=now,
-            )
-            db.session.add(f2)
-            db.session.commit()
-
-            # Re-enable banking at T1 with v2 (overwrites previous)
-            f3 = ClassFeature(
-                class_id=classroom.class_id,
-                feature="banking",
-                economic_version_id=version2_id,
-                effective_at=now + timedelta(days=1),
-            )
-            db.session.add(f3)
-            db.session.commit()
-
-            # Query enabled features
-            enabled = ClassFeature.enabled_names_for_class(classroom.class_id)
-
-            # Should only include banking (latest enabled)
-            assert "banking" in enabled
-            assert "payroll" not in enabled
-
-    def test_enabled_names_for_class_respects_null_version_id(self, app, classroom):
-        """Test that features with NULL economic_version_id are treated as disabled."""
+    def test_disabled_feature_excluded_from_resolution(self, app, classroom):
+        """A feature whose latest row is a disablement (NULL version) is excluded
+        from enabled resolution (invariant 6)."""
         with app.app_context():
-            now = canonical_temporal_resolver(
-            SYSTEM_LEVEL_EVALUATION,
-            primitive="current_time"
-        ).canonical_now_utc
-            version_id = "v1"
+            ctx = _ctx(classroom)
+            root = get_initial_economic_engine(classroom.class_id)
 
-            v1 = EconomicEngine(
-                economic_version_id=version_id,
-                class_id=classroom.class_id,
-                economy_policy_mode="default",
+            execute_enable_feature(
+                canonical_context=ctx, class_id=classroom.class_id,
+                feature="store", economic_version_id=root.economic_version_id,
+                correlation_id="disabled-enable",
             )
-            db.session.add(v1)
-            db.session.commit()
-
-            # Add feature with NULL economic_version_id
-            f1 = ClassFeature(
-                class_id=classroom.class_id,
-                feature="store",
-                economic_version_id=None,
-                effective_at=now,
+            execute_disable_feature(
+                canonical_context=ctx, class_id=classroom.class_id,
+                feature="store", correlation_id="disabled-disable",
             )
-            db.session.add(f1)
-            db.session.commit()
+            names = ClassFeature.enabled_names_for_class(classroom.class_id)
+            assert "store" not in names
 
-            enabled = ClassFeature.enabled_names_for_class(classroom.class_id)
-            assert "store" not in enabled
-
-    def test_enabled_names_for_class_empty_when_no_entries(self, app, classroom):
-        """Test that enabled_names_for_class returns empty set when no entries exist."""
+    def test_enabled_names_empty_for_unknown_class(self, app, classroom):
+        """A class with no feature history resolves to an empty enabled set."""
         with app.app_context():
-            enabled = ClassFeature.enabled_names_for_class(classroom.class_id)
-            assert enabled == set()
+            assert ClassFeature.enabled_names_for_class(str(uuid.uuid4())) == set()
 
-    def test_enabled_names_for_class_cascade_delete_on_version(self, app, classroom):
-        """Test that deleting an economic version with RESTRICT prevents deletion."""
+    def test_default_seed_enables_only_payroll(self, app, classroom):
+        """The canonical seed enables exactly 'payroll' at provision time
+        (invariant 5/6 baseline)."""
         with app.app_context():
-            now = canonical_temporal_resolver(
-            SYSTEM_LEVEL_EVALUATION,
-            primitive="current_time"
-        ).canonical_now_utc
-            version_id = "v1"
+            names = ClassFeature.enabled_names_for_class(classroom.class_id)
+            assert names == {"payroll"}
 
-            v1 = EconomicEngine(
-                economic_version_id=version_id,
-                class_id=classroom.class_id,
-                economy_policy_mode="default",
-            )
-            db.session.add(v1)
-            db.session.commit()
 
-            # Add feature referencing version
-            f1 = ClassFeature(
-                class_id=classroom.class_id,
-                feature="banking",
-                economic_version_id=version_id,
-                effective_at=now,
-            )
-            db.session.add(f1)
-            db.session.commit()
-
-            # Attempt to delete version should fail (RESTRICT FK)
-            db.session.delete(v1)
-            with pytest.raises(IntegrityError):
-                db.session.commit()
-            db.session.rollback()
-
+# --------------------------------------------------------------------------- #
+# EconomicEngine CHECK constraints (persistence enforcement via raw SQL)
+# --------------------------------------------------------------------------- #
 
 class TestEconomicEngineCheckConstraints:
-    """Verify all check constraints are enforced."""
+    """DB CHECK constraints reject illegal engine rows. Probed at the DB boundary
+    with raw SQL because canonical producers never emit illegal values."""
 
     def test_economy_policy_mode_valid_values(self, app, classroom):
-        """Test that economy_policy_mode accepts only valid values."""
         with app.app_context():
-            # Valid values
-            for mode in ["tight", "default", "comfortable"]:
-                v = EconomicEngine(
-                    economic_version_id=f"v-{mode}",
-                    class_id=classroom.class_id,
-                    economy_policy_mode=mode,
-                )
-                db.session.add(v)
-            db.session.commit()
-
-            # Invalid value
-            v_invalid = EconomicEngine(
-                economic_version_id="v-invalid",
-                class_id=classroom.class_id,
-                economy_policy_mode="invalid_mode",
-            )
-            db.session.add(v_invalid)
+            for mode in ("tight", "default", "comfortable"):
+                _raw_insert_engine(classroom.class_id, mode=mode)
             with pytest.raises(IntegrityError):
-                db.session.commit()
+                _raw_insert_engine(classroom.class_id, mode="invalid_mode")
             db.session.rollback()
 
     def test_interest_rate_range_constraint(self, app, classroom):
-        """Test that interest_rate is between 0 and 1.0."""
         with app.app_context():
-            # Valid rates
-            for rate in [Decimal("0.00"), Decimal("0.05"), Decimal("1.0")]:
-                v = EconomicEngine(
-                    economic_version_id=f"v-{rate}",
-                    class_id=classroom.class_id,
-                    interest_rate=rate,
-                    economy_policy_mode="default",
-                )
-                db.session.add(v)
-            db.session.commit()
-
-            # Invalid rate (too high)
-            v_invalid = EconomicEngine(
-                economic_version_id="v-invalid",
-                class_id=classroom.class_id,
-                interest_rate=Decimal("1.5"),
-                economy_policy_mode="default",
-            )
-            db.session.add(v_invalid)
+            for rate in (0.0, 0.05, 1.0):
+                _raw_insert_engine(classroom.class_id, interest_rate=rate)
             with pytest.raises(IntegrityError):
-                db.session.commit()
+                _raw_insert_engine(classroom.class_id, interest_rate=1.5)
             db.session.rollback()
 
     def test_interest_rate_null_allowed(self, app, classroom):
-        """Test that interest_rate can be NULL (not specified)."""
         with app.app_context():
-            v = EconomicEngine(
-                economic_version_id="v-null",
-                class_id=classroom.class_id,
-                interest_rate=None,
-                economy_policy_mode="default",
-            )
-            db.session.add(v)
-            db.session.commit()
-
-            retrieved = EconomicEngine.query.get("v-null")
-            assert retrieved.interest_rate is None
+            vid = _raw_insert_engine(classroom.class_id, interest_rate=None)
+            assert EconomicEngine.query.get(vid).interest_rate is None
 
     def test_expected_weekly_hours_positive_constraint(self, app, classroom):
-        """Test that expected_weekly_hours must be positive."""
         with app.app_context():
-            # Valid hours
-            v = EconomicEngine(
-                economic_version_id="v-valid",
-                class_id=classroom.class_id,
-                expected_weekly_hours=40.0,
-                economy_policy_mode="default",
-            )
-            db.session.add(v)
-            db.session.commit()
-
-            # Invalid hours (zero)
-            v_zero = EconomicEngine(
-                economic_version_id="v-zero",
-                class_id=classroom.class_id,
-                expected_weekly_hours=0.0,
-                economy_policy_mode="default",
-            )
-            db.session.add(v_zero)
+            _raw_insert_engine(classroom.class_id, expected_weekly_hours=40.0)
             with pytest.raises(IntegrityError):
-                db.session.commit()
+                _raw_insert_engine(classroom.class_id, expected_weekly_hours=0.0)
             db.session.rollback()
 
     def test_expected_weekly_hours_null_allowed(self, app, classroom):
-        """Test that expected_weekly_hours can be NULL (not specified)."""
         with app.app_context():
-            v = EconomicEngine(
-                economic_version_id="v-null",
-                class_id=classroom.class_id,
-                expected_weekly_hours=None,
-                economy_policy_mode="default",
-            )
-            db.session.add(v)
-            db.session.commit()
-
-            retrieved = EconomicEngine.query.get("v-null")
-            assert retrieved.expected_weekly_hours is None
+            vid = _raw_insert_engine(classroom.class_id, expected_weekly_hours=None)
+            assert EconomicEngine.query.get(vid).expected_weekly_hours is None
 
     def test_interest_calculation_type_constraint(self, app, classroom):
-        """Test that interest_calculation_type is simple or compound."""
         with app.app_context():
-            # Valid types
-            for calc_type in ["simple", "compound"]:
-                v = EconomicEngine(
-                    economic_version_id=f"v-{calc_type}",
-                    class_id=classroom.class_id,
-                    interest_calculation_type=calc_type,
-                    economy_policy_mode="default",
-                )
-                db.session.add(v)
-            db.session.commit()
-
-            # Invalid type
-            v_invalid = EconomicEngine(
-                economic_version_id="v-invalid",
-                class_id=classroom.class_id,
-                interest_calculation_type="invalid",
-                economy_policy_mode="default",
-            )
-            db.session.add(v_invalid)
+            for calc in ("simple", "compound"):
+                _raw_insert_engine(classroom.class_id, interest_calculation_type=calc)
             with pytest.raises(IntegrityError):
-                db.session.commit()
+                _raw_insert_engine(classroom.class_id, interest_calculation_type="invalid")
             db.session.rollback()
 
     def test_compound_frequency_constraint(self, app, classroom):
-        """Test that compound_frequency is daily, weekly, monthly, or NULL."""
         with app.app_context():
-            # Valid frequencies
-            for freq in ["daily", "weekly", "monthly"]:
-                v = EconomicEngine(
-                    economic_version_id=f"v-{freq}",
-                    class_id=classroom.class_id,
-                    compound_frequency=freq,
-                    economy_policy_mode="default",
-                )
-                db.session.add(v)
-            db.session.commit()
-
-            # Invalid frequency
-            v_invalid = EconomicEngine(
-                economic_version_id="v-invalid",
-                class_id=classroom.class_id,
-                compound_frequency="quarterly",
-                economy_policy_mode="default",
-            )
-            db.session.add(v_invalid)
+            for freq in ("never", "daily", "weekly", "monthly"):
+                _raw_insert_engine(classroom.class_id, compound_frequency=freq)
             with pytest.raises(IntegrityError):
-                db.session.commit()
+                _raw_insert_engine(classroom.class_id, compound_frequency="quarterly")
             db.session.rollback()
 
     def test_interest_accrual_frequency_constraint(self, app, classroom):
-        """Test that interest_accrual_frequency is daily, weekly, monthly, or NULL."""
         with app.app_context():
-            # Valid frequencies
-            for freq in ["daily", "weekly", "monthly"]:
-                v = EconomicEngine(
-                    economic_version_id=f"v-accrual-{freq}",
-                    class_id=classroom.class_id,
-                    interest_accrual_frequency=freq,
-                    economy_policy_mode="default",
-                )
-                db.session.add(v)
-            db.session.commit()
-
-            # Invalid frequency
-            v_invalid = EconomicEngine(
-                economic_version_id="v-accrual-invalid",
-                class_id=classroom.class_id,
-                interest_accrual_frequency="hourly",
-                economy_policy_mode="default",
-            )
-            db.session.add(v_invalid)
+            for freq in ("daily", "weekly", "monthly"):
+                _raw_insert_engine(classroom.class_id, interest_accrual_frequency=freq)
             with pytest.raises(IntegrityError):
-                db.session.commit()
+                _raw_insert_engine(classroom.class_id, interest_accrual_frequency="hourly")
             db.session.rollback()
 
     def test_interest_payout_frequency_constraint(self, app, classroom):
-        """Test that interest_payout_frequency is weekly or monthly."""
         with app.app_context():
-            # Valid frequencies
-            for freq in ["weekly", "monthly"]:
-                v = EconomicEngine(
-                    economic_version_id=f"v-payout-{freq}",
-                    class_id=classroom.class_id,
-                    interest_payout_frequency=freq,
-                    economy_policy_mode="default",
-                )
-                db.session.add(v)
-            db.session.commit()
-
-            # Invalid frequency (daily not allowed for payout)
-            v_invalid = EconomicEngine(
-                economic_version_id="v-payout-daily",
-                class_id=classroom.class_id,
-                interest_payout_frequency="daily",
-                economy_policy_mode="default",
-            )
-            db.session.add(v_invalid)
+            for freq in ("weekly", "monthly"):
+                _raw_insert_engine(classroom.class_id, interest_payout_frequency=freq)
             with pytest.raises(IntegrityError):
-                db.session.commit()
+                _raw_insert_engine(classroom.class_id, interest_payout_frequency="daily")
             db.session.rollback()
 
+
+# --------------------------------------------------------------------------- #
+# class_features CHECK constraints
+# --------------------------------------------------------------------------- #
 
 class TestClassFeatureCheckConstraints:
-    """Verify class_features check constraints."""
+    """DB CHECK constraint on class_features.feature."""
 
     def test_feature_valid_values(self, app, classroom):
-        """Test that feature column accepts only valid feature names."""
         with app.app_context():
-            now = canonical_temporal_resolver(
-            SYSTEM_LEVEL_EVALUATION,
-            primitive="current_time"
-        ).canonical_now_utc
-            valid_features = ['payroll', 'insurance', 'banking', 'rent', 'hall_pass', 'store']
-
-            for feature in valid_features:
-                f = ClassFeature(
-                    class_id=classroom.class_id,
-                    feature=feature,
-                    economic_version_id=None,
-                    effective_at=now + timedelta(seconds=len(feature)),
+            base = _now()
+            valid = ["payroll", "insurance", "banking", "rent", "hall_pass", "store"]
+            for i, feature in enumerate(valid):
+                # payroll already exists at seed time; use distinct effective_at
+                # per feature to avoid PK collisions with the seed row.
+                _raw_insert_feature(
+                    classroom.class_id, feature,
+                    base + timedelta(seconds=i + 1),
                 )
-                db.session.add(f)
-            db.session.commit()
-
-            # Invalid feature
-            f_invalid = ClassFeature(
-                class_id=classroom.class_id,
-                feature="invalid_feature",
-                effective_at=now + timedelta(hours=1),
-            )
-            db.session.add(f_invalid)
             with pytest.raises(IntegrityError):
-                db.session.commit()
+                _raw_insert_feature(
+                    classroom.class_id, "invalid_feature",
+                    base + timedelta(hours=1),
+                )
             db.session.rollback()
 
-    def test_cascade_delete_on_class_deletion(self, app, teacher):
-        """Test that deleting a class cascades to class_features."""
+    def test_cascade_delete_on_class_deletion(self, app, classroom):
+        """Deleting a class through the CANONICAL universe-destruction boundary
+        physically removes its ClassFeature history.
+
+        As with EconomicEngine, the class_features_no_delete append-only trigger
+        yields to the sanctioned `cth.class_universe_destroying='on'` flag that the
+        canonical hard-deletion path (`_hard_delete_class_scope`) sets before
+        deleting the `classes` row; the ondelete='CASCADE' foreign key on
+        `class_features.class_id` then removes the owned feature rows."""
         with app.app_context():
-            cls = ClassEconomy(
-                class_id="temp-cls",
-                class_public_id="temp-pub",
-                join_code="TEMP456",
-                teacher_user_id=teacher.id,
+            cid = classroom.class_id
+            ctx = _ctx(classroom)
+
+            # Append a second feature so the cascade must remove more than the
+            # seeded 'payroll' row.
+            root = get_initial_economic_engine(cid)
+            enabled = execute_enable_feature(
+                canonical_context=ctx, class_id=cid, feature="banking",
+                economic_version_id=root.economic_version_id,
+                correlation_id="cascade-cf",
             )
-            db.session.add(cls)
-            db.session.commit()
+            assert enabled.success is True, enabled.error_message
+            assert ClassFeature.query.filter_by(class_id=cid).count() >= 2
 
-            f = ClassFeature(
-                class_id="temp-cls",
-                feature="banking",
-                economic_version_id=None,
-                effective_at=canonical_temporal_resolver(
-                    SYSTEM_LEVEL_EVALUATION,
-                    primitive="current_time"
-                ).canonical_now_utc,
+            # Canonical destruction boundary: authorize immutable-history deletion,
+            # then delete the class row (CASCADE removes the feature rows).
+            db.session.execute(text("SET LOCAL cth.class_universe_destroying = 'on'"))
+            db.session.execute(
+                text("DELETE FROM classes WHERE class_id = :cid"), {"cid": cid}
             )
-            db.session.add(f)
             db.session.commit()
 
-            # Verify feature exists
-            count = ClassFeature.query.filter_by(class_id="temp-cls").count()
-            assert count == 1
+            db.session.expire_all()
+            assert ClassFeature.query.filter_by(class_id=cid).count() == 0
 
-            # Delete class
-            db.session.delete(cls)
-            db.session.commit()
 
-            # Verify feature was cascaded
-            count = ClassFeature.query.filter_by(class_id="temp-cls").count()
-            assert count == 0
-
+# --------------------------------------------------------------------------- #
+# Phase 2d / 2a migration verification (query-only, unchanged)
+# --------------------------------------------------------------------------- #
 
 class TestPhase2dImmutability:
-    """Tests for Phase 2d database-level immutability enforcement.
-
-    Note: v2 FEAT-INTEGRITY enforcement requires all mutations through FEAT contexts.
-    Direct DB mutation tests would need Phase 3 FEAT-ECON-* definitions.
-    These tests verify the migration was applied and the code changes compile correctly.
-    """
+    """Verify Phase 2d database-level immutability triggers are present."""
 
     def test_immutability_triggers_created(self, app):
-        """Verify that immutability TRIGGERs exist on economic_engine and class_features.
-
-        This test confirms Phase 2d migration executed successfully without directly
-        testing TRIGGER behavior (which requires FEAT-wrapped mutations in v2).
-        """
         with app.app_context():
-            # Query database to verify TRIGGERs were created
             conn = db.engine.raw_connection()
             cursor = conn.cursor()
-
-            # Check for economic_engine triggers
             cursor.execute(
                 "SELECT trigger_name FROM information_schema.triggers "
                 "WHERE trigger_name IN ('economic_engine_no_update', 'economic_engine_no_delete')"
             )
             ee_triggers = {row[0] for row in cursor.fetchall()}
-            assert 'economic_engine_no_update' in ee_triggers, "economic_engine_no_update TRIGGER should exist"
-            assert 'economic_engine_no_delete' in ee_triggers, "economic_engine_no_delete TRIGGER should exist"
+            assert 'economic_engine_no_update' in ee_triggers
+            assert 'economic_engine_no_delete' in ee_triggers
 
-            # Check for class_features triggers
             cursor.execute(
                 "SELECT trigger_name FROM information_schema.triggers "
                 "WHERE trigger_name IN ('class_features_no_update', 'class_features_no_delete')"
             )
             cf_triggers = {row[0] for row in cursor.fetchall()}
-            assert 'class_features_no_update' in cf_triggers, "class_features_no_update TRIGGER should exist"
-            assert 'class_features_no_delete' in cf_triggers, "class_features_no_delete TRIGGER should exist"
+            assert 'class_features_no_update' in cf_triggers
+            assert 'class_features_no_delete' in cf_triggers
 
             cursor.close()
             conn.close()
 
     def test_timeline_query_uses_temporal_resolver(self, app):
-        """Verify that enabled_names_for_class uses canonical_temporal_resolver.
-
-        This test confirms the timeline query fix was applied (effective_at <= current_time filter).
-        Full behavior testing requires Phase 3 FEAT-ECON-* and FEAT-INTEGRITY-aware test setup.
-        """
         with app.app_context():
-            # Verify the method exists and is callable
             assert hasattr(ClassFeature, 'enabled_names_for_class')
             assert callable(ClassFeature.enabled_names_for_class)
-
-            # Call with a non-existent class_id should return empty set (not crash)
             result = ClassFeature.enabled_names_for_class("non-existent-class")
             assert isinstance(result, set)
-            assert len(result) == 0, "Non-existent class should have no enabled features"
+            assert len(result) == 0
 
 
 class TestPhase2aMigration:
-    """Tests for Phase 2a migration fixes: conn variable scope and interest_payout_frequency preservation.
-
-    Per Phase A Step 1 execution plan:
-    1. Verify fresh DB bootstrap doesn't crash (conn variable available in all steps)
-    2. Verify interest_payout_frequency column exists and can be queried
-
-    Note: These tests verify the MIGRATION ran successfully, not that classroom initialization
-    creates EconomicEngine versions (that's Phase 2d work).
-    """
+    """Verify Phase 2a migration produced a queryable economic_engine table."""
 
     def test_economic_engine_table_exists_and_is_queryable(self, app):
-        """Test that economic_engine table was created and is queryable (verifies conn available).
-
-        This indirectly verifies that the migration didn't crash on NameError when accessing conn
-        in STEP 3, which would happen if conn was only defined inside STEP 2 conditional.
-
-        The migration defines conn = op.get_bind() at the top of upgrade(), making it available
-        for STEP 1 (create table), STEP 2 (migrate data), STEP 3 (restructure class_features),
-        and STEP 4 (update classes table).
-        """
         with app.app_context():
-            # Simply querying should succeed; the table exists (or migration would have failed)
-            # If conn was undefined in STEP 3, migration would have crashed with NameError
-            versions = EconomicEngine.query.all()  # Query all versions (may be empty on fresh DB)
-            # Success: table exists and is queryable, migration didn't crash
-            assert isinstance(versions, list), "EconomicEngine should be queryable"
+            versions = EconomicEngine.query.all()
+            assert isinstance(versions, list)
 
     def test_economic_engine_interest_payout_frequency_column_exists(self, app):
-        """Test that interest_payout_frequency column exists (verifies interest preservation in migration).
-
-        Verifies the migration SELECT includes bs.interest_schedule_type and the INSERT
-        correctly includes interest_payout_frequency (not hardcoded as NULL or missing).
-
-        If migration SELECT didn't include bs.interest_schedule_type, the INSERT would either:
-        1. Missing interest_payout_frequency column in schema
-        2. Interest_payout_frequency hardcoded as NULL without preservation
-
-        This test verifies the column exists and can be queried.
-        """
         with app.app_context():
-            # Verify EconomicEngine ORM model includes interest_payout_frequency attribute
-            assert hasattr(EconomicEngine, 'interest_payout_frequency'), \
-                "EconomicEngine should have interest_payout_frequency column"
-
-            # Verify we can query for interest_payout_frequency without error
-            # (This will be empty on fresh DB, but tests that the column exists)
+            assert hasattr(EconomicEngine, 'interest_payout_frequency')
             test_query = EconomicEngine.query.filter(
                 EconomicEngine.interest_payout_frequency.in_(['weekly', 'monthly'])
             ).all()
-            assert isinstance(test_query, list), \
-                "Should be able to query interest_payout_frequency column"
+            assert isinstance(test_query, list)
