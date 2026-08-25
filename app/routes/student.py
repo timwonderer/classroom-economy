@@ -105,7 +105,7 @@ from app.services.recovery_service import (
     set_recovery_code_verified,
 )
 from app.services.classroom_setup import create_student_user_for_seat
-from app.feats.base import requires_feat_context
+from app.feats.base import requires_feat_context, FEATContext
 from app.feats.rent_payment_feat import execute_rent_payment
 from app.feats.transfer_feat import execute_account_transfer
 from app.feats.store_purchase_feat import execute_store_purchase
@@ -3637,7 +3637,6 @@ def report_attendance_session_issue(attendance_session_id):
 
 @student_bp.route('/verify-recovery/<int:code_id>', methods=['GET', 'POST'])
 @login_required
-@requires_feat_context("FEAT-IDEN-002")
 def verify_recovery(code_id):
     """
     Student verification page for teacher account recovery.
@@ -3686,11 +3685,15 @@ def verify_recovery(code_id):
         # Generate 6-digit recovery code using cryptographically secure randomness
         code = ''.join([str(secrets.randbelow(10)) for _ in range(6)])
 
-        # Hash and store the code
+        # Hash and store the code. FEAT-IDEN-002 is HIGH blast radius and requires an
+        # idempotency_key, so it cannot ride the bare @requires_feat_context route
+        # decorator (which passes no key and fails fatally on entry). Open the FEAT inline
+        # with a deterministic key.
         verified_at = utc_now()
-        set_recovery_code_verified(code_id, hash_hmac(code.encode(), b''), verified_at)
-        recovery_code.code_hash = "verified"
-        recovery_code.verified_at = verified_at
+        with FEATContext("FEAT-IDEN-002", idempotency_key=f"feat:iden-002:verify-recovery:{code_id}"):
+            set_recovery_code_verified(code_id, hash_hmac(code.encode(), b''), verified_at)
+            recovery_code.code_hash = "verified"
+            recovery_code.verified_at = verified_at
 
         current_app.logger.info(f"Student {student.id} verified recovery request {recovery_code.recovery_request_id}")
 
@@ -3707,7 +3710,6 @@ def verify_recovery(code_id):
 
 @student_bp.route('/dismiss-recovery/<int:code_id>', methods=['POST'])
 @login_required
-@requires_feat_context("FEAT-IDEN-002")
 def dismiss_recovery(code_id):
     """
     Dismiss the recovery notification banner.
@@ -3721,8 +3723,11 @@ def dismiss_recovery(code_id):
         flash("Invalid recovery request.", "error")
         return redirect(url_for('student.dashboard'))
 
-    # Mark as dismissed
-    dismiss_recovery_code_row(code_id)
+    # Mark as dismissed. FEAT-IDEN-002 is HIGH blast radius and requires an
+    # idempotency_key, so open it inline with a deterministic key rather than via the bare
+    # route decorator.
+    with FEATContext("FEAT-IDEN-002", idempotency_key=f"feat:iden-002:dismiss-recovery:{code_id}"):
+        dismiss_recovery_code_row(code_id)
 
     flash("Recovery notification dismissed. You can still verify later from your notifications.", "info")
     return redirect(url_for('student.dashboard'))

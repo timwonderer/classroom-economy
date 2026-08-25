@@ -148,7 +148,6 @@ def create_sysadmin_command(username):
 
     # The FEAT context owns the atomic commit boundary; the CLI only renders the
     # generated credentials after the FEAT has completed successfully.
-    db.session.commit()
 
     click.echo(f"\nSystem admin '{username}' created successfully.")
     click.echo("\n" + "=" * 70)
