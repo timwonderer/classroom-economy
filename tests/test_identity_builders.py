@@ -122,11 +122,12 @@ class TestAdminLayoutContextView:
         assert view.class_join_code == "ABC123"
         assert view.class_timezone == "America/Chicago"
 
-    def test_utc_timezone_becomes_empty_string(self):
-        """UTC timezone → empty string, so data-timezone attr is empty (JS shows fallback msg)."""
-        ctx = {"class_identifier": "P1", "join_code": "X1", "class_timezone": "UTC"}
+    def test_confirmed_utc_timezone_passes_through(self):
+        """A confirmed UTC class stores 'Etc/UTC' and must render its clock — it is
+        a real, deliberate choice, not the placeholder that used to be blanked out."""
+        ctx = {"class_identifier": "P1", "join_code": "X1", "class_timezone": "Etc/UTC"}
         view = build_admin_layout_context_view("Teacher", ctx)
-        assert view.class_timezone == ""
+        assert view.class_timezone == "Etc/UTC"
 
     def test_missing_timezone_key_becomes_empty_string(self):
         ctx = {"class_identifier": "P1", "join_code": "X1"}

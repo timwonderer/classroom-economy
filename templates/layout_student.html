@@ -96,8 +96,7 @@
                     <div class="sidebar-scope-time class-scoped-time"
                         id="student-class-time"
                         data-timezone="{{ student_layout_view.class_timezone }}"
-                        data-empty-message="No classes yet. Official class time will appear after class access is added."
-                        data-unset-message="Official class time zone not set yet.">
+                        data-empty-message="No classes yet. Official class time will appear after class access is added.">
                     </div>
                     {% if student_layout_view.has_class_context %}
                     <div class="sidebar-scope-name">
@@ -270,10 +269,11 @@
             document.querySelectorAll('.class-scoped-time').forEach((timeElement) => {
                 const timezone = (timeElement.dataset.timezone || '').trim();
                 const emptyMessage = timeElement.dataset.emptyMessage || '';
-                const unsetMessage = timeElement.dataset.unsetMessage || '';
 
+                // A class is always born with a confirmed IANA timezone. An empty
+                // value here means there is no active class yet, not an unset zone.
                 if (!timezone) {
-                    timeElement.textContent = unsetMessage || emptyMessage;
+                    timeElement.textContent = emptyMessage;
                     return;
                 }
 

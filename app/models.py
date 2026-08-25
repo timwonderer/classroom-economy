@@ -309,13 +309,10 @@ class ClassEconomy(db.Model):
         index=True,
     )
     display_name = db.Column(db.String(100), nullable=True)
-    # Blank/NULL until the teacher confirms a timezone. A NULL value is the
-    # single canonical "unset" sentinel (see _class_timezone_needs_confirmation
-    # and the admin_students.html confirmation modal). Do NOT default to a
-    # placeholder like 'UTC' — that made an unconfirmed class indistinguishable
-    # from a class the teacher deliberately set to UTC, which caused the
-    # timezone-confirmation loop. Confirmed-UTC is persisted as 'Etc/UTC'.
-    class_timezone = db.Column(db.String(64), nullable=True)
+    # A class is born with a confirmed IANA timezone (required at creation via
+    # canonicalize_class_timezone in app/services/classroom_setup.py). It is
+    # NOT NULL and immutable once set. Confirmed-UTC is persisted as 'Etc/UTC'.
+    class_timezone = db.Column(db.String(64), nullable=False)
     created_at = db.Column(db.DateTime(timezone=True), default=utc_now, nullable=False)
 
     features = db.relationship('ClassFeature', backref='class_economy', cascade='all, delete-orphan', lazy='dynamic')
@@ -337,7 +334,7 @@ class ClassEconomy(db.Model):
     @validates("class_timezone")
     def validate_class_timezone(self, _key, value):
         if value is None:
-            return None
+            raise ValueError("Class timezone is required.")
         normalized = value.strip()
         if normalized not in pytz.all_timezones_set:
             raise ValueError("Class timezone must be a valid IANA timezone.")
@@ -346,18 +343,11 @@ class ClassEconomy(db.Model):
 
 @event.listens_for(ClassEconomy, "before_update")
 def prevent_class_timezone_mutation(_mapper, _connection, target):
-    state = sa.inspect(target)
-    history = state.attrs.class_timezone.history
-    if not history.has_changes():
-        return
-
-    previous_values = [value for value in history.deleted if value is not None]
-    previous_value = previous_values[0] if previous_values else None
-    if previous_value in {"", "UTC"}:
-        return
-    if previous_value and {previous_value, target.class_timezone} <= {"UTC", "Etc/UTC"}:
-        return
-    if previous_value and target.class_timezone != previous_value:
+    # The timezone is set once at creation and is immutable thereafter. Any
+    # update that changes it is illegal. (The former None/'UTC' placeholder
+    # transitions no longer exist — a class is born confirmed.)
+    history = sa.inspect(target).attrs.class_timezone.history
+    if history.has_changes():
         raise ValueError("Class timezone is immutable once set.")
 
 

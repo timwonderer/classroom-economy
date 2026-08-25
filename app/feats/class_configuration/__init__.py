@@ -17,8 +17,6 @@ All FEATs enforce:
 from .feat_class_001_create_class_boundary import (
     execute_create_class_boundary,
     CreateClassBoundaryResult,
-    execute_set_class_timezone,
-    SetClassTimezoneResult,
 )
 from .feat_class_002_modify_class_boundary import (
     execute_modify_student,
@@ -40,8 +38,6 @@ from .feat_class_005_economic_engine_evolution import (
 __all__ = [
     "execute_create_class_boundary",
     "CreateClassBoundaryResult",
-    "execute_set_class_timezone",
-    "SetClassTimezoneResult",
     "execute_modify_student",
     "execute_remove_student_seat",
     "ModifyStudentResult",

@@ -42,7 +42,14 @@ def _get_class_timezone(class_id: str) -> pytz.BaseTzInfo:
         raise TemporalResolutionError(
             f"No ClassEconomy found for class_id={class_id}"
         )
-    tz_name = getattr(cls, "class_timezone", None) or "UTC"
+    # Fail closed (SPEC-TIME-001 §IV): a class is born with a confirmed IANA
+    # timezone (classes.class_timezone is NOT NULL). There is no None -> UTC
+    # fallback — a missing timezone is an integrity fault, not a default.
+    tz_name = getattr(cls, "class_timezone", None)
+    if not tz_name:
+        raise TemporalResolutionError(
+            f"Class {class_id} has no confirmed timezone; cannot resolve CLE time"
+        )
     try:
         return pytz.timezone(tz_name)
     except pytz.UnknownTimeZoneError:

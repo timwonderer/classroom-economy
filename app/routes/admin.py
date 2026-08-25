@@ -150,7 +150,6 @@ from app.services.class_configuration_query_service import (
     get_class_economy,
     get_class_economy_by_join_code,
     get_all_classes_by_teacher,
-    get_teacher_classes_by_ids,
     verify_teacher_owns_class,
     get_payroll_settings,
     get_rent_settings,
@@ -1619,88 +1618,10 @@ def _get_table_columns(table_name: str) -> set[str]:
         return _table_columns_cache[cache_key]
 
 
-def _build_pending_class_timezone_payload(class_row: ClassEconomy) -> dict:
-    return {
-        "class_id": class_row.class_id,
-        "join_code": get_display_join_code(class_row.class_id),
-        "class_identifier": class_row.display_name or get_display_join_code(class_row.class_id),
-        "display_name": class_row.display_name,
-        "class_timezone": class_row.class_timezone,
-    }
-
-
-def _class_timezone_needs_confirmation(class_row: ClassEconomy | None) -> bool:
-    """Confirmation is needed exactly when the class row has no valid
-    timezone written. Two checks, nothing else:
-
-    1. Is a timezone string present on the row?
-    2. Is that string a valid IANA timezone name?
-
-    Any valid IANA value — including 'UTC' or 'Etc/UTC' — is treated as
-    a written, valid choice and does NOT trigger the confirmation
-    modal. If the desired UX is to force teachers to pick a non-UTC
-    timezone, that intent must be enforced at class creation time by
-    not defaulting to 'UTC', not by re-prompting here.
-    """
-    if class_row is None:
-        return False
-    timezone_name = (class_row.class_timezone or "").strip()
-    if not timezone_name:
-        return True
-    return timezone_name not in pytz.all_timezones_set
-
-
-def _queue_pending_class_timezone_confirmation(class_row: ClassEconomy | None):
-    if not _class_timezone_needs_confirmation(class_row):
-        return
-
-    pending = session.get("pending_class_timezone_confirmations", [])
-    if any(item.get("class_id") == class_row.class_id for item in pending):
-        return
-
-    pending.append(_build_pending_class_timezone_payload(class_row))
-    session["pending_class_timezone_confirmations"] = pending
-    session.modified = True
-
-
-def _consume_pending_class_timezone_confirmations(canonical_context) -> list[dict]:
-    pending = session.get("pending_class_timezone_confirmations", [])
-    if not pending or canonical_context is None or not getattr(canonical_context, "user_id", None):
-        return []
-    user_id = canonical_context.user_id
-
-    class_ids = [item.get("class_id") for item in pending if item.get("class_id")]
-    if not class_ids:
-        session.pop("pending_class_timezone_confirmations", None)
-        return []
-
-    class_rows = get_teacher_classes_by_ids(user_id, class_ids)
-
-    refreshed = []
-    for item in pending:
-        class_row = class_rows.get(item.get("class_id"))
-        if not _class_timezone_needs_confirmation(class_row):
-            continue
-        refreshed.append(_build_pending_class_timezone_payload(class_row))
-
-    if refreshed:
-        session["pending_class_timezone_confirmations"] = refreshed
-    else:
-        session.pop("pending_class_timezone_confirmations", None)
-    session.modified = True
-    return refreshed
-
-
-def _remove_pending_class_timezone_confirmation(class_id: str):
-    pending = session.get("pending_class_timezone_confirmations", [])
-    filtered = [item for item in pending if item.get("class_id") != class_id]
-    if filtered:
-        session["pending_class_timezone_confirmations"] = filtered
-    else:
-        session.pop("pending_class_timezone_confirmations", None)
-    session.modified = True
-
-
+# Post-hoc class-timezone confirmation machinery: DELETED — every class is now
+# born with a confirmed IANA timezone at creation (classes.class_timezone is
+# NOT NULL and immutable). The confirmation modal, session queue, and
+# set_class_timezone route only existed because timezone used to be optional.
 
 # _ensure_join_code_anchors: DELETED — v1 bridge function that treated join_code
 # as primary identity (violates INV-IDEN-001: class_id is canonical, join_code is alias),
@@ -3654,7 +3575,6 @@ def _get_rent_privileges_for_student(student, class_id, seat_id):
 def students():
     """View all students in the active canonical class."""
     user_id = g.canonical_context.user_id
-    pending_class_timezone_confirmations = _consume_pending_class_timezone_confirmations(g.canonical_context)
 
     current_class_id = g.canonical_context.class_id
     if not current_class_id:
@@ -3664,21 +3584,6 @@ def students():
         # the nav-bar context switcher (INV-ARC-010) establishes the active class.
         flash("Select a class to manage its students.", "info")
         return redirect(url_for('admin.dashboard'))
-
-    # Single-context invariant: timezone prompt on this page must only target current class.
-    if current_class_id:
-        pending_class_timezone_confirmations = [
-            item for item in pending_class_timezone_confirmations
-            if item.get("class_id") == current_class_id
-        ]
-    else:
-        pending_class_timezone_confirmations = []
-
-    pending_ids = {item.get("class_id") for item in pending_class_timezone_confirmations if item.get("class_id")}
-    if current_class_id and current_class_id not in pending_ids:
-        class_row = verify_teacher_owns_class(current_class_id, user_id)
-        if _class_timezone_needs_confirmation(class_row):
-            pending_class_timezone_confirmations.append(_build_pending_class_timezone_payload(class_row))
 
     class_row = (
         verify_teacher_owns_class(current_class_id, user_id)
@@ -3796,8 +3701,6 @@ def students():
                          student_balances_by_seat_id=student_balances_by_seat_id,
                          student_rent_privileges_by_seat_id=student_rent_privileges_by_seat_id,
                          student_hall_pass_balances_by_seat_id=student_hall_pass_balances_by_seat_id,
-                         timezone_choices=pytz.common_timezones,
-                         pending_class_timezone_confirmations=pending_class_timezone_confirmations,
                          single_context_mode=True,
                          current_page="students")
 
@@ -3842,65 +3745,9 @@ def set_current_class():
     return jsonify({'status': 'success'}), 200
 
 
-@admin_bp.route('/classes/<class_id>/timezone', methods=['POST'])
-@admin_required
-def set_class_timezone(class_id: str):
-    """Set the immutable timezone for a newly created class."""
-    data = request.get_json(silent=True) or {}
-    timezone_name = (data.get('timezone') or '').strip()
-    if not timezone_name:
-        return jsonify({'status': 'error', 'message': 'Timezone is required.'}), 400
-    if timezone_name not in pytz.all_timezones_set:
-        return jsonify({'status': 'error', 'message': 'Invalid timezone.'}), 400
-
-    ctx = g.canonical_context
-    user_id = ctx.user_id
-    current_class_id = ctx.class_id
-    if current_class_id and class_id != current_class_id:
-        return jsonify({
-            'status': 'error',
-            'message': 'Class scope mismatch. Switch class from the navigation to continue.',
-        }), 403
-
-    class_row = verify_teacher_owns_class(class_id, user_id)
-    if class_row is None:
-        return jsonify({'status': 'error', 'message': 'Class not found.'}), 404
-
-    timezone_needs_confirmation = _class_timezone_needs_confirmation(class_row)
-    if not timezone_needs_confirmation:
-        if class_row.class_timezone == timezone_name:
-            _remove_pending_class_timezone_confirmation(class_id)
-            return jsonify({
-                'status': 'success',
-                'message': 'Class timezone already set.',
-                'class_timezone': class_row.class_timezone,
-            }), 200
-        return jsonify({
-            'status': 'error',
-            'message': 'Class timezone is already locked and cannot be changed.',
-        }), 409
-
-    try:
-        idempotency_key = f"feat:iden:set-class-timezone:{user_id}:{class_id}:{timezone_name}"
-        with FEATContext("FEAT-IDEN-001", idempotency_key=idempotency_key):
-            # Re-fetch inside FEAT to ensure the object is tracked in this transaction.
-            fresh_class = db.session.get(ClassEconomy, class_id)
-            # Persist an explicit confirmed UTC value distinct from default placeholder UTC.
-            fresh_class.class_timezone = 'Etc/UTC' if timezone_name == 'UTC' else timezone_name
-            db.session.flush()
-    except Exception:
-        current_app.logger.error(
-            "Failed to set class timezone for class_id=%s", class_id
-        )
-        return jsonify({'status': 'error', 'message': 'Could not save class timezone.'}), 500
-
-    _remove_pending_class_timezone_confirmation(class_id)
-    return jsonify({
-        'status': 'success',
-        'message': 'Class timezone saved.',
-        'class_timezone': class_row.class_timezone,
-        'class_identifier': class_row.display_name or get_display_join_code(class_row.class_id),
-    }), 200
+# set_class_timezone route: DELETED — class timezone is now set once at creation
+# (classes.class_timezone is NOT NULL and immutable). There is no post-hoc
+# confirmation or re-set path.
 
 
 @admin_bp.route('/students/<string:actor_public_id>')
@@ -4657,9 +4504,6 @@ def add_individual_student():
             )
 
             profile.seat_id = new_seat.id
-
-            if class_context.get('class_created'):
-                _queue_pending_class_timezone_confirmation(class_context.get('class_row'))
 
     except Exception as e:
         db.session.rollback()

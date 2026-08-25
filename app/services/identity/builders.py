@@ -33,7 +33,7 @@ class AdminLayoutContextView:
     """Teacher identity and class context for layout_admin.html.
 
     Eliminates template-level:
-    - Conditional timezone logic (line 97: class_timezone != 'UTC')
+    - Conditional timezone logic (line 97: data-timezone attribute)
     - Uppercase name filter (line 102: |upper)
     - Direct ORM model access (lines 106-107: admin_current_class_context.*)
 
@@ -58,12 +58,14 @@ class AdminLayoutContextView:
     """
 
     class_timezone: str
-    """Timezone identifier for the current class context.
+    """Confirmed IANA timezone identifier for the current class context.
 
-    Empty string ("") when timezone is UTC or not set. The template uses empty string
-    to trigger JavaScript fallback message. Non-empty values like "America/New_York"
-    are passed to data-timezone attribute for client-side rendering.
-    Only rendered if has_class_context is True.
+    A class is always born with a confirmed timezone (explicit UTC is stored as
+    "Etc/UTC"), so this carries the class's real zone whenever a class is active.
+    Empty string ("") only when there is no class context, which triggers the
+    template's JavaScript fallback message. Non-empty values like
+    "America/New_York" or "Etc/UTC" are passed to the data-timezone attribute for
+    client-side rendering. Only rendered if has_class_context is True.
     """
 
     class_display_name: str
@@ -153,10 +155,12 @@ class StudentLayoutContextView:
     """
 
     class_timezone: str
-    """Timezone identifier for the current class context.
+    """Confirmed IANA timezone identifier for the current class context.
 
-    Empty string when not set or UTC. Passed to data-timezone attribute for
-    client-side clock rendering. Only rendered if has_class_context is True.
+    A class is always born with a confirmed timezone (explicit UTC is stored as
+    "Etc/UTC"). Empty string only when there is no class context. Passed to the
+    data-timezone attribute for client-side clock rendering. Only rendered if
+    has_class_context is True.
     """
 
     teacher_display_name: str
@@ -489,8 +493,8 @@ def build_admin_layout_context_view(
         AdminLayoutContextView with all fields pre-formatted.
         teacher_display_name is always uppercase.
         has_class_context=False when class_context is None or empty.
-        class_timezone is "" (not the string "UTC") when timezone is UTC or missing,
-        because the template's data-timezone attribute should be empty in that case
+        class_timezone carries the class's confirmed IANA zone (e.g. "Etc/UTC")
+        whenever a class is active, and is "" only when there is no class context
         (the JS uses emptiness to show a fallback message).
 
     Eliminates:
@@ -507,8 +511,9 @@ def build_admin_layout_context_view(
     has_class_context = bool(class_context)
 
     if has_class_context:
-        raw_tz = (class_context.get("class_timezone") or "").strip()
-        class_timezone = "" if (not raw_tz or raw_tz == "UTC") else raw_tz
+        # A class is born with a confirmed IANA timezone (explicit UTC is stored
+        # as 'Etc/UTC'), so pass it through as-is. Empty only means no class.
+        class_timezone = (class_context.get("class_timezone") or "").strip()
         class_display_name = (class_context.get("class_identifier") or "").strip()
         class_join_code = (class_context.get("join_code") or "").strip()
         class_id = str(class_context.get("class_id") or "")
@@ -573,8 +578,9 @@ def build_student_layout_context_view(
     class_join_code = (display_metadata.join_code or "").strip()
     has_class_context = bool(class_display_name or class_join_code)
 
-    raw_tz = (getattr(display_metadata, "class_timezone", None) or "").strip()
-    class_timezone = "" if (not raw_tz or raw_tz == "UTC") else raw_tz
+    # A class is born with a confirmed IANA timezone (explicit UTC is stored as
+    # 'Etc/UTC'), so pass it through as-is. Empty only means no class context.
+    class_timezone = (getattr(display_metadata, "class_timezone", None) or "").strip()
     teacher_name = (getattr(display_metadata, "teacher_display_name", None) or "").strip()
     block_display = (getattr(display_metadata, "block_display", None) or "").strip()
 

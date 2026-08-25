@@ -19,7 +19,6 @@ from dataclasses import dataclass
 from typing import Optional
 import secrets
 import uuid
-import pytz
 
 from sqlalchemy.exc import IntegrityError
 
@@ -28,7 +27,6 @@ from app.feats.base import requires_feat_context
 from app.models import ClassEconomy, User, Seat
 from app.services.class_configuration_query_service import (
     get_initial_economic_engine,
-    verify_teacher_owns_class,
 )
 from app.services.context_resolver import CanonicalContext
 from app.utils.canonical_temporal_resolver import canonical_temporal_resolver, CLASS_LEVEL_EVALUATION, SYSTEM_LEVEL_EVALUATION
@@ -281,150 +279,7 @@ def _execute_create_class_boundary_impl(
     )
 
 
-# =============================================================================
-# FEAT-CLASS-001: Set Class Timezone (post-creation, one-time only)
-# =============================================================================
-
-
-@dataclass
-class SetClassTimezoneResult:
-    """Result of class timezone configuration."""
-    success: bool
-    correlation_id: str
-    class_id: Optional[str] = None
-    class_timezone: Optional[str] = None
-    error_code: Optional[str] = None
-    error_message: Optional[str] = None
-
-
-def execute_set_class_timezone(
-    *,
-    canonical_context: CanonicalContext,
-    class_id: str,
-    timezone: str,
-    correlation_id: str | None = None,
-    idempotency_key: str | None = None,
-) -> SetClassTimezoneResult:
-    """
-    Set the initial timezone for an existing class boundary.
-
-    This is a one-time operation: once set, class_timezone is immutable.
-    Permitted only if the class has never had its timezone confirmed.
-
-    Args:
-        canonical_context: CanonicalContext with actor_role="teacher"
-        class_id: Class UUID to configure
-        timezone: Valid IANA timezone string
-        correlation_id: Optional audit trail identifier
-        idempotency_key: Optional replay guard
-
-    Authority: FEAT-CLASS-001 (Sole lawful writer for ClassEconomy)
-    Error codes: INVALID_CONTEXT, NOT_TEACHER, CLASS_NOT_FOUND,
-                 INVALID_TIMEZONE, TIMEZONE_ALREADY_SET
-    """
-    return _execute_set_class_timezone_impl(
-        canonical_context=canonical_context,
-        class_id=class_id,
-        timezone=timezone,
-        correlation_id=correlation_id,
-        idempotency_key=idempotency_key,
-    )
-
-
-@requires_feat_context("FEAT-CLASS-001")
-def _execute_set_class_timezone_impl(
-    *,
-    canonical_context: CanonicalContext,
-    class_id: str,
-    timezone: str,
-    correlation_id: str | None = None,
-    idempotency_key: str | None = None,
-) -> SetClassTimezoneResult:
-    """Internal implementation: set initial class timezone."""
-
-    corr_id = correlation_id or f"set_timezone_{class_id}"
-
-    # =========================================================================
-    # PHASE 1: Read-Only Validation
-    # =========================================================================
-
-    if not canonical_context or not canonical_context.seat_id:
-        return SetClassTimezoneResult(
-            success=False,
-            correlation_id=corr_id,
-            error_code="INVALID_CONTEXT",
-            error_message="Missing canonical context (seat_id required)",
-        )
-
-    if getattr(canonical_context, "actor_role", None) != "teacher":
-        return SetClassTimezoneResult(
-            success=False,
-            correlation_id=corr_id,
-            error_code="NOT_TEACHER",
-            error_message="Only teachers may configure class timezone",
-        )
-
-    # Validate IANA timezone
-    try:
-        if timezone not in pytz.all_timezones_set:
-            return SetClassTimezoneResult(
-                success=False,
-                correlation_id=corr_id,
-                error_code="INVALID_TIMEZONE",
-                error_message=f"'{timezone}' is not a valid IANA timezone",
-            )
-    except Exception as e:
-        return SetClassTimezoneResult(
-            success=False,
-            correlation_id=corr_id,
-            error_code="INVALID_TIMEZONE",
-            error_message=f"Error validating timezone: {str(e)}",
-        )
-
-    # Load class, verify teacher ownership
-    class_row = verify_teacher_owns_class(class_id, canonical_context.user_id)
-    if class_row is None:
-        return SetClassTimezoneResult(
-            success=False,
-            correlation_id=corr_id,
-            error_code="CLASS_NOT_FOUND",
-            error_message="Class not found or teacher does not own this class",
-        )
-
-    # Check idempotency: already set to the same timezone
-    if class_row.class_timezone and class_row.class_timezone == (
-        'Etc/UTC' if timezone == 'UTC' else timezone
-    ):
-        return SetClassTimezoneResult(
-            success=True,
-            correlation_id=corr_id,
-            class_id=class_id,
-            class_timezone=class_row.class_timezone,
-            error_code=None,
-            error_message=None,
-        )
-
-    # Reject if timezone is already locked (was previously confirmed)
-    # A non-placeholder timezone means it's been set and is immutable
-    _placeholder_timezones = {'UTC', None, ''}
-    current_tz = class_row.class_timezone
-    if current_tz not in _placeholder_timezones:
-        return SetClassTimezoneResult(
-            success=False,
-            correlation_id=corr_id,
-            error_code="TIMEZONE_ALREADY_SET",
-            error_message=f"Class timezone is already set to '{current_tz}' and cannot be changed",
-        )
-
-    # =========================================================================
-    # PHASE 2: Mutation
-    # =========================================================================
-
-    class_row.class_timezone = 'Etc/UTC' if timezone == 'UTC' else timezone
-
-    return SetClassTimezoneResult(
-        success=True,
-        correlation_id=corr_id,
-        class_id=class_id,
-        class_timezone=class_row.class_timezone,
-    )
+# execute_set_class_timezone / SetClassTimezoneResult: DELETED — post-hoc,
+# one-time timezone configuration existed only because class_timezone used to be
+# optional. Every class is now born with a confirmed, immutable IANA timezone at
+# creation (classes.class_timezone is NOT NULL), so there is no set-later path.
