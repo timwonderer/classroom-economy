@@ -6918,7 +6918,6 @@ def hall_pass_setup():
 
 @admin_bp.route('/economy-policy', methods=['POST'])
 @admin_required
-@requires_feat_context("FEAT-CLASS-005")
 def update_economy_policy():
     from app.feats.class_configuration.feat_class_005_economic_engine_evolution import (
         execute_evolve_economic_engine,
@@ -6957,12 +6956,20 @@ def update_economy_policy():
         flash(f"Error updating economy policy: {result.error_message}", "error")
         return redirect(url_for('admin.economic_engine'))
 
-    # Update display metadata on FeatureSettings (last-updated timestamp is UI-only).
-    # The canonical FEAT-CLASS-005 context owns the transaction boundary.
-    settings_row = get_feature_settings_row_for_class(class_id, create=True)
-    if settings_row:
-        settings_row.economy_policy_updated_at = utc_now()
-    cancel_pending_policy_transitions(class_id, actor_id=user_id)
+    # Update display metadata on FeatureSettings + cancel superseded pending
+    # transitions. execute_evolve_economic_engine() above opened its OWN
+    # FEAT-CLASS-005 context, committed, and CLOSED it — so there is no ambient
+    # FEAT context here. These trailing mutations (lazy FeatureSettings create,
+    # economy_policy_updated_at write, transition cancellation) must run inside
+    # their own inline FEAT or they are blocked at flush by the integrity hook.
+    with FEATContext(
+        "FEAT-CLASS-005",
+        idempotency_key=f"feat:class-005:policy-meta:{class_id}:{policy_mode}",
+    ):
+        settings_row = get_feature_settings_row_for_class(class_id, create=True)
+        if settings_row:
+            settings_row.economy_policy_updated_at = utc_now()
+        cancel_pending_policy_transitions(class_id, actor_id=user_id)
 
     current_app.logger.info(
         "Economy policy mode changed teacher=%s class_id=%s mode=%s",
@@ -6974,7 +6981,6 @@ def update_economy_policy():
 
 @admin_bp.route('/economy-policy/rebalance', methods=['POST'])
 @admin_required
-@requires_feat_context("FEAT-CLASS-005")
 def apply_economy_rebalance():
     user_id = g.canonical_context.user_id
     current_class_id = g.canonical_context.class_id
@@ -7051,36 +7057,47 @@ def apply_economy_rebalance():
         flash("Confirm the immediate change warning before applying now.", "warning")
         return redirect(url_for('admin.economic_engine', review_rebalance=1))
 
-    if activation_mode == REBALANCE_ACTIVATION_IMMEDIATE:
-        applied_labels = _apply_rebalance_plan(
-            g.canonical_context,
-            settings_row,
-            change_plan,
-            activation_mode=REBALANCE_ACTIVATION_IMMEDIATE,
-        )
-        flash(f"Applied economy rebalance now for {len(applied_labels)} setting(s).", "success")
-    else:
-        scheduled_changes = prepare_scheduled_rebalance_changes(
-            change_plan,
-            rent_settings=rent_settings,
-            insurance_policies=insurance_policies,
-        )
-        queued_transition_count = queue_scheduled_policy_transitions(
-            g.canonical_context.user_id,
-            settings_row,
-            scheduled_changes,
-            activation_mode=REBALANCE_ACTIVATION_NEXT_RENEWAL,
-        )
-        current_app.logger.info(
-            "Scheduled economy rebalance teacher=%s block=%s changes=%s",
-            g.canonical_context.user_id,
-            effective_block,
-            [change.get('type') for change in change_plan],
-        )
-        flash(
-            f"Scheduled economy rebalance for the renewal after the upcoming bill ({len(change_plan)} setting(s), {queued_transition_count} policy transition(s)).",
-            "success",
-        )
+    # FEAT-CLASS-005 is HIGH blast radius and requires an idempotency_key, so it cannot
+    # be supplied via the bare @requires_feat_context route decorator (which passes no key
+    # and would fail fatally on entry). Open the FEAT inline with a deterministic key that
+    # wraps only the mutation section.
+    rebalance_fingerprint = hashlib.sha256(
+        f"{activation_mode}:{'|'.join(sorted(selected_keys))}".encode("utf-8")
+    ).hexdigest()[:16]
+    rebalance_idempotency_key = (
+        f"feat:class-005:rebalance:{selected_scope['class_id']}:{rebalance_fingerprint}"
+    )
+    with FEATContext("FEAT-CLASS-005", idempotency_key=rebalance_idempotency_key):
+        if activation_mode == REBALANCE_ACTIVATION_IMMEDIATE:
+            applied_labels = _apply_rebalance_plan(
+                g.canonical_context,
+                settings_row,
+                change_plan,
+                activation_mode=REBALANCE_ACTIVATION_IMMEDIATE,
+            )
+            flash(f"Applied economy rebalance now for {len(applied_labels)} setting(s).", "success")
+        else:
+            scheduled_changes = prepare_scheduled_rebalance_changes(
+                change_plan,
+                rent_settings=rent_settings,
+                insurance_policies=insurance_policies,
+            )
+            queued_transition_count = queue_scheduled_policy_transitions(
+                g.canonical_context.user_id,
+                settings_row,
+                scheduled_changes,
+                activation_mode=REBALANCE_ACTIVATION_NEXT_RENEWAL,
+            )
+            current_app.logger.info(
+                "Scheduled economy rebalance teacher=%s class_id=%s changes=%s",
+                g.canonical_context.user_id,
+                selected_scope['class_id'],
+                [change.get('type') for change in change_plan],
+            )
+            flash(
+                f"Scheduled economy rebalance for the renewal after the upcoming bill ({len(change_plan)} setting(s), {queued_transition_count} policy transition(s)).",
+                "success",
+            )
 
     return redirect(url_for('admin.economic_engine'))
 
@@ -8279,7 +8296,6 @@ def attendance_log():
 
 @admin_bp.route('/upload-students', methods=['POST'])
 @admin_required
-@requires_feat_context("FEAT-IDEN-006")
 def upload_students():
     """
     Add students from the staging grid (JSON).
@@ -8322,6 +8338,9 @@ def upload_students():
     matched_seats = set()
     name_counts_in_run = {}
 
+    # This top-level FEAT owns the transaction boundary. FEATContext.__enter__
+    # discards any incidental read-only autobegin left by the before_request
+    # context resolver, so its commit persists (no manual rollback needed here).
     with FEATContext("FEAT-IDEN-001", idempotency_key=idempotency_key):
         for i, row in enumerate(rows):
             try:
@@ -9201,7 +9220,6 @@ def feature_settings():
 
 @admin_bp.route('/feature-settings/update', methods=['POST'])
 @admin_required
-@requires_feat_context("FEAT-CLASS-004")
 def update_class_feature_setting():
     """Toggle a single feature for the current class via FEAT-CLASS-004."""
     from app.feats.class_configuration import execute_enable_feature, execute_disable_feature
@@ -9226,19 +9244,28 @@ def update_class_feature_setting():
             engines = get_economic_engine_history(class_id)
             if not engines:
                 return jsonify({'status': 'error', 'message': 'No economic engine found for class.'}), 400
-            latest_engine = engines[0]
+            # Capture the version id as a plain value up front so it survives the
+            # session expiry when the inner FEAT opens its transaction boundary.
+            economic_version_id = engines[0].economic_version_id
 
+            idempotency_key = f"feat:class-004:enable:{class_id}:{feature}"
+            # execute_enable_feature owns its own @requires_feat_context boundary;
+            # FEATContext.__enter__ discards the incidental before_request read
+            # autobegin so its commit persists (no manual rollback needed here).
             result = execute_enable_feature(
                 canonical_context=ctx,
                 class_id=class_id,
                 feature=feature,
-                economic_version_id=latest_engine.economic_version_id,
+                economic_version_id=economic_version_id,
+                idempotency_key=idempotency_key,
             )
         else:
+            idempotency_key = f"feat:class-004:disable:{class_id}:{feature}"
             result = execute_disable_feature(
                 canonical_context=ctx,
                 class_id=class_id,
                 feature=feature,
+                idempotency_key=idempotency_key,
             )
 
         if not result.success:
@@ -9248,8 +9275,7 @@ def update_class_feature_setting():
                 'message': result.error_message or 'Feature toggle failed.',
             }), 400
 
-        current_app.logger.info(f"FEAT-CLASS-004 {('enable' if enabled else 'disable')} succeeded for {feature}, committing...")
-        current_app.logger.info(f"FEAT-CLASS-004 commit completed for {feature}")
+        current_app.logger.info(f"FEAT-CLASS-004 {('enable' if enabled else 'disable')} succeeded and committed for {feature}")
 
         return jsonify({
             'status': 'success',
