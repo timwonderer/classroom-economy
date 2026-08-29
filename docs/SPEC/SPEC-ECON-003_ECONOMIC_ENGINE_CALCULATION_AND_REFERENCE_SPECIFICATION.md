@@ -2,7 +2,7 @@
 
 | Reference Number | Version | Effective Date | Supersedes | Authority Level |
 |------------------|---------|----------------|------------|-----------------|
-| SPEC-ECON-003    |  1.2    |     2026-08-25 |        1.1 |       Normative |
+| SPEC-ECON-003    |  1.3    |     2026-08-29 |        1.2 |       Normative |
 
 ---
 
@@ -356,43 +356,50 @@ reimbursement          = validated_claimed_loss × reimbursement_percentage
 maximum_policy_payout = premium × payout_multiple
 ```
 
-**Effective payout (two simultaneous ceilings).** A single approval's actual payout is
-bounded by both the insurance-contract ceiling and the weekly economic ceiling, applied at
-the same time:
+**Effective payout (period capacity is the monetary ceiling).** A single approval's actual
+payout is bounded by the insurance-contract period ceiling:
 
 ```text
 actual_payout = min(
     gross_reimbursement,               # validated_claimed_loss × reimbursement_percentage
-    remaining_period_payout_capacity,  # insurance-contract ceiling (period)
-    remaining_weekly_CWI_capacity      # weekly economic ceiling (per canonical class-local week)
+    remaining_period_payout_capacity   # insurance-contract ceiling (period)
 )
 ```
 
 The **period** capacity is the insurance-contract ceiling (derived from
-`maximum_policy_payout`, period-normalized per § 4.5.2). The **weekly CWI** capacity is the
-weekly economic ceiling. Both bind simultaneously; neither overrides the other. A larger
-period ceiling never relaxes the weekly CWI limit, and unused weekly capacity does not carry
-forward.
+`maximum_policy_payout`, period-normalized per § 4.5.2) and is the monetary ceiling on any
+single approval's payout. Approval-time payout bounding — including the two-resource rule
+(remaining claim allowance and remaining period payout capacity) — is execution semantics
+owned by `FEAT-STOR-003` per the scope boundary in § 4.5; this specification states the
+CWI-relative economic reference values only and does not impose an additional approval-time
+weekly payout clamp.
 
 **Engine-recommended, teacher-configurable.** The Engine recommends ranges for the
 reimbursement percentage, payout multiple, premium, and other applicable limits. Teachers
 MAY configure values outside the recommended ranges.
 
-**Hard system boundaries (non-overridable).** Regardless of configuration or tier, the
-following MUST hold and MUST NOT be exceeded:
+**Economic-coherence guidance (advisory).** The following are CWI-relative economic
+reference comparisons. They are advisory guidance — surfaced to inform the teacher and the
+student, not enforced as approval-time or submission-time denials by this specification:
 
-- `total_validated_PRODUCTIVITY_claimed_hours_week` MUST NOT exceed `expected_weekly_hours`
-  within a canonical class-local week;
-- `PRODUCTIVITY` payout MUST NOT exceed `CWI` within a canonical class-local week;
-- unused weekly capacity does **not** carry forward.
+- comparing `total_validated_PRODUCTIVITY_claimed_hours_week` against `expected_weekly_hours`
+  within a canonical class-local week yields a non-blocking guidance signal when exceeded;
+- comparing cumulative `PRODUCTIVITY` payout against `CWI` within a canonical class-local
+  week is an economic-coherence reference, not a payout clamp;
+- unused weekly guidance capacity does **not** carry forward.
 
-**Actual worked hours do NOT consume claim-hour capacity.** `expected_weekly_hours` is an
-Economic Engine input and a PRODUCTIVITY boundary. It is **not** proof that a student could
-not have earned additional hours in a given week. CTH SHALL NOT automatically compute
+The mechanical submission-time hours ceiling is the configured daily payroll limit, applied
+at submission per `FEAT-STOR-003`. The monetary ceiling on payout is the remaining period
+payout capacity (above). The `expected_weekly_hours` / `CWI` comparisons above do not add a
+further mechanical cap.
+
+**Actual worked hours do NOT invalidate a claim.** `expected_weekly_hours` is an
+Economic Engine input and economic-coherence guidance. It is **not** proof that a student
+could not have earned additional hours in a given week. CTH SHALL NOT automatically compute
 `actual_worked_hours + claimed_lost_hours <= expected_weekly_hours` and reject or reduce a
-claim on that basis. The only mechanical hour boundary is the one above:
-`total_validated_PRODUCTIVITY_claimed_hours_week <= expected_weekly_hours`. Recorded worked
-hours are separate authoritative facts.
+claim on that basis. The weekly comparison against `expected_weekly_hours` is advisory
+guidance surfaced to the deciding teacher, not a mechanical cap; recorded worked hours are
+separate authoritative facts that inform adjudication.
 
 Example: a student with 4 recorded worked hours this week, `expected_weekly_hours = 5`, who
 selects an eligible no-session date and claims 3 lost hours, MUST NOT be auto-rejected
@@ -408,9 +415,9 @@ lost opportunity actually existed.
 **Coverage period.** Coverage may be weekly or monthly. Monthly period pricing follows the
 week-equivalent normalization in § 4.5.2. A monthly policy's total ceiling is expected to
 exceed `1× CWI` because the interval spans multiple week-equivalents; this is valid. The
-weekly hard boundaries above continue to apply **independently within each canonical
-class-local week** — a larger monthly ceiling never permits exceeding the weekly claimed-hour
-or weekly `CWI` payout limits in any individual week.
+weekly economic-coherence guidance above is evaluated **independently within each canonical
+class-local week** — a larger monthly ceiling does not change the per-week `expected_weekly_hours`
+or weekly `CWI` reference comparisons, which remain advisory in any individual week.
 
 **Tiering is optional.** A teacher MAY offer a single `PRODUCTIVITY` configuration or a
 `Basic` / `Mid` / `Premium` set. `payout_multiple` belongs **exclusively** to the
@@ -422,34 +429,37 @@ because the premium changed — this is intentional and is not a change to the c
 parameter.
 
 **Recommendation coherence.** The Engine SHOULD avoid internally nonsensical
-recommendations, distinguishing the policy-period ceiling from the weekly hard boundary:
+recommendations, distinguishing the policy-period ceiling from the weekly `CWI` economic
+reference:
 
 - **Weekly coverage** — a recommended premium/multiple combination SHOULD NOT normally imply
-  a policy ceiling above the weekly `CWI` payout boundary.
+  a policy ceiling above the weekly `CWI` payout reference.
 - **Monthly coverage** — a total ceiling above `1× CWI` is expected and valid; the weekly
-  `CWI` boundary still applies independently inside the period.
+  `CWI` reference is still evaluated independently inside the period.
 
 Teachers MAY configure outside Engine recommendations. If a teacher's selected
-premium/multiple yields a nominal policy ceiling above what another hard boundary could
-actually pay, CTH MUST NOT silently rewrite the configuration; it MUST surface both the
-calculated dollar policy ceiling and the applicable hard weekly limit clearly.
+premium/multiple yields a nominal policy ceiling above what the remaining period payout
+capacity could actually pay, CTH MUST NOT silently rewrite the configuration; it MUST
+surface both the calculated dollar policy ceiling and the applicable weekly `CWI` reference
+clearly.
 
 Canonical preset values (per week-equivalent; scale monthly per § 4.5.2):
 
-| Parameter | Single | Basic | Mid | Premium | Teacher recommended range | Hard bound |
+| Parameter | Single | Basic | Mid | Premium | Teacher recommended range | Mechanical bound |
 | --- | ---: | ---: | ---: | ---: | ---: | --- |
 | Reimbursement % | 60% | 40% | 60% | 80% | 30–90% | ≤ 100% |
-| Payout multiple | 4× | 3× | 4× | 5× | 2×–7× | weekly payout ≤ 1 CWI |
-| Claimable days / week-equivalent | 2 | 1 | 2 | 3 | 1–3 | claimed hours/week ≤ expected weekly hours |
+| Payout multiple | 4× | 3× | 4× | 5× | 2×–7× | payout ≤ remaining period payout capacity |
+| Claimable days / week-equivalent | 2 | 1 | 2 | 3 | 1–3 | claim count ≤ remaining claim allowance |
 | Tight premium | 10% CWI | 6% | 10% | 14% | 6–14% CWI | — |
 | Default premium | 8.5% CWI | 5% | 8.5% | 12% | 5–12% CWI | — |
 | Comfortable premium | 7% CWI | 4% | 7% | 10% | 4–10% CWI | — |
 
-`premium × payout_multiple` yields the period ceiling; the independent weekly `≤ 1 CWI`
-payout and `≤ expected_weekly_hours` claimed-hour limits continue to apply per canonical
-class-local week (composed as `actual_payout` above). These preset values are settled; only
-the monthly allowance rounding convention was flagged for confirmation and is fixed in
-§ 4.5.8.
+`premium × payout_multiple` yields the period ceiling; a single approval's payout is bounded
+by the remaining period payout capacity (`actual_payout` above), and submission is bounded by
+the configured daily payroll limit and remaining claim allowance per `FEAT-STOR-003`. The
+weekly `1 CWI` and `expected_weekly_hours` figures are advisory economic-coherence guidance,
+not mechanical caps. These preset values are settled; only the monthly allowance rounding
+convention was flagged for confirmation and is fixed in § 4.5.8.
 
 #### 4.5.5 `NON_MONETARY` Insurance
 
@@ -550,10 +560,10 @@ period_allowance = ceil(weekly_allowance × coverage_week_equivalent)
 ```
 
 `ceil` is chosen deliberately: it keeps monthly allowances at least proportional to the
-weekly value, and — because every individual approval is still bounded by the simultaneous
-weekly `≤ 1 CWI` and `≤ expected_weekly_hours` caps (§ 4.5.4) and the period payout ceiling —
-a slightly generous **claim count** cannot inflate total economic exposure. Rounding governs
-how many separate claims may be filed, never how much may be paid.
+weekly value, and — because every individual approval is still bounded by the remaining
+period payout capacity (§ 4.5.4) — a slightly generous **claim count** cannot inflate total
+economic exposure. Rounding governs how many separate claims may be filed, never how much
+may be paid.
 
 ---
 
@@ -771,7 +781,7 @@ The following table is the canonical reference set for the Economic Engine.
 | Fine | 7% to 18% CWI | 5% to 15% CWI | 4% to 12% CWI |
 | Collective goal | 0.75x to 7x CWI | 1x to 8x CWI | 1.5x to 10x CWI |
 
-The `Insurance premium` row is the **premium pricing envelope only** (the economic-mode / cost axis of § 4.5), and is engine guidance rather than a hard cap. It does not define any coverage, reimbursement percentage, payout cap, or claim allowance. Those belong to the insurance-tier / coverage axis and are defined by the canonical preset tables in § 4.5.3–§ 4.5.5 with the deterministic selection rule in § 4.5.8; this table MUST NOT be read as a complete insurance economic model. For `NON_MONETARY` this band is affordability guidance only (§ 4.5.5). For `PRODUCTIVITY` the settled hard boundaries in § 4.5.4 (weekly `expected_weekly_hours` and `CWI` caps) bound exposure independently of this row.
+The `Insurance premium` row is the **premium pricing envelope only** (the economic-mode / cost axis of § 4.5), and is engine guidance rather than a hard cap. It does not define any coverage, reimbursement percentage, payout cap, or claim allowance. Those belong to the insurance-tier / coverage axis and are defined by the canonical preset tables in § 4.5.3–§ 4.5.5 with the deterministic selection rule in § 4.5.8; this table MUST NOT be read as a complete insurance economic model. For `NON_MONETARY` this band is affordability guidance only (§ 4.5.5). For `PRODUCTIVITY` the settled mechanical bounds in § 4.5.4 (remaining period payout capacity and remaining claim allowance, with the configured daily payroll limit as the submission-time hours ceiling) bound exposure independently of this row; the weekly `expected_weekly_hours` and `CWI` figures are advisory economic-coherence guidance.
 
 System-defined fines such as rent late fees and overdraft fees shall use the above table for reference when making recommendations. Actual configured fine amount shall persist on `economic_engine` for overdraft fines and `rent_settings` for rent late fees.
 
@@ -830,3 +840,20 @@ Revisions to this document must:
 1. preserve the recovered calculation set,
 2. keep the table and formulas deterministic,
 3. remain consistent with the class-economy authority chain.
+
+### Revision history
+
+- **1.3 (2026-08-29)** — Scope/authority correction, not a runtime-behavior change. § 4.5.4
+  previously carried PRODUCTIVITY approval- and submission-time execution semantics that the
+  section's own scope boundary (§ 4.5) assigns to `FEAT-STOR-003`. This revision: (a) removes
+  `remaining_weekly_CWI_capacity` from the approval-time `actual_payout` composition, leaving
+  the two-term `min(gross_reimbursement, remaining_period_payout_capacity)`; (b) reclassifies
+  the weekly `CWI` payout comparison and the weekly `expected_weekly_hours` comparison from
+  non-overridable hard boundaries to advisory economic-coherence guidance; (c) identifies the
+  configured daily payroll limit as the mechanical submission-time hours ceiling; and (d)
+  updates all dependent references (hard-boundary list, preset "Mechanical bound" column,
+  composition and rounding notes, and the premium-envelope note). The landed implementation
+  (`FEAT-STOR-003` v1.1 and the PRODUCTIVITY claim-approval code) already implements this
+  contract; runtime behavior is unchanged. Governed downstream by the INV → DOM → FEAT
+  hierarchy (`INV-CORE-001`); the resulting monetary rule remains deterministic and traceable
+  per `INV-CORE-000`.
