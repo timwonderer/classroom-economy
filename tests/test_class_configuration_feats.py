@@ -12,19 +12,90 @@ Tests follow SPEC-TEST-001 patterns:
 """
 
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal
+from uuid import uuid4
 
 import pytest
 
 from app.extensions import db
 from app.models import ClassFeature, EconomicEngine
+from app.feats.base import FEATContext
 from app.feats.class_configuration import (
     execute_enable_feature,
     execute_disable_feature,
     execute_transition_economic_policy,
 )
 from app.services.context_resolver import CanonicalContext
-from app.services.class_configuration_query_service import get_initial_economic_engine
+from app.services.class_configuration_query_service import (
+    get_effective_economic_engine,
+    get_initial_economic_engine,
+)
 from tests.helpers.classroom_initializer import initialize
+
+
+_ENGINE_CARRY_FORWARD_FIELDS = (
+    "economy_policy_mode",
+    "expected_weekly_hours",
+    "interest_rate",
+    "interest_calculation_type",
+    "compound_frequency",
+    "interest_accrual_frequency",
+    "interest_payout_frequency",
+    "flat_overdraft_fee",
+    "progressive_overdraft_fee",
+    "overdraft_protection_enabled",
+)
+
+
+def _make_economic_engine_ready(class_id: str, *, expected_weekly_hours: str = "40") -> None:
+    """Bring the effective payroll engine to READY so CWI-dependent features may enable.
+
+    The default provisioned classroom leaves ``expected_weekly_hours`` NULL, which keeps
+    the Economic Engine NOT_READY. A CWI-dependent feature (e.g. ``insurance``) cannot be
+    enabled against a NOT_READY base — that is the lawful precondition FEAT-CLASS-004
+    enforces. EconomicEngine versions are immutable, so mint a new version carrying every
+    field forward with ``expected_weekly_hours`` set, then link the payroll feature to it
+    via a later-effective ClassFeature row (INSERT-only, matches canonical evolution).
+
+    Mirrors the sanctioned helper in ``tests/test_insurance_claim_feat.py``. Caller must
+    already be inside a FEAT context.
+    """
+    current = get_effective_economic_engine(class_id, "payroll")
+    if current is not None and current.expected_weekly_hours is not None:
+        return
+
+    carried = {name: getattr(current, name) for name in _ENGINE_CARRY_FORWARD_FIELDS}
+    carried["expected_weekly_hours"] = float(Decimal(str(expected_weekly_hours)))
+
+    new_engine_id = str(uuid4())
+    db.session.add(
+        EconomicEngine(
+            economic_version_id=new_engine_id,
+            class_id=class_id,
+            previous_version_id=current.economic_version_id,
+            **carried,
+        )
+    )
+    db.session.flush()
+
+    existing_payroll_feature = (
+        ClassFeature.query.filter(
+            ClassFeature.class_id == class_id,
+            ClassFeature.feature == "payroll",
+            ClassFeature.economic_version_id.isnot(None),
+        )
+        .order_by(ClassFeature.effective_at.desc())
+        .first()
+    )
+    db.session.add(
+        ClassFeature(
+            class_id=class_id,
+            feature="payroll",
+            effective_at=existing_payroll_feature.effective_at + timedelta(microseconds=1),
+            economic_version_id=new_engine_id,
+        )
+    )
+    db.session.flush()
 
 
 class TestFEATCLASS004FeatureEnablement:
@@ -51,6 +122,13 @@ class TestFEATCLASS004FeatureEnablement:
             # Get initial economic engine (created at class provision time)
             initial_engine = get_initial_economic_engine(classroom.class_id)
             assert initial_engine is not None, "Initial engine should exist"
+
+            # `insurance` is a CWI-dependent feature: FEAT-CLASS-004 refuses to enable it
+            # unless the Economic Engine base is READY. The default provisioned classroom
+            # leaves expected_weekly_hours NULL (NOT_READY), so bring it to READY first —
+            # this is the lawful precondition, not a workaround.
+            with FEATContext("FEAT-TEST-SETUP", idempotency_key="class004:enable-success-ready"):
+                _make_economic_engine_ready(classroom.class_id)
 
             canonical_context = CanonicalContext(
                 user_id=classroom.teacher_user.id,
@@ -93,6 +171,11 @@ class TestFEATCLASS004FeatureEnablement:
         classroom = initialize("chemistry_p1", app)
         with app.app_context():
             initial_engine = get_initial_economic_engine(classroom.class_id)
+
+            # `insurance` is CWI-dependent; bring the Economic Engine base to READY so the
+            # FEAT-CLASS-004 enablement gate is satisfied (lawful precondition).
+            with FEATContext("FEAT-TEST-SETUP", idempotency_key="class004:enable-idempotency-ready"):
+                _make_economic_engine_ready(classroom.class_id)
 
             canonical_context = CanonicalContext(
                 user_id=classroom.teacher_user.id,
