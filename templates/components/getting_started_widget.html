@@ -1,9 +1,7 @@
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/fonts.css') }}">
+
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css" rel="stylesheet">
-<link
-    href="https://fonts.googleapis.com/css2?family=Google+Sans+Code:ital,wght@0,300..800;1,300..800&family=Google+Sans:ital,opsz,wght@0,17..18,400..700;1,17..18,400..700&family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap"
-    rel="stylesheet">
+
 <link href="{{ static_url('css/style.css') }}" rel="stylesheet">
 <!-- Getting Started Widget - Floating onboarding checklist -->
 <div id="gettingStartedWidget" class="getting-started-widget" style="display: none;">
@@ -282,8 +280,6 @@
         box-shadow: 0 6px 16px color-mix(in srgb, black 40%, transparent);
         animation: slideInUp 0.3s ease-out;
     }
-
-
 
     .gs-bubble-icon {
         color: white;
@@ -685,11 +681,10 @@
                 congrats.innerHTML = `
                 <div class=" align-items-start gap-2" style="padding:10px; border-radius: 0px 0px 10px 10px;background-color: var(--primary); color: white; ">
                     <div class="h5 fw-bold" style="color:var(--secondary)"> <span class="material-symbols-outlined">celebration</span> Great job!</div>
-                    
-                       
+
                         <p class="mb-0 small" style="font-weight:300">You've completed all required setup tasks.
                         You can now dismiss this widget or continue with optional features.</p>
-                   
+
                 </div>
             `;
                 body.appendChild(congrats);
@@ -711,7 +706,7 @@
                 // Persist dismissal in localStorage
                 const dismissKey = 'getting_started_dismissed_{{ g.canonical_context.user_id }}';
                 localStorage.setItem(dismissKey, 'true');
-                
+
                 widgetDismissed = true;
                 const widget = document.getElementById('gettingStartedWidget');
                 if (widget) {
