@@ -499,15 +499,22 @@ a:hover {
 
 .form-control:focus,
 .form-select:focus {
-    border-color: var(--primary);
-    box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 20%, transparent);
+    border-color: var(--secondary);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--secondary) 20%, transparent);
     outline: none;
+}
+
+.form-control:focus-visible,
+.form-select:focus-visible {
+    outline: none !important;
+    border-color: var(--secondary) !important;
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--secondary) 20%, transparent) !important;
 }
 
 .form-label {
     font-weight: 600;
     font-size: 0.85rem;
-    color: var(--text-secondary);
+    color: var(--text-primary);
     margin-bottom: 0.4rem;
 }
 
