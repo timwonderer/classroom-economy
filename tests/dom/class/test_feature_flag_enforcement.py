@@ -112,6 +112,21 @@ def test_DOM_CLASS_001__payroll_allowed_when_payroll_enabled(client, setup_stude
     assert b'Payroll' in response.data or b'payroll' in response.data
 
 
+def test_DOM_CLASS_001__admin_banking_enabled_renders_without_enforcement_header(client):
+    """ENABLED state: banking is default-enabled, so the guard must NOT intercept.
+
+    The route renders normally (200) and emits NEITHER enforcement header. This
+    is the positive control that proves the guard fails *open* only when scope is
+    resolved AND enabled -- never on an unresolved/None scope.
+    """
+    initialize_as_teacher("chemistry_p1", client, client.application)
+
+    response = client.get('/admin/banking')
+    assert response.status_code == 200
+    assert response.headers.get("X-Feature-Disabled") is None
+    assert response.headers.get("X-Feature-Unresolved") is None
+
+
 def test_DOM_CLASS_001__admin_banking_rejects_disabled_class_scope(client):
     classroom = initialize_as_teacher("chemistry_p1", client, client.application)
     disable_class_feature(class_id=classroom.class_id, feature='banking')
@@ -119,7 +134,34 @@ def test_DOM_CLASS_001__admin_banking_rejects_disabled_class_scope(client):
 
     response = client.get('/admin/banking')
     assert response.status_code == 200
-    assert b"is disabled for this class" in response.data
+    # Assert on the stable, machine-readable capability signal rather than page
+    # copy: the guard emits X-Feature-Disabled=<feature> for the DISABLED state.
+    assert response.headers.get("X-Feature-Disabled") == "banking"
+
+
+def test_DOM_CLASS_001__capability_state_unresolved_fails_closed(client):
+    """UNRESOLVED state: a None/absent class scope is a failure to establish
+    authority, and MUST fail closed (404) rather than render the feature.
+
+    This asserts the authorization *default* directly at the shared capability
+    boundary: when no lawful class scope exists, ``_resolve_feature_capability_state``
+    returns UNRESOLVED and the guard's unresolved response is a headered 404. The
+    old ``if scope and not scope["enabled"]`` pattern was backwards precisely here
+    -- it let None (no authority) fall through into the feature.
+    """
+    from flask import g
+    from app.routes import admin as admin_module
+
+    with client.application.test_request_context('/admin/banking'):
+        g.admin_class_context = None
+        assert (
+            admin_module._resolve_feature_capability_state('banking')
+            == admin_module.FEATURE_CAPABILITY_UNRESOLVED
+        )
+
+        response = admin_module._feature_unresolved_response('banking')
+        assert response.status_code == 404
+        assert response.headers.get("X-Feature-Unresolved") == "banking"
 
 
 def test_DOM_CLASS_001__admin_store_rejects_disabled_class_scope(client):
@@ -129,7 +171,7 @@ def test_DOM_CLASS_001__admin_store_rejects_disabled_class_scope(client):
 
     response = client.get('/admin/store')
     assert response.status_code == 200
-    assert b"is disabled for this class" in response.data
+    assert response.headers.get("X-Feature-Disabled") == "store"
 
 
 def test_DOM_CLASS_001__admin_hall_pass_rejects_disabled_class_scope(client):
@@ -139,7 +181,7 @@ def test_DOM_CLASS_001__admin_hall_pass_rejects_disabled_class_scope(client):
 
     response = client.get('/admin/hall-pass')
     assert response.status_code == 200
-    assert b"is disabled for this class" in response.data
+    assert response.headers.get("X-Feature-Disabled") == "hall_pass"
 
 
 def test_DOM_CLASS_001__admin_payroll_rejects_disabled_class_scope(client):
@@ -149,7 +191,7 @@ def test_DOM_CLASS_001__admin_payroll_rejects_disabled_class_scope(client):
 
     response = client.get('/admin/payroll')
     assert response.status_code == 200
-    assert b"is disabled for this class" in response.data
+    assert response.headers.get("X-Feature-Disabled") == "payroll"
 
 
 def test_DOM_CLASS_001__admin_store_delete_rejects_disabled_class_scope(client):

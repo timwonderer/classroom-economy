@@ -36,9 +36,9 @@
 
           <dt class="col-sm-4">Claim Type:</dt>
           <dd class="col-sm-8">
-            {% if claim_type == 'transaction_monetary' %}
+            {% if claim_type == 'TRANSACTION' %}
               <span class="badge bg-info">[TXN] Transaction-based</span>
-            {% elif claim_type == 'non_monetary' %}
+            {% elif claim_type == 'NON_MONETARY' %}
               <span class="badge bg-warning text-dark">[NON-MONETARY]</span>
             {% else %}
               <span class="badge bg-primary">[CUSTOM]</span>
@@ -125,9 +125,9 @@
       </div>
       <div class="card-body">
         <p><strong>Claim Type:</strong><br>
-          {% if claim_type == 'transaction_monetary' %}
+          {% if claim_type == 'TRANSACTION' %}
             <span class="badge bg-info">[TXN] Transaction-based</span>
-          {% elif claim_type == 'non_monetary' %}
+          {% elif claim_type == 'NON_MONETARY' %}
             <span class="badge bg-warning text-dark">[NON-MONETARY]</span>
           {% else %}
             <span class="badge bg-primary">[CUSTOM]</span>
@@ -230,16 +230,7 @@
           {{ form.status.label(class="form-label") }}
           {{ form.status(class="form-select") }}
         </div>
-        {% if claim_type == 'legacy_monetary' %}
-          <div class="col-md-6 mb-3">
-            {{ form.approved_amount.label(class="form-label") }}
-            <div class="input-group">
-              <span class="input-group-text">$</span>
-              {{ form.approved_amount(class="form-control") }}
-            </div>
-            <small class="text-muted">Leave blank to use requested amount</small>
-          </div>
-        {% elif claim_type == 'transaction_monetary' %}
+        {% if claim_type == 'TRANSACTION' %}
           <div class="col-md-6 mb-3">
             <label class="form-label">Approved Amount</label>
             <input type="text" class="form-control" value="Auto-calculated from the linked transaction" disabled>

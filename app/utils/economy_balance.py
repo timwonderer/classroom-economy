@@ -99,14 +99,9 @@ class EconomyBalanceChecker:
     UTILITIES_MAX_RATIO = 0.30
     UTILITIES_DEFAULT_RATIO = 0.25
 
-    INSURANCE_MIN_RATIO = 0.05
-    INSURANCE_MAX_RATIO = 0.12
-    INSURANCE_DEFAULT_RATIO = 0.08
-
-    COVERAGE_MIN_MULTIPLIER = 3
-    COVERAGE_MAX_MULTIPLIER = 5
-    PERIOD_MIN_MULTIPLIER = 6
-    PERIOD_MAX_MULTIPLIER = 10
+    # NOTE (SPEC-ECON-003 migration): insurance CWI-band and coverage/period-cap
+    # multiplier constants were removed. Insurance economics are owned by the
+    # Economic Engine (app/services/economic_engine.resolve_insurance).
 
     FINE_MIN_RATIO = 0.05
     FINE_MAX_RATIO = 0.15
@@ -169,16 +164,6 @@ class EconomyBalanceChecker:
         ratios = self.policy_profile.get("ratios", {}).get(key, {})
         return float(ratios.get("min", fallback_value))
 
-    def _insurance_multiplier_band(self, key: str, fallback_min: float, fallback_max: float, fallback_recommended: float) -> Tuple[float, float, float]:
-        return self._ratio_band(key, fallback_min, fallback_max, fallback_recommended)
-
-    def _waiting_period_band(self) -> Tuple[int, int, int]:
-        ratios = self.policy_profile.get("ratios", {}).get("insurance_waiting_period_days", {})
-        min_days = int(ratios.get("min", 7))
-        max_days = int(ratios.get("max", 7))
-        recommended = int(ratios.get("recommended", min_days))
-        return min_days, max_days, recommended
-
     def _store_tiers(self) -> Dict[PricingTier, Tuple[float, float]]:
         tiers = dict(self.STORE_TIERS)
         configured_tiers = self.policy_profile.get("ratios", {}).get("store_tiers", {})
@@ -225,26 +210,6 @@ class EconomyBalanceChecker:
 
         return value
 
-    def _evaluate_insurance_limit_state(
-        self,
-        value: Optional[float],
-        min_value: float,
-        max_value: float,
-    ) -> Optional[str]:
-        """
-        Determine whether an insurance limit is low, high, or balanced.
-
-        Returns:
-            'low', 'high', 'balanced', or None if value is missing or non-positive.
-        """
-        if value is None or value <= 0:
-            return None
-        if value < min_value:
-            return "low"
-        if value > max_value:
-            return "high"
-        return "balanced"
-
     def calculate_cwi(self, payroll_settings, expected_weekly_hours: float = None) -> CWICalculation | None:
         """
         Calculate CWI (Classroom Wage Index) - expected weekly income for perfect attendance.
@@ -261,6 +226,13 @@ class EconomyBalanceChecker:
             unconfigured on both the parameter and the EconomicEngine. Callers must
             handle None (display "configure CWI on Economic Engine" warning; disable
             pricing recommendations).
+
+        NOTE (SPEC-ECON-003 migration): the canonical CWI calculation authority is
+        ``app/services/economic_engine.resolve_base`` (per SPEC-ECON-003 §3/§4.1).
+        This is a pre-existing duplicate formula site retained during the
+        conservative migration; it should be consolidated to consume ``resolve_base``
+        once parity is proven for the balance-checker surface. Numerically identical
+        today: ``pay_rate_per_minute × 60 × expected_weekly_hours``.
         """
         notes = []
 
@@ -386,200 +358,6 @@ class EconomyBalanceChecker:
                 recommended_max=recommended_max,
                 cwi_ratio=monthly_ratio
             ))
-
-        return warnings
-
-    def check_insurance_balance(self, insurance_policies: List, cwi: float) -> List[BalanceWarning]:
-        """
-        Check if insurance premiums are balanced relative to CWI.
-
-        Args:
-            insurance_policies: List of policy rows
-            cwi: Calculated CWI value
-
-        Returns:
-            List of balance warnings
-        """
-        warnings = []
-
-        if not insurance_policies:
-            return warnings
-
-        insurance_min_ratio, insurance_max_ratio, _ = self._ratio_band(
-            "insurance_weekly",
-            self.INSURANCE_MIN_RATIO,
-            self.INSURANCE_MAX_RATIO,
-            self.INSURANCE_DEFAULT_RATIO,
-        )
-        coverage_min_multiplier, coverage_max_multiplier, _ = self._insurance_multiplier_band(
-            "insurance_coverage_multiplier",
-            self.COVERAGE_MIN_MULTIPLIER,
-            self.COVERAGE_MAX_MULTIPLIER,
-            (self.COVERAGE_MIN_MULTIPLIER + self.COVERAGE_MAX_MULTIPLIER) / 2,
-        )
-        period_min_multiplier, period_max_multiplier, _ = self._insurance_multiplier_band(
-            "insurance_period_cap_multiplier",
-            self.PERIOD_MIN_MULTIPLIER,
-            self.PERIOD_MAX_MULTIPLIER,
-            (self.PERIOD_MIN_MULTIPLIER + self.PERIOD_MAX_MULTIPLIER) / 2,
-        )
-        waiting_min_days, waiting_max_days, _ = self._waiting_period_band()
-        coverage_min_multiplier_decimal = Decimal(str(coverage_min_multiplier))
-        coverage_max_multiplier_decimal = Decimal(str(coverage_max_multiplier))
-        period_min_multiplier_decimal = Decimal(str(period_min_multiplier))
-        period_max_multiplier_decimal = Decimal(str(period_max_multiplier))
-        recommended_min = cwi * insurance_min_ratio
-        recommended_max = cwi * insurance_max_ratio
-
-        for policy in insurance_policies:
-            if not policy.is_active:
-                continue
-
-            # Convert premium to weekly equivalent for comparison
-            from app.models import _quantize_currency
-            premium = _quantize_currency(policy.premium)
-
-            # Normalize to weekly based on charge_frequency
-            weekly_premium = self._normalize_to_weekly(premium, policy.charge_frequency)
-
-            premium_ratio = float(weekly_premium / Decimal(cwi)) if cwi > 0 else 0
-
-            # Check if within bounds
-            if premium_ratio < insurance_min_ratio:
-                deviation = (insurance_min_ratio - premium_ratio) / insurance_min_ratio
-                if deviation > self.MINOR_DEVIATION_THRESHOLD:
-                    level = WarningLevel.WARNING
-                    warnings.append(BalanceWarning(
-                        feature=f"Insurance: {policy.title}",
-                        level=level,
-                        message=f"Premium (${premium:.2f}/{policy.charge_frequency}) may be too low relative to coverage.",
-                        current_value=premium,
-                        recommended_min=recommended_min if policy.charge_frequency == 'weekly' else None,
-                        recommended_max=recommended_max if policy.charge_frequency == 'weekly' else None,
-                        cwi_ratio=premium_ratio
-                    ))
-            elif premium_ratio > insurance_max_ratio:
-                deviation = (premium_ratio - insurance_max_ratio) / insurance_max_ratio
-                level = WarningLevel.CRITICAL if deviation > self.MAJOR_DEVIATION_THRESHOLD else WarningLevel.WARNING
-                warnings.append(BalanceWarning(
-                    feature=f"Insurance: {policy.title}",
-                    level=level,
-                    message=f"Premium (${premium:.2f}/{policy.charge_frequency}) is too expensive. Students may not enroll.",
-                    current_value=premium,
-                    recommended_min=recommended_min if policy.charge_frequency == 'weekly' else None,
-                    recommended_max=recommended_max if policy.charge_frequency == 'weekly' else None,
-                    cwi_ratio=premium_ratio
-                ))
-            else:
-                # Within bounds
-                warnings.append(BalanceWarning(
-                    feature=f"Insurance: {policy.title}",
-                    level=WarningLevel.INFO,
-                    message=f"Premium is balanced at ${premium:.2f}/{policy.charge_frequency} ({premium_ratio:.2f}x CWI)",
-                    current_value=premium,
-                    recommended_min=recommended_min if policy.charge_frequency == 'weekly' else None,
-                    recommended_max=recommended_max if policy.charge_frequency == 'weekly' else None,
-                    cwi_ratio=premium_ratio
-                ))
-
-            if policy.claim_type != 'non_monetary' and premium > 0:
-                coverage_min = float(premium * coverage_min_multiplier_decimal)
-                coverage_max = float(premium * coverage_max_multiplier_decimal)
-                period_min = float(premium * period_min_multiplier_decimal)
-                period_max = float(premium * period_max_multiplier_decimal)
-
-                max_claim_amount = float(policy.max_claim_amount or 0)
-                max_payout_per_period = float(policy.max_payout_per_period or 0)
-
-                def build_limit_warning(
-                    value: float,
-                    min_value: float,
-                    max_value: float,
-                    feature: str,
-                    low_msg: str,
-                    high_msg: str,
-                    balanced_msg: str,
-                ) -> Optional[BalanceWarning]:
-                    state = self._evaluate_insurance_limit_state(value, min_value, max_value)
-                    if not state:
-                        return None
-
-                    if state == "low":
-                        level = WarningLevel.WARNING
-                        message = low_msg
-                    elif state == "high":
-                        level = WarningLevel.WARNING
-                        message = high_msg
-                    else:
-                        level = WarningLevel.INFO
-                        message = balanced_msg
-
-                    return BalanceWarning(
-                        feature=f"{feature}: {policy.title}",
-                        level=level,
-                        message=message,
-                        current_value=value,
-                        recommended_min=min_value,
-                        recommended_max=max_value,
-                        cwi_ratio=None
-                    )
-
-                coverage_warning = build_limit_warning(
-                    max_claim_amount,
-                    coverage_min,
-                    coverage_max,
-                    "Coverage",
-                    f"Max claim (${max_claim_amount:.2f}) is low relative to premium.",
-                    f"Max claim (${max_claim_amount:.2f}) exceeds {coverage_max_multiplier:.1f}x premium. Confirm this is intentional.",
-                    f"Max claim is balanced at ${max_claim_amount:.2f} ({coverage_min_multiplier:.1f}-{coverage_max_multiplier:.1f}x premium)."
-                )
-
-                period_warning = build_limit_warning(
-                    max_payout_per_period,
-                    period_min,
-                    period_max,
-                    "Period Cap",
-                    f"Period cap (${max_payout_per_period:.2f}) may be too low for multiple claims.",
-                    f"Period cap (${max_payout_per_period:.2f}) exceeds {period_max_multiplier:.1f}x premium. Confirm this is intentional.",
-                    f"Period cap is balanced at ${max_payout_per_period:.2f} ({period_min_multiplier:.1f}-{period_max_multiplier:.1f}x premium)."
-                )
-
-                if coverage_warning:
-                    warnings.append(coverage_warning)
-                if period_warning:
-                    warnings.append(period_warning)
-
-            waiting_days = int(getattr(policy, 'waiting_period_days', 0) or 0)
-            if waiting_days < waiting_min_days:
-                warnings.append(BalanceWarning(
-                    feature=f"Waiting Period: {policy.title}",
-                    level=WarningLevel.WARNING,
-                    message=f"Waiting period ({waiting_days} days) is shorter than the {self.policy_profile['label'].lower()} policy target.",
-                    current_value=waiting_days,
-                    recommended_min=waiting_min_days,
-                    recommended_max=waiting_max_days,
-                    cwi_ratio=None,
-                ))
-            elif waiting_days > waiting_max_days:
-                warnings.append(BalanceWarning(
-                    feature=f"Waiting Period: {policy.title}",
-                    level=WarningLevel.WARNING,
-                    message=f"Waiting period ({waiting_days} days) is longer than the {self.policy_profile['label'].lower()} policy target.",
-                    current_value=waiting_days,
-                    recommended_min=waiting_min_days,
-                    recommended_max=waiting_max_days,
-                    cwi_ratio=None,
-                ))
-            else:
-                warnings.append(BalanceWarning(
-                    feature=f"Waiting Period: {policy.title}",
-                    level=WarningLevel.INFO,
-                    message=f"Waiting period is balanced at {waiting_days} days.",
-                    current_value=waiting_days,
-                    recommended_min=waiting_min_days,
-                    recommended_max=waiting_max_days,
-                    cwi_ratio=None,
-                ))
 
         return warnings
 
@@ -866,181 +644,6 @@ class EconomyBalanceChecker:
 
         return warnings, recommendations, float(ratio)
 
-    def validate_insurance_value(
-        self,
-        premium: float,
-        frequency: str,
-        cwi: float,
-        max_claim_amount: Optional[float] = None,
-        max_payout_per_period: Optional[float] = None,
-        claim_type: Optional[str] = None,
-        waiting_period_days: Optional[int] = None,
-    ):
-        from app.models import _quantize_currency
-        weekly_value = self._normalize_to_weekly(_quantize_currency(premium), frequency)
-        premium_amount = _quantize_currency(premium)
-        
-        cwi_decimal = Decimal(str(cwi)) if isinstance(cwi, (float, int)) else cwi
-        ratio = weekly_value / cwi_decimal if cwi_decimal > 0 else Decimal('0')
-
-        insurance_min_ratio, insurance_max_ratio, insurance_recommended_ratio = self._ratio_band(
-            "insurance_weekly",
-            self.INSURANCE_MIN_RATIO,
-            self.INSURANCE_MAX_RATIO,
-            self.INSURANCE_DEFAULT_RATIO,
-        )
-        coverage_min_multiplier, coverage_max_multiplier, coverage_recommended_multiplier = self._insurance_multiplier_band(
-            "insurance_coverage_multiplier",
-            self.COVERAGE_MIN_MULTIPLIER,
-            self.COVERAGE_MAX_MULTIPLIER,
-            (self.COVERAGE_MIN_MULTIPLIER + self.COVERAGE_MAX_MULTIPLIER) / 2,
-        )
-        period_min_multiplier, period_max_multiplier, period_recommended_multiplier = self._insurance_multiplier_band(
-            "insurance_period_cap_multiplier",
-            self.PERIOD_MIN_MULTIPLIER,
-            self.PERIOD_MAX_MULTIPLIER,
-            (self.PERIOD_MIN_MULTIPLIER + self.PERIOD_MAX_MULTIPLIER) / 2,
-        )
-        waiting_min_days, waiting_max_days, waiting_recommended_days = self._waiting_period_band()
-        coverage_min_multiplier_decimal = Decimal(str(coverage_min_multiplier))
-        coverage_max_multiplier_decimal = Decimal(str(coverage_max_multiplier))
-        coverage_recommended_multiplier_decimal = Decimal(str(coverage_recommended_multiplier))
-        period_min_multiplier_decimal = Decimal(str(period_min_multiplier))
-        period_max_multiplier_decimal = Decimal(str(period_max_multiplier))
-        period_recommended_multiplier_decimal = Decimal(str(period_recommended_multiplier))
-        min_weekly = cwi * insurance_min_ratio
-        max_weekly = cwi * insurance_max_ratio
-        recommended_weekly = cwi * insurance_recommended_ratio
-
-        # Convert weekly recommendations to match the input frequency
-        def convert_from_weekly(weekly_value: float) -> float:
-            """Convert a weekly value to the insurance's charge frequency."""
-            if frequency == 'weekly':
-                return weekly_value
-            elif frequency == 'monthly':
-                return weekly_value * self.AVERAGE_WEEKS_PER_MONTH
-            elif frequency == 'biweekly':
-                return weekly_value * 2
-            elif frequency == 'daily':
-                return weekly_value / 7
-            elif frequency == 'semester':
-                # Assume 18 weeks per semester (standard academic semester)
-                return weekly_value * 18
-            elif frequency == 'yearly':
-                return weekly_value * 52
-            else:
-                # Default to weekly if unknown frequency
-                return weekly_value
-
-        recommendations = {
-            # Provide both weekly (for backend calculations) and frequency-specific (for display)
-            'min_weekly': round(min_weekly, 2),
-            'max_weekly': round(max_weekly, 2),
-            'recommended_weekly': round(recommended_weekly, 2),
-            'min': round(convert_from_weekly(min_weekly), 2),
-            'max': round(convert_from_weekly(max_weekly), 2),
-            'recommended': round(convert_from_weekly(recommended_weekly), 2),
-            'frequency': frequency,
-            'coverage': {
-                'min': round(float(premium_amount * coverage_min_multiplier_decimal), 2) if premium_amount > 0 else 0.0,
-                'max': round(float(premium_amount * coverage_max_multiplier_decimal), 2) if premium_amount > 0 else 0.0,
-                'recommended': round(float(premium_amount * coverage_recommended_multiplier_decimal), 2) if premium_amount > 0 else 0.0,
-                'multiplier_min': round(coverage_min_multiplier, 2),
-                'multiplier_max': round(coverage_max_multiplier, 2),
-            },
-            'period_cap': {
-                'min': round(float(premium_amount * period_min_multiplier_decimal), 2) if premium_amount > 0 else 0.0,
-                'max': round(float(premium_amount * period_max_multiplier_decimal), 2) if premium_amount > 0 else 0.0,
-                'recommended': round(float(premium_amount * period_recommended_multiplier_decimal), 2) if premium_amount > 0 else 0.0,
-                'multiplier_min': round(period_min_multiplier, 2),
-                'multiplier_max': round(period_max_multiplier, 2),
-            },
-            'waiting_period_days': {
-                'min': waiting_min_days,
-                'max': waiting_max_days,
-                'recommended': waiting_recommended_days,
-            },
-        }
-
-        warnings: List[Dict[str, str]] = []
-        if ratio < insurance_min_ratio:
-            warnings.append({
-                'level': 'warning',
-                'message': 'Premium may be too low relative to coverage.',
-            })
-        elif ratio > insurance_max_ratio:
-            warnings.append({
-                'level': 'critical',
-                'message': f'Premium (${premium:.2f}/{frequency}) is too expensive. Students may not enroll.',
-            })
-        else:
-            warnings.append({
-                'level': 'success',
-                'message': f'Premium is balanced at ${premium:.2f}/{frequency}',
-            })
-
-        if claim_type != 'non_monetary' and premium_amount > 0:
-            coverage_min = float(premium_amount * coverage_min_multiplier_decimal)
-            coverage_max = float(premium_amount * coverage_max_multiplier_decimal)
-            period_min = float(premium_amount * period_min_multiplier_decimal)
-            period_max = float(premium_amount * period_max_multiplier_decimal)
-
-            def add_limit_warning(
-                value: Optional[float],
-                min_value: float,
-                max_value: float,
-                low_builder,
-                high_builder,
-                balanced_builder,
-            ) -> None:
-                state = self._evaluate_insurance_limit_state(value, min_value, max_value)
-                if not state:
-                    return
-
-                current_value = float(value)
-                if state == "low":
-                    level = 'warning'
-                    message = low_builder(current_value)
-                elif state == "high":
-                    level = 'warning'
-                    message = high_builder(current_value)
-                else:
-                    level = 'success'
-                    message = balanced_builder(current_value)
-
-                warnings.append({
-                    'level': level,
-                    'message': message,
-                })
-
-            add_limit_warning(
-                max_claim_amount,
-                coverage_min,
-                coverage_max,
-                lambda value: f'Max claim (${value:.2f}) is low relative to premium.',
-                lambda value: f'Max claim (${value:.2f}) exceeds {coverage_max_multiplier:.1f}x premium. Confirm this is intentional.',
-                lambda value: f'Max claim is balanced at ${value:.2f} ({coverage_min_multiplier:.1f}-{coverage_max_multiplier:.1f}x premium).',
-            )
-
-            add_limit_warning(
-                max_payout_per_period,
-                period_min,
-                period_max,
-                lambda value: f'Period cap (${value:.2f}) may be too low for multiple claims.',
-                lambda value: f'Period cap (${value:.2f}) exceeds {period_max_multiplier:.1f}x premium. Confirm this is intentional.',
-                lambda value: f'Period cap is balanced at ${value:.2f} ({period_min_multiplier:.1f}-{period_max_multiplier:.1f}x premium).',
-            )
-
-        if waiting_period_days is not None:
-            if waiting_period_days < waiting_min_days:
-                warnings.append({'level': 'warning', 'message': 'Waiting period is shorter than the current policy target.'})
-            elif waiting_period_days > waiting_max_days:
-                warnings.append({'level': 'warning', 'message': 'Waiting period is longer than the current policy target.'})
-            else:
-                warnings.append({'level': 'success', 'message': 'Waiting period aligns with the current policy.'})
-
-        return warnings, recommendations, float(ratio)
-
     def validate_fine_value(self, fine_amount: float, cwi: float) -> Tuple[List[Dict[str, str]], Dict[str, float], float]:
         fine_amount = float(fine_amount)
         cwi = float(cwi)
@@ -1124,16 +727,10 @@ class EconomyBalanceChecker:
                 kwargs.get('custom_frequency_value'),
                 kwargs.get('custom_frequency_unit'),
             )
-        if feature == 'insurance':
-            return self.validate_insurance_value(
-                value,
-                kwargs.get('frequency', 'weekly'),
-                cwi,
-                kwargs.get('max_claim_amount'),
-                kwargs.get('max_payout_per_period'),
-                kwargs.get('claim_type'),
-                kwargs.get('waiting_period_days'),
-            )
+        # NOTE (SPEC-ECON-003 migration): insurance validation is owned by the
+        # Economic Engine (resolve_insurance) via the product-aware edit flow.
+        # The legacy free-form CWI-band validator has been retired; 'insurance'
+        # is no longer a supported feature for this generic validator.
         if feature == 'fine':
             return self.validate_fine_value(value, cwi)
         if feature == 'store_item':
@@ -1259,9 +856,9 @@ class EconomyBalanceChecker:
         if rent_settings:
             all_warnings.extend(self.check_rent_balance(rent_settings, cwi))
 
-        # Check insurance
-        if insurance_policies:
-            all_warnings.extend(self.check_insurance_balance(insurance_policies or [], cwi))
+        # NOTE (SPEC-ECON-003 migration): insurance balance analysis is now owned
+        # by the Economic Engine (resolve_insurance). The legacy CWI-band checker
+        # has been retired; insurance policies are not evaluated here.
 
         # Check fines
         if fines:

@@ -4,14 +4,14 @@
 {% block page_icon %}display_settings{% endblock %}
 {% set current_page = "economic_engine" %}
 {% block page_header_actions %}
-  <button class="btn btn-primary d-flex align-items-center gap-2" type="button" data-bs-toggle="offcanvas" data-bs-target="#economyHealthGuide" aria-controls="economyHealthGuide">
+  <button class="btn btn-primary d-flex align-items-center gap-2 mb-0" type="button" data-bs-toggle="offcanvas" data-bs-target="#economyHealthGuide" aria-controls="economyHealthGuide">
     <span class="material-symbols-outlined">quick_reference_all</span> <span>Need Help?</span>
   </button>
 {% endblock %}
 {% block content %}
 <div class="offcanvas offcanvas-end" tabindex="-1" id="economyHealthGuide" aria-labelledby="economyHealthGuideLabel">
   <div class="offcanvas-header">
-    <h5 class="offcanvas-title" id="economyHealthGuideLabel">How to: CWI Balancing</h5>
+    <h5 class="offcanvas-title" id="economyHealthGuideLabel">How to: Economy Health</h5>
     <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Close"></button>
   </div>
   <div class="offcanvas-body">
@@ -71,7 +71,7 @@
         <div id="economyHealthGuideSettingsBreakdown" class="accordion-collapse collapse mt-2" aria-labelledby="economyHealthGuideHeadingSettingsBreakdown" data-bs-parent="#economyHealthGuideAccordion">
           <div class="accordion-body">
             <ul class="mb-0">
-              <li><strong>Class selector:</strong> choose which class period you are reviewing. Each class has its own CWI based on its payroll settings.</li>
+          <li><strong>Current class:</strong> this page shows the economy settings for the class currently selected in the teacher navigation.</li>
               <li><strong>Expected weekly hours:</strong> updates the CWI and balance calculations for the selected class.</li>
               <li><strong>Balance snapshot:</strong> flags mismatches between CWI and costs so you can adjust settings.</li>
             </ul>
@@ -102,10 +102,10 @@
 </div>
 
 <div class="container-fluid py-3">
-  <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-3">
+  <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 mt-0 gap-3">
     <div class="d-flex align-items-center gap-2">
-      <p class="text-muted mb-0">The Economic Engine enforces economic policies, sets baseline for classroom earnings, provides pricing guidance, and surfaces possible pricing issues across the classroom economy.</p>
-      {{ help.help_icon("user-guides/diagnostics/teacher-attendance-payroll", "Economy health help") }}
+      <p class="text-muted mb-0 mt-0">The Economic Engine enforces economic policies, sets baseline for classroom earnings, provides pricing guidance, and surfaces possible pricing issues across the classroom economy.</p>
+    
     </div>
   
   </div>
@@ -433,7 +433,9 @@
           {% if recommendations %}
           <ul class="mb-2">
             <li>Rent: ${{ recommendations.rent_weekly.min }} - ${{ recommendations.rent_weekly.max }} per week (ideal ${{ recommendations.rent_weekly.recommended }})</li>
-            <li>Insurance (weekly): ${{ recommendations.insurance_premium_weekly.min }} - ${{ recommendations.insurance_premium_weekly.max }}</li>
+            {% if insurance_recommendation %}
+            <li>Insurance (weekly premium): ${{ insurance_recommendation.weekly_min }} - ${{ insurance_recommendation.weekly_max }}{% if insurance_recommendation.weekly_recommended is not none %} (ideal ${{ insurance_recommendation.weekly_recommended }}){% endif %}. Per-policy payout ceilings depend on product &amp; tier — set them in insurance settings.</li>
+            {% endif %}
             <li>Fines: ${{ recommendations.fine.min }} - ${{ recommendations.fine.max }} per incident</li>
             <li>Store pricing tiers scale with CWI. Basic items between ${{ recommendations.store_tiers.basic.min }} and ${{ recommendations.store_tiers.basic.max }}.</li>
             <li>Students should be able to save at least ${{ recommendations.min_weekly_savings }} weekly.</li>

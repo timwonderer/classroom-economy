@@ -33,6 +33,12 @@ from app.models import Seat, EntitlementEvent, ClassEconomy
 from app.services.context_resolver import CanonicalContext
 from app.services.class_configuration_query_service import get_current_economic_engine
 from app.services.store_policy_resolver import StorePolicyResolver, PolicyNotFound, PolicyParseError, PolicyValidationError
+from app.services import insurance_definition_service as insurance_defs
+from app.services.insurance_contract_freeze import (
+    build_frozen_contract,
+    build_purchase_metadata,
+    InsuranceFreezeError,
+)
 from app.utils.canonical_temporal_resolver import canonical_temporal_resolver, CLASS_LEVEL_EVALUATION
 
 
@@ -194,6 +200,84 @@ def _execute_store_purchase_impl(
             error_message=f"Product {policy_config.product_id} is not purchasable",
         )
 
+    # =========================================================================
+    # INSURANCE freeze prerequisites (Step 5): resolve the immutable definition,
+    # revalidate it is available for NEW purchase now, and reconcile the charged
+    # premium against the frozen premium. Publication alone does not guarantee
+    # perpetual purchasability, so we re-check availability at purchase time.
+    # =========================================================================
+    insurance_frozen_contract = None
+    insurance_purchase_metadata = None
+    insurance_policy_uuid = None
+    if policy_config.entitlement_type == 'INSURANCE':
+        insurance_policy_uuid = policy_config.insurance_policy_uuid
+        if not insurance_policy_uuid:
+            # Parser enforces presence; defense-in-depth fail-closed.
+            return StorePurchaseResult(
+                success=False,
+                correlation_id="",
+                quantity_granted=0,
+                error_code="INSURANCE_LOCATOR_MISSING",
+                error_message="INSURANCE product is missing insurance_policy_uuid locator",
+            )
+
+        # Lawful POL retrieval under the SAME class (fails closed on mismatch).
+        definition = insurance_defs.get_insurance_definition(
+            insurance_policy_uuid, class_id=canonical_context.class_id
+        )
+        if definition is None:
+            return StorePurchaseResult(
+                success=False,
+                correlation_id="",
+                quantity_granted=0,
+                error_code="INSURANCE_DEFINITION_NOT_FOUND",
+                error_message=(
+                    f"Insurance definition {insurance_policy_uuid} not found in class "
+                    f"{canonical_context.class_id}"
+                ),
+            )
+
+        # Availability at purchase time (publication is not perpetual).
+        if definition.availability_state != insurance_defs.IN_USE:
+            return StorePurchaseResult(
+                success=False,
+                correlation_id="",
+                quantity_granted=0,
+                error_code="INSURANCE_NOT_AVAILABLE",
+                error_message=(
+                    f"Insurance definition {insurance_policy_uuid} is not available "
+                    f"for new purchase (state={definition.availability_state})"
+                ),
+            )
+
+        # Premium reconciliation: the amount charged (StoreProduct price) MUST
+        # equal the premium frozen into the contract, so coverage math is never
+        # computed from a different economic input than the student paid.
+        if Decimal(policy_config.price) != Decimal(definition.premium):
+            return StorePurchaseResult(
+                success=False,
+                correlation_id="",
+                quantity_granted=0,
+                error_code="INSURANCE_PREMIUM_MISMATCH",
+                error_message=(
+                    f"Store price {policy_config.price} does not match insurance premium "
+                    f"{definition.premium} for definition {insurance_policy_uuid}"
+                ),
+            )
+
+        # Build the self-sufficient claim-time snapshot (explicit projection).
+        try:
+            insurance_frozen_contract = build_frozen_contract(definition)
+        except InsuranceFreezeError as exc:
+            return StorePurchaseResult(
+                success=False,
+                correlation_id="",
+                quantity_granted=0,
+                error_code="INSURANCE_FREEZE_FAILED",
+                error_message=str(exc),
+            )
+        insurance_purchase_metadata = build_purchase_metadata(definition)
+
     # Validate per-student limit (if configured)
     if policy_config.limit_per_student is not None:
         # Count existing GRANTED entitlements for this seat and product
@@ -285,6 +369,15 @@ def _execute_store_purchase_impl(
             "policy_uuid": policy_config.policy_uuid,  # For audit/historical reference
             "price_per_unit": str(policy_config.price),
         }
+
+        # INSURANCE (Step 5): persist the frozen, self-sufficient contract so
+        # later HIDDEN/RETIRED/deleted source definitions cannot affect this
+        # purchased entitlement. Claims will consume frozen_contract, never the
+        # current InsurancePolicy state.
+        if insurance_frozen_contract is not None:
+            event_payload["insurance_policy_uuid"] = insurance_policy_uuid  # provenance
+            event_payload["frozen_contract"] = insurance_frozen_contract     # claim-time truth
+            event_payload["purchase_metadata"] = insurance_purchase_metadata  # display-only
 
         event = EntitlementEvent(
             event_id=str(uuid.uuid4()),

@@ -17,7 +17,7 @@
     <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Close"></button>
   </div>
   <div class="offcanvas-body">
-    <p>Monitor student balances, review transactions, and configure savings settings.</p>
+    <p>Check class balances, review transactions, and manage savings interest.</p>
     <div class="accordion mt-4 mb-4" id="bankingGuideAccordion">
       <div class="accordion-item">
         <h2 class="accordion-header" id="bankingGuideHeadingOverview">
@@ -37,8 +37,6 @@
               <li><strong>Total Deposits</strong> — Combined checking + savings across all students</li>
               <li><strong>Students w/ Savings</strong> — How many students are actively saving</li>
             </ul>
-            <p class="mb-3"><strong>Example:</strong> 20 students with $10 in checking and $5 in savings equals $300 in
-              total deposits.</p>
             <div class="alert alert-info mb-0">
               <strong><span class="material-symbols-outlined me-1">lightbulb</span>Teaching Tip:</strong> Encourage at least 30% of students
               to use savings accounts. This teaches delayed gratification and financial planning!
@@ -58,7 +56,7 @@
         <div id="bankingGuideTransactions" class="accordion-collapse collapse mt-2"
           aria-labelledby="bankingGuideHeadingTransactions" data-bs-parent="#bankingGuideAccordion">
           <div class="accordion-body">
-            <p>Use the Transactions tab to review deposits, withdrawals, transfers, and fees for each student.</p>
+            <p>Open <strong>Transactions</strong> to review deposits, withdrawals, transfers, and fees.</p>
             <ul class="mb-0">
               <li>Filter by student, account type, or date to investigate a specific concern.</li>
               <li>Common entries include payroll deposits, rent charges, store purchases, and savings transfers.</li>
@@ -71,64 +69,15 @@
           <button class="accordion-button collapsed bg-secondary text-muted" type="button" data-bs-toggle="collapse"
             data-bs-target="#bankingGuideSettings" aria-expanded="false" aria-controls="bankingGuideSettings">
             <span class="material-symbols-outlined me-2" style="font-size:25pt; vertical-align:middle;">settings</span>
-            <strong>Banking Settings</strong>
+            <strong>Savings Interest</strong>
           </button>
         </h2>
         <div id="bankingGuideSettings" class="accordion-collapse collapse mt-2"
           aria-labelledby="bankingGuideHeadingSettings" data-bs-parent="#bankingGuideAccordion">
           <div class="accordion-body">
-            <p>Configure savings interest, payout schedules, and overdraft rules in the Settings tab.</p>
-            <p class="mb-0">Rate changes affect future payouts only and will not re-calculate past interest.</p>
-            <div class="alert alert-warning mb-0">
-              <strong>Reminder:</strong> Setting changes apply moving forward and do not alter past transactions.
-            </div>
-          </div>
-        </div>
-      </div>
-      <div class="accordion-item">
-        <h2 class="accordion-header" id="bankingGuideHeadingBreakdown">
-          <button class="accordion-button collapsed bg-secondary text-muted" type="button" data-bs-toggle="collapse"
-            data-bs-target="#bankingGuideBreakdown" aria-expanded="false" aria-controls="bankingGuideBreakdown">
-            <span class="material-symbols-outlined me-2" style="font-size:25pt; vertical-align:middle;">tune</span>
-            <strong>Settings Breakdown</strong>
-          </button>
-        </h2>
-        <div id="bankingGuideBreakdown" class="accordion-collapse collapse mt-2"
-          aria-labelledby="bankingGuideHeadingBreakdown" data-bs-parent="#bankingGuideAccordion">
-          <div class="accordion-body">
-            <p class="mb-2"><strong><span class="material-symbols-outlined me-1">settings</span>Basic Settings:</strong></p>
-            <ul class="mb-3">
-              <li><strong>Active class context:</strong> Configure settings independently for the currently selected class period.</li>
-              <li><strong>Savings APY:</strong> Annual percentage yield (e.g., 5% APY means about $0.42 earned per $100
-                saved monthly)</li>
-              <li><strong>Interest Type:</strong>
-                <ul class="small mt-1">
-                  <li><em>Simple:</em> Interest calculated only on principal (easier to understand).</li>
-                  <li><em>Compound:</em> Interest calculated on principal + accumulated interest (faster growth).</li>
-                </ul>
-              </li>
-              <li><strong>Interest schedule:</strong> How often interest is calculated and paid (Weekly, Monthly, etc.)
-              </li>
-            </ul>
-
-            <p class="mb-2"><strong><span class="material-symbols-outlined me-1">tune</span>Advanced Settings:</strong></p>
-            <ul class="mb-3">
-              <li><strong>Overdraft protection:</strong> When enabled, savings automatically covers checking shortfalls
-                (recommended for beginners)</li>
-              <li><strong>Overdraft fees:</strong> When protection is off, charge a fee if balance goes negative to
-                reinforce consequences</li>
-            </ul>
-
-            <div class="alert alert-warning mt-3 mb-3">
-              <strong><span class="material-symbols-outlined me-1">warning</span>Side effects:</strong> Rate changes only
-              affect future interest, not past payments. Interest schedule changes take effect on the next scheduled
-              run.
-            </div>
-
-            <div class="alert alert-info mb-0">
-              <strong><span class="material-symbols-outlined me-1">lightbulb</span>Recommended Setup:</strong> Start with 5% APY, weekly
-              payouts, and overdraft protection enabled. Adjust based on student engagement.
-            </div>
+            <p>Open <strong>Settings</strong> to set the savings rate and payout frequency.</p>
+            <p class="mb-0">Rate changes affect future payouts only and will not re-calculate past interest. Each save
+              creates a new economic-engine version, preserving your class's economy history.</p>
           </div>
         </div>
       </div>
@@ -190,43 +139,23 @@
         </div>
       </div>
 
-      <!-- Current Settings Summary -->
+      <!-- Current Interest Summary -->
       <div class="col-lg-6 mb-4">
         <div class="card shadow">
           <div class="card-header bg-success text-white">
-            <h5 class="mb-0"><span class="material-symbols-outlined me-2">info</span>Current Settings</h5>
+            <h5 class="mb-0"><span class="material-symbols-outlined me-2">info</span>Current Savings Interest</h5>
           </div>
           <div class="card-body">
-            {% if settings %}
             <ul class="list-unstyled mb-0">
               <li class="mb-2">
-                <strong>Savings APY:</strong> {{ "%.2f"|format(settings.savings_apy) }}%
-              </li>
-              <li class="mb-2">
-                <strong>Monthly Rate:</strong> {{ "%.2f"|format(settings.savings_monthly_rate) }}%
-              </li>
-              <li class="mb-2">
-                <strong>Interest Schedule:</strong> {{ settings.interest_schedule_type|title }}
-                {% if settings.interest_schedule_type == 'monthly' %}({{ settings.interest_schedule_cycle_days }}
-                days){% endif %}
-              </li>
-              <li class="mb-2">
-                <strong>Overdraft Protection:</strong>
-                <span
-                  class="badge bg-{% if settings.overdraft_protection_enabled %}success{% else %}secondary{% endif %}">
-                  {% if settings.overdraft_protection_enabled %}Enabled{% else %}Disabled{% endif %}
-                </span>
+                <strong>Savings APY:</strong> {{ "%.2f"|format(interest_apy|default(0)) }}%
               </li>
               <li class="mb-0">
-                <strong>Overdraft Fees:</strong>
-                <span class="badge bg-{% if settings.overdraft_fee_enabled %}danger{% else %}secondary{% endif %}">
-                  {% if settings.overdraft_fee_enabled %}Enabled ({{ settings.overdraft_fee_type|title }}){% else
-                  %}Disabled{% endif %}
-                </span>
+                <strong>Payout Frequency:</strong> {{ (interest_payout_frequency or 'monthly')|title }}
               </li>
             </ul>
-            {% else %}
-            <p class="text-muted mb-0">No banking settings configured yet. Go to the Settings tab to configure.</p>
+            {% if (interest_apy|default(0))|float <= 0 %}
+            <p class="text-muted mb-0 mt-3">Interest is off. Set a small APY in the Settings tab to reward saving.</p>
             {% endif %}
           </div>
         </div>
@@ -256,21 +185,13 @@
               {% for tx in transactions[:10] %}
               <tr>
                 <td>
-                  {% if tx.timestamp %}
-                  {{ tx.timestamp|fmt_timestamp }}
-                  {% else %}
-                  N/A
-                  {% endif %}
+                  {% if tx.timestamp %}{{ tx.timestamp|fmt_timestamp }}{% else %}N/A{% endif %}
                 </td>
                 <td>
-                  <a href="{{ student_detail_url(tx.actor_public_id) }}">
-                    {{ tx.student_name }}
-                  </a>
+                  <a href="{{ student_detail_url(tx.actor_public_id) }}">{{ tx.student_name }}</a>
                 </td>
                 <td>
-                  {% if tx.type %}
-                  <span class="badge bg-secondary">{{ tx.type|title }}</span>
-                  {% endif %}
+                  {% if tx.type %}<span class="badge bg-secondary">{{ tx.type|title }}</span>{% endif %}
                 </td>
                 <td>
                   <span class="badge bg-{% if tx.account_type == 'checking' %}primary{% else %}success{% endif %}">
@@ -378,21 +299,13 @@
               {% for tx in transactions %}
               <tr class="{% if tx.is_void %}table-secondary text-muted{% endif %}">
                 <td>
-                  {% if tx.timestamp %}
-                  {{ tx.timestamp|fmt_timestamp }}
-                  {% else %}
-                  N/A
-                  {% endif %}
+                  {% if tx.timestamp %}{{ tx.timestamp|fmt_timestamp }}{% else %}N/A{% endif %}
                 </td>
                 <td>
-                  <a href="{{ student_detail_url(tx.actor_public_id) }}">
-                    {{ tx.student_name }}
-                  </a>
+                  <a href="{{ student_detail_url(tx.actor_public_id) }}">{{ tx.student_name }}</a>
                 </td>
                 <td>
-                  {% if tx.type %}
-                  <span class="badge bg-secondary">{{ tx.type|title }}</span>
-                  {% endif %}
+                  {% if tx.type %}<span class="badge bg-secondary">{{ tx.type|title }}</span>{% endif %}
                 </td>
                 <td>
                   <span class="badge bg-{% if tx.account_type == 'checking' %}primary{% else %}success{% endif %}">
@@ -401,9 +314,7 @@
                 </td>
                 <td class="{% if tx.amount > 0 %}text-success{% else %}text-danger{% endif %} fw-bold text-end">
                   ${{ "%.2f"|format(tx.amount) }}
-                  {% if tx.is_void %}
-                  <span class="badge bg-secondary ms-1">VOID</span>
-                  {% endif %}
+                  {% if tx.is_void %}<span class="badge bg-secondary ms-1">VOID</span>{% endif %}
                 </td>
                 <td>{{ tx.description or '—' }}</td>
                 <td>
@@ -431,13 +342,11 @@
         {% if total_pages > 1 %}
         <nav aria-label="Transaction pagination">
           <ul class="pagination pagination-sm justify-content-center mt-3">
-            <!-- Previous Button -->
             <li class="page-item {% if page <= 1 %}disabled{% endif %}">
               <a class="page-link"
                 href="{{ url_for('admin.banking', page=page-1, student=request.args.get('student', ''), account=request.args.get('account', ''), type=request.args.get('type', ''), start_date=request.args.get('start_date', ''), end_date=request.args.get('end_date', '')) }}">Previous</a>
             </li>
 
-            <!-- Page Numbers -->
             {% set start_page = [1, page - 2]|max %}
             {% set end_page = [total_pages, page + 2]|min %}
 
@@ -468,7 +377,6 @@
             </li>
             {% endif %}
 
-            <!-- Next Button -->
             <li class="page-item {% if page >= total_pages %}disabled{% endif %}">
               <a class="page-link"
                 href="{{ url_for('admin.banking', page=page+1, student=request.args.get('student', ''), account=request.args.get('account', ''), type=request.args.get('type', ''), start_date=request.args.get('start_date', ''), end_date=request.args.get('end_date', '')) }}">Next</a>
@@ -483,237 +391,133 @@
   <!-- SETTINGS TAB -->
   <div class="tab-pane fade" id="settings" role="tabpanel">
     <form method="POST" action="{{ url_for('admin.banking_settings_update') }}" id="bankingSettingsForm">
-      {{ form.hidden_tag() }}
-
-      <!-- Interest Rate Guidance -->
-      {% if recommended_apy is not none and cwi_value is not none %}
-      <div class="alert alert-info mb-4">
-        <div class="d-flex align-items-start gap-2">
-          <span class="material-symbols-outlined mt-1">savings</span>
-          <div>
-            <h6 class="fw-bold mb-1">Recommended Interest Rate: {{ recommended_apy }}% APY</h6>
-            <p class="mb-1 small">Based on your pay settings, students earn about <strong>${{ "%.2f"|format(cwi_value) }}/week</strong> (CWI). This rate ensures savings take at least {{ doubling_years }} years to double — interest stays a bonus, not a replacement for earning wages.</p>
-            <p class="mb-0 small text-muted">
-              <strong>Hard limit:</strong> Weekly interest earned per student must stay below your CWI (${{ "%.2f"|format(cwi_value) }}). You can set a lower rate or skip interest entirely.
-            </p>
-          </div>
-        </div>
-      </div>
-      {% elif recommended_apy is none %}
-      <div class="alert alert-secondary mb-4">
-        <div class="d-flex align-items-start gap-2">
-          <span class="material-symbols-outlined mt-1">savings</span>
-          <div>
-            <p class="mb-0 small">Set up your payroll pay rate and expected weekly hours first — the system will then recommend an interest rate calibrated to your class economy.</p>
-          </div>
-        </div>
-      </div>
-      {% endif %}
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
       <div class="row">
-        <!-- Interest Settings Card -->
         <div class="col-lg-6 mb-4">
           <div class="card shadow h-100">
             <div class="card-header bg-primary text-white">
-              <h5 class="mb-0"><span class="material-symbols-outlined me-2">percent</span>Interest Settings</h5>
+              <h5 class="mb-0"><span class="material-symbols-outlined me-2">percent</span>Savings Interest</h5>
             </div>
             <div class="card-body">
-              <!-- Rate Input Mode Toggle -->
               <div class="mb-4">
-                <label class="form-label fw-bold">Choose how you want to set the interest rate:</label>
-                <div class="btn-group w-100" role="group" aria-label="Interest rate input mode">
-                  <input type="radio" class="btn-check" name="rate_input_mode" id="mode_apy" value="apy" {% if not
-                    settings or settings.savings_apy>= settings.savings_monthly_rate or form.rate_input_mode.data ==
-                  'apy' %}checked{% endif %}>
-                  <label class="btn btn-outline-primary" for="mode_apy">
-                    <span class="material-symbols-outlined me-1">calendar_month</span>Annual Rate (APY)
-                  </label>
-
-                  <input type="radio" class="btn-check" name="rate_input_mode" id="mode_monthly" value="monthly" {% if
-                    settings and settings.savings_monthly_rate> settings.savings_apy and form.rate_input_mode.data !=
-                  'apy' %}checked{% endif %}>
-                  <label class="btn btn-outline-primary" for="mode_monthly">
-                    <span class="material-symbols-outlined me-1">calendar_month</span>Monthly Rate
-                  </label>
-                </div>
-              </div>
-
-              <!-- APY Input (shown when mode is APY) -->
-              <div class="mb-3" id="apyInputSection">
-                <label for="savings_apy" class="form-label fw-bold">Annual Percentage Yield (APY %)</label>
+                <label for="interest_apy" class="form-label fw-bold">Annual Percentage Yield (APY %)</label>
                 <div class="input-group">
-                  <input type="number" step="0.01" class="form-control" name="savings_apy" id="savings_apy"
-                    placeholder="5.0" value="{{ form.savings_apy.data or 0 }}">
+                  <input type="number" step="0.01" min="0" max="100" class="form-control" name="interest_apy"
+                    id="interest_apy" placeholder="5.0" value="{{ "%.2f"|format(interest_apy|default(0)) }}">
                   <span class="input-group-text">%</span>
                 </div>
-                <small class="text-muted">Annual Percentage Yield for savings accounts</small>
-                <div id="apyToMonthlyHint" class="mt-2 p-2 bg-light border rounded" style="display: none;">
-                  <small class="text-info">
-                    <span class="material-symbols-outlined me-1">arrow_circle_right</span>
-                    <strong>Calculated Monthly Rate:</strong> <span id="calculatedMonthlyFromAPY">0.00</span>%
-                  </small>
+                <small class="text-muted">Annual yield applied to savings balances. Set 0 to disable interest.</small>
+                {% if savings_reco and savings_reco.cwi %}
+                <div class="mt-2 small text-success">
+                  <span class="material-symbols-outlined align-middle" style="font-size:1rem;">recommend</span>
+                  Economic Engine ceiling: <strong>{{ "%.2f"|format(savings_reco.max_apy_percent|float) }}% APY</strong>
+                  max for <em>{{ savings_reco.mode }}</em> mode at
+                  <em>{{ savings_reco.compound_frequency }}</em> compounding
+                  (keeps savings from doubling faster than {{ savings_reco.min_doubling_years }} yr).
+                  Weekly savings target ≈ {{ savings_reco.weekly_savings_target }}.
                 </div>
-              </div>
-
-              <!-- Monthly Rate Input (shown when mode is Monthly) -->
-              <div class="mb-3" id="monthlyInputSection" style="display: none;">
-                <label for="savings_monthly_rate" class="form-label fw-bold">Monthly Interest Rate (%)</label>
-                <div class="input-group">
-                  <input type="number" step="0.0001" class="form-control" name="savings_monthly_rate"
-                    id="savings_monthly_rate" placeholder="0.42" value="{{ form.savings_monthly_rate.data or 0 }}">
-                  <span class="input-group-text">%</span>
+                {% else %}
+                <div class="mt-2 small text-muted">
+                  Set a payroll pay rate and expected weekly hours to see the Economic Engine's
+                  recommended interest ceiling.
                 </div>
-                <small class="text-muted">Monthly interest rate</small>
-                <div id="monthlyToAPYHint" class="mt-2 p-2 bg-light border rounded" style="display: none;">
-                  <small class="text-info">
-                    <span class="material-symbols-outlined me-1">arrow_circle_right</span>
-                    <strong>Calculated APY:</strong> <span id="calculatedAPYFromMonthly">0.00</span>%
-                  </small>
-                </div>
+                {% endif %}
               </div>
 
-              <!-- Interest Preview -->
-              <div class="alert alert-info" id="interestPreview">
-                <h6 class="mb-2"><span class="material-symbols-outlined me-1">calculate</span>Interest Preview</h6>
-                <div id="previewContent">
-                  <small class="text-muted">Enter an interest rate to see estimated payouts</small>
-                </div>
+              <div class="mb-4">
+                <label for="interest_calculation_type" class="form-label fw-bold">Interest Type</label>
+                <select name="interest_calculation_type" id="interest_calculation_type" class="form-select">
+                  <option value="simple" {% if interest_calculation_type != 'compound' %}selected{% endif %}>
+                    Simple (accrued interest does not compound)</option>
+                  <option value="compound" {% if interest_calculation_type == 'compound' %}selected{% endif %}>
+                    Compound</option>
+                </select>
+                <small class="text-muted">Simple interest never compounds; compound interest grows on prior interest.</small>
               </div>
 
-              <hr>
-
-
-
-              <div class="mb-3">
-                {{ form.interest_calculation_type.label(class="form-label fw-bold") }}
-                {{ form.interest_calculation_type(class="form-select") }}
-                <small class="text-muted">
-                  <strong>Simple:</strong> Interest calculated on principal only.<br>
-                  <strong>Compound:</strong> Interest calculated on principal + previously earned interest.
-                </small>
+              <div class="mb-4" id="compoundFrequencyGroup">
+                <label for="compound_frequency" class="form-label fw-bold">Compound Frequency</label>
+                <select name="compound_frequency" id="compound_frequency" class="form-select">
+                  <option value="daily" {% if compound_frequency == 'daily' %}selected{% endif %}>Daily</option>
+                  <option value="weekly" {% if compound_frequency == 'weekly' %}selected{% endif %}>Weekly</option>
+                  <option value="monthly" {% if compound_frequency not in ['daily', 'weekly'] %}selected{% endif %}>
+                    Monthly</option>
+                </select>
+                <small class="text-muted">How often compound interest is applied. Ignored for simple interest.</small>
               </div>
 
-              <div class="mb-3" id="compoundFrequencyField">
-                {{ form.compound_frequency.label(class="form-label fw-bold") }}
-                {{ form.compound_frequency(class="form-select") }}
-                <small class="text-muted">How often interest compounds (only applies to compound interest)</small>
+              <div class="mb-4">
+                <label for="interest_payout_frequency" class="form-label fw-bold">Payout Frequency</label>
+                <select name="interest_payout_frequency" id="interest_payout_frequency" class="form-select">
+                  <option value="weekly" {% if interest_payout_frequency == 'weekly' %}selected{% endif %}>Weekly
+                  </option>
+                  <option value="monthly" {% if interest_payout_frequency != 'weekly' %}selected{% endif %}>Monthly
+                  </option>
+                </select>
+                <small class="text-muted">How often interest is paid into savings accounts.</small>
               </div>
 
-              <hr>
-
-
-
-              <div class="mb-3">
-                {{ form.interest_schedule_type.label(class="form-label fw-bold") }}
-                {{ form.interest_schedule_type(class="form-select") }}
-              </div>
-
-              <div class="mb-3" id="cycleDaysField">
-                {{ form.interest_schedule_cycle_days.label(class="form-label fw-bold") }}
-                {{ form.interest_schedule_cycle_days(class="form-control", placeholder="30") }}
-                <small class="text-muted">Number of days in each cycle (for monthly schedule)</small>
-              </div>
-
-              <div class="mb-0">
-                {{ form.interest_payout_start_date.label(class="form-label fw-bold") }}
-                {{ form.interest_payout_start_date(class="form-control") }}
-                <small class="text-muted">Date when interest payouts begin</small>
+              <div class="alert alert-info mb-0">
+                <span class="material-symbols-outlined me-1">info</span>
+                Saving creates a new economic-engine version. Rate changes affect future payouts only.
               </div>
             </div>
           </div>
         </div>
 
-        <!-- Overdraft Settings Card -->
         <div class="col-lg-6 mb-4">
           <div class="card shadow h-100">
-            <div class="card-header bg-secondary text-dark">
-              <h5 class="mb-0 text-dark"><span class="material-symbols-outlined me-2 text-dark">shield</span>Overdraft Settings</h5>
+            <div class="card-header bg-danger text-white">
+              <h5 class="mb-0"><span class="material-symbols-outlined me-2">account_balance_wallet</span>Overdraft</h5>
             </div>
             <div class="card-body">
+              <div class="form-check form-switch mb-4">
+                <input class="form-check-input" type="checkbox" role="switch" name="overdraft_protection_enabled"
+                  id="overdraft_protection_enabled" {% if overdraft_protection_enabled %}checked{% endif %}>
+                <label class="form-check-label fw-bold" for="overdraft_protection_enabled">
+                  Overdraft protection
+                </label>
+                <div><small class="text-muted">When on, a negative checking transaction pulls from savings before
+                  it overdraws.</small></div>
+              </div>
+
               <div class="mb-4">
-                <div class="form-check form-switch">
-                  {{ form.overdraft_protection_enabled(class="form-check-input", role="switch") }}
-                  {{ form.overdraft_protection_enabled.label(class="form-check-label fw-bold") }}
+                <label for="flat_overdraft_fee" class="form-label fw-bold">Overdraft Fee (flat)</label>
+                <div class="input-group">
+                  <span class="input-group-text">{{ currency_symbol|default('$') }}</span>
+                  <input type="number" step="0.01" min="0" class="form-control" name="flat_overdraft_fee"
+                    id="flat_overdraft_fee" placeholder="Leave blank to disable"
+                    value="{% if flat_overdraft_fee is not none %}{{ "%.2f"|format(flat_overdraft_fee|float) }}{% endif %}">
                 </div>
-                <small class="text-muted">If enabled, negative checking balances will be covered by savings</small>
+                <small class="text-muted">Charged when an account overdraws. Leave blank to charge no fee.</small>
+                {% if overdraft_reco and overdraft_reco.cwi %}
+                <div class="mt-2 small text-success">
+                  <span class="material-symbols-outlined align-middle" style="font-size:1rem;">recommend</span>
+                  Economic Engine range: <strong>{{ overdraft_reco.flat_fee_lower }}–{{ overdraft_reco.flat_fee_upper }}</strong>
+                  for <em>{{ overdraft_reco.mode }}</em> mode
+                  ({{ "%.0f"|format(overdraft_reco.fine_rate_lower|float * 100) }}%–{{ "%.0f"|format(overdraft_reco.fine_rate_upper|float * 100) }}% of CWI).
+                  Progressive tiers: {{ overdraft_reco.progressive_fees|join(' / ') }}.
+                </div>
+                {% else %}
+                <div class="mt-2 small text-muted">
+                  Set a payroll pay rate and expected weekly hours to see the Economic Engine's
+                  recommended overdraft-fee range.
+                </div>
+                {% endif %}
               </div>
 
-              <hr>
-
-              <h6 class="fw-bold mb-3">Overdraft/NSF Fees</h6>
-
-              <div class="mb-3">
-                <div class="form-check form-switch">
-                  {{ form.overdraft_fee_enabled(class="form-check-input", role="switch", id="overdraftFeeToggle") }}
-                  {{ form.overdraft_fee_enabled.label(class="form-check-label fw-bold") }}
-                </div>
-              </div>
-
-              <div id="feeSettings"
-                style="{% if not settings or not settings.overdraft_fee_enabled %}display:none;{% endif %}">
-                <div class="mb-3">
-                  {{ form.overdraft_fee_type.label(class="form-label fw-bold") }}
-                  {{ form.overdraft_fee_type(class="form-select", id="feeTypeSelect") }}
-                </div>
-
-                <!-- Flat Fee Settings -->
-                <div id="flatFeeSettings"
-                  style="{% if settings and settings.overdraft_fee_type == 'progressive' %}display:none;{% endif %}">
-                  <div class="mb-3">
-                    {{ form.overdraft_fee_flat_amount.label(class="form-label fw-bold") }}
-                    <div class="input-group">
-                      <span class="input-group-text">$</span>
-                      {{ form.overdraft_fee_flat_amount(class="form-control", placeholder="35.00") }}
-                    </div>
-                    <small class="text-muted">Fixed fee charged per overdraft transaction</small>
-                  </div>
-                </div>
-
-                <!-- Progressive Fee Settings -->
-                <div id="progressiveFeeSettings"
-                  style="{% if not settings or settings.overdraft_fee_type != 'progressive' %}display:none;{% endif %}">
-                  <div class="mb-3">
-                    {{ form.overdraft_fee_progressive_1.label(class="form-label fw-bold") }}
-                    <div class="input-group">
-                      <span class="input-group-text">$</span>
-                      {{ form.overdraft_fee_progressive_1(class="form-control", placeholder="25.00") }}
-                    </div>
-                  </div>
-
-                  <div class="mb-3">
-                    {{ form.overdraft_fee_progressive_2.label(class="form-label fw-bold") }}
-                    <div class="input-group">
-                      <span class="input-group-text">$</span>
-                      {{ form.overdraft_fee_progressive_2(class="form-control", placeholder="35.00") }}
-                    </div>
-                  </div>
-
-                  <div class="mb-3">
-                    {{ form.overdraft_fee_progressive_3.label(class="form-label fw-bold") }}
-                    <div class="input-group">
-                      <span class="input-group-text">$</span>
-                      {{ form.overdraft_fee_progressive_3(class="form-control", placeholder="45.00") }}
-                    </div>
-                  </div>
-
-                  <div class="mb-3">
-                    {{ form.overdraft_fee_progressive_cap.label(class="form-label fw-bold") }}
-                    <div class="input-group">
-                      <span class="input-group-text">$</span>
-                      {{ form.overdraft_fee_progressive_cap(class="form-control", placeholder="100.00") }}
-                    </div>
-                    <small class="text-muted">Optional maximum total fees per period</small>
-                  </div>
-                </div>
+              <div class="alert alert-warning mb-0">
+                <span class="material-symbols-outlined me-1">warning</span>
+                Overdraft fees reuse the classroom fine band. A fee is only active while a value is set.
               </div>
             </div>
           </div>
         </div>
       </div>
 
-      <!-- Save Button -->
       <div class="text-center mb-4">
-        {{ form.submit(class="btn btn-primary btn-lg px-5") }}
+        <button type="submit" class="btn btn-primary btn-lg px-5">Save Banking Settings</button>
       </div>
     </form>
   </div>
@@ -721,203 +525,6 @@
 
 <!-- JavaScript -->
 <script>
-  document.addEventListener("DOMContentLoaded", () => {
-
-    // -------------------- INTEREST RATE CALCULATIONS --------------------
-    const avgSavingsBalance = {{ average_savings_balance|default (0)
-  }};
-  const totalSavings = {{ total_savings|default (0) }};
-
-  // Toggle between APY and Monthly input modes
-  const modeAPY = document.getElementById('mode_apy');
-  const modeMonthly = document.getElementById('mode_monthly');
-  const apyInputSection = document.getElementById('apyInputSection');
-  const monthlyInputSection = document.getElementById('monthlyInputSection');
-  const apyInput = document.getElementById('savings_apy');
-  const monthlyInput = document.getElementById('savings_monthly_rate');
-
-  function toggleInputMode() {
-    if (modeAPY.checked) {
-      apyInputSection.style.display = 'block';
-      monthlyInputSection.style.display = 'none';
-      // Disable monthly input to prevent validation errors on hidden field
-      monthlyInput.disabled = true;
-      apyInput.disabled = false;
-    } else {
-      apyInputSection.style.display = 'none';
-      monthlyInputSection.style.display = 'block';
-      // Disable APY input to prevent validation errors on hidden field
-      apyInput.disabled = true;
-      monthlyInput.disabled = false;
-    }
-    updateInterestPreview();
-  }
-
-  // APY to Monthly Rate: monthly = (1 + APY/100)^(1/12) - 1
-  function apyToMonthly(apy) {
-    if (!apy || apy <= 0) return 0;
-    const monthly = (Math.pow(1 + apy / 100, 1 / 12) - 1) * 100;
-    return monthly;
-  }
-
-  // Monthly Rate to APY: APY = (1 + monthly/100)^12 - 1
-  function monthlyToAPY(monthly) {
-    if (!monthly || monthly <= 0) return 0;
-    const apy = (Math.pow(1 + monthly / 100, 12) - 1) * 100;
-    return apy;
-  }
-
-  // Update calculations when APY changes
-  apyInput.addEventListener('input', function () {
-    const apy = parseFloat(this.value) || 0;
-    const monthly = apyToMonthly(apy);
-
-    document.getElementById('calculatedMonthlyFromAPY').textContent = monthly.toFixed(4);
-    document.getElementById('apyToMonthlyHint').style.display = apy > 0 ? 'block' : 'none';
-
-    // Update the monthly rate field with calculated value
-    monthlyInput.value = monthly.toFixed(6);
-
-    updateInterestPreview();
-  });
-
-  // Update calculations when Monthly Rate changes
-  monthlyInput.addEventListener('input', function () {
-    const monthly = parseFloat(this.value) || 0;
-    const apy = monthlyToAPY(monthly);
-
-    document.getElementById('calculatedAPYFromMonthly').textContent = apy.toFixed(4);
-    document.getElementById('monthlyToAPYHint').style.display = monthly > 0 ? 'block' : 'none';
-
-    // Update the APY field with calculated value
-    apyInput.value = apy.toFixed(6);
-
-    updateInterestPreview();
-  });
-
-  // Update interest preview
-  function updateInterestPreview() {
-    const previewContent = document.getElementById('previewContent');
-    let monthlyRate = 0;
-    let apyRate = 0;
-
-    if (modeAPY.checked) {
-      apyRate = parseFloat(apyInput.value) || 0;
-      monthlyRate = apyToMonthly(apyRate);
-    } else {
-      monthlyRate = parseFloat(monthlyInput.value) || 0;
-      apyRate = monthlyToAPY(monthlyRate);
-    }
-
-    if (monthlyRate <= 0 || avgSavingsBalance <= 0) {
-      previewContent.innerHTML = '<small class="text-muted">Enter an interest rate to see estimated payouts</small>';
-      return;
-    }
-
-    const monthlyInterestPerStudent = avgSavingsBalance * (monthlyRate / 100);
-    const weeklyInterestPerStudent = monthlyInterestPerStudent / 4.33; // Approximate weeks per month
-    const totalMonthlyInterest = totalSavings * (monthlyRate / 100);
-
-    previewContent.innerHTML = `
-            <div class="row text-center">
-                <div class="col-6">
-                    <strong>Average Student</strong><br>
-                    <span class="text-success">$${avgSavingsBalance.toFixed(2)}</span> balance<br>
-                    <small class="text-muted">
-                        Weekly: <strong class="text-primary">$${weeklyInterestPerStudent.toFixed(2)}</strong><br>
-                        Monthly: <strong class="text-primary">$${monthlyInterestPerStudent.toFixed(2)}</strong>
-                    </small>
-                </div>
-                <div class="col-6">
-                    <strong>Entire Class</strong><br>
-                    <span class="text-success">$${totalSavings.toFixed(2)}</span> total<br>
-                    <small class="text-muted">
-                        Monthly payout: <strong class="text-primary">$${totalMonthlyInterest.toFixed(2)}</strong>
-                    </small>
-                </div>
-            </div>
-        `;
-  }
-
-  // Mode toggle listeners
-  modeAPY.addEventListener('change', toggleInputMode);
-  modeMonthly.addEventListener('change', toggleInputMode);
-
-  // Initialize
-  toggleInputMode();
-
-  // If there are existing values, trigger calculation
-  if (parseFloat(apyInput.value) > 0) {
-    apyInput.dispatchEvent(new Event('input'));
-  } else if (parseFloat(monthlyInput.value) > 0) {
-    monthlyInput.dispatchEvent(new Event('input'));
-  }
-
-  // Re-enable all fields before form submission to ensure values are sent
-  const bankingForm = document.getElementById('bankingSettingsForm');
-  if (bankingForm) {
-    bankingForm.addEventListener('submit', function (e) {
-      // Temporarily enable both fields so their values are submitted
-      apyInput.disabled = false;
-      monthlyInput.disabled = false;
-    });
-  }
-
-  // Overdraft Fee Toggle
-  const overdraftFeeToggle = document.getElementById('overdraftFeeToggle');
-  const feeSettings = document.getElementById('feeSettings');
-
-  if (overdraftFeeToggle) {
-    overdraftFeeToggle.addEventListener('change', function () {
-      feeSettings.style.display = this.checked ? 'block' : 'none';
-    });
-  }
-
-  // Fee Type Toggle
-  const feeTypeSelect = document.getElementById('feeTypeSelect');
-  const flatFeeSettings = document.getElementById('flatFeeSettings');
-  const progressiveFeeSettings = document.getElementById('progressiveFeeSettings');
-
-  if (feeTypeSelect) {
-    feeTypeSelect.addEventListener('change', function () {
-      if (this.value === 'flat') {
-        flatFeeSettings.style.display = 'block';
-        progressiveFeeSettings.style.display = 'none';
-      } else {
-        flatFeeSettings.style.display = 'none';
-        progressiveFeeSettings.style.display = 'block';
-      }
-    });
-  }
-
-  // Interest Schedule Type Toggle
-  const scheduleType = document.getElementById('interest_schedule_type');
-  const cycleDaysField = document.getElementById('cycleDaysField');
-
-  if (scheduleType) {
-    scheduleType.addEventListener('change', function () {
-      cycleDaysField.style.display = this.value === 'monthly' ? 'block' : 'none';
-    });
-
-    // Initialize visibility
-    cycleDaysField.style.display = scheduleType.value === 'monthly' ? 'block' : 'none';
-  }
-
-  // Interest Calculation Type Toggle
-  const calculationType = document.getElementById('interest_calculation_type');
-  const compoundFrequencyField = document.getElementById('compoundFrequencyField');
-
-  if (calculationType) {
-    calculationType.addEventListener('change', function () {
-      compoundFrequencyField.style.display = this.value === 'compound' ? 'block' : 'none';
-    });
-
-    // Initialize visibility
-    compoundFrequencyField.style.display = calculationType.value === 'compound' ? 'block' : 'none';
-  }
-
-});
-
   // Void Transaction
   async function voidTransaction(transactionId) {
     if (!confirm('Are you sure you want to void this transaction? This cannot be undone.')) return;
@@ -947,6 +554,21 @@
   function showToast(message, type) {
     window.AppCore.toast(message, type);
   }
+
+  // Compound frequency only applies to compound interest; grey it out for simple.
+  (function () {
+    const calcType = document.getElementById('interest_calculation_type');
+    const compoundGroup = document.getElementById('compoundFrequencyGroup');
+    const compoundSelect = document.getElementById('compound_frequency');
+    if (!calcType || !compoundGroup || !compoundSelect) return;
+    function sync() {
+      const isSimple = calcType.value !== 'compound';
+      compoundSelect.disabled = isSimple;
+      compoundGroup.style.opacity = isSimple ? '0.5' : '1';
+    }
+    calcType.addEventListener('change', sync);
+    sync();
+  })();
 </script>
 
 {% endblock %}

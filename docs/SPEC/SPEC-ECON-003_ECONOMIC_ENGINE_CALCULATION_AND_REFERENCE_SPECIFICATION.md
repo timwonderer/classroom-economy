@@ -2,7 +2,7 @@
 
 | Reference Number | Version | Effective Date | Supersedes | Authority Level |
 |------------------|---------|----------------|------------|-----------------|
-| SPEC-ECON-003    |  1.0    |     2026-08-09 |       None |       Normative |
+| SPEC-ECON-003    |  1.2    |     2026-08-25 |        1.1 |       Normative |
 
 ---
 
@@ -26,6 +26,7 @@ This specification governs:
 - weekly savings targets,
 - interest doubling-time constraints,
 - interest-growth formulas,
+- the insurance **premium pricing envelope** and the separation of premium pricing (economic-mode axis) from coverage contract (insurance-tier axis) for the three canonical insurance products,
 - economic solvency and coherence checks,
 - deterministic reference values used by the engine.
 
@@ -146,9 +147,68 @@ utilities = CWI × utilities_rate
 
 ---
 
-### 4.5 Insurance Premium
+### 4.5 Insurance
 
-The engine SHALL provide a canonical insurance premium band as a percentage of `CWI`.
+Insurance is not a single product. `FEAT-STOR-003` defines three canonical insurance
+products, each with a distinct claim lifecycle and therefore a distinct economic
+reference model:
+
+- `TRANSACTION`
+- `PRODUCTIVITY`
+- `NON_MONETARY`
+
+This section is referenced to `FEAT-STOR-003` **only** to establish why the Economic
+Engine must model these three products separately. `FEAT-STOR-003` remains authoritative
+over claim submission, validation, approval, and compensation execution. This
+specification is authoritative only over the CWI-relative economic reference values used
+to price and bound insurance.
+
+#### 4.5.1 Two Independent Axes
+
+Insurance economics are governed by two axes that MUST be kept separate:
+
+1. **Insurance tier (coverage axis).** For products that use tiers, `Basic`, `Mid`, and
+   `Premium` define the insurance **contract / benefit** — what the policy covers and its
+   coverage limits. Tier is the coverage axis.
+
+2. **Economic policy mode (pricing axis).** `tight`, `default`, and `comfortable` affect
+   the recommended **premium** — what the coverage costs. Economic mode is the pricing
+   axis.
+
+**Axis-separation rule (normative).** Economic mode governs **pricing recommendations**
+only. Product and tier configuration govern **coverage parameters** only. Economic mode
+MUST NOT silently change any configured coverage parameter — reimbursement percentage,
+payout multiple, claim allowance, maximum claimed basis, waiting period, or coverage
+boundary. For example, if a `Premium PRODUCTIVITY` definition reimburses X% of validated
+lost wages, X% is identical in `tight`, `default`, and `comfortable`.
+
+**Derived monetary exposure is not a coverage parameter.** For monetary products whose
+ceiling is derived as `maximum_policy_payout = premium × payout_multiple`, economic mode
+legitimately changes the resulting dollar ceiling **because it changed the premium**, which
+is an economic input. This is intentional and is not a violation of the axis-separation
+rule. What mode MUST NOT change is the configured `payout_multiple` (or reimbursement %,
+claim allowance, etc.) itself. Consequently, this specification does **not** claim that a
+given tier yields the same dollar benefit across modes — only the same *coverage
+parameters*.
+
+Depending on product type, tier-controlled (coverage-axis) values MAY include:
+
+- reimbursement percentage;
+- payout multiple (where the ceiling is derived as `premium × payout_multiple`);
+- claim allowance;
+- maximum claim basis;
+- maximum payout;
+- waiting period;
+- other product-specific coverage limits.
+
+The exact numerical coverage values for each tier are defined per product in the canonical
+preset tables (§ 4.5.3–§ 4.5.5), selected deterministically per § 4.5.8. Implementations MUST
+source them from this document and MUST NOT invent or override them.
+
+#### 4.5.2 Premium Pricing Envelope (economic-mode axis)
+
+The engine SHALL price insurance premiums CWI-relative, within the canonical mode-specific
+premium envelope:
 
 | Economic Mode | Insurance Premium Band |
 | --- | ---: |
@@ -156,11 +216,344 @@ The engine SHALL provide a canonical insurance premium band as a percentage of `
 | `default` | 5% to 12% of CWI |
 | `comfortable` | 4% to 10% of CWI |
 
-Formula:
+These bands are the recommended pricing envelope for insurance premium recommendations
+across all three products and all tiers. Teachers MAY configure a premium outside the
+recommended band; the band is engine guidance, not a hard cap.
+
+Constraints on premium derivation:
+
+- premium pricing MUST be CWI-relative;
+- economic mode determines the lawful/recommended premium envelope;
+- product and tier coverage determine the benefit contract, never the premium envelope;
+- the recommended premium MUST be deterministic;
+- the premium is an economic **input** that MAY, for monetary products, feed a derived
+  payout ceiling (`maximum_policy_payout = premium × payout_multiple`).
+
+The envelope is **not independently immutable**. It is contingent on the coverage models it
+prices, and it MUST be re-evaluated as each product's coverage economics are settled:
+
+- `PRODUCTIVITY` — coverage model is now sufficiently settled (§ 4.5.4) that the envelope
+  can be tested against real exposure. The hard weekly boundaries in § 4.5.4 bound exposure
+  independently of the premium.
+- `TRANSACTION` — coverage economics remain unresolved (§ 4.5.6); the envelope is
+  provisional for this product until they are settled.
+- `NON_MONETARY` — the envelope is **affordability guidance only**, not an exposure-based
+  price (§ 4.5.5).
+
+The deterministic premium-selection rule for the canonical presets is defined in § 4.5.8.
+No `risk_factor`, `premium = liability × risk_factor`, or equivalent exposure-multiplier
+formula is canonical under this specification; the preset premium is selected directly from
+the mode band by tier (band bottom / midpoint / top).
+
+**Coverage period normalization (all period-priced products).** The premium envelope above
+is expressed per canonical week. When a policy's coverage period is longer than one week,
+period-level economic values scale by the **actual** duration of the coverage interval, not
+by a fixed constant.
+
+Monthly coverage MUST NOT be defined as a fixed 4-week economic period. A monthly policy
+runs from one canonical renewal boundary to the next; its economic week-equivalent is
+derived from the actual number of class-local calendar days in that interval:
 
 ```text
-insurance_premium = CWI × premium_rate
+coverage_week_equivalent = covered_class_local_calendar_days / 7
 ```
+
+The coverage interval is **half-open**: `[coverage_start, next_renewal)`. The start day is
+covered; the next renewal boundary belongs to the following cycle and is not double-counted.
+For the Aug 25 → Sep 25 example this yields 31 covered class-local calendar days (Aug 25
+through Sep 24 inclusive), with Sep 25 opening the next cycle.
+
+Weekly coverage has a `coverage_week_equivalent` of exactly `1`.
+
+Period-normalized values then derive from the actual duration, e.g.:
+
+```text
+period_premium        = weekly_equivalent_premium × coverage_week_equivalent
+maximum_policy_payout = period_premium × payout_multiple      # where applicable
+```
+
+Example: a policy renewing August 25 → September 25 covers 31 class-local days, so
+`coverage_week_equivalent = 31 / 7 ≈ 4.4286`.
+
+Covered-day derivation and renewal boundaries MUST use canonical class-local temporal
+resolution — never elapsed seconds — so that DST or timezone transitions do not distort the
+economic period.
+
+The upcoming renewal period MUST be calculable before renewal. Student-facing insurance UI
+SHALL surface the next coverage interval, the next premium, and other derived renewal values
+ahead of the charge so students can plan for renewal.
+
+#### 4.5.3 `TRANSACTION` Insurance
+
+`TRANSACTION` insurance reimburses part of a single posted Ledger transaction. Consistent
+with `FEAT-STOR-003`, one claim covers exactly one canonical Ledger transaction. Its
+monetary model mirrors `PRODUCTIVITY`: reimbursement is a percentage of the covered
+transaction loss, the period ceiling is `period_premium × payout_multiple`, and premiums are
+selected from the mode band per § 4.5.8.
+
+Canonical preset values (per week-equivalent; scale monthly per § 4.5.2):
+
+| Parameter | Single | Basic | Mid | Premium | Teacher recommended range |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Reimbursement % | 60% | 40% | 60% | 80% | 30–90% |
+| Payout multiple | 4× | 3× | 4× | 5× | 2×–7× |
+| Claims / week-equivalent | 2 | 1 | 2 | 3 | 1–3 |
+| Claim window | 7 days | 3 days | 7 days | 14 days | 1–14 days |
+| Tight premium | 10% CWI | 6% | 10% | 14% | 6–14% CWI |
+| Default premium | 8.5% CWI | 5% | 8.5% | 12% | 5–12% CWI |
+| Comfortable premium | 7% CWI | 4% | 7% | 10% | 4–10% CWI |
+
+**Eligibility hard contract (non-overridable).** Independent of the tier/coverage values,
+a `TRANSACTION` claim is eligible only when the referenced transaction is:
+
+- a negative (debit) transaction;
+- inside the configured filing window;
+- not on CTH's global disallowed list;
+- not previously claimed;
+- not obligation-related;
+- not collective-goal-related;
+- not a transfer;
+- and, when item-related, tied to an item/entitlement that was actually purchased **and
+  used**, but **not revoked or expired**.
+
+These are mechanical eligibility gates only; the teacher retains approval authority per
+`FEAT-STOR-003`.
+
+#### 4.5.4 `PRODUCTIVITY` Insurance
+
+`PRODUCTIVITY` is the canonical product name for attendance / lost-wage insurance.
+
+Its purpose is to reimburse some portion of wages the covered student could potentially
+have earned on eligible class-local dates where the student had **no clock-in /
+productivity session**. It compensates the economic consequence of lost productivity; it
+does **not** assert that the student actually worked the claimed hours.
+
+Intended claim model (economic reference view; execution semantics remain in
+`FEAT-STOR-003`):
+
+1. Student selects an otherwise eligible class-local date with **no clock-in / productivity
+   session**.
+2. Student enters the number of hours being claimed for that date.
+3. Backend validates the claim against the configured insurance contract and authoritative
+   Productivity / Payroll facts.
+4. The teacher retains approval / rejection authority as defined by `FEAT-STOR-003`.
+5. Approval compensates through the canonical `MANUAL_CREDIT` lifecycle.
+6. Historical attendance, productivity sessions, worked minutes, and ordinary payroll
+   remain unchanged.
+
+**Loss and reimbursement basis.** CTH does **not** derive a daily wage and does **not**
+divide CWI across an assumed number of school days. Validated loss is computed directly
+from the student's own claimed hours:
+
+```text
+validated_claimed_loss = validated_claimed_hours × hourly_pay_rate
+reimbursement          = validated_claimed_loss × reimbursement_percentage
+```
+
+**Payout ceiling.** The policy's payout ceiling is derived from the premium:
+
+```text
+maximum_policy_payout = premium × payout_multiple
+```
+
+**Effective payout (two simultaneous ceilings).** A single approval's actual payout is
+bounded by both the insurance-contract ceiling and the weekly economic ceiling, applied at
+the same time:
+
+```text
+actual_payout = min(
+    gross_reimbursement,               # validated_claimed_loss × reimbursement_percentage
+    remaining_period_payout_capacity,  # insurance-contract ceiling (period)
+    remaining_weekly_CWI_capacity      # weekly economic ceiling (per canonical class-local week)
+)
+```
+
+The **period** capacity is the insurance-contract ceiling (derived from
+`maximum_policy_payout`, period-normalized per § 4.5.2). The **weekly CWI** capacity is the
+weekly economic ceiling. Both bind simultaneously; neither overrides the other. A larger
+period ceiling never relaxes the weekly CWI limit, and unused weekly capacity does not carry
+forward.
+
+**Engine-recommended, teacher-configurable.** The Engine recommends ranges for the
+reimbursement percentage, payout multiple, premium, and other applicable limits. Teachers
+MAY configure values outside the recommended ranges.
+
+**Hard system boundaries (non-overridable).** Regardless of configuration or tier, the
+following MUST hold and MUST NOT be exceeded:
+
+- `total_validated_PRODUCTIVITY_claimed_hours_week` MUST NOT exceed `expected_weekly_hours`
+  within a canonical class-local week;
+- `PRODUCTIVITY` payout MUST NOT exceed `CWI` within a canonical class-local week;
+- unused weekly capacity does **not** carry forward.
+
+**Actual worked hours do NOT consume claim-hour capacity.** `expected_weekly_hours` is an
+Economic Engine input and a PRODUCTIVITY boundary. It is **not** proof that a student could
+not have earned additional hours in a given week. CTH SHALL NOT automatically compute
+`actual_worked_hours + claimed_lost_hours <= expected_weekly_hours` and reject or reduce a
+claim on that basis. The only mechanical hour boundary is the one above:
+`total_validated_PRODUCTIVITY_claimed_hours_week <= expected_weekly_hours`. Recorded worked
+hours are separate authoritative facts.
+
+Example: a student with 4 recorded worked hours this week, `expected_weekly_hours = 5`, who
+selects an eligible no-session date and claims 3 lost hours, MUST NOT be auto-rejected
+merely because `4 + 3 > 5`. Instead CTH surfaces authoritative context to the deciding
+teacher — claimed lost hours, recorded worked hours for the canonical week, configured
+`expected_weekly_hours`, requested/derived reimbursement, and applicable policy limits — and
+the teacher decides whether the counterfactual lost-hour claim is credible. This is
+consistent with the lifecycle rule that mechanical eligibility lets a claim be considered
+but never mandates approval. CTH enforces objective limits and surfaces evidence; it does
+not convert an economic modeling input into an automated judgment about whether the claimed
+lost opportunity actually existed.
+
+**Coverage period.** Coverage may be weekly or monthly. Monthly period pricing follows the
+week-equivalent normalization in § 4.5.2. A monthly policy's total ceiling is expected to
+exceed `1× CWI` because the interval spans multiple week-equivalents; this is valid. The
+weekly hard boundaries above continue to apply **independently within each canonical
+class-local week** — a larger monthly ceiling never permits exceeding the weekly claimed-hour
+or weekly `CWI` payout limits in any individual week.
+
+**Tiering is optional.** A teacher MAY offer a single `PRODUCTIVITY` configuration or a
+`Basic` / `Mid` / `Premium` set. `payout_multiple` belongs **exclusively** to the
+product/tier coverage axis: a single offering configures one multiple; a tiered offering
+gives each tier its own recommended/configured multiple. Economic mode SHALL NOT derive,
+alter, or select `payout_multiple`. Economic mode affects only the premium recommendation;
+the derived monetary ceiling (`premium × payout_multiple`) may therefore change with mode
+because the premium changed — this is intentional and is not a change to the coverage
+parameter.
+
+**Recommendation coherence.** The Engine SHOULD avoid internally nonsensical
+recommendations, distinguishing the policy-period ceiling from the weekly hard boundary:
+
+- **Weekly coverage** — a recommended premium/multiple combination SHOULD NOT normally imply
+  a policy ceiling above the weekly `CWI` payout boundary.
+- **Monthly coverage** — a total ceiling above `1× CWI` is expected and valid; the weekly
+  `CWI` boundary still applies independently inside the period.
+
+Teachers MAY configure outside Engine recommendations. If a teacher's selected
+premium/multiple yields a nominal policy ceiling above what another hard boundary could
+actually pay, CTH MUST NOT silently rewrite the configuration; it MUST surface both the
+calculated dollar policy ceiling and the applicable hard weekly limit clearly.
+
+Canonical preset values (per week-equivalent; scale monthly per § 4.5.2):
+
+| Parameter | Single | Basic | Mid | Premium | Teacher recommended range | Hard bound |
+| --- | ---: | ---: | ---: | ---: | ---: | --- |
+| Reimbursement % | 60% | 40% | 60% | 80% | 30–90% | ≤ 100% |
+| Payout multiple | 4× | 3× | 4× | 5× | 2×–7× | weekly payout ≤ 1 CWI |
+| Claimable days / week-equivalent | 2 | 1 | 2 | 3 | 1–3 | claimed hours/week ≤ expected weekly hours |
+| Tight premium | 10% CWI | 6% | 10% | 14% | 6–14% CWI | — |
+| Default premium | 8.5% CWI | 5% | 8.5% | 12% | 5–12% CWI | — |
+| Comfortable premium | 7% CWI | 4% | 7% | 10% | 4–10% CWI | — |
+
+`premium × payout_multiple` yields the period ceiling; the independent weekly `≤ 1 CWI`
+payout and `≤ expected_weekly_hours` claimed-hour limits continue to apply per canonical
+class-local week (composed as `actual_payout` above). These preset values are settled; only
+the monthly allowance rounding convention was flagged for confirmation and is fixed in
+§ 4.5.8.
+
+#### 4.5.5 `NON_MONETARY` Insurance
+
+`NON_MONETARY` is the external-benefit insurance product. CTH records the lawful claim
+decision but does not own, price the reimbursement of, or verify the external benefit
+itself.
+
+**Premium band is affordability guidance only.** Because this product has no economic
+payout and CTH cannot value the external benefit, the generic CWI-relative premium envelope
+of § 4.5.2 is applied here as **affordability guidance**, not as an exposure-based price.
+The Engine's recommendation is of the form:
+
+> Suggested premium: $X–$Y based on your configured class economy. Because this benefit
+> occurs outside CTH, CTH cannot estimate its monetary value. Consider the value of the
+> external benefit when selecting the final premium.
+
+The teacher remains free to set the premium outside that recommendation.
+
+**Mechanically governable contract.** CTH MAY govern only what it can actually enforce:
+
+- premium;
+- weekly or monthly coverage period;
+- claim allowance;
+- timing / waiting restrictions where applicable;
+- the teacher-defined external benefit descriptor.
+
+`NON_MONETARY` MUST have **no**:
+
+- reimbursement percentage;
+- payout multiple;
+- monetary payout ceiling;
+- actuarial / risk calculation.
+
+Canonical preset values (per week-equivalent; scale monthly per § 4.5.2):
+
+| Parameter | Single | Basic | Mid | Premium | Teacher recommended range |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Claims / week-equivalent | 1 | 1 | 2 | 3 | 1–3 |
+| Waiting period | 3 days | 7 days | 3 days | 0 days | 0–7 days |
+| Tight premium guidance | 10% CWI | 6% | 10% | 14% | 6–14% CWI |
+| Default premium guidance | 8.5% CWI | 5% | 8.5% | 12% | 5–12% CWI |
+| Comfortable premium guidance | 7% CWI | 4% | 7% | 10% | 4–10% CWI |
+
+The premium figures are **affordability guidance**, not calculated fair value; CTH cannot
+value the external benefit. The `Single` column uses the mode-band midpoint (equivalent to
+`Mid`) per § 4.5.8. All other coverage numbers here are mechanical limits only.
+
+#### 4.5.6 Resolution Status
+
+As of v1.2 the insurance economic model is numerically complete. The canonical preset tables
+for all three products (§ 4.5.3, § 4.5.4, § 4.5.5), the deterministic premium-selection rule,
+and the monthly allowance rounding convention (§ 4.5.8) are **settled**.
+
+No insurance numerical value remains intentionally TBD. Any future change to these values is
+a normative amendment to this specification, not an implementation choice. Implementations
+MUST source these values from this document and MUST NOT invent or override them in code.
+
+#### 4.5.7 Presentation of Economic Values
+
+CWI percentages and multiples are the Engine's internal normalization and calculation
+mechanism. Teacher-facing surfaces SHALL present the **consequences** of a configuration
+primarily in classroom currency, with CWI-relative figures as secondary context.
+
+For example, given a `$40` premium and a teacher-selected `7×` payout multiple, the surface
+SHALL present `$280 maximum policy payout` as the primary result, and MAY show `56% CWI` as
+secondary context. This presentation rule does not change any calculation; it governs how
+results are displayed.
+
+#### 4.5.8 Deterministic Premium Selection and Period Scaling
+
+For the canonical presets, the premium is selected directly from the mode band by tier — no
+`risk_factor` or exposure-multiplier formula is used:
+
+- **Basic** → bottom of the mode premium band;
+- **Mid** → midpoint of the mode premium band;
+- **Premium** → top of the mode premium band;
+- **Single** → midpoint (equivalent to `Mid`).
+
+```text
+recommended_premium_rate(mode, tier) ∈ { band_lower_bound, band_midpoint, band_upper_bound }
+
+coverage_week_equivalent = covered_class_local_calendar_days / 7   # half-open [start, next_renewal)
+
+period_premium = CWI × recommended_premium_rate × coverage_week_equivalent
+```
+
+For monetary products (`TRANSACTION`, `PRODUCTIVITY`):
+
+```text
+maximum_policy_payout = period_premium × payout_multiple
+```
+
+**Allowance rounding (settled).** Integer per-period allowances (claims per week-equivalent,
+claimable days per week-equivalent) scale to the coverage interval by rounding **up**:
+
+```text
+period_allowance = ceil(weekly_allowance × coverage_week_equivalent)
+```
+
+`ceil` is chosen deliberately: it keeps monthly allowances at least proportional to the
+weekly value, and — because every individual approval is still bounded by the simultaneous
+weekly `≤ 1 CWI` and `≤ expected_weekly_hours` caps (§ 4.5.4) and the period payout ceiling —
+a slightly generous **claim count** cannot inflate total economic exposure. Rounding governs
+how many separate claims may be filed, never how much may be paid.
 
 ---
 
@@ -377,6 +770,8 @@ The following table is the canonical reference set for the Economic Engine.
 | Insurance premium | 6% to 14% CWI | 5% to 12% CWI | 4% to 10% CWI |
 | Fine | 7% to 18% CWI | 5% to 15% CWI | 4% to 12% CWI |
 | Collective goal | 0.75x to 7x CWI | 1x to 8x CWI | 1.5x to 10x CWI |
+
+The `Insurance premium` row is the **premium pricing envelope only** (the economic-mode / cost axis of § 4.5), and is engine guidance rather than a hard cap. It does not define any coverage, reimbursement percentage, payout cap, or claim allowance. Those belong to the insurance-tier / coverage axis and are defined by the canonical preset tables in § 4.5.3–§ 4.5.5 with the deterministic selection rule in § 4.5.8; this table MUST NOT be read as a complete insurance economic model. For `NON_MONETARY` this band is affordability guidance only (§ 4.5.5). For `PRODUCTIVITY` the settled hard boundaries in § 4.5.4 (weekly `expected_weekly_hours` and `CWI` caps) bound exposure independently of this row.
 
 System-defined fines such as rent late fees and overdraft fees shall use the above table for reference when making recommendations. Actual configured fine amount shall persist on `economic_engine` for overdraft fines and `rent_settings` for rent late fees.
 

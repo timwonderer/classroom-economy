@@ -42,7 +42,15 @@ def _resolve_expected_weekly_hours(class_id: str) -> float | None:
 
 
 def _compute_cwi_from_payroll(payroll, expected_weekly_hours) -> float | None:
-    """Compute CWI given already-resolved payroll row and expected_weekly_hours."""
+    """Compute CWI given already-resolved payroll row and expected_weekly_hours.
+
+    NOTE (SPEC-ECON-003 migration): the canonical CWI calculation authority is
+    ``app/services/economic_engine.resolve_base`` (per SPEC-ECON-003 §3/§4.1). This
+    is a pre-existing duplicate formula site retained during the conservative
+    migration; it should be consolidated to consume ``resolve_base`` once parity is
+    proven for this presentation surface. Numerically identical today:
+    ``pay_rate_per_minute × 60 × expected_weekly_hours``.
+    """
     if payroll is None or expected_weekly_hours is None:
         return None
     return (float(payroll.pay_rate) * 60) * float(expected_weekly_hours)

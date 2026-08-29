@@ -95,7 +95,15 @@ def upgrade():
     # content; obligation_lifecycle/satisfaction for enrollment state;
     # obligation_satisfaction/reversal for claims.
     # Drop order: dependents first (claims → enrollments → policy_blocks → policies)
+    #
+    # The bootstrap baseline (0001) materializes the *current* ORM metadata, which
+    # includes the v2 ``insurance_claim_productivity_dates`` child table whose FK
+    # targets ``insurance_claims``. That child is re-created cleanly later by
+    # c3d4e5f6a7b8, but at this point it exists (empty) and its FK would block the
+    # ``insurance_claims`` drop. Drop the child first — it is a dependent of claims,
+    # so this preserves the stated "dependents first" order.
     # =========================================================================
+    drop_table_if_exists('insurance_claim_productivity_dates')
     drop_table_if_exists('insurance_claims')
     drop_table_if_exists('insurance_enrollments')
     drop_table_if_exists('insurance_policy_blocks')

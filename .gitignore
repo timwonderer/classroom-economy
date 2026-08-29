@@ -60,3 +60,6 @@ ocp.db
 ocp.db-*
 ocp.db-shm
 ocp.db-wal
+
+# Agent worktree artifacts
+.claude/worktrees/

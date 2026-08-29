@@ -37,9 +37,8 @@
 
                 <form method="POST" action="{{ url_for('student.file_claim', policy_id=policy.id) }}">
                     {{ form.hidden_tag() }}
-                    {% set is_transaction = claim_type == 'transaction_monetary' %}
-                    {% set is_non_monetary = claim_type == 'non_monetary' %}
-                    {% set is_legacy = claim_type == 'legacy_monetary' %}
+                    {% set is_transaction = claim_type == 'TRANSACTION' %}
+                    {% set is_non_monetary = claim_type == 'NON_MONETARY' %}
 
                     <div class="mb-3">
                         <label class="form-label">Insurance Policy</label>
@@ -103,21 +102,6 @@
                                 Specify what item or service you're claiming.
                             </small>
                         </div>
-                    {% elif is_legacy %}
-                        <div class="mb-3">
-                            {{ form.claim_amount.label(class="form-label") }}
-                            <div class="input-group">
-                                <span class="input-group-text">$</span>
-                                {{ form.claim_amount(class="form-control", placeholder="Enter amount", required=True) }}
-                            </div>
-                            <small class="form-text text-muted">
-                                {% if contract_max_claim_amount %}
-                                    Maximum: ${{ "%.2f"|format(contract_max_claim_amount) }} per claim.
-                                {% else %}
-                                    Enter the amount you are requesting.
-                                {% endif %}
-                            </small>
-                        </div>
                     {% endif %}
 
                     <div class="mb-3">
@@ -152,9 +136,9 @@
 
                 <p class="mb-2"><strong>Claim Type:</strong></p>
                 <p class="mb-3">
-                    {% if claim_type == 'transaction_monetary' %}
+                    {% if claim_type == 'TRANSACTION' %}
                         <span class="badge bg-info">[TXN] Transaction-based</span>
-                    {% elif claim_type == 'non_monetary' %}
+                    {% elif claim_type == 'NON_MONETARY' %}
                         <span class="badge bg-warning text-dark">[NON-MONETARY] Approval only</span>
                     {% else %}
                         <span class="badge bg-primary">[CUSTOM] Monetary reimbursement</span>
@@ -165,13 +149,13 @@
                 <ul class="small mb-3">
                     <li>Waiting period: {{ policy.waiting_period_days }} days</li>
                     <li>Claim deadline: {{ contract_claim_time_limit_days }} days from incident</li>
-                    {% if claim_type != 'non_monetary' and contract_max_claim_amount %}
+                    {% if claim_type != 'NON_MONETARY' and contract_max_claim_amount %}
                         <li>Max claim: ${{ "%.2f"|format(contract_max_claim_amount) }}</li>
                     {% endif %}
                     {% if contract_max_claims_count %}
                         <li>Max claims: {{ contract_max_claims_count }} per {{ contract_max_claims_period }}</li>
                     {% endif %}
-                    {% if claim_type == 'transaction_monetary' %}
+                    {% if claim_type == 'TRANSACTION' %}
                         <li>One claim per transaction (no splitting)</li>
                     {% endif %}
                 </ul>

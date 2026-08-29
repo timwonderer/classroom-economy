@@ -178,9 +178,9 @@
             <div class="card-body">
                 <p class="small mb-2"><strong>Policy Type:</strong></p>
                 <p class="mb-3">
-                    {% if policy.claim_type == 'transaction_monetary' %}
+                    {% if policy.claim_type == 'TRANSACTION' %}
                         <span class="badge bg-info">[TXN] Transaction-based</span>
-                    {% elif policy.claim_type == 'non_monetary' %}
+                    {% elif policy.claim_type == 'NON_MONETARY' %}
                         <span class="badge bg-warning text-dark">[NON-MONETARY] Approval only</span>
                     {% else %}
                         <span class="badge bg-primary">[CUSTOM] Monetary reimbursement</span>

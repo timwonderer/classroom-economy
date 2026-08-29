@@ -19,74 +19,74 @@ Authority:
 
 from __future__ import annotations
 
-from app.extensions import db
+from typing import Optional
+
 from app.feats.base import requires_feat_context
-from app.models import PolicyVersion
-from app.services.insurance_policy_service import create_policy_version
+from app.models import InsurancePolicy
+from app.services import insurance_definition_service as defs
 
 
-INSURANCE_DRAFT_PAYLOAD_DEFAULTS = {
-    "description": "",
-    "premium": "0.00",
-    "charge_frequency": "monthly",
-    "autopay": True,
-    "waiting_period_days": 0,
-    "claim_time_limit_days": 0,
-    "max_claims_count": 0,
-    "max_claim_amount": None,
-    "max_payout_per_period": None,
-    "claim_type": "transaction_monetary",
-    "tier_group": None,
-    "tier_name": None,
-    "tier_color": None,
-    "tier_level": None,
-    "bundle_with_policy_ids": [],
-    "bundle_discount_percent": None,
-    "bundle_discount_amount": None,
-    "entitlement_item_id": None,
-}
+# ---------------------------------------------------------------------------
+# FEAT-POL-001 — insurance_policies definition family (typed, UUID-keyed).
+#
+# These entry points target the Step-1 ``insurance_policies`` definition-of-record
+# through the generic POL mechanism (``insurance_definition_service``). They do
+# NOT fall back to ``create_policy_version`` / ``PolicyVersion(domain="insurance")``:
+# that abstraction models the DOM-CLASS-003 *economic* version-control tables
+# (integer id, version_number, JSON payload, is_active, lineage transitions) and
+# is structurally incompatible with the typed, availability-projected definition
+# rows. The obsolete ``execute_create_insurance_policy_draft`` PolicyVersion
+# wrapper has been retired (Step 3): the teacher route now flows
+# FEAT-CLASS-003 → FEAT-POL-001 → ``insurance_policies`` with no insurance write
+# to PolicyVersion / PolicyTransition.
+#
+# POL performs no semantic insurance validation here — FEAT-CLASS-003 validates
+# SPEC-ECON-003 conformance before delegating. These functions are the immutable
+# definition write / availability-projection mechanism only.
+# ---------------------------------------------------------------------------
 
 
 @requires_feat_context("FEAT-POL-001")
-def execute_create_insurance_policy_draft(
+def execute_store_insurance_definition(
     *,
     class_id: str,
-    actor_user_id: int | None,
-    title: str,
-    correlation_id: str | None = None,
-    idempotency_key: str | None = None,
-) -> PolicyVersion:
-    """Create a HIDDEN draft insurance policy per FEAT-POL-001 §V.
+    definition: dict,
+    actor_seat_id: Optional[int] = None,
+    availability_state: str = defs.IN_USE,
+    correlation_id: Optional[str] = None,
+    idempotency_key: Optional[str] = None,
+) -> InsurancePolicy:
+    """Store a new immutable insurance definition (DOM-POL-001 §VI Insert).
 
-    Availability is deliberately requested as HIDDEN (is_active=False)
-    because the bootstrap payload is functionally incomplete (premium
-    $0, no coverage terms). Students never see the policy until the
-    teacher fills it in and explicitly activates it via the edit page.
-    This is the explicit "unless the caller requests HIDDEN" exception
-    FEAT-POL-001 §V.4 accommodates.
-
-    Args:
-        class_id: canonical class scope
-        actor_user_id: teacher's user_id for audit lineage
-        title: human-readable policy title (validated by caller)
-        correlation_id: propagated to FEATContext / audit lineage
-        idempotency_key: propagated to FEATContext; caller SHOULD
-            provide a stable hash keyed by class_id + title so a
-            double-submit from the UI is a no-op
-
-    Returns:
-        The newly-inserted PolicyVersion row.
+    Both "new" and "update" flow through here: each call inserts a fresh
+    ``policy_uuid`` row. ``definition`` carries the caller-validated typed fields;
+    POL only relies on the DB CHECK backstops for structural integrity.
     """
-    payload = {
-        **INSURANCE_DRAFT_PAYLOAD_DEFAULTS,
-        "title": title,
-    }
-    return create_policy_version(
+    return defs.create_insurance_definition(
         class_id=class_id,
-        actor_user_id=actor_user_id,
-        payload=payload,
-        source_version=None,
-        is_active=False,
-        activation_mode="manual",
-        status="applied",
+        definition=definition,
+        actor_seat_id=actor_seat_id,
+        availability_state=availability_state,
+    )
+
+
+@requires_feat_context("FEAT-POL-001")
+def execute_set_insurance_definition_availability(
+    *,
+    class_id: str,
+    policy_uuid: str,
+    availability_state: str,
+    correlation_id: Optional[str] = None,
+    idempotency_key: Optional[str] = None,
+) -> InsurancePolicy:
+    """Change ONLY the availability projection of an existing definition.
+
+    Availability-only mutation (IN_USE / HIDDEN / RETIRED); economic and identity
+    fields are never touched. Retiring stamps ``retired_at``. Class-scoped and
+    fail-closed via the underlying mechanism.
+    """
+    return defs.set_availability(
+        policy_uuid=policy_uuid,
+        class_id=class_id,
+        availability_state=availability_state,
     )

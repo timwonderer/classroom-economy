@@ -29,6 +29,7 @@ from app.services.class_configuration_query_service import (
     get_economic_engine_by_version,
     is_feature_enabled,
 )
+from app.services.economic_engine import CWI_DEPENDENT_FEATURES, resolve_base
 from app.utils.canonical_temporal_resolver import canonical_temporal_resolver, CLASS_LEVEL_EVALUATION
 
 
@@ -241,6 +242,21 @@ def _execute_enable_feature_impl(
             error_code="ENGINE_VERSION_NOT_FOUND",
             error_message=f"Economic engine version {economic_version_id} not found for class {class_id}",
         )
+
+    # Enablement gate: a feature whose normative economics require a resolvable
+    # CWI cannot transition disabled -> enabled unless the Economic Engine base
+    # is READY. The Engine owns the readiness definition; we only ask it. This
+    # prevents the impossible ordinary state (enabled CWI-dependent feature with
+    # no resolvable CWI) rather than discovering it later at execution time.
+    if feature in CWI_DEPENDENT_FEATURES:
+        base = resolve_base(class_id)
+        if not base.is_ready:
+            return FeatureEnablementResult(
+                success=False,
+                correlation_id="",
+                error_code="ECONOMIC_ENGINE_NOT_READY",
+                error_message=base.readiness_reason,
+            )
 
     # Get current timestamp via canonical temporal resolver (CLE)
     temporal_eval = canonical_temporal_resolver(

@@ -74,6 +74,12 @@ class StorePolicyConfig:
     collective_goal_target: Optional[int] = None
     collective_goal_expires_at: Optional[datetime] = None
 
+    # Insurance publication locator (DOM-STORE-001): required iff
+    # entitlement_type == INSURANCE, forbidden otherwise. Points to the
+    # POL-owned insurance definition (InsurancePolicy.policy_uuid) this
+    # StoreProduct publishes. Immutable with the rest of the definition.
+    insurance_policy_uuid: Optional[str] = None
+
     # Metadata for historical reference
     policy_uuid: str = field(default="")
     class_id: str = field(default="")
@@ -114,6 +120,7 @@ class StorePolicyConfigParser:
         'collective_goal_type',
         'collective_goal_target',
         'collective_goal_expires_at',
+        'insurance_policy_uuid',
     }
 
     ALLOWED_FIELDS = REQUIRED_FIELDS | OPTIONAL_FIELDS
@@ -187,6 +194,20 @@ class StorePolicyConfigParser:
             collective_goal_type = cls._parse_collective_goal_type(payload.get('collective_goal_type'))
             collective_goal_target = cls._parse_int_or_null(payload.get('collective_goal_target'), 'collective_goal_target')
             collective_goal_expires_at = cls._parse_datetime_or_null(payload.get('collective_goal_expires_at'), 'collective_goal_expires_at')
+            insurance_policy_uuid = cls._parse_string_or_null(payload.get('insurance_policy_uuid'), 'insurance_policy_uuid', max_length=36)
+
+            # Insurance locator presence rule (DOM-STORE-001): required iff
+            # entitlement_type == INSURANCE, forbidden for every other type.
+            if entitlement_type == 'INSURANCE':
+                if not insurance_policy_uuid:
+                    raise PolicyValidationError(
+                        "INSURANCE products must reference an insurance definition via insurance_policy_uuid"
+                    )
+            else:
+                if insurance_policy_uuid is not None:
+                    raise PolicyValidationError(
+                        f"insurance_policy_uuid is only permitted for INSURANCE products, not {entitlement_type}"
+                    )
 
             # Validate value ranges and constraints
             cls._validate_ranges(
@@ -241,6 +262,7 @@ class StorePolicyConfigParser:
                 collective_goal_type=collective_goal_type,
                 collective_goal_target=collective_goal_target,
                 collective_goal_expires_at=collective_goal_expires_at,
+                insurance_policy_uuid=insurance_policy_uuid,
                 policy_uuid=policy_uuid,
                 class_id=class_id,
                 created_at=created_at,

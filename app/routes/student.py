@@ -1424,6 +1424,7 @@ def apply_savings_interest(student, annual_rate=Decimal('0.045')):
 @login_required
 def insurance_marketplace():
     """Insurance marketplace - browse and manage policies."""
+    from app.services.insurance_policy_service import normalize_insurance_type
     context = resolve_canonical_context()
     if not context:
         flash("No class selected. Please select a class to continue.", "error")
@@ -1443,7 +1444,7 @@ def insurance_marketplace():
                 charge_frequency=payload.get("charge_frequency", "monthly"),
                 waiting_period_days=int(payload.get("waiting_period_days", 0) or 0),
                 max_claims_count=payload.get("max_claims_count"),
-                claim_type=payload.get("claim_type", "transaction_monetary"),
+                claim_type=normalize_insurance_type(payload.get("claim_type")),
                 marketing_badge=payload.get("marketing_badge"),
                 tier_group=payload.get("tier_group"),
                 tier_name=payload.get("tier_name"),
@@ -1511,7 +1512,7 @@ def insurance_marketplace():
         repurchase_blocks=set(),
         claims_this_period=[],
         now=utc_now(),
-        claim_type="transaction_monetary",
+        claim_type="TRANSACTION",
         contract_title="Insurance",
         contract_description="",
         contract_claim_time_limit_days=0,
@@ -1585,6 +1586,7 @@ def cancel_insurance(enrollment_id):
 @login_required
 def file_claim(policy_id):
     """File insurance claim."""
+    from app.services.insurance_policy_service import normalize_insurance_type
     context = resolve_canonical_context()
     if not context:
         flash("No class selected. Please select a class to continue.", "error")
@@ -1629,7 +1631,7 @@ def file_claim(policy_id):
             claim_subject={
                 "transaction_id": transaction_id,
                 "claimed_dates": claimed_dates,
-                "policy_claim_type": payload.get("claim_type"),
+                "policy_claim_type": normalize_insurance_type(payload.get("claim_type")),
             },
         )
         flash(result.error_message or "Insurance claim submitted.", "success" if result.success else "error")
@@ -1642,7 +1644,7 @@ def file_claim(policy_id):
         charge_frequency=payload.get("charge_frequency", "monthly"),
         waiting_period_days=int(payload.get("waiting_period_days", 0) or 0),
         max_claims_count=payload.get("max_claims_count"),
-        claim_type=payload.get("claim_type", "transaction_monetary"),
+        claim_type=normalize_insurance_type(payload.get("claim_type")),
         policy_version=policy_version,
         payload=payload,
     )
@@ -1705,7 +1707,7 @@ def file_claim(policy_id):
         enrollment=enrollment,
         form=form,
         errors=[],
-        claim_type="transaction_monetary",
+        claim_type="TRANSACTION",
         contract_title=placeholder_policy.title,
         contract_description=placeholder_policy.description,
         contract_claim_time_limit_days=0,
@@ -1723,6 +1725,7 @@ def file_claim(policy_id):
 @login_required
 def view_policy(enrollment_id):
     """View policy details and claims history."""
+    from app.services.insurance_policy_service import normalize_insurance_type
     context = resolve_canonical_context()
     if not context:
         flash("No class selected. Please select a class to continue.", "error")
@@ -1781,7 +1784,7 @@ def view_policy(enrollment_id):
         charge_frequency=payload.get("charge_frequency", "monthly"),
         waiting_period_days=int(payload.get("waiting_period_days", 0) or 0),
         max_claims_count=payload.get("max_claims_count"),
-        claim_type=payload.get("claim_type", "transaction_monetary"),
+        claim_type=normalize_insurance_type(payload.get("claim_type")),
         autopay=bool(payload.get("autopay", False)),
         auto_cancel_nonpay_days=int(payload.get("auto_cancel_nonpay_days", 0) or 0),
         entitlement_item_id=entitlement_item_id,

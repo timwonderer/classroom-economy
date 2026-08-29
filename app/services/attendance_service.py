@@ -22,6 +22,16 @@ def _current_evaluation_day_bounds(ctx):
     return evaluation.boundary_start_utc, evaluation.boundary_end_utc
 
 
+def _current_evaluation_day_bounds_for_date(ctx, evaluation_date):
+    evaluation = canonical_temporal_resolver(
+        CLASS_LEVEL_EVALUATION,
+        canonical_execution_context=ctx,
+        primitive="evaluation_day_boundaries",
+        evaluation_date=evaluation_date,
+    )
+    return evaluation.boundary_start_utc, evaluation.boundary_end_utc
+
+
 def _elapsed_seconds(ctx, intervals):
     if not intervals:
         return 0
@@ -133,6 +143,34 @@ def calculate_unpaid_attendance_seconds(seat_id: int, class_id: str, last_payrol
         canonical_rows,
         start_boundary=last_payroll_time,
         end_boundary=now_evaluation.canonical_now_utc,
+    )
+    return _elapsed_seconds(ctx, intervals)
+
+
+def calculate_worked_attendance_seconds_for_date(seat_id: int, class_id: str, evaluation_date, *, ctx):
+    """Return authoritative worked seconds for one class-local date.
+
+    PRODUCTIVITY consumers receive a duration only; they never interpret
+    AttendanceSession rows or reason codes. Still-active sessions are clipped
+    at the canonical now so a claim cannot count time that has not elapsed.
+    """
+    day_start_utc, day_end_utc = _current_evaluation_day_bounds_for_date(ctx, evaluation_date)
+    now_evaluation = canonical_temporal_resolver(
+        CLASS_LEVEL_EVALUATION,
+        canonical_execution_context=ctx,
+        primitive="current_time",
+    )
+    end_boundary = min(day_end_utc, now_evaluation.canonical_now_utc)
+    if end_boundary <= day_start_utc:
+        return 0
+    canonical_rows = AttendanceSession.query.filter(
+        AttendanceSession.target_seat_id == seat_id,
+        AttendanceSession.class_id == class_id,
+    ).order_by(AttendanceSession.timestamp.asc(), AttendanceSession.id.asc()).all()
+    intervals = _pair_active_intervals(
+        canonical_rows,
+        start_boundary=day_start_utc,
+        end_boundary=end_boundary,
     )
     return _elapsed_seconds(ctx, intervals)
 

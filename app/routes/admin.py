@@ -33,7 +33,7 @@ from decimal import Decimal, InvalidOperation
 
 from flask import (
     Blueprint, redirect, url_for, flash, request, session,
-    jsonify, Response, send_file, current_app, abort, g
+    jsonify, Response, send_file, current_app, abort, g, make_response
 )
 from urllib.parse import urlparse
 from sqlalchemy import desc, text, or_, and_, func
@@ -88,7 +88,6 @@ from app.utils.economy_policy import (
     convert_weekly_amount_to_frequency,
     get_active_policy_mode_for_class,
     get_class_feature_settings_for_class,
-    get_insurance_premium_recommendation,
     get_class_feature_settings,
     get_feature_settings_row_for_class,
     get_price_recommendation_context,
@@ -119,11 +118,12 @@ from app.services.announcement_service import (
     delete_class_announcement,
     update_class_announcement,
 )
-from app.services.insurance_policy_service import (
-    create_policy_version,
-    get_insurance_policy_version,
-    list_insurance_policy_versions,
-    schedule_policy_deletion,
+from app.services import insurance_definition_service as insurance_defs
+from app.feats.class_configuration import (
+    configure_insurance_definition,
+    set_insurance_definition_availability,
+    recommend_insurance_terms,
+    InsuranceContractViolation,
 )
 # TODO (Phase 4): insurance_claim_feat deleted; use FEAT-STOR-003 instead
 # from app.feats.insurance_claim_feat import execute_claim_approval, execute_claim_rejection
@@ -176,6 +176,7 @@ from app.utils.passwordless_client import (
 from app.utils.display_name_session import (
     set_admin_display_name_cache,
     clear_admin_display_name_cache,
+    clear_teacher_display_name_cache,
 )
 from app.utils.opaque_refs import make_opaque_ref, resolve_opaque_ref
 from app.utils.auth_username import (
@@ -429,7 +430,11 @@ def _resolve_admin_class_context(canonical_context=None) -> dict | None:
 
     return {
         'class_id': class_row.class_id,
+        # join_code is an ingress alias (teacher gives it out / student enters
+        # it). It is NOT a class identifier for internal screens — use
+        # display_name to label the active class on teacher-facing pages.
         'join_code': get_display_join_code(class_row.class_id),
+        'display_name': class_row.display_name or get_display_join_code(class_row.class_id),
     }
 
 
@@ -486,6 +491,65 @@ def _handle_missing_admin_class_context():
     return redirect(url_for(redirect_endpoint))
 
 
+# -------------------- FEATURE CAPABILITY BOUNDARY --------------------
+#
+# A class-local feature surface has exactly three lawful states. The boundary
+# MUST distinguish them explicitly and FAIL CLOSED for UNRESOLVED: an absent
+# (None) scope is a failure to establish authority, never a licence to render
+# the feature (no-phantom-scope). Enforcement signals are emitted as stable,
+# copy-independent response headers so tests/clients never couple to page text.
+
+FEATURE_CAPABILITY_ENABLED = "enabled"
+FEATURE_CAPABILITY_DISABLED = "disabled"
+FEATURE_CAPABILITY_UNRESOLVED = "unresolved"
+
+
+def _resolve_feature_capability_state(feature_name: str) -> str:
+    """Return the capability state of ``feature_name`` for the active class.
+
+    Returns one of ``FEATURE_CAPABILITY_{ENABLED,DISABLED,UNRESOLVED}``.
+    ``UNRESOLVED`` means no lawful class scope could be established (missing or
+    rejected class context, or the scope resolver could not bind the feature to
+    a class). Callers MUST fail closed on ``UNRESOLVED``.
+    """
+    class_context = getattr(g, "admin_class_context", None)
+    if class_context is None or not class_context.get("class_id"):
+        return FEATURE_CAPABILITY_UNRESOLVED
+    scope = resolve_feature_class_for_class(class_context["class_id"], feature_name)
+    if not scope:
+        return FEATURE_CAPABILITY_UNRESOLVED
+    return (
+        FEATURE_CAPABILITY_ENABLED
+        if scope["enabled"]
+        else FEATURE_CAPABILITY_DISABLED
+    )
+
+
+def _feature_disabled_response(feature_name: str):
+    """DISABLED state: render the feature-disabled page (200) with a stable,
+    machine-readable enforcement signal (``X-Feature-Disabled``)."""
+    body = render_template(
+        "admin_feature_disabled.html",
+        current_page="feature_disabled",
+        feature_name=feature_name,
+        feature_label=FEATURE_LABELS.get(
+            feature_name, feature_name.replace("_", " ").title()
+        ),
+    )
+    response = make_response(body, 200)
+    response.headers["X-Feature-Disabled"] = feature_name
+    return response
+
+
+def _feature_unresolved_response(feature_name: str):
+    """UNRESOLVED state: no lawful class scope could be established. Fail CLOSED
+    (404) — never render the feature — and emit a stable enforcement signal
+    (``X-Feature-Unresolved``)."""
+    response = make_response("Not Found", 404)
+    response.headers["X-Feature-Unresolved"] = feature_name
+    return response
+
+
 @admin_bp.before_request
 def before_request():
     """
@@ -519,19 +583,16 @@ def before_request():
             return response
 
     feature_name = ADMIN_FEATURE_ENDPOINTS.get(request.endpoint or "")
-    if (
-        feature_name
-        and request.method == "GET"
-        and g.admin_class_context is not None
-    ):
-        scope = resolve_feature_class_for_class(g.admin_class_context["class_id"], feature_name)
-        if scope and not scope["enabled"]:
-            return render_template(
-                "admin_feature_disabled.html",
-                current_page="feature_disabled",
-                feature_name=feature_name,
-                feature_label=FEATURE_LABELS.get(feature_name, feature_name.replace("_", " ").title()),
-            )
+    if feature_name and request.method == "GET":
+        # Capability boundary: distinguish ENABLED / DISABLED / UNRESOLVED
+        # explicitly. FAIL CLOSED for UNRESOLVED — a None scope is a failure to
+        # establish authority, never a licence to render the feature.
+        capability = _resolve_feature_capability_state(feature_name)
+        if capability == FEATURE_CAPABILITY_UNRESOLVED:
+            return _feature_unresolved_response(feature_name)
+        if capability == FEATURE_CAPABILITY_DISABLED:
+            return _feature_disabled_response(feature_name)
+        # FEATURE_CAPABILITY_ENABLED -> fall through and let the route run.
 
     return None
 
@@ -795,44 +856,12 @@ def _count_rent_waiver_periods(settings, waiver) -> int:
     return count
 
 
-def _populate_policy_from_form(policy, form, *, next_tier_category_id=None):
-    """Populate insurance policy fields from form data."""
-    is_non_monetary = form.claim_type.data == 'non_monetary'
-    policy.title = form.title.data
-    policy.description = form.description.data
-    policy.premium = form.premium.data
-    policy.charge_frequency = form.charge_frequency.data
-    policy.autopay = form.autopay.data
-    policy.waiting_period_days = form.waiting_period_days.data
-    policy.max_claims_count = form.max_claims_count.data
-    policy.max_claims_period = FREQUENCY_TO_CLAIM_PERIOD.get(form.charge_frequency.data, 'month')
-    policy.max_claim_amount = None if is_non_monetary else form.max_claim_amount.data
-    policy.max_payout_per_period = None if is_non_monetary else form.max_payout_per_period.data
-    policy.bypass_cwi_warnings = form.bypass_cwi_warnings.data
-    policy.claim_type = form.claim_type.data
-    policy.is_monetary = not is_non_monetary
-    policy.no_repurchase_after_cancel = form.no_repurchase_after_cancel.data
-    policy.enable_repurchase_cooldown = form.enable_repurchase_cooldown.data
-    policy.repurchase_wait_days = form.repurchase_wait_days.data
-    policy.auto_cancel_nonpay_days = form.auto_cancel_nonpay_days.data
-    policy.claim_time_limit_days = form.claim_time_limit_days.data
-    policy.bundle_with_policy_ids = form.bundle_with_policy_ids.data
-    policy.bundle_discount_percent = form.bundle_discount_percent.data
-    policy.bundle_discount_amount = form.bundle_discount_amount.data
-    policy.marketing_badge = form.marketing_badge.data if form.marketing_badge.data else None
-    policy.set_blocks(form.blocks.data if form.blocks.data else [])
-
-    if form.tier_category_id.data:
-        policy.tier_category_id = form.tier_category_id.data
-    elif form.tier_name.data or form.tier_color.data:
-        policy.tier_category_id = next_tier_category_id
-    else:
-        policy.tier_category_id = None
-
-    policy.tier_name = form.tier_name.data or None
-    policy.tier_color = form.tier_color.data or None
-    policy.tier_level = form.tier_level.data or None
-    policy.is_active = form.is_active.data
+# NOTE: _populate_policy_from_form was removed. It was dead v1 ORM code (no callers)
+# that bound a legacy WTForm.claim_type field and wrote policy.claim_type /
+# policy.is_monetary onto the retired v1 InsurancePolicy model. The live edit path
+# (edit_insurance_policy) reads request.form directly and persists claim_type into
+# policy_payload_json under the canonical taxonomy
+# (insurance_policy_service.normalize_insurance_type).
 
 # NOTE: The block-resolution helpers (_get_teacher_blocks, _resolve_block_class_ids,
 # _get_class_labels_for_blocks, _get_join_codes_by_block, _get_class_ids_by_block)
@@ -2157,54 +2186,12 @@ def _build_rebalance_preview(canonical_context, class_id, checker, cwi, rent_set
                 },
             })
 
-    recommended_insurance_weekly = Decimal(str(recommendations['insurance_premium_weekly']['recommended']))
-    for policy in insurance_policies or []:
-        if not policy.is_active:
-            continue
-        current_premium = Decimal(str(policy.premium or 0))
-        recommended_premium = convert_weekly_amount_to_frequency(
-            recommended_insurance_weekly,
-            policy.charge_frequency,
-        )
-        if current_premium == recommended_premium:
-            continue
-        preview_items.append({
-            'key': f'insurance_{policy.id}',
-            'label': f'Insurance Premium: {policy.title}',
-            'current': f"{_format_money(current_premium)} / {_format_frequency_label(policy.charge_frequency)}",
-            'recommended': f"{_format_money(recommended_premium)} / {_format_frequency_label(policy.charge_frequency)}",
-            'apply_by_default': True,
-            'change': {
-                'type': 'insurance',
-                'policy_id': policy.id,
-                'current_value': str(current_premium),
-                'new_value': str(recommended_premium),
-                'title': policy.title,
-            },
-        })
+    # NOTE (SPEC-ECON-003 migration): insurance premium rebalancing is no longer
+    # driven by the legacy price-recommendation builder. Insurance recommendations
+    # are owned by the Economic Engine (resolve_insurance) and surfaced through the
+    # product-aware edit flow, not this bulk rebalance preview.
 
     return preview_items
-
-
-def _build_insurance_recommendation_context(canonical_context, *, class_id=None, charge_frequency='weekly'):
-    if not class_id:
-        return None
-    payroll_settings = _resolve_admin_payroll_settings_for_class_id(
-        canonical_context,
-        class_id,
-    )
-    if not payroll_settings:
-        return None
-
-    checker = EconomyBalanceChecker(canonical_context.user_id, class_id=getattr(payroll_settings, "class_id", None))
-    cwi_calc = checker.calculate_cwi(payroll_settings)
-    if cwi_calc is None:
-        return None
-    return get_insurance_premium_recommendation(
-        checker.policy_mode,
-        Decimal(str(cwi_calc.cwi)),
-        frequency=charge_frequency,
-    )
 
 
 def _load_economy_rebalance_context(canonical_context, class_id):
@@ -2338,6 +2325,22 @@ def select_class_context():
             # validated by _get_validated_teacher_class_options.
             user.last_active_class_id = selected["class_id"]
             user.last_active_seat_id = selected["seat_id"]
+            # A teacher has a distinct Seat + IdentityProfile per class, so
+            # switching classes switches identity. Invalidate the session
+            # identity caches carried over from the previous class, then
+            # re-establish the display name from the newly selected class's
+            # teacher profile so the layout renders the correct identity on the
+            # next request (the canonical context is already re-pointed above).
+            clear_admin_display_name_cache()
+            clear_teacher_display_name_cache()
+            new_profile = IdentityProfile.query.filter_by(
+                seat_id=selected["seat_id"]
+            ).first()
+            if new_profile:
+                set_admin_display_name_cache(
+                    user_id=user.id,
+                    display_name=new_profile.full_name,
+                )
         return redirect(url_for("admin.dashboard"))
 
     from app.services.identity.builders import build_admin_class_selection_view
@@ -5472,6 +5475,7 @@ def rent_settings():
 
     # Use view model to get student obligation summary (encapsulates all aggregation)
     from app.services.obligation_view_model import (
+        add_display_formatting_to_class_obligation_summary,
         build_class_obligation_summary,
     )
 
@@ -5803,12 +5807,94 @@ def _next_tenant_scoped_tier_id(seed, existing_ids):
     return candidate
 
 
-@admin_bp.route('/insurance', methods=['GET', 'POST'])
+# ---------------------------------------------------------------------------
+# Insurance policy management (Step 3): typed InsurancePolicy definitions.
+#
+# These routes drive the STOR-owned, POL-managed ``insurance_policies``
+# definition-of-record through the FEAT-CLASS-003 orchestration boundary. They
+# write NOTHING to PolicyVersion / PolicyTransition. Identifiers are the
+# canonical ``policy_uuid``; a "change" is a new immutable row (DOM-POL-001).
+#
+# Layer separation:
+# - The route resolves canonical teacher/class context and marshals form input.
+# - FEAT-CLASS-003 (configure_insurance_definition / set_availability) decides
+#   lawfulness (hard bounds + per-type structure), sourcing recommendation
+#   metadata from the Economic Engine, then delegates the immutable write to
+#   FEAT-POL-001. Recommendation-range overrides are allowed; hard violations
+#   raise InsuranceContractViolation before any POL write.
+# ---------------------------------------------------------------------------
+
+# Canonical insurance taxonomy + lawful coverage periods, surfaced to templates.
+_INSURANCE_TYPE_CHOICES = (
+    ("TRANSACTION", "Transaction"),
+    ("PRODUCTIVITY", "Productivity"),
+    ("NON_MONETARY", "Non-monetary"),
+)
+_CHARGE_FREQUENCY_CHOICES = (("WEEKLY", "Weekly"), ("MONTHLY", "Monthly"))
+
+
+def _insurance_definition_view(row):
+    """Presentation view of one typed InsurancePolicy row (keyed by policy_uuid)."""
+    return SimpleNamespace(
+        policy_uuid=row.policy_uuid,
+        insurance_type=row.insurance_type,
+        title=row.title or "(untitled policy)",
+        description=row.description or "",
+        premium=row.premium,
+        charge_frequency=row.charge_frequency,
+        reimbursement_percentage=row.reimbursement_percentage,
+        payout_multiple=row.payout_multiple,
+        claims_per_week_equivalent=row.claims_per_week_equivalent,
+        claim_window_days=row.claim_window_days,
+        claimable_dates_per_week_equivalent=row.claimable_dates_per_week_equivalent,
+        waiting_period_days=row.waiting_period_days,
+        tier_level=row.tier_level,
+        tier_name=row.tier_name,
+        tier_group=row.tier_group,
+        availability_state=row.availability_state,
+    )
+
+
+def _insurance_submission_from_form(form):
+    """Marshal raw form fields into the typed FEAT-CLASS-003 submission dict.
+
+    Only the canonical-contract fields are carried; stale legacy inputs
+    (max_claim_amount, max_payout_per_period, claim_time_limit_days, bundle_*,
+    entitlement_item_id, autopay) are intentionally NOT read. Blank strings are
+    passed through so FEAT-CLASS-003's per-type structural gate can reject a
+    missing required field or a forbidden present field.
+    """
+    def _v(name):
+        raw = form.get(name)
+        return raw.strip() if isinstance(raw, str) else raw
+
+    return {
+        "insurance_type": _v("insurance_type"),
+        "premium": _v("premium"),
+        "charge_frequency": _v("charge_frequency"),
+        "reimbursement_percentage": _v("reimbursement_percentage"),
+        "payout_multiple": _v("payout_multiple"),
+        "claims_per_week_equivalent": _v("claims_per_week_equivalent"),
+        "claim_window_days": _v("claim_window_days"),
+        "claimable_dates_per_week_equivalent": _v("claimable_dates_per_week_equivalent"),
+        "waiting_period_days": _v("waiting_period_days"),
+        "tier_level": _v("tier_level"),
+        "tier_name": _v("tier_name"),
+        "tier_group": _v("tier_group"),
+        "title": _v("title"),
+        "description": _v("description"),
+    }
+
+
+@admin_bp.route('/insurance', methods=['GET'])
 @admin_required
-@requires_feat_context("FEAT-POL-001")
 def insurance_management():
-    """Main insurance management dashboard."""
-    user_id = g.canonical_context.user_id
+    """Insurance management dashboard — lists typed policy definitions (GET only).
+
+    Pure read (INV-ARC-007): opens no FEAT/mutation boundary. Creation and
+    editing happen on the dedicated create/edit form, which delegates to
+    FEAT-CLASS-003.
+    """
     class_context = _resolve_admin_class_context(g.canonical_context)
     if not class_context:
         flash("Select a class from the sidebar before managing insurance.", "warning")
@@ -5819,251 +5905,178 @@ def insurance_management():
     if not selected_scope or not selected_scope.get('enabled'):
         abort(404)
 
-    # POST = bootstrap a new insurance policy lineage per FEAT-POL-001 §V.
-    #
-    # Domain requirements consulted before writing this handler:
-    #
-    # - FEAT-CLASS-003 §VII delegates policy definition creation to
-    #   FEAT-POL-001. This route acts as that FEAT's caller.
-    # - FEAT-POL-001 §V ("New Policy") requires: create a new immutable
-    #   policy row, assign a new identifier, persist the family-specific
-    #   payload, and set availability. Default availability is IN_USE
-    #   "unless the caller explicitly requests HIDDEN."
-    # - Payload schema mirrors edit_insurance_policy so the edit page
-    #   can round-trip the row without missing keys.
-    # - Availability is deliberately requested as HIDDEN
-    #   (is_active=False) because the bootstrap payload is functionally
-    #   incomplete (premium $0, no coverage terms). Students never see
-    #   the policy until the teacher fills it in and explicitly
-    #   activates it via the edit page. This is the explicit exception
-    #   FEAT-POL-001 §V.4 accommodates.
-    if request.method == 'POST':
-        title = (request.form.get('title') or '').strip()
-        if not title:
-            flash("Give your new policy a title before creating it.", "warning")
-            return redirect(url_for('admin.insurance_management'))
+    # Explicit availability filter: show selectable (IN_USE) and hidden policies;
+    # RETIRED rows are intentionally omitted from the working list.
+    rows = insurance_defs.list_insurance_definitions(
+        class_id=selected_class_id,
+        availability_states=[insurance_defs.IN_USE, insurance_defs.HIDDEN],
+    )
+    policies = [_insurance_definition_view(r) for r in rows]
 
-        # Mutation is delegated to a proper FEAT wrapper
-        # (execute_create_insurance_policy_draft) so this route no
-        # GET loads do not open a mutation boundary.
-        # Idempotency key is stable per class + title.
-        # so a double-submit of the same modal is a no-op.
-        # session has no dirty state after the FEAT's flush.
-        from app.feats.policy_reference_feat import execute_create_insurance_policy_draft
-
-        title_hash = hashlib.sha256(title.encode()).hexdigest()[:16]
-        idempotency_key = f"feat:pol:insurance-new:{selected_class_id}:{title_hash}"
-        new_version = execute_create_insurance_policy_draft(
-            class_id=selected_class_id,
-            actor_user_id=user_id,
-            title=title,
-            idempotency_key=idempotency_key,
-        )
-
-        flash(
-            f"Draft policy \"{title}\" created. Fill in the premium, coverage, "
-            f"and other terms below, then activate it when ready.",
-            "success",
-        )
-        return redirect(url_for('admin.edit_insurance_policy', policy_id=new_version.id))
-
-    settings_block = class_context.get("block")
-    policy_versions = [
-        SimpleNamespace(
-            id=version.id,
-            version_number=version.version_number,
-            is_active=version.is_active,
-            payload=json.loads(version.policy_payload_json or "{}"),
-        )
-        for version in list_insurance_policy_versions(selected_class_id)
-    ]
     return render_template(
         'admin_insurance.html',
         current_page='insurance',
-        pending_claims_count=0,
-        policies=policy_versions,
-        student_policies=[],
-        cancelled_policies=[],
-        claims=[],
+        policies=policies,
         current_class_context=SimpleNamespace(
-            class_timezone=class_context.get('class_timezone', ''),
-            block_display=class_context.get('block_display', ''),
             join_code=selected_join_code,
-            teacher_name=class_context.get('teacher_name', ''),
+            teacher_name=class_context.get('display_name', ''),
         ),
-        settings_block=settings_block,
-        active_class_label=active_class_label,
         selected_scope=selected_scope,
     )
 
 
-@admin_bp.route('/insurance/edit/<int:policy_id>', methods=['GET', 'POST'])
+@admin_bp.route('/insurance/new', methods=['GET', 'POST'])
 @admin_required
-@requires_feat_context("FEAT-POL-001")
-def edit_insurance_policy(policy_id):
-    """Edit existing insurance policy."""
-    class_id = g.canonical_context.class_id
-    version = get_insurance_policy_version(policy_id, class_id=class_id)
-    if version is None:
+def new_insurance_policy():
+    """Create a new immutable insurance definition on the spot (full form).
+
+    Teachers configure the complete contract in one pass — there is no
+    title-only shell draft. A lawful submission produces a fresh IN_USE
+    ``policy_uuid`` row via FEAT-CLASS-003 → FEAT-POL-001.
+    """
+    class_context = _resolve_admin_class_context(g.canonical_context)
+    if not class_context:
+        flash("Select a class from the sidebar before managing insurance.", "warning")
+        return redirect(url_for('admin.dashboard'))
+    class_id = class_context['class_id']
+    selected_scope = resolve_feature_class_for_class(class_id, 'insurance')
+    if not selected_scope or not selected_scope.get('enabled'):
         abort(404)
-    payload = json.loads(version.policy_payload_json or "{}")
-    store_items = (
-        StoreItem.query.filter_by(class_id=class_id)
-        .order_by(StoreItem.name.asc(), StoreItem.id.asc())
-        .all()
-    )
+
     if request.method == "POST":
-        action = request.form.get("action", "save")
-        title = (request.form.get("title") or payload.get("title") or "").strip()
-        if not title:
-            flash("Policy title is required.", "danger")
-            return redirect(url_for("admin.edit_insurance_policy", policy_id=policy_id))
-        entitlement_item_id = request.form.get("entitlement_item_id") or payload.get("entitlement_item_id")
+        submission = _insurance_submission_from_form(request.form)
         try:
-            entitlement_item_id = int(entitlement_item_id) if entitlement_item_id not in (None, "") else None
-        except (TypeError, ValueError):
-            entitlement_item_id = None
-        payload.update(
-            {
-                "title": title,
-                "description": request.form.get("description", payload.get("description", "")),
-                "premium": request.form.get("premium", payload.get("premium", "0.00")),
-                "charge_frequency": request.form.get("charge_frequency", payload.get("charge_frequency", "monthly")),
-                "autopay": request.form.get("autopay") == "on",
-                "waiting_period_days": int(request.form.get("waiting_period_days") or payload.get("waiting_period_days", 0) or 0),
-                "claim_time_limit_days": int(request.form.get("claim_time_limit_days") or payload.get("claim_time_limit_days", 0) or 0),
-                "max_claims_count": int(request.form.get("max_claims_count") or payload.get("max_claims_count", 0) or 0),
-                "max_claim_amount": request.form.get("max_claim_amount", payload.get("max_claim_amount")),
-                "max_payout_per_period": request.form.get("max_payout_per_period", payload.get("max_payout_per_period")),
-                "claim_type": request.form.get("claim_type", payload.get("claim_type", "transaction_monetary")),
-                "tier_group": request.form.get("tier_group", payload.get("tier_group")),
-                "tier_name": request.form.get("tier_name", payload.get("tier_name")),
-                "tier_color": request.form.get("tier_color", payload.get("tier_color")),
-                "tier_level": request.form.get("tier_level", payload.get("tier_level")),
-                "bundle_with_policy_ids": [v.strip() for v in (request.form.get("bundle_with_policy_ids") or "").split(",") if v.strip()],
-                "bundle_discount_percent": request.form.get("bundle_discount_percent", payload.get("bundle_discount_percent")),
-                "bundle_discount_amount": request.form.get("bundle_discount_amount", payload.get("bundle_discount_amount")),
-                "is_active": request.form.get("is_active") == "on",
-                "entitlement_item_id": entitlement_item_id,
-            }
-        )
-        version = create_policy_version(
-            class_id=class_id,
-            actor_user_id=g.canonical_context.user_id,
-            payload=payload,
-            source_version=version,
-            is_active=payload["is_active"],
-            activation_mode="edit" if action == "save" else action,
-            status="applied" if action == "save" else "pending",
-        )
-        create_class_announcement(
-            user_id=g.canonical_context.user_id,
-            class_id=class_id,
-            title=f"Insurance policy updated: {payload['title']}",
-            message=(
-                f"{payload['title']} changed. New terms are available for future enrollment."
-                if action == "save"
-                else f"{payload['title']} was {action}ed. Existing coverage remains valid until its current boundary."
-            ),
-            priority=7,
-            is_active=True,
-            expires_at=None,
-        )
-        flash(f"Insurance policy '{payload['title']}' updated.", "success")
+            row = configure_insurance_definition(
+                class_id=class_id,
+                submission=submission,
+                canonical_context=g.canonical_context,
+                availability_state=insurance_defs.IN_USE,
+                correlation_id=f"feat:class003:insurance-new:{uuid.uuid4().hex}",
+                idempotency_key=f"feat:class003:insurance-new:{uuid.uuid4().hex}",
+            )
+        except InsuranceContractViolation as exc:
+            flash(f"That insurance contract is not lawful: {exc}", "danger")
+            return render_template(
+                "admin_edit_insurance_policy.html",
+                mode="new",
+                policy=None,
+                submission=submission,
+                current_page="insurance",
+                insurance_type_choices=_INSURANCE_TYPE_CHOICES,
+                charge_frequency_choices=_CHARGE_FREQUENCY_CHOICES,
+            )
+        flash(f"Insurance policy '{row.title or row.policy_uuid}' created.", "success")
         return redirect(url_for("admin.insurance_management"))
+
     return render_template(
         "admin_edit_insurance_policy.html",
-        policy=SimpleNamespace(id=version.id, title=payload.get("title", ""), payload=payload, version_number=version.version_number),
-        policy_version=version,
-        payload=payload,
+        mode="new",
+        policy=None,
+        submission=None,
         current_page="insurance",
-        store_items=store_items,
-        available_versions=[
-            SimpleNamespace(
-                id=v.id,
-                version_number=v.version_number,
-                is_active=v.is_active,
-                policy_payload_json=v.policy_payload_json,
-            )
-            for v in list_insurance_policy_versions(class_id)
-        ],
+        insurance_type_choices=_INSURANCE_TYPE_CHOICES,
+        charge_frequency_choices=_CHARGE_FREQUENCY_CHOICES,
     )
 
 
-@admin_bp.route('/insurance/deactivate/<int:policy_id>', methods=['POST'])
+@admin_bp.route('/insurance/edit/<policy_uuid>', methods=['GET', 'POST'])
 @admin_required
-@requires_feat_context("FEAT-POL-001")
-def deactivate_insurance_policy(policy_id):
-    """Deactivate an insurance policy."""
-    class_id = g.canonical_context.class_id
-    version = get_insurance_policy_version(policy_id, class_id=class_id)
-    if version is None:
-        abort(404)
-    payload = json.loads(version.policy_payload_json or "{}")
-    payload["is_active"] = False
-    create_policy_version(
-        class_id=class_id,
-        actor_user_id=g.canonical_context.user_id,
-        payload=payload,
-        source_version=version,
-        is_active=False,
-        activation_mode="inactive",
-        status="applied",
-    )
-    create_class_announcement(
-        user_id=g.canonical_context.user_id,
-        class_id=class_id,
-        title=f"Insurance policy hidden: {payload.get('title', 'Policy')}",
-        message=f"{payload.get('title', 'Policy')} is no longer available for new enrollment. Existing coverage is unchanged.",
-        priority=6,
-        is_active=True,
-        expires_at=None,
-    )
-    flash("Insurance policy deactivated.", "success")
-    return redirect(url_for('admin.insurance_management'))
+def edit_insurance_policy(policy_uuid):
+    """Edit an insurance definition — an edit is a new immutable version.
 
-
-@admin_bp.route('/insurance/delete/<int:policy_id>', methods=['POST'])
-@admin_required
-@requires_feat_context("FEAT-POL-001")
-def delete_insurance_policy(policy_id):
-    """Delete an insurance policy and all associated data.
-
-    Since each teacher has their own policy instances (identified by policy_code),
-    other teachers.
+    GET prefills the form from the existing (class-scoped) row. POST validates
+    the resubmitted contract through FEAT-CLASS-003 and stores a *new*
+    ``policy_uuid`` row; the prior definition is never mutated.
     """
     class_id = g.canonical_context.class_id
-    version = get_insurance_policy_version(policy_id, class_id=class_id)
-    if version is None:
+    row = insurance_defs.get_insurance_definition(policy_uuid, class_id=class_id)
+    if row is None:
         abort(404)
-    scheduled_for = get_last_entitlement_end_for_policy_version(
-        class_id=class_id,
-        policy_version_id=version.id,
-    ) or utc_now()
-    schedule_policy_deletion(
-        class_id=class_id,
-        actor_user_id=g.canonical_context.user_id,
-        source_version=version,
-        deletion_at=scheduled_for,
+
+    if request.method == "POST":
+        submission = _insurance_submission_from_form(request.form)
+        try:
+            new_row = configure_insurance_definition(
+                class_id=class_id,
+                submission=submission,
+                canonical_context=g.canonical_context,
+                availability_state=row.availability_state,
+                correlation_id=f"feat:class003:insurance-edit:{uuid.uuid4().hex}",
+                idempotency_key=f"feat:class003:insurance-edit:{uuid.uuid4().hex}",
+            )
+        except InsuranceContractViolation as exc:
+            flash(f"That insurance contract is not lawful: {exc}", "danger")
+            return render_template(
+                "admin_edit_insurance_policy.html",
+                mode="edit",
+                policy=_insurance_definition_view(row),
+                submission=submission,
+                current_page="insurance",
+                insurance_type_choices=_INSURANCE_TYPE_CHOICES,
+                charge_frequency_choices=_CHARGE_FREQUENCY_CHOICES,
+            )
+        flash(f"Insurance policy '{new_row.title or new_row.policy_uuid}' updated (new version).", "success")
+        return redirect(url_for("admin.insurance_management"))
+
+    return render_template(
+        "admin_edit_insurance_policy.html",
+        mode="edit",
+        policy=_insurance_definition_view(row),
+        submission=None,
+        current_page="insurance",
+        insurance_type_choices=_INSURANCE_TYPE_CHOICES,
+        charge_frequency_choices=_CHARGE_FREQUENCY_CHOICES,
     )
-    create_class_announcement(
-        user_id=g.canonical_context.user_id,
-        class_id=class_id,
-        title=f"Insurance policy scheduled for deletion: {json.loads(version.policy_payload_json or '{}').get('title', 'Policy')}",
-        message="The policy has been discontinued for new enrollment and its configuration will be removed after the last current entitlement ends.",
-        priority=8,
-        is_active=True,
-        expires_at=None,
-    )
-    flash("Insurance policy deletion scheduled.", "success")
+
+
+@admin_bp.route('/insurance/deactivate/<policy_uuid>', methods=['POST'])
+@admin_required
+def deactivate_insurance_policy(policy_uuid):
+    """Hide a policy from new selection (availability HIDDEN); economics untouched."""
+    class_id = g.canonical_context.class_id
+    try:
+        set_insurance_definition_availability(
+            class_id=class_id,
+            policy_uuid=policy_uuid,
+            availability_state=insurance_defs.HIDDEN,
+            canonical_context=g.canonical_context,
+            correlation_id=f"feat:class003:insurance-hide:{uuid.uuid4().hex}",
+            idempotency_key=f"feat:class003:insurance-hide:{uuid.uuid4().hex}",
+        )
+    except insurance_defs.InsuranceDefinitionNotFound:
+        abort(404)
+    except InsuranceContractViolation as exc:
+        flash(f"{exc}", "danger")
+        return redirect(url_for('admin.insurance_management'))
+    flash("Insurance policy hidden from new enrollment.", "success")
     return redirect(url_for('admin.insurance_management'))
 
 
-@admin_bp.route('/insurance/mass-remove/<int:policy_id>', methods=['POST'])
+@admin_bp.route('/insurance/delete/<policy_uuid>', methods=['POST'])
 @admin_required
-def mass_remove_policy(policy_id):
-    """Cancel insurance policy for multiple or all students."""
-    flash("Insurance mass-removal is now expressed as policy deactivation/deletion scheduling in the class-config editor.", "info")
+def delete_insurance_policy(policy_uuid):
+    """Retire a policy (availability RETIRED); the immutable row is preserved.
+
+    DOM-POL-001 §VI.4 permits removing a RETIRED row only after live
+    dependencies drain; that draining path is not yet wired for this family, so
+    "delete" retires (permanently unavailable) rather than hard-deleting.
+    """
+    class_id = g.canonical_context.class_id
+    try:
+        set_insurance_definition_availability(
+            class_id=class_id,
+            policy_uuid=policy_uuid,
+            availability_state=insurance_defs.RETIRED,
+            canonical_context=g.canonical_context,
+            correlation_id=f"feat:class003:insurance-retire:{uuid.uuid4().hex}",
+            idempotency_key=f"feat:class003:insurance-retire:{uuid.uuid4().hex}",
+        )
+    except insurance_defs.InsuranceDefinitionNotFound:
+        abort(404)
+    except InsuranceContractViolation as exc:
+        flash(f"{exc}", "danger")
+        return redirect(url_for('admin.insurance_management'))
+    flash("Insurance policy retired.", "success")
     return redirect(url_for('admin.insurance_management'))
 
 
@@ -6082,7 +6095,7 @@ def view_student_policy(enrollment_id):
         waiting_period_days=0,
         autopay=False,
         auto_cancel_nonpay_days=0,
-        claim_type="transaction_monetary",
+        claim_type="TRANSACTION",
         no_repurchase_after_cancel=False,
         repurchase_wait_days=0,
     )
@@ -6162,7 +6175,7 @@ def process_claim(claim_id):
         waiting_period_days=0,
         autopay=False,
         auto_cancel_nonpay_days=0,
-        claim_type="transaction_monetary",
+        claim_type="TRANSACTION",
         no_repurchase_after_cancel=False,
         repurchase_wait_days=0,
     )
@@ -6219,7 +6232,7 @@ def process_claim(claim_id):
         'admin_process_claim.html',
         current_page='insurance',
         claim=claim_view,
-        claim_type='transaction_monetary',
+        claim_type='TRANSACTION',
         contract_title=placeholder_policy.title,
         contract_description=placeholder_policy.description,
         contract_claim_time_limit_days=0,
@@ -6772,6 +6785,25 @@ def economic_engine():
         'budget survival test': url_for('admin.payroll'),
     }
 
+    # Insurance recommendation is owned exclusively by the Economic Engine
+    # (SPEC-ECON-003 §4.5). Surface a representative weekly-premium range for the
+    # active economic mode; the product-aware edit flow supplies per-policy detail.
+    insurance_recommendation = None
+    if cwi_calc is not None and cwi_calc.cwi is not None:
+        from app.services.economic_engine import resolve_insurance, TRANSACTION
+        from app.models import _quantize_currency
+        _ins = resolve_insurance(
+            product=TRANSACTION,
+            cwi=cwi_calc.cwi,
+            mode=policy_summary['mode'],
+        )
+        _rate_lo, _rate_hi = _ins.recommended_ranges['premium_rate']
+        insurance_recommendation = {
+            'weekly_min': float(_quantize_currency(_ins.cwi * Decimal(str(_rate_lo)))),
+            'weekly_max': float(_quantize_currency(_ins.cwi * Decimal(str(_rate_hi)))),
+            'weekly_recommended': float(_ins.weekly_premium) if _ins.weekly_premium is not None else None,
+        }
+
     return render_template(
         'admin_economic_engine.html',
         current_page='economic_engine',
@@ -6792,6 +6824,7 @@ def economic_engine():
         actionable_warning_count=len(actionable_warnings),
         health_warning_summary=health_warning_summary,
         recommendations=recommendations,
+        insurance_recommendation=insurance_recommendation,
         snapshot=snapshot,
         analysis_schedule=analysis_schedule,
         policy_modes=POLICY_MODES,
@@ -6953,7 +6986,32 @@ def _run_payroll():
 
         class_id = selected_scope['class_id']
         policy_version_id = _require_active_payroll_policy_version_id(class_id)
-        seats = Seat.query.filter_by(class_id=class_id, role='student').all()
+
+        # Payroll population is derived from the ATTENDANCE RECORD, not the seat
+        # roster. Payroll pays for attended time over each seat's [last payroll,
+        # now] window (see record_payroll_event), so a seat earns only if it has
+        # attendance activity. Empty/unclaimed desks have no attendance rows and
+        # are excluded by construction; any seat that does have attendance is
+        # necessarily a claimed participant (attendance is seat+user anchored).
+        # This keys payroll off seat_id per DOM-IDEN-001 and avoids paying — or
+        # crashing on — empty desks.
+        attended_seat_ids = [
+            seat_id
+            for (seat_id,) in (
+                db.session.query(AttendanceSession.target_seat_id)
+                .filter(AttendanceSession.class_id == class_id)
+                .distinct()
+                .all()
+            )
+        ]
+        seats = (
+            Seat.query.filter(
+                Seat.id.in_(attended_seat_ids),
+                Seat.role == 'student',
+            ).all()
+            if attended_seat_ids
+            else []
+        )
 
         evaluation = canonical_temporal_resolver(
             CLASS_LEVEL_EVALUATION,
@@ -8398,15 +8456,286 @@ def bulk_adjust_hall_pass_entitlements():
 @admin_bp.route('/banking')
 @admin_required
 def banking():
-    """Redirect to the canonical Economic Engine banking configuration."""
-    return redirect(url_for('admin.economic_engine'))
+    """Banking surface for the active class: balances, transaction log, savings interest.
+
+    Savings interest is NOT a standalone settings model — it lives on the canonical
+    ``EconomicEngine`` (``interest_rate`` fraction, ``interest_payout_frequency``).
+    This page reads that engine state plus a class-scoped transaction ledger. The
+    GET path is feature-guarded by the ``admin_bp.before_request`` capability
+    boundary (endpoint ``admin.banking`` → feature ``banking``); a ``block``/section
+    query arg is display-only and is NEVER used to resolve or switch class scope
+    (INV-ARC-004 V.2).
+    """
+    selected_scope = require_admin_feature_scope(
+        'banking',
+        canonical_context=g.canonical_context,
+    )
+    selected_class_id = selected_scope['class_id']
+
+    engine = _resolve_economic_engine_for_class_id(selected_class_id)
+    interest_rate = engine.interest_rate if engine else None
+    # interest_rate is stored as a fraction (0..1.0); surface it to teachers as APY %.
+    interest_apy = (
+        _quantize_currency((interest_rate or Decimal('0')) * Decimal('100'))
+        if interest_rate is not None else Decimal('0.00')
+    )
+    interest_payout_frequency = (engine.interest_payout_frequency if engine else None) or 'monthly'
+    interest_calculation_type = (engine.interest_calculation_type if engine else None) or 'simple'
+    compound_frequency = (engine.compound_frequency if engine else None) or 'never'
+
+    # ---- Overdraft (internal fine) state — lives on the same canonical engine ----
+    overdraft_protection_enabled = bool(engine.overdraft_protection_enabled) if engine else False
+    flat_overdraft_fee = engine.flat_overdraft_fee if engine else None
+
+    # ---- Economic Engine recommendations (canonical source of pricing logic) ----
+    # Advisory only; never persisted. The recommended savings-interest ceiling depends
+    # on the compound frequency the teacher intends to use, so resolve it for the
+    # currently-configured frequency.
+    from app.services.economic_engine import resolve_savings, resolve_overdraft_fine
+
+    savings_reco = resolve_savings(
+        class_id=selected_class_id,
+        compound_frequency=compound_frequency,
+    )
+    overdraft_reco = resolve_overdraft_fine(class_id=selected_class_id)
+
+    # ---- Transaction log (class-scoped, filtered, paginated) ----
+    account_q = request.args.get('account', '')
+    type_q = request.args.get('type', '')
+    student_q = request.args.get('student', '').strip()
+    start_date = request.args.get('start_date')
+    end_date = request.args.get('end_date')
+    try:
+        page = max(1, int(request.args.get('page', 1)))
+    except (TypeError, ValueError):
+        page = 1
+    per_page = 50
+
+    query = (
+        db.session.query(Transaction, Seat)
+        .join(Seat, Transaction.seat_id == Seat.id)
+        .filter(Transaction.class_id == selected_class_id)
+    )
+
+    if student_q:
+        matching_seat_ids = []
+        if student_q.isdigit():
+            matching_seat_ids.append(int(student_q))
+        for seat in Seat.query.filter(Seat.class_id == selected_class_id).all():
+            _ip = seat.identity_profile
+            if student_q.lower() in (_ip.full_name if _ip else "").lower():
+                matching_seat_ids.append(seat.id)
+        if matching_seat_ids:
+            query = query.filter(Seat.id.in_(matching_seat_ids))
+        else:
+            query = query.filter(sa.false())
+
+    if account_q:
+        query = query.filter(Transaction.account_type == account_q)
+    if type_q:
+        query = query.filter(Transaction.type == type_q)
+    if start_date:
+        try:
+            query = query.filter(Transaction.timestamp >= datetime.strptime(start_date, '%Y-%m-%d'))
+        except ValueError:
+            flash("Invalid start date format. Please use YYYY-MM-DD.", "danger")
+    if end_date:
+        try:
+            end_date_inclusive = datetime.strptime(end_date, '%Y-%m-%d') + timedelta(days=1)
+            query = query.filter(Transaction.timestamp < end_date_inclusive)
+        except ValueError:
+            flash("Invalid end date format. Please use YYYY-MM-DD.", "danger")
+
+    total_transactions = query.count()
+    total_pages = math.ceil(total_transactions / per_page) if total_transactions else 1
+    rows = (
+        query.order_by(Transaction.timestamp.desc())
+        .limit(per_page)
+        .offset((page - 1) * per_page)
+        .all()
+    )
+    transactions = []
+    for tx, seat in rows:
+        _ip = seat.identity_profile if seat else None
+        transactions.append({
+            'id': tx.id,
+            'timestamp': tx.timestamp,
+            'actor_public_id': seat.public_id if seat else None,
+            'student_name': (_ip.full_name if _ip else str(seat.id if seat else "")),
+            'amount': tx.amount,
+            'account_type': tx.account_type,
+            'description': tx.description,
+            'type': tx.type,
+            'is_void': tx.is_void,
+        })
+
+    transaction_types = sorted(
+        t[0] for t in db.session.query(Transaction.type)
+        .filter(Transaction.class_id == selected_class_id)
+        .filter(Transaction.type.isnot(None))
+        .distinct()
+        .all()
+        if t[0]
+    )
+
+    # ---- Banking stats via ledger authority (selected class only) ----
+    students = [
+        seat for seat in Seat.query.filter(
+            Seat.class_id == selected_class_id,
+            Seat.role == 'student',
+        ).all()
+        if seat.claimed_at is not None
+    ]
+    total_checking = Decimal('0.00')
+    total_savings = Decimal('0.00')
+    students_with_savings = 0
+    for student in students:
+        checking_balance, savings_balance = get_available_balances(student.id, selected_class_id)
+        total_checking += checking_balance
+        total_savings += savings_balance
+        if savings_balance > 0:
+            students_with_savings += 1
+    total_deposits = total_checking + total_savings
+    average_savings_balance = (total_savings / len(students)) if students else Decimal('0.00')
+
+    return render_template(
+        'admin_banking.html',
+        transactions=transactions,
+        total_checking=total_checking,
+        total_savings=total_savings,
+        total_deposits=total_deposits,
+        students_with_savings=students_with_savings,
+        total_students=len(students),
+        average_savings_balance=average_savings_balance,
+        transaction_types=transaction_types,
+        page=page,
+        total_pages=total_pages,
+        total_transactions=total_transactions,
+        interest_apy=interest_apy,
+        interest_payout_frequency=interest_payout_frequency,
+        interest_calculation_type=interest_calculation_type,
+        compound_frequency=compound_frequency,
+        overdraft_protection_enabled=overdraft_protection_enabled,
+        flat_overdraft_fee=flat_overdraft_fee,
+        savings_reco=savings_reco,
+        overdraft_reco=overdraft_reco,
+        current_page="banking",
+        format_utc_iso=format_utc_iso,
+        selected_feature_scope=selected_scope,
+    )
 
 
 @admin_bp.route('/banking/settings', methods=['POST'])
 @admin_required
 def banking_settings_update():
-    """Redirect legacy banking writes to the canonical Economic Engine page."""
-    return redirect(url_for('admin.economic_engine'))
+    """Persist savings interest by evolving the canonical Economic Engine.
+
+    Interest lives on ``EconomicEngine`` (there is no standalone banking settings
+    model). Saving interest creates a NEW immutable engine version via FEAT-CLASS-005,
+    preserving the append-only version timeline. The teacher enters an APY percentage;
+    we store it as a 0..1 fraction on ``interest_rate``.
+    """
+    from app.services.class_configuration_query_service import is_feature_enabled
+    from app.feats.class_configuration.feat_class_005_economic_engine_evolution import (
+        execute_evolve_economic_engine,
+    )
+
+    ctx = g.canonical_context
+    # Non-GET writes fail closed when scope cannot be lawfully resolved (require_* 404s).
+    selected_scope = require_admin_feature_scope('banking', canonical_context=ctx)
+    class_id = selected_scope['class_id']
+
+    try:
+        # ---- Savings interest ----
+        apy_raw = request.form.get('interest_apy', '0') or '0'
+        interest_apy = _quantize_currency(apy_raw)
+        if not (Decimal('0') <= interest_apy <= Decimal('100')):
+            flash('Interest APY must be between 0% and 100%.', 'error')
+            return redirect(url_for('admin.banking'))
+        # Convert APY % → 0..1 fraction stored on the engine (ck_economic_engine_rate).
+        interest_rate = (interest_apy / Decimal('100')).quantize(Decimal('0.000001'))
+
+        payout_frequency = (request.form.get('interest_payout_frequency', 'monthly') or 'monthly').lower()
+        if payout_frequency not in ('weekly', 'monthly'):
+            flash('Payout frequency must be weekly or monthly.', 'error')
+            return redirect(url_for('admin.banking'))
+
+        calc_type = (request.form.get('interest_calculation_type', 'simple') or 'simple').lower()
+        if calc_type not in ('simple', 'compound'):
+            flash('Interest calculation type must be simple or compound.', 'error')
+            return redirect(url_for('admin.banking'))
+
+        # Compound frequency is coupled to the calculation type (SPEC-ECON-003 §5.6):
+        # simple interest never compounds; compound interest requires a real cadence.
+        if calc_type == 'simple':
+            compound_frequency = 'never'
+        else:
+            compound_frequency = (request.form.get('compound_frequency', 'monthly') or 'monthly').lower()
+            if compound_frequency not in ('daily', 'weekly', 'monthly'):
+                flash('Compound frequency must be daily, weekly, or monthly.', 'error')
+                return redirect(url_for('admin.banking'))
+
+        # ---- Overdraft (internal fine) ----
+        overdraft_protection_enabled = request.form.get('overdraft_protection_enabled') == 'on'
+        # A blank/absent fee disables the overdraft fee (persist NULL, SPEC-ECON-003 §4.6.1).
+        fee_raw = (request.form.get('flat_overdraft_fee', '') or '').strip()
+        if fee_raw == '':
+            flat_overdraft_fee = None
+        else:
+            flat_overdraft_fee = _quantize_currency(fee_raw)
+            if flat_overdraft_fee < 0:
+                flash('Overdraft fee must be zero or greater.', 'error')
+                return redirect(url_for('admin.banking'))
+    except (ValueError, InvalidOperation):
+        flash('Invalid banking settings value.', 'error')
+        return redirect(url_for('admin.banking'))
+
+    all_features = ClassFeature.feature_names()
+    feature_list = [f for f in all_features if is_feature_enabled(class_id, f)]
+    if not feature_list:
+        flash("No features are enabled for this class yet.", "error")
+        return redirect(url_for('admin.banking'))
+
+    updates = {
+        'interest_rate': float(interest_rate),
+        'interest_payout_frequency': payout_frequency,
+        'interest_calculation_type': calc_type,
+        'compound_frequency': compound_frequency,
+        'overdraft_protection_enabled': bool(overdraft_protection_enabled),
+        # Setting a flat fee (or clearing it) clears any progressive schedule so the
+        # mutual-exclusivity CHECK (ck_economic_engine_overdraft_fee_exclusive) holds.
+        'flat_overdraft_fee': (float(flat_overdraft_fee) if flat_overdraft_fee is not None else None),
+        'progressive_overdraft_fee': None,
+    }
+
+    idempotency_key = (
+        f"feat:class-005:banking:{class_id}:{interest_rate}:{payout_frequency}:"
+        f"{calc_type}:{compound_frequency}:{overdraft_protection_enabled}:{flat_overdraft_fee}"
+    )
+    result = execute_evolve_economic_engine(
+        canonical_context=ctx,
+        class_id=class_id,
+        updates=updates,
+        feature_list=feature_list,
+        idempotency_key=idempotency_key,
+    )
+
+    if not result.success:
+        current_app.logger.error(
+            "FEAT-CLASS-005 evolve failed for banking settings: %s - %s",
+            result.error_code, result.error_message,
+        )
+        flash(f'Error updating banking settings: {result.error_message}', 'error')
+        return redirect(url_for('admin.banking'))
+
+    flash(
+        f'Banking settings saved: {interest_apy:.2f}% APY ({calc_type}, {payout_frequency} payouts); '
+        + (f'overdraft fee {flat_overdraft_fee}' if flat_overdraft_fee is not None else 'no overdraft fee')
+        + (', protection ON' if overdraft_protection_enabled else ', protection OFF')
+        + '.',
+        'success',
+    )
+    return redirect(url_for('admin.banking'))
 
 
 @admin_bp.route('/account-delete', methods=['GET', 'POST'])
@@ -8850,7 +9179,6 @@ def announcements():
         return redirect(url_for('admin.dashboard'))
 
     selected_class_id = class_context["class_id"]
-    selected_join_code = get_display_join_code(selected_class_id)
 
     # Get announcements for this teacher scoped to the active class context only.
     from app.models import Announcement
@@ -8859,13 +9187,10 @@ def announcements():
         class_id=selected_class_id,
     ).order_by(Announcement.created_at.desc()).all()
 
-    active_class_label = selected_join_code
-
     return render_template(
         'admin_announcements.html',
         announcements=announcements_list,
-        active_class_label=active_class_label,
-        active_join_code=selected_join_code,
+        active_class_label=class_context['display_name'],
     )
 
 
@@ -8883,7 +9208,6 @@ def announcement_create():
         return redirect(url_for('admin.dashboard'))
 
     selected_class_id = class_context["class_id"]
-    selected_join_code = get_display_join_code(selected_class_id)
 
     form = AnnouncementForm()
     form.class_id.data = selected_class_id
@@ -8914,9 +9238,7 @@ def announcement_create():
         'admin_announcement_form.html',
         form=form,
         action='Create',
-        active_join_code=selected_join_code,
-        active_class_label=selected_join_code,
-        active_block=class_context.get("block"),
+        active_class_label=class_context['display_name'],
     )
 
 
@@ -8967,8 +9289,9 @@ def announcement_edit(announcement_id):
             current_app.logger.error(f"Error updating announcement: {e}")
             flash('An error occurred while updating the announcement.', 'danger')
 
-    # Build view model for class context display in edit mode.
-    class_label = class_context.get("join_code") or class_context.get("class_id") or "Unknown"
+    # Build view model for class context display in edit mode. Label the active
+    # class by its display name, not the join code (an ingress alias).
+    class_label = class_context.get("display_name") or "Unknown"
     teacher_block_view = {
         'class_label': class_label,
     }
@@ -9091,16 +9414,14 @@ def onboarding_status():
         if not active_class_id:
             roster_done = payroll_done = store_done = banking_done = rent_done = hall_pass_done = False
         else:
-            roster_done = (
-                db.session.query(Seat.id)
-                .filter(
-                    Seat.class_id == active_class_id,
-                    Seat.role == "student",
-                    Seat.user_id.isnot(None),
-                    Seat.claimed_at.isnot(None),
-                )
-                .count()
-            ) > 0
+            # The first required task is "Create a class". onboarding_status only
+            # resolves an active_class_id when the teacher actually owns/occupies
+            # a class, so reaching this branch IS the "class created" signal.
+            # (This task was historically "Upload Roster" and checked for claimed
+            # student seats; the label now reflects class creation, so the check
+            # must too — otherwise a freshly created class with no claimed
+            # students reads as incomplete even though the class exists.)
+            roster_done = True
             payroll_done = PayrollSettings.query.filter(
                 PayrollSettings.class_id == active_class_id
             ).first() is not None
@@ -9206,6 +9527,16 @@ def create_new_class():
         )
 
     establish_teacher_session(db.session.get(User, user_id))
+    # create_class moved last_active_class_id/seat_id to the new class, so the
+    # canonical context now resolves to it. The layout's teacher name, however,
+    # comes from the session display-name cache (set at login/settings), which
+    # still holds the previous class's identity. Refresh it to the identity just
+    # created for this class so the dashboard shows the correct display name
+    # immediately — mirrors the settings-save path.
+    set_admin_display_name_cache(
+        user_id=user_id,
+        display_name=f"{teacher_first_name} {teacher_last_name}".strip(),
+    )
     flash(f"Class \"{class_display_name}\" created. You are now in the new class.", "success")
     return redirect(url_for('admin.dashboard'))
 
@@ -9442,7 +9773,11 @@ def api_economy_validate(feature):
         value = _quantize_currency(data.get('value', '0'))
         explicit_class_id = (data.get('class_id') or '').strip() or None
         feature = feature.lower()
-        valid_features = ['rent', 'insurance', 'fine', 'store_item']
+        # NOTE (SPEC-ECON-003 migration): insurance validation is retired from this
+        # generic endpoint. Insurance recommendations/consequences are owned by the
+        # Economic Engine (resolve_insurance) and surfaced through the product-aware
+        # insurance edit flow, not this legacy free-form AJAX validator.
+        valid_features = ['rent', 'fine', 'store_item']
         if feature not in valid_features:
             return jsonify({
                 'status': 'error',

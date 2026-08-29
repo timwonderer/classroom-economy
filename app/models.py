@@ -379,8 +379,13 @@ class EconomicEngine(db.Model):
     interest_payout_frequency = db.Column(db.String(20), nullable=True)
     # Canonical internal fines per SPEC-ECON-003 §4.6.1. Exactly one form may
     # be configured for a policy: a flat amount or a tiered JSON schedule.
+    # ``none_as_null=True`` is REQUIRED: without it SQLAlchemy persists Python
+    # ``None`` as the JSON scalar ``'null'`` (a non-NULL value), which is
+    # indistinguishable from a configured schedule to the mutual-exclusivity
+    # CHECK (``ck_economic_engine_overdraft_fee_exclusive``) and would spuriously
+    # collide with a flat fee. Mapping ``None`` → SQL NULL keeps "unset" unset.
     flat_overdraft_fee = db.Column(db.Numeric(precision=12, scale=2), nullable=True)
-    progressive_overdraft_fee = db.Column(db.JSON, nullable=True)
+    progressive_overdraft_fee = db.Column(db.JSON(none_as_null=True), nullable=True)
     overdraft_protection_enabled = db.Column(db.Boolean, nullable=True)
 
     # Economic policy
@@ -1152,6 +1157,143 @@ class PendingAction(db.Model):
     )
 
 
+class InsuranceClaim(db.Model):
+    """First-class insurance claim lifecycle — DOM-STORE-001 / FEAT-STOR-003.
+
+    A claim is its own domain entity with an independent lifecycle
+    (``SUBMITTED → APPROVED/REJECTED``), owned by Store & Entitlements. It is
+    *correlated to* — but never *represented by* — the insurance entitlement
+    lineage. Claim activity NEVER writes a ``CONSUMED`` EntitlementEvent: the
+    entitlement stays ``GRANTED`` so multiple claims can be filed under one
+    active policy (e.g. PRODUCTIVITY allows 1–3 claims per week-equivalent).
+
+    The claim stores only *product-specific submitted facts* in ``claim_basis``.
+    Frozen policy terms are NOT duplicated here — they are preserved by the
+    entitlement/policy lineage (the GRANTED event's ``policy_uuid``) and resolved
+    at decision time. Downstream lineage references (Payroll event, Ledger
+    transaction) are nullable until an APPROVED decision materializes them.
+    """
+    __tablename__ = 'insurance_claims'
+
+    claim_id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    class_id = db.Column(db.String(36), db.ForeignKey('classes.class_id', ondelete='CASCADE'), nullable=False, index=True)
+    # Soft correlation to the stable class-scoped entitlement lineage identifier.
+    # NOT a hard FK: entitlements are event-sourced (there is no addressable
+    # canonical entitlement row), so existence/validity is validated through the
+    # owning Store & Entitlements domain rather than a database constraint.
+    entitlement_id = db.Column(db.String(36), nullable=False, index=True)
+    target_seat_id = db.Column(db.Integer, db.ForeignKey('seats.id', ondelete='CASCADE'), nullable=False, index=True)
+    actor_seat_id = db.Column(db.Integer, db.ForeignKey('seats.id', ondelete='CASCADE'), nullable=False)
+
+    # Lifecycle state: SUBMITTED (initial) → APPROVED | REJECTED (terminal, immutable).
+    status = db.Column(db.String(20), nullable=False, default='SUBMITTED', index=True)
+
+    # Idempotent submission: one claim per correlation lifecycle.
+    correlation_id = db.Column(db.String(200), nullable=False, unique=True, index=True)
+
+    # Product-specific submitted facts ONLY (e.g. {transaction_id} for TRANSACTION,
+    # {claimed_dates: [...]} for PRODUCTIVITY). Never frozen policy terms.
+    claim_basis = db.Column(db.JSON, nullable=False)
+
+    submitted_at = db.Column(db.DateTime(timezone=True), default=utc_now, nullable=False)
+
+    # Decision fields — nullable until the claim reaches a terminal state.
+    decided_by_seat_id = db.Column(db.Integer, db.ForeignKey('seats.id', ondelete='SET NULL'), nullable=True)
+    decided_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    # General decision annotation (approval or rejection). No distinct override
+    # workflow exists, so this is a single free-text decision note.
+    decision_note = db.Column(db.Text, nullable=True)
+    result_amount = db.Column(db.Numeric(precision=12, scale=2), nullable=True)
+
+    # Downstream lineage references — populated only on APPROVED. Nullable until then.
+    payroll_event_id = db.Column(db.Integer, nullable=True)
+    ledger_transaction_id = db.Column(db.Integer, nullable=True)
+
+    target_seat = db.relationship('Seat', foreign_keys=[target_seat_id], backref=db.backref('target_insurance_claims', passive_deletes=True))
+    actor_seat = db.relationship('Seat', foreign_keys=[actor_seat_id], backref=db.backref('actor_insurance_claims', passive_deletes=True))
+
+    __table_args__ = (
+        db.Index('ix_insurance_claims_entitlement_class', 'entitlement_id', 'class_id'),
+        db.Index('ix_insurance_claims_seat_class', 'target_seat_id', 'class_id'),
+        db.Index('ix_insurance_claims_status_class', 'status', 'class_id'),
+    )
+
+
+class InsuranceClaimProductivityDate(db.Model):
+    """One asserted productivity loss-date within a PRODUCTIVITY claim case.
+
+    ``InsuranceClaim`` remains the product-agnostic case/lifecycle record. A
+    PRODUCTIVITY claim additionally asserts one or more class-local dates, each of
+    which is its own normalized row here rather than an opaque JSON list on the
+    parent. Each date carries the student's immutable submitted hours, the
+    teacher's adjudicated hours, an optional per-date adjustment note, and the
+    immutable recognized economic result.
+
+    The ``UNIQUE(entitlement_id, claim_date)`` constraint is the structural
+    enforcement of the settled invariant (FEAT-STOR-003 §V.B): within one
+    entitlement a class-local date may participate in at most one PRODUCTIVITY
+    claim lifecycle, regardless of SUBMITTED / APPROVED / REJECTED. Rejection does
+    NOT free the date — the row remains, so a same-date re-file collides with the
+    constraint. ``UNIQUE(claim_id, claim_date)`` forbids a date appearing twice
+    within a single case.
+
+    No mutable counters live here. Weekly claimed hours, weekly/period recognized
+    payout consumption, and date-allowance-used are all re-derived by reading this
+    date history. ``recognized_payout`` is persisted (not reconstructed) so
+    historical weekly payout consumption stays stable even if payroll settings
+    later change.
+    """
+    __tablename__ = 'insurance_claim_productivity_dates'
+
+    id = db.Column(db.Integer, primary_key=True)
+    claim_id = db.Column(
+        db.String(36),
+        db.ForeignKey('insurance_claims.claim_id', ondelete='CASCADE'),
+        nullable=False,
+        index=True,
+    )
+    # Soft lineage locator — same event-sourced rationale as InsuranceClaim.entitlement_id.
+    entitlement_id = db.Column(db.String(36), nullable=False, index=True)
+    class_id = db.Column(
+        db.String(36),
+        db.ForeignKey('classes.class_id', ondelete='CASCADE'),
+        nullable=False,
+        index=True,
+    )
+
+    # Class-local calendar date of the asserted loss (CLE-resolved at submission).
+    claim_date = db.Column(db.Date, nullable=False)
+
+    # Immutable submitted assertion.
+    student_claimed_hours = db.Column(db.Numeric(precision=6, scale=2), nullable=False)
+    # Required per-date evidentiary explanation authored by the student at
+    # submission. This is student-submitted evidence, not derived state; it is
+    # never fabricated or backfilled. NOT NULL is safe because PRODUCTIVITY dates
+    # are only ever created through the submission path, which now requires it.
+    student_explanation = db.Column(db.Text, nullable=False)
+    # Adjudicated truth — NULL until the owning claim is decided; may differ from claimed.
+    teacher_approved_hours = db.Column(db.Numeric(precision=6, scale=2), nullable=True)
+    # Required per-row iff approved hours differ from claimed hours (including a
+    # reject-to-zero of a single date).
+    adjustment_note = db.Column(db.Text, nullable=True)
+    # Immutable recognized economic result — persisted on approval, never later
+    # reconstructed from mutable payroll inputs.
+    recognized_payout = db.Column(db.Numeric(precision=12, scale=2), nullable=True)
+
+    claim = db.relationship(
+        'InsuranceClaim',
+        backref=db.backref('productivity_dates', passive_deletes=True, cascade='all, delete-orphan'),
+    )
+
+    __table_args__ = (
+        db.UniqueConstraint('entitlement_id', 'claim_date', name='uq_icpd_entitlement_date'),
+        db.UniqueConstraint('claim_id', 'claim_date', name='uq_icpd_claim_date'),
+        db.Index('ix_icpd_claim_id', 'claim_id'),
+        db.Index('ix_icpd_entitlement_id', 'entitlement_id'),
+        db.Index('ix_icpd_class_id', 'class_id'),
+    )
+
+
 # ---- Error Log Model ----
 # Error logging state is represented in the canonical operations tables
 
@@ -1572,10 +1714,15 @@ class ClassFeature(db.Model):
     def feature_names(cls):
         return ('payroll', 'insurance', 'banking', 'rent', 'hall_pass', 'store')
 
+    # Features enabled the moment a class is created (see _seed_default_class_features).
+    # Payroll is the money source; banking is the accounts/ledger surface students need
+    # to receive, save, and move money.
+    DEFAULT_ENABLED_FEATURES = ('payroll', 'banking')
+
     @classmethod
     def defaults_dict(cls):
         return {
-            f'{feature_name}_enabled': (feature_name == 'payroll')
+            f'{feature_name}_enabled': (feature_name in cls.DEFAULT_ENABLED_FEATURES)
             for feature_name in cls.feature_names()
         }
 
@@ -1772,9 +1919,147 @@ class StoreProduct(db.Model):
     )
 
 
+class InsurancePolicy(db.Model):
+    """Immutable insurance policy definition-of-record — STOR-owned, POL-managed.
+
+    This is the canonical, immutable insurance product definition (DOM-POL-001:
+    ``policy_uuid`` *is* the version). Store & Entitlements (STOR) owns the
+    insurance-product truth; the Policies (POL) domain governs the storage /
+    retrieval mechanism. Rows are append-only: a "change" is a new row with a new
+    ``policy_uuid``; the definition payload is never rewritten in place.
+
+    Economics conform to SPEC-ECON-003 (normative). This table records the
+    class-lawful configured terms as *typed columns* (not JSON) so per-type
+    structural CHECKs and hard-domain invariants act as DB integrity backstops.
+    Economic-Engine *recommendation ranges* are advisory and are intentionally
+    NOT encoded as DB constraints — only true invariants are.
+
+    Insurance taxonomy (SPEC-ECON-003 §4.5): TRANSACTION | PRODUCTIVITY |
+    NON_MONETARY. Type-specific economic fields are populated only for the types
+    to which they apply (enforced by ``ck_insurance_policies_type_subset``).
+
+    Downstream (StoreProduct publication, EntitlementEvent frozen_contract) stores
+    ``policy_uuid`` as a non-FK locator and freezes the claim-time terms it needs,
+    so historical entitlements survive later retirement/deletion of this row.
+    """
+    __tablename__ = 'insurance_policies'
+
+    # policy_uuid IS the version (DOM-POL-001 §VI.0). Immutable primary key.
+    policy_uuid = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+
+    # Class scope: definition belongs to a specific class period.
+    class_id = db.Column(db.String(36), db.ForeignKey('classes.class_id', ondelete='CASCADE'), nullable=False, index=True)
+
+    # Discriminator: TRANSACTION | PRODUCTIVITY | NON_MONETARY.
+    insurance_type = db.Column(db.String(20), nullable=False)
+
+    # Optional tier ordinal (presentation/provenance; not a claim-time input).
+    tier_level = db.Column(db.Integer, nullable=True)
+
+    # Common economic terms (all types).
+    premium = db.Column(db.Numeric(12, 2), nullable=False)
+    charge_frequency = db.Column(db.String(20), nullable=False)  # WEEKLY | MONTHLY (monthly normalized by covered class-local days / 7)
+
+    # Type-specific economic terms (nullability enforced per-type below).
+    reimbursement_percentage = db.Column(db.Numeric(5, 2), nullable=True)             # TRANSACTION, PRODUCTIVITY
+    payout_multiple = db.Column(db.Numeric(6, 2), nullable=True)                       # TRANSACTION, PRODUCTIVITY
+    claims_per_week_equivalent = db.Column(db.Numeric(6, 3), nullable=True)            # TRANSACTION, NON_MONETARY
+    claim_window_days = db.Column(db.Integer, nullable=True)                           # TRANSACTION
+    claimable_dates_per_week_equivalent = db.Column(db.Numeric(6, 3), nullable=True)   # PRODUCTIVITY
+    waiting_period_days = db.Column(db.Integer, nullable=True)                         # NON_MONETARY
+
+    # Presentation metadata (never claim-time economic truth).
+    title = db.Column(db.String(120), nullable=True)
+    description = db.Column(db.Text, nullable=True)
+    tier_name = db.Column(db.String(60), nullable=True)
+    tier_group = db.Column(db.String(60), nullable=True)
+
+    # Availability projection over the immutable row (DOM-POL-001 §IX).
+    availability_state = db.Column(db.String(16), nullable=False, server_default='IN_USE')
+
+    created_at = db.Column(db.DateTime(timezone=True), default=utc_now, nullable=False)
+    created_by_seat_id = db.Column(db.Integer, db.ForeignKey('seats.id', ondelete='SET NULL'), nullable=True)
+    retired_at = db.Column(db.DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        # --- Enum backstops -------------------------------------------------
+        db.CheckConstraint(
+            "insurance_type IN ('TRANSACTION','PRODUCTIVITY','NON_MONETARY')",
+            name='ck_insurance_policies_type',
+        ),
+        db.CheckConstraint(
+            "availability_state IN ('IN_USE','HIDDEN','RETIRED')",
+            name='ck_insurance_policies_availability',
+        ),
+        db.CheckConstraint(
+            "charge_frequency IN ('WEEKLY','MONTHLY')",
+            name='ck_insurance_policies_frequency',
+        ),
+        # --- Hard-domain invariants (NOT recommendation ranges) -------------
+        db.CheckConstraint('premium >= 0', name='ck_insurance_policies_premium_nonneg'),
+        db.CheckConstraint(
+            'reimbursement_percentage IS NULL OR '
+            '(reimbursement_percentage >= 0 AND reimbursement_percentage <= 100)',
+            name='ck_insurance_policies_reimbursement_range',
+        ),
+        db.CheckConstraint(
+            'payout_multiple IS NULL OR payout_multiple >= 0',
+            name='ck_insurance_policies_payout_multiple_nonneg',
+        ),
+        db.CheckConstraint(
+            'claims_per_week_equivalent IS NULL OR claims_per_week_equivalent >= 0',
+            name='ck_insurance_policies_claims_per_week_nonneg',
+        ),
+        db.CheckConstraint(
+            'claim_window_days IS NULL OR claim_window_days >= 0',
+            name='ck_insurance_policies_claim_window_nonneg',
+        ),
+        db.CheckConstraint(
+            'claimable_dates_per_week_equivalent IS NULL OR '
+            'claimable_dates_per_week_equivalent >= 0',
+            name='ck_insurance_policies_claimable_dates_nonneg',
+        ),
+        db.CheckConstraint(
+            'waiting_period_days IS NULL OR waiting_period_days >= 0',
+            name='ck_insurance_policies_waiting_period_nonneg',
+        ),
+        db.CheckConstraint(
+            'tier_level IS NULL OR tier_level >= 0',
+            name='ck_insurance_policies_tier_level_nonneg',
+        ),
+        # --- Per-type structural subset (required present / forbidden null) --
+        db.CheckConstraint(
+            "("
+            "  insurance_type = 'TRANSACTION' AND"
+            "  reimbursement_percentage IS NOT NULL AND payout_multiple IS NOT NULL AND"
+            "  claims_per_week_equivalent IS NOT NULL AND claim_window_days IS NOT NULL AND"
+            "  claimable_dates_per_week_equivalent IS NULL AND waiting_period_days IS NULL"
+            ") OR ("
+            "  insurance_type = 'PRODUCTIVITY' AND"
+            "  reimbursement_percentage IS NOT NULL AND payout_multiple IS NOT NULL AND"
+            "  claimable_dates_per_week_equivalent IS NOT NULL AND"
+            "  claims_per_week_equivalent IS NULL AND claim_window_days IS NULL AND"
+            "  waiting_period_days IS NULL"
+            ") OR ("
+            "  insurance_type = 'NON_MONETARY' AND"
+            "  claims_per_week_equivalent IS NOT NULL AND waiting_period_days IS NOT NULL AND"
+            "  reimbursement_percentage IS NULL AND payout_multiple IS NULL AND"
+            "  claim_window_days IS NULL AND claimable_dates_per_week_equivalent IS NULL"
+            ")",
+            name='ck_insurance_policies_type_subset',
+        ),
+        db.Index('ix_insurance_policies_class_avail', 'class_id', 'availability_state'),
+    )
+
+
 @event.listens_for(ClassEconomy, 'after_insert')
 def _seed_default_class_features(mapper, connection, target):
-    """New classes start with payroll enabled and all other features disabled.
+    """New classes start with payroll and banking enabled; other features disabled.
+
+    Payroll is the money source and banking is the account/ledger surface (checking &
+    savings, transfers, interest, transaction history). Banking is enabled by default so
+    students have working accounts to receive and move money the moment the class exists;
+    a teacher who wants to withhold savings/interest can still disable it.
 
     Per SPEC-TIME-001, temporal logic must use canonical resolver.
     However, event listeners execute at the connection level before session/context
@@ -1804,13 +2089,18 @@ def _seed_default_class_features(mapper, connection, target):
     )
     connection.execute(
         sa.insert(ClassFeature.__table__),
-        {
-            'class_id': target.class_id,
-            'feature': 'payroll',  # Phase 2: renamed from feature_name
-            'created_at': now,
-            'effective_at': now,  # Phase 2: added for append-only timeline
-            'economic_version_id': economic_version_id,
-        },
+        [
+            {
+                'class_id': target.class_id,
+                'feature': feature_name,  # Phase 2: renamed from feature_name
+                'created_at': now,
+                'effective_at': now,  # Phase 2: added for append-only timeline
+                'economic_version_id': economic_version_id,
+            }
+            # Payroll (money source) and banking (accounts/ledger surface) are on by
+            # default so a new class can pay students and let them save/transfer at once.
+            for feature_name in ClassFeature.DEFAULT_ENABLED_FEATURES
+        ],
     )
 
 

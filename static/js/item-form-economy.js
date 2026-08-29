@@ -13,8 +13,10 @@ document.addEventListener('DOMContentLoaded', function() {
   economyChecker
     .analyzeEconomy()
     .then((analysis) => {
-      economyChecker.displayCWIInfo(analysis, '#cwi-info');
-
+      // NOTE: the rent CWI renderer produces a rent-specific "Pricing
+      // Recommendation" card and has no lawful place on the Store surface. Store
+      // pricing guidance is expressed exclusively through the tier recommendation
+      // below (SPEC-ECON-003 §4.8 store tiers). Do NOT mount the rent panel here.
       const tierSelect = document.querySelector('[data-tier-select]');
       const tierRecommendation = document.getElementById('tier-recommendation');
       const tierRangeText = document.getElementById('tier-range-text');

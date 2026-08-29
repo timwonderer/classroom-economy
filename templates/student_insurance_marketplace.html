@@ -124,10 +124,10 @@
 
                         <!-- Status Badges -->
                         <div class="mb-2">
-                            {% if enrollment.policy.claim_type == 'transaction_monetary' %}
+                            {% if enrollment.policy.claim_type == 'TRANSACTION' %}
                             <span class="badge bg-info"><span class="material-symbols-outlined"
                                     style="font-size: 1rem;">payments</span> TXN-based</span>
-                            {% elif enrollment.policy.claim_type == 'non_monetary' %}
+                            {% elif enrollment.policy.claim_type == 'NON_MONETARY' %}
                             <span class="badge bg-warning text-dark"><span class="material-symbols-outlined"
                                     style="font-size: 1rem;">redeem</span> Non-monetary</span>
                             {% else %}
@@ -306,7 +306,7 @@
                                 <ul class="mb-4">
                                     <li>Up to {% if policy.max_claims_count %}{{ policy.max_claims_count }}{% else
                                         %}unlimited{% endif %} claims per {{ policy.max_claims_period }}</li>
-                                    {% if policy.claim_type != 'non_monetary' %}
+                                    {% if policy.claim_type != 'NON_MONETARY' %}
                                     {% if policy.max_claim_amount %}
                                     <li>Maximum claim amount: ${{ "%.2f"|format(policy.max_claim_amount) }}</li>
                                     {% else %}
@@ -330,9 +330,9 @@
                                 <h3 class="h6 fw-semibold text-primary">Policy Details:</h3>
                                 <ul class="small mb-4">
                                     <li>Claim type:
-                                        {% if policy.claim_type == 'transaction_monetary' %}
+                                        {% if policy.claim_type == 'TRANSACTION' %}
                                         <span class="badge bg-info">Transaction-based</span>
-                                        {% elif policy.claim_type == 'non_monetary' %}
+                                        {% elif policy.claim_type == 'NON_MONETARY' %}
                                         <span class="badge bg-warning text-dark">Non-monetary</span>
                                         {% else %}
                                         <span class="badge bg-primary">Custom monetary reimbursement</span>
@@ -345,10 +345,10 @@
                                     {% else %}
                                     <li>Unlimited claims</li>
                                     {% endif %}
-                                    {% if policy.claim_type != 'non_monetary' and policy.max_claim_amount %}
+                                    {% if policy.claim_type != 'NON_MONETARY' and policy.max_claim_amount %}
                                     <li>Max claim amount: ${{ "%.2f"|format(policy.max_claim_amount) }}</li>
                                     {% endif %}
-                                    {% if policy.claim_type == 'transaction_monetary' %}
+                                    {% if policy.claim_type == 'TRANSACTION' %}
                                     <li>One claim per transaction; amount pulled from spending</li>
                                     {% endif %}
                                 </ul>
@@ -415,7 +415,7 @@
                             <li>Up to {% if policy.max_claims_count %}{{ policy.max_claims_count }}{% else %}unlimited{%
                                 endif %} claims</li>
                             <li>{{ policy.waiting_period_days }} day waiting period</li>
-                            {% if policy.claim_type != 'non_monetary' and policy.max_claim_amount %}
+                            {% if policy.claim_type != 'NON_MONETARY' and policy.max_claim_amount %}
                             <li>Max claim: ${{ "%.2f"|format(policy.max_claim_amount) }}</li>
                             {% endif %}
                         </ul>

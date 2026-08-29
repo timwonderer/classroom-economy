@@ -44,7 +44,7 @@
     <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Close"></button>
   </div>
   <div class="offcanvas-body">
-    <p>Manage store items, approve redemptions, and review purchase history.</p>
+    <p>Add items, review redemption requests, and check purchase history for the current class.</p>
     <div class="accordion mt-4 mb-4" id="storeGuideAccordion">
       <div class="accordion-item">
         <h2 class="accordion-header" id="storeGuideHeadingBasic">
@@ -55,13 +55,13 @@
         </h2>
         <div id="storeGuideBasic" class="accordion-collapse collapse mt-2" aria-labelledby="storeGuideHeadingBasic" data-bs-parent="#storeGuideAccordion">
           <div class="accordion-body">
-            <p>Start here to get your store running. Use the Add New Item tab to add and activate items.</p>
+            <p>Open <strong>Add New Item</strong> to create an item, set its price, and make it available.</p>
             <ul class="mb-3">
               <li><strong>Name/description:</strong> What students see in the store.</li>
               <li><strong>Price &amp; tier:</strong> Sets cost and grouping for your pricing structure.</li>
               <li><strong>Item type:</strong> Immediate vs delayed redemption.</li>
               <li><strong>Active:</strong> Inactive items are hidden from students.</li>
-              <li><strong>Class visibility:</strong> Limit items to specific periods.</li>
+              <li><strong>Availability:</strong> Decide when students can see and buy the item.</li>
               <li><strong>Inventory:</strong> Caps total redemptions available.</li>
               <li><strong>Limit per student:</strong> Restricts how many times each student can redeem.</li>
             </ul>
@@ -482,7 +482,6 @@
                 <div class="card-body">
                   <!-- Economy Balance Check -->
                   <div id="economy-data" data-expected-weekly-hours="{{ view.economic.display_context.get('expected_weekly_hours', 5.0) | float }}" class="visually-hidden"></div>
-                  <div id="cwi-info" class="mb-3"></div>
 
                   <div class="row">
                     <div class="col-md-6 mb-3">
