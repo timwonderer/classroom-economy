@@ -2,7 +2,13 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
+import sqlalchemy as sa
 from flask import current_app, g, has_request_context, request, session
+
+from app.extensions import db
+
+# Severity levels considered surface-worthy for operator error dashboards.
+_ERROR_LEVELS = ("ERROR", "CRITICAL")
 
 
 def record(
@@ -42,3 +48,39 @@ def record(
     # Keep this as warning-or-info style operational telemetry, not exception noise.
     log_fn = current_app.logger.warning if severity in {"warning", "error", "critical", "security"} else current_app.logger.info
     log_fn("OPERATIONAL_EVENT %s", payload)
+
+
+def get_recent_error_events(limit: int = 5) -> list[dict[str, Any]]:
+    """Read the most recent ERROR/CRITICAL operational events (read-only).
+
+    Returns plain dicts so route/GET handlers never touch db.session directly
+    (INV-ARC-007: reads route through the service layer, keeping the read out
+    of the request handler and satisfying the policy guardrails).
+    """
+    rows = db.session.execute(
+        sa.text(
+            "SELECT id, created_at, level, message, payload "
+            "FROM operational_events "
+            "WHERE level IN ('ERROR', 'CRITICAL') "
+            "ORDER BY created_at DESC, id DESC LIMIT :limit"
+        ),
+        {"limit": limit},
+    ).mappings().all()
+    return [dict(row) for row in rows]
+
+
+def get_error_events() -> list[dict[str, Any]]:
+    """Read all ERROR/CRITICAL operational events, newest first (read-only).
+
+    Pagination/slicing is performed by the caller; this returns the full
+    ordered result set as plain dicts.
+    """
+    rows = db.session.execute(
+        sa.text(
+            "SELECT id, created_at, level, payload "
+            "FROM operational_events "
+            "WHERE level IN ('ERROR', 'CRITICAL') "
+            "ORDER BY created_at DESC, id DESC"
+        )
+    ).mappings().all()
+    return [dict(row) for row in rows]

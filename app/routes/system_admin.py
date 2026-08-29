@@ -10,7 +10,6 @@ import re
 import binascii
 import secrets
 from urllib.parse import urlparse
-import sqlalchemy as sa
 import requests
 from types import SimpleNamespace
 from datetime import datetime, timedelta, timezone
@@ -48,6 +47,10 @@ from app.utils.helpers import is_safe_url, format_utc_iso
 from app.utils.encryption import decrypt_totp
 from app.hash_utils import hash_username_lookup
 from app.services import ledger_service
+from app.services.operational_event_service import (
+    get_error_events,
+    get_recent_error_events,
+)
 from app.utils.passwordless_client import (
     create_register_token,
     verify_signin_token,
@@ -515,14 +518,7 @@ def dashboard():
     open_tickets = new_reports_count + open_issues_count
 
     # Recent errors (last 5)
-    recent_errors = db.session.execute(
-        sa.text(
-            "SELECT id, created_at, level, message, payload "
-            "FROM operational_events "
-            "WHERE level IN ('ERROR', 'CRITICAL') "
-            "ORDER BY created_at DESC, id DESC LIMIT 5"
-        )
-    ).mappings().all()
+    recent_errors = get_recent_error_events(limit=5)
 
     # System admins — resolve to view dicts (no raw models in templates)
     system_admins_query = (
@@ -564,14 +560,7 @@ def combined_logs():
     # ── Error Logs (Tab 1) ──
     error_type_filter = request.args.get('error_type', '')
     error_page = request.args.get('page', 1, type=int)
-    error_rows = db.session.execute(
-        sa.text(
-            "SELECT id, created_at, level, payload "
-            "FROM operational_events "
-            "WHERE level IN ('ERROR', 'CRITICAL') "
-            "ORDER BY created_at DESC, id DESC"
-        )
-    ).mappings().all()
+    error_rows = get_error_events()
     error_logs = error_rows[(error_page - 1) * per_page:error_page * per_page]
     error_pagination = None
     error_types = sorted({row.get('payload', {}).get('error_type') for row in error_rows if row.get('payload') and row.get('payload').get('error_type')})
