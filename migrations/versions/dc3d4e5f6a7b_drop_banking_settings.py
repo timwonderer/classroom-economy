@@ -3,6 +3,10 @@
 EconomicEngine is the canonical class banking policy authority.  The legacy
 table must not remain available as a second source of overdraft or interest
 configuration.
+
+IRREVERSIBLE: downgrade() intentionally raises NotImplementedError. The
+schema-gate migration rehearsal greps for this marker to skip the downgrade
+leg rather than fail on the deliberate one-way retirement.
 """
 
 from alembic import op
