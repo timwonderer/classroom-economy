@@ -17,7 +17,7 @@
         <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Close"></button>
     </div>
     <div class="offcanvas-body">
-        <p>Create updates for students and manage what is visible in the active class context.</p>
+        <p>Post a short update for students in the current class, then control when it is visible.</p>
         <div class="accordion mt-4 mb-4" id="announcementsGuideAccordion">
             <div class="accordion-item">
                 <h2 class="accordion-header" id="announcementsGuideHeadingCreate">
@@ -28,7 +28,7 @@
                 </h2>
                 <div id="announcementsGuideCreate" class="accordion-collapse collapse mt-2" aria-labelledby="announcementsGuideHeadingCreate" data-bs-parent="#announcementsGuideAccordion">
                     <div class="accordion-body">
-                        <p>Select <strong>New Announcement</strong>, set a priority, and write your message for the class currently selected in the sidebar.</p>
+                        <p>Select <strong>New Announcement</strong>, choose a priority, write the message, and save it.</p>
                     </div>
                 </div>
             </div>
@@ -41,7 +41,7 @@
                 </h2>
                 <div id="announcementsGuideManage" class="accordion-collapse collapse mt-2" aria-labelledby="announcementsGuideHeadingManage" data-bs-parent="#announcementsGuideAccordion">
                     <div class="accordion-body">
-                        <p>Use Activate/Deactivate to control what students can see, and Edit or Delete to make updates.</p>
+                        <p>Use <strong>Activate</strong> or <strong>Deactivate</strong> to control visibility. Use <strong>Edit</strong> to change the message.</p>
                         <div class="alert alert-info mb-0">
                             <strong>Tip:</strong> Inactive announcements are hidden from students but stay in your list.
                         </div>
@@ -60,7 +60,7 @@
 
 <div class="alert alert-light border mb-4 d-flex align-items-center gap-2">
     <span class="material-symbols-outlined text-primary">info</span>
-    <span><strong>Active Class:</strong> {{ active_class_label }}{% if active_join_code %} <span class="text-muted">({{ active_join_code }})</span>{% endif %}</span>
+    <span><strong>Active Class:</strong> {{ active_class_label }}</span>
 </div>
 
 {% if announcements %}
@@ -188,7 +188,7 @@ function toggleAnnouncement(announcementId) {
     })
     .catch(error => {
         console.error('Error:', error);
-        alert('An error occurred while updating the announcement.');
+            alert('The announcement could not be updated. Please try again.');
     });
 }
 

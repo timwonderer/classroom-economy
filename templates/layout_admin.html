@@ -162,7 +162,7 @@
                     </button>
                     <div class="dropdown-menu position-static w-100 p-0 bg-transparent border-0{% if economy_open %} show{% endif %}">
                         <a href="{{ url_for('admin.economic_engine') }}" class="nav-link nav-sub-link d-flex align-items-center gap-2 {% if current_page == 'economic_engine' %}active{% endif %}">
-                            <span class="material-symbols-outlined">monitor_heart</span> Economic Engine
+                            <span class="material-symbols-outlined">display_settings</span> Economic Engine
                         </a>
                         <a href="{{ url_for('admin.payroll') }}" class="nav-link nav-sub-link d-flex align-items-center gap-2 {% if current_page == 'payroll' %}active{% endif %}">
                             <span class="material-symbols-outlined">payments</span> Payroll
@@ -329,9 +329,9 @@
                 {% endif %}
         {% set custom_full_guide = custom_full_guide|default(false) %}
         <div class="page-header">
-            <div>
+            <div class="mb-0">
                 <div class="eyebrow">Classroom Token Hub</div>
-                <h1 class="d-flex align-items-center gap-2 mb-1">
+                <h1 class="d-flex align-items-center gap-2 mb-0">
                     <span class="material-symbols-outlined" style="font-size:2rem">{% block page_icon %}dashboard{% endblock %}</span>
                     {{ self.page_title() }}
                 </h1>

@@ -108,7 +108,7 @@ function performTap(action, pin, reason = null) {
     })
     .catch(err => {
       console.error("Tap error:", err);
-      createToast("Network error. Try again.", true);
+      createToast("The request could not reach the server. Check your connection and try again.", true);
       if (tapButton) tapButton.disabled = false; // Re-enable on error
     });
 }

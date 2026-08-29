@@ -381,6 +381,37 @@ class TestA2AdminRentSettings:
 
         print("✅ A2.1: Admin can view rent settings")
 
+    def test_a2_admin_rent_settings_renders_with_populated_summary(self, app, client):
+        """
+        A2.1b (regression): /admin/rent-settings renders 200 when the class has
+        enrolled students, so the ClassObligationSummary is truthy and the
+        display-formatting branch executes.
+
+        Regression for a NameError: the route called
+        add_display_formatting_to_class_obligation_summary() without importing it,
+        so any class whose obligation summary was non-empty 500'd. Earlier surface
+        tests only exercised the empty-summary path, masking the defect.
+        """
+        classroom = initialize_as_teacher("chemistry_p1", client, app)
+
+        with app.app_context():
+            customize_rent_settings(
+                classroom.class_id,
+                rent_amount=Decimal('100.00'),
+                frequency_type='monthly',
+                grace_period_days=3,
+                late_penalty_amount=Decimal('10.00'),
+            )
+            enable_class_feature(class_id=classroom.class_id, feature='rent')
+
+        response = client.get('/admin/rent-settings')
+
+        assert response.status_code == 200, f"Expected 200, got {response.status_code}"
+        # The display-formatting branch must have run without raising.
+        assert b'rent' in response.data.lower(), "Response should mention rent"
+
+        print("✅ A2.1b: Admin rent settings renders with populated obligation summary")
+
     def test_a2_rent_settings_scoped_by_class_id(self, app):
         """
         A2.2: Rent settings are properly scoped by class_id.

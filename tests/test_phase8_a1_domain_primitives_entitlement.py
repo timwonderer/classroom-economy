@@ -191,7 +191,7 @@ class TestGetEntitlementBalance:
 
             # Create second class (wrap in FEAT context)
             with FEATContext("FEAT-IDEN-001", idempotency_key=f"test_class2:{uuid.uuid4()}"):
-                class2 = ClassEconomy(join_code="CLASS2")
+                class2 = ClassEconomy(join_code="CLASS2", class_timezone="Etc/UTC")
                 db.session.add(class2)
                 db.session.flush()
                 class2_id = class2.class_id

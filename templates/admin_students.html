@@ -33,55 +33,53 @@
 
 <div class="offcanvas offcanvas-end" tabindex="-1" id="studentManagementGuide"
   aria-labelledby="studentManagementGuideLabel">
-  <div class="offcanvas-header">
-    <h2 class="offcanvas-title h5" id="studentManagementGuideLabel">How to: Student Management</h2>
-    <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Close"></button>
+  <div class="offcanvas-header mb-0">
+    <h2 id="studentManagementGuideLabel"><span class="text-primary">Quick Start:</span> <br>Student Management</h2>
   </div>
-  <div class="offcanvas-body">
-    <div>
-      <p>Use this hub to add, update, move, and remove students across class periods. The roster details you enter here
-        are the exact details students must use to claim their accounts.</p>
-      <div class="accordion mt-4 mb-4" id="helpAccordion">
+
+  <div class="offcanvas-body mt-0">
+        <div>
+            <div class="accordion mb-4" id="helpAccordion">
+
         <div class="accordion-item">
 
-          <h2 class="accordion-header" id="headingAdd">
-            <button class="accordion-button collapsed bg-secondary text-muted" type="button" data-bs-toggle="collapse"
+          <h2 class="accordion-header " id="headingAdd">
+            <button class="accordion-button collapsed bg-primary text-white" type="button" data-bs-toggle="collapse"
               data-bs-target="#collapseAdd" aria-expanded="false" aria-controls="collapseAdd">
-              <span class="material-symbols-outlined me-2"
+              <span class="material-symbols-outlined me-2 text-white"
                 style="font-size:25pt; vertical-align:middle;">person_add</span>
-              <strong>Adding Students</strong>
+              <strong>How to add students</strong>
             </button>
           </h2>
-          <div id="collapseAdd" class="accordion-collapse collapse mt-2" aria-labelledby="headingAdd"
+          <div id="collapseAdd" class="accordion-collapse collapse mt-2 text-white" aria-labelledby="headingAdd"
             data-bs-parent="#helpAccordion">
             <div class="accordion-body">
-              <p>Choose the method that matches your situation:</p>
+              <p>You may add students using one of the following methods:</p>
               <ul class="mb-3">
-                <li><strong>Bulk Upload:</strong> Best for full rosters. Download the template from the Bulk Upload tab,
-                  fill it out, and upload it back.</li>
-                <li><strong>Individual Upload:</strong> Best for new students who join mid-year or one-off updates.</li>
+                <li><strong>Paste a roster:</strong> Copy names from Excel or Google Sheets and paste them into the
+                  staging grid. The grid accepts First Name and Last Name, with optional Notes.</li>
+                <li><strong>Type directly:</strong> Enter one student per row, or use <strong>Add Row</strong> for
+                  additional students.</li>
               </ul>
-              <div class="alert alert-warning">
-                <strong>Roster accuracy checklist:</strong>
-                <ul class="mb-0 mt-2">
-                  <li>Do not modify the header row</li>
-                  <li>Use class section and class name exactly as you want them to appear</li>
-                  <li>Students must be assigned to a class section</li>
-                </ul>
+             <div class="card shadow-sm mb-4">
+              <div class="card-header bg-warning text-dark py-3">
+                <h6 class="mb-0 fw-semibold text-dark"><span class="material-symbols-outlined me-2 text-white" style="vertical-align: text-bottom;">warning</span>Avoid Sensitive Information</h6>
               </div>
-              <p class="mb-0">When adding a single student, use the Individual Upload form and select the correct class
-                section. If the class does not exist, create the section first.</p>
-            </div>
-          </div>
-        </div> <!-- Close first accordion-item -->
+                <div class="card-body">
+                  Although all personal information is stored encrypted, we do not recommend storing any private or sensitive information in the notes field.
+                </div>
+              </div> 
 
+              </div>
+              </div>
+              </div>
         <div class="accordion-item">
           <h2 class="accordion-header" id="headingClaim">
             <button class="accordion-button collapsed bg-secondary text-muted" type="button" data-bs-toggle="collapse"
               data-bs-target="#collapseClaim" aria-expanded="false" aria-controls="collapseClaim">
               <span class="material-symbols-outlined me-2"
                 style="font-size:25pt; vertical-align:middle;">person_check</span>
-              <strong>Student Claim Account</strong>
+              <strong>How students claim their account</strong>
             </button>
           </h2>
           <div id="collapseClaim" class="accordion-collapse collapse mt-2" aria-labelledby="headingClaim"
@@ -92,10 +90,10 @@
 
               <p class="mb-2"><strong>What students need:</strong></p>
               <ul class="mb-3">
-                <li><strong>Join Code</strong> — Found in the Class Roster tab for each class section</li>
+                <li><strong>Join Code</strong> — Found in the Class Roster tab for the current class</li>
                 <li><strong>First Name</strong> — As entered in your roster</li>
                 <li><strong>Last Name</strong> — As entered in your roster</li>
-                <li><strong>Class Section + Class Name</strong> — Must match your roster entry</li>
+                <li><strong>Class</strong> — The student must use the join code for this class</li>
               </ul>
 
               <p class="mb-2"><strong>Account Setup Steps:</strong></p>
@@ -126,7 +124,7 @@
               data-bs-target="#collapseEditClaim" aria-expanded="false" aria-controls="collapseEditClaim">
               <span class="material-symbols-outlined me-2"
                 style="font-size:25pt; vertical-align:middle;">person_text</span>
-              <strong>Update Student Context</strong>
+              <strong>How to update student info</strong>
             </button>
           </h2>
           <div id="collapseEditClaim" class="accordion-collapse collapse mt-2" aria-labelledby="headingEditClaim"
@@ -156,7 +154,7 @@
               data-bs-target="#collapseReset" aria-expanded="false" aria-controls="collapseReset">
               <span class="material-symbols-outlined me-2"
                 style="font-size:25pt; vertical-align:middle;">restart_alt</span>
-              <strong>Reset Student Account</strong>
+              <strong>How to reset student login</strong>
             </button>
           </h2>
           <div id="collapseReset" class="accordion-collapse collapse mt-2" aria-labelledby="headingReset"
@@ -180,7 +178,7 @@
               data-bs-target="#collapseRemove" aria-expanded="false" aria-controls="collapseRemove">
               <span class="material-symbols-outlined me-2"
                 style="font-size:25pt; vertical-align:middle;">person_remove</span>
-              <strong>Remove Students</strong>
+              <strong>How to remove students</strong>
             </button>
           </h2>
           <div id="collapseRemove" class="accordion-collapse collapse mt-2" aria-labelledby="headingRemove"
@@ -200,7 +198,7 @@
               data-bs-target="#collapseExport" aria-expanded="false" aria-controls="collapseExport">
               <span class="material-symbols-outlined me-2"
                 style="font-size:25pt; vertical-align:middle;">download</span>
-              <strong>Export Class Roster</strong>
+              <strong>How to export class roster</strong>
             </button>
           </h2>
           <div id="collapseExport" class="accordion-collapse collapse mt-2" aria-labelledby="headingExport"
@@ -299,8 +297,7 @@
                       <ol class="mb-0 mt-1 ps-3">
                         <li>Go to student sign-in page</li>
                         <li>Click "First Time? Set Up Account"</li>
-                        <li>Enter this join code</li>
-                        <li>Provide first name, last name, and class section</li>
+                        <li>Enter this join code, then provide the first and last name from your roster</li>
                       </ol>
                     </div>
                   </div>
@@ -548,8 +545,8 @@
               code to use when claiming their account.
             </p>
             <p class="mb-0">
-              You can also add a middle name, initial, or other name to either name field to make
-              them easier to tell apart.
+              You can review the highlighted rows before submitting. Duplicate names are allowed and create separate
+              roster seats in the current class.
             </p>
           </div>
         </div>
@@ -884,7 +881,7 @@
           <div class="alert alert-warning mt-3 mb-0" id="reset_login_warning" style="display:none;">
             <small><span class="material-symbols-outlined me-2"
                 style="vertical-align: middle;">warning</span>Student will need to re-claim their account using
-              their name and class section details.</small>
+                their join code, first name, and last name.</small>
           </div>
 
           <div class="alert alert-info mt-3 mb-0">

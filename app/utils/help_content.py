@@ -135,7 +135,7 @@ HELP_ARTICLES = {
                 "content": """
                     <p>If a student did not get paid, check these first:</p>
                     <ul>
-                        <li><strong>Attendance:</strong> Was the student present for the class period that payroll uses?</li>
+                        <li><strong>Attendance:</strong> Does the student have the attendance record expected by the current class payroll settings?</li>
                         <li><strong>Class scope:</strong> Are you viewing the correct class?</li>
                         <li><strong>Payroll settings:</strong> Is the active pay rate turned on?</li>
                         <li><strong>Support:</strong> If the result still looks wrong, submit a support ticket with the class, date, and what you expected.</li>

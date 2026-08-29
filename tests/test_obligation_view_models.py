@@ -32,6 +32,7 @@ def setup_test_class_and_students(app):
                 display_name='Test Class',
                 teacher_user_id=teacher.id,
                 join_code='TEST123',
+                class_timezone='Etc/UTC',
             )
             db.session.add(class_econ)
             db.session.flush()

@@ -23,10 +23,10 @@
   #}
   <a href="{{ doc_url(doc_path) }}"
      class="contextual-help-link text-decoration-none"
-     {% if tooltip %}title="{{ tooltip }}"{% endif %}
+     {% if tooltip %}title="{{ tooltip }}" aria-label="{{ tooltip }}"{% elif icon_only %}aria-label="Learn more"{% endif %}
      target="_blank"
      rel="noopener">
-    <span class="material-symbols-outlined" style="vertical-align: middle; font-size: 1.1rem; color: var(--text-secondary);">help</span>
+    <span class="material-symbols-outlined" aria-hidden="true" style="vertical-align: middle; font-size: 1.1rem; color: var(--text-secondary);">help</span>
     {% if not icon_only %}
       <span class="help-text">{{ text or "Learn more" }}</span>
     {% endif %}

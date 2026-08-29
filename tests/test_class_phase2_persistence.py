@@ -382,26 +382,29 @@ class TestClassFeatureAppendOnly:
 
     def test_multiple_feature_entries_same_class_feature(self, app, classroom):
         """Enable then disable a feature: two append-only rows for the same
-        (class_id, feature) with distinct effective_at (invariant 5)."""
+        (class_id, feature) with distinct effective_at (invariant 5).
+
+        Uses 'store' — a feature NOT in the default seed (payroll, banking) — so
+        the enable is a genuine first-enablement rather than a no-op re-enable."""
         with app.app_context():
             ctx = _ctx(classroom)
             root = get_initial_economic_engine(classroom.class_id)
 
             enabled = execute_enable_feature(
                 canonical_context=ctx, class_id=classroom.class_id,
-                feature="banking", economic_version_id=root.economic_version_id,
+                feature="store", economic_version_id=root.economic_version_id,
                 correlation_id="append-enable",
             )
             assert enabled.success is True, enabled.error_message
 
             disabled = execute_disable_feature(
                 canonical_context=ctx, class_id=classroom.class_id,
-                feature="banking", correlation_id="append-disable",
+                feature="store", correlation_id="append-disable",
             )
             assert disabled.success is True, disabled.error_message
 
             rows = ClassFeature.query.filter_by(
-                class_id=classroom.class_id, feature="banking"
+                class_id=classroom.class_id, feature="store"
             ).all()
             assert len(rows) == 2
 
@@ -426,32 +429,34 @@ class TestClassFeatureAppendOnly:
 
     def test_effective_version_resolution_latest_enabled(self, app, classroom):
         """enabled_names_for_class resolves the latest effective row per feature
-        (invariant 6). Evolving banking to a new version keeps it enabled."""
+        (invariant 6). Evolving 'store' to a new version keeps it enabled.
+
+        Uses 'store' (not in the default seed) so the initial enable is genuine."""
         with app.app_context():
             ctx = _ctx(classroom)
             root = get_initial_economic_engine(classroom.class_id)
 
             enabled = execute_enable_feature(
                 canonical_context=ctx, class_id=classroom.class_id,
-                feature="banking", economic_version_id=root.economic_version_id,
+                feature="store", economic_version_id=root.economic_version_id,
                 correlation_id="resolve-enable",
             )
             assert enabled.success is True, enabled.error_message
 
-            # Evolve: append a later banking row linked to a new engine version.
+            # Evolve: append a later store row linked to a new engine version.
             evolved = execute_evolve_economic_engine(
                 canonical_context=ctx, class_id=classroom.class_id,
                 updates={"economy_policy_mode": "comfortable"},
-                feature_list=["banking"], idempotency_key="resolve-evolve",
+                feature_list=["store"], idempotency_key="resolve-evolve",
             )
             assert evolved.success is True, evolved.error_message
 
             names = ClassFeature.enabled_names_for_class(classroom.class_id)
-            assert "banking" in names
-            # The resolved banking row points at the newest engine version.
+            assert "store" in names
+            # The resolved store row points at the newest engine version.
             latest = (
                 ClassFeature.query.filter_by(
-                    class_id=classroom.class_id, feature="banking"
+                    class_id=classroom.class_id, feature="store"
                 )
                 .order_by(ClassFeature.effective_at.desc())
                 .first()
@@ -482,12 +487,16 @@ class TestClassFeatureAppendOnly:
         with app.app_context():
             assert ClassFeature.enabled_names_for_class(str(uuid.uuid4())) == set()
 
-    def test_default_seed_enables_only_payroll(self, app, classroom):
-        """The canonical seed enables exactly 'payroll' at provision time
-        (invariant 5/6 baseline)."""
+    def test_default_seed_enables_payroll_and_banking(self, app, classroom):
+        """The canonical seed enables exactly {'payroll', 'banking'} at provision
+        time (invariant 5/6 baseline).
+
+        Payroll is the money source; banking is the accounts/ledger surface a
+        student needs from day one (see ClassFeature.DEFAULT_ENABLED_FEATURES).
+        All other features start disabled."""
         with app.app_context():
             names = ClassFeature.enabled_names_for_class(classroom.class_id)
-            assert names == {"payroll"}
+            assert names == {"payroll", "banking"}
 
 
 # --------------------------------------------------------------------------- #
@@ -602,16 +611,17 @@ class TestClassFeatureCheckConstraints:
             cid = classroom.class_id
             ctx = _ctx(classroom)
 
-            # Append a second feature so the cascade must remove more than the
-            # seeded 'payroll' row.
+            # Append another feature so the cascade must remove more than the
+            # seeded 'payroll' and 'banking' rows. 'store' is not default-enabled,
+            # so this is a genuine first-enablement.
             root = get_initial_economic_engine(cid)
             enabled = execute_enable_feature(
-                canonical_context=ctx, class_id=cid, feature="banking",
+                canonical_context=ctx, class_id=cid, feature="store",
                 economic_version_id=root.economic_version_id,
                 correlation_id="cascade-cf",
             )
             assert enabled.success is True, enabled.error_message
-            assert ClassFeature.query.filter_by(class_id=cid).count() >= 2
+            assert ClassFeature.query.filter_by(class_id=cid).count() >= 3
 
             # Canonical destruction boundary: authorize immutable-history deletion,
             # then delete the class row (CASCADE removes the feature rows).

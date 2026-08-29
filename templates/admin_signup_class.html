@@ -60,9 +60,9 @@
             position: relative;
             z-index: 1;
         }
-        .subtitle { color: var(--secondary) !important; }
+        .subtitle { color: var(--text-secondary) !important; }
         .form-label {
-            color: var(--secondary) !important;
+            color: var(--primary) !important;
             text-transform: uppercase;
             font-weight: 600;
             font-size: 0.75rem;
@@ -154,20 +154,21 @@
         <div class="modal-dialog modal-dialog-centered">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h5 class="modal-title" id="tosModalLabel">Terms of Service & Privacy Policy</h5>
+                    <h5 class="modal-title" id="tosModalLabel">Review Terms of Service and Data Policy</h5>
                 </div>
                 <div class="modal-body">
-                    <p>Welcome to Classroom Token Hub! Before you create your teacher account, please review and agree to our terms.</p>
+                    <p>Welcome to Classroom Token Hub!</p>
                     <p>
-                        Please read our
-                        <a href="https://classroomtokenhub.com/terms" target="_blank">Terms of Service</a> and
-                        <a href="https://classroomtokenhub.com/privacy" target="_blank">Privacy Policy</a>, and
-                        <a href="https://classroomtokenhub.com/district" target="_blank">District Assurance Brief</a>.
+                        Before creating your classes and account, please read our
+                        <a href="https://classroomtokenhub.com/terms" style="color:var(--secondary-hover);" class="fw-semibold" target="_blank">Terms of Service</a> and
+                        <a href="https://classroomtokenhub.com/privacy" style="color:var(--secondary-hover);" class="fw-semibold" target="_blank">Data Policy</a>. </p>
+                        <p>If you are here on behalf of a school district or educational institution, please visit our page for
+                        <a href="https://classroomtokenhub.com/district" style="color:var(--secondary-hover);" target="_blank">District Partners</a>.</p>
                     </p>
                     <div class="form-check mt-3">
                         <input class="form-check-input" type="checkbox" value="" id="tosCheck">
                         <label class="form-check-label" for="tosCheck">
-                            I have read and agree to the Terms of Service and Privacy Policy.
+                            I have read and agree to the Terms of Service and Data Policy. I confirm that I am authorized to create an account for myself and my students.
                         </label>
                     </div>
                 </div>

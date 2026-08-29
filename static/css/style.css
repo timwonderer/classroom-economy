@@ -429,10 +429,9 @@ a:hover {
 /* ─── Accordions inside cards ─── */
 /*
  * Design system (2026-08-16):
- *   Open panel  → white background, primary text (role-scoped)
- *   Collapsed   → light-gray background, muted darker-gray text
- * Bootstrap's default primary tinting is overridden to match the
- * top-level card / nested card visual language.
+ *   Offcanvas guide headers → primary background, white text and arrow
+ * Bootstrap's default accordion treatment is overridden for the
+ * user-facing support guides.
  */
 .accordion-item {
     border: 1px solid var(--border-color);
@@ -464,6 +463,21 @@ a:hover {
 .accordion-button:focus {
     box-shadow: 0 0 0 0.15rem color-mix(in srgb, var(--primary) 25%, transparent);
     border-color: transparent;
+}
+
+/* Offcanvas help accordions use one high-contrast, consistent treatment. */
+.offcanvas .accordion-button,
+.offcanvas .accordion-button:not(.collapsed) {
+    --bs-accordion-btn-icon: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23fff' stroke-linecap='round' stroke-linejoin='round'%3e%3cpath d='m2 5 6 6 6-6'/%3e%3c/svg%3e");
+    --bs-accordion-btn-active-icon: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23fff' stroke-linecap='round' stroke-linejoin='round'%3e%3cpath d='m2 11 6-6 6 6'/%3e%3c/svg%3e");
+    background-color: var(--primary) !important;
+    color: #fff !important;
+}
+
+.offcanvas .accordion-button .material-symbols-outlined,
+.offcanvas .accordion-button:not(.collapsed) .material-symbols-outlined,
+.offcanvas .accordion-button.collapsed .material-symbols-outlined {
+    color: #fff !important;
 }
 
 .accordion-body {

@@ -1,14 +1,15 @@
 {% extends "layout_admin.html" %}
-{% block title %}Feature Disabled{% endblock %}
+{% set page_title = feature_label %}
+{% block title %}This feature is currently disabled{% endblock %}
 {% set current_page = "feature_disabled" %}
 
 {% block content %}
 <div class="container py-4">
   <div class="card shadow-sm">
     <div class="card-body">
-      <h1 class="h4 mb-3">{{ feature_label }} is disabled for this class</h1>
-      <p class="mb-3">This page is unavailable because {{ feature_label }} is turned off for the current class context.</p>
-      <a class="btn btn-primary" href="{{ url_for('admin.feature_settings') }}">Go to Feature Settings</a>
+      <h1 class="h4 mb-3">{{ feature_label }} is currently disabled for this class</h1>
+      <p class="mb-3">You cannot configure the settings for {{ feature_label }} until it is enabled.</p>
+      <a class="btn btn-primary" href="{{ url_for('admin.feature_settings') }}">See and change which features are enabled</a>
     </div>
   </div>
 </div>

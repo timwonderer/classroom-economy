@@ -13,7 +13,8 @@
         <h1 class="h4 mb-0">Select Your Class</h1>
       </div>
       <div class="card-body">
-        <p class="mb-3">We are having trouble finding the last class you were in.</p>
+        <p class="mb-3">We usually remember the class you were in last time, but somehow we couldn't this time. Please let us know which class you are trying to access.</p>
+        <p>If you don't see the class you wish to access, please contact your teacher directly for help.</p>
 
         {% with messages = get_flashed_messages(with_categories=true) %}
           {% if messages %}
@@ -26,7 +27,7 @@
         <form method="post" action="{{ url_for('student.select_class_context') }}">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <div class="mb-3">
-            <label for="class_id" class="form-label">Available Classes</label>
+            <label for="class_id" class="form-label">Classes you have joined</label>
             <select id="class_id" name="class_id" class="form-select" required>
               <option value="" disabled{% if not class_selection_view.available_classes|selectattr('is_current')|list %} selected{% endif %}>Select class</option>
               {% for option in class_selection_view.available_classes %}
@@ -36,16 +37,7 @@
               {% endfor %}
             </select>
           </div>
-          <div class="mb-3">
-            <small class="text-muted">
-              We have found the following classes that you have previously joined. If you don't see your class, please ask your teacher for the join code and try again.
-            </small>
-            <ul class="mt-2 mb-0">
-              {% for option in class_selection_view.available_classes %}
-                <li><strong>{{ option.join_code }} - {{ option.display_name }}</strong></li>
-              {% endfor %}
-            </ul>
-          </div>
+          
           <button type="submit" class="btn btn-primary">Continue</button>
         </form>
       </div>
