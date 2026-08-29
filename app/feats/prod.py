@@ -192,6 +192,23 @@ def _calculate_attendance_seconds_since(
         query = query.filter(AttendanceSession.timestamp >= since_utc)
     rows = query.order_by(AttendanceSession.timestamp.asc(), AttendanceSession.id.asc()).all()
 
+    def _cap_at_active_day_end(active_ts, proposed_end):
+        # DOM-PROD-001 §312: an `active` session automatically terminates at end
+        # of day in the canonical class timezone (reason_code = done_for_day),
+        # with the inactive entry dated to the same day as the originating active
+        # entry. No legitimate session crosses a day boundary, so cap every
+        # interval at the end-of-day of its own active entry's canonical day.
+        # This guards both an unclosed trailing session AND any inactive row that
+        # was (historically) persisted with a later day's timestamp — overnight /
+        # cross-day time is never paid.
+        day_bounds = canonical_temporal_resolver(
+            CLASS_LEVEL_EVALUATION,
+            canonical_execution_context=ctx,
+            primitive="evaluation_day_boundaries",
+            reference_time_utc=active_ts,
+        )
+        return min(proposed_end, day_bounds.boundary_end_utc)
+
     intervals = []
     active_start = None
     for row in rows:
@@ -201,10 +218,12 @@ def _calculate_attendance_seconds_since(
         if row.status == "active":
             active_start = ts
         elif row.status == "inactive" and active_start is not None:
-            intervals.append((active_start, ts))
+            intervals.append((active_start, _cap_at_active_day_end(active_start, ts)))
             active_start = None
     if active_start is not None:
-        intervals.append((active_start, current_time_utc))
+        intervals.append(
+            (active_start, _cap_at_active_day_end(active_start, current_time_utc))
+        )
     if not intervals:
         return 0
 
@@ -296,6 +315,17 @@ def record_attendance_session(
             AttendanceSession.class_id == ctx.class_id,
         ).order_by(AttendanceSession.timestamp.desc(), AttendanceSession.id.desc()).first()
         if existing_active is not None and existing_active.status == "active":
+            # DOM-PROD-001 §312: the auto-close `inactive` entry must be dated to
+            # the SAME canonical day as the originating `active` entry. If the new
+            # tap-in is on a later day, the prior day's open session terminates at
+            # that prior day's end-of-day boundary — never carried to today.
+            existing_day_bounds = canonical_temporal_resolver(
+                CLASS_LEVEL_EVALUATION,
+                canonical_execution_context=ctx,
+                primitive="evaluation_day_boundaries",
+                reference_time_utc=existing_active.timestamp,
+            )
+            closing_timestamp = min(event_time, existing_day_bounds.boundary_end_utc)
             closing_row = AttendanceSession(
                 target_seat_id=existing_active.target_seat_id,
                 actor_seat_id=resolved_actor_seat_id,
@@ -303,7 +333,7 @@ def record_attendance_session(
                 target_user_id=target_user_id,
                 status="inactive",
                 reason_code=AttendanceReasonCode.DONE_FOR_DAY.value,
-                timestamp=event_time,
+                timestamp=closing_timestamp,
                 mechanism=mechanism,
                 hall_pass_id=None,
             )

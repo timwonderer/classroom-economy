@@ -802,8 +802,23 @@ def create_app():
             display_metadata = get_or_resolve_display_metadata(context)
             class_context = display_metadata.to_class_context() if display_metadata else None
 
+            # The teacher's display name is per-class: a distinct Seat +
+            # IdentityProfile exists for each class. Resolve it strictly through
+            # the canonical chain — class context -> seat_id -> IdentityProfile —
+            # never from the user-scoped session cache (keyed only by user_id, it
+            # bleeds the previous class's name across a switch). context.seat_id
+            # is the teacher's seat in the CURRENT class, so its profile is
+            # correct by construction.
+            from app.models import IdentityProfile
+            teacher_profile = (
+                IdentityProfile.query.filter_by(seat_id=context.seat_id).first()
+                if getattr(context, "seat_id", None)
+                else None
+            )
+            resolved_teacher_name = teacher_profile.full_name if teacher_profile else ""
+
             view = build_admin_layout_context_view(
-                cached_name, class_context, is_maintenance_bypass_active=bypass_flag,
+                resolved_teacher_name, class_context, is_maintenance_bypass_active=bypass_flag,
             )
             # Switcher must list EVERY class the teacher owns, not just the
             # active one. Sourcing it from the single current class_context made
