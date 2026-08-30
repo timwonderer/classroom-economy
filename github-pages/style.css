@@ -631,6 +631,39 @@ body.landing-page {
     grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
 }
 
+.v2-feature-card-left,
+.v2-feature-card-right {
+    background-color: var(--surface);
+    padding: 2.25rem;
+    border-radius: 2px;
+    box-shadow: var(--shadow);
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.v2-feature-card-left {
+    border-top: 10px solid var(--primary-color);
+}
+
+.v2-feature-card-right {
+    border-top: 10px solid var(--steward-blue);
+}
+
+.v2-feature-card-left h3,
+.v2-feature-card-right h3 {
+    color: var(--text-primary);
+    font-size: 1.35rem;
+    margin-bottom: 0.85rem;
+    font-weight: 600;
+}
+
+.v2-feature-card-left p,
+.v2-feature-card-right p {
+    color: var(--text-secondary);
+    font-size: 1.05rem;
+    line-height: 1.6;
+    margin: 0 0 0.5rem 0;
+}
+
 .v2-feature-card {
     background-color: var(--surface);
     padding: 2.25rem;
