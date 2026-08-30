@@ -80,6 +80,18 @@ def test_DOM_SUP_001__resolve_actor_context_ignores_admin_signup_path(app):
     assert logged == []
 
 
+def test_DOM_SUP_001__tips_api_does_not_require_canonical_context(app):
+    from unittest.mock import patch
+
+    client = app.test_client()
+    with patch("app.services.tlcp.current_app.logger.error") as mock_error:
+        response = client.get("/api/tips/teacher")
+        logged = [call.args[0] for call in mock_error.call_args_list]
+
+    assert response.status_code == 200
+    assert logged == []
+
+
 def test_DOM_SUP_001__resolve_actor_context_logs_missing_canonical_seat(app):
     from unittest.mock import patch
     from app.services.context_resolver import CanonicalContext

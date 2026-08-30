@@ -24,6 +24,12 @@ and this project follows semantic versioning principles.
 
 ### Fixed
 
+- **Payroll hourly rates retain their entered value** — Increased `payroll_settings.pay_rate` from `NUMERIC(12,2)` to `NUMERIC(18,8)` via migration `6f79a33fe78a`, preserving the precision required when hourly rates are converted to per-minute storage. Entering `$80.00/hour` now saves and displays as `$80.00` instead of `$79.80`, and CWI calculations no longer round the stored per-minute rate back to cents.
+
+- **Admin runtime log and dashboard correctness** — Replaced Unix-only temporal display directives so dashboard dates render on Windows, joined pending redemptions to same-class entitlement events to eliminate a cartesian product and inflated counts, corrected TLCP classification for the public tips API, and keyed the successful admin-login FEAT mutation.
+
+- **Landing-page fonts comply with CSP** — Replaced the remaining Google Fonts and duplicate Material Symbols stylesheet requests in `github-pages/landing.html` with the vendored same-origin font stylesheet, preventing `style-src-elem` violations while preserving the restrictive CSP.
+
 - **`admin_payroll.html` residual `"%.2f"|format()` currency expressions eliminated** — The Phase 1 payroll remediation missed 10 raw Jinja2 formatting expressions covering next-payroll estimates, total/average payout stats, recent-payroll and payroll-history amounts, and simple/advanced pay-rate display and input pre-population. Added `build_payroll_settings_display()` in `app/services/payroll/builders.py` and pre-formatted `display_amount`/`display_estimate` fields on the payroll row/summary dicts built in `app/routes/admin.py`, so the template now consumes only pre-formatted display strings, matching the `StudentPayrollStatusView`/`PayrollConfigurationView` pattern used elsewhere on the page.
 
 ### Changed

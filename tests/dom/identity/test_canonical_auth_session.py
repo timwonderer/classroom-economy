@@ -1,4 +1,5 @@
 import pytest
+import logging
 
 from flask import session
 from types import SimpleNamespace
@@ -28,6 +29,31 @@ def test_DOM_IDEN_006__system_admin_login_verifies_canonical_totp(client):
     classroom = initialize("chemistry_p1", client.application)
     assert classroom.teacher_user.id is not None
     assert classroom.teacher_seat.id is not None
+
+
+def test_DOM_IDEN_006__teacher_login_uses_keyed_feat_context(client, monkeypatch, caplog):
+    classroom = initialize("chemistry_p1", client.application)
+    form = SimpleNamespace(
+        validate_on_submit=lambda: True,
+        username=SimpleNamespace(data="teacher.alice"),
+        totp_code=SimpleNamespace(data="123456"),
+    )
+    monkeypatch.setattr("app.routes.admin.AdminLoginForm", lambda: form)
+    monkeypatch.setattr(
+        "app.routes.admin.find_canonical_user_by_auth_username",
+        lambda *_args, **_kwargs: classroom.teacher_user,
+    )
+    monkeypatch.setattr("app.routes.admin.decrypt_totp", lambda _value: "secret")
+    monkeypatch.setattr(
+        "app.routes.admin.pyotp.TOTP",
+        lambda _secret: SimpleNamespace(verify=lambda *_args, **_kwargs: True),
+    )
+
+    with caplog.at_level(logging.WARNING, logger="app.feats.base"):
+        response = client.post("/admin/login")
+
+    assert response.status_code == 302
+    assert "FEAT-INTEGRITY-WARNING" not in caplog.text
 
 
 

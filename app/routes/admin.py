@@ -2422,6 +2422,13 @@ def dashboard():
     # Pending actions - count all types of pending approvals (scoped by class_id)
     pending_redemptions_count = (
         PendingAction.query
+        .join(
+            EntitlementEvent,
+            sa.and_(
+                EntitlementEvent.entitlement_id == PendingAction.entitlement_id,
+                EntitlementEvent.class_id == PendingAction.class_id,
+            ),
+        )
         .filter(
             PendingAction.class_id == active_class_id,
             PendingAction.authoritative_feat == "FEAT-STOR-002",
@@ -2637,7 +2644,6 @@ def give_bonus_all():
 
 @admin_bp.route('/login', methods=['GET', 'POST'])
 @limiter.limit("10 per minute")
-@requires_feat_context("FEAT-IDEN-001")
 def login():
     """Admin login with TOTP authentication."""
     session.pop("user_id", None)
@@ -2661,36 +2667,40 @@ def login():
                 except (TypeError, ValueError):
                     totp_valid = False
                 if totp_valid:
-                    establish_teacher_session(user)
                     nonce = secrets.token_urlsafe(32)
-                    session["current_session_nonce"] = nonce
-                    user.current_session_nonce = nonce
-                    session["login_time"] = utc_now().isoformat()
-                    session["last_activity"] = utc_now().isoformat()
-                    session["admin_auth_username"] = username
-                    _login_display = user.get_display_username()
-                    if user.last_active_seat_id:
-                        _seat = db.session.get(Seat, user.last_active_seat_id)
-                        if _seat and _seat.identity_profile:
-                            _login_display = _seat.identity_profile.full_name
-                    set_admin_display_name_cache(user_id=user.id, display_name=_login_display)
-                    flash("Admin login successful.")
-                    next_url = request.args.get("next")
-                    # If user already has a last_active_class_id, go straight to dashboard
-                    if user.last_active_class_id and user.last_active_seat_id:
-                        return redirect(next_url or url_for("admin.dashboard"))
+                    with FEATContext(
+                        "FEAT-IDEN-001",
+                        idempotency_key=f"identity:teacher-login:{user.id}:{nonce}",
+                    ):
+                        establish_teacher_session(user)
+                        session["current_session_nonce"] = nonce
+                        user.current_session_nonce = nonce
+                        session["login_time"] = utc_now().isoformat()
+                        session["last_activity"] = utc_now().isoformat()
+                        session["admin_auth_username"] = username
+                        _login_display = user.get_display_username()
+                        if user.last_active_seat_id:
+                            _seat = db.session.get(Seat, user.last_active_seat_id)
+                            if _seat and _seat.identity_profile:
+                                _login_display = _seat.identity_profile.full_name
+                        set_admin_display_name_cache(user_id=user.id, display_name=_login_display)
+                        flash("Admin login successful.")
+                        next_url = request.args.get("next")
+                        # If user already has a last_active_class_id, go straight to dashboard
+                        if user.last_active_class_id and user.last_active_seat_id:
+                            return redirect(next_url or url_for("admin.dashboard"))
 
-                    class_options = _get_validated_teacher_class_options(user.id)
-                    if not class_options:
-                        return redirect(url_for("admin.onboarding"))
+                        class_options = _get_validated_teacher_class_options(user.id)
+                        if not class_options:
+                            return redirect(url_for("admin.onboarding"))
 
-                    if len(class_options) == 1:
-                        only_class = class_options[0]
-                        user.last_active_class_id = only_class["class_id"]
-                        user.last_active_seat_id = only_class["seat_id"]
-                        return redirect(next_url or url_for("admin.dashboard"))
+                        if len(class_options) == 1:
+                            only_class = class_options[0]
+                            user.last_active_class_id = only_class["class_id"]
+                            user.last_active_seat_id = only_class["seat_id"]
+                            return redirect(next_url or url_for("admin.dashboard"))
 
-                    return redirect(url_for("admin.select_class_context"))
+                        return redirect(url_for("admin.select_class_context"))
         flash("Invalid credentials or TOTP code.", "error")
         return redirect(url_for("admin.login", next=request.args.get("next")))
     return render_template("admin_login.html", form=form)

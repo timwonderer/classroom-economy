@@ -305,7 +305,7 @@ Policy definition tables — `rent_settings`, `payroll_settings`, `payroll_rewar
 **Tables (per `DOM-POL-001` §X boundary attribution):**
 
 - `rent_settings` — rent policy definitions (rate, cycle length, effective boundaries) as append-only version rows; consumed by `DOM-OBL-001`
-- `payroll_settings`, `payroll_rewards`, `payroll_fines` — payroll policy definitions (wage rate, frequency, reward/fine catalog); consumed by `DOM-PROD-001`
+- `payroll_settings`, `payroll_rewards`, `payroll_fines` — payroll policy definitions (wage rate, frequency, reward/fine catalog); `payroll_settings.pay_rate` stores the normalized per-minute rate as `NUMERIC(18,8)` so conversions from teacher-entered hourly or daily rates retain sub-cent precision; consumed by `DOM-PROD-001`
 - `hall_pass_settings` — hall-pass policy definitions (allowed destinations, limits); consumed by `DOM-PROD-001` at grant time
 - `store_items`, `store_item_visibility` — purchasable / rent-linked entitlement offering definitions and per-class visibility; consumed by `DOM-STORE-001`
 - Insurance policy definitions (see Insurance-domain specs for exact table); consumed by the Insurance operational flow

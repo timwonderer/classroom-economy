@@ -264,7 +264,7 @@ class EconomyBalanceChecker:
 
         # Convert pay_rate to per-minute rate
         # Note: pay_rate is stored as per-minute in the database for storage efficiency
-        pay_rate_per_minute = _quantize_currency(payroll_settings.pay_rate)
+        pay_rate_per_minute = Decimal(str(payroll_settings.pay_rate))
         notes.append(f"Pay rate: ${pay_rate_per_minute:.4f} per minute (from database)")
 
         # Calculate expected weekly minutes
