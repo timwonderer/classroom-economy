@@ -27,6 +27,9 @@ class AssessmentRequest:
     source_ref: str | None = None  # Opaque upstream authority reference
     source_version_ref: str | None = None  # Immutable version snapshot
     policy_version_id: int | None = None
+    policy_uuid: str | None = None  # Canonical upstream policy identity (rent amount resolves via this)
+    bill_cycle_id: int | None = None  # Link to the recurring reminder cycle this assessment belongs to
+    source_correlation_id: str | None = None  # Lawful lineage: the obligation this one AROSE FROM (e.g. LATE_FEE → its RENT)
 
 
 def assess_obligation(
@@ -86,9 +89,11 @@ def assess_obligation(
         event_type='ASSESSMENT',
         obligation_type=request.obligation_type,
         policy_version_id=request.policy_version_id,
+        policy_uuid=request.policy_uuid,
+        bill_cycle_id=request.bill_cycle_id,
+        source_correlation_id=request.source_correlation_id,
         # timestamp is set automatically by default=utc_now
         # ledger_transaction_id is NULL for ASSESSMENT (only filled for PAYMENT)
-        # bill_cycle_id is NULL initially (linked later if recurring)
     )
 
     db.session.add(assessment)
@@ -112,12 +117,19 @@ def execute_assess_obligation(
     source_ref: str | None = None,
     source_version_ref: str | None = None,
     policy_version_id: int | None = None,
+    policy_uuid: str | None = None,
+    bill_cycle_id: int | None = None,
+    source_correlation_id: str | None = None,
 ) -> ObligationAssessment:
     """
     Public FEAT interface for obligation assessment.
 
     Callable from routes and other FEATs. Wraps assess_obligation() with
     context and transaction management per requires_feat_context.
+
+    ``source_correlation_id`` records lawful lineage when this obligation AROSE
+    FROM another (e.g. a LATE_FEE assessed against a delinquent RENT). It is an
+    explicit persisted reference — never inferred by parsing correlation strings.
 
     Returns the immutable ASSESSMENT row.
     """
@@ -130,5 +142,8 @@ def execute_assess_obligation(
         source_ref=source_ref,
         source_version_ref=source_version_ref,
         policy_version_id=policy_version_id,
+        policy_uuid=policy_uuid,
+        bill_cycle_id=bill_cycle_id,
+        source_correlation_id=source_correlation_id,
     )
     return assess_obligation(request, context=FEATContext("FEAT-OBL-001"))

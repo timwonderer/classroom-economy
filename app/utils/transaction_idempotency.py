@@ -11,6 +11,7 @@ IDEMPOTENT_TRANSACTION_TYPES = frozenset({
     "refund",
     "overdraft_fee",
     "payroll",
+    "rent_payment",
     "Interest",
 })
 

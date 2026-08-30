@@ -251,8 +251,69 @@ def database_maintenance_job():
         db.session.rollback()
         logger.error(f"Database maintenance job failed: {e}", exc_info=True)
 
-# Rent and insurance cycle callbacks are intentionally absent until their
-# domain-owned FEAT entry points are rebuilt and covered by production-path tests.
+def run_rent_reconciliation_job():
+    """Materialize the recurring rent lifecycle for every rent-enabled class.
+
+    Canonical single mechanism (FEAT-OBL-002): for each class this creates the
+    initial cycle + assessments on first run, advances successor cycles once a
+    cycle's ``next_assessment_at`` has been reached, and expires the prior
+    cycle's PERK hall passes at the rent boundary. The whole thing is idempotent,
+    so re-running produces no duplicate cycles, assessments, or expiry events.
+
+    Each class is reconciled under its OWN top-level FEAT transaction so a
+    failure in one class cannot roll back or block another. This function is
+    therefore a plain loop — it must NOT itself hold a FEAT context, which would
+    force every class into a single shared correlation/transaction.
+    """
+    from app.extensions import db
+    from app.models import ClassEconomy
+    from app.services.class_configuration_query_service import is_feature_enabled
+    from app.feats.reconcile_rent_feat import execute_reconcile_rent
+
+    logger = logging.getLogger('scheduled_tasks')
+    logger.info("Starting scheduled rent reconciliation job")
+
+    reconciled = 0
+    skipped = 0
+    failed = 0
+    try:
+        class_ids = [row.class_id for row in ClassEconomy.query.order_by(ClassEconomy.class_id.asc()).all()]
+    except Exception:
+        db.session.rollback()
+        logger.exception("Rent reconciliation job could not enumerate classes")
+        return
+
+    for class_id in class_ids:
+        # Class-level rent gate short-circuit (execute_reconcile_rent also guards,
+        # but skipping here avoids opening a FEAT transaction for disabled classes).
+        try:
+            if not is_feature_enabled(class_id, "rent"):
+                skipped += 1
+                continue
+            result = execute_reconcile_rent(class_id)
+            reconciled += 1
+            if result.cycles_created or result.perks_expired:
+                logger.info(
+                    "Rent reconciliation for class %s: reason=%s cycles=%s assessments=%s perks_expired=%s",
+                    class_id,
+                    result.reason,
+                    result.cycles_created,
+                    result.assessments_created,
+                    result.perks_expired,
+                )
+        except Exception:
+            failed += 1
+            db.session.rollback()
+            logger.exception("Rent reconciliation failed for class %s", class_id)
+            continue
+
+    logger.info(
+        "Rent reconciliation job completed. Reconciled %s class(es), skipped %s, failed %s",
+        reconciled,
+        skipped,
+        failed,
+    )
+
 
 def run_audit_invariant_check_job():
     """Nightly audit chain integrity verification.
@@ -310,6 +371,11 @@ def init_scheduled_tasks(app):
         with app.app_context():
             run_audit_invariant_check_job()
 
+    # Wrapper that runs the rent reconciliation job with Flask app context
+    def run_rent_reconciliation():
+        with app.app_context():
+            run_rent_reconciliation_job()
+
     if not scheduler.running:
         # Add the daily-limit enforcement job to run every hour
         scheduler.add_job(
@@ -346,11 +412,25 @@ def init_scheduled_tasks(app):
             max_instances=1
         )
 
+        # Rent lifecycle reconciliation — runs hourly so cycle boundaries and
+        # rent-boundary PERK expiry are materialized promptly across timezones,
+        # even when no student visits the rent page. Idempotent per class.
+        scheduler.add_job(
+            func=run_rent_reconciliation,
+            trigger='interval',
+            hours=1,
+            id='rent_reconciliation',
+            name='Rent lifecycle reconciliation',
+            replace_existing=True,
+            max_instances=1  # Prevent overlapping executions
+        )
+
         scheduler.start()
         logger.info(
             "Scheduled tasks initialized: daily-limit enforcement (hourly), "
             "database maintenance (2 AM UTC), "
-            "audit invariant check (3 AM UTC)"
+            "audit invariant check (3 AM UTC), "
+            "rent reconciliation (hourly)"
         )
     else:
         logger.info("Scheduler already running")

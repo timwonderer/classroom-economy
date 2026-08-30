@@ -81,21 +81,39 @@ def satisfy_obligation(
             raise ValueError("PAYMENT method requires ledger_transaction_id")
         # Ledger transaction scope/validity is verified by caller (Ledger FEAT)
 
-    # Idempotency check: per FEAT-OBL-003, prevent duplicate satisfactions
-    if obligations_service.check_idempotency_satisfaction(
-        request.correlation_id,
-        request.method,
-    ):
-        # Already satisfied this way; safe replay
-        existing = (
-            db.session.query(ObligationAssessment)
-            .filter_by(
-                correlation_id=request.correlation_id,
-                event_type=request.method,
-            )
-            .first()
+    # Idempotency check (FEAT-OBL-003):
+    #
+    # PAYMENT and WAIVED have DIFFERENT replay identities:
+    #
+    #   * PAYMENT identity = the ledger transaction it settles. A payment command
+    #     owns an idempotent ledger write, so a replay of the same command yields
+    #     the same ledger_transaction_id and must return the same PAYMENT event.
+    #     Deduping on ledger_transaction_id (NOT on "any PAYMENT for this
+    #     correlation") is what lets multiple lawful PARTIAL payments coexist under
+    #     one obligation — "one obligation → one correlation → many PAYMENT events".
+    #
+    #   * WAIVED identity = the correlation. A waiver is a one-time immutable
+    #     satisfaction of a specific liability; at most one may exist per obligation.
+    if request.method == 'PAYMENT':
+        existing = obligations_service.get_payment_event_by_ledger(
+            request.ledger_transaction_id
         )
-        return existing
+        if existing is not None:
+            return existing
+    else:  # WAIVED
+        if obligations_service.check_idempotency_satisfaction(
+            request.correlation_id,
+            'WAIVED',
+        ):
+            existing = (
+                db.session.query(ObligationAssessment)
+                .filter_by(
+                    correlation_id=request.correlation_id,
+                    event_type='WAIVED',
+                )
+                .first()
+            )
+            return existing
 
     # Phase 2: Mutation (atomic transaction)
 

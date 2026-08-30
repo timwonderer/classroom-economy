@@ -5124,6 +5124,16 @@ def _sync_rent_items_to_store(rent_settings, user_id, class_id):
         .all()
     )
 
+    # Hard gate: if the store feature is disabled for this class, no rent item
+    # may appear in the store. Deactivate every rent-linked store item and stop
+    # — do not (re)activate or build visibility rows.
+    _store_scope = resolve_feature_class_for_class(class_id, 'store')
+    if not (_store_scope and _store_scope.get("enabled")):
+        for store_item in rent_store_items:
+            store_item.is_active = False
+            store_item.is_available_in_store = False
+        return
+
     for store_item in rent_store_items:
         if not store_item.name:
             continue
@@ -5233,6 +5243,14 @@ def rent_settings():
         abort(404)
 
     class_id = class_row.class_id
+
+    # Rent items can only be surfaced in the store when the store feature is
+    # enabled for this class. This gates both the UI affordances and the
+    # backend: with store off, no rent item (privilege or per-use) is added to
+    # the store regardless of what the form submits.
+    _store_scope = resolve_feature_class_for_class(class_id, 'store')
+    store_enabled = bool(_store_scope and _store_scope.get("enabled"))
+
     payroll_settings = PayrollSettings.query.filter_by(
         class_id=class_id,
         is_active=True,
@@ -5345,6 +5363,12 @@ def rent_settings():
             elif rent_item_type == 'hall_pass':
                 # Hall passes are not typically listed in store via this mechanism
                 pass
+
+            # Hard gate: when the store feature is disabled for this class, no
+            # rent item may be added to the store — this overrides the per-use
+            # "always available" default above.
+            if not store_enabled:
+                is_available = False
 
             item_data = {
                 'id': request.form.get(f'rent_item_id_{idx}'),
@@ -5646,6 +5670,7 @@ def rent_settings():
 
     return render_template('admin_rent_settings.html',
                           settings=settings,
+                          store_enabled=store_enabled,
                           obligation_summary=obligation_summary,
                           outstanding_by_student=outstanding_by_student,
                           waiver_history=waiver_history,
@@ -9106,6 +9131,16 @@ def update_class_feature_setting():
         valid_features = {'payroll', 'insurance', 'banking', 'rent', 'hall_pass', 'store'}
         if feature not in valid_features:
             return jsonify({'status': 'error', 'message': f'Unknown feature: {feature}'}), 400
+
+        # Defense-in-depth: essential features (payroll, banking) are core to the
+        # app and cannot be disabled. The UI freezes their toggles ON; reject any
+        # disable request that bypasses the UI.
+        from app.services.class_configuration_view_models import ESSENTIAL_FEATURES
+        if not enabled and feature in ESSENTIAL_FEATURES:
+            return jsonify({
+                'status': 'error',
+                'message': f'{feature} is a core feature and cannot be disabled.',
+            }), 400
 
         ctx = g.canonical_context
 

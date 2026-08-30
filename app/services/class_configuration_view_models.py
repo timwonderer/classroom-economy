@@ -19,6 +19,12 @@ from app.services.class_configuration_query_service import (
     get_class_features,
     get_policy_mode,
 )
+from app.services.economic_engine import CWI_DEPENDENT_FEATURES, resolve_base
+
+# Essential features are core to the app and cannot be disabled once the class
+# exists. Their toggles render ON and frozen (see FEAT-CLASS-004 defense-in-depth
+# in the route/FEAT layer that also rejects disabling these).
+ESSENTIAL_FEATURES = frozenset({"payroll", "banking"})
 
 
 @dataclass(frozen=True)
@@ -117,6 +123,16 @@ class FeatureToggleView:
     icon: str
     description: str
     enabled: bool
+    # Gating metadata (U04 hard-gate).
+    requires_cwi: bool = False   # feature needs a resolvable Class Wage Index
+    cwi_ready: bool = True       # whether CWI (payroll + expected weekly hours) is set up
+    essential: bool = False      # core feature; toggle frozen ON, cannot be disabled
+    gate_reason: str | None = None  # tooltip text when the feature is CWI-gated
+
+    @property
+    def locked(self) -> bool:
+        """A CWI-dependent feature that isn't ready shows a block symbol, not a toggle."""
+        return self.requires_cwi and not self.cwi_ready
 
 
 # ---------------------------------------------------------------------------
@@ -191,14 +207,28 @@ def build_feature_settings_page_view(class_id: str) -> FeatureSettingsPageView |
 
     feature_map = get_class_features(class_id)
 
+    # Resolve the class's economic readiness once. A feature that depends on the
+    # Class Wage Index (e.g. insurance) can only be toggled after payroll pay rate
+    # AND expected weekly hours are set. Until then its toggle is replaced by a
+    # block symbol with an explanatory tooltip.
+    base = resolve_base(class_id)
+    cwi_ready = base.is_ready
+    gate_reason = base.readiness_reason  # None when ready
+
     toggles = tuple(
         FeatureToggleView(
             feature_id=defn.feature_id,
-            feature_key=defn.feature_id.replace("_enabled", ""),
+            feature_key=(key := defn.feature_id.replace("_enabled", "")),
             name=defn.name,
             icon=defn.icon,
             description=defn.description,
-            enabled=(defn.feature_id.replace("_enabled", "") in feature_map),
+            enabled=(key in feature_map) or (key in ESSENTIAL_FEATURES),
+            requires_cwi=(key in CWI_DEPENDENT_FEATURES),
+            cwi_ready=cwi_ready,
+            essential=(key in ESSENTIAL_FEATURES),
+            gate_reason=(
+                gate_reason if (key in CWI_DEPENDENT_FEATURES and not cwi_ready) else None
+            ),
         )
         for defn in FEATURE_DEFINITIONS
     )

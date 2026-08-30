@@ -106,7 +106,7 @@ from app.services.recovery_service import (
 )
 from app.services.classroom_setup import create_student_user_for_seat
 from app.feats.base import requires_feat_context, FEATContext
-from app.feats.rent_payment_feat import execute_rent_payment
+from app.feats.rent_payment_feat import execute_rent_payment, execute_rent_bill_payment
 from app.feats.transfer_feat import execute_account_transfer
 from app.feats.store_purchase_feat import execute_store_purchase
 from app.feats.insurance_claim_feat import submit_insurance_claim
@@ -2829,6 +2829,12 @@ def rent():
     )
     now_utc = now_eval.canonical_now_utc
 
+    # Per-render command nonce for the pay form: identifies the payment command so
+    # a resubmit of THIS rendered form replays idempotently (same nonce), while a
+    # fresh render mints a new command. Never derived from prior-payment counting.
+    import uuid
+    payment_nonce = uuid.uuid4().hex
+
     # Phase 6-7 VERIFIED: Render template with ONLY view model fields
     # No raw variables passed; all template access via view.* namespace
     return render_template(
@@ -2836,6 +2842,7 @@ def rent():
         view=view,
         checking_balance=checking_balance,
         savings_balance=savings_balance,
+        payment_nonce=payment_nonce,
         feature_settings=g.get('feature_settings', {}),
         current_class_context=g.get('current_class_context', {}),
     )
@@ -2843,20 +2850,23 @@ def rent():
 
 @student_bp.route('/rent/pay/<period>', methods=['POST'])
 @login_required
-@requires_feat_context("FEAT-OBL-003")
+@requires_feat_context("FEAT-OBL-001")
 def rent_pay(period):
-    """Process rent payment for a specific period."""
+    """Satisfy the student's outstanding rent obligation via the canonical FEAT.
+
+    Per FEAT-OBL-001 (rent_payment_feat), a single PAYMENT satisfies the full
+    assessed amount for one obligation (one PAYMENT per correlation). This route
+    resolves the seat's outstanding rent assessment (the correlation posted by
+    the pay form, validated against the seat's own outstanding set) and delegates
+    the entire atomic Ledger + PAYMENT + PERK-grant transaction to the FEAT.
+    """
     context = resolve_canonical_context()
     if not context:
         flash("No class selected. Please choose a class to continue.", "error")
         return redirect(url_for('student.dashboard'))
     class_id = context.class_id
-    if not class_id:
-        flash("No class context available.", "error")
-        return redirect(url_for('student.dashboard'))
-
     seat_id = context.seat_id
-    if not seat_id:
+    if not class_id or not seat_id:
         flash("No seat assigned in this class.", "error")
         return redirect(url_for('student.dashboard'))
 
@@ -2865,10 +2875,8 @@ def rent_pay(period):
     if not seat:
         flash("No seat assigned in this class.", "error")
         return redirect(url_for('student.dashboard'))
-    student = _get_canonical_student_from_context()
 
     settings = get_rent_settings_for_context(context)
-
     if not settings:
         current_app.logger.info("rent_pay exit: rent settings missing or disabled")
         flash("Rent system is currently disabled.", "error")
@@ -2879,252 +2887,97 @@ def rent_pay(period):
         flash("Rent is not enabled for your account.", "error")
         return redirect(url_for('student.dashboard'))
 
-    # Validate period for the current class context only
-    period = (period or '').strip().upper()
-    current_block = (seat.class_economy.section or '').strip().upper() if seat and seat.class_economy else ''
-    if not current_block:
-        current_block = period
-    current_app.logger.info(
-        "rent_pay state: seat_id=%s class_id=%s current_block=%s",
-        seat_id,
-        class_id,
-        current_block,
-    )
-    if period != current_block:
-        current_app.logger.info(
-            "rent_pay exit: period mismatch period=%s current_block=%s seat_id=%s class_id=%s",
-            period,
-            current_block,
-            seat_id,
-            class_id,
-        )
-        flash("Invalid period.", "error")
+    # Resolve the seat's rent assessments (chronological order). Each rent
+    # assessment anchors a BILL — the rent principal plus the late fees that arose
+    # from it (linked by source_correlation_id). The student pays the bill as one
+    # lineage; the FEAT settles rent-first then its late fees.
+    from app.services.obligation_view_model import get_rent_assessments_for_seat_class
+
+    assessments = get_rent_assessments_for_seat_class(seat_id, class_id)
+    if not assessments:
+        flash("You have no rent to pay right now.", "info")
         return redirect(url_for('student.rent'))
 
-    now = utc_now()
-
-    timeline = _calculate_rent_timeline(settings, now)
-    due_date = timeline['due_date']
-    grace_end_date = timeline['grace_end_date']
-    coverage_due_date = timeline['coverage_due_date']
-    upcoming_due_date = timeline['upcoming_due_date']
-    preview_start_date = timeline['preview_start_date']
-    rent_is_active = timeline['rent_is_active']
-
-    if not rent_is_active:
-        current_app.logger.info(
-            "rent_pay exit: rent inactive preview_start=%s upcoming_due=%s",
-            preview_start_date,
-            upcoming_due_date,
+    # Prefer the bill (rent correlation) posted by the pay form; validate it is
+    # one of this seat's rent obligations. Fall back to the most recent bill (the
+    # "current period" surfaced by the rent view).
+    posted_correlation = (request.form.get('correlation_id') or '').strip()
+    target = None
+    if posted_correlation:
+        target = next(
+            (a for a in assessments if a.correlation_id == posted_correlation),
+            None,
         )
-        if preview_start_date:
-            available_date = preview_start_date
-            message = f"Rent is not due yet. You can start paying on {available_date.strftime('%B %d, %Y')}."
-        else:
-            message = f"Rent is not due yet. Payment opens on {upcoming_due_date.strftime('%B %d, %Y')}."
-        flash(message, "info")
-        return redirect(url_for('student.rent'))
-
-    current_month = now.month
-    current_year = now.year
-
-    # CRITICAL FIX: Check if student has paid current coverage period BEFORE allowing preview
-    # If student is overdue, they must pay the overdue period first, not pre-pay for next month
-    current_coverage_paid = False
-    if not coverage_due_date:
-        # No prior coverage period to settle; allow preview payments
-        current_coverage_paid = True
-    else:
-        current_coverage_paid = _is_student_coverage_period_paid(
-            settings,
-            seat_id,
-            class_id,
-            coverage_due_date,
-        )
-
-    # Determine which due date this payment should cover
-    # Only allow preview period if current coverage is already paid
-    is_preview_period = (
-        current_coverage_paid and
-        preview_start_date and
-        now >= preview_start_date and
-        now < upcoming_due_date
-    )
-    payment_due_date = upcoming_due_date if is_preview_period else (coverage_due_date or upcoming_due_date)
-
-    # Calculate coverage period (pre-paid system)
-    coverage_month = payment_due_date.month
-    coverage_year = payment_due_date.year
-
-    checking_balance, savings_balance = get_available_balances(seat_id, class_id)
-
-    from app.services.obligations_service import (
-        get_assessment_events_for_seat_class,
-        get_satisfaction_events,
-    )
-    from app.services.obligation_view_model import get_total_paid_for_obligation
-
-    all_assessments = get_assessment_events_for_seat_class(
-        seat_id,
-        class_id,
-        obligation_type='RENT',
-    )
-    existing_payments = []
-    for assessment in all_assessments:
-        satisfaction = get_satisfaction_events(assessment.correlation_id)
-        if not satisfaction:
-            existing_payments.append(assessment)
-
-    # Per DOM-OBL-001, calculate total paid from PAYMENT events via Ledger
-    total_paid_so_far = Decimal('0.00')
-    for assessment in existing_payments:
-        status = get_total_paid_for_obligation(assessment.correlation_id, class_id)
-        if status:
-            total_paid_so_far += status.total_paid
-
-    # Calculate if late and total amount due
-    due_date, grace_end_date = _calculate_rent_deadlines(settings, now)
-    grace_end_date_for_payment = grace_end_date
-    if payment_due_date and payment_due_date != due_date:
-        grace_end_date_for_payment = payment_due_date + timedelta(days=settings.grace_period_days)
-    # Use v2 version which correctly computes grace period payments from canonical PAYMENT events
-    paid_by_grace = _total_paid_by_grace(existing_payments, grace_end_date_for_payment)
-    is_late = now > grace_end_date_for_payment and paid_by_grace < settings.rent_amount
-
-    # Calculate late fee if applicable
-    late_fee = Decimal('0.00')
-    if is_late:
-        late_fee = settings.late_fee
-
-    # Total amount due (rent + late fee if applicable)
-    total_due = _quantize_currency(settings.rent_amount + late_fee)
-
-    # Calculate remaining amount to pay
-    remaining_amount = _quantize_currency(total_due - total_paid_so_far)
-    current_app.logger.info(
-        "rent_pay totals: total_paid_so_far=%s total_due=%s remaining_amount=%s current_coverage_paid=%s preview=%s",
-        total_paid_so_far,
-        total_due,
-        remaining_amount,
-        current_coverage_paid,
-        is_preview_period,
-    )
-
-    # Check if already fully paid
-    if remaining_amount <= 0:
-        flash(f"You have already paid rent for Period {period} this month!", "info")
-        return redirect(url_for('student.rent'))
-
-    # Get payment amount from form (supports incremental payments)
-    payment_amount_input = request.form.get('amount', '').strip()
-
-    # Determine payment amount based on incremental setting
-    if settings.allow_incremental_payment and payment_amount_input:
-        try:
-            payment_amount = _quantize_currency(payment_amount_input)
-            # Validate payment amount
-            if payment_amount <= Decimal('0'):
-                flash("Payment amount must be greater than 0.", "error")
-                return redirect(url_for('student.rent'))
-            if payment_amount > remaining_amount:
-                flash(f"Payment amount (${payment_amount:.2f}) exceeds remaining balance (${remaining_amount:.2f}). Paying exact remaining amount.", "info")
-                payment_amount = remaining_amount
-        except (ValueError, InvalidOperation):
-            flash("Invalid payment amount.", "error")
+        if target is None:
+            flash("That rent bill is no longer available.", "info")
             return redirect(url_for('student.rent'))
     else:
-        # Full payment required (or no amount specified with incremental disabled)
-        payment_amount = remaining_amount
+        target = assessments[-1]
 
-    # Get banking settings for overdraft handling (reuse class context from above)
-    economic_engine = get_current_economic_engine(context.class_id)
+    correlation_id = target.correlation_id
 
-    from app.models import Seat
-    seat = db.session.get(Seat, seat_id)
+    # Command-owned idempotency: the pay form carries a per-render nonce that
+    # identifies THIS payment command. It is stable across a resubmit of the same
+    # rendered form (double-click / back-button replay → same nonce → idempotent),
+    # while a freshly rendered form yields a new nonce (a distinct command). We do
+    # NOT derive idempotency by counting prior payments. Absent a posted nonce we
+    # mint one for this single request so the ledger write is still keyed.
+    import uuid
+    posted_nonce = (request.form.get('payment_nonce') or '').strip()
+    command_nonce = posted_nonce or uuid.uuid4().hex
+    idempotency_key = f"rent-pay:{correlation_id}:{command_nonce}"
 
-    intended_plan = build_intended_ledger_plan(
-        seat_id=seat_id,
-        class_id=class_id,
-        user_id=student.user_id,
-        debit_amount=payment_amount,
-        description=f"Rent for Period {period}",
-        source_account="checking",
-        target_account="rent",
-    )
-    resolved_plan = resolve_intended_ledger_plan(
-        plan=intended_plan,
-        economic_engine=economic_engine,
-        idempotency_key=f"rent_payment:{seat.id}:{class_id}:{period}:{coverage_year}-{coverage_month}:{payment_amount}:resolve",
-        force_overdraft_fee=False,
-        allow_recovery_transfer=True,
-    )
-    current_app.logger.info(
-        "rent_pay overdraft gate: outcome=%s shortfall=%s banking_enabled=%s payment_amount=%s",
-        resolved_plan.outcome,
-        resolved_plan.shortfall,
-        getattr(economic_engine, "overdraft_protection_enabled", None) if economic_engine else None,
-        payment_amount,
-    )
-    if resolved_plan.outcome == "DENY":
-        if economic_engine and economic_engine.overdraft_protection_enabled is True:
-            message = (f"Insufficient funds in both checking and savings. You need "
-                       f"${payment_amount:.2f} but have ${checking_balance + savings_balance:.2f}.")
-        else:
-            message = (f"Insufficient funds. You need ${payment_amount:.2f} but only "
-                       f"have ${checking_balance:.2f}.")
-        flash(message, "error")
-        return redirect(url_for('student.rent'))
-
-    overdraft_shortfall = resolved_plan.recovery_transfer_amount if resolved_plan.recovery_transfer_amount > 0 else Decimal('0.00')
+    # Optional partial payment amount (lawful only when the class enables it; the
+    # FEAT enforces that). Absent/blank → settle the full remaining principal.
+    payment_amount = None
+    raw_amount = (request.form.get('payment_amount') or '').strip()
+    if raw_amount:
+        try:
+            payment_amount = Decimal(raw_amount)
+        except (InvalidOperation, ValueError):
+            flash("Enter a valid payment amount.", "error")
+            return redirect(url_for('student.rent'))
 
     current_app.logger.info(
-        "rent_pay before execute: seat_id=%s class_id=%s period=%s amount=%s",
+        "rent_pay dispatch: seat_id=%s class_id=%s correlation_id=%s",
         seat_id,
         class_id,
-        period,
-        payment_amount,
+        correlation_id,
     )
-    result = execute_rent_payment(
-        seat=seat,
-        context=context,
-        payment_amount=payment_amount,
-        period=period,
-        settings=settings,
-        is_late=is_late,
-        late_fee=late_fee,
-        total_paid_so_far=total_paid_so_far,
-        total_due=total_due,
-        remaining_amount=remaining_amount,
-        coverage_month=coverage_month,
-        coverage_year=coverage_year,
-        current_month=current_month,
-        current_year=current_year,
-        payment_due_date=payment_due_date,
-        economic_engine=economic_engine,
-        overdraft_shortfall=overdraft_shortfall,
-        now=now,
-        calculate_due_dates_fn=_calculate_due_dates,
-    )
-    current_app.logger.info(
-        "rent_pay after execute: transaction_id=%s payment_id=%s",
-        result.transaction_id,
-        result.payment_id,
-    )
-    # Success message
-    if result.is_partial and settings.allow_incremental_payment:
-        if result.new_remaining > 0:
-            flash(f"Partial payment of ${result.amount_paid:.2f} successful! Remaining balance: ${result.new_remaining:.2f}", "success")
-        else:
-            msg = f"Final payment of ${result.amount_paid:.2f} successful! Rent for Period {period} is now fully paid."
-            if result.passes_awarded > 0:
-                msg += f" You received {result.passes_awarded} hall passes!"
-            flash(msg, "success")
-    else:
-        msg = f"Rent payment for Period {period} (${result.amount_paid:.2f}) successful!"
-        if result.passes_awarded > 0:
-            msg += f" You received {result.passes_awarded} hall passes!"
-        flash(msg, "success")
 
+    # Delegate the whole atomic transaction to the canonical FEAT. This settles
+    # the bill as one lineage (rent principal + its late fees), applying payment
+    # rent-first then late fees oldest-first.
+    result = execute_rent_bill_payment(
+        class_id,
+        seat_id,
+        correlation_id,
+        idempotency_key=idempotency_key,
+        payment_amount=payment_amount,
+    )
+
+    if not result.success:
+        if result.error_code == "INSUFFICIENT_FUNDS":
+            flash(result.error_message or "Insufficient funds to pay this bill.", "error")
+        else:
+            current_app.logger.info(
+                "rent_pay FEAT error: code=%s correlation_id=%s",
+                result.error_code,
+                correlation_id,
+            )
+            flash(result.error_message or "Rent payment could not be completed.", "error")
+        return redirect(url_for('student.rent'))
+
+    if result.amount_paid <= Decimal("0.00") and result.fully_paid:
+        flash("This rent bill has already been settled.", "info")
+        return redirect(url_for('student.rent'))
+
+    msg = f"Payment of ${result.amount_paid:.2f} successful!"
+    if result.passes_awarded > 0:
+        msg += f" You received {result.passes_awarded} hall passes!"
+    if not result.fully_paid:
+        msg += f" ${result.remaining_after:.2f} remains on this bill."
+    flash(msg, "success")
     return redirect(url_for('student.rent'))
 
 

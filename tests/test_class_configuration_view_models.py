@@ -222,3 +222,69 @@ class TestFeatureSettingsPageView:
     def test_nonexistent_class_returns_none(self, app):
         with app.app_context():
             assert build_feature_settings_page_view("nonexistent") is None
+
+
+# ---------------------------------------------------------------------------
+# U04 hard-gate: CWI-dependent + essential feature gating
+# ---------------------------------------------------------------------------
+
+
+class TestFeatureToggleGating:
+    """Insurance is CWI-gated; payroll & banking are essential (frozen ON)."""
+
+    def test_essential_features_marked_and_enabled(self, app, classroom):
+        with app.app_context():
+            view = build_feature_settings_page_view(classroom.class_id)
+            for key in ("payroll", "banking"):
+                feat = next(f for f in view.features if f.feature_key == key)
+                assert feat.essential is True
+                assert feat.enabled is True
+                assert feat.locked is False
+
+    def test_non_essential_features_not_marked_essential(self, app, classroom):
+        with app.app_context():
+            view = build_feature_settings_page_view(classroom.class_id)
+            for key in ("insurance", "rent", "hall_pass", "store"):
+                feat = next(f for f in view.features if f.feature_key == key)
+                assert feat.essential is False
+
+    def test_insurance_locked_when_cwi_not_ready(self, app, classroom):
+        # Fresh classrooms have a pay rate but no expected_weekly_hours, so CWI
+        # is unresolvable and insurance must be gated behind the block symbol.
+        with app.app_context():
+            view = build_feature_settings_page_view(classroom.class_id)
+            insurance = next(f for f in view.features if f.feature_key == "insurance")
+            assert insurance.requires_cwi is True
+            assert insurance.cwi_ready is False
+            assert insurance.locked is True
+            assert insurance.gate_reason  # non-empty tooltip
+
+    def test_only_cwi_dependent_features_require_cwi(self, app, classroom):
+        with app.app_context():
+            view = build_feature_settings_page_view(classroom.class_id)
+            for feat in view.features:
+                expected = feat.feature_key in {"insurance"}
+                assert feat.requires_cwi is expected
+
+    def test_insurance_unlocked_when_cwi_ready(self, app, classroom, monkeypatch):
+        # When CWI is resolvable the block symbol disappears and the toggle returns.
+        from app.services import class_configuration_view_models as vm
+        from app.services.economic_engine import EconomicBase
+        from decimal import Decimal
+
+        ready_base = EconomicBase(
+            class_id=classroom.class_id,
+            economic_version_id="v1",
+            economy_policy_mode="balanced",
+            expected_weekly_hours=Decimal("5"),
+            hourly_pay_rate=Decimal("30.00"),
+            cwi=Decimal("150.00"),
+        )
+        monkeypatch.setattr(vm, "resolve_base", lambda class_id: ready_base)
+
+        with app.app_context():
+            view = build_feature_settings_page_view(classroom.class_id)
+            insurance = next(f for f in view.features if f.feature_key == "insurance")
+            assert insurance.cwi_ready is True
+            assert insurance.locked is False
+            assert insurance.gate_reason is None

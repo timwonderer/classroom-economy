@@ -16,7 +16,7 @@ Obligations and Ledger services remain isolated and own their own facts.
 from __future__ import annotations
 
 from decimal import Decimal
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone, timedelta
 
 from app.extensions import db
@@ -76,7 +76,11 @@ def get_obligation_payment_status(
             # (per DOM-OBL-001 §XI: Obligations consumes Ledger for settlement truth)
             txn = db.session.get(Transaction, event.ledger_transaction_id)
             if txn and txn.status != 'void':
-                total_paid += Decimal(str(txn.amount))
+                # A PAYMENT is posted as a NEGATIVE debit; the MAGNITUDE is what
+                # was applied toward the obligation. Summing the raw signed amount
+                # made total_paid negative and left paid obligations reading as
+                # unsatisfied (matches get_paid_magnitude / the view builder).
+                total_paid += abs(Decimal(str(txn.amount)))
         elif event.event_type == 'WAIVED':
             has_waiver = True
 
@@ -168,6 +172,15 @@ class StudentObligationView:
     # Status counts for display (e.g., rent_status_counts)
     status_counts: dict  # {SATISFIED, OUTSTANDING, PAST_DUE}
 
+    # Related LATE_FEE obligations (RENT views only). Each late fee is its OWN
+    # immutable obligation with its OWN correlation, linked to the rent it arose
+    # from via source_correlation_id. Surfaced as a SEPARATE grouped list — never
+    # folded into the rent principal's remaining balance.
+    # [{correlation_id, source_correlation_id, amount_due, amount_paid,
+    #   remaining_amount, is_paid, is_past_due, due_date}]
+    late_fees: list = field(default_factory=list)
+    late_fees_total_due: Decimal = Decimal('0.00')  # sum of outstanding late-fee balances
+
     # Phase 1 display formatting (audit violations: student_rent.html line 142)
     display_current_due_date: str | None = None  # Pre-formatted as "%B %d, %Y" or None
     display_amount_due: str | None = None  # Pre-formatted as "$X.XX"
@@ -209,22 +222,40 @@ def build_rent_policy_projection(
     now_utc: datetime | None = None,
     total_paid: Decimal = Decimal('0.00'),
     has_waiver: bool = False,
+    grace_end_override=None,
 ) -> dict:
-    """Compute the shared rent projection used by the view and payment route."""
+    """Compute the shared rent projection used by the view and payment route.
+
+    When ``grace_end_override`` is supplied (the cycle's persisted
+    ``grace_boundary_at``), it is used verbatim so a later RentSettings change
+    cannot retroactively move an already-materialized cycle's grace boundary
+    (INV-CORE-000 non-retroactivity). Otherwise the boundary is derived from the
+    current ``grace_period_days`` as a fallback.
+    """
     now_utc = now_utc or datetime.now(timezone.utc)
     amount_due = Decimal(str(settings.rent_amount)) if settings and settings.rent_amount is not None else Decimal('0.00')
     grace_period_days = int(settings.grace_period_days) if settings and settings.grace_period_days is not None else 0
-    grace_end = due_date + timedelta(days=grace_period_days) if due_date else None
+    if grace_end_override is not None:
+        grace_end = grace_end_override
+    else:
+        grace_end = due_date + timedelta(days=grace_period_days) if due_date else None
     late_fee = Decimal('0.00')
     if grace_end and now_utc > grace_end and total_paid < amount_due:
         late_fee = Decimal(str(settings.late_penalty_amount)) if settings and settings.late_penalty_amount is not None else Decimal('0.00')
+    # Satisfaction and the payable amount track the ASSESSED principal ONLY.
+    # The v2 rent payment path (FEAT-OBL-001 / DOM-OBL-001 §V.1) satisfies the
+    # full assessed amount in a single PAYMENT event and never collects a late
+    # fee, so a late fee must not gate satisfaction nor inflate the amount owed
+    # — doing so left a fully-paid, past-grace obligation perpetually unsettled
+    # and made the Pay button overstate what the FEAT actually charges.
+    # `late_fee`/`total_due` remain available for informational display only.
     total_due = amount_due + late_fee
-    remaining_amount = max(Decimal('0.00'), total_due - total_paid)
+    remaining_amount = max(Decimal('0.00'), amount_due - total_paid)
     rent_is_active = bool(coverage_due_date and now_utc >= coverage_due_date)
     if not rent_is_active and upcoming_due_date and settings and settings.bill_preview_enabled and settings.bill_preview_days:
         preview_start = upcoming_due_date - timedelta(days=settings.bill_preview_days)
         rent_is_active = now_utc >= preview_start and now_utc < upcoming_due_date
-    is_satisfied = has_waiver or (total_paid >= total_due)
+    is_satisfied = has_waiver or (total_paid >= amount_due)
     is_past_due = (not is_satisfied) and bool(grace_end and now_utc > grace_end)
     is_preview = (not is_satisfied) and bool(due_date and now_utc < due_date)
     return {
@@ -245,6 +276,64 @@ def _resolve_rent_settings_for_policy_uuid(policy_uuid: str | None) -> RentSetti
     if not policy_uuid:
         return None
     return db.session.query(RentSettings).filter_by(policy_uuid=policy_uuid).first()
+
+
+def _build_late_fee_rows(seat_id: int, class_id: str, now_utc) -> tuple[list, Decimal]:
+    """Compose the seat's LATE_FEE obligations as a SEPARATE grouped list.
+
+    Each late fee is its own immutable obligation with its own correlation and a
+    lawful ``source_correlation_id`` back to the rent it arose from. Amounts are
+    resolved authoritatively (penalty amount from policy) and paid magnitude is
+    the sum of PAYMENT ledger magnitudes — never folded into the rent principal.
+
+    Returns (rows, total_outstanding_balance).
+    """
+    from app.services import obligations_service
+
+    fee_assessments = obligations_service.get_assessment_events_for_seat_class(
+        seat_id=seat_id,
+        class_id=class_id,
+        obligation_type='LATE_FEE',
+    )
+    fee_assessment_events = [a for a in fee_assessments if a.event_type == 'ASSESSMENT']
+
+    rows: list = []
+    total_outstanding = Decimal('0.00')
+    for assessment in fee_assessment_events:
+        amount_due = obligations_service.resolve_assessment_amount(assessment)
+        status = get_obligation_payment_status(
+            assessment.correlation_id, class_id, assessed_amount=amount_due
+        )
+        amount_paid = status.total_paid if status else Decimal('0.00')
+        is_paid = bool(status.is_satisfied) if status else False
+        remaining = amount_due - amount_paid
+        if remaining < Decimal('0.00'):
+            remaining = Decimal('0.00')
+
+        bill_cycle = (
+            db.session.get(BillCycle, assessment.bill_cycle_id)
+            if assessment.bill_cycle_id else None
+        )
+        due_date = bill_cycle.cycle_boundary_at if bill_cycle else assessment.timestamp
+        is_past_due = bool(due_date and now_utc and due_date <= now_utc and not is_paid)
+
+        if not is_paid:
+            total_outstanding += remaining
+
+        rows.append({
+            'correlation_id': assessment.correlation_id,
+            'source_correlation_id': assessment.source_correlation_id,
+            'amount_due': amount_due,
+            'amount_paid': amount_paid,
+            'remaining_amount': remaining,
+            'is_paid': is_paid,
+            'is_past_due': is_past_due,
+            'due_date': due_date,
+        })
+
+    # Oldest first for a stable, chronological display.
+    rows.sort(key=lambda r: (r['due_date'] is None, r['due_date']))
+    return rows, total_outstanding
 
 
 def build_empty_student_obligation_view(
@@ -327,6 +416,24 @@ def build_student_obligation_view(
     if not class_econ:
         return None
 
+    # Canonical class-local "now" (SPEC-TIME-001). Resolved once and reused for
+    # every temporal derivation below (projection, days-until-due, days-overdue)
+    # so the view is internally consistent and free of raw datetime.now() reads.
+    from app.utils.canonical_temporal_resolver import (
+        canonical_temporal_resolver,
+        CLASS_LEVEL_EVALUATION,
+    )
+
+    class _TemporalContext:
+        def __init__(self, class_id: str):
+            self.class_id = class_id
+
+    now_utc = canonical_temporal_resolver(
+        CLASS_LEVEL_EVALUATION,
+        canonical_execution_context=_TemporalContext(class_id=class_id),
+        primitive="current_time",
+    ).canonical_now_utc
+
     # Step 2: Get all assessments for this (seat, class, obligation_type)
     assessments = obligations_service.get_assessment_events_for_seat_class(
         seat_id=seat_id,
@@ -371,10 +478,16 @@ def build_student_obligation_view(
             if event.event_type == 'PAYMENT' and event.ledger_transaction_id:
                 txn = db.session.get(Transaction, event.ledger_transaction_id)
                 if txn and txn.status != 'void':
-                    total_paid += Decimal(str(txn.amount))
+                    # A rent PAYMENT is posted to the ledger as a negative debit
+                    # (e.g. -50.00). The magnitude is what was applied toward the
+                    # obligation, so count its absolute value; summing the raw
+                    # signed amount made total_paid negative and left paid
+                    # obligations reading as unsatisfied.
+                    paid_magnitude = abs(Decimal(str(txn.amount)))
+                    total_paid += paid_magnitude
                     payment_history_all.append({
                         'date': event.timestamp,
-                        'amount': Decimal(str(txn.amount)),
+                        'amount': paid_magnitude,
                         'type': 'PAYMENT',
                         'status': 'completed',
                         'correlation_id': assessment.correlation_id,
@@ -399,14 +512,27 @@ def build_student_obligation_view(
         if assessment.bill_cycle_id:
             bill_cycle = db.session.get(BillCycle, assessment.bill_cycle_id)
 
-        due_date = bill_cycle.next_assessment_at if bill_cycle else assessment.timestamp
+        # THIS obligation's due date is the cycle's own boundary (cycle_boundary_at),
+        # NOT next_assessment_at (which is when the *next* cycle assesses). Using the
+        # next cycle's date here made an already-past-due obligation render as a future
+        # "preview / not yet due" period and suppressed the Pay action.
+        due_date = bill_cycle.cycle_boundary_at if bill_cycle else assessment.timestamp
+        # Honor the cycle's persisted grace boundary (materialized at cycle creation)
+        # so a later settings change cannot retroactively move it (INV-CORE-000).
+        grace_boundary = getattr(bill_cycle, 'grace_boundary_at', None) if bill_cycle else None
         rent_settings = _resolve_rent_settings_for_policy_uuid(getattr(bill_cycle, 'policy_uuid', None))
         projection = build_rent_policy_projection(
             rent_settings if obligation_type == 'RENT' else None,
             due_date=due_date,
-            now_utc=datetime.now(timezone.utc),
+            # An ASSESSMENT event only exists once the cycle boundary has arrived,
+            # so the obligation is live/payable from its own due date onward. Pass
+            # coverage_due_date=due_date so rent_is_active reflects the assessed
+            # bill rather than defaulting to False (which suppressed the pay form).
+            coverage_due_date=due_date,
+            now_utc=now_utc,
             total_paid=total_paid,
             has_waiver=has_waiver,
+            grace_end_override=grace_boundary,
         )
         amount_due = projection['amount_due'] if obligation_type == 'RENT' else Decimal('0.00')
         grace_end = projection['grace_end']
@@ -436,6 +562,7 @@ def build_student_obligation_view(
             days_overdue = delta.days
 
         period_info = {
+            'correlation_id': assessment.correlation_id,
             'due_date': due_date,
             'grace_end': grace_end,
             'amount_due': amount_due,
@@ -505,6 +632,35 @@ def build_student_obligation_view(
         'total_waived': total_waived_count,
     }
 
+    # Related late fees (RENT views only). Each late fee is its own obligation;
+    # they are grouped to their originating rent BILL via the lawful
+    # source_correlation_id reference. The student sees the current bill as ONE
+    # thing: a summed total with the rent principal and its late fees itemized.
+    late_fee_rows: list = []
+    late_fees_total_due = Decimal('0.00')
+    if obligation_type == 'RENT':
+        late_fee_rows, late_fees_total_due = _build_late_fee_rows(
+            seat_id, class_id, now_utc
+        )
+        # Attach THIS bill's late fees (lineage == current rent correlation) and
+        # the group rollup to current_period, so satisfaction is defined over the
+        # whole lineage: the bill is settled once rent + all its late fees are.
+        if current_period:
+            current_corr = current_period.get('correlation_id')
+            bill_fees = [
+                row for row in late_fee_rows
+                if row.get('source_correlation_id') == current_corr
+            ]
+            bill_fees_due = sum(
+                (row['remaining_amount'] for row in bill_fees if not row['is_paid']),
+                Decimal('0.00'),
+            )
+            group_remaining = current_period['remaining_amount'] + bill_fees_due
+            current_period['late_fees'] = bill_fees
+            current_period['late_fees_due'] = bill_fees_due
+            current_period['group_remaining'] = group_remaining
+            current_period['group_is_paid'] = group_remaining <= Decimal('0.00')
+
     return StudentObligationView(
         obligation_type=obligation_type,
         seat_id=seat_id,
@@ -518,6 +674,8 @@ def build_student_obligation_view(
         totals=totals,
         settings=settings,
         status_counts=status_counts,
+        late_fees=late_fee_rows,
+        late_fees_total_due=late_fees_total_due,
     )
 
 

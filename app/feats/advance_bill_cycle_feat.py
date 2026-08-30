@@ -25,6 +25,8 @@ class AdvanceBillCycleRequest:
     cycle_boundary_at: datetime  # When this cycle ends
     next_assessment_at: datetime  # When to reassess this reference
     source_version_id: str | None = None  # Lawful version snapshot reference
+    grace_boundary_at: datetime | None = None  # Resolved late-penalty boundary for this cycle
+    policy_uuid: str | None = None  # Canonical upstream policy identity for this cycle
 
 
 def advance_bill_cycle(
@@ -83,8 +85,10 @@ def advance_bill_cycle(
         internal_ref=request.internal_ref,
         cycle_number=request.cycle_number,
         source_version_id=request.source_version_id,
+        policy_uuid=request.policy_uuid,
         cycle_boundary_at=request.cycle_boundary_at,
         next_assessment_at=request.next_assessment_at,
+        grace_boundary_at=request.grace_boundary_at,
     )
 
     db.session.add(bill_cycle)
@@ -107,6 +111,8 @@ def execute_advance_bill_cycle(
     next_assessment_at: datetime,
     *,
     source_version_id: str | None = None,
+    grace_boundary_at: datetime | None = None,
+    policy_uuid: str | None = None,
 ) -> BillCycle:
     """
     Public FEAT interface for bill cycle advancement.
@@ -123,5 +129,7 @@ def execute_advance_bill_cycle(
         cycle_boundary_at=cycle_boundary_at,
         next_assessment_at=next_assessment_at,
         source_version_id=source_version_id,
+        grace_boundary_at=grace_boundary_at,
+        policy_uuid=policy_uuid,
     )
     return advance_bill_cycle(request, context=FEATContext("FEAT-OBL-002"))

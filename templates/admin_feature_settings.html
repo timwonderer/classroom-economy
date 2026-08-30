@@ -26,6 +26,24 @@
               <small class="text-muted">{{ feat.description }}</small>
             </div>
           </div>
+          {% if feat.locked %}
+          {# CWI-dependent feature not yet set up: hide the toggle, show a block symbol. #}
+          <span class="material-symbols-outlined text-muted"
+                tabindex="0" role="img"
+                data-bs-toggle="tooltip" data-bs-placement="left"
+                aria-label="{{ feat.gate_reason or 'You haven’t set up your payroll and expected weekly hours yet.' }}"
+                title="{{ feat.gate_reason or 'You haven’t set up your payroll and expected weekly hours yet.' }}">block</span>
+          {% elif feat.essential %}
+          {# Essential feature: always ON, frozen (cannot be disabled). #}
+          <div class="form-check form-switch mb-0"
+               data-bs-toggle="tooltip" data-bs-placement="left"
+               title="{{ feat.name }} is a core feature and can’t be turned off.">
+            <input class="form-check-input feature-toggle" type="checkbox"
+                   id="toggle_{{ feat.feature_key }}" data-feature="{{ feat.feature_key }}"
+                   aria-label="{{ feat.name }} (required, always on)"
+                   checked disabled>
+          </div>
+          {% else %}
           <div class="form-check form-switch mb-0">
             <input class="form-check-input feature-toggle" type="checkbox"
                    id="toggle_{{ feat.feature_key }}" data-feature="{{ feat.feature_key }}"
@@ -33,6 +51,7 @@
                    {% if feat.enabled %}checked{% endif %}
                    onchange="updateFeature(this)">
           </div>
+          {% endif %}
         </div>
       </div>
       {% endfor %}
@@ -55,13 +74,23 @@
   <div class="card-body">
     <div class="d-flex flex-wrap gap-2">
       {% for feat in view.features %}
+      {% if feat.locked %}
+      <span class="badge bg-warning text-dark" data-feature-badge="{{ feat.feature_key }}"
+            title="{{ feat.gate_reason or 'Setup required' }}">{{ feat.name }} — setup required</span>
+      {% else %}
       <span class="badge {{ 'bg-success' if feat.enabled else 'bg-danger' }}" data-feature-badge="{{ feat.feature_key }}">{{ feat.name }}</span>
+      {% endif %}
       {% endfor %}
     </div>
   </div>
 </div>
 
 <script>
+document.addEventListener('DOMContentLoaded', function () {
+  const tooltipTriggerList = document.querySelectorAll('[data-bs-toggle="tooltip"]');
+  [...tooltipTriggerList].map(el => new bootstrap.Tooltip(el));
+});
+
 function updateFeature(toggle) {
   const feature = toggle.dataset.feature;
   const enabled = toggle.checked;

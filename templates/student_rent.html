@@ -167,10 +167,11 @@
                 {% endif %}
             {% endif %}
         </div>
-        {% elif status.is_paid %}
+        {% elif status.group_is_paid %}
         <div class="alert alert-success mb-0">
             <strong>Great work!</strong>
-            <br>You have paid your rent for <strong>Period {{ current_block|upper }}</strong>.
+            <br>You have paid your rent{% if status.late_fees %} and any late fees{% endif %}
+            for <strong>Period {{ current_block|upper }}</strong>.
         </div>
         {% elif status.amount_paid > 0 %}
         <div class="alert alert-warning mb-3">
@@ -199,21 +200,42 @@
         </div>
         {% endif %}
 
-        {% if not status.is_paid %}
-            {% if checking_balance >= status.remaining_amount %}
+        {% if not status.group_is_paid %}
+            {# This bill, from the student's perspective, is one thing: the rent
+               principal plus any late fees that arose from it. Show the summed
+               total, itemized, and settle it with one payment (the FEAT applies
+               it rent-first, then late fees). #}
+            {% set group_due = status.group_remaining if status.group_remaining is defined else status.remaining_amount %}
+            <div class="mb-3">
+                <p class="mb-1 text-muted"><strong>Total due for this bill:</strong></p>
+                <div class="h4 text-danger mb-2">${{ "%.2f"|format(group_due) }}</div>
+                <ul class="list-group">
+                    <li class="list-group-item d-flex justify-content-between">
+                        <span>Rent &middot; Period {{ current_block|upper }}</span>
+                        <span>${{ "%.2f"|format(status.remaining_amount) }}</span>
+                    </li>
+                    {% for fee in status.late_fees if status.late_fees %}
+                        {% if not fee.is_paid %}
+                        <li class="list-group-item d-flex justify-content-between text-danger">
+                            <span>Late fee{% if fee.due_date %} &middot; {{ fee.due_date.strftime('%b %d, %Y') }}{% endif %}</span>
+                            <span>${{ "%.2f"|format(fee.remaining_amount) }}</span>
+                        </li>
+                        {% endif %}
+                    {% endfor %}
+                </ul>
+            </div>
+            {% if checking_balance >= group_due %}
             <form action="{{ url_for('student.rent_pay', period=current_block) }}" method="POST">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
-                {% if view.settings.get('allow_incremental_payment') %}
-                <div class="mb-2">
-                    <label for="amount_{{ current_block }}" class="form-label"><small>Payment Amount (optional - leave blank for full payment)</small></label>
-                    <input type="number" step="0.01" min="0.01" max="{{ status.remaining_amount }}" class="form-control"
-                        id="amount_{{ current_block }}" name="amount"
-                        placeholder="Max: ${{ '%.2f'|format(status.remaining_amount) }}">
-                </div>
-                {% endif %}
+                <input type="hidden" name="correlation_id" value="{{ status.correlation_id }}" />
+                {# Per-render command nonce: identifies THIS payment command so a
+                   double-click / back-button resubmit of the same rendered form
+                   replays idempotently, while a freshly rendered form is a new
+                   command. Idempotency is never derived by counting prior payments. #}
+                <input type="hidden" name="payment_nonce" value="{{ payment_nonce }}" />
                 <button type="submit" class="btn btn-primary w-100"
-                    onclick="return confirm('Pay rent for Period {{ current_block|upper }}?');">
-                    Pay Rent (Remaining: ${{ "%.2f"|format(status.remaining_amount) }})
+                    onclick="return confirm('Pay this bill for Period {{ current_block|upper }}?');">
+                    Pay Bill (${{ "%.2f"|format(group_due) }})
                 </button>
             </form>
             {% else %}
@@ -221,7 +243,7 @@
                 Insufficient Funds
             </button>
             <p class="text-danger mt-2 mb-0 small">
-                You need ${{ "%.2f"|format(status.remaining_amount - checking_balance) }} more to pay rent for Period {{
+                You need ${{ "%.2f"|format(group_due - checking_balance) }} more to pay this bill for Period {{
                 current_block|upper }}.
             </p>
             {% endif %}
@@ -229,6 +251,47 @@
         {% endif %}
     </div>
 </div>
+
+{# Full late-fee ledger. Each late fee is its own immutable obligation (its own
+   correlation), linked to the rent it arose from via source_correlation_id. The
+   CURRENT bill's outstanding fees are already itemized and payable in the card
+   above; this list is the complete record across bills, including settled ones. #}
+{% if view.late_fees %}
+    <div class="card bg-light mt-4 border-warning">
+        <div class="card-header bg-warning ">
+            <h2 class="h6 mb-0 d-flex align-items-center gap-2">
+                <span class="material-symbols-outlined">gavel</span> Late Fee History
+                {% if view.late_fees_total_due and view.late_fees_total_due > 0 %}
+                    <span class="badge bg-danger ms-auto">${{ "%.2f"|format(view.late_fees_total_due) }} due</span>
+                {% endif %}
+            </h2>
+        </div>
+        <div class="card-body">
+            <p class="text-muted small mb-3">
+                A late fee is added when rent stays unpaid past its grace period. It is
+                part of the same bill as the rent it came from — paying that bill clears
+                the rent and its late fees together.
+            </p>
+            <ul class="list-group">
+                {% for fee in view.late_fees %}
+                <li class="list-group-item d-flex justify-content-between align-items-center">
+                    <span>
+                        Late fee
+                        {% if fee.due_date %}&middot; assessed {{ fee.due_date.strftime('%B %d, %Y') }}{% endif %}
+                    </span>
+                    <span>
+                        {% if fee.is_paid %}
+                            <span class="badge bg-success">Paid</span>
+                        {% else %}
+                            <span class="badge bg-danger">${{ "%.2f"|format(fee.remaining_amount) }} outstanding</span>
+                        {% endif %}
+                    </span>
+                </li>
+                {% endfor %}
+            </ul>
+        </div>
+    </div>
+{% endif %}
 
     <div class="card bg-light mt-4 border-primary">
         <div class="card-header bg-primary text-white ">

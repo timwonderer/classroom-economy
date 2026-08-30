@@ -662,6 +662,15 @@
                   rent instead of buying à la carte.
                 </div>
 
+                {% if not store_enabled %}
+                <div class="alert alert-warning" role="alert">
+                  <span class="material-symbols-outlined me-2" style="vertical-align: middle;">storefront</span>
+                  <strong>Store feature is turned off for this class.</strong> You can still configure rent items, but
+                  none will be added to the store — the "Available in Store" option is disabled and per-use items won't
+                  appear in the store — until you enable the Store feature in <em>Economy Features</em>.
+                </div>
+                {% endif %}
+
                 <div id="rentItemsContainer">
                   {% if rent_items|length == 0 %}
                   <div class="text-center text-muted py-4" id="noItemsPlaceholder">
@@ -732,12 +741,13 @@
                             <input class="form-check-input" type="checkbox"
                               name="rent_item_store_available_{{ loop.index0 }}" id="store_available_{{ loop.index0 }}"
                               {% if item.is_available_in_store %}checked{% endif %}
+                              {% if not store_enabled %}disabled{% endif %}
                               onchange="toggleStorePrice({{ loop.index0 }})">
                             <label class="form-check-label fw-bold" for="store_available_{{ loop.index0 }}">
                               Available in Store
                             </label>
                           </div>
-                          <small class="text-muted">Allow students to buy this privilege separately (expires next rent due date)</small>
+                          <small class="text-muted">{% if not store_enabled %}Enable the Store feature to offer this privilege for separate purchase.{% else %}Allow students to buy this privilege separately (expires next rent due date){% endif %}</small>
                         </div>
                         <div class="col-md-6 mb-3">
                           <div class="alert alert-info mb-0">
@@ -1153,6 +1163,7 @@
 
   // -------------------- RENT ITEMIZATION FUNCTIONS --------------------
   let rentItemCounter = {{ rent_items| length }};
+  const STORE_ENABLED = {{ 'true' if store_enabled else 'false' }};
 
   window.addRentItem = function () {
     const container = document.getElementById('rentItemsContainer');
@@ -1221,12 +1232,12 @@
         <div class="row" id="privilege_options_${rentItemCounter}">
           <div class="col-md-6 mb-3">
             <div class="form-check form-switch">
-              <input class="form-check-input" type="checkbox" name="rent_item_store_available_${rentItemCounter}" id="store_available_${rentItemCounter}" onchange="toggleStorePrice(${rentItemCounter})">
+              <input class="form-check-input" type="checkbox" name="rent_item_store_available_${rentItemCounter}" id="store_available_${rentItemCounter}" ${STORE_ENABLED ? '' : 'disabled'} onchange="toggleStorePrice(${rentItemCounter})">
               <label class="form-check-label fw-bold" for="store_available_${rentItemCounter}">
                 Available in Store
               </label>
             </div>
-            <small class="text-muted">Allow students to buy this privilege separately (expires next rent due date)</small>
+            <small class="text-muted">${STORE_ENABLED ? 'Allow students to buy this privilege separately (expires next rent due date)' : 'Enable the Store feature to offer this privilege for separate purchase.'}</small>
           </div>
           <div class="col-md-6 mb-3">
             <div class="alert alert-info mb-0">

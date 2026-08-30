@@ -157,26 +157,14 @@ def _get_rent_linked_store_items(class_id: str) -> list[StoreItem]:
     )
 
 
-def get_rent_hall_pass_grant_total_from_settings(settings: RentSettings | None) -> int:
-    """
-    Sum hall_pass_count from canonical rent-linked store items.
-
-    Returns total hall passes configured to grant from rent payments.
-    """
-    if not settings:
-        return 0
-
-    total = 0
-    for item in _get_rent_linked_store_items(settings.class_id):
-        if item.item_type == "hall_pass" and item.hall_pass_count:
-            total += item.hall_pass_count
-    return total
-
-
-def get_rent_hall_pass_grant_total(rent_setting_id: int) -> int:
-    """Wrapper to get hall pass grant total by rent settings ID."""
-    settings = db.session.get(RentSettings, rent_setting_id)
-    return get_rent_hall_pass_grant_total_from_settings(settings) if settings else 0
+# RETIRED (canonical rent lifecycle): the rent hall-pass GRANT total was
+# historically summed from phantom ``is_rent_linked`` StoreItem rows and used to
+# grant passes on rent payment. Rent satisfaction perks now flow through the
+# canonical entitlement lifecycle — RentSettings.satisfaction_benefits typed JSON
+# granted as PERK EntitlementEvents by FEAT-OBL-001 (rent_payment_feat) and
+# expired at the rent boundary by FEAT-OBL-002 (reconcile_rent_feat). The former
+# ``get_rent_hall_pass_grant_total_from_settings`` / ``get_rent_hall_pass_grant_total``
+# helpers were dead (no remaining callers) and have been removed.
 
 
 def get_frozen_privilege_items(settings: RentSettings | None) -> list[dict]:

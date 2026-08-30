@@ -809,6 +809,12 @@
             tbody.appendChild(createRow('', '', ''));
             updateState();
           }
+
+          // The Class Roster tab is server-rendered at page load, so newly
+          // added seats won't appear when switching to it client-side. Reload
+          // (after briefly showing the success message) so the roster
+          // re-renders with the new unclaimed seats.
+          setTimeout(function () { window.location.reload(); }, 1500);
         } else {
           resultEl.innerHTML = '<div class="alert alert-danger">' + escapeHtml(data.message || 'Failed to add students.') + '</div>';
           resultEl.classList.remove('d-none');

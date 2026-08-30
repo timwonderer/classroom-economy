@@ -945,6 +945,64 @@ class StoreItemVisibility(db.Model):
 # ================================================================================
 
 
+# Phase-1 closed set of entitlement types a rent satisfaction benefit may grant.
+# DOM-STORE-001 defines the broader entitlement catalog; rent perks are limited to
+# HALL_PASS for now and this tuple is the single gate that must widen to add more.
+_SATISFACTION_BENEFIT_ENTITLEMENT_TYPES = ("HALL_PASS",)
+
+
+def validate_satisfaction_benefits(raw):
+    """Validate and normalize a rent ``satisfaction_benefits`` payload.
+
+    Contract (Option-C typed JSON, Phase-1 closed schema):
+      - ``None`` -> ``[]`` (unset means no grants).
+      - Must be a list; each entry a dict with exactly the keys
+        ``entitlement_type`` and ``quantity``.
+      - ``entitlement_type`` must be in the Phase-1 closed set (HALL_PASS only).
+      - ``quantity`` must be a positive ``int`` (bools are rejected).
+
+    Returns a fresh list of ``{"entitlement_type", "quantity"}`` dicts.
+    Raises ``ValueError`` on any violation.
+    """
+    if raw is None:
+        return []
+    if not isinstance(raw, (list, tuple)):
+        raise ValueError("satisfaction_benefits must be a list")
+
+    normalized = []
+    for index, entry in enumerate(raw):
+        if not isinstance(entry, dict):
+            raise ValueError(f"satisfaction_benefits[{index}] must be an object")
+
+        entitlement_type = entry.get("entitlement_type")
+        if entitlement_type not in _SATISFACTION_BENEFIT_ENTITLEMENT_TYPES:
+            raise ValueError(
+                f"satisfaction_benefits[{index}].entitlement_type must be one of "
+                f"{_SATISFACTION_BENEFIT_ENTITLEMENT_TYPES}"
+            )
+
+        quantity = entry.get("quantity")
+        # bool is a subclass of int; reject it explicitly.
+        if isinstance(quantity, bool) or not isinstance(quantity, int):
+            raise ValueError(
+                f"satisfaction_benefits[{index}].quantity must be an integer"
+            )
+        if quantity <= 0:
+            raise ValueError(
+                f"satisfaction_benefits[{index}].quantity must be positive"
+            )
+
+        extra_keys = set(entry.keys()) - {"entitlement_type", "quantity"}
+        if extra_keys:
+            raise ValueError(
+                f"satisfaction_benefits[{index}] has unexpected keys: {sorted(extra_keys)}"
+            )
+
+        normalized.append({"entitlement_type": entitlement_type, "quantity": quantity})
+
+    return normalized
+
+
 # -------------------- RENT SETTINGS MODEL --------------------
 class RentSettings(db.Model):
     __tablename__ = 'rent_settings'
@@ -975,6 +1033,11 @@ class RentSettings(db.Model):
     prevent_purchase_when_late = db.Column(db.Boolean, default=False)
     bypass_cwi_warnings = db.Column(db.Boolean, default=False, nullable=False)
 
+    # Option-C satisfaction benefits (DOM-STORE-001 PERK grants awarded on rent satisfaction).
+    # Typed JSON: list of {entitlement_type, quantity}. Phase-1 closed schema: HALL_PASS only.
+    # nullable with no mutable default; None is normalized to [] by the accessor.
+    satisfaction_benefits = db.Column(db.JSON, nullable=True)
+
     # Metadata
     rent_configured_at = db.Column(db.DateTime(timezone=True), default=utc_now, nullable=True, index=True)
     rent_effective_at = db.Column(db.DateTime(timezone=True), nullable=True, index=True)
@@ -987,6 +1050,24 @@ class RentSettings(db.Model):
     @property
     def late_fee(self):
         return self.late_penalty_amount
+
+    def get_satisfaction_benefit_grants(self):
+        """Return the validated, normalized list of PERK grants awarded on rent satisfaction.
+
+        None (unset) normalizes to an empty list. Each entry is a
+        ``{"entitlement_type": str, "quantity": int}`` dict.
+        """
+        return validate_satisfaction_benefits(self.satisfaction_benefits)
+
+    def set_satisfaction_benefit_grants(self, benefits):
+        """Validate and persist the satisfaction benefits list.
+
+        An empty (or None) list is stored as NULL so the absence of any grant
+        is represented uniformly.
+        """
+        normalized = validate_satisfaction_benefits(benefits)
+        self.satisfaction_benefits = normalized if normalized else None
+        return normalized
 
     _FROZEN_POLICY_FIELDS = (
         'rent_amount', 'frequency_type', 'custom_frequency_value', 'custom_frequency_unit',
@@ -1032,7 +1113,16 @@ class ObligationAssessment(db.Model):
 
     # Canonical identity fields — DOM-OBL-001 §VII.1
     internal_ref = db.Column(db.String(200), nullable=False)  # Stable lineage key for recurring relationship
-    correlation_id = db.Column(db.String(200), nullable=False, unique=True, index=True)  # Unique ID for this individual liability
+    # Identity of the individual obligation/liability. SHARED by all satisfaction
+    # events (PAYMENT/WAIVED) that resolve the same ASSESSMENT — one obligation →
+    # one correlation → many events. NOT unique: the migration-built schema uses a
+    # plain (non-unique) index, so this must not declare unique=True.
+    correlation_id = db.Column(db.String(200), nullable=False, index=True)
+    # Lawful lineage reference: when this obligation AROSE FROM another obligation
+    # (e.g. a LATE_FEE assessed against a delinquent RENT), this points to the
+    # source obligation's correlation_id. NULL for primary obligations. This is an
+    # explicit persisted relationship — never inferred by parsing correlation strings.
+    source_correlation_id = db.Column(db.String(200), nullable=True, index=True)
     event_type = db.Column(db.String(20), nullable=False, index=True)  # ASSESSMENT | PAYMENT | WAIVED (per DOM-OBL-001)
 
     obligation_type = db.Column(db.String(30), nullable=False, index=True)  # RENT, INSURANCE_PREMIUM
@@ -1083,6 +1173,11 @@ class BillCycle(db.Model):
     source_version_id = db.Column(db.String(200), nullable=True)  # Lawful version snapshot reference
     cycle_boundary_at = db.Column(db.DateTime(timezone=True), nullable=False)
     next_assessment_at = db.Column(db.DateTime(timezone=True), nullable=False)
+    # Resolved late-penalty boundary for THIS cycle, materialized once at cycle
+    # creation from grace_period_days. Persisted (not re-derived) so a later
+    # RentSettings change cannot retroactively move an already-materialized
+    # cycle's grace boundary — INV-CORE-000 non-retroactivity.
+    grace_boundary_at = db.Column(db.DateTime(timezone=True), nullable=True)
 
     # Per DOM-OBL-001 v2.5: no created_at on bill_cycles
     # Use assessment_event.timestamp as reference (timestamp on the ASSESSMENT event for this cycle)

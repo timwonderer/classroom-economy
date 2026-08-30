@@ -41,6 +41,17 @@ def resolve_assessment_amount(assessment: ObligationAssessment) -> Decimal:
         if rent and rent.rent_amount is not None:
             return Decimal(str(rent.rent_amount))
 
+    if obligation_type == 'LATE_FEE' and policy_uuid:
+        # A LATE_FEE obligation is its own immutable liability that AROSE FROM a
+        # delinquent RENT (lineage recorded on `source_correlation_id`). Its
+        # amount is the rent policy's configured late penalty, NOT the rent
+        # principal. The LATE_FEE assessment carries the same rent policy_uuid so
+        # the penalty amount resolves from the same authoritative settings row.
+        from app.models import RentSettings
+        rent = RentSettings.query.filter_by(policy_uuid=policy_uuid).first()
+        if rent and rent.late_penalty_amount is not None:
+            return Decimal(str(rent.late_penalty_amount))
+
     # INSURANCE / IMMEDIATE / other types: their upstream contract lives
     # in domain-specific tables not yet centralized here. Callers that
     # need a non-zero amount for those types must resolve upstream and
@@ -54,14 +65,14 @@ def resolve_assessment_due_at(assessment: ObligationAssessment) -> datetime | No
     Per DOM-OBL-001 §VII.2, temporal boundaries are owned by
     `bill_cycles`:
 
-    - `bill_cycle.assessment_at` = the actual assessment date for the
-      current cycle — the moment this rent became due.
+    - `bill_cycle.cycle_boundary_at` = the current cycle's own due date D —
+      the moment this rent became due.
     - `bill_cycle.next_assessment_at` = pre-set scheduling for when the
-      NEXT cycle's assessment_at will fire. NOT the current cycle's due
+      NEXT cycle's due boundary will fire. NOT the current cycle's due
       boundary; do not confuse.
 
     For cyclic obligations (rent), the due boundary is
-    `bill_cycle.assessment_at`. For immediate charges (§II.C, no
+    `bill_cycle.cycle_boundary_at`. For immediate charges (§II.C, no
     bill_cycle), the assessment is due at creation time — return the
     event's canonical `timestamp`.
 
@@ -73,8 +84,8 @@ def resolve_assessment_due_at(assessment: ObligationAssessment) -> datetime | No
 
     if assessment.bill_cycle_id:
         cycle = db.session.get(BillCycle, assessment.bill_cycle_id)
-        if cycle and cycle.assessment_at:
-            return cycle.assessment_at
+        if cycle and cycle.cycle_boundary_at:
+            return cycle.cycle_boundary_at
 
     # Immediate charge (or bill_cycle missing): due at assessment time.
     return assessment.timestamp
@@ -110,6 +121,28 @@ def get_assessment_for_correlation(correlation_id: str) -> ObligationAssessment 
     )
 
 
+def get_obligations_arising_from(source_correlation_id: str) -> list[ObligationAssessment]:
+    """Retrieve ASSESSMENT events that AROSE FROM a source obligation.
+
+    Uses the lawful, persisted ``source_correlation_id`` reference — never a
+    parsed correlation string. Canonically: the LATE_FEE obligations charged
+    against a delinquent RENT share that rent's correlation as their source, so
+    this returns a bill's late fees given the rent correlation. Ordered by
+    assessment time (oldest first) for stable, chronological settlement/display.
+    """
+    if not source_correlation_id:
+        return []
+    return (
+        db.session.query(ObligationAssessment)
+        .filter(
+            ObligationAssessment.source_correlation_id == source_correlation_id,
+            ObligationAssessment.event_type == 'ASSESSMENT',
+        )
+        .order_by(ObligationAssessment.timestamp.asc(), ObligationAssessment.id.asc())
+        .all()
+    )
+
+
 def get_satisfaction_events(correlation_id: str) -> list[ObligationAssessment]:
     """Retrieve all PAYMENT and WAIVED events for a correlation (in order)."""
     return (
@@ -120,6 +153,47 @@ def get_satisfaction_events(correlation_id: str) -> list[ObligationAssessment]:
         )
         .order_by(ObligationAssessment.timestamp.asc())
         .all()
+    )
+
+
+def get_paid_magnitude(correlation_id: str) -> Decimal:
+    """Canonical paid amount for an obligation: sum of PAYMENT ledger MAGNITUDES.
+
+    Per DOM-OBL-001 §VIII, paid = sum of the authoritative Ledger amounts from
+    PAYMENT events sharing this correlation. Rent payments are posted as NEGATIVE
+    debits, so the magnitude (abs) is applied toward the obligation. Multiple
+    PAYMENT events (partial payments) accumulate here under one correlation.
+    """
+    from app.models import Transaction
+    total = Decimal('0.00')
+    for event in get_satisfaction_events(correlation_id):
+        if event.event_type == 'PAYMENT' and event.ledger_transaction_id:
+            txn = db.session.get(Transaction, event.ledger_transaction_id)
+            if txn is not None and txn.amount is not None:
+                total += abs(Decimal(str(txn.amount)))
+    return total
+
+
+def get_payment_event_by_ledger(
+    ledger_transaction_id: int | None,
+) -> ObligationAssessment | None:
+    """Return the PAYMENT event referencing a specific ledger transaction, if any.
+
+    A PAYMENT's replay identity is the ledger transaction it settles (the payment
+    command's owned, idempotent ledger write). Deduping on this — rather than on
+    "any PAYMENT exists for the correlation" — is what allows multiple lawful
+    partial payments to coexist under one obligation while each individual payment
+    command remains replay-safe.
+    """
+    if ledger_transaction_id is None:
+        return None
+    return (
+        db.session.query(ObligationAssessment)
+        .filter_by(
+            ledger_transaction_id=ledger_transaction_id,
+            event_type='PAYMENT',
+        )
+        .first()
     )
 
 
@@ -627,7 +701,7 @@ def get_rent_waiver_history_for_class(
             'correlation_id': waiver.correlation_id,
             'seat_id': waiver.seat_id,
             'waived_at': waiver.timestamp,
-            'due_at': cycle.assessment_at if cycle else None,
+            'due_at': cycle.cycle_boundary_at if cycle else None,
             'coverage_start_time': cycle.cycle_boundary_at if cycle else None,
             'coverage_end_time': cycle.next_assessment_at if cycle else None,
             'notes': waiver.notes,
