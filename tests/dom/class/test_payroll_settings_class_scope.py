@@ -1,6 +1,7 @@
 from app.extensions import db
 from app.models import PayrollSettings
 from app.services.class_configuration_query_service import get_effective_economic_engine
+from app.services.payroll.builders import build_payroll_settings_display
 from tests.helpers.class_domain import update_expected_weekly_hours, update_payroll_settings
 from tests.helpers.classroom_initializer import initialize_as_teacher
 
@@ -29,6 +30,25 @@ def test_DOM_CLASS_001__payroll_settings_update_persists_class_scoped_row(client
     assert saved is not None
     # PayrollSettings no longer carries expected_weekly_hours (moved to EconomicEngine)
     assert not hasattr(saved, "expected_weekly_hours") or saved.expected_weekly_hours is None or True
+
+
+def test_DOM_CLASS_001__simple_hourly_rate_round_trips_without_precision_loss(client):
+    """An hourly rate remains exact after per-minute database storage."""
+    classroom = initialize_as_teacher("chemistry_p1", client, client.application)
+
+    response = update_payroll_settings(
+        client,
+        settings_mode="simple",
+        simple_pay_rate="80.00",
+        simple_frequency="biweekly",
+    )
+
+    assert response.status_code == 302
+    db.session.expire_all()
+    saved = PayrollSettings.query.filter_by(class_id=classroom.class_id).one()
+    display = build_payroll_settings_display(saved)
+
+    assert display["display_hourly_rate_value"] == "80.00"
 
 
 def test_DOM_CLASS_001__expected_weekly_hours_update_writes_to_economic_engine(client):

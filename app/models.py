@@ -1614,7 +1614,7 @@ class PayrollSettings(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     class_id = db.Column(db.String(36), db.ForeignKey('classes.class_id', ondelete='CASCADE'), nullable=False, index=True)
     block = db.Column(db.String(10), nullable=True)  # NULL = global/default settings
-    pay_rate = db.Column(db.Numeric(precision=12, scale=2), nullable=False, default=0.25)  # $ per minute
+    pay_rate = db.Column(db.Numeric(precision=18, scale=8), nullable=False, default=0.25)  # $ per minute
     payroll_frequency_days = db.Column(db.Integer, nullable=False, default=14)
     next_payroll_date = db.Column(db.DateTime(timezone=True), nullable=True)
     is_active = db.Column(db.Boolean, default=True)
