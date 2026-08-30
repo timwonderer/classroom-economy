@@ -232,11 +232,11 @@ class TestFEATCLASS004FeatureEnablement:
                 actor_role="teacher",
             )
 
-            # Setup: Enable "rent" feature (not seeded by default)
+            # Setup: Enable "hall_pass" feature (not seeded by default)
             enable_result = execute_enable_feature(
                 canonical_context=canonical_context,
                 class_id=classroom.class_id,
-                feature="rent",
+                feature="hall_pass",
                 economic_version_id=initial_engine.economic_version_id,
             )
             assert enable_result.success is True
@@ -245,13 +245,13 @@ class TestFEATCLASS004FeatureEnablement:
             result = execute_disable_feature(
                 canonical_context=canonical_context,
                 class_id=classroom.class_id,
-                feature="rent",
-                correlation_id="test-disable-rent",
+                feature="hall_pass",
+                correlation_id="test-disable-hall_pass",
             )
 
             # Assert: Success
             assert result.success is True
-            assert result.feature == "rent"
+            assert result.feature == "hall_pass"
 
             # Verify: Append-only timeline with enable then disable
             # Note: Append-only means we have TWO rows now:
@@ -259,7 +259,7 @@ class TestFEATCLASS004FeatureEnablement:
             # Row 2: deleted_at=<timestamp> (disablement from this test)
             all_rows = ClassFeature.query.filter_by(
                 class_id=classroom.class_id,
-                feature="rent",
+                feature="hall_pass",
             ).order_by(ClassFeature.effective_at).all()
             assert len(all_rows) == 2
             assert all_rows[0].deleted_at is None  # Enable row
@@ -321,7 +321,7 @@ class TestFEATCLASS005EconomicEngineEvolution:
             )
 
             # Setup: Enable some features
-            for feature in ["payroll", "rent"]:
+            for feature in ["payroll", "hall_pass"]:
                 execute_enable_feature(
                     canonical_context=canonical_context,
                     class_id=classroom.class_id,
@@ -334,7 +334,7 @@ class TestFEATCLASS005EconomicEngineEvolution:
                 canonical_context=canonical_context,
                 class_id=classroom.class_id,
                 new_policy_mode="comfortable",
-                feature_list=["payroll", "rent"],
+                feature_list=["payroll", "hall_pass"],
                 correlation_id="test-policy-transition",
                 idempotency_key="test-policy-transition",
             )
@@ -343,7 +343,7 @@ class TestFEATCLASS005EconomicEngineEvolution:
             assert result.success is True
             assert result.new_policy_mode == "comfortable"
             assert result.new_engine_id is not None
-            assert set(result.features_updated) == {"payroll", "rent"}
+            assert set(result.features_updated) == {"payroll", "hall_pass"}
 
             # Verify: New EconomicEngine version created with version chain
             new_engine = EconomicEngine.query.filter_by(
@@ -354,7 +354,7 @@ class TestFEATCLASS005EconomicEngineEvolution:
             assert new_engine.previous_version_id == initial_engine.economic_version_id
 
             # Verify: Features linked to new engine via new class_features rows
-            for feature in ["payroll", "rent"]:
+            for feature in ["payroll", "hall_pass"]:
                 cf = ClassFeature.query.filter_by(
                     class_id=classroom.class_id,
                     feature=feature,
@@ -424,7 +424,7 @@ class TestFEATCLASS005EconomicEngineEvolution:
                 actor_role="teacher",
             )
 
-            for feature in ["rent"]:
+            for feature in ["hall_pass"]:
                 result = execute_enable_feature(
                     canonical_context=canonical_context,
                     class_id=classroom.class_id,
@@ -437,7 +437,7 @@ class TestFEATCLASS005EconomicEngineEvolution:
                 canonical_context=canonical_context,
                 class_id=classroom.class_id,
                 new_policy_mode="comfortable",
-                feature_list=["payroll", "rent"],
+                feature_list=["payroll", "hall_pass"],
                 correlation_id="test-policy-transition-1",
                 idempotency_key="test-policy-transition-1",
             )
@@ -447,7 +447,7 @@ class TestFEATCLASS005EconomicEngineEvolution:
                 canonical_context=canonical_context,
                 class_id=classroom.class_id,
                 new_policy_mode="tight",
-                feature_list=["payroll", "rent"],
+                feature_list=["payroll", "hall_pass"],
                 correlation_id="test-policy-transition-2",
                 idempotency_key="test-policy-transition-2",
             )

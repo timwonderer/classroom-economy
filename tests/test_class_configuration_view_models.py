@@ -223,6 +223,31 @@ class TestFeatureSettingsPageView:
         with app.app_context():
             assert build_feature_settings_page_view("nonexistent") is None
 
+    def test_section_groupings_partition_features(self, app, classroom):
+        """Features partition into three display sections: always-on core,
+        standard toggles, and CWI-gated pricing features."""
+        with app.app_context():
+            view = build_feature_settings_page_view(classroom.class_id)
+            essential = {f.feature_key for f in view.essential_features}
+            standard = {f.feature_key for f in view.standard_features}
+            pricing = {f.feature_key for f in view.pricing_features}
+
+            assert essential == {"payroll", "banking"}       # always on, no toggle
+            assert pricing == {"insurance", "rent", "store"}  # priced against CWI
+            assert standard == {"hall_pass"}                  # freely toggleable
+            # The three sections are disjoint and cover every feature.
+            assert essential | standard | pricing == {f.feature_key for f in view.features}
+            assert not (essential & standard) and not (standard & pricing) and not (essential & pricing)
+
+    def test_readiness_badges_default_not_ready(self, app, classroom):
+        """A freshly provisioned class has payroll pay rate but no expected weekly
+        hours, so Payroll is ready while Economic Engine (and thus CWI) is not."""
+        with app.app_context():
+            view = build_feature_settings_page_view(classroom.class_id)
+            assert view.payroll_ready is True
+            assert view.engine_ready is False
+            assert view.cwi_ready is False
+
 
 # ---------------------------------------------------------------------------
 # U04 hard-gate: CWI-dependent + essential feature gating
@@ -260,10 +285,14 @@ class TestFeatureToggleGating:
             assert insurance.gate_reason  # non-empty tooltip
 
     def test_only_cwi_dependent_features_require_cwi(self, app, classroom):
+        # Pricing features price against the Class Wage Index and are therefore
+        # CWI-dependent: insurance (premiums), rent (rent amount), store (item
+        # prices). Non-pricing (hall_pass) and always-on core (payroll, banking)
+        # are not.
         with app.app_context():
             view = build_feature_settings_page_view(classroom.class_id)
             for feat in view.features:
-                expected = feat.feature_key in {"insurance"}
+                expected = feat.feature_key in {"insurance", "rent", "store"}
                 assert feat.requires_cwi is expected
 
     def test_insurance_unlocked_when_cwi_ready(self, app, classroom, monkeypatch):

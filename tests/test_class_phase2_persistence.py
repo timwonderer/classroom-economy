@@ -384,7 +384,7 @@ class TestClassFeatureAppendOnly:
         """Enable then disable a feature: two append-only rows for the same
         (class_id, feature) with distinct effective_at (invariant 5).
 
-        Uses 'store' — a feature NOT in the default seed (payroll, banking) — so
+        Uses 'hall_pass' — a feature NOT in the default seed (payroll, banking) — so
         the enable is a genuine first-enablement rather than a no-op re-enable."""
         with app.app_context():
             ctx = _ctx(classroom)
@@ -392,19 +392,19 @@ class TestClassFeatureAppendOnly:
 
             enabled = execute_enable_feature(
                 canonical_context=ctx, class_id=classroom.class_id,
-                feature="store", economic_version_id=root.economic_version_id,
+                feature="hall_pass", economic_version_id=root.economic_version_id,
                 correlation_id="append-enable",
             )
             assert enabled.success is True, enabled.error_message
 
             disabled = execute_disable_feature(
                 canonical_context=ctx, class_id=classroom.class_id,
-                feature="store", correlation_id="append-disable",
+                feature="hall_pass", correlation_id="append-disable",
             )
             assert disabled.success is True, disabled.error_message
 
             rows = ClassFeature.query.filter_by(
-                class_id=classroom.class_id, feature="store"
+                class_id=classroom.class_id, feature="hall_pass"
             ).all()
             assert len(rows) == 2
 
@@ -429,34 +429,34 @@ class TestClassFeatureAppendOnly:
 
     def test_effective_version_resolution_latest_enabled(self, app, classroom):
         """enabled_names_for_class resolves the latest effective row per feature
-        (invariant 6). Evolving 'store' to a new version keeps it enabled.
+        (invariant 6). Evolving 'hall_pass' to a new version keeps it enabled.
 
-        Uses 'store' (not in the default seed) so the initial enable is genuine."""
+        Uses 'hall_pass' (not in the default seed) so the initial enable is genuine."""
         with app.app_context():
             ctx = _ctx(classroom)
             root = get_initial_economic_engine(classroom.class_id)
 
             enabled = execute_enable_feature(
                 canonical_context=ctx, class_id=classroom.class_id,
-                feature="store", economic_version_id=root.economic_version_id,
+                feature="hall_pass", economic_version_id=root.economic_version_id,
                 correlation_id="resolve-enable",
             )
             assert enabled.success is True, enabled.error_message
 
-            # Evolve: append a later store row linked to a new engine version.
+            # Evolve: append a later hall_pass row linked to a new engine version.
             evolved = execute_evolve_economic_engine(
                 canonical_context=ctx, class_id=classroom.class_id,
                 updates={"economy_policy_mode": "comfortable"},
-                feature_list=["store"], idempotency_key="resolve-evolve",
+                feature_list=["hall_pass"], idempotency_key="resolve-evolve",
             )
             assert evolved.success is True, evolved.error_message
 
             names = ClassFeature.enabled_names_for_class(classroom.class_id)
-            assert "store" in names
-            # The resolved store row points at the newest engine version.
+            assert "hall_pass" in names
+            # The resolved hall_pass row points at the newest engine version.
             latest = (
                 ClassFeature.query.filter_by(
-                    class_id=classroom.class_id, feature="store"
+                    class_id=classroom.class_id, feature="hall_pass"
                 )
                 .order_by(ClassFeature.effective_at.desc())
                 .first()
@@ -472,15 +472,15 @@ class TestClassFeatureAppendOnly:
 
             execute_enable_feature(
                 canonical_context=ctx, class_id=classroom.class_id,
-                feature="store", economic_version_id=root.economic_version_id,
+                feature="hall_pass", economic_version_id=root.economic_version_id,
                 correlation_id="disabled-enable",
             )
             execute_disable_feature(
                 canonical_context=ctx, class_id=classroom.class_id,
-                feature="store", correlation_id="disabled-disable",
+                feature="hall_pass", correlation_id="disabled-disable",
             )
             names = ClassFeature.enabled_names_for_class(classroom.class_id)
-            assert "store" not in names
+            assert "hall_pass" not in names
 
     def test_enabled_names_empty_for_unknown_class(self, app, classroom):
         """A class with no feature history resolves to an empty enabled set."""
@@ -612,11 +612,11 @@ class TestClassFeatureCheckConstraints:
             ctx = _ctx(classroom)
 
             # Append another feature so the cascade must remove more than the
-            # seeded 'payroll' and 'banking' rows. 'store' is not default-enabled,
+            # seeded 'payroll' and 'banking' rows. 'hall_pass' is not default-enabled,
             # so this is a genuine first-enablement.
             root = get_initial_economic_engine(cid)
             enabled = execute_enable_feature(
-                canonical_context=ctx, class_id=cid, feature="store",
+                canonical_context=ctx, class_id=cid, feature="hall_pass",
                 economic_version_id=root.economic_version_id,
                 correlation_id="cascade-cf",
             )

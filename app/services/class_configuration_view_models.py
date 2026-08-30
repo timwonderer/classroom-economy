@@ -112,6 +112,30 @@ class FeatureSettingsPageView:
     class_id: str
     class_label: str
     features: tuple[FeatureToggleView, ...]
+    # Economic readiness, surfaced as two independent status badges so a teacher
+    # can see exactly what remains before pricing features unlock.
+    payroll_ready: bool = False   # payroll pay rate configured
+    engine_ready: bool = False    # economic engine configured (expected weekly hours)
+
+    @property
+    def cwi_ready(self) -> bool:
+        """Pricing features unlock only when BOTH prerequisites are satisfied."""
+        return self.payroll_ready and self.engine_ready
+
+    @property
+    def essential_features(self) -> tuple["FeatureToggleView", ...]:
+        """Always-on core features (payroll, banking) — shown on top, no toggle."""
+        return tuple(f for f in self.features if f.essential)
+
+    @property
+    def standard_features(self) -> tuple["FeatureToggleView", ...]:
+        """Ordinary, freely toggleable features (no CWI dependency, not core)."""
+        return tuple(f for f in self.features if not f.essential and not f.requires_cwi)
+
+    @property
+    def pricing_features(self) -> tuple["FeatureToggleView", ...]:
+        """CWI-dependent pricing features (insurance, rent, store) — gated group."""
+        return tuple(f for f in self.features if f.requires_cwi and not f.essential)
 
 
 @dataclass(frozen=True)
@@ -214,6 +238,11 @@ def build_feature_settings_page_view(class_id: str) -> FeatureSettingsPageView |
     base = resolve_base(class_id)
     cwi_ready = base.is_ready
     gate_reason = base.readiness_reason  # None when ready
+    # Independent prerequisites, surfaced as two status badges. Payroll = pay rate
+    # configured; Economic Engine = expected weekly hours configured. Both must
+    # hold for a resolvable CWI (base.is_ready == payroll_ready and engine_ready).
+    payroll_ready = base.hourly_pay_rate is not None
+    engine_ready = base.expected_weekly_hours is not None and base.expected_weekly_hours > 0
 
     toggles = tuple(
         FeatureToggleView(
@@ -237,4 +266,6 @@ def build_feature_settings_page_view(class_id: str) -> FeatureSettingsPageView |
         class_id=class_id,
         class_label=economy.display_name or economy.section or economy.join_code,
         features=toggles,
+        payroll_ready=payroll_ready,
+        engine_ready=engine_ready,
     )

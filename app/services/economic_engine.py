@@ -201,7 +201,16 @@ class EconomicEngineNotReady(Exception):
 # refuses the transition. This set is Engine-owned and intentionally narrow:
 # ``insurance`` premiums/payout limits are defined off CWI. Features that treat
 # CWI as an advisory recommendation only (e.g. store price hints) are NOT listed.
-CWI_DEPENDENT_FEATURES = frozenset({"insurance"})
+# Features whose normative economics involve PRICING and therefore require a
+# resolvable Class Wage Index (CWI = payroll pay rate × expected weekly hours):
+# insurance premiums, rent amounts, and store item prices all price against the
+# CWI. A CWI-dependent feature cannot transition disabled -> enabled until the
+# Economic Engine base is READY (payroll pay rate AND expected weekly hours set),
+# and the feature-settings UI groups them together, gated behind that readiness.
+#
+# Non-pricing features (hall_pass) and the always-on core (payroll, which DEFINES
+# the CWI, and banking) are not gated here.
+CWI_DEPENDENT_FEATURES = frozenset({"insurance", "rent", "store"})
 
 
 @dataclass(frozen=True)

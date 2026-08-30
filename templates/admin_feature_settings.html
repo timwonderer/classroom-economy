@@ -13,10 +13,14 @@
     </h5>
   </div>
   <div class="card-body">
-    <p class="text-muted mb-4">Feature toggles are the sole authority for this class. Changes are saved automatically.</p>
+    <p class="text-muted mb-4">Changes are saved automatically.</p>
 
-    <div class="d-flex flex-column gap-2">
-      {% for feat in view.features %}
+    {# ---- Core: always on. Payroll DEFINES the class economy; banking is core.
+         These are not optional, so they are shown at the top without a toggle. ---- #}
+    {% if view.essential_features %}
+    <h6 class="text-uppercase text-muted small fw-bold mb-2">Core &middot; always on</h6>
+    <div class="d-flex flex-column gap-2 mb-4">
+      {% for feat in view.essential_features %}
       <div class="card h-100">
         <div class="card-body py-3 d-flex align-items-center justify-content-between gap-3">
           <div class="d-flex align-items-center gap-3">
@@ -26,24 +30,29 @@
               <small class="text-muted">{{ feat.description }}</small>
             </div>
           </div>
-          {% if feat.locked %}
-          {# CWI-dependent feature not yet set up: hide the toggle, show a block symbol. #}
-          <span class="material-symbols-outlined text-muted"
-                tabindex="0" role="img"
-                data-bs-toggle="tooltip" data-bs-placement="left"
-                aria-label="{{ feat.gate_reason or 'You haven’t set up your payroll and expected weekly hours yet.' }}"
-                title="{{ feat.gate_reason or 'You haven’t set up your payroll and expected weekly hours yet.' }}">block</span>
-          {% elif feat.essential %}
-          {# Essential feature: always ON, frozen (cannot be disabled). #}
-          <div class="form-check form-switch mb-0"
-               data-bs-toggle="tooltip" data-bs-placement="left"
-               title="{{ feat.name }} is a core feature and can’t be turned off.">
-            <input class="form-check-input feature-toggle" type="checkbox"
-                   id="toggle_{{ feat.feature_key }}" data-feature="{{ feat.feature_key }}"
-                   aria-label="{{ feat.name }} (required, always on)"
-                   checked disabled>
+          <span class="badge bg-success d-flex align-items-center gap-1">
+            <span class="material-symbols-outlined" style="font-size: 1rem;">check_circle</span> Always on
+          </span>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    {# ---- Standard features: no CWI dependency, freely toggleable. ---- #}
+    {% if view.standard_features %}
+    <h6 class="text-uppercase text-muted small fw-bold mb-2">Features</h6>
+    <div class="d-flex flex-column gap-2 mb-4">
+      {% for feat in view.standard_features %}
+      <div class="card h-100">
+        <div class="card-body py-3 d-flex align-items-center justify-content-between gap-3">
+          <div class="d-flex align-items-center gap-3">
+            <span class="material-symbols-outlined text-primary">{{ feat.icon }}</span>
+            <div class="mb-0">
+              <div class="fw-semibold">{{ feat.name }}</div>
+              <small class="text-muted">{{ feat.description }}</small>
+            </div>
           </div>
-          {% else %}
           <div class="form-check form-switch mb-0">
             <input class="form-check-input feature-toggle" type="checkbox"
                    id="toggle_{{ feat.feature_key }}" data-feature="{{ feat.feature_key }}"
@@ -51,36 +60,67 @@
                    {% if feat.enabled %}checked{% endif %}
                    onchange="updateFeature(this)">
           </div>
-          {% endif %}
         </div>
       </div>
       {% endfor %}
     </div>
+    {% endif %}
 
-    <div class="mt-3 text-muted small">
+    {# ---- Pricing features: insurance, rent, store. Each prices against the
+         Class Wage Index, so all three are gated behind the same economic
+         readiness — grouped and grayed out until payroll AND the economic engine
+         are configured. Uniform treatment (no per-feature special-casing). ---- #}
+    {% if view.pricing_features %}
+    <h6 class="text-uppercase text-muted small fw-bold mb-2">Pricing features</h6>
+    {% if not view.cwi_ready %}
+    <div class="alert alert-warning">
+      <div class="mb-2">
+        <span class="material-symbols-outlined" style="vertical-align: middle;">info</span>
+        In order to use these features, you must first set up payroll and configure your
+        economic engine.
+      </div>
+      <div class="d-flex flex-wrap gap-2">
+        <span class="badge {{ 'bg-success' if view.payroll_ready else 'bg-secondary' }} d-flex align-items-center gap-1">
+          <span class="material-symbols-outlined" style="font-size: 1rem;">{{ 'check_box' if view.payroll_ready else 'check_box_outline_blank' }}</span>
+          Payroll
+        </span>
+        <span class="badge {{ 'bg-success' if view.engine_ready else 'bg-secondary' }} d-flex align-items-center gap-1">
+          <span class="material-symbols-outlined" style="font-size: 1rem;">{{ 'check_box' if view.engine_ready else 'check_box_outline_blank' }}</span>
+          Economic Engine
+        </span>
+      </div>
+    </div>
+    {% endif %}
+    <div class="d-flex flex-column gap-2 {% if not view.cwi_ready %}opacity-50{% endif %}">
+      {% for feat in view.pricing_features %}
+      <div class="card h-100">
+        <div class="card-body py-3 d-flex align-items-center justify-content-between gap-3">
+          <div class="d-flex align-items-center gap-3">
+            <span class="material-symbols-outlined text-primary">{{ feat.icon }}</span>
+            <div class="mb-0">
+              <div class="fw-semibold">{{ feat.name }}</div>
+              <small class="text-muted">{{ feat.description }}</small>
+            </div>
+          </div>
+          <div class="form-check form-switch mb-0"
+               {% if not view.cwi_ready %}data-bs-toggle="tooltip" data-bs-placement="left"
+               title="Set up payroll and configure your economic engine to use this feature."{% endif %}>
+            <input class="form-check-input feature-toggle" type="checkbox"
+                   id="toggle_{{ feat.feature_key }}" data-feature="{{ feat.feature_key }}"
+                   aria-label="{{ feat.name }}"
+                   {% if feat.enabled %}checked{% endif %}
+                   {% if not view.cwi_ready %}disabled{% endif %}
+                   onchange="updateFeature(this)">
+          </div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    <div class="mt-4 text-muted small">
       <span class="material-symbols-outlined" style="vertical-align: middle;">sync</span>
       Changes are saved automatically.
-    </div>
-  </div>
-</div>
-
-<div class="card shadow">
-  <div class="card-header bg-secondary text-white">
-    <h5 class="mb-0">
-      <span class="material-symbols-outlined me-2" style="vertical-align: middle;">summarize</span>
-      Current Status
-    </h5>
-  </div>
-  <div class="card-body">
-    <div class="d-flex flex-wrap gap-2">
-      {% for feat in view.features %}
-      {% if feat.locked %}
-      <span class="badge bg-warning text-dark" data-feature-badge="{{ feat.feature_key }}"
-            title="{{ feat.gate_reason or 'Setup required' }}">{{ feat.name }} — setup required</span>
-      {% else %}
-      <span class="badge {{ 'bg-success' if feat.enabled else 'bg-danger' }}" data-feature-badge="{{ feat.feature_key }}">{{ feat.name }}</span>
-      {% endif %}
-      {% endfor %}
     </div>
   </div>
 </div>
@@ -107,9 +147,7 @@ function updateFeature(toggle) {
   })
   .then(response => response.json())
   .then(data => {
-    if (data.status === 'success') {
-      updateStatusBadge(feature, enabled);
-    } else {
+    if (data.status !== 'success') {
       alert('Error: ' + data.message);
       toggle.checked = !enabled;
     }
@@ -117,13 +155,6 @@ function updateFeature(toggle) {
   .catch(() => {
     alert('Failed to save setting.');
     toggle.checked = !enabled;
-  });
-}
-
-function updateStatusBadge(feature, enabled) {
-  document.querySelectorAll(`[data-feature-badge="${feature}"]`).forEach(badge => {
-    badge.classList.toggle('bg-success', enabled);
-    badge.classList.toggle('bg-danger', !enabled);
   });
 }
 </script>
