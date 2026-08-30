@@ -315,7 +315,7 @@ body.landing-page {
 }
 
 .landing-welcome p {
-    color: var(--secondary);
+    color: var(--text-inverse);
     margin: 0;
     font-size: 1.5rem;
     font-weight: 300;
@@ -631,36 +631,48 @@ body.landing-page {
     grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
 }
 
-.v2-feature-card {
+.v2-feature-card-left {
     background-color: var(--surface);
     padding: 2.25rem;
     border-radius: 2px;
     box-shadow: var(--shadow);
-    border-top: 6px solid var(--secondary-color);
+    border-top: 10px solid var(--primary-color);
     transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
-.v2-feature-card .material-symbols-outlined {
+.v2-feature-card-right {
+    background-color: var(--surface);
+    padding: 2.25rem;
+    border-radius: 2px;
+    box-shadow: var(--shadow);
+    border-top: 10px solid var(--steward-blue);
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.v2-feature-card-left .material-symbols-outlined {
     color: var(--primary);
     font-size: 2.5rem;
     margin-bottom: 1.25rem;
 }
 
-.v2-feature-card h3 {
+.v2-feature-card-left h3,
+.v2-feature-card-right h3 {
     color: var(--text-primary);
     font-size: 1.35rem;
     margin-bottom: 0.85rem;
     font-weight: 600;
 }
 
-.v2-feature-card p {
+.v2-feature-card-left p,
+.v2-feature-card-right p {
     color: var(--text-secondary);
     font-size: 1.05rem;
     line-height: 1.6;
     margin: 0 0 0.5rem 0;
 }
 
-.v2-feature-card .dev-note {
+.v2-feature-card-left .dev-note,
+.v2-feature-card-right .dev-note {
     font-size: 0.9rem;
     color: var(--text-light);
     font-style: italic;

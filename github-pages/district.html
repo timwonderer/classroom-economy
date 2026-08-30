@@ -69,9 +69,9 @@
                     <section class="public-section" id="overview">
                         <h2>Overview</h2>
                         <p>Thank you for your interest in Classroom Token Hub (CTH).</p>
-                        <p>Classroom Token Hub is a teacher-developed classroom management system with a simulated economic model, designed with a data-minimization and class-isolation-first architecture.</p>
-                        <p>As a 100% teacher-designed, developed, hosted, and maintained platform, we look forward to working with district partners to bring CTH to teachers and students.</p>
-                        <p>This document is designed to provide an overview of the system's architecture and data protection measures for district review. The content of this document represents the most up-to-date information regarding the system's design and implementation.</p>
+                        <p>Classroom Token Hub is a teacher-developed classroom management system with a simulated economic model. It is designed to minimize data collection and keep each classroom’s data separate.</p>
+                        <p>As a platform designed, hosted, and maintained by a full-time classroom teacher, we look forward to working with district partners to bring CTH to teachers and students.</p>
+                        <p>This document provides an overview of the system’s design and data-protection measures for district review. Please contact us with questions about the current implementation.</p>
                         <p>For more details, please visit our official GitHub repository or see the full <a href="./privacy.html">Privacy &amp; Data Handling</a> policy.</p>
                         <p>For questions about our security and privacy implementation, please contact us at <a href="mailto:security@classroomtokenhub.com">security@classroomtokenhub.com</a>.</p>
                     </section>
@@ -82,28 +82,28 @@
 
                         <h3>When a teacher creates a class, they will provide:</h3>
                         <ul>
-                            <li>Teacher display name (for app interface)</li>
-                            <li>Class name/period identifier</li>
+                            <li>Teacher display name (for the app interface)</li>
+                            <li>Class name or period identifier</li>
                         </ul>
 
                         <h3>When a teacher adds students to a class, they will provide:</h3>
                         <ul>
-                            <li>Student first name: Used for teacher roster display and student account claiming</li>
-                            <li>Student last initial: Used for teacher roster display and student account claiming</li>
+                            <li>Student first name: used for teacher roster display and student account claiming</li>
+                            <li>Student last initial: used for teacher roster display and student account claiming</li>
                             <li>Optional notes: Encrypted and stored for teacher internal records only</li>
                         </ul>
 
                         <h3>Our server processes the information using the following approach:</h3>
                         <ul>
-                            <li><strong>Student Names (claim hashes)</strong>: Normalized to remove whitespace, special characters, and accent marks. Hashed using HMAC-SHA256 with per-record salt and global pepper. Used for secure student account claiming only. Deleted from claim state after successful account creation.</li>
-                            <li><strong>Student Names (display)</strong>: Encrypted individually with whitespace and special characters preserved. Used only for teacher roster display within their class. Never transmitted to students or third parties. Decryption key never leaves the application.</li>
-                            <li><strong>Student Notes</strong>: Encrypted and stored. Used for teacher internal records only. Never displayed to students or other teachers.</li>
+                            <li><strong>Student names used for claiming</strong>: normalized and hashed using HMAC-SHA256 with a per-record salt and application secret. Used only for secure student account claiming and removed after successful account creation.</li>
+                            <li><strong>Student names used for display</strong>: encrypted individually with whitespace and special characters preserved. Used only for the teacher’s roster within that class and never transmitted to students or third parties.</li>
+                            <li><strong>Student notes</strong>: encrypted and stored for the teacher’s internal records. They are not displayed to students or other teachers.</li>
                         </ul>
                     </section>
 
                     <section class="public-section" id="class-isolation">
                         <h2>2. Class-Level Data Isolation</h2>
-                        <p>Each class operates as an independent system defined by a unique internal class identifier (class_id). The join code is a public-facing alias that students use to enter a class, but all internal scoping is performed by class_id.</p>
+                        <p>Each class operates independently and has its own unique identifier. Students use a public join code to enter a class, while the application uses the class identifier to keep records scoped correctly.</p>
                         <ul>
                             <li>No cross-class visibility or aggregation</li>
                             <li>Teachers can only access classes they create</li>
@@ -117,11 +117,11 @@
                         <h2>3. Student Account Claiming Process</h2>
                         <p>When a student claims their account:</p>
                         <ul>
-                            <li>Student enters their first name and last initial (as provided by teacher)</li>
-                            <li>System computes hashes and matches to class roster</li>
-                            <li>If unique match: student proceeds to create PIN and passphrase</li>
-                            <li>If duplicate match: student receives a random deduplication code to distinguish from other students with same name</li>
-                            <li>After successful claim completion, claim hashes are deleted from the system</li>
+                            <li>The student enters their first name and last initial, as provided by the teacher.</li>
+                            <li>The system securely matches that information to the class roster.</li>
+                            <li>If there is a unique match, the student creates a PIN and passphrase.</li>
+                            <li>If there is more than one matching name, the student receives a random code to distinguish their account.</li>
+                            <li>After the account is successfully claimed, the temporary claiming information is deleted.</li>
                         </ul>
                     </section>
 
@@ -154,11 +154,11 @@
                     <section class="public-section" id="authentication">
                         <h2>6. Authentication and Security</h2>
                         <ul>
-                            <li><strong>Teacher Authentication</strong>: Email and password (bcrypt hashed with salt and pepper). Optional 2FA via TOTP (time-based one-time password).</li>
+                            <li><strong>Teacher Authentication</strong>: Email and password, with required TOTP two-factor authentication (a time-based one-time password).</li>
                             <li><strong>Student Authentication</strong>: PIN (4-6 digits, bcrypt hashed) and passphrase (for high-stakes actions only).</li>
                             <li><strong>Account Recovery</strong>: Teachers can generate recovery codes for students. Recovery uses only join code and recovery code—no PII required. Passphrases are always required for high-stakes financial transactions.</li>
                             <li><strong>Encryption in Transit</strong>: All data uses HTTPS/TLS encryption</li>
-                            <li><strong>Encryption at Rest</strong>: Student names and notes are encrypted using AES-128</li>
+                            <li><strong>Encryption at Rest</strong>: Student names and notes are encrypted by the application using Fernet-based encryption.</li>
                             <li><strong>Session Management</strong>: HTTP-only cookies with automatic timeout after inactivity</li>
                             <li><strong>CSRF Protection</strong>: All forms include CSRF tokens</li>
                         </ul>
@@ -208,7 +208,7 @@
                         <ul>
                             <li>Transaction history is stored class-scoped and tied to student seats (not names)</li>
                             <li>Account balances are calculated from transaction history</li>
-                            <li>All financial operations require encryption at rest</li>
+                            <li>Financial records are protected according to the application’s encryption controls</li>
                             <li>Simulated currency has no real monetary value</li>
                             <li>No integration with real payment systems or banks</li>
                         </ul>
