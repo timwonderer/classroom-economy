@@ -16,7 +16,7 @@
            are defined in style.css. Only progress-stream-specific styles below. */
 
         .v2-feature-card li {
-            color: var(--text-secondary);
+            color: var(--text-primary);
             font-size: 1.05rem;
             line-height: 1.6;
         }
@@ -177,9 +177,9 @@
                 <div class="landing-welcome">
                     <h1>Version 2 Progress Report</h1>
                     <small>From a solo teacher-developer to all teachers and student users of Classroom Token Hub</small>
-                    <a href="v2transition.html" target="_self" class="floating-back-widget">
+                    <a href="/" target="_self" class="floating-back-widget">
                         <span class="material-symbols-outlined" aria-hidden="true">arrow_circle_left</span>
-                        <span>Return to Transition Page</span>
+                        <span>Return to Home</span>
                     </a>
                 </div>
             </div>
@@ -202,7 +202,6 @@
                     <h2 class="philosophy-heading">Current Status</h2>
                     <div class="philosophy-text">
                         <p>Classroom Token Hub v2.0 is a rebuild of the systems behind your classroom economy. The goal is simple: when a teacher records attendance, a student earns or spends tokens, or a claim is reviewed, the result should be clear, consistent, and dependable.</p>
-                        <p><strong>Updated August 29, 2026:</strong> v2 has moved from rebuilding behind the scenes into final reliability checks. The major classroom features are now connected in the new system, including insurance, classroom economics, attendance, and payroll. We are taking the time to verify the complete experience before asking teachers and students to depend on it every day.</p>
                     </div>
                     <div class="status-summary mt-4">
                         <div class="status-card status-card--certified">
@@ -220,29 +219,31 @@
                     </div>
 
                     <div class="philosophy-text mt-4">
-                        <p><strong>Where we are:</strong> The foundation is in place, but v2 is not yet being presented as a final release. We are checking complete classroom journeys—not just individual features—including sign-in, earning and spending, attendance, insurance, payroll, and teacher administration.</p>
+                      <p><strong>Updated August 29, 2026:</strong> Version 2 is now entering the final validation stage after two months of intense development and testing cycles. Instead of relying on automated tests, Classroom Token Hub uses real-world browser certification process to see whether teachers and students can actually complete their tasks successfully. We do this by manually accessing the app in a browser, performing a task, and seeing whether the process can be completed correctly.</p>
                     </div>
 
                     <div class="v2-feature-list mt-4">
-                        <div class="v2-feature-card">
-                            <h3>What teachers and students can look forward to</h3>
+                        <div class="v2-feature-card-left">
+                            <h3>What's new in v2.0</h3>
                             <ul>
-                                <li>Insurance is being rebuilt as a dependable classroom feature: teachers can define coverage, students can purchase it, and claims can be submitted and reviewed.</li>
-                                <li>Classroom economics now has connected guidance for balances, savings, interest, overdrafts, and the settings teachers use to shape their classroom economy.</li>
-                                <li>Attendance and payroll are being tied together more reliably so student participation and teacher records stay consistent.</li>
-                                <li>The rebuilt system is being tested across complete teacher and student experiences, not only one screen or feature at a time.</li>
+                                <li class="mb-2"><strong>Redesigned Economic Engine:</strong> A redesigned Economic Engine to help teachers build a coherent and fair classroom economy by providing pricing recommendations based on student earned income.</li>
+                                <li class="mb-2"><strong>Revamped Insurance System:</strong> A revamped insurance system that now explicitly supports three product types: Productivity, Transaction, and Non-Monetary.</li>
+                                <li class="mb-2"><strong>Unified Class Timezone:</strong> One class, one official timezone for everyone in the class. This is to ensure all deadlines and scheduled tasks are performed at the same time.</li>
+                                <li class="mb-2"><strong>Streamlined Teacher Onboarding:</strong> Teacher sign up and initial class provision has been streamlined to three steps (create a class, create an username, generate TOTP code) so teachers can get started quickly.</li>
+                                <li class="mb-2"><strong>Improved Student Management:</strong> Student management now supports copying + pasting from another spreadsheet with an option to add additional notes. Duplicated students will claim account by using the deduplication code provided by the teacher.</li>
+                                <li class="mb-2"><strong>Familiar Interface:</strong> The same, familiar interface as Version 1 so no extra onboarding is needed for returners.</li>
                             </ul>
                         </div>
-                        <div class="v2-feature-card">
-                            <h3>What remains before release</h3>
+                        <div class="v2-feature-card-right">
+                            <h3>Outstanding Tasks before v2.0 Release</h3>
                             <ul>
-                                <li><strong>Complete reliability testing — estimated 1–2 days:</strong> test the full app from sign-in through everyday classroom use and fix anything that does not behave consistently.</li>
-                                <li><strong>Finish teacher and student screens — estimated 3–5 days:</strong> complete the remaining settings, attendance, payroll, classroom-management, and help/support surfaces.</li>
-                                <li><strong>Bring the remaining tools online — estimated 3–5 days:</strong> finish the supporting tools for classroom operations, insights, policies, and support.</li>
-                                <li><strong>Real-browser and recovery checks — estimated 2–3 days:</strong> verify the app in the browser, including sign-in, classroom workflows, upgrades, backups, and recovery from problems.</li>
-                                <li><strong>Final teacher-facing review — estimated 1–2 days:</strong> review the complete experience for clarity, accessibility, and classroom readiness before setting a release date.</li>
+                                <li class="mb-2"><strong>Complete reliability testing:</strong> test the full app from sign-in through everyday classroom use and fix anything that does not behave consistently.</li>
+                                <li class="mb-2"><strong>Finish teacher and student screens:</strong> complete the remaining settings, attendance, payroll, classroom-management, and help/support surfaces.</li>
+                                 <li class="mb-2"><strong>Fully implemented support surface:</strong> Complete overhaul of the user support system, including app drawer, diagnostics, and ticket management.</li>
+                                 <li class="mb-2"><strong>Real-browser and recovery checks:</strong> verify the app in the browser, including sign-in, classroom workflows, upgrades, backups, and recovery from problems.</li>
+                                 <li class="mb-2"><strong>Final teacher-facing review:</strong> review the complete experience for clarity, accessibility, and classroom readiness before setting a release date.</li>
                             </ul>
-                            <p class="mt-3"><strong>Planning estimate:</strong> approximately 2–3 weeks of focused work. This is an estimate, not a promised launch date; reliability findings may change it.</p>
+
                         </div>
                     </div>
                     
@@ -276,14 +277,6 @@
                                 <div><span class="progress-tag progress-tag--architecture">Architecture</span></div>
                                 <h3>The rebuilt classroom system reaches a working checkpoint</h3>
                                 <p>After months of rebuilding the foundation, the new system reached a working checkpoint with its major classroom features connected. The focus has shifted from constructing the foundation to proving that the complete experience is reliable for teachers and students.</p>
-                            </div>
-                        </li>
-                        <li class="progress-entry">
-                            <div class="progress-date">Aug 22, 2026</div>
-                            <div class="progress-body">
-                                <div><span class="progress-tag progress-tag--architecture">Architecture</span></div>
-                                <h3>Clear rules established for correcting transactions</h3>
-                                <p>We established clear rules for correcting mistakes without erasing history. Financial transactions are reversed, grants and privileges are voided, and obligation records cannot be undone. Each correction creates a new, authorized record so the classroom economy remains honest and understandable.</p>
                             </div>
                         </li>
                         <li class="progress-entry">
