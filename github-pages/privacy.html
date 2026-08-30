@@ -10,7 +10,6 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible+Next:wght@400;700&family=IBM+Plex+Mono:wght@300;400;500;600;700&family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" rel="stylesheet">
-    <link href="../static/css/tokens.css" rel="stylesheet">
     <link href="./style.css" rel="stylesheet">
 </head>
 <body class="landing-page">
@@ -34,7 +33,7 @@
                 <div class="landing-welcome">
                     <h1>Privacy &amp; Data Handling Policies</h1>
                     <small>Last Updated: July 31, 2026</small>
-                    <a href="https://classroomtokenhub.com" target="_self" class="floating-back-widget">
+                    <a href="/" target="_self" class="floating-back-widget">
                         <span class="material-symbols-outlined" aria-hidden="true">arrow_circle_right</span>
                         <span>Return to Home</span>
                     </a>
@@ -66,7 +65,7 @@
 
                     <section class="public-section" id="purpose">
                         <h2>Purpose</h2>
-                        <p>This document explains the type of data you will provide in order to use this application, ways we handle and process the data you have provided, and steps we have taken to protect your data and privacy. The information contained in this document represents the most up-to-date version of this application and supersedes all previous versions unless otherwise noted.</p>
+                        <p>This document explains what information you provide to use this application, how we handle that information, and the steps we take to protect your data and privacy. This policy describes the current application and supersedes previous versions unless otherwise noted.</p>
                         <p>If you are reviewing Classroom Token Hub for a school or district, see the <a href="./district.html">For District Partners</a> for a district-focused summary of the system.</p>
                         <p>If you are a student, your teacher has chosen this application on behalf of your class to facilitate classroom activities. If you and/or your families have any questions or concerns, please talk to your teacher.</p>
                     </section>
@@ -76,16 +75,16 @@
 
                         <h3>If you are a teacher user</h3>
                         <ul>
-                            <li><strong>Personalized Display Name</strong>: For friendly identification in the user interface.</li>
+                            <li><strong>Display name</strong>: Used to identify you in the user interface.</li>
                             <li><strong>Class Identifier</strong>: A descriptive name for each class you manage (e.g., "Period 3 Economics").</li>
                         </ul>
 
                         <h3>If you are a student user</h3>
                         <p>Your teacher has provided this information on your behalf to create your account:</p>
                         <ul>
-                            <li><strong>First Name</strong>: Used for account claiming and friendly greetings during the classroom activity.</li>
-                            <li><strong>Last Initial</strong>: Used for account claiming and roster display for your teacher.</li>
-                            <li><strong>Class Assignment</strong>: To place you in the correct class section.</li>
+                            <li><strong>First name</strong>: Used for account claiming and greetings during classroom activities.</li>
+                            <li><strong>Last initial</strong>: Used for account claiming and roster display for your teacher.</li>
+                            <li><strong>Class assignment</strong>: Used to place you in the correct class.</li>
                         </ul>
 
                         <h3>Additional account security information</h3>
@@ -97,9 +96,9 @@
 
                     <section class="public-section" id="what-we-collect">
                         <h2>What we collect</h2>
-                        <p><strong>For students:</strong> Only the first name, last initial, class identifier, section identifier (if used), and optional teacher notes that the teacher provides on the roster.</p>
-                        <p><strong>For teachers:</strong> Only the display name you choose for yourself within each class.</p>
-                        <p>As a self-funded, developed, and operated platform, we do not use trackers or display any ads to you. Classroom Token Hub does not sell your information to a third party.</p>
+                        <p><strong>For students:</strong> The first name, last initial, class assignment, and optional teacher notes provided on the roster.</p>
+                        <p><strong>For teachers:</strong> The display name you choose for yourself within each class.</p>
+                        <p>As a self-funded platform developed and operated by a classroom teacher, we do not use trackers or display ads. Classroom Token Hub does not sell your information to third parties.</p>
                     </section>
 
                     <section class="public-section" id="how-we-use">
@@ -114,7 +113,7 @@
 
                     <section class="public-section" id="activity-data">
                         <h2>Educational Activity Data</h2>
-                        <p class="small">These data are generated, collected, and stored to facilitate the functioning of the classroom economy simulation and contain no personally identifiable information.</p>
+                        <p class="small">This data is generated, collected, and stored to support the classroom economy simulation. It is not intended to contain personally identifiable information.</p>
                         <ul>
                             <li><strong>Attendance Records</strong>: Tap-in/out timestamps and calculated active/inactive duration.</li>
                             <li><strong>Account Balances</strong>: Checking and savings balances, updated from transaction history.</li>
@@ -132,7 +131,7 @@
                         <h2>Data Encryption &amp; Storage</h2>
                         <ul>
                             <li><strong>Encryption at Rest</strong>: All sensitive data (names, notes) is encrypted using industry-standard AES encryption before storage in our database.</li>
-                            <li><strong>Secure Hashing</strong>: PINs and passphrases are hashed using bcrypt with additional peppered security, making them impossible to decrypt even if our database were compromised.</li>
+                            <li><strong>Secure Hashing</strong>: PINs and passphrases are hashed using bcrypt with an additional application secret. Hashes are not reversible, even if the database is compromised.</li>
                             <li><strong>Encrypted Transit</strong>: All data transmitted between your device and our servers is protected using HTTPS/TLS encryption.</li>
                             <li><strong>Secure Session Management</strong>: The application enforces session timeouts and uses secure, HTTP-only cookies.</li>
                         </ul>
@@ -140,7 +139,7 @@
 
                     <section class="public-section" id="recovery">
                         <h2>Account Recovery</h2>
-                        <p>If you lose access to your account, your teacher can issue a recovery code. The recovery process uses only your class join code and the recovery code — no personal information such as your name is required or transmitted during recovery, as this data is not retained in recoverable form after account setup.</p>
+                        <p>If you lose access to your account, your teacher can issue a recovery code. Recovery uses only your class join code and the recovery code. No personal information, such as your name, is required or transmitted during recovery.</p>
                     </section>
 
                     <section class="public-section" id="isolation">
