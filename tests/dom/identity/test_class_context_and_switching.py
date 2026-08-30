@@ -11,7 +11,10 @@ provision_classroom() for additional classes, _provision_roster_seat() for prope
 seat construction with IdentityProfile and claim hashes.
 """
 
+import warnings
+
 import pytest
+from sqlalchemy.exc import SAWarning
 
 from app.extensions import db
 from app.feats.base import FEATContext
@@ -52,7 +55,9 @@ def test_student_dashboard_contains_class_context(client, app):
 def test_teacher_dashboard_injects_admin_layout_view(client, app):
     """Teacher dashboard HTML contains admin view model fields."""
     classroom = initialize_as_teacher("chemistry_p1", client, app)
-    response = client.get("/admin/")
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", SAWarning)
+        response = client.get("/admin/")
     assert response.status_code == 200
     html = response.data.decode()
     # Admin layout view should have class join code rendered

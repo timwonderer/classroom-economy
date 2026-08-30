@@ -45,6 +45,14 @@ def _tz_abbrev(dt_local: datetime) -> str:
     return abbrev if abbrev else ""
 
 
+def _format_month_day(dt_local: datetime) -> str:
+    return f"{dt_local.strftime('%b')} {dt_local.day}"
+
+
+def _format_clock_time(dt_local: datetime) -> str:
+    return dt_local.strftime("%I:%M %p").lstrip("0")
+
+
 # ---------------------------------------------------------------------------
 # Temporal Context resolver (for API routes)
 # ---------------------------------------------------------------------------
@@ -70,7 +78,7 @@ def format_timestamp(dt, tz_name: str = "UTC") -> str:
     if not dt:
         return "—"
     local = _localize(dt, tz_name)
-    formatted = local.strftime("%-b %-d, %Y, %-I:%M %p")
+    formatted = f"{_format_month_day(local)}, {local.year}, {_format_clock_time(local)}"
     abbrev = _tz_abbrev(local)
     return f"{formatted} {abbrev}".strip()
 
@@ -79,21 +87,21 @@ def format_date(dt, tz_name: str = "UTC") -> str:
     if not dt:
         return "—"
     local = _localize(dt, tz_name)
-    return local.strftime("%-b %-d, %Y")
+    return f"{_format_month_day(local)}, {local.year}"
 
 
 def format_compact_date(dt, tz_name: str = "UTC") -> str:
     if not dt:
         return "—"
     local = _localize(dt, tz_name)
-    return local.strftime("%-b %-d")
+    return _format_month_day(local)
 
 
 def format_time(dt, tz_name: str = "UTC") -> str:
     if not dt:
         return "—"
     local = _localize(dt, tz_name)
-    formatted = local.strftime("%-I:%M %p")
+    formatted = _format_clock_time(local)
     abbrev = _tz_abbrev(local)
     return f"{formatted} {abbrev}".strip()
 

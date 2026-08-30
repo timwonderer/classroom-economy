@@ -26,3 +26,13 @@ def test_DOM_OPS_001__csp_header(client):
     assert 'script-src' in csp_directives
     insights_url = 'https://static.cloudflareinsights.com'
     assert insights_url in csp_directives['script-src']
+
+
+def test_landing_page_uses_csp_compatible_local_fonts(client):
+    """Verify the landing page does not request fonts blocked by its CSP."""
+    response = client.get('/gh/landing.html')
+
+    assert response.status_code == 200
+    assert b'/static/css/fonts.css' in response.data
+    assert b'fonts.googleapis.com' not in response.data
+    assert b'fonts.gstatic.com' not in response.data

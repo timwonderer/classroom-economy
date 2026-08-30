@@ -47,7 +47,7 @@ DEFAULT_PUBLIC_ENDPOINTS = {
     "main.offline",
     "main.service_worker",
     "main.verify_hall_pass",
-    "api.tips",
+    "api.get_tips",
 }
 
 # TODO: Same gap — no authoritative doc governs which endpoints bypass
