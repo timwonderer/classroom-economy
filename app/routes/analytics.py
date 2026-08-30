@@ -32,7 +32,6 @@ from app.services.class_configuration_query_service import (
     verify_teacher_owns_class,
 )
 from app.models import Transaction
-from app.models import AuditEvent
 from app.services.ledger_service import get_available_balance
 from app.utils.join_code import get_display_join_code
 
@@ -246,16 +245,14 @@ def dashboard():
 
     active_alerts = []
 
-    recent_events = (
-        AuditEvent.query.filter(
-            AuditEvent.class_id == class_id,
-            AuditEvent.created_at_utc >= window_start,
-            AuditEvent.created_at_utc <= window_end,
-        )
-        .order_by(AuditEvent.created_at_utc.desc())
-        .limit(10)
-        .all()
-    )
+    # The "recent economy events" panel is a DOM-ITR-001 contextual-annotation
+    # surface that is NOT IMPLEMENTED in v2 (§XIII.a). AuditEvent is a
+    # tamper-evident integrity chain, not an Interpretation annotation source, so
+    # feeding its rows here mislabels integrity operations as economy events. The
+    # dashboard builder reads event fields defensively (so it did not crash like
+    # the /events timeline did), but the data is still not lawful Interpretation
+    # output. Present no events until the annotation surface is specified.
+    recent_events = []
 
     # Build the page view model using the analytics builder
     # Pass g.canonical_context for SPEC-TIME-001 compliant timezone conversion
@@ -414,13 +411,17 @@ def events():
         flash('You need to set up class periods before viewing analytics.', 'warning')
         return redirect(url_for('admin.students'))
     
-    # Get all events for this class
-    events_list = (
-        AuditEvent.query.filter(AuditEvent.class_id == class_id)
-        .order_by(AuditEvent.created_at_utc.desc())
-        .all()
-    )
-    
+    # Economy-event timeline (rent/wage/inflation "contextual annotations") is a
+    # DOM-ITR-001 capability that is NOT IMPLEMENTED in v2 (§II, §XIII.a: Annotation
+    # Signals absent from runtime — no lawful source exists). The previous code
+    # rendered `audit_events` rows here, but AuditEvent is a tamper-evident
+    # integrity chain (payload/context digests), not an Interpretation surface, and
+    # lacks the fields this timeline needs (event_type, old_value, new_value,
+    # description, affected_students) — which raised UndefinedError at render time.
+    # Until the Interpretation annotation surface is specified and built, present
+    # the template's graceful empty state rather than fabricate events.
+    events_list = []
+
     try:
         return render_template(
             'admin_analytics_events.html',
@@ -429,17 +430,7 @@ def events():
             available_classes=available_classes
         )
     except TemplateNotFound:
-        # Fallback: return JSON response if template not found
-        events_data = []
-        for event in events_list:
-            events_data.append({
-                'id': event.id,
-                'event_type': event.operation,
-                'description': f"{event.table_name}:{event.row_pk}",
-                'event_date': event.created_at_utc.isoformat(),
-                'affected_students': event.seat_id
-            })
-        return jsonify({'events': events_data, 'join_code': join_code})
+        return jsonify({'events': [], 'join_code': join_code})
 
 
 @analytics_bp.route('/student/<int:student_id>')
