@@ -57,7 +57,6 @@ from app.utils.turnstile import verify_turnstile_token
 from app.utils.ip_handler import get_real_ip
 from app.utils.claim_credentials import compute_primary_claim_hash, match_claim_hash
 from app.utils.name_utils import hash_last_name_parts
-from app.feats.ledger_resolution_feat import build_intended_ledger_plan, resolve_intended_ledger_plan, apply_resolved_ledger_plan
 from app.utils.help_content import HELP_ARTICLES
 from app.utils.economy_policy import (
     get_class_feature_settings,
@@ -1257,31 +1256,13 @@ def transfer():
             return redirect(url_for("student.transfer"))
 
         if from_account == 'checking' and amount > checking_balance:
-            intended_plan = build_intended_ledger_plan(
-                seat_id=seat_id,
-                class_id=class_id,
-                user_id=student.user_id,
-                debit_amount=amount,
-                description=f"Transfer to {to_account}",
-                source_account=from_account,
-                target_account=to_account,
-            )
-            resolved_plan = resolve_intended_ledger_plan(
-                plan=intended_plan,
-                economic_engine=economic_engine,
-                idempotency_key=f"student-transfer:{seat_id}:{class_id}:{amount}:{from_account}:{to_account}:resolve",
-                force_overdraft_fee=True,
-                allow_recovery_transfer=False,
-            )
-            apply_resolved_ledger_plan(
-                resolved_plan=resolved_plan,
-                economic_engine=economic_engine,
-                idempotency_key=f"student-transfer:{seat_id}:{class_id}:{amount}:{from_account}:{to_account}",
-            )
-
+            # A transfer is a lateral movement between the seat's OWN accounts, not
+            # spending. On insufficient funds it is simply invalid: it does not
+            # proceed and does NOT incur an NSF fee. An NSF fee is a failed
+            # AGREEMENT — money that was meant to leave for a purchase or to meet an
+            # obligation — which a same-owner account transfer is not. (Mirrors the
+            # savings-insufficient branch below, which already just declines.)
             message = "Insufficient checking funds."
-            if resolved_plan.overdraft_fee_amount > 0:
-                message += f" Overdraft fee of ${resolved_plan.overdraft_fee_amount:.2f} charged."
             if is_json:
                 return jsonify(status="error", message=message), 400
             flash(message, "transfer_error")
