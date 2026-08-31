@@ -2,7 +2,7 @@
 
 | Reference Number | Version | Effective Date | Supersedes | Authority Level |
 |------------------|---------|----------------|------------|-----------------|
-| SPEC-ITR-001     |  1.1    |     2026-08-30 |        1.0 |       Normative |
+| SPEC-ITR-001     |  1.2    |     2026-08-30 |        1.1 |       Normative |
 
 ---
 
@@ -610,7 +610,7 @@ For clarity, and to prevent implementations from over-reaching:
 
 - No numeric thresholds for any candidate (§14.4).
 - No alert content or `suggested_action` text (§14.5).
-- No persistence schema for Interpretation outputs. `DOM-ITR-001` §IX now specifies the durable, immutable `interpretation_cycle_record` (cycle-bound, self-describing via a versioned `reference_configuration` projection), materialized only as a declared side effect of `FEAT-PROD-004` at payroll completion. Its schema, migration, and certification remain a separate downstream slice; this specification defines the observations that populate `observations_json`, not the table build.
+- No persistence schema for Interpretation outputs. `DOM-ITR-001` §IX now specifies the durable, immutable `interpretation_cycle_record` (cycle-bound, self-describing via a versioned `reference_configuration` projection), materialized only as a declared side effect of `FEAT-PROD-004` at payroll completion. Its schema, migration, and schema certification are now delivered (migration `b3d7f1a9c2e4`, slice 8.1) — the persistence surface is implemented; the materialization writer that populates a row is not yet built. This specification defines the observations that populate `observations_json`, not the table build.
 - FEAT registry rename in code — landed. `FEAT-ITR-001` is now the canonical name in `app/feats/base.py` per `DOM-ITR-001` §VIII; the previous `FEAT-ANLY-001` alias has been removed. Consumer sites (`app/utils/analytics_engine.py`, `app/routes/analytics.py`) updated in the same slice.
 - No axis assignments — the Behavioral / Structural frame is retired by `DOM-ITR-001` v1.2 §IV.
 - No trend indicators — no prior cycle-record source exists yet per `DOM-ITR-001` §XIII.a.

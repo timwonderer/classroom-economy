@@ -2,7 +2,7 @@
 
 | Reference Number | Version | Effective Date | Supersedes | Authority Level |
 |------------------|---------|----------------|------------|-----------------|
-| DOM-CORE-001 | 1.1 | 2026-08-30 | 1.0 | Constitutional |
+| DOM-CORE-001 | 1.2 | 2026-08-30 | 1.1 | Constitutional |
 
 ---
 
@@ -118,7 +118,7 @@ All domains listed below are bound by the following structural rules:
   - Descriptive observations / Interpretive signals: Derived State.
   - `interpretation_cycle_record`: Durable Authoritative Record (immutable, cycle-bound; not a cache).
 - **Key Transitions**: `Compute Interpretation`, `Materialize Cycle Interpretation` (invoked only as a declared side effect of `FEAT-PROD-004`).
-- **Primary Schema**: `interpretation_cycle_record` (`DOM-ITR-001` §IX; not yet built).
+- **Primary Schema**: `interpretation_cycle_record` (`DOM-ITR-001` §IX). Persistence surface implemented in the runtime schema via migration `b3d7f1a9c2e4`; the `FEAT-PROD-004` materialization writer that populates it is not yet built, so no rows exist yet.
 
 ### 9. Support & Communication (`DOM-SUP-001`)
 - **Authority**: Sovereign over issue lifecycle state, resolution records, and class communications.

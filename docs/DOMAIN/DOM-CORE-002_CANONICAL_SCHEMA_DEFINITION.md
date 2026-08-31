@@ -2,7 +2,7 @@
 
 | Reference Number | Version | Effective Date | Supersedes | Authority Level |
 |------------------|---------|----------------|------------|-----------------|
-| DOM-CORE-002     | 1.7     | 2026-08-30     | 1.6        | Constitutional |
+| DOM-CORE-002     | 1.8     | 2026-08-30     | 1.7        | Constitutional |
 
 ---
 
@@ -263,7 +263,7 @@ Policy definition tables — `rent_settings`, `payroll_settings`, `payroll_rewar
 
 **Tables:**
 
-- `interpretation_cycle_record` — durable, immutable per-cycle materialization bound to `payroll_cycle_id`, self-describing via persisted economic reference values (`DOM-ITR-001` §IX). Materialized only as a declared side effect of `FEAT-PROD-004` at payroll completion. Not yet built in the runtime schema.
+- `interpretation_cycle_record` — durable, immutable per-cycle materialization bound to `payroll_cycle_id`, self-describing via persisted economic reference values (`DOM-ITR-001` §IX). Materialized only as a declared side effect of `FEAT-PROD-004` at payroll completion. Table built in the runtime schema via migration `b3d7f1a9c2e4` (persistence surface implemented); the `FEAT-PROD-004` materialization writer that populates it is not yet built, so no rows exist yet.
 
 The former `interpretation_snapshots` (cache) and `interpretation_annotations` tables are retired and superseded by `interpretation_cycle_record` per `DOM-ITR-001` v1.4 §IX. Neither existed in the runtime schema.
 

@@ -19,6 +19,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import Session, validates, synonym
 from sqlalchemy import event
+from sqlalchemy.dialects.postgresql import JSONB
 from app.extensions import db
 from app.hash_utils import get_random_salt, hash_hmac, hash_username, hash_username_lookup
 from app.utils.encryption import PIIEncryptedType, normalize_totp_for_storage
@@ -2341,3 +2342,38 @@ class ChainHead(db.Model):
 
 
 # Integrity status is recomputable from chain_heads and audit_events
+
+
+# -------------------- INTERPRETATION MODELS (DOM-ITR-001) --------------------
+
+class InterpretationCycleRecord(db.Model):
+    """Durable, immutable per-cycle materialization of Interpretation output.
+
+    DOM-ITR-001 §IX. Written exactly once per completed economic cycle as a
+    declared side effect of FEAT-PROD-004 at payroll completion; append-only and
+    never recomputed or invalidated. Not a cache — it is authoritative for "what
+    this cycle meant, evaluated against the configuration that governed it."
+
+    reference_configuration is a versioned, immutable informational projection of
+    the economic configuration consumed while interpreting the cycle (not
+    executable CLASS state, not a cross-domain FK; policy lineage is informational
+    only). payroll_cycle_id is the economic-cycle identity supplied by
+    FEAT-PROD-004 and is not a foreign key (INV-ARC-021 §V.7).
+    """
+    __tablename__ = "interpretation_cycle_record"
+
+    id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    class_id = db.Column(db.String(36), db.ForeignKey('classes.class_id', ondelete='CASCADE'), nullable=False, index=True)
+    payroll_cycle_id = db.Column(db.String(36), nullable=False, index=True)
+    cycle_started_at = db.Column(db.DateTime(timezone=True), nullable=False)
+    cycle_completed_at = db.Column(db.DateTime(timezone=True), nullable=False)
+    computed_at = db.Column(db.DateTime(timezone=True), default=utc_now, nullable=False)
+    reference_configuration = db.Column(JSONB(none_as_null=True), nullable=False)
+    observations_json = db.Column(JSONB(none_as_null=True), nullable=False)
+
+    __table_args__ = (
+        db.UniqueConstraint('class_id', 'payroll_cycle_id', name='uq_interpretation_cycle_record_class_cycle'),
+    )
+
+    def __repr__(self):
+        return f'<InterpretationCycleRecord class={self.class_id} cycle={self.payroll_cycle_id}>'

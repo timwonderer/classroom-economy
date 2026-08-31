@@ -2,7 +2,7 @@
 
 | Reference Number | Version | Effective Date | Supersedes | Authority Level |
 |------------------|---------|----------------|------------|-----------------|
-| DOM-ITR-001      | 1.4     | 2026-08-30     | 1.3        | Normative       |
+| DOM-ITR-001      | 1.5     | 2026-08-30     | 1.4        | Normative       |
 
 ## I-A. Authority Level and Dependencies
 
@@ -122,7 +122,7 @@ Configuration input ranges, permissible policy-mode bands, and configured recomm
 | **Interpretive Signals** | Derived State | Descriptive inputs combined with a declared reference/model. |
 | **Trend Indicators** | Derived State | Requires a prior cycle record source. Available once `interpretation_cycle_record` accrues across cycles (§VIII, §IX). |
 | **Simulation Outputs** | Derived State | Hypothetical, non-persistent. Currently NOT IMPLEMENTED. |
-| **Cycle Interpretation Records** | Durable Authoritative Record | Immutable per-cycle materialization bound to `payroll_cycle_id`; self-describing via a versioned `reference_configuration` projection. Not a cache. SPECIFIED (§VIII, §IX), not yet built. |
+| **Cycle Interpretation Records** | Durable Authoritative Record | Immutable per-cycle materialization bound to `payroll_cycle_id`; self-describing via a versioned `reference_configuration` projection. Not a cache. Persistence surface IMPLEMENTED (`interpretation_cycle_record`, migration `b3d7f1a9c2e4`); materialization writer NOT IMPLEMENTED (§VIII, §IX). |
 | **Annotation Signals** | Derived State | Non-authoritative labels. Currently NOT IMPLEMENTED. |
 
 ---
@@ -204,7 +204,7 @@ Cycles that predate the cycle-bound materialization contract have no `interpreta
 - **Actor**: System
 - **Trigger**: economic-cycle boundary — successful payroll completion for the class (`DOM-PROD-001` §XV), orchestrated by `FEAT-PROD-004`.
 - **Behavior**: Computes the closed cycle's Interpretation and writes exactly one durable, immutable `interpretation_cycle_record` (§IX) bound to the run's `payroll_cycle_id`, capturing the economic reference values in effect for the cycle.
-- **Status**: SPECIFIED (cycle-bound), not yet built. Materialization is invoked only as a declared side effect of `FEAT-PROD-004`; Interpretation never decides on its own that some historical cycle is "ready" to materialize. The record is immutable and never recomputed. Building it remains subject to the schema, provenance, and certification requirements of its downstream contract (§X.9).
+- **Status**: Persistence surface IMPLEMENTED — the `interpretation_cycle_record` table, model, and schema certification exist via migration `b3d7f1a9c2e4` (§IX). Materialization writer NOT IMPLEMENTED — no row is written yet. Materialization is invoked only as a declared side effect of `FEAT-PROD-004`; Interpretation never decides on its own that some historical cycle is "ready" to materialize. The record is immutable and never recomputed. Building the writer remains subject to the provenance and certification requirements of its downstream contract (§X.9).
 
 ### Invalidate Snapshot
 
@@ -222,7 +222,7 @@ Cycles that predate the cycle-bound materialization contract have no `interpreta
 
 ## IX. Derived Schema
 
-The schema declared in this section describes intended persistence for materialized cycle Interpretation. **As of v1.4, this table does not yet exist in the runtime schema or in the migration chain.** All current Interpretation outputs are computed on demand and returned as in-memory dataclasses. Materializing this table requires a separately specified schema / migration / certification slice, invoked only as a declared side effect of `FEAT-PROD-004` (§VIII, §X.9).
+The schema declared in this section describes persistence for materialized cycle Interpretation. **As of v1.5, the `interpretation_cycle_record` table exists in the runtime schema and the migration chain (migration `b3d7f1a9c2e4`): the persistence surface is IMPLEMENTED.** No lawful materialization writer exists yet, so no row is written: all current Interpretation outputs are still computed on demand and returned as in-memory dataclasses. Populating this table requires the separately specified materialization slice, invoked only as a declared side effect of `FEAT-PROD-004` (§VIII, §X.9), which is NOT IMPLEMENTED.
 
 ### `interpretation_cycle_record`
 
@@ -327,7 +327,7 @@ Non-normative appendix. Records the divergences between doctrine and current run
 
 | Element | Doctrine Status | Runtime Status |
 |---|---|---|
-| Materialize Cycle Interpretation | SPECIFIED, cycle-bound (§VIII, §IX) | No persistence layer yet; no `interpretation_cycle_record` table. Invoked only as a declared side effect of `FEAT-PROD-004`. Requires a schema / migration / certification slice. |
+| Materialize Cycle Interpretation | SPECIFIED, cycle-bound (§VIII, §IX) | Persistence surface present: `interpretation_cycle_record` table + model + migration `b3d7f1a9c2e4` + schema certification (slice 8.1). Execution path absent: no materialization writer, so no row is written; invoked only as a declared side effect of `FEAT-PROD-004`, which is not built. |
 | Generate Simulation | Authorized (§VIII) | No simulation surface. |
 | Trend indicators with prior cycle-record source | Authorized (§V) | No prior cycle-record source available yet; `compute_trends` always receives `previous_snapshot=None` and returns `stable`. Unblocked once `interpretation_cycle_record` accrues. |
 
