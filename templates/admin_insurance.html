@@ -1,5 +1,5 @@
 {% extends "layout_admin.html" %}
-{% set page_title = "Insurance" %}
+{% set page_title = "Insurance Management" %}
 {% set current_page = "insurance" %}
 {% block title %}Insurance Management{% endblock %}
 
@@ -17,13 +17,13 @@
 
   <div class="card shadow-sm mb-4">
     <div class="card-header bg-info text-white py-3">
-      <h6 class="mb-0 fw-semibold text-white">
+      <h5 class="mb-0 fw-semibold text-white">
         <span class="material-symbols-outlined me-2" style="vertical-align: text-bottom;">info</span>
-        Insurance Policies are Contracts
-      </h6>
+        Purchased Insurance Policies are Contracts
+      </h5>
     </div>
     <div class="card-body">
-     Classroom Token Hub views the purchase of an insurance product as enforceable contract between the student and the class. Because of that, changes to the policies cannot be applied retroactively to active current policies.
+     When a student purchases an insurance product, it is considered an <strong>enforceable contract</strong> between the student and the class. Changes to the insurance policy only applies to future purchases. Any existing policies will follow the terms at time of purchase until the end of the coverage period.
     </div>
   </div>
 
@@ -31,7 +31,7 @@
     <div class="card-header bg-primary text-white py-3">
       <h5 class="mb-0 fw-bold text-white">
         <span class="material-symbols-outlined me-2" style="vertical-align: text-bottom;">shield</span>
-        Policy Definitions
+        Existing Policies
       </h5>
     </div>
     <div class="list-group list-group-flush">
