@@ -8,6 +8,7 @@ from app.services.context_resolver import CanonicalContext
 from app.services import ledger_service
 from app.services.class_configuration_query_service import get_current_economic_engine
 from app.feats.ledger_resolution_feat import build_intended_ledger_plan, resolve_intended_ledger_plan, apply_resolved_ledger_plan
+from app.feats.nsf_fee_feat import record_nsf_fee_obligation
 
 
 @dataclass
@@ -64,11 +65,22 @@ def execute_admin_adjustments(
                 continue
             if resolved_plan.overdraft_fee_amount > 0:
                 fee_count += 1
-            apply_resolved_ledger_plan(
+            ledger_result = apply_resolved_ledger_plan(
                 resolved_plan=resolved_plan,
                 economic_engine=economic_engine,
                 idempotency_key=f"admin-adjustment:{seat.id}:{class_id}:{amount}:fee",
             )
+            # Cross-domain orchestration (this business FEAT's responsibility):
+            # when Ledger posted an NSF fee, record it as a fine obligation. Ledger
+            # stays domain-blind (DOM-LED-001 §II); the fine's Economic Context is
+            # Obligations-owned (SPEC-ECON-003, DOM-OBL-001 §II.C).
+            nsf_fee_txn_id = (ledger_result or {}).get("ledger_transaction_id")
+            if nsf_fee_txn_id:
+                record_nsf_fee_obligation(
+                    class_id=class_id,
+                    seat_id=seat.id,
+                    fee_transaction_id=nsf_fee_txn_id,
+                )
 
         ledger_service.create_pending_transaction(
             seat_id=seat.id,

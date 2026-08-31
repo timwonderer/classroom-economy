@@ -343,6 +343,18 @@ def _execute_store_purchase_impl(
             error_message=f"Purchase denied by Ledger: {ledger_result.get('reason', 'unknown')}",
         )
 
+    # Cross-domain orchestration: if Ledger charged an NSF fee while resolving this
+    # purchase, record it as a fine obligation (Ledger stays domain-blind —
+    # DOM-LED-001 §II; the fine is Obligations-owned — SPEC-ECON-003, DOM-OBL-001 §II.C).
+    nsf_fee_txn_id = ledger_result.get("ledger_transaction_id")
+    if nsf_fee_txn_id:
+        from app.feats.nsf_fee_feat import record_nsf_fee_obligation
+        record_nsf_fee_obligation(
+            class_id=canonical_context.class_id,
+            seat_id=canonical_context.seat_id,
+            fee_transaction_id=nsf_fee_txn_id,
+        )
+
     # =========================================================================
     # PHASE 3: Entitlement Grants (Atomic)
     # =========================================================================
