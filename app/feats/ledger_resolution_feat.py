@@ -5,7 +5,7 @@ from decimal import Decimal
 
 from app.extensions import db
 from app.feats.base import requires_feat_context
-from app.models import ClassEconomy, Seat, EconomicEngine
+from app.models import Seat, EconomicEngine
 from app.services import ledger_service
 from app.models import _quantize_currency
 from decimal import InvalidOperation
@@ -234,14 +234,13 @@ def apply_resolved_ledger_plan(
         return {"accepted": False, "reason": "denied"}
 
     if resolved_plan.recovery_transfer_amount > 0:
-        class_economy = ClassEconomy.query.filter_by(class_id=seat.class_id).first()
-        user_id = class_economy.user_id if class_economy else resolved_plan.intended_plan.user_id
-        if not user_id:
-            return {"accepted": False, "reason": "missing_user"}
+        # Internal economic action: anchor on class_id + seat_id only (INV-ARC-019).
+        # A savings->checking overdraft-protection transfer moves the SEAT'S OWN
+        # money between its own accounts; it is not a user-scoped act, so it carries
+        # no user_id (the ledger row is anchored by target/actor seat).
         ledger_service.create_transfer_pair(
             seat_id=seat.id,
             class_id=seat.class_id,
-            user_id=user_id,
             amount=resolved_plan.recovery_transfer_amount,
             from_account="savings",
             to_account="checking",
@@ -252,10 +251,8 @@ def apply_resolved_ledger_plan(
 
     if resolved_plan.overdraft_fee_amount > 0:
         fee_idempotency_key = idempotency_key or f"overdraft:{seat.id}:{resolved_plan.intended_plan.class_id}"
-        class_economy = ClassEconomy.query.filter_by(class_id=seat.class_id).first()
-        user_id = class_economy.user_id if class_economy else resolved_plan.intended_plan.user_id
-        if not user_id:
-            return {"accepted": False, "reason": "missing_user"}
+        # Anchor on class_id + seat_id (INV-ARC-019): the fine is charged to the
+        # student's seat, with the class authority seat as actor. No user_id.
         fee_transaction, _created = ledger_service.create_pending_transaction_idempotent(
             idempotency_key=fee_idempotency_key,
             seat_id=seat.id,
@@ -263,12 +260,17 @@ def apply_resolved_ledger_plan(
             target_seat_id=seat.id,
             actor_seat_id=ledger_service.resolve_class_authority_seat_id(seat.class_id),
             mechanism="system",
-            user_id=user_id,
             amount=-resolved_plan.overdraft_fee_amount,
             account_type="checking",
             type="overdraft_fee",
-            description="Overdraft fee",
+            description="Non-sufficient funds fee",
         )
+
+        # NOTE: the NSF fee is a FINE and must ALSO be recorded as an obligation
+        # (SPEC-ECON-003; DOM-OBL-001 §II.C immediate charge). That Economic-Context
+        # write is NOT done here — DOM-LED-001 §II keeps Ledger domain-blind, so the
+        # originating business FEAT records the NSF_FEE obligation from this result's
+        # ledger_transaction_id as part of its own cross-domain orchestration.
         return {"accepted": True, "reason": resolved_plan.outcome, "ledger_transaction_id": fee_transaction.id}
 
     return {"accepted": True, "reason": resolved_plan.outcome}
