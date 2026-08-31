@@ -2,7 +2,7 @@
 
 | Reference Number | Version | Effective Date | Supersedes | Authority Level |
 |------------------|---------|----------------|------------|-----------------|
-| INV-ARC-019      | 1.2     | 2026-07-10     | 1.1 | Constitutional |
+| INV-ARC-019      | 1.3     | 2026-08-30     | 1.2 | Constitutional |
 
 ---
 
@@ -136,15 +136,17 @@ Rules:
 - It is a UUID encoded as a 36-character string.
 - It carries no human-readable or role-specific meaning.
 - It is stable for the lifetime of the seat.
-- It is safe to expose where a class-scoped actor must be referenced without exposing
-  the internal `seats.id`.
-- It MUST resolve under the active `class_id`.
-- It MUST NOT grant authority by itself.
+- It is safe to expose after canonical context has already resolved the actor and
+  boundary, without exposing the internal `seats.id`.
+- It MUST NOT be used as an ingress identifier to discover, resolve, or reconstruct
+  `seats.id`, `classes.class_id`, `users.id`, or canonical execution context.
+- It MUST NOT grant authority or establish scope by itself.
+- Canonical actor and class context MUST be established independently before it is
+  emitted or compared as presentation/reference data.
 
 Use `seats.public_id` for:
 
-- actor URLs
-- teacher-facing participant lookup
+- actor references in already-scoped URLs and views
 - support correlation
 - ticket actor attribution
 - class-scoped analytics drilldowns
@@ -225,7 +227,8 @@ The authenticated principal and active classroom context remain separate:
 - `users.id` establishes who authenticated.
 - `seats.id` establishes who acts.
 - `classes.class_id` establishes where the actor acts.
-- `seats.public_id` exposes the actor externally without exposing `seats.id`.
+- `seats.public_id` exposes an already-resolved actor externally without exposing
+  `seats.id`; it is not a reverse-resolution key.
 
 The session MUST NOT infer an actor or boundary from display fields, role-specific
 public identifiers, legacy numeric participant IDs, or aliases once canonical context
@@ -236,7 +239,7 @@ is available.
 - `users.id` = authentication principal
 - `seats.id` = operational actor
 - `classes.class_id` = isolation boundary
-- `seats.public_id` = canonical deidentified public actor identity
+- `seats.public_id` = outward-only canonical deidentified public actor identity
 - `identity_profiles` = display-only identity
 - `join_code` = boundary alias that resolves to `class_id`
 - roster lookup hashes = seat-owned claim verification artifacts
@@ -253,4 +256,4 @@ is available.
 
 ## XVI. Amendment
 
-Revisions to this document must increment the version number, update the effective date, and remain consistent with foundational documentation standards and core invariants.
+Revisions to this document must increment the version number, update the effective date, and remain consistent with foundational documentation standards and core invariants. The outward-only public actor boundary must be preserved.

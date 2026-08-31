@@ -2,7 +2,7 @@
 
 | Reference Number | Version | Effective Date | Supersedes | Authority Level |
 |------------------|---------|----------------|------------|-----------------|
-| INV-ARC-008      | 1.1     | 2026-06-02     | 1.0        | Foundational    |
+| INV-ARC-008      | 1.2     | 2026-08-30     | 1.1        | Foundational    |
 
 ## I. Purpose
 
@@ -31,8 +31,9 @@ Foundational within `INV-ARC`. Derived from `INV-CORE-000` Section III.1, `` `cl
 
 Identity resolution MUST stop at one authenticated, active class context.
 
-Requests and participant URLs MUST resolve to exactly one `seat_id` within exactly one
-active `class_id`, or fail closed.
+Requests MUST establish exactly one `seat_id` within exactly one active `class_id`, or
+fail closed. Public actor references may only be emitted or compared after that
+canonical context has already been established.
 
 ## VI. Execution Constraints
 
@@ -44,11 +45,12 @@ active `class_id`, or fail closed.
 - **Student ID Quarantine**: Legacy `student_id` is transitional and load-bearing for
   legacy records only. It MUST NOT be introduced into new V2 domains, routes, or FEATs
   except inside explicitly approved bridge code.
-- **Seat Public-ID Boundary**: Class-scoped participant URLs MUST expose
-  `seats.public_id`, the UUID-encoded canonical deidentified public actor identifier,
-  then resolve that identifier under the active `class_id`. A public
-  ID from another class MUST fail closed, including when the same teacher owns both
-  classes or the same user owns both seats.
+- **Seat Public-ID Boundary**: `seats.public_id` is an outward-facing, UUID-encoded,
+  deidentified representation of an already-resolved operational actor. It MUST NOT
+  be used as an ingress identifier to discover, resolve, or reconstruct `seats.id`,
+  `classes.class_id`, `users.id`, or canonical execution context. Canonical actor and
+  class context MUST be established independently before `seats.public_id` is emitted
+  or compared as presentation/reference data.
 - **No Alias Substitution**: Legacy numeric student IDs and role-specific public IDs MUST
   NOT be accepted as substitutes for `seats.public_id` on class-scoped participant
   routes.
@@ -74,4 +76,5 @@ all fail closed on scope mismatch.
 ## IX. Amendment
 
 Revisions must preserve fail-closed active-class resolution and the prohibition on
-alias-based participant lookup.
+alias-based participant lookup. Public actor identity remains outward-only and must
+not become a reverse-resolution authority.
