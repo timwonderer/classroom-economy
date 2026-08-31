@@ -6,9 +6,6 @@ from decimal import Decimal
 from app.extensions import db
 from app.services.context_resolver import CanonicalContext
 from app.services import ledger_service
-from app.services.class_configuration_query_service import get_current_economic_engine
-from app.feats.ledger_resolution_feat import build_intended_ledger_plan, resolve_intended_ledger_plan, apply_resolved_ledger_plan
-from app.feats.nsf_fee_feat import record_nsf_fee_obligation
 
 
 @dataclass
@@ -24,11 +21,20 @@ def execute_admin_adjustments(
     adjustments: list[dict],
     actor_seat_id: int,
 ) -> AdminAdjustmentResult:
-    """Ledger-led FEAT for bulk admin-created adjustments."""
+    """FEAT for bulk admin-created adjustments (teacher credits and penalties).
+
+    An admin adjustment is a teacher-applied credit or PENALTY (fine). A penalty
+    is neither an intended purchase nor an existing obligation, so — per the
+    economic model — it MUST NOT generate an NSF/overdraft fine, and it does not
+    raid the student's savings to cover itself. It posts as a direct ledger
+    debit/credit on the seat's own account (INV-ARC-019: anchored on class_id +
+    seat_id), settling below zero if the balance cannot cover the penalty.
+
+    ``declined_count`` / ``fee_count`` are retained on the result for backward
+    compatibility and are always 0: penalties are never declined for insufficient
+    funds and never incur a fee.
+    """
     applied_count = 0
-    declined_count = 0
-    fee_count = 0
-    economic_engine = get_current_economic_engine(ctx.class_id)
 
     for adjustment in adjustments:
         seat = adjustment.get("seat")
@@ -42,45 +48,6 @@ def execute_admin_adjustments(
         user_id = adjustment["user_id"]
         class_id = seat.class_id
         mechanism = "system" if ctx.actor_role == "sysadmin" else "teacher"
-        shortfall = Decimal("0.00")
-        if account_type == "checking" and amount < 0:
-            intended_plan = build_intended_ledger_plan(
-                seat_id=seat.id,
-                class_id=class_id,
-                user_id=user_id,
-                debit_amount=abs(amount),
-                description=adjustment["description"],
-                source_account="checking",
-                target_account="admin_adjustment",
-            )
-            resolved_plan = resolve_intended_ledger_plan(
-                plan=intended_plan,
-                economic_engine=economic_engine,
-                idempotency_key=f"admin-adjustment:{seat.id}:{class_id}:{amount}:resolve",
-                force_overdraft_fee=True,
-                allow_recovery_transfer=True,
-            )
-            if resolved_plan.outcome == "DENY":
-                declined_count += 1
-                continue
-            if resolved_plan.overdraft_fee_amount > 0:
-                fee_count += 1
-            ledger_result = apply_resolved_ledger_plan(
-                resolved_plan=resolved_plan,
-                economic_engine=economic_engine,
-                idempotency_key=f"admin-adjustment:{seat.id}:{class_id}:{amount}:fee",
-            )
-            # Cross-domain orchestration (this business FEAT's responsibility):
-            # when Ledger posted an NSF fee, record it as a fine obligation. Ledger
-            # stays domain-blind (DOM-LED-001 §II); the fine's Economic Context is
-            # Obligations-owned (SPEC-ECON-003, DOM-OBL-001 §II.C).
-            nsf_fee_txn_id = (ledger_result or {}).get("ledger_transaction_id")
-            if nsf_fee_txn_id:
-                record_nsf_fee_obligation(
-                    class_id=class_id,
-                    seat_id=seat.id,
-                    fee_transaction_id=nsf_fee_txn_id,
-                )
 
         ledger_service.create_pending_transaction(
             seat_id=seat.id,
@@ -98,4 +65,4 @@ def execute_admin_adjustments(
 
     db.session.flush()
 
-    return AdminAdjustmentResult(applied_count=applied_count, declined_count=declined_count, fee_count=fee_count)
+    return AdminAdjustmentResult(applied_count=applied_count, declined_count=0, fee_count=0)
