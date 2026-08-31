@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from decimal import Decimal
+from typing import NamedTuple
 
 from app.extensions import db
 from app.models import LedgerBalanceSnapshot, LedgerMechanism, Seat, Transaction, TransactionStatus, ClassEconomy, _quantize_currency
@@ -93,6 +94,128 @@ def get_seat_ids_with_student_originated_activity(
         .all()
     )
     return {row.seat_id for row in rows if row.seat_id is not None}
+
+
+# --- Interpretation read projections (SPEC-ITR-001 §7, §10) -----------------
+#
+# Lightweight, read-only row projections consumed by the Interpretation compute
+# layer. They carry only the fields Interpretation is permitted to classify on;
+# ``Transaction.type`` is deliberately excluded (INV-ITR-015). These surfaces are
+# pure reads (INV-ARC-007) exposed by the Ledger domain, which owns the
+# provenance of its own rows (INV-ARC-009, INV-ITR-016).
+
+
+class StudentOriginatedRow(NamedTuple):
+    """One student-originated ledger row (§6.3), projected for Q2 aggregation."""
+
+    seat_id: int | None
+    amount_cents: int
+
+
+class InboundLedgerRow(NamedTuple):
+    """One inbound-to-seat ledger row, projected for Q5 income-origin classification.
+
+    ``mechanism`` is normalized to its lowercase string value (``self`` /
+    ``teacher`` / ``system``) so the interpretation classifier operates on plain
+    data rather than an ORM enum.
+    """
+
+    transaction_id: int
+    seat_id: int | None
+    amount_cents: int
+    feat_code: str | None
+    correlation_id: str | None
+    original_transaction_id: int | None
+    mechanism: str | None
+    account_type: str | None
+
+
+def _mechanism_value(mechanism) -> str | None:
+    """Normalize a stored mechanism (enum member or string) to its lowercase value."""
+    if mechanism is None:
+        return None
+    value = getattr(mechanism, "value", mechanism)
+    return str(value).lower()
+
+
+def get_student_originated_rows(
+    class_id: str, window_start, window_end
+) -> list[StudentOriginatedRow]:
+    """Return student-originated ledger rows (§6.3) in ``[start, end)``.
+
+    Read-only Ledger surface for Q2 (SPEC-ITR-001 §7.3). Applies the same §6.3
+    student-originated classifier as :func:`get_seat_ids_with_student_originated_activity`,
+    but projects the per-row ``amount_cents`` so Q2-C1 (frequency) and Q2-C2
+    (monetary volume) can be computed from a single scoped read. Never consults
+    ``Transaction.type`` (INV-ITR-015).
+    """
+    if not class_id or window_start is None or window_end is None:
+        return []
+    rows = (
+        Transaction.query
+        .with_entities(Transaction.seat_id, Transaction.amount_cents)
+        .filter(
+            Transaction.class_id == class_id,
+            Transaction.timestamp >= ensure_utc(window_start),
+            Transaction.timestamp < ensure_utc(window_end),
+            _student_originated_filter(),
+        )
+        .all()
+    )
+    return [
+        StudentOriginatedRow(seat_id=row.seat_id, amount_cents=int(row.amount_cents or 0))
+        for row in rows
+    ]
+
+
+def get_inbound_ledger_rows(
+    class_id: str, window_start, window_end
+) -> list[InboundLedgerRow]:
+    """Return inbound-to-seat (positive-amount), non-void ledger rows in ``[start, end)``.
+
+    Read-only Ledger surface for Q5 income composition (SPEC-ITR-001 §10.3). An
+    inbound row is a credit to the canonical anchor seat (``amount_cents > 0``;
+    the model documents positive amounts as inbound). Classification into the six
+    §10.2 origin categories is performed by the Interpretation domain
+    (``income_origin``) using the projected provenance fields — never
+    ``Transaction.type`` (INV-ITR-015).
+    """
+    if not class_id or window_start is None or window_end is None:
+        return []
+    rows = (
+        Transaction.query
+        .with_entities(
+            Transaction.id,
+            Transaction.seat_id,
+            Transaction.amount_cents,
+            Transaction.feat_code,
+            Transaction.correlation_id,
+            Transaction.original_transaction_id,
+            Transaction.mechanism,
+            Transaction.account_type,
+        )
+        .filter(
+            Transaction.class_id == class_id,
+            Transaction.timestamp >= ensure_utc(window_start),
+            Transaction.timestamp < ensure_utc(window_end),
+            Transaction.amount_cents > 0,
+            Transaction.is_void.isnot(True),
+        )
+        .all()
+    )
+    return [
+        InboundLedgerRow(
+            transaction_id=row.id,
+            seat_id=row.seat_id,
+            amount_cents=int(row.amount_cents or 0),
+            feat_code=row.feat_code,
+            correlation_id=row.correlation_id,
+            original_transaction_id=row.original_transaction_id,
+            mechanism=_mechanism_value(row.mechanism),
+            account_type=row.account_type,
+        )
+        for row in rows
+    ]
 
 
 def get_last_payroll_time(seat_id: int | None = None, class_id: str | None = None):

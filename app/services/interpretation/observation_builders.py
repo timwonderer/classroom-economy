@@ -15,13 +15,20 @@ from __future__ import annotations
 from decimal import Decimal, ROUND_HALF_EVEN
 from typing import Any
 
-# Fixed scales (SPEC-ITR-001 §15.9). Fractions carry four places to preserve
-# ratio precision; distribution statistics carry two.
+# Fixed scales (SPEC-ITR-001 §15.9). Fractions and ratios carry four places to
+# preserve ratio precision; distribution statistics and monetary amounts carry
+# two (amounts are token minor-unit magnitudes rendered as dollars).
 FRACTION_SCALE = 4
+RATIO_SCALE = 4
+RATE_SCALE = 4
 DISTRIBUTION_SCALE = 2
+AMOUNT_SCALE = 2
 
 _FRACTION_QUANT = Decimal(10) ** -FRACTION_SCALE
+_RATIO_QUANT = Decimal(10) ** -RATIO_SCALE
+_RATE_QUANT = Decimal(10) ** -RATE_SCALE
 _DISTRIBUTION_QUANT = Decimal(10) ** -DISTRIBUTION_SCALE
+_AMOUNT_QUANT = Decimal(10) ** -AMOUNT_SCALE
 
 # Pinned percentile points for the distribution core (SPEC-ITR-001 §15.6.1).
 _PERCENTILE_POINTS: tuple[tuple[str, int], ...] = (
@@ -63,6 +70,85 @@ def fraction_value(numerator: int, denominator: int) -> dict[str, Any]:
         "denominator": den,
         "value": canonical_decimal(ratio, _FRACTION_QUANT),
     }
+
+
+def ratio_value(antecedent: int, consequent: int) -> dict[str, Any]:
+    """Build a ``ratio`` value (SPEC-ITR-001 §15.6) from two observed magnitudes.
+
+    ``antecedent`` / ``consequent`` are integer minor-unit magnitudes (e.g. cents).
+    A zero consequent yields a value of ``0`` rather than raising — an empty
+    denominator is a degenerate but lawful observation.
+    """
+    ant = int(antecedent)
+    con = int(consequent)
+    quotient = Decimal(ant) / Decimal(con) if con else Decimal(0)
+    return {
+        "kind": "ratio",
+        "antecedent": ant,
+        "consequent": con,
+        "value": canonical_decimal(quotient, _RATIO_QUANT),
+    }
+
+
+def rate_value(numerator: int, denominator: int, *, unit: str) -> dict[str, Any]:
+    """Build a ``rate`` value (SPEC-ITR-001 §15.6): a per-unit quantity.
+
+    ``numerator`` / ``denominator`` are integer counts (e.g. transactions and
+    active-seat-days). ``unit`` names the per-unit basis (e.g.
+    ``transactions_per_active_seat_per_day``). A zero denominator yields ``0``.
+    """
+    num = int(numerator)
+    den = int(denominator)
+    quotient = Decimal(num) / Decimal(den) if den else Decimal(0)
+    return {
+        "kind": "rate",
+        "numerator": num,
+        "denominator": den,
+        "unit": unit,
+        "value": canonical_decimal(quotient, _RATE_QUANT),
+    }
+
+
+def amount_value(minor_units: int, *, unit: str = "tokens") -> dict[str, Any]:
+    """Build an ``amount`` value (SPEC-ITR-001 §15.6) from integer minor units.
+
+    ``minor_units`` is a signed cents magnitude; it is rendered as a two-place
+    decimal in whole tokens. ``unit`` is ``"tokens"`` for raw magnitudes or
+    ``"cwi"`` when CWI-normalized.
+    """
+    dollars = Decimal(int(minor_units)) / Decimal(100)
+    return {
+        "kind": "amount",
+        "value": canonical_decimal(dollars, _AMOUNT_QUANT),
+        "unit": unit,
+    }
+
+
+def category_fractions_value(
+    category_numerators: dict[str, int], denominator: int
+) -> dict[str, Any]:
+    """Build a ``category_fractions`` value (SPEC-ITR-001 §15.6, §10.2).
+
+    ``category_numerators`` maps each category id to its integer minor-unit
+    magnitude; ``denominator`` is the shared total. Every supplied category is
+    emitted (a zero share is lawful), sorted ascending by ``category`` id as
+    §15.9 requires. Each category carries its own paired ``numerator`` /
+    ``denominator`` provenance. A zero denominator yields ``0`` per category.
+    """
+    den = int(denominator)
+    categories = []
+    for label in sorted(category_numerators):
+        num = int(category_numerators[label])
+        share = Decimal(num) / Decimal(den) if den else Decimal(0)
+        categories.append(
+            {
+                "category": label,
+                "numerator": num,
+                "denominator": den,
+                "value": canonical_decimal(share, _FRACTION_QUANT),
+            }
+        )
+    return {"kind": "category_fractions", "categories": categories}
 
 
 def _percentile(sorted_vals: list[int], point: int) -> Decimal:
