@@ -2,7 +2,7 @@
 
 | Reference Number | Version | Effective Date | Supersedes | Authority Level |
 |------------------|---------|----------------|------------|-----------------|
-| SPEC-ITR-001     |  1.0    |     2026-08-16 |       None |       Normative |
+| SPEC-ITR-001     |  1.1    |     2026-08-30 |        1.0 |       Normative |
 
 ---
 
@@ -34,7 +34,9 @@ This document does not define:
 
 This specification's authority derives from and is subordinate to:
 
-- `DOM-ITR-001` v1.2 — Interpretation Domain (semantic authority)
+- `DOM-ITR-001` — Interpretation Domain (semantic authority). The output-property and invariant rules restated here derive from the v1.2 semantic model (§IV, INV-ITR-012–017), which v1.4 preserves. v1.4 additionally specifies cycle-bound materialization (`interpretation_cycle_record`, §VII–§IX); v1.1 of this specification aligns to it.
+- `DOM-PROD-001` — Productivity and Payroll Domain (payroll-cycle boundary, `payroll_cycle_id`)
+- `FEAT-PROD-004` — Complete Payroll Cycle (canonical materialization orchestrator)
 - `DOM-CORE-000` — Domain Foundation
 - `INV-ARC-009` — Domain Authority for State
 
@@ -99,7 +101,7 @@ This specification defines nine observation questions. Q7 is a boundary rule, no
 
 Insurance adoption is intentionally excluded from Economy Health scope. It is neither a required observation of `DOM-ITR-001` v1.2 nor authorized by this specification. Any future addition requires a defensible semantic question and a separate SPEC revision.
 
-Trend indicators (period-over-period comparisons) are out of scope for v1.0 because no prior-snapshot source exists (`DOM-ITR-001` §XIII.a).
+Trend indicators (period-over-period comparisons) are out of scope for v1.0 because no prior cycle-record source exists yet (`DOM-ITR-001` §XIII.a); one accrues only as `interpretation_cycle_record` rows are materialized cycle-over-cycle.
 
 ---
 
@@ -298,9 +300,17 @@ Count-based and amount-based observations SHALL be reported separately. Waived o
 
 An `AssessmentEvent.PAYMENT` whose referenced Ledger row is student-originated (`mechanism=SELF`) is treated as student-covered. Where a teacher-injected credit prior to the `PAYMENT` event funded the student's account, this specification does not attempt to attribute that funding to the teacher. This is a fundamental limitation of the persisted provenance (no per-seat funds-source lineage), not a specification omission.
 
-### 8.6 Preconditions and Gaps
+### 8.6 Overdraft / NSF Obligation Outcomes
 
-**Overdraft / NSF fees are excluded from Q3 in v1.0.** Per `DOM-ITR-001` §XIII.c, ownership of overdraft / NSF fee assessment is unresolved between LEDGER and OBLIGATIONS. Runtime currently writes overdraft as a Ledger row with `type="overdraft_fee"` and produces no `AssessmentEvent`. Interpretation MUST NOT infer ownership per §XIII.c. Q3 outputs SHALL declare that overdraft / NSF is not represented, and downstream consumers MUST NOT assume Q3 fractions include overdraft / NSF weight.
+**Overdraft / NSF fees are admitted into Q3 as of v1.1.** The ownership question is resolved: per `SPEC-ECON-003` §4.6.1.1 and `DOM-ITR-001` §XIII.c, OBLIGATIONS owns the NSF fee as an immediate obligation, LEDGER executes the fee debit and stays domain-blind, and the originating business FEAT's cross-domain orchestration produces an `AssessmentEvent` (an `NSF_FEE` `ASSESSMENT` and a corresponding `PAYMENT` settled by the fee debit).
+
+Consequently:
+
+- An NSF-fee obligation is an ordinary obligation for Q3 purposes and participates in Q3-C1 (count-based satisfaction), Q3-C2 (amount-based coverage), and Q3-C3 (waiver-distinct breakdown), consumed from `assessment_events` per INV-ITR-016 — never reconstructed from a Ledger `type` string.
+- Q3 outputs SHALL identify the NSF-fee obligation type distinctly (per-obligation-type subject, §8.4) so a reader can see obligation outcomes with and without the NSF-fee contribution.
+- **Scope boundary (mirrors the assessment scope).** An NSF fee exists only for a failed purchase or a failed obligation payment (a failed *agreement*). It is never assessed for transfers (lateral movement) or penalties (admin adjustments). Q3 SHALL NOT synthesize an NSF obligation for any event that did not produce an `NSF_FEE` `AssessmentEvent`.
+
+**Coverage gap.** Only NSF fees recorded through the resolved orchestration (producing an `AssessmentEvent`) are observable. Any legacy overdraft rows written before that orchestration exists as bare Ledger `type="overdraft_fee"` rows with no `AssessmentEvent`; those are not observable by Q3 and MUST NOT be reconstructed from Ledger, per INV-ITR-016 and INV-ITR-015. This is a transitional coverage gap tracked toward zero, not an ownership question.
 
 ---
 
@@ -492,7 +502,7 @@ Are students remaining economically capable of participating in the classroom ec
 - **No low-balance threshold.** The quantitative boundary for "economic difficulty" or "depletion" is explicitly unresolved. It requires a defensible economy-relative reference that neither `DOM-CLASS-*` nor `SPEC-ECON-003` currently declares. Class-relative percentiles are not that reference (they belong to Q6).
 - **No prediction.** Recovery-feasibility modeling is out of scope for v1.0. Q9 is descriptive observation only.
 - **No recovery/reset gating.** Recovery or reset eligibility, triggering, execution, and gating are not Interpretation-owned per `DOM-ITR-001` §II. Interpretation observations may later inform such a decision but SHALL NOT reference, specify, or gate it.
-- **Overdraft / NSF excluded.** Per §XIII.c, the ownership gap prevents Q9 from including overdraft / NSF signals in v1.0.
+- **Overdraft / NSF admitted (v1.1).** The ownership question is resolved (§8.6): OBLIGATIONS owns the NSF fee, which surfaces as an `AssessmentEvent`. Q9's obligation-outcome signals (§13.3.b) therefore include NSF-fee obligations, consumed from `assessment_events` per INV-ITR-016. NSF-fee obligations remain descriptive observations only; they do not authorize any viability verdict (§13.5).
 
 ### 13.3 Independent Observation Groups
 
@@ -533,7 +543,7 @@ An inactive seat is not observed as economically distressed under Q9; it is obse
 
 Persistence is not defined numerically in v1.0. Reporting states persistence in terms of "single completed cycle" or "consecutive completed cycles" as observed, without invoking a fixed duration.
 
-**Persistence is not a trend.** Persistence answers only whether the same qualifying descriptive observation is present in independently evaluated consecutive completed cycles. It SHALL NOT calculate direction, magnitude of change, slope, improvement, deterioration, or any comparison between cycle values. Period-over-period trend computation remains out of scope for v1.0 (§4) and requires a prior-snapshot source that does not currently exist (`DOM-ITR-001` §XIII.a).
+**Persistence is not a trend.** Persistence answers only whether the same qualifying descriptive observation is present in independently evaluated consecutive completed cycles. It SHALL NOT calculate direction, magnitude of change, slope, improvement, deterioration, or any comparison between cycle values. Period-over-period trend computation remains out of scope for v1.0 (§4) and requires a prior cycle-record source that does not currently exist (`DOM-ITR-001` §XIII.a).
 
 ### 13.4 Candidate Quantity
 
@@ -550,8 +560,8 @@ Persistence is not defined numerically in v1.0. Reporting states persistence in 
 ### 13.5 Preconditions and Gaps
 
 - **Viability reference undefined.** Q9 cannot presently declare "students in economic difficulty" as an interpretive signal because no observational reference exists that would authorize such a comparison. Adding such an interpretive signal in a future revision requires either (a) `DOM-CLASS-*` or `SPEC-ECON-*` declaring a viability reference explicitly, or (b) an Interpretation-declared reference that satisfies the §II reference-scope constraint (frames analysis without manufacturing an expectation owned by another domain).
-- **Overdraft / NSF excluded (§XIII.c).** Q9 outputs SHALL declare that overdraft / NSF fees are not represented until the LEDGER / OBLIGATIONS ownership question is resolved.
-- **Historical Configuration Binding noncompliance (§XIII.b).** Because the current runtime evaluates historical windows against compute-time configuration, Q9 signals over a window that spans a configuration change are computed noncompliantly. Callers of Q9 SHALL be advised of this per `DOM-ITR-001` §VII.
+- **Overdraft / NSF admitted (§8.6).** Q9's obligation-outcome signals include NSF-fee obligations sourced from `assessment_events`, subject to the transitional coverage gap for legacy pre-orchestration overdraft rows described in §8.6.
+- **Historical Configuration Binding resolved for cycle records (`DOM-ITR-001` §VII).** When Q9 is materialized as part of an `interpretation_cycle_record` at payroll completion (`FEAT-PROD-004`), it is bound to the closed cycle and its versioned `reference_configuration` projection, so it is not reinterpreted under later configuration. Pre-contract cycles have no such projection and are therefore explicitly **not reinterpreted or replayable** — they do not become replayable merely because the table now exists. Ad-hoc caller-supplied windows spanning a configuration change are likewise not replayable; callers SHALL be advised in that transitional case.
 
 ---
 
@@ -586,7 +596,9 @@ Existing runtime `suggested_action` content in `analytics_engine.py::generate_al
 
 ### 14.6 Time Model
 
-Per `DOM-ITR-001` §VII, only completed economic cycles are evaluated. Where the implementing FEAT accepts a caller-supplied window, it SHALL either reject non-cycle-aligned windows or coerce them to the nearest fully completed cycle boundary, and SHALL declare which behavior was chosen in its output metadata.
+Per `DOM-ITR-001` §VII, only completed economic cycles are evaluated. The canonical economic cycle is defined by payroll completion (`DOM-PROD-001` §XV): a cycle closes when a class-level payroll run completes, and its `payroll_cycle_id` identifies the completed window. The authoritative Interpretation of a completed cycle is materialized once, as an `interpretation_cycle_record`, via `FEAT-PROD-004`.
+
+Where the implementing FEAT accepts an ad-hoc caller-supplied window (outside the materialization path), it SHALL either reject non-cycle-aligned windows or coerce them to the nearest fully completed cycle boundary, and SHALL declare which behavior was chosen in its output metadata.
 
 Per `SPEC-TIME-001`, all time logic uses the canonical temporal resolver. Interpretation SHALL NOT compute time semantics directly.
 
@@ -598,13 +610,13 @@ For clarity, and to prevent implementations from over-reaching:
 
 - No numeric thresholds for any candidate (§14.4).
 - No alert content or `suggested_action` text (§14.5).
-- No persistence schema for Interpretation outputs — see `DOM-ITR-001` §VIII, §IX, and §X.9. Materialize FEAT is a separate future contract.
+- No persistence schema for Interpretation outputs. `DOM-ITR-001` §IX now specifies the durable, immutable `interpretation_cycle_record` (cycle-bound, self-describing via a versioned `reference_configuration` projection), materialized only as a declared side effect of `FEAT-PROD-004` at payroll completion. Its schema, migration, and certification remain a separate downstream slice; this specification defines the observations that populate `observations_json`, not the table build.
 - FEAT registry rename in code — landed. `FEAT-ITR-001` is now the canonical name in `app/feats/base.py` per `DOM-ITR-001` §VIII; the previous `FEAT-ANLY-001` alias has been removed. Consumer sites (`app/utils/analytics_engine.py`, `app/routes/analytics.py`) updated in the same slice.
 - No axis assignments — the Behavioral / Structural frame is retired by `DOM-ITR-001` v1.2 §IV.
-- No trend indicators — no prior-snapshot source exists per `DOM-ITR-001` §XIII.a.
+- No trend indicators — no prior cycle-record source exists yet per `DOM-ITR-001` §XIII.a.
 - No composite scores, no state ladders, no severity taxonomies (Q9 §13.2).
 - No recovery / reset eligibility, references, or gating (Q9 §13.2). Per `DOM-ITR-001` §II, recovery / reset is not Interpretation-owned; Q9 outputs SHALL NOT name, reference, or gate any specific recovery mechanism.
-- No overdraft / NSF observation until the LEDGER / OBLIGATIONS ownership question is resolved (§8.6, §13.5).
+- (Resolved in v1.1) Overdraft / NSF observation is admitted via the OBLIGATIONS `AssessmentEvent` surface (§8.6, §13.5).
 - No monetary velocity (Fisher-style) formula (Q2-C3).
 - No admin-adjustment subtype taxonomy (Q5 §10.2 category 3).
 - No configuration-band-as-expectation comparisons (§12, INV-ITR-014).
@@ -621,8 +633,8 @@ The following are preconditions to lawful implementation of the candidates in th
 | P2 | Ledger provenance available via `mechanism`, `feat_code`, `correlation_id`, reversal linkage | Ledger | **Satisfied** |
 | P3 | Authoritative source-domain event tables consulted before Ledger reconstruction (INV-ITR-016) | Interpretation | Runtime noncompliance per `DOM-ITR-001` §XIII.b — must be closed by implementing FEAT |
 | P4 | System-FEAT set enumerable (for §6.3 classifier) | Interpretation FEAT | Enumerable from `app/feats/base.py` |
-| P5 | Overdraft / NSF ownership resolved between LEDGER and OBLIGATIONS | Cross-domain (not Interpretation) | **Unresolved** per `DOM-ITR-001` §XIII.c — Q3 and Q9 exclude overdraft / NSF until resolved |
-| P6 | Historical Configuration Binding schema and provenance surface | Interpretation + CLASS | **Unresolved** per `DOM-ITR-001` §VII and §XIII.b — implementations must advise callers of noncompliance |
+| P5 | Overdraft / NSF ownership resolved between LEDGER and OBLIGATIONS | Cross-domain (not Interpretation) | **Resolved** (`SPEC-ECON-003` §4.6.1.1, `DOM-ITR-001` §XIII.c) — OBLIGATIONS owns the NSF fee, surfaced as an `AssessmentEvent`; Q3 and Q9 admit it (§8.6, §13.5). Transitional coverage gap for legacy pre-orchestration overdraft rows only. |
+| P6 | Historical Configuration Binding schema and provenance surface | Interpretation + PROD + CLASS | **Resolved by contract** (`DOM-ITR-001` §VII, §IX) — cycle-bound `interpretation_cycle_record` persists the governing `reference_configuration` projection at payroll completion (`FEAT-PROD-004`), so cycles under the contract are self-describing and never reinterpreted. Table build is a downstream slice. Pre-contract cycles have no frozen configuration projection and are therefore explicitly **not reinterpreted or replayable**; they do not become replayable merely because the table now exists. |
 | P7 | Threshold owners declared for any implementing FEAT that needs thresholds | Implementing FEAT | Deferred to FEAT specification |
 | P8 | Class Configuration observational references (if any future candidate ever requires one) | CLASS / SPEC-ECON | Not required by v1.0 candidates. CWI usage in v1.0 is Normalization dependency (§3.1), not Reference Dependency. |
 

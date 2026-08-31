@@ -2,7 +2,7 @@
 
 | Reference Number | Version | Effective Date | Supersedes | Authority Level |
 |------------------|---------|----------------|------------|-----------------|
-| DOM-ITR-001      | 1.3     | 2026-08-30     | 1.2        | Normative       |
+| DOM-ITR-001      | 1.4     | 2026-08-30     | 1.3        | Normative       |
 
 ## I-A. Authority Level and Dependencies
 
@@ -33,7 +33,7 @@ Interpretation does not mutate state, enforce policy, or define correctness. It 
 - **Descriptive observations** over authoritative domain facts, per completed economic cycle windows.
 - **Interpretive signals** that combine descriptive observations with an explicit, declared reference or model, subject to the reference-scope constraint below.
 - **Aggregation** of per-subject observations to class-level rollups where declared.
-- **Trend indicators**, when a prior-snapshot source exists. (Currently NOT IMPLEMENTED — see §VIII.)
+- **Trend indicators**, when a prior cycle-record source exists. (Available once `interpretation_cycle_record` accrues across cycles — see §VIII, §IX.)
 - **Simulation outputs** — non-persistent projections. (Currently NOT IMPLEMENTED.)
 - **Contextual annotations** — non-authoritative labels attached to observed events. (Currently NOT IMPLEMENTED.)
 
@@ -120,9 +120,9 @@ Configuration input ranges, permissible policy-mode bands, and configured recomm
 | :--- | :--- | :--- |
 | **Descriptive Observations** | Derived State | Computed from authoritative domain facts. |
 | **Interpretive Signals** | Derived State | Descriptive inputs combined with a declared reference/model. |
-| **Trend Indicators** | Derived State | Requires prior-snapshot source (currently unavailable — see §VIII). |
+| **Trend Indicators** | Derived State | Requires a prior cycle record source. Available once `interpretation_cycle_record` accrues across cycles (§VIII, §IX). |
 | **Simulation Outputs** | Derived State | Hypothetical, non-persistent. Currently NOT IMPLEMENTED. |
-| **Interpretation Snapshots** | Cache | Performance only. Currently NOT IMPLEMENTED — see §VIII, §IX. |
+| **Cycle Interpretation Records** | Durable Authoritative Record | Immutable per-cycle materialization bound to `payroll_cycle_id`; self-describing via a versioned `reference_configuration` projection. Not a cache. SPECIFIED (§VIII, §IX), not yet built. |
 | **Annotation Signals** | Derived State | Non-authoritative labels. Currently NOT IMPLEMENTED. |
 
 ---
@@ -141,7 +141,7 @@ Configuration input ranges, permissible policy-mode bands, and configured recomm
 - **INV-ITR-008: Non-Authoritative Output**. Interpretation MUST NOT enforce policy, block actions, or mutate configuration.
 - **INV-ITR-009: Actor Dignity Constraint**. No rankings, no exposed identities, no hierarchy signals.
 - **INV-ITR-010: No Policy Authority**. Interpretation evaluates but never enforces.
-- **INV-ITR-011: Cache Integrity**. Caches must be recomputable and invalidated on change.
+- **INV-ITR-011: Read-Cache Integrity (scoped)**. This invariant applies ONLY to optional, non-authoritative, ephemeral read caches used to accelerate on-demand Interpretation. Such caches must be recomputable and invalidated on change. It does **not** apply to the durable `interpretation_cycle_record` (§IX): a materialized cycle record is authoritative, immutable, and never recomputed or invalidated. No caching rule may be read to require rewriting a completed cycle record.
 
 ### Semantic Invariants
 
@@ -179,11 +179,15 @@ Interpretation begins only after at least one full completed economic cycle. (En
 
 ### Historical Configuration Binding
 
-Interpretation of a completed historical window SHALL be evaluated against the class configuration that was authoritative for that window. Reinterpreting historical windows under a later configuration is prohibited. When the current schema cannot represent the configuration authoritative for a given historical window with sufficient provenance, Interpretation SHALL declare the window's evaluation as **not replayable** rather than silently substituting current configuration.
+Interpretation of a completed historical window SHALL be evaluated against the class configuration that was authoritative for that window. Reinterpreting historical windows under a later configuration is prohibited.
 
-### Known Noncompliance
+This requirement is satisfied by **cycle-bound materialization** (§VIII, §IX). The economic cycle is defined by payroll completion (`DOM-PROD-001` §XV): when a class-level payroll run closes cycle N, the canonical completion FEAT (`FEAT-PROD-004`) orchestrates Interpretation to compute and materialize exactly one durable, immutable `interpretation_cycle_record` for that cycle. The record persists the **actual economic reference values in effect for cycle N** (§IX) so that the closed cycle is self-describing and never depends on reinterpreting against later configuration.
 
-The current runtime does not satisfy the Historical Configuration Binding requirement above. Existing implementations evaluate completed windows against the class configuration active at compute time, and no persistence or provenance surface exists that would permit lawful evaluation against the historical configuration. This is a doctrine violation, not a specification gap. Closing it requires a separately specified schema / provenance contract; until that contract lands and is implemented, callers of Interpretation SHALL be advised that historical-window outputs against changed configurations are computed noncompliantly.
+A materialized `interpretation_cycle_record` is permanently bound to its `payroll_cycle_id` and is **never recomputed**. Ordinary downstream reversals or corrections do not retroactively rewrite a completed cycle's record; they are reflected in the cycle in which they occur. Because the record captures the governing reference values at materialization time, the "not replayable" fallback of prior versions is no longer required for cycles produced under this contract.
+
+### Pre-Contract Windows
+
+Cycles that predate the cycle-bound materialization contract have no `interpretation_cycle_record` and no `reference_configuration` projection. For such windows Interpretation SHALL declare the evaluation as **not replayable** rather than silently substituting current configuration. This is a transitional coverage gap, tracked toward zero as cycles accrue under the new contract, not a doctrine violation of the binding rule itself.
 
 ---
 
@@ -195,17 +199,18 @@ The current runtime does not satisfy the Historical Configuration Binding requir
 - **Trigger**: produces derived output
 - **Status**: IMPLEMENTED. Executes via the Compute Interpretation FEAT (canonical name `FEAT-ITR-001`, read-only). See §XIII.b for the current runtime name and rename status.
 
-### Materialize Snapshot
+### Materialize Cycle Interpretation
 
 - **Actor**: System
-- **Trigger**: writes cache
-- **Status**: NOT IMPLEMENTED. Requires a separately specified Materialize FEAT with its own schema, provenance, and lifecycle contract. See §IX.
+- **Trigger**: economic-cycle boundary — successful payroll completion for the class (`DOM-PROD-001` §XV), orchestrated by `FEAT-PROD-004`.
+- **Behavior**: Computes the closed cycle's Interpretation and writes exactly one durable, immutable `interpretation_cycle_record` (§IX) bound to the run's `payroll_cycle_id`, capturing the economic reference values in effect for the cycle.
+- **Status**: SPECIFIED (cycle-bound), not yet built. Materialization is invoked only as a declared side effect of `FEAT-PROD-004`; Interpretation never decides on its own that some historical cycle is "ready" to materialize. The record is immutable and never recomputed. Building it remains subject to the schema, provenance, and certification requirements of its downstream contract (§X.9).
 
 ### Invalidate Snapshot
 
 - **Actor**: System
 - **Trigger**: marks stale
-- **Status**: NOT IMPLEMENTED. Depends on Materialize.
+- **Status**: NOT APPLICABLE to cycle records. A cycle-bound `interpretation_cycle_record` is immutable and never invalidated or recomputed. Cache-style invalidation applies only to any optional non-authoritative read cache, which is out of scope for this tranche.
 
 ### Generate Simulation
 
@@ -217,36 +222,70 @@ The current runtime does not satisfy the Historical Configuration Binding requir
 
 ## IX. Derived Schema
 
-The schema declared in this section describes intended persistence for materialized Interpretation outputs. **As of v1.2, none of these tables exists in the runtime schema or in the migration chain.** All current Interpretation outputs are computed on demand and returned as in-memory dataclasses. Materializing these tables requires a separately specified Materialize Interpretation Snapshot FEAT with its own schema, provenance, and lifecycle contract, and is out of scope for the current tranche (§X.9).
+The schema declared in this section describes intended persistence for materialized cycle Interpretation. **As of v1.4, this table does not yet exist in the runtime schema or in the migration chain.** All current Interpretation outputs are computed on demand and returned as in-memory dataclasses. Materializing this table requires a separately specified schema / migration / certification slice, invoked only as a declared side effect of `FEAT-PROD-004` (§VIII, §X.9).
 
-### `interpretation_snapshots`
+### `interpretation_cycle_record`
 
-- `id`: UUID
-- `class_id`: UUID
-- `axis`: (behavioral | structural) — **DEPRECATED.** If materialized, this column MUST be revised to align with v1.2's Semantic Kind (§IV.1) and Subject declaration (§IV.2). The two-axis enum is retired.
-- `cycle_id`: UUID
-- `metric_type`: VARCHAR
-- `window_start`: TIMESTAMPTZ
-- `window_end`: TIMESTAMPTZ
-- `computed_at`: TIMESTAMPTZ
-- `value_payload`: JSONB
+A **durable, immutable, self-describing** record of one completed economic cycle's Interpretation. It is not a cache: it is authoritative for "what this cycle meant, evaluated against the configuration that governed it," and is never recomputed. It persists the actual economic reference values it interpreted against, so historical review never requires reinterpretation and never reaches across domains to reconstruct configuration.
 
-### `interpretation_annotations`
+- `id`: UUID — primary key
+- `class_id`: UUID — canonical isolation boundary (shared anchor)
+- `payroll_cycle_id`: UUID — the economic-cycle identity produced by `FEAT-PROD-004` (`DOM-PROD-001` §XV); one `interpretation_cycle_record` per `(class_id, payroll_cycle_id)`
+- `cycle_started_at`: TIMESTAMPTZ — opening boundary of the closed cycle (UTC)
+- `cycle_completed_at`: TIMESTAMPTZ — closing boundary (payroll completion) of the closed cycle (UTC)
+- `computed_at`: TIMESTAMPTZ — when Interpretation materialized the record (UTC)
+- `reference_configuration`: JSONB — a **versioned, immutable informational projection** of the authoritative economic configuration actually consumed while interpreting the cycle (see below)
+- `observations_json`: JSONB — the materialized Descriptive observations and Interpretive signals, each carrying its §IV output-property declarations
 
-- `id`: UUID
-- `class_id`: UUID
-- `event_type`: VARCHAR
-- `timestamp`: TIMESTAMPTZ
-- `payload`: JSONB
+##### `reference_configuration` contract
+
+`reference_configuration` is a **versioned snapshot** of the governing economic inputs that were in effect for the cycle, captured at materialization time. Conceptual structure:
+
+```json
+{
+  "schema_version": 1,
+  "economic_engine": {
+    "cwi": "...",
+    "expected_weekly_hours": "...",
+    "hourly_pay_rate": "..."
+  },
+  "policy": {
+    "policy_uuid": "...",
+    "version": "..."
+  }
+}
+```
+
+It is:
+
+- an **immutable informational projection** of the authoritative configuration actually consumed during interpretation — a self-contained record of "what governed this cycle,"
+- **NOT executable CLASS state** — nothing reads it to make an economic decision; CLASS / `SPEC-ECON-003` remain the sole authority over live configuration,
+- **NOT something Interpretation may subsequently resolve, refresh, or recompute** — once written it is frozen with the cycle,
+- **versioned** via `schema_version` so the Economic Engine can evolve without schema churn on this table, and so old interpretations stay self-describing under whatever shape was current when they were materialized,
+- **NOT a foreign key** into any other domain's table; `policy.policy_uuid` and `policy.version` are stored as informational lineage values only.
+
+#### Cross-domain reference rule
+
+Per `INV-ARC-021` §V.7, the only legal cross-domain FK targets are shared anchors (`class_id`, `seat_id`, `user_id`). `interpretation_cycle_record` therefore:
+
+- MAY hold `class_id` (and `seat_id` where a per-seat record is warranted) as a real anchor,
+- holds `payroll_cycle_id` as the economic-cycle identity supplied by the completion FEAT,
+- MUST NOT hold an internal FK to another domain's version table (e.g., no `engine_version_id`, no `policy_versions.id`),
+- captures the governing economic inputs as a **versioned informational projection** (`reference_configuration` JSONB) so the record is self-describing without a cross-domain join.
+
+#### Immutability
+
+- One record per completed cycle. Append-only; never updated or recomputed.
+- Reversals and corrections are reflected in the cycle in which they occur, not by rewriting a prior cycle's record.
 
 ---
 
 ## X. Edge Case Decisions
 
-1. **Reversals override prior signals**: Metrics must reflect the final corrected truth.
-2. **Late data triggers recomputation**: Historical snapshots must be updated.
+1. **Reversals and corrections affect the cycle in which they occur**: they are never applied by rewriting a completed cycle's `interpretation_cycle_record`. A materialized cycle record is immutable (§VII, §IX). On-demand (non-materialized) Interpretation of an open window naturally reflects the latest corrected truth for that window.
+2. **Late data does not trigger recomputation of a closed cycle**: a completed `interpretation_cycle_record` is never updated. Facts that arrive after a cycle closes are reflected in the cycle in which they land, not by revising history.
 3. **No fabricated data**: Incomplete logs result in incomplete interpretation, not guesses.
-4. **Simulations never persist**: Hypothetical data must not contaminate the cache.
+4. **Simulations never persist**: Hypothetical data must not contaminate any read cache or the cycle record.
 5. **No ranking systems**: The system produces aggregate observations and signals, not individual rankings.
 6. **Interpretation never becomes policy**: The teacher remains the final authority on configuration changes.
 7. **Descriptive observations do not silently become interpretive conclusions.** See INV-ITR-013.
@@ -288,17 +327,16 @@ Non-normative appendix. Records the divergences between doctrine and current run
 
 | Element | Doctrine Status | Runtime Status |
 |---|---|---|
-| Materialize Snapshot | Authorized (§VIII) | No persistence layer; no `interpretation_snapshots` table. Requires a separately specified Materialize FEAT with its own schema / provenance / lifecycle contract. |
-| Invalidate Snapshot | Authorized (§VIII) | Depends on Materialize. |
+| Materialize Cycle Interpretation | SPECIFIED, cycle-bound (§VIII, §IX) | No persistence layer yet; no `interpretation_cycle_record` table. Invoked only as a declared side effect of `FEAT-PROD-004`. Requires a schema / migration / certification slice. |
 | Generate Simulation | Authorized (§VIII) | No simulation surface. |
-| Trend indicators with prior-snapshot source | Authorized (§V) | No prior-snapshot source available; `compute_trends` always receives `previous_snapshot=None` and returns `stable`. |
+| Trend indicators with prior cycle-record source | Authorized (§V) | No prior cycle-record source available yet; `compute_trends` always receives `previous_snapshot=None` and returns `stable`. Unblocked once `interpretation_cycle_record` accrues. |
 
 ### XIII.b KNOWN NONCOMPLIANCE — Runtime Violates v1.2 Doctrine
 
 | Element | Doctrinal Requirement | Runtime Behavior |
 |---|---|---|
 | ~~FEAT name for Compute~~ | ~~Compute Interpretation FEAT is `FEAT-ITR-001` under the Interpretation domain namespace.~~ | **RESOLVED.** Registered as `FEAT-ITR-001` under the `"Interpretation"` domain in `app/feats/base.py`. Consumer sites (`app/utils/analytics_engine.py`, `app/routes/analytics.py`) updated in the same slice. |
-| Historical Configuration Binding | §VII requires historical windows to be evaluated against their authoritative historical configuration. | Runtime evaluates historical windows against compute-time configuration. Doctrine violation, not a specification gap. |
+| Historical Configuration Binding | §VII requires historical windows to be evaluated against their authoritative historical configuration. | **Contract resolved (§VII, §VIII, §IX):** cycle-bound materialization persists the governing reference values in an immutable `interpretation_cycle_record`, so cycles produced under the contract are self-describing and never reinterpreted. Runtime remains noncompliant only until the record is built; pre-contract cycles are declared **not replayable**, tracked toward zero. |
 | Completed-cycle window discipline | §VII requires completed cycles only. | Runtime accepts arbitrary caller-supplied windows without enforcement. |
 | Output Property Declaration (INV-ITR-012) | Every output SHALL declare Semantic Kind, Subject / Observation Basis / Aggregation, and Reference Dependency. | Current outputs declare none of these. |
 | Provenance via canonical fields (INV-ITR-015) | Classification of Ledger events uses `mechanism`, `feat_code`, `correlation_id`, reversal linkage, and authoritative source-domain event tables. `Transaction.type` is not authoritative. | `Transaction.type` is consulted in some current calculations. |

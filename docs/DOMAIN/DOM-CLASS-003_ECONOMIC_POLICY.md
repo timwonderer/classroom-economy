@@ -2,7 +2,7 @@
 
 | Reference Number | Version | Effective Date | Supersedes | Authority Level |
 |---|---|---|---|---|
-| DOM-CLASS-003 | 2.1 | 2026-08-08 | DOM-ECON-002 v1.0 | Constitutional |
+| DOM-CLASS-003 | 2.2 | 2026-08-30 | 2.1 | Constitutional |
 
 # I. Purpose
 
@@ -75,6 +75,8 @@ This specification does NOT define:
 - `docs/SPEC/SPEC-ECON-001_SAVINGS_INTEREST_ACCRUAL_AND_DISBURSEMENT_SPECIFICATION.md` — savings interest accrual and disbursement behavior
 - `docs/SPEC/SPEC-ECON-002_ECONOMIC_POLICY_VISIBILITY_AND_DISCLOSURE.md` — pending policy visibility requirements
 - `docs/FEATURE-EXECUTION/FEAT-ECON-001_ECONOMIC_POLICY_TRANSITION_EXECUTION_AND_ACTIVATION_ORCHESTRATION.md` — FEAT-layer execution
+- `docs/DOMAIN/DOM-PROD-001_PRODUCTIVITY_AND_PAYROLL_DOMAIN.md` — payroll-cycle boundary that satisfies `next_boundary` activation for payroll-governing policy
+- `docs/FEATURE-EXECUTION/FEAT-PROD-004_COMPLETE_PAYROLL_CYCLE.md` — orchestrates lawful activation of pending next-cycle transitions at payroll completion
 
 ---
 
@@ -269,6 +271,14 @@ Economics governance MUST NOT encode:
 - renewal calculations,
 - timezone legality,
 - operational timing interpretation.
+
+## Pending Next-Cycle Payroll-Governing Changes
+
+When a teacher changes a payroll-governing economic value (e.g., hourly pay rate, expected weekly hours) during an open economic cycle, the change SHALL be recorded as a `pending` policy transition with `activation_mode = next_boundary`. It MUST NOT mutate the policy governing the open cycle (`INV-ARC-015` §VI.7), and it MUST NOT be encoded as a guessed future `effective_at` timestamp.
+
+Under manual payroll, the timestamp of the next cycle boundary is unknown at the moment the teacher makes the change. The pending transition therefore carries activation *intent* (`next_boundary`), not an activation *time*. The lawful operational boundary that satisfies this intent is **payroll cycle completion**, owned by the Productivity and Payroll domain (`DOM-PROD-001` §XV; consistent with ECON-CONST-004). Activation is requested by that operational domain through the FEAT layer (`FEAT-PROD-004`) as a lawful append-only transition (`applied`), never by a scheduler observing that some `effective_at <= now`. Recording a pending change and later activating it at the boundary is the only lawful path; hidden deferred mutation (§XI.1) and mutable pending payloads (§XI.4) remain prohibited.
+
+Exactly one pending transition remains authoritative per `class_id` scope (§VIII); a subsequent change during the same open cycle supersedes the prior pending transition with append-only lineage.
 
 ---
 

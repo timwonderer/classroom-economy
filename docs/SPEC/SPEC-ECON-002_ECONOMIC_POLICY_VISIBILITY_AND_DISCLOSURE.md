@@ -2,7 +2,7 @@
 
 | Reference Number | Version | Effective Date | Supersedes | Authority Level |
 |---|---|---|---|---|
-| SPEC-ECON-002 | 2.0 | 2026-05-20 | none | Constitutional |
+| SPEC-ECON-002 | 2.1 | 2026-08-30 | 2.0 | Constitutional |
 
 # I. Purpose
 
@@ -212,6 +212,30 @@ Displayed information MUST include:
 - current APY,
 - future APY,
 - activation timing intent.
+
+---
+
+## 4. Payroll Domain
+
+Payroll-governing changes (e.g., hourly pay rate, expected weekly hours) made during an open economic cycle are pending next-cycle policy transitions (`activation_mode = next_boundary`; see `DOM-CLASS-003` §VII). The lawful boundary that activates them is payroll cycle completion (`DOM-PROD-001` §XV).
+
+Pending payroll policy changes MUST appear:
+- inside teacher payroll configuration surfaces,
+- inside teacher-facing surfaces that display the wage or expected-hours configuration.
+
+Displayed information MUST include:
+- current value,
+- future value,
+- activation timing intent.
+
+Because the next payroll boundary timestamp is not known in advance under manual payroll, the disclosure MUST express activation as *intent* (the next payroll cycle), NOT as a specific date.
+
+Example:
+
+```
+Current Hourly Pay:            $12.00
+Pending Next-Cycle Hourly Pay: $14.00  (Applies next payroll cycle)
+```
 
 ---
 

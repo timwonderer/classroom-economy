@@ -2,7 +2,7 @@
 
 | Reference Number | Version | Effective Date | Supersedes | Authority Level |
 |------------------|---------|----------------|------------|-----------------|
-| DOM-PROD-001 | 1.0 | 2026-07-18 | 3.0 | Constitutional |
+| DOM-PROD-001 | 1.1 | 2026-08-30 | 1.0 | Constitutional |
 
 ---
 
@@ -138,7 +138,7 @@ The presence of a row indicates the pass is approved and consumed.
 
 Hall-pass approval consumes an entitlement. The Entitlement domain records granting or purchasing hall pass.
 
-### 3. `payroll_events`
+### 3. `payroll_event`
 
 Canonical append-only table for positive ledger credit events.
 
@@ -345,6 +345,7 @@ Key fields:
 
 - `id`
 - `class_id` — FK to `classes`; canonical isolation boundary
+- `payroll_cycle_id` — durable economic-period identity (UUID) for the class-level payroll run that produced this event; NULL only for non-boundary events that are not part of a run (see rules below)
 - `actor_seat_id` — FK to `seats`; the seat that initiated or authorized the payroll event
 - `target_seat_id` — FK to `seats`; the seat whose productivity settlement or reversal is affected
 - `correlation_id` — workflow correlation identifier linking payroll business and ledger facts; reversals reuse the original event's correlation_id
@@ -369,6 +370,9 @@ Rules:
 - The row must identify the productivity window and settlement intent that authorized any downstream ledger write.
 - The row must not duplicate ledger monetary truth beyond what is necessary for business provenance.
 - `payroll_event_type` carries the event semantics, so no separate lifecycle `status` column is permitted on the canonical table.
+- `payroll_cycle_id` identifies the class-level payroll run (the economic cycle) that produced the event. It is generated once, as a UUID, by the canonical completion command (see §XV) when the class-level run begins, and stamped identically on every `payroll` event written by that run.
+- `payroll_cycle_id` is a durable economic-period identity and is distinct from both `correlation_id` (per-seat event/obligation lineage) and `idempotency_key` (command replay guard). These three identities MUST NOT be conflated or derived from one another. See §XV.2.
+- A `manual_credit` event recorded outside a class-level payroll run carries no `payroll_cycle_id`. A `reversal` event carries the `payroll_cycle_id` of the event it reverses where one exists, and NULL otherwise. A reversal never opens or closes a cycle.
 
 ---
 
@@ -459,7 +463,43 @@ The exact implementation may evolve, but business consumers SHALL interact with 
 
 ---
 
-## XIV. Amendment
+## XV. Payroll Cycle Completion and the Economic-Cycle Boundary
+
+### 1. Payroll completion is the canonical class-level economic-cycle boundary
+
+A single `payroll` event is a per-seat boundary fact (§XI.3). A **payroll cycle** is the class-level economic period that a completed payroll run closes: the collection of all `payroll` events written by one class-level run, sharing one `payroll_cycle_id`.
+
+Successful completion of a class-level payroll run — whether initiated manually by the teacher or automatically by a scheduled run — is the canonical **economic-cycle boundary event** for the class. It is the single point at which:
+
+1. the closing economic cycle is settled against productivity facts under the configuration that governed it,
+2. downstream domains may lawfully materialize a permanent, cycle-bound view of that closed cycle, and
+3. any economic-configuration change that the teacher staged during the open cycle becomes lawfully activated for the next cycle.
+
+This domain owns fact (1). It does NOT own facts (2) or (3), and it MUST NOT invoke Interpretation or Class Configuration directly. Interpretation's materialization and Class Configuration's pending-policy activation are downstream side effects orchestrated by the canonical completion FEAT (`FEAT-PROD-004`), never by direct domain-to-domain calls, per `INV-ARC-021` §V.1–§V.2.
+
+### 2. Three distinct identities
+
+A payroll run carries three identities that MUST remain separate:
+
+| Identity | Meaning | Lifetime / Scope |
+| :--- | :--- | :--- |
+| `payroll_cycle_id` | Durable economic-period identity for the class-level run | One UUID per class-level run, stamped on every `payroll` event in that run; permanent |
+| `correlation_id` | Per-seat event/obligation lineage identity linking a payroll event to its ledger and obligation facts | One per settled seat per run |
+| `idempotency_key` | Command replay guard for the write operation | One per write; guarantees safe retry, not economic meaning |
+
+`payroll_cycle_id` MUST NOT be derived from, or substituted by, `correlation_id`, `idempotency_key`, or any per-command replay nonce. It is generated as a fresh UUID by the canonical completion command when the class-level run begins.
+
+### 3. Prospective configuration during an open cycle
+
+Per `INV-ARC-015` §VI.7, an economic-configuration change never reinterprets an already-open cycle. When the teacher changes payroll-governing configuration (e.g., hourly pay rate, expected weekly hours) during open cycle N, the change MUST NOT mutate the configuration governing cycle N.
+
+Because payroll may be run manually, the timestamp of the next cycle boundary is unknown at the moment the teacher makes the change. The change is therefore modeled as a **lawful pending next-cycle policy transition** owned by Class Configuration / Economic Policy (`DOM-CLASS-003`), not as a future-dated `effective_at` guessed by this domain. At payroll completion, `FEAT-PROD-004` first settles cycle N under its existing governing configuration, then invokes the lawful Class-domain transition command to activate the pending configuration for cycle N+1. Activation is a lawful append-only policy transition per `INV-ARC-016`, never a scheduler silently noticing `effective_at <= now`.
+
+### 4. Interaction with `record_payroll_event`
+
+`record_payroll_event` (§VIII.3, owned by `FEAT-PROD-003`) remains the sole writer of `payroll_event` rows. When invoked as part of a class-level run orchestrated by `FEAT-PROD-004`, the caller supplies the run's `payroll_cycle_id`; `record_payroll_event` stamps it unchanged onto each `payroll` row. `record_payroll_event` does not generate `payroll_cycle_id` and does not itself orchestrate any cross-domain side effect. Cross-domain orchestration is exclusively `FEAT-PROD-004`'s responsibility.
+
+## XVI. Amendment
 
 Revisions to this document must:
 1. Increment the version number.

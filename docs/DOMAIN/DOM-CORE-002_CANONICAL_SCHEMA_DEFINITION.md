@@ -2,7 +2,7 @@
 
 | Reference Number | Version | Effective Date | Supersedes | Authority Level |
 |------------------|---------|----------------|------------|-----------------|
-| DOM-CORE-002     | 1.6     | 2026-07-15     | 1.5        | Constitutional |
+| DOM-CORE-002     | 1.7     | 2026-08-30     | 1.6        | Constitutional |
 
 ---
 
@@ -259,16 +259,17 @@ Policy definition tables — `rent_settings`, `payroll_settings`, `payroll_rewar
 
 ### 8. Interpretation (DOM-ITR-001)
 
-**Purpose:** Derive behavioral and structural insights.
+**Purpose:** Derive descriptive observations and interpretive signals over completed economic cycles.
 
 **Tables:**
 
-- `interpretation_snapshots`
-- `interpretation_annotations`
+- `interpretation_cycle_record` — durable, immutable per-cycle materialization bound to `payroll_cycle_id`, self-describing via persisted economic reference values (`DOM-ITR-001` §IX). Materialized only as a declared side effect of `FEAT-PROD-004` at payroll completion. Not yet built in the runtime schema.
+
+The former `interpretation_snapshots` (cache) and `interpretation_annotations` tables are retired and superseded by `interpretation_cycle_record` per `DOM-ITR-001` v1.4 §IX. Neither existed in the runtime schema.
 
 **Constraint:**
 
-- Read-only domain
+- Read-only domain (Interpretation performs no source-domain mutation; `interpretation_cycle_record` rows are written only via the `FEAT-PROD-004` materialization side effect and are append-only and immutable thereafter).
 
 ---
 

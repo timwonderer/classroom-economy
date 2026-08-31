@@ -2,7 +2,7 @@
 
 | Reference Number | Version | Effective Date | Supersedes | Authority Level |
 |------------------|---------|----------------|------------|-----------------|
-| DOM-CORE-001 | 1.0 | 2026-04-22 | N/A | Constitutional |
+| DOM-CORE-001 | 1.1 | 2026-08-30 | 1.0 | Constitutional |
 
 ---
 
@@ -111,14 +111,14 @@ All domains listed below are bound by the following structural rules:
 - **Primary Schema**: `operational_events`, `audit_log`, `incidents`, `invariant_results`, `job_executions`.
 
 ### 8. Interpretation (`DOM-ITR-001`)
-- **Authority**: Sovereign over Behavioral signals (actor activity) and Structural signals (Economy Health).
-- **Axis Model**: Strictly separates **Behavioral Interpretation** (What happened) from **Structural Interpretation** (What was possible).
-- **Cycle-Lock**: Evaluates completed payroll cycles only; resets on CWI or Policy change.
+- **Authority**: Read-only meaning layer producing **Descriptive observations** and **Interpretive signals** over authoritative domain facts. The former Behavioral / Structural axis model is retired (`DOM-ITR-001` v1.2 §IV).
+- **Output Semantics**: Every output declares Semantic Kind, Subject / Observation Basis / Aggregation, and Reference Dependency (`DOM-ITR-001` INV-ITR-012).
+- **Cycle-Lock**: Evaluates completed economic cycles only. The economic cycle is defined by payroll completion (`DOM-PROD-001` §XV).
 - **State Classification**:
-  - `behavioral_metrics` / `structural_metrics`: Derived State.
-  - `interpretation_snapshots`: Cache (Performance).
-- **Key Transitions**: `Compute Interpretation`, `Materialize Snapshot`.
-- **Primary Schema**: `interpretation_snapshots`, `interpretation_annotations`.
+  - Descriptive observations / Interpretive signals: Derived State.
+  - `interpretation_cycle_record`: Durable Authoritative Record (immutable, cycle-bound; not a cache).
+- **Key Transitions**: `Compute Interpretation`, `Materialize Cycle Interpretation` (invoked only as a declared side effect of `FEAT-PROD-004`).
+- **Primary Schema**: `interpretation_cycle_record` (`DOM-ITR-001` §IX; not yet built).
 
 ### 9. Support & Communication (`DOM-SUP-001`)
 - **Authority**: Sovereign over issue lifecycle state, resolution records, and class communications.
