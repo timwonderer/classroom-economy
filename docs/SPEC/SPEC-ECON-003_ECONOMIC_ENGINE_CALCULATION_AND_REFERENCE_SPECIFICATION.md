@@ -2,7 +2,7 @@
 
 | Reference Number | Version | Effective Date | Supersedes | Authority Level |
 |------------------|---------|----------------|------------|-----------------|
-| SPEC-ECON-003    |  1.3    |     2026-08-29 |        1.2 |       Normative |
+| SPEC-ECON-003    |  1.4    |     2026-08-30 |        1.3 |       Normative |
 
 ---
 
@@ -596,6 +596,32 @@ Economic engine table shall persist the chosen overdraft fee under `flat_overdra
 
 Internal fines are only active if their value is not `NULL` for the economic policy being enforced. When disabling fines, the backend shall create a new economic policy with the value set to `NULL`
 
+##### 4.6.1.1 Overdraft / NSF Fee Applicability
+
+An overdraft / non-sufficient-funds (NSF) fee is a fine charged for a **failed
+agreement**: a transaction that was meant to fulfill an **intended purchase**
+(a Store purchase) or an **existing obligation** (e.g. rent, insurance premium)
+and could not be covered by the seat's spendable funds.
+
+An NSF fee SHALL NOT be charged for:
+
+- **Transfers** — a transfer is a lateral movement between the seat's OWN
+  accounts (e.g. checking↔savings). It is not spending and not an agreement. On
+  insufficient funds a transfer is simply **invalid**: it does not proceed and
+  incurs no fee.
+- **Penalties** — a teacher-applied deduction (an admin adjustment / fine) is
+  itself a penalty, neither a purchase nor an obligation. A penalty **cannot
+  generate a fine**; it posts as a direct debit (settling below zero if the
+  balance cannot cover it) and does not draw on savings to cover itself.
+
+Recording and layering (informative): the fee amount is resolved from the
+Economic Engine (`flat_overdraft_fee` / `progressive_overdraft_fee`) and posted
+by the Ledger domain, which stays domain-blind (`DOM-LED-001` §II). Because the
+NSF fee is a fine, it is also an obligation (`DOM-OBL-001` §II.C, immediate
+charge), recorded by the **originating business FEAT's** cross-domain
+orchestration — never by the Ledger resolution primitive. This resolves the
+overdraft/NSF ownership question previously open in `DOM-ITR-001` §XIII.c.
+
 ---
 
 ### 4.7 Collective Goals
@@ -843,6 +869,16 @@ Revisions to this document must:
 
 ### Revision history
 
+- **1.4 (2026-08-30)** — Clarifies overdraft/NSF fee applicability. Adds § 4.6.1.1: an NSF
+  fee is a fine charged only for a **failed agreement** — a transaction meant to fulfill an
+  intended purchase (Store) or an existing obligation (rent, insurance) that funds cannot
+  cover. It is NOT charged for transfers (lateral movement between the seat's own accounts;
+  invalid on insufficient funds, no fee) or for penalties (a teacher admin adjustment is
+  itself a penalty and cannot generate a fine; it posts as a direct debit and does not draw
+  on savings). Records the layering: the Ledger domain posts the fee and stays domain-blind
+  (`DOM-LED-001` §II), while the fine, being an immediate obligation (`DOM-OBL-001` §II.C), is
+  recorded by the originating business FEAT — resolving the overdraft/NSF ownership question
+  previously open in `DOM-ITR-001` §XIII.c. Codifies landed behavior; no change to fee amounts.
 - **1.3 (2026-08-29)** — Scope/authority correction, not a runtime-behavior change. § 4.5.4
   previously carried PRODUCTIVITY approval- and submission-time execution semantics that the
   section's own scope boundary (§ 4.5) assigns to `FEAT-STOR-003`. This revision: (a) removes

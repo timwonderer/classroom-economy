@@ -2,7 +2,7 @@
 
 | Reference Number | Version | Effective Date | Supersedes | Authority Level |
 |------------------|---------|----------------|------------|-----------------|
-| DOM-ITR-001      | 1.2     | 2026-08-16     | 1.1        | Normative       |
+| DOM-ITR-001      | 1.3     | 2026-08-30     | 1.2        | Normative       |
 
 ## I-A. Authority Level and Dependencies
 
@@ -56,7 +56,7 @@ The Interpretation Domain is authorized to answer questions of participation, ec
 - **Economic calculation and reference values** → `SPEC-ECON-003` under CLASS authority (CWI derivation, per-mode bands, doubling-time, compound growth, economic coherence rules).
 - **Store product definitions or purchase truth** → STORE.
 - **Recovery / reset eligibility, triggering, execution, or gating** → not currently owned by any documented domain. Interpretation MAY produce observations that inform such a decision but MUST NOT itself specify or gate it.
-- **Overdraft / NSF assessment ownership** — currently split between LEDGER (execution) and OBLIGATIONS (semantic owner in current CTH discussion); pending domain reconciliation. Interpretation acknowledges this as an observation gap (see §XIII.c).
+- **Overdraft / NSF assessment ownership** — RESOLVED (SPEC-ECON-003 §4.6.1.1): LEDGER executes (posts the fee) and stays domain-blind; OBLIGATIONS owns the fine, recorded by the originating business FEAT as an immediate obligation. Interpretation consumes the OBLIGATIONS fact per INV-ITR-016 (see §XIII.c).
 
 ---
 
@@ -311,5 +311,5 @@ Items in this section are not Interpretation-owned and cannot be resolved by ame
 
 | Element | Status |
 |---|---|
-| Overdraft / NSF fee assessment ownership | **Ownership unresolved between LEDGER and OBLIGATIONS.** INV-ITR-016 requires Interpretation to consume the owning domain's fact but does not itself decide which domain owns the fact. Interpretation MUST NOT infer ownership. Runtime currently: LEDGER writes `type="overdraft_fee"`; no `AssessmentEvent` produced. Cross-domain reconciliation between LEDGER and OBLIGATIONS is a precondition for obligation-outcome observations to include overdraft / NSF. |
+| Overdraft / NSF fee assessment ownership | **RESOLVED (SPEC-ECON-003 §4.6.1.1).** LEDGER executes the money movement (posts the fee debit) and stays domain-blind (`DOM-LED-001` §II); OBLIGATIONS owns the fine as Economic Context — the NSF fee is an immediate obligation (`DOM-OBL-001` §II.C), recorded by the originating business FEAT's cross-domain orchestration, not by the Ledger primitive. An `AssessmentEvent` (NSF_FEE ASSESSMENT + PAYMENT settled by the fee debit) is now produced, so obligation-outcome observations can include overdraft / NSF. Scope: charged only for a failed purchase or obligation — never for transfers (lateral) or penalties (admin adjustments). Interpretation consumes the OBLIGATIONS fact per INV-ITR-016 and still does not itself decide ownership. |
 | Current runtime `suggested_action` alert content | **Doctrinal question is resolved:** v1.2 §III, §XI, and INV-ITR-010 establish that Interpretation does not prescribe teacher action. **Runtime disposition is unresolved:** the existing prescriptive text in `analytics_engine.py::generate_alerts` violates that doctrine and requires removal or relocation. Whether that disposition happens via deletion, movement to a non-Interpretation surface, or reformulation as a purely descriptive signal is a runtime remediation choice, not a doctrinal one. |
