@@ -24,6 +24,8 @@ and this project follows semantic versioning principles.
 
 ### Fixed
 
+- **Accessible names added to controls in `admin_recover.html` and `hall_pass_setup.html`** — The accessibility smoke suite flagged interactive elements with no accessible name that screen readers could not announce: the `.btn-close` modal dismiss button in `hall_pass_setup.html`, the `#masterToggle` hall-pass switch there, and the unlabeled `join_code[]`/`student_username[]` recovery inputs (static and dynamically-added rows) in `admin_recover.html`. Added `aria-label` attributes so each control is announced. Pre-existing on the HEAD baseline; not caused by a recent change.
+
 - **Payroll hourly rates retain their entered value** — Increased `payroll_settings.pay_rate` from `NUMERIC(12,2)` to `NUMERIC(18,8)` via migration `6f79a33fe78a`, preserving the precision required when hourly rates are converted to per-minute storage. Entering `$80.00/hour` now saves and displays as `$80.00` instead of `$79.80`, and CWI calculations no longer round the stored per-minute rate back to cents.
 
 - **Admin runtime log and dashboard correctness** — Replaced Unix-only temporal display directives so dashboard dates render on Windows, joined pending redemptions to same-class entitlement events to eliminate a cartesian product and inflated counts, corrected TLCP classification for the public tips API, and keyed the successful admin-login FEAT mutation.
