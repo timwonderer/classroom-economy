@@ -218,6 +218,38 @@ def get_inbound_ledger_rows(
     ]
 
 
+def get_student_originated_transaction_ids(
+    class_id: str, transaction_ids
+) -> set[int]:
+    """Return the subset of ``transaction_ids`` that are student-originated (§6.3).
+
+    Read-only Ledger surface consumed by the Interpretation domain to decide,
+    for obligation ``PAYMENT`` events, whether the *referenced* Ledger row is
+    student-originated (SPEC-ITR-001 §8.4/§8.5, Q3-C2). The Ledger domain owns
+    the provenance of its own rows (INV-ARC-009, INV-ITR-016): the caller passes
+    the ledger ids a PAYMENT event settled and receives back only those that pass
+    the §6.3 classifier. This never infers where a seat's *balance* originally
+    came from — it classifies the payment row itself, nothing more (§8.5).
+    Scoped by ``class_id``; ``Transaction.type`` is never consulted (INV-ITR-015).
+    """
+    if not class_id or not transaction_ids:
+        return set()
+    ids = [int(tid) for tid in transaction_ids if tid is not None]
+    if not ids:
+        return set()
+    rows = (
+        Transaction.query
+        .with_entities(Transaction.id)
+        .filter(
+            Transaction.class_id == class_id,
+            Transaction.id.in_(ids),
+            _student_originated_filter(),
+        )
+        .all()
+    )
+    return {row.id for row in rows}
+
+
 def get_last_payroll_time(seat_id: int | None = None, class_id: str | None = None):
     """Return the most recent payroll anchor without mutating any state."""
     if seat_id is None and class_id is None:

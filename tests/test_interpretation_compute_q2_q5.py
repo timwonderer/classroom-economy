@@ -14,7 +14,7 @@ Two layers of evidence:
    the §6.3 student-originated Ledger surface, and Q5 income composition / labor
    share over a controlled six-category inbound mix (labor corroborated by a real
    ``PayrollEvent``). The full payload still fails materialization **only** because
-   10 of the 17 required candidates remain absent (SPEC-ITR-001 §15.8).
+   the remaining required candidates are absent (SPEC-ITR-001 §15.8).
 """
 
 from __future__ import annotations
@@ -53,7 +53,8 @@ from tests.helpers.classroom_initializer import initialize
 
 
 IMPLEMENTED_CANDIDATES = frozenset(
-    {"Q1a-C1", "Q1a-C2", "Q1b-C1", "Q2-C1", "Q2-C2", "Q5-C1", "Q5-C2"}
+    {"Q1a-C1", "Q1a-C2", "Q1b-C1", "Q2-C1", "Q2-C2",
+     "Q3-C1", "Q3-C2", "Q3-C3", "Q5-C1", "Q5-C2"}
 )
 
 
@@ -397,7 +398,7 @@ def test_q5_composition_and_labor_share_reflect_origin_categories(app):
 
 
 # --------------------------------------------------------------------------- #
-# 4. Coverage: the full payload still fails materialization (10 missing)       #
+# 4. Coverage: the full payload still fails materialization (7 missing)        #
 # --------------------------------------------------------------------------- #
 
 
@@ -412,11 +413,11 @@ def test_partial_payload_still_fails_only_for_incomplete_coverage(app):
     assert result.complete is False
     assert result.present_ids == IMPLEMENTED_CANDIDATES
     assert result.missing_ids == REQUIRED_SET_V1 - IMPLEMENTED_CANDIDATES
-    assert len(result.missing_ids) == 10
+    assert len(result.missing_ids) == 7
     assert result.extra_ids == frozenset()
     assert result.duplicate_ids == frozenset()
 
-    # The ONLY failure is incomplete coverage — the seven computed entries carry
+    # The ONLY failure is incomplete coverage — the ten computed entries carry
     # no structural defect.
     assert len(result.errors) == 1
     assert "missing required candidate" in result.errors[0]

@@ -10,7 +10,7 @@ from __future__ import annotations
 from datetime import datetime
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import Optional
+from typing import NamedTuple, Optional
 
 from app.extensions import db
 from app.models import ObligationAssessment, BillCycle, LedgerMechanism, Transaction
@@ -44,6 +44,112 @@ def get_seat_ids_with_self_payments(class_id: str, window_start, window_end) -> 
         .all()
     )
     return {row.seat_id for row in rows if row.seat_id is not None}
+
+
+class ObligationEventRow(NamedTuple):
+    """One obligation event, projected for Interpretation's Q3 read (SPEC-ITR-001 §8).
+
+    A lightweight, read-only projection of an ``assessment_events`` row carrying
+    exactly what Q3 is permitted to interpret. ``assessed_amount_cents`` is the
+    canonical amount resolved from the upstream policy for ``ASSESSMENT`` events
+    (``None`` for satisfaction events); ``ledger_amount_cents`` is the absolute
+    magnitude of the referenced Ledger row for ``PAYMENT`` events (``None``
+    otherwise). No Ledger ``type`` string is projected (INV-ITR-015).
+    """
+
+    correlation_id: str
+    obligation_type: str
+    event_type: str  # ASSESSMENT | PAYMENT | WAIVED
+    timestamp: datetime
+    ledger_transaction_id: int | None
+    ledger_amount_cents: int | None
+    assessed_amount_cents: int | None
+
+
+def _to_cents(amount: Decimal | None) -> int | None:
+    if amount is None:
+        return None
+    return int((Decimal(amount) * 100).quantize(Decimal("1")))
+
+
+def get_obligation_events_for_window(
+    class_id: str, window_start, window_end
+) -> list[ObligationEventRow]:
+    """Return the obligation events needed to interpret Q3 over ``[start, end)``.
+
+    The obligation set for the window is the ``ASSESSMENT`` events whose
+    ``timestamp`` falls in ``[window_start, window_end)`` (DOM-OBL-001 §VII: one
+    ASSESSMENT per correlation). For those obligations, this also returns their
+    ``PAYMENT``/``WAIVED`` satisfaction events with ``timestamp < window_end`` —
+    the events that determine the obligation's *final status at window end*
+    (SPEC-ITR-001 §8.4). Assessment amounts are resolved from the upstream policy
+    (:func:`resolve_assessment_amount`); PAYMENT ledger magnitudes are read from
+    the referenced ``Transaction`` row. Scoped by ``class_id`` (multi-tenancy).
+
+    This is a pure DOM-OBL read (INV-ARC-007). Interpretation classifies the
+    final per-obligation outcome from these facts; it does not itself decide
+    satisfaction here.
+    """
+    if not class_id or window_start is None or window_end is None:
+        return []
+    start = ensure_utc(window_start)
+    end = ensure_utc(window_end)
+
+    assessments = (
+        db.session.query(ObligationAssessment)
+        .filter(
+            ObligationAssessment.class_id == class_id,
+            ObligationAssessment.event_type == "ASSESSMENT",
+            ObligationAssessment.timestamp >= start,
+            ObligationAssessment.timestamp < end,
+        )
+        .all()
+    )
+    if not assessments:
+        return []
+
+    correlation_ids = {a.correlation_id for a in assessments}
+
+    rows: list[ObligationEventRow] = [
+        ObligationEventRow(
+            correlation_id=a.correlation_id,
+            obligation_type=a.obligation_type,
+            event_type="ASSESSMENT",
+            timestamp=a.timestamp,
+            ledger_transaction_id=None,
+            ledger_amount_cents=None,
+            assessed_amount_cents=_to_cents(resolve_assessment_amount(a)),
+        )
+        for a in assessments
+    ]
+
+    satisfaction = (
+        db.session.query(ObligationAssessment, Transaction.amount_cents)
+        .outerjoin(Transaction, Transaction.id == ObligationAssessment.ledger_transaction_id)
+        .filter(
+            ObligationAssessment.class_id == class_id,
+            ObligationAssessment.correlation_id.in_(correlation_ids),
+            ObligationAssessment.event_type.in_(["PAYMENT", "WAIVED"]),
+            ObligationAssessment.timestamp < end,
+        )
+        .all()
+    )
+    for event, amount_cents in satisfaction:
+        ledger_cents = None
+        if event.event_type == "PAYMENT" and amount_cents is not None:
+            ledger_cents = abs(int(amount_cents))
+        rows.append(
+            ObligationEventRow(
+                correlation_id=event.correlation_id,
+                obligation_type=event.obligation_type,
+                event_type=event.event_type,
+                timestamp=event.timestamp,
+                ledger_transaction_id=event.ledger_transaction_id,
+                ledger_amount_cents=ledger_cents,
+                assessed_amount_cents=None,
+            )
+        )
+    return rows
 
 
 def resolve_assessment_amount(assessment: ObligationAssessment) -> Decimal:

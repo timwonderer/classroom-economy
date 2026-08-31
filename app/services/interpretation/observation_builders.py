@@ -151,6 +151,20 @@ def category_fractions_value(
     return {"kind": "category_fractions", "categories": categories}
 
 
+def counts_value(counts: dict[str, int]) -> dict[str, Any]:
+    """Build a ``counts`` value (SPEC-ITR-001 §15.6): a categorical count vector.
+
+    ``counts`` maps each label id to its integer count. Every supplied label is
+    emitted (an explicit zero is lawful and informative), sorted ascending by
+    ``label`` as §15.9 requires; ``total`` is the sum of the counts. The caller
+    must supply a non-empty mapping — the closed vocabulary forbids an empty
+    ``items`` list, so a zero-observation window supplies an explicit zero-count
+    baseline rather than an empty vector.
+    """
+    items = [{"label": label, "count": int(counts[label])} for label in sorted(counts)]
+    return {"kind": "counts", "items": items, "total": sum(item["count"] for item in items)}
+
+
 def _percentile(sorted_vals: list[int], point: int) -> Decimal:
     """Linear-interpolation percentile on a pre-sorted list (pinned method).
 
