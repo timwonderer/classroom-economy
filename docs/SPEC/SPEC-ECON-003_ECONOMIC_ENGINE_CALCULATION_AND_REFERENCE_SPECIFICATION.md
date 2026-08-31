@@ -2,7 +2,7 @@
 
 | Reference Number | Version | Effective Date | Supersedes | Authority Level |
 |------------------|---------|----------------|------------|-----------------|
-| SPEC-ECON-003    |  1.4    |     2026-08-30 |        1.3 |       Normative |
+| SPEC-ECON-003    |  1.5    |     2026-08-30 |        1.4 |       Normative |
 
 ---
 
@@ -614,12 +614,19 @@ An NSF fee SHALL NOT be charged for:
   generate a fine**; it posts as a direct debit (settling below zero if the
   balance cannot cover it) and does not draw on savings to cover itself.
 
-Recording and layering (informative): the fee amount is resolved from the
-Economic Engine (`flat_overdraft_fee` / `progressive_overdraft_fee`) and posted
-by the Ledger domain, which stays domain-blind (`DOM-LED-001` §II). Because the
-NSF fee is a fine, it is also an obligation (`DOM-OBL-001` §II.C, immediate
-charge), recorded by the **originating business FEAT's** cross-domain
-orchestration — never by the Ledger resolution primitive. This resolves the
+Fee amount (authority): the **teacher sets** the fee amount. The Economic Engine
+does not determine it; per §4.6.1 the CWI helper surfaces a **CWI-normed
+recommended range** for the teacher's reference (not a single value) and displays
+a warning when the chosen amount falls outside that range. The teacher's chosen
+value is persisted on the engine (`flat_overdraft_fee` /
+`progressive_overdraft_fee`); when a fee is charged, the Ledger posts that
+teacher-set amount.
+
+Recording and layering (informative): the Ledger posts the fee debit and stays
+domain-blind (`DOM-LED-001` §II). Because the NSF fee is a fine, it is also an
+obligation (`DOM-OBL-001` §II.C, immediate charge), recorded by the
+**originating business FEAT's** cross-domain orchestration — never by the Ledger
+resolution primitive. This resolves the
 overdraft/NSF ownership question previously open in `DOM-ITR-001` §XIII.c.
 
 ---
@@ -869,6 +876,12 @@ Revisions to this document must:
 
 ### Revision history
 
+- **1.5 (2026-08-30)** — Corrects the § 4.6.1.1 fee-amount note: the **teacher sets** the
+  overdraft/NSF fee amount (persisted on the engine as `flat_overdraft_fee` /
+  `progressive_overdraft_fee`). The Economic Engine does not determine it — per § 4.6.1 the
+  CWI helper surfaces a CWI-normed recommended *range* for reference and warns when the chosen
+  amount is out of range. The prior wording ("resolved from the Economic Engine") wrongly
+  implied the engine sets the amount. Applicability scope and layering unchanged.
 - **1.4 (2026-08-30)** — Clarifies overdraft/NSF fee applicability. Adds § 4.6.1.1: an NSF
   fee is a fine charged only for a **failed agreement** — a transaction meant to fulfill an
   intended purchase (Store) or an existing obligation (rent, insurance) that funds cannot
