@@ -28,6 +28,37 @@ from typing import Optional
 
 from app.extensions import db
 from app.models import EntitlementEvent
+from app.utils.canonical_temporal_resolver import ensure_utc
+
+
+def get_seat_ids_with_purchase_grants(
+    class_id: str, window_start, window_end
+) -> set[int]:
+    """Return seat ids with a purchase-acquired entitlement grant in ``[start, end)``.
+
+    Read-only DOM-STORE-001 surface consumed by the Interpretation domain
+    (SPEC-ITR-001 §6.2 second source): ``EntitlementEvent`` rows with
+    ``acquisition_type='PURCHASE'`` and ``event_type='GRANTED'`` are the
+    authoritative record of a student purchase. Per INV-ITR-016 this
+    source-domain fact takes precedence over the correlated Ledger row. Scoped
+    by ``class_id`` and the half-open completed-cycle window.
+    """
+    if not class_id or window_start is None or window_end is None:
+        return set()
+    rows = (
+        EntitlementEvent.query
+        .with_entities(EntitlementEvent.target_seat_id)
+        .filter(
+            EntitlementEvent.class_id == class_id,
+            EntitlementEvent.acquisition_type == "PURCHASE",
+            EntitlementEvent.event_type == "GRANTED",
+            EntitlementEvent.timestamp >= ensure_utc(window_start),
+            EntitlementEvent.timestamp < ensure_utc(window_end),
+        )
+        .distinct()
+        .all()
+    )
+    return {row.target_seat_id for row in rows if row.target_seat_id is not None}
 
 
 # ---------------------------------------------------------------------------

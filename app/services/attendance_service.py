@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from app.extensions import db
 from app.models import (
     AttendanceReasonCode,
     AttendanceSession,
@@ -10,7 +11,39 @@ from app.services.hall_pass_request_queue import list_pending_hall_pass_requests
 from app.utils.canonical_temporal_resolver import (
     CLASS_LEVEL_EVALUATION,
     canonical_temporal_resolver,
+    ensure_utc,
 )
+
+
+def get_attendance_session_counts_by_seat(
+    class_id: str, window_start, window_end
+) -> dict[int, int]:
+    """Map ``target_seat_id`` → count of attendance sessions in ``[start, end)``.
+
+    Read-only DOM-PROD-001 surface consumed by the Interpretation domain
+    (SPEC-ITR-001 §5.3). ``AttendanceSession`` is the authoritative participation
+    fact; Ledger is never consulted for participation (INV-ITR-016). Only seats
+    with ≥1 session appear in the mapping — the caller supplies the enrolled
+    population and treats absent seats as zero. Scoped by ``class_id`` and the
+    half-open completed-cycle window.
+    """
+    if not class_id or window_start is None or window_end is None:
+        return {}
+    rows = (
+        AttendanceSession.query
+        .with_entities(
+            AttendanceSession.target_seat_id,
+            db.func.count(AttendanceSession.id),
+        )
+        .filter(
+            AttendanceSession.class_id == class_id,
+            AttendanceSession.timestamp >= ensure_utc(window_start),
+            AttendanceSession.timestamp < ensure_utc(window_end),
+        )
+        .group_by(AttendanceSession.target_seat_id)
+        .all()
+    )
+    return {seat_id: int(count) for seat_id, count in rows if seat_id is not None}
 
 
 def _current_evaluation_day_bounds(ctx):

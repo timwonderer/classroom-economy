@@ -3,7 +3,7 @@ from __future__ import annotations
 from decimal import Decimal
 
 from app.extensions import db
-from app.models import LedgerBalanceSnapshot, Seat, Transaction, TransactionStatus, ClassEconomy, _quantize_currency
+from app.models import LedgerBalanceSnapshot, LedgerMechanism, Seat, Transaction, TransactionStatus, ClassEconomy, _quantize_currency
 from app.utils.seat_scope import transaction_scope_filter
 from app.utils.canonical_temporal_resolver import ensure_utc, utc_now
 from app.utils.transaction_idempotency import create_idempotent_transaction
@@ -20,6 +20,79 @@ _TRANSACTION_AUDIT_FIELDS = [
 
 def _non_void_filter():
     return Transaction.is_void.isnot(True)
+
+
+# --- Ledger provenance classifier (SPEC-ITR-001 §6.3) ----------------------
+#
+# The Interpretation domain classifies ledger rows by origin without ever
+# consulting ``Transaction.type`` (INV-ITR-015). A row is *student-originated*
+# iff it is a self-mechanism, non-reversal, non-void row whose ``feat_code`` is
+# NOT one of the system-originated FEATs enumerated below. SPEC-ITR-001 §6.6
+# defers the concrete enumeration to the implementing surface; the Ledger domain
+# owns the provenance of its own rows, so the set lives here.
+#
+# Categories (SPEC-ITR-001 §6.3): payroll accrual, interest accrual, obligation
+# assessment, admin adjustment, ledger resolution. Student-agency FEATs
+# (FEAT-STOR-001 purchase, FEAT-OBL-001 rent self-payment, transfers) are
+# deliberately excluded so those acts remain student-originated.
+SYSTEM_ORIGINATED_FEAT_CODES: frozenset[str] = frozenset(
+    {
+        # payroll accrual
+        "FEAT-LED-004",   # Payroll Execution
+        "FEAT-PROD-003",  # Record Payroll Event
+        # interest accrual / ledger resolution (Ledger authority posts these)
+        "FEAT-LED-000",   # Canonical Monetary Resolution
+        "FEAT-LED-003",   # Settlement Sweep
+        # system-imposed fees
+        "FEAT-LED-001",   # Overdraft/NSF Fee Application
+        # obligation assessment (scheduled cycles, not self-payment)
+        "FEAT-OBL-002",   # Scheduled Rent Cycle
+        "FEAT-OBL-003",   # Scheduled Insurance Cycle
+        # admin adjustment
+        "FEAT-ADMN-001",  # Bulk administration
+    }
+)
+
+
+def _student_originated_filter():
+    """SQLAlchemy predicate for the §6.3 student-originated ledger classifier."""
+    return db.and_(
+        Transaction.mechanism == LedgerMechanism.SELF,
+        Transaction.original_transaction_id.is_(None),
+        Transaction.is_void.isnot(True),
+        db.or_(
+            Transaction.feat_code.is_(None),
+            Transaction.feat_code.notin_(SYSTEM_ORIGINATED_FEAT_CODES),
+        ),
+    )
+
+
+def get_seat_ids_with_student_originated_activity(
+    class_id: str, window_start, window_end
+) -> set[int]:
+    """Return seat ids with ≥1 student-originated ledger row in ``[start, end)``.
+
+    Read-only Ledger surface consumed by the Interpretation domain
+    (SPEC-ITR-001 §6.2 first source, §6.3 classifier). Scoped by ``class_id``
+    (multi-tenancy) and the half-open completed-cycle window. Uses the canonical
+    ledger anchor (``Transaction.seat_id``) as the acting seat. Never consults
+    ``Transaction.type`` (INV-ITR-015).
+    """
+    if not class_id or window_start is None or window_end is None:
+        return set()
+    rows = (
+        Transaction.query
+        .with_entities(Transaction.seat_id)
+        .filter(
+            Transaction.class_id == class_id,
+            Transaction.timestamp >= ensure_utc(window_start),
+            Transaction.timestamp < ensure_utc(window_end),
+            _student_originated_filter(),
+        )
+        .distinct()
+        .all()
+    )
+    return {row.seat_id for row in rows if row.seat_id is not None}
 
 
 def get_last_payroll_time(seat_id: int | None = None, class_id: str | None = None):

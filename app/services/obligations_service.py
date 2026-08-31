@@ -13,7 +13,37 @@ from decimal import Decimal
 from typing import Optional
 
 from app.extensions import db
-from app.models import ObligationAssessment, BillCycle
+from app.models import ObligationAssessment, BillCycle, LedgerMechanism, Transaction
+from app.utils.canonical_temporal_resolver import ensure_utc
+
+
+def get_seat_ids_with_self_payments(class_id: str, window_start, window_end) -> set[int]:
+    """Return seat ids with a self-originated obligation PAYMENT in ``[start, end)``.
+
+    Read-only DOM-OBL-001 surface consumed by the Interpretation domain
+    (SPEC-ITR-001 §6.2 third source): ``ObligationAssessment`` rows with
+    ``event_type='PAYMENT'`` whose referenced Ledger row has ``mechanism=SELF``
+    are the authoritative record of a student self-paying an obligation. The
+    referenced-row provenance is checked by joining ``ledger_transaction_id`` to
+    the Ledger; ``Transaction.type`` is never consulted (INV-ITR-015). Scoped by
+    ``class_id`` and the half-open completed-cycle window.
+    """
+    if not class_id or window_start is None or window_end is None:
+        return set()
+    rows = (
+        db.session.query(ObligationAssessment.seat_id)
+        .join(Transaction, Transaction.id == ObligationAssessment.ledger_transaction_id)
+        .filter(
+            ObligationAssessment.class_id == class_id,
+            ObligationAssessment.event_type == "PAYMENT",
+            ObligationAssessment.timestamp >= ensure_utc(window_start),
+            ObligationAssessment.timestamp < ensure_utc(window_end),
+            Transaction.mechanism == LedgerMechanism.SELF,
+        )
+        .distinct()
+        .all()
+    )
+    return {row.seat_id for row in rows if row.seat_id is not None}
 
 
 def resolve_assessment_amount(assessment: ObligationAssessment) -> Decimal:
