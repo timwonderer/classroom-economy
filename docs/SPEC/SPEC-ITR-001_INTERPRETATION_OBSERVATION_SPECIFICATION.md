@@ -2,7 +2,7 @@
 
 | Reference Number | Version | Effective Date | Supersedes | Authority Level |
 |------------------|---------|----------------|------------|-----------------|
-| SPEC-ITR-001     |  1.2    |     2026-08-30 |        1.1 |       Normative |
+| SPEC-ITR-001     |  1.3    |     2026-08-30 |        1.2 |       Normative |
 
 ---
 
@@ -19,7 +19,8 @@ This document defines:
 - the authoritative source domains each candidate consumes,
 - the declared output properties (Semantic Kind, Subject / Observation Basis / Aggregation, Reference Dependency) per `DOM-ITR-001` INV-ITR-012,
 - what each candidate legitimately supports and what it does not,
-- the observation gaps that must be closed elsewhere before a candidate can lawfully be built.
+- the observation gaps that must be closed elsewhere before a candidate can lawfully be built,
+- the canonical serialized shape of the `observations_json` materialization payload, including its required candidate manifest and completeness gate (§15).
 
 This document does not define:
 
@@ -141,7 +142,7 @@ Per enrolled seat in the completed window:
 - **Semantic Kind:** Descriptive observation
 - **Subject:** `class_id`
 - **Observation basis:** `seat_id` (per-seat attendance-session counts are the intermediate observation basis; they are not themselves the externally exposed Interpretation output)
-- **Aggregation:** `class_distribution_from_seat_observations` — per-seat counts of `AttendanceSession` rows in the window are combined into a class-level distribution summary (percentile decomposition, inter-quartile range, or equivalent per the implementing FEAT). Per-seat counts SHALL NOT be exposed externally as Interpretation outputs.
+- **Aggregation:** `class_distribution_from_seat_observations` — per-seat counts of `AttendanceSession` rows in the window are combined into a class-level distribution summary. The summary SHALL use the pinned `distribution` value-kind core defined in §15.6 (`count`, `p10`, `p25`, `p50`, `p75`, `p90`, `iqr`); `mean` MAY be reported as the optional secondary statistic. This candidate does not use the `n_at_or_below_zero` extension (attendance-session counts have no meaningful zero-crossing tail). The previously permitted "percentile decomposition, inter-quartile range, or equivalent per the implementing FEAT" latitude is withdrawn as of v1.3: immutable records from different cycles SHALL speak the same statistical language. Per-seat counts SHALL NOT be exposed externally as Interpretation outputs.
 - **Reference Dependency:** None
 - **Legitimately supports:** distribution of how much attendance occurred across the class.
 - **Cannot support:** individual-seat ranking or per-seat identification (INV-ITR-009); comparison against a configured or reference expectation without a declared observational reference (INV-ITR-014).
@@ -443,7 +444,7 @@ Mean-first reporting is prohibited. Distribution summaries (percentile decomposi
 - **Semantic Kind:** Descriptive observation
 - **Subject:** `class_id`
 - **Observation basis:** `seat_id`
-- **Aggregation:** `class_distribution_from_seat_observations` — percentile summary (p10, p25, p50, p75, p90), inter-quartile range, and count of seats at or below zero. Additional distribution statistics MAY be declared by the implementing FEAT.
+- **Aggregation:** `class_distribution_from_seat_observations` — the pinned `distribution` value-kind defined in §15.6: core (`count`, `p10`, `p25`, `p50`, `p75`, `p90`, `iqr`) plus the balance-distribution extension `n_at_or_below_zero` (count of seats at or below zero); `mean` MAY be reported as the optional secondary statistic. No other distribution statistics are admitted, so that balance distributions from different cycles remain directly comparable.
 - **Reference Dependency:** None
 - **Legitimately supports:** statement of how concentrated or spread checking balances are across the class; count of seats in the low tail.
 - **Cannot support:** naming individual seats; ranking; verdicts on fairness or dysfunction from spread alone.
@@ -604,13 +605,161 @@ Per `SPEC-TIME-001`, all time logic uses the canonical temporal resolver. Interp
 
 ---
 
-## 15. What This Specification Does Not Define
+## 15. Observation Serialization Contract (`observations_json`)
+
+This section defines the canonical serialized shape of the `observations_json` payload persisted in an `interpretation_cycle_record` (`DOM-ITR-001` §IX). It is the contract that the slice 8.2b compute core produces and the slice 8.2c materialization writer validates before writing an immutable cycle record. It defines structure, vocabulary, and determinism only; it does not define computation (the per-candidate definitions in §§5–13 remain the semantic authority) and it does not define the table (`DOM-ITR-001` §IX / migration `b3d7f1a9c2e4`).
+
+This contract governs the materialization path only. It does not constrain the shape of ad-hoc, non-materialized read-only Interpretation output (§14.6), which is not persisted and carries no immutability obligation.
+
+### 15.1 Contract versioning
+
+- `schema_version` (integer) identifies the envelope structure defined by this section. v1.3 defines `schema_version = 1`.
+- `spec.ref` / `spec.version` record the SPEC-ITR-001 revision whose candidate definitions the payload was computed against (`"SPEC-ITR-001"`, `"1.3"`).
+- `coverage.required_set_version` (integer) identifies the required candidate manifest (§15.2) the payload was validated against. v1.3 defines `required_set_version = 1`.
+
+The required manifest is fully determined by the pair `(spec.version, coverage.required_set_version)`. A historical row therefore does not restate the manifest; the manifest is recovered from this specification at that version.
+
+### 15.2 Required v1 candidate manifest (`required-set-v1`)
+
+`required-set-v1` is exactly the following 17 candidate identifiers:
+
+```
+Q1a-C1  Q1a-C2
+Q1b-C1
+Q2-C1   Q2-C2
+Q3-C1   Q3-C2   Q3-C3
+Q4-C1   Q4-C2   Q4-C3
+Q5-C1   Q5-C2
+Q6-C1   Q6-C2   Q6-C3
+Q9-C1
+```
+
+A materialized `observations_json` SHALL contain exactly one observation entry per identifier in `required-set-v1`: no missing identifiers, no duplicates, no identifiers outside the set. This exact-set-equality condition is the completeness rule enforced in §15.8.
+
+### 15.3 Applicability model
+
+Every observation entry declares `applicability`, which is a closed two-state enum:
+
+- `computed` — the candidate was computed for this cycle; a `value` is present.
+- `not_applicable` — the candidate's required input feature is disabled for the class this cycle (per §14.1); no `value` is present and `not_applicable_reason` is populated.
+
+There is no `unavailable`, `not_implemented`, `pending`, `deferred`, or equivalent third state. Immutability (`DOM-ITR-001` §IX) forbids a materialized record from declaring an intent to fill a candidate in later. A candidate that cannot be truthfully emitted as either `computed` or `not_applicable` blocks materialization (§15.8); it does not get a placeholder.
+
+`not_applicable` is a truthful observation of feature state, never a substitute for zero (§14.1). A candidate whose feature is enabled but whose observed quantity is zero is `computed` with a zero-bearing `value`, not `not_applicable`.
+
+### 15.4 Envelope structure
+
+The top-level payload is a JSON object:
+
+```json
+{
+  "schema_version": 1,
+  "spec": { "ref": "SPEC-ITR-001", "version": "1.3" },
+  "coverage": { "required_set_version": 1, "complete": true },
+  "observations": [ /* observation entries, §15.5 */ ]
+}
+```
+
+`coverage` is deliberately lean. It carries `required_set_version` (which manifest) and `complete` (the serializer-derived boolean of §15.8). It SHALL NOT restate the 17 identifiers, and it SHALL NOT carry compute-supplied `candidates_present` / `candidates_missing` arrays — those are recomputed on demand from `observations[]` and the manifest, never trusted from the payload.
+
+### 15.5 Observation entry structure
+
+Each element of `observations[]` is a JSON object:
+
+| Field | Requiredness | Meaning |
+|---|---|---|
+| `candidate_id` | always | one identifier from `required-set-v1` (§15.2) |
+| `semantic_kind` | always | `descriptive_observation` or `interpretive_signal`, per the candidate's §§5–13 declaration |
+| `subject` | always | the candidate's declared Subject (e.g. `class_id`) |
+| `observation_basis` | always | the candidate's declared Observation Basis (e.g. `seat_id`) |
+| `aggregation` | always | the candidate's declared Aggregation identifier |
+| `reference_dependency` | always | `none`, `class_configuration_observational_reference`, or `interpretation_declared_reference` (§3, INV-ITR-012). All v1 candidates declare `none` (§12.3). |
+| `normalization_dependency` | nullable | optional computation metadata (§3.1); `null` when the candidate does not rescale by a configuration derivative. `"cwi"` where declared (Q2-C2, Q4-C3). Never promoted to a required property. |
+| `applicability` | always | `computed` or `not_applicable` (§15.3) |
+| `not_applicable_reason` | conditional | populated iff `applicability = not_applicable`; a structured reason (e.g. `{ "feature": "savings", "state": "disabled" }`). `null` when `computed`. |
+| `qualifiers` | nullable | structured basis notes (§15.7); `null` when the candidate carries none |
+| `value` | conditional | present iff `applicability = computed`; one of the value-kinds in §15.6. `null` when `not_applicable`. |
+
+The three DOM-required output properties (Semantic Kind; Subject / Observation Basis / Aggregation; Reference Dependency) are carried as first-class fields on every entry so that each materialized observation is self-describing per INV-ITR-012, independent of this specification.
+
+### 15.6 Value-kind vocabulary (closed for v1)
+
+`value` is a JSON object carrying a `kind` discriminator drawn from this closed set. No other `kind` is admitted in `schema_version = 1`. Fraction and count provenance lives **inside** the relevant value shape (the paired counts of §14.2); there is no generic top-level counts field on the entry.
+
+- **`fraction`** — `{ "kind": "fraction", "numerator": <int>, "denominator": <int>, "value": "<decimal>" }`. The paired `n / N` counts of §14.2 are the `numerator` / `denominator`.
+- **`category_fractions`** — `{ "kind": "category_fractions", "categories": [ { "category": "<id>", "numerator": <int>, "denominator": <int>, "value": "<decimal>" }, ... ] }`. Used by composition candidates (e.g. Q5-C1 income-origin shares). Each category carries its own paired counts.
+- **`ratio`** — `{ "kind": "ratio", "antecedent": <number>, "consequent": <number>, "value": "<decimal>" }`. Used where the quantity is a ratio of two observed magnitudes rather than a subset fraction.
+- **`rate`** — `{ "kind": "rate", "numerator": <number>, "denominator": <number>, "unit": "<unit-id>", "value": "<decimal>" }`. A per-unit rate (e.g. per active seat).
+- **`amount`** — `{ "kind": "amount", "value": "<decimal>", "unit": "<unit-id>" }`. A single scalar magnitude (`unit` is `"tokens"` or `"cwi"` where CWI-normalized).
+- **`distribution`** — pinned in §15.6.1.
+- **`counts`** — `{ "kind": "counts", "items": [ { "label": "<id>", "count": <int> }, ... ], "total": <int> }`. A categorical count vector (e.g. Q3 obligation-outcome breakdown, Q9 outcome distributions). This is a value shape, not the entry-level provenance field prohibited above.
+- **`signal_set`** — `{ "kind": "signal_set", "signals": [ { "signal_id": "<id>", "value": { <any value-kind above> }, "applicability": "computed|not_applicable", "not_applicable_reason": <structured|null> } ] }`. Used only by Q9-C1, whose §13.3 mandates independent, non-collapsed signal groups. Each member signal nests one of the value-kinds above and carries its own applicability so a disabled input disables one signal without invalidating the set.
+
+#### 15.6.1 Pinned `distribution` vocabulary
+
+A `distribution` value is:
+
+```json
+{
+  "kind": "distribution",
+  "count": <int>,
+  "p10": "<decimal>", "p25": "<decimal>", "p50": "<decimal>",
+  "p75": "<decimal>", "p90": "<decimal>",
+  "iqr": "<decimal>"
+}
+```
+
+- **Core (required on every `distribution`):** `count`, `p10`, `p25`, `p50`, `p75`, `p90`, `iqr`.
+- **Candidate-specific extension:** `n_at_or_below_zero` (`<int>`) — required on the balance distributions **Q6-C1, Q6-C2, Q6-C3** (and the Q9-C1 resource signals that reuse the balance-distribution shape). Not emitted by distributions where a zero-crossing tail is not meaningful (e.g. Q1a-C2 attendance-session counts).
+- **Optional:** `mean` (`<decimal>`) — MAY be reported as a secondary statistic alongside the core, per the mean-second rule (§11.3). Never a substitute for the distribution core.
+
+No distribution admits statistics outside this vocabulary in `schema_version = 1`. This is a normative tightening over the pre-v1.3 "or equivalent" latitude: every materialized distribution, across every cycle, speaks the same statistical language.
+
+### 15.7 Qualifiers (structured basis notes)
+
+`qualifiers` is a nullable structured field that records a truthful narrowing of an entry's observation basis, so the narrowing is preserved in the immutable record rather than lost. Its canonical use is Q6-C3: when savings is disabled, Q6-C3 falls back to a checking-only total-resources report and §11.5 **requires a declared basis note**. That basis note is recorded here:
+
+```json
+"qualifiers": { "basis_note": { "code": "checking_only_savings_disabled", "excluded_component": "savings" } }
+```
+
+`qualifiers` SHALL NOT carry prescriptive text, thresholds, or alert content (§14.4, §14.5). It records what was observed and on what narrowed basis, nothing more. Entries with no qualifier set `qualifiers` to `null`.
+
+### 15.8 Completeness and the materialization gate
+
+`coverage.complete` is **serializer-derived**, never a compute-supplied assertion. The serializer computes it — and the slice 8.2c writer independently re-validates it before writing — by verifying exact set equality between the candidate identifiers actually present in `observations[]` and `required-set-v1` (§15.2):
+
+```
+{ candidate_id for each entry in observations }  ==  required-set-v1
+```
+
+`complete` is `true` iff **all** of the following hold:
+
+1. every identifier in `required-set-v1` appears in `observations[]`;
+2. no identifier appears more than once (no duplicates);
+3. no entry carries an identifier outside `required-set-v1` (no extras);
+4. every entry has a lawful `applicability` (§15.3), and every `computed` entry carries a `value` of an admitted kind (§15.6) while every `not_applicable` entry carries a `not_applicable_reason` and no `value`.
+
+The writer treats a compute-supplied `coverage.complete` as untrusted input: it recomputes the condition from `observations[]` and the manifest and **fails closed** if the recomputed result is not `true`, regardless of what the payload claimed. This is the governance gate: the materialization side effect of `FEAT-PROD-004` is not lawfully reachable until the compute core produces a payload that satisfies exact-set-equality with lawful applicability for all 17 candidates. A partial payload cannot be materialized, and immutability therefore guarantees no "fill in the rest later" record can exist.
+
+### 15.9 Determinism and canonical serialization
+
+Per INV-ITR-003 (deterministic reproducibility), the serialized payload SHALL be deterministic for a given cycle input:
+
+- **Observation ordering:** `observations[]` SHALL be sorted ascending by `candidate_id` (byte-wise on the identifier string). `category_fractions.categories[]`, `counts.items[]`, and `signal_set.signals[]` SHALL each be sorted ascending by their own identifier field (`category`, `label`, `signal_id`).
+- **Decimal representation:** every non-integer quantity (fractions, percentiles, ratios, rates, amounts, means) SHALL be serialized as a canonical decimal **string**, not a floating-point number, to preserve exact value across round-trips. Counts (`count`, `numerator`, `denominator`, `n_at_or_below_zero`, `items[].count`, `total`) are JSON integers.
+- **No object-key ordering requirement:** determinism does **not** depend on JSON object key order. PostgreSQL `jsonb` does not preserve insertion order of object keys, so key order is not a meaningful serialization property and SHALL NOT be relied upon. Determinism is carried by array ordering and canonical decimal strings, both of which survive `jsonb` normalization.
+- **No wall-clock content:** `observations_json` SHALL NOT embed computation timestamps or other non-reproducible runtime values. Cycle timing lives in the record's own `cycle_started_at` / `cycle_completed_at` / `computed_at` columns (`DOM-ITR-001` §IX), not in the observation payload.
+
+---
+
+## 16. What This Specification Does Not Define
 
 For clarity, and to prevent implementations from over-reaching:
 
 - No numeric thresholds for any candidate (§14.4).
 - No alert content or `suggested_action` text (§14.5).
-- No persistence schema for Interpretation outputs. `DOM-ITR-001` §IX now specifies the durable, immutable `interpretation_cycle_record` (cycle-bound, self-describing via a versioned `reference_configuration` projection), materialized only as a declared side effect of `FEAT-PROD-004` at payroll completion. Its schema, migration, and schema certification are now delivered (migration `b3d7f1a9c2e4`, slice 8.1) — the persistence surface is implemented; the materialization writer that populates a row is not yet built. This specification defines the observations that populate `observations_json`, not the table build.
+- No persistence schema for Interpretation outputs. `DOM-ITR-001` §IX now specifies the durable, immutable `interpretation_cycle_record` (cycle-bound, self-describing via a versioned `reference_configuration` projection), materialized only as a declared side effect of `FEAT-PROD-004` at payroll completion. Its schema, migration, and schema certification are now delivered (migration `b3d7f1a9c2e4`, slice 8.1) — the persistence surface is implemented; the materialization writer that populates a row is not yet built. This specification defines the observations that populate `observations_json` (§§5–13) and, as of v1.3, the canonical serialized shape of that payload (§15) — but not the table build itself.
 - FEAT registry rename in code — landed. `FEAT-ITR-001` is now the canonical name in `app/feats/base.py` per `DOM-ITR-001` §VIII; the previous `FEAT-ANLY-001` alias has been removed. Consumer sites (`app/utils/analytics_engine.py`, `app/routes/analytics.py`) updated in the same slice.
 - No axis assignments — the Behavioral / Structural frame is retired by `DOM-ITR-001` v1.2 §IV.
 - No trend indicators — no prior cycle-record source exists yet per `DOM-ITR-001` §XIII.a.
@@ -623,7 +772,7 @@ For clarity, and to prevent implementations from over-reaching:
 
 ---
 
-## 16. Implementation Preconditions Summary
+## 17. Implementation Preconditions Summary
 
 The following are preconditions to lawful implementation of the candidates in this specification. Failure of any precondition does not invalidate the specification but does bound what a compliant implementation can produce.
 
@@ -640,6 +789,6 @@ The following are preconditions to lawful implementation of the candidates in th
 
 ---
 
-## 17. Amendment
+## 18. Amendment
 
 Amendments to this specification require review against `DOM-ITR-001` v1.2 or its successor. Amendments that add a candidate quantity SHALL declare the candidate's Semantic Kind, Subject / Observation Basis / Aggregation, and Reference Dependency per `DOM-ITR-001` §IV. Amendments that add a Reference Dependency of type `Class Configuration observational reference` SHALL cite the owning-domain declaration that authorizes it.
