@@ -8534,6 +8534,16 @@ def banking():
     )
     overdraft_reco = resolve_overdraft_fine(class_id=selected_class_id)
 
+    # Advisory alert (non-blocking): the teacher sets the fee; the CWI helper only
+    # recommends a range (SPEC-ECON-003 §4.6.1.1). Surface a warning — mirroring the
+    # rent/store balance alerts — when the current fee is outside the recommended
+    # band. Empty when no fee is set or CWI is undefined.
+    overdraft_fee_warnings = []
+    if flat_overdraft_fee is not None and overdraft_reco.cwi is not None:
+        overdraft_fee_warnings = EconomyBalanceChecker(
+            g.canonical_context.user_id, class_id=selected_class_id
+        ).check_overdraft_fee_balance(flat_overdraft_fee, float(overdraft_reco.cwi))
+
     # ---- Transaction log (class-scoped, filtered, paginated) ----
     account_q = request.args.get('account', '')
     type_q = request.args.get('type', '')
@@ -8654,6 +8664,7 @@ def banking():
         flat_overdraft_fee=flat_overdraft_fee,
         savings_reco=savings_reco,
         overdraft_reco=overdraft_reco,
+        overdraft_fee_warnings=overdraft_fee_warnings,
         current_page="banking",
         format_utc_iso=format_utc_iso,
         selected_feature_scope=selected_scope,

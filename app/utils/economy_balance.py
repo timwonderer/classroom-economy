@@ -434,6 +434,48 @@ class EconomyBalanceChecker:
 
         return warnings
 
+    def check_overdraft_fee_balance(self, flat_overdraft_fee, cwi: float) -> List[BalanceWarning]:
+        """Check the teacher-set overdraft / NSF fee against its recommended band.
+
+        Per SPEC-ECON-003 §4.6.1.1 the teacher SETS the fee; the CWI helper only
+        recommends a range. This surfaces a non-blocking advisory warning when the
+        chosen flat fee falls outside the CWI-normed band (via the canonical
+        ``resolve_overdraft_fine`` helper, so the band matches what the settings
+        page displays). Returns [] when no fee is set or CWI is undefined.
+        """
+        warnings = []
+        if flat_overdraft_fee is None or cwi is None or cwi <= 0:
+            return warnings
+
+        from app.services.economic_engine import resolve_overdraft_fine
+        reco = resolve_overdraft_fine(cwi=Decimal(str(cwi)), mode=self.policy_mode)
+        if reco.flat_fee_lower is None or reco.flat_fee_upper is None:
+            return warnings
+
+        fee = Decimal(str(flat_overdraft_fee))
+        band = f"${reco.flat_fee_lower:.2f} - ${reco.flat_fee_upper:.2f}"
+        if fee < reco.flat_fee_lower:
+            warnings.append(BalanceWarning(
+                feature="Overdraft Fee",
+                level=WarningLevel.WARNING,
+                message=f"Overdraft fee (${fee:.2f}) is below the recommended range ({band}). It may be too small to discourage overdrafts.",
+                current_value=fee,
+                recommended_min=reco.flat_fee_lower,
+                recommended_max=reco.flat_fee_upper,
+                cwi_ratio=None,
+            ))
+        elif fee > reco.flat_fee_upper:
+            warnings.append(BalanceWarning(
+                feature="Overdraft Fee",
+                level=WarningLevel.WARNING,
+                message=f"Overdraft fee (${fee:.2f}) is above the recommended range ({band}). It may be overly punishing.",
+                current_value=fee,
+                recommended_min=reco.flat_fee_lower,
+                recommended_max=reco.flat_fee_upper,
+                cwi_ratio=None,
+            ))
+        return warnings
+
     def check_store_items_balance(self, store_items: List, cwi: float) -> List[BalanceWarning]:
         """
         Check if store items are balanced relative to CWI.
