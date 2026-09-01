@@ -315,6 +315,118 @@ def run_rent_reconciliation_job():
     )
 
 
+def run_automatic_payroll_job():
+    """Automatic payroll: fire the canonical completion FEAT for every due class.
+
+    Automatic payroll is merely a second *initiation mechanism* for the same
+    economic-cycle completion as manual payroll (DOM-PROD-001 §XV). This job owns
+    exactly one question — "is this class due for automatic payroll now?" — and
+    then becomes just another caller of ``complete_payroll_cycle``. It contains no
+    payroll, interpretation, or activation logic of its own.
+
+    A class is due when its active ``PayrollSettings`` carries a
+    ``next_payroll_date`` at or before now. The **scheduled occurrence** (that
+    ``next_payroll_date``) is the deterministic command identity: every retry of
+    the same occurrence derives the same idempotency key, while the next intended
+    occurrence — after ``next_payroll_date`` advances — derives a different one. So
+    the ``payroll_cycle_completion`` anchor makes scheduler retries idempotent
+    without any bespoke job-run substrate. Each class runs under its OWN top-level
+    FEAT transaction (a plain loop, no shared FEAT context), so one class's failure
+    cannot roll back or block another; the ``next_payroll_date`` advance commits
+    atomically with the cycle so a failed run stays due under the same key.
+    """
+    from datetime import timedelta
+
+    from app.extensions import db
+    from app.feats.base import FEATContext
+    from app.feats.complete_payroll_cycle import complete_payroll_cycle
+    from app.models import ClassEconomy, PayrollSettings
+    from app.services.class_configuration_query_service import is_feature_enabled
+    from app.services.context_resolver import CanonicalContext
+    from app.services.ledger_service import resolve_class_authority_seat_id
+    from app.services.payroll.cycle_completion import get_completed_cycle_window
+    from app.utils.canonical_temporal_resolver import (
+        CLASS_LEVEL_EVALUATION,
+        canonical_temporal_resolver,
+        ensure_utc,
+        utc_now,
+    )
+
+    logger = logging.getLogger('scheduled_tasks')
+    logger.info("Starting scheduled automatic-payroll job")
+
+    now = utc_now()
+    try:
+        due_settings = (
+            PayrollSettings.query
+            .filter(
+                PayrollSettings.is_active.is_(True),
+                PayrollSettings.next_payroll_date.isnot(None),
+                PayrollSettings.next_payroll_date <= now,
+            )
+            .order_by(PayrollSettings.class_id.asc())
+            .all()
+        )
+    except Exception:
+        db.session.rollback()
+        logger.exception("Automatic-payroll job could not enumerate due classes")
+        return
+
+    ran = 0
+    skipped = 0
+    failed = 0
+    for settings in due_settings:
+        class_id = settings.class_id
+        scheduled_occurrence = ensure_utc(settings.next_payroll_date)
+        try:
+            if not is_feature_enabled(class_id, "payroll"):
+                skipped += 1
+                continue
+            class_row = db.session.get(ClassEconomy, class_id)
+            if class_row is None or not class_row.teacher_user_id:
+                skipped += 1
+                continue
+
+            ctx = CanonicalContext(
+                user_id=class_row.teacher_user_id,
+                class_id=class_id,
+                seat_id=resolve_class_authority_seat_id(class_id),
+                actor_role="teacher",
+            )
+            boundary_utc = canonical_temporal_resolver(
+                CLASS_LEVEL_EVALUATION,
+                canonical_execution_context=ctx,
+                primitive="current_time",
+            ).canonical_now_utc
+            cycle_started_at, cycle_completed_at = get_completed_cycle_window(
+                class_id, boundary_utc=boundary_utc
+            )
+
+            idempotency_key = f"auto-payroll:{class_id}:{scheduled_occurrence.isoformat()}"
+            frequency_days = settings.payroll_frequency_days or 14
+            with FEATContext("FEAT-PROD-004", idempotency_key=idempotency_key):
+                complete_payroll_cycle(
+                    ctx=ctx,
+                    idempotency_key=idempotency_key,
+                    cycle_started_at=cycle_started_at,
+                    cycle_completed_at=cycle_completed_at,
+                )
+                # Scheduling bookkeeping (the scheduler's own concern), committed
+                # atomically with the cycle so a failure leaves the class due.
+                settings.next_payroll_date = scheduled_occurrence + timedelta(days=frequency_days)
+            ran += 1
+        except Exception:
+            failed += 1
+            db.session.rollback()
+            logger.exception("Automatic payroll failed for class %s", class_id)
+            continue
+
+    logger.info(
+        "Automatic-payroll job completed. Ran %s class(es), skipped %s, failed %s",
+        ran, skipped, failed,
+    )
+
+
 def run_audit_invariant_check_job():
     """Nightly audit chain integrity verification.
 
@@ -376,6 +488,11 @@ def init_scheduled_tasks(app):
         with app.app_context():
             run_rent_reconciliation_job()
 
+    # Wrapper that runs the automatic-payroll job with Flask app context
+    def run_automatic_payroll():
+        with app.app_context():
+            run_automatic_payroll_job()
+
     if not scheduler.running:
         # Add the daily-limit enforcement job to run every hour
         scheduler.add_job(
@@ -425,12 +542,26 @@ def init_scheduled_tasks(app):
             max_instances=1  # Prevent overlapping executions
         )
 
+        # Automatic payroll — hourly. Fires the canonical completion FEAT only for
+        # classes whose next_payroll_date is due; idempotent per scheduled
+        # occurrence, so an hourly cadence never double-runs a cycle.
+        scheduler.add_job(
+            func=run_automatic_payroll,
+            trigger='interval',
+            hours=1,
+            id='automatic_payroll',
+            name='Automatic payroll (due classes)',
+            replace_existing=True,
+            max_instances=1  # Prevent overlapping executions
+        )
+
         scheduler.start()
         logger.info(
             "Scheduled tasks initialized: daily-limit enforcement (hourly), "
             "database maintenance (2 AM UTC), "
             "audit invariant check (3 AM UTC), "
-            "rent reconciliation (hourly)"
+            "rent reconciliation (hourly), "
+            "automatic payroll (hourly)"
         )
     else:
         logger.info("Scheduler already running")
