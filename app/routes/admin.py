@@ -193,6 +193,8 @@ from app.feats.identity_feat import (
     remove_pending_student_seat,
 )
 from app.feats.prod import record_attendance_session, record_payroll_event
+from app.feats.complete_payroll_cycle import complete_payroll_cycle
+from app.services.payroll.cycle_completion import get_completed_cycle_window
 from app.feats.direct_entitlement_grant_feat import execute_direct_grant, execute_hall_pass_adjustment
 # execute_insurance_claim_resolution removed — insurance_claim_feat.py deleted; insurance feature broken pending DOM-OBL-001 migration
 from app.feats.transaction_void_feat import (
@@ -7018,74 +7020,53 @@ def _run_payroll():
             return redirect(url_for('admin.dashboard'))
 
         selected_scope = _require_payroll_feature_scope_from_request()
-
         class_id = selected_scope['class_id']
-        policy_version_id = _require_active_payroll_policy_version_id(class_id)
 
-        # Payroll population is derived from the ATTENDANCE RECORD, not the seat
-        # roster. Payroll pays for attended time over each seat's [last payroll,
-        # now] window (see record_payroll_event), so a seat earns only if it has
-        # attendance activity. Empty/unclaimed desks have no attendance rows and
-        # are excluded by construction; any seat that does have attendance is
-        # necessarily a claimed participant (attendance is seat+user anchored).
-        # This keys payroll off seat_id per DOM-IDEN-001 and avoids paying — or
-        # crashing on — empty desks.
-        attended_seat_ids = [
-            seat_id
-            for (seat_id,) in (
-                db.session.query(AttendanceSession.target_seat_id)
-                .filter(AttendanceSession.class_id == class_id)
-                .distinct()
-                .all()
-            )
-        ]
-        seats = (
-            Seat.query.filter(
-                Seat.id.in_(attended_seat_ids),
-                Seat.role == 'student',
-            ).all()
-            if attended_seat_ids
-            else []
-        )
-
+        # Manual payroll is one of two initiation mechanisms for the canonical
+        # economic-cycle completion (DOM-PROD-001 §XV); the other is automatic
+        # payroll. Both converge on FEAT-PROD-004 — the route no longer loops over
+        # seats or owns any payroll/interpretation/activation logic itself.
         evaluation = canonical_temporal_resolver(
             CLASS_LEVEL_EVALUATION,
             canonical_execution_context=g.canonical_context,
             primitive="current_time",
         )
-        run_anchor_utc = evaluation.canonical_now_utc
-
-        processed_count = 0
-        paid_count = 0
-        request_nonce = secrets.token_hex(12)
-        for seat in seats:
-            result = record_payroll_event(
-                ctx=g.canonical_context,
-                target_seat_id=seat.id,
-                payroll_event_type="payroll",
-                correlation_id=generate_correlation_id(),
-                idempotency_key=f"payroll_run:{class_id}:{seat.id}:{request_nonce}",
-                policy_version_id=policy_version_id,
-                mechanism="TEACHER",
-                summary_json={
-                    "source": "admin_run_payroll",
-                    "description": "Payroll based on attendance",
-                },
-                reference_time_utc=run_anchor_utc,
-            )
-            processed_count += 1
-            if result.ledger_transaction is not None:
-                paid_count += 1
-
-        current_app.logger.info(
-            "Payroll complete. Recorded %s payroll events and %s ledger payments.",
-            processed_count,
-            paid_count,
+        boundary_utc = evaluation.canonical_now_utc
+        cycle_started_at, cycle_completed_at = get_completed_cycle_window(
+            class_id, boundary_utc=boundary_utc
         )
 
-        success_message = f"Payroll complete. Recorded {processed_count} payroll events and {paid_count} payments."
+        # Idempotent per client-supplied token: one rendered page carries one
+        # token, so a double-submit of the same intended run resolves as a replay;
+        # a fresh render (a new intended run) supplies a new token.
+        token = (request.form.get("idempotency_token") or "").strip() or secrets.token_hex(12)
+        idempotency_key = f"manual-payroll:{class_id}:{token}"
+
+        with FEATContext("FEAT-PROD-004", idempotency_key=idempotency_key):
+            result = complete_payroll_cycle(
+                ctx=g.canonical_context,
+                idempotency_key=idempotency_key,
+                cycle_started_at=cycle_started_at,
+                cycle_completed_at=cycle_completed_at,
+            )
+
+        settled = len(result.settled_seat_ids or [])
+        if result.created:
+            success_message = (
+                f"Payroll cycle complete. Settled {settled} seat(s); "
+                f"cycle {result.payroll_cycle_id}."
+            )
+        else:
+            success_message = (
+                f"Payroll cycle already completed (cycle {result.payroll_cycle_id})."
+            )
+        current_app.logger.info(success_message)
+
         if is_json:
-            return jsonify(status="success", message=success_message), 200
+            return jsonify(
+                status="success", message=success_message,
+                payroll_cycle_id=result.payroll_cycle_id, created=result.created,
+            ), 200
 
         flash(success_message, "admin_success")
         return redirect(url_for('admin.payroll'))

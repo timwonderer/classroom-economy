@@ -23,7 +23,8 @@ import uuid
 from typing import NamedTuple
 
 from app.extensions import db
-from app.models import PayrollCycleCompletion
+from app.models import ClassEconomy, PayrollCycleCompletion, PayrollEvent
+from app.utils.canonical_temporal_resolver import ensure_utc
 
 
 class PayrollCycleCompletionConflict(Exception):
@@ -42,6 +43,40 @@ class RunCompletionResult(NamedTuple):
     completion: PayrollCycleCompletion
     payroll_cycle_id: str
     created: bool
+
+
+def get_completed_cycle_window(class_id: str, *, boundary_utc):
+    """Return ``(cycle_started_at, cycle_completed_at)`` for the cycle closing now.
+
+    The class-level economic cycle closes at each payroll accrual, so the closing
+    cycle spans ``[last class-level payroll accrual, boundary)`` — the PROD-owned
+    payroll-window semantics (DOM-PROD-001 §XV) that per-seat settlement already
+    pays over. The previous boundary is the most recent ``payroll`` event's
+    ``recorded_at`` strictly before ``boundary_utc`` (``manual_credit`` and
+    ``reversal`` events do not define a cycle boundary). This is a PROD read
+    surface — not route-local archaeology — so the FEAT-PROD-004 caller has a
+    lawful window source and correctly picks up classes whose history predates the
+    completion anchor. A class with no prior payroll accrual opens its first cycle
+    at genesis (``ClassEconomy.created_at``).
+    """
+    if not class_id or boundary_utc is None:
+        raise ValueError("class_id and boundary_utc are required to resolve a cycle window")
+    boundary = ensure_utc(boundary_utc)
+    last_payroll_at = (
+        db.session.query(db.func.max(PayrollEvent.recorded_at))
+        .filter(
+            PayrollEvent.class_id == class_id,
+            PayrollEvent.payroll_event_type == "payroll",
+            PayrollEvent.recorded_at < boundary,
+        )
+        .scalar()
+    )
+    if last_payroll_at is not None:
+        return last_payroll_at, boundary
+    class_row = db.session.get(ClassEconomy, class_id)
+    if class_row is None:
+        raise ValueError(f"class {class_id} not found; cannot resolve genesis cycle window")
+    return class_row.created_at, boundary
 
 
 def allocate_payroll_cycle_id() -> str:
