@@ -12,7 +12,7 @@ yet — e.g. a newly created class before its first payroll completion — is
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from app.services.interpretation.presentation import (
     InterpretationCycleSummary,
@@ -36,11 +36,6 @@ class InterpretationPageView:
     latest_cycle: InterpretationCycleView | None
     history: tuple[InterpretationCycleSummary, ...]
     selected_cycle_id: str | None
-    # Transitional crash-safety for the legacy analytics template, which iterates
-    # ``view.metrics`` / ``view.recent_events``. 8.4c replaces the template and
-    # removes these — the Interpretation page carries no analytics metrics.
-    metrics: tuple = field(default_factory=tuple)
-    recent_events: tuple = field(default_factory=tuple)
 
 
 def build_interpretation_page_view(

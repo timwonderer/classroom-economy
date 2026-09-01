@@ -30,13 +30,6 @@ FEATURE_FLAGS = {
     "store",
 }
 
-ANALYTICS_POLICY_DEFAULTS: Dict[str, float] = {
-    "cwi_deviation_band": 0.20,
-    "cwi_deviation_warning_threshold": 0.20,
-    "velocity_drop_warning_threshold": 0.30,
-    "participation_warning_threshold": 0.70,
-}
-
 POLICY_MODES: Dict[str, Dict[str, Any]] = {
     "tight": {
         "label": "Tight",
@@ -453,13 +446,4 @@ def get_class_feature_settings_for_class(
     return {
         "class_id": class_id,
         "features": ClassFeature.feature_map_for_class(class_id),
-    }
-
-
-def get_analytics_policy(mode: Optional[str]) -> Dict[str, float]:
-    profile = get_policy_profile(mode)
-    configured = profile.get("analytics", {})
-    return {
-        key: float(configured.get(key, default_value))
-        for key, default_value in ANALYTICS_POLICY_DEFAULTS.items()
     }

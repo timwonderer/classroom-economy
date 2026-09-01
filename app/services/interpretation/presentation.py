@@ -37,7 +37,8 @@ intervention. Interpretation describes what was observed; it never prescribes.
 """.strip()
 
 # Stems that betray a prescription, a value judgement, or a presumed conclusion —
-# the ways ``suggested_action`` would try to sneak back in. Guiding questions are
+# the ways a retired prescriptive action-recommendation would try to sneak back
+# in. Guiding questions are
 # validated against these so the non-prescriptive contract is enforceable, not
 # merely aspirational.
 _PRESCRIPTIVE_STEMS: tuple[str, ...] = (

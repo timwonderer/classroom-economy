@@ -593,7 +593,7 @@ No candidate quantity in this specification declares a numeric threshold. Where 
 
 Per `DOM-ITR-001` §III, §XI, and INV-ITR-010, Interpretation does not prescribe teacher action. This specification does not define alert content, alert thresholds, or prescriptive `suggested_action` text. Any teacher-facing surface that consumes Interpretation outputs SHALL frame those outputs descriptively; prescriptive text is a non-Interpretation concern.
 
-Existing runtime `suggested_action` content in `analytics_engine.py::generate_alerts` violates this constraint. Per `DOM-ITR-001` §XIII.c, its disposition is a runtime remediation matter, not a specification question.
+The prior runtime `suggested_action` content (in the retired `analytics_engine.py::generate_alerts`) that violated this constraint has been removed (slice 8.4d): the V1 analytics engine, its alert generation, and the old dashboard builder are deleted, and the teacher Interpretation page renders DOM-ITR observations plus non-prescriptive guiding questions only.
 
 ### 14.6 Time Model
 
