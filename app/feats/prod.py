@@ -427,6 +427,7 @@ def _record_payroll_event_impl(
     summary_json: dict | None = None,
     reference_time_utc=None,
     amount: Decimal | None = None,
+    payroll_cycle_id: str | None = None,
 ) -> PayrollEventResult:
     ctx = _require_context(ctx)
     if policy_version_id is None:
@@ -502,6 +503,7 @@ def _record_payroll_event_impl(
         mechanism=mechanism,
         payroll_event_type=payroll_event_type,
         recorded_at=recorded_at,
+        payroll_cycle_id=payroll_cycle_id,
         summary_json=summary_json or {},
     )
     db.session.add(event)
@@ -539,6 +541,7 @@ def record_payroll_event(
     summary_json: dict | None = None,
     reference_time_utc=None,
     amount: Decimal | None = None,
+    payroll_cycle_id: str | None = None,
 ) -> PayrollEventResult:
     return _record_payroll_event_impl(
         ctx=ctx,
@@ -551,6 +554,7 @@ def record_payroll_event(
         summary_json=summary_json,
         reference_time_utc=reference_time_utc,
         amount=amount,
+        payroll_cycle_id=payroll_cycle_id,
     )
 
 

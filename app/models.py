@@ -756,6 +756,12 @@ class PayrollEvent(db.Model):
     mechanism = db.Column(db.String(20), nullable=False, default="TEACHER")
     payroll_event_type = db.Column(db.String(20), nullable=False)
     recorded_at = db.Column(db.DateTime(timezone=True), default=utc_now, nullable=False, index=True)
+    # Economic-cycle attribution (DOM-PROD-001 §XV). NULL for events recorded
+    # outside a completed class-level cycle (e.g. ad-hoc per-seat runs, manual
+    # credits, reversals); stamped by class-wide cycle settlement so every event
+    # produced by one closed cycle shares its payroll_cycle_id. Not a foreign key
+    # (INV-ARC-021 §V.7).
+    payroll_cycle_id = db.Column(db.String(36), nullable=True, index=True)
     summary_json = db.Column(db.JSON, nullable=True)
 
     __table_args__ = (
