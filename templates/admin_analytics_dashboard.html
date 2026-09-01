@@ -1,295 +1,139 @@
 {% extends "layout_admin.html" %}
-{% block page_title %}Analytics Dashboard{% endblock %}
-{% block page_icon %}analytics{% endblock %}
+{% block page_title %}Interpretation{% endblock %}
+{% block page_icon %}insights{% endblock %}
 
-{% block page_header_actions %}
-<div class="d-flex align-items-center gap-2 flex-wrap">
-  <div class="btn-group" role="group">
-    <a href="{{ url_for('analytics.dashboard', window='week') }}"
-      class="btn {% if window_type == 'week' %}btn-primary{% else %}btn-outline-primary{% endif %}">
-      Week
-    </a>
-    <a href="{{ url_for('analytics.dashboard', window='month') }}"
-      class="btn {% if window_type == 'month' %}btn-primary{% else %}btn-outline-primary{% endif %}">
-      Month
-    </a>
-  </div>
-</div>
-
-<button class="btn btn-primary d-flex align-items-center gap-2" type="button" data-bs-toggle="offcanvas"
-  data-bs-target="#analyticsGuide" aria-controls="analyticsGuide">
-  <span class="material-symbols-outlined">quick_reference_all</span> <span>Need Help?</span>
-</button>
-</div>
-{% endblock %}
+{#
+  Interpretation page (DOM-ITR). This template is a PURE CONSUMER of the
+  page view model (app/services/interpretation/page_view.py): it renders the
+  supplied presentation contract and never branches on candidate ids or
+  value.kind — 8.4a already translated those into presentation-ready objects
+  (INV-ARC-022). Guiding questions are non-prescriptive reflective prompts,
+  presented in a collapsed disclosure so they never compete with — or read as
+  conclusions about — the observation itself.
+#}
 
 {% block content %}
-<div class="container-fluid">
-  <!-- Per spec section 13: "Something is drifting — and I know what lever to pull." -->
-
-  {% if not view.has_snapshot %}
-  <div class="alert alert-info">
-    <span class="material-symbols-outlined me-2">info</span>
-    {{ view.display_no_data_message }}
-  </div>
-  {% else %}
-
-  <!-- System Health Metrics Section (Always Visible per spec 4.1) -->
-  <div class="row mb-1">
-    <div class="col-12">
-      <h2 class="mb-3">
-        Classroom Macroeconomics Indicators
-        <br>
-        <small class="text-muted" style="font-size:1.5rem"> {% if view.window_type == 'week' %}Week{% elif view.window_type ==
-          'month' %}Month{% else %}Period{% endif %} of {{ view.display_window_start }} to {{
-          view.display_window_end }}</small>
-      </h2>
-    </div>
-  </div>
-  <div class="row mb-4">
-    <div class="col-12">
-      <div class="card border-2 border-primary shadow-sm">
-        <div class="card-body">
-          <h5 class="card-title">
-            <span class="material-symbols-outlined align-middle me-2">trending_up</span>
-            CWI Context
-          </h5>
-          <p class="mb-2">
-            <strong>Current CWI:</strong> {{ view.display_cwi_value }}
-          </p>
-          <p class="small text-muted mb-0">
-            This is the expected weekly income for perfect attendance. All metrics above are relative to this baseline.
-          </p>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <div class="row mb-4">
-    <div class="col-12">
-      <div class="card border-2 border-primary shadow-sm">
-        <div class="table-responsive">
-          <table class="table align-middle mb-0">
-            <thead class="table-light">
-              <tr>
-                <th scope="col">Metric</th>
-                <th scope="col">Current Value</th>
-                <th scope="col">Trend</th>
-                <th scope="col">Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {% for metric in view.metrics %}
-              <tr>
-                <td>
-                  <div class="d-flex gap-3">
-                    <span class="material-symbols-outlined text-muted">{{ metric.icon_name }}</span>
-                    <div>
-                      <div class="fw-semibold">{{ metric.metric_name }}</div>
-                    </div>
-                  </div>
-                </td>
-                <td>
-                  <span class="fs-5 text-{{ metric.status_color }}">{{ metric.display_current_value }}</span>
-                </td>
-                <td>
-                  <span class="badge bg-{{ metric.status_color }}-subtle text-{{ metric.status_color }}">{{ metric.display_trend_badge }}</span>
-                </td>
-                <td>
-                  <span class="badge bg-{{ metric.status_color }}-subtle text-{{ metric.status_color }}">{{ metric.status_label }}</span>
-                </td>
-              </tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- CWI Context (Per spec: all monetary metrics must be CWI-relative) -->
-
-
-
-  <!-- Recent Events (Per spec 5.2: Provide context annotations) -->
-  {% if view.recent_events %}
-  <div class="row mb-4">
-    <div class="col-12">
-      <h2 class="h4 mb-3">
-        <span class="material-symbols-outlined align-middle me-2">event</span>
-        Recent Events
-      </h2>
-      <div class="card border-0 shadow-sm">
-        <div class="list-group list-group-flush">
-          {% for event in view.recent_events %}
-          <div class="list-group-item">
-            <div class="d-flex justify-content-between align-items-start">
-              <div>
-                <h6 class="mb-1">{{ event.description | e }}</h6>
-                <p class="small text-muted mb-0">
-                  {{ event.display_timestamp }}
-                  {% if event.display_change_indicator %}
-                  — {{ event.display_change_indicator }}
-                  {% endif %}
-                </p>
-              </div>
-              <span class="badge bg-secondary-subtle text-secondary">{{ event.event_type | e }}</span>
-            </div>
-          </div>
-          {% endfor %}
-        </div>
-        <div class="card-footer bg-transparent border-0 text-end">
-          <a href="{{ url_for('analytics.events') }}" class="btn btn-sm btn-outline-primary">
-            View All Events <span class="material-symbols-outlined">arrow_forward</span>
-          </a>
-        </div>
-      </div>
-    </div>
-  </div>
-  {% endif %}
-
-
-  {% endif %}
-
-  <!-- Offcanvas Help Guide -->
-  <div class="offcanvas offcanvas-end" tabindex="-1" id="analyticsGuide" aria-labelledby="analyticsGuideLabel">
-    <div class="offcanvas-header">
-      <h5 class="offcanvas-title" id="analyticsGuideLabel">How to: Analytics</h5>
-      <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Close"></button>
-    </div>
-    <div class="offcanvas-body">
-      <div>
-        <p>Use this page to quickly check participation, money movement, and economy warnings for the current class.</p>
-
-        <div class="accordion mt-4 mb-4" id="analyticsHelpAccordion">
-
-          <!-- System Health -->
-          <div class="accordion-item">
-            <h2 class="accordion-header" id="headingHealth">
-              <button class="accordion-button collapsed bg-secondary text-muted" type="button" data-bs-toggle="collapse"
-                data-bs-target="#collapseHealth" aria-expanded="false" aria-controls="collapseHealth">
-                <span class="material-symbols-outlined me-2"
-                  style="font-size:25pt; vertical-align:middle;">monitor_heart</span>
-                <strong>System Health</strong>
-              </button>
-            </h2>
-            <div id="collapseHealth" class="accordion-collapse collapse mt-2" aria-labelledby="headingHealth"
-              data-bs-parent="#analyticsHelpAccordion">
-              <div class="accordion-body">
-                <p>These metrics represent the heartbeat of your economy:</p>
-                <ul>
-                  <li><strong>Participation Rate:</strong> Students with attendance recorded during the selected window.</li>
-                  <li><strong>Money Velocity:</strong> How actively money is moving through the class economy.</li>
-                </ul>
-              </div>
-            </div>
-          </div>
-
-          <!-- Economy Balance -->
-          <div class="accordion-item">
-            <h2 class="accordion-header" id="headingBalance">
-              <button class="accordion-button collapsed bg-secondary text-muted" type="button" data-bs-toggle="collapse"
-                data-bs-target="#collapseBalance" aria-expanded="false" aria-controls="collapseBalance">
-                <span class="material-symbols-outlined me-2"
-                  style="font-size:25pt; vertical-align:middle;">balance</span>
-                <strong>Economy Balance</strong>
-              </button>
-            </h2>
-            <div id="collapseBalance" class="accordion-collapse collapse mt-2" aria-labelledby="headingBalance"
-              data-bs-parent="#analyticsHelpAccordion">
-              <div class="accordion-body">
-                <p>All values are relative to your <strong>Class Wealth Index (CWI)</strong>:</p>
-                <ul>
-                  <li><strong>On-Track Students:</strong> Shows how many students are earning close to what you
-                    designed.</li>
-                  <li><strong>Budget Survival:</strong> Can students pay rent/insurance and still save 10%? If this is
-                    low, rent might be too high.</li>
-                </ul>
-              </div>
-            </div>
-          </div>
-
-          <!-- Interpreting Alerts -->
-          <div class="accordion-item">
-            <h2 class="accordion-header" id="headingAlerts">
-              <button class="accordion-button collapsed bg-secondary text-muted" type="button" data-bs-toggle="collapse"
-                data-bs-target="#collapseAlerts" aria-expanded="false" aria-controls="collapseAlerts">
-                <span class="material-symbols-outlined me-2"
-                  style="font-size:25pt; vertical-align:middle;">warning</span>
-                <strong>Interpreting Alerts</strong>
-              </button>
-            </h2>
-            <div id="collapseAlerts" class="accordion-collapse collapse mt-2" aria-labelledby="headingAlerts"
-              data-bs-parent="#analyticsHelpAccordion">
-              <div class="accordion-body">
-                <ul class="list-unstyled">
-                  <li class="mb-2"><span class="badge bg-success-subtle text-success">Green</span>
-                    <strong>Healthy:</strong> Everything is working as designed.</li>
-                  <li class="mb-2"><span class="badge bg-warning-subtle text-warning">Yellow</span>
-                    <strong>Warning:</strong> Something is drifting (e.g., velocity slowing down). Check it out soon.
-                  </li>
-                  <li><span class="badge bg-danger-subtle text-danger">Red</span> <strong>Critical:</strong> Immediate
-                    action needed (e.g., most students can't afford rent).</li>
-                </ul>
-              </div>
-            </div>
-          </div>
-
-          <!-- Taking Action -->
-          <div class="accordion-item">
-            <h2 class="accordion-header" id="headingAction">
-              <button class="accordion-button collapsed bg-secondary text-muted" type="button" data-bs-toggle="collapse"
-                data-bs-target="#collapseAction" aria-expanded="false" aria-controls="collapseAction">
-                <span class="material-symbols-outlined me-2" style="font-size:25pt; vertical-align:middle;">build</span>
-                <strong>Taking Action</strong>
-              </button>
-            </h2>
-            <div id="collapseAction" class="accordion-collapse collapse mt-2" aria-labelledby="headingAction"
-              data-bs-parent="#analyticsHelpAccordion">
-              <div class="accordion-body">
-                <p>Knowing what "lever to pull" is key:</p>
-                <ul>
-                  <li><strong>Too many poor students?</strong> Lower rent, raise wages, or add bonus jobs.</li>
-                  <li><strong>Too much hoarding?</strong> Add fun store items or limited-time sales.</li>
-                  <li><strong>Low participation?</strong> Remind students about payroll or upcoming store openings.</li>
-                </ul>
-              </div>
-            </div>
-          </div>
-
-        </div>
-
-        <div class="mt-4 pt-3 border-top">
-          <div class="d-grid gap-2">
-            <a href="{{ url_for('docs.view_doc', doc_path='user-guides/features/analytics/interpreting-analytics') }}"
-              class="btn btn-primary" target="_blank" rel="noopener">
-              <span class="material-symbols-outlined" style="vertical-align: middle;">menu_book</span>
-              Full Analytics Guide
-            </a>
-          </div>
-          <p class="text-muted small mt-3 mb-0 text-center">
-            <span class="material-symbols-outlined" style="vertical-align: middle; font-size: 1rem;">info</span>
-            Guide opens in a new tab
-          </p>
-        </div>
-      </div>
-    </div>
-  </div>
-</div>
-
 <style>
-  .fs-1 {
-    font-size: 3rem !important;
+  .interpretation-page { max-width: 960px; }
+  .itr-section { margin-bottom: 2.5rem; }
+  .itr-section > h2 { margin-bottom: .25rem; }
+  .itr-section-summary { color: #4a4a4a; margin-bottom: 1.25rem; }
+  .itr-observation {
+    border: 1px solid #d9d9d9; border-radius: 8px;
+    padding: 1rem 1.25rem; margin-bottom: 1rem; background: #fff;
   }
-
-  .card {
-    transition: transform 0.2s ease;
+  .itr-observation > h3 { font-size: 1.05rem; margin-bottom: .4rem; }
+  .itr-value { font-size: 1.25rem; font-weight: 600; margin-bottom: .25rem; }
+  .itr-supporting, .itr-basis { color: #4a4a4a; margin-bottom: .15rem; }
+  .itr-basis { font-style: italic; }
+  .itr-explanation { color: #333; margin-top: .5rem; margin-bottom: 0; }
+  .itr-not-applicable { color: #555; margin-bottom: 0; }
+  /* Modest, secondary reflection panel — deliberately not an alert. */
+  .itr-questions { margin-top: .75rem; font-size: .9rem; }
+  .itr-questions > summary {
+    cursor: pointer; color: #33547a; font-weight: 600; display: inline-block;
+    padding: .15rem .1rem;
   }
+  .itr-questions[open] > summary { margin-bottom: .35rem; }
+  .itr-questions ul { margin: 0 0 0 1.1rem; color: #444; }
+  .itr-questions li { margin-bottom: .25rem; }
+  /* Preserve a visible keyboard focus indicator (INV-ARC-020). */
+  .itr-questions > summary:focus-visible {
+    outline: 2px solid #33547a; outline-offset: 2px; border-radius: 3px;
+  }
+  .itr-cycle-selector { margin-bottom: 2rem; }
+  .itr-cycle-meta { color: #4a4a4a; margin-bottom: 1.5rem; }
 </style>
-<script>
-  document.addEventListener('DOMContentLoaded', () => {
-    const tooltipTriggerList = document.querySelectorAll('[data-bs-toggle="tooltip"]');
-    [...tooltipTriggerList].map((tooltipTriggerEl) => new bootstrap.Tooltip(tooltipTriggerEl));
-  });
-</script>
+
+<div class="container-fluid interpretation-page">
+
+  {% if view.state == 'awaiting_first_completed_cycle' %}
+  <section aria-labelledby="itr-empty-heading">
+    <h2 id="itr-empty-heading">No completed interpretation yet</h2>
+    <p>Interpretation will appear here after the first payroll cycle is completed.</p>
+  </section>
+
+  {% else %}
+  {% set cycle = view.latest_cycle %}
+
+  {# Cycle selection — an accessible, no-JS GET form (drill-down stays pure). #}
+  <form method="get" action="{{ url_for('analytics.dashboard') }}"
+        class="itr-cycle-selector d-flex align-items-end gap-2 flex-wrap">
+    <div>
+      <label for="itr-cycle-select" class="form-label">Completed cycle</label>
+      <select id="itr-cycle-select" name="cycle" class="form-select" style="min-width: 18rem;">
+        {% for summary in view.history %}
+        <option value="{{ summary.payroll_cycle_id }}"
+                {% if summary.payroll_cycle_id == view.selected_cycle_id %}selected{% endif %}>
+          Cycle completed {{ summary.cycle_completed_at.strftime('%b %d, %Y') }}
+        </option>
+        {% endfor %}
+      </select>
+    </div>
+    <button type="submit" class="btn btn-primary">View cycle</button>
+  </form>
+
+  {% if cycle %}
+  <p class="itr-cycle-meta">
+    Interpretation of the cycle completed
+    {{ cycle.cycle.cycle_completed_at.strftime('%b %d, %Y') }}. These are the
+    observations CTH recorded when this cycle closed.
+  </p>
+
+  {% for section in cycle.sections %}
+  <section class="itr-section" aria-labelledby="section-{{ section.key }}">
+    <h2 id="section-{{ section.key }}">{{ section.title }}</h2>
+    <p class="itr-section-summary">{{ section.summary }}</p>
+
+    {% for obs in section.observations %}
+    <article class="itr-observation">
+      <h3>{{ obs.title }}</h3>
+
+      {% if obs.applicability == 'computed' and obs.value %}
+        {# Observation first. #}
+        <p class="itr-value">{{ obs.value.display }}</p>
+        {% for line in obs.value.supporting %}
+        <p class="itr-supporting">{{ line }}</p>
+        {% endfor %}
+        {% for line in obs.supporting_context %}
+        <p class="itr-basis">{{ line }}</p>
+        {% endfor %}
+        {# Context second. #}
+        <p class="itr-explanation">{{ obs.summary }}</p>
+      {% else %}
+        <p class="itr-not-applicable">
+          Not applicable this cycle.{% if obs.not_applicable_reason %} {{ obs.not_applicable_reason }}{% endif %}
+        </p>
+      {% endif %}
+
+      {# Question third — collapsed by default, never a verdict. #}
+      {% if obs.guiding_questions %}
+      <details class="itr-questions">
+        <summary>Questions to consider</summary>
+        <ul>
+          {% for question in obs.guiding_questions %}
+          <li>{{ question }}</li>
+          {% endfor %}
+        </ul>
+      </details>
+      {% endif %}
+    </article>
+    {% endfor %}
+
+    {% if section.guiding_questions %}
+    <details class="itr-questions itr-section-questions">
+      <summary>Questions to consider for {{ section.title|lower }}</summary>
+      <ul>
+        {% for question in section.guiding_questions %}
+        <li>{{ question }}</li>
+        {% endfor %}
+      </ul>
+    </details>
+    {% endif %}
+  </section>
+  {% endfor %}
+  {% endif %}
+  {% endif %}
+
+</div>
 {% endblock %}
