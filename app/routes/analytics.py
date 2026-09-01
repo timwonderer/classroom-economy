@@ -16,7 +16,7 @@ from app.utils.canonical_temporal_resolver import (
     utc_now, ensure_utc,
     canonical_temporal_resolver, SYSTEM_LEVEL_EVALUATION, CLASS_LEVEL_EVALUATION,
 )
-from flask import Blueprint, session, jsonify, request, flash, redirect, url_for, g
+from flask import Blueprint, session, jsonify, request, flash, redirect, url_for, g, abort
 from sqlalchemy import desc
 
 from app.extensions import db, limiter
@@ -38,6 +38,7 @@ from app.utils.join_code import get_display_join_code
 # Define allowed window types constant
 ALLOWED_WINDOW_TYPES = {'week', 'month', 'pay_cycle', 'rent_cycle'}
 from app.utils.analytics_engine import AnalyticsEngine
+from app.services.interpretation.page_view import build_interpretation_page_view
 from app.utils.helpers import render_template_with_fallback as render_template
 
 from jinja2 import TemplateNotFound
@@ -226,50 +227,22 @@ def dashboard():
         flash('You need to set up class periods before viewing analytics.', 'warning')
         return redirect(url_for('admin.students'))
 
-    # Get or set time window preference, validated against allowed values
-    requested_window_type = request.args.get('window', 'week')
-    window_type = requested_window_type if requested_window_type in ALLOWED_WINDOW_TYPES else 'week'
-
-    # Calculate time window
-    window_start, window_end = get_time_window(window_type, class_id)
-
-    # Initialize analytics engine
-    engine = AnalyticsEngine(class_id)
-
-    # INV-ARC-007: analytics GET must be read-only.
-    snapshot = (
-        engine.get_snapshot_read_only(window_type, window_start, window_end)
-        if getattr(g, "read_only", False)
-        else engine.get_or_create_snapshot(window_type, window_start, window_end)
-    )
-
-    active_alerts = []
-
-    # The "recent economy events" panel is a DOM-ITR-001 contextual-annotation
-    # surface that is NOT IMPLEMENTED in v2 (§XIII.a). AuditEvent is a
-    # tamper-evident integrity chain, not an Interpretation annotation source, so
-    # feeding its rows here mislabels integrity operations as economy events. The
-    # dashboard builder reads event fields defensively (so it did not crash like
-    # the /events timeline did), but the data is still not lawful Interpretation
-    # output. Present no events until the annotation surface is specified.
-    recent_events = []
-
-    # Build the page view model using the analytics builder
-    # Pass g.canonical_context for SPEC-TIME-001 compliant timezone conversion
-    from app.services.analytics.builders import build_analytics_dashboard_view
-    dashboard_view = build_analytics_dashboard_view(
-        snapshot_orm=snapshot,
-        alerts_list=active_alerts,
-        events_list=recent_events,
-        window_type=window_type,
-        window_start=window_start,
-        window_end=window_end,
-        canonical_execution_context=g.canonical_context,
-    )
+    # Authority cutover (slice 8.4b): the Interpretation page is now fed by the
+    # DOM-ITR read/presentation layer over immutable interpretation_cycle_records —
+    # never AnalyticsEngine, never a recompute. GET stays pure (INV-ARC-007): the
+    # ITR read service consumes frozen records only.
+    #
+    # Cycle drill-down is class-scoped (INV-CORE-000): a ``cycle`` selection is
+    # resolved under the active class_id, never globally. A requested cycle that
+    # does not belong to this class fails closed.
+    selected_cycle_id = request.args.get('cycle') or None
+    page_view = build_interpretation_page_view(class_id, selected_cycle_id=selected_cycle_id)
+    if selected_cycle_id and page_view.latest_cycle is None:
+        abort(404)
 
     return render_template(
         'admin_analytics_dashboard.html',
-        view=dashboard_view,
+        view=page_view,
         join_code=join_code,
         available_classes=available_classes,
         current_class_label=selected_class['label'],
