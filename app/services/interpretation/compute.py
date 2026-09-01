@@ -5,10 +5,14 @@ This layer performs **composition only** — the candidate math lives in the
 per-question modules (``participation``, ``economic_interaction``, and, in later
 slices, the remaining source-domain clusters).
 
-Scope discipline (slice 8.2b-4):
-* All required candidates except Q9-C1 are implemented (Q1a, Q1b, Q2, Q3, Q4, Q5,
-  Q6). Q9-C1 is deliberately absent — this module does NOT stub it and does NOT
-  weaken the 17-candidate materialization gate (SPEC-ITR-001 §15.8).
+Scope discipline (slice 8.2b-5):
+* All 17 required candidates are implemented (Q1a, Q1b, Q2, Q3, Q4, Q5, Q6, Q9).
+  The compute core is now contract-complete: over a lawful cycle window it
+  produces a payload whose serializer-derived ``coverage.complete`` is ``True``
+  and which ``validate_for_materialization`` accepts. This module still does NOT
+  persist anything — writing an immutable ``interpretation_cycle_record`` is the
+  separate slice 8.2c boundary (materialization writer, ``reference_configuration``
+  capture, idempotency, fail-closed persistence).
 * The payload this returns is therefore still a **partial** payload. Its
   serializer-derived ``coverage.complete`` is ``False`` and
   ``observation_contract.validate_for_materialization`` will reject it purely
@@ -34,6 +38,7 @@ from app.services.interpretation.observation_contract import (
     derive_coverage_complete,
 )
 from app.services.interpretation.participation import compute_q1a
+from app.services.interpretation.resilience_observation import compute_q9
 from app.services.interpretation.resource_distribution import compute_q6
 from app.services.interpretation.savings_behavior import compute_q4
 
@@ -54,6 +59,7 @@ def compute_partial_observations(class_id: str, window_start, window_end) -> lis
     entries.extend(compute_q4(class_id, window_start, window_end))
     entries.extend(compute_q5(class_id, window_start, window_end))
     entries.extend(compute_q6(class_id, window_start, window_end))
+    entries.extend(compute_q9(class_id, window_start, window_end))
     entries.sort(key=lambda entry: entry["candidate_id"])
     return entries
 

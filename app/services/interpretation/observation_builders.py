@@ -319,6 +319,49 @@ def observation_entry(
     }
 
 
+def computed_signal(signal_id: str, value: dict[str, Any]) -> dict[str, Any]:
+    """Build one ``computed`` member of a ``signal_set`` (SPEC-ITR-001 §15.6, §13.3).
+
+    Nests one of the value-kinds; the member carries its own ``applicability`` so a
+    live signal coexists with a disabled sibling in the same set.
+    """
+    return {
+        "signal_id": signal_id,
+        "applicability": "computed",
+        "not_applicable_reason": None,
+        "value": value,
+    }
+
+
+def not_applicable_signal(
+    signal_id: str, not_applicable_reason: dict[str, Any]
+) -> dict[str, Any]:
+    """Build one ``not_applicable`` member of a ``signal_set`` (§15.6, §13.3).
+
+    Carries a structured reason and **no** value — a disabled or unavailable input
+    disables one signal without invalidating the set (§15.3).
+    """
+    return {
+        "signal_id": signal_id,
+        "applicability": "not_applicable",
+        "not_applicable_reason": not_applicable_reason,
+        "value": None,
+    }
+
+
+def signal_set_value(signals: list[dict[str, Any]]) -> dict[str, Any]:
+    """Build a ``signal_set`` value (SPEC-ITR-001 §15.6), sorted by ``signal_id``.
+
+    The independent Q9 observation groups are composed as members here; §13.3
+    forbids collapsing them into a single scalar, so each is a distinct signal.
+    Members are sorted ascending by ``signal_id`` per §15.9.
+    """
+    return {
+        "kind": "signal_set",
+        "signals": sorted(signals, key=lambda s: s["signal_id"]),
+    }
+
+
 def not_applicable_entry(
     candidate_id: str,
     *,

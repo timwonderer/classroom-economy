@@ -27,8 +27,6 @@ from __future__ import annotations
 from datetime import timedelta
 from decimal import Decimal
 
-import pytest
-
 from app.extensions import db
 from app.feats.base import FEATContext
 from app.models import ObligationAssessment, RentSettings
@@ -43,7 +41,6 @@ from app.services.interpretation.obligation_outcome import (
     decompose_coverage,
 )
 from app.services.interpretation.observation_contract import (
-    ObservationContractError,
     REQUIRED_SET_V1,
     validate_for_materialization,
     validate_payload_structure,
@@ -51,10 +48,6 @@ from app.services.interpretation.observation_contract import (
 from app.services.interpretation.compute import compute_partial_payload
 from app.utils.canonical_temporal_resolver import utc_now
 from tests.helpers.classroom_initializer import initialize
-
-
-# After slice 8.2b-4 only Q9-C1 remains unimplemented.
-IMPLEMENTED_AFTER_Q3 = REQUIRED_SET_V1 - frozenset({"Q9-C1"})
 
 
 # --------------------------------------------------------------------------- #
@@ -332,29 +325,21 @@ def test_q3_empty_window_reports_lawful_zero_baseline(app):
 
 
 # --------------------------------------------------------------------------- #
-# 3. Coverage: the full payload still fails materialization (1 missing)        #
+# 3. Coverage: the full payload over the obligation window is materializable     #
 # --------------------------------------------------------------------------- #
 
 
-def test_partial_payload_still_fails_only_for_incomplete_coverage(app):
+def test_full_payload_over_obligation_window_is_materializable(app):
     classroom = initialize("chemistry_p1", app)
     cid, start, end = _seed_q3_window(classroom)
 
     payload = compute_partial_payload(cid, start, end)
-    assert payload["coverage"]["complete"] is False
+    assert payload["coverage"]["complete"] is True
 
     result = validate_payload_structure(payload)
-    assert result.complete is False
-    assert result.present_ids == IMPLEMENTED_AFTER_Q3
-    assert result.missing_ids == frozenset({"Q9-C1"})
-    assert len(result.missing_ids) == 1
-    assert result.extra_ids == frozenset()
-    assert result.duplicate_ids == frozenset()
+    assert result.complete is True
+    assert result.present_ids == REQUIRED_SET_V1
+    assert result.missing_ids == frozenset()
+    assert result.errors == ()
 
-    # The ONLY failure is incomplete coverage — the sixteen computed entries (Q3
-    # included) carry no structural defect.
-    assert len(result.errors) == 1
-    assert "missing required candidate" in result.errors[0]
-
-    with pytest.raises(ObservationContractError):
-        validate_for_materialization(payload)
+    validate_for_materialization(payload)

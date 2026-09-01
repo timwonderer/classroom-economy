@@ -24,8 +24,6 @@ import uuid
 from datetime import timedelta
 from decimal import Decimal
 
-import pytest
-
 from app.extensions import db
 from app.feats.base import FEATContext
 from app.models import AttendanceSession, EntitlementEvent
@@ -36,7 +34,6 @@ from app.services.interpretation.compute import (
 )
 from app.services.interpretation.observation_contract import (
     REQUIRED_SET_V1,
-    ObservationContractError,
     validate_for_materialization,
     validate_payload_structure,
 )
@@ -44,12 +41,9 @@ from app.utils.canonical_temporal_resolver import utc_now
 from tests.helpers.classroom_initializer import initialize
 
 
-# The candidates this file focuses on. Composition now also emits Q2/Q5 (slice
-# 8.2b-2), so presence is asserted as a subset rather than exact equality.
+# The candidates this file focuses on. Composition now emits the full set, so
+# presence is asserted as a subset rather than exact equality.
 Q1_CANDIDATES = frozenset({"Q1a-C1", "Q1a-C2", "Q1b-C1"})
-# The full implemented set after slice 8.2b-4 (used for coverage assertions).
-# Only Q9-C1 remains unimplemented.
-IMPLEMENTED_CANDIDATES = REQUIRED_SET_V1 - frozenset({"Q9-C1"})
 
 
 def _seed_window(classroom):
@@ -178,31 +172,24 @@ def test_q1b_classifier_excludes_system_feat_and_unions_sources(app):
     assert q1b_c1["value"] == "0.5000"
 
 
-def test_partial_payload_fails_materialization_only_for_incomplete_coverage(app):
-    """The intended end-state of slice 8.2b-1 (SPEC-ITR-001 §15.8)."""
+def test_full_payload_over_participation_window_is_materializable(app):
+    """After slice 8.2b-5 the compute core is contract-complete: a lawful window
+    yields all 17 candidates with no structural defect (SPEC-ITR-001 §15.8)."""
     classroom = initialize("chemistry_p1", app)
     cid, start, end = _seed_window(classroom)
 
     payload = compute_partial_payload(cid, start, end)
 
-    # Serializer-derived coverage.complete must be False (only Q9-C1 missing).
-    assert payload["coverage"]["complete"] is False
+    assert payload["coverage"]["complete"] is True
 
     result = validate_payload_structure(payload)
-    assert result.complete is False
-    assert result.present_ids == IMPLEMENTED_CANDIDATES
-    assert result.missing_ids == frozenset({"Q9-C1"})
-    assert len(result.missing_ids) == 1
-    assert result.extra_ids == frozenset()
-    assert result.duplicate_ids == frozenset()
+    assert result.complete is True
+    assert result.present_ids == REQUIRED_SET_V1
+    assert result.missing_ids == frozenset()
+    assert result.errors == ()
 
-    # The ONLY failure is incomplete coverage — no structural errors.
-    assert len(result.errors) == 1
-    assert "missing required candidate" in result.errors[0]
-
-    # And the fail-closed gate refuses to materialize it.
-    with pytest.raises(ObservationContractError):
-        validate_for_materialization(payload)
+    # The fail-closed gate now ACCEPTS the complete payload.
+    validate_for_materialization(payload)
 
 
 # --- helper: complete the payload with lawful placeholders for the other 14 ---
