@@ -20,7 +20,7 @@ from app.utils.join_code import get_display_join_code
 from app.utils.helpers import render_template_with_fallback as render_template
 
 # Create blueprint
-analytics_bp = Blueprint('analytics', __name__, url_prefix='/admin/analytics')
+analytics_bp = Blueprint('analytics', __name__, url_prefix='/admin/interpretation')
 
 
 def _active_class_option(user_id: int, class_id: str | None):
@@ -100,5 +100,5 @@ def dashboard():
         join_code=join_code,
         available_classes=available_classes,
         current_class_label=selected_class['label'],
-        current_page='analytics',
+        current_page='interpretation',
     )

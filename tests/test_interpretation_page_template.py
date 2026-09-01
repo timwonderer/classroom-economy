@@ -83,7 +83,7 @@ def test_rendered_page_is_accessible_and_renders_sections(client):
     classroom = initialize_as_teacher("chemistry_p1", client, app)
     _put_record(classroom.class_id, "cycle-render", _one_per_section())
 
-    response = client.get("/admin/analytics/")
+    response = client.get("/admin/interpretation/")
     assert response.status_code == 200
     html = response.get_data(as_text=True)
 
@@ -95,13 +95,13 @@ def test_rendered_page_is_accessible_and_renders_sections(client):
     text = region.get_text(" ", strip=True)
 
     # All seven themed sections render.
-    for title in ("Labor participation", "Economic activity", "Obligations",
-                  "Savings behavior", "Income composition", "Resource distribution",
-                  "Resilience signals"):
+    for title in ("How students participated", "How students used the economy",
+                  "What happened with obligations", "Savings", "Where income came from",
+                  "Money at the end of the cycle", "Additional observations"):
         assert title in text, title
 
     # Observation value renders (participation 15 of 22).
-    assert "68.18% (15 of 22)" in text
+    assert "15 of 22 students (68.18%)" in text
 
     # not_applicable reads intentionally — reason, not a dash/0/empty.
     assert "Not applicable this cycle. Savings is disabled for this class this cycle." in text
@@ -123,7 +123,7 @@ def test_empty_history_state_has_no_generate_cue(client):
     app = client.application
     initialize_as_teacher("chemistry_p1", client, app)  # no cycle records
 
-    response = client.get("/admin/analytics/")
+    response = client.get("/admin/interpretation/")
     assert response.status_code == 200
     html = response.get_data(as_text=True)
     _audit_html_accessibility(html)

@@ -92,14 +92,14 @@ def test_dashboard_renders_with_history(client):
     classroom = initialize_as_teacher("chemistry_p1", client, app)
     _put_record(classroom.class_id, "cycle-1")
 
-    response = client.get("/admin/analytics/")
+    response = client.get("/admin/interpretation/")
     assert response.status_code == 200
 
 
 def test_dashboard_renders_empty_state(client):
     app = client.application
     initialize_as_teacher("chemistry_p1", client, app)  # no cycle records
-    response = client.get("/admin/analytics/")
+    response = client.get("/admin/interpretation/")
     assert response.status_code == 200
 
 
@@ -110,9 +110,9 @@ def test_dashboard_unknown_cycle_fails_closed(client):
     app = client.application
     initialize_as_teacher("chemistry_p1", client, app)
 
-    assert client.get("/admin/analytics/?cycle=not-in-this-class").status_code == 404
+    assert client.get("/admin/interpretation/?cycle=not-in-this-class").status_code == 404
     # The class's own (absent) selection still renders the empty state.
-    assert client.get("/admin/analytics/").status_code == 200
+    assert client.get("/admin/interpretation/").status_code == 200
 
 
 def test_dashboard_get_is_pure_no_writes(client):
@@ -121,7 +121,7 @@ def test_dashboard_get_is_pure_no_writes(client):
     cid = classroom.class_id
 
     before = InterpretationCycleRecord.query.filter_by(class_id=cid).count()
-    assert client.get("/admin/analytics/").status_code == 200
+    assert client.get("/admin/interpretation/").status_code == 200
     after = InterpretationCycleRecord.query.filter_by(class_id=cid).count()
     assert after == before == 0  # viewing materializes nothing
 

@@ -62,7 +62,7 @@ def _put_record(cid, cycle_id, observations, *, completed_at=None):
 
 
 def test_all_curated_guiding_questions_are_non_prescriptive():
-    for _, _, _, questions in _SECTIONS:
+    for *_prefix, questions in _SECTIONS:
         for q in questions:
             validate_guiding_question(q)  # must not raise
     for meta in _CANDIDATES.values():
@@ -129,14 +129,17 @@ def test_frozen_record_renders_stored_values_without_recompute(app):
 
     # Q1a-C1 says 99 of 100 — impossible for a 4-student class, so this can only
     # come from the stored record, proving no recompute.
-    assert obs["Q1a-C1"].value.display == "99.00% (99 of 100)"
-    assert obs["Q1a-C2"].value.display == "median 2.00 across 4 students"
-    assert obs["Q2-C1"].value.display == "0.7500 transactions per active seat per day"
-    assert obs["Q2-C2"].value.display == "10.00 tokens"
-    assert "labor: 57.14% (2000 of 3500)" in obs["Q5-C1"].value.supporting
-    assert obs["Q3-C3"].value.display == "3 events"
-    assert any("assessed 50.00" in line for line in obs["Q3-C2"].value.supporting)
-    assert obs["Q3-C1"].value.display == "by obligation type"
+    assert obs["Q1a-C1"].value.display == "99 of 100 students (99.00%)"
+    # Distribution reads in plain language, not percentile jargon.
+    assert obs["Q1a-C2"].value.display == "About 2 attendance records per student on average"
+    # Rate leads with the graspable count and gives the per-day figure as context.
+    assert obs["Q2-C1"].value.display == "3 student-started transactions this cycle"
+    assert obs["Q2-C2"].value.display == "$10.00"
+    # Income sources use friendly labels + money framing.
+    assert "attendance-based work: 57.14% ($20.00 of $35.00 received)" in obs["Q5-C1"].value.supporting
+    assert obs["Q3-C3"].value.display == "3 obligation events recorded"
+    assert any("$50.00 owed" in line for line in obs["Q3-C2"].value.supporting)
+    assert obs["Q3-C1"].value.display == "For each obligation, how it was resolved:"
 
     # Q4-C1 not_applicable: no value, humanized reason.
     assert obs["Q4-C1"].applicability == "not_applicable"
@@ -146,9 +149,11 @@ def test_frozen_record_renders_stored_values_without_recompute(app):
     # Q6-C3 checking-only qualifier surfaces as supporting context.
     assert "Reported on a checking-only basis (savings excluded)." in obs["Q6-C3"].supporting_context
 
-    # Q9-C1 signal_set: independent signals, persistence marked not applicable.
-    assert obs["Q9-C1"].value.display == "2 independent signals"
-    assert any("persistence: not applicable" in line for line in obs["Q9-C1"].value.supporting)
+    # Q9-C1 signal_set: each independent signal is named and explained on its own line.
+    assert obs["Q9-C1"].value.display == "2 independent signals, each shown separately:"
+    assert any("Persistence across cycles: not available yet" in line
+               for line in obs["Q9-C1"].value.supporting)
+    assert any(line.startswith("Attendance per student:") for line in obs["Q9-C1"].value.supporting)
 
 
 def test_sections_group_candidates_thematically(app):

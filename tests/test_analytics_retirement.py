@@ -59,7 +59,7 @@ def test_retired_modules_are_unimportable():
 def test_only_the_interpretation_route_survives(app):
     analytics_rules = {
         rule.endpoint for rule in app.url_map.iter_rules()
-        if rule.rule.startswith("/admin/analytics")
+        if rule.rule.startswith("/admin/interpretation")
     }
     # The Interpretation page is the sole surviving analytics-blueprint route; the
     # V1 snapshot/alerts/acknowledge/events/student drill-down endpoints are gone.

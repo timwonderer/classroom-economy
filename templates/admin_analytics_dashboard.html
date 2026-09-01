@@ -14,16 +14,40 @@
 
 {% block content %}
 <style>
-  .interpretation-page { max-width: 960px; }
-  .itr-section { margin-bottom: 2.5rem; }
-  .itr-section > h2 { margin-bottom: .25rem; }
-  .itr-section-summary { color: #4a4a4a; margin-bottom: 1.25rem; }
+  .interpretation-page { max-width: 1120px; }
+  .itr-intro { max-width: 760px; margin-bottom: 1.5rem; }
+  .itr-intro h2 { margin-bottom: .45rem; }
+  .itr-intro p { color: #4a4a4a; margin-bottom: 0; }
+  .itr-overview { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: .8rem; margin: 1.25rem 0 1.75rem; }
+  .itr-overview-card { border: 1px solid #d9d9d9; border-top: 4px solid var(--secondary, #d4a857); border-radius: 8px; padding: 1rem; background: #fff; min-height: 126px; }
+  .itr-overview-card a { color: inherit; text-decoration: none; }
+  .itr-overview-card a:focus-visible { outline: 2px solid #33547a; outline-offset: 3px; }
+  .itr-overview-label { color: #555; font-size: .82rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
+  .itr-overview-title { font-weight: 700; margin: .3rem 0 .55rem; }
+  .itr-overview-value { color: #33547a; font-weight: 700; }
+  .itr-contents { border: 1px solid #d9d9d9; border-radius: 8px; background: #f8f7f3; padding: 1rem 1.25rem; margin-bottom: 2rem; }
+  .itr-contents h2 { font-size: 1rem; margin: 0 0 .6rem; }
+  .itr-contents-controls { display: flex; align-items: end; gap: .65rem; flex-wrap: wrap; }
+  .itr-contents-controls label { color: #555; font-weight: 600; margin-bottom: .35rem; }
+  .itr-contents-controls select { min-width: min(26rem, 100%); }
+  .itr-section { margin-bottom: 1.5rem; scroll-margin-top: 1rem; }
+  .itr-section-card { border: 1px solid #d9d9d9; border-radius: 8px; background: #fff; overflow: hidden; box-shadow: 0 2px 8px rgba(28, 35, 42, .08); }
+  .itr-section-header { background: #195b55; color: #fff; padding: .9rem 1.25rem; }
+  .itr-section-header h2 { color: #fff !important; font-size: 1.2rem; margin: 0; }
+  .itr-section-header .material-symbols-outlined { color: #fff; vertical-align: middle; margin-right: .45rem; }
+  .itr-section-body { padding: 1.25rem; }
+  .itr-section > h2 { margin: 0 0 .25rem; }
+  .itr-section-summary { color: #4a4a4a; margin-bottom: .9rem; }
+  /* "How to read this" — a calm explanatory callout, deliberately not an alert. */
+  .itr-how-to-read { background: #eef4f3; border-left: 4px solid #195b55; border-radius: 6px; padding: .7rem .95rem; margin-bottom: 1.2rem; }
+  .itr-how-to-read-label { display: block; font-size: .72rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: #195b55; margin-bottom: .25rem; }
+  .itr-how-to-read p { margin: 0; color: #35443f; }
   .itr-observation {
     border: 1px solid #d9d9d9; border-radius: 8px;
-    padding: 1rem 1.25rem; margin-bottom: 1rem; background: #fff;
+    padding: .9rem 1rem; margin-bottom: .7rem; background: #fbfbfa;
   }
-  .itr-observation > h3 { font-size: 1.05rem; margin-bottom: .4rem; }
-  .itr-value { font-size: 1.25rem; font-weight: 600; margin-bottom: .25rem; }
+  .itr-observation > h3 { font-size: 1rem; margin-bottom: .35rem; }
+  .itr-value { font-size: 1.2rem; font-weight: 700; margin-bottom: .2rem; color: #2f3d4a; }
   .itr-supporting, .itr-basis { color: #4a4a4a; margin-bottom: .15rem; }
   .itr-basis { font-style: italic; }
   .itr-explanation { color: #333; margin-top: .5rem; margin-bottom: 0; }
@@ -41,7 +65,7 @@
   .itr-questions > summary:focus-visible {
     outline: 2px solid #33547a; outline-offset: 2px; border-radius: 3px;
   }
-  .itr-cycle-selector { margin-bottom: 2rem; }
+  .itr-cycle-selector { margin-bottom: 1.25rem; }
   .itr-cycle-meta { color: #4a4a4a; margin-bottom: 1.5rem; }
 </style>
 
@@ -55,6 +79,11 @@
 
   {% else %}
   {% set cycle = view.latest_cycle %}
+
+  <div class="itr-intro">
+    <h2>Classroom economy overview</h2>
+    <p>A quick, plain-language look at what students recorded during the completed cycle.</p>
+  </div>
 
   {# Cycle selection — an accessible, no-JS GET form (drill-down stays pure). #}
   <form method="get" action="{{ url_for('analytics.dashboard') }}"
@@ -80,10 +109,55 @@
     observations CTH recorded when this cycle closed.
   </p>
 
+  <div class="itr-overview" aria-label="Cycle overview">
+    {% for section in cycle.sections %}
+    <div class="itr-overview-card">
+      <a href="#section-{{ section.key }}">
+        <div class="itr-overview-label">{{ loop.index }} · {{ section.title }}</div>
+        {% for obs in section.observations if obs.applicability == 'computed' and obs.value %}
+          {% if loop.first %}
+          <div class="itr-overview-title">{{ obs.title }}</div>
+          <div class="itr-overview-value">{{ obs.value.display }}</div>
+          {% endif %}
+        {% else %}
+          <div class="itr-overview-title">No observation recorded</div>
+        {% endfor %}
+      </a>
+    </div>
+    {% endfor %}
+  </div>
+
+  <nav class="itr-contents" aria-labelledby="itr-contents-heading">
+    <h2 id="itr-contents-heading">Jump to a section</h2>
+    <div class="itr-contents-controls">
+      <div>
+        <label for="itr-section-select">Choose a section</label>
+        <select id="itr-section-select" class="form-select">
+          <option value="">Select a section</option>
+      {% for section in cycle.sections %}
+          <option value="section-{{ section.key }}">{{ section.title }}</option>
+      {% endfor %}
+        </select>
+      </div>
+      <button type="button" class="btn btn-primary" id="itr-section-go">Go</button>
+    </div>
+  </nav>
+
   {% for section in cycle.sections %}
   <section class="itr-section" aria-labelledby="section-{{ section.key }}">
-    <h2 id="section-{{ section.key }}">{{ section.title }}</h2>
-    <p class="itr-section-summary">{{ section.summary }}</p>
+    <div class="itr-section-card">
+      <div class="itr-section-header">
+        <h2 id="section-{{ section.key }}"><span class="material-symbols-outlined" aria-hidden="true">insights</span>{{ section.title }}</h2>
+      </div>
+      <div class="itr-section-body">
+        <p class="itr-section-summary">{{ section.summary }}</p>
+
+        {% if section.how_to_read %}
+        <div class="itr-how-to-read">
+          <span class="itr-how-to-read-label">How to read this</span>
+          <p>{{ section.how_to_read }}</p>
+        </div>
+        {% endif %}
 
     {% for obs in section.observations %}
     <article class="itr-observation">
@@ -130,10 +204,24 @@
       </ul>
     </details>
     {% endif %}
+      </div>
+    </div>
   </section>
   {% endfor %}
   {% endif %}
   {% endif %}
 
 </div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+  document.getElementById('itr-section-go')?.addEventListener('click', function () {
+    const select = document.getElementById('itr-section-select');
+    if (select?.value) {
+      document.getElementById(select.value)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      window.history.replaceState(null, '', `#${select.value}`);
+    }
+  });
+</script>
 {% endblock %}

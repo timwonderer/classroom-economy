@@ -7,6 +7,11 @@ and template can consume **without knowing anything about JSONB storage or
 candidate internals** (no ``candidate_id == "Q3-C2"`` or ``value.kind ==
 "coverage_by_type"`` logic ever reaches a template).
 
+Design goal (teacher legibility): a teacher should be able to *interpret* the page,
+not re-analyze it. Each section says both what it shows and how to make sense of
+it; each number is phrased in plain, contextual language; and where a category
+carries several independent signals, each one is named and explained.
+
 Two hard rules:
 
 * **Never recompute.** These builders consume the stored record only. Reviewing
@@ -20,7 +25,7 @@ Two hard rules:
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
 from typing import Any
@@ -38,9 +43,8 @@ intervention. Interpretation describes what was observed; it never prescribes.
 
 # Stems that betray a prescription, a value judgement, or a presumed conclusion —
 # the ways a retired prescriptive action-recommendation would try to sneak back
-# in. Guiding questions are
-# validated against these so the non-prescriptive contract is enforceable, not
-# merely aspirational.
+# in. Guiding questions are validated against these so the non-prescriptive
+# contract is enforceable, not merely aspirational.
 _PRESCRIPTIVE_STEMS: tuple[str, ...] = (
     "should", "recommend", "you ought", "ought to", "need to", "try to",
     "increase", "decrease", "reduce", "raise ", "lower ", "improve", "fix",
@@ -107,11 +111,12 @@ class ObservationPresentation:
 
 @dataclass(frozen=True)
 class InterpretationSection:
-    """A themed group of observations with its own guiding questions."""
+    """A themed group of observations: what it shows, how to read it, and prompts."""
 
     key: str
     title: str
     summary: str
+    how_to_read: str
     observations: tuple[ObservationPresentation, ...]
     guiding_questions: tuple[str, ...] = ()
 
@@ -125,6 +130,72 @@ class InterpretationCycleView:
 
 
 # --------------------------------------------------------------------------- #
+# Plain-language label maps                                                     #
+# --------------------------------------------------------------------------- #
+
+# Maps the deterministic ids used in the frozen payload to teacher-facing words.
+_FRIENDLY_LABELS: dict[str, str] = {
+    # Obligation outcomes (Q3-C1 categories).
+    "satisfied_payment_only": "paid in full",
+    "satisfied_waived": "waived",
+    "satisfied_mixed": "part paid, part waived",
+    "unsatisfied": "unpaid",
+    # Income origins (Q5-C1 categories).
+    "labor": "attendance-based work",
+    "interest": "interest",
+    "teacher_admin": "teacher awards & adjustments",
+    "system_non_labor": "other system credits",
+    "reversal": "refunds & reversals",
+    "other": "other sources",
+    # Obligation event kinds (Q3-C3 label suffixes).
+    "assessment": "charged",
+    "payment": "payments",
+    "waived": "waivers",
+    # Teacher-support counts (Q9 signal).
+    "waived_events": "waivers granted",
+    "teacher_inflows": "teacher credits",
+}
+
+
+def _friendly(label: str) -> str:
+    """Translate a payload id (possibly ``sort_prefix``/``type:kind``) to plain text."""
+    text = label
+    if "_" in text and text.split("_", 1)[0].isdigit():
+        text = text.split("_", 1)[1]
+    if ":" in text:
+        left, right = text.split(":", 1)
+        right_friendly = _FRIENDLY_LABELS.get(right, right.replace("_", " "))
+        return f"{left.replace('_', ' ').title()} — {right_friendly}"
+    return _FRIENDLY_LABELS.get(text, text.replace("_", " "))
+
+
+# --------------------------------------------------------------------------- #
+# Number formatting                                                            #
+# --------------------------------------------------------------------------- #
+
+
+def _money(decimal_str: str) -> str:
+    """A stored 2-dp decimal string rendered as classroom money."""
+    return f"${Decimal(decimal_str).quantize(Decimal('0.01'))}"
+
+
+def _count(decimal_str: str) -> str:
+    """A stored decimal rendered as a count — whole numbers lose the ``.00`` tail."""
+    dec = Decimal(decimal_str)
+    if dec == dec.to_integral_value():
+        return str(int(dec))
+    return f"{dec.normalize()}"
+
+
+def _pct(decimal_str: str) -> str:
+    return f"{(Decimal(decimal_str) * 100).quantize(Decimal('0.01'))}%"
+
+
+def _plural(n: int, singular: str, plural: str | None = None) -> str:
+    return singular if n == 1 else (plural or singular + "s")
+
+
+# --------------------------------------------------------------------------- #
 # Catalog: candidate + section metadata and curated guiding questions          #
 # --------------------------------------------------------------------------- #
 
@@ -134,70 +205,102 @@ class _CandidateMeta:
     section: str
     title: str
     summary: str
+    unit: str = ""   # "money" | "count" — how the candidate's numbers should read
+    noun: str = ""   # e.g. "attendance records" for a count distribution
     guiding_questions: tuple[str, ...] = ()
 
 
-# Section order and copy. Sections group the 17 candidates thematically.
-_SECTIONS: tuple[tuple[str, str, str, tuple[str, ...]], ...] = (
-    ("participation", "Labor participation",
-     "How many students took part in the classroom labor economy this cycle.",
+# Section order + copy. Each carries a "how to read this" so a teacher can
+# interpret without re-analyzing.
+_SECTIONS: tuple[tuple[str, str, str, str, tuple[str, ...]], ...] = (
+    ("participation", "How students participated",
+     "Attendance recorded during this completed cycle.",
+     "Attendance is what earns pay, so this is the foundation of the whole economy. "
+     "Read it as how many of your students were economically active this cycle. A "
+     "student with no attendance simply wasn't active — it isn't a judgment about them.",
      ("What might account for the level of participation observed this cycle?",)),
-    ("activity", "Economic activity",
-     "How much student-initiated economic interaction and movement occurred.",
+    ("activity", "How students used the economy",
+     "Student-initiated activity recorded during this completed cycle.",
+     "This is about engagement, not wealth — how much students did with their money "
+     "once they had it (spending, transfers, purchases they started). A quiet cycle "
+     "looks low and a busy one looks high; it doesn't say whether students are doing "
+     "'well.'",
      ("What context might inform how you read the amount of activity this cycle?",)),
-    ("obligations", "Obligations",
-     "How assessed obligations were resolved this cycle, by count and by amount.",
+    ("obligations", "What happened with obligations",
+     "Obligations recorded during this completed cycle.",
+     "Obligations are things students owed, like rent. Read this as how those debts "
+     "were settled — paid by the student, waived by you, or left unpaid at the end — "
+     "and how much money each outcome accounted for.",
      ("What might explain the mix of obligation outcomes observed this cycle?",)),
-    ("savings", "Savings behavior",
-     "Whether students held and contributed to savings this cycle.",
+    ("savings", "Savings",
+     "Whether students held and added to savings this cycle.",
+     "Two different things live here. 'Students with savings' is whether a student "
+     "had any savings at the end, which could be from earlier cycles. 'Added to "
+     "savings' is whether they put money in during this cycle. A student can hold "
+     "savings without adding any.",
      ("How does the savings behavior this cycle compare with earlier cycles you have reviewed?",)),
-    ("income", "Income composition",
-     "Where observed student income came from, by origin category.",
+    ("income", "Where income came from",
+     "Income received during this completed cycle, grouped by source.",
+     "This is the mix of where students' money came from — attendance-based work, "
+     "teacher awards, refunds, and so on — not the total amount. It answers 'what "
+     "kind of income did students get,' e.g. mostly earned versus mostly given.",
      ("What might account for the composition of income observed this cycle?",)),
-    ("resources", "Resource distribution",
-     "How economic resources were distributed across the class at cycle end.",
+    ("resources", "Money at the end of the cycle",
+     "Balances remaining when this completed cycle ended.",
+     "This is money left over at the end, not money earned. It shows the typical "
+     "ending balance and how evenly balances were spread. Watch the 'at or below "
+     "zero' count — those are students who ended the cycle with nothing or in the "
+     "negative.",
      ("What context might inform how you read the spread of resources this cycle?",)),
-    ("resilience", "Resilience signals",
-     "Independent descriptive signals relevant to students' economic participation.",
+    ("resilience", "Additional observations",
+     "Independent descriptive signals, each reported on its own.",
+     "These are independent signals that do not roll up into a score. Each is "
+     "described separately below. Treat them as prompts — if one stands out, follow "
+     "it into the source records rather than reading a verdict into it.",
      ("Which of these independent signals, if any, would you want to look into further "
       "through the source records?",)),
 )
 
 _CANDIDATES: dict[str, _CandidateMeta] = {
-    "Q1a-C1": _CandidateMeta("participation", "Labor-participation share",
-        "The share of enrolled students who took part in labor this cycle."),
-    "Q1a-C2": _CandidateMeta("participation", "Participation-count distribution",
-        "How participation counts are distributed across students."),
-    "Q1b-C1": _CandidateMeta("activity", "Student-initiated economic interaction",
-        "The share of students who initiated an economic interaction this cycle."),
-    "Q2-C1": _CandidateMeta("activity", "Student-initiated transaction frequency",
-        "How often students initiated transactions, per active student per day."),
-    "Q2-C2": _CandidateMeta("activity", "Student-initiated monetary volume",
-        "The total monetary volume of student-initiated transactions."),
-    "Q3-C1": _CandidateMeta("obligations", "Obligation satisfaction (by count)",
-        "How obligations were resolved this cycle, by count, per obligation type."),
-    "Q3-C2": _CandidateMeta("obligations", "Obligation coverage (by amount)",
-        "How assessed obligation dollars were covered, per obligation type."),
-    "Q3-C3": _CandidateMeta("obligations", "Obligation event counts",
-        "Raw counts of obligation events this cycle, per type and kind."),
-    "Q4-C1": _CandidateMeta("savings", "Savings-holding share",
-        "The share of students holding any savings at cycle end."),
-    "Q4-C2": _CandidateMeta("savings", "Savings-contribution share",
-        "The share of students who contributed to savings this cycle."),
-    "Q4-C3": _CandidateMeta("savings", "Savings-contribution volume",
-        "The total volume of student savings contributions this cycle."),
-    "Q5-C1": _CandidateMeta("income", "Income composition",
-        "The share of observed income from each origin category."),
-    "Q5-C2": _CandidateMeta("income", "Labor share of income",
-        "The share of observed income that originated from labor."),
-    "Q6-C1": _CandidateMeta("resources", "Checking distribution",
-        "How checking balances were distributed across the class at cycle end."),
-    "Q6-C2": _CandidateMeta("resources", "Savings distribution",
-        "How savings balances were distributed across the class at cycle end."),
-    "Q6-C3": _CandidateMeta("resources", "Total-resource distribution",
-        "How total resources were distributed across the class at cycle end."),
-    "Q9-C1": _CandidateMeta("resilience", "Resilience observation set",
-        "A set of independent descriptive signals, reported without a composite verdict."),
+    "Q1a-C1": _CandidateMeta("participation", "Students who recorded attendance",
+        "How many of your enrolled students logged any attendance this cycle."),
+    "Q1a-C2": _CandidateMeta("participation", "Attendance records per student",
+        "How attendance was spread across students — a few very active, or evenly.",
+        unit="count", noun="attendance records"),
+    "Q1b-C1": _CandidateMeta("activity", "Students who started an activity",
+        "How many students initiated at least one economic action of their own."),
+    "Q2-C1": _CandidateMeta("activity", "How often students used money",
+        "How frequently students started transactions, on an average day."),
+    "Q2-C2": _CandidateMeta("activity", "Money moved by students",
+        "The total value of transactions students started themselves.", unit="money"),
+    "Q3-C1": _CandidateMeta("obligations", "How obligations were resolved",
+        "For each kind of obligation, the share paid, waived, or left unpaid."),
+    "Q3-C2": _CandidateMeta("obligations", "How much was covered",
+        "For each kind of obligation, how the money owed was covered.", unit="money"),
+    "Q3-C3": _CandidateMeta("obligations", "Obligation events recorded",
+        "A raw tally of obligation events, by kind, for transparency."),
+    "Q4-C1": _CandidateMeta("savings", "Students with savings",
+        "How many students had any savings balance when the cycle ended."),
+    "Q4-C2": _CandidateMeta("savings", "Students who added to savings",
+        "How many students moved money into savings during this cycle."),
+    "Q4-C3": _CandidateMeta("savings", "Money added to savings",
+        "The total value students moved into savings this cycle.", unit="money"),
+    "Q5-C1": _CandidateMeta("income", "Income by source",
+        "Of all the money students received, how much came from each source."),
+    "Q5-C2": _CandidateMeta("income", "Income from attendance-based work",
+        "The share of students' income that came from working (attendance), "
+        "as opposed to awards, refunds, or other credits."),
+    "Q6-C1": _CandidateMeta("resources", "Checking balances",
+        "What students had left in checking at the end. This is leftover balance, "
+        "not total income received.", unit="money"),
+    "Q6-C2": _CandidateMeta("resources", "Savings balances",
+        "What students had left in savings at the end. This is leftover balance, "
+        "not total income received.", unit="money"),
+    "Q6-C3": _CandidateMeta("resources", "Total balances",
+        "Checking and savings combined, at the end of the cycle.", unit="money"),
+    "Q9-C1": _CandidateMeta("resilience", "Independent signals",
+        "Several independent signals, each described on its own line below — no "
+        "score and no ranking."),
 }
 
 
@@ -206,125 +309,177 @@ _CANDIDATES: dict[str, _CandidateMeta] = {
 # --------------------------------------------------------------------------- #
 
 
-def _pct(decimal_str: str) -> str:
-    return f"{(Decimal(decimal_str) * 100).quantize(Decimal('0.01'))}%"
+def _format_fraction(value: dict[str, Any], meta: _CandidateMeta) -> ObservationValue:
+    return ObservationValue(
+        kind="fraction",
+        display=f"{value['numerator']} of {value['denominator']} students ({_pct(value['value'])})",
+    )
 
 
-def _cents(cents: int) -> str:
+def _format_ratio(value: dict[str, Any], meta: _CandidateMeta) -> ObservationValue:
+    # Q5-C2 labor share: antecedent/consequent are money volumes (cents).
+    return ObservationValue(
+        kind="ratio",
+        display=f"{_pct(value['value'])} of income came from attendance-based work",
+        supporting=(
+            f"{_money(_dollars(value['antecedent']))} of "
+            f"{_money(_dollars(value['consequent']))} in recorded income.",
+        ),
+    )
+
+
+def _dollars(cents: int) -> str:
     return f"{(Decimal(int(cents)) / 100).quantize(Decimal('0.01'))}"
 
 
-def _humanize_label(label: str) -> str:
-    # Category / outcome ids are prefixed for deterministic sorting (e.g.
-    # "1_satisfied_payment_only"); strip a leading numeric sort key and spacing.
-    text = label
-    if "_" in text and text.split("_", 1)[0].isdigit():
-        text = text.split("_", 1)[1]
-    return text.replace("_", " ")
-
-
-def _format_fraction(value: dict[str, Any]) -> ObservationValue:
-    return ObservationValue(
-        kind="fraction",
-        display=f"{_pct(value['value'])} ({value['numerator']} of {value['denominator']})",
-    )
-
-
-def _format_ratio(value: dict[str, Any]) -> ObservationValue:
-    return ObservationValue(
-        kind="ratio",
-        display=f"{_pct(value['value'])} ({value['antecedent']} of {value['consequent']})",
-    )
-
-
-def _format_rate(value: dict[str, Any]) -> ObservationValue:
-    unit = _humanize_label(value.get("unit", ""))
+def _format_rate(value: dict[str, Any], meta: _CandidateMeta) -> ObservationValue:
+    # Q2-C1: numerator = student-started transactions; value = per active student/day.
+    count = value["numerator"]
     return ObservationValue(
         kind="rate",
-        display=f"{value['value']} {unit}".strip(),
-        supporting=(f"{value['numerator']} over {value['denominator']}",),
+        display=f"{count} student-started {_plural(count, 'transaction')} this cycle",
+        supporting=(f"That averages about {_count(value['value'])} per active student per day.",),
     )
 
 
-def _format_amount(value: dict[str, Any]) -> ObservationValue:
-    return ObservationValue(kind="amount", display=f"{value['value']} {value.get('unit', '')}".strip())
+def _format_amount(value: dict[str, Any], meta: _CandidateMeta) -> ObservationValue:
+    return ObservationValue(kind="amount", display=_money(value["value"]))
 
 
-def _format_distribution(value: dict[str, Any]) -> ObservationValue:
-    supporting = [
-        f"p10 {value['p10']} · p25 {value['p25']} · p75 {value['p75']} · p90 {value['p90']}",
-        f"interquartile range {value['iqr']}",
-    ]
-    if "mean" in value:
-        supporting.append(f"mean {value['mean']}")
+def _format_distribution(
+    value: dict[str, Any], *, money: bool, noun: str
+) -> ObservationValue:
+    num = _money if money else _count
+    count = value["count"]
+    if money:
+        display = f"Half the class ended with {num(value['p50'])} or more"
+        supporting = [f"Most students were between {num(value['p25'])} and {num(value['p75'])}."]
+    else:
+        avg = _count(value["mean"]) if "mean" in value else _count(value["p50"])
+        display = f"About {avg} {noun} per student on average"
+        supporting = [f"Half the class had {num(value['p50'])} or more {noun}."]
     if "n_at_or_below_zero" in value:
-        supporting.append(f"{value['n_at_or_below_zero']} at or below zero")
-    return ObservationValue(
-        kind="distribution",
-        display=f"median {value['p50']} across {value['count']} students",
-        supporting=tuple(supporting),
+        n = value["n_at_or_below_zero"]
+        supporting.append(
+            f"{n} {_plural(n, 'student')} ended at or below {num('0.00') if money else '0'}."
+        )
+    if money and "mean" in value:
+        supporting.append(f"Average balance: {num(value['mean'])}.")
+    return ObservationValue(kind="distribution", display=display, supporting=tuple(supporting))
+
+
+def _format_distribution_for_meta(value: dict[str, Any], meta: _CandidateMeta) -> ObservationValue:
+    return _format_distribution(
+        value, money=(meta.unit == "money"), noun=(meta.noun or "records")
     )
 
 
-def _format_category_fractions(value: dict[str, Any]) -> ObservationValue:
+def _format_category_fractions(value: dict[str, Any], meta: _CandidateMeta) -> ObservationValue:
     lines = [
-        f"{_humanize_label(cat['category'])}: {_pct(cat['value'])} "
-        f"({cat['numerator']} of {cat['denominator']})"
+        f"{_friendly(cat['category'])}: {_pct(cat['value'])} "
+        f"({_money(_dollars(cat['numerator']))} of {_money(_dollars(cat['denominator']))} received)"
         for cat in value["categories"]
     ]
-    return ObservationValue(kind="category_fractions", display="by category", supporting=tuple(lines))
+    return ObservationValue(
+        kind="category_fractions",
+        display="Where students' money came from:",
+        supporting=tuple(lines),
+    )
 
 
-def _format_category_fractions_by_type(value: dict[str, Any]) -> ObservationValue:
+def _format_category_fractions_by_type(value: dict[str, Any], meta: _CandidateMeta) -> ObservationValue:
     by_type = value.get("obligation_types", {})
     if not by_type:
         return ObservationValue(kind="category_fractions_by_type",
-                                display="no obligations this cycle")
+                                display="No obligations were recorded this cycle.")
     lines: list[str] = []
     for obligation_type in sorted(by_type):
         cats = by_type[obligation_type].get("categories", [])
-        parts = ", ".join(
-            f"{_humanize_label(c['category'])} {_pct(c['value'])}" for c in cats
-        )
-        lines.append(f"{_humanize_label(obligation_type)}: {parts}")
+        parts = ", ".join(f"{_pct(c['value'])} {_friendly(c['category'])}" for c in cats)
+        lines.append(f"{obligation_type.replace('_', ' ').title()}: {parts}")
     return ObservationValue(kind="category_fractions_by_type",
-                            display="by obligation type", supporting=tuple(lines))
+                            display="For each obligation, how it was resolved:",
+                            supporting=tuple(lines))
 
 
-def _format_coverage_by_type(value: dict[str, Any]) -> ObservationValue:
+def _format_coverage_by_type(value: dict[str, Any], meta: _CandidateMeta) -> ObservationValue:
     by_type = value.get("obligation_types", {})
     if not by_type:
-        return ObservationValue(kind="coverage_by_type", display="no obligations this cycle")
+        return ObservationValue(kind="coverage_by_type",
+                                display="No obligations were recorded this cycle.")
     lines: list[str] = []
     for obligation_type in sorted(by_type):
         comp = by_type[obligation_type]
         lines.append(
-            f"{_humanize_label(obligation_type)}: assessed {_cents(comp['assessed_cents'])}, "
-            f"student-paid {_cents(comp['student_paid_cents'])}, "
-            f"waived {_cents(comp['waived_cents'])}, unmet {_cents(comp['unmet_cents'])}"
+            f"{obligation_type.replace('_', ' ').title()}: "
+            f"{_money(_dollars(comp['assessed_cents']))} owed — "
+            f"{_money(_dollars(comp['student_paid_cents']))} paid by students, "
+            f"{_money(_dollars(comp['waived_cents']))} waived, "
+            f"{_money(_dollars(comp['unmet_cents']))} left unpaid."
         )
-    return ObservationValue(kind="coverage_by_type", display="by obligation type",
+    return ObservationValue(kind="coverage_by_type",
+                            display="For each obligation, how the amount owed was covered:",
                             supporting=tuple(lines))
 
 
-def _format_counts(value: dict[str, Any]) -> ObservationValue:
-    lines = [f"{_humanize_label(it['label'])}: {it['count']}" for it in value["items"]]
-    return ObservationValue(kind="counts", display=f"{value['total']} events",
+def _format_counts(value: dict[str, Any], meta: _CandidateMeta) -> ObservationValue:
+    lines = [f"{_friendly(it['label'])}: {it['count']}" for it in value["items"]]
+    total = value["total"]
+    return ObservationValue(kind="counts",
+                            display=f"{total} obligation {_plural(total, 'event')} recorded",
                             supporting=tuple(lines))
 
 
-def _format_signal_set(value: dict[str, Any]) -> ObservationValue:
+# Per-signal plain names + how each nested value should read (Q9-C1 signal_set).
+_SIGNAL_META: dict[str, dict[str, Any]] = {
+    "labor_participation": {"name": "Attendance per student", "money": False, "noun": "attendance records"},
+    "obligation_outcomes": {"name": "Obligation outcomes", "money": False, "noun": "obligations"},
+    "resource_checking": {"name": "Checking balances", "money": True},
+    "resource_savings": {"name": "Savings balances", "money": True},
+    "resource_total": {"name": "Total balances", "money": True},
+    "teacher_support": {"name": "Teacher support", "money": False, "noun": "events"},
+    "persistence": {"name": "Persistence across cycles", "money": False},
+}
+
+
+def _signal_phrase(signal: dict[str, Any]) -> str:
+    """A compact plain phrase for one Q9 signal's value."""
+    kind = (signal.get("value") or {}).get("kind")
+    if kind == "distribution":
+        v = signal["value"]
+        meta = _SIGNAL_META.get(signal["signal_id"], {})
+        if meta.get("money"):
+            return f"half the class ended with {_money(v['p50'])} or more"
+        noun = meta.get("noun", "records")
+        avg = _count(v["mean"]) if "mean" in v else _count(v["p50"])
+        return f"about {avg} {noun} per student on average"
+    if kind == "counts":
+        v = signal["value"]
+        parts = ", ".join(f"{it['count']} {_friendly(it['label'])}" for it in v["items"])
+        return parts or "none recorded"
+    formatted = _format_value(signal.get("value"), None)
+    return formatted.display if formatted else "recorded"
+
+
+def _format_signal_set(value: dict[str, Any], meta: _CandidateMeta | None) -> ObservationValue:
     lines: list[str] = []
     for signal in value["signals"]:
-        name = _humanize_label(signal["signal_id"])
+        name = _SIGNAL_META.get(signal["signal_id"], {}).get(
+            "name", _friendly(signal["signal_id"])
+        )
         if signal.get("applicability") == "not_applicable":
-            lines.append(f"{name}: not applicable")
+            if signal["signal_id"] == "persistence":
+                lines.append(f"{name}: not available yet (needs a prior completed cycle).")
+            else:
+                lines.append(f"{name}: not applicable this cycle.")
         else:
-            nested = _format_value(signal.get("value") or {})
-            lines.append(f"{name}: {nested.display}" if nested else f"{name}: —")
-    return ObservationValue(kind="signal_set",
-                            display=f"{len(value['signals'])} independent signals",
-                            supporting=tuple(lines))
+            lines.append(f"{name}: {_signal_phrase(signal)}.")
+    n = len(value["signals"])
+    return ObservationValue(
+        kind="signal_set",
+        display=f"{n} independent {_plural(n, 'signal')}, each shown separately:",
+        supporting=tuple(lines),
+    )
 
 
 _FORMATTERS = {
@@ -332,7 +487,7 @@ _FORMATTERS = {
     "ratio": _format_ratio,
     "rate": _format_rate,
     "amount": _format_amount,
-    "distribution": _format_distribution,
+    "distribution": _format_distribution_for_meta,
     "category_fractions": _format_category_fractions,
     "category_fractions_by_type": _format_category_fractions_by_type,
     "coverage_by_type": _format_coverage_by_type,
@@ -341,13 +496,13 @@ _FORMATTERS = {
 }
 
 
-def _format_value(value: dict[str, Any] | None) -> ObservationValue | None:
+def _format_value(value: dict[str, Any] | None, meta: _CandidateMeta | None) -> ObservationValue | None:
     if not value or "kind" not in value:
         return None
     formatter = _FORMATTERS.get(value["kind"])
     if formatter is None:
         return ObservationValue(kind=value["kind"], display="—")
-    return formatter(value)
+    return formatter(value, meta)
 
 
 # --------------------------------------------------------------------------- #
@@ -400,7 +555,7 @@ def _build_observation(entry: dict[str, Any]) -> ObservationPresentation | None:
         title=meta.title,
         summary=meta.summary,
         applicability="computed",
-        value=_format_value(entry.get("value")),
+        value=_format_value(entry.get("value"), meta),
         supporting_context=_qualifier_lines(entry.get("qualifiers")),
         guiding_questions=meta.guiding_questions,
     )
@@ -420,7 +575,7 @@ def build_cycle_view(summary: InterpretationCycleSummary, observations_json: dic
             by_candidate[presentation.candidate_id] = presentation
 
     sections: list[InterpretationSection] = []
-    for key, title, section_summary, section_questions in _SECTIONS:
+    for key, title, section_summary, how_to_read, section_questions in _SECTIONS:
         members = tuple(
             by_candidate[cid]
             for cid, meta in _CANDIDATES.items()
@@ -429,7 +584,7 @@ def build_cycle_view(summary: InterpretationCycleSummary, observations_json: dic
         if not members:
             continue
         sections.append(InterpretationSection(
-            key=key, title=title, summary=section_summary,
+            key=key, title=title, summary=section_summary, how_to_read=how_to_read,
             observations=members, guiding_questions=section_questions,
         ))
     return InterpretationCycleView(cycle=summary, sections=tuple(sections))
