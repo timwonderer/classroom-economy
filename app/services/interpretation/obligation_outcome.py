@@ -44,11 +44,9 @@ OUTCOME_CATEGORIES: tuple[str, ...] = (
     OUTCOME_UNSATISFIED,
 )
 
-# --- Amount-coverage categories (SPEC-ITR-001 §8.4 Q3-C2) ------------------
-COVERAGE_PAID = "1_paid"
-COVERAGE_WAIVED = "2_waived"
-COVERAGE_UNMET = "3_unmet"
-COVERAGE_CATEGORIES: tuple[str, ...] = (COVERAGE_PAID, COVERAGE_WAIVED, COVERAGE_UNMET)
+# Amount coverage (SPEC-ITR-001 §8.4 Q3-C2) is carried per obligation type by the
+# ``coverage_by_type`` value's integer fields (assessed / student_paid / waived /
+# unmet cents), not as category labels — see ``InterpretedObligation`` below.
 
 # --- Event-kind labels for the counts fallback (SPEC-ITR-001 §8.4 Q3-C3) ---
 EVENT_KINDS: tuple[str, ...] = ("assessment", "payment", "unsatisfied", "waived")

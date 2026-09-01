@@ -14,9 +14,12 @@ Two layers of evidence:
    outcomes plus an ``NSF_FEE`` obligation proves NSF enters Q3 *only* because an
    ``NSF_FEE`` ASSESSMENT event exists (§8.6, observationally boring), that a
    teacher-mechanism payment satisfies the obligation by count yet contributes no
-   student-paid *dollars* (watch-point on funds attribution), and that Q3-C3
-   carries the per-obligation-type dimension so a reader can net out NSF. The full
-   payload still fails materialization only for incomplete coverage (7 missing).
+   student-paid *dollars* (watch-point on funds attribution), and that all three
+   candidates carry the per-obligation-type subject (§8.4) — Q3-C1 as
+   ``category_fractions_by_type``, Q3-C2 as ``coverage_by_type``, Q3-C3 as
+   per-``(type, kind)`` counts — so a reader can inspect outcomes with and without
+   NSF. The full payload still fails materialization only for incomplete coverage
+   (7 missing).
 """
 
 from __future__ import annotations
@@ -232,46 +235,65 @@ def _by_id(entries):
     return {e["candidate_id"]: e for e in entries}
 
 
-def test_q3_c1_count_based_satisfaction_over_four_outcomes(app):
+def test_q3_c1_count_based_satisfaction_is_per_obligation_type(app):
     classroom = initialize("chemistry_p1", app)
     cid, start, end = _seed_q3_window(classroom)
 
     entries = _by_id(compute_q3(cid, start, end))
-    q3_c1 = entries["Q3-C1"]["value"]
-    assert q3_c1["kind"] == "category_fractions"
-    cats = {c["category"]: c for c in q3_c1["categories"]}
-    labels = [c["category"] for c in q3_c1["categories"]]
-    assert labels == sorted(labels)                      # §15.9
-    assert all(c["denominator"] == 6 for c in q3_c1["categories"])
+    entry = entries["Q3-C1"]
+    assert entry["subject"] == "class_id, per obligation type"
+    q3_c1 = entry["value"]
+    assert q3_c1["kind"] == "category_fractions_by_type"
+    by_type = q3_c1["obligation_types"]
+    assert set(by_type) == {"RENT", "NSF_FEE"}          # NSF distinct
 
-    # payment-only: rent1 + rent5 (teacher-funded still satisfies by count) + nsf1
-    assert cats[OUTCOME_PAYMENT_ONLY]["numerator"] == 3
-    assert cats[OUTCOME_PAYMENT_ONLY]["value"] == "0.5000"
-    assert cats[OUTCOME_WAIVED]["numerator"] == 1
-    assert cats[OUTCOME_MIXED]["numerator"] == 1
-    assert cats[OUTCOME_UNSATISFIED]["numerator"] == 1
+    # RENT: rent1/rent5 payment-only, rent2 waived, rent3 mixed, rent4 unsatisfied.
+    rent = {c["category"]: c for c in by_type["RENT"]["categories"]}
+    rent_labels = [c["category"] for c in by_type["RENT"]["categories"]]
+    assert rent_labels == sorted(rent_labels)           # §15.9 nested sort
+    assert all(c["denominator"] == 5 for c in by_type["RENT"]["categories"])
+    assert rent[OUTCOME_PAYMENT_ONLY]["numerator"] == 2
+    assert rent[OUTCOME_PAYMENT_ONLY]["value"] == "0.4000"
+    assert rent[OUTCOME_WAIVED]["numerator"] == 1
+    assert rent[OUTCOME_MIXED]["numerator"] == 1
+    assert rent[OUTCOME_UNSATISFIED]["numerator"] == 1
+
+    # NSF_FEE: a single payment-only obligation (settled by its fee debit).
+    nsf = {c["category"]: c for c in by_type["NSF_FEE"]["categories"]}
+    assert all(c["denominator"] == 1 for c in by_type["NSF_FEE"]["categories"])
+    assert nsf[OUTCOME_PAYMENT_ONLY]["numerator"] == 1
+    assert nsf[OUTCOME_PAYMENT_ONLY]["value"] == "1.0000"
 
 
-def test_q3_c2_amount_coverage_keeps_paid_waived_unmet_separate(app):
+def test_q3_c2_amount_coverage_is_per_type_and_partitions_assessed(app):
     classroom = initialize("chemistry_p1", app)
     cid, start, end = _seed_q3_window(classroom)
 
     entries = _by_id(compute_q3(cid, start, end))
-    q3_c2 = entries["Q3-C2"]["value"]
-    cats = {c["category"]: c for c in q3_c2["categories"]}
-    # Assessed denominator = five RENT × 1000 (NSF contributes 0, unresolvable).
-    assert all(c["denominator"] == 5000 for c in q3_c2["categories"])
+    entry = entries["Q3-C2"]
+    assert entry["subject"] == "class_id, per obligation type"
+    q3_c2 = entry["value"]
+    assert q3_c2["kind"] == "coverage_by_type"
+    by_type = q3_c2["obligation_types"]
+    assert set(by_type) == {"RENT", "NSF_FEE"}
 
+    rent = by_type["RENT"]
+    assert rent["assessed_cents"] == 5000            # five RENT × 1000
     # paid: rent1 1000 + rent3 400 (rent5 teacher-funded contributes 0) = 1400
-    assert cats["1_paid"]["numerator"] == 1400
-    assert cats["1_paid"]["value"] == "0.2800"
+    assert rent["student_paid_cents"] == 1400
     # waived: rent2 1000 + rent3 remainder 600 = 1600
-    assert cats["2_waived"]["numerator"] == 1600
+    assert rent["waived_cents"] == 1600
     # unmet: rent4 1000 + rent5 1000 (teacher-funded, not student-paid) = 2000
-    assert cats["3_unmet"]["numerator"] == 2000
-    # Components partition the assessed denominator exactly.
-    assert (cats["1_paid"]["numerator"] + cats["2_waived"]["numerator"]
-            + cats["3_unmet"]["numerator"]) == 5000
+    assert rent["unmet_cents"] == 2000
+    # The three numerators partition the assessed denominator exactly.
+    assert (rent["student_paid_cents"] + rent["waived_cents"]
+            + rent["unmet_cents"]) == rent["assessed_cents"]
+
+    # NSF fee: amount unresolvable → all components zero (contributes nothing to
+    # amount coverage, an honest consequence of the missing amount).
+    nsf = by_type["NSF_FEE"]
+    assert nsf == {"assessed_cents": 0, "student_paid_cents": 0,
+                   "waived_cents": 0, "unmet_cents": 0}
 
 
 def test_q3_c3_counts_are_per_obligation_type_with_nsf_distinct(app):
@@ -302,11 +324,13 @@ def test_q3_empty_window_reports_lawful_zero_baseline(app):
 
     entries = _by_id(compute_q3(cid, now - timedelta(hours=1), now + timedelta(hours=1)))
     # All three candidates are computed (not not_applicable) with zero-bearing
-    # values; counts stays non-empty via the global event-kind baseline.
+    # values. The per-type maps are lawfully empty (no obligations observed);
+    # counts stays non-empty via the global event-kind baseline.
     q3_c3 = entries["Q3-C3"]["value"]
     assert q3_c3["items"]                       # non-empty
     assert q3_c3["total"] == 0
-    assert entries["Q3-C1"]["value"]["categories"][0]["denominator"] == 0
+    assert entries["Q3-C1"]["value"]["obligation_types"] == {}
+    assert entries["Q3-C2"]["value"]["obligation_types"] == {}
 
 
 # --------------------------------------------------------------------------- #

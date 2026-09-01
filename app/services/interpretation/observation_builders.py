@@ -165,6 +165,53 @@ def counts_value(counts: dict[str, int]) -> dict[str, Any]:
     return {"kind": "counts", "items": items, "total": sum(item["count"] for item in items)}
 
 
+def category_fractions_by_type_value(
+    type_category_numerators: dict[str, dict[str, int]],
+    type_denominators: dict[str, int],
+) -> dict[str, Any]:
+    """Build a ``category_fractions_by_type`` value (SPEC-ITR-001 §15.6, §8.4).
+
+    ``type_category_numerators`` maps each obligation type to its own
+    ``{category: numerator}`` mapping; ``type_denominators`` maps each type to its
+    shared denominator (e.g. that type's obligation count). Each type's payload is
+    an ordinary :func:`category_fractions_value`, so per-type category arrays are
+    sorted per §15.9. The ``obligation_types`` object is keyed by type and is
+    order-independent; an empty input yields an empty (but lawful) map — the
+    zero-observation state for a window with no obligations.
+    """
+    obligation_types = {
+        obligation_type: category_fractions_value(
+            type_category_numerators[obligation_type],
+            type_denominators.get(obligation_type, 0),
+        )
+        for obligation_type in type_category_numerators
+    }
+    return {"kind": "category_fractions_by_type", "obligation_types": obligation_types}
+
+
+def coverage_by_type_value(
+    type_coverage: dict[str, dict[str, int]],
+) -> dict[str, Any]:
+    """Build a ``coverage_by_type`` value (SPEC-ITR-001 §15.6, §8.4 Q3-C2).
+
+    ``type_coverage`` maps each obligation type to a dict carrying the four
+    integer minor-unit fields ``assessed_cents``, ``student_paid_cents``,
+    ``waived_cents``, ``unmet_cents`` (the three numerators partition assessed).
+    The values are copied verbatim as integers; an empty input yields an empty
+    lawful map (zero-observation window).
+    """
+    obligation_types = {
+        obligation_type: {
+            "assessed_cents": int(comp.get("assessed_cents", 0)),
+            "student_paid_cents": int(comp.get("student_paid_cents", 0)),
+            "waived_cents": int(comp.get("waived_cents", 0)),
+            "unmet_cents": int(comp.get("unmet_cents", 0)),
+        }
+        for obligation_type, comp in type_coverage.items()
+    }
+    return {"kind": "coverage_by_type", "obligation_types": obligation_types}
+
+
 def _percentile(sorted_vals: list[int], point: int) -> Decimal:
     """Linear-interpolation percentile on a pre-sorted list (pinned method).
 

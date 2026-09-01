@@ -71,8 +71,39 @@ def _full_observations():
         _entry("Q1b-C1", _fraction(14, 20, "0.70")),
         _entry("Q2-C1", _amount("1234.00")),
         _entry("Q2-C2", _amount("102.83", unit="cwi"), norm="cwi"),
-        _entry("Q3-C1", _fraction(30, 40, "0.75")),
-        _entry("Q3-C2", _fraction(900, 1200, "0.75")),
+        _entry(
+            "Q3-C1",
+            {
+                "kind": "category_fractions_by_type",
+                "obligation_types": {
+                    "RENT": {
+                        "kind": "category_fractions",
+                        "categories": [
+                            {"category": "paid", "numerator": 30, "denominator": 40, "value": "0.75"},
+                            {"category": "unsatisfied", "numerator": 10, "denominator": 40, "value": "0.25"},
+                        ],
+                    },
+                    "NSF_FEE": {
+                        "kind": "category_fractions",
+                        "categories": [
+                            {"category": "paid", "numerator": 5, "denominator": 5, "value": "1.00"},
+                        ],
+                    },
+                },
+            },
+        ),
+        _entry(
+            "Q3-C2",
+            {
+                "kind": "coverage_by_type",
+                "obligation_types": {
+                    "RENT": {"assessed_cents": 1200, "student_paid_cents": 900,
+                             "waived_cents": 100, "unmet_cents": 200},
+                    "NSF_FEE": {"assessed_cents": 0, "student_paid_cents": 0,
+                                "waived_cents": 0, "unmet_cents": 0},
+                },
+            },
+        ),
         _entry(
             "Q3-C3",
             {
@@ -248,6 +279,83 @@ def test_distribution_rejects_non_vocabulary_statistic():
     result = validate_payload_structure(payload)
     assert result.complete is False
     assert any("non-vocabulary statistic 'gini'" in e for e in result.errors)
+
+
+# --- Per-obligation-type value kinds (§15.6, §8.4) -------------------------
+
+
+def _q3_idx(payload, cid):
+    return next(i for i, e in enumerate(payload["observations"]) if e["candidate_id"] == cid)
+
+
+def test_category_fractions_by_type_empty_map_is_lawful():
+    # A window with no obligations yields an empty per-type map — the lawful
+    # zero-observation state — and must not fail structural validation.
+    payload = _full_payload()
+    payload["observations"][_q3_idx(payload, "Q3-C1")]["value"] = {
+        "kind": "category_fractions_by_type", "obligation_types": {},
+    }
+    result = validate_payload_structure(payload)
+    assert result.errors == ()
+    assert result.complete is True
+
+
+def test_category_fractions_by_type_nested_must_be_category_fractions():
+    payload = _full_payload()
+    payload["observations"][_q3_idx(payload, "Q3-C1")]["value"] = {
+        "kind": "category_fractions_by_type",
+        "obligation_types": {"RENT": {"kind": "amount", "value": "1.00", "unit": "tokens"}},
+    }
+    result = validate_payload_structure(payload)
+    assert result.complete is False
+    assert any("must be a 'category_fractions' value" in e for e in result.errors)
+
+
+def test_category_fractions_by_type_propagates_nested_sort_rule():
+    payload = _full_payload()
+    payload["observations"][_q3_idx(payload, "Q3-C1")]["value"] = {
+        "kind": "category_fractions_by_type",
+        "obligation_types": {
+            "RENT": {
+                "kind": "category_fractions",
+                "categories": [
+                    {"category": "unsatisfied", "numerator": 1, "denominator": 2, "value": "0.50"},
+                    {"category": "paid", "numerator": 1, "denominator": 2, "value": "0.50"},
+                ],
+            },
+        },
+    }
+    result = validate_payload_structure(payload)
+    assert result.complete is False
+    assert any("must be sorted by 'category'" in e for e in result.errors)
+
+
+def test_coverage_by_type_requires_integer_components():
+    payload = _full_payload()
+    payload["observations"][_q3_idx(payload, "Q3-C2")]["value"] = {
+        "kind": "coverage_by_type",
+        "obligation_types": {
+            "RENT": {"assessed_cents": "1200", "student_paid_cents": 900,
+                     "waived_cents": 100, "unmet_cents": 200},
+        },
+    }
+    result = validate_payload_structure(payload)
+    assert result.complete is False
+    assert any("'assessed_cents' must be an integer" in e for e in result.errors)
+
+
+def test_coverage_by_type_rejects_non_vocabulary_field():
+    payload = _full_payload()
+    payload["observations"][_q3_idx(payload, "Q3-C2")]["value"] = {
+        "kind": "coverage_by_type",
+        "obligation_types": {
+            "RENT": {"assessed_cents": 1200, "student_paid_cents": 900,
+                     "waived_cents": 100, "unmet_cents": 200, "teacher_paid_cents": 50},
+        },
+    }
+    result = validate_payload_structure(payload)
+    assert result.complete is False
+    assert any("non-vocabulary coverage field 'teacher_paid_cents'" in e for e in result.errors)
 
 
 # --- Determinism (§15.9) ----------------------------------------------------

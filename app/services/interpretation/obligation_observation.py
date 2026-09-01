@@ -7,15 +7,19 @@ amount-based coverage (Q3-C2), and the raw event counts (Q3-C3) are mutually
 consistent:
 
 * **Q3-C1** — count-based satisfaction across the four disjoint outcome
-  categories (§8.4), a ``category_fractions`` value over the obligation count.
-* **Q3-C2** — amount-based coverage: student-paid vs waived vs unmet dollars as
-  separate numerators against the assessed denominator (§8.4, §8.5), a
-  ``category_fractions`` value in integer cents.
+  categories (§8.4), a ``category_fractions_by_type`` value: each obligation type
+  carries its own four-outcome fraction vector over that type's obligation count.
+* **Q3-C2** — amount-based coverage: student-paid vs waived vs unmet cents as
+  separate numerators partitioning the assessed denominator (§8.4, §8.5), a
+  ``coverage_by_type`` value, per obligation type.
 * **Q3-C3** — raw event counts by ``(obligation_type, event kind)`` plus per-type
-  unsatisfied counts (§8.4), a ``counts`` value. This is the Q3 output that
-  carries the per-obligation-type dimension, so a reader can see obligation
-  outcomes *with and without* the NSF-fee contribution (§8.6) — NSF fees appear
-  here only because ``NSF_FEE`` ``AssessmentEvent`` rows exist, never synthesized.
+  unsatisfied counts (§8.4), a ``counts`` value.
+
+All three candidates carry the per-obligation-type subject, so NSF-fee
+obligations are identified distinctly in every Q3 output and a reader can inspect
+outcomes *with and without* the NSF-fee contribution (§8.6). NSF fees enter Q3
+only because ``NSF_FEE`` ``AssessmentEvent`` rows exist — their obligation type is
+an ordinary map key, never special compute, never synthesized.
 
 Count-based and amount-based observations are reported as separate candidates and
 waived is a distinct outcome, never merged with paid (§8.3). ``Transaction.type``
@@ -28,18 +32,15 @@ from __future__ import annotations
 from typing import Any
 
 from app.services.interpretation.obligation_outcome import (
-    COVERAGE_CATEGORIES,
-    COVERAGE_PAID,
-    COVERAGE_UNMET,
-    COVERAGE_WAIVED,
     EVENT_KINDS,
     OUTCOME_CATEGORIES,
     OUTCOME_UNSATISFIED,
     interpret_obligations,
 )
 from app.services.interpretation.observation_builders import (
-    category_fractions_value,
+    category_fractions_by_type_value,
     counts_value,
+    coverage_by_type_value,
     observation_entry,
 )
 
@@ -54,37 +55,50 @@ def compute_q3(class_id: str, window_start, window_end) -> list[dict[str, Any]]:
     """
     obligations = interpret_obligations(class_id, window_start, window_end)
 
-    # Q3-C1 — count-based satisfaction over the four disjoint outcomes.
-    outcome_counts = {label: 0 for label in OUTCOME_CATEGORIES}
+    # Q3-C1 — count-based satisfaction over the four disjoint outcomes, keyed by
+    # obligation type (§8.4 per-type subject; §8.6 NSF distinctness). Each present
+    # type gets the full four-outcome vector (explicit zeros); its denominator is
+    # that type's obligation count.
+    outcome_numerators: dict[str, dict[str, int]] = {}
+    outcome_denominators: dict[str, int] = {}
     for ob in obligations:
-        outcome_counts[ob.outcome] += 1
-    total_obligations = len(obligations)
+        by_outcome = outcome_numerators.setdefault(
+            ob.obligation_type, {label: 0 for label in OUTCOME_CATEGORIES}
+        )
+        by_outcome[ob.outcome] += 1
+        outcome_denominators[ob.obligation_type] = (
+            outcome_denominators.get(ob.obligation_type, 0) + 1
+        )
     q3_c1 = observation_entry(
         "Q3-C1",
         semantic_kind="descriptive_observation",
-        subject="class_id",
+        subject="class_id, per obligation type",
         observation_basis="assessment_correlation_id",
-        aggregation="class_fraction_over_obligations",
+        aggregation="class_fraction_over_obligations_by_type",
         reference_dependency="none",
-        value=category_fractions_value(outcome_counts, total_obligations),
+        value=category_fractions_by_type_value(outcome_numerators, outcome_denominators),
     )
 
-    # Q3-C2 — amount-based coverage in integer cents; paid/waived kept separate.
-    coverage_cents = {label: 0 for label in COVERAGE_CATEGORIES}
-    assessed_total_cents = 0
+    # Q3-C2 — amount-based coverage in integer cents, keyed by obligation type;
+    # student-paid / waived / unmet partition assessed per type (§8.4, §8.5).
+    coverage_by_type: dict[str, dict[str, int]] = {}
     for ob in obligations:
-        coverage_cents[COVERAGE_PAID] += ob.paid_student_cents
-        coverage_cents[COVERAGE_WAIVED] += ob.waived_cents
-        coverage_cents[COVERAGE_UNMET] += ob.unmet_cents
-        assessed_total_cents += ob.assessed_cents
+        comp = coverage_by_type.setdefault(
+            ob.obligation_type,
+            {"assessed_cents": 0, "student_paid_cents": 0, "waived_cents": 0, "unmet_cents": 0},
+        )
+        comp["assessed_cents"] += ob.assessed_cents
+        comp["student_paid_cents"] += ob.paid_student_cents
+        comp["waived_cents"] += ob.waived_cents
+        comp["unmet_cents"] += ob.unmet_cents
     q3_c2 = observation_entry(
         "Q3-C2",
         semantic_kind="descriptive_observation",
-        subject="class_id",
+        subject="class_id, per obligation type",
         observation_basis="assessment_correlation_id",
-        aggregation="class_coverage_share_over_assessed_amount",
+        aggregation="class_coverage_over_assessed_amount_by_type",
         reference_dependency="none",
-        value=category_fractions_value(coverage_cents, assessed_total_cents),
+        value=coverage_by_type_value(coverage_by_type),
     )
 
     # Q3-C3 — raw counts, per (obligation_type, event kind) + per-type unsatisfied.

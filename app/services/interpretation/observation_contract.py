@@ -60,13 +60,24 @@ VALUE_KINDS: frozenset[str] = frozenset(
     {
         "fraction",
         "category_fractions",
+        "category_fractions_by_type",
         "ratio",
         "rate",
         "amount",
         "distribution",
         "counts",
+        "coverage_by_type",
         "signal_set",
     }
+)
+
+# The four integer fields carried per obligation type by a ``coverage_by_type``
+# value (SPEC-ITR-001 §15.6, §8.4 Q3-C2). All are integer minor units (cents).
+COVERAGE_BY_TYPE_FIELDS: tuple[str, ...] = (
+    "assessed_cents",
+    "student_paid_cents",
+    "waived_cents",
+    "unmet_cents",
 )
 
 DISTRIBUTION_CORE_KEYS: tuple[str, ...] = ("count", "p10", "p25", "p50", "p75", "p90", "iqr")
@@ -185,6 +196,47 @@ def _validate_value(value: Any, *, candidate_id: str, path: str, errors: list[st
                         errors.append(f"{cp}: '{k}' must be an integer (§14.2, §15.6)")
                 if not _is_canonical_decimal_string(cat.get("value")):
                     errors.append(f"{cp}: 'value' must be a canonical decimal string (§15.9)")
+    elif kind == "category_fractions_by_type":
+        by_type = value.get("obligation_types")
+        if not isinstance(by_type, dict):
+            errors.append(
+                f"{path}: category_fractions_by_type 'obligation_types' must be an object "
+                "keyed by obligation type (§15.6, §8.4)"
+            )
+        else:
+            # An empty map is the lawful zero-observation state (no obligations in
+            # the window). Keys are obligation types; the map is order-independent
+            # (§15.9 — no object-key ordering requirement). Each value is a nested
+            # per-type category_fractions, validated with the same rules.
+            for type_key, nested in by_type.items():
+                tp = f"{path}.obligation_types[{type_key!r}]"
+                if not isinstance(type_key, str) or not type_key:
+                    errors.append(f"{tp}: obligation type key must be a non-empty string (§15.6)")
+                if not isinstance(nested, dict) or nested.get("kind") != "category_fractions":
+                    errors.append(f"{tp}: per-type value must be a 'category_fractions' value (§15.6)")
+                    continue
+                _validate_value(nested, candidate_id=candidate_id, path=tp, errors=errors)
+    elif kind == "coverage_by_type":
+        by_type = value.get("obligation_types")
+        if not isinstance(by_type, dict):
+            errors.append(
+                f"{path}: coverage_by_type 'obligation_types' must be an object "
+                "keyed by obligation type (§15.6, §8.4)"
+            )
+        else:
+            for type_key, comp in by_type.items():
+                tp = f"{path}.obligation_types[{type_key!r}]"
+                if not isinstance(type_key, str) or not type_key:
+                    errors.append(f"{tp}: obligation type key must be a non-empty string (§15.6)")
+                if not isinstance(comp, dict):
+                    errors.append(f"{tp}: per-type coverage must be an object (§15.6)")
+                    continue
+                for field in COVERAGE_BY_TYPE_FIELDS:
+                    if not _is_int(comp.get(field)):
+                        errors.append(f"{tp}: '{field}' must be an integer minor-unit count (§15.6, §15.9)")
+                for extra in comp:
+                    if extra not in COVERAGE_BY_TYPE_FIELDS:
+                        errors.append(f"{tp}: carries non-vocabulary coverage field '{extra}' (§15.6)")
     elif kind in ("ratio", "rate"):
         if not _is_canonical_decimal_string(value.get("value")):
             errors.append(f"{path}: {kind} 'value' must be a canonical decimal string (§15.9)")
