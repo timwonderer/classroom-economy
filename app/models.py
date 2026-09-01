@@ -763,6 +763,40 @@ class PayrollEvent(db.Model):
     )
 
 
+class PayrollCycleCompletion(db.Model):
+    """Persistent replay-identity for a completed class-level payroll run (DOM-PROD-001 §XV).
+
+    The top-level idempotency anchor for the payroll-completion lifecycle. It
+    records that a specific class-level run — identified by ``(class_id,
+    idempotency_key)`` — completed, and which ``payroll_cycle_id`` that run
+    allocated. It is written in the SAME atomic commit as the cycle's PROD
+    settlement, ITR materialization, and CLASS policy activation, so a row exists
+    iff the whole lifecycle committed.
+
+    Its sole purpose is to make the cycle boundary replay-safe: on replay the
+    completion is resolved BEFORE any domain command, configuration read,
+    materialization, or policy activation is attempted, and the *original*
+    ``payroll_cycle_id`` is returned. A replay therefore never allocates a second
+    cycle id, never re-runs settlement, and never recaptures the (now-advanced)
+    configuration as the closing cycle's reference. ``payroll_cycle_id`` is an
+    economic-cycle identity, not a foreign key (INV-ARC-021 §V.7).
+    """
+    __tablename__ = 'payroll_cycle_completion'
+
+    id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    class_id = db.Column(db.String(36), db.ForeignKey('classes.class_id', ondelete='CASCADE'), nullable=False, index=True)
+    idempotency_key = db.Column(db.String(255), nullable=False)
+    payroll_cycle_id = db.Column(db.String(36), nullable=False, index=True)
+    completed_at = db.Column(db.DateTime(timezone=True), default=utc_now, nullable=False)
+
+    __table_args__ = (
+        db.UniqueConstraint('class_id', 'idempotency_key', name='uq_payroll_cycle_completion_class_key'),
+    )
+
+    def __repr__(self):
+        return f'<PayrollCycleCompletion class={self.class_id} cycle={self.payroll_cycle_id}>'
+
+
 class HallPassSettings(db.Model):
     __tablename__ = 'hall_pass_settings'
     id = db.Column(db.Integer, primary_key=True)

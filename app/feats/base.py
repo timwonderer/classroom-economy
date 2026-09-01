@@ -214,6 +214,7 @@ FEAT_REGISTRY = {
     "FEAT-PROD-001": {"domain": "Productivity", "blast_radius": "MED", "desc": "Record Attendance Session"},
     "FEAT-PROD-002": {"domain": "Productivity", "blast_radius": "MED", "desc": "Record Hall Pass Log"},
     "FEAT-PROD-003": {"domain": "Productivity", "blast_radius": "HIGH", "desc": "Record Payroll Event"},
+    "FEAT-PROD-004": {"domain": "Productivity", "blast_radius": "HIGH", "desc": "Complete Payroll Cycle"},
     "FEAT-CLASS-001": {"domain": "Class Configuration", "blast_radius": "HIGH", "desc": "Create class boundary"},
     "FEAT-CLASS-002": {"domain": "Class Configuration", "blast_radius": "MED", "desc": "Modify existing class boundary"},
     "FEAT-CLASS-003": {"domain": "Class Configuration", "blast_radius": "MED", "desc": "Insurance Policy Management (orchestrates FEAT-POL-001)"},
