@@ -24,7 +24,7 @@ from decimal import Decimal
 
 from app.extensions import db
 from app.feats.base import FEATContext
-from app.models import PayrollEvent, PolicyVersion
+from app.models import PayrollEvent, PolicyVersion, Transaction, TransactionStatus
 from app.services.interpretation.compute import compute_partial_payload
 from app.services.interpretation.economic_activity import compute_q2
 from app.services.interpretation.income_composition import compute_q5
@@ -352,6 +352,15 @@ def _seed_q5_window(classroom):
     # cat 6 — other: interest (self/savings, dormant §10.4) + peer self-transfer.
     _tx("FEAT-LED-000", "q5:int", sA, "1.00", mechanism="self", account_type="savings")
     _tx("FEAT-STOR-001", "q5:peer", sB, "4.00", mechanism="self")
+
+    # Income composition counts *settled* income: get_inbound_ledger_rows reads
+    # POSTED rows only. Settle the seeded inbound rows so this window reflects
+    # realized income (create_pending_transaction writes PENDING rows).
+    with FEATContext("FEAT-BYPASS-LEGACY", correlation_id="q5:settle"):
+        Transaction.query.filter_by(class_id=cid).update(
+            {Transaction.status: TransactionStatus.POSTED}, synchronize_session=False
+        )
+        db.session.flush()
 
     return cid, window_start, window_end
 

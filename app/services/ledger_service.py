@@ -171,7 +171,7 @@ def get_student_originated_rows(
 def get_inbound_ledger_rows(
     class_id: str, window_start, window_end
 ) -> list[InboundLedgerRow]:
-    """Return inbound-to-seat (positive-amount), non-void ledger rows in ``[start, end)``.
+    """Return inbound-to-seat (positive-amount), POSTED, non-void ledger rows in ``[start, end)``.
 
     Read-only Ledger surface for Q5 income composition (SPEC-ITR-001 §10.3). An
     inbound row is a credit to the canonical anchor seat (``amount_cents > 0``;
@@ -199,6 +199,7 @@ def get_inbound_ledger_rows(
             Transaction.timestamp >= ensure_utc(window_start),
             Transaction.timestamp < ensure_utc(window_end),
             Transaction.amount_cents > 0,
+            Transaction.status == TransactionStatus.POSTED,
             Transaction.is_void.isnot(True),
         )
         .all()
