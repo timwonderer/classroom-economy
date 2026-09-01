@@ -256,6 +256,35 @@ def count_distribution_value(counts: list[int], *, include_mean: bool = True) ->
     return value
 
 
+def balance_distribution_value(
+    balances_minor_units: list[int], *, include_mean: bool = True
+) -> dict[str, Any]:
+    """Build a balance ``distribution`` value with the ``n_at_or_below_zero`` tail.
+
+    ``balances_minor_units`` are per-seat balances in integer cents (one entry per
+    seat in the population, including zero-balance seats). Emits the pinned core
+    (``count``, ``p10``…``p90``, ``iqr``) rendered as two-place **dollar** decimals
+    plus the balance extension ``n_at_or_below_zero`` (count of seats at or below
+    zero), and optionally ``mean`` (SPEC-ITR-001 §15.6.1). ``count`` is the
+    population size. Percentiles are computed on the integer cents with the pinned
+    ``(n-1)`` interpolation, then scaled to dollars, so no float ever enters the
+    value.
+    """
+    ordered = sorted(int(c) for c in balances_minor_units)
+    n = len(ordered)
+    value: dict[str, Any] = {"kind": "distribution", "count": n}
+    for name, point in _PERCENTILE_POINTS:
+        cents = _percentile(ordered, point)
+        value[name] = canonical_decimal(cents / Decimal(100), _DISTRIBUTION_QUANT)
+    iqr_cents = _percentile(ordered, 75) - _percentile(ordered, 25)
+    value["iqr"] = canonical_decimal(iqr_cents / Decimal(100), _DISTRIBUTION_QUANT)
+    value["n_at_or_below_zero"] = sum(1 for c in ordered if c <= 0)
+    if include_mean:
+        mean_cents = Decimal(sum(ordered)) / Decimal(n) if n else Decimal(0)
+        value["mean"] = canonical_decimal(mean_cents / Decimal(100), _DISTRIBUTION_QUANT)
+    return value
+
+
 def observation_entry(
     candidate_id: str,
     *,
@@ -287,4 +316,39 @@ def observation_entry(
         "not_applicable_reason": None,
         "qualifiers": qualifiers,
         "value": value,
+    }
+
+
+def not_applicable_entry(
+    candidate_id: str,
+    *,
+    semantic_kind: str,
+    subject: str,
+    observation_basis: str,
+    aggregation: str,
+    reference_dependency: str,
+    not_applicable_reason: dict[str, Any],
+    normalization_dependency: str | None = None,
+) -> dict[str, Any]:
+    """Assemble one ``not_applicable`` observation entry (SPEC-ITR-001 §15.3).
+
+    Emitted when the candidate's required input feature is disabled for the class
+    this cycle. Carries a structured ``not_applicable_reason`` (e.g.
+    ``{"feature": "savings", "state": "disabled"}``) and **no** ``value`` —
+    ``not_applicable`` is a truthful observation of feature state, never a
+    substitute for zero (§14.1, §9.6). The entry still declares its
+    self-describing DOM output properties (INV-ITR-012).
+    """
+    return {
+        "candidate_id": candidate_id,
+        "semantic_kind": semantic_kind,
+        "subject": subject,
+        "observation_basis": observation_basis,
+        "aggregation": aggregation,
+        "reference_dependency": reference_dependency,
+        "normalization_dependency": normalization_dependency,
+        "applicability": "not_applicable",
+        "not_applicable_reason": not_applicable_reason,
+        "qualifiers": None,
+        "value": None,
     }

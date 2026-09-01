@@ -250,6 +250,82 @@ def get_student_originated_transaction_ids(
     return {row.id for row in rows}
 
 
+def get_posted_balances_as_of(
+    class_id: str, as_of, account_type: str
+) -> dict[int, Decimal]:
+    """Return per-seat POSTED balances for ``account_type`` **as of** ``as_of``.
+
+    Historically-correct end-of-cycle balance surface for the Interpretation
+    domain (SPEC-ITR-001 §11.4, §9.4). The balance of a seat at the cycle
+    boundary is the sum of its settled (``POSTED``), non-void ledger amounts with
+    ``timestamp < as_of`` — the half-open cycle boundary. Restricting to
+    ``timestamp < as_of`` is what prevents a later transaction from leaking into
+    an earlier cycle's materialized interpretation (INV-ITR-003 reproducibility):
+    this is a point-in-time read, never the current cached balance.
+
+    Returns a ``{seat_id: Decimal}`` map for seats that have at least one such
+    row; the caller supplies ``0`` for enrolled seats absent from the map.
+    Scoped by ``class_id`` (multi-tenancy).
+    """
+    if not class_id or as_of is None:
+        return {}
+    rows = (
+        db.session.query(
+            Transaction.seat_id,
+            db.func.sum(Transaction.amount),
+        )
+        .filter(
+            Transaction.class_id == class_id,
+            Transaction.account_type == account_type,
+            Transaction.timestamp < ensure_utc(as_of),
+            Transaction.status == TransactionStatus.POSTED,
+            _non_void_filter(),
+        )
+        .group_by(Transaction.seat_id)
+        .all()
+    )
+    return {
+        seat_id: _quantize_currency(total or Decimal("0.00"))
+        for seat_id, total in rows
+        if seat_id is not None
+    }
+
+
+def get_student_savings_contribution_rows(
+    class_id: str, window_start, window_end
+) -> list[StudentOriginatedRow]:
+    """Return student-originated savings *contribution* rows in ``[start, end)``.
+
+    Read-only Ledger surface for Q4-C2/Q4-C3 (SPEC-ITR-001 §9.4). A savings
+    contribution is the *deposit side* of a student-initiated transfer into
+    savings: a student-originated (§6.3) row with ``account_type='savings'`` and a
+    positive amount (inbound to the savings account, ``DOM-LED-001`` INV-LED-007).
+    Both legs of a transfer pair carry ``original_transaction_id IS NULL``, so the
+    §6.3 classifier applies to the savings-credit leg directly. Projects
+    ``seat_id`` and ``amount_cents``; ``Transaction.type`` is never consulted
+    (INV-ITR-015). Scoped by ``class_id`` and the half-open completed-cycle window.
+    """
+    if not class_id or window_start is None or window_end is None:
+        return []
+    rows = (
+        Transaction.query
+        .with_entities(Transaction.seat_id, Transaction.amount_cents)
+        .filter(
+            Transaction.class_id == class_id,
+            Transaction.account_type == "savings",
+            Transaction.amount_cents > 0,
+            Transaction.timestamp >= ensure_utc(window_start),
+            Transaction.timestamp < ensure_utc(window_end),
+            _student_originated_filter(),
+        )
+        .all()
+    )
+    return [
+        StudentOriginatedRow(seat_id=row.seat_id, amount_cents=int(row.amount_cents or 0))
+        for row in rows
+    ]
+
+
 def get_last_payroll_time(seat_id: int | None = None, class_id: str | None = None):
     """Return the most recent payroll anchor without mutating any state."""
     if seat_id is None and class_id is None:

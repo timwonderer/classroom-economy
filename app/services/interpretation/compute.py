@@ -5,11 +5,10 @@ This layer performs **composition only** — the candidate math lives in the
 per-question modules (``participation``, ``economic_interaction``, and, in later
 slices, the remaining source-domain clusters).
 
-Scope discipline (slice 8.2b-3):
-* Only Q1a-C1, Q1a-C2, Q1b-C1, Q2-C1, Q2-C2, Q3-C1, Q3-C2, Q3-C3, Q5-C1, and
-  Q5-C2 are implemented. The remaining 7 required candidates are deliberately
-  absent — this module does NOT stub them and does NOT weaken the 17-candidate
-  materialization gate (SPEC-ITR-001 §15.8).
+Scope discipline (slice 8.2b-4):
+* All required candidates except Q9-C1 are implemented (Q1a, Q1b, Q2, Q3, Q4, Q5,
+  Q6). Q9-C1 is deliberately absent — this module does NOT stub it and does NOT
+  weaken the 17-candidate materialization gate (SPEC-ITR-001 §15.8).
 * The payload this returns is therefore still a **partial** payload. Its
   serializer-derived ``coverage.complete`` is ``False`` and
   ``observation_contract.validate_for_materialization`` will reject it purely
@@ -35,6 +34,8 @@ from app.services.interpretation.observation_contract import (
     derive_coverage_complete,
 )
 from app.services.interpretation.participation import compute_q1a
+from app.services.interpretation.resource_distribution import compute_q6
+from app.services.interpretation.savings_behavior import compute_q4
 
 
 def compute_partial_observations(class_id: str, window_start, window_end) -> list[dict[str, Any]]:
@@ -50,7 +51,9 @@ def compute_partial_observations(class_id: str, window_start, window_end) -> lis
     entries.extend(compute_q1b(class_id, window_start, window_end))
     entries.extend(compute_q2(class_id, window_start, window_end))
     entries.extend(compute_q3(class_id, window_start, window_end))
+    entries.extend(compute_q4(class_id, window_start, window_end))
     entries.extend(compute_q5(class_id, window_start, window_end))
+    entries.extend(compute_q6(class_id, window_start, window_end))
     entries.sort(key=lambda entry: entry["candidate_id"])
     return entries
 

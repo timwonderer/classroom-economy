@@ -47,11 +47,9 @@ from tests.helpers.classroom_initializer import initialize
 # The candidates this file focuses on. Composition now also emits Q2/Q5 (slice
 # 8.2b-2), so presence is asserted as a subset rather than exact equality.
 Q1_CANDIDATES = frozenset({"Q1a-C1", "Q1a-C2", "Q1b-C1"})
-# The full implemented set after slice 8.2b-3 (used for coverage assertions).
-IMPLEMENTED_CANDIDATES = frozenset(
-    {"Q1a-C1", "Q1a-C2", "Q1b-C1", "Q2-C1", "Q2-C2",
-     "Q3-C1", "Q3-C2", "Q3-C3", "Q5-C1", "Q5-C2"}
-)
+# The full implemented set after slice 8.2b-4 (used for coverage assertions).
+# Only Q9-C1 remains unimplemented.
+IMPLEMENTED_CANDIDATES = REQUIRED_SET_V1 - frozenset({"Q9-C1"})
 
 
 def _seed_window(classroom):
@@ -187,14 +185,14 @@ def test_partial_payload_fails_materialization_only_for_incomplete_coverage(app)
 
     payload = compute_partial_payload(cid, start, end)
 
-    # Serializer-derived coverage.complete must be False (7 candidates missing).
+    # Serializer-derived coverage.complete must be False (only Q9-C1 missing).
     assert payload["coverage"]["complete"] is False
 
     result = validate_payload_structure(payload)
     assert result.complete is False
     assert result.present_ids == IMPLEMENTED_CANDIDATES
-    assert result.missing_ids == REQUIRED_SET_V1 - IMPLEMENTED_CANDIDATES
-    assert len(result.missing_ids) == 7
+    assert result.missing_ids == frozenset({"Q9-C1"})
+    assert len(result.missing_ids) == 1
     assert result.extra_ids == frozenset()
     assert result.duplicate_ids == frozenset()
 

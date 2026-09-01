@@ -53,10 +53,8 @@ from app.utils.canonical_temporal_resolver import utc_now
 from tests.helpers.classroom_initializer import initialize
 
 
-IMPLEMENTED_AFTER_Q3 = frozenset(
-    {"Q1a-C1", "Q1a-C2", "Q1b-C1", "Q2-C1", "Q2-C2",
-     "Q3-C1", "Q3-C2", "Q3-C3", "Q5-C1", "Q5-C2"}
-)
+# After slice 8.2b-4 only Q9-C1 remains unimplemented.
+IMPLEMENTED_AFTER_Q3 = REQUIRED_SET_V1 - frozenset({"Q9-C1"})
 
 
 # --------------------------------------------------------------------------- #
@@ -334,7 +332,7 @@ def test_q3_empty_window_reports_lawful_zero_baseline(app):
 
 
 # --------------------------------------------------------------------------- #
-# 3. Coverage: the full payload still fails materialization (7 missing)        #
+# 3. Coverage: the full payload still fails materialization (1 missing)        #
 # --------------------------------------------------------------------------- #
 
 
@@ -348,12 +346,12 @@ def test_partial_payload_still_fails_only_for_incomplete_coverage(app):
     result = validate_payload_structure(payload)
     assert result.complete is False
     assert result.present_ids == IMPLEMENTED_AFTER_Q3
-    assert result.missing_ids == REQUIRED_SET_V1 - IMPLEMENTED_AFTER_Q3
-    assert len(result.missing_ids) == 7
+    assert result.missing_ids == frozenset({"Q9-C1"})
+    assert len(result.missing_ids) == 1
     assert result.extra_ids == frozenset()
     assert result.duplicate_ids == frozenset()
 
-    # The ONLY failure is incomplete coverage — the ten computed entries (Q3
+    # The ONLY failure is incomplete coverage — the sixteen computed entries (Q3
     # included) carry no structural defect.
     assert len(result.errors) == 1
     assert "missing required candidate" in result.errors[0]
