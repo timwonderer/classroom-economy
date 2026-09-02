@@ -39,6 +39,7 @@ from app.services.class_configuration_query_service import is_feature_enabled
 from app.feats.base import requires_feat_context, FEATContext
 from app.feats.assess_obligation_feat import execute_assess_obligation
 from app.feats.advance_bill_cycle_feat import execute_advance_bill_cycle
+from app.feats.establish_bill_cycle_feat import execute_establish_bill_cycle
 from app.utils.canonical_temporal_resolver import ensure_utc, utc_now
 
 
@@ -243,17 +244,18 @@ def reconcile_rent(
     latest = obligations_service.get_latest_bill_cycle(internal_ref_cycle)
 
     if latest is None:
-        # First cycle for this class.
+        # First cycle for this class — genesis, not advancement. Establishes
+        # cycle 1 via the dedicated Obligations genesis command (never
+        # advance_bill_cycle, which is advancement-only).
         due_local = rent_schedule_service.first_due_local_date(
             settings, context=ctx, reference_time_utc=now
         )
         schedule = rent_schedule_service.resolve_cycle_schedule(
             settings, due_local_date=due_local, context=ctx
         )
-        cycle = execute_advance_bill_cycle(
+        cycle = execute_establish_bill_cycle(
             class_id=class_id,
             internal_ref=internal_ref_cycle,
-            cycle_number=1,
             cycle_boundary_at=schedule.cycle_boundary_at,
             next_assessment_at=schedule.next_assessment_at,
             grace_boundary_at=schedule.grace_boundary_at,

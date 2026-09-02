@@ -17,6 +17,16 @@ from app.models import ObligationAssessment, BillCycle, LedgerMechanism, Transac
 from app.utils.canonical_temporal_resolver import ensure_utc
 
 
+class BillCycleLifecycleError(Exception):
+    """Raised when a bill-cycle mutation violates the genesis/advancement lifecycle.
+
+    Genesis (`establish_bill_cycle`) requires that no prior cycle exists for the
+    lineage; advancement (`advance_bill_cycle`) requires an existing current cycle
+    and a strictly sequential successor. These are distinct Obligations commands
+    (DOM-OBL-001) and neither may perform the other's transition.
+    """
+
+
 def get_seat_ids_with_self_payments(class_id: str, window_start, window_end) -> set[int]:
     """Return seat ids with a self-originated obligation PAYMENT in ``[start, end)``.
 

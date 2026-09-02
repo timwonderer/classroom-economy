@@ -147,11 +147,17 @@ A waiver MAY carry a teacher-entered note explaining the reason. The note is opt
 
 ### 7. Bill Cycle
 
-A bill cycle is a recurring temporal instruction that says which rent UUID is current for the class and when that cycle must be assessed again.
+A bill cycle is a recurring temporal instruction that says which policy UUID is current for a continuing obligation-producing relationship and when that cycle must be assessed again. It serves any recurring obligation lineage (rent per class, and insurance premiums per seat), distinguished by `internal_ref` and `obligation_type`.
 
 Bill cycle does not know the teacher's intent beyond the persisted policy UUID and the next assessment boundary.
 
-Bill cycle may carry the exact rent `policy_uuid` that it invokes.
+Bill cycle may carry the exact `policy_uuid` that it invokes.
+
+The bill-cycle lifecycle has three distinct transitions, each an explicit command:
+
+- **Genesis** (`nothing → cycle 1`): `establish_bill_cycle` establishes the first cycle where none exists for the lineage. `cycle_number = 1` is intrinsic, never caller-selected. A second genesis for the same lineage is unlawful — idempotency protects retries of a command, it does not license a second cycle 1.
+- **Advancement** (`cycle N → cycle N+1`): FEAT-OBL-002 creates the strict successor from an existing current cycle; the successor number is derived from authoritative state. Advancement requires a prior cycle and never creates cycle 1.
+- **Termination**: a terminal cycle row with `assessment_at = NULL` (see §VII.2) stops future recurrence; the lawful cancellation/termination authority performs it. It does not rewrite prior obligation events (§IX.7).
 
 ---
 
@@ -213,7 +219,7 @@ Notes column contract:
 
 ### 2. `bill_cycles`
 
-Records recurring temporal progression for rent.
+Records recurring temporal progression for any continuing obligation-producing relationship (rent per class; insurance premiums per seat), distinguished by `internal_ref` and the driven assessments' `obligation_type`.
 
 Key fields:
 
@@ -230,8 +236,9 @@ Rules:
 - bill cycles do not store amount;
 - bill cycles do not store business meaning for the reference;
 - bill cycles are only lawful when they point to a currently continuing relationship;
-- the latest bill cycle that invoked assessment establishes the current rent UUID in force;
-- a terminal bill-cycle row with `assessment_at = NULL` stops future recurring rent;
+- the latest bill cycle that invoked assessment establishes the current policy UUID in force for the lineage;
+- **genesis** (`establish_bill_cycle`) creates `cycle_number = 1` and is lawful only when no cycle exists for the lineage; **advancement** (FEAT-OBL-002) creates the strict successor (`current + 1`) from an existing cycle and never creates cycle 1;
+- a terminal bill-cycle row with `assessment_at = NULL` stops future recurring assessment for the lineage;
 - when the helper is late, the next scheduled run processes the due cycle if it still exists and has not been superseded.
 
 ---

@@ -1,8 +1,15 @@
 """
 FEAT-OBL-002: Advance Bill Cycle
 
-Creates successor recurring reminder state for obligation sources.
-Per DOM-OBL-001 §VII.3 and FEAT-OBL-002 orchestration.
+Creates the strictly sequential SUCCESSOR recurring reminder state for an
+obligation source that already has a current cycle. Advancement is not genesis:
+
+    genesis:      nothing  -> cycle 1     (establish_bill_cycle — separate command)
+    advancement:  cycle N  -> cycle N+1   (this FEAT)
+
+The successor number is derived from authoritative Obligations state; advancement
+requires a prior cycle and refuses to create cycle 1. Per DOM-OBL-001 §VII.3 and
+FEAT-OBL-002 orchestration.
 """
 
 from __future__ import annotations
@@ -13,6 +20,7 @@ from dataclasses import dataclass
 from app.extensions import db
 from app.models import BillCycle
 from app.services import obligations_service
+from app.services.obligations_service import BillCycleLifecycleError
 from app.feats.base import requires_feat_context, FEATContext
 
 
@@ -43,8 +51,9 @@ def advance_bill_cycle(
     - Only records that an internal_ref must be reconsidered at a boundary
 
     Preconditions:
-    - internal_ref continues to exist lawfully upstream
-    - cycle_number is the logical successor to the current cycle
+    - a current lawful cycle already exists for internal_ref (genesis is a
+      separate command — establish_bill_cycle); advancement never creates cycle 1
+    - cycle_number equals the derived successor (latest.cycle_number + 1)
     - cycle_boundary_at is the terminal boundary of this cycle
     - next_assessment_at is a lawful successor assessment time
 
@@ -53,7 +62,8 @@ def advance_bill_cycle(
     - Unique constraint enforces at most one cycle per (internal_ref, cycle_number)
 
     Raises:
-    - ValueError if idempotency check fails
+    - BillCycleLifecycleError if no prior cycle exists (advancement is not genesis)
+      or the requested cycle_number is not the strict successor
     - ValueError if temporal constraints violated
     """
     # Phase 1: Verification (read-only)
@@ -70,6 +80,25 @@ def advance_bill_cycle(
             .first()
         )
         return existing
+
+    # Advancement is not genesis: it requires an existing current cycle and only
+    # ever creates the strictly sequential successor. The lawful successor number
+    # is derived from authoritative Obligations state, not trusted from the caller
+    # (the caller-supplied cycle_number serves only as the replay key above, and
+    # is verified against the derived successor here). Genesis (cycle 1) is a
+    # separate command — establish_bill_cycle (DOM-OBL-001).
+    latest = obligations_service.get_latest_bill_cycle(request.internal_ref)
+    if latest is None:
+        raise BillCycleLifecycleError(
+            f"advance_bill_cycle requires an existing cycle for lineage "
+            f"'{request.internal_ref}'; use establish_bill_cycle for genesis (cycle 1)."
+        )
+    expected = latest.cycle_number + 1
+    if request.cycle_number != expected:
+        raise BillCycleLifecycleError(
+            f"non-sequential advancement for lineage '{request.internal_ref}': "
+            f"expected successor cycle {expected}, got {request.cycle_number}."
+        )
 
     # Temporal validation: successor cycle times must be ordered
     if request.next_assessment_at <= request.cycle_boundary_at:

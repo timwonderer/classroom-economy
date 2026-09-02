@@ -2,13 +2,15 @@
 
 | Reference Number | Version | Effective Date | Supersedes | Authority Level |
 | :--- | :--- | :--- | :--- | :--- |
-| FEAT-OBL-002 | 1.0 | 2026-07-24 | N/A | Normative |
+| FEAT-OBL-002 | 1.1 | 2026-09-01 | 1.0 | Normative |
 
 ---
 
 ## I. Purpose
 
-This FEAT advances a recurring obligation source to its next lawful bill cycle.
+This FEAT advances a recurring obligation source **from its existing current cycle to the next lawful bill cycle** (`cycle N → cycle N+1`).
+
+Advancement is **not genesis.** Establishing the first cycle where none exists (`nothing → cycle 1`) is a distinct Obligations command, `establish_bill_cycle`; this FEAT requires that a current lawful cycle already exist and SHALL NOT create cycle 1. The lawful successor number is derived from authoritative Obligations state (`current + 1`), not trusted from the caller.
 
 The bill cycle is identity-blind temporal reminder state. It does not determine business meaning, amount, class, seat, or contract authority. It only records that a continuing internal reference must be reconsidered at a lawful boundary.
 
@@ -61,10 +63,11 @@ The lawful caller SHALL provide the upstream authority reference and version sna
 
 ### 1. Verification
 
-1. Verify the recurring source still lawfully exists.
-2. Verify the current cycle has reached the lawful advancement boundary.
-3. Verify the successor cycle is permitted by the authoritative source.
-4. Resolve the lawful version snapshot that governs the successor cycle.
+1. Verify a current lawful cycle already exists for the lineage. If none exists, advancement is unlawful (genesis is `establish_bill_cycle`, not this FEAT).
+2. Verify the recurring source still lawfully exists.
+3. Verify the current cycle has reached the lawful advancement boundary.
+4. Verify the requested successor is the strict successor (`current_cycle_number + 1`) derived from authoritative state; reject any non-sequential successor.
+5. Resolve the lawful version snapshot that governs the successor cycle.
 
 ### 2. Mutation
 
@@ -85,6 +88,7 @@ If the authoritative source has terminated, no successor cycle is created.
 3. `bill_cycles` SHALL NOT store class/seat identity when that identity belongs upstream.
 4. A terminated recurring relationship produces no successor cycle.
 5. Bill cycle advancement MUST be idempotent for the same lawful lineage and boundary.
+6. Advancement requires a prior cycle and never creates cycle 1; genesis is `establish_bill_cycle`. The successor number is derived (`current + 1`), never an arbitrary caller value.
 
 ---
 
@@ -94,3 +98,4 @@ If the authoritative source has terminated, no successor cycle is created.
 - `docs/DOMAIN/DOM-CLASS-001_CLASS_CONFIGURATION_DOMAIN.md`
 - `docs/DOMAIN/DOM-STORE-001_STORE_AND_ENTITLEMENTS_DOMAIN.md`
 - `docs/FEATURE-EXECUTION/FEAT-OBLI-001_ASSESS_OBLIGATION.md`
+- `establish_bill_cycle` (Obligations bill-cycle genesis command; DOM-OBL-001 §VII.2)

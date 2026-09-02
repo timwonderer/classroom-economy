@@ -12,6 +12,7 @@ from app.models import ObligationAssessment, BillCycle
 from app.services import obligations_service
 from app.feats.assess_obligation_feat import execute_assess_obligation
 from app.feats.advance_bill_cycle_feat import execute_advance_bill_cycle
+from app.feats.establish_bill_cycle_feat import execute_establish_bill_cycle
 from app.feats.satisfy_obligation_feat import execute_satisfy_obligation_waiver
 from app.utils.canonical_temporal_resolver import (
     canonical_temporal_resolver,
@@ -142,11 +143,11 @@ class TestAdvanceBillCycle:
             cycle_boundary_at = now_utc + timedelta(days=30)
             next_assessment_at = now_utc + timedelta(days=60)
 
-            # Create bill cycle (identity-blind temporal reminder, class-scoped per INV-CORE-000)
-            cycle = execute_advance_bill_cycle(
+            # Genesis: cycle 1 is established via the dedicated genesis command
+            # (identity-blind temporal reminder, class-scoped per INV-CORE-000).
+            cycle = execute_establish_bill_cycle(
                 class_id=classroom.class_id,
                 internal_ref="rent:cycle:2026-08",
-                cycle_number=1,
                 cycle_boundary_at=cycle_boundary_at,
                 next_assessment_at=next_assessment_at,
             )
@@ -158,7 +159,7 @@ class TestAdvanceBillCycle:
             assert cycle.cycle_number == 1
 
     def test_advance_bill_cycle_idempotent_by_cycle_number(self, app):
-        """Replaying bill cycle returns existing row (idempotent)."""
+        """Replaying an advancement returns the existing successor row (idempotent)."""
         classroom = initialize("chemistry_p1", app)
 
         with app.app_context():
@@ -174,31 +175,37 @@ class TestAdvanceBillCycle:
             cycle_boundary_at = now_utc + timedelta(days=30)
             next_assessment_at = now_utc + timedelta(days=60)
 
-            # First call
-            cycle1 = execute_advance_bill_cycle(
+            # Genesis establishes cycle 1 first (advancement is not genesis).
+            execute_establish_bill_cycle(
                 class_id=classroom.class_id,
                 internal_ref="rent:cycle:2026-08",
-                cycle_number=1,
                 cycle_boundary_at=cycle_boundary_at,
                 next_assessment_at=next_assessment_at,
             )
-
             db.session.commit()
-            id1 = cycle1.id
 
-            # Replay with same parameters
-            cycle2 = execute_advance_bill_cycle(
+            # Advance to the successor cycle 2.
+            cycle2_a = execute_advance_bill_cycle(
                 class_id=classroom.class_id,
                 internal_ref="rent:cycle:2026-08",
-                cycle_number=1,
-                cycle_boundary_at=cycle_boundary_at,
-                next_assessment_at=next_assessment_at,
+                cycle_number=2,
+                cycle_boundary_at=next_assessment_at + timedelta(days=30),
+                next_assessment_at=next_assessment_at + timedelta(days=60),
             )
+            db.session.commit()
+            id2 = cycle2_a.id
 
+            # Replay the same advancement — returns the same successor row.
+            cycle2_b = execute_advance_bill_cycle(
+                class_id=classroom.class_id,
+                internal_ref="rent:cycle:2026-08",
+                cycle_number=2,
+                cycle_boundary_at=next_assessment_at + timedelta(days=30),
+                next_assessment_at=next_assessment_at + timedelta(days=60),
+            )
             db.session.commit()
 
-            # Should be same row (idempotent)
-            assert cycle2.id == id1
+            assert cycle2_b.id == id2
 
 
 class TestSatisfyObligation:
