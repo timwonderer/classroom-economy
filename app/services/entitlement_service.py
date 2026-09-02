@@ -97,6 +97,68 @@ def grant_hall_passes(
     return get_hall_pass_balance(seat.id, seat.class_id)
 
 
+def grant_insurance_entitlement(
+    seat: Seat,
+    policy_uuid: str,
+    *,
+    actor_seat_id: int | None = None,
+    correlation_id: str | None = None,
+) -> str:
+    """Grant one INSURANCE coverage entitlement (acquisition_type=PURCHASE).
+
+    The immutable insurance definition is referenced by ``policy_uuid`` carried in
+    the event payload — ``EntitlementEvent.product_id`` is an int and is not used
+    for insurance. Policy terms are retrieved later by resolving that
+    ``policy_uuid`` (the row is immutable), never snapshotted into the payload
+    (DOM-STORE-001 §VII.A forbids duplicating policy rules).
+
+    Idempotent on ``correlation_id``: a replay of the same purchase returns the
+    existing grant's ``entitlement_id`` rather than writing a second grant.
+
+    Returns the entitlement_id of the coverage grant.
+    """
+    if not policy_uuid:
+        raise ValueError("grant_insurance_entitlement requires a policy_uuid")
+
+    grant_correlation_id = correlation_id or generate_correlation_id()
+    resolved_actor = actor_seat_id if actor_seat_id is not None else seat.id
+
+    existing = (
+        EntitlementEvent.query
+        .filter_by(
+            class_id=seat.class_id,
+            target_seat_id=seat.id,
+            entitlement_type="INSURANCE",
+            event_type="GRANTED",
+            correlation_id=grant_correlation_id,
+        )
+        .first()
+    )
+    if existing is not None:
+        return existing.entitlement_id
+
+    entitlement_id = _generate_entitlement_id()
+    event = EntitlementEvent(
+        class_id=seat.class_id,
+        target_seat_id=seat.id,
+        actor_seat_id=resolved_actor,
+        entitlement_id=entitlement_id,
+        product_id=None,
+        entitlement_type="INSURANCE",
+        acquisition_type="PURCHASE",
+        event_type="GRANTED",
+        correlation_id=grant_correlation_id,
+        payload={
+            "source": "grant_insurance_entitlement",
+            "policy_uuid": policy_uuid,
+        },
+        timestamp=_current_utc(),
+    )
+    db.session.add(event)
+    db.session.flush()
+    return entitlement_id
+
+
 def remove_hall_passes(
     seat: Seat,
     quantity: int,

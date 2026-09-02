@@ -459,6 +459,50 @@ def get_entitlement_status(
     return "UNKNOWN"
 
 
+def has_active_insurance_coverage(
+    seat_id: int,
+    class_id: str,
+    policy_uuid: str,
+) -> bool:
+    """True iff the seat holds a concurrently effective INSURANCE grant for a policy.
+
+    Effective coverage = a GRANTED insurance event referencing ``policy_uuid``
+    (carried in the grant payload) whose entitlement lineage has no terminal
+    EXPIRED or REVOKED event. A CONSUMED event represents a resolved claim and
+    does NOT end coverage, so it is not treated as terminal here.
+
+    This is the derivation behind FEAT-OBL-004's POLICY_ALREADY_HELD invariant:
+    a seat may not acquire a second concurrently effective grant for the same
+    immutable policy. It is derived from canonical event history, never a flag.
+    """
+    granted = (
+        EntitlementEvent.query
+        .filter(
+            EntitlementEvent.target_seat_id == seat_id,
+            EntitlementEvent.class_id == class_id,
+            EntitlementEvent.entitlement_type == "INSURANCE",
+            EntitlementEvent.event_type == "GRANTED",
+        )
+        .all()
+    )
+    for grant in granted:
+        payload = grant.payload or {}
+        if payload.get("policy_uuid") != policy_uuid:
+            continue
+        terminal = (
+            EntitlementEvent.query
+            .filter(
+                EntitlementEvent.entitlement_id == grant.entitlement_id,
+                EntitlementEvent.class_id == class_id,
+                EntitlementEvent.event_type.in_(["EXPIRED", "REVOKED"]),
+            )
+            .first()
+        )
+        if terminal is None:
+            return True
+    return False
+
+
 def get_active_entitlements(
     seat_id: int,
     class_id: str,
