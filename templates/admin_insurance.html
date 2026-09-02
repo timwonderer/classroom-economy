@@ -47,9 +47,9 @@
         </a>
         <div class="d-flex align-items-center gap-2">
           {% if policy.availability_state == 'IN_USE' %}
-          <span class="badge bg-success">In use</span>
+          <span class="badge bg-success" title="Students can purchase this policy">For sale</span>
           {% elif policy.availability_state == 'HIDDEN' %}
-          <span class="badge bg-secondary">Hidden</span>
+          <span class="badge bg-secondary" title="Not purchasable; existing coverage continues until it winds down">Hidden — winding down</span>
           {% else %}
           <span class="badge bg-dark">{{ policy.availability_state }}</span>
           {% endif %}

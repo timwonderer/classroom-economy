@@ -83,6 +83,9 @@ from app.services.entitlement_read_service import (
 )
 from app.services.insurance_policy_service import list_insurance_policy_versions
 from app.services.insurance_policy_service import get_insurance_entitlement_item_id
+from app.services import insurance_definition_service as insurance_defs
+from app.services.entitlement_read_service import has_active_insurance_coverage
+from app.feats.purchase_insurance_feat import execute_purchase_insurance
 from app.services.ledger_service import (
     apply_monthly_savings_interest as post_monthly_savings_interest,
     get_available_balances,
@@ -783,6 +786,11 @@ def dashboard():
     # Canonical store purchases scoped to the active seat/class.
     entitlements = []
     for entitlement in get_entitlement_history(seat_id=scope.seat_id, class_id=scope.class_id):
+        # Insurance entitlements resolve through StoreProduct (policy_uuid), never
+        # StoreItem — skip them so a shared product_id int can never misrender an
+        # insurance grant as a general store item.
+        if entitlement["entitlement_type"] == "INSURANCE":
+            continue
         item = db.session.get(StoreItem, entitlement["product_id"])
         if item is None:
             continue
@@ -1412,30 +1420,57 @@ def insurance_marketplace():
         return redirect(url_for('student.dashboard'))
 
     class_identifier = get_display_join_code(context.class_id) if context.class_id else ""
-    policy_versions = list_insurance_policy_versions(context.class_id)
+    class_id = context.class_id
+    seat_id = context.seat_id
+
+    # Available coverage: IN_USE immutable insurance_policies for this class.
+    definitions = insurance_defs.list_insurance_definitions(
+        class_id=class_id, availability_states=[insurance_defs.IN_USE]
+    )
     available_policies = []
-    for policy in policy_versions:
-        payload = json.loads(policy.policy_payload_json or "{}")
+    for d in definitions:
         available_policies.append(
             SimpleNamespace(
-                id=policy.id,
-                title=(payload.get("title") or f"Policy v{policy.version_number}"),
-                description=payload.get("description", ""),
-                premium=Decimal(str(payload.get("premium", "0.00"))),
-                charge_frequency=payload.get("charge_frequency", "monthly"),
-                waiting_period_days=int(payload.get("waiting_period_days", 0) or 0),
-                max_claims_count=payload.get("max_claims_count"),
-                claim_type=normalize_insurance_type(payload.get("claim_type")),
-                marketing_badge=payload.get("marketing_badge"),
-                tier_group=payload.get("tier_group"),
-                tier_name=payload.get("tier_name"),
-                tier_color=payload.get("tier_color", "secondary"),
-                tier_level=payload.get("tier_level"),
-                is_active=policy.is_active,
-                payload=payload,
-                version_number=policy.version_number,
+                policy_uuid=d.policy_uuid,
+                title=d.title or "Insurance policy",
+                description=d.description or "",
+                insurance_type=d.insurance_type,
+                premium=d.premium,
+                charge_frequency=d.charge_frequency,
+                reimbursement_percentage=d.reimbursement_percentage,
+                payout_multiple=d.payout_multiple,
+                claim_window_days=d.claim_window_days,
+                claims_per_week_equivalent=d.claims_per_week_equivalent,
+                claimable_dates_per_week_equivalent=d.claimable_dates_per_week_equivalent,
+                tier_name=d.tier_name,
+                owned=has_active_insurance_coverage(seat_id, class_id, d.policy_uuid),
             )
         )
+
+    # Owned coverage: active INSURANCE grants for this seat, resolved to their
+    # immutable policy (the entitlement proves acquisition; the policy provides terms).
+    owned_coverage = []
+    for grant in get_active_entitlements(seat_id, class_id, entitlement_type="INSURANCE"):
+        policy_uuid = (grant.payload or {}).get("policy_uuid")
+        if not policy_uuid:
+            continue
+        if get_entitlement_status(grant.entitlement_id, class_id) in ("EXPIRED", "REVOKED"):
+            continue
+        d = insurance_defs.get_insurance_definition(policy_uuid, class_id=class_id)
+        if d is None:
+            continue
+        owned_coverage.append(
+            SimpleNamespace(
+                entitlement_id=grant.entitlement_id,
+                policy_uuid=policy_uuid,
+                title=d.title or "Insurance policy",
+                insurance_type=d.insurance_type,
+                premium=d.premium,
+                charge_frequency=d.charge_frequency,
+                purchased_at=grant.timestamp,
+            )
+        )
+
     def _claim_display_row(claim):
         raw_incident = (claim.claimed_dates or [None])[0] if getattr(claim, "claimed_dates", None) else None
         if isinstance(raw_incident, str):
@@ -1460,12 +1495,6 @@ def insurance_marketplace():
             incident_date=incident_dt,
             filed_date=claim.submitted_at,
         )
-    tier_groups = defaultdict(lambda: {"name": "", "color": "secondary", "policies": []})
-    for policy in available_policies:
-        if policy.tier_group:
-            tier_groups[policy.tier_group]["name"] = policy.tier_name or f"Group {policy.tier_group}"
-            tier_groups[policy.tier_group]["color"] = policy.tier_color or "secondary"
-            tier_groups[policy.tier_group]["policies"].append(policy)
     current_class_context = SimpleNamespace(
         teacher_name="",
         block_display=class_identifier,
@@ -1484,74 +1513,49 @@ def insurance_marketplace():
             if getattr(context, "identity_profile", None) else ""
         ),
         current_class_context=current_class_context,
-        my_policies=[],
-        my_claims=[_claim_display_row(claim) for claim in _list_insurance_claims(class_id=context.class_id, target_seat_id=context.seat_id)],
         available_policies=available_policies,
-        tier_groups=dict(tier_groups),
-        enrolled_tiers=[],
-        can_purchase={policy.id: bool(policy.is_active) for policy in available_policies},
-        repurchase_blocks=set(),
-        claims_this_period=[],
+        owned_coverage=owned_coverage,
+        my_claims=[_claim_display_row(claim) for claim in _list_insurance_claims(class_id=class_id, target_seat_id=seat_id)],
         now=utc_now(),
-        claim_type="TRANSACTION",
-        contract_title="Insurance",
-        contract_description="",
-        contract_claim_time_limit_days=0,
-        contract_max_claim_amount=None,
-        remaining_period_cap=None,
-        contract_max_claims_count=None,
-        contract_max_claims_period="period",
-        policy=SimpleNamespace(waiting_period_days=0, charge_frequency="", autopay=False, auto_cancel_nonpay_days=0),
-        enrollment=SimpleNamespace(
-            contract_title="Insurance",
-            contract_description="",
-            status="inactive",
-            purchase_date=utc_now(),
-            coverage_start_date=None,
-            payment_current=False,
-            days_unpaid=0,
-            next_payment_due=None,
-            policy=SimpleNamespace(waiting_period_days=0, charge_frequency="", autopay=False, auto_cancel_nonpay_days=0, no_repurchase_after_cancel=False, repurchase_wait_days=0),
-            contract_claim_time_limit_days=0,
-            contract_max_claim_amount=None,
-            contract_max_claims_count=None,
-            contract_max_claims_period="period",
-        ),
     )
 
 
-@student_bp.route('/insurance/purchase/<int:policy_id>', methods=['POST'])
+@student_bp.route('/insurance/purchase/<policy_uuid>', methods=['POST'])
 @login_required
-def purchase_insurance(policy_id):
-    """Purchase insurance policy."""
+def purchase_insurance(policy_uuid):
+    """Purchase (enroll in) an insurance policy via FEAT-OBL-004."""
     context = resolve_canonical_context()
     if not context:
         flash("No class selected. Please select a class to continue.", "error")
         return redirect(url_for('student.student_insurance'))
 
-    policy_version = db.session.get(PolicyVersion, policy_id)
-    if (
-        policy_version is None
-        or policy_version.class_id != context.class_id
-        or policy_version.domain != "insurance"
-    ):
-        flash("That insurance policy is not available for this class.", "error")
+    # A fresh per-request key: a double-submit is caught by POLICY_ALREADY_HELD
+    # rather than double-charging, and a lawful re-purchase after cancellation
+    # starts a fresh lineage. Kept short so the FEAT's derived correlation/ledger
+    # identifiers stay within their column bounds.
+    result = execute_purchase_insurance(
+        canonical_context=context,
+        policy_uuid=policy_uuid,
+        idempotency_key=f"ins:{uuid.uuid4().hex}",
+    )
+    if result.success:
+        if result.already_enrolled:
+            flash("You already have this coverage.", "info")
+        else:
+            flash(f"Insurance purchased — first premium of ${result.premium_charged:.2f} paid.", "success")
         return redirect(url_for('student.student_insurance'))
 
-    snapshot = get_insurance_billing_snapshot(policy_version)
-    policy = SimpleNamespace(
-        id=policy_version.id,
-        title=f"Insurance Policy {policy_version.version_number}",
-        premium=Decimal(str(snapshot["premium"] or "0.00")),
-        waiting_period_days=int(snapshot["waiting_period_days"] or 0),
-        charge_frequency=snapshot["charge_frequency"],
-        entitlement_item_id=get_insurance_entitlement_item_id(policy_version),
+    friendly = {
+        "POLICY_ALREADY_HELD": ("You already hold active coverage for this policy.", "info"),
+        "INSUFFICIENT_FUNDS": ("You don't have enough in checking to pay the first premium.", "error"),
+        "INSURANCE_NOT_AVAILABLE_FOR_NEW_COVERAGE": ("That policy is no longer available for new coverage.", "error"),
+        "POLICY_NOT_FOUND": ("That insurance policy is not available for this class.", "error"),
+    }
+    message, category = friendly.get(
+        result.error_code,
+        (result.error_message or "Insurance purchase could not be completed.", "error"),
     )
-    if policy.entitlement_item_id is None:
-        flash("This insurance policy is missing its entitlement mapping.", "error")
-        return redirect(url_for('student.student_insurance'))
-    seat = db.session.get(Seat, context.seat_id)
-    flash("Insurance purchase is not available from this surface.", "warning")
+    flash(message, category)
     return redirect(url_for('student.student_insurance'))
 
 
@@ -1868,6 +1872,11 @@ def shop():
 
     entitlements = []
     for entry in get_entitlement_history(seat_id=seat.id, class_id=class_id):
+        # Insurance entitlements resolve through StoreProduct (policy_uuid), never
+        # StoreItem — skip them so a shared product_id int can never misrender an
+        # insurance grant as a general store item.
+        if entry["entitlement_type"] == "INSURANCE":
+            continue
         item = db.session.get(StoreItem, entry["product_id"])
         if item is None:
             continue
