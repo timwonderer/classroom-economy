@@ -3,8 +3,7 @@
 This module is CTH's canonical, domain-owned authority for *which* ledger
 transactions may lawfully back a TRANSACTION insurance claim. It is deliberately
 NOT Class Configuration: the disallowed set is fixed system law and a teacher
-cannot widen (or narrow) it. Keeping the predicate here — mirroring the narrow
-typed ``frozen_insurance_contract`` read contract — means FEAT-STOR-003 asks one
+cannot widen (or narrow) it. Keeping the predicate here means FEAT-STOR-003 asks one
 question ("is this transaction a lawful TRANSACTION claim basis?") and never
 embeds a magic list of transaction categories.
 

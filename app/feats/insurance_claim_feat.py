@@ -4,8 +4,9 @@ FEAT-STOR-003: Insurance Claim Lifecycle (v2.0)
 Orchestrates the complete insurance claim lifecycle on the first-class
 ``InsuranceClaim`` entity (DOM-STORE-001):
 
-- Submission: read the frozen contract snapshot, create/idempotently return an
-  ``InsuranceClaim(status=SUBMITTED)``. The entitlement is NOT consumed.
+- Submission: resolve the immutable insurance policy governing the entitlement,
+  create/idempotently return an ``InsuranceClaim(status=SUBMITTED)``. The
+  entitlement is NOT consumed.
 - Resolution: teacher adjudication transitions the claim SUBMITTED → APPROVED /
   REJECTED. Approval coordinates exactly one compensatory Ledger effect.
 
@@ -15,11 +16,12 @@ entitlement stays ``GRANTED`` until its real coverage boundary, so multiple clai
 may be filed under one active policy. Terminal claim decisions are immutable, and
 at most one claim lifecycle may back a given source transaction.
 
-Claim eligibility and economics are computed ONLY from the ``frozen_contract``
-snapshot captured on the GRANTED event at purchase time (via
-``get_frozen_insurance_contract``). The current InsurancePolicy/StoreProduct is
-NEVER re-read for a purchased entitlement; ``insurance_policy_uuid`` is provenance
-only.
+Claim eligibility and economics come from the **immutable insurance policy**
+(``insurance_policies``), resolved via the GRANTED entitlement's ``policy_uuid``
+(``_resolve_claim_policy``). Because a policy edit produces a *new* ``policy_uuid``,
+the exact row referenced by the entitlement is the frozen contract — there is no
+separate snapshot. The entitlement proves acquisition; the policy provides the
+terms (INV-ARC-009). No claim runtime reads any copied ``frozen_contract`` payload.
 """
 
 from __future__ import annotations
@@ -43,10 +45,57 @@ from app.feats.ledger_resolution_feat import (
     build_intended_ledger_plan,
     resolve_intended_ledger_plan,
 )
-from app.services.frozen_insurance_contract import (
-    get_frozen_insurance_contract,
-    FrozenContractError,
-)
+from app.services import insurance_definition_service as insurance_defs
+
+
+class InsuranceClaimPolicyError(Exception):
+    """The immutable insurance policy backing a claim could not be resolved.
+
+    Raised (fail-closed) when a claimed insurance entitlement lacks a `policy_uuid`
+    reference, or that `policy_uuid` does not resolve to a policy in the claim's
+    class boundary. Claim authority is the immutable `insurance_policies` row — the
+    entitlement proves acquisition, the policy provides the terms.
+    """
+
+
+def _resolve_claim_policy(entitlement_id, *, class_id, seat_id):
+    """Resolve the immutable insurance policy that governs a claimed entitlement.
+
+    The GRANTED insurance entitlement carries the `policy_uuid` of the exact
+    immutable definition purchased; that row is the sole claim-time authority for
+    coverage terms, ceilings, reimbursement, and claim limits. Terms are NEVER
+    read from the entitlement payload (no snapshot) — the entitlement proves
+    acquisition, the policy provides the terms (INV-ARC-009).
+
+    Fails closed: a missing grant, a missing `policy_uuid`, or a policy that does
+    not exist in this class (wrong-class resolution returns None) raises.
+    """
+    grant = (
+        EntitlementEvent.query
+        .filter_by(
+            entitlement_id=entitlement_id,
+            class_id=class_id,
+            target_seat_id=seat_id,
+            entitlement_type="INSURANCE",
+            event_type="GRANTED",
+        )
+        .first()
+    )
+    if grant is None:
+        raise InsuranceClaimPolicyError(
+            f"No INSURANCE grant for entitlement {entitlement_id} in class {class_id}"
+        )
+    policy_uuid = (grant.payload or {}).get("policy_uuid")
+    if not policy_uuid:
+        raise InsuranceClaimPolicyError(
+            f"Entitlement {entitlement_id} carries no policy_uuid reference"
+        )
+    policy = insurance_defs.get_insurance_definition(policy_uuid, class_id=class_id)
+    if policy is None:
+        raise InsuranceClaimPolicyError(
+            f"Insurance policy {policy_uuid} not found in class {class_id}"
+        )
+    return policy
 from app.utils.canonical_temporal_resolver import (
     canonical_temporal_resolver,
     CLASS_LEVEL_EVALUATION,
@@ -67,7 +116,7 @@ _PRODUCTIVITY_INSURANCE_TYPE = "PRODUCTIVITY"
 class _CoverageTerms:
     """Derived (never stored) economic terms for one entitlement coverage cycle.
 
-    Reconstructed purely from the frozen contract snapshot plus the GRANTED
+    Reconstructed purely from the policy_terms contract snapshot plus the GRANTED
     event's timestamp — the current InsurancePolicy is never re-read. Absent
     renewal machinery in CTH, an INSURANCE entitlement has exactly ONE coverage
     period beginning at its grant, so period-scoped sums/counts span the whole
@@ -127,7 +176,7 @@ def _filing_deadline_end_utc(
 
 def _coverage_week_equivalent(
     *,
-    frozen,
+    policy_terms,
     coverage_start_utc: datetime,
     canonical_context: CanonicalContext,
 ) -> Decimal:
@@ -136,9 +185,9 @@ def _coverage_week_equivalent(
     A weekly cycle is exactly ``1`` week-equivalent; a monthly cycle is
     ``covered_days / 7`` measured in class-local calendar days. Shared by every
     product type (TRANSACTION claim-count, PRODUCTIVITY date-count) so the period
-    scaling stays identical across the frozen subsets.
+    scaling stays identical across the policy_terms subsets.
     """
-    freq = (frozen.charge_frequency or "WEEKLY").strip().upper()
+    freq = (policy_terms.charge_frequency or "WEEKLY").strip().upper()
     if freq == "MONTHLY":
         start_date = _class_local_date(canonical_context, coverage_start_utc)
         next_renewal = _add_one_calendar_month(start_date)
@@ -148,34 +197,34 @@ def _coverage_week_equivalent(
     return Decimal("1")
 
 
-def _maximum_policy_payout(frozen) -> Decimal:
-    """Period payout ceiling: frozen premium × frozen payout multiple.
+def _maximum_policy_payout(policy_terms) -> Decimal:
+    """Period payout ceiling: policy_terms premium × policy_terms payout multiple.
 
     Identical for every monetary product — the period payout capacity is the
-    premium actually charged for one coverage cycle times the frozen multiple.
+    premium actually charged for one coverage cycle times the policy_terms multiple.
     """
-    premium = frozen.premium or Decimal("0.00")
-    payout_multiple = frozen.payout_multiple or Decimal("0")
+    premium = policy_terms.premium or Decimal("0.00")
+    payout_multiple = policy_terms.payout_multiple or Decimal("0")
     return _quantize_currency(premium * payout_multiple)
 
 
 def _derive_coverage_terms(
     *,
-    frozen,
+    policy_terms,
     granted_event: EntitlementEvent,
     canonical_context: CanonicalContext,
 ) -> _CoverageTerms:
-    """Reconstruct the coverage-cycle economics from the frozen snapshot."""
+    """Reconstruct the coverage-cycle economics from the policy_terms snapshot."""
     coverage_start_utc = ensure_utc(granted_event.timestamp)
     week_equiv = _coverage_week_equivalent(
-        frozen=frozen,
+        policy_terms=policy_terms,
         coverage_start_utc=coverage_start_utc,
         canonical_context=canonical_context,
     )
 
-    maximum_policy_payout = _maximum_policy_payout(frozen)
+    maximum_policy_payout = _maximum_policy_payout(policy_terms)
 
-    claims_per_week = frozen.claims_per_week_equivalent or Decimal("0")
+    claims_per_week = policy_terms.claims_per_week_equivalent or Decimal("0")
     period_claim_allowance = int(math.ceil(claims_per_week * week_equiv))
 
     return _CoverageTerms(
@@ -203,7 +252,7 @@ def _sum_approved_payouts(class_id: str, entitlement_id: str) -> Decimal:
 def _enforce_transaction_submission(
     *,
     canonical_context: CanonicalContext,
-    frozen,
+    policy_terms,
     granted_event: EntitlementEvent,
     claim_subject: dict,
     submitted_at: datetime,
@@ -214,7 +263,7 @@ def _enforce_transaction_submission(
     Order (SPEC): eligible transaction → within filing window → claim allowance
     available → period payout capacity available. Returns a failure result on the
     first failed gate, or ``None`` when the claim may be created. All enforcement
-    reads the frozen contract and immutable claim history — never the live policy.
+    reads the policy_terms contract and immutable claim history — never the live policy.
     """
     entitlement_id = granted_event.entitlement_id
     class_id = canonical_context.class_id
@@ -242,7 +291,7 @@ def _enforce_transaction_submission(
         )
 
     coverage_terms = _derive_coverage_terms(
-        frozen=frozen, granted_event=granted_event, canonical_context=canonical_context
+        policy_terms=policy_terms, granted_event=granted_event, canonical_context=canonical_context
     )
 
     # (b) Coverage interval + filing window (class-local calendar days).
@@ -254,7 +303,7 @@ def _enforce_transaction_submission(
             error_message="Source transaction predates the purchased coverage",
         )
     deadline_end_utc = _filing_deadline_end_utc(
-        canonical_context, source_ts_utc, frozen.claim_window_days
+        canonical_context, source_ts_utc, policy_terms.claim_window_days
     )
     if ensure_utc(submitted_at) >= deadline_end_utc:
         return InsuranceClaimSubmissionResult(
@@ -336,7 +385,7 @@ def _parse_productivity_dates(
     the loss — evidentiary, never fabricated). The claim-wide
     ``additional_information`` is optional; when present it must be a string and is
     persisted as-is on ``InsuranceClaim.claim_basis`` (no parent column).
-    PRODUCTIVITY has **no** filing window (the frozen contract intentionally omits
+    PRODUCTIVITY has **no** filing window (the policy_terms contract intentionally omits
     ``claim_window_days``), so past dates within coverage never expire. Returns
     ``(parsed_dates, None)`` on success or ``([], failure_result)`` on the first
     malformed/ineligible entry. Duplicate dates within one submission are rejected.
@@ -443,7 +492,7 @@ def _parse_productivity_dates(
 def _enforce_productivity_submission(
     *,
     canonical_context: CanonicalContext,
-    frozen,
+    policy_terms,
     granted_event: EntitlementEvent,
     parsed_dates: list["_ProductivityClaimedDate"],
 ) -> tuple[Optional["InsuranceClaimSubmissionResult"], dict]:
@@ -451,7 +500,7 @@ def _enforce_productivity_submission(
 
     Resource 1 (date-count allowance): the number of *distinct class-local dates*
     that may be claimed in the period is
-    ``ceil(frozen.claimable_dates_per_week_equivalent × week_equivalent)``. The
+    ``ceil(policy_terms.claimable_dates_per_week_equivalent × week_equivalent)``. The
     metered unit for PRODUCTIVITY is the DATE, not the claim case. Already-claimed
     distinct dates (any status, from immutable child-row history) plus the new
     dates must not exceed the allowance.
@@ -496,11 +545,11 @@ def _enforce_productivity_submission(
         )
 
     week_equiv = _coverage_week_equivalent(
-        frozen=frozen,
+        policy_terms=policy_terms,
         coverage_start_utc=ensure_utc(granted_event.timestamp),
         canonical_context=canonical_context,
     )
-    dates_per_week = frozen.claimable_dates_per_week_equivalent or Decimal("0")
+    dates_per_week = policy_terms.claimable_dates_per_week_equivalent or Decimal("0")
     date_allowance = int(math.ceil(dates_per_week * week_equiv))
 
     # Serialize concurrent date draws on the GRANTED entitlement row.
@@ -528,7 +577,7 @@ def _enforce_productivity_submission(
             {},
         )
 
-    remaining = _maximum_policy_payout(frozen) - (
+    remaining = _maximum_policy_payout(policy_terms) - (
         insurance_claim_service.sum_recognized_payout_for_entitlement(
             class_id=class_id, entitlement_id=entitlement_id
         )
@@ -859,26 +908,22 @@ def _submit_insurance_claim_impl(
                 error_message=f"Entitlement already has terminal event: {terminal_event.event_type}",
             )
 
-        # 3. Read the FROZEN contract captured at purchase (Step 5/6).
-        #    Claim eligibility/economics MUST come from the purchased snapshot,
-        #    never by re-reading the current InsurancePolicy/StoreProduct. The
-        #    insurance_policy_uuid rides along as provenance only.
+        # 3. Resolve the immutable insurance policy that governs this entitlement.
+        #    Claim eligibility/economics come from the policy definition (the
+        #    entitlement's policy_uuid), never from a payload snapshot. Fails
+        #    closed on a missing/unresolvable policy.
         try:
-            frozen = get_frozen_insurance_contract(
+            policy_terms = _resolve_claim_policy(
                 entitlement_id,
                 class_id=canonical_context.class_id,
                 seat_id=canonical_context.seat_id,
             )
-        except FrozenContractError as e:
+        except InsuranceClaimPolicyError as e:
             return InsuranceClaimSubmissionResult(
                 success=False,
-                error_code="FROZEN_CONTRACT_INVALID",
+                error_code="POLICY_UNRESOLVABLE",
                 error_message=str(e),
             )
-
-        # frozen is read purely to fail closed on a malformed snapshot at submission
-        # time; insurance_policy_uuid remains provenance only.
-        _ = frozen.insurance_policy_uuid
 
         # Temporal anchor for submission (class-local).
         temporal_context = canonical_temporal_resolver(
@@ -928,7 +973,7 @@ def _submit_insurance_claim_impl(
                     )
 
         # 6. TRANSACTION economics + eligibility (Step 6). Enforced against the
-        #    frozen contract and immutable claim history — never the live policy.
+        #    policy_terms contract and immutable claim history — never the live policy.
         eligibility_flags = {
             "count_limit_exceeded": False,
             "period_limit_exceeded": False,
@@ -937,10 +982,10 @@ def _submit_insurance_claim_impl(
 
         parsed_productivity_dates: list[_ProductivityClaimedDate] = []
 
-        if frozen.insurance_type == _TRANSACTION_INSURANCE_TYPE:
+        if policy_terms.insurance_type == _TRANSACTION_INSURANCE_TYPE:
             enforcement = _enforce_transaction_submission(
                 canonical_context=canonical_context,
-                frozen=frozen,
+                policy_terms=policy_terms,
                 granted_event=granted_event,
                 claim_subject=claim_subject,
                 submitted_at=now,
@@ -948,7 +993,7 @@ def _submit_insurance_claim_impl(
             )
             if enforcement is not None:
                 return enforcement
-        elif frozen.insurance_type == _PRODUCTIVITY_INSURANCE_TYPE:
+        elif policy_terms.insurance_type == _PRODUCTIVITY_INSURANCE_TYPE:
             # PRODUCTIVITY: the claim asserts one or more class-local loss-dates.
             # Parse/validate the dates, then gate them against the two-resource rule
             # (date-count allowance + period payout capacity). No filing window.
@@ -962,7 +1007,7 @@ def _submit_insurance_claim_impl(
                 return parse_failure
             enforcement, advisory_flags = _enforce_productivity_submission(
                 canonical_context=canonical_context,
-                frozen=frozen,
+                policy_terms=policy_terms,
                 granted_event=granted_event,
                 parsed_dates=parsed_productivity_dates,
             )
@@ -1001,7 +1046,7 @@ def _submit_insurance_claim_impl(
         # 7b. Attach normalized PRODUCTIVITY date rows (immutable submitted hours).
         #     Idempotent on replay; the UNIQUE(entitlement_id, claim_date) invariant
         #     is the structural backstop against a concurrent duplicate date.
-        if frozen.insurance_type == _PRODUCTIVITY_INSURANCE_TYPE:
+        if policy_terms.insurance_type == _PRODUCTIVITY_INSURANCE_TYPE:
             try:
                 insurance_claim_service.add_productivity_claim_dates(
                     claim=claim,
@@ -1188,7 +1233,7 @@ def _approve_productivity_claim(
     *,
     canonical_context: CanonicalContext,
     claim,
-    frozen,
+    policy_terms,
     teacher_seat,
     override_reason: str | None,
     date_adjustments: dict | None,
@@ -1208,7 +1253,7 @@ def _approve_productivity_claim(
     class_id = canonical_context.class_id
     entitlement_id = claim.entitlement_id
 
-    if frozen.reimbursement_percentage is None:
+    if policy_terms.reimbursement_percentage is None:
         return InsuranceClaimResolutionResult(
             success=False,
             error_code="CLAIM_TYPE_UNSUPPORTED",
@@ -1229,7 +1274,7 @@ def _approve_productivity_claim(
     adjustments = date_adjustments or {}
 
     # Remaining period payout capacity BEFORE this claim's dates are recognized.
-    remaining = _maximum_policy_payout(frozen) - (
+    remaining = _maximum_policy_payout(policy_terms) - (
         insurance_claim_service.sum_recognized_payout_for_entitlement(
             class_id=class_id, entitlement_id=entitlement_id
         )
@@ -1292,7 +1337,7 @@ def _approve_productivity_claim(
             )
 
         gross = _quantize_currency(
-            approved_hours * hourly_rate * frozen.reimbursement_percentage / Decimal("100")
+            approved_hours * hourly_rate * policy_terms.reimbursement_percentage / Decimal("100")
         )
         recognized = _quantize_currency(min(gross, remaining))
         if recognized < Decimal("0.00"):
@@ -1492,21 +1537,21 @@ def _resolve_insurance_claim_impl(
         entitlement_id = claim.entitlement_id
         claim_subject = claim.claim_basis or {}
 
-        # 3. Read the FROZEN contract captured at purchase time. Claim economics MUST
-        #    come from this snapshot, never from the current InsurancePolicy/StoreProduct.
+        # 3. Resolve the immutable insurance policy governing this entitlement.
+        #    Claim economics come from the policy definition, never a snapshot.
         try:
-            frozen = get_frozen_insurance_contract(
+            policy_terms = _resolve_claim_policy(
                 entitlement_id,
                 class_id=canonical_context.class_id,
                 seat_id=claim.target_seat_id,
             )
-        except FrozenContractError as e:
+        except InsuranceClaimPolicyError as e:
             return InsuranceClaimResolutionResult(
                 success=False,
-                error_code="FROZEN_CONTRACT_INVALID",
-                error_message=f"Frozen insurance contract unreadable: {e}",
+                error_code="POLICY_UNRESOLVABLE",
+                error_message=f"Insurance policy unresolvable: {e}",
             )
-        insurance_policy_uuid = frozen.insurance_policy_uuid  # provenance only
+        insurance_policy_uuid = policy_terms.policy_uuid  # provenance
 
         # Get student seat for the compensatory Ledger effect.
         student_seat = db.session.get(Seat, claim.target_seat_id)
@@ -1520,7 +1565,7 @@ def _resolve_insurance_claim_impl(
         reimbursement_amount = Decimal("0.00")
         ledger_transaction_id = None
 
-        if approved and frozen.insurance_type == _PRODUCTIVITY_INSURANCE_TYPE:
+        if approved and policy_terms.insurance_type == _PRODUCTIVITY_INSURANCE_TYPE:
             # PRODUCTIVITY approval is date-metered: adjudicate each asserted loss
             # date, persist its immutable recognized_payout, and post ONE
             # MANUAL_CREDIT through Productivity & Payroll. No source transaction,
@@ -1528,7 +1573,7 @@ def _resolve_insurance_claim_impl(
             return _approve_productivity_claim(
                 canonical_context=canonical_context,
                 claim=claim,
-                frozen=frozen,
+                policy_terms=policy_terms,
                 teacher_seat=teacher_seat,
                 override_reason=override_reason,
                 date_adjustments=date_adjustments,
@@ -1554,16 +1599,17 @@ def _resolve_insurance_claim_impl(
                     error_message="Claim transaction not found in this class",
                 )
 
-            # Reimbursement economics are read ONLY from the frozen snapshot. Monetary
+            # Reimbursement economics are read ONLY from the policy_terms snapshot. Monetary
             # products (TRANSACTION / PRODUCTIVITY) carry a reimbursement_percentage; the
-            # loss is reimbursed at that frozen rate.
-            if not frozen.is_monetary or frozen.reimbursement_percentage is None:
+            # loss is reimbursed at that policy_terms rate.
+            if (policy_terms.insurance_type not in (_TRANSACTION_INSURANCE_TYPE, _PRODUCTIVITY_INSURANCE_TYPE)
+                    or policy_terms.reimbursement_percentage is None):
                 return InsuranceClaimResolutionResult(
                     success=False,
                     error_code="CLAIM_TYPE_UNSUPPORTED",
                     error_message=(
                         f"Monetary reimbursement is not yet supported for "
-                        f"insurance_type {frozen.insurance_type}"
+                        f"insurance_type {policy_terms.insurance_type}"
                     ),
                 )
 
@@ -1583,7 +1629,7 @@ def _resolve_insurance_claim_impl(
 
             gross_loss = abs(source_transaction.amount or Decimal("0.00"))
             gross_reimbursement = _quantize_currency(
-                gross_loss * frozen.reimbursement_percentage / Decimal("100")
+                gross_loss * policy_terms.reimbursement_percentage / Decimal("100")
             )
             if gross_reimbursement <= Decimal("0.00"):
                 return InsuranceClaimResolutionResult(
@@ -1593,9 +1639,9 @@ def _resolve_insurance_claim_impl(
                 )
 
             reimbursement_amount = gross_reimbursement
-            if frozen.insurance_type == _TRANSACTION_INSURANCE_TYPE:
+            if policy_terms.insurance_type == _TRANSACTION_INSURANCE_TYPE:
                 # CLAMP to remaining period capacity: maximum_policy_payout
-                # (frozen premium × payout_multiple) minus Σ prior APPROVED payouts.
+                # (policy_terms premium × payout_multiple) minus Σ prior APPROVED payouts.
                 # Exceeding the nominal reimbursement never invalidates a claim — the
                 # policy pays only its remaining capacity. Zero capacity fails as
                 # CLAIM_ALLOWANCE_EXHAUSTED rather than a zero-dollar approval. Later
@@ -1617,7 +1663,7 @@ def _resolve_insurance_claim_impl(
                         error_message="GRANTED entitlement not found for this claim",
                     )
                 coverage_terms = _derive_coverage_terms(
-                    frozen=frozen,
+                    policy_terms=policy_terms,
                     granted_event=granted_event,
                     canonical_context=canonical_context,
                 )

@@ -49,69 +49,71 @@ from app.feats.insurance_claim_feat import (
 )
 from tests.helpers.ledger import create_ledger_idempotent_transaction
 from tests.helpers.classroom_initializer import initialize
+from app.services import insurance_definition_service as insurance_defs
 
 
-def _transaction_frozen_contract(
+def _make_transaction_policy(
+    classroom,
     reimbursement_percentage: str = "100",
     *,
     premium: str = "100.00",
     payout_multiple: str = "1",
     claims_per_week_equivalent: str = "5",
     claim_window_days: int = 7,
-) -> dict:
-    """A lawful TRANSACTION frozen_contract subset (must match insurance_contract_freeze).
+) -> str:
+    """Create a real immutable TRANSACTION insurance_policies row; return its policy_uuid.
 
-    Defaults give a meaningful period payout ceiling (premium × payout_multiple =
-    100.00) and a generous per-period claim allowance (5) so the general lifecycle
-    fixtures are never incidentally throttled by the economic gates. Regression
-    tests that exercise a gate pass explicit tight values.
+    The claim path resolves this row by policy_uuid — there is no snapshot. Defaults
+    give a meaningful period payout ceiling (premium × payout_multiple = 100.00) and
+    a generous per-period claim allowance so general lifecycle fixtures are never
+    incidentally throttled; gate regression tests pass explicit tight values.
     """
-    return {
-        "insurance_type": "TRANSACTION",
-        "premium": premium,
-        "charge_frequency": "WEEKLY",
-        "reimbursement_percentage": str(reimbursement_percentage),
-        "payout_multiple": payout_multiple,
-        "claims_per_week_equivalent": claims_per_week_equivalent,
-        "claim_window_days": claim_window_days,
-    }
-
-
-def granted_insurance_payload(
-    policy_uuid: str, reimbursement_percentage: str = "100", **contract_kwargs
-) -> dict:
-    """GRANTED-event payload carrying the frozen snapshot the claim path consumes."""
-    return {
-        "insurance_policy_uuid": policy_uuid,
-        "frozen_contract": _transaction_frozen_contract(
-            reimbursement_percentage, **contract_kwargs
-        ),
-        "purchase_metadata": {"tier_level": 1, "tier_name": "Basic", "title": "Insurance Policy"},
-    }
+    row = insurance_defs.create_insurance_definition(
+        class_id=classroom.class_id,
+        actor_seat_id=classroom.teacher_seat_id,
+        definition={
+            "insurance_type": "TRANSACTION",
+            "premium": premium,
+            "charge_frequency": "WEEKLY",
+            "reimbursement_percentage": str(reimbursement_percentage),
+            "payout_multiple": payout_multiple,
+            "claims_per_week_equivalent": claims_per_week_equivalent,
+            "claim_window_days": claim_window_days,
+            "title": "Insurance Policy",
+        },
+    )
+    return row.policy_uuid
 
 
 def make_policy_uuid(suffix: str = "") -> str:
-    """A synthetic provenance UUID; the claim path never resolves it back to the store."""
+    """A synthetic label kept for caller signature compatibility; the real policy_uuid
+    is minted by the policy row the grant helper creates, so this value is ignored."""
     return f"pol-{suffix}-{uuid4().hex}" if suffix else f"pol-{uuid4().hex}"
 
 
 def _add_granted_event(
-    classroom, student, entitlement_id, policy_uuid, reimbursement_percentage="100", **contract_kwargs
+    classroom, student, entitlement_id, policy_uuid=None, reimbursement_percentage="100", **contract_kwargs
 ):
-    """Insert a GRANTED INSURANCE event with a frozen snapshot (caller inside FEATContext)."""
+    """Insert a GRANTED INSURANCE event referencing a real TRANSACTION policy row.
+
+    Creates the immutable policy and grants an entitlement carrying only its
+    policy_uuid (no frozen snapshot). Caller must be inside a FEAT context. The
+    ``policy_uuid`` argument is ignored — a real policy_uuid is minted here.
+    """
+    real_policy_uuid = _make_transaction_policy(
+        classroom, reimbursement_percentage, **contract_kwargs
+    )
     granted_event = EntitlementEvent(
         event_id=str(uuid4()),
         class_id=classroom.class_id,
         entitlement_id=entitlement_id,
         target_seat_id=student.seat.id,
         actor_seat_id=student.seat.id,
-        product_id=1,
+        product_id=None,
         entitlement_type="INSURANCE",
-        acquisition_type="PERK",
+        acquisition_type="PURCHASE",
         event_type="GRANTED",
-        payload=granted_insurance_payload(
-            policy_uuid, reimbursement_percentage, **contract_kwargs
-        ),
+        payload={"policy_uuid": real_policy_uuid},
     )
     db.session.add(granted_event)
     db.session.flush()
@@ -260,6 +262,56 @@ class TestInsuranceClaimSubmission:
 
             assert result.success is False
             assert result.error_code == "WRONG_ENTITLEMENT_TYPE"
+
+    def test_submission_fails_closed_when_policy_uuid_missing(self, app):
+        """A claimed insurance grant with no policy_uuid reference fails closed —
+        claim terms come from the immutable policy, never a payload snapshot."""
+        classroom = initialize("chemistry_p1", app)
+        student = classroom.students[0]
+        with app.app_context():
+            entitlement_id = str(uuid4())
+            with FEATContext("FEAT-TEST-SETUP", idempotency_key="claim:no-policy-uuid"):
+                db.session.add(EntitlementEvent(
+                    event_id=str(uuid4()), class_id=classroom.class_id,
+                    entitlement_id=entitlement_id, target_seat_id=student.seat.id,
+                    actor_seat_id=student.seat.id, product_id=None,
+                    entitlement_type="INSURANCE", acquisition_type="PURCHASE",
+                    event_type="GRANTED", payload={},  # no policy_uuid
+                ))
+                db.session.flush()
+            context = CanonicalContext(
+                user_id=student.user.id, class_id=classroom.class_id,
+                seat_id=student.seat.id, actor_role="student")
+            result = submit_insurance_claim(
+                canonical_context=context, entitlement_id=entitlement_id,
+                claim_subject={"transaction_id": 123})
+            assert result.success is False
+            assert result.error_code == "POLICY_UNRESOLVABLE"
+
+    def test_submission_fails_closed_when_policy_uuid_wrong_class(self, app):
+        """A policy_uuid that does not resolve within the claim's class fails closed."""
+        classroom = initialize("chemistry_p1", app)
+        student = classroom.students[0]
+        with app.app_context():
+            entitlement_id = str(uuid4())
+            with FEATContext("FEAT-TEST-SETUP", idempotency_key="claim:wrong-class-policy"):
+                db.session.add(EntitlementEvent(
+                    event_id=str(uuid4()), class_id=classroom.class_id,
+                    entitlement_id=entitlement_id, target_seat_id=student.seat.id,
+                    actor_seat_id=student.seat.id, product_id=None,
+                    entitlement_type="INSURANCE", acquisition_type="PURCHASE",
+                    event_type="GRANTED",
+                    payload={"policy_uuid": "not-a-policy-in-this-class"},
+                ))
+                db.session.flush()
+            context = CanonicalContext(
+                user_id=student.user.id, class_id=classroom.class_id,
+                seat_id=student.seat.id, actor_role="student")
+            result = submit_insurance_claim(
+                canonical_context=context, entitlement_id=entitlement_id,
+                claim_subject={"transaction_id": 123})
+            assert result.success is False
+            assert result.error_code == "POLICY_UNRESOLVABLE"
 
     def test_submission_rejects_terminal_entitlement(self, app):
         """Submission fails if entitlement already has a terminal event."""
@@ -630,27 +682,34 @@ class TestInsuranceClaimResolution:
             assert result.error_code == "CLAIM_NOT_FOUND"
 
 
-def _productivity_frozen_contract(
+def _make_productivity_policy(
+    classroom,
     *,
     reimbursement_percentage: str = "100",
     premium: str = "100.00",
     payout_multiple: str = "1",
     claimable_dates_per_week_equivalent: str = "5",
-) -> dict:
-    """A lawful PRODUCTIVITY frozen_contract subset.
+) -> str:
+    """Create a real immutable PRODUCTIVITY insurance_policies row; return its policy_uuid.
 
-    The PRODUCTIVITY subset intentionally omits ``claim_window_days`` (no filing
+    The PRODUCTIVITY contract intentionally omits ``claim_window_days`` (no filing
     window) and ``claims_per_week_equivalent`` (the metered unit is the DATE, gated
     by ``claimable_dates_per_week_equivalent``).
     """
-    return {
-        "insurance_type": "PRODUCTIVITY",
-        "premium": premium,
-        "charge_frequency": "WEEKLY",
-        "reimbursement_percentage": reimbursement_percentage,
-        "payout_multiple": payout_multiple,
-        "claimable_dates_per_week_equivalent": claimable_dates_per_week_equivalent,
-    }
+    row = insurance_defs.create_insurance_definition(
+        class_id=classroom.class_id,
+        actor_seat_id=classroom.teacher_seat_id,
+        definition={
+            "insurance_type": "PRODUCTIVITY",
+            "premium": premium,
+            "charge_frequency": "WEEKLY",
+            "reimbursement_percentage": str(reimbursement_percentage),
+            "payout_multiple": payout_multiple,
+            "claimable_dates_per_week_equivalent": claimable_dates_per_week_equivalent,
+            "title": "Productivity Insurance",
+        },
+    )
+    return row.policy_uuid
 
 
 _ENGINE_CARRY_FORWARD_FIELDS = (
@@ -738,25 +797,18 @@ def _add_productivity_granted_event(
         _make_economic_engine_ready(
             classroom.class_id, expected_weekly_hours=expected_weekly_hours
         )
+    real_policy_uuid = _make_productivity_policy(classroom, **contract_kwargs)
     granted_event = EntitlementEvent(
         event_id=str(uuid4()),
         class_id=classroom.class_id,
         entitlement_id=entitlement_id,
         target_seat_id=student.seat.id,
         actor_seat_id=student.seat.id,
-        product_id=1,
+        product_id=None,
         entitlement_type="INSURANCE",
-        acquisition_type="PERK",
+        acquisition_type="PURCHASE",
         event_type="GRANTED",
-        payload={
-            "insurance_policy_uuid": policy_uuid,
-            "frozen_contract": _productivity_frozen_contract(**contract_kwargs),
-            "purchase_metadata": {
-                "tier_level": 1,
-                "tier_name": "Basic",
-                "title": "Productivity Insurance",
-            },
-        },
+        payload={"policy_uuid": real_policy_uuid},
     )
     if granted_at is not None:
         granted_event.timestamp = granted_at

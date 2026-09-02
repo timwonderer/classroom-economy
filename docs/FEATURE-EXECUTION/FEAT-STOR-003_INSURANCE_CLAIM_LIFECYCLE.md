@@ -2,12 +2,21 @@
 
 | Reference Number | Version | Effective Date | Supersedes | Authority Level |
 | :--- | :--- | :--- | :--- | :--- |
-| FEAT-STOR-003 | 1.1 | 2026-08-26 | 1.0 | Normative |
+| FEAT-STOR-003 | 1.2 | 2026-09-01 | 1.1 | Normative |
 
+> **1.2 revision note.** Claim-time authority is the **immutable `insurance_policies`
+> definition**, resolved via the GRANTED entitlement's `policy_uuid`, not a
+> `frozen_contract` payload snapshot. Because a policy edit mints a *new*
+> `policy_uuid`, the exact row the entitlement references cannot change after
+> purchase — it *is* the frozen contract, with the same non-retroactivity guarantee
+> and no duplicated terms in the entitlement payload (INV-ARC-009, DOM-STORE-001
+> §VII.A). Throughout this document, "frozen contract" / "frozen purchased contract"
+> denotes that immutable policy row; the claim FEAT reads its terms
+> (`policy.premium`, `policy.reimbursement_percentage`, etc.) directly.
+>
 > **1.1 revision note.** TRANSACTION insurance economics are now *resolved*, not
 > deferred. This revision replaces the earlier "to be defined by policy" language
-> around claim allowance with the implemented **two-resource rule** (§X, §XII) and
-> documents the frozen-contract claim-time authority the FEAT actually enforces.
+> around claim allowance with the implemented **two-resource rule** (§X, §XII).
 
 ## I. Purpose
 
