@@ -2,7 +2,7 @@
 
 | Reference Number | Version | Effective Date | Supersedes | Authority Level |
 | :--- | :--- | :--- | :--- | :--- |
-| FEAT-STOR-001 | 3.0 | 2026-07-27 | 2.0 | Normative |
+| FEAT-STOR-001 | 3.1 | 2026-09-01 | 3.0 | Normative |
 
 ## I. Purpose
 
@@ -24,7 +24,14 @@ This FEAT is the sole lawful writer for entitlement grants with:
 - `acquisition_type = PURCHASE`
 - `event_type = GRANTED`
 
-when the acquisition originates from a user-initiated purchase.
+when the acquisition originates from a user-initiated purchase **of an actual
+Store product** (`store_products`). Insurance is out of scope: it is not a store
+product and is acquired through **FEAT-OBL-004** (Insurance Policy Purchase /
+Enrollment) over the immutable `insurance_policies` definition — an Obligations
+action, not a store purchase. This FEAT rejects any INSURANCE-typed policy that
+reaches it (`INSURANCE_NOT_PURCHASABLE_VIA_STORE`), and the former insurance
+branch, its premium-reconciliation, and its purchase-time frozen-contract
+snapshot have been removed.
 
 It does not own:
 
@@ -312,8 +319,7 @@ Representative failures include:
 - `INVENTORY_UNAVAILABLE`
 - `OBLIGATION_BLOCK`
 - `INSUFFICIENT_FUNDS`
-- `INVALID_INSURANCE_CONFIGURATION`
-- `INSURANCE_NOT_AVAILABLE_FOR_NEW_COVERAGE`
+- `INSURANCE_NOT_PURCHASABLE_VIA_STORE` (insurance is acquired via FEAT-OBL-004, not this FEAT)
 - `IDEMPOTENCY_CONFLICT`
 - `CROSS_DOMAIN_FAILURE`
 

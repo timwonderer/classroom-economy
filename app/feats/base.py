@@ -205,7 +205,6 @@ FEAT_REGISTRY = {
     "FEAT-STOR-001": {"domain": "Store", "blast_radius": "MED", "desc": "Store Purchase and Entitlement Grant"},
     "FEAT-STOR-002": {"domain": "Store", "blast_radius": "MED", "desc": "Entitlement Terminal Lifecycle"},
     "FEAT-STOR-003": {"domain": "Store", "blast_radius": "MED", "desc": "Insurance Claim Lifecycle"},
-    "FEAT-STOR-007": {"domain": "Store", "blast_radius": "MED", "desc": "Publish Insurance Product (StoreProduct from POL definition)"},
     # Bridge aliases — retired FEAT codes kept until all call-sites are migrated
     "FEAT-STOR-004": {"domain": "Store", "blast_radius": "MED", "desc": "[RETIRED → FEAT-STOR-001] Rent Perk Purchase"},
     "FEAT-STOR-005": {"domain": "Store", "blast_radius": "LOW", "desc": "[RETIRED → FEAT-STOR-002] Redeem Item"},
