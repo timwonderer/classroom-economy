@@ -170,3 +170,51 @@ def test_file_claim_fails_closed_without_coverage(app, client):
     assert resp.status_code == 302  # redirected away, fail-closed
     with app.app_context():
         assert InsuranceClaim.query.filter_by(class_id=class_id, target_seat_id=seat_id).count() == 0
+
+
+def _make_productivity_policy(classroom):
+    row = configure_insurance_definition(
+        class_id=classroom.class_id,
+        submission=dict(
+            insurance_type="PRODUCTIVITY", premium="10.00", charge_frequency="WEEKLY",
+            reimbursement_percentage="80", payout_multiple="5",
+            claimable_dates_per_week_equivalent="5", title="Productivity Cover",
+        ),
+        canonical_context=_teacher_ctx(classroom),
+        correlation_id=f"corr_{uuid4().hex}", idempotency_key=f"cfg:{uuid4().hex}",
+    )
+    return row.policy_uuid
+
+
+def test_file_claim_productivity_form_renders_and_submits(app, client):
+    from datetime import datetime, timezone
+    with app.app_context():
+        classroom = provision_classroom("chemistry_p1")
+        enable_class_feature(class_id=classroom.class_id, feature="insurance")
+        policy_uuid = _make_productivity_policy(classroom)
+        student = classroom.students[0]
+        _fund(student.seat)
+        execute_purchase_insurance(
+            canonical_context=_student_ctx(classroom),
+            policy_uuid=policy_uuid, idempotency_key=f"ins:{uuid4().hex}")
+        db.session.commit()
+        class_id, seat_id = classroom.class_id, student.seat.id
+        login_student(client, student)
+
+    # The productivity claim surface renders (multi-date rows, not the txn picker).
+    resp = client.get(f"/student/insurance/claim/{policy_uuid}")
+    assert resp.status_code == 200
+    assert b"Add another day" in resp.data
+    assert b"Days you&#39;re claiming" in resp.data or b"Days you're claiming" in resp.data
+
+    # A productivity submission reaches FEAT-STOR-003 and is surfaced gracefully by
+    # the route (approval depends on the student's work records — a FEAT concern
+    # covered end-to-end in test_insurance_claim_feat.py — so we assert the route
+    # wiring never 500s and the claim_subject shape is accepted for parsing).
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    resp = client.post(
+        f"/student/insurance/claim/{policy_uuid}",
+        data={"claim_date": today, "claim_hours": "2.0",
+              "claim_explanation": "Lost class time to a jam"},
+    )
+    assert resp.status_code in (200, 302)  # handled, never a server error

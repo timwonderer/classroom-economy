@@ -89,6 +89,11 @@ from app.feats.purchase_insurance_feat import execute_purchase_insurance
 from app.services.ledger_service import (
     apply_monthly_savings_interest as post_monthly_savings_interest,
     get_available_balances,
+    get_posted_balance,
+)
+from app.services.economic_engine import (
+    savings_interest_for_payout_period,
+    project_savings_balances,
 )
 from app.services import access_policy_service, store_service
 from app.services.entitlement_service import (
@@ -1632,6 +1637,8 @@ def file_claim(policy_uuid):
         return redirect(url_for('student.student_insurance'))
 
     is_transaction_type = policy.insurance_type == "TRANSACTION"
+    is_productivity_type = policy.insurance_type == "PRODUCTIVITY"
+    claimable = is_transaction_type or is_productivity_type
     form = InsuranceClaimForm()
     if is_transaction_type:
         eligible = _eligible_claim_transactions(seat_id, class_id)
@@ -1639,16 +1646,31 @@ def file_claim(policy_uuid):
             (str(t.id), f"{t.timestamp:%b %d} · ${abs(t.amount):.2f} · {t.description or t.type}")
             for t in eligible
         ]
+    else:
+        form.transaction_id.choices = []  # SelectField requires choices even when unused
 
-    if form.validate_on_submit():
+    if claimable and form.validate_on_submit():
         claim_subject = {"policy_claim_type": policy.insurance_type}
         if is_transaction_type:
             tid = form.transaction_id.data
             claim_subject["transaction_id"] = int(tid) if tid not in (None, "") else None
         else:
-            if form.incident_date.data:
-                claim_subject["claimed_dates"] = [form.incident_date.data.isoformat()]
-            claim_subject["student_explanation"] = form.description.data or ""
+            # PRODUCTIVITY: one or more class-local loss-dates, each with hours and
+            # the student's own explanation (evidentiary; FEAT-STOR-003 validates).
+            dates = request.form.getlist("claim_date")
+            hours = request.form.getlist("claim_hours")
+            explanations = request.form.getlist("claim_explanation")
+            claimed_dates = []
+            for idx, day in enumerate(dates):
+                if not (day or "").strip():
+                    continue
+                claimed_dates.append({
+                    "date": day.strip(),
+                    "hours": (hours[idx] if idx < len(hours) else "").strip(),
+                    "explanation": (explanations[idx] if idx < len(explanations) else "").strip(),
+                })
+            claim_subject["claimed_dates"] = claimed_dates
+            claim_subject["additional_information"] = (form.description.data or "").strip() or None
         result = submit_insurance_claim(
             entitlement_id=entitlement_id,
             canonical_context=context,
@@ -1686,6 +1708,8 @@ def file_claim(policy_uuid):
         policy=policy_view,
         form=form,
         is_transaction_type=is_transaction_type,
+        is_productivity_type=is_productivity_type,
+        claimable=claimable,
         prior_claims=prior_claims,
         now=utc_now(),
     )

@@ -35,6 +35,9 @@
   <div class="card shadow-sm mb-4">
     <div class="card-body">
       <h2 class="h6 mb-3">New claim</h2>
+      {% if not claimable %}
+      <p class="text-muted mb-0">Claims for this policy type aren't available from this form yet.</p>
+      {% else %}
       <form method="POST" action="{{ url_for('student.file_claim', policy_uuid=policy.policy_uuid) }}">
         {{ form.hidden_tag() }}
 
@@ -44,21 +47,41 @@
           {{ form.transaction_id(class="form-select") }}
           <div class="form-text">Choose the transaction you're claiming against.</div>
         </div>
-        {% else %}
-        <div class="mb-3">
-          {{ form.incident_date.label(class="form-label") }}
-          {{ form.incident_date(class="form-control", type="date") }}
-        </div>
-        {% endif %}
-
         <div class="mb-3">
           {{ form.description.label(class="form-label") }}
           {{ form.description(class="form-control", rows=4,
               placeholder="Briefly describe what happened.") }}
         </div>
 
+        {% elif is_productivity_type %}
+        <label class="form-label">Days you're claiming</label>
+        <div id="claim-dates">
+          <div class="claim-date-row row g-2 mb-2 align-items-end">
+            <div class="col-4">
+              <label class="form-label small mb-1">Date</label>
+              <input type="date" name="claim_date" class="form-control" max="{{ now.strftime('%Y-%m-%d') }}">
+            </div>
+            <div class="col-2">
+              <label class="form-label small mb-1">Hours</label>
+              <input type="number" name="claim_hours" class="form-control" step="0.25" min="0" placeholder="2.0">
+            </div>
+            <div class="col-6">
+              <label class="form-label small mb-1">What happened</label>
+              <input type="text" name="claim_explanation" class="form-control" placeholder="Your account of the lost time">
+            </div>
+          </div>
+        </div>
+        <button type="button" id="add-claim-date" class="btn btn-outline-secondary btn-sm mb-3">+ Add another day</button>
+        <div class="mb-3">
+          <label class="form-label" for="description">Anything else (optional)</label>
+          {{ form.description(class="form-control", rows=3,
+              placeholder="Optional context for the whole claim.") }}
+        </div>
+        {% endif %}
+
         {{ form.submit(class="btn btn-primary") }}
       </form>
+      {% endif %}
     </div>
   </div>
 
@@ -87,4 +110,16 @@
   {% endif %}
 
 </div>
+
+{% if is_productivity_type %}
+<script>
+  document.getElementById('add-claim-date')?.addEventListener('click', function () {
+    var container = document.getElementById('claim-dates');
+    var first = container.querySelector('.claim-date-row');
+    var clone = first.cloneNode(true);
+    clone.querySelectorAll('input').forEach(function (i) { i.value = ''; });
+    container.appendChild(clone);
+  });
+</script>
+{% endif %}
 {% endblock %}
