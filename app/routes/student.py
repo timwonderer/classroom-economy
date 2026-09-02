@@ -47,7 +47,7 @@ from app.auth import (
 from app.services.context_resolver import ContextResolutionError, resolve_canonical_context
 from app.forms import (
     StudentClaimAccountForm, StudentCreateUsernameForm, StudentPinPassphraseForm,
-    StudentLoginForm, StudentCompleteProfileForm
+    StudentLoginForm, StudentCompleteProfileForm, InsuranceClaimForm
 )
 
 # Import utility functions
@@ -1282,14 +1282,18 @@ def transfer():
             return redirect(url_for("student.transfer"))
         else:
             try:
-                execute_account_transfer(
-                    seat_id=seat_id,
-                    class_id=class_id,
-                    # user_id is resolved from class context.
-                    amount=amount,
-                    from_account=from_account,
-                    to_account=to_account,
-                )
+                with FEATContext(
+                    "FEAT-LED-000",
+                    idempotency_key=f"feat:transfer:{class_id}:{seat_id}:{uuid.uuid4().hex}",
+                ):
+                    execute_account_transfer(
+                        seat_id=seat_id,
+                        class_id=class_id,
+                        user_id=context.user_id,
+                        amount=amount,
+                        from_account=from_account,
+                        to_account=to_account,
+                    )
                 current_app.logger.info(
                     f"Transfer {amount} from {from_account} to {to_account} for seat {seat_id}"
                 )
@@ -1567,141 +1571,122 @@ def cancel_insurance(enrollment_id):
     return redirect(url_for('student.student_insurance'))
 
 
-@student_bp.route('/insurance/claim/<int:policy_id>', methods=['GET', 'POST'])
+def _active_insurance_entitlement_id(seat_id, class_id, policy_uuid):
+    """Entitlement_id of the seat's ACTIVE coverage for exactly this policy, else None.
+
+    Class-scoped: iterates the seat's GRANTED INSURANCE entitlements in this class,
+    matches the immutable `policy_uuid` the grant references, and excludes lineages
+    with a terminal (EXPIRED/REVOKED) event. Fails closed by returning None.
+    """
+    for grant in get_active_entitlements(seat_id, class_id, entitlement_type="INSURANCE"):
+        if (grant.payload or {}).get("policy_uuid") != policy_uuid:
+            continue
+        if get_entitlement_status(grant.entitlement_id, class_id) in ("EXPIRED", "REVOKED"):
+            continue
+        return grant.entitlement_id
+    return None
+
+
+def _eligible_claim_transactions(seat_id, class_id, limit=25):
+    """Recent money-out transactions a TRANSACTION policy might cover (FEAT validates)."""
+    from app.services.insurance_eligibility_contract import (
+        TRANSFER_TYPES, OBLIGATION_TYPES, DISALLOWED_TRANSACTION_TYPES,
+    )
+    excluded = TRANSFER_TYPES | OBLIGATION_TYPES | DISALLOWED_TRANSACTION_TYPES | {"insurance_premium"}
+    rows = (
+        Transaction.query
+        .filter(Transaction.seat_id == seat_id, Transaction.class_id == class_id,
+                Transaction.amount < 0)
+        .order_by(Transaction.timestamp.desc())
+        .limit(80)
+        .all()
+    )
+    return [t for t in rows if (t.type or "").lower() not in excluded][:limit]
+
+
+@student_bp.route('/insurance/claim/<policy_uuid>', methods=['GET', 'POST'])
 @login_required
-def file_claim(policy_id):
-    """File insurance claim."""
-    from app.services.insurance_policy_service import normalize_insurance_type
+def file_claim(policy_uuid):
+    """File an insurance claim against coverage the student currently holds."""
     context = resolve_canonical_context()
     if not context:
         flash("No class selected. Please select a class to continue.", "error")
         return redirect(url_for('student.dashboard'))
 
-    class_identifier = get_display_join_code(context.class_id) if context.class_id else ""
+    class_id = context.class_id
+    seat_id = context.seat_id
     student_name = (
         context.identity_profile.full_name
         if getattr(context, "identity_profile", None) else ""
     )
-    policy_version = db.session.get(PolicyVersion, policy_id)
-    if policy_version is None or policy_version.class_id != context.class_id or policy_version.domain != "insurance":
+
+    # Fail closed unless the student CURRENTLY holds this exact coverage.
+    entitlement_id = _active_insurance_entitlement_id(seat_id, class_id, policy_uuid)
+    if entitlement_id is None:
+        flash("You don't hold active coverage for that policy.", "error")
+        return redirect(url_for('student.student_insurance'))
+
+    policy = insurance_defs.get_insurance_definition(policy_uuid, class_id=class_id)
+    if policy is None:
         flash("That insurance policy is not available for this class.", "error")
         return redirect(url_for('student.student_insurance'))
-    payload = json.loads(policy_version.policy_payload_json or "{}")
-    entitlement_item_id = get_insurance_entitlement_item_id(policy_version)
-    if entitlement_item_id is None:
-        flash("This insurance policy is missing its entitlement mapping.", "error")
-        return redirect(url_for('student.student_insurance'))
-    entitlement_rows = _list_available_insurance_entitlements(
-        target_seat_id=context.seat_id,
-        class_id=context.class_id,
-        entitlement_item_id=entitlement_item_id,
-    )
-    active_entitlement = entitlement_rows[0] if entitlement_rows else None
-    if request.method == "POST":
-        if active_entitlement is None:
-            flash("You do not have an active insurance entitlement for this policy.", "error")
-            return redirect(url_for('student.student_insurance'))
-        transaction_id = request.form.get("transaction_id")
-        try:
-            transaction_id = int(transaction_id) if transaction_id not in (None, "") else None
-        except (TypeError, ValueError):
-            transaction_id = None
-        claimed_dates = None
-        incident_date = request.form.get("incident_date")
-        if incident_date:
-            claimed_dates = [incident_date]
+
+    is_transaction_type = policy.insurance_type == "TRANSACTION"
+    form = InsuranceClaimForm()
+    if is_transaction_type:
+        eligible = _eligible_claim_transactions(seat_id, class_id)
+        form.transaction_id.choices = [("", "Select a transaction…")] + [
+            (str(t.id), f"{t.timestamp:%b %d} · ${abs(t.amount):.2f} · {t.description or t.type}")
+            for t in eligible
+        ]
+
+    if form.validate_on_submit():
+        claim_subject = {"policy_claim_type": policy.insurance_type}
+        if is_transaction_type:
+            tid = form.transaction_id.data
+            claim_subject["transaction_id"] = int(tid) if tid not in (None, "") else None
+        else:
+            if form.incident_date.data:
+                claim_subject["claimed_dates"] = [form.incident_date.data.isoformat()]
+            claim_subject["student_explanation"] = form.description.data or ""
         result = submit_insurance_claim(
-            entitlement_id=active_entitlement.entitlement_id,
+            entitlement_id=entitlement_id,
             canonical_context=context,
-            claim_subject={
-                "transaction_id": transaction_id,
-                "claimed_dates": claimed_dates,
-                "policy_claim_type": normalize_insurance_type(payload.get("claim_type")),
-            },
+            claim_subject=claim_subject,
         )
-        flash(result.error_message or "Insurance claim submitted.", "success" if result.success else "error")
-        return redirect(url_for("student.student_insurance"))
-    placeholder_policy = SimpleNamespace(
-        id=policy_version.id,
-        title=payload.get("title") or f"Policy v{policy_version.version_number}",
-        description=payload.get("description", ""),
-        premium=Decimal(str(payload.get("premium", "0.00"))),
-        charge_frequency=payload.get("charge_frequency", "monthly"),
-        waiting_period_days=int(payload.get("waiting_period_days", 0) or 0),
-        max_claims_count=payload.get("max_claims_count"),
-        claim_type=normalize_insurance_type(payload.get("claim_type")),
-        policy_version=policy_version,
-        payload=payload,
-    )
-    policy_claims = _list_insurance_claims(
-        class_id=context.class_id,
-        target_seat_id=context.seat_id,
-        entitlement_id=getattr(active_entitlement, "entitlement_id", None),
-    )
-    enrollment = SimpleNamespace(
-        id=policy_id,
-        policy=placeholder_policy,
-        contract_title=placeholder_policy.title,
-        contract_description=placeholder_policy.description,
-        purchase_date=utc_now(),
-        coverage_start_date=None,
-        payment_current=True,
-        days_unpaid=0,
-        status="active",
-        next_payment_due=None,
-        contract_claim_time_limit_days=0,
-        contract_max_claim_amount=None,
-        contract_max_claims_count=None,
-        contract_max_claims_period="period",
-    )
-    class _DummyLabel:
-        def __init__(self, text: str):
-            self.text = text
-        def __call__(self, *args, **kwargs):
-            return self.text
+        if result.success:
+            flash("Insurance claim submitted.", "success")
+            return redirect(url_for("student.student_insurance"))
+        flash(result.error_message or "Your claim could not be submitted.", "error")
 
-    class _DummyField:
-        def __init__(self, label: str, value=""):
-            self.label = _DummyLabel(label)
-            self.data = value
-        def __call__(self, *args, **kwargs):
-            return ""
-
-    form = SimpleNamespace(
-        hidden_tag=lambda: "",
-        transaction_id=_DummyField("Transaction"),
-        incident_date=_DummyField("Incident Date"),
-        description=_DummyField("Description"),
-        comments=_DummyField("Comments"),
-        claim_item=_DummyField("Claim Item"),
-        claim_amount=_DummyField("Claim Amount"),
-        submit=_DummyField("Submit"),
+    policy_view = SimpleNamespace(
+        policy_uuid=policy_uuid,
+        title=policy.title or "Insurance policy",
+        description=policy.description or "",
+        insurance_type=policy.insurance_type,
+        premium=policy.premium,
+        charge_frequency=policy.charge_frequency,
+        reimbursement_percentage=policy.reimbursement_percentage,
+        payout_multiple=policy.payout_multiple,
+        claim_window_days=policy.claim_window_days,
     )
+    prior_claims = [
+        SimpleNamespace(
+            status=getattr(claim.status, "value", claim.status),
+            filed_date=claim.submitted_at,
+            approved_amount=getattr(claim, "approved_amount", None),
+        )
+        for claim in _list_insurance_claims(
+            class_id=class_id, target_seat_id=seat_id, entitlement_id=entitlement_id
+        )
+    ]
     return render_template(
         'student_file_claim.html',
         student=student_name,
-        current_class_context=SimpleNamespace(
-            teacher_name="",
-            block_display=class_identifier,
-            class_timezone=getattr(context, "class_timezone", ""),
-            student_full_name=student_name,
-            join_code=class_identifier,
-            class_identifier=class_identifier,
-        ),
-        policy=placeholder_policy,
-        enrollment=enrollment,
+        policy=policy_view,
         form=form,
-        errors=[],
-        claim_type="TRANSACTION",
-        contract_title=placeholder_policy.title,
-        contract_description=placeholder_policy.description,
-        contract_claim_time_limit_days=0,
-        contract_max_claim_amount=None,
-        remaining_period_cap=None,
-        contract_max_claims_count=None,
-        contract_max_claims_period="period",
-        eligible_transactions=[],
-        claims_this_period=policy_claims,
+        is_transaction_type=is_transaction_type,
+        prior_claims=prior_claims,
         now=utc_now(),
     )
 

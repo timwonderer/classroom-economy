@@ -272,3 +272,19 @@ class TransactionIssueSubmissionForm(FlaskForm):
         Length(max=500, message="Expected outcome must be 500 characters or less.")
     ])
     submit = SubmitField('Submit Issue')
+
+
+class InsuranceClaimForm(FlaskForm):
+    """Student-facing insurance claim submission.
+
+    Transaction-based policies claim against one of the student's own eligible
+    transactions; date-based (productivity) policies claim one incident date with
+    an explanation. The governing FEAT (FEAT-STOR-003) is the authority on
+    eligibility and economics — this form only gathers the claim subject.
+    """
+    transaction_id = SelectField('Transaction being claimed', coerce=str, validators=[Optional()])
+    incident_date = DateField('Incident date', format='%Y-%m-%d', validators=[Optional()])
+    description = TextAreaField('What happened', validators=[
+        Optional(), Length(max=1000, message="Description must be 1000 characters or less."),
+    ])
+    submit = SubmitField('Submit claim')

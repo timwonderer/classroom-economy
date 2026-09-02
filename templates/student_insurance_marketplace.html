@@ -27,6 +27,8 @@
             {% if cov.purchased_at %}
             <div class="text-muted small mt-1">Since {{ cov.purchased_at.strftime('%b %d, %Y') }}</div>
             {% endif %}
+            <a href="{{ url_for('student.file_claim', policy_uuid=cov.policy_uuid) }}"
+               class="btn btn-outline-primary btn-sm mt-3">File a claim</a>
           </div>
         </div>
       </div>
