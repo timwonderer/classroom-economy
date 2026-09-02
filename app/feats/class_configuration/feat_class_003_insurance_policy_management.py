@@ -41,7 +41,6 @@ from typing import Optional
 
 from app.extensions import db
 from app.feats.base import requires_feat_context
-from app.feats import policy_reference_feat as pol
 from app.models import InsurancePolicy, Seat
 from app.services import insurance_definition_service as defs
 from app.services import economic_engine as ee
@@ -346,9 +345,12 @@ def configure_insurance_definition(
     and represents the lawful teacher actor for that class — it never trusts an
     upstream route to have done so. Missing/invalid context fails closed.
 
-    Delegates the actual immutable write to FEAT-POL-001
-    (``execute_store_insurance_definition``), propagating the same
-    ``correlation_id`` so the nested FEAT context is a lawful re-entry.
+    Performs the immutable write via the POL **domain command**
+    (``insurance_definition_service.create_insurance_definition``) inside this
+    FEAT's single context. It does NOT execute FEAT-POL-001: FEATs are the
+    cross-domain orchestration boundary and invoke domain commands, never other
+    FEATs (INV-ARC-000, INV-ARC-006, INV-ARC-021). POL performs no semantic
+    validation; this FEAT has already enforced SPEC-ECON-003 conformance above.
     """
     _require_teacher_scope(canonical_context, class_id)
     if actor_seat_id is None:
@@ -356,13 +358,11 @@ def configure_insurance_definition(
 
     definition = _validate_and_build_definition(submission)
 
-    return pol.execute_store_insurance_definition(
+    return defs.create_insurance_definition(
         class_id=class_id,
         definition=definition,
         actor_seat_id=actor_seat_id,
         availability_state=availability_state,
-        correlation_id=correlation_id,
-        idempotency_key=idempotency_key,
     )
 
 
@@ -383,14 +383,16 @@ def set_insurance_definition_availability(
     underlying mechanism; delegates to FEAT-POL-001.
 
     ``canonical_context`` is MANDATORY: teacher/class scope is established
-    independently here (missing/invalid context fails closed) before delegation.
+    independently here (missing/invalid context fails closed) before the write.
+
+    Invokes the POL **domain command** (``insurance_definition_service.set_availability``)
+    inside this FEAT's single context — it does NOT execute FEAT-POL-001 (no
+    FEAT-to-FEAT execution; INV-ARC-000, INV-ARC-021).
     """
     _require_teacher_scope(canonical_context, class_id)
 
-    return pol.execute_set_insurance_definition_availability(
+    return defs.set_availability(
         class_id=class_id,
         policy_uuid=policy_uuid,
         availability_state=availability_state,
-        correlation_id=correlation_id,
-        idempotency_key=idempotency_key,
     )

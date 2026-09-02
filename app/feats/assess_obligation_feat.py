@@ -146,4 +146,4 @@ def execute_assess_obligation(
         bill_cycle_id=bill_cycle_id,
         source_correlation_id=source_correlation_id,
     )
-    return assess_obligation(request, context=FEATContext("FEAT-OBL-001"))
+    return assess_obligation(request, context=None)

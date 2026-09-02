@@ -47,9 +47,12 @@ from app.services import entitlement_service
 from app.services import entitlement_read_service
 from app.services.context_resolver import CanonicalContext
 from app.feats.base import requires_feat_context, FEATContext
-from app.feats.establish_bill_cycle_feat import execute_establish_bill_cycle
-from app.feats.assess_obligation_feat import execute_assess_obligation
-from app.feats.satisfy_obligation_feat import execute_satisfy_obligation_payment
+# Obligations DOMAIN commands (plain functions), invoked within THIS FEAT's single
+# context. Never the execute_* FEAT wrappers: a FEAT composes domain commands, not
+# other FEATs (INV-ARC-000 §VIII.2, INV-ARC-021 §V.2, INV-ARC-006).
+from app.feats.establish_bill_cycle_feat import establish_bill_cycle, EstablishBillCycleRequest
+from app.feats.assess_obligation_feat import assess_obligation, AssessmentRequest
+from app.feats.satisfy_obligation_feat import satisfy_obligation, SatisfyObligationRequest
 from app.utils.canonical_temporal_resolver import (
     canonical_temporal_resolver,
     CLASS_LEVEL_EVALUATION,
@@ -206,26 +209,35 @@ def execute_purchase_insurance(
 
     # ----- Phase 2: mutation (single atomic FEAT transaction) --------------- #
 
+    # Every mutation below is a DOMAIN command invoked inside THIS single FEAT
+    # context — no nested FEAT executor is called (INV-ARC-000 / -021 / -006).
+
     # (a) Genesis: establish cycle 1 for this coverage lineage, recording the
     #     next recurring-premium boundary. Cycle 1's assessment boundary is now
     #     (premium #1 due immediately); the next premium is due next_assessment_at.
-    cycle = execute_establish_bill_cycle(
-        class_id=class_id,
-        internal_ref=internal_ref,
-        cycle_boundary_at=now_utc,
-        next_assessment_at=next_assessment_at,
-        policy_uuid=policy_uuid,
+    cycle = establish_bill_cycle(
+        EstablishBillCycleRequest(
+            class_id=class_id,
+            internal_ref=internal_ref,
+            cycle_boundary_at=now_utc,
+            next_assessment_at=next_assessment_at,
+            policy_uuid=policy_uuid,
+        ),
+        context=None,
     )
 
     # (b) Assess premium #1 against cycle 1.
-    execute_assess_obligation(
-        seat_id,
-        class_id,
-        internal_ref,
-        correlation_id,
-        "INSURANCE_PREMIUM",
-        policy_uuid=policy_uuid,
-        bill_cycle_id=cycle.id,
+    assess_obligation(
+        AssessmentRequest(
+            seat_id=seat_id,
+            class_id=class_id,
+            internal_ref=internal_ref,
+            correlation_id=correlation_id,
+            obligation_type="INSURANCE_PREMIUM",
+            policy_uuid=policy_uuid,
+            bill_cycle_id=cycle.id,
+        ),
+        context=None,
     )
 
     # (c) Post the premium debit through the canonical idempotent ledger path,
@@ -244,11 +256,15 @@ def execute_purchase_insurance(
         type="insurance_premium",
         description=f"Insurance premium (policy {policy_uuid}, cycle 1)",
     )
-    execute_satisfy_obligation_payment(
-        correlation_id,
-        class_id,
-        seat_id,
-        transaction.id,
+    satisfy_obligation(
+        SatisfyObligationRequest(
+            correlation_id=correlation_id,
+            class_id=class_id,
+            seat_id=seat_id,
+            method="PAYMENT",
+            ledger_transaction_id=transaction.id,
+        ),
+        context=None,
     )
 
     # (d) Grant the INSURANCE coverage entitlement (references policy_uuid).

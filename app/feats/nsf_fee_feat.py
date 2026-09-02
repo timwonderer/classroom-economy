@@ -22,32 +22,40 @@ ledger_transaction_id, so re-recording the same fee is a no-op.
 
 from __future__ import annotations
 
-from app.feats.assess_obligation_feat import execute_assess_obligation
-from app.feats.satisfy_obligation_feat import execute_satisfy_obligation_payment
+# Obligations DOMAIN commands (plain functions), invoked within the originating
+# business FEAT's single context — never the execute_* FEAT wrappers
+# (INV-ARC-000 §VIII.2, INV-ARC-021 §V.2, INV-ARC-006).
+from app.feats.assess_obligation_feat import assess_obligation, AssessmentRequest
+from app.feats.satisfy_obligation_feat import satisfy_obligation, SatisfyObligationRequest
 
 
 def record_nsf_fee_obligation(*, class_id: str, seat_id: int, fee_transaction_id: int) -> str:
     """Record the NSF fine for a posted fee debit. Returns its correlation_id.
 
     MUST be called within the originating business FEAT's context (which owns the
-    commit); the assessment/payment run as that FEAT's cross-domain orchestration.
+    commit); the assessment/payment run as that FEAT's cross-domain orchestration,
+    via Obligations domain commands (not FEAT executors).
     """
     internal_ref = f"nsf-fee:{class_id}:{seat_id}"
     correlation_id = f"nsf-fee:{class_id}:{seat_id}:txn:{fee_transaction_id}"
-    # correlation_id passed positionally: requires_feat_context inspects
-    # kwargs["correlation_id"] and would reject a distinct obligation-level
-    # correlation as an illegal nested context.
-    execute_assess_obligation(
-        seat_id,
-        class_id,
-        internal_ref,
-        correlation_id,
-        "NSF_FEE",
+    assess_obligation(
+        AssessmentRequest(
+            seat_id=seat_id,
+            class_id=class_id,
+            internal_ref=internal_ref,
+            correlation_id=correlation_id,
+            obligation_type="NSF_FEE",
+        ),
+        context=None,
     )
-    execute_satisfy_obligation_payment(
-        correlation_id,
-        class_id,
-        seat_id,
-        fee_transaction_id,
+    satisfy_obligation(
+        SatisfyObligationRequest(
+            correlation_id=correlation_id,
+            class_id=class_id,
+            seat_id=seat_id,
+            method="PAYMENT",
+            ledger_transaction_id=fee_transaction_id,
+        ),
+        context=None,
     )
     return correlation_id

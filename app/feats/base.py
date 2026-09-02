@@ -250,8 +250,12 @@ class FEATContext:
             self.meta = FEAT_REGISTRY[feat_name]
         
         self.feat_name = feat_name
-        
+
         # NESTING GUARD: If context exists, it MUST share the same correlation ID (Re-entry safe)
+        # NOTE: this is the PRE-hardening guard. Full hardening (reject any nested
+        # FEAT entry regardless of feat_name/correlation) is DEFERRED until every
+        # FEAT->FEAT caller is refactored to domain commands — the system-wide set
+        # (FEAT-LED-000 / FEAT-PROD-002/003 orchestration) is not yet clean.
         active_corr = getattr(_feat_context, "correlation_id", None)
         if active_corr and correlation_id and active_corr != correlation_id:
             raise FEATContextError(
@@ -261,10 +265,10 @@ class FEATContext:
             )
         # Re-entry optimization: if same-ID nesting, we don't need to re-validate everything
         self.is_reentry = (active_corr == (correlation_id or active_corr) and active_corr is not None)
-            
+
         self.correlation_id = correlation_id or active_corr or generate_correlation_id()
         self.idempotency_key = idempotency_key
-        
+
         # 1. Format Discipline: Enforce corr_ prefix (Exempt bypass IDs)
         if not (validate_id_format(self.correlation_id, "corr_") or self.correlation_id.startswith("bypass_test_")):
              self.correlation_id = f"corr_{self.correlation_id}"

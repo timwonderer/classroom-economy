@@ -41,7 +41,7 @@ from app.services import obligations_service
 from app.services import ledger_service
 from app.services import entitlement_service
 from app.feats.base import requires_feat_context, FEATContext
-from app.feats.satisfy_obligation_feat import execute_satisfy_obligation_payment
+from app.feats.satisfy_obligation_feat import satisfy_obligation, SatisfyObligationRequest
 
 
 @dataclass
@@ -232,15 +232,18 @@ def pay_rent(
     # (b) Record the immutable PAYMENT satisfaction linked to that ledger row.
     #     PAYMENT dedupes on ledger_transaction_id, so replaying the same command
     #     yields the same PAYMENT event; partial payments each get their own row
-    #     while sharing this obligation's correlation.
-    #     correlation_id is passed POSITIONALLY: requires_feat_context inspects
-    #     kwargs["correlation_id"] for the FEAT correlation and would reject a
-    #     different obligation-level correlation as an illegal nested context.
-    execute_satisfy_obligation_payment(
-        correlation_id,
-        class_id,
-        seat_id,
-        transaction.id,
+    #     while sharing this obligation's correlation. This is the Obligations
+    #     DOMAIN command invoked in THIS FEAT's single context — never the
+    #     FEAT-OBL-003 executor (INV-ARC-000 / -021 / -006).
+    satisfy_obligation(
+        SatisfyObligationRequest(
+            correlation_id=correlation_id,
+            class_id=class_id,
+            seat_id=seat_id,
+            method="PAYMENT",
+            ledger_transaction_id=transaction.id,
+        ),
+        context=None,
     )
 
     # (c) Grant the configured PERK entitlements ONCE — only on the command that
@@ -420,7 +423,7 @@ def execute_rent_bill_payment(
         class_id, seat_id, rent_correlation_id,
         idempotency_key=idempotency_key,
         payment_amount=payment_amount,
-        context=FEATContext("FEAT-OBL-001"),
+        context=None,
     )
 
 
@@ -456,4 +459,4 @@ def execute_rent_payment(
         idempotency_key=idempotency_key,
         payment_amount=payment_amount,
     )
-    return pay_rent(request, context=FEATContext("FEAT-OBL-001"))
+    return pay_rent(request, context=None)

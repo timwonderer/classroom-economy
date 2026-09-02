@@ -171,7 +171,7 @@ def execute_satisfy_obligation_payment(
         method='PAYMENT',
         ledger_transaction_id=ledger_transaction_id,
     )
-    return satisfy_obligation(request, context=FEATContext("FEAT-OBL-003"))
+    return satisfy_obligation(request, context=None)
 
 
 @requires_feat_context("FEAT-OBL-003")
@@ -209,4 +209,4 @@ def execute_satisfy_obligation_waiver(
         ledger_transaction_id=None,
         notes=notes,
     )
-    return satisfy_obligation(request, context=FEATContext("FEAT-OBL-003"))
+    return satisfy_obligation(request, context=None)

@@ -37,9 +37,11 @@ from app.services import entitlement_service
 from app.services import ledger_service
 from app.services.class_configuration_query_service import is_feature_enabled
 from app.feats.base import requires_feat_context, FEATContext
-from app.feats.assess_obligation_feat import execute_assess_obligation
-from app.feats.advance_bill_cycle_feat import execute_advance_bill_cycle
-from app.feats.establish_bill_cycle_feat import execute_establish_bill_cycle
+# Obligations DOMAIN commands (plain functions), invoked within THIS FEAT's single
+# context — never the execute_* FEAT wrappers (INV-ARC-000 / -021 / -006).
+from app.feats.assess_obligation_feat import assess_obligation, AssessmentRequest
+from app.feats.advance_bill_cycle_feat import advance_bill_cycle, AdvanceBillCycleRequest
+from app.feats.establish_bill_cycle_feat import establish_bill_cycle, EstablishBillCycleRequest
 from app.utils.canonical_temporal_resolver import ensure_utc, utc_now
 
 
@@ -91,17 +93,17 @@ def _assess_cycle(settings: RentSettings, class_id: str, cycle) -> int:
         internal_ref = f"rent:{class_id}:{seat.id}"
         correlation_id = f"rent:{class_id}:{seat.id}:cycle:{cycle.cycle_number}"
         before = obligations_service.check_idempotency_assessment(internal_ref, correlation_id)
-        # correlation_id MUST be passed positionally: requires_feat_context inspects
-        # kwargs["correlation_id"] for the FEAT correlation and would reject a
-        # different obligation-level correlation as an illegal nested context.
-        execute_assess_obligation(
-            seat.id,
-            class_id,
-            internal_ref,
-            correlation_id,
-            "RENT",
-            policy_uuid=settings.policy_uuid,
-            bill_cycle_id=cycle.id,
+        assess_obligation(
+            AssessmentRequest(
+                seat_id=seat.id,
+                class_id=class_id,
+                internal_ref=internal_ref,
+                correlation_id=correlation_id,
+                obligation_type="RENT",
+                policy_uuid=settings.policy_uuid,
+                bill_cycle_id=cycle.id,
+            ),
+            context=None,
         )
         if not before:
             created += 1
@@ -198,18 +200,18 @@ def _assess_late_fees(settings: RentSettings, class_id: str, cycle, now) -> int:
             before = obligations_service.check_idempotency_assessment(
                 late_internal_ref, late_correlation_id
             )
-            # correlation_id MUST be passed positionally: requires_feat_context
-            # inspects kwargs["correlation_id"] and would reject a different
-            # obligation-level correlation as an illegal nested context.
-            execute_assess_obligation(
-                seat.id,
-                class_id,
-                late_internal_ref,
-                late_correlation_id,
-                "LATE_FEE",
-                policy_uuid=settings.policy_uuid,
-                bill_cycle_id=cycle.id,
-                source_correlation_id=rent_correlation_id,
+            assess_obligation(
+                AssessmentRequest(
+                    seat_id=seat.id,
+                    class_id=class_id,
+                    internal_ref=late_internal_ref,
+                    correlation_id=late_correlation_id,
+                    obligation_type="LATE_FEE",
+                    policy_uuid=settings.policy_uuid,
+                    bill_cycle_id=cycle.id,
+                    source_correlation_id=rent_correlation_id,
+                ),
+                context=None,
             )
             if not before:
                 created += 1
@@ -253,13 +255,16 @@ def reconcile_rent(
         schedule = rent_schedule_service.resolve_cycle_schedule(
             settings, due_local_date=due_local, context=ctx
         )
-        cycle = execute_establish_bill_cycle(
-            class_id=class_id,
-            internal_ref=internal_ref_cycle,
-            cycle_boundary_at=schedule.cycle_boundary_at,
-            next_assessment_at=schedule.next_assessment_at,
-            grace_boundary_at=schedule.grace_boundary_at,
-            policy_uuid=settings.policy_uuid,
+        cycle = establish_bill_cycle(
+            EstablishBillCycleRequest(
+                class_id=class_id,
+                internal_ref=internal_ref_cycle,
+                cycle_boundary_at=schedule.cycle_boundary_at,
+                next_assessment_at=schedule.next_assessment_at,
+                grace_boundary_at=schedule.grace_boundary_at,
+                policy_uuid=settings.policy_uuid,
+            ),
+            context=None,
         )
         result.assessments_created += _assess_cycle(settings, class_id, cycle)
         result.cycles_created.append(cycle.cycle_number)
@@ -282,14 +287,17 @@ def reconcile_rent(
         schedule = rent_schedule_service.resolve_cycle_schedule(
             settings, due_local_date=next_due_local, context=ctx
         )
-        new_cycle = execute_advance_bill_cycle(
-            class_id=class_id,
-            internal_ref=internal_ref_cycle,
-            cycle_number=latest.cycle_number + 1,
-            cycle_boundary_at=schedule.cycle_boundary_at,
-            next_assessment_at=schedule.next_assessment_at,
-            grace_boundary_at=schedule.grace_boundary_at,
-            policy_uuid=settings.policy_uuid,
+        new_cycle = advance_bill_cycle(
+            AdvanceBillCycleRequest(
+                class_id=class_id,
+                internal_ref=internal_ref_cycle,
+                cycle_number=latest.cycle_number + 1,
+                cycle_boundary_at=schedule.cycle_boundary_at,
+                next_assessment_at=schedule.next_assessment_at,
+                grace_boundary_at=schedule.grace_boundary_at,
+                policy_uuid=settings.policy_uuid,
+            ),
+            context=None,
         )
         result.assessments_created += _assess_cycle(settings, class_id, new_cycle)
 
@@ -332,4 +340,4 @@ def execute_reconcile_rent(
         class_id=class_id,
         reference_time_utc=reference_time_utc,
     )
-    return reconcile_rent(request, context=FEATContext("FEAT-OBL-002"))
+    return reconcile_rent(request, context=None)
