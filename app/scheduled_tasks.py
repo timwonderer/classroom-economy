@@ -458,6 +458,114 @@ def run_audit_invariant_check_job():
         logger.exception("Audit invariant check job encountered an unhandled error")
 
 
+def run_insurance_expiry_job():
+    """Daily insurance boundary expiry: EXPIRE coverage whose cycle boundary passed.
+
+    The canonical terminal disposition for purchased insurance is EXPIRED at the
+    coverage boundary — never REVOKED or refunded (FEAT-STOR-002 §IX.C, DOM-STORE-001
+    §1). Coverage stops renewing when its recurring premium lineage is terminated
+    (a terminal ``bill_cycles`` row with ``next_assessment_at IS NULL`` — via
+    FEAT-OBL-005 cancellation, teacher offering-cancel, or nonpayment non-renewal;
+    DOM-OBL-001 §160/§241). This job is the Store-owned boundary trigger: it reads
+    the bill-cycle table directly for terminal insurance lineages whose
+    ``cycle_boundary_at`` has been reached and writes EXPIRED for the matching
+    coverage through the FEAT-STOR-002 domain command.
+
+    The work-list is the table itself — terminal rows past boundary — so there is no
+    per-entitlement enumeration and no lag: a lineage becomes due the day its
+    boundary arrives. Each expiry runs under its OWN top-level FEAT-STOR-002 context
+    (isolated failure), and ``expire_entitlement`` is idempotent (an already-EXPIRED
+    lineage is a no-op), so re-runs are safe.
+    """
+    from app.extensions import db
+    from app.feats.base import FEATContext
+    from app.models import BillCycle, ObligationAssessment
+    from app.services import entitlement_service
+    from app.services.entitlement_read_service import get_active_insurance_grant
+    from app.services.ledger_service import resolve_class_authority_seat_id
+    from app.utils.canonical_temporal_resolver import ensure_utc, utc_now
+
+    logger = logging.getLogger('scheduled_tasks')
+    logger.info("Starting scheduled insurance boundary-expiry job")
+
+    now = utc_now()
+    try:
+        terminal_cycles = (
+            BillCycle.query
+            .filter(
+                BillCycle.next_assessment_at.is_(None),   # terminal — recurrence stopped
+                BillCycle.cycle_boundary_at <= now,       # coverage boundary reached
+            )
+            .order_by(BillCycle.class_id.asc(), BillCycle.id.asc())
+            .all()
+        )
+    except Exception:
+        db.session.rollback()
+        logger.exception("Insurance expiry job could not enumerate terminal cycles")
+        return
+
+    expired = 0
+    skipped = 0
+    failed = 0
+    for cycle in terminal_cycles:
+        try:
+            # Resolve the seat/policy binding, which lives on the INSURANCE_PREMIUM
+            # assessment the cycle drives (bill cycles are seat-blind). A cycle with
+            # no insurance assessment is some other lineage (e.g. rent) — skip.
+            assessment = (
+                ObligationAssessment.query
+                .filter_by(
+                    internal_ref=cycle.internal_ref,
+                    obligation_type="INSURANCE_PREMIUM",
+                )
+                .first()
+            )
+            if assessment is None:
+                skipped += 1
+                continue
+
+            grant = get_active_insurance_grant(
+                assessment.seat_id, assessment.class_id, assessment.policy_uuid
+            )
+            if grant is None:
+                # Already expired (or no active coverage for this lineage).
+                skipped += 1
+                continue
+
+            boundary = ensure_utc(cycle.cycle_boundary_at)
+            idempotency_key = (
+                f"insurance-expiry:{grant.entitlement_id}:{boundary.isoformat()}"
+            )
+            with FEATContext("FEAT-STOR-002", idempotency_key=idempotency_key):
+                entitlement_service.expire_entitlement(
+                    entitlement_id=grant.entitlement_id,
+                    class_id=assessment.class_id,
+                    target_seat_id=assessment.seat_id,
+                    actor_seat_id=resolve_class_authority_seat_id(assessment.class_id),
+                    product_id=grant.product_id,
+                    entitlement_type="INSURANCE",
+                    acquisition_type=grant.acquisition_type,
+                    correlation_id=idempotency_key,
+                    payload={
+                        "source": "run_insurance_expiry_job",
+                        "policy_uuid": assessment.policy_uuid,
+                    },
+                )
+            expired += 1
+        except Exception:
+            failed += 1
+            db.session.rollback()
+            logger.exception(
+                "Insurance expiry failed for lineage %s", cycle.internal_ref
+            )
+            continue
+
+    logger.info(
+        "Insurance boundary-expiry job completed. Expired %s, skipped %s, failed %s",
+        expired, skipped, failed,
+    )
+
+
 def init_scheduled_tasks(app):
     """
     Initialize and start scheduled tasks.
@@ -492,6 +600,11 @@ def init_scheduled_tasks(app):
     def run_automatic_payroll():
         with app.app_context():
             run_automatic_payroll_job()
+
+    # Wrapper that runs the insurance boundary-expiry job with Flask app context
+    def run_insurance_expiry():
+        with app.app_context():
+            run_insurance_expiry_job()
 
     if not scheduler.running:
         # Add the daily-limit enforcement job to run every hour
@@ -551,6 +664,21 @@ def init_scheduled_tasks(app):
             hours=1,
             id='automatic_payroll',
             name='Automatic payroll (due classes)',
+            replace_existing=True,
+            max_instances=1  # Prevent overlapping executions
+        )
+
+        # Insurance boundary expiry — daily at 4 AM UTC. Reads the bill-cycle table
+        # for terminal insurance lineages whose coverage boundary has passed and
+        # writes EXPIRED via FEAT-STOR-002. Idempotent per entitlement/boundary, so
+        # a daily cadence never double-expires.
+        scheduler.add_job(
+            func=run_insurance_expiry,
+            trigger='cron',
+            hour=4,
+            minute=0,
+            id='insurance_expiry',
+            name='Insurance boundary expiry',
             replace_existing=True,
             max_instances=1  # Prevent overlapping executions
         )

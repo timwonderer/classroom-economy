@@ -1213,7 +1213,12 @@ class BillCycle(db.Model):
     policy_uuid = db.Column(db.String(36), nullable=True, index=True)
     source_version_id = db.Column(db.String(200), nullable=True)  # Lawful version snapshot reference
     cycle_boundary_at = db.Column(db.DateTime(timezone=True), nullable=False)
-    next_assessment_at = db.Column(db.DateTime(timezone=True), nullable=False)
+    # NULL marks a TERMINAL cycle: the lineage produces no further recurrence
+    # (DOM-OBL-001 §160/§241 — a terminal bill-cycle row with no next assessment
+    # stops future recurring assessment). Insurance cancellation terminates a
+    # recurring premium lineage this way; the coverage still runs to
+    # ``cycle_boundary_at`` and then expires normally (FEAT-OBL-005, FEAT-STOR-002).
+    next_assessment_at = db.Column(db.DateTime(timezone=True), nullable=True)
     # Resolved late-penalty boundary for THIS cycle, materialized once at cycle
     # creation from grace_period_days. Persisted (not re-derived) so a later
     # RentSettings change cannot retroactively move an already-materialized

@@ -503,6 +503,48 @@ def has_active_insurance_coverage(
     return False
 
 
+def get_active_insurance_grant(
+    seat_id: int,
+    class_id: str,
+    policy_uuid: str,
+) -> Optional[EntitlementEvent]:
+    """The seat's concurrently-effective INSURANCE GRANT for a policy, if any.
+
+    Same derivation as ``has_active_insurance_coverage`` (a GRANTED insurance event
+    referencing ``policy_uuid`` whose lineage has no EXPIRED/REVOKED terminal —
+    CONSUMED is a resolved claim, not a coverage terminal), but returns the grant
+    event so callers (e.g. the boundary-expiry job) can act on it. Under
+    FEAT-OBL-004 §114 there is at most one.
+
+    Purity: Pure (read-only query).
+    """
+    granted = (
+        EntitlementEvent.query
+        .filter(
+            EntitlementEvent.target_seat_id == seat_id,
+            EntitlementEvent.class_id == class_id,
+            EntitlementEvent.entitlement_type == "INSURANCE",
+            EntitlementEvent.event_type == "GRANTED",
+        )
+        .all()
+    )
+    for grant in granted:
+        if (grant.payload or {}).get("policy_uuid") != policy_uuid:
+            continue
+        terminal = (
+            EntitlementEvent.query
+            .filter(
+                EntitlementEvent.entitlement_id == grant.entitlement_id,
+                EntitlementEvent.class_id == class_id,
+                EntitlementEvent.event_type.in_(["EXPIRED", "REVOKED"]),
+            )
+            .first()
+        )
+        if terminal is None:
+            return grant
+    return None
+
+
 def get_active_entitlements(
     seat_id: int,
     class_id: str,

@@ -227,6 +227,7 @@ FEAT_REGISTRY = {
     "FEAT-OBL-002": {"domain": "Obligations", "blast_radius": "MED", "desc": "Scheduled Rent Cycle"},
     "FEAT-OBL-003": {"domain": "Obligations", "blast_radius": "MED", "desc": "Scheduled Insurance Cycle"},
     "FEAT-OBL-004": {"domain": "Obligations", "blast_radius": "HIGH", "desc": "Insurance Policy Purchase / Enrollment"},
+    "FEAT-OBL-005": {"domain": "Obligations", "blast_radius": "MED", "desc": "Insurance Cancellation (stop renewal)"},
     "FEAT-OPS-001": {"domain": "Operations", "blast_radius": "MED", "desc": "Maintenance/Cleanup Operations"},
     "FEAT-SUP-001": {"domain": "Support", "blast_radius": "LOW", "desc": "Issue Submission and Category Setup"},
 }

@@ -309,6 +309,60 @@ def consume_entitlement(
     return event
 
 
+def expire_entitlement(
+    *,
+    entitlement_id: str,
+    class_id: str,
+    target_seat_id: int,
+    actor_seat_id: int,
+    product_id: int | None,
+    entitlement_type: str,
+    acquisition_type: str,
+    correlation_id: str,
+    payload: dict | None = None,
+) -> EntitlementEvent:
+    """Record an EXPIRED terminal event for an entitlement (FEAT-STOR-002 §VIII/§XV).
+
+    Expiration is the lawful terminal disposition when a coverage/validity boundary
+    has been reached. Proving the boundary was reached is the caller's
+    responsibility (FEAT-STOR-002 §VIII) — this command performs the write. Reuses
+    the grant's ``entitlement_id`` to preserve lineage; exactly one terminal event
+    per lineage (DOM-STORE-001 §VIII).
+
+    For insurance this is the ONLY lawful terminal disposition — coverage is never
+    revoked or refunded (FEAT-STOR-002 §IX.C); it expires at its boundary.
+
+    Idempotent: an already-EXPIRED lineage returns its existing event. A conflicting
+    terminal disposition (e.g. REVOKED) fails closed.
+    """
+    existing = get_entitlement_lineage_terminal_event(entitlement_id, class_id)
+    if existing is not None:
+        if existing.event_type == "EXPIRED":
+            return existing  # idempotent replay
+        raise ValueError(
+            f"Entitlement {entitlement_id} already has terminal event: "
+            f"{existing.event_type}"
+        )
+
+    now = _current_utc()
+    event = EntitlementEvent(
+        class_id=class_id,
+        target_seat_id=target_seat_id,
+        actor_seat_id=actor_seat_id,
+        entitlement_id=entitlement_id,
+        product_id=product_id,
+        entitlement_type=entitlement_type,
+        acquisition_type=acquisition_type,
+        event_type="EXPIRED",
+        correlation_id=correlation_id,
+        payload=payload,
+        timestamp=now,
+    )
+    db.session.add(event)
+    db.session.flush()
+    return event
+
+
 def expire_rent_hall_passes(
     *,
     correlation_id: str,
