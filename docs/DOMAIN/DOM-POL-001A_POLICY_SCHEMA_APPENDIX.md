@@ -117,6 +117,24 @@ Domain-level persistence notes:
 - `class_features` stores class-level capability enablement;
 - rent enablement belongs here, but rent settings belong to Policies.
 
+### D. Insurance definition tier grouping
+
+The immutable `insurance_policies` definition rows carry optional tier-group columns:
+
+- `tier_group` (string) — the class-scoped group label; NULL = an ungrouped ("single") offering;
+- `tier_level` (integer ordinal) — the rank within the group: 1 = basic, 2 = mid, 3 = premium;
+- `tier_name` — presentation label for the group/tier.
+
+A tier group is not a table — it is the shared `tier_group` label across member rows.
+Within one group at most one **available (`IN_USE`)** row may occupy each rank, so a
+group holds at most three active tiers. The constraint is scoped to `IN_USE` rows
+because definitions are immutable (an edit mints a new `policy_uuid` and retires the
+prior row); a partial unique index
+`(class_id, tier_group, tier_level) WHERE availability_state = 'IN_USE' AND tier_group
+IS NOT NULL` backstops the FEAT-CLASS-003 command guard. The group-level semantics
+(rank set, three-tier cap, one-active-coverage-per-group at purchase) are specified in
+FEAT-CLASS-003 §VIII.
+
 ## VI. Deferred Policy Schema Areas
 
 The following are intentionally deferred and are not fixed by this appendix:

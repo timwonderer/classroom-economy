@@ -294,6 +294,57 @@ def _require_teacher_scope(canonical_context, class_id: str) -> None:
         )
 
 
+# Grouped insurance tiers are the three ordinals basic(1)/mid(2)/premium(3). An
+# ungrouped (SINGLE) offering carries no ``tier_group``. Within one group, at most
+# one IN_USE policy may occupy each rank — giving at most three active tiers per
+# group (v1 parity). Enforced here as the FEAT-CLASS-003 command-layer guard, with
+# a partial unique index (class_id, tier_group, tier_level WHERE IN_USE) as a
+# concurrent-create backstop.
+_GROUPED_TIER_RANKS = (1, 2, 3)
+
+
+def _enforce_tier_group_rules(class_id: str, definition: dict) -> None:
+    """Reject a grouped tier that breaks rank-uniqueness or the 3-per-group cap.
+
+    A grouped policy (``tier_group`` set) must carry a rank in {1,2,3} and may not
+    duplicate a rank already held by an IN_USE policy in the same group, nor push
+    the group past three active tiers. Because definitions are immutable, editing a
+    tier means minting a new IN_USE row for that slot — so the prior IN_USE tier at
+    that rank must be retired first (the guard counts only IN_USE rows).
+    """
+    tier_group = definition.get("tier_group")
+    if tier_group in (None, ""):
+        # Ungrouped / SINGLE offering: no group constraints. A bare tier_level is
+        # allowed only as a presentation ordinal, carrying no group semantics.
+        return
+
+    tier_level = definition.get("tier_level")
+    if tier_level not in _GROUPED_TIER_RANKS:
+        raise InsuranceContractViolation(
+            "a grouped insurance tier requires tier_level of 1 (basic), "
+            "2 (mid), or 3 (premium)"
+        )
+
+    active = (
+        InsurancePolicy.query
+        .filter(
+            InsurancePolicy.class_id == class_id,
+            InsurancePolicy.tier_group == tier_group,
+            InsurancePolicy.availability_state == defs.IN_USE,
+        )
+        .all()
+    )
+    if any(p.tier_level == tier_level for p in active):
+        raise InsuranceContractViolation(
+            f"tier group '{tier_group}' already has an active tier at level "
+            f"{tier_level}; retire it before adding another at the same level"
+        )
+    if len(active) >= 3:
+        raise InsuranceContractViolation(
+            f"tier group '{tier_group}' already has the maximum of 3 active tiers"
+        )
+
+
 def recommend_insurance_terms(
     *,
     class_id: str,
@@ -360,6 +411,7 @@ def configure_insurance_definition(
         actor_seat_id = canonical_context.seat_id
 
     definition = _validate_and_build_definition(submission)
+    _enforce_tier_group_rules(class_id, definition)
 
     return defs.create_insurance_definition(
         class_id=class_id,

@@ -2190,6 +2190,19 @@ class InsurancePolicy(db.Model):
             name='ck_insurance_policies_type_subset',
         ),
         db.Index('ix_insurance_policies_class_avail', 'class_id', 'availability_state'),
+        # Tier-group backstop: at most one IN_USE policy per (class, group, rank),
+        # so a group holds at most three active tiers (basic/mid/premium). Primary
+        # enforcement is the FEAT-CLASS-003 guard; this partial unique index guards
+        # against concurrent creates racing to a duplicate rank. Immutable retired/
+        # hidden versions are excluded, so editing (mint new + retire old) is free.
+        db.Index(
+            'uq_insurance_policies_group_rank_in_use',
+            'class_id', 'tier_group', 'tier_level',
+            unique=True,
+            postgresql_where=sa.text(
+                "availability_state = 'IN_USE' AND tier_group IS NOT NULL"
+            ),
+        ),
     )
 
 
