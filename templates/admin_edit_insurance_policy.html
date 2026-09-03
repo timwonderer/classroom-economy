@@ -47,17 +47,13 @@
             <label class="form-label fw-bold" for="title">Policy Title</label>
             <input class="form-control" id="title" name="title" maxlength="120" value="{{ cur('title') }}">
           </div>
-          <div class="col-md-3">
+          <div class="col-md-6">
             <label class="form-label fw-bold" for="insurance_type">Insurance Type</label>
             <select class="form-select" id="insurance_type" name="insurance_type">
               {% for value, label in insurance_type_choices %}
               <option value="{{ value }}" {% if current_type == value %}selected{% endif %}>{{ label }}</option>
               {% endfor %}
             </select>
-          </div>
-          <div class="col-md-3">
-            <label class="form-label fw-bold" for="tier_level">Tier Level <span class="text-muted fw-normal">(optional)</span></label>
-            <input class="form-control" id="tier_level" name="tier_level" type="number" min="0" value="{{ cur('tier_level') }}">
           </div>
 
           <div class="col-12">
@@ -119,16 +115,49 @@
                    id="waiting_period_days" name="waiting_period_days" type="number" min="0" value="{{ cur('waiting_period_days') }}">
           </div>
 
-          <!-- Presentation grouping (optional) -->
-          <div class="col-md-6 type-field" data-types="TRANSACTION PRODUCTIVITY NON_MONETARY">
-            <label class="form-label fw-bold" for="tier_group">Tier Group <span class="text-muted fw-normal">(optional)</span></label>
-            <input class="form-control" id="tier_group" name="tier_group" value="{{ cur('tier_group') }}">
-          </div>
-          <div class="col-md-6 type-field" data-types="TRANSACTION PRODUCTIVITY NON_MONETARY">
-            <label class="form-label fw-bold" for="tier_name">Tier Name <span class="text-muted fw-normal">(optional)</span></label>
-            <input class="form-control" id="tier_name" name="tier_name" value="{{ cur('tier_name') }}">
+          <!-- Tier grouping ------------------------------------------------- -->
+          <div class="col-12">
+            <hr class="my-2">
+            <div class="form-check form-switch mb-1">
+              <input class="form-check-input" type="checkbox" id="tiered_toggle">
+              <label class="form-check-label fw-bold" for="tiered_toggle">Part of a tier group</label>
+            </div>
+            <div class="form-text mb-2">
+              Group up to three plans students choose one of — Basic, Mid, Premium.
+              A student may hold only one plan per group. Max 3 tiers per group.
+            </div>
+            <div id="tier_group_section" class="row g-3">
+              <div class="col-md-4">
+                <label class="form-label fw-bold" for="tier_group">Group</label>
+                <select class="form-select" id="tier_group" name="tier_group">
+                  <option value="">— select a group —</option>
+                  {% for g in tier_groups %}
+                  <option value="{{ g.name }}" {% if cur('tier_group') == g.name %}selected{% endif %}>{{ g.name }}</option>
+                  {% endfor %}
+                  <option value="__new__">＋ New group…</option>
+                </select>
+              </div>
+              <div class="col-md-4" id="tier_group_new_wrap" style="display:none;">
+                <label class="form-label fw-bold" for="tier_group_new">New group name</label>
+                <input class="form-control" id="tier_group_new" name="tier_group_new" maxlength="60" placeholder="e.g. Paycheck Protection">
+              </div>
+              <div class="col-md-4">
+                <label class="form-label fw-bold" for="tier_level">Tier</label>
+                <select class="form-select" id="tier_level" name="tier_level">
+                  <option value="">— select tier —</option>
+                  <option value="1" {% if cur('tier_level')|string == '1' %}selected{% endif %}>Basic</option>
+                  <option value="2" {% if cur('tier_level')|string == '2' %}selected{% endif %}>Mid</option>
+                  <option value="3" {% if cur('tier_level')|string == '3' %}selected{% endif %}>Premium</option>
+                </select>
+                <div class="form-text" id="tier_rank_hint"></div>
+              </div>
+              <input type="hidden" id="tier_name" name="tier_name" value="{{ cur('tier_name') }}">
+            </div>
           </div>
         </div>
+
+        {# Map of existing group name -> ranks already taken (IN_USE), for the UI cap. #}
+        <script type="application/json" id="tier-taken-data">{{ tier_groups | tojson }}</script>
 
         <p class="text-muted small mt-3 mb-0">
           Only the fields that apply to the selected insurance type are submitted. Values may fall outside the Economic Engine's recommended ranges, but hard limits (premium ≥ 0, reimbursement ≤ 100%, non-negative terms) are enforced.
@@ -164,6 +193,66 @@
 
     typeSelect.addEventListener('change', applyTypeVisibility);
     applyTypeVisibility();
+  })();
+
+  // --- Tier grouping ------------------------------------------------------- //
+  (function () {
+    var toggle = document.getElementById('tiered_toggle');
+    var section = document.getElementById('tier_group_section');
+    var groupSel = document.getElementById('tier_group');
+    var newWrap = document.getElementById('tier_group_new_wrap');
+    var newInput = document.getElementById('tier_group_new');
+    var rankSel = document.getElementById('tier_level');
+    var hint = document.getElementById('tier_rank_hint');
+    if (!toggle || !section || !groupSel || !rankSel) return;
+
+    var RANK_LABEL = {1: 'Basic', 2: 'Mid', 3: 'Premium'};
+    var takenByGroup = {};
+    try {
+      var raw = JSON.parse(document.getElementById('tier-taken-data').textContent || '[]');
+      raw.forEach(function (g) { takenByGroup[g.name] = g.taken || []; });
+    } catch (e) { takenByGroup = {}; }
+
+    // A policy is "tiered" if it already carries a group (edit / sticky resubmit).
+    var initiallyTiered = groupSel.value && groupSel.value !== '__new__' ? true
+                        : (groupSel.value === '__new__');
+    toggle.checked = !!groupSel.value;
+
+    function applyToggle() {
+      section.style.display = toggle.checked ? '' : 'none';
+      // When untiered, clear group + rank so they submit blank (ungrouped/single).
+      groupSel.disabled = !toggle.checked;
+      rankSel.disabled = !toggle.checked;
+      if (newInput) newInput.disabled = !toggle.checked || groupSel.value !== '__new__';
+    }
+
+    function applyGroup() {
+      var isNew = groupSel.value === '__new__';
+      if (newWrap) newWrap.style.display = isNew ? '' : 'none';
+      if (newInput) newInput.disabled = !toggle.checked || !isNew;
+
+      // Disable ranks already taken in the selected existing group (the 3-tier cap),
+      // but keep the currently-selected rank selectable so an edit/resubmit sticks.
+      var taken = (!isNew && takenByGroup[groupSel.value]) ? takenByGroup[groupSel.value] : [];
+      var current = rankSel.value;
+      Array.prototype.forEach.call(rankSel.options, function (opt) {
+        if (!opt.value) return;
+        var rank = parseInt(opt.value, 10);
+        var isTaken = taken.indexOf(rank) !== -1 && opt.value !== current;
+        opt.disabled = isTaken;
+        opt.textContent = RANK_LABEL[rank] + (isTaken ? ' (in use)' : '');
+      });
+      if (hint) {
+        hint.textContent = (!isNew && taken.length >= 3)
+          ? 'This group is full (3 tiers). Retire a tier to add another.'
+          : '';
+      }
+    }
+
+    toggle.addEventListener('change', function () { applyToggle(); applyGroup(); });
+    groupSel.addEventListener('change', applyGroup);
+    applyToggle();
+    applyGroup();
   })();
 </script>
 {% endblock %}

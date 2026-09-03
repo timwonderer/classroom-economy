@@ -5907,6 +5907,14 @@ def _insurance_submission_from_form(form):
         raw = form.get(name)
         return raw.strip() if isinstance(raw, str) else raw
 
+    # Tier grouping: the form posts a group SELECT plus a "new group" text input.
+    # A "__new__" selection carries the name in ``tier_group_new``. When the policy
+    # is not tiered (the toggle is off), the group + rank fields are submitted blank
+    # so FEAT-CLASS-003 treats it as an ungrouped ("single") offering.
+    tier_group = _v("tier_group")
+    if tier_group == "__new__":
+        tier_group = _v("tier_group_new")
+
     return {
         "insurance_type": _v("insurance_type"),
         "premium": _v("premium"),
@@ -5919,10 +5927,33 @@ def _insurance_submission_from_form(form):
         "waiting_period_days": _v("waiting_period_days"),
         "tier_level": _v("tier_level"),
         "tier_name": _v("tier_name"),
-        "tier_group": _v("tier_group"),
+        "tier_group": tier_group,
         "title": _v("title"),
         "description": _v("description"),
     }
+
+
+def _existing_tier_groups(class_id):
+    """Existing tier groups in the class with the ranks already taken (IN_USE).
+
+    Feeds the policy form's group dropdown and lets it disable ranks that a group
+    already fills, surfacing the three-tier cap (FEAT-CLASS-003 §VIII) in the UI.
+    Returns ``[{'name': str, 'taken': [int, ...]}]`` sorted by name.
+    """
+    rows = insurance_defs.list_insurance_definitions(
+        class_id=class_id, availability_states=[insurance_defs.IN_USE],
+    )
+    groups: dict[str, set] = {}
+    for r in rows:
+        if not r.tier_group:
+            continue
+        taken = groups.setdefault(r.tier_group, set())
+        if r.tier_level in (1, 2, 3):
+            taken.add(r.tier_level)
+    return [
+        {"name": name, "taken": sorted(taken)}
+        for name, taken in sorted(groups.items())
+    ]
 
 
 @admin_bp.route('/insurance', methods=['GET'])
@@ -6003,6 +6034,7 @@ def new_insurance_policy():
                 current_page="insurance",
                 insurance_type_choices=_INSURANCE_TYPE_CHOICES,
                 charge_frequency_choices=_CHARGE_FREQUENCY_CHOICES,
+                tier_groups=_existing_tier_groups(class_id),
             )
         flash(f"Insurance policy '{row.title or row.policy_uuid}' created.", "success")
         return redirect(url_for("admin.insurance_management"))
@@ -6015,6 +6047,7 @@ def new_insurance_policy():
         current_page="insurance",
         insurance_type_choices=_INSURANCE_TYPE_CHOICES,
         charge_frequency_choices=_CHARGE_FREQUENCY_CHOICES,
+        tier_groups=_existing_tier_groups(class_id),
     )
 
 
@@ -6053,6 +6086,7 @@ def edit_insurance_policy(policy_uuid):
                 current_page="insurance",
                 insurance_type_choices=_INSURANCE_TYPE_CHOICES,
                 charge_frequency_choices=_CHARGE_FREQUENCY_CHOICES,
+                tier_groups=_existing_tier_groups(class_id),
             )
         flash(f"Insurance policy '{new_row.title or new_row.policy_uuid}' updated (new version).", "success")
         return redirect(url_for("admin.insurance_management"))
@@ -6065,6 +6099,7 @@ def edit_insurance_policy(policy_uuid):
         current_page="insurance",
         insurance_type_choices=_INSURANCE_TYPE_CHOICES,
         charge_frequency_choices=_CHARGE_FREQUENCY_CHOICES,
+        tier_groups=_existing_tier_groups(class_id),
     )
 
 
