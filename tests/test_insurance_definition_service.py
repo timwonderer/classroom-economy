@@ -1,10 +1,10 @@
-"""Tests for the POL insurance-definition mechanism + FEAT-POL-001 wiring (Step 2).
+"""Tests for the POL insurance-definition mechanism (definition commands).
 
-Covers ``app.services.insurance_definition_service`` and the FEAT-POL-001 entry
-points in ``app.feats.policy_reference_feat`` that target the Step-1
-``insurance_policies`` definition family. This step establishes the generic POL
-store/retrieve mechanism only — it does NOT rewire the teacher route through
-FEAT-CLASS-003, publish StoreProducts, or touch entitlement snapshots.
+Covers ``app.services.insurance_definition_service``'s definition commands
+(``create_insurance_definition`` / ``set_availability``) that target the Step-1
+``insurance_policies`` definition family. FEAT-CLASS-003 invokes these commands
+directly inside its own single FEAT context — there is no FEAT-POL-001 executor
+(a FEAT never executes another FEAT).
 
 Proven:
 * create inserts an IN_USE definition with a fresh policy_uuid;
@@ -24,7 +24,6 @@ import pytest
 
 from app.extensions import db
 from app.feats.base import FEATContext
-from app.feats import policy_reference_feat as feat
 from app.models import InsurancePolicy, PolicyVersion
 from app.services import insurance_definition_service as defs
 from tests.helpers.classroom_initializer import initialize
@@ -181,16 +180,19 @@ class TestAvailabilityOnlyMutation:
                     )
 
 
-class TestFeatPol001Wiring:
-    def test_feat_store_definition_creates_row(self, app):
+class TestInsuranceDefinitionCommands:
+    """POL-domain definition commands are invoked directly (no FEAT-POL-001
+    executor exists anymore; FEAT-CLASS-003 calls these commands in its own
+    single FEAT context)."""
+
+    def test_create_definition_creates_row(self, app):
         classroom = initialize("chemistry_p1", app)
         with app.app_context():
-            row = feat.execute_store_insurance_definition(
-                class_id=classroom.class_id,
-                definition=_transaction_definition(),
-                correlation_id=f"corr_{uuid4().hex}",
-                idempotency_key=f"FEAT-POL-001:store:{uuid4().hex}",
-            )
+            with FEATContext("FEAT-TEST-SETUP", idempotency_key=f"pol:{uuid4().hex}"):
+                row = defs.create_insurance_definition(
+                    class_id=classroom.class_id,
+                    definition=_transaction_definition(),
+                )
             assert isinstance(row, InsurancePolicy)
             assert row.availability_state == defs.IN_USE
             # No economic version-control residue.
@@ -198,21 +200,19 @@ class TestFeatPol001Wiring:
                 class_id=classroom.class_id, domain="insurance"
             ).count() == 0
 
-    def test_feat_set_availability_wraps_mechanism(self, app):
+    def test_set_availability_wraps_mechanism(self, app):
         classroom = initialize("chemistry_p1", app)
         with app.app_context():
-            row = feat.execute_store_insurance_definition(
-                class_id=classroom.class_id,
-                definition=_transaction_definition(),
-                correlation_id=f"corr_{uuid4().hex}",
-                idempotency_key=f"FEAT-POL-001:store:{uuid4().hex}",
-            )
-            updated = feat.execute_set_insurance_definition_availability(
-                class_id=classroom.class_id,
-                policy_uuid=row.policy_uuid,
-                availability_state=defs.HIDDEN,
-                correlation_id=f"corr_{uuid4().hex}",
-                idempotency_key=f"FEAT-POL-001:avail:{uuid4().hex}",
-            )
+            with FEATContext("FEAT-TEST-SETUP", idempotency_key=f"pol:{uuid4().hex}"):
+                row = defs.create_insurance_definition(
+                    class_id=classroom.class_id,
+                    definition=_transaction_definition(),
+                )
+            with FEATContext("FEAT-TEST-SETUP", idempotency_key=f"pol:{uuid4().hex}"):
+                updated = defs.set_availability(
+                    policy_uuid=row.policy_uuid,
+                    class_id=classroom.class_id,
+                    availability_state=defs.HIDDEN,
+                )
             assert updated.availability_state == defs.HIDDEN
             assert updated.policy_uuid == row.policy_uuid

@@ -155,7 +155,7 @@ def test_one_seat_failure_rolls_back_the_whole_transaction(app, monkeypatch):
     cid, now = _seed(classroom, attend=("A", "B"))
     cycle_id = str(uuid4())
 
-    real = settlement_module.record_payroll_event
+    real = settlement_module.record_payroll_event_command
     calls = {"n": 0}
 
     def flaky(**kwargs):
@@ -164,7 +164,7 @@ def test_one_seat_failure_rolls_back_the_whole_transaction(app, monkeypatch):
             return real(**kwargs)          # first seat settles (row flushed)
         raise RuntimeError("injected per-seat failure")
 
-    monkeypatch.setattr(settlement_module, "record_payroll_event", flaky)
+    monkeypatch.setattr(settlement_module, "record_payroll_event_command", flaky)
 
     with pytest.raises(RuntimeError):
         with FEATContext("FEAT-PROD-004", idempotency_key=f"run:{cycle_id}"):

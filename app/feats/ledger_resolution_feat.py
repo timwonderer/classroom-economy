@@ -4,7 +4,6 @@ from dataclasses import dataclass, field
 from decimal import Decimal
 
 from app.extensions import db
-from app.feats.base import requires_feat_context
 from app.models import Seat, EconomicEngine
 from app.services import ledger_service
 from app.models import _quantize_currency
@@ -56,7 +55,6 @@ def build_intended_ledger_plan(
     )
 
 
-@requires_feat_context("FEAT-LED-000")
 def resolve_intended_ledger_plan(
     *,
     plan: IntendedLedgerPlan,
@@ -65,6 +63,12 @@ def resolve_intended_ledger_plan(
     force_overdraft_fee: bool = False,
     allow_recovery_transfer: bool = True,
 ) -> ResolvedLedgerPlan:
+    """Ledger DOMAIN query: resolve an intended plan to ACCEPT/TRANSFORM/DENY.
+
+    Pure and side-effect free (INV-ARC-006 — it mutates nothing). A business FEAT
+    composes this query and the ``apply_resolved_ledger_plan`` command within its
+    own single FEAT context; this is NOT a FEAT executor (no nested FEAT).
+    """
     seat = db.session.get(Seat, plan.seat_id)
     if not seat or seat.class_id != plan.class_id:
         return ResolvedLedgerPlan(
@@ -214,17 +218,21 @@ def _calculate_overdraft_fee_amount(*, seat, economic_engine, force: bool = Fals
     return Decimal("0.00")
 
 
-@requires_feat_context("FEAT-LED-000")
 def apply_resolved_ledger_plan(
     *,
     resolved_plan: ResolvedLedgerPlan,
     economic_engine: EconomicEngine | None,
     idempotency_key: str | None = None,
 ):
-    """Apply a resolved plan; economic_engine is the snapshot paired with resolve.
+    """Ledger DOMAIN command: apply a resolved plan (posts the debit / recovery /
+    overdraft-fee transactions). Runs within the CALLING FEAT's single context —
+    it is NOT a FEAT executor and opens no FEAT boundary of its own (INV-ARC-006,
+    INV-ARC-021 §V.2). The caller owns the transaction; the flush guard is
+    satisfied by the caller's active FEAT context.
 
-    It is intentionally accepted to keep resolve/apply signatures symmetric and
-    to make the caller's policy snapshot explicit at the transaction boundary.
+    economic_engine is the snapshot paired with resolve, accepted to keep
+    resolve/apply signatures symmetric and to make the caller's policy snapshot
+    explicit at the transaction boundary.
     """
     seat = db.session.get(Seat, resolved_plan.intended_plan.seat_id)
     if not seat or seat.class_id != resolved_plan.intended_plan.class_id:

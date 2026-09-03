@@ -1818,8 +1818,11 @@ class TestProductivityAdjudicationAtomicity:
             def _boom(*args, **kwargs):
                 raise RuntimeError("forced payroll coordination failure")
 
-            # The FEAT imports record_payroll_event from app.feats.prod at call time.
-            monkeypatch.setattr("app.feats.prod.record_payroll_event", _boom)
+            # The claim path invokes the PROD payroll DOMAIN COMMAND
+            # (_record_payroll_event_impl) at call time — not a FEAT executor
+            # (a FEAT never executes another FEAT; FEAT-CORE-000 §V.1). Force the
+            # failure at that domain-command symbol.
+            monkeypatch.setattr("app.feats.prod._record_payroll_event_impl", _boom)
 
             result = resolve_insurance_claim(
                 canonical_context=self._teacher_context(classroom),

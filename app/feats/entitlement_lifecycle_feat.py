@@ -75,11 +75,11 @@ def execute_approve_redemption(
     idempotency_key: str | None = None,
 ) -> None:
     """Execute approval of a pending redemption."""
-    from app.feats.prod import record_hall_pass_log
+    from app.feats.prod import _record_hall_pass_log_impl as record_hall_pass_log_command
     from app.services.inventory_service import consume_entitlement
 
     if store_item.item_type == 'hall_pass':
-        record_hall_pass_log(
+        record_hall_pass_log_command(
             ctx=ctx,
             requested_by_seat_id=entitlement.target_seat_id,
             approved_by_seat_id=ctx.seat_id,

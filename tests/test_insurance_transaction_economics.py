@@ -25,6 +25,7 @@ from uuid import uuid4
 from app.extensions import db
 from app.feats.base import FEATContext
 from app.models import EntitlementEvent
+from app.services import insurance_definition_service as insurance_defs
 from app.services.context_resolver import CanonicalContext
 from app.feats.insurance_claim_feat import (
     submit_insurance_claim,
@@ -59,21 +60,30 @@ def _frozen(
 
 
 def _add_granted(classroom, student, entitlement_id, *, granted_at=None, **frozen_kwargs):
+    # Claim-time authority is the IMMUTABLE ``insurance_policies`` row resolved via
+    # the GRANTED entitlement's ``policy_uuid`` — never a ``frozen_contract`` payload
+    # snapshot (FEAT-STOR-003 §1.2, DOM-STORE-001 §VII.A). A policy edit mints a new
+    # ``policy_uuid``, so the referenced row IS the frozen contract. The entitlement
+    # payload therefore duplicates no terms; it carries only the ``policy_uuid``
+    # reference, exactly like ``grant_insurance_entitlement``.
+    definition = dict(_frozen(**frozen_kwargs))
+    definition["title"] = "Insurance Policy"
+    policy = insurance_defs.create_insurance_definition(
+        class_id=classroom.class_id,
+        actor_seat_id=classroom.teacher_seat.id,
+        definition=definition,
+    )
     ev = EntitlementEvent(
         event_id=str(uuid4()),
         class_id=classroom.class_id,
         entitlement_id=entitlement_id,
         target_seat_id=student.seat.id,
         actor_seat_id=student.seat.id,
-        product_id=1,
+        product_id=None,
         entitlement_type="INSURANCE",
         acquisition_type="PURCHASE",
         event_type="GRANTED",
-        payload={
-            "insurance_policy_uuid": f"pol-{uuid4().hex}",
-            "frozen_contract": _frozen(**frozen_kwargs),
-            "purchase_metadata": {"title": "Insurance Policy"},
-        },
+        payload={"policy_uuid": policy.policy_uuid},
     )
     if granted_at is not None:
         ev.timestamp = granted_at

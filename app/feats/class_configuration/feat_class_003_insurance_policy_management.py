@@ -20,9 +20,12 @@ Three-layer separation (authority):
 - FEAT-CLASS-003 (this module, DOM-CLASS spec §VII): decides lawfulness. Allows
   out-of-recommendation-range teacher values; rejects hard-bound and
   type-structure violations; coordinates the write. SHALL NOT mutate policy
-  definitions directly — it delegates to FEAT-POL-001.
-- FEAT-POL-001 (``policy_reference_feat`` → ``insurance_definition_service``):
-  persists the already-lawful immutable definition; does not reinterpret it.
+  definitions directly — it invokes the POL definition commands within its own
+  single FEAT context.
+- POL definition commands (``insurance_definition_service.create_insurance_definition``
+  / ``set_availability``): persist the already-lawful immutable definition; do not
+  reinterpret it. (No FEAT-POL-001 executor exists — a FEAT never executes another
+  FEAT; it composes domain commands.)
 
 Immutability (DOM-POL-001): ``policy_uuid`` IS the version. "New" and "edit" both
 produce a *fresh* ``policy_uuid`` row; a prior definition is never mutated in place.

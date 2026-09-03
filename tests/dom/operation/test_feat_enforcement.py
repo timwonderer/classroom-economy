@@ -90,3 +90,48 @@ def test_FEAT_CORE_000__direct_commit_inside_feat_context_is_blocked(app):
     with pytest.raises(FEATContextError) as excinfo:
         illegal_commit()
     assert "MANDATORY FEAT ATOMICITY VIOLATION (COMMIT)" in str(excinfo.value)
+
+
+# --------------------------------------------------------------------------- #
+# FEAT execution-boundary guard: exactly one FEAT per request (INV-ARC-000 §VIII.2,
+# INV-ARC-021 §V.2). Nesting a business FEAT inside another is forbidden regardless
+# of feat_name or correlation-ID equality/formatting.
+# --------------------------------------------------------------------------- #
+
+from app.feats.base import FEATContext
+
+
+def test_boundary__same_correlation_nested_different_feat_fails(app):
+    with app.app_context():
+        with FEATContext("FEAT-OBL-001", correlation_id="corr_x", idempotency_key="k:1"):
+            with pytest.raises(FEATContextError, match="Nested FEAT context forbidden"):
+                with FEATContext("FEAT-OBL-002", correlation_id="corr_x", idempotency_key="k:2"):
+                    pass
+
+
+def test_boundary__different_correlation_nested_different_feat_fails(app):
+    with app.app_context():
+        with FEATContext("FEAT-OBL-001", correlation_id="corr_a", idempotency_key="k:1"):
+            with pytest.raises(FEATContextError, match="Nested FEAT context forbidden"):
+                with FEATContext("FEAT-OBL-003", correlation_id="corr_b", idempotency_key="k:2"):
+                    pass
+
+
+def test_boundary__same_feat_nesting_fails(app):
+    with app.app_context():
+        with FEATContext("FEAT-OBL-001", correlation_id="corr_x", idempotency_key="k:1"):
+            with pytest.raises(FEATContextError, match="Nested FEAT context forbidden"):
+                with FEATContext("FEAT-OBL-001", correlation_id="corr_x", idempotency_key="k:1"):
+                    pass
+
+
+def test_boundary__correlation_prefix_normalization_cannot_permit_nesting(app):
+    with app.app_context():
+        with FEATContext("FEAT-OBL-001", correlation_id="feat:x", idempotency_key="k:1"):
+            with pytest.raises(FEATContextError, match="Nested FEAT context forbidden"):
+                with FEATContext("FEAT-OBL-002", correlation_id="corr_feat:x", idempotency_key="k:2"):
+                    pass
+        with FEATContext("FEAT-OBL-001", correlation_id="corr_feat:y", idempotency_key="k:1"):
+            with pytest.raises(FEATContextError, match="Nested FEAT context forbidden"):
+                with FEATContext("FEAT-OBL-003", idempotency_key="k:2"):
+                    pass

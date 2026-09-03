@@ -216,7 +216,7 @@ FEAT_REGISTRY = {
     "FEAT-PROD-004": {"domain": "Productivity", "blast_radius": "HIGH", "desc": "Complete Payroll Cycle"},
     "FEAT-CLASS-001": {"domain": "Class Configuration", "blast_radius": "HIGH", "desc": "Create class boundary"},
     "FEAT-CLASS-002": {"domain": "Class Configuration", "blast_radius": "MED", "desc": "Modify existing class boundary"},
-    "FEAT-CLASS-003": {"domain": "Class Configuration", "blast_radius": "MED", "desc": "Insurance Policy Management (orchestrates FEAT-POL-001)"},
+    "FEAT-CLASS-003": {"domain": "Class Configuration", "blast_radius": "MED", "desc": "Insurance Policy Management (invokes POL domain commands)"},
     "FEAT-CLASS-004": {"domain": "Class Configuration", "blast_radius": "MED", "desc": "Feature enablement"},
     "FEAT-CLASS-005": {"domain": "Class Configuration", "blast_radius": "HIGH", "desc": "Economic engine evolution"},
     "FEAT-SETTINGS-001": {"domain": "Class Configuration", "blast_radius": "MED", "desc": "Class Settings Update"},
@@ -230,6 +230,20 @@ FEAT_REGISTRY = {
     "FEAT-OPS-001": {"domain": "Operations", "blast_radius": "MED", "desc": "Maintenance/Cleanup Operations"},
     "FEAT-SUP-001": {"domain": "Support", "blast_radius": "LOW", "desc": "Issue Submission and Category Setup"},
 }
+
+def _is_scaffold_feat(feat_name: str) -> bool:
+    """True for test/legacy SCAFFOLD contexts that are not business-FEAT execution.
+
+    These are the only contexts under which nesting is tolerated by the hard
+    nesting guard: the legacy write bypass and test-only harness FEATs. Removing
+    this exemption (full strictness) is a separate test-harness refactor.
+    """
+    return (
+        feat_name == "FEAT-BYPASS-LEGACY"
+        or (feat_name or "").startswith("FEAT-TEST-")
+        or feat_name in ("OUTER", "INNER")
+    )
+
 
 class FEATContext:
     """
@@ -251,20 +265,32 @@ class FEATContext:
         
         self.feat_name = feat_name
 
-        # NESTING GUARD: If context exists, it MUST share the same correlation ID (Re-entry safe)
-        # NOTE: this is the PRE-hardening guard. Full hardening (reject any nested
-        # FEAT entry regardless of feat_name/correlation) is DEFERRED until every
-        # FEAT->FEAT caller is refactored to domain commands — the system-wide set
-        # (FEAT-LED-000 / FEAT-PROD-002/003 orchestration) is not yet clean.
+        # HARD NESTING GUARD (INV-ARC-000 §VIII.2 "exactly one command path per
+        # request"; INV-ARC-021 §V.2 "the FEAT is the only construct permitted to
+        # compose ... within a single execution path").
+        #
+        # Entering a FEAT context while another is active is FORBIDDEN — regardless
+        # of feat_name or correlation_id. Correlation identity plays NO role in
+        # permitting nesting. A FEAT composes DOMAIN commands (services/guards/
+        # queries/plain domain functions), never another FEAT executor.
+        #
+        # SCAFFOLD EXEMPTION: test/legacy scaffold contexts are NOT business-FEAT
+        # execution; nesting is permitted when the outer OR inner is a scaffold, so
+        # the test/bypass harness keeps working.
+        active_feat = getattr(_feat_context, "active_feat", None)
         active_corr = getattr(_feat_context, "correlation_id", None)
-        if active_corr and correlation_id and active_corr != correlation_id:
+        if (
+            active_feat is not None
+            and not _is_scaffold_feat(active_feat)
+            and not _is_scaffold_feat(feat_name)
+        ):
             raise FEATContextError(
-                f"FATAL: Illegal nested FEAT context detected. "
-                f"Current={active_corr}, Attempted={correlation_id}. "
-                "Atomicity violation: different correlation IDs in one thread."
+                f"FATAL: Nested FEAT context forbidden — exactly one FEAT executes "
+                f"per request (INV-ARC-000 §VIII.2, INV-ARC-021 §V.2). "
+                f"Active={active_feat}, attempted={feat_name}. "
+                "Compose domain commands, not other FEATs."
             )
-        # Re-entry optimization: if same-ID nesting, we don't need to re-validate everything
-        self.is_reentry = (active_corr == (correlation_id or active_corr) and active_corr is not None)
+        self.is_reentry = (active_corr is not None and active_corr == correlation_id)
 
         self.correlation_id = correlation_id or active_corr or generate_correlation_id()
         self.idempotency_key = idempotency_key

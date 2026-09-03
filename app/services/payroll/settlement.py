@@ -26,7 +26,7 @@ from typing import NamedTuple
 
 from app.extensions import db
 from app.feats.base import get_correlation_id
-from app.feats.prod import record_payroll_event
+from app.feats.prod import _record_payroll_event_impl as record_payroll_event_command
 from app.models import (
     AttendanceSession,
     ClassEconomy,
@@ -155,7 +155,7 @@ def settle_class_payroll_cycle(
         if _already_settled(class_id, seat_id, payroll_cycle_id):
             skipped.append(seat_id)
             continue
-        result = record_payroll_event(
+        result = record_payroll_event_command(
             ctx=ctx,
             target_seat_id=seat_id,
             payroll_event_type="payroll",

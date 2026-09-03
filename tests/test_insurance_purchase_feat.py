@@ -140,6 +140,33 @@ def test_successful_purchase_creates_exactly_one_of_each(app):
             grants=1, assessments=1, payments=1, cycles=1, premium_txns=1)
 
 
+def test_orchestrating_feat_enters_exactly_one_feat_context(app, monkeypatch):
+    """FEAT-OBL-004 orchestrates establish→assess→ledger→satisfy→grant by
+    composing DOMAIN commands inside a SINGLE FEAT context. The whole request
+    must open exactly one FEATContext — proving the composition uses plain
+    domain commands, not nested FEAT executors (FEAT-CORE-000 §V.1)."""
+    classroom, policy_uuid = _setup(app)
+
+    entries = []
+    real_enter = FEATContext.__enter__
+
+    def counting_enter(self):
+        entries.append(self.feat_name)
+        return real_enter(self)
+
+    monkeypatch.setattr(FEATContext, "__enter__", counting_enter)
+
+    with app.app_context():
+        result = execute_purchase_insurance(
+            canonical_context=_student_ctx(classroom),
+            policy_uuid=policy_uuid, idempotency_key="buy:solo",
+        )
+        db.session.commit()
+        assert result.success
+    # Exactly one FEAT context for the entire orchestration.
+    assert entries == ["FEAT-OBL-004"], entries
+
+
 def test_same_idempotency_key_retry_no_duplicates(app):
     classroom, policy_uuid = _setup(app)
     with app.app_context():

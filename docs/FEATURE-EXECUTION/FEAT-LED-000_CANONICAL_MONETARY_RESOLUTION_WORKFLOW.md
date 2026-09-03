@@ -6,6 +6,17 @@
 
 ---
 
+> **Execution-model reconciliation (2026-09, supersedes conflicting wording below).**
+> Per the higher-authority execution model (INV-ARC-000 §VIII.2, INV-ARC-021 §V.2)
+> and FEAT-CORE-000 §V.1, there is **no FEAT-to-FEAT execution**. FEAT-LED-000 is
+> therefore the canonical monetary-resolution **workflow expressed as Ledger domain
+> commands** — `build_intended_ledger_plan` / `resolve_intended_ledger_plan` /
+> `apply_resolved_ledger_plan` (plain domain functions), plus the LED-001 posting
+> command — which a money-moving business FEAT composes **inside its own single FEAT
+> context**. Where this document says a business FEAT "uses FEAT-LED-000" or
+> "delegates to FEAT-LED-001", read that as *invokes the corresponding Ledger domain
+> command*, never as executing a second FEAT.
+
 ## I. Purpose
 
 This FEAT defines the canonical orchestration contract that resolves an intended ledger plan into a resolved ledger plan before any ledger mutation is committed.

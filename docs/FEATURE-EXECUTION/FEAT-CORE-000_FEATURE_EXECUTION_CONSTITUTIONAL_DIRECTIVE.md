@@ -32,13 +32,16 @@ A FEAT is an atomic orchestration unit that:
 4. Emits an auditable execution trace
 
 A FEAT:
-* **MAY** call Domains
-* **MAY** call approved Core FEATs
+* **MAY** call Domains (guards, queries, commands)
+* **MUST NOT** call another FEAT executor (no FEAT-to-FEAT execution; see §V.1)
 * **MUST NOT** be bypassed by routes, jobs, or scripts
 
-Monetary FEATs that move funds MUST first construct an intended ledger plan,
-resolve it through `FEAT-LED-000`, and only then delegate posting to
-`FEAT-LED-001`.
+Monetary FEATs that move funds MUST, inside their own single FEAT context,
+construct an intended ledger plan and resolve/apply it through the Ledger
+**domain commands** (`build_intended_ledger_plan` / `resolve_intended_ledger_plan`
+/ `apply_resolved_ledger_plan` — plain domain functions, not FEAT executors). A
+money-moving FEAT does **not** execute a separate "FEAT-LED-000" / "FEAT-LED-001"
+(that would be forbidden FEAT-to-FEAT execution; see §V.1).
 
 ---
 
@@ -149,23 +152,29 @@ No domain may:
 
 ## V. FEAT Composition Rules
 
-### 1. Core FEATs
-Certain FEATs are designated as Core Orchestrators:
-* `FEAT-PAY-POST`
-* `FEAT-IDEN-LOGIN` (context restoration only)
-* `FEAT-LED-000` (canonical monetary resolution; upstream of posting)
+### 1. No FEAT-to-FEAT Execution
 
-Core FEATs:
-* **MAY** be called by other FEATs
-* **MUST NOT** open a new transaction boundary when called internally
+A FEAT executor **MUST NOT** invoke another FEAT executor — directly or
+indirectly, and regardless of correlation-ID equality. This holds for **every**
+FEAT; there is **no Core-FEAT carve-out**. The earlier "Core FEATs MAY be called
+by other FEATs" allowance (`FEAT-PAY-POST`, `FEAT-IDEN-LOGIN`, `FEAT-LED-000`) is
+**removed** — it is superseded by the higher-authority execution model:
 
-### 2. FEAT-to-FEAT Calls (RESTRICTED)
-A FEAT **MAY** call another FEAT only if:
-* the called FEAT is a Core FEAT
-* no nested transaction boundary is created
-* idempotency is preserved
+* INV-ARC-000 §VIII.2 — *exactly one command path executes per request*;
+* INV-ARC-021 §V.2 — the FEAT is the **only** construct permitted to compose
+  logic across domains, **within a single execution path**;
+* INV-ARC-006 — all mutation occurs inside explicit **domain commands**.
 
-All other orchestration **MUST** occur within the calling FEAT.
+Shared functionality is invoked through domain-level guards, queries, and
+commands (plain domain functions / services), never through another FEAT. For
+example, a money-moving FEAT composes the Ledger **domain commands**
+(`resolve_intended_ledger_plan` / `apply_resolved_ledger_plan`, which are plain
+domain functions, not FEAT executors) inside its own single context — it does not
+execute a "FEAT-LED-000".
+
+Enforcement: the runtime `FEATContext` guard rejects entering any FEAT context
+while another is active (regardless of feat_name/correlation), and a structural CI
+check forbids a FEAT module from importing another FEAT's executor.
 
 ---
 

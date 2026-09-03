@@ -362,8 +362,7 @@ def record_attendance_session(
     return AttendanceSessionResult(session=session)
 
 
-@requires_feat_context("FEAT-PROD-002")
-def record_hall_pass_log(
+def _record_hall_pass_log_impl(
     *,
     ctx: CanonicalContext,
     requested_by_seat_id: int,
@@ -373,6 +372,11 @@ def record_hall_pass_log(
     idempotency_key: str | None = None,
     reference_time_utc=None,
 ) -> HallPassLogResult:
+    """Productivity DOMAIN command: consume a hall-pass entitlement and record the
+    HallPassLog. Runs within the CALLING FEAT's single context — not a FEAT
+    executor (INV-ARC-006, INV-ARC-021 §V.2). ``record_hall_pass_log`` is the thin
+    FEAT-PROD-002 boundary for a top-level (route) ingress.
+    """
     ctx = _require_context(ctx)
     evaluation = canonical_temporal_resolver(
         CLASS_LEVEL_EVALUATION,
@@ -413,6 +417,32 @@ def record_hall_pass_log(
     db.session.flush()
 
     return HallPassLogResult(hall_pass_log=log)
+
+
+@requires_feat_context("FEAT-PROD-002")
+def record_hall_pass_log(
+    *,
+    ctx: CanonicalContext,
+    requested_by_seat_id: int,
+    approved_by_seat_id: int,
+    destination: str,
+    reason: str,
+    idempotency_key: str | None = None,
+    reference_time_utc=None,
+) -> HallPassLogResult:
+    """FEAT-PROD-002 boundary for a top-level (route) hall-pass log ingress.
+    Delegates to the Productivity domain command; a FEAT that already owns a
+    context composes ``_record_hall_pass_log_impl`` directly instead of this.
+    """
+    return _record_hall_pass_log_impl(
+        ctx=ctx,
+        requested_by_seat_id=requested_by_seat_id,
+        approved_by_seat_id=approved_by_seat_id,
+        destination=destination,
+        reason=reason,
+        idempotency_key=idempotency_key,
+        reference_time_utc=reference_time_utc,
+    )
 
 
 def _record_payroll_event_impl(

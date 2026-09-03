@@ -41,10 +41,6 @@ from app.services.context_resolver import CanonicalContext
 from app.services import ledger_service
 from app.services import insurance_claim_service
 from app.services import insurance_eligibility_contract as eligibility
-from app.feats.ledger_resolution_feat import (
-    build_intended_ledger_plan,
-    resolve_intended_ledger_plan,
-)
 from app.services import insurance_definition_service as insurance_defs
 
 
@@ -1374,10 +1370,10 @@ def _approve_productivity_claim(
             )
         # Nested FEAT-PROD-003 shares this thread's correlation (atomicity guard).
         active_correlation = get_correlation_id()
-        from app.feats.prod import record_payroll_event
+        from app.feats.prod import _record_payroll_event_impl as record_payroll_event_command
 
         try:
-            payroll_result = record_payroll_event(
+            payroll_result = record_payroll_event_command(
                 ctx=canonical_context,
                 target_seat_id=claim.target_seat_id,
                 payroll_event_type="manual_credit",
