@@ -112,7 +112,7 @@ All validation SHALL complete before any mutation begins.
 3. **Policy resolution** — `policy_uuid` resolves to an `insurance_policies` row **in this class**, and its `availability_state == IN_USE`. A `HIDDEN` or `RETIRED` definition SHALL be rejected for new coverage (it is winding down or removed).
 4. **Coverage eligibility.** Two distinct rules, evaluated from canonical entitlement history (never a mutable flag):
    - **Hard invariant (always enforced):** a seat MUST NOT acquire a second *concurrently effective* entitlement referencing the **same** `policy_uuid`. Purchasing the exact same immutable contract twice would create duplicate recurring assessments and a duplicate entitlement lineage for one policy, and SHALL fail deterministically (`POLICY_ALREADY_HELD`). A retry with the same `idempotency_key` is not a duplicate — it returns the original result (§X).
-   - **Product-rule (not decided by this FEAT):** whether a seat may hold concurrently effective coverage across **different** `policy_uuid`s is governed by the Insurance policy contract, not this FEAT. FEAT-OBL-004 SHALL NOT invent a global "one insurance per seat" rule (a future replacement/upgrade model may intentionally let a new policy be established while the old terminates at a defined boundary).
+   - **Product-rule (decided by the Insurance policy contract):** whether a seat may hold concurrently effective coverage across **different** `policy_uuid`s is governed by the Insurance policy contract, not by a global rule this FEAT invents. The one concrete rule the contract fixes is **tier-group mutual exclusion** (FEAT-CLASS-003 §VIII.3): a seat MUST NOT hold concurrently effective coverage for two policies sharing the same `tier_group`. FEAT-OBL-004 enforces it — a purchase whose policy carries a `tier_group` the seat already holds active coverage in SHALL fail with `POLICY_ALREADY_HELD_IN_GROUP`. Policies with no `tier_group` are exempt (a future replacement/upgrade model may still let a new policy be established while the old terminates at a defined boundary).
 
 Affordability is NOT pre-decided here as truth; the Ledger resolution phase
 (§VIII.3) is the sole authority on whether the premium can be paid.
@@ -262,6 +262,7 @@ Representative failures (all leave zero mutations):
 - `POLICY_NOT_FOUND` (not in class, or bad locator)
 - `INSURANCE_NOT_AVAILABLE_FOR_NEW_COVERAGE` (definition not `IN_USE`)
 - `POLICY_ALREADY_HELD` (seat already holds a concurrently effective grant for the **same** `policy_uuid` — hard invariant, §VII.4)
+- `POLICY_ALREADY_HELD_IN_GROUP` (seat already holds active coverage for another policy in the same `tier_group` — tier-group mutual exclusion, §VII.4)
 - `INSUFFICIENT_FUNDS` (Ledger denied the premium plan)
 - `CROSS_DOMAIN_FAILURE`
 

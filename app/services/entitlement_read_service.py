@@ -545,6 +545,57 @@ def get_active_insurance_grant(
     return None
 
 
+def has_active_coverage_in_group(
+    seat_id: int,
+    class_id: str,
+    tier_group: str,
+) -> bool:
+    """True iff the seat holds active INSURANCE coverage for ANY policy in a group.
+
+    Tier groups are mutually exclusive: a seat may hold at most one active coverage
+    per ``tier_group`` (FEAT-CLASS-003 §VIII.3). This scans the seat's active
+    (GRANTED, no EXPIRED/REVOKED terminal) insurance grants, resolves each to its
+    policy's ``tier_group``, and reports whether any matches. Ungrouped policies
+    (NULL ``tier_group``) never participate in group exclusion.
+
+    Purity: Pure (read-only query).
+    """
+    from app.models import InsurancePolicy
+
+    if not tier_group:
+        return False
+
+    granted = (
+        EntitlementEvent.query
+        .filter(
+            EntitlementEvent.target_seat_id == seat_id,
+            EntitlementEvent.class_id == class_id,
+            EntitlementEvent.entitlement_type == "INSURANCE",
+            EntitlementEvent.event_type == "GRANTED",
+        )
+        .all()
+    )
+    for grant in granted:
+        policy_uuid = (grant.payload or {}).get("policy_uuid")
+        if not policy_uuid:
+            continue
+        policy = db.session.get(InsurancePolicy, policy_uuid)
+        if policy is None or policy.tier_group != tier_group:
+            continue
+        terminal = (
+            EntitlementEvent.query
+            .filter(
+                EntitlementEvent.entitlement_id == grant.entitlement_id,
+                EntitlementEvent.class_id == class_id,
+                EntitlementEvent.event_type.in_(["EXPIRED", "REVOKED"]),
+            )
+            .first()
+        )
+        if terminal is None:
+            return True
+    return False
+
+
 def get_active_entitlements(
     seat_id: int,
     class_id: str,

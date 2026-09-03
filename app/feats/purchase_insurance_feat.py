@@ -182,6 +182,21 @@ def execute_purchase_insurance(
             error_message="Seat already holds active coverage for this policy",
         )
 
+    # Tier-group mutual exclusion: at most one active coverage per tier_group
+    # (FEAT-CLASS-003 §VIII.3). A student who holds Basic cannot also buy Mid/Premium
+    # of the same group without cancelling first. Ungrouped policies are exempt.
+    if definition.tier_group and entitlement_read_service.has_active_coverage_in_group(
+        seat_id, class_id, definition.tier_group
+    ):
+        return InsurancePurchaseResult(
+            success=False, correlation_id=correlation_id,
+            error_code="POLICY_ALREADY_HELD_IN_GROUP",
+            error_message=(
+                f"Seat already holds active coverage in tier group "
+                f"'{definition.tier_group}'"
+            ),
+        )
+
     # Affordability: the first premium must be payable now (no overdraft here).
     available = ledger_service.get_available_balance(seat_id, class_id, "checking")
     if available < premium:
