@@ -84,8 +84,12 @@ from app.services.entitlement_read_service import (
 from app.services.insurance_policy_service import list_insurance_policy_versions
 from app.services.insurance_policy_service import get_insurance_entitlement_item_id
 from app.services import insurance_definition_service as insurance_defs
-from app.services.entitlement_read_service import has_active_insurance_coverage
+from app.services.entitlement_read_service import (
+    has_active_insurance_coverage,
+    has_active_coverage_in_group,
+)
 from app.feats.purchase_insurance_feat import execute_purchase_insurance
+from app.feats.cancel_insurance_feat import execute_cancel_insurance
 from app.services.ledger_service import (
     apply_monthly_savings_interest as post_monthly_savings_interest,
     get_available_balances,
@@ -1435,9 +1439,31 @@ def insurance_marketplace():
                 claims_per_week_equivalent=d.claims_per_week_equivalent,
                 claimable_dates_per_week_equivalent=d.claimable_dates_per_week_equivalent,
                 tier_name=d.tier_name,
+                tier_group=d.tier_group,
+                tier_level=d.tier_level,
                 owned=has_active_insurance_coverage(seat_id, class_id, d.policy_uuid),
             )
         )
+
+    # Bucket available coverage by tier group so the marketplace presents each group
+    # as a set of tiers a student picks ONE of. ``owned`` on a group marks that the
+    # seat already holds coverage in it (mutual exclusion; FEAT-CLASS-003 §VIII.3),
+    # so the UI can disable the other tiers.
+    _grouped: dict = {}
+    ungrouped_policies = []
+    for p in available_policies:
+        if p.tier_group:
+            _grouped.setdefault(p.tier_group, []).append(p)
+        else:
+            ungrouped_policies.append(p)
+    grouped_policies = []
+    for name in sorted(_grouped):
+        tiers = sorted(_grouped[name], key=lambda t: (t.tier_level or 0))
+        grouped_policies.append(SimpleNamespace(
+            name=name,
+            tiers=tiers,
+            owned=has_active_coverage_in_group(seat_id, class_id, name),
+        ))
 
     # Owned coverage: active INSURANCE grants for this seat, resolved to their
     # immutable policy (the entitlement proves acquisition; the policy provides terms).
@@ -1506,6 +1532,8 @@ def insurance_marketplace():
         ),
         current_class_context=current_class_context,
         available_policies=available_policies,
+        grouped_policies=grouped_policies,
+        ungrouped_policies=ungrouped_policies,
         owned_coverage=owned_coverage,
         my_claims=[_claim_display_row(claim) for claim in _list_insurance_claims(class_id=class_id, target_seat_id=seat_id)],
         now=utc_now(),
@@ -1539,6 +1567,7 @@ def purchase_insurance(policy_uuid):
 
     friendly = {
         "POLICY_ALREADY_HELD": ("You already hold active coverage for this policy.", "info"),
+        "POLICY_ALREADY_HELD_IN_GROUP": ("You already hold a plan in this tier group. Cancel it first to switch tiers.", "info"),
         "INSUFFICIENT_FUNDS": ("You don't have enough in checking to pay the first premium.", "error"),
         "INSURANCE_NOT_AVAILABLE_FOR_NEW_COVERAGE": ("That policy is no longer available for new coverage.", "error"),
         "POLICY_NOT_FOUND": ("That insurance policy is not available for this class.", "error"),
@@ -1551,11 +1580,38 @@ def purchase_insurance(policy_uuid):
     return redirect(url_for('student.student_insurance'))
 
 
-@student_bp.route('/insurance/cancel/<int:enrollment_id>', methods=['POST'])
+@student_bp.route('/insurance/cancel/<policy_uuid>', methods=['POST'])
 @login_required
-def cancel_insurance(enrollment_id):
-    """Cancel insurance policy."""
-    flash("Insurance cancellation is not available from the current policy surface.", "warning")
+def cancel_insurance(policy_uuid):
+    """Cancel (stop renewal on) the student's coverage for a policy via FEAT-OBL-005.
+
+    Cancellation is stop-renewal, not a refund or early termination: coverage and
+    benefits continue until the end of the current paid period, then expire
+    (FEAT-STOR-002). Insurance is never revoked (FEAT-STOR-002 §IX.C).
+    """
+    context = resolve_canonical_context()
+    if not context:
+        flash("No class selected. Please select a class to continue.", "error")
+        return redirect(url_for('student.student_insurance'))
+
+    result = execute_cancel_insurance(
+        canonical_context=context,
+        policy_uuid=policy_uuid,
+        idempotency_key=f"inscancel:{uuid.uuid4().hex}",
+    )
+    if result.success:
+        if result.already_cancelled:
+            flash("This coverage is already set to not renew.", "info")
+        else:
+            flash(
+                "Coverage cancelled — it won't renew. Your benefits continue until "
+                "the end of the current period.",
+                "success",
+            )
+    elif result.error_code == "COVERAGE_NOT_FOUND":
+        flash("You don't hold active coverage for that policy.", "warning")
+    else:
+        flash(result.error_message or "Cancellation could not be completed.", "error")
     return redirect(url_for('student.student_insurance'))
 
 

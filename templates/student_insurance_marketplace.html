@@ -27,8 +27,16 @@
             {% if cov.purchased_at %}
             <div class="text-muted small mt-1">Since {{ cov.purchased_at.strftime('%b %d, %Y') }}</div>
             {% endif %}
-            <a href="{{ url_for('student.file_claim', policy_uuid=cov.policy_uuid) }}"
-               class="btn btn-outline-primary btn-sm mt-3">File a claim</a>
+            <div class="d-flex gap-2 mt-3">
+              <a href="{{ url_for('student.file_claim', policy_uuid=cov.policy_uuid) }}"
+                 class="btn btn-outline-primary btn-sm">File a claim</a>
+              <form method="POST" action="{{ url_for('student.cancel_insurance', policy_uuid=cov.policy_uuid) }}"
+                    class="d-inline"
+                    onsubmit="return confirm('Cancel this coverage? It will stop renewing — your benefits continue until the end of the current period.');">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+                <button type="submit" class="btn btn-outline-danger btn-sm">Cancel coverage</button>
+              </form>
+            </div>
           </div>
         </div>
       </div>
@@ -42,9 +50,56 @@
   {# ---- Available policies ----------------------------------------------- #}
   <section class="mb-4">
     <h2 class="h5 mb-3">Available policies</h2>
-    {% if available_policies %}
+
+    {# Grouped tiers — a student picks ONE plan per group. #}
+    {% set rank_label = {1: 'Basic', 2: 'Mid', 3: 'Premium'} %}
+    {% for group in grouped_policies %}
+    <div class="card shadow-sm mb-3">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <span class="fw-semibold">{{ group.name }}</span>
+        {% if group.owned %}
+        <span class="badge bg-success">Enrolled — one plan per group</span>
+        {% else %}
+        <span class="text-muted small">Choose one tier</span>
+        {% endif %}
+      </div>
+      <div class="list-group list-group-flush">
+        {% for policy in group.tiers %}
+        <div class="list-group-item d-flex justify-content-between align-items-center">
+          <div>
+            <span class="badge bg-primary-subtle text-primary-emphasis border me-2">{{ rank_label.get(policy.tier_level, policy.tier_name or 'Tier') }}</span>
+            <span class="fw-semibold">{{ policy.title }}</span>
+            <div class="text-muted small">
+              ${{ "%.2f"|format(policy.premium) }} / {{ policy.charge_frequency|lower }}
+              {% if policy.reimbursement_percentage is not none %} · reimburses {{ "%.0f"|format(policy.reimbursement_percentage) }}%{% endif %}
+              {% if policy.payout_multiple is not none %} · up to {{ "%.0f"|format(policy.payout_multiple) }}× payout{% endif %}
+            </div>
+          </div>
+          <div>
+            {% if policy.owned %}
+            <button class="btn btn-outline-secondary btn-sm" disabled>Your plan</button>
+            {% elif group.owned %}
+            <button class="btn btn-outline-secondary btn-sm" disabled
+                    title="Cancel your current plan in this group to switch tiers">Unavailable</button>
+            {% else %}
+            <form method="POST" action="{{ url_for('student.purchase_insurance', policy_uuid=policy.policy_uuid) }}" class="d-inline">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+              <button type="submit" class="btn btn-primary btn-sm" onclick="this.disabled=true;this.form.submit();">
+                Buy — ${{ "%.2f"|format(policy.premium) }}
+              </button>
+            </form>
+            {% endif %}
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endfor %}
+
+    {# Ungrouped single policies. #}
+    {% if ungrouped_policies %}
     <div class="row g-3">
-      {% for policy in available_policies %}
+      {% for policy in ungrouped_policies %}
       <div class="col-md-6">
         <div class="card shadow-sm h-100">
           <div class="card-body d-flex flex-column">
@@ -87,7 +142,9 @@
       </div>
       {% endfor %}
     </div>
-    {% else %}
+    {% endif %}
+
+    {% if not grouped_policies and not ungrouped_policies %}
     <p class="text-muted">No insurance policies are available in this class yet.</p>
     {% endif %}
   </section>

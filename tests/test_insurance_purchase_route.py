@@ -218,3 +218,70 @@ def test_file_claim_productivity_form_renders_and_submits(app, client):
               "claim_explanation": "Lost class time to a jam"},
     )
     assert resp.status_code in (200, 302)  # handled, never a server error
+
+
+def _make_tier(classroom, group, level, premium="10.00"):
+    row = configure_insurance_definition(
+        class_id=classroom.class_id,
+        submission=dict(
+            insurance_type="TRANSACTION", premium=premium, charge_frequency="WEEKLY",
+            reimbursement_percentage="80", payout_multiple="3",
+            claims_per_week_equivalent="1", claim_window_days="7",
+            title=f"{group} {level}", tier_group=group, tier_level=str(level),
+        ),
+        canonical_context=_teacher_ctx(classroom),
+        correlation_id=f"corr_{uuid4().hex}",
+        idempotency_key=f"cfg:{uuid4().hex}",
+    )
+    return row.policy_uuid
+
+
+def test_grouped_marketplace_shows_group_and_cancel_stops_renewal(app, client):
+    from app.services import obligations_service
+    with app.app_context():
+        classroom = provision_classroom("chemistry_p1")
+        enable_class_feature(class_id=classroom.class_id, feature="insurance")
+        basic = _make_tier(classroom, "Paycheck Protection", 1)
+        _make_tier(classroom, "Paycheck Protection", 2)
+        student = classroom.students[0]
+        _fund(student.seat)
+        seat_id = student.seat.id
+        class_id = classroom.class_id
+        login_student(client, student)
+
+    # Marketplace groups the tiers under the group name.
+    resp = client.get("/student/insurance")
+    assert resp.status_code == 200
+    assert b"Paycheck Protection" in resp.data
+
+    # Buy the Basic tier.
+    assert client.post(f"/student/insurance/purchase/{basic}").status_code == 302
+
+    # The group now shows as enrolled; the other tier is unavailable (one per group).
+    resp = client.get("/student/insurance")
+    assert b"Enrolled" in resp.data
+    assert b"Unavailable" in resp.data
+
+    # Cancel via FEAT-OBL-005 — stop renewal (terminal bill cycle).
+    resp = client.post(f"/student/insurance/cancel/{basic}")
+    assert resp.status_code == 302
+
+    with app.app_context():
+        # The seat's premium lineage is now terminal (no next assessment).
+        assessments = obligations_service.get_assessment_events_for_seat_class(
+            seat_id, class_id, obligation_type="INSURANCE_PREMIUM")
+        ref = assessments[0].internal_ref
+        latest = obligations_service.get_latest_bill_cycle(ref)
+        assert latest.next_assessment_at is None
+
+
+def test_cancel_without_coverage_warns(app, client):
+    with app.app_context():
+        classroom = provision_classroom("chemistry_p1")
+        enable_class_feature(class_id=classroom.class_id, feature="insurance")
+        policy_uuid = _make_policy(classroom)
+        student = classroom.students[0]
+        login_student(client, student)
+
+    resp = client.post(f"/student/insurance/cancel/{policy_uuid}", follow_redirects=True)
+    assert resp.status_code == 200  # redirected back with a warning flash
