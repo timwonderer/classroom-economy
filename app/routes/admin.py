@@ -2627,11 +2627,15 @@ def give_bonus_all():
             'account_type': 'checking',
         })
 
-    result = execute_admin_adjustments(
-        ctx=ctx,
-        adjustments=adjustments,
-        actor_seat_id=ctx.seat_id,
-    )
+    with FEATContext(
+        "FEAT-LED-000",
+        idempotency_key=f"feat:bonus:{ctx.class_id}:{uuid.uuid4().hex}",
+    ):
+        result = execute_admin_adjustments(
+            ctx=ctx,
+            adjustments=adjustments,
+            actor_seat_id=ctx.seat_id,
+        )
     message = f"Bonus/Payroll posted to {result.applied_count} student(s)!"
     if result.declined_count:
         message += f" {result.declined_count} declined for insufficient funds."
@@ -4596,7 +4600,6 @@ def store_management():
         ).hexdigest()[:16]
         idempotency_key = f"feat:store:item-create:{selected_scope['class_id']}:{payload_hash}"
 
-        db.session.rollback()
         with FEATContext("FEAT-SETTINGS-001", idempotency_key=idempotency_key):
             new_item = create_store_item(
                 user_id=user_id,
@@ -5012,7 +5015,6 @@ def edit_store_item(item_id):
         ).hexdigest()[:16]
         idempotency_key = f"feat:store:item-edit:{selected_scope['class_id']}:{item.id}:{payload_hash}"
 
-        db.session.rollback()
         with FEATContext("FEAT-SETTINGS-001", idempotency_key=idempotency_key):
             item = StoreItem.query.filter_by(id=item_id, class_id=selected_scope['class_id']).first_or_404()
             was_active = item.is_active

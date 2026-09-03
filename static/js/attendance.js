@@ -96,9 +96,9 @@ function performTap(action, pin, reason = null) {
     .then(data => {
       if (!data) return; // Session expired, already redirecting
       if (data.status === "ok") {
-        const state = { active: data.active, duration: data.duration, projected_pay: data.projected_pay, hall_pass: data.hall_pass };
+        const state = { active: data.active, duration: data.duration, duration_today: data.duration_today, projected_pay: data.projected_pay, hall_pass: data.hall_pass };
         rememberAttendanceState(state);
-        updateAttendanceUI(state.active, state.duration, state.projected_pay, state.hall_pass);
+        updateAttendanceUI(state.active, pickTimeToday(state), state.projected_pay, state.hall_pass);
         let message = `${action === "start_work" ? "Start Work" : "Break"} successful`;
         createToast(message);
       } else {
@@ -129,12 +129,21 @@ setInterval(() => {
       if (data.status === 'ok' && data.attendance_state) {
         const state = data.attendance_state;
         rememberAttendanceState(state);
-        updateAttendanceUI(state.active, state.duration, state.projected_pay, state.hall_pass);
+        updateAttendanceUI(state.active, pickTimeToday(state), state.projected_pay, state.hall_pass);
       }
     })
     .catch(err => console.error("Status polling error:", err));
 
 }, 10000);
+
+// "Time Today" is the day-bounded worked figure. Prefer duration_today; fall
+// back to duration only for older server payloads that omit it.
+function pickTimeToday(state) {
+  if (state && state.duration_today !== undefined && state.duration_today !== null) {
+    return state.duration_today;
+  }
+  return state ? state.duration : 0;
+}
 
 function updateAttendanceUI(isActive, duration, projectedPay, hallPass = null) {
   const row = document.querySelector(".attendance-state-row");
@@ -376,7 +385,7 @@ function refreshUi() {
       if (statusData.status === 'ok' && statusData.attendance_state) {
         const state = statusData.attendance_state;
         rememberAttendanceState(state);
-        updateAttendanceUI(state.active, state.duration, state.projected_pay, state.hall_pass);
+        updateAttendanceUI(state.active, pickTimeToday(state), state.projected_pay, state.hall_pass);
       }
     });
 }

@@ -11,7 +11,7 @@ import sqlalchemy as sa
 from flask import has_request_context, request, current_app
 
 from app.extensions import db
-from app.models import ActorRequestTrace, AuditEvent, ClassEconomy, Seat
+from app.models import ActorRequestTrace, ClassEconomy, Seat
 from app.services.context_resolver import CanonicalContext
 from app.utils.canonical_temporal_resolver import utc_now
 
@@ -77,6 +77,31 @@ def _sanitize_error_message(raw_message: str | None) -> str:
         return ""
     compact = " ".join(str(raw_message).split())
     return compact[:500]
+
+
+def _error_events_available(bind=None) -> bool:
+    """Return True only when the ``error_events`` table physically exists.
+
+    ``error_events`` was dropped by migration 7c3d4e5f6a7b (slated for
+    absorption into operational_events, DOM-OPS-001, which is not yet built).
+    Both the writer (app/__init__.py) and these readers must guard on the
+    table's presence so the correlation surface degrades to "no errors"
+    instead of raising when the table is absent. It must NEVER be confused
+    with the tamper-evident ``audit_events`` chain, whose schema differs.
+    """
+    try:
+        bind = bind if bind is not None else db.session.get_bind()
+        return sa.inspect(bind).has_table("error_events")
+    except Exception:
+        return False
+
+
+def _error_event_rows(sql: str, params: dict) -> list:
+    """Run a guarded read against ``error_events``; [] when the table is absent."""
+    if not _error_events_available():
+        return []
+    result = db.session.execute(sa.text(sql), params)
+    return [dict(row) for row in result.mappings()]
 
 
 def _noise_endpoint_prefixes() -> tuple[str, ...]:
@@ -212,9 +237,14 @@ def persist_request_trace(
             ActorRequestTrace.created_at < ttl_cutoff
         ).delete(synchronize_session=False)
 
-        sess.query(AuditEvent).filter(
-            AuditEvent.created_at_utc < ttl_cutoff
-        ).delete(synchronize_session=False)
+        # Prune the correlation error log (NOT the tamper-evident audit_events
+        # chain). Guarded because error_events may be absent (see
+        # _error_events_available); a missing table must be a no-op.
+        if _error_events_available(sess.get_bind()):
+            sess.execute(
+                sa.text("DELETE FROM error_events WHERE created_at < :cutoff"),
+                {"cutoff": ttl_cutoff},
+            )
 
 
 def save_error_event(
@@ -228,23 +258,43 @@ def save_error_event(
     error_class: str,
     error_message: str | None,
 ) -> None:
-    """Persist a short-lived error event for ticket correlation."""
+    """Persist a short-lived error event for ticket correlation.
+
+    Writes to the ``error_events`` correlation log via guarded raw SQL so the
+    schema stays decoupled from any ORM model and the call degrades to a no-op
+    when the table is absent (see _error_events_available). This is NOT the
+    tamper-evident ``audit_events`` chain.
+    """
     if not actor_type or not actor_public_id:
         return
+    if not _error_events_available():
+        return
 
-    db.session.add(
-        AuditEvent(
-            request_id=request_id,
-            actor_type=actor_type,
-            actor_public_id=actor_public_id,
-            class_id=class_id,
-            endpoint=endpoint,
-            method=method,
-            error_class=error_class,
-            error_message=_sanitize_error_message(error_message),
-            correlation_version=CORRELATION_VERSION,
-            created_at=utc_now(),
-        )
+    db.session.execute(
+        sa.text(
+            """
+            INSERT INTO error_events
+                (request_id, actor_type, actor_public_id, class_id,
+                 endpoint, method, error_class, error_message,
+                 correlation_version, created_at)
+            VALUES
+                (:request_id, :actor_type, :actor_public_id, :class_id,
+                 :endpoint, :method, :error_class, :error_message,
+                 :correlation_version, :created_at)
+            """
+        ),
+        {
+            "request_id": request_id,
+            "actor_type": actor_type,
+            "actor_public_id": actor_public_id,
+            "class_id": class_id,
+            "endpoint": endpoint,
+            "method": method,
+            "error_class": error_class,
+            "error_message": _sanitize_error_message(error_message),
+            "correlation_version": CORRELATION_VERSION,
+            "created_at": utc_now(),
+        },
     )
 
 
@@ -253,19 +303,27 @@ def has_recent_error_for_actor(
     actor_public_id: str,
     recent_minutes: int | None = None,
 ) -> bool:
-    """Return True when the actor has a recent error event."""
+    """Return True when the actor has a recent error event.
+
+    Degrades to False when the ``error_events`` table is absent.
+    """
     minutes = recent_minutes or _int_env("TLCP_RECENT_ERROR_MINUTES", DEFAULT_RECENT_ERROR_MINUTES)
     cutoff = utc_now() - timedelta(minutes=minutes)
-    return (
-        db.session.query(AuditEvent.id)
-        .filter(
-            AuditEvent.actor_type == actor_type,
-            AuditEvent.actor_public_id == actor_public_id,
-            AuditEvent.created_at_utc >= cutoff,
-        )
-        .first()
-        is not None
+    rows = _error_event_rows(
+        """
+        SELECT id FROM error_events
+        WHERE actor_type = :actor_type
+          AND actor_public_id = :actor_public_id
+          AND created_at >= :cutoff
+        LIMIT 1
+        """,
+        {
+            "actor_type": actor_type,
+            "actor_public_id": actor_public_id,
+            "cutoff": cutoff,
+        },
     )
+    return bool(rows)
 
 
 def create_ticket_correlation_pack(
@@ -310,40 +368,63 @@ def create_ticket_correlation_pack(
     ]
 
     error_window_start = ticket_created_at - timedelta(hours=error_window_hours)
-    errors_query = (
-        AuditEvent.query.filter(
-            AuditEvent.actor_type == actor_type,
-            AuditEvent.actor_public_id == actor_public_id,
-            AuditEvent.created_at_utc >= error_window_start,
-            AuditEvent.created_at_utc <= ticket_created_at,
+    error_rows = (
+        _error_event_rows(
+            """
+            SELECT request_id, endpoint, method, error_class, error_message,
+                   class_id, created_at
+            FROM error_events
+            WHERE actor_type = :actor_type
+              AND actor_public_id = :actor_public_id
+              AND created_at >= :window_start
+              AND created_at <= :ticket_created_at
+            ORDER BY created_at DESC, id DESC
+            LIMIT :limit
+            """,
+            {
+                "actor_type": actor_type,
+                "actor_public_id": actor_public_id,
+                "window_start": error_window_start,
+                "ticket_created_at": ticket_created_at,
+                "limit": trace_limit,
+            },
         )
-        .order_by(AuditEvent.created_at_utc.desc(), AuditEvent.id.desc())
+        if include_recent_error
+        else []
     )
-    error_rows = errors_query.limit(trace_limit).all() if include_recent_error else []
 
     if include_recent_error and not error_rows:
         ttl_cutoff = ticket_created_at - timedelta(days=ttl_days)
-        latest_error = (
-            AuditEvent.query.filter(
-                AuditEvent.actor_type == actor_type,
-                AuditEvent.actor_public_id == actor_public_id,
-                AuditEvent.created_at_utc >= ttl_cutoff,
-            )
-            .order_by(AuditEvent.created_at_utc.desc(), AuditEvent.id.desc())
-            .first()
+        error_rows = _error_event_rows(
+            """
+            SELECT request_id, endpoint, method, error_class, error_message,
+                   class_id, created_at
+            FROM error_events
+            WHERE actor_type = :actor_type
+              AND actor_public_id = :actor_public_id
+              AND created_at >= :ttl_cutoff
+            ORDER BY created_at DESC, id DESC
+            LIMIT 1
+            """,
+            {
+                "actor_type": actor_type,
+                "actor_public_id": actor_public_id,
+                "ttl_cutoff": ttl_cutoff,
+            },
         )
-        if latest_error:
-            error_rows = [latest_error]
+
+    def _iso(value):
+        return value.isoformat() if value is not None and hasattr(value, "isoformat") else value
 
     error_refs_json = [
         {
-            "timestamp": row.created_at.isoformat() if row.created_at else None,
-            "endpoint": row.endpoint,
-            "request_id": row.request_id,
-            "error_class": row.error_class,
-            "error_message": row.error_message,
-            "method": row.method,
-            "class_id": row.class_id,
+            "timestamp": _iso(row.get("created_at")),
+            "endpoint": row.get("endpoint"),
+            "request_id": row.get("request_id"),
+            "error_class": row.get("error_class"),
+            "error_message": row.get("error_message"),
+            "method": row.get("method"),
+            "class_id": row.get("class_id"),
         }
         for row in error_rows
     ]

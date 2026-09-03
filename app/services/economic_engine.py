@@ -691,6 +691,120 @@ def resolve_savings(
     )
 
 
+# Payout capitalization periods per year (SPEC-ECON-001 §7.2). Weekly/monthly only.
+_PAYOUT_FREQ_PER_YEAR: dict[str, int] = {
+    "weekly": 52,
+    "monthly": 12,
+}
+
+
+def _savings_period_factor(
+    *,
+    annual_rate: Decimal,
+    calculation_type: str,
+    compound_frequency: str,
+    years: Decimal,
+) -> Decimal:
+    """Multiplicative growth factor over ``years`` (SPEC-ECON-001 §4).
+
+    This is the single authoritative accrual formula. Both the runtime payout and
+    the UI projection MUST derive from it so forecasts cannot diverge from execution
+    (SPEC-ECON-001 §10, §11).
+
+    - Simple interest (``calculation_type == 'simple'`` or ``compound_frequency ==
+      'never'``): ``1 + r·t`` (§4.1). Previously credited interest never joins the
+      earning base — but because payout capitalizes into the posted balance, the
+      caller controls participation via the balance it passes.
+    - Compound interest (§4.2): ``(1 + r/n)^(n·t)`` where ``n`` is the compound
+      periods/year. Full ``Decimal`` precision is preserved here; rounding to cents
+      happens only at the lawful payout boundary (§5.3).
+    """
+    freq = (compound_frequency or "never").strip().lower()
+    calc = (calculation_type or "simple").strip().lower()
+    if calc == "simple" or freq == "never":
+        return Decimal("1") + annual_rate * years
+    if freq not in _COMPOUND_FREQ_PER_YEAR:
+        raise ValueError(f"Unsupported compound_frequency: {compound_frequency!r}")
+    n = Decimal(_COMPOUND_FREQ_PER_YEAR[freq])
+    return (Decimal("1") + annual_rate / n) ** (n * years)
+
+
+def savings_interest_for_payout_period(
+    *,
+    posted_balance: Decimal,
+    annual_rate: Decimal,
+    calculation_type: str,
+    compound_frequency: str,
+    payout_frequency: str,
+) -> Decimal:
+    """Interest owed for one payout window on an eligible posted balance (§4, §7, §9).
+
+    ``posted_balance`` is the authoritative posted savings balance — the sole eligible
+    base (SPEC-ECON-001 §9.2/§13). No hidden default APY: the caller supplies the
+    Class-Config rate, and a ``None``/non-positive rate or balance yields zero (§11).
+    Result is quantized to cents at this payout boundary (§5.3).
+    """
+    if posted_balance is None or annual_rate is None:
+        return Decimal("0.00")
+    if posted_balance <= 0 or annual_rate <= 0:
+        return Decimal("0.00")
+    payout = (payout_frequency or "monthly").strip().lower()
+    if payout not in _PAYOUT_FREQ_PER_YEAR:
+        raise ValueError(f"Unsupported payout_frequency: {payout_frequency!r}")
+    years = Decimal("1") / Decimal(_PAYOUT_FREQ_PER_YEAR[payout])
+    factor = _savings_period_factor(
+        annual_rate=annual_rate,
+        calculation_type=calculation_type,
+        compound_frequency=compound_frequency,
+        years=years,
+    )
+    return _money(posted_balance * (factor - Decimal("1")))
+
+
+def project_savings_balances(
+    *,
+    posted_balance: Decimal,
+    annual_rate: Optional[Decimal],
+    calculation_type: str,
+    compound_frequency: str,
+    payout_frequency: str,
+    months: int = 12,
+) -> list[Decimal]:
+    """Monthly posted-balance forecast built from the runtime payout recurrence (§10).
+
+    Returns ``months + 1`` cent-quantized points (index 0 = now). The forecast walks
+    the SAME payout recurrence the runtime engine executes: each payout window credits
+    ``savings_interest_for_payout_period`` and capitalizes it into the running balance,
+    so the chart is exactly what will post. A ``None``/zero rate produces a flat line
+    (no hidden default APY — §11).
+    """
+    balance = _money(posted_balance or Decimal("0.00"))
+    if annual_rate is None or annual_rate <= 0:
+        return [balance for _ in range(months + 1)]
+
+    payout = (payout_frequency or "monthly").strip().lower()
+    if payout not in _PAYOUT_FREQ_PER_YEAR:
+        raise ValueError(f"Unsupported payout_frequency: {payout_frequency!r}")
+    payouts_per_year = _PAYOUT_FREQ_PER_YEAR[payout]
+
+    series: list[Decimal] = [balance]
+    for month in range(1, months + 1):
+        # Number of payout windows that close by the end of this month.
+        windows_to_date = (payouts_per_year * month) // 12
+        windows_prev = (payouts_per_year * (month - 1)) // 12
+        for _ in range(windows_prev, windows_to_date):
+            interest = savings_interest_for_payout_period(
+                posted_balance=balance,
+                annual_rate=annual_rate,
+                calculation_type=calculation_type,
+                compound_frequency=compound_frequency,
+                payout_frequency=payout,
+            )
+            balance = _money(balance + interest)
+        series.append(balance)
+    return series
+
+
 @dataclass(frozen=True)
 class OverdraftFineResolution:
     """Deterministic overdraft / internal-fine reference for a class (SPEC §4.6).

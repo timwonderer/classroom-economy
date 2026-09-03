@@ -90,7 +90,11 @@ from app.utils.transaction_idempotency import (
 from app.utils.canonical_temporal_resolver import utc_now, ensure_utc
 
 # Import external modules
-from app.services.attendance_service import calculate_unpaid_attendance_seconds, get_class_attendance_status
+from app.services.attendance_service import (
+    calculate_unpaid_attendance_seconds,
+    calculate_worked_attendance_seconds_today,
+    get_class_attendance_status,
+)
 from app.services.ledger_service import (
     create_pending_transaction,
     create_pending_transaction_idempotent,
@@ -1687,10 +1691,20 @@ def handle_tap():
     currently_active = bool(latest_event and latest_event.status == "active")
 
     if normalized_action == "start_work" and currently_active:
-        return jsonify({"status": "ok", "active": True, "duration": 0})
+        return jsonify({
+            "status": "ok", "active": True, "duration": 0,
+            "duration_today": calculate_worked_attendance_seconds_today(
+                seat_id, class_id, ctx=context
+            ),
+        })
 
     if normalized_action == "stop_work" and not currently_active:
-        return jsonify({"status": "ok", "active": False, "duration": 0})
+        return jsonify({
+            "status": "ok", "active": False, "duration": 0,
+            "duration_today": calculate_worked_attendance_seconds_today(
+                seat_id, class_id, ctx=context
+            ),
+        })
 
     reason = data.get("reason") if normalized_action == "stop_work" else None
     reason_code = None
@@ -1756,11 +1770,15 @@ def handle_tap():
     settings_section = class_row.section if class_row and class_row.section else None
     rate_per_second = get_pay_rate_for_block(settings_section, class_id=class_id)
     projected_pay = duration * rate_per_second
+    duration_today = calculate_worked_attendance_seconds_today(
+        seat_id, class_id, ctx=context
+    )
 
     return jsonify({
         "status": "ok",
         "active": is_active,
         "duration": duration,
+        "duration_today": duration_today,
         "projected_pay": float(projected_pay)
     })
 

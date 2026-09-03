@@ -208,6 +208,36 @@ def calculate_worked_attendance_seconds_for_date(seat_id: int, class_id: str, ev
     return _elapsed_seconds(ctx, intervals)
 
 
+def calculate_worked_attendance_seconds_today(seat_id: int, class_id: str, *, ctx):
+    """Return authoritative worked seconds for the CURRENT class-local day.
+
+    Same day-bounded, now-clipped semantics as
+    ``calculate_worked_attendance_seconds_for_date`` but anchored to the class's
+    current evaluation day. This is the value the student UI labels "Time Today";
+    it must never be the unbounded unpaid-since-payroll figure, which can span
+    many days when payroll has not run.
+    """
+    day_start_utc, day_end_utc = _current_evaluation_day_bounds(ctx)
+    now_evaluation = canonical_temporal_resolver(
+        CLASS_LEVEL_EVALUATION,
+        canonical_execution_context=ctx,
+        primitive="current_time",
+    )
+    end_boundary = min(day_end_utc, now_evaluation.canonical_now_utc)
+    if end_boundary <= day_start_utc:
+        return 0
+    canonical_rows = AttendanceSession.query.filter(
+        AttendanceSession.target_seat_id == seat_id,
+        AttendanceSession.class_id == class_id,
+    ).order_by(AttendanceSession.timestamp.asc(), AttendanceSession.id.asc()).all()
+    intervals = _pair_active_intervals(
+        canonical_rows,
+        start_boundary=day_start_utc,
+        end_boundary=end_boundary,
+    )
+    return _elapsed_seconds(ctx, intervals)
+
+
 def get_class_attendance_status(student, *, class_id: str, payroll_anchor_utc=None, ctx=None):
     """Return PROD attendance facts for one canonical class scope."""
     if not class_id:
@@ -248,11 +278,17 @@ def get_class_attendance_status(student, *, class_id: str, payroll_anchor_utc=No
         payroll_anchor_utc,
         ctx=ctx,
     )
+    # "Time Today" must be the day-bounded worked figure, not the unbounded
+    # unpaid-since-payroll duration (which can span days if payroll has not run).
+    duration_today = calculate_worked_attendance_seconds_today(
+        seat.id, class_id, ctx=ctx
+    )
 
     return {
         "active": is_active,
         "done": done,
         "duration": duration,
+        "duration_today": duration_today,
         "projected_pay": None,
         "hall_pass": _derive_hall_pass_state(seat.id, class_id),
     }

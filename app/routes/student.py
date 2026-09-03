@@ -1325,61 +1325,43 @@ def transfer():
     checking_transactions = [t for t in transactions if t.account_type == 'checking']
     savings_transactions = [t for t in transactions if t.account_type == 'savings']
 
-    # Economic Engine is the sole authority for savings policy.
+    # Economic Engine is the sole authority for savings policy (SPEC-ECON-001).
+    # No hardcoded APY default: if the engine has not configured a rate, savings
+    # earns nothing and we must NOT advertise a fabricated rate (§11).
     settings = get_current_economic_engine(context.class_id)
-    from app.models import _quantize_currency
-    annual_rate = _quantize_currency(settings.interest_rate) if settings and settings.interest_rate is not None else Decimal('0.045')
-    monthly_interest_rate = annual_rate / Decimal('12')
+    annual_rate = settings.interest_rate if settings and settings.interest_rate is not None else None
     calculation_type = settings.interest_calculation_type if settings and settings.interest_calculation_type else 'simple'
-    compound_frequency = settings.compound_frequency if settings and settings.compound_frequency else 'monthly'
+    compound_frequency = settings.compound_frequency if settings and settings.compound_frequency else 'never'
+    payout_frequency = settings.interest_payout_frequency if settings and settings.interest_payout_frequency else 'monthly'
+    monthly_interest_rate = (annual_rate / Decimal('12')) if annual_rate is not None else Decimal('0')
 
-    # Calculate forecast interest based on settings
-    # CRITICAL FIX v3: Calculate BOTH checking and savings balances using canonical seat/class scoping
+    # Balances shown to the student: available for spend/transfer display.
     checking_balance, savings_balance = calculate_scoped_balances(context.seat_id, context.class_id)
 
-    if calculation_type == 'compound':
-        if compound_frequency == 'daily':
-            periods_per_month = Decimal('30')
-            rate_per_period = annual_rate / Decimal('365')
-            # For Decimal exponentiation, convert to float, calculate, then back to Decimal
-            forecast_interest = _quantize_currency(savings_balance * ((Decimal('1') + rate_per_period) ** periods_per_month - Decimal('1')))
-        elif compound_frequency == 'weekly':
-            periods_per_month = Decimal('4.33')
-            rate_per_period = annual_rate / Decimal('52')
-            forecast_interest = _quantize_currency(savings_balance * ((Decimal('1') + rate_per_period) ** periods_per_month - Decimal('1')))
-        else:  # monthly
-            forecast_interest = _quantize_currency(savings_balance * (annual_rate / Decimal('12')))
-    else:
-        # Simple interest: calculate only on principal (excluding interest earnings)
-        principal = _quantize_currency(sum((tx.amount for tx in savings_transactions if tx.type != 'Interest' and 'Interest' not in (tx.description or '')), Decimal('0')))
-        forecast_interest = _quantize_currency(principal * (annual_rate / Decimal('12')))
+    # Eligibility base and projection MUST use the same POSTED balance and the
+    # same math as the runtime payout engine (SPEC-ECON-001 §9.2, §10, §13).
+    posted_savings_balance = get_posted_balance(context.seat_id, context.class_id, 'savings')
 
-    # Calculate 12-month savings projection for graph
-    projection_months = []
-    projection_balances = []
-    current_balance = savings_balance
+    # Forecast interest for one payout window, via the shared canonical engine.
+    forecast_interest = savings_interest_for_payout_period(
+        posted_balance=posted_savings_balance,
+        annual_rate=annual_rate,
+        calculation_type=calculation_type,
+        compound_frequency=compound_frequency,
+        payout_frequency=payout_frequency,
+    )
 
-    for month in range(13):  # 0 to 12 months
-        projection_months.append(month)
-        # Convert to float for JSON serialization in template
-        projection_balances.append(float(current_balance))
-
-        if month < 12:  # Don't calculate interest for the last point
-            if calculation_type == 'compound':
-                if compound_frequency == 'daily':
-                    periods = Decimal('30')
-                    rate = annual_rate / Decimal('365')
-                    interest = _quantize_currency(current_balance * ((Decimal('1') + rate) ** periods - Decimal('1')))
-                elif compound_frequency == 'weekly':
-                    periods = Decimal('4.33')
-                    rate = annual_rate / Decimal('52')
-                    interest = _quantize_currency(current_balance * ((Decimal('1') + rate) ** periods - Decimal('1')))
-                else:  # monthly
-                    interest = _quantize_currency(current_balance * (annual_rate / Decimal('12')))
-                current_balance = _quantize_currency(current_balance + interest)
-            else:  # simple interest
-                interest = _quantize_currency(savings_balance * (annual_rate / Decimal('12')))  # Simple interest on original principal
-                current_balance = _quantize_currency(current_balance + interest)
+    # 12-month projection, built from the same recurrence the runtime uses.
+    projection_series = project_savings_balances(
+        posted_balance=posted_savings_balance,
+        annual_rate=annual_rate,
+        calculation_type=calculation_type,
+        compound_frequency=compound_frequency,
+        payout_frequency=payout_frequency,
+        months=12,
+    )
+    projection_months = list(range(len(projection_series)))
+    projection_balances = [float(b) for b in projection_series]
 
     import secrets
     transfer_token = secrets.token_hex(16)
@@ -1399,6 +1381,7 @@ def transfer():
                          annual_interest_rate=annual_rate,
                          calculation_type=calculation_type,
                          compound_frequency=compound_frequency,
+                         payout_frequency=payout_frequency,
                          projection_months=projection_months,
                          projection_balances=projection_balances,
                          transfer_token=transfer_token)

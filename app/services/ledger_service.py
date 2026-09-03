@@ -655,10 +655,50 @@ def apply_monthly_savings_interest(*args, **kwargs):
     return _apply_monthly_savings_interest(*args, **kwargs)
 
 
-def _apply_monthly_savings_interest(seat, *, annual_rate=Decimal("0.045")):
-    """Command to post monthly savings interest through the ledger authority."""
+def _apply_monthly_savings_interest(seat, *, annual_rate=None):
+    """Command to post a savings-interest payout through the ledger authority.
+
+    SPEC-ECON-001: the eligible base is the authoritative POSTED savings balance
+    (§9.2/§13); the rate and cadence are Class-Config policy inputs with NO hidden
+    default APY (§11); and the accrual math is the shared canonical engine so a
+    runtime payout equals the UI projection (§10). ``annual_rate`` may be supplied
+    to override the persisted rate (deterministic replay/tests); when omitted the
+    class's persisted ``interest_rate`` governs, and an unconfigured rate yields no
+    payout rather than a silent default.
+    """
     if not seat:
         return None
+
+    from app.services.class_configuration_query_service import (
+        get_current_economic_engine,
+    )
+    from app.services.economic_engine import savings_interest_for_payout_period
+
+    engine = get_current_economic_engine(seat.class_id)
+    if annual_rate is None:
+        annual_rate = (
+            Decimal(str(engine.interest_rate))
+            if engine and engine.interest_rate is not None
+            else None
+        )
+    if annual_rate is None or annual_rate <= Decimal("0"):
+        # No hidden default APY (SPEC-ECON-001 §11): unconfigured interest = no payout.
+        return None
+    calculation_type = (
+        engine.interest_calculation_type
+        if engine and engine.interest_calculation_type
+        else "simple"
+    )
+    compound_frequency = (
+        engine.compound_frequency
+        if engine and engine.compound_frequency
+        else "never"
+    )
+    payout_frequency = (
+        engine.interest_payout_frequency
+        if engine and engine.interest_payout_frequency
+        else "monthly"
+    )
 
     # V2 Temporal Model: INTEREST IS CLASS-SCOPED
     # Use class timezone for month/year resolution via canonical resolver
@@ -702,25 +742,20 @@ def _apply_monthly_savings_interest(seat, *, annual_rate=Decimal("0.045")):
         ):
             return None
 
-    eligible_balance = Decimal("0.00")
-    for tx in seat.transactions:
-        if tx.account_type != "savings" or tx.is_void or tx.amount is None:
-            continue
-        if tx.amount <= Decimal("0.00"):
-            continue
-        if tx.type == "Interest" or "Interest" in (tx.description or ""):
-            continue
+    # SPEC-ECON-001 §9.2/§13: eligibility is the authoritative POSTED savings balance.
+    # The former "sum of individual deposits aged >=30 days" logic is the prohibited
+    # historical-deposit-only eligibility model (§9.1, §11) and has been removed.
+    eligible_balance = get_posted_balance(seat.id, seat.class_id, "savings")
 
-        available_at = ensure_utc(tx.date_funds_available)
-        available_class = available_at.astimezone(class_tz) if available_at else None
-        if available_class and (now - available_class).days >= 30:
-            eligible_balance += _quantize_currency(tx.amount)
-
-    current_savings_balance = get_posted_balance(seat.id, seat.class_id, "savings")
-    eligible_balance = min(eligible_balance, current_savings_balance)
-
-    monthly_rate = annual_rate / Decimal("12")
-    interest = _quantize_currency(eligible_balance * monthly_rate)
+    # SPEC-ECON-001 §4/§10: use the shared canonical accrual engine so a runtime payout
+    # is exactly what the UI projection forecasts. Rate/cadence come from Class Config.
+    interest = savings_interest_for_payout_period(
+        posted_balance=eligible_balance,
+        annual_rate=annual_rate,
+        calculation_type=calculation_type,
+        compound_frequency=compound_frequency,
+        payout_frequency=payout_frequency,
+    )
     if interest <= Decimal("0.00"):
         return None
 

@@ -118,11 +118,16 @@
                 <canvas id="savingsProjectionChart" height="80"></canvas>
                 <div class="mt-3 text-center">
                     <small class="text-muted">
+                        {% if annual_interest_rate %}
                         Projection based on current balance of <strong>${{ "%.2f"|format(savings_balance) }}</strong>
                         with
                         {{ "%.2f"|format(annual_interest_rate * 100) }}% annual {{ calculation_type }}
                         interest
                         {% if calculation_type == 'compound' %}(compounded {{ compound_frequency }}){% endif %}
+                        {% else %}
+                        Savings interest is not currently configured for this class, so your
+                        balance of <strong>${{ "%.2f"|format(savings_balance) }}</strong> is projected flat.
+                        {% endif %}
                     </small>
                 </div>
             </div>
@@ -227,16 +232,18 @@
                 </div>
 
                 <div class="alert alert-info mt-3">
-                    <span class="material-symbols-outlined">info</span> <strong>Tip:</strong> Your savings account earns
-                    {% if settings %}
+                    <span class="material-symbols-outlined">info</span> <strong>Tip:</strong>
+                    {% if annual_interest_rate %}
+                    Your savings account earns
                     {{ '%.2f'|format(annual_interest_rate * 100) }}% annual {{ calculation_type }} interest
                     {% if calculation_type == 'compound' %}
                     (compounded {{ compound_frequency }})
                     {% endif %}
+                    (approximately ${{ '%.2f'|format(forecast_interest) }} per {{ payout_frequency }} payout).
                     {% else %}
-                    4.5% annual simple interest
+                    Savings interest is not currently configured for this class, so your savings
+                    balance does not earn interest right now.
                     {% endif %}
-                    (approximately ${{ '%.2f'|format(forecast_interest) }}/month).
                 </div>
             </div>
         </div>

@@ -9,8 +9,14 @@ transfer branch, which previously charged a forced overdraft fee.
 
 from __future__ import annotations
 
+from decimal import Decimal
+
+from app.extensions import db
+from app.feats.base import FEATContext
 from app.models import Transaction, ObligationAssessment
+from app.services import ledger_service
 from tests.helpers.classroom_initializer import initialize_as_student
+from tests.helpers.ledger import create_ledger_idempotent_transaction
 
 
 def test_insufficient_checking_transfer_declines_without_nsf_fee(client, app):
@@ -25,11 +31,22 @@ def test_insufficient_checking_transfer_declines_without_nsf_fee(client, app):
             class_id=class_id, obligation_type="NSF_FEE"
         ).count()
 
+    # Satisfy the single-use transfer token and passphrase gates so the POST
+    # actually reaches the insufficient-funds branch under test.
+    with client.session_transaction() as sess:
+        sess["transfer_token"] = "test-token"
+
     # A fresh student has no checking balance, so any checking->savings transfer
     # is over-balance and must be declined.
     resp = client.post(
         "/student/transfer",
-        data={"from_account": "checking", "to_account": "savings", "amount": "10.00"},
+        data={
+            "from_account": "checking",
+            "to_account": "savings",
+            "amount": "10.00",
+            "transfer_token": "test-token",
+            "passphrase": student.passphrase,
+        },
         follow_redirects=False,
     )
 
@@ -44,3 +61,58 @@ def test_insufficient_checking_transfer_declines_without_nsf_fee(client, app):
         assert ObligationAssessment.query.filter_by(
             class_id=class_id, obligation_type="NSF_FEE"
         ).count() == nsf_before
+
+
+def test_successful_transfer_moves_funds_under_feat_context(client, app):
+    """A funded checking->savings transfer succeeds through the FEAT boundary.
+
+    Regression: the /student/transfer POST path called execute_account_transfer
+    without passing user_id AND without opening a FEAT context, so a real transfer
+    raised TypeError('missing user_id') and then, once user_id was supplied, a
+    FEATContextError on flush ('mutated state outside a verified FEAT context').
+    This guards the FEAT-LED-000 wrapping and the user_id wiring together by
+    exercising a transfer that actually reaches the ledger.
+    """
+    classroom, student = initialize_as_student("chemistry_p1", client, app)
+    class_id = classroom.class_id
+
+    with app.app_context():
+        seat_id = student.seat.id
+        with FEATContext("FEAT-TEST-SETUP", idempotency_key=f"fund:{seat_id}"):
+            create_ledger_idempotent_transaction(
+                idempotency_key=f"fund-seat:{seat_id}",
+                seat_id=seat_id,
+                class_id=class_id,
+                user_id=student.user.id,
+                amount=Decimal("50.00"),
+                account_type="checking",
+                type="payroll",
+                description="Test funding",
+            )
+        checking_before, savings_before = ledger_service.get_available_balances(
+            seat_id, class_id
+        )
+
+    with client.session_transaction() as sess:
+        sess["transfer_token"] = "test-token"
+
+    resp = client.post(
+        "/student/transfer",
+        data={
+            "from_account": "checking",
+            "to_account": "savings",
+            "amount": "20.00",
+            "transfer_token": "test-token",
+            "passphrase": student.passphrase,
+        },
+        follow_redirects=False,
+    )
+    # Success redirects to the dashboard; never a server error.
+    assert resp.status_code == 302
+
+    with app.app_context():
+        checking_after, savings_after = ledger_service.get_available_balances(
+            seat_id, class_id
+        )
+        assert checking_after == checking_before - Decimal("20.00")
+        assert savings_after == savings_before + Decimal("20.00")
