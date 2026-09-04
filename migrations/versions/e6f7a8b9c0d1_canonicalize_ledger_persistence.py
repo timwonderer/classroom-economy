@@ -44,6 +44,11 @@ def upgrade():
         op.create_index("ix_ledger_transaction_posting_sequence", "ledger_transaction", ["posting_sequence"])
     if "ix_ledger_transaction_command_reservation_id" not in indexes:
         op.create_index("ix_ledger_transaction_command_reservation_id", "ledger_transaction", ["command_reservation_id"])
+    if "ix_ledger_transaction_reconstruction_scope" not in indexes:
+        op.create_index(
+            "ix_ledger_transaction_reconstruction_scope", "ledger_transaction",
+            ["class_id", "seat_id", "account_type", "posting_sequence", "status"],
+        )
     if "ledger_command_reservation" not in inspector.get_table_names():
         op.create_table(
             "ledger_command_reservation",

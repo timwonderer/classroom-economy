@@ -531,6 +531,10 @@ class Transaction(db.Model):
     __table_args__ = (
         db.Index('ix_transaction_seat_ledger', 'join_code', 'seat_id', 'status', 'account_type'),
         db.Index('ix_transaction_class_scope', 'class_id', 'target_seat_id', 'actor_seat_id', 'account_type'),
+        db.Index(
+            'ix_ledger_transaction_reconstruction_scope',
+            'class_id', 'seat_id', 'account_type', 'posting_sequence', 'status',
+        ),
         db.UniqueConstraint('class_id', 'posting_sequence', name='uq_ledger_transaction_class_posting_sequence'),
     )
 
