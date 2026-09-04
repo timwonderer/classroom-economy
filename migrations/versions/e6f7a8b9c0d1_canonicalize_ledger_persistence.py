@@ -22,6 +22,15 @@ def _columns(table_name):
 
 def upgrade():
     tx_columns = _columns("ledger_transaction")
+    tx_column_info = {
+        column["name"]: column for column in sa.inspect(op.get_bind()).get_columns("ledger_transaction")
+    }
+    idempotency_column = tx_column_info.get("idempotency_key")
+    if idempotency_column is not None and getattr(idempotency_column["type"], "length", None) != 128:
+        op.alter_column(
+            "ledger_transaction", "idempotency_key",
+            existing_type=idempotency_column["type"], type_=sa.String(length=128),
+        )
     if "posting_sequence" not in tx_columns:
         op.add_column("ledger_transaction", sa.Column("posting_sequence", sa.BigInteger(), nullable=True))
     if "command_reservation_id" not in tx_columns:

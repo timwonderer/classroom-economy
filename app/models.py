@@ -494,7 +494,7 @@ class Transaction(db.Model):
     description = db.Column(db.String(255))
     correlation_id = db.Column(db.String(100), nullable=False, index=True)
     feat_code = db.Column(db.String(100), nullable=True, index=True)
-    idempotency_key = db.Column(db.String(100), nullable=True, index=True)
+    idempotency_key = db.Column(db.String(128), nullable=True, index=True)
     is_void = db.Column(db.Boolean, default=False)
     # References for compensating/reversal ledger entries.
     # Stored as IDs for backend portability.
