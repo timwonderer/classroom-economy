@@ -113,8 +113,7 @@ path, class destruction, and credential removal. Green together with the 22 B8 d
 (28 passed). `tests/dom/class` shows the same 7 pre-existing failures before and after (verified by
 stash), so the teardown change introduces no regression.
 
-*Status: complete and green on `codex/landed-architecture-execution-fixes`, uncommitted as of
-2026-09-04 — record the SHA here at commit time.*
+*Status: closed on `codex/landed-architecture-execution-fixes` @ `25b54fcb` (2026-09-04).*
 
 ### B4 — Sysadmin escalated-issue and support-ticket views crash (hard 500)
 **Domain:** Support · **Severity:** High · **Violates:** INV-CORE-000 §III.7 (function is unreachable)
@@ -234,8 +233,7 @@ boundary and every gate-failure mode. Verified 22 passed with
 `tests/dom/class/test_hard_delete_class_scope_isolation.py`; `tests/test_class_phase2_persistence.py`
 clean after the domain-command split.
 
-*Status: complete and green on `codex/landed-architecture-execution-fixes`, uncommitted as of
-2026-09-04 — record the SHA here at commit time.*
+*Status: closed on `codex/landed-architecture-execution-fixes` @ `25b54fcb` (2026-09-04).*
 
 ---
 
