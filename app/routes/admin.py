@@ -214,7 +214,7 @@ from app.attendance import (
     get_batch_attendance_events,
     calculate_seconds_in_memory,
 )
-from app.services.balance_service import get_batch_balances_by_class_seat
+from app.services.ledger_balance_query_service import get_batch_balances_by_class_seat
 from app.services.attendance_service import calculate_unpaid_attendance_seconds as calculate_prod_attendance_seconds
 from app.services.hall_pass_request_queue import list_pending_hall_pass_requests_for_class
 from app.services import access_policy_service, obligations_service

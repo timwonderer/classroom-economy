@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+from collections import defaultdict
 from decimal import Decimal
 from typing import NamedTuple
+from sqlalchemy import func, tuple_
 
 from app.extensions import db
 from app.models import LedgerBalanceSnapshot, Transaction, TransactionStatus, _quantize_currency
@@ -69,6 +71,50 @@ def get_available_balance(seat_id: int, class_id: str, account_type: str) -> Dec
 
 def get_available_balances(seat_id: int, class_id: str) -> tuple[Decimal, Decimal]:
     return (get_available_balance(seat_id, class_id, "checking"), get_available_balance(seat_id, class_id, "savings"))
+
+
+def get_batch_balances_by_class_seat(class_seat_pairs):
+    """Read scoped checking, savings, and existing earnings display totals."""
+    raw_balances = defaultdict(lambda: {"checking_cents": 0, "savings_cents": 0, "earnings": Decimal("0.00")})
+    normalized_pairs = {(str(class_id), int(seat_id)) for class_id, seat_id in (class_seat_pairs or []) if class_id and seat_id}
+    if not normalized_pairs:
+        return raw_balances
+    class_ids = sorted({class_id for class_id, _ in normalized_pairs})
+    seat_ids = sorted({seat_id for _, seat_id in normalized_pairs})
+    scope = tuple_(LedgerBalanceSnapshot.class_id, LedgerBalanceSnapshot.seat_id)
+    tx_scope = tuple_(Transaction.class_id, Transaction.seat_id)
+    for rec in db.session.query(
+        LedgerBalanceSnapshot.class_id, LedgerBalanceSnapshot.seat_id,
+        LedgerBalanceSnapshot.account_type, LedgerBalanceSnapshot.posted_balance_cents,
+    ).filter(
+        LedgerBalanceSnapshot.class_id.in_(class_ids), LedgerBalanceSnapshot.seat_id.in_(seat_ids),
+        scope.in_(list(normalized_pairs)),
+    ).all():
+        key = (str(rec.class_id), int(rec.seat_id))
+        if rec.account_type == "checking":
+            raw_balances[key]["checking_cents"] = rec.posted_balance_cents
+        elif rec.account_type == "savings":
+            raw_balances[key]["savings_cents"] = rec.posted_balance_cents
+    for rec in db.session.query(
+        Transaction.class_id, Transaction.seat_id, Transaction.account_type,
+        func.sum(Transaction.amount_cents),
+    ).filter(
+        Transaction.class_id.in_(class_ids), Transaction.seat_id.in_(seat_ids),
+        tx_scope.in_(list(normalized_pairs)), Transaction.status == TransactionStatus.PENDING,
+        _non_void_filter(),
+    ).group_by(Transaction.class_id, Transaction.seat_id, Transaction.account_type).all():
+        key = (str(rec.class_id), int(rec.seat_id))
+        if str(rec.account_type).lower() in {"checking", "savings"}:
+            raw_balances[key][f"{str(rec.account_type).lower()}_cents"] += int(rec[3] or 0)
+    for rec in db.session.query(
+        Transaction.class_id, Transaction.seat_id, func.sum(Transaction.amount),
+    ).filter(
+        Transaction.class_id.in_(class_ids), Transaction.seat_id.in_(seat_ids),
+        tx_scope.in_(list(normalized_pairs)), Transaction.amount > 0,
+        _non_void_filter(), ~Transaction.description.ilike("Transfer%"),
+    ).group_by(Transaction.class_id, Transaction.seat_id).all():
+        raw_balances[(str(rec.class_id), int(rec.seat_id))]["earnings"] = _quantize_currency(rec[2])
+    return raw_balances
 
 
 def reconstruct_posted_balance(class_id: str, seat_id: int, account_type: str, through_posting_sequence: int | None = None) -> LedgerProofResult:
@@ -160,4 +206,4 @@ def verify_transfer(class_id: str, correlation_id: str) -> TransferProofResult:
     return TransferProofResult("PASS" if passed else "FAIL", len(rows), scope_ok, pair_ok, magnitude_ok, zero_sum, posting_ok, None if passed else "transfer_contract_violation")
 
 
-__all__ = ["LedgerProofResult", "TransferProofResult", "get_posted_balance", "get_pending_balance_delta", "get_available_balance", "get_available_balances", "reconstruct_posted_balance", "reconstruct_available_balance", "verify_posted_balance", "verify_available_balance", "verify_transfer"]
+__all__ = ["LedgerProofResult", "TransferProofResult", "get_posted_balance", "get_pending_balance_delta", "get_available_balance", "get_available_balances", "get_batch_balances_by_class_seat", "reconstruct_posted_balance", "reconstruct_available_balance", "verify_posted_balance", "verify_available_balance", "verify_transfer"]
