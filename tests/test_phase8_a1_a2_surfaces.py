@@ -22,6 +22,7 @@ from app.services.obligations_service import (
     get_satisfaction_events,
 )
 from app.services.obligation_view_model import get_total_paid_for_obligation
+from app.services.class_configuration_query_service import get_rent_settings
 from tests.helpers.classroom_initializer import initialize_as_student, initialize_as_teacher
 from tests.helpers.class_domain import customize_rent_settings, enable_class_feature
 
@@ -437,8 +438,10 @@ class TestA2AdminRentSettings:
                 late_penalty_amount=Decimal('10.00'),
             )
 
-            # Verify: querying by class_id returns the settings
-            result = RentSettings.query.filter_by(class_id=class_id).first()
+            # Verify: the class's current policy resolves to the submitted terms.
+            # rent_settings is append-only, so this reads the newest IN_USE row
+            # rather than an arbitrary version (DOM-POL-001 §VI.1).
+            result = get_rent_settings(class_id)
 
             assert result is not None, "Should find settings for class"
             assert result.class_id == class_id, "Settings belong to the correct class"
@@ -491,7 +494,7 @@ class TestA2AdminRentSettings:
             db.session.commit()
 
             # Verify: settings are retrievable for the same class_id
-            queried_settings = RentSettings.query.filter_by(class_id=class_id).first()
+            queried_settings = get_rent_settings(class_id)
             assert queried_settings is not None, "Settings should exist"
             assert queried_settings.rent_amount == Decimal('100.00'), "Rent amount configured"
 

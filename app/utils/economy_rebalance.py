@@ -13,6 +13,8 @@ from app.models import (
     PolicyVersion,
     RentSettings,
 )
+from app.services.admin_settings_service import supersede_rent_settings
+from app.services.class_configuration_query_service import get_rent_settings
 from app.utils.canonical_temporal_resolver import ensure_utc, utc_now
 
 
@@ -321,15 +323,15 @@ def get_pending_policy_transition_effective_at(class_id: str | None) -> datetime
 
 
 def _get_effective_rent_settings(class_id: str | None):
+    """Resolve the rent policy currently in force for the class.
+
+    ``rent_settings`` is append-only (DOM-POL-001 §VI.1), so this delegates to the
+    canonical reader rather than ordering by ``id`` and hoping: the newest row is
+    not necessarily the ``IN_USE`` one once a policy has been hidden or retired.
+    """
     if not class_id:
         return None
-    return (
-        RentSettings.query.filter_by(
-            class_id=class_id,
-        )
-        .order_by(RentSettings.id.desc())
-        .first()
-    )
+    return get_rent_settings(class_id)
 
 
 def _apply_change_list(user_id, class_id, changes, activation_mode, *, reference_time=None):
@@ -357,7 +359,15 @@ def _apply_change_list(user_id, class_id, changes, activation_mode, *, reference
         if change_type == "rent":
             rent_settings = _get_effective_rent_settings(class_id)
             if rent_settings:
-                rent_settings.rent_amount = Decimal(str(change.get("new_value")))
+                # A rebalance is a policy submission like any other: it mints a new
+                # immutable row rather than rewriting the live one, so rent already
+                # assessed under the previous terms keeps its assessed amount
+                # (DOM-POL-001 §VI.1). Only `rent_amount` changes; the rest of the
+                # contract is carried forward by the Policies command.
+                supersede_rent_settings(
+                    class_id=class_id,
+                    updates={"rent_amount": Decimal(str(change.get("new_value")))},
+                )
                 applied_labels.append("Rent")
                 applied_changes.append(dict(change))
 

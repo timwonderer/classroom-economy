@@ -30,6 +30,8 @@ from decimal import Decimal
 from app.extensions import db
 from app.feats.base import FEATContext
 from app.models import ObligationAssessment, RentSettings
+from app.services.admin_settings_service import supersede_rent_settings
+from app.services.class_configuration_query_service import get_rent_settings
 from app.services.ledger_service import create_pending_transaction
 from app.services.interpretation.obligation_observation import compute_q3
 from app.services.interpretation.obligation_outcome import (
@@ -136,18 +138,21 @@ def test_decompose_coverage_zero_assessed_contributes_nothing():
 def _seed_rent_policy(cid) -> str:
     """Ensure the class RentSettings resolves RENT assessments to 10.00 assessed.
 
-    The classroom initializer already provisions a class RentSettings (unique per
-    class_id), so this reuses it — setting a known ``rent_amount`` — rather than
-    inserting a second row.
+    The classroom initializer already provisions a class RentSettings, and
+    ``rent_settings`` is append-only (DOM-POL-001 §VI.1), so this records a new
+    policy version rather than editing the provisioned row. The returned
+    ``policy_uuid`` is what the seeded assessments freeze, so they resolve to
+    10.00 regardless of any later version.
     """
     with FEATContext("FEAT-TEST-SETUP", idempotency_key="q3:rent:policy"):
-        rs = RentSettings.query.filter_by(class_id=cid).first()
-        if rs is None:
+        if get_rent_settings(cid) is None:
             rs = RentSettings(class_id=cid, rent_amount=Decimal("10.00"))
             db.session.add(rs)
+            db.session.flush()
         else:
-            rs.rent_amount = Decimal("10.00")
-        db.session.flush()
+            rs = supersede_rent_settings(
+                class_id=cid, updates={"rent_amount": Decimal("10.00")}
+            )
         return rs.policy_uuid
 
 

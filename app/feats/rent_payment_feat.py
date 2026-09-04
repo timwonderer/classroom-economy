@@ -40,6 +40,7 @@ from app.models import ObligationAssessment, Seat, RentSettings
 from app.services import obligations_service
 from app.services import ledger_service
 from app.services import entitlement_service
+from app.services.class_configuration_query_service import get_rent_settings
 from app.feats.base import requires_feat_context, FEATContext
 from app.feats.satisfy_obligation_feat import satisfy_obligation, SatisfyObligationRequest
 
@@ -144,7 +145,22 @@ def pay_rent(
             error_code="NO_SEAT", error_message="Seat not found in class scope",
         )
 
-    settings = RentSettings.query.filter_by(class_id=class_id).first()
+    # Resolve the policy THIS OBLIGATION WAS ASSESSED UNDER, not whatever is
+    # current. Paying rent settles a liability the student already incurred, so
+    # its terms — the incremental-payment allowance and the satisfaction perks —
+    # come from the row the assessment froze (DOM-POL-001 §VII: an already-created
+    # fact does not re-read the reference library). `rent_settings` is append-only,
+    # so a teacher who edits rent between assessment and payment mints a new row;
+    # reading the current one here would settle the old bill on the new contract.
+    settings = None
+    if assessment.policy_uuid:
+        settings = RentSettings.query.filter_by(
+            policy_uuid=assessment.policy_uuid
+        ).first()
+    if settings is None:
+        # Pre-freeze assessments carry no policy_uuid; fall back to the class's
+        # current policy so legacy obligations remain payable.
+        settings = get_rent_settings(class_id)
     if settings is None:
         return RentPaymentResult(
             success=False, correlation_id=correlation_id,

@@ -35,7 +35,7 @@ from app.services import obligations_service
 from app.services import rent_schedule_service
 from app.services import entitlement_service
 from app.services import ledger_service
-from app.services.class_configuration_query_service import is_feature_enabled
+from app.services.class_configuration_query_service import get_rent_settings, is_feature_enabled
 from app.feats.base import requires_feat_context, FEATContext
 # Obligations DOMAIN commands (plain functions), invoked within THIS FEAT's single
 # context — never the execute_* FEAT wrappers (INV-ARC-000 / -021 / -006).
@@ -234,7 +234,12 @@ def reconcile_rent(
     if not is_feature_enabled(class_id, "rent"):
         return ReconcileRentResult(reason="RENT_DISABLED")
 
-    settings = RentSettings.query.filter_by(class_id=class_id).first()
+    # New cycles and new assessments are NEW work, so they take the policy
+    # currently in force and freeze its `policy_uuid` onto themselves. This is the
+    # mint point for the freeze: `rent_settings` is append-only, so an unordered
+    # lookup here could stamp a superseded policy onto a new cycle and pin the
+    # wrong amount permanently (DOM-POL-001 §VI.1, §VII).
+    settings = get_rent_settings(class_id)
     if settings is None:
         return ReconcileRentResult(reason="NO_SETTINGS")
 

@@ -425,8 +425,10 @@ def get_rent_settings_for_context(context):
         .first()
     )
     if not current_cycle or not current_cycle.policy_uuid:
-        # Fallback: direct class_id lookup when no BillCycle exists yet
-        return RentSettings.query.filter_by(class_id=class_id).first()
+        # Fallback: no BillCycle yet. `rent_settings` is append-only, so this
+        # resolves the class's newest IN_USE policy, not an arbitrary row.
+        from app.services.class_configuration_query_service import get_rent_settings
+        return get_rent_settings(class_id)
     return RentSettings.query.filter_by(policy_uuid=current_cycle.policy_uuid).first()
 
 
@@ -2888,7 +2890,6 @@ def rent():
 
 @student_bp.route('/rent/pay/<period>', methods=['POST'])
 @login_required
-@requires_feat_context("FEAT-OBL-001")
 def rent_pay(period):
     """Satisfy the student's outstanding rent obligation via the canonical FEAT.
 
@@ -2897,6 +2898,13 @@ def rent_pay(period):
     resolves the seat's outstanding rent assessment (the correlation posted by
     the pay form, validated against the seat's own outstanding set) and delegates
     the entire atomic Ledger + PAYMENT + PERK-grant transaction to the FEAT.
+
+    The route opens no FEAT envelope of its own. ``execute_rent_bill_payment``
+    carries ``@requires_feat_context("FEAT-OBL-001")``, so a route-level
+    decorator here would make the payment nest inside it and raise
+    ``FEATContextError`` — exactly one FEAT executes per request
+    (INV-ARC-000 §VIII.2, INV-ARC-021 §V.2), and it is the FEAT's own. The
+    route's remaining work is resolution and validation: reads only.
     """
     context = resolve_canonical_context()
     if not context:

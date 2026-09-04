@@ -1,7 +1,7 @@
 import pytest
 
 from app.extensions import db
-from app.models import RentSettings
+from app.services.class_configuration_query_service import get_rent_settings
 from tests.helpers.class_domain import update_rent_settings
 from tests.helpers.classroom_initializer import initialize_as_teacher
 from tests.helpers.class_domain import enable_class_feature
@@ -27,7 +27,9 @@ def test_DOM_CLASS_001__rent_settings_update_persists_class_scoped_row(client):
 
     assert response.status_code == 302
 
-    saved = RentSettings.query.filter_by(class_id=classroom.class_id).first()
+    # The POST supersedes rather than edits, so read the current policy through
+    # the canonical reader (append-only: DOM-POL-001 §VI.1).
+    saved = get_rent_settings(classroom.class_id)
     assert saved is not None
     assert float(saved.rent_amount) == 75.0
     assert saved.class_id == classroom.class_id

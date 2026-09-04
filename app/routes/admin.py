@@ -161,7 +161,10 @@ from app.services.class_configuration_view_models import (
     build_feature_settings_page_view,
 )
 from app.services.admin_identity_service import delete_admin_account_rows
-from app.services.admin_settings_service import create_rent_settings
+from app.services.admin_settings_service import (
+    create_rent_settings,
+    supersede_rent_settings,
+)
 from app.services.issue_service import create_support_ticket
 from app.utils.ip_handler import get_real_ip
 from app.utils.turnstile import verify_turnstile_token
@@ -2062,12 +2065,13 @@ def _resolve_rent_settings_for_class_id(class_id, policy_uuid=None):
         if cycled:
             return cycled
     # Fallback: no bill_cycle yet (brand-new class, or rent enabled but
-    # never assessed). Return the class's rent_settings row directly so
-    # downstream analyzers (economic engine, pricing recommendations,
-    # rebalance planner) can still evaluate the current configuration.
-    # Without this fallback, out-of-range rent goes undetected on any
-    # class that hasn't hit its first assessment yet.
-    return RentSettings.query.filter_by(class_id=class_id).first()
+    # never assessed). Return the class's CURRENT rent policy so downstream
+    # analyzers (economic engine, pricing recommendations, rebalance planner)
+    # can still evaluate the live configuration. Without this fallback,
+    # out-of-range rent goes undetected on any class that hasn't hit its first
+    # assessment yet. `rent_settings` is append-only, so this must resolve the
+    # newest IN_USE row rather than an arbitrary historical one.
+    return get_rent_settings(class_id)
 
 
 def _resolve_economic_engine_for_class_id(class_id):
@@ -4649,9 +4653,15 @@ def generate_collective_goal_instance_code():
 
 @admin_bp.route('/store', methods=['GET', 'POST'])
 @admin_required
-@requires_feat_context("FEAT-STOR-001")
 def store_management():
-    """Manage store items - view, create, edit, delete."""
+    """Manage store items - view, create, edit, delete.
+
+    No route-level FEAT envelope: the GET path is a pure read (INV-ARC-007),
+    and the POST path opens exactly one — ``FEAT-SETTINGS-001``, below —
+    because the store catalog is class configuration, not a purchase. The
+    former ``@requires_feat_context("FEAT-STOR-001")`` decorator (Store
+    Purchase) made that inner context nest and raise ``FEATContextError``.
+    """
     user_id = g.canonical_context.user_id
     feature_options = get_admin_feature_join_code_options('store', canonical_context=g.canonical_context)
     current_class_id = g.canonical_context.class_id
@@ -5066,9 +5076,12 @@ def store_management():
 
 @admin_bp.route('/store/edit/<int:item_id>', methods=['GET', 'POST'])
 @admin_required
-@requires_feat_context("FEAT-STOR-001")
 def edit_store_item(item_id):
-    """Edit an existing store item."""
+    """Edit an existing store item.
+
+    Envelope rationale as in :func:`store_management`: the single FEAT is the
+    inner ``FEAT-SETTINGS-001``, and a route decorator would nest inside it.
+    """
     user_id = g.canonical_context.user_id
     selected_scope = require_admin_feature_scope(
         'store',
@@ -5148,9 +5161,12 @@ def edit_store_item(item_id):
 @admin_bp.route('/store/delete/<int:item_id>', methods=['POST'])
 @admin_bp.route('/item/deactivate/<int:item_id>', methods=['POST'])
 @admin_required
-@requires_feat_context("FEAT-STOR-001")
 def delete_store_item(item_id):
-    """Deactivate a store item (soft delete)."""
+    """Deactivate a store item (soft delete).
+
+    Envelope rationale as in :func:`store_management`: the single FEAT is the
+    inner ``FEAT-SETTINGS-001``, and a route decorator would nest inside it.
+    """
     user_id = g.canonical_context.user_id
     selected_scope = require_admin_feature_scope(
         'store',
@@ -5337,9 +5353,22 @@ def _calculate_base_rent_amount(rent_settings: RentSettings, current_year: int, 
 
 @admin_bp.route('/rent-settings', methods=['GET', 'POST'])
 @admin_required
-@requires_feat_context("FEAT-OBL-003")
 def rent_settings():
-    """Configure rent settings."""
+    """Configure rent settings.
+
+    No FEAT envelope on the route itself. The GET path is a pure read
+    (INV-ARC-007) and needs none; the POST path opens exactly one —
+    ``FEAT-SETTINGS-001``, below — because rent policy configuration is Class
+    Configuration authority, not Obligations mutation (MAP-UI-001).
+
+    This route previously carried ``@requires_feat_context("FEAT-OBL-003")``
+    (Obligations / "Scheduled Insurance Cycle"), which made the POST open a
+    second, nested context and fail outright with ``FEATContextError``: a
+    teacher could not change rent at all. The decorator could not simply be
+    re-pointed at the right FEAT either, since ``requires_feat_context`` reads
+    ``idempotency_key`` from ``kwargs`` — which a Flask view never receives —
+    and would have discarded the payload-derived key computed below.
+    """
     user_id = g.canonical_context.user_id
     current_class_id = (getattr(g.canonical_context, "class_id", None) or "").strip()
     if not current_class_id:
@@ -5387,47 +5416,48 @@ def rent_settings():
         # not admin action (FEAT-ADMN-001). Policy updates define the contractual terms that cause
         # assessments to exist; this is Class Configuration authority, not Obligations mutation.
         with FEATContext("FEAT-SETTINGS-001", idempotency_key=idempotency_key):
-            block_settings = get_rent_settings(class_id)
-            if not block_settings:
-                block_settings = create_rent_settings(class_id=class_id)
-
-            # Rent amount and frequency
+            # A submission is a NEW contract, never an edit of the old one
+            # (DOM-POL-001 §VI.1). The form carries the complete rent definition,
+            # so build the whole payload and hand it to the Policies command,
+            # which inserts a new immutable row with a new `policy_uuid` and
+            # retires the predecessor. Assessments that froze the old
+            # `policy_uuid` keep resolving the terms they were assessed under.
             from app.models import _quantize_currency
-            block_settings.rent_amount = _quantize_currency(request.form.get('rent_amount', '50.0'))
-            block_settings.frequency_type = request.form.get('frequency_type', 'monthly')
 
-            if block_settings.frequency_type == 'custom':
-                block_settings.custom_frequency_value = int(request.form.get('custom_frequency_value', 1))
-                block_settings.custom_frequency_unit = request.form.get('custom_frequency_unit', 'days')
-            else:
-                block_settings.custom_frequency_value = None
-                block_settings.custom_frequency_unit = None
-
-            # Due date settings
+            frequency_type = request.form.get('frequency_type', 'monthly')
+            late_penalty_type = request.form.get('late_penalty_type', 'once')
             first_due_date_str = request.form.get('first_rent_due_date')
-            if first_due_date_str:
-                block_settings.first_rent_due_date = datetime.strptime(first_due_date_str, '%Y-%m-%d')
-            else:
-                block_settings.first_rent_due_date = None
 
-            block_settings.due_day_of_month = int(request.form.get('due_day_of_month', 1))
-
-            # Grace period and late penalties
-            block_settings.grace_period_days = int(request.form.get('grace_period_days', 3))
-            block_settings.late_penalty_amount = _quantize_currency(request.form.get('late_penalty_amount', '10.0'))
-            block_settings.late_penalty_type = request.form.get('late_penalty_type', 'once')
-
-            if block_settings.late_penalty_type == 'recurring':
-                block_settings.late_penalty_frequency_days = int(request.form.get('late_penalty_frequency_days', 7))
-            else:
-                block_settings.late_penalty_frequency_days = None
-
-            # Student payment options
-            block_settings.bill_preview_enabled = request.form.get('bill_preview_enabled') == 'on'
-            block_settings.bill_preview_days = int(request.form.get('bill_preview_days', 7))
-            block_settings.allow_incremental_payment = request.form.get('allow_incremental_payment') == 'on'
-            block_settings.prevent_purchase_when_late = request.form.get('prevent_purchase_when_late') == 'on'
-            block_settings.bypass_cwi_warnings = request.form.get('bypass_cwi_warnings') == 'on'
+            payload = {
+                'rent_amount': _quantize_currency(request.form.get('rent_amount', '50.0')),
+                'frequency_type': frequency_type,
+                'custom_frequency_value': (
+                    int(request.form.get('custom_frequency_value', 1))
+                    if frequency_type == 'custom' else None
+                ),
+                'custom_frequency_unit': (
+                    request.form.get('custom_frequency_unit', 'days')
+                    if frequency_type == 'custom' else None
+                ),
+                'first_rent_due_date': (
+                    datetime.strptime(first_due_date_str, '%Y-%m-%d')
+                    if first_due_date_str else None
+                ),
+                'due_day_of_month': int(request.form.get('due_day_of_month', 1)),
+                'grace_period_days': int(request.form.get('grace_period_days', 3)),
+                'late_penalty_amount': _quantize_currency(request.form.get('late_penalty_amount', '10.0')),
+                'late_penalty_type': late_penalty_type,
+                'late_penalty_frequency_days': (
+                    int(request.form.get('late_penalty_frequency_days', 7))
+                    if late_penalty_type == 'recurring' else None
+                ),
+                'bill_preview_enabled': request.form.get('bill_preview_enabled') == 'on',
+                'bill_preview_days': int(request.form.get('bill_preview_days', 7)),
+                'allow_incremental_payment': request.form.get('allow_incremental_payment') == 'on',
+                'prevent_purchase_when_late': request.form.get('prevent_purchase_when_late') == 'on',
+                'bypass_cwi_warnings': request.form.get('bypass_cwi_warnings') == 'on',
+            }
+            block_settings = supersede_rent_settings(class_id=class_id, updates=payload)
 
         # Handle rent items (for all blocks in blocks_to_update)
         # Parse rent items from form once
@@ -5805,9 +5835,14 @@ def rent_settings():
 
 @admin_bp.route('/rent-waiver/add', methods=['POST'])
 @admin_required
-@requires_feat_context("FEAT-OBL-003")
 def add_rent_waiver():
     """Waive one or more specific outstanding rent assessments (FEAT-OBL-003).
+
+    The FEAT envelope belongs to ``execute_satisfy_obligation_waiver``, which
+    carries its own ``@requires_feat_context("FEAT-OBL-003")``. This route must
+    therefore open none: a route-level decorator here would make every waiver
+    call nest inside it and raise ``FEATContextError``. The route's own work is
+    resolution and validation — reads only.
 
     Per DOM-OBL-001 §V.6: a waiver is a one-time immutable satisfaction of
     a specific already-assessed rent liability. It does not create ongoing

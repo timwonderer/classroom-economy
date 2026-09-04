@@ -10,6 +10,8 @@ from app.routes.student import (
     get_feature_settings_for_student,
     get_rent_settings_for_context,
 )
+from app.services.admin_settings_service import supersede_rent_settings
+from app.services.class_configuration_query_service import get_rent_settings
 from flask import session as flask_session
 from tests.helpers.classroom_initializer import initialize, initialize_as_student
 
@@ -31,15 +33,18 @@ def two_class_ctx(client):
             db.session.delete(rs)
         db.session.flush()
 
-        rs2 = RentSettings.query.filter_by(class_id=ctx2.class_id).first()
-        if rs2:
-            rs2.rent_amount = 100.0
+        # rent_settings is append-only (DOM-POL-001 §VI.1): setting ctx2's rent is
+        # a new policy version, not an edit of the provisioned row.
+        if get_rent_settings(ctx2.class_id) is not None:
+            supersede_rent_settings(
+                class_id=ctx2.class_id, updates={"rent_amount": 100.0}
+            )
         else:
             db.session.add(RentSettings(
                 class_id=ctx2.class_id,
                 rent_amount=100.0,
             ))
-        db.session.flush()
+            db.session.flush()
 
     return {
         "ctx": ctx1,

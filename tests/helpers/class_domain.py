@@ -146,35 +146,39 @@ def update_rent_settings(client, **form_data: Any):
 
 
 def customize_rent_settings(class_id: str, **fields: Any):
-    """Customize the canonical RentSettings row for a class.
+    """Record a new rent policy version for a class and return it.
 
-    ``provision_classroom`` seeds exactly one RentSettings per class, and the
-    schema enforces a one-rent-policy-per-class invariant via a unique
-    ``class_id`` (``ix_rent_settings_class_id``). Tests must therefore NOT
-    INSERT a second row; they customize the already-provisioned canonical row.
+    ``rent_settings`` is an append-only immutable repository (DOM-POL-001
+    §VI.0/§VI.1): ``policy_uuid`` *is* the version, and the definition payload is
+    frozen at insert. This helper therefore does NOT edit the provisioned row —
+    it supersedes it, minting a new ``policy_uuid`` and retiring the predecessor,
+    which is exactly what a teacher submission does in production. Unspecified
+    fields are carried forward from the current policy, so a partial call still
+    yields a complete contract.
+
+    Editing in place is not merely discouraged here; ``RentSettings``'
+    ``before_update`` guard rejects it outright, because an assessment that froze
+    the old ``policy_uuid`` resolves its amount through that row.
 
     This is the highest-level authorized setup mechanism available for tests
     without a live teacher session (route-driven tests should use
-    ``update_rent_settings`` instead). The mutation is performed through the
+    ``update_rent_settings`` instead). The write is performed through the
     canonical setup-FEAT boundary (FEAT-TEST-SETUP) so it does not bypass
     FEAT-INTEGRITY enforcement.
     """
-    from app.models import RentSettings
+    from app.services.admin_settings_service import supersede_rent_settings
+    from app.services.class_configuration_query_service import get_rent_settings
 
     with FEATContext(
         "FEAT-TEST-SETUP",
         idempotency_key=f"rent_settings:customize:{class_id}",
     ):
-        settings = RentSettings.query.filter_by(class_id=class_id).first()
-        if settings is None:
+        if get_rent_settings(class_id) is None:
             raise AssertionError(
                 f"No canonical RentSettings found for class {class_id}; "
                 "provision_classroom is expected to seed exactly one."
             )
-        for key, value in fields.items():
-            setattr(settings, key, value)
-        db.session.flush()
-    return settings
+        return supersede_rent_settings(class_id=class_id, updates=fields)
 
 
 def manual_payroll(

@@ -1046,10 +1046,38 @@ def validate_satisfaction_benefits(raw):
 
 # -------------------- RENT SETTINGS MODEL --------------------
 class RentSettings(db.Model):
+    """Immutable rent policy definition — POL-governed, consumed by Obligations.
+
+    Append-only (DOM-POL-001 §VI.0/§VI.1): ``policy_uuid`` *is* the version. Every
+    teacher submission inserts a NEW row with a NEW ``policy_uuid``; the payload
+    columns are never rewritten in place. ``availability_state`` is a mutable
+    projection *over* the immutable row, not a version pointer.
+
+    This table was previously a mutable singleton (``class_id`` was ``unique=True``
+    and the admin handler reassigned fields on the fetched row). Because obligation
+    assessments resolve ``amount_due`` from this row via the ``policy_uuid`` they
+    froze at assessment time, editing rent from 50 to 200 retroactively rewrote the
+    amount owed on every already-assessed historical cycle. The freeze mechanism was
+    fully wired; it was inert only because the referenced row kept changing
+    underneath it.
+
+    The "current" policy for a class is the newest ``IN_USE`` row — resolve it
+    through ``class_configuration_query_service.get_rent_settings()``, never with a
+    bare ``filter_by(class_id=...).first()``, which is now nondeterministic. A
+    historical fact resolves its own row by ``policy_uuid`` and MUST NOT read the
+    current row (DOM-POL-001 §VII: Policies is a reference library, not a runtime
+    dependency for already-created facts).
+    """
     __tablename__ = 'rent_settings'
     id = db.Column(db.Integer, primary_key=True)
     policy_uuid = db.Column(db.String(36), unique=True, nullable=False, index=True, default=lambda: str(uuid.uuid4()))
-    class_id = db.Column(db.String(36), db.ForeignKey('classes.class_id', ondelete='CASCADE'), nullable=False, unique=True, index=True)
+    class_id = db.Column(db.String(36), db.ForeignKey('classes.class_id', ondelete='CASCADE'), nullable=False, index=True)
+
+    # Availability projection over the immutable row (DOM-POL-001 §IX).
+    # IN_USE  - selectable for new work
+    # HIDDEN  - not selectable, may return to IN_USE
+    # RETIRED - permanently unselectable; stays readable while dependencies drain
+    availability_state = db.Column(db.String(16), nullable=False, server_default='IN_USE', default='IN_USE')
 
     # Rent amount and frequency
     rent_amount = db.Column(db.Numeric(precision=12, scale=2), default=Decimal('50.00'))
@@ -1110,12 +1138,25 @@ class RentSettings(db.Model):
         self.satisfaction_benefits = normalized if normalized else None
         return normalized
 
+    # The immutable definition payload. These columns are frozen at insert: a
+    # change to any of them is a NEW row with a NEW policy_uuid, never an update
+    # (DOM-POL-001 §VI.1). Enforced by the before_update guard below.
     _FROZEN_POLICY_FIELDS = (
         'rent_amount', 'frequency_type', 'custom_frequency_value', 'custom_frequency_unit',
         'due_day_of_month', 'grace_period_days', 'late_penalty_amount', 'late_penalty_type',
         'late_penalty_frequency_days', 'bill_preview_enabled', 'bill_preview_days',
         'allow_incremental_payment', 'prevent_purchase_when_late', 'cycle_length_days',
+        'satisfaction_benefits', 'first_rent_due_date', 'bypass_cwi_warnings',
     )
+
+    __table_args__ = (
+        db.CheckConstraint(
+            "availability_state IN ('IN_USE','HIDDEN','RETIRED')",
+            name='ck_rent_settings_availability',
+        ),
+        db.Index('ix_rent_settings_class_availability', 'class_id', 'availability_state'),
+    )
+
 
 @event.listens_for(RentSettings, "before_insert")
 @event.listens_for(RentSettings, "before_update")
@@ -1123,6 +1164,35 @@ def _sync_rent_settings_scope(mapper, connection, target):
     """Canonical rent settings scope must already be class_id anchored."""
     if getattr(target, "class_id", None) is None:
         raise ValueError("rent_settings require canonical class_id")
+
+
+@event.listens_for(RentSettings, "before_update")
+def _reject_rent_policy_payload_mutation(mapper, connection, target):
+    """Refuse any in-place edit of the immutable rent definition payload.
+
+    DOM-POL-001 §VI.1: definition payload columns are immutable after insert;
+    there is no "update in place". A rent change is a new row with a new
+    ``policy_uuid``. Only ``availability_state`` (the mutable projection over the
+    row) and bookkeeping columns may change on an existing row.
+
+    This guard exists because the failure it prevents is silent and retroactive:
+    an assessment froze a ``policy_uuid``, so rewriting the row it points at
+    changes what a student owed on a cycle that closed weeks ago. A missed write
+    path must fail loudly here rather than quietly corrupt financial history.
+    """
+    state = sa.inspect(target)
+    mutated = [
+        field
+        for field in RentSettings._FROZEN_POLICY_FIELDS
+        if state.attrs[field].history.has_changes()
+    ]
+    if mutated:
+        raise ValueError(
+            "rent_settings definition payload is immutable "
+            f"(DOM-POL-001 §VI.1); attempted in-place change to {sorted(mutated)} on "
+            f"policy_uuid={getattr(target, 'policy_uuid', None)}. "
+            "Insert a new RentSettings row instead."
+        )
 
 
 # Rent policy state is now canonical

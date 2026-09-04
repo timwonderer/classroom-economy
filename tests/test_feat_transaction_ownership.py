@@ -29,6 +29,7 @@ which is exactly what the pre-fix defect produced.
 """
 
 import logging
+from datetime import datetime, timezone
 
 import pytest
 from sqlalchemy import text
@@ -40,6 +41,9 @@ from tests.helpers.classroom_initializer import initialize
 
 BASE_LOGGER = "app.feats.base"
 
+# Arbitrary deterministic instant used as an observable bookkeeping write.
+_MARKER_TIME = datetime(2026, 3, 1, 12, 0, tzinfo=timezone.utc)
+
 
 def _sess():
     """Underlying Session (scoped_session does not proxy transaction introspection)."""
@@ -47,7 +51,26 @@ def _sess():
 
 
 def _rent_settings(class_id):
-    return RentSettings.query.filter_by(class_id=class_id).first()
+    """The class's current rent policy row.
+
+    These tests need any persistent row to write to; rent settings is a
+    convenient one. They mutate ``availability_state`` (and ``rent_configured_at``
+    where a second independent write is needed) rather than the rent terms,
+    because the definition payload is immutable — a rent change is a new row, not
+    an edit (DOM-POL-001 §VI.1), and the model rejects in-place payload writes.
+    Availability is the mutable projection over the row, so it is the lawful
+    handle for a test whose subject is transaction ownership, not rent.
+
+    Deliberately NOT ``get_rent_settings()``: that reader returns only the IN_USE
+    row, and these tests write availability states that would make it disappear.
+    ``provision_classroom`` seeds exactly one row per class, so newest-by-id is
+    unambiguous here.
+    """
+    return (
+        RentSettings.query.filter_by(class_id=class_id)
+        .order_by(RentSettings.id.desc())
+        .first()
+    )
 
 
 def _commit_ownership_lines(caplog, feat_name):
@@ -92,7 +115,7 @@ def test_predicate_false_for_autobegin_with_pending_dirty(app):
     with app.app_context():
         db.session.rollback()
         rs = _rent_settings(classroom.class_id)  # read → autobegin
-        rs.grace_period_days = (rs.grace_period_days or 0) + 1  # dirty, unflushed
+        rs.availability_state = "HIDDEN"  # dirty, unflushed
         try:
             assert db.session.dirty
             assert is_discardable_read_autobegin(db.session) is False
@@ -139,11 +162,11 @@ def test_fresh_session_feat_owns_and_commits(app, caplog):
         db.session.rollback()  # ensure no transaction is live
         assert not _sess().in_transaction()
 
-        target = 41
+        target = "HIDDEN"
         with caplog.at_level(logging.INFO, logger=BASE_LOGGER):
             with FEATContext("FEAT-TEST-FRESH", idempotency_key="feat:test:fresh:1"):
                 rs = _rent_settings(classroom.class_id)
-                rs.grace_period_days = target
+                rs.availability_state = target
 
         assert _commit_ownership_lines(caplog, "FEAT-TEST-FRESH"), (
             "Top-level FEAT on a fresh session must emit FEAT-COMMIT-OWNERSHIP"
@@ -151,7 +174,7 @@ def test_fresh_session_feat_owns_and_commits(app, caplog):
         assert not _sess().in_nested_transaction()
 
         db.session.expire_all()
-        assert _rent_settings(classroom.class_id).grace_period_days == target
+        assert _rent_settings(classroom.class_id).availability_state == target
 
 
 def test_read_autobegin_feat_discards_read_then_commits(app, caplog):
@@ -167,20 +190,20 @@ def test_read_autobegin_feat_discards_read_then_commits(app, caplog):
         db.session.execute(text("SELECT 1"))  # incidental read autobegin
         assert _sess().in_transaction()
 
-        target = 42
+        target = "RETIRED"
         with caplog.at_level(logging.INFO, logger=BASE_LOGGER):
             with FEATContext("FEAT-TEST-AUTOBEGIN", idempotency_key="feat:test:autobegin:1"):
                 # The FEAT owns a top-level begin(), not a savepoint.
                 assert not _sess().in_nested_transaction()
                 rs = _rent_settings(classroom.class_id)
-                rs.grace_period_days = target
+                rs.availability_state = target
 
         assert _commit_ownership_lines(caplog, "FEAT-TEST-AUTOBEGIN"), (
             "FEAT after a read autobegin must own a real commit, not a savepoint release"
         )
 
         db.session.expire_all()
-        assert _rent_settings(classroom.class_id).grace_period_days == target
+        assert _rent_settings(classroom.class_id).availability_state == target
 
 
 def test_active_outer_feat_keeps_nested_semantics(app, caplog):
@@ -192,7 +215,7 @@ def test_active_outer_feat_keeps_nested_semantics(app, caplog):
     with app.app_context():
         db.session.rollback()
 
-        target = 37
+        target = "HIDDEN"
         with caplog.at_level(logging.INFO, logger=BASE_LOGGER):
             with FEATContext("FEAT-TEST-OUTER", idempotency_key="feat:test:outer:1"):
                 assert not is_nested_feat()  # outer is the top-level boundary
@@ -203,7 +226,7 @@ def test_active_outer_feat_keeps_nested_semantics(app, caplog):
                     # it must NOT open a competing top-level transaction.
                     assert is_nested_feat()
                     assert _sess().in_transaction()
-                    _rent_settings(classroom.class_id).grace_period_days = target
+                    _rent_settings(classroom.class_id).availability_state = target
                 # Back in outer scope after inner exit.
                 assert not is_nested_feat()
 
@@ -215,7 +238,7 @@ def test_active_outer_feat_keeps_nested_semantics(app, caplog):
             "Nested inner FEAT must not emit its own commit-ownership"
         )
         db.session.expire_all()
-        assert _rent_settings(classroom.class_id).grace_period_days == target
+        assert _rent_settings(classroom.class_id).availability_state == target
 
 
 def test_autobegin_with_pending_mutation_is_adopted_and_commits(app, caplog):
@@ -232,17 +255,17 @@ def test_autobegin_with_pending_mutation_is_adopted_and_commits(app, caplog):
         db.session.rollback()
 
         rs = _rent_settings(classroom.class_id)  # read → autobegin
-        rs.rent_amount = rs.rent_amount + 7      # pending write on the autobegin
+        rs.availability_state = "HIDDEN"         # pending write on the autobegin
         assert _sess().in_transaction()
         assert db.session.dirty
-        expected_rent = rs.rent_amount
+        expected_state = rs.availability_state
 
         with caplog.at_level(logging.INFO, logger=BASE_LOGGER):
             with FEATContext("FEAT-TEST-ADOPT", idempotency_key="feat:test:adopt:1"):
                 # Adopted the autobegin as the owned top-level transaction — NOT a savepoint.
                 assert not _sess().in_nested_transaction()
                 # A second mutation, this one owned by the FEAT itself.
-                _rent_settings(classroom.class_id).grace_period_days = 44
+                _rent_settings(classroom.class_id).rent_configured_at = _MARKER_TIME
 
         # The FEAT owns a real top-level commit that persists BOTH writes.
         assert _commit_ownership_lines(caplog, "FEAT-TEST-ADOPT"), (
@@ -250,8 +273,8 @@ def test_autobegin_with_pending_mutation_is_adopted_and_commits(app, caplog):
         )
         db.session.expire_all()
         persisted = _rent_settings(classroom.class_id)
-        assert persisted.grace_period_days == 44, "FEAT-owned write must persist"
-        assert persisted.rent_amount == expected_rent, (
+        assert persisted.rent_configured_at == _MARKER_TIME, "FEAT-owned write must persist"
+        assert persisted.availability_state == expected_state, (
             "Pre-existing pending write on the adopted autobegin must persist, not be dropped"
         )
 
@@ -283,13 +306,13 @@ def test_failed_feat_rolls_back_owned_mutation(app, caplog):
     classroom = initialize("chemistry_p1", app)
     with app.app_context():
         db.session.rollback()
-        original = _rent_settings(classroom.class_id).grace_period_days
+        original = _rent_settings(classroom.class_id).availability_state
 
         with caplog.at_level(logging.INFO, logger=BASE_LOGGER):
             with pytest.raises(RuntimeError):
                 with FEATContext("FEAT-TEST-FAIL", idempotency_key="feat:test:fail:1"):
                     rs = _rent_settings(classroom.class_id)
-                    rs.grace_period_days = (original or 0) + 100
+                    rs.availability_state = "RETIRED"
                     raise RuntimeError("boom inside FEAT")
 
         assert not _commit_ownership_lines(caplog, "FEAT-TEST-FAIL"), (
@@ -298,4 +321,4 @@ def test_failed_feat_rolls_back_owned_mutation(app, caplog):
 
         db.session.rollback()
         db.session.expire_all()
-        assert _rent_settings(classroom.class_id).grace_period_days == original
+        assert _rent_settings(classroom.class_id).availability_state == original

@@ -395,8 +395,24 @@ def get_rent_settings(class_id: str) -> Optional[RentSettings]:
         rent = get_rent_settings(classroom.class_id)
         if rent:
             print(f"Students owe ${rent.rent_amount} on day {rent.due_day_of_month}")
+
+    ``rent_settings`` is append-only (DOM-POL-001 §VI.1): a class accumulates one
+    immutable row per teacher submission, so "the current policy" is the newest
+    ``IN_USE`` row, not merely the only row. Ordering is explicit and total —
+    ``rent_configured_at`` can collide within a request, so ``id`` breaks the tie —
+    because an unordered ``.first()`` here would hand callers a nondeterministic
+    historical policy.
+
+    This resolves the policy in force for NEW work. A fact that already exists
+    resolves its own row by the ``policy_uuid`` it froze at creation time and must
+    not call this function (DOM-POL-001 §VII).
     """
-    return RentSettings.query.filter_by(class_id=class_id).first()
+    return (
+        RentSettings.query
+        .filter_by(class_id=class_id, availability_state='IN_USE')
+        .order_by(RentSettings.rent_configured_at.desc(), RentSettings.id.desc())
+        .first()
+    )
 
 
 def get_hall_pass_settings(class_id: str) -> Optional[HallPassSettings]:
