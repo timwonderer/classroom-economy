@@ -41,7 +41,7 @@ Rubric anchors used:
 | 1 | Identity | **NOT READY** | B7 |
 | 2 | Class Configuration | READY (with caveats) | — |
 | 3 | Ledger | READY (with caveats) | — |
-| 4 | Productivity & Payroll | **NOT READY** | B9 |
+| 4 | Productivity & Payroll | READY (with caveats) | — |
 | 5 | Obligations | **NOT READY** | B1 |
 | 6 | Store & Entitlements | READY (with caveats) | — |
 | 7 | Policies | **NOT READY** | B1, B2 |
@@ -49,8 +49,8 @@ Rubric anchors used:
 | 9 | Operations | READY (with caveats) | — |
 | 10 | Support | **NOT READY** | B4, B5, B6, B7 |
 
-**5 of 10 domains are production-ready.** Five are blocked by seven open defects, which collapse into
-**four fix tracks** (§IV). Two further defects (B3, B8) were found and closed on 2026-09-04.
+**6 of 10 domains are production-ready.** Four are blocked by six open defects, which collapse into
+**two fix tracks** (§IV). Three further defects (B3, B8, B9) were found and closed on 2026-09-04.
 
 ---
 
@@ -166,7 +166,7 @@ and replace `_resolve_seat` with `resolve_seat_for_context(user_id, class_id, se
 > B7 shares files and reviewers with B4/B5/B6. Fold it into track T2. **Port the code from
 > `3cdb1294`; do not port that commit's badge-system files** (see §V, Deferred).
 
-### B9 — Daily-limit auto tap-out is silently non-functional (FEAT-PROD-001 executes itself)
+### B9 — Daily-limit auto tap-out is silently non-functional (FEAT-PROD-001 executes itself) — **CLOSED 2026-09-04**
 **Domain:** Productivity & Payroll · **Severity:** High · **Violates:** INV-ARC-000 §VIII.2, INV-ARC-021 §V.2
 
 `enforce_daily_limits` (`app/scheduled_tasks.py:15`) is decorated `@requires_feat_context("FEAT-PROD-001")`
@@ -180,10 +180,25 @@ accruing past the cap. Observable as two failures in `tests/dom/identity/test_ad
 (expects 2 attendance sessions, gets 1; expects a `done_for_day` row, gets 0).
 
 This is the same defect class as B8: a caller-level envelope wrapping a FEAT-decorated domain
-command. Fix identically — split `record_attendance_session` into a plain domain command plus a thin
-`@requires_feat_context` entry, and have the job compose the command. Audit the other job envelopes
-in the same file (`FEAT-OPS-001` at :222, `FEAT-PROD-004` at :407, `FEAT-STOR-002` at :539) for the
-same shape while there.
+command.
+
+**Resolution.** `record_attendance_session` was split along the pattern already established in the
+same module by `_record_hall_pass_log_impl` / `record_hall_pass_log`: a plain
+`_record_attendance_session_impl` domain command plus a thin `@requires_feat_context("FEAT-PROD-001")`
+entry. Every route ingress keeps the FEAT entry; the daily-limit job, which already owns the
+envelope, composes the domain command. The per-seat `except Exception` now re-raises
+`FEATContextError` — swallowing a constitutional violation as per-seat noise is precisely how this
+job reported success while closing zero sessions for eight weeks.
+
+**The other three job envelopes were audited and are correct.** `FEAT-PROD-004` (:407) and
+`FEAT-STOR-002` (:539) open a fresh per-item context inside an *undecorated* function — one
+top-level FEAT per class/item, by design — and `complete_payroll_cycle`, `expire_entitlement`, and
+`delete_due_policy_lineages` are all undecorated. `FEAT-OPS-001` (:222) calls no FEAT at all.
+
+**Regression evidence.** `tests/dom/identity/test_admin_tenancy.py` already covered this and was
+failing: 2 failed / 7 passed before, **9 passed** after (verified by stash). `tests/dom/prod` and
+`tests/dom/attendance`: 26 passed, with one pre-existing hall-pass failure unchanged before and
+after.
 
 *Found 2026-09-04 during B8 remediation. Not part of the 2026-09-03 audit sweep.*
 
@@ -244,14 +259,13 @@ clean after the domain-command split.
 | **T1 — Policy immutability rework** | B1, B2 | Obligations, Policies | Large | — | Not started |
 | **T2 — Sysadmin support surface + seat-scope** | B4, B5, B6, B7 | Support, Identity | Medium | — | Not started |
 | **T3 — Orphaned-user deletion** | B3 | Identity | Small | — | **Done 2026-09-04** |
-| **T4 — FEAT self-nesting in scheduled jobs** | B9 | Productivity & Payroll | Small | — | Not started |
+| **T4 — FEAT self-nesting in scheduled jobs** | B9 | Productivity & Payroll | Small | — | **Done 2026-09-04** |
 
 **Sequencing to 2026-09-17.** T1 is the critical path and the only substantial design work; start it
-first and in parallel with T2/T3/T4, which are independent and touch disjoint files. T3 is the
-smallest and should land first as a confidence check on the regression harness. T4 is a mechanical
-repeat of the B8 fix and can follow immediately.
+first. T3 and T4 are done; **T1 and T2 are all that remain**, and they touch disjoint files, so they
+can run in parallel.
 
-**Exit criteria for the ship gate.** All seven open blockers closed; each with a regression test that
+**Exit criteria for the ship gate.** All six open blockers closed; each with a regression test that
 fails against the pre-fix commit; full pytest suite green; `flask db heads` shows exactly one head.
 
 ---

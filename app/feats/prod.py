@@ -237,8 +237,7 @@ def _calculate_attendance_seconds_since(
     return evaluation.elapsed_seconds
 
 
-@requires_feat_context("FEAT-PROD-001")
-def record_attendance_session(
+def _record_attendance_session_impl(
     *,
     ctx: CanonicalContext,
     status: str,
@@ -252,6 +251,14 @@ def record_attendance_session(
     idempotency_key: str | None = None,
     reference_time_utc=None,
 ) -> AttendanceSessionResult:
+    """Productivity DOMAIN command: record one attendance session row.
+
+    Runs within the CALLING FEAT's single context — not a FEAT executor
+    (INV-ARC-006, INV-ARC-021 §V.2). ``record_attendance_session`` is the thin
+    FEAT-PROD-001 boundary for a top-level (route) ingress; a caller that
+    already owns a context — the daily-limit enforcement job, which closes many
+    seats under one envelope — composes this command directly.
+    """
     ctx = _require_context(ctx)
     evaluation = canonical_temporal_resolver(
         CLASS_LEVEL_EVALUATION,
@@ -360,6 +367,40 @@ def record_attendance_session(
     db.session.add(session)
     db.session.flush()
     return AttendanceSessionResult(session=session)
+
+
+@requires_feat_context("FEAT-PROD-001")
+def record_attendance_session(
+    *,
+    ctx: CanonicalContext,
+    status: str,
+    target_seat_id: int | None = None,
+    actor_seat_id: int | None = None,
+    mechanism: str = "self",
+    reason: str | None = None,
+    reason_code: AttendanceReasonCode | None = None,
+    hall_pass_id: str | None = None,
+    correlation_id: str | None = None,
+    idempotency_key: str | None = None,
+    reference_time_utc=None,
+) -> AttendanceSessionResult:
+    """FEAT-PROD-001 boundary for a top-level (route) attendance ingress.
+    Delegates to the Productivity domain command; a caller that already owns a
+    context composes ``_record_attendance_session_impl`` directly instead.
+    """
+    return _record_attendance_session_impl(
+        ctx=ctx,
+        status=status,
+        target_seat_id=target_seat_id,
+        actor_seat_id=actor_seat_id,
+        mechanism=mechanism,
+        reason=reason,
+        reason_code=reason_code,
+        hall_pass_id=hall_pass_id,
+        correlation_id=correlation_id,
+        idempotency_key=idempotency_key,
+        reference_time_utc=reference_time_utc,
+    )
 
 
 def _record_hall_pass_log_impl(

@@ -6,7 +6,7 @@ Contains periodic tasks that run in the background to maintain system state.
 
 import logging
 import secrets
-from app.feats.base import requires_feat_context
+from app.feats.base import FEATContextError, requires_feat_context
 from app.services.insurance_policy_service import delete_due_policy_lineages
 # TODO (Phase 4): insurance_billing deleted; move to Obligations domain
 # from app.utils.insurance_billing import get_insurance_billing_snapshot
@@ -20,7 +20,10 @@ def enforce_daily_limits_job():
 
     Runs hourly to ensure limits are enforced even if students close their browser.
     """
-    from app.feats.prod import record_attendance_session
+    # Compose the Productivity domain command, not the FEAT-PROD-001 entry —
+    # this job already owns the envelope and exactly one FEAT executes per
+    # invocation (INV-ARC-000 §VIII.2, INV-ARC-021 §V.2).
+    from app.feats.prod import _record_attendance_session_impl
     from app.extensions import db
     from app.models import AttendanceReasonCode, AttendanceSession, ClassEconomy, Seat
     from app.payroll import get_daily_limit_seconds
@@ -180,7 +183,7 @@ def enforce_daily_limits_job():
                         if not reached_at_or_before_now.is_later and now_utc != close_at_utc:
                             continue
 
-                        record_attendance_session(
+                        _record_attendance_session_impl(
                             ctx=ctx,
                             target_seat_id=seat_id,
                             actor_seat_id=actor_seat_id,
@@ -199,6 +202,11 @@ def enforce_daily_limits_job():
                             class_id,
                             close_at_utc,
                         )
+                except FEATContextError:
+                    # A constitutional violation is never per-seat noise. Swallowing
+                    # it here is how this job reported success while closing zero
+                    # sessions for eight weeks; let it abort the run and surface.
+                    raise
                 except Exception as e:
                     logger.error(
                         "Error checking daily limit for seat %s in class %s: %s",
