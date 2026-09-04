@@ -134,11 +134,12 @@
 </head>
 
 <body>
+    <main id="main-content" aria-labelledby="admin-login-heading">
     <div class="login-container">
         <div class="login-left">
             <div class="mb-2">
                 <small class="text-muted">TEACHER PORTAL</small>
-                <h1 class="h3 fw-bold text-primary">Welcome, Teacher!</h1>
+                <h1 id="admin-login-heading" class="h3 fw-bold text-primary">Welcome, Teacher!</h1>
                 <p class="subtitle">Please log in to manage your class.</p>
             </div>
 
@@ -156,13 +157,13 @@
                 {{ form.hidden_tag() }}
                 <div class="mb-4">
                     <label class="form-label" for="usernameField">Username</label>
-                    {{ form.username(class="form-control form-control-lg", autocomplete="off",placeholder="Enter your
+                    {{ form.username(class="form-control form-control-lg", autocomplete="username",placeholder="Enter your
                     username", id="usernameField") }}
                 </div>
 
                 <div class="mb-4">
                     <label class="form-label" for="totpCodeField">Authenticator Code</label>
-                    {{ form.totp_code(class="form-control form-control-lg", inputmode="numeric", autocomplete="off",
+                    {{ form.totp_code(class="form-control form-control-lg", inputmode="numeric", autocomplete="one-time-code",
                     pattern="[0-9]*", maxlength="6", placeholder="Enter 6-digit code", id="totpCodeField") }}
                 </div>
 
@@ -175,7 +176,7 @@
                 <div class="d-grid gap-2 mb-4">
                     {{ form.submit(class="btn btn-primary btn-lg") }}
                     <button type="button" id="usePasskeyBtn" class="btn btn-outline-primary btn-lg">
-                        <span class="material-symbols-outlined align-middle me-2"
+                        <span class="material-symbols-outlined align-middle me-2" aria-hidden="true"
                             style="font-size: 1.5rem;">fingerprint</span>
                         Sign in with Passkey
                     </button>
@@ -210,14 +211,14 @@
     </div>
 
     <!-- Loading Tips Modal -->
-    <div class="modal fade" id="loadingTipsModal" data-bs-backdrop="static" data-bs-keyboard="false" tabindex="-1">
+    <div class="modal fade" id="loadingTipsModal" data-bs-backdrop="static" data-bs-keyboard="false" tabindex="-1" aria-labelledby="loadingTipsModalLabel" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered">
             <div class="modal-content border-0 shadow-lg">
                 <div class="modal-body text-center p-5">
                     <div class="spinner-border text-primary mb-4" role="status" style="width: 3rem; height: 3rem;">
                         <span class="visually-hidden">Loading...</span>
                     </div>
-                    <h5 class="fw-bold mb-3 text-primary">Pro Tip</h5>
+                    <h5 class="fw-bold mb-3 text-primary" id="loadingTipsModalLabel">Pro Tip</h5>
                     <p class="text-secondary mb-0" id="tipText" style="min-height: 3rem; line-height: 1.6;">
                         Loading your dashboard...
                     </p>
@@ -253,6 +254,7 @@
             });
         });
     </script>
+    </main>
 </body>
 
 </html>

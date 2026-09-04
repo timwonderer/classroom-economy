@@ -60,7 +60,7 @@
     <div id="flashToastContainer" class="position-fixed bottom-0 end-0 p-3" style="z-index: 1100;"></div>
 
     <!-- Mobile hamburger toggle -->
-    <button class="sysadmin-mobile-toggle" id="mobileMenuToggle" aria-label="Toggle navigation menu"
+    <button type="button" class="sysadmin-mobile-toggle" id="mobileMenuToggle" aria-label="Toggle navigation menu"
         aria-controls="sidebar" aria-expanded="false">
         <span class="material-symbols-outlined">menu</span>
     </button>
@@ -95,24 +95,24 @@
                     </div>
                 </div>
 
-                <nav class="sysadmin-nav">
+                <nav class="sysadmin-nav" aria-label="System administration">
                     <a href="{{ url_for('sysadmin.dashboard') }}"
-                        class="{% if current_page == 'dashboard' %}active{% endif %}">
+                        class="{% if current_page == 'dashboard' %}active{% endif %}" {% if current_page == 'dashboard' %}aria-current="page"{% endif %}>
                         <span class="material-symbols-outlined">dashboard</span> Dashboard
                     </a>
 
                     <a href="{{ url_for('sysadmin.support_tickets') }}"
-                        class="{% if current_page in ['support_tickets', 'user_reports', 'issues'] %}active{% endif %}">
+                        class="{% if current_page in ['support_tickets', 'user_reports', 'issues'] %}active{% endif %}" {% if current_page in ['support_tickets', 'user_reports', 'issues'] %}aria-current="page"{% endif %}>
                         <span class="material-symbols-outlined">support_agent</span> Support Tickets
                     </a>
 
                     <a href="{{ url_for('sysadmin.combined_logs') }}"
-                        class="{% if current_page in ['logs', 'sysadmin_error_logs', 'network_activity'] %}active{% endif %}">
+                        class="{% if current_page in ['logs', 'sysadmin_error_logs', 'network_activity'] %}active{% endif %}" {% if current_page in ['logs', 'sysadmin_error_logs', 'network_activity'] %}aria-current="page"{% endif %}>
                         <span class="material-symbols-outlined">description</span> Logs
                     </a>
 
                     <a href="/sysadmin/grafana" target="_blank" rel="noopener noreferrer">
-                        <span class="material-symbols-outlined">monitoring</span> Grafana
+                        <span class="material-symbols-outlined" aria-hidden="true">monitoring</span> Grafana <span class="visually-hidden">(opens in a new tab)</span>
                         <span class="material-symbols-outlined ms-auto"
                             style="font-size:14px; opacity:0.5">open_in_new</span>
                     </a>
@@ -121,7 +121,7 @@
                     <hr class="sysadmin-nav-divider">
 
                     <a href="{{ url_for('sysadmin.passkey_settings') }}"
-                        class="{% if current_page == 'passkey_settings' %}active{% endif %}">
+                        class="{% if current_page == 'passkey_settings' %}active{% endif %}" {% if current_page == 'passkey_settings' %}aria-current="page"{% endif %}>
                         <span class="material-symbols-outlined">fingerprint</span> Passkey Settings
                     </a>
                     <a href="{{ url_for('sysadmin.logout') }}" class="sysadmin-nav-signout">
@@ -163,19 +163,19 @@
     <!-- Mobile Bottom Navigation -->
     <nav class="mobile-bottom-nav" role="navigation" aria-label="Quick navigation">
         <a href="{{ url_for('sysadmin.dashboard') }}" class="{% if current_page == 'dashboard' %}active{% endif %}"
-            aria-label="Dashboard">
+            aria-label="Dashboard" {% if current_page == 'dashboard' %}aria-current="page"{% endif %}>
             <span class="material-symbols-outlined">dashboard</span>
             <span>Dashboard</span>
         </a>
         <a href="{{ url_for('sysadmin.support_tickets') }}"
             class="{% if current_page in ['support_tickets', 'user_reports', 'issues'] %}active{% endif %}"
-            aria-label="Support">
+            aria-label="Support" {% if current_page in ['support_tickets', 'user_reports', 'issues'] %}aria-current="page"{% endif %}>
             <span class="material-symbols-outlined">support_agent</span>
             <span>Support</span>
         </a>
         <a href="{{ url_for('sysadmin.combined_logs') }}"
             class="{% if current_page in ['logs', 'sysadmin_error_logs', 'network_activity'] %}active{% endif %}"
-            aria-label="Logs">
+            aria-label="Logs" {% if current_page in ['logs', 'sysadmin_error_logs', 'network_activity'] %}aria-current="page"{% endif %}>
             <span class="material-symbols-outlined">description</span>
             <span>Logs</span>
         </a>
@@ -202,6 +202,9 @@
     </script>
     <script>
         document.addEventListener('DOMContentLoaded', () => {
+            document.querySelectorAll('.material-symbols-outlined').forEach((icon) => {
+                if (!icon.hasAttribute('aria-hidden')) icon.setAttribute('aria-hidden', 'true');
+            });
             const container = document.getElementById('flashToastContainer');
             const msgsEl = document.getElementById('flashMessages');
             if (container && msgsEl) {

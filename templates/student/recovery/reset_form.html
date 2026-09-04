@@ -22,16 +22,16 @@
     </div>
 
     <div class="mb-3">
-        <label class="form-label text-secondary small fw-bold">New PIN (Optional)</label>
-        <input type="password" name="pin" class="form-control form-control-lg" placeholder="4-6 digits"
+        <label class="form-label text-secondary small fw-bold" for="new-pin">New PIN (Optional)</label>
+        <input id="new-pin" type="password" name="pin" class="form-control form-control-lg" placeholder="4-6 digits"
             inputmode="numeric" pattern="[0-9]*" autocomplete="off">
         <div class="form-text">Leave blank if you don't want to change it.</div>
     </div>
 
     <div class="mb-4">
-        <label class="form-label text-secondary small fw-bold">New Passphrase (Optional)</label>
-        <input type="password" name="passphrase" class="form-control form-control-lg"
-            placeholder="At least 8 characters" autocomplete="off">
+        <label class="form-label text-secondary small fw-bold" for="new-passphrase">New Passphrase (Optional)</label>
+        <input id="new-passphrase" type="password" name="passphrase" class="form-control form-control-lg"
+            placeholder="At least 8 characters" autocomplete="new-password">
         <div class="form-text">Leave blank if you don't want to change it.</div>
     </div>
 

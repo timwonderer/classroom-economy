@@ -111,15 +111,16 @@
     </style>
 </head>
 <body class="student-shell">
+    <main id="main-content" aria-labelledby="student-recovery-heading">
     <div class="login-container">
         <div class="login-left">
             <a href="{{ url_for('student.login') }}" class="back-link">
-                <span class="material-symbols-outlined me-1">arrow_back</span>
+                <span class="material-symbols-outlined me-1" aria-hidden="true">arrow_back</span>
                 Back to Login
             </a>
 
             <div class="mb-4">
-                <h1 class="h3 fw-bold text-primary">{% block header %}Recover Account{% endblock %}</h1>
+                <h1 id="student-recovery-heading" class="h3 fw-bold text-primary">{% block header %}Recover Account{% endblock %}</h1>
                 <p class="text-secondary">{% block subheader %}Follow the steps to regain access{% endblock %}</p>
             </div>
 
@@ -127,7 +128,7 @@
                 {% if messages %}
                     {% for category, message in messages %}
                     <div class="alert alert-{{ 'danger' if category == 'error' else category }} border-0 shadow-sm d-flex align-items-center mb-4" role="alert">
-                        <span class="material-symbols-outlined fs-5 me-2">
+                        <span class="material-symbols-outlined fs-5 me-2" aria-hidden="true">
                             {{ 'error' if category == 'error' else 'check_circle' }}
                         </span>
                         <div>{{ message }}</div>
@@ -143,5 +144,6 @@
         </div>
     </div>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    </main>
 </body>
 </html>

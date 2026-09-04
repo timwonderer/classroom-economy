@@ -88,11 +88,12 @@
     </style>
 </head>
 <body>
+    <main id="main-content" aria-labelledby="create-class-heading">
     <div class="login-container">
         <div class="login-left">
             <div class="mb-2">
                 <small class="text-muted">TEACHER SETUP — STEP 1 OF 3</small>
-                <h1 class="h3 fw-bold text-primary">Create Your Class</h1>
+                <h1 id="create-class-heading" class="h3 fw-bold text-primary">Create Your Class</h1>
                 <p class="subtitle">Set up your class and display name to get started</p>
             </div>
 
@@ -160,10 +161,10 @@
                     <p>Welcome to Classroom Token Hub!</p>
                     <p>
                         Before creating your classes and account, please read our
-                        <a href="https://classroomtokenhub.com/terms" style="color:var(--secondary-hover);" class="fw-semibold" target="_blank">Terms of Service</a> and
-                        <a href="https://classroomtokenhub.com/privacy" style="color:var(--secondary-hover);" class="fw-semibold" target="_blank">Data Policy</a>. </p>
+                        <a href="https://classroomtokenhub.com/terms" style="color:var(--secondary-hover);" class="fw-semibold" target="_blank" rel="noopener noreferrer">Terms of Service <span class="visually-hidden">(opens in a new tab)</span></a> and
+                        <a href="https://classroomtokenhub.com/privacy" style="color:var(--secondary-hover);" class="fw-semibold" target="_blank" rel="noopener noreferrer">Data Policy <span class="visually-hidden">(opens in a new tab)</span></a>. </p>
                         <p>If you are here on behalf of a school district or educational institution, please visit our page for
-                        <a href="https://classroomtokenhub.com/district" style="color:var(--secondary-hover);" target="_blank">District Partners</a>.</p>
+                        <a href="https://classroomtokenhub.com/district" style="color:var(--secondary-hover);" target="_blank" rel="noopener noreferrer">District Partners <span class="visually-hidden">(opens in a new tab)</span></a>.</p>
                     </p>
                     <div class="form-check mt-3">
                         <input class="form-check-input" type="checkbox" value="" id="tosCheck">
@@ -199,5 +200,6 @@
             });
         });
     </script>
+    </main>
 </body>
 </html>

@@ -31,6 +31,8 @@
 
 {% block content %}
 
+<div id="student-management-feedback" class="visually-hidden" role="status" aria-live="polite" aria-atomic="true" tabindex="-1"></div>
+
 <div class="offcanvas offcanvas-end" tabindex="-1" id="studentManagementGuide"
   aria-labelledby="studentManagementGuideLabel">
   <div class="offcanvas-header mb-0">
@@ -223,13 +225,13 @@
 <ul class="nav nav-tabs mb-4" id="studentTabs" role="tablist">
   <li class="nav-item" role="presentation">
     <button class="nav-link active" id="roster-tab" data-bs-toggle="tab" data-bs-target="#roster" type="button"
-      role="tab">
+      role="tab" aria-controls="roster" aria-selected="true">
       <span class="material-symbols-outlined me-1" style="vertical-align: middle;">groups</span>Class Roster
     </button>
   </li>
   <li class="nav-item" role="presentation">
     <button class="nav-link" id="bulk-upload-tab" data-bs-toggle="tab" data-bs-target="#bulk-upload" type="button"
-      role="tab">
+      role="tab" aria-controls="bulk-upload" aria-selected="false">
       <span class="material-symbols-outlined me-1" style="vertical-align: middle;">group_add</span>Add Students
     </button>
   </li>
@@ -237,7 +239,7 @@
 
 <div class="tab-content" id="studentTabContent">
   <!-- ROSTER TAB -->
-  <div class="tab-pane fade show active" id="roster" role="tabpanel">
+  <div class="tab-pane fade show active" id="roster" role="tabpanel" aria-labelledby="roster-tab">
     <div class="card shadow">
       <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
         <h2 class="mb-0 fs-3"><span class="material-symbols-outlined me-2 align-middle fs-1">groups</span>Class Roster
@@ -251,7 +253,7 @@
       <div class="card-body">
         <!-- Current Class Content -->
   <div class="tab-content class-roster-content" id="classRosterContent">
-          <div class="tab-pane fade show active" id="class-{{ current_class_id }}" role="tabpanel">
+          <div class="tab-pane fade show active" id="class-{{ current_class_id }}">
             <!-- Join Code Section -->
             {% if current_class_join_code %}
             <div class="card border-success mb-3">
@@ -320,6 +322,7 @@
                   Share the join code above with them.</p>
                 <div class="table-responsive">
                   <table class="table table-sm table-striped js-sortable">
+                    <caption class="visually-hidden">Unclaimed student seats</caption>
                     <thead class="table-light">
                       <tr>
                         <th scope="col">Name</th>
@@ -387,34 +390,34 @@
                         </button>
                         <ul class="dropdown-menu" aria-labelledby="bulkActionsDropdown-current-class">
                           <li>
-                            <a class="dropdown-item" href="#" onclick="bulkTapIn(); return false;">
+                            <button class="dropdown-item" type="button" onclick="bulkTapIn();">
                               <span class="material-symbols-outlined align-middle fs-6 me-1">login</span> Start Work
-                            </a>
+                            </button>
                           </li>
                           <li>
-                            <a class="dropdown-item" href="#" onclick="bulkTapOut(); return false;">
+                            <button class="dropdown-item" type="button" onclick="bulkTapOut();">
                               <span class="material-symbols-outlined align-middle fs-6 me-1">logout</span> Break
-                            </a>
+                            </button>
                           </li>
                           <li>
                             <hr class="dropdown-divider">
                           </li>
                           <li>
-                            <a class="dropdown-item" href="#"
-                              onclick="bulkUpdateHallPass(); return false;">
+                            <button class="dropdown-item" type="button"
+                              onclick="bulkUpdateHallPass();">
                               <span class="material-symbols-outlined align-middle fs-6 me-1">confirmation_number</span>
                               Adjust Hall-Pass Entitlements
-                            </a>
+                            </button>
                           </li>
                           <li>
                             <hr class="dropdown-divider">
                           </li>
                           <li>
-                            <a class="dropdown-item text-danger" href="#"
-                              onclick="bulkDeleteStudents(); return false;">
+                            <button class="dropdown-item text-danger" type="button"
+                              onclick="bulkDeleteStudents();">
                               <span class="material-symbols-outlined align-middle fs-6 me-1">delete</span> Delete
                               Students
-                            </a>
+                            </button>
                           </li>
                         </ul>
                       </div>
@@ -427,6 +430,7 @@
 
                 <div class="table-responsive">
                   <table class="table table-hover table-striped js-sortable" id="students-table-current-class">
+                    <caption class="visually-hidden">Current class student roster</caption>
                     <thead class="table-dark">
                       <tr>
                         <th style="width: 40px;" scope="col">
@@ -485,18 +489,20 @@
                           {% endif %}
                         </td>
                         <td>
-                          <button class="btn btn-sm btn-outline-primary quick-action-btn me-1" data-bs-toggle="modal"
+                        <button type="button" class="btn btn-sm btn-outline-primary quick-action-btn me-1" data-bs-toggle="modal"
                             data-bs-target="#editStudentModal" data-student-id="{{ student.id }}"
                             data-student-first-name="{{ profile.first_name if profile else '' }}"
                             data-student-last-name="{{ profile.last_name if profile else '' }}"
                             data-student-notes="{{ profile.notes if profile and profile.notes else '' }}"
                             data-student-class-id="{{ student.class_id }}">
-                            <span class="material-symbols-outlined" style="vertical-align: middle;">edit</span>
+                            <span class="material-symbols-outlined" aria-hidden="true" style="vertical-align: middle;">edit</span>
+                            <span class="visually-hidden">Edit {{ student_display_name }}</span>
                           </button>
-                          <button class="btn btn-sm btn-outline-danger quick-action-btn" data-bs-toggle="modal"
+                        <button type="button" class="btn btn-sm btn-outline-danger quick-action-btn" data-bs-toggle="modal"
                             data-bs-target="#deleteStudentModal" data-student-id="{{ student.id }}"
                             data-student-name="{{ student_display_name }}">
-                            <span class="material-symbols-outlined" style="vertical-align: middle;">delete</span>
+                            <span class="material-symbols-outlined" aria-hidden="true" style="vertical-align: middle;">delete</span>
+                            <span class="visually-hidden">Delete {{ student_display_name }}</span>
                           </button>
                         </td>
                       </tr>
@@ -519,7 +525,7 @@
   </div>
 
   <!-- ADD STUDENTS TAB (paste-based staging grid) -->
-  <div class="tab-pane fade" id="bulk-upload" role="tabpanel">
+  <div class="tab-pane fade" id="bulk-upload" role="tabpanel" aria-labelledby="bulk-upload-tab">
     <div class="card shadow">
       <div class="card-header bg-success text-white">
         <h2 class="mb-0 h5">
@@ -552,13 +558,14 @@
         </div>
 
         <div class="table-responsive">
-          <table class="table table-bordered mb-0" id="staging-grid">
+                  <table class="table table-bordered mb-0" id="staging-grid">
+                    <caption class="visually-hidden">Student roster staging grid</caption>
             <thead class="table-light">
               <tr>
-                <th style="width: 30%;">First Name <span class="text-danger">*</span></th>
-                <th style="width: 30%;">Last Name <span class="text-danger">*</span></th>
-                <th style="width: 30%;">Notes</th>
-                <th style="width: 10%;"></th>
+                <th scope="col" style="width: 30%;">First Name <span class="text-danger">*</span></th>
+                <th scope="col" style="width: 30%;">Last Name <span class="text-danger">*</span></th>
+                <th scope="col" style="width: 30%;">Notes</th>
+                <th scope="col" style="width: 10%;"><span class="visually-hidden">Actions</span></th>
               </tr>
             </thead>
             <tbody id="staging-body">
@@ -566,7 +573,7 @@
                 <td><input type="text" class="form-control form-control-sm staging-fn" placeholder="First Name" aria-label="First name"></td>
                 <td><input type="text" class="form-control form-control-sm staging-ln" placeholder="Last Name" aria-label="Last name"></td>
                 <td><input type="text" class="form-control form-control-sm staging-notes" placeholder="Notes (optional)" aria-label="Notes"></td>
-                <td class="text-center"><button type="button" class="btn btn-outline-danger btn-sm remove-row-btn" title="Remove row">&times;</button></td>
+                <td class="text-center"><button type="button" class="btn btn-outline-danger btn-sm remove-row-btn" title="Remove row" aria-label="Remove student row">&times;</button></td>
               </tr>
             </tbody>
           </table>
@@ -589,7 +596,7 @@
           </button>
         </div>
 
-        <div id="submit-result" class="mt-3 d-none"></div>
+        <div id="submit-result" class="mt-3 d-none" role="status" aria-live="polite" aria-atomic="true" tabindex="-1"></div>
       </div>
     </div>
   </div>
@@ -802,6 +809,7 @@
           }
           resultEl.innerHTML = '<div class="alert alert-success">' + msg + '</div>';
           resultEl.classList.remove('d-none');
+          resultEl.focus();
 
           // Clear the grid on full success
           if (data.status === 'success') {
@@ -818,11 +826,13 @@
         } else {
           resultEl.innerHTML = '<div class="alert alert-danger">' + escapeHtml(data.message || 'Failed to add students.') + '</div>';
           resultEl.classList.remove('d-none');
+          resultEl.focus();
         }
       })
       .catch(() => {
         resultEl.innerHTML = '<div class="alert alert-danger">Network error. Please try again.</div>';
         resultEl.classList.remove('d-none');
+        resultEl.focus();
       })
       .finally(() => {
         submitBtn.disabled = false;
@@ -959,7 +969,7 @@
 
         <div class="mb-3">
           <div class="small fw-semibold" id="timed-delete-countdown-text">Safety countdown: 30s remaining</div>
-          <div class="progress mt-2" role="progressbar" aria-label="Delete countdown">
+          <div class="progress mt-2" role="progressbar" aria-label="Delete countdown" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
             <div id="timed-delete-countdown-bar" class="progress-bar bg-danger" style="width: 0%"></div>
           </div>
         </div>
@@ -988,6 +998,15 @@
 <script>
   console.log('Student management scripts loading.');
 
+  function announceStudentManagement(message, kind = 'info') {
+    const feedback = document.getElementById('student-management-feedback');
+    if (!feedback) return;
+    feedback.className = `alert alert-${kind}`;
+    feedback.textContent = message;
+    feedback.classList.remove('visually-hidden');
+    feedback.focus();
+  }
+
   // Join Code Copy Function
   function copyJoinCode(code, btn) {
     navigator.clipboard.writeText(code).then(function () {
@@ -1004,7 +1023,7 @@
       }, 2000);
     }).catch(function (err) {
       console.error('Failed to copy: ', err);
-      alert('Failed to copy join code. Please copy manually.');
+      announceStudentManagement('Failed to copy the join code. Please copy it manually.', 'danger');
     });
   }
 
@@ -1117,7 +1136,7 @@
     return new Promise((resolve) => {
       const modalEl = document.getElementById('timedDeleteGateModal');
       if (!modalEl || !window.bootstrap) {
-        alert('Delete safety modal is unavailable. Please refresh and try again.');
+        announceStudentManagement('The delete safety dialog is unavailable. Please refresh and try again.', 'danger');
         resolve(null);
         return;
       }
@@ -1185,6 +1204,7 @@
           countdownText.textContent = `Safety countdown: ${remaining}s remaining`;
           const pct = ((countdownSeconds - remaining) / countdownSeconds) * 100;
           countdownBar.style.width = `${pct}%`;
+          countdownBar.parentElement.setAttribute('aria-valuenow', String(Math.round(pct)));
         } else {
           if (!phraseUnlocked) {
             phraseUnlocked = true;
@@ -1339,7 +1359,7 @@
     const studentIds = Array.from(checkboxes).map(cb => cb.value);
 
     if (studentIds.length === 0) {
-      alert('Please select at least one student to delete.');
+      announceStudentManagement('Select at least one student to delete.', 'warning');
       return;
     }
 
@@ -1367,15 +1387,15 @@
         .then(response => response.json())
         .then(data => {
           if (data.status === 'success') {
-            alert(data.message);
+            announceStudentManagement(data.message, 'success');
             location.reload();
           } else {
-            alert('Error: ' + data.message);
+            announceStudentManagement('Error: ' + data.message, 'danger');
           }
         })
         .catch(error => {
           console.error('Error:', error);
-          alert('Network error occurred while deleting students.');
+          announceStudentManagement('Network error occurred while deleting students. Please try again.', 'danger');
         });
     });
   }
@@ -1386,7 +1406,7 @@
     const seatIds = Array.from(checkboxes).map(cb => parseInt(cb.dataset.seatId)).filter(Number.isInteger);
 
     if (seatIds.length === 0) {
-      alert('Please select at least one student.');
+      announceStudentManagement('Select at least one student.', 'warning');
       return;
     }
 
@@ -1411,18 +1431,18 @@
       .then(response => response.json())
       .then(data => {
         if (data.status === 'success') {
-          alert(data.message || `Successfully started work for ${count} student(s).`);
+          announceStudentManagement(data.message || `Successfully started work for ${count} student(s).`, 'success');
           clearSelection();
           // Reload the page so the student table reflects updated work status
           location.reload();
           window.location.reload();
         } else {
-          alert('Error: ' + data.message);
+          announceStudentManagement('Error: ' + data.message, 'danger');
         }
       })
       .catch(error => {
         console.error('Error:', error);
-        alert('Network error occurred while starting work for students.');
+        announceStudentManagement('Network error occurred while starting work for students. Please try again.', 'danger');
       });
   }
 
@@ -1432,7 +1452,7 @@
     const seatIds = Array.from(checkboxes).map(cb => parseInt(cb.dataset.seatId)).filter(Number.isInteger);
 
     if (seatIds.length === 0) {
-      alert('Please select at least one student.');
+      announceStudentManagement('Select at least one student.', 'warning');
       return;
     }
 
@@ -1465,16 +1485,16 @@
           if (data.already_inactive && data.already_inactive.length > 0) {
             message += '\n\nAlready inactive:\n' + data.already_inactive.join(', ');
           }
-          alert(message);
+          announceStudentManagement(message, 'success');
           clearSelection();
           window.location.reload();
         } else {
-          alert('Error: ' + data.message);
+          announceStudentManagement('Error: ' + data.message, 'danger');
         }
       })
       .catch(error => {
         console.error('Error:', error);
-        alert('Network error occurred while marking students on break.');
+        announceStudentManagement('Network error occurred while marking students on break. Please try again.', 'danger');
       });
   }
 
@@ -1484,7 +1504,7 @@
     const studentIds = Array.from(checkboxes).map(cb => parseInt(cb.value));
 
     if (studentIds.length === 0) {
-      alert('Please select at least one student.');
+      announceStudentManagement('Select at least one student.', 'warning');
       return;
     }
 
@@ -1508,12 +1528,12 @@
       updateType = 'remove';
       value = parseInt(trimmedAction.substring(1));
     } else {
-      alert('Enter +N to add passes or -N to remove passes. Setting a balance directly is not supported.');
+      announceStudentManagement('Enter +N to add passes or -N to remove passes. Setting a balance directly is not supported.', 'warning');
       return;
     }
 
     if (isNaN(value) || value <= 0) {
-      alert('Invalid input. Please enter a positive number.');
+      announceStudentManagement('Invalid input. Enter a positive number.', 'warning');
       return;
     }
 
@@ -1533,15 +1553,15 @@
       .then(response => response.json())
       .then(data => {
         if (data.status === 'success') {
-          alert(data.message);
+          announceStudentManagement(data.message, 'success');
           location.reload();
         } else {
-          alert('Error: ' + data.message);
+          announceStudentManagement('Error: ' + data.message, 'danger');
         }
       })
       .catch(error => {
         console.error('Error:', error);
-        alert('Network error occurred while adjusting hall-pass entitlements.');
+        announceStudentManagement('Network error occurred while adjusting hall-pass entitlements. Please try again.', 'danger');
       });
   }
 
@@ -1566,15 +1586,15 @@
       .then(response => response.json())
       .then(data => {
         if (data.status === 'success') {
-          alert(data.message);
+          announceStudentManagement(data.message, 'success');
           location.reload();
         } else {
-          alert('Error: ' + data.message);
+          announceStudentManagement('Error: ' + data.message, 'danger');
         }
       })
       .catch(error => {
         console.error('Error:', error);
-        alert('Network error occurred while deleting pending student.');
+        announceStudentManagement('Network error occurred while deleting the pending student. Please try again.', 'danger');
       });
   }
 

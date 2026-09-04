@@ -3,6 +3,7 @@
 
 {% block content %}
 <div class="container-fluid mt-4">
+    <div id="account-delete-feedback" class="visually-hidden" role="alert" aria-live="assertive" aria-atomic="true" tabindex="-1"></div>
     <div class="row">
         <div class="col-lg-8 offset-lg-2">
             <div class="card shadow-sm mb-4">
@@ -57,7 +58,7 @@
                             </ul>
                             <div class="mb-3">
                                 <div class="small fw-semibold" id="timed-delete-countdown-text">ARE YOU SURE YOU WANT TO COMPLETE THIS ACTION? 30s remaining</div>
-                                <div class="progress mt-2" role="progressbar" aria-label="Delete countdown">
+                                <div class="progress mt-2" role="progressbar" aria-label="Delete countdown" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
                                     <div id="timed-delete-countdown-bar" class="progress-bar bg-danger" style="width: 0%"></div>
                                 </div>
                             </div>
@@ -131,7 +132,11 @@ function showTimedDeleteGate(options) {
     return new Promise((resolve) => {
         const modalEl = document.getElementById('timedDeleteGateModal');
         if (!modalEl || !window.bootstrap) {
-            alert('Delete safety modal is unavailable. Please refresh and try again.');
+            const feedback = document.getElementById('account-delete-feedback');
+            feedback.textContent = 'The delete safety dialog is unavailable. Please refresh and try again.';
+            feedback.className = 'alert alert-danger';
+            feedback.classList.remove('visually-hidden');
+            feedback.focus();
             resolve(null);
             return;
         }
@@ -198,6 +203,7 @@ function showTimedDeleteGate(options) {
                 countdownText.textContent = `Safety countdown: ${remaining}s remaining`;
                 const pct = ((countdownSeconds - remaining) / countdownSeconds) * 100;
                 countdownBar.style.width = `${pct}%`;
+                countdownBar.parentElement.setAttribute('aria-valuenow', String(Math.round(pct)));
             } else {
                 if (!phraseUnlocked) {
                     phraseUnlocked = true;

@@ -79,6 +79,7 @@
 
             // Show sidebar and backdrop
             sidebar.classList.add('show');
+            sidebar.removeAttribute('inert');
             backdrop?.classList.add('show');
             document.body.style.overflow = 'hidden';
 
@@ -112,6 +113,7 @@
         function closeSidebar() {
             // Hide sidebar and backdrop
             sidebar.classList.remove('show');
+            sidebar.setAttribute('inert', '');
             backdrop?.classList.remove('show');
             document.body.style.overflow = '';
 
@@ -190,7 +192,9 @@
         backdrop?.addEventListener('click', closeSidebar);
 
         // Set up responsive viewport handling
-        const mobileMediaQuery = window.matchMedia('(max-width: 768px)');
+        // Keep behavior aligned with the shell CSS: the sidebar becomes a
+        // slide-out navigation below the 992px desktop breakpoint.
+        const mobileMediaQuery = window.matchMedia('(max-width: 991.98px)');
         
         // Initial setup
         if (mobileMediaQuery.matches) {
@@ -213,9 +217,11 @@
         if (desktopMediaQuery.matches) {
             // Desktop: sidebar always visible, so not hidden from screen readers
             sidebar.removeAttribute('aria-hidden');
+            sidebar.removeAttribute('inert');
         } else {
             // Mobile: sidebar hidden by default
             sidebar.setAttribute('aria-hidden', 'true');
+            sidebar.setAttribute('inert', '');
         }
         
         if (backdrop) {
@@ -227,6 +233,7 @@
             if (e.matches) {
                 // Desktop: sidebar visible
                 sidebar.removeAttribute('aria-hidden');
+                sidebar.removeAttribute('inert');
                 // If sidebar was open on mobile, close it
                 if (sidebar.classList.contains('show')) {
                     closeSidebar();
@@ -235,6 +242,7 @@
                 // Mobile: sidebar hidden unless explicitly shown
                 if (!sidebar.classList.contains('show')) {
                     sidebar.setAttribute('aria-hidden', 'true');
+                    sidebar.setAttribute('inert', '');
                 }
             }
         };

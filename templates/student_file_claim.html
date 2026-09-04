@@ -54,23 +54,23 @@
         </div>
 
         {% elif is_productivity_type %}
-        <label class="form-label">Days you're claiming</label>
-        <div id="claim-dates">
+        <fieldset class="border-0 p-0" id="claim-dates" aria-labelledby="claim-dates-label">
+          <legend class="form-label" id="claim-dates-label">Days you're claiming</legend>
           <div class="claim-date-row row g-2 mb-2 align-items-end">
             <div class="col-4">
               <label class="form-label small mb-1">Date</label>
-              <input type="date" name="claim_date" class="form-control" max="{{ now.strftime('%Y-%m-%d') }}">
+              <input type="date" name="claim_date" class="form-control" aria-label="Claimed date" max="{{ now.strftime('%Y-%m-%d') }}">
             </div>
             <div class="col-2">
               <label class="form-label small mb-1">Hours</label>
-              <input type="number" name="claim_hours" class="form-control" step="0.25" min="0" placeholder="2.0">
+              <input type="number" name="claim_hours" class="form-control" aria-label="Hours claimed" step="0.25" min="0" placeholder="2.0">
             </div>
             <div class="col-6">
               <label class="form-label small mb-1">What happened</label>
-              <input type="text" name="claim_explanation" class="form-control" placeholder="Your account of the lost time">
+              <input type="text" name="claim_explanation" class="form-control" aria-label="Explanation for claimed time" placeholder="Your account of the lost time">
             </div>
           </div>
-        </div>
+        </fieldset>
         <button type="button" id="add-claim-date" class="btn btn-outline-secondary btn-sm mb-3">+ Add another day</button>
         <div class="mb-3">
           <label class="form-label" for="description">Anything else (optional)</label>
@@ -90,6 +90,7 @@
     <div class="card-body">
       <h2 class="h6 mb-3">Your claims on this policy</h2>
       <table class="table table-sm align-middle mb-0">
+        <caption class="visually-hidden">Your previous claims on this policy</caption>
         <thead>
           <tr><th scope="col">Filed</th><th scope="col">Status</th><th scope="col" class="text-end">Approved</th></tr>
         </thead>

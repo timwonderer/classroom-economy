@@ -8,17 +8,17 @@
 <!-- Tabs -->
 <ul class="nav nav-tabs mb-4" id="payrollTabs" role="tablist">
     <li class="nav-item" role="presentation">
-        <button class="nav-link active" id="attendance-tab" data-bs-toggle="tab" data-bs-target="#attendance" type="button" role="tab">
+        <button class="nav-link active" id="attendance-tab" data-bs-toggle="tab" data-bs-target="#attendance" type="button" role="tab" aria-controls="attendance" aria-selected="true">
             <span class="material-symbols-outlined">fact_check</span> Attendance Record
         </button>
     </li>
     <li class="nav-item" role="presentation">
-        <button class="nav-link" id="productivity-tab" data-bs-toggle="tab" data-bs-target="#productivity" type="button" role="tab">
+        <button class="nav-link" id="productivity-tab" data-bs-toggle="tab" data-bs-target="#productivity" type="button" role="tab" aria-controls="productivity" aria-selected="false">
             <span class="material-symbols-outlined">analytics</span> Productivity Stats
         </button>
     </li>
     <li class="nav-item" role="presentation">
-        <button class="nav-link" id="projected-tab" data-bs-toggle="tab" data-bs-target="#projected" type="button" role="tab">
+        <button class="nav-link" id="projected-tab" data-bs-toggle="tab" data-bs-target="#projected" type="button" role="tab" aria-controls="projected" aria-selected="false">
             <span class="material-symbols-outlined">payments</span> Projected Pay
         </button>
     </li>
@@ -27,7 +27,7 @@
 <!-- Tab Content -->
 <div class="tab-content" id="payrollTabContent">
     <!-- Attendance Record Tab -->
-    <div class="tab-pane fade show active" id="attendance" role="tabpanel">
+    <div class="tab-pane fade show active" id="attendance" role="tabpanel" aria-labelledby="attendance-tab">
         <div class="card mb-4">
             <div class="card-header">
                 <span class="material-symbols-outlined" style="vertical-align: middle;">schedule</span> Attendance Overview
@@ -56,12 +56,13 @@
                     {% if attendance_events %}
                     <div class="table-responsive">
                         <table class="table table-sm table-hover">
+                            <caption class="visually-hidden">Your attendance and earnings records</caption>
                             <thead>
                                 <tr>
-                                    <th>Date</th>
-                                    <th>Action</th>
-                                    <th>Time</th>
-                                    <th>Report</th>
+                                    <th scope="col">Date</th>
+                                    <th scope="col">Action</th>
+                                    <th scope="col">Time</th>
+                                    <th scope="col">Report</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -119,7 +120,7 @@
     </div>
 
     <!-- Productivity Stats Tab -->
-    <div class="tab-pane fade" id="productivity" role="tabpanel">
+    <div class="tab-pane fade" id="productivity" role="tabpanel" aria-labelledby="productivity-tab">
         <div class="row">
             <!-- Overall Stats -->
             <div class="col-md-6 mb-4">
@@ -188,7 +189,7 @@
     </div>
 
     <!-- Projected Pay Tab -->
-    <div class="tab-pane fade" id="projected" role="tabpanel">
+    <div class="tab-pane fade" id="projected" role="tabpanel" aria-labelledby="projected-tab">
         <div class="row">
             <!-- Current Projected Earnings -->
             <div class="col-md-6 mb-4">
@@ -219,10 +220,11 @@
                         <h6 class="mb-3">Time Value Calculator:</h6>
                         <div class="table-responsive">
                             <table class="table table-sm table-striped">
+                                <caption class="visually-hidden">Time value and projected earnings</caption>
                                 <thead>
                                     <tr>
-                                        <th>Time</th>
-                                        <th>Earnings</th>
+                                        <th scope="col">Time</th>
+                                        <th scope="col">Earnings</th>
                                     </tr>
                                 </thead>
                                 <tbody>

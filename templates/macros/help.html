@@ -30,6 +30,7 @@
     {% if not icon_only %}
       <span class="help-text">{{ text or "Learn more" }}</span>
     {% endif %}
+    <span class="visually-hidden">(opens in a new tab)</span>
   </a>
 {% endmacro %}
 
@@ -56,7 +57,7 @@
       {% endif %}
       <a href="{{ doc_url(doc_path) }}" class="btn btn-sm btn-outline-primary" target="_blank" rel="noopener">
         <span class="material-symbols-outlined" style="vertical-align: middle; font-size: 1rem;">menu_book</span>
-        View Guide
+        View Guide <span class="visually-hidden">(opens in a new tab)</span>
       </a>
     </div>
   </div>
@@ -79,7 +80,7 @@
       <p class="card-text text-muted">{{ description }}</p>
       <a href="{{ doc_url(doc_path) }}" class="btn btn-primary" target="_blank" rel="noopener">
         <span class="material-symbols-outlined" style="vertical-align: middle;">menu_book</span>
-        Learn How
+        Learn How <span class="visually-hidden">(opens in a new tab)</span>
       </a>
     </div>
   </div>

@@ -170,7 +170,6 @@ function showGettingStartedWidget() {
     // Remove the dismissal from localStorage
     const dismissKey = 'getting_started_dismissed_{{ admin.id }}';
     localStorage.removeItem(dismissKey);
-    alert('Getting started widget will appear when you return to the dashboard.');
     window.location.href = '{{ url_for("admin.dashboard") }}';
 }
 </script>

@@ -51,6 +51,8 @@
 </head>
 
 <body>
+    <a href="#offline-main" class="skip-link">Skip to main content</a>
+    <main id="offline-main">
     <div class="offline-container">
         <div class="icon">
             <span class="material-symbols-outlined">wifi_off</span>
@@ -61,6 +63,8 @@
         <p>It looks like you've lost your internet connection. Please check your connection and try again.</p>
         <a href="/" class="btn btn-primary" style="background-color: var(--primary); border: none;">Try Again</a>
     </div>
+    </main>
+    <script>document.querySelectorAll('.material-symbols-outlined').forEach((icon) => icon.setAttribute('aria-hidden', 'true'));</script>
 </body>
 
 </html>

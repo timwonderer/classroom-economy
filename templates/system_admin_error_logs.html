@@ -15,7 +15,7 @@
         <div class="card-body">
           <form method="GET" action="{{ url_for('sysadmin.error_logs') }}" class="mb-0">
             <div class="input-group">
-              <select name="error_type" class="form-select">
+              <select name="error_type" class="form-select" aria-label="Filter by error type">
                 <option value="">All Error Types</option>
                 {% for et in error_types %}
                   <option value="{{ et }}" {% if et == current_error_type %}selected{% endif %}>{{ et }}</option>
@@ -51,15 +51,16 @@
       {% if error_logs %}
         <div class="table-responsive">
           <table class="table table-hover mb-0">
+            <caption class="visually-hidden">System error log records</caption>
             <thead>
               <tr>
-                <th style="width: 60px;">ID</th>
-                <th style="width: 180px;">Timestamp</th>
-                <th style="width: 150px;">Error Type</th>
-                <th>Error Message</th>
-                <th style="width: 200px;">Request Path</th>
-                <th style="width: 120px;">IP Address</th>
-                <th style="width: 80px;">Details</th>
+                <th scope="col" style="width: 60px;">ID</th>
+                <th scope="col" style="width: 180px;">Timestamp</th>
+                <th scope="col" style="width: 150px;">Error Type</th>
+                <th scope="col">Error Message</th>
+                <th scope="col" style="width: 200px;">Request Path</th>
+                <th scope="col" style="width: 120px;">IP Address</th>
+                <th scope="col" style="width: 80px;">Details</th>
               </tr>
             </thead>
             <tbody>
@@ -95,7 +96,7 @@
                   <td><code class="small">{{ log.request_path or 'N/A' }}</code></td>
                   <td><small>{{ log.ip_address or 'N/A' }}</small></td>
                   <td>
-                    <button class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#errorModal{{ log.id }}">
+                    <button type="button" class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#errorModal{{ log.id }}">
                       View
                     </button>
                   </td>
@@ -154,7 +155,7 @@
                         {% if log.log_output %}
                           <div class="mb-3">
                             <strong>Log Output (Last 50 Lines):</strong>
-                            <button class="btn btn-sm btn-outline-secondary float-end" onclick="copyToClipboard('log-{{ log.id }}')">Copy</button>
+                            <button type="button" class="btn btn-sm btn-outline-secondary float-end" onclick="copyToClipboard('log-{{ log.id }}')">Copy</button>
                             <pre id="log-{{ log.id }}" class="bg-dark text-light p-3 rounded mt-2" style="max-height: 400px; overflow-y: auto;"><code>{{ log.log_output }}</code></pre>
                           </div>
                         {% endif %}
@@ -222,13 +223,30 @@
 </div>
 
 <script>
+function announceCopyStatus(message, kind) {
+  let feedback = document.getElementById('copy-status-feedback');
+  if (!feedback) {
+    feedback = document.createElement('div');
+    feedback.id = 'copy-status-feedback';
+    feedback.setAttribute('role', 'status');
+    feedback.setAttribute('aria-live', 'polite');
+    feedback.setAttribute('aria-atomic', 'true');
+    feedback.tabIndex = -1;
+    document.body.appendChild(feedback);
+  }
+  feedback.className = `alert alert-${kind || 'info'}`;
+  feedback.textContent = message;
+  feedback.focus();
+}
+
 function copyToClipboard(elementId) {
   const element = document.getElementById(elementId);
   const text = element.textContent;
   navigator.clipboard.writeText(text).then(() => {
-    alert('Log output copied to clipboard!');
+    announceCopyStatus('Log output copied to clipboard.', 'success');
   }).catch(err => {
     console.error('Failed to copy:', err);
+    announceCopyStatus('Unable to copy the log output. Please copy it manually.', 'danger');
   });
 }
 </script>

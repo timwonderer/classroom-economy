@@ -149,17 +149,17 @@
 <ul class="nav nav-tabs mb-4" id="rentTabs" role="tablist">
   <li class="nav-item" role="presentation">
     <button class="nav-link active" id="overview-tab" data-bs-toggle="tab" data-bs-target="#overview" type="button"
-      role="tab">
+      role="tab" aria-controls="overview" aria-selected="true">
       <span class="material-symbols-outlined me-1">grid_view</span>Overview
     </button>
   </li>
   <li class="nav-item" role="presentation">
-    <button class="nav-link" id="settings-tab" data-bs-toggle="tab" data-bs-target="#settings" type="button" role="tab">
+    <button class="nav-link" id="settings-tab" data-bs-toggle="tab" data-bs-target="#settings" type="button" role="tab" aria-controls="settings" aria-selected="false">
       <span class="material-symbols-outlined me-1">settings</span>Settings
     </button>
   </li>
   <li class="nav-item" role="presentation">
-    <button class="nav-link" id="waivers-tab" data-bs-toggle="tab" data-bs-target="#waivers" type="button" role="tab">
+    <button class="nav-link" id="waivers-tab" data-bs-toggle="tab" data-bs-target="#waivers" type="button" role="tab" aria-controls="waivers" aria-selected="false">
       <span class="material-symbols-outlined me-1">event_busy</span>Waivers
     </button>
   </li>
@@ -167,7 +167,7 @@
 
 <div class="tab-content" id="rentTabContent">
   <!-- OVERVIEW TAB -->
-  <div class="tab-pane fade show active" id="overview" role="tabpanel">
+  <div class="tab-pane fade show active" id="overview" role="tabpanel" aria-labelledby="overview-tab">
     {# Rent feature enablement is owned by Class Features (DOM-CLASS-001),
        not by rent_settings. This route hard-aborts 404 if the rent feature
        is disabled at the class-features level, so reaching this template
@@ -314,10 +314,11 @@
           </h3>
           <div class="table-responsive">
             <table class="table table-sm table-hover mb-0">
+              <caption class="visually-hidden">Students current on rent</caption>
               <thead>
                 <tr>
-                  <th>Student</th>
-                  <th>Status</th>
+                  <th scope="col">Student</th>
+                  <th scope="col">Status</th>
                 </tr>
               </thead>
               <tbody>
@@ -342,10 +343,11 @@
           </h3>
           <div class="table-responsive">
             <table class="table table-sm table-hover mb-0">
+              <caption class="visually-hidden">Students behind on rent</caption>
               <thead>
                 <tr>
-                  <th>Student</th>
-                  <th>Status</th>
+                  <th scope="col">Student</th>
+                  <th scope="col">Status</th>
                 </tr>
               </thead>
               <tbody>
@@ -373,7 +375,7 @@
   </div>
 
   <!-- SETTINGS TAB -->
-  <div class="tab-pane fade" id="settings" role="tabpanel">
+  <div class="tab-pane fade" id="settings" role="tabpanel" aria-labelledby="settings-tab">
     <form method="POST" id="rentSettingsForm">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
 
@@ -693,13 +695,13 @@
                       <div class="row">
                         <div class="col-md-6 mb-3">
                           <label class="form-label fw-bold">Item Name <span class="text-danger">*</span></label>
-                          <input type="text" class="form-control" name="rent_item_name_{{ loop.index0 }}"
+                          <input type="text" class="form-control" aria-label="Rent item name" name="rent_item_name_{{ loop.index0 }}"
                             value="{{ item.name }}" placeholder="e.g., Desk, Chair, Locker" required>
                         </div>
 
                         <div class="col-md-6 mb-3">
                           <label class="form-label fw-bold">Description (Optional)</label>
-                          <input type="text" class="form-control" name="rent_item_description_{{ loop.index0 }}"
+                          <input type="text" class="form-control" aria-label="Rent item description" name="rent_item_description_{{ loop.index0 }}"
                             value="{{ item.description or '' }}" placeholder="Optional description">
                         </div>
                       </div>
@@ -760,12 +762,12 @@
                         <div class="col-md-6 mb-3">
                           <label class="form-label fw-bold">Store Price ($) <span class="text-danger">*</span></label>
                           <input type="number" step="0.01" min="0" class="form-control"
-                            name="rent_item_store_price_{{ loop.index0 }}" value="{{ item.store_price or '' }}"
+                            name="rent_item_store_price_{{ loop.index0 }}" aria-label="Rent item store price" value="{{ item.store_price or '' }}"
                             placeholder="Price">
                         </div>
                         <div class="col-md-6 mb-3" id="use_limit_field_{{ loop.index0 }}" style="{% if item.rent_item_type != 'per_use' %}display: none;{% endif %}">
                           <label class="form-label fw-bold">Free Uses Per Period</label>
-                          <input type="number" min="1" class="form-control" name="rent_item_use_limit_{{ loop.index0 }}" value="{{ item.use_limit or '' }}" placeholder="Leave blank for unlimited">
+                          <input type="number" min="1" class="form-control" aria-label="Rent item use limit" name="rent_item_use_limit_{{ loop.index0 }}" value="{{ item.use_limit or '' }}" placeholder="Leave blank for unlimited">
                           <small class="text-muted">Rent payers get this many free uses per period.</small>
                         </div>
                       </div>
@@ -773,7 +775,7 @@
                       <div class="row" id="hall_pass_options_{{ loop.index0 }}" style="{% if item.rent_item_type != 'hall_pass' %}display: none;{% endif %}">
                         <div class="col-md-6 mb-3">
                           <label class="form-label fw-bold">Passes Granted <span class="text-danger">*</span></label>
-                          <input type="number" min="1" class="form-control" name="rent_item_hall_pass_count_{{ loop.index0 }}" value="{{ item.hall_pass_count or 1 }}">
+                          <input type="number" min="1" class="form-control" aria-label="Hall passes granted" name="rent_item_hall_pass_count_{{ loop.index0 }}" value="{{ item.hall_pass_count or 1 }}">
                           <small class="text-muted">Number of hall passes added when rent is paid</small>
                         </div>
                       </div>
@@ -821,7 +823,7 @@
     There is intentionally no "active waivers," "current period," or
     "future periods" concept in this tab.
   #}
-  <div class="tab-pane fade" id="waivers" role="tabpanel">
+  <div class="tab-pane fade" id="waivers" role="tabpanel" aria-labelledby="waivers-tab">
     <div class="row g-3">
 
       <!-- Outstanding Rent (top-level card) -->
@@ -872,12 +874,13 @@
                           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
                           <div class="table-responsive mb-3">
                             <table class="table table-sm align-middle mb-0">
+                              <caption class="visually-hidden">Outstanding rent assessments for {{ student_slug }}</caption>
                               <thead>
                                 <tr>
-                                  <th style="width: 3rem;"><span class="visually-hidden">Select</span></th>
-                                  <th>Assessment period (due)</th>
-                                  <th class="text-end">Remaining</th>
-                                  <th>Status</th>
+                                  <th scope="col" style="width: 3rem;"><span class="visually-hidden">Select</span></th>
+                                  <th scope="col">Assessment period (due)</th>
+                                  <th scope="col" class="text-end">Remaining</th>
+                                  <th scope="col">Status</th>
                                 </tr>
                               </thead>
                               <tbody>
@@ -960,12 +963,13 @@
               </p>
               <div class="table-responsive">
                 <table class="table table-striped table-hover mb-0 js-sortable">
+                  <caption class="visually-hidden">Applied rent waivers</caption>
                   <thead>
                     <tr>
-                      <th>Student</th>
-                      <th>Assessment period (due)</th>
-                      <th>Waived on</th>
-                      <th>Notes</th>
+                      <th scope="col">Student</th>
+                      <th scope="col">Assessment period (due)</th>
+                      <th scope="col">Waived on</th>
+                      <th scope="col">Notes</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1189,12 +1193,12 @@
         <div class="row">
           <div class="col-md-6 mb-3">
             <label class="form-label fw-bold">Item Name <span class="text-danger">*</span></label>
-            <input type="text" class="form-control" name="rent_item_name_${rentItemCounter}" placeholder="e.g., Desk, Chair, Locker" required>
+            <input type="text" class="form-control" aria-label="Rent item name" name="rent_item_name_${rentItemCounter}" placeholder="e.g., Desk, Chair, Locker" required>
           </div>
 
           <div class="col-md-6 mb-3">
             <label class="form-label fw-bold">Description (Optional)</label>
-            <input type="text" class="form-control" name="rent_item_description_${rentItemCounter}" placeholder="Optional description">
+            <input type="text" class="form-control" aria-label="Rent item description" name="rent_item_description_${rentItemCounter}" placeholder="Optional description">
           </div>
         </div>
 
@@ -1249,11 +1253,11 @@
         <div class="row" id="common_price_field_${rentItemCounter}" style="display: none;">
           <div class="col-md-6 mb-3">
             <label class="form-label fw-bold">Store Price ($) <span class="text-danger">*</span></label>
-            <input type="number" step="0.01" min="0" class="form-control" name="rent_item_store_price_${rentItemCounter}" placeholder="Price">
+            <input type="number" step="0.01" min="0" class="form-control" aria-label="Rent item store price" name="rent_item_store_price_${rentItemCounter}" placeholder="Price">
           </div>
           <div class="col-md-6 mb-3" id="use_limit_field_${rentItemCounter}" style="display: none;">
             <label class="form-label fw-bold">Free Uses Per Period</label>
-            <input type="number" min="1" class="form-control" name="rent_item_use_limit_${rentItemCounter}" placeholder="Leave blank for unlimited">
+            <input type="number" min="1" class="form-control" aria-label="Rent item use limit" name="rent_item_use_limit_${rentItemCounter}" placeholder="Leave blank for unlimited">
             <small class="text-muted">Rent payers get this many free uses per period.</small>
           </div>
         </div>
@@ -1261,7 +1265,7 @@
         <div class="row" id="hall_pass_options_${rentItemCounter}" style="display: none;">
           <div class="col-md-6 mb-3">
             <label class="form-label fw-bold">Passes Granted <span class="text-danger">*</span></label>
-            <input type="number" min="1" class="form-control" name="rent_item_hall_pass_count_${rentItemCounter}" value="1">
+            <input type="number" min="1" class="form-control" aria-label="Hall passes granted" name="rent_item_hall_pass_count_${rentItemCounter}" value="1">
             <small class="text-muted">Number of hall passes added when rent is paid</small>
           </div>
         </div>

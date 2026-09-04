@@ -3,6 +3,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Setup Complete | Classroom Token Hub</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/fonts.css') }}">
@@ -71,11 +72,13 @@
     </style>
 </head>
 <body class="student-theme">
+    <main id="main-content" aria-labelledby="setup-complete-heading">
     <div class="card">
-         <span class="material-symbols-outlined" style="font-size:50pt; color:var(--success)">check_circle</span><br>
-        <h1>Hello, {{ student_name }}!</h1>
+         <span class="material-symbols-outlined" aria-hidden="true" style="font-size:50pt; color:var(--success)">check_circle</span><br>
+        <h1 id="setup-complete-heading">Hello, {{ student_name }}!</h1>
         <p style="font-size:15pt">Welcome to <strong>Classroom Token Hub</strong></p>
         <a href="{{ url_for('student.dashboard') }}" class="btn btn-primary">Thanks, Let's Go!</a>
     </div>
+    </main>
 </body>
 </html>

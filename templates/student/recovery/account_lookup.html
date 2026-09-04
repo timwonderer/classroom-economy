@@ -9,8 +9,8 @@
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
 
     <div class="mb-4">
-        <label class="form-label text-secondary small fw-bold">Reset Code</label>
-        <input type="text" name="reset_code" class="form-control form-control-lg text-uppercase"
+        <label class="form-label text-secondary small fw-bold" for="reset-code">Reset Code</label>
+        <input id="reset-code" type="text" name="reset_code" class="form-control form-control-lg text-uppercase"
             placeholder="8-character code" required autocomplete="off">
         <div class="form-text">Ask your teacher for this code. It expires in 10 minutes.</div>
     </div>

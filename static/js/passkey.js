@@ -190,7 +190,7 @@ function setupPasskeyRegistration(config) {
         const authenticatorName = config.authenticatorName || prompt('Name this passkey (e.g., "YubiKey", "Touch ID"):');
 
         if (!authenticatorName) {
-            alert('Name is required');
+            window.AppCore?.toast('Name is required.', 'error');
             return;
         }
 
@@ -204,7 +204,7 @@ function setupPasskeyRegistration(config) {
             window.location.reload();
 
         } catch (error) {
-            alert('Error: ' + error.message);
+            window.AppCore?.toast('Error: ' + error.message, 'error');
             this.disabled = false;
             this.innerHTML = originalHTML;
         }
@@ -224,7 +224,7 @@ function setupPasskeySignin(config) {
         const username = usernameField.value.trim();
 
         if (!username) {
-            alert('Please enter your username');
+            window.AppCore?.toast('Please enter your username.', 'error');
             return;
         }
 
@@ -241,7 +241,7 @@ function setupPasskeySignin(config) {
             }
 
         } catch (error) {
-            alert('Error: ' + error.message);
+            window.AppCore?.toast('Error: ' + error.message, 'error');
             this.disabled = false;
             this.innerHTML = originalHTML;
         }

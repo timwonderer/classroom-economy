@@ -128,6 +128,9 @@
 
       header.style.cursor = "pointer";
       header.title = "Click to sort";
+      header.tabIndex = 0;
+      header.setAttribute("aria-label", "Sort by " + label);
+      header.setAttribute("aria-sort", "none");
 
       if (!header.querySelector(".sort-indicator")) {
         const indicator = document.createElement("span");
@@ -168,6 +171,15 @@
         table.dataset.sortCol = String(colIndex);
         table.dataset.sortDir = nextDir;
         applyHeaderState(headers, colIndex, nextDir);
+        headers.forEach(function (candidate, idx) {
+          candidate.setAttribute("aria-sort", idx === colIndex ? nextDir : "none");
+        });
+      });
+
+      header.addEventListener("keydown", function (event) {
+        if (event.key !== "Enter" && event.key !== " ") return;
+        event.preventDefault();
+        header.click();
       });
     });
   }
@@ -176,4 +188,3 @@
     document.querySelectorAll("table.js-sortable").forEach(makeTableSortable);
   });
 })();
-

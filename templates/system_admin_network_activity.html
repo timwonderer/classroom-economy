@@ -66,7 +66,7 @@
         <div class="card-body">
           <form method="GET" action="{{ url_for('sysadmin.network_activity') }}" class="mb-0">
             <div class="input-group">
-              <select name="ip" class="form-select">
+              <select name="ip" class="form-select" aria-label="Filter by IP address">
                 <option value="">All IP Addresses</option>
                 {% for ip in ip_addresses %}
                   <option value="{{ ip }}" {% if ip == current_ip %}selected{% endif %}>{{ ip }}</option>
@@ -122,14 +122,15 @@
       {% if network_logs %}
         <div class="table-responsive">
           <table class="table table-hover mb-0">
+            <caption class="visually-hidden">Network activity records</caption>
             <thead>
               <tr>
-                <th style="width: 180px;">Timestamp</th>
-                <th style="width: 80px;">Method</th>
-                <th>Request Path</th>
-                <th style="width: 150px;">Status</th>
-                <th style="width: 140px;">IP Address</th>
-                <th style="width: 80px;">Details</th>
+                <th scope="col" style="width: 180px;">Timestamp</th>
+                <th scope="col" style="width: 80px;">Method</th>
+                <th scope="col">Request Path</th>
+                <th scope="col" style="width: 150px;">Status</th>
+                <th scope="col" style="width: 140px;">IP Address</th>
+                <th scope="col" style="width: 80px;">Details</th>
               </tr>
             </thead>
             <tbody>
@@ -171,7 +172,7 @@
                   </td>
                   <td><small>{{ log.ip_address or 'N/A' }}</small></td>
                   <td>
-                    <button class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#activityModal{{ log.id }}">
+                        <button type="button" class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#activityModal{{ log.id }}">
                       View
                     </button>
                   </td>

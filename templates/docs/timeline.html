@@ -414,24 +414,24 @@
     <div class="timeline-filters">
         <div class="container">
             <div class="filter-group">
-                <button class="filter-btn active" data-filter="all" aria-pressed="true">All</button>
-                <button class="filter-btn" data-filter="features" aria-pressed="false">
+                <button type="button" class="filter-btn active" data-filter="all" aria-pressed="true">All</button>
+                <button type="button" class="filter-btn" data-filter="features" aria-pressed="false">
                     <span class="material-symbols-outlined" style="font-size:0.85rem;vertical-align:middle;">add_circle</span>
                     Features
                 </button>
-                <button class="filter-btn" data-filter="fixes" aria-pressed="false">
+                <button type="button" class="filter-btn" data-filter="fixes" aria-pressed="false">
                     <span class="material-symbols-outlined" style="font-size:0.85rem;vertical-align:middle;">build</span>
                     Fixes & Crises
                 </button>
-                <button class="filter-btn" data-filter="security" aria-pressed="false">
+                <button type="button" class="filter-btn" data-filter="security" aria-pressed="false">
                     <span class="material-symbols-outlined" style="font-size:0.85rem;vertical-align:middle;">security</span>
                     Security
                 </button>
-                <button class="filter-btn" data-filter="architecture" aria-pressed="false">
+                <button type="button" class="filter-btn" data-filter="architecture" aria-pressed="false">
                     <span class="material-symbols-outlined" style="font-size:0.85rem;vertical-align:middle;">schema</span>
                     Architecture
                 </button>
-                <button class="filter-btn" data-filter="philosophy" aria-pressed="false">
+                <button type="button" class="filter-btn" data-filter="philosophy" aria-pressed="false">
                     <span class="material-symbols-outlined" style="font-size:0.85rem;vertical-align:middle;">lightbulb</span>
                     Philosophy
                 </button>
@@ -1170,6 +1170,25 @@
         const card = header.closest('.tl-card');
         card.classList.toggle('expanded');
     };
+
+    // Some historical entries use a plain div for the visual header. Promote
+    // every header to the same keyboard-operable disclosure contract so no
+    // entry depends on pointer input alone.
+    document.querySelectorAll('.tl-card-header').forEach(function (header) {
+        if (!header.hasAttribute('role')) header.setAttribute('role', 'button');
+        if (!header.hasAttribute('tabindex')) header.setAttribute('tabindex', '0');
+        if (!header.hasAttribute('aria-expanded')) header.setAttribute('aria-expanded', 'false');
+        header.addEventListener('click', function () {
+            const card = header.closest('.tl-card');
+            header.setAttribute('aria-expanded', card.classList.contains('expanded') ? 'true' : 'false');
+        });
+        header.addEventListener('keydown', function (event) {
+            if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                header.click();
+            }
+        });
+    });
 
     // ── Filter logic ──
     const filterBtns = document.querySelectorAll('.filter-btn');

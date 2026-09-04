@@ -541,7 +541,7 @@ class EconomyBalanceChecker {
     addRecommendationBadge(inputElement, recommendedValue) {
         const badge = document.createElement('span');
         badge.className = 'badge bg-info ms-2 economy-recommendation-badge';
-        badge.innerHTML = `<i class="bi bi-lightbulb"></i> Recommended: $${recommendedValue.toFixed(2)}`;
+        badge.innerHTML = `<i class="bi bi-lightbulb" aria-hidden="true"></i> Recommended: $${recommendedValue.toFixed(2)}`;
         badge.style.cursor = 'pointer';
         badge.title = 'Click to use recommended value';
 

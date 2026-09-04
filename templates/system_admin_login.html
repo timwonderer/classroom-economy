@@ -144,11 +144,12 @@
 </head>
 
 <body class="sysadmin-shell">
+    <main id="main-content" aria-labelledby="sysadmin-login-heading">
     <div class="login-container">
         <div class="login-left">
             <div class="mb-2">
                 <small class="text-muted">SYSTEM ADMIN PORTAL</small>
-                <h1 class="h3 fw-bold text-primary">System Administrator</h1>
+                <h1 id="sysadmin-login-heading" class="h3 fw-bold text-primary">System Administrator</h1>
                 <p class="subtitle">Log in to manage teacher accounts, access logs, and view support tickets.</p>
             </div>
 
@@ -169,13 +170,13 @@
                 {{ form.hidden_tag() }}
                 <div class="mb-4">
                     <label class="form-label" for="usernameField">Username</label>
-                    {{ form.username(class="form-control form-control-lg", id="usernameField", autocomplete="off",
+                    {{ form.username(class="form-control form-control-lg", id="usernameField", autocomplete="username",
                     autocorrect="off", focus=True) }}
                 </div>
 
                 <div class="mb-4">
                     <label class="form-label" for="totpCodeField">Authenticator Code</label>
-                    {{ form.totp_code(class="form-control form-control-lg", autocomplete="off", autocorrect="off",
+                    {{ form.totp_code(class="form-control form-control-lg", autocomplete="one-time-code", autocorrect="off",
                     autocapitalize="off",inputmode="numeric", pattern="\\d{6}", maxlength="6", id="totpCodeField") }}
                 </div>
 
@@ -188,7 +189,7 @@
                 <div class="d-grid gap-2 mb-4">
                     {{ form.submit(class="btn btn-primary btn-lg") }}
                     <button type="button" id="usePasskeyBtn" class="btn btn-outline-primary btn-lg">
-                        <span class="material-symbols-outlined align-middle me-2"
+                        <span class="material-symbols-outlined align-middle me-2" aria-hidden="true"
                             style="font-size: 1.5rem;">fingerprint</span>
                         Sign in with Passkey
                     </button>
@@ -230,6 +231,7 @@
             });
         });
     </script>
+    </main>
 </body>
 
 </html>

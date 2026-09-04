@@ -99,9 +99,10 @@
 </head>
 
 <body>
+    <main id="main-content" aria-labelledby="recovery-status-heading">
     <div class="container">
         <div class="status-card">
-            <h1 class="status-header">Account Recovery Status</h1>
+            <h1 id="recovery-status-heading" class="status-header">Account Recovery Status</h1>
 
             {% with messages = get_flashed_messages(with_categories=true) %}
               {% if messages %}
@@ -133,7 +134,7 @@
             <div class="progress-container">
                 <div class="progress-label">Student Verification Progress</div>
                 <div class="progress" style="height: 30px;">
-                    <div class="progress-bar bg-success" role="progressbar"
+                    <div class="progress-bar bg-success" role="progressbar" aria-label="Student verification progress"
                          style="width: {{ (verified_count / total_count * 100) if total_count > 0 else 0 }}%"
                          aria-valuenow="{{ verified_count }}"
                          aria-valuemin="0"
@@ -178,7 +179,7 @@
                     <p class="mb-0">Please wait for all your students to verify their identity. This page will automatically update when they do.</p>
                     <small class="d-block mt-2">You can refresh this page to check the latest status.</small>
                 </div>
-                <button onclick="location.reload()" class="btn btn-outline-secondary w-100">
+                <button type="button" onclick="location.reload()" class="btn btn-outline-secondary w-100">
                     Refresh Status
                 </button>
                 {% endif %}
@@ -202,5 +203,6 @@
         }, 10000);
     </script>
     {% endif %}
+    </main>
 </body>
 </html>

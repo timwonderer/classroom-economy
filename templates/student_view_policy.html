@@ -104,13 +104,14 @@
                 {% if claims %}
                 <div class="table-responsive">
                     <table class="table table-sm">
+                        <caption class="visually-hidden">Claims for this insurance policy</caption>
                         <thead>
                             <tr>
-                                <th>Incident Date</th>
-                                <th>Filed Date</th>
-                                <th>Amount</th>
-                                <th>Status</th>
-                                <th>Details</th>
+                                <th scope="col">Incident Date</th>
+                                <th scope="col">Filed Date</th>
+                                <th scope="col">Amount</th>
+                                <th scope="col">Status</th>
+                                <th scope="col">Details</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -138,7 +139,7 @@
                                     </span>
                                 </td>
                                 <td>
-                                    <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal"
+                                    <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal"
                                         data-bs-target="#claimModal{{ claim.id }}">
                                         View
                                     </button>
@@ -146,12 +147,12 @@
                             </tr>
 
                             <!-- Claim Details Modal -->
-                            <div class="modal fade" id="claimModal{{ claim.id }}" tabindex="-1">
+                            <div class="modal fade" id="claimModal{{ claim.id }}" tabindex="-1" aria-labelledby="claimModalLabel{{ claim.id }}" aria-hidden="true">
                                 <div class="modal-dialog">
                                     <div class="modal-content">
                                         <div class="modal-header">
-                                            <h5 class="modal-title">Claim Details</h5>
-                                            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                            <h5 class="modal-title" id="claimModalLabel{{ claim.id }}">Claim Details</h5>
+                                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close claim details"></button>
                                         </div>
                                         <div class="modal-body">
                                             <p><strong>Incident Date:</strong> {{ (claim.claimed_dates[0] if claim.claimed_dates else claim.submitted_at).strftime('%B %d, %Y') }}</p>
@@ -188,7 +189,7 @@
                     {% set in_waiting_period = not enrollment.coverage_start_date or enrollment.coverage_start_date >
                     now %}
                     {% if in_waiting_period %}
-                    <button class="btn btn-primary" disabled
+                    <button type="button" class="btn btn-primary" disabled
                         title="Coverage not active yet - still in waiting period">File New Claim (Waiting
                         Period)</button>
                     {% else %}
@@ -211,7 +212,7 @@
                     {% set in_waiting_period = not enrollment.coverage_start_date or enrollment.coverage_start_date >
                     now %}
                     {% if in_waiting_period %}
-                    <button class="btn btn-primary" disabled title="Coverage not active yet - still in waiting period">
+                    <button type="button" class="btn btn-primary" disabled title="Coverage not active yet - still in waiting period">
                         File a Claim (Waiting Period)
                     </button>
                     {% else %}

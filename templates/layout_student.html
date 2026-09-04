@@ -57,7 +57,7 @@
     <a href="#main-content" class="skip-link">Skip to main content</a>
 
     <!-- Mobile Menu Toggle Button -->
-    <button class="mobile-menu-toggle" id="mobileMenuToggle" aria-label="Toggle navigation menu"
+    <button type="button" class="mobile-menu-toggle" id="mobileMenuToggle" aria-label="Toggle navigation menu"
         aria-controls="studentSidebar" aria-expanded="false">
         <span class="material-symbols-outlined">menu</span>
     </button>
@@ -98,35 +98,35 @@
                     {% endif %}
                 </div>
 
-                <nav class="student-nav nav-shell-body">
+                <nav class="student-nav nav-shell-body" aria-label="Student portal">
                     <a href="{{ url_for('student.dashboard') }}"
-                        class="{% if request.endpoint == 'student.dashboard' %}active{% endif %}">
+                        class="{% if request.endpoint == 'student.dashboard' %}active{% endif %}" {% if request.endpoint == 'student.dashboard' %}aria-current="page"{% endif %}>
                         <span class="material-symbols-outlined">home</span> Dashboard
                     </a>
                     <a href="{{ url_for('student.transfer') }}"
-                        class="{% if request.endpoint == 'student.transfer' %}active{% endif %}">
+                        class="{% if request.endpoint == 'student.transfer' %}active{% endif %}" {% if request.endpoint == 'student.transfer' %}aria-current="page"{% endif %}>
                         <span class="material-symbols-outlined">account_balance_wallet</span> Accounts
                     </a>
                     {% if feature_settings.store_enabled %}
                     <a href="{{ url_for('student.shop') }}"
-                        class="{% if request.endpoint == 'student.shop' %}active{% endif %}">
+                        class="{% if request.endpoint == 'student.shop' %}active{% endif %}" {% if request.endpoint == 'student.shop' %}aria-current="page"{% endif %}>
                         <span class="material-symbols-outlined">storefront</span> Store
                     </a>
                     {% endif %}
                     {% if feature_settings.payroll_enabled %}
                     <a href="{{ url_for('student.payroll') }}"
-                        class="{% if request.endpoint == 'student.payroll' %}active{% endif %}">
+                        class="{% if request.endpoint == 'student.payroll' %}active{% endif %}" {% if request.endpoint == 'student.payroll' %}aria-current="page"{% endif %}>
                         <span class="material-symbols-outlined">credit_score</span> Work &amp; Pay
                     </a>
                     {% endif %}
                     {% if feature_settings.rent_enabled or feature_settings.insurance_enabled %}
                     <a href="{% if feature_settings.rent_enabled %}{{ url_for('student.rent') }}{% else %}{{ url_for('student.student_insurance') }}{% endif %}"
-                        class="{% if request.endpoint in ['student.rent', 'student.student_insurance'] %}active{% endif %}">
+                        class="{% if request.endpoint in ['student.rent', 'student.student_insurance'] %}active{% endif %}" {% if request.endpoint in ['student.rent', 'student.student_insurance'] %}aria-current="page"{% endif %}>
                         <span class="material-symbols-outlined">receipt_long</span> Bills
                     </a>
                     {% endif %}
                     <a href="{{ url_for('student.help_support') }}"
-                        class="{% if request.endpoint in ['student.help_support', 'student.submit_general_issue', 'student.report_transaction_issue', 'student.report_attendance_session_issue'] %}active{% endif %}">
+                        class="{% if request.endpoint in ['student.help_support', 'student.submit_general_issue', 'student.report_transaction_issue', 'student.report_attendance_session_issue'] %}active{% endif %}" {% if request.endpoint in ['student.help_support', 'student.submit_general_issue', 'student.report_transaction_issue', 'student.report_attendance_session_issue'] %}aria-current="page"{% endif %}>
                         <span class="material-symbols-outlined">support_agent</span> Help &amp; Support
                     </a>
                 </nav>
@@ -148,8 +148,8 @@
                             {% endfor %}
                         </select>
 
-                        <div id="class-switch-error" class="alert alert-warning small py-2 px-3 mt-2 d-none">
-                            <span class="material-symbols-outlined align-middle me-1" style="font-size: 18px;">error</span>
+                        <div id="class-switch-error" class="alert alert-warning small py-2 px-3 mt-2 d-none" role="alert" aria-live="assertive" aria-atomic="true" tabindex="-1">
+                            <span class="material-symbols-outlined align-middle me-1" aria-hidden="true" style="font-size: 18px;">error</span>
                             <span class="class-switch-error-text"></span>
                         </div>
                     </div>
@@ -288,6 +288,9 @@
         renderClassScopedTimes();
 
         document.addEventListener('DOMContentLoaded', function () {
+            document.querySelectorAll('.material-symbols-outlined').forEach(function (icon) {
+                if (!icon.hasAttribute('aria-hidden')) icon.setAttribute('aria-hidden', 'true');
+            });
             // Initialize toasts
             const toastElList = document.querySelectorAll('.toast');
             toastElList.forEach(toastEl => {
@@ -318,16 +321,14 @@
                             if (errorBox && errorText) {
                                 errorText.textContent = message;
                                 errorBox.classList.remove('d-none');
-                            } else {
-                                alert(message);
+                                errorBox.focus();
                             }
                         }
                     }).catch(() => {
                         if (errorBox && errorText) {
                             errorText.textContent = 'Network error while switching classes.';
                             errorBox.classList.remove('d-none');
-                        } else {
-                            alert('Network error while switching classes.');
+                            errorBox.focus();
                         }
                     });
                 });

@@ -128,9 +128,10 @@
 </head>
 
 <body>
+    <main id="main-content" aria-labelledby="error-heading">
     <div class="error-container">
         <div class="error-header">
-            <h1>503</h1>
+            <h1 id="error-heading">503</h1>
             <p>Service Unavailable</p>
         </div>
 
@@ -154,10 +155,10 @@
             </div>
 
             <div class="actions">
-                <a href="javascript:window.location.reload()" class="btn bg-primary text-white">Try Again</a>
+                <button type="button" class="btn bg-primary text-white" onclick="window.location.reload()">Try Again</button>
                 <a href="/" class="btn bg-primary text-white">Return to Login Page</a>
                 <a href="https://status.classroomtokenhub.com" target="_blank" rel="noopener noreferrer" class="btn bg-secondary text-white">
-                    Check System Status <span class="material-symbols-outlined" style="vertical-align: middle;">open_in_new</span>
+                    Check System Status <span class="visually-hidden">(opens in a new tab)</span><span class="material-symbols-outlined" aria-hidden="true" style="vertical-align: middle;">open_in_new</span>
                 </a>
             </div>
 
@@ -184,6 +185,8 @@
             }
         }, 1000);
     </script>
+    <script>document.querySelectorAll('.material-symbols-outlined').forEach((icon) => icon.setAttribute('aria-hidden', 'true'));</script>
+    </main>
 </body>
 
 </html>

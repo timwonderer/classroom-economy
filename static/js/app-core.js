@@ -1,6 +1,28 @@
 (function () {
   'use strict';
 
+  function hideDecorativeIcons(root) {
+    const scope = root && root.querySelectorAll ? root : document;
+    if (scope.matches && scope.matches('.material-symbols-outlined') && !scope.hasAttribute('aria-hidden')) {
+      scope.setAttribute('aria-hidden', 'true');
+    }
+    scope.querySelectorAll('.material-symbols-outlined').forEach((icon) => {
+      if (!icon.hasAttribute('aria-hidden')) icon.setAttribute('aria-hidden', 'true');
+    });
+  }
+
+  document.addEventListener('DOMContentLoaded', function () {
+    hideDecorativeIcons(document);
+    const iconObserver = new MutationObserver((mutations) => {
+      mutations.forEach((mutation) => {
+        mutation.addedNodes.forEach((node) => {
+          if (node.nodeType === Node.ELEMENT_NODE) hideDecorativeIcons(node);
+        });
+      });
+    });
+    iconObserver.observe(document.body, { childList: true, subtree: true });
+  });
+
   function getCsrfToken() {
     return document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
   }
@@ -55,7 +77,19 @@
   function toast(message, type = 'success', options = {}) {
     const container = resolveToastContainer();
     if (!container || typeof bootstrap === 'undefined' || !bootstrap.Toast) {
-      alert(String(message));
+      let fallback = document.getElementById('app-live-feedback');
+      if (!fallback) {
+        fallback = document.createElement('div');
+        fallback.id = 'app-live-feedback';
+        fallback.tabIndex = -1;
+        fallback.setAttribute('role', 'alert');
+        fallback.setAttribute('aria-live', 'assertive');
+        fallback.setAttribute('aria-atomic', 'true');
+        document.body.appendChild(fallback);
+      }
+      fallback.className = `alert alert-${mapToastType(type)}`;
+      fallback.textContent = String(message);
+      fallback.focus();
       return;
     }
 

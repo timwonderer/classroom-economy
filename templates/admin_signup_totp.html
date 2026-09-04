@@ -227,11 +227,12 @@
 </head>
 
 <body>
+    <main id="main-content" aria-labelledby="totp-setup-heading">
     <div class="signup-container">
         <div class="signup-left">
             <div class="mb-3">
                 <small class="text-muted">TEACHER SETUP — STEP 3 OF 3</small>
-                <h1 class="h3 fw-bold text-primary">Set Up Your Authenticator</h1>
+                <h1 id="totp-setup-heading" class="h3 fw-bold text-primary">Set Up Your Authenticator</h1>
                 <p class="subtitle">Scan the QR code with your authenticator app</p>
             </div>
 
@@ -239,7 +240,7 @@
             {% if messages %}
             {% for category, message in messages %}
             <div class="alert {% if category == 'success' %}alert-success{% elif category == 'error' %}alert-danger{% else %}alert-info{% endif %} border-0 shadow-sm d-flex align-items-center" role="alert">
-                <span class="material-symbols-outlined fs-5 me-2">{% if category == 'success' %}check_circle{% elif category == 'error' %}error{% else %}info{% endif %}</span>
+                <span class="material-symbols-outlined fs-5 me-2" aria-hidden="true">{% if category == 'success' %}check_circle{% elif category == 'error' %}error{% else %}info{% endif %}</span>
                 <div>{{ message }}</div>
             </div>
             {% endfor %}
@@ -302,6 +303,7 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    </main>
 </body>
 
 </html>

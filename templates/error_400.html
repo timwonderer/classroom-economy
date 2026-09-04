@@ -119,10 +119,11 @@
 </head>
 
 <body>
+    <main id="main-content" aria-labelledby="error-heading">
     <div class="error-container">
         <div class="error-header">
-            <span class="material-symbols-outlined mb-2" style="font-size:3rem; vertical-align: middle;">problem</span>
-            <h1>400</h1>
+            <span class="material-symbols-outlined mb-2" aria-hidden="true" style="font-size:3rem; vertical-align: middle;">problem</span>
+            <h1 id="error-heading">400</h1>
             <p>Bad Request</p>
         </div>
 
@@ -150,14 +151,16 @@
             </div>
 
             <div class="actions">
-                <a href="javascript:history.back()" class="btn bg-primary text-white">Go Back to Last Page</a>
+                <button type="button" class="btn bg-primary text-white" onclick="history.back()">Go Back to Last Page</button>
                 <a href="/" class="btn bg-primary text-white">Return to Login Page</a>
                 <a href="https://status.classroomtokenhub.com" target="_blank" rel="noopener noreferrer" class="btn bg-secondary text-white">
-                    Check System Status <span class="material-symbols-outlined" style="vertical-align: middle;">open_in_new</span>
+                    Check System Status <span class="visually-hidden">(opens in a new tab)</span> <span class="material-symbols-outlined" style="vertical-align: middle;">open_in_new</span>
                 </a>
             </div>
         </div>
     </div>
+    <script>document.querySelectorAll('.material-symbols-outlined').forEach((icon) => icon.setAttribute('aria-hidden', 'true'));</script>
+    </main>
 </body>
 
 </html>

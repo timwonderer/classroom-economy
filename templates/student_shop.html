@@ -5,15 +5,17 @@
 {% block page_icon %}storefront{% endblock %}
 
 {% block content %}
+<div id="storePageFeedback" class="alert d-none" role="status" aria-live="polite" aria-atomic="true" tabindex="-1"></div>
+
 <!-- Tabs -->
 <ul class="nav nav-tabs mb-4" id="storeTabs" role="tablist">
     <li class="nav-item" role="presentation">
-        <button class="nav-link active" id="browse-tab" data-bs-toggle="tab" data-bs-target="#browse" type="button" role="tab">
+        <button class="nav-link active" id="browse-tab" data-bs-toggle="tab" data-bs-target="#browse" type="button" role="tab" aria-controls="browse" aria-selected="true">
             <span class="material-symbols-outlined">shopping_cart</span> Browse Items
         </button>
     </li>
     <li class="nav-item" role="presentation">
-        <button class="nav-link" id="my-items-tab" data-bs-toggle="tab" data-bs-target="#my-items" type="button" role="tab">
+        <button class="nav-link" id="my-items-tab" data-bs-toggle="tab" data-bs-target="#my-items" type="button" role="tab" aria-controls="my-items" aria-selected="false">
             <span class="material-symbols-outlined">inventory_2</span> My Items
             {% if entitlements %}<span class="badge bg-primary ms-1">{{ entitlements|length }}</span>{% endif %}
         </button>
@@ -23,7 +25,7 @@
 <!-- Tab Content -->
 <div class="tab-content" id="storeTabContent">
     <!-- Browse Items Tab -->
-    <div class="tab-pane fade show active" id="browse" role="tabpanel">
+    <div class="tab-pane fade show active" id="browse" role="tabpanel" aria-labelledby="browse-tab">
         {% if items %}
         <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4">
             {% for item in items %}
@@ -101,6 +103,7 @@
                             <div class="progress" style="height: 25px;">
                                 <div class="progress-bar {% if item.collective_progress.is_complete %}bg-success{% else %}bg-warning{% endif %}"
                                      role="progressbar"
+                                     aria-label="{{ item.name }} collective purchase progress"
                                      style="width: {{ item.collective_progress.progress_percent }}%;"
                                      aria-valuenow="{{ item.collective_progress.purchase_count }}"
                                      aria-valuemin="0"
@@ -136,7 +139,7 @@
                         {% endif %}
 
                         <div class="mt-auto">
-                            <button class="btn btn-primary w-100"
+                            <button type="button" class="btn btn-primary w-100"
                                     data-bs-toggle="modal"
                                     data-bs-target="#buyItemModal"
                                     data-policy-uuid="{{ policy_uuid_by_item_id.get(item.id, '') }}"
@@ -170,7 +173,7 @@
     </div>
 
     <!-- My Items Tab -->
-    <div class="tab-pane fade" id="my-items" role="tabpanel">
+    <div class="tab-pane fade" id="my-items" role="tabpanel" aria-labelledby="my-items-tab">
         {% if entitlements %}
         <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4">
             {% for entitlement in entitlements %}
@@ -237,7 +240,7 @@
                                     <span class="material-symbols-outlined">hourglass_empty</span> Awaiting Approval
                                 </button>
                             {% elif entitlement.is_processing %}
-                                <button class="btn btn-info w-100" disabled>
+                                <button type="button" class="btn btn-info w-100" disabled>
                                     <span class="material-symbols-outlined">sync</span> Processing
                                 </button>
                             {% endif %}
@@ -266,6 +269,7 @@
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
+                <div id="buyFeedback" class="alert d-none" role="alert" aria-live="assertive" aria-atomic="true" tabindex="-1"></div>
                 <div class="alert alert-info">
                     <strong>Item:</strong> <span id="modalItemName"></span><br>
                     <strong>Unit Price:</strong> $<span id="modalItemPrice"></span><br>
@@ -337,6 +341,7 @@
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
+                <div id="useFeedback" class="alert d-none" role="alert" aria-live="assertive" aria-atomic="true" tabindex="-1"></div>
                 <div class="alert alert-info">
                     <strong>Item:</strong> <span id="useModalItemName"></span>
                 </div>
@@ -352,8 +357,8 @@
                         <small class="text-muted">This information will be sent to your teacher for review.</small>
                     </div>
                     <div class="mb-3">
-                        <label for="usePassphrase" class="form-label">Enter your Passphrase to confirm:</label>
-                        <input type="password" class="form-control" id="usePassphrase" name="pin" inputmode="numeric" pattern="[0-9]*" required>
+                        <label for="usePassphrase" class="form-label">Enter your PIN to confirm:</label>
+                        <input type="password" class="form-control" id="usePassphrase" name="pin" inputmode="numeric" pattern="[0-9]*" autocomplete="current-password" required>
                     </div>
                 </form>
             </div>
@@ -368,6 +373,22 @@
 
 {% block extra_scripts %}
 <script>
+    function announceStore(message, feedbackId, kind = 'danger') {
+        const feedback = document.getElementById(feedbackId);
+        if (!feedback) return;
+        feedback.className = `alert alert-${kind}`;
+        feedback.textContent = message;
+        feedback.focus();
+    }
+
+    function announceStorePage(message, kind = 'success') {
+        const feedback = document.getElementById('storePageFeedback');
+        if (!feedback) return;
+        feedback.className = `alert alert-${kind}`;
+        feedback.textContent = message;
+        feedback.focus();
+    }
+
     let currentItemData = {};
 
     // Buy Item Modal Logic
@@ -440,7 +461,7 @@
                 alertClass = 'alert-success';
                 break;
             case 'delayed':
-                explanation = '<strong>Delayed Use:</strong> After purchase, this item will appear in your "My Items" tab. You can redeem it whenever you\'re ready by clicking "Use Item" and entering your passphrase.';
+                explanation = '<strong>Delayed Use:</strong> After purchase, this item will appear in your "My Items" tab. You can redeem it whenever you\'re ready by clicking "Use Item" and entering your PIN.';
                 alertClass = 'alert-info';
                 break;
             case 'hall_pass':
@@ -574,12 +595,12 @@
         const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
 
         if (!passphrase) {
-            alert('Please enter your passphrase.');
+            announceStore('Enter your passphrase to confirm this purchase.', 'buyFeedback');
             return;
         }
 
         if (quantity < 1) {
-            alert('Quantity must be at least 1.');
+            announceStore('Quantity must be at least 1.', 'buyFeedback');
             return;
         }
 
@@ -599,16 +620,16 @@
         .then(data => {
             if (data.status === 'success') {
                 const modal = bootstrap.Modal.getInstance(buyItemModal);
+                announceStorePage(data.message || 'Purchase completed.');
                 modal.hide();
-                alert(data.message);
                 setTimeout(() => window.location.reload(), 1000);
             } else {
-                alert(data.message);
+                announceStore(data.message || 'The purchase could not be completed. Please try again.', 'buyFeedback');
             }
         })
         .catch(error => {
             console.error('Purchase error:', error);
-            alert('An unexpected error occurred. Please try again or contact your teacher if the problem persists. Error details have been logged.');
+            announceStore('The purchase could not be completed. Please try again or contact your teacher if the problem persists.', 'buyFeedback');
         });
     });
 
@@ -671,7 +692,7 @@
         const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
 
         if (!pin) {
-            alert('Please enter your PIN.');
+            announceStore('Enter your PIN to confirm this action.', 'useFeedback');
             return;
         }
 
@@ -697,16 +718,16 @@
         .then(data => {
             if (data.status === 'success') {
                 const modal = bootstrap.Modal.getInstance(useItemModal);
+                announceStorePage(data.message || 'Item use completed.');
                 modal.hide();
-                alert(data.message);
                 setTimeout(() => window.location.reload(), 1000);
             } else {
-                alert(data.message);
+                announceStore(data.message || 'The item could not be used. Please try again.', 'useFeedback');
             }
         })
         .catch(error => {
             console.error('Use item error:', error);
-            alert('An unexpected error occurred.');
+            announceStore('The item could not be used. Please try again.', 'useFeedback');
         });
     });
 </script>

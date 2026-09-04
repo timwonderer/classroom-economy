@@ -182,34 +182,34 @@ function configureBreakButton(button, isActive, hallPass) {
   if (!isActive) {
     button.dataset.state = 'break';
     button.classList.add('btn-warning');
-    button.innerHTML = '<span class="material-symbols-outlined align-bottom me-1">pause_circle</span> Break';
+    button.innerHTML = '<span class="material-symbols-outlined align-bottom me-1" aria-hidden="true">pause_circle</span> Break';
     return;
   }
 
   if (hallPass && hallPass.status === 'approved') {
     button.dataset.state = 'leave';
     button.classList.add('btn-danger');
-    button.innerHTML = '<span class="material-symbols-outlined align-bottom me-1">logout</span> Leave';
+    button.innerHTML = '<span class="material-symbols-outlined align-bottom me-1" aria-hidden="true">logout</span> Leave';
     return;
   }
 
   if (hallPass && hallPass.status === 'left') {
     button.dataset.state = 'return';
     button.classList.add('btn-primary');
-    button.innerHTML = '<span class="material-symbols-outlined align-bottom me-1">login</span> Return';
+    button.innerHTML = '<span class="material-symbols-outlined align-bottom me-1" aria-hidden="true">login</span> Return';
     return;
   }
 
   if (hallPass && hallPass.status === 'pending') {
     button.dataset.state = 'pending';
     button.classList.add('btn-outline-warning');
-    button.innerHTML = '<span class="material-symbols-outlined align-bottom me-1">hourglass_top</span> Pending';
+    button.innerHTML = '<span class="material-symbols-outlined align-bottom me-1" aria-hidden="true">hourglass_top</span> Pending';
     return;
   }
 
   button.dataset.state = 'break';
   button.classList.add('btn-warning');
-  button.innerHTML = '<span class="material-symbols-outlined align-bottom me-1">pause_circle</span> Break';
+  button.innerHTML = '<span class="material-symbols-outlined align-bottom me-1" aria-hidden="true">pause_circle</span> Break';
 }
 
 function openBreakChoiceModal() {

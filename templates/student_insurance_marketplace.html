@@ -77,9 +77,9 @@
           </div>
           <div>
             {% if policy.owned %}
-            <button class="btn btn-outline-secondary btn-sm" disabled>Your plan</button>
+                            <button type="button" class="btn btn-outline-secondary btn-sm" disabled>Your plan</button>
             {% elif group.owned %}
-            <button class="btn btn-outline-secondary btn-sm" disabled
+                            <button type="button" class="btn btn-outline-secondary btn-sm" disabled
                     title="Cancel your current plan in this group to switch tiers">Unavailable</button>
             {% else %}
             <form method="POST" action="{{ url_for('student.purchase_insurance', policy_uuid=policy.policy_uuid) }}" class="d-inline">
@@ -126,7 +126,7 @@
             </ul>
             <div class="mt-auto">
               {% if policy.owned %}
-              <button class="btn btn-outline-secondary w-100" disabled>You have this coverage</button>
+                        <button type="button" class="btn btn-outline-secondary w-100" disabled>You have this coverage</button>
               {% else %}
               <form method="POST" action="{{ url_for('student.purchase_insurance', policy_uuid=policy.policy_uuid) }}">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
@@ -155,6 +155,7 @@
     <h2 class="h5 mb-3">Your claims</h2>
     <div class="table-responsive">
       <table class="table table-sm align-middle">
+        <caption class="visually-hidden">Your insurance claims</caption>
         <thead>
           <tr>
             <th scope="col">Policy</th>

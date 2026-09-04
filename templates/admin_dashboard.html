@@ -69,11 +69,10 @@
                         <span class="material-symbols-outlined">savings</span>
                     </div>
                     <span class="fw-medium" style="color: #5f5f5c;">Total Economy Value</span>
-                    <subtitle>
-                        <a href="#" class="text-secondary ms-2" data-bs-toggle="tooltip" data-bs-placement="top"
-                            data-bs-title="Sum of all student account balances">
-                            <span class="material-symbols-outlined align-top fs-6">info</span>
-                        </a>
+                    <span class="text-secondary ms-2" data-bs-toggle="tooltip" data-bs-placement="top"
+                        title="Sum of all student account balances" aria-label="Sum of all student account balances">
+                        <span class="material-symbols-outlined align-top fs-6" aria-hidden="true">info</span>
+                    </span>
                 </div>
                 <div class="display-6 fw-bold mb-0 text-dark">${{ "{:,.0f}".format(total_balance) }}</div>
             </div>
@@ -196,7 +195,7 @@
                 {% if pending_redemptions_count > 0 %}
                 <li class="nav-item" role="presentation">
                     <button class="nav-link active" id="redemptions-tab" data-bs-toggle="tab"
-                        data-bs-target="#redemptions" type="button" role="tab">
+                        data-bs-target="#redemptions" type="button" role="tab" aria-controls="redemptions" aria-selected="true">
                         <span class="material-symbols-outlined me-1">redeem</span>Redemptions <span
                             class="badge bg-danger ms-1">{{
                             pending_redemptions_count }}</span>
@@ -207,7 +206,7 @@
                 <li class="nav-item" role="presentation">
                     <button class="nav-link {% if pending_redemptions_count == 0 %}active{% endif %}"
                         id="hall-passes-tab" data-bs-toggle="tab" data-bs-target="#hall-passes" type="button"
-                        role="tab">
+                        role="tab" aria-controls="hall-passes" aria-selected="{% if pending_redemptions_count == 0 %}true{% else %}false{% endif %}">
                         <span class="material-symbols-outlined me-1">door_front</span>Hall Passes <span
                             class="badge bg-danger ms-1">{{
                             pending_hall_passes_count }}</span>
@@ -218,7 +217,7 @@
                 <li class="nav-item" role="presentation">
                     <button
                         class="nav-link {% if pending_redemptions_count == 0 and pending_hall_passes_count == 0 %}active{% endif %}"
-                        id="claims-tab" data-bs-toggle="tab" data-bs-target="#claims" type="button" role="tab">
+                        id="claims-tab" data-bs-toggle="tab" data-bs-target="#claims" type="button" role="tab" aria-controls="claims" aria-selected="{% if pending_redemptions_count == 0 and pending_hall_passes_count == 0 %}true{% else %}false{% endif %}">
                         <span class="material-symbols-outlined me-1">verified_user</span>Claims <span
                             class="badge bg-danger ms-1">{{
                             pending_insurance_claims_count }}</span>
@@ -230,7 +229,7 @@
             <div class="tab-content" id="pendingActionsTabContent">
                 <!-- Redemptions Tab -->
                 {% if pending_redemptions_count > 0 %}
-                <div class="tab-pane fade show active" id="redemptions" role="tabpanel">
+                <div class="tab-pane fade show active" id="redemptions" role="tabpanel" aria-labelledby="redemptions-tab">
                     <div class="list-group list-group-flush" style="max-height: 300px; overflow-y: auto;">
                         {% for req in recent_redemptions %}
                         <div
@@ -246,12 +245,12 @@
                                 {% endif %}
                             </div>
                             <div class="d-flex gap-2">
-                                <button class="btn btn-sm btn-outline-danger reject-redemption-btn"
+                                <button type="button" class="btn btn-sm btn-outline-danger reject-redemption-btn"
                                     data-entitlement-id="{{ req.id }}" data-bs-toggle="tooltip"
                                     title="Refund and remove" aria-label="Refund and remove">
                                     <span class="material-symbols-outlined">cancel</span>
                                 </button>
-                                <button class="btn btn-sm btn-success approve-redemption-btn"
+                                <button type="button" class="btn btn-sm btn-success approve-redemption-btn"
                                     data-entitlement-id="{{ req.id }}">
                                     <span class="material-symbols-outlined me-1">check_circle</span>Approve
                                 </button>
@@ -271,7 +270,7 @@
                 <!-- Hall Passes Tab -->
                 {% if pending_hall_passes_count > 0 %}
                 <div class="tab-pane fade {% if pending_redemptions_count == 0 %}show active{% endif %}"
-                    id="hall-passes" role="tabpanel">
+                    id="hall-passes" role="tabpanel" aria-labelledby="hall-passes-tab">
                     <div class="list-group list-group-flush" style="max-height: 300px; overflow-y: auto;">
                         {% for pass in recent_hall_passes %}
                         <div
@@ -307,7 +306,7 @@
                 <!-- Insurance Claims Tab -->
                 {% if pending_insurance_claims_count > 0 %}
                 <div class="tab-pane fade {% if pending_redemptions_count == 0 and pending_hall_passes_count == 0 %}show active{% endif %}"
-                    id="claims" role="tabpanel">
+                    id="claims" role="tabpanel" aria-labelledby="claims-tab">
                     <div class="list-group list-group-flush" style="max-height: 300px; overflow-y: auto;">
                         {% for claim in recent_insurance_claims %}
                         <div
@@ -362,11 +361,12 @@
                 {% if recent_transactions %}
                 <div class="table-responsive">
                     <table class="table table-hover table-clean mb-0 align-middle">
+                        <caption class="visually-hidden">Recent classroom transactions</caption>
                         <thead class="text-secondary small">
                             <tr>
-                                <th class="ps-4 fw-medium border-0">Student</th>
-                                <th class="fw-medium border-0">Action</th>
-                                <th class="fw-medium border-0 text-end pe-4">Amount</th>
+                                <th scope="col" class="ps-4 fw-medium border-0">Student</th>
+                                <th scope="col" class="fw-medium border-0">Action</th>
+                                <th scope="col" class="fw-medium border-0 text-end pe-4">Amount</th>
                             </tr>
                         </thead>
                         <tbody>

@@ -151,7 +151,7 @@
                 <div class="row g-3">
                     <div class="col-md-4">
                         <label class="form-label small fw-bold">Status</label>
-                        <select class="form-select form-select-sm" id="filterStatus">
+                        <select class="form-select form-select-sm" id="filterStatus" aria-label="Filter attendance by status">
                             <option value="">All</option>
                             <option value="active">Start Work (Active)</option>
                             <option value="inactive">Break (Inactive)</option>
@@ -159,19 +159,19 @@
                     </div>
                     <div class="col-md-4">
                         <label class="form-label small fw-bold">Start Date</label>
-                        <input type="date" class="form-control form-control-sm" id="filterStartDate">
+                        <input type="date" class="form-control form-control-sm" id="filterStartDate" aria-label="Attendance start date">
                     </div>
                     <div class="col-md-4">
                         <label class="form-label small fw-bold">End Date</label>
-                        <input type="date" class="form-control form-control-sm" id="filterEndDate">
+                        <input type="date" class="form-control form-control-sm" id="filterEndDate" aria-label="Attendance end date">
                     </div>
                     <div class="col-12 d-flex align-items-center gap-2">
-                        <button class="btn btn-sm btn-primary" onclick="loadAttendanceHistory()">
+                        <button type="button" class="btn btn-sm btn-primary" onclick="loadAttendanceHistory()">
                             <span class="material-symbols-outlined"
                                 style="font-size: 1rem; vertical-align: text-bottom;">filter_alt</span>
                             Apply
                         </button>
-                        <button class="btn btn-sm btn-outline-secondary" onclick="resetFilters()" title="Reset filters">
+                        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="resetFilters()" title="Reset filters">
                             <span class="material-symbols-outlined" style="font-size: 1rem;">refresh</span>
                         </button>
                     </div>
@@ -190,15 +190,16 @@
                 <div id="attendanceTableContainer">
                     <div class="table-responsive">
                         <table class="table table-hover align-middle mb-0" id="attendanceTable">
+                            <caption class="visually-hidden">Attendance records for the current class</caption>
                             <thead
                                 style="background: linear-gradient(135deg, var(--brand-primary) 0%, var(--brand-blue) 100%); color: white; position: sticky; top: 0; z-index: 10;">
                                 <tr>
-                                    <th class="ps-4">Student</th>
-                                    <th>Class</th>
-                                    <th>Period</th>
-                                    <th>Timestamp</th>
-                                    <th>Status</th>
-                                    <th>Reason</th>
+<th scope="col" class="ps-4">Student</th>
+<th scope="col">Class</th>
+<th scope="col">Period</th>
+<th scope="col">Timestamp</th>
+<th scope="col">Status</th>
+<th scope="col">Reason</th>
                                 </tr>
                             </thead>
                             <tbody id="attendanceTableBody">
@@ -365,9 +366,9 @@
         // Previous button
         html += `
         <li class="page-item ${currentPage === 1 ? 'disabled' : ''}">
-            <a class="page-link" href="#" onclick="loadAttendanceHistory(${currentPage - 1}); return false;">
-                <span class="material-symbols-outlined" style="font-size: 1rem;">chevron_left</span>
-            </a>
+            <button type="button" class="page-link" aria-label="Previous page" ${currentPage === 1 ? 'disabled' : ''} onclick="loadAttendanceHistory(${currentPage - 1});">
+                <span class="material-symbols-outlined" aria-hidden="true" style="font-size: 1rem;">chevron_left</span>
+            </button>
         </li>
     `;
 
@@ -381,7 +382,7 @@
         }
 
         if (startPage > 1) {
-            html += `<li class="page-item"><a class="page-link" href="#" onclick="loadAttendanceHistory(1); return false;">1</a></li>`;
+            html += `<li class="page-item"><button type="button" class="page-link" aria-label="Page 1" onclick="loadAttendanceHistory(1);">1</button></li>`;
             if (startPage > 2) {
                 html += `<li class="page-item disabled"><span class="page-link">...</span></li>`;
             }
@@ -390,7 +391,7 @@
         for (let i = startPage; i <= endPage; i++) {
             html += `
             <li class="page-item ${i === currentPage ? 'active' : ''}">
-                <a class="page-link" href="#" onclick="loadAttendanceHistory(${i}); return false;">${i}</a>
+                <button type="button" class="page-link" aria-label="Page ${i}" ${i === currentPage ? 'aria-current="page"' : ''} onclick="loadAttendanceHistory(${i});">${i}</button>
             </li>
         `;
         }
@@ -399,15 +400,15 @@
             if (endPage < totalPages - 1) {
                 html += `<li class="page-item disabled"><span class="page-link">...</span></li>`;
             }
-            html += `<li class="page-item"><a class="page-link" href="#" onclick="loadAttendanceHistory(${totalPages}); return false;">${totalPages}</a></li>`;
+            html += `<li class="page-item"><button type="button" class="page-link" aria-label="Page ${totalPages}" onclick="loadAttendanceHistory(${totalPages});">${totalPages}</button></li>`;
         }
 
         // Next button
         html += `
         <li class="page-item ${currentPage === totalPages ? 'disabled' : ''}">
-            <a class="page-link" href="#" onclick="loadAttendanceHistory(${currentPage + 1}); return false;">
-                <span class="material-symbols-outlined" style="font-size: 1rem;">chevron_right</span>
-            </a>
+            <button type="button" class="page-link" aria-label="Next page" ${currentPage === totalPages ? 'disabled' : ''} onclick="loadAttendanceHistory(${currentPage + 1});">
+                <span class="material-symbols-outlined" aria-hidden="true" style="font-size: 1rem;">chevron_right</span>
+            </button>
         </li>
     `;
 

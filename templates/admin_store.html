@@ -15,7 +15,7 @@
     <span class="material-symbols-outlined">quick_reference_all</span> <span>Quick Tips</span>
   </button>
   <a href="{{ url_for('docs.view_doc', doc_path='user-guides/diagnostics/teacher/store') }}" class="btn btn-outline-primary d-flex align-items-center gap-2" target="_blank" rel="noopener">
-    <span class="material-symbols-outlined">menu_book</span> <span>Full Guide</span>
+    <span class="material-symbols-outlined">menu_book</span> <span>Full Guide</span> <span class="visually-hidden">(opens in a new tab)</span>
   </a>
 {% endblock %}
 
@@ -124,13 +124,13 @@
     <!-- Link to Full Documentation -->
     <div class="mt-4 pt-3 border-top">
       <div class="d-grid gap-2">
-        <a href="{{ url_for('docs.view_doc', doc_path='user-guides/features/store/creating-items') }}" class="btn btn-primary" target="_blank" rel="noopener">
+  <a href="{{ url_for('docs.view_doc', doc_path='user-guides/features/store/creating-items') }}" class="btn btn-primary" target="_blank" rel="noopener">
           <span class="material-symbols-outlined" style="vertical-align: middle;">menu_book</span>
-          Read Full Store Guide
+          Read Full Store Guide <span class="visually-hidden">(opens in a new tab)</span>
         </a>
         <a href="{{ url_for('docs.view_doc', doc_path='user-guides/diagnostics/teacher/store') }}" class="btn btn-outline-secondary btn-sm" target="_blank" rel="noopener">
           <span class="material-symbols-outlined" style="vertical-align: middle; font-size: 1rem;">description</span>
-          Teacher Manual: Store Section
+          Teacher Manual: Store Section <span class="visually-hidden">(opens in a new tab)</span>
         </a>
       </div>
       <p class="text-muted small mt-3 mb-0 text-center">
@@ -144,27 +144,27 @@
 <!-- Nav Tabs -->
 <ul class="nav nav-tabs mb-4" id="storeTabs" role="tablist">
   <li class="nav-item" role="presentation">
-    <button class="nav-link active" id="overview-tab" data-bs-toggle="tab" data-bs-target="#overview" type="button" role="tab">
+    <button class="nav-link active" id="overview-tab" data-bs-toggle="tab" data-bs-target="#overview" type="button" role="tab" aria-controls="overview" aria-selected="true">
       <span class="material-symbols-outlined me-1">grid_view</span>Overview
     </button>
   </li>
   <li class="nav-item" role="presentation">
-    <button class="nav-link" id="manage-tab" data-bs-toggle="tab" data-bs-target="#manage" type="button" role="tab">
+    <button class="nav-link" id="manage-tab" data-bs-toggle="tab" data-bs-target="#manage" type="button" role="tab" aria-controls="manage" aria-selected="false">
       <span class="material-symbols-outlined me-1">inventory_2</span>Manage Items
     </button>
   </li>
   <li class="nav-item" role="presentation">
-    <button class="nav-link" id="add-tab" data-bs-toggle="tab" data-bs-target="#add-item" type="button" role="tab">
+    <button class="nav-link" id="add-tab" data-bs-toggle="tab" data-bs-target="#add-item" type="button" role="tab" aria-controls="add-item" aria-selected="false">
       <span class="material-symbols-outlined me-1">add_circle</span>Add New Item
     </button>
   </li>
   <li class="nav-item" role="presentation">
-    <button class="nav-link" id="history-tab" data-bs-toggle="tab" data-bs-target="#history" type="button" role="tab">
+    <button class="nav-link" id="history-tab" data-bs-toggle="tab" data-bs-target="#history" type="button" role="tab" aria-controls="history" aria-selected="false">
       <span class="material-symbols-outlined me-1">history</span>Purchase History
     </button>
   </li>
   <li class="nav-item" role="presentation">
-    <button class="nav-link" id="audit-tab" data-bs-toggle="tab" data-bs-target="#audit" type="button" role="tab">
+    <button class="nav-link" id="audit-tab" data-bs-toggle="tab" data-bs-target="#audit" type="button" role="tab" aria-controls="audit" aria-selected="false">
       <span class="material-symbols-outlined me-1">article</span>Redemption Audit
     </button>
   </li>
@@ -172,7 +172,7 @@
 
 <div class="tab-content" id="storeTabContent">
   <!-- OVERVIEW TAB -->
-  <div class="tab-pane fade show active" id="overview" role="tabpanel">
+  <div class="tab-pane fade show active" id="overview" role="tabpanel" aria-labelledby="overview-tab">
     <div class="row">
       <!-- Store Statistics -->
       <div class="col-lg-6 mb-4">
@@ -207,10 +207,10 @@
           </div>
           <div class="card-body">
             <div class="d-grid gap-2">
-              <button class="btn btn-outline-primary" onclick="document.getElementById('add-tab').click()">
+              <button type="button" class="btn btn-outline-primary" onclick="document.getElementById('add-tab').click()">
                 <span class="material-symbols-outlined me-2">add_circle</span>Add New Item
               </button>
-              <button class="btn btn-outline-info" onclick="document.getElementById('history-tab').click()">
+              <button type="button" class="btn btn-outline-info" onclick="document.getElementById('history-tab').click()">
                 <span class="material-symbols-outlined me-2">history</span>View Purchase History
               </button>
             </div>
@@ -228,13 +228,14 @@
         {% if view.pending_redemptions %}
         <div class="table-responsive">
           <table class="table table-hover js-sortable">
+            <caption class="visually-hidden">Pending store redemptions</caption>
             <thead>
               <tr>
-                <th>Student</th>
-                <th>Item</th>
-                <th>Requested</th>
-                <th>Details</th>
-                <th>Action</th>
+                <th scope="col">Student</th>
+                <th scope="col">Item</th>
+                <th scope="col">Requested</th>
+                <th scope="col">Details</th>
+                <th scope="col">Action</th>
               </tr>
             </thead>
             <tbody>
@@ -248,12 +249,12 @@
                 </td>
                 <td>
                   <div class="d-flex gap-2">
-                    <button class="btn btn-sm btn-outline-danger reject-redemption-btn"
+                    <button type="button" class="btn btn-sm btn-outline-danger reject-redemption-btn"
                       data-entitlement-id="{{ entitlement.id }}"
                       title="Refund and remove" aria-label="Refund and remove">
                       <span class="material-symbols-outlined">cancel</span>
                     </button>
-                    <button class="btn btn-sm btn-success approve-redemption-btn" data-entitlement-id="{{ entitlement.id }}">
+                    <button type="button" class="btn btn-sm btn-success approve-redemption-btn" data-entitlement-id="{{ entitlement.id }}">
                       <span class="material-symbols-outlined me-1">check_circle</span>Approve
                     </button>
                   </div>
@@ -284,13 +285,14 @@
         {% if view.recent_purchases %}
         <div class="table-responsive">
           <table class="table table-hover js-sortable">
+            <caption class="visually-hidden">Recent store purchases</caption>
             <thead>
               <tr>
-                <th>Student</th>
-                <th>Item</th>
-                <th>Price</th>
-                <th>Purchased</th>
-                <th>Status</th>
+                <th scope="col">Student</th>
+                <th scope="col">Item</th>
+                <th scope="col">Price</th>
+                <th scope="col">Purchased</th>
+                <th scope="col">Status</th>
               </tr>
             </thead>
             <tbody>
@@ -335,7 +337,7 @@
   </div>
 
   <!-- MANAGE ITEMS TAB -->
-  <div class="tab-pane fade" id="manage" role="tabpanel">
+  <div class="tab-pane fade" id="manage" role="tabpanel" aria-labelledby="manage-tab">
     <div class="row row-cols-1 row-cols-md-2 row-cols-xl-3 g-3">
       {% if view.items %}
         {% for item in view.items %}
@@ -401,7 +403,7 @@
                       <span>{{ row.count }}/{{ row.target }}</span>
                     </div>
                     <div class="progress" style="height: 10px;">
-                      <div class="progress-bar {% if row.is_complete %}bg-success{% else %}bg-warning{% endif %}" role="progressbar" style="width: {{ row.percent }}%;" aria-valuenow="{{ row.count }}" aria-valuemin="0" aria-valuemax="{{ row.target }}"></div>
+                      <div class="progress-bar {% if row.is_complete %}bg-success{% else %}bg-warning{% endif %}" role="progressbar" aria-label="{{ row.class_label }} collective purchase progress" style="width: {{ row.percent }}%;" aria-valuenow="{{ row.count }}" aria-valuemin="0" aria-valuemax="{{ row.target }}"></div>
                     </div>
                   </div>
                   {% endfor %}
@@ -436,14 +438,14 @@
                   <span class="material-symbols-outlined">edit</span>
                 </a>
                 {% if item.is_rent_linked or item.id in view.rent_managed_item_ids %}
-                <button class="btn btn-outline-warning" disabled title="Managed by Rent Settings">
+                    <button type="button" class="btn btn-outline-warning" disabled title="Managed by Rent Settings">
                   <span class="material-symbols-outlined">visibility_off</span>
                 </button>
                 {% else %}
-                <button class="btn btn-outline-warning" data-bs-toggle="modal" data-bs-target="#deactivateItemModal" data-item-id="{{ item.id }}" data-item-name="{{ item.name }}" title="Deactivate">
+                    <button type="button" class="btn btn-outline-warning" data-bs-toggle="modal" data-bs-target="#deactivateItemModal" data-item-id="{{ item.id }}" data-item-name="{{ item.name }}" title="Deactivate">
                   <span class="material-symbols-outlined">visibility_off</span>
                 </button>
-                <button class="btn btn-outline-danger" data-bs-toggle="modal" data-bs-target="#deleteItemModal" data-item-id="{{ item.id }}" data-item-name="{{ item.name }}" title="Delete Permanently">
+                    <button type="button" class="btn btn-outline-danger" data-bs-toggle="modal" data-bs-target="#deleteItemModal" data-item-id="{{ item.id }}" data-item-name="{{ item.name }}" title="Delete Permanently">
                   <span class="material-symbols-outlined">delete</span>
                 </button>
                 {% endif %}
@@ -463,7 +465,7 @@
   </div>
 
   <!-- ADD NEW ITEM TAB -->
-  <div class="tab-pane fade" id="add-item" role="tabpanel">
+  <div class="tab-pane fade" id="add-item" role="tabpanel" aria-labelledby="add-tab">
     <div class="row">
       <div class="col-lg-12 mb-4">
         <div class="card shadow">
@@ -687,7 +689,7 @@
   </div>
 
   <!-- PURCHASE HISTORY TAB -->
-  <div class="tab-pane fade" id="history" role="tabpanel">
+  <div class="tab-pane fade" id="history" role="tabpanel" aria-labelledby="history-tab">
     <div class="card shadow">
       <div class="card-header bg-info text-white">
         <h2 class="mb-0 h5"><span class="material-symbols-outlined me-2">receipt_long</span>All Purchases</h2>
@@ -695,13 +697,14 @@
       <div class="card-body">
         <div class="table-responsive">
           <table class="table table-striped js-sortable">
+            <caption class="visually-hidden">All store purchases</caption>
             <thead>
               <tr>
-                <th>Student</th>
-                <th>Item</th>
-                <th>Purchase Date</th>
-                <th>Status</th>
-                <th>Quantity</th>
+                <th scope="col">Student</th>
+                <th scope="col">Item</th>
+                <th scope="col">Purchase Date</th>
+                <th scope="col">Status</th>
+                <th scope="col">Quantity</th>
               </tr>
             </thead>
             <tbody>
@@ -736,7 +739,7 @@
   </div>
 
   <!-- REDEMPTION AUDIT TAB -->
-  <div class="tab-pane fade" id="audit" role="tabpanel">
+  <div class="tab-pane fade" id="audit" role="tabpanel" aria-labelledby="audit-tab">
     <div class="card shadow">
       <div class="card-header bg-secondary text-white">
         <h2 class="mb-0 h5"><span class="material-symbols-outlined me-2">article</span>Redemption Audit Log</h2>
@@ -784,13 +787,14 @@
 
         <div class="table-responsive">
           <table class="table table-striped table-sm js-sortable">
+            <caption class="visually-hidden">Store audit records</caption>
             <thead>
               <tr>
-                <th>Student</th>
-                <th>Class</th>
-                <th>Date</th>
-                <th>Action</th>
-                <th>Notes</th>
+                <th scope="col">Student</th>
+                <th scope="col">Class</th>
+                <th scope="col">Date</th>
+                <th scope="col">Action</th>
+                <th scope="col">Notes</th>
               </tr>
             </thead>
             <tbody>

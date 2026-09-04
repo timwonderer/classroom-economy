@@ -25,7 +25,7 @@
                 </div>
                 <div class="d-flex align-items-center gap-2">
                     <span class="gs-progress-badge" id="gsProgressBadge">0/9</span>
-                    <button class="btn-close-widget" onclick="dismissGettingStarted(event)" title="Dismiss permanently">
+                    <button type="button" class="btn-close-widget" onclick="dismissGettingStarted(event)" title="Dismiss permanently" aria-label="Dismiss getting started guide permanently">
                         <span class="material-symbols-outlined">close</span>
                     </button>
                 </div>
@@ -102,7 +102,7 @@
                             </label>
                         </div>
                         <div class="gs-item-actions">
-                            <button class="btn btn-sm btn-outline-secondary" onclick="skipTask(event, 'store')">
+                            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="skipTask(event, 'store')">
                                 Skip
                             </button>
                             <a href="{{ url_for('admin.store_management') }}" class="btn btn-sm btn-outline-primary">
@@ -123,7 +123,7 @@
                             </label>
                         </div>
                         <div class="gs-item-actions">
-                            <button class="btn btn-sm btn-outline-secondary" onclick="skipTask(event, 'banking')">
+                            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="skipTask(event, 'banking')">
                                 Skip
                             </button>
                             <a href="{{ url_for('admin.banking') }}" class="btn btn-sm btn-outline-primary">
@@ -144,7 +144,7 @@
                             </label>
                         </div>
                         <div class="gs-item-actions">
-                            <button class="btn btn-sm btn-outline-secondary" onclick="skipTask(event, 'rent')">
+                            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="skipTask(event, 'rent')">
                                 Skip
                             </button>
                             <a href="{{ url_for('admin.rent_settings') }}" class="btn btn-sm btn-outline-primary">
@@ -165,7 +165,7 @@
                             </label>
                         </div>
                         <div class="gs-item-actions">
-                            <button class="btn btn-sm btn-outline-secondary" onclick="skipTask(event, 'insurance')">
+                            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="skipTask(event, 'insurance')">
                                 Skip
                             </button>
                             <a href="{{ url_for('admin.insurance_management') }}"
@@ -187,7 +187,7 @@
                             </label>
                         </div>
                         <div class="gs-item-actions">
-                            <button class="btn btn-sm btn-outline-secondary" onclick="skipTask(event, 'hall_pass')">
+                            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="skipTask(event, 'hall_pass')">
                                 Skip
                             </button>
                             <a href="{{ url_for('admin.hall_pass') }}" class="btn btn-sm btn-outline-primary">
@@ -208,7 +208,7 @@
                             </label>
                         </div>
                         <div class="gs-item-actions">
-                            <button class="btn btn-sm btn-outline-secondary"
+                            <button type="button" class="btn btn-sm btn-outline-secondary"
                                 onclick="skipTask(event, 'personalization')">
                                 Skip
                             </button>
@@ -230,7 +230,7 @@
                             </label>
                         </div>
                         <div class="gs-item-actions">
-                            <button class="btn btn-sm btn-outline-secondary" onclick="skipTask(event, 'passkey')">
+                            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="skipTask(event, 'passkey')">
                                 Skip
                             </button>
                             <a href="{{ url_for('admin.passkey_settings') }}" class="btn btn-sm btn-outline-primary">

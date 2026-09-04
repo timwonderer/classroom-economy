@@ -161,11 +161,12 @@
     </style>
 </head>
 <body>
+    <main id="main-content" aria-labelledby="account-recovery-heading">
     <div class="login-container">
         <div class="login-left">
             <div class="mb-2">
                 <small class="text-muted">TEACHER PORTAL</small>
-                <h1 class="h3 fw-bold text-primary">Account Recovery</h1>
+                <h1 id="account-recovery-heading" class="h3 fw-bold text-primary">Account Recovery</h1>
                 <p class="subtitle">Enter one student per class you teach to verify your identity</p>
             </div>
 
@@ -210,7 +211,7 @@
                         <div class="pair-row" id="row-0">
                             <input type="text" name="join_code[]" class="form-control form-control-sm" placeholder="e.g., ABC123" autocomplete="off" autocapitalize="characters" aria-label="Join code" required>
                             <input type="text" name="student_username[]" class="form-control form-control-sm" placeholder="e.g., john_doe" autocomplete="off" aria-label="Student username" required>
-                            <button type="button" class="remove-btn" onclick="removeRow(this)" disabled title="Remove row">×</button>
+                      <button type="button" class="remove-btn" onclick="removeRow(this)" disabled title="Remove row" aria-label="Remove recovery row">×</button>
                         </div>
                     </div>
 
@@ -245,7 +246,7 @@
             div.innerHTML = `
                 <input type="text" name="join_code[]" class="form-control form-control-sm" placeholder="e.g., ABC123" autocomplete="off" autocapitalize="characters" aria-label="Join code" required>
                 <input type="text" name="student_username[]" class="form-control form-control-sm" placeholder="e.g., john_doe" autocomplete="off" aria-label="Student username" required>
-                <button type="button" class="remove-btn" onclick="removeRow(this)" title="Remove row">×</button>
+                <button type="button" class="remove-btn" onclick="removeRow(this)" title="Remove row" aria-label="Remove recovery row">×</button>
             `;
             list.appendChild(div);
             updateRemoveButtons();
@@ -267,5 +268,6 @@
             });
         }
     </script>
+    </main>
 </body>
 </html>

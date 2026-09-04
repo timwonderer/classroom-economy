@@ -58,7 +58,7 @@
     <ul class="nav nav-tabs mb-0 border-bottom-0" id="ticketTabs" role="tablist">
         <li class="nav-item" role="presentation">
             <button class="nav-link {% if active_tab == 'reports' or not active_tab %}active{% endif %}"
-                id="reports-tab" data-bs-toggle="tab" data-bs-target="#reports-pane" type="button" role="tab">
+                id="reports-tab" data-bs-toggle="tab" data-bs-target="#reports-pane" type="button" role="tab" aria-controls="reports-pane" aria-selected="{% if active_tab == 'reports' or not active_tab %}true{% else %}false{% endif %}">
                 <span class="material-symbols-outlined align-middle me-1" style="font-size:16px;">bug_report</span>
                 Teacher Issues
                 {% if new_reports > 0 %}
@@ -68,7 +68,7 @@
         </li>
         <li class="nav-item" role="presentation">
             <button class="nav-link {% if active_tab == 'issues' %}active{% endif %}" id="issues-tab"
-                data-bs-toggle="tab" data-bs-target="#issues-pane" type="button" role="tab">
+                data-bs-toggle="tab" data-bs-target="#issues-pane" type="button" role="tab" aria-controls="issues-pane" aria-selected="{% if active_tab == 'issues' %}true{% else %}false{% endif %}">
                 <span class="material-symbols-outlined align-middle me-1"
                     style="font-size:16px;">escalator_warning</span>
                 Escalated Student Issues
@@ -83,7 +83,7 @@
 
         <!-- ── Teacher Issues Tab ── -->
         <div class="tab-pane fade {% if active_tab == 'reports' or not active_tab %}show active{% endif %}"
-            id="reports-pane" role="tabpanel">
+            id="reports-pane" role="tabpanel" aria-labelledby="reports-tab">
 
             <!-- Filter Bar -->
             <div class="p-3 border-bottom bg-light d-flex flex-wrap gap-2 align-items-end">
@@ -92,7 +92,7 @@
                     <input type="hidden" name="tab" value="reports">
                     <div style="min-width:160px; max-width:200px;">
                         <label class="form-label mb-1" style="font-size:0.8rem;">Status</label>
-                        <select name="status" class="form-select form-select-sm" onchange="this.form.submit()">
+                        <select name="status" class="form-select form-select-sm" aria-label="Filter support tickets by status" onchange="this.form.submit()">
                             <option value="all" {% if status_filter=='all' %}selected{% endif %}>All Statuses</option>
                             <option value="new" {% if status_filter=='new' %}selected{% endif %}>New</option>
                             <option value="reviewed" {% if status_filter=='reviewed' %}selected{% endif %}>Reviewed
@@ -103,7 +103,7 @@
                     </div>
                     <div style="min-width:160px; max-width:200px;">
                         <label class="form-label mb-1" style="font-size:0.8rem;">Type</label>
-                        <select name="type" class="form-select form-select-sm" onchange="this.form.submit()">
+                        <select name="type" class="form-select form-select-sm" aria-label="Filter support tickets by type" onchange="this.form.submit()">
                             <option value="all" {% if report_type_filter=='all' %}selected{% endif %}>All Types</option>
                             <option value="bug" {% if report_type_filter=='bug' %}selected{% endif %}>Bug</option>
                             <option value="suggestion" {% if report_type_filter=='suggestion' %}selected{% endif %}>
@@ -125,16 +125,17 @@
             <!-- Desktop Table -->
             <div class="d-none d-md-block table-responsive">
                 <table class="table table-hover align-middle mb-0" style="font-size:0.85rem;">
+                    <caption class="visually-hidden">Support tickets and reported issues</caption>
                     <thead class="table-light">
                         <tr>
-                            <th class="ps-3" style="width:120px;">Reference</th>
-                            <th style="width:90px;">Type</th>
-                            <th>Title</th>
-                            <th style="width:90px;">Reporter</th>
-                            <th style="width:80px;">Error</th>
-                            <th style="width:130px;">Submitted</th>
-                            <th style="width:90px;">Status</th>
-                            <th style="width:70px;"></th>
+                            <th scope="col" class="ps-3" style="width:120px;">Reference</th>
+                            <th scope="col" style="width:90px;">Type</th>
+                            <th scope="col">Title</th>
+                            <th scope="col" style="width:90px;">Reporter</th>
+                            <th scope="col" style="width:80px;">Error</th>
+                            <th scope="col" style="width:130px;">Submitted</th>
+                            <th scope="col" style="width:90px;">Status</th>
+                            <th scope="col" style="width:70px;"></th>
                         </tr>
                     </thead>
                     <tbody>
@@ -231,13 +232,13 @@
 
         <!-- ── Escalated Issues Tab ── -->
         <div class="tab-pane fade {% if active_tab == 'issues' %}show active{% endif %}" id="issues-pane"
-            role="tabpanel">
+            role="tabpanel" aria-labelledby="issues-tab">
 
             <!-- Issue sub-tabs -->
             <div class="p-3 border-bottom bg-light">
                 <ul class="nav nav-pills nav-sm gap-2" id="issuePills" role="tablist">
                     <li class="nav-item">
-                        <button class="nav-link active py-1 px-3" data-bs-toggle="pill" data-bs-target="#pill-pending"
+                        <button type="button" class="nav-link active py-1 px-3" data-bs-toggle="pill" data-bs-target="#pill-pending"
                             style="font-size:0.85rem;">
                             Pending
                             {% if issues_pending|length > 0 %}
@@ -246,7 +247,7 @@
                         </button>
                     </li>
                     <li class="nav-item">
-                        <button class="nav-link py-1 px-3" data-bs-toggle="pill" data-bs-target="#pill-review"
+                        <button type="button" class="nav-link py-1 px-3" data-bs-toggle="pill" data-bs-target="#pill-review"
                             style="font-size:0.85rem;">
                             In Review
                             {% if issues_in_review|length > 0 %}
@@ -255,7 +256,7 @@
                         </button>
                     </li>
                     <li class="nav-item">
-                        <button class="nav-link py-1 px-3" data-bs-toggle="pill" data-bs-target="#pill-resolved"
+                        <button type="button" class="nav-link py-1 px-3" data-bs-toggle="pill" data-bs-target="#pill-resolved"
                             style="font-size:0.85rem;">
                             Resolved
                         </button>

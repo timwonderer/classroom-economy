@@ -182,12 +182,13 @@
                     <h6 class="text-muted mb-2">Recent Transaction History</h6>
                     <div class="table-responsive">
                         <table class="table table-sm table-hover">
+                            <caption class="visually-hidden">Recent transaction history</caption>
                             <thead>
                                 <tr>
-                                    <th>ID</th>
-                                    <th>Amount</th>
-                                    <th>Description</th>
-                                    <th>Date</th>
+                                    <th scope="col">ID</th>
+                                    <th scope="col">Amount</th>
+                                    <th scope="col">Description</th>
+                                    <th scope="col">Date</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -258,7 +259,7 @@
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
                         <div class="mb-3">
-                            <label class="form-label fw-bold">Resolution Action</label>
+                            <label class="form-label fw-bold" for="actionType">Resolution Action</label>
                             <select class="form-select" name="action_type" id="actionType" required>
                                 <option value="">Select an action...</option>
                                 {% if issue.related_transaction_id %}
@@ -270,13 +271,13 @@
                         </div>
 
                         <div class="mb-3" id="denialReasonDiv" style="display: none;">
-                            <label class="form-label">Denial Reason</label>
-                            <textarea class="form-control" name="denial_reason" rows="2" placeholder="Why are you denying this issue?"></textarea>
+                            <label class="form-label" for="denialReason">Denial Reason</label>
+                            <textarea class="form-control" id="denialReason" name="denial_reason" rows="2" placeholder="Why are you denying this issue?"></textarea>
                         </div>
 
                         <div class="mb-3">
-                            <label class="form-label">Notes (optional)</label>
-                            <textarea class="form-control" name="teacher_notes" rows="3" placeholder="Internal notes about your resolution"></textarea>
+                            <label class="form-label" for="teacherNotes">Notes (optional)</label>
+                            <textarea class="form-control" id="teacherNotes" name="teacher_notes" rows="3" placeholder="Internal notes about your resolution"></textarea>
                         </div>
 
                         <button type="submit" class="btn btn-success w-100 mb-2">
@@ -312,8 +313,8 @@
                     <form method="POST" action="{{ url_for('admin.close_issue', issue_ref=issue_ref) }}">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         <div class="mb-3">
-                            <label class="form-label fw-bold">Closure Summary <span class="text-danger">*</span></label>
-                            <textarea class="form-control" name="resolution_summary" rows="3" required placeholder="Summarize the final classroom resolution for audit."></textarea>
+                            <label class="form-label fw-bold" for="resolutionSummary">Closure Summary <span class="text-danger">*</span></label>
+                            <textarea class="form-control" id="resolutionSummary" name="resolution_summary" rows="3" required placeholder="Summarize the final classroom resolution for audit."></textarea>
                         </div>
                         <button type="submit" class="btn btn-success w-100">
                             <span class="material-symbols-outlined me-2">task_alt</span>Close Ticket

@@ -111,6 +111,12 @@ def vendor_material_symbols() -> list[str]:
     # src at the local file.
     face_and_class = css[css.index("@font-face"):]
     face_and_class = _SRC_URL_RE.sub(f"url(../fonts/{filename})", face_and_class)
+    # Chromium and other modern engines use the unprefixed property to enable
+    # Material Symbols' ligature names (for example, "school") as glyphs.
+    face_and_class = face_and_class.replace(
+        "  -webkit-font-feature-settings: 'liga';",
+        "  font-feature-settings: 'liga';\n  -webkit-font-feature-settings: 'liga';",
+    )
     return [face_and_class.strip()]
 
 

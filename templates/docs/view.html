@@ -81,7 +81,7 @@
                                 <button
                                     class="accordion-button {% if not doc_path.startswith('user-guides/diagnostics') %}collapsed{% endif %}"
                                     type="button" data-bs-toggle="collapse" data-bs-target="#diagnosticsCollapse"
-                                    aria-expanded="{% if doc_path.startswith('user-guides/diagnostics') %}true{% else %}false{% endif %}">
+                                    aria-controls="diagnosticsCollapse" aria-expanded="{% if doc_path.startswith('user-guides/diagnostics') %}true{% else %}false{% endif %}">
                                     <span class="material-symbols-outlined me-2">quick_reference</span>
                                     Diagnostics
                                 </button>
@@ -117,7 +117,7 @@
                                 <button
                                     class="accordion-button {% if not (doc_path.startswith('user-guides/features') or doc_path == 'user-guides/economy_guide') %}collapsed{% endif %}"
                                     type="button" data-bs-toggle="collapse" data-bs-target="#featuresCollapse"
-                                    aria-expanded="{% if doc_path.startswith('user-guides/features') or doc_path == 'user-guides/economy_guide' %}true{% else %}false{% endif %}">
+                                    aria-controls="featuresCollapse" aria-expanded="{% if doc_path.startswith('user-guides/features') or doc_path == 'user-guides/economy_guide' %}true{% else %}false{% endif %}">
                                     <span class="material-symbols-outlined me-2">auto_awesome</span>
                                     Feature Guides
                                 </button>
@@ -169,7 +169,7 @@
                                 <button
                                     class="accordion-button {% if not doc_path.startswith('user-guides/features/sysadmin') and doc_path != 'user-guides/sysadmin_manual' %}collapsed{% endif %}"
                                     type="button" data-bs-toggle="collapse" data-bs-target="#sysadminCollapse"
-                                    aria-expanded="{% if doc_path.startswith('user-guides/features/sysadmin') or doc_path == 'user-guides/sysadmin_manual' %}true{% else %}false{% endif %}">
+                                    aria-controls="sysadminCollapse" aria-expanded="{% if doc_path.startswith('user-guides/features/sysadmin') or doc_path == 'user-guides/sysadmin_manual' %}true{% else %}false{% endif %}">
                                     <span class="material-symbols-outlined me-2">admin_panel_settings</span>
                                     System Admin
                                 </button>
@@ -229,7 +229,7 @@
                                 <button
                                     class="accordion-button {% if not doc_path.startswith('user-guides/legal') %}collapsed{% endif %}"
                                     type="button" data-bs-toggle="collapse" data-bs-target="#legalCollapse"
-                                    aria-expanded="{% if doc_path.startswith('user-guides/legal') %}true{% else %}false{% endif %}">
+                                    aria-controls="legalCollapse" aria-expanded="{% if doc_path.startswith('user-guides/legal') %}true{% else %}false{% endif %}">
                                     <span class="material-symbols-outlined me-2">gavel</span>
                                     Legal &amp; Licensing
                                 </button>
@@ -291,7 +291,7 @@
                                 <button
                                     class="accordion-button {% if not (doc_path.startswith('ARCHITECTURE/') or doc_path.startswith('DOMAIN/') or doc_path.startswith('DOMAINS/') or doc_path.startswith('FEATURES/')) %}collapsed{% endif %}"
                                     type="button" data-bs-toggle="collapse" data-bs-target="#technicalCollapse"
-                                    aria-expanded="{% if doc_path.startswith('ARCHITECTURE/') or doc_path.startswith('DOMAIN/') or doc_path.startswith('DOMAINS/') or doc_path.startswith('FEATURES/') %}true{% else %}false{% endif %}">
+                                    aria-controls="technicalCollapse" aria-expanded="{% if doc_path.startswith('ARCHITECTURE/') or doc_path.startswith('DOMAIN/') or doc_path.startswith('DOMAINS/') or doc_path.startswith('FEATURES/') %}true{% else %}false{% endif %}">
                                     <span class="material-symbols-outlined me-2">code</span>
                                     Technical Reference
                                 </button>
@@ -335,7 +335,7 @@
                                 <button
                                     class="accordion-button {% if not (doc_path in ['LOGS/RELEASES/LOG-REL-002_Changelog_Mirror', 'STANDARD_OPERATING_PROCEDURES/DEPLOYMENT/SOP-DEP-006_Deployment_Guide', 'STANDARD_OPERATING_PROCEDURES/DOCUMENTATION/SOP-DOC-002_Documentation_Index'] or doc_path.startswith('STANDARD_OPERATING_PROCEDURES/')) %}collapsed{% endif %}"
                                     type="button" data-bs-toggle="collapse" data-bs-target="#projectCollapse"
-                                    aria-expanded="{% if doc_path in ['LOGS/RELEASES/LOG-REL-002_Changelog_Mirror', 'STANDARD_OPERATING_PROCEDURES/DEPLOYMENT/SOP-DEP-006_Deployment_Guide', 'STANDARD_OPERATING_PROCEDURES/DOCUMENTATION/SOP-DOC-002_Documentation_Index'] or doc_path.startswith('STANDARD_OPERATING_PROCEDURES/') %}true{% else %}false{% endif %}">
+                                    aria-controls="projectCollapse" aria-expanded="{% if doc_path in ['LOGS/RELEASES/LOG-REL-002_Changelog_Mirror', 'STANDARD_OPERATING_PROCEDURES/DEPLOYMENT/SOP-DEP-006_Deployment_Guide', 'STANDARD_OPERATING_PROCEDURES/DOCUMENTATION/SOP-DOC-002_Documentation_Index'] or doc_path.startswith('STANDARD_OPERATING_PROCEDURES/') %}true{% else %}false{% endif %}">
                                     <span class="material-symbols-outlined me-2">folder</span>
                                     Reference & Project
                                 </button>
@@ -360,14 +360,14 @@
                                             <a class="nav-link"
                                                 href="https://github.com/timwonderer/classroom-economy/blob/main/PROJECT_HISTORY.md"
                                                 target="_blank" rel="noopener">
-                                                Project History
+                                                Project History <span class="visually-hidden">(opens in a new tab)</span>
                                             </a>
                                         </li>
                                         <li class="nav-item">
                                             <a class="nav-link"
                                                 href="https://github.com/timwonderer/classroom-economy/blob/main/DEVELOPMENT.md"
                                                 target="_blank" rel="noopener">
-                                                Development
+                                                Development <span class="visually-hidden">(opens in a new tab)</span>
                                             </a>
                                         </li>
                                         <li class="nav-item">

@@ -4,6 +4,7 @@
 
 {% block content %}
 <div class="container-fluid">
+    <div id="passkey-feedback" class="visually-hidden" role="status" aria-live="polite" aria-atomic="true" tabindex="-1"></div>
     <div class="row">
         <div class="col-lg-8 mx-auto">
             <!-- Header -->
@@ -40,7 +41,7 @@
                         <span class="material-symbols-outlined" style="vertical-align: middle;">security</span>
                         Your Passkeys
                     </h5>
-                    <button class="btn btn-primary" id="registerPasskeyButton">
+                    <button type="button" class="btn btn-primary" id="registerPasskeyButton">
                         <span class="material-symbols-outlined" style="vertical-align: middle; font-size: 18px;">add</span>
                         Register New Passkey
                     </button>
@@ -71,7 +72,7 @@
                                     </div>
                                     {% endif %}
                                 </div>
-                                <button class="btn btn-sm btn-outline-danger delete-passkey-btn"
+                                <button type="button" class="btn btn-sm btn-outline-danger delete-passkey-btn"
                                         data-credential-id="{{ cred.id }}"
                                         data-credential-name="{{ cred.authenticator_name or 'Unnamed Passkey' }}">
                                     <span class="material-symbols-outlined" style="font-size: 16px;">delete</span>
@@ -136,7 +137,11 @@
                 window.location.reload();
 
             } catch (error) {
-                alert('Error: ' + error.message);
+                const feedback = document.getElementById('passkey-feedback');
+                feedback.textContent = 'Error: ' + error.message;
+                feedback.className = 'alert alert-danger';
+                feedback.classList.remove('visually-hidden');
+                feedback.focus();
                 this.disabled = false;
                 this.innerHTML = '<span class="material-symbols-outlined" style="font-size: 16px;">delete</span> Delete';
             }

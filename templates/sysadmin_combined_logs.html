@@ -58,7 +58,7 @@
     <ul class="nav nav-tabs mb-0 border-bottom-0" id="logTabs" role="tablist">
         <li class="nav-item" role="presentation">
             <button class="nav-link {% if active_tab == 'errors' or not active_tab %}active{% endif %}" id="errors-tab"
-                data-bs-toggle="tab" data-bs-target="#errors-pane" type="button" role="tab" aria-controls="errors-pane">
+                data-bs-toggle="tab" data-bs-target="#errors-pane" type="button" role="tab" aria-controls="errors-pane" aria-selected="{% if active_tab == 'errors' or not active_tab %}true{% else %}false{% endif %}">
                 <span class="material-symbols-outlined align-middle me-1" style="font-size:16px;">error</span>
                 Error Logs
                 {% if total_errors > 0 %}
@@ -69,7 +69,7 @@
         <li class="nav-item" role="presentation">
             <button class="nav-link {% if active_tab == 'network' %}active{% endif %}" id="network-tab"
                 data-bs-toggle="tab" data-bs-target="#network-pane" type="button" role="tab"
-                aria-controls="network-pane">
+                aria-controls="network-pane" aria-selected="{% if active_tab == 'network' %}true{% else %}false{% endif %}">
                 <span class="material-symbols-outlined align-middle me-1" style="font-size:16px;">network_check</span>
                 Network Activity
             </button>
@@ -80,7 +80,7 @@
 
         <!-- ── Error Logs Tab ── -->
         <div class="tab-pane fade {% if active_tab == 'errors' or not active_tab %}show active{% endif %}"
-            id="errors-pane" role="tabpanel">
+            id="errors-pane" role="tabpanel" aria-labelledby="errors-tab">
 
             <!-- Filter Bar -->
             <div class="p-3 border-bottom bg-light d-flex flex-wrap gap-2 align-items-end">
@@ -89,7 +89,7 @@
                     <input type="hidden" name="tab" value="errors">
                     <div class="flex-grow-1" style="min-width:200px; max-width:320px;">
                         <label class="form-label mb-1" style="font-size:0.8rem;">Filter by Error Type</label>
-                        <select name="error_type" class="form-select form-select-sm">
+                        <select name="error_type" class="form-select form-select-sm" aria-label="Filter by error type">
                             <option value="">All Error Types</option>
                             {% for et in error_types %}
                             <option value="{{ et }}" {% if et==current_error_type %}selected{% endif %}>{{ et }}
@@ -110,15 +110,16 @@
             {% if error_logs %}
             <div class="table-responsive">
                 <table class="table table-hover align-middle mb-0" style="font-size:0.85rem;">
+                    <caption class="visually-hidden">System error logs</caption>
                     <thead class="table-light">
                         <tr>
-                            <th class="ps-3" style="width:60px;">ID</th>
-                            <th style="width:160px;">Timestamp</th>
-                            <th style="width:130px;">Error Type</th>
-                            <th>Message</th>
-                            <th class="d-none d-md-table-cell" style="width:180px;">Path</th>
-                            <th class="d-none d-md-table-cell" style="width:110px;">IP</th>
-                            <th style="width:70px;"></th>
+                            <th scope="col" class="ps-3" style="width:60px;">ID</th>
+                            <th scope="col" style="width:160px;">Timestamp</th>
+                            <th scope="col" style="width:130px;">Error Type</th>
+                            <th scope="col">Message</th>
+                            <th scope="col" class="d-none d-md-table-cell" style="width:180px;">Path</th>
+                            <th scope="col" class="d-none d-md-table-cell" style="width:110px;">IP</th>
+                            <th scope="col" style="width:70px;"></th>
                         </tr>
                     </thead>
                     <tbody>
@@ -154,7 +155,7 @@
                                     class="small">{{ log.request_path or 'N/A' }}</code></td>
                             <td class="d-none d-md-table-cell"><small>{{ log.ip_address or 'N/A' }}</small></td>
                             <td>
-                                <button class="btn btn-sm btn-outline-primary py-0 px-2" data-bs-toggle="modal"
+                                <button type="button" class="btn btn-sm btn-outline-primary py-0 px-2" data-bs-toggle="modal"
                                     data-bs-target="#errModal{{ log.id }}">
                                     View
                                 </button>
@@ -168,16 +169,16 @@
             {# Error Detail Modals - moved outside table to keep HTML valid #}
             {% for log in error_logs %}
             <!-- Error Detail Modal -->
-            <div class="modal fade" id="errModal{{ log.id }}" tabindex="-1" aria-hidden="true">
+            <div class="modal fade" id="errModal{{ log.id }}" tabindex="-1" aria-labelledby="errModalLabel{{ log.id }}" aria-hidden="true">
                 <div class="modal-dialog modal-xl">
                     <div class="modal-content">
                         <div class="modal-header bg-danger text-white">
-                            <h5 class="modal-title">
+                            <h5 class="modal-title" id="errModalLabel{{ log.id }}">
                                 <span class="material-symbols-outlined align-middle me-1"
                                     style="font-size:18px;">error</span>
                                 Error #{{ log.id }} — {{ log.error_type }}
                             </h5>
-                            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close error details"></button>
                         </div>
                         <div class="modal-body">
                             <div class="row g-3 mb-3">
@@ -206,7 +207,7 @@
                             <div class="mb-3">
                                 <div class="d-flex justify-content-between align-items-center mb-1">
                                     <strong>Log Output (Last 50 Lines):</strong>
-                                    <button class="btn btn-sm btn-outline-secondary"
+                                    <button type="button" class="btn btn-sm btn-outline-secondary"
                                         onclick="copyToClipboard('errlog-{{ log.id }}')">Copy</button>
                                 </div>
                                 <pre id="errlog-{{ log.id }}" class="bg-dark text-light p-3 rounded"
@@ -225,7 +226,7 @@
             <!-- Error Pagination -->
             {% if error_pagination.pages > 1 %}
             <div class="p-3 border-top d-flex justify-content-center">
-                <nav>
+                <nav aria-label="Error log pages">
                     <ul class="pagination pagination-sm mb-0">
                         <li class="page-item {% if not error_pagination.has_prev %}disabled{% endif %}">
                             <a class="page-link"
@@ -265,7 +266,7 @@
 
         <!-- ── Network Activity Tab ── -->
         <div class="tab-pane fade {% if active_tab == 'network' %}show active{% endif %}" id="network-pane"
-            role="tabpanel">
+            role="tabpanel" aria-labelledby="network-tab">
 
             <!-- Filter & Stats Row -->
             <div class="p-3 border-bottom bg-light d-flex flex-wrap gap-3 align-items-end">
@@ -274,7 +275,7 @@
                     <input type="hidden" name="tab" value="network">
                     <div style="min-width:200px; max-width:280px;">
                         <label class="form-label mb-1" style="font-size:0.8rem;">Filter by IP Address</label>
-                        <select name="ip" class="form-select form-select-sm">
+                        <select name="ip" class="form-select form-select-sm" aria-label="Filter by IP address">
                             <option value="">All IP Addresses</option>
                             {% for ip in ip_addresses %}
                             <option value="{{ ip }}" {% if ip==current_ip %}selected{% endif %}>{{ ip }}</option>
@@ -305,14 +306,15 @@
             {% if network_logs %}
             <div class="table-responsive">
                 <table class="table table-hover align-middle mb-0" style="font-size:0.85rem;">
+                    <caption class="visually-hidden">Network activity logs</caption>
                     <thead class="table-light">
                         <tr>
-                            <th class="ps-3" style="width:160px;">Timestamp</th>
-                            <th style="width:70px;">Method</th>
-                            <th>Path</th>
-                            <th style="width:130px;">Status</th>
-                            <th class="d-none d-md-table-cell" style="width:120px;">IP</th>
-                            <th style="width:70px;"></th>
+                            <th scope="col" class="ps-3" style="width:160px;">Timestamp</th>
+                            <th scope="col" style="width:70px;">Method</th>
+                            <th scope="col">Path</th>
+                            <th scope="col" style="width:130px;">Status</th>
+                            <th scope="col" class="d-none d-md-table-cell" style="width:120px;">IP</th>
+                            <th scope="col" style="width:70px;"></th>
                         </tr>
                     </thead>
                     <tbody>
@@ -350,7 +352,7 @@
                             </td>
                             <td class="d-none d-md-table-cell"><small>{{ log.ip_address or 'N/A' }}</small></td>
                             <td>
-                                <button class="btn btn-sm btn-outline-primary py-0 px-2" data-bs-toggle="modal"
+                                <button type="button" class="btn btn-sm btn-outline-primary py-0 px-2" data-bs-toggle="modal"
                                     data-bs-target="#netModal{{ log.id }}">
                                     View
                                 </button>
@@ -364,16 +366,16 @@
             {# Network Request Detail Modals - moved outside table to keep HTML valid #}
             {% for log in network_logs %}
             <!-- Network Request Detail Modal -->
-            <div class="modal fade" id="netModal{{ log.id }}" tabindex="-1" aria-hidden="true">
+            <div class="modal fade" id="netModal{{ log.id }}" tabindex="-1" aria-labelledby="netModalLabel{{ log.id }}" aria-hidden="true">
                 <div class="modal-dialog modal-lg">
                     <div class="modal-content">
                         <div class="modal-header bg-primary text-white">
-                            <h5 class="modal-title">
+                            <h5 class="modal-title" id="netModalLabel{{ log.id }}">
                                 <span class="material-symbols-outlined align-middle me-1"
                                     style="font-size:18px;">info</span>
                                 Request #{{ log.id }}
                             </h5>
-                            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close request details"></button>
                         </div>
                         <div class="modal-body">
                             <div class="row g-3 mb-3">
@@ -411,7 +413,7 @@
             <!-- Network Pagination -->
             {% if net_pagination.pages > 1 %}
             <div class="p-3 border-top d-flex justify-content-center">
-                <nav>
+                <nav aria-label="Network activity pages">
                     <ul class="pagination pagination-sm mb-0">
                         <li class="page-item {% if not net_pagination.has_prev %}disabled{% endif %}">
                             <a class="page-link"

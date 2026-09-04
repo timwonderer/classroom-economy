@@ -11,6 +11,8 @@
 
 {% block content %}
 
+<div id="announcements-feedback" class="visually-hidden" role="status" aria-live="polite" aria-atomic="true" tabindex="-1"></div>
+
 <div class="offcanvas offcanvas-end" tabindex="-1" id="announcementsGuide" aria-labelledby="announcementsGuideLabel">
     <div class="offcanvas-header">
         <h5 class="offcanvas-title" id="announcementsGuideLabel">How to: Class Announcements</h5>
@@ -148,7 +150,7 @@ function toggleAnnouncement(announcementId) {
             if (data.is_active) {
                 // Announcement is now active
                 button.className = 'btn btn-sm btn-outline-secondary';
-                button.innerHTML = '<span class="material-symbols-outlined">visibility_off</span> Deactivate';
+                button.innerHTML = '<span class="material-symbols-outlined" aria-hidden="true">visibility_off</span> Deactivate';
 
                 // Add border to card
                 card.classList.add('border-start', 'border-5');
@@ -164,7 +166,7 @@ function toggleAnnouncement(announcementId) {
             } else {
                 // Announcement is now inactive
                 button.className = 'btn btn-sm btn-outline-success';
-                button.innerHTML = '<span class="material-symbols-outlined">visibility</span> Activate';
+                button.innerHTML = '<span class="material-symbols-outlined" aria-hidden="true">visibility</span> Activate';
 
                 // Remove border from card
                 card.classList.remove('border-start', 'border-5');
@@ -183,13 +185,22 @@ function toggleAnnouncement(announcementId) {
                 }
             }
         } else {
-            alert('Error: ' + data.message);
+            announceAnnouncements('Error: ' + data.message, 'danger');
         }
     })
     .catch(error => {
         console.error('Error:', error);
-            alert('The announcement could not be updated. Please try again.');
+            announceAnnouncements('The announcement could not be updated. Please try again.', 'danger');
     });
+}
+
+function announceAnnouncements(message, kind) {
+    const feedback = document.getElementById('announcements-feedback');
+    if (!feedback) return;
+    feedback.className = `alert alert-${kind || 'info'}`;
+    feedback.textContent = message;
+    feedback.classList.remove('visually-hidden');
+    feedback.focus();
 }
 
 function deleteAnnouncement(announcementId, title) {

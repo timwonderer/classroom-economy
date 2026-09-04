@@ -151,7 +151,7 @@
     <!-- Tabs -->
     <ul class="nav nav-tabs mb-4" id="issuesTabs" role="tablist">
         <li class="nav-item" role="presentation">
-            <button class="nav-link active" id="pending-tab" data-bs-toggle="tab" data-bs-target="#pending" type="button" role="tab">
+            <button class="nav-link active" id="pending-tab" data-bs-toggle="tab" data-bs-target="#pending" type="button" role="tab" aria-controls="pending" aria-selected="true">
                 <span class="material-symbols-outlined me-2">history</span>Pending Review
                 {% if pending_issues|length > 0 %}
                 <span class="badge bg-warning text-dark ms-2">{{ pending_issues|length }}</span>
@@ -159,12 +159,12 @@
             </button>
         </li>
         <li class="nav-item" role="presentation">
-            <button class="nav-link" id="resolved-tab" data-bs-toggle="tab" data-bs-target="#resolved" type="button" role="tab">
+            <button class="nav-link" id="resolved-tab" data-bs-toggle="tab" data-bs-target="#resolved" type="button" role="tab" aria-controls="resolved" aria-selected="false">
                 <span class="material-symbols-outlined me-2">fact_check</span>Teacher Final Review
             </button>
         </li>
         <li class="nav-item" role="presentation">
-            <button class="nav-link" id="escalated-tab" data-bs-toggle="tab" data-bs-target="#escalated" type="button" role="tab">
+            <button class="nav-link" id="escalated-tab" data-bs-toggle="tab" data-bs-target="#escalated" type="button" role="tab" aria-controls="escalated" aria-selected="false">
                 <span class="material-symbols-outlined me-2">arrow_circle_up</span>Escalated to Developer
             </button>
         </li>
@@ -172,7 +172,7 @@
 
     <div class="tab-content" id="issuesTabsContent">
         <!-- Pending Tab -->
-        <div class="tab-pane fade show active" id="pending" role="tabpanel">
+        <div class="tab-pane fade show active" id="pending" role="tabpanel" aria-labelledby="pending-tab">
             {% if pending_issues %}
                 <div class="list-group">
                     {% for issue in pending_issues %}
@@ -223,7 +223,7 @@
         </div>
 
         <!-- Resolved Tab -->
-        <div class="tab-pane fade" id="resolved" role="tabpanel">
+        <div class="tab-pane fade" id="resolved" role="tabpanel" aria-labelledby="resolved-tab">
             {% if resolved_issues %}
                 <div class="list-group">
                     {% for issue in resolved_issues %}
@@ -273,7 +273,7 @@
         </div>
 
         <!-- Escalated Tab -->
-        <div class="tab-pane fade" id="escalated" role="tabpanel">
+        <div class="tab-pane fade" id="escalated" role="tabpanel" aria-labelledby="escalated-tab">
             {% if escalated_issues %}
                 <div class="list-group">
                     {% for issue in escalated_issues %}

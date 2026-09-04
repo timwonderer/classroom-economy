@@ -226,11 +226,12 @@
 </head>
 
 <body class="student-shell">
+    <main id="main-content" aria-labelledby="student-pin-heading">
     <div class="signup-container">
         <div class="signup-left">
             <div class="mb-3">
                 <small class="text-muted">STUDENT SETUP</small>
-                <h1 class="h3 fw-bold text-primary">Set Your PIN & Passphrase</h1>
+                <h1 id="student-pin-heading" class="h3 fw-bold text-primary">Set Your PIN & Passphrase</h1>
             </div>
 
             <div class="username-badge">
@@ -264,6 +265,7 @@
             </div>
 
             <form method="POST" onsubmit="return validateForm()">
+                <div id="pin-validation-feedback" class="alert alert-danger d-none" role="alert" aria-live="assertive" aria-atomic="true" tabindex="-1"></div>
                 {{ form.hidden_tag() }}
 
                 <fieldset id="setup-fields" class="disabled-fields" disabled>
@@ -278,12 +280,12 @@
 
                     <div class="form-group">
                         <label class="form-label text-secondary" for="passphrase">Passphrase</label>
-                        {{ form.passphrase(class="form-control form-control-lg", id="passphrase", autocomplete="off", placeholder="e.g., Surprised!Banana!2!You!") }}
+                        {{ form.passphrase(class="form-control form-control-lg", id="passphrase", autocomplete="new-password", placeholder="e.g., Surprised!Banana!2!You!") }}
                         <small class="form-text">A good passphrase has at least four words with symbols and numbers. Make it easy to remember but hard to guess.</small>
                         <div class="strength-meter">
                             <div class="strength-meter-fill" id="strength-bar"></div>
                         </div>
-                        <div id="strength-feedback"></div>
+                        <div id="strength-feedback" role="status" aria-live="polite" aria-atomic="true"></div>
                         {% for error in form.passphrase.errors %}
                         <div class="text-danger small mt-2">{{ error }}</div>
                         {% endfor %}
@@ -355,7 +357,9 @@
         function validateForm() {
             const pin = document.getElementById('pin').value;
             if (!/^\d{4,8}$/.test(pin)) {
-                alert("PIN must be between 4-8 digits.");
+                const feedback = document.getElementById('pin-validation-feedback');
+                feedback.textContent = 'PIN must be between 4 and 8 digits.';
+                feedback.classList.remove('d-none');
                 window.scrollTo(0, 0);
                 document.getElementById('pin').focus();
                 return false;
@@ -363,6 +367,7 @@
             return true;
         }
     </script>
+    </main>
 </body>
 
 </html>

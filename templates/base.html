@@ -50,6 +50,13 @@
 
     <!-- Scripts -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js" integrity="sha384-FKyoEForCGlyvwx9Hj09JcYn3nv7wiPVlz7YYwJrWVcXK/BmnVDxM+D2scQbITxI" crossorigin="anonymous"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            document.querySelectorAll('.material-symbols-outlined').forEach(function (icon) {
+                if (!icon.hasAttribute('aria-hidden')) icon.setAttribute('aria-hidden', 'true');
+            });
+        });
+    </script>
     <script src="{{ static_url('js/app-core.js') }}"></script>
     {% block extra_scripts %}{% endblock %}
 </body>

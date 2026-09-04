@@ -55,7 +55,7 @@
           </div>
           <div class="form-check form-switch mb-0">
             <input class="form-check-input feature-toggle" type="checkbox"
-                   id="toggle_{{ feat.feature_key }}" data-feature="{{ feat.feature_key }}"
+                   id="standard-toggle_{{ feat.feature_key }}" data-feature="{{ feat.feature_key }}"
                    aria-label="{{ feat.name }}"
                    {% if feat.enabled %}checked{% endif %}
                    onchange="updateFeature(this)">
@@ -106,7 +106,7 @@
                {% if not view.cwi_ready %}data-bs-toggle="tooltip" data-bs-placement="left"
                title="Set up payroll and configure your economic engine to use this feature."{% endif %}>
             <input class="form-check-input feature-toggle" type="checkbox"
-                   id="toggle_{{ feat.feature_key }}" data-feature="{{ feat.feature_key }}"
+                   id="pricing-toggle_{{ feat.feature_key }}" data-feature="{{ feat.feature_key }}"
                    aria-label="{{ feat.name }}"
                    {% if feat.enabled %}checked{% endif %}
                    {% if not view.cwi_ready %}disabled{% endif %}
@@ -118,7 +118,7 @@
     </div>
     {% endif %}
 
-    <div class="mt-4 text-muted small">
+    <div class="mt-4 text-muted small" id="feature-save-status" role="status" aria-live="polite" aria-atomic="true" tabindex="-1">
       <span class="material-symbols-outlined" style="vertical-align: middle;">sync</span>
       Changes are saved automatically.
     </div>
@@ -136,6 +136,7 @@ function updateFeature(toggle) {
   const enabled = toggle.checked;
   const csrfTokenMeta = document.querySelector('meta[name="csrf-token"]');
   const csrfToken = csrfTokenMeta ? csrfTokenMeta.content : '';
+  const status = document.getElementById('feature-save-status');
 
   fetch('{{ url_for("admin.update_class_feature_setting") }}', {
     method: 'POST',
@@ -148,12 +149,16 @@ function updateFeature(toggle) {
   .then(response => response.json())
   .then(data => {
     if (data.status !== 'success') {
-      alert('Error: ' + data.message);
+      if (status) status.textContent = 'Could not save ' + feature + '. ' + (data.message || 'Please try again.');
+      if (status) status.focus();
       toggle.checked = !enabled;
+    } else if (status) {
+      status.textContent = feature + ' is now ' + (enabled ? 'on.' : 'off.');
     }
   })
   .catch(() => {
-    alert('Failed to save setting.');
+    if (status) status.textContent = 'Could not save ' + feature + '. Please try again.';
+    if (status) status.focus();
     toggle.checked = !enabled;
   });
 }

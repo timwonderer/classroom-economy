@@ -216,13 +216,14 @@
                         <h6 class="text-muted mb-2">Recent Requests</h6>
                         {% if correlation_pack.request_trace_json %}
                         <div class="table-responsive mb-3">
-                            <table class="table table-sm align-middle">
+                    <table class="table table-sm align-middle">
+                        <caption class="visually-hidden">Issue context transactions</caption>
                                 <thead>
                                     <tr>
-                                        <th>Timestamp</th>
-                                        <th>Method</th>
-                                        <th>Endpoint</th>
-                                        <th>Request ID</th>
+                                        <th scope="col">Timestamp</th>
+                                        <th scope="col">Method</th>
+                                        <th scope="col">Endpoint</th>
+                                        <th scope="col">Request ID</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -417,7 +418,18 @@ document.addEventListener('DOMContentLoaded', function() {
 
             const onFailure = function() {
                 buttonEl.textContent = originalText;
-                window.alert('Unable to copy value to clipboard. Please copy it manually.');
+                let feedback = document.getElementById('copy-correlation-feedback');
+                if (!feedback) {
+                    feedback = document.createElement('div');
+                    feedback.id = 'copy-correlation-feedback';
+                    feedback.setAttribute('role', 'alert');
+                    feedback.setAttribute('aria-live', 'assertive');
+                    feedback.tabIndex = -1;
+                    document.body.appendChild(feedback);
+                }
+                feedback.className = 'alert alert-danger';
+                feedback.textContent = 'Unable to copy the value. Please copy it manually.';
+                feedback.focus();
             };
 
             if (navigator.clipboard && window.isSecureContext) {

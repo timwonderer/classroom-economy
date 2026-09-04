@@ -1124,7 +1124,7 @@ body.sysadmin-shell .eyebrow {
 }
 
 /* ─── Mobile Layout ─── */
-@media (max-width: 768px) {
+@media (max-width: 991.98px) {
     .mobile-menu-toggle {
         position: fixed;
         top: 0.85rem;
@@ -1185,7 +1185,7 @@ body.sysadmin-shell .eyebrow {
     }
 }
 
-@media (min-width: 769px) {
+@media (min-width: 992px) {
 
     .mobile-menu-toggle,
     .sidebar-backdrop {
@@ -1876,6 +1876,33 @@ body.maintenance-active .sidebar {
 }
 
 /* ─── Accessibility & Focus Styling (WCAG 2.4.7 / 1.4.11) ─── */
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        scroll-behavior: auto !important;
+        transition-duration: 0.01ms !important;
+    }
+}
+
+@media (forced-colors: active) {
+    .btn,
+    .form-control,
+    .form-select,
+    .nav-link,
+    .accordion-button {
+        forced-color-adjust: auto;
+        border: 1px solid ButtonText;
+    }
+
+    *:focus-visible {
+        outline: 3px solid Highlight !important;
+        outline-offset: 2px !important;
+    }
+}
+
 *:focus-visible {
     outline: 3px solid var(--primary) !important;
     outline-offset: 2px !important;

@@ -103,11 +103,12 @@
 </div>
 
 <div class="container-fluid">
+    <div id="hall-pass-feedback" class="alert d-none" role="alert" aria-live="assertive" aria-atomic="true" tabindex="-1"></div>
     <div class="d-flex justify-content-end align-items-center mb-4">
         <div>
             {% if verify_url %}
-            <a href="{{ verify_url }}" target="_blank" class="btn btn-primary me-2">
-                <span class="material-symbols-outlined">verified_user</span> Office Verification
+            <a href="{{ verify_url }}" target="_blank" rel="noopener noreferrer" class="btn btn-primary me-2">
+                <span class="material-symbols-outlined">verified_user</span> Office Verification <span class="visually-hidden">(opens in a new tab)</span>
             </a>
             {% endif %}
             <button type="button" class="btn btn-outline-secondary me-2"
@@ -207,10 +208,10 @@
                                         <small class="d-block text-muted">Requested: {{ req.request_time | format_datetime }} | Period: {{ req.period }}</small>
                                     </div>
                                     <div class="btn-group btn-group-sm" role="group" aria-label="Hall pass request actions">
-                                        <button class="btn btn-success" onclick="handlePendingPassAction('{{ req.id }}', 'approve')">
+                                    <button type="button" class="btn btn-success" onclick="handlePendingPassAction('{{ req.id }}', 'approve')">
                                             <span class="material-symbols-outlined" style="font-size: 1rem;">check</span> Approve
                                         </button>
-                                        <button class="btn btn-outline-danger" onclick="handlePendingPassAction('{{ req.id }}', 'reject')">
+                                    <button type="button" class="btn btn-outline-danger" onclick="handlePendingPassAction('{{ req.id }}', 'reject')">
                                             <span class="material-symbols-outlined" style="font-size: 1rem;">close</span> Reject
                                         </button>
                                     </div>
@@ -235,7 +236,7 @@
                                         <strong>{{ req.student_name }}</strong> - {{ req.reason }}
                                         <small class="d-block text-muted">Issued: {{ req.decision_time | format_datetime }} | Period: {{ req.period }}</small>
                                     </div>
-                                    <button class="btn btn-sm btn-primary" onclick="handlePassAction({{ req.id }}, 'leave')" {% if out_of_class %}disabled{% endif %}>
+                            <button type="button" class="btn btn-sm btn-primary" onclick="handlePassAction({{ req.id }}, 'leave')" {% if out_of_class %}disabled{% endif %}>
                                         <span class="material-symbols-outlined" style="font-size: 1rem;">logout</span> Left Class
                                     </button>
                                 </div>
@@ -259,7 +260,7 @@
                                         <strong>{{ req.student_name }}</strong> - {{ req.reason }}
                                         <small class="d-block text-muted">Left: {{ req.left_time | format_datetime }} | Period: {{ req.period }}</small>
                                     </div>
-                                    <button class="btn btn-sm btn-secondary" onclick="handlePassAction({{ req.id }}, 'return')">
+                            <button type="button" class="btn btn-sm btn-secondary" onclick="handlePassAction({{ req.id }}, 'return')">
                                         <span class="material-symbols-outlined" style="font-size: 1rem;">login</span> Returned
                                     </button>
                                 </div>
@@ -297,7 +298,7 @@
                             <input type="date" class="form-control form-control-sm" id="filterEndDate">
                         </div>
                         <div class="col-md-2 d-flex align-items-end">
-                            <button class="btn btn-sm btn-primary w-100" onclick="loadHistory()">
+                            <button type="button" class="btn btn-sm btn-primary w-100" onclick="loadHistory()">
                                 <span class="material-symbols-outlined" style="font-size: 1rem;">filter_alt</span> Apply
                             </button>
                         </div>
@@ -306,14 +307,15 @@
                     <!-- History Table -->
                     <div class="table-responsive">
                         <table class="table table-hover table-sm">
+                            <caption class="visually-hidden">Hall pass history</caption>
                             <thead class="table-light">
                                 <tr>
-                                    <th>Date/Time</th>
-                                    <th>Student</th>
-                                    <th>Period</th>
-                                    <th>Type</th>
-                                    <th>Status</th>
-                                    <th>Duration</th>
+                                    <th scope="col">Date/Time</th>
+                                    <th scope="col">Student</th>
+                                    <th scope="col">Period</th>
+                                    <th scope="col">Type</th>
+                                    <th scope="col">Status</th>
+                                    <th scope="col">Duration</th>
                                 </tr>
                             </thead>
                             <tbody id="historyTableBody">
@@ -334,9 +336,9 @@
                         </div>
                         <nav aria-label="History pagination">
                             <ul class="pagination pagination-sm mb-0" id="historyPagination">
-                                <li class="page-item disabled"><a class="page-link" href="#">Previous</a></li>
-                                <li class="page-item active"><a class="page-link" href="#">1</a></li>
-                                <li class="page-item disabled"><a class="page-link" href="#">Next</a></li>
+                                <li class="page-item disabled"><button type="button" class="page-link" aria-label="Previous page" disabled>Previous</button></li>
+                                <li class="page-item active"><button type="button" class="page-link" aria-label="Page 1" aria-current="page" disabled>1</button></li>
+                                <li class="page-item disabled"><button type="button" class="page-link" aria-label="Next page" disabled>Next</button></li>
                             </ul>
                         </nav>
                     </div>
@@ -347,10 +349,18 @@
 </div>
 
 <script>
+function announceHallPass(message, kind = 'danger') {
+    const feedback = document.getElementById('hall-pass-feedback');
+    if (!feedback) return;
+    feedback.className = `alert alert-${kind}`;
+    feedback.textContent = message;
+    feedback.focus();
+}
+
 function handlePassAction(passId, action) {
     const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
     if (!['leave', 'return'].includes(action)) {
-        alert('Unsupported hall pass action.');
+        announceHallPass('This hall pass action is not available.');
         return;
     }
 
@@ -367,19 +377,19 @@ function handlePassAction(passId, action) {
             // A simple reload is the easiest way to update the state
             window.location.reload();
         } else {
-            alert('Error: ' + data.message);
+            announceHallPass(data.message || 'The hall pass could not be updated. Please try again.');
         }
     })
     .catch(error => {
         console.error('Hall pass action error:', error);
-        alert('An unexpected error occurred.');
+        announceHallPass('The hall pass could not be updated. Please try again.');
     });
 }
 
 function handlePendingPassAction(requestId, action) {
     const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
     if (!['approve', 'reject'].includes(action)) {
-        alert('Unsupported hall pass action.');
+        announceHallPass('This pending hall pass action is not available.');
         return;
     }
 
@@ -395,12 +405,12 @@ function handlePendingPassAction(requestId, action) {
         if (data.status === 'success') {
             window.location.reload();
         } else {
-            alert('Error: ' + data.message);
+            announceHallPass(data.message || 'The pending hall pass could not be updated. Please try again.');
         }
     })
     .catch(error => {
         console.error('Pending hall pass action error:', error);
-        alert('An unexpected error occurred.');
+        announceHallPass('The pending hall pass could not be updated. Please try again.');
     });
 }
 
@@ -446,7 +456,7 @@ function saveQueueSettings() {
 
     // Validate queue limit
     if (queueLimit < 1 || queueLimit > 50) {
-        alert('Queue limit must be between 1 and 50');
+        announceHallPass('Queue limit must be between 1 and 50.');
         loadQueueSettings(); // Reset to previous value
         return;
     }
@@ -472,13 +482,13 @@ function saveQueueSettings() {
                 settingsSavedIndicator.style.display = 'none';
             }, 2000);
         } else {
-            alert('Error: ' + data.message);
+            announceHallPass(data.message || 'The hall pass settings could not be saved. Please try again.');
             loadQueueSettings(); // Reset to previous values
         }
     })
     .catch(error => {
         console.error('Error saving queue settings:', error);
-        alert('Failed to save settings. Please try again.');
+        announceHallPass('The hall pass settings could not be saved. Please try again.');
         loadQueueSettings(); // Reset to previous values
     });
 }
@@ -598,9 +608,9 @@ function renderPagination(total, page, pageSize) {
 
     // Previous button
     if (page > 1) {
-        paginationHTML += `<li class="page-item"><a class="page-link" href="#" onclick="loadHistory(${page - 1}); return false;">Previous</a></li>`;
+        paginationHTML += `<li class="page-item"><button type="button" class="page-link" aria-label="Previous page" onclick="loadHistory(${page - 1});">Previous</button></li>`;
     } else {
-        paginationHTML += `<li class="page-item disabled"><a class="page-link" href="#">Previous</a></li>`;
+        paginationHTML += `<li class="page-item disabled"><button type="button" class="page-link" aria-label="Previous page" disabled>Previous</button></li>`;
     }
 
     // Page numbers
@@ -613,32 +623,32 @@ function renderPagination(total, page, pageSize) {
     }
 
     if (startPage > 1) {
-        paginationHTML += `<li class="page-item"><a class="page-link" href="#" onclick="loadHistory(1); return false;">1</a></li>`;
+        paginationHTML += `<li class="page-item"><button type="button" class="page-link" aria-label="Page 1" onclick="loadHistory(1);">1</button></li>`;
         if (startPage > 2) {
-            paginationHTML += `<li class="page-item disabled"><a class="page-link" href="#">...</a></li>`;
+            paginationHTML += `<li class="page-item disabled"><span class="page-link" aria-hidden="true">...</span></li>`;
         }
     }
 
     for (let i = startPage; i <= endPage; i++) {
         if (i === page) {
-            paginationHTML += `<li class="page-item active"><a class="page-link" href="#">${i}</a></li>`;
+            paginationHTML += `<li class="page-item active"><button type="button" class="page-link" aria-label="Page ${i}" aria-current="page" disabled>${i}</button></li>`;
         } else {
-            paginationHTML += `<li class="page-item"><a class="page-link" href="#" onclick="loadHistory(${i}); return false;">${i}</a></li>`;
+            paginationHTML += `<li class="page-item"><button type="button" class="page-link" aria-label="Page ${i}" onclick="loadHistory(${i});">${i}</button></li>`;
         }
     }
 
     if (endPage < totalPages) {
         if (endPage < totalPages - 1) {
-            paginationHTML += `<li class="page-item disabled"><a class="page-link" href="#">...</a></li>`;
+            paginationHTML += `<li class="page-item disabled"><span class="page-link" aria-hidden="true">...</span></li>`;
         }
-        paginationHTML += `<li class="page-item"><a class="page-link" href="#" onclick="loadHistory(${totalPages}); return false;">${totalPages}</a></li>`;
+        paginationHTML += `<li class="page-item"><button type="button" class="page-link" aria-label="Page ${totalPages}" onclick="loadHistory(${totalPages});">${totalPages}</button></li>`;
     }
 
     // Next button
     if (page < totalPages) {
-        paginationHTML += `<li class="page-item"><a class="page-link" href="#" onclick="loadHistory(${page + 1}); return false;">Next</a></li>`;
+        paginationHTML += `<li class="page-item"><button type="button" class="page-link" aria-label="Next page" onclick="loadHistory(${page + 1});">Next</button></li>`;
     } else {
-        paginationHTML += `<li class="page-item disabled"><a class="page-link" href="#">Next</a></li>`;
+        paginationHTML += `<li class="page-item disabled"><button type="button" class="page-link" aria-label="Next page" disabled>Next</button></li>`;
     }
 
     pagination.innerHTML = paginationHTML;
@@ -667,12 +677,12 @@ function rotateVerifyToken() {
                 const newUrl = window.location.origin + '/verify/hallpass/' + data.token;
                 const btnLink = document.querySelector('a[href*="/verify/hallpass/"]');
                 if (btnLink) { btnLink.href = newUrl; }
-                alert('Verification link regenerated.\nNew URL: ' + newUrl);
+                announceHallPass('Verification link regenerated. The current link is no longer valid. The new link is available in the Office Verification button.', 'success');
             } else {
-                alert('Error: ' + (data.message || 'Could not regenerate token.'));
+                announceHallPass(data.message || 'Could not regenerate the verification link. Please try again.');
             }
         })
-        .catch(() => alert('Failed to contact server. Please try again.'));
+        .catch(() => announceHallPass('Failed to contact the server. Please try again.'));
 }
 </script>
 {% endblock %}
