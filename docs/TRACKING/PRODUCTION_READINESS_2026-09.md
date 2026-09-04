@@ -38,10 +38,10 @@ Rubric anchors used:
 
 | # | Domain | Verdict | Blocking |
 |---|---|---|---|
-| 1 | Identity | **NOT READY** | B3, B7 |
+| 1 | Identity | **NOT READY** | B7 |
 | 2 | Class Configuration | READY (with caveats) | — |
 | 3 | Ledger | READY (with caveats) | — |
-| 4 | Productivity & Payroll | READY (with caveats) | — |
+| 4 | Productivity & Payroll | **NOT READY** | B9 |
 | 5 | Obligations | **NOT READY** | B1 |
 | 6 | Store & Entitlements | READY (with caveats) | — |
 | 7 | Policies | **NOT READY** | B1, B2 |
@@ -49,8 +49,8 @@ Rubric anchors used:
 | 9 | Operations | READY (with caveats) | — |
 | 10 | Support | **NOT READY** | B4, B5, B6, B7 |
 
-**6 of 10 domains are production-ready.** Four are blocked by seven defects, which collapse into
-**three fix tracks** (§IV).
+**5 of 10 domains are production-ready.** Five are blocked by seven open defects, which collapse into
+**four fix tracks** (§IV). Two further defects (B3, B8) were found and closed on 2026-09-04.
 
 ---
 
@@ -82,14 +82,39 @@ Insert/Update into a single Insert — every submission must create a new immuta
 
 > B1 and B2 are the same defect class. One immutability rework clears both and unblocks two domains.
 
-### B3 — Orphaned `users` rows are never deleted
+### B3 — Orphaned `users` rows are never deleted — **CLOSED 2026-09-04**
 **Domain:** Identity · **Severity:** High · **Violates:** INV-CORE-000 §III.5, DOM-IDEN-001 §VI, INV-ARC-012, INV-ARC-018
 
-`hard_delete_student_if_orphaned` (`app/utils/student_deletion.py:196`) deletes seats but leaves the
-parent `User`. The class-teardown path (`app/routes/admin.py:1276-1290`) has the same gap. The
-invariant is unconditional: a user with no remaining seat in any class must be deleted from the
-system entirely. Because `User` carries credential material, this is also a PII-retention violation.
-No test guards it.
+`hard_delete_student_if_orphaned` (`app/utils/student_deletion.py:196`) deleted seats but left the
+parent `User`. The class-teardown path had the same gap. The invariant is unconditional: a user with
+no remaining seat in any class must be deleted from the system entirely. Because `User` carries
+credential material, this is also a PII-retention violation. No test guarded it.
+
+**Worse than the audit recorded.** Both orphan sweeps were not merely incomplete — they were
+tautologies that deleted nothing at all. `_delete_orphan_students` selected seats whose `user_id` was
+in the affected set and then excluded seats whose `user_id` was in the affected set; the class
+teardown ran its sweep *after* deleting the class's seats, so the driving set was already empty.
+Neither ever removed a row.
+
+**Resolution.** New canonical helper `delete_orphaned_users(user_ids)` in
+`app/utils/student_deletion.py`: it keeps only ids with no `Seat` anywhere and no owned
+`ClassEconomy` (teacher principals are terminal-destroyed through FEAT-IDEN-007, never swept),
+clears or removes the FK references that would block the delete (`attendance_sessions` rows —
+`ON DELETE SET NULL` against a `NOT NULL` column — and `recovery_requests` are deleted;
+`ledger_transaction.user_id`, `issues.sysadmin_id`, `policy_transitions.created_by` are nulled),
+then deletes the `users` rows. Credential material (`passkey_credentials`) follows by FK cascade.
+All three call paths now route through it: `hard_delete_student_if_orphaned`,
+`remove_student_from_teacher_scope`, and the class teardown inside `_destroy_class_scope_rows`. The
+acting principal is excluded from the sweep at both destruction sites.
+
+**Regression evidence.** `tests/dom/identity/test_orphaned_user_deletion.py` — 6 tests covering the
+last-seat delete, the still-seated-elsewhere preservation, teacher exemption, the production detach
+path, class destruction, and credential removal. Green together with the 22 B8 destruction tests
+(28 passed). `tests/dom/class` shows the same 7 pre-existing failures before and after (verified by
+stash), so the teardown change introduces no regression.
+
+*Status: complete and green on `codex/landed-architecture-execution-fixes`, uncommitted as of
+2026-09-04 — record the SHA here at commit time.*
 
 ### B4 — Sysadmin escalated-issue and support-ticket views crash (hard 500)
 **Domain:** Support · **Severity:** High · **Violates:** INV-CORE-000 §III.7 (function is unreachable)
@@ -142,6 +167,76 @@ and replace `_resolve_seat` with `resolve_seat_for_context(user_id, class_id, se
 > B7 shares files and reviewers with B4/B5/B6. Fold it into track T2. **Port the code from
 > `3cdb1294`; do not port that commit's badge-system files** (see §V, Deferred).
 
+### B9 — Daily-limit auto tap-out is silently non-functional (FEAT-PROD-001 executes itself)
+**Domain:** Productivity & Payroll · **Severity:** High · **Violates:** INV-ARC-000 §VIII.2, INV-ARC-021 §V.2
+
+`enforce_daily_limits` (`app/scheduled_tasks.py:15`) is decorated `@requires_feat_context("FEAT-PROD-001")`
+and then calls `record_attendance_session` (`app/feats/prod.py:240`), which carries the **same**
+decorator. The nested envelope raises `FEATContextError: Nested FEAT context forbidden` — and the
+`except Exception` at `app/scheduled_tasks.py:202` logs and **swallows** it, then `continue`s. The job
+reports success while closing zero sessions.
+
+Consequence: students who hit the daily attendance limit are never tapped out, so paid time keeps
+accruing past the cap. Observable as two failures in `tests/dom/identity/test_admin_tenancy.py`
+(expects 2 attendance sessions, gets 1; expects a `done_for_day` row, gets 0).
+
+This is the same defect class as B8: a caller-level envelope wrapping a FEAT-decorated domain
+command. Fix identically — split `record_attendance_session` into a plain domain command plus a thin
+`@requires_feat_context` entry, and have the job compose the command. Audit the other job envelopes
+in the same file (`FEAT-OPS-001` at :222, `FEAT-PROD-004` at :407, `FEAT-STOR-002` at :539) for the
+same shape while there.
+
+*Found 2026-09-04 during B8 remediation. Not part of the 2026-09-03 audit sweep.*
+
+---
+
+### B8 — Class destruction selected its target from a public alias; both destruction gates were defeatable — **CLOSED 2026-09-04**
+**Domains:** Identity, Class Configuration · **Severity:** Critical · **Violates:** INV-CORE-000 §III.1, §III.4, INV-ARC-006, INV-ARC-012 §V
+
+Found while investigating a user-reported symptom ("the deletion modal doesn't fire, it just says the
+phrase doesn't match"). Not part of the 2026-09-03 audit sweep. Four distinct defects:
+
+1. `POST /admin/join-code/delete` read `join_code` from the request body and destroyed whatever class
+   that alias resolved to — target selection from a public alias, across tenants.
+2. The same route honored a `confirm_join_code` shortcut that skipped `_validate_destruction_gate`
+   entirely. The join code is public — every student in the class holds it — so echoing it back
+   bypassed the countdown, typed phrase, and press-and-hold gate.
+3. `/admin/account-delete` rendered its confirmation phrase from `get_display_username()`, which
+   returns `f"user_{User.id}"` — the internal principal key presented as an identity.
+4. The gate JavaScript bound to `getElementById('deletion-request-form')` while the form was rendered
+   as `account-delete-form`. The null lookup threw, killing the `DOMContentLoaded` handler, so the
+   modal never fired and the page posted natively with an empty `gate_phrase`. This was the reported
+   symptom; defects 1–3 were found underneath it.
+
+Two latent bugs made teacher account deletion **inoperative since 2026-07-11** (`68e08abe`):
+`_hard_delete_teacher_account_scope` was passed an `int` where its signature had changed to expect a
+canonical context, raising `ValueError` into a broad `except` that flashed a generic error; and
+`_delete_teacher_residual_ownership_rows` called `.delete()` on a joined query, which SQLAlchemy
+rejects. The second was unreachable until the first was fixed.
+
+**Resolution.** Both surfaces now resolve their target exclusively from the canonical context
+(`user_id` for the account, `class_id` for the class); the gate is unconditional; the account phrase
+comes from the lawful Identity display read (`build_identity_profile_view`) with a non-identity
+`DELETE MY ACCOUNT` fallback; and the destroyed class's canonical pointers are cleared (INV-ARC-012
+§V). Display names and join codes are presentation only and never participate in lookup,
+authorization, or target resolution. The class-destruction UI, which did not previously exist
+anywhere in `templates/` or `static/`, was built on the existing gate contract.
+
+Teacher account destruction was given canonical FEAT shape as **FEAT-IDEN-007** (registry +
+`docs/FEATURE-EXECUTION/FEAT-IDEN-007_TEACHER_ACCOUNT_DESTRUCTION.md`). Because exactly one FEAT
+executes per request, the class-destruction body was split into a plain domain command
+(`_destroy_class_scope_rows`), with `_hard_delete_class_scope` retained as the thin FEAT-CLASS-001
+entry for single-class destruction; the account FEAT composes that command rather than executing
+FEAT-CLASS-001. One envelope now spans the whole teardown, making it atomic.
+
+Regression: `tests/dom/identity/test_destruction_authority_boundary.py` (21 tests) pins the authority
+boundary and every gate-failure mode. Verified 22 passed with
+`tests/dom/class/test_hard_delete_class_scope_isolation.py`; `tests/test_class_phase2_persistence.py`
+clean after the domain-command split.
+
+*Status: complete and green on `codex/landed-architecture-execution-fixes`, uncommitted as of
+2026-09-04 — record the SHA here at commit time.*
+
 ---
 
 ## IV. Fix Tracks
@@ -150,14 +245,16 @@ and replace `_resolve_seat` with `resolve_seat_for_context(user_id, class_id, se
 |---|---|---|---|---|---|
 | **T1 — Policy immutability rework** | B1, B2 | Obligations, Policies | Large | — | Not started |
 | **T2 — Sysadmin support surface + seat-scope** | B4, B5, B6, B7 | Support, Identity | Medium | — | Not started |
-| **T3 — Orphaned-user deletion** | B3 | Identity | Small | — | Not started |
+| **T3 — Orphaned-user deletion** | B3 | Identity | Small | — | **Done 2026-09-04** |
+| **T4 — FEAT self-nesting in scheduled jobs** | B9 | Productivity & Payroll | Small | — | Not started |
 
 **Sequencing to 2026-09-17.** T1 is the critical path and the only substantial design work; start it
-first and in parallel with T2/T3, which are independent and touch disjoint files. T3 is the smallest
-and should land first as a confidence check on the regression harness.
+first and in parallel with T2/T3/T4, which are independent and touch disjoint files. T3 is the
+smallest and should land first as a confidence check on the regression harness. T4 is a mechanical
+repeat of the B8 fix and can follow immediately.
 
-**Exit criteria for the ship gate.** All seven blockers closed; each with a regression test that fails
-against the pre-fix commit; full pytest suite green; `flask db heads` shows exactly one head.
+**Exit criteria for the ship gate.** All seven open blockers closed; each with a regression test that
+fails against the pre-fix commit; full pytest suite green; `flask db heads` shows exactly one head.
 
 ---
 
@@ -165,8 +262,11 @@ against the pre-fix commit; full pytest suite green; `flask db heads` shows exac
 
 Carried as post-ship backlog unless a track happens to touch the same code.
 
-**Identity** — teardown logic lives in the route rather than a FEAT; 7 `print()` calls in
-`context_resolver.py`; residual `Seat.block` property.
+**Identity** — teardown helpers still physically live in `app/routes/admin.py` even though they are
+now proper FEAT/domain commands (`FEAT-IDEN-007` and `_destroy_class_scope_rows`); they should move
+into `app/feats/`. 7 `print()` calls in `context_resolver.py`; residual `Seat.block` property.
+~14 identity tests wrap `initialize()` in a redundant `FEATContext`, which now raises
+`FEATContextError: Nested FEAT context forbidden` — test-harness noise that masks real signal.
 
 **Class Configuration** — dead FEAT-bypass branch (`app/services/economy_policy.py:289-295`); dead
 `replace_enabled_class_features` import; cascade behavior untested; `customizations()` edits

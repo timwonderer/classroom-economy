@@ -6,6 +6,43 @@
     <div id="account-delete-feedback" class="visually-hidden" role="alert" aria-live="assertive" aria-atomic="true" tabindex="-1"></div>
     <div class="row">
         <div class="col-lg-8 offset-lg-2">
+            {% if class_confirmation_phrase %}
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-warning-subtle text-warning-emphasis">
+                    <h5 class="mb-0">Delete this class</h5>
+                </div>
+                <div class="card-body">
+                    <p>
+                        This permanently deletes
+                        <strong>{{ class_display_label }}</strong>{% if class_join_code %}
+                        (join code <code>{{ class_join_code }}</code>){% endif %}
+                        and every record scoped to it. Your teacher account is not affected.
+                    </p>
+                    <ul>
+                        <li>All students in this class will be removed from it.</li>
+                        <li>All transaction, payroll, and purchase history for this class will be deleted.</li>
+                        <li>Students not linked to another class will be deleted entirely.</li>
+                        <li>This action is permanent, irreversible, and unrecoverable.</li>
+                    </ul>
+                    <p class="small text-muted mb-3">
+                        Only the class you currently have open can be deleted here. Switch classes first to
+                        delete a different one.
+                    </p>
+
+                    <form id="class-delete-form"
+                          data-confirmation-phrase="{{ class_confirmation_phrase }}"
+                          data-class-label="{{ class_display_label }}">
+                        <div class="d-grid">
+                            <button type="submit" class="btn btn-outline-danger">
+                                <span class="material-symbols-outlined" aria-hidden="true">delete_sweep</span>
+                                Delete {{ class_display_label }}
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+            {% endif %}
+
             <div class="card shadow-sm mb-4">
                 <div class="card-header bg-primary text-white">
                     <h5 class="mb-0">Delete your Classroom Token Hub Account</h5>
@@ -24,7 +61,7 @@
                         <li>This action is permanent, irreversible, and unrecoverable.</li>
                     </ul>
 
-                    <form method="POST" action="{{ url_for('admin.account_delete') }}" id="account-delete-form" data-admin-username="{{ admin_username }}">
+                    <form method="POST" action="{{ url_for('admin.account_delete') }}" id="account-delete-form" data-confirmation-phrase="{{ confirmation_phrase }}">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         <input type="hidden" name="request_type" value="account">
                         <input type="hidden" name="gate_phrase" id="gate_phrase">
@@ -49,13 +86,7 @@
                         </div>
                         <div class="modal-body">
                             <p class="mb-2" id="timed-delete-gate-warning"></p>
-                            <ul>
-                            <li class="fw-bold text-danger mb-2">You are performing an irreversible action.</li>
-                            <li class="fw-bold text-danger mb-2">Any log entries associated with your account by join code will be destroyed.</li>
-                            <li class="fw-bold text-danger mb-2">Recovery of your account is not possible.</li>
-                            <li class="fw-bold text-danger mb-2">Any student account that is not linked to another teacher by join code will be deleted as well.</li>
-                            <li class="fw-bold text-danger mb-2">Classroom Token Hub does not maintain universal logs or audit records.</li>
-                            </ul>
+                            <ul id="timed-delete-gate-bullets"></ul>
                             <div class="mb-3">
                                 <div class="small fw-semibold" id="timed-delete-countdown-text">ARE YOU SURE YOU WANT TO COMPLETE THIS ACTION? 30s remaining</div>
                                 <div class="progress mt-2" role="progressbar" aria-label="Delete countdown" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
@@ -88,20 +119,30 @@
 <script>
 // Initialize on page load
 document.addEventListener('DOMContentLoaded', function() {
-    const deletionRequestForm = document.getElementById('deletion-request-form');
+    const deletionRequestForm = document.getElementById('account-delete-form');
     let gateConfirmed = false;
 
     function getGateConfig() {
-        const adminUsername = (deletionRequestForm.dataset.adminUsername || '').trim();
-        const expectedPhrase = `CONFIRM DELETE ${adminUsername} ACCOUNT`.toUpperCase();
+        // The phrase is rendered by the server from the canonical Identity
+        // display read. It is presentation only and is never used to select
+        // the account being deleted — the server resolves that from the
+        // canonical context alone.
+        const expectedPhrase = (deletionRequestForm.dataset.confirmationPhrase || '').trim().toUpperCase();
         return {
-            title: 'Confirm Your Account Deletion',
+            title: 'DANGER! YOU ARE DELETING YOUR ACCOUNT!',
             warning: 'You are requesting permanent deletion of your own teacher account.',
             expectedPhrase,
+            bullets: [
+                'You are performing an irreversible action.',
+                'Every class you own, and all of its records, will be destroyed.',
+                'Recovery of your account is not possible.',
+                'Any student account not linked to another class will be deleted as well.',
+                'Classroom Token Hub does not maintain universal logs or audit records.',
+            ],
         };
     }
 
-    deletionRequestForm.addEventListener('submit', function(event) {
+    if (deletionRequestForm) deletionRequestForm.addEventListener('submit', function(event) {
         if (gateConfirmed) {
             return;
         }
@@ -126,6 +167,63 @@ document.addEventListener('DOMContentLoaded', function() {
             deletionRequestForm.submit();
         });
     });
+
+    const classDeleteForm = document.getElementById('class-delete-form');
+    if (classDeleteForm) {
+        classDeleteForm.addEventListener('submit', function(event) {
+            event.preventDefault();
+
+            const classLabel = (classDeleteForm.dataset.classLabel || 'this class').trim();
+            // Server-rendered from the canonical class_id. Presentation only —
+            // the server never accepts a client-supplied class target.
+            const expectedPhrase = (classDeleteForm.dataset.confirmationPhrase || '').trim().toUpperCase();
+
+            showTimedDeleteGate({
+                title: 'DANGER! YOU ARE DELETING THIS CLASS!',
+                warning: `You are requesting permanent deletion of ${classLabel}.`,
+                expectedPhrase,
+                bullets: [
+                    'You are performing an irreversible action.',
+                    'Every transaction, payroll, and purchase record for this class will be destroyed.',
+                    'Recovery of this class is not possible.',
+                    'Any student account not linked to another class will be deleted as well.',
+                    'Classroom Token Hub does not maintain universal logs or audit records.',
+                ],
+            }).then(gatePayload => {
+                if (!gatePayload) {
+                    return;
+                }
+
+                fetch('{{ url_for("admin.delete_join_code") }}', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
+                    },
+                    body: JSON.stringify(gatePayload),
+                })
+                    .then(response => response.json())
+                    .then(data => {
+                        const feedback = document.getElementById('account-delete-feedback');
+                        if (data.status === 'success') {
+                            window.location.assign('{{ url_for("admin.dashboard") }}');
+                            return;
+                        }
+                        feedback.textContent = 'Error: ' + (data.message || 'Class deletion failed.');
+                        feedback.className = 'alert alert-danger';
+                        feedback.classList.remove('visually-hidden');
+                        feedback.focus();
+                    })
+                    .catch(() => {
+                        const feedback = document.getElementById('account-delete-feedback');
+                        feedback.textContent = 'Network error while deleting the class. Please try again.';
+                        feedback.className = 'alert alert-danger';
+                        feedback.classList.remove('visually-hidden');
+                        feedback.focus();
+                    });
+            });
+        });
+    }
 });
 
 function showTimedDeleteGate(options) {
@@ -144,6 +242,7 @@ function showTimedDeleteGate(options) {
         const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
         const titleEl = document.getElementById('timedDeleteGateModalLabel');
         const warningEl = document.getElementById('timed-delete-gate-warning');
+        const bulletsEl = document.getElementById('timed-delete-gate-bullets');
         const countdownText = document.getElementById('timed-delete-countdown-text');
         const countdownBar = document.getElementById('timed-delete-countdown-bar');
         const phraseInput = document.getElementById('timed-delete-phrase');
@@ -171,6 +270,12 @@ function showTimedDeleteGate(options) {
 
         titleEl.textContent = title;
         warningEl.textContent = warning;
+        bulletsEl.replaceChildren(...(options.bullets || []).map(text => {
+            const li = document.createElement('li');
+            li.className = 'fw-bold text-danger mb-2';
+            li.textContent = text;
+            return li;
+        }));
         phraseInput.value = '';
         phraseInput.disabled = true;
         phraseHint.textContent = `Required phrase: ${expectedPhrase}`;

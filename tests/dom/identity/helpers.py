@@ -91,11 +91,22 @@ def sysadmin_passkey_auth_finish(client: FlaskClient, *, token: str):
     return client.post("/sysadmin/passkey/auth/finish", json={"token": token})
 
 
-def admin_delete_join_code(client: FlaskClient, join_code: str, confirm_join_code: str | None = None):
-    payload: dict[str, Any] = {"join_code": join_code}
-    if confirm_join_code is not None:
-        payload["confirm_join_code"] = confirm_join_code
-    return client.post("/admin/join-code/delete", json=payload)
+def valid_destruction_gate(expected_phrase: str) -> dict[str, Any]:
+    """Gate evidence that satisfies ``_validate_destruction_gate``."""
+    return {
+        "gate_phrase": expected_phrase,
+        "gate_countdown_seconds": 30,
+        "gate_hold_seconds": 10,
+    }
+
+
+def admin_delete_class(client: FlaskClient, **payload: Any):
+    """Destroy the canonical active class.
+
+    The route resolves the target from ``g.canonical_context.class_id`` only;
+    anything passed here is gate evidence or deliberately-ignored noise.
+    """
+    return client.post("/admin/join-code/delete", json=dict(payload))
 
 
 def admin_add_individual_student(

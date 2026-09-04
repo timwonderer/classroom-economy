@@ -9,12 +9,16 @@ from app.models import (
     Issue,
     IssueResolutionAction,
     IssueStatusHistory,
+    ClassEconomy,
     EntitlementEvent,
     PendingAction,
     AttendanceSession,
     PayrollEvent,
+    PolicyTransition,
+    RecoveryRequest,
     Transaction,
     Seat,
+    User,
     IdentityProfile,
 )
 from app.services.recovery_service import delete_recovery_codes_for_seat
@@ -179,6 +183,71 @@ def _delete_student_scoped_rows(
         LedgerBalanceSnapshot.query.filter(LedgerBalanceSnapshot.seat_id.in_(seat_ids)).delete(synchronize_session=False)
 
 
+def delete_orphaned_users(user_ids):
+    """Delete every ``users`` row in ``user_ids`` that retains no seat anywhere.
+
+    A ``User`` is the auth principal *behind* a seat; it has no standalone
+    existence. Once the last seat referencing it is gone the principal must not
+    survive (INV-CORE-000 §III.5, DOM-IDEN-001 §VI). Because ``users`` carries
+    credential and recovery material, leaving the row behind is also a
+    PII-retention violation.
+
+    Teacher principals are exempt here: they own ``ClassEconomy`` rows and are
+    destroyed only through the terminal FEAT-IDEN-007 command, which tears the
+    owned classes down first.
+
+    Returns the list of user ids actually deleted.
+    """
+    candidate_ids = {uid for uid in (user_ids or []) if uid}
+    if not candidate_ids:
+        return []
+
+    still_seated = {
+        row[0]
+        for row in db.session.query(Seat.user_id)
+        .filter(Seat.user_id.in_(candidate_ids))
+        .distinct()
+        .all()
+    }
+    owns_classes = {
+        row[0]
+        for row in db.session.query(ClassEconomy.teacher_user_id)
+        .filter(ClassEconomy.teacher_user_id.in_(candidate_ids))
+        .distinct()
+        .all()
+    }
+    orphan_ids = sorted(candidate_ids - still_seated - owns_classes)
+    if not orphan_ids:
+        return []
+
+    # Clear or remove the references that would otherwise block the delete.
+    # `attendance_sessions.target_user_id` is ON DELETE SET NULL against a
+    # NOT NULL column, so surviving rows must go rather than be nulled.
+    AttendanceSession.query.filter(
+        AttendanceSession.target_user_id.in_(orphan_ids)
+    ).delete(synchronize_session=False)
+    RecoveryRequest.query.filter(
+        RecoveryRequest.user_id.in_(orphan_ids)
+    ).delete(synchronize_session=False)
+    Transaction.query.filter(Transaction.user_id.in_(orphan_ids)).update(
+        {Transaction.user_id: None}, synchronize_session=False
+    )
+    Issue.query.filter(Issue.sysadmin_id.in_(orphan_ids)).update(
+        {Issue.sysadmin_id: None}, synchronize_session=False
+    )
+    PolicyTransition.query.filter(PolicyTransition.created_by.in_(orphan_ids)).update(
+        {PolicyTransition.created_by: None}, synchronize_session=False
+    )
+
+    User.query.filter(User.id.in_(orphan_ids)).delete(synchronize_session=False)
+    return orphan_ids
+
+
+def delete_user_if_orphaned(user_id):
+    """Single-principal form of :func:`delete_orphaned_users`."""
+    return bool(delete_orphaned_users([user_id]))
+
+
 def hard_delete_student_if_orphaned(student_id):
     """Hard-delete a student and dependent rows only when no teacher links remain."""
     has_links = (
@@ -194,6 +263,8 @@ def hard_delete_student_if_orphaned(student_id):
     _clear_cross_transaction_refs(tx_ids)
     _delete_student_scoped_rows(student_id, entitlement_ids, issue_ids, tx_ids, seat_ids)
     Seat.query.filter(Seat.user_id == student_id).delete(synchronize_session=False)
+    # The principal does not outlive its last seat.
+    delete_user_if_orphaned(student_id)
     return True
 
 
@@ -245,4 +316,8 @@ def remove_student_from_teacher_scope(seat_id, user_id):
         seat_ids,
     )
     Seat.query.filter(Seat.user_id == student_user_id).delete(synchronize_session=False)
+    # The detached seat was the student's last one anywhere; the principal goes
+    # with it. The seat row itself survives as an unclaimed roster slot owned by
+    # the class, which is why the delete above is a no-op on the unclaimed seat.
+    delete_user_if_orphaned(student_user_id)
     return True

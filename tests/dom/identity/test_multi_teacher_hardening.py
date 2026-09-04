@@ -34,7 +34,7 @@ def test_DOM_IDEN_007__delete_teacher_cleans_up_links(client, app):
     parity.
     """
     from app.models import ClassEconomy, ClassFeature, EconomicEngine
-    from tests.dom.identity.helpers import admin_delete_join_code
+    from tests.dom.identity.helpers import admin_delete_class, valid_destruction_gate
     from tests.helpers.classroom_initializer import initialize_as_teacher
 
     classroom = initialize_as_teacher("chemistry_p1", client, app)
@@ -46,9 +46,11 @@ def test_DOM_IDEN_007__delete_teacher_cleans_up_links(client, app):
     assert EconomicEngine.query.filter_by(class_id=class_id).count() >= 1
     assert ClassFeature.query.filter_by(class_id=class_id).count() >= 1
 
-    # Destroy through the authorized boundary. confirm_join_code satisfies the
-    # in-route destruction confirmation gate.
-    resp = admin_delete_join_code(client, join_code, confirm_join_code=join_code)
+    # Destroy through the authorized boundary. The target is the canonical
+    # active class; the payload carries destruction-gate evidence only.
+    class_row = db.session.get(ClassEconomy, class_id)
+    phrase = f"DELETE {(class_row.display_name or '').strip() or class_row.join_code}".upper()
+    resp = admin_delete_class(client, **valid_destruction_gate(phrase))
     assert resp.status_code == 200, resp.get_data(as_text=True)
     assert resp.get_json()["status"] == "success"
 

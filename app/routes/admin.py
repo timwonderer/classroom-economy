@@ -184,6 +184,7 @@ from app.utils.auth_username import (
     build_hashed_username_fields,
 )
 from app.utils.student_deletion import (
+    delete_orphaned_users,
     hard_delete_student_if_orphaned,
 )
 from app.utils.seat_scope import seat_scoped_filter, transaction_scope_filter
@@ -1118,10 +1119,14 @@ def _delete_transactions_for_class(class_id, *, join_code_deletion=False):
     return Transaction.query.filter_by(class_id=class_id).delete(synchronize_session=False)
 
 
-@requires_feat_context("FEAT-CLASS-001")
-def _hard_delete_class_scope(*, class_id, canonical_context, correlation_id, idempotency_key):
-    """
-    Permanently remove records scoped to a destroyed class.
+def _destroy_class_scope_rows(*, class_id, canonical_context, **_ignored):
+    """Domain command: permanently remove records scoped to a destroyed class.
+
+    Plain command — it opens no FEAT context of its own so that composing
+    commands (teacher account destruction, which must destroy every owned class
+    in one transaction) can call it inside their own envelope. FEAT contexts
+    cannot nest: exactly one FEAT executes per request
+    (INV-ARC-000 §VIII.2, INV-ARC-021 §V.2 — compose domain commands, not FEATs).
 
     The boundary may enter through join_code, but internal deletion uses the
     canonical class_id anchor only.
@@ -1273,27 +1278,43 @@ def _hard_delete_class_scope(*, class_id, canonical_context, correlation_id, ide
     Seat.query.filter(Seat.class_id == class_id).delete(synchronize_session=False)
     ClassEconomy.query.filter_by(class_id=class_id).delete(synchronize_session=False)
 
-    # Remove students that no longer belong to any class after this class deletion.
-    remaining_student_ids_subq = (
-        db.session.query(Seat.user_id)
-        .filter(Seat.class_id != class_id, Seat.user_id.isnot(None))
-        .subquery()
+    # Principals that held a seat only in this class are now parentless and must
+    # not survive the scope that gave them existence. The teacher who owns the
+    # class is protected by the ownership check inside the sweep; they are
+    # destroyed only through FEAT-IDEN-007.
+    # The acting principal is never swept here: for single-class destruction they
+    # survive the class, and for account destruction FEAT-IDEN-007 removes them
+    # explicitly once every owned class is gone.
+    acting_user_id = getattr(canonical_context, "user_id", None)
+    _delete_orphan_students(
+        [sid for sid in scoped_student_ids if sid != acting_user_id]
     )
-    orphan_student_ids = (
-        db.session.query(Seat.user_id)
-        .filter(Seat.user_id.in_(scoped_student_ids))
-        .filter(~Seat.user_id.in_(sa.select(remaining_student_ids_subq)))
-        .subquery()
+
+
+@requires_feat_context("FEAT-CLASS-001")
+def _hard_delete_class_scope(*, class_id, canonical_context, correlation_id, idempotency_key):
+    """Public FEAT entry for single-class destruction (FEAT-CLASS-001).
+
+    Thin envelope over the ``_destroy_class_scope_rows`` domain command. Callers
+    that already hold a FEAT context (teacher account destruction) must invoke
+    that command directly rather than this wrapper.
+    """
+    return _destroy_class_scope_rows(
+        class_id=class_id,
+        canonical_context=canonical_context,
     )
-    Seat.query.filter(
-        Seat.user_id.in_(sa.select(orphan_student_ids))
-    ).delete(synchronize_session=False)
+
 
 def _delete_teacher_residual_ownership_rows(canonical_context):
     """Delete teacher-user link rows not already removed by class-scoped deletion."""
     user_id = canonical_context.user_id
-    Seat.query.join(ClassEconomy, ClassEconomy.class_id == Seat.class_id).filter(
+    # SQLAlchemy forbids bulk delete() on a joined query; scope through a
+    # subquery instead (same pattern as the settings/activity deletions below).
+    owned_class_ids_subq = db.session.query(ClassEconomy.class_id).filter(
         ClassEconomy.teacher_user_id == user_id
+    ).subquery()
+    Seat.query.filter(
+        Seat.class_id.in_(sa.select(owned_class_ids_subq))
     ).delete(synchronize_session=False)
 
 
@@ -1382,27 +1403,35 @@ def _delete_teacher_store_rows(canonical_context):
 
 
 def _delete_orphan_students(affected_student_ids):
-    """Delete students that no longer have any canonical seat attachments."""
+    """Delete principals left with no seat in any class after a teardown.
+
+    ``affected_student_ids`` is the set of users who held a seat in a scope that
+    was just destroyed. Any of them with no remaining seat anywhere must be
+    removed entirely — a ``users`` row has no standalone existence and carries
+    credential material (INV-CORE-000 §III.5, DOM-IDEN-001 §VI).
+    """
     if not affected_student_ids:
         return
-    linked_student_ids_subq = (
-        db.session.query(Seat.user_id)
-        .filter(Seat.user_id.in_(affected_student_ids), Seat.user_id.isnot(None))
-        .subquery()
-    )
-    orphan_student_ids_subq = (
-        db.session.query(Seat.user_id)
-        .filter(Seat.user_id.in_(affected_student_ids))
-        .filter(~Seat.user_id.in_(sa.select(linked_student_ids_subq)))
-        .subquery()
-    )
-    Seat.query.filter(
-        Seat.user_id.in_(sa.select(orphan_student_ids_subq))
-    ).delete(synchronize_session=False)
+    delete_orphaned_users(affected_student_ids)
 
 
-def _hard_delete_teacher_account_scope(canonical_context):
-    """Hard-delete a teacher user account and all class-scoped data owned by that user."""
+@requires_feat_context("FEAT-IDEN-007")
+def _hard_delete_teacher_account_scope(
+    *, canonical_context, admin_user=None, correlation_id=None, idempotency_key=None
+):
+    """Terminal destruction of a teacher principal and everything it owns.
+
+    Public FEAT entry (FEAT-IDEN-007). One envelope covers the whole command:
+    every owned class universe is destroyed through the ``_destroy_class_scope_rows``
+    *domain command*, then the account-level residue (settings, credentials,
+    recovery material, the ``users`` row itself). The class destruction is
+    composed, not delegated to FEAT-CLASS-001 — a FEAT never executes another
+    FEAT (INV-ARC-000 §VIII.2, INV-ARC-021 §V.2), and a single envelope is what
+    makes the whole account teardown one atomic transaction.
+
+    Authority is the canonical context alone; no display value or alias
+    participates in resolving what gets destroyed (INV-CORE-000 §III.4).
+    """
     if canonical_context is None or not getattr(canonical_context, "user_id", None):
         raise ValueError("canonical_context is required for account deletion")
     user_id = canonical_context.user_id
@@ -1419,14 +1448,15 @@ def _hard_delete_teacher_account_scope(canonical_context):
         .distinct()
         .all()
     }
+    # The teacher may hold a seat in their own class. Their principal is removed
+    # explicitly at the end of this command, not by the orphan sweep.
+    affected_student_ids.discard(user_id)
 
-    # Required ordering: all join-code-scoped data is destroyed before admin account deletion.
+    # Required ordering: all class-scoped data is destroyed before the account rows.
     for class_id in class_ids:
-        _hard_delete_class_scope(
+        _destroy_class_scope_rows(
             class_id=class_id,
             canonical_context=canonical_context,
-            correlation_id=generate_correlation_id(),
-            idempotency_key=f"class:destroy:{class_id}",
         )
 
     _delete_teacher_residual_ownership_rows(canonical_context)
@@ -1437,6 +1467,10 @@ def _hard_delete_teacher_account_scope(canonical_context):
     _delete_teacher_recovery_and_credentials_rows(canonical_context)
     _delete_teacher_store_rows(canonical_context)
     _delete_orphan_students(affected_student_ids)
+
+    # The principal itself. Terminal — the users row does not survive.
+    if admin_user is not None:
+        delete_admin_account_rows(admin_user)
 
 
 def _sanitize_csv_field(value):
@@ -1530,6 +1564,59 @@ def _validate_destruction_gate(data, expected_phrase):
         }), 400
 
     return None
+
+
+# ---------------------------------------------------------------------------
+# Destruction confirmation presentation (INV-CORE-000 §III.4)
+#
+# Deletion authority always comes from the canonical context. The helpers below
+# produce *human-readable confirmation phrases only*. A display name returned
+# here MUST NOT be used for lookup, authorization, or target resolution.
+# ---------------------------------------------------------------------------
+
+
+def _teacher_display_name(canonical_context):
+    """Lawful Identity display read for the authenticated teacher.
+
+    Reads the seat-bound ``identity_profiles`` row through the canonical view
+    builder. Returns ``None`` when no display identity is resolvable so callers
+    can fall back safely — never to an internal ``users.id``.
+    """
+    seat_id = getattr(canonical_context, "seat_id", None)
+    class_id = getattr(canonical_context, "class_id", None)
+    if not seat_id or not class_id:
+        return None
+
+    profile = build_identity_profile_view(seat_id, class_id)
+    if not profile:
+        return None
+
+    return (profile.full_name or "").strip() or None
+
+
+def _account_delete_confirmation_phrase(canonical_context):
+    """Confirmation phrase for teacher account deletion.
+
+    Presentation only. Derived from the Identity display read; falls back to a
+    non-identity phrase rather than exposing internal identifiers.
+    """
+    display_name = _teacher_display_name(canonical_context)
+    if not display_name:
+        return "DELETE MY ACCOUNT"
+    return f"DELETE {display_name}'S ACCOUNT".upper()
+
+
+def _class_display_label(class_row):
+    """Lawful Class display read. Presentation only."""
+    display_name = (getattr(class_row, "display_name", None) or "").strip()
+    if display_name:
+        return display_name
+    return get_display_join_code(class_row.class_id) or "THIS CLASS"
+
+
+def _class_delete_confirmation_phrase(class_row):
+    """Confirmation phrase for class destruction. Presentation only."""
+    return f"DELETE {_class_display_label(class_row)}".upper()
 
 
 def _get_seat_or_404(seat_id, include_unassigned=True):
@@ -4252,53 +4339,63 @@ def bulk_delete_students():
 @admin_bp.route('/join-code', methods=['DELETE'])
 @admin_required
 def delete_join_code():
-    """Hard-delete a class economy and all records scoped to the join code."""
+    """Hard-delete the *active* class economy and every record scoped to it.
+
+    The class being destroyed is determined exclusively by the canonical
+    context. A form-supplied ``join_code`` (or any other alias) is ignored for
+    target selection — resolving a destruction target from a public alias is a
+    cross-tenant isolation violation (INV-CORE-000 §III.1, INV-ARC-004 §V.1).
+    """
     data = request.get_json(silent=True) or request.form
-    display_join_code = (data.get('join_code') or '').strip().upper()
     user_id = g.canonical_context.user_id
+    class_id = (getattr(g.canonical_context, "class_id", None) or "").strip() or None
 
-    if not display_join_code:
-        return jsonify({"status": "error", "message": "join_code is required."}), 400
+    if not class_id:
+        return jsonify({
+            "status": "error",
+            "message": "No active class is selected."
+        }), 400
 
-    # Resolve the join_code alias directly to its one canonical class, then
-    # gate on ownership. Never enumerate the teacher's class set to find it —
-    # that reconstruction is a cross-tenant isolation violation (INV-ARC-004).
-    class_row = get_class_economy_by_join_code(display_join_code)
-    if not class_row or not _admin_owns_class(g.canonical_context, class_row.class_id):
-        return jsonify({"status": "error", "message": "Join code not found or access denied."}), 403
+    class_row = verify_teacher_owns_class(class_id, user_id)
+    if not class_row or not _admin_owns_class(g.canonical_context, class_id):
+        return jsonify({"status": "error", "message": "Class not found or access denied."}), 403
 
-    confirm_join_code = str((data or {}).get("confirm_join_code", "")).strip().upper()
-    if confirm_join_code:
-        if confirm_join_code != display_join_code:
-            return jsonify({
-                "status": "error",
-                "message": "Confirmation failed: join code did not match."
-            }), 400
-    else:
-        gate_error = _validate_destruction_gate(data, expected_phrase=f"DELETE JOIN CODE {display_join_code}")
-        if gate_error:
-            return gate_error
+    # Class display name is presentation only — it never selects the target.
+    display_label = _class_display_label(class_row)
+    display_join_code = get_display_join_code(class_id)
+
+    # Unconditional. There is no alias-echo shortcut around the timed gate.
+    gate_error = _validate_destruction_gate(
+        data, expected_phrase=_class_delete_confirmation_phrase(class_row)
+    )
+    if gate_error:
+        return gate_error
 
     try:
-        if not class_row:
-            return jsonify({"status": "error", "message": "Join code not found or access denied."}), 404
         _hard_delete_class_scope(
-            class_id=class_row.class_id,
+            class_id=class_id,
             canonical_context=g.canonical_context,
             correlation_id=generate_correlation_id(),
-            idempotency_key=f"class:destroy:{class_row.class_id}",
+            idempotency_key=f"class:destroy:{class_id}",
         )
+        # The destroyed class must not survive as a canonical pointer
+        # (INV-ARC-012 §V). Clear both pointers together.
+        acting_user = db.session.get(User, user_id)
+        if acting_user is not None and acting_user.last_active_class_id == class_id:
+            acting_user.last_active_class_id = None
+            acting_user.last_active_seat_id = None
+
         return jsonify({
             "status": "success",
-            "message": f"Join code {display_join_code} and all scoped records were permanently deleted."
+            "message": f"{display_label} and all scoped records were permanently deleted."
         })
     except InvariantViolation:
         db.session.rollback()
         raise
     except Exception as e:
         db.session.rollback()
-        current_app.logger.error(f"Error deleting join code {display_join_code}: {e}")
-        return jsonify({"status": "error", "message": "An error occurred while deleting the join code. Please try again."}), 500
+        current_app.logger.error(f"Error deleting class {class_id} (join code {display_join_code}): {e}")
+        return jsonify({"status": "error", "message": "An error occurred while deleting the class. Please try again."}), 500
 
 
 @admin_bp.route('/pending-students/delete', methods=['POST'])
@@ -8811,12 +8908,25 @@ def account_delete():
 
     Deletion executes immediately after timed confirmation gate checks.
     """
+    # Deletion authority: canonical context only. No form-supplied identity
+    # value, display name, or public id participates in target resolution.
     user_id = g.canonical_context.user_id
     admin = db.session.get(User, user_id)
     if not admin:
         flash('Unable to load your account.', 'error')
         return redirect(url_for('admin.login'))
-    admin_username = admin.get_display_username().strip()
+
+    # Presentation only (INV-CORE-000 §III.4): lawful Identity display read.
+    confirmation_phrase = _account_delete_confirmation_phrase(g.canonical_context)
+
+    # Presentation only: lawful Class display read for the active class, used to
+    # render the class-destruction surface. The class deleted by
+    # ``admin.delete_join_code`` is resolved server-side from the canonical
+    # context, never from anything rendered here.
+    active_class_id = (getattr(g.canonical_context, "class_id", None) or "").strip() or None
+    active_class_row = (
+        verify_teacher_owns_class(active_class_id, user_id) if active_class_id else None
+    )
 
     if request.method == 'POST':
         request_type = request.form.get('request_type')  # account only
@@ -8826,7 +8936,7 @@ def account_delete():
             flash('Invalid request type. Only account deletion is supported.', 'error')
             return redirect(url_for('admin.account_delete'))
 
-        expected_phrase = f'CONFIRM DELETE {admin_username} ACCOUNT'.upper()
+        expected_phrase = confirmation_phrase
         gate_phrase = str(request.form.get('gate_phrase', '')).strip().upper()
         if gate_phrase != expected_phrase:
             flash('Account deletion blocked: confirmation phrase did not match.', 'error')
@@ -8849,8 +8959,13 @@ def account_delete():
             return redirect(url_for('admin.account_delete'))
 
         try:
-            _hard_delete_teacher_account_scope(user_id)
-            delete_admin_account_rows(admin)
+            # Terminal destruction of the teacher principal, under FEAT-IDEN-007.
+            _hard_delete_teacher_account_scope(
+                canonical_context=g.canonical_context,
+                admin_user=admin,
+                correlation_id=generate_correlation_id(),
+                idempotency_key=f"account:destroy:{user_id}",
+            )
 
             session.pop("user_id", None)
             session.pop("last_activity", None)
@@ -8865,7 +8980,14 @@ def account_delete():
     return render_template(
         'admin_account_delete.html',
         current_page="account_delete",
-        admin_username=admin_username,
+        confirmation_phrase=confirmation_phrase,
+        class_confirmation_phrase=(
+            _class_delete_confirmation_phrase(active_class_row) if active_class_row else None
+        ),
+        class_display_label=(
+            _class_display_label(active_class_row) if active_class_row else None
+        ),
+        class_join_code=get_display_join_code(active_class_id) if active_class_row else None,
     )
 
 

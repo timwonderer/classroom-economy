@@ -18,7 +18,8 @@ from tests.helpers.canonical_session import set_canonical_context
 from tests.helpers.classroom_initializer import initialize
 from tests.dom.identity.helpers import (
     admin_add_individual_student,
-    admin_delete_join_code,
+    admin_delete_class,
+    valid_destruction_gate,
     admin_create_store_item,
     admin_edit_student,
     admin_get_transactions,
@@ -47,7 +48,14 @@ def test_DOM_IDEN_006__set_current_class_requires_membership_even_if_teacherbloc
     assert response.get_json()["status"] == "error"
 
 
-def test_DOM_IDEN_006__delete_class_requires_membership_even_if_teacherblock_exists(client):
+def _expected_class_phrase(class_id: str) -> str:
+    """Mirror the route's lawful Class display read for the confirmation phrase."""
+    row = ClassEconomy.query.filter_by(class_id=class_id).first()
+    return f"DELETE {(row.display_name or '').strip() or row.join_code}".upper()
+
+
+def test_DOM_IDEN_006__delete_class_cannot_target_a_non_active_class(client):
+    """A join code for another class can neither select nor switch the target."""
     owned_class = initialize("chemistry_p1", client.application)
     class_b = initialize("biology_block_a", client.application)
     admin_a = owned_class.teacher_user
@@ -55,28 +63,42 @@ def test_DOM_IDEN_006__delete_class_requires_membership_even_if_teacherblock_exi
 
     with client.session_transaction() as sess:
         set_canonical_context(sess, user_id=admin_a.id, class_id=owned_class.class_id, seat_id=teacher_seat.id, role="admin")
-    response = admin_delete_join_code(client, class_b.join_code)
-    assert response.status_code == 403
+
+    # Alias + gate evidence both aimed at class_b. The route resolves the target
+    # from the canonical context, so the phrase cannot match and nothing dies.
+    response = admin_delete_class(
+        client,
+        join_code=class_b.join_code,
+        **valid_destruction_gate(_expected_class_phrase(class_b.class_id)),
+    )
+    assert response.status_code == 400
     assert ClassEconomy.query.filter_by(class_id=class_b.class_id).first() is not None
+    assert ClassEconomy.query.filter_by(class_id=owned_class.class_id).first() is not None
 
 
 def test_DOM_IDEN_006__delete_class_requires_confirmation(client):
-    with FEATContext("FEAT-IDEN-001", idempotency_key="admin-membership:confirm-admin"):
-        class_row = initialize("chemistry_p1", client.application)
+    class_row = initialize("chemistry_p1", client.application)
 
     admin = class_row.teacher_user
     teacher_seat = _teacher_seat(class_row)
     with client.session_transaction() as sess:
         set_canonical_context(sess, user_id=admin.id, class_id=class_row.class_id, seat_id=teacher_seat.id, role="admin")
 
-    response = admin_delete_join_code(client, class_row.join_code)
+    # No gate evidence at all.
+    response = admin_delete_class(client)
     assert response.status_code == 400
     assert b"Confirmation failed" in response.data
 
-    response = admin_delete_join_code(client, class_row.join_code, "WRONG")
+    # Wrong phrase.
+    response = admin_delete_class(client, **valid_destruction_gate("WRONG"))
     assert response.status_code == 400
 
-    response = admin_delete_join_code(client, class_row.join_code, class_row.join_code)
+    # The removed bypass: echoing the public join code must not delete anything.
+    response = admin_delete_class(client, confirm_join_code=class_row.join_code)
+    assert response.status_code == 400
+    assert ClassEconomy.query.filter_by(class_id=class_row.class_id).first() is not None
+
+    response = admin_delete_class(client, **valid_destruction_gate(_expected_class_phrase(class_row.class_id)))
     assert response.status_code == 200
     assert ClassEconomy.query.filter_by(class_id=class_row.class_id).first() is None
 
