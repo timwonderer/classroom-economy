@@ -51,6 +51,19 @@ body {
     background-color: var(--bg-light);
 }
 
+.landing-content a {
+    color: #005ea8;
+}
+
+.landing-content .landing-signin-btn,
+.landing-content .landing-learn-more-btn {
+    color: #ffffff;
+}
+
+.landing-content .landing-learn-more-btn {
+    color: #171717;
+}
+
 /* Typography */
 h1, h2, h3, h4, h5, h6 {
     font-family: 'Atkinson Hyperlegible Next', sans-serif;
@@ -101,7 +114,7 @@ hr {
     bottom: 2rem;
     right: 2rem;
     z-index: 1000;
-    background-color: var(--secondary-color);
+    background-color: #735816;
     color: white;
     padding: 0.75rem 1.25rem;
     border-radius: 50px;
@@ -415,7 +428,7 @@ body.landing-page {
 }
 
 .landing-signin-note-title {
-    color: var(--secondary-color);
+    color: #735816;
     font-size: 1rem;
     font-style: italic;
     font-weight: 600;
@@ -729,7 +742,7 @@ body.landing-page {
     border: none;
     font-size: 1.25rem;
     font-weight: 400;
-    color: var(--text-secondary);
+    color: #5f5f5c;
     padding: 0.75rem 1.5rem;
     cursor: pointer;
     position: relative;

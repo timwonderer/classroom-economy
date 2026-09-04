@@ -31,7 +31,7 @@
                 <div class="landing-welcome">
                     <h1>Privacy &amp; Data Handling Policies</h1>
                     <small>Last Updated: July 31, 2026</small>
-                    <a href="/" target="_self" class="floating-back-widget">
+                    <a href="index.html" target="_self" class="floating-back-widget">
                         <span class="material-symbols-outlined" aria-hidden="true">arrow_circle_right</span>
                         <span>Return to Home</span>
                     </a>
@@ -46,8 +46,8 @@
                         <h2>Contents</h2>
                         <ul>
                             <li><a href="#purpose">Purpose</a></li>
+                            <li><a href="#no-sharing">Our Data Collection and Handling Principles</a></li>
                             <li><a href="#what-you-provide">What you must provide</a></li>
-                            <li><a href="#what-we-collect">What we collect</a></li>
                             <li><a href="#how-we-use">How we use your data</a></li>
                             <li><a href="#activity-data">Educational activity data</a></li>
                             <li><a href="#data-minimization">Data minimization &amp; retention</a></li>
@@ -63,61 +63,75 @@
 
                     <section class="public-section" id="purpose">
                         <h2>Purpose</h2>
-                        <p>This document explains what information you provide to use this application, how we handle that information, and the steps we take to protect your data and privacy. This policy describes the current application and supersedes previous versions unless otherwise noted.</p>
-                        <p>If you are reviewing Classroom Token Hub for a school or district, see the <a href="./district.html">For District Partners</a> for a district-focused summary of the system.</p>
-                        <p>If you are a student, your teacher has chosen this application on behalf of your class to facilitate classroom activities. If you and/or your families have any questions or concerns, please talk to your teacher.</p>
+                        <p>
+                            This document explains what information you must provide to use this application, how we handle that information, and the steps we take to protect your data and privacy. This policy describes the most current application behaviors that are validated and supersedes previous versions unless otherwise noted.
+                        </p>
+
+                        <p>
+                            If you are reviewing Classroom Token Hub for an educational institution, please visit <a href="./district.html">For District Partners</a> for more information.
+                        </p>
+
+                        <p>
+                            If you are a student, your teacher has chosen this application on behalf of your class to facilitate classroom activities. If you and/or your families have any questions or concerns, please talk to your teacher.</p>
+                    </section>
+
+                    <section class="public-section" id="no-sharing">
+                        <h2>
+                            Our Data Collection and Handling Principles
+                        </h2>
+                        <p>
+                            Classroom Token Hub is a self-funded, independently-operated platform supported by a single current full-time high school teacher. As such, we are not an edtech company nor are we incentivized to become one. Data collected by this platform is used solely for the operation of the platform and the useability of the application. This means we do not ask you to provide any identifying information unless absolutely necessary. We also do not display ads, use third-party tracking tools, or sell your information to third parties.
+                        </p>
+                        <p>
+                            From day one, we operate on these three foundational principles:
+                            <ol>
+                                <li>I don't know you</li>
+                                <li>I don't need to know you</li>
+                                <li>I don't want to know you</li>
+                            </ol>
+                        </p>
                     </section>
 
                     <section class="public-section" id="what-you-provide">
-                        <h2>What you must provide to use this application</h2>
+                        <h2>Information Classroom Token Hub Collects</h2>
 
-                        <h3>If you are a teacher user</h3>
+                        <h3 style="color:var(--primary);">If you are a teacher user</h3>
                         <ul>
-                            <li><strong>Display name</strong>: Used to identify you in the user interface.</li>
+                            <li><strong>Display name</strong>: A front-facing name that will be visible on your dashboard and on student accounts.</li>
                             <li><strong>Class Identifier</strong>: A descriptive name for each class you manage (e.g., "Period 3 Economics").</li>
                         </ul>
 
-                        <h3>If you are a student user</h3>
+                        <h3 style="color:var(--steward-blue);">If you are a student user</h3>
                         <p>Your teacher has provided this information on your behalf to create your account:</p>
                         <ul>
-                            <li><strong>First name</strong>: Used for account claiming and greetings during classroom activities.</li>
-                            <li><strong>Last initial</strong>: Used for account claiming and roster display for your teacher.</li>
-                            <li><strong>Class assignment</strong>: Used to place you in the correct class.</li>
+                            <li><strong>First and Last Name (or any two-part display name)</strong>: Used to claim your account and display your name in the greetings and teacher roster</li>
+                            <li><strong>Notes</strong>: Optional notes provided by your teacher.</li>
                         </ul>
-
-                        <h3>Additional account security information</h3>
-                        <ul>
-                            <li><strong>PIN (4-6 digits)</strong>: A personal identification number you create for login security.</li>
-                            <li><strong>Passphrase</strong>: A secret phrase you create for protecting high-stakes account actions like account recovery.</li>
-                        </ul>
+                    Any potentially identifying information is encrypted at rest. 
                     </section>
+                   
 
-                    <section class="public-section" id="what-we-collect">
-                        <h2>What we collect</h2>
-                        <p><strong>For students:</strong> The first name, last initial, class assignment, and optional teacher notes provided on the roster.</p>
-                        <p><strong>For teachers:</strong> The display name you choose for yourself within each class.</p>
-                        <p>As a self-funded platform developed and operated by a classroom teacher, we do not use trackers or display ads. Classroom Token Hub does not sell your information to third parties.</p>
-                    </section>
 
                     <section class="public-section" id="how-we-use">
                         <h2>How We Use Your Data</h2>
-                        <ul>
-                            <li>Support the simulation of real-world banking, employment, and budgeting to teach financial literacy.</li>
-                            <li>Track participation and account balances to power classroom activities.</li>
-                            <li>Authenticate users and protect accounts from unauthorized access.</li>
-                            <li>Enable teachers to create, restore, and manage student accounts within their classes.</li>
-                        </ul>
+                        <h3>Student Name</h3>
+                        <p>Student name is used to claim student accounts and to display a user-friendly name in the greetings and teacher roster. This information is only visible to the student themselves and the teacher who owns the class.</p>
+                        <h3>Notes</h3>
+                        <p>Notes are optional text field for teacher to provide additional context for a particular student. This field is encrypted at rest and only accessible by the teacher owning the class. Classroom Token Hub does not interpret or use the notes field in any features.</p>
+                        <h3>Teacher Display Name, Class Display Name, Class Sections</h3>
+                        <p>These fields are used for display purposes within the bounded class universe and are visible to both teachers and students within the class.</p>
                     </section>
 
                     <section class="public-section" id="activity-data">
-                        <h2>Educational Activity Data</h2>
-                        <p class="small">This data is generated, collected, and stored to support the classroom economy simulation. It is not intended to contain personally identifiable information.</p>
+                        <h2>Other Non-Personally Identifiable Data</h2>
+                        <p class="small">This includes teacher-created store items, rent perks, and other classroom economy-related data.</p>
                         <ul>
                             <li><strong>Attendance Records</strong>: Tap-in/out timestamps and calculated active/inactive duration.</li>
                             <li><strong>Account Balances</strong>: Checking and savings balances, updated from transaction history.</li>
                             <li><strong>Transaction History</strong>: Records of bonuses, payroll, rent, expenses, and store purchases.</li>
                             <li><strong>Class Settings</strong>: Payroll rates, rent amounts, economic policies, and other classroom configuration options.</li>
                         </ul>
+                        <p>These information are stored using an internal reference ID that links them to the corresponding student without using names directly.</p>
                     </section>
 
                     <section class="public-section" id="data-minimization">
