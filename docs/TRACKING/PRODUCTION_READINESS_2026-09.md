@@ -202,6 +202,8 @@ after.
 
 *Found 2026-09-04 during B8 remediation. Not part of the 2026-09-03 audit sweep.*
 
+*Status: closed on `codex/landed-architecture-execution-fixes` @ `5f3bc4c0` (2026-09-04).*
+
 ---
 
 ### B8 — Class destruction selected its target from a public alias; both destruction gates were defeatable — **CLOSED 2026-09-04**
