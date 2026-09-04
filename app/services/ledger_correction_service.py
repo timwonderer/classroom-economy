@@ -4,7 +4,6 @@ from decimal import Decimal
 
 from app.extensions import db
 from app.services.ledger_command_service import create_idempotent_transaction
-from app.services.ledger_posting_service import create_pending_transaction
 from app.utils.canonical_temporal_resolver import utc_now
 from app.models import _quantize_currency
 
@@ -20,6 +19,8 @@ def compensate_posted_transaction(
     idempotency_key: str | None = None,
 ):
     """Create an append-only compensating effect and link it to the original."""
+    if not idempotency_key:
+        raise ValueError("Ledger corrections require a command idempotency reservation.")
     compensation_amount = _quantize_currency(-(transaction.amount or Decimal("0.00")))
     kwargs = dict(
         seat_id=transaction.seat_id, class_id=transaction.class_id,
@@ -30,12 +31,9 @@ def compensate_posted_transaction(
         description=description, original_transaction_id=transaction.id,
         policy_id=transaction.policy_id,
     )
-    if idempotency_key:
-        reversal_tx, _created = create_idempotent_transaction(
-            idempotency_key=idempotency_key, **kwargs
-        )
-    else:
-        reversal_tx = create_pending_transaction(**kwargs)
+    reversal_tx, _created = create_idempotent_transaction(
+        idempotency_key=idempotency_key, **kwargs
+    )
     db.session.flush()
     transaction.reversal_transaction_id = reversal_tx.id
     transaction.is_void = True
