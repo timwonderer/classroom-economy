@@ -42,21 +42,22 @@ Rubric anchors used:
 | 2 | Class Configuration | READY (with caveats) | — |
 | 3 | Ledger | READY (with caveats) | — |
 | 4 | Productivity & Payroll | READY (with caveats) | — |
-| 5 | Obligations | **NOT READY** | B1 |
+| 5 | Obligations | READY (with caveats) | — |
 | 6 | Store & Entitlements | READY (with caveats) | — |
-| 7 | Policies | **NOT READY** | B1, B2 |
+| 7 | Policies | **NOT READY** | B2 |
 | 8 | Interpretation | READY (with caveats) | — |
 | 9 | Operations | READY (with caveats) | — |
 | 10 | Support | **NOT READY** | B4, B5, B6, B7 |
 
-**6 of 10 domains are production-ready.** Four are blocked by six open defects, which collapse into
-**two fix tracks** (§IV). Three further defects (B3, B8, B9) were found and closed on 2026-09-04.
+**7 of 10 domains are production-ready.** Three are blocked by five open defects, which collapse into
+**two fix tracks** (§IV). Four further defects (B1, B3, B8, B9) were found and closed on 2026-09-04;
+B1's closure is what returned Obligations to ready.
 
 ---
 
 ## III. Blocking Issues
 
-### B1 — Rent settings mutate in place, retroactively rewriting prior obligations
+### B1 — Rent settings mutate in place, retroactively rewriting prior obligations — **CLOSED 2026-09-04**
 **Domains:** Obligations, Policies · **Severity:** Critical · **Violates:** INV-CORE-000 §III.3, DOM-POL-001 §VI
 
 `RentSettings.class_id` is `unique=True` (`app/models.py:1052`), so a class has exactly one mutable
@@ -70,6 +71,36 @@ already-assessed historical cycle. This corrupts financial truth, which is the s
 constraint in the system.
 
 *Independently verified against source.*
+
+**Fixed.** `rent_settings` is now the append-only repository DOM-POL-001 §VI.0/§VI.1 describes: the
+`UNIQUE(class_id)` index is dropped, a CHECK-constrained `availability_state`
+(`IN_USE`/`HIDDEN`/`RETIRED`) supplies the mutable projection over the immutable row, and a
+`before_update` guard rejects in-place writes to any definition-payload column, so the defect cannot
+return through a stray `setattr`. `get_rent_settings()` is a deterministic current-policy reader
+(newest `IN_USE`), `admin_settings_service` gained `create_rent_settings` / `supersede_rent_settings`
+(unspecified fields carry forward, so a partial submission is still a complete contract), both write
+paths mint new rows, and `rent_payment_feat` resolves perks through **the assessment's**
+`policy_uuid`. Migration `d5e6f7a8b9c0`; its `downgrade` is lossy by construction and says so.
+
+**The write path was also dead.** `/admin/rent-settings` carried
+`@requires_feat_context("FEAT-OBL-003")` over an inner `FEAT-SETTINGS-001`, so every POST raised
+`FEATContextError` — a teacher could not change rent at all, which had masked B1 behind a more
+visible failure. The decorator is removed rather than re-pointed (`requires_feat_context` reads
+`idempotency_key` from `kwargs`, which a Flask view never receives, and would have discarded the
+route's payload-derived key). An AST sweep of every FEAT-decorated route found the identical B9-class
+defect on four more, all likewise dead: `/admin/rent-waiver/add` and `/student/rent/pay/<period>`
+(decorated with the same FEAT their delegate already carries) and the three store *catalog* routes
+(decorated `FEAT-STOR-001` over an inner `FEAT-SETTINGS-001` — a catalog edit is configuration, not a
+purchase). All five now open exactly one envelope, at the layer that owns it.
+
+Regression: `tests/dom/obligations/test_rent_policy_immutability.py`, 8 tests. The core one is
+verified to fail against the pre-fix commit with `assert Decimal('200.00') == Decimal('50.00')`.
+Suites re-run green: rent lifecycle + obligations + phase-7 verification + harness + FEAT ownership
+(57 passed), rent-scope/settings-fallback/interpretation-Q3/phase-8 surfaces (28 passed). The three
+`test_admin_membership_gates.py` store failures are pre-existing and stash-verified unchanged (a
+FEAT-IDEN-001 self-nest in that file's own setup, unrelated to this work).
+
+*Status: closed on `codex/landed-architecture-execution-fixes` @ `51cc9d9f` (2026-09-04).*
 
 ### B2 — Policy `*_settings` tables are mutable singletons, not append-only versions
 **Domain:** Policies · **Severity:** Critical · **Violates:** DOM-POL-001 §VI
@@ -258,14 +289,17 @@ clean after the domain-command split.
 
 | Track | Clears | Unblocks | Est. | Owner | Status |
 |---|---|---|---|---|---|
-| **T1 — Policy immutability rework** | B1, B2 | Obligations, Policies | Large | — | Not started |
+| **T1 — Policy immutability rework** | ~~B1~~, B2 | Obligations, Policies | Large | — | **B1 done 2026-09-04**; B2 remains |
 | **T2 — Sysadmin support surface + seat-scope** | B4, B5, B6, B7 | Support, Identity | Medium | — | Not started |
 | **T3 — Orphaned-user deletion** | B3 | Identity | Small | — | **Done 2026-09-04** |
 | **T4 — FEAT self-nesting in scheduled jobs** | B9 | Productivity & Payroll | Small | — | **Done 2026-09-04** |
 
-**Sequencing to 2026-09-17.** T1 is the critical path and the only substantial design work; start it
-first. T3 and T4 are done; **T1 and T2 are all that remain**, and they touch disjoint files, so they
-can run in parallel.
+**Sequencing to 2026-09-17.** T1 is the critical path and the only substantial design work. Its
+harder half — B1, which established the append-only pattern (immutable payload + `availability_state`
+projection + supersession command + guarded migration) — is done; B2 applies that same pattern to
+`PayrollSettings` and `HallPassSettings`, neither of which has a `policy_uuid` column yet. T3 and T4
+are done; **the rest of T1 and all of T2 are what remain**, and they touch disjoint files, so they can
+run in parallel.
 
 **Exit criteria for the ship gate.** All six open blockers closed; each with a regression test that
 fails against the pre-fix commit; full pytest suite green; `flask db heads` shows exactly one head.
