@@ -19,7 +19,7 @@ Informative. This document is subordinate to `SOP-DOC-000` and must not override
 ## IV. Dependencies
 
 - `docs/STANDARD_OPERATING_PROCEDURES/SOP-DOC-000_DOCUMENTATION_STANDARD.md`
-- `docs/TRACKING/V2_Full_compliance_migration_plan.md`
+- `docs/archive/v2-tracking-2026/V2_Full_compliance_migration_plan.md`
 - `scripts/adversarial/build_evidence_bundle.py`
 
 ## V. Documentation Rule

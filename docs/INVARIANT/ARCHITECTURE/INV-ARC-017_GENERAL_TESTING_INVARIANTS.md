@@ -30,7 +30,7 @@ Constitutional within `INV-ARC`. Derived from `INV-CORE-000` Section III.7, `No 
 ## IV. Dependencies
 
 - `docs/STANDARD_OPERATING_PROCEDURES/SOP-DOC-000_DOCUMENTATION_STANDARD.md`
-- `docs/TRACKING/V2_Full_compliance_migration_plan.md`
+- `docs/archive/v2-tracking-2026/V2_Full_compliance_migration_plan.md`
 - `docs/TRACKING/V2_REBUILD_VALIDATION_REPORT.md`
 - `docs/INVARIANT/CORE/INV-CORE-000_CORE_INVARIANTS.md`
 - `docs/INVARIANT/CORE/INV-CORE-001_CAPABILITY_BASED_ARCHITECTURE_AND_AUTHORITY_MODEL.md`

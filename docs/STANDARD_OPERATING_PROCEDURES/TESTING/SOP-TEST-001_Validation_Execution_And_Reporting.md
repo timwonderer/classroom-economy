@@ -15,7 +15,7 @@ This SOP defines how repository validation is executed and reported after the te
 - `docs/SPEC/SPEC-TEST-002_CANONICAL_TEST_IDENTITIES.md`
 - `docs/SPEC/SPEC-TIME-001_CANONICAL_TEMPORAL_RESOLVER.md`
 - `docs/STANDARD_OPERATING_PROCEDURES/TESTING/SOP-TEST-003_Test_Creation.md`
-- `docs/TRACKING/V2_Full_compliance_migration_plan.md`
+- `docs/archive/v2-tracking-2026/V2_Full_compliance_migration_plan.md`
 
 ## III. Canonical Test Scope Sets
 

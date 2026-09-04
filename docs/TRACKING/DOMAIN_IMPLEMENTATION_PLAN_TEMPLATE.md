@@ -1,7 +1,7 @@
 # Domain Implementation Plan Template
 
 **STATUS:** Ephemeral — use this template to create domain-specific implementation plans  
-**Scope:** Derived from `DOMAIN_PROGRESS_MATRIX_2026.md`; destroyed after domain completion  
+**Scope:** Derived from `PRODUCTION_READINESS_2026-09.md`; destroyed after domain completion  
 **Purpose:** Break down a domain's pending SOP-DEV-002 phases into concrete implementation steps
 
 ---
@@ -322,7 +322,7 @@ Title: [DOMAIN] Phase 10: SOP-DEV-002a certification audit
 Changes:
 - Run SOP-DEV-002a audit against all phases
 - Document any manual verification steps
-- Update DOMAIN_PROGRESS_MATRIX_2026.md with new status
+- Update PRODUCTION_READINESS_2026-09.md with new status
 ```
 
 ---
@@ -342,7 +342,7 @@ Changes:
 ### Resources
 
 - **SOP-DEV-002a Audit:** `docs/STANDARD_OPERATING_PROCEDURES/DEVOPS/SOP-DEV-002a_DOMAIN_RECONSTRUCTION_QA_AUDIT.md`
-- **Progress Matrix:** `docs/TRACKING/DOMAIN_PROGRESS_MATRIX_2026.md`
+- **Progress Matrix:** `docs/TRACKING/PRODUCTION_READINESS_2026-09.md`
 - **Domain Spec:** `docs/DOMAIN/DOM-???-*.md`
 - **Previous Domain Example:** See Obligations domain in matrix for similar work
 
@@ -374,7 +374,7 @@ Changes:
 
 **When domain reaches Phase 10:**
 1. Move this file to `docs/archive/domain-plans/` with final status
-2. Update `DOMAIN_PROGRESS_MATRIX_2026.md` with Phase 10 audit result
+2. Update `PRODUCTION_READINESS_2026-09.md` with Phase 10 audit result
 3. Celebrate! 🎉
 
 ---
