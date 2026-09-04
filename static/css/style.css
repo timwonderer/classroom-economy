@@ -1724,7 +1724,7 @@ body.maintenance-active .sidebar {
 }
 
 .landing-signin-note-title {
-    color: var(--secondary-color);
+    color: var(--secondary-hover);
     font-size: 1rem;
     font-style: italic;
     font-weight: 600;
