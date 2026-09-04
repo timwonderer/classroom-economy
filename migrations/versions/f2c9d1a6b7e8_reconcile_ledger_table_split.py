@@ -80,26 +80,33 @@ def _assert_expected_runtime_shape():
     bal_cols = table_columns("ledger_balance_snapshot") if table_exists("ledger_balance_snapshot") else set()
 
     required_tx = {"id", "seat_id", "class_id", "amount", "timestamp", "status"}
-    required_bal = {
+    required_bal_legacy = {
         "id",
         "seat_id",
         "class_id",
         "posted_checking_balance_cents",
         "posted_savings_balance_cents",
     }
+    required_bal_canonical = {
+        "id",
+        "seat_id",
+        "class_id",
+        "account_type",
+        "posted_balance_cents",
+    }
 
     missing_tx = sorted(required_tx - tx_cols)
-    missing_bal = sorted(required_bal - bal_cols)
+    missing_bal = sorted(required_bal_legacy - bal_cols)
 
     if missing_tx:
         raise RuntimeError(
             "ledger_transaction is missing required runtime columns after reconciliation: "
             + ", ".join(missing_tx)
         )
-    if missing_bal:
+    if not required_bal_legacy.issubset(bal_cols) and not required_bal_canonical.issubset(bal_cols):
         raise RuntimeError(
-            "ledger_balance_snapshot is missing required runtime columns after reconciliation: "
-            + ", ".join(missing_bal)
+            "ledger_balance_snapshot is missing required legacy or canonical runtime columns after reconciliation: "
+            + ", ".join(sorted(required_bal_legacy - bal_cols))
         )
 
 
