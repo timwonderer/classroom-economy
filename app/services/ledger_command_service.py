@@ -43,6 +43,10 @@ def create_reserved_effects(*, class_id: str, feat_code: str, idempotency_key: s
     """Create or replay one reservation owning multiple Ledger effects."""
     if not class_id or not feat_code or not idempotency_key or not effects:
         raise ValueError("A reserved command requires class, FEAT, key, and effects.")
+    if not isinstance(idempotency_key, str) or not idempotency_key.strip():
+        raise ValueError("Idempotency key must be a non-empty string.")
+    if len(idempotency_key) > MAX_IDEMPOTENCY_KEY_LENGTH:
+        raise ValueError("Idempotency key exceeds the maximum allowed length.")
     fingerprint_fields = [
         {key: effect.get(key) for key in (
             "seat_id", "target_seat_id", "actor_seat_id", "mechanism", "user_id",
