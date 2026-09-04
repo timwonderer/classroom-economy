@@ -30,6 +30,10 @@ class TransferProofResult(NamedTuple):
     code: str | None = None
 
 
+def _invalid_balance_scope(class_id: str, seat_id: int, account_type: str) -> bool:
+    return not class_id or not seat_id or account_type not in {"checking", "savings"}
+
+
 def _get_balance_cache(seat_id: int, class_id: str, account_type: str):
     if not class_id or not seat_id:
         raise ValueError("FATAL: Balance lookup requires class_id and seat_id.")
@@ -96,6 +100,40 @@ def reconstruct_available_balance(class_id: str, seat_id: int, account_type: str
     return LedgerProofResult("PASS", reconstructed_cents=posted.reconstructed_cents + int(pending or 0), boundary=posted.boundary)
 
 
+def verify_posted_balance(class_id: str, seat_id: int, account_type: str) -> LedgerProofResult:
+    """Compare the stored balance projection with canonical posted history."""
+    if _invalid_balance_scope(class_id, seat_id, account_type):
+        return LedgerProofResult("UNAVAILABLE", complete=False, code="invalid_scope")
+    snapshot = LedgerBalanceSnapshot.query.filter_by(
+        class_id=class_id, seat_id=seat_id, account_type=account_type
+    ).first()
+    reconstructed = reconstruct_posted_balance(class_id, seat_id, account_type)
+    if reconstructed.outcome != "PASS":
+        return reconstructed
+    if snapshot is None:
+        return LedgerProofResult("UNAVAILABLE", boundary=reconstructed.boundary, complete=False, code="missing_snapshot")
+    stored = int(snapshot.posted_balance_cents)
+    if stored != reconstructed.reconstructed_cents:
+        return LedgerProofResult("FAIL", reconstructed_cents=reconstructed.reconstructed_cents,
+                                 boundary=reconstructed.boundary, complete=True, code="posted_balance_mismatch")
+    return reconstructed
+
+
+def verify_available_balance(class_id: str, seat_id: int, account_type: str) -> LedgerProofResult:
+    """Compare the normal Ledger read with independent canonical reconstruction."""
+    if _invalid_balance_scope(class_id, seat_id, account_type):
+        return LedgerProofResult("UNAVAILABLE", complete=False, code="invalid_scope")
+    reconstructed = reconstruct_available_balance(class_id, seat_id, account_type)
+    if reconstructed.outcome != "PASS":
+        return reconstructed
+    observed = get_available_balance(seat_id, class_id, account_type)
+    observed_cents = int(observed * 100)
+    if observed_cents != reconstructed.reconstructed_cents:
+        return LedgerProofResult("FAIL", reconstructed_cents=reconstructed.reconstructed_cents,
+                                 boundary=reconstructed.boundary, complete=True, code="available_balance_mismatch")
+    return reconstructed
+
+
 def verify_transfer(class_id: str, correlation_id: str) -> TransferProofResult:
     if not class_id or not correlation_id:
         return TransferProofResult("UNAVAILABLE", 0, False, False, False, False, False, "invalid_scope")
@@ -122,4 +160,4 @@ def verify_transfer(class_id: str, correlation_id: str) -> TransferProofResult:
     return TransferProofResult("PASS" if passed else "FAIL", len(rows), scope_ok, pair_ok, magnitude_ok, zero_sum, posting_ok, None if passed else "transfer_contract_violation")
 
 
-__all__ = ["LedgerProofResult", "TransferProofResult", "get_posted_balance", "get_pending_balance_delta", "get_available_balance", "get_available_balances", "reconstruct_posted_balance", "reconstruct_available_balance", "verify_transfer"]
+__all__ = ["LedgerProofResult", "TransferProofResult", "get_posted_balance", "get_pending_balance_delta", "get_available_balance", "get_available_balances", "reconstruct_posted_balance", "reconstruct_available_balance", "verify_posted_balance", "verify_available_balance", "verify_transfer"]

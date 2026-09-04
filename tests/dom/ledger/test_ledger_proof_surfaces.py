@@ -1,6 +1,8 @@
 from app.services.ledger_balance_query_service import (
     reconstruct_available_balance,
     reconstruct_posted_balance,
+    verify_available_balance,
+    verify_posted_balance,
 )
 from app.services.ledger_transfer_service import verify_transfer
 from app.feats.base import FEATContext
@@ -22,6 +24,30 @@ def test_reconstruct_available_balance_rejects_incomplete_scope():
     result = reconstruct_available_balance("class-a", 1, "reserve")
     assert result.outcome == "UNAVAILABLE"
     assert result.code == "invalid_scope"
+
+
+def test_projection_verification_compares_against_canonical_history(client, app):
+    classroom = provision_ledger_classroom("chemistry_p1", app)
+    seat = classroom.students[0].seat
+    with FEATContext("FEAT-LED-001", idempotency_key="proof:projection"):
+        create_pending_transaction(
+            seat_id=seat.id, class_id=classroom.class_id,
+            target_seat_id=seat.id, actor_seat_id=seat.id,
+            mechanism="self", user_id=seat.user_id, amount=12,
+            account_type="checking", type="Deposit", description="proof projection",
+        )
+        settle_balances(seat.id, classroom.class_id)
+
+    assert verify_posted_balance(classroom.class_id, seat.id, "checking").outcome == "PASS"
+    assert verify_available_balance(classroom.class_id, seat.id, "checking").outcome == "PASS"
+
+    snapshot = LedgerBalanceSnapshot.query.filter_by(
+        class_id=classroom.class_id, seat_id=seat.id, account_type="checking"
+    ).one()
+    with FEATContext("FEAT-LED-001", idempotency_key="proof:projection-corrupt"):
+        snapshot.posted_balance_cents += 1
+        db.session.flush()
+    assert verify_posted_balance(classroom.class_id, seat.id, "checking").code == "posted_balance_mismatch"
 
 
 def test_verify_transfer_requires_scoped_correlation():
