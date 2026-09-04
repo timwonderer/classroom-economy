@@ -38,7 +38,7 @@ Rubric anchors used:
 
 | # | Domain | Verdict | Blocking |
 |---|---|---|---|
-| 1 | Identity | **NOT READY** | B3 |
+| 1 | Identity | **NOT READY** | B3, B7 |
 | 2 | Class Configuration | READY (with caveats) | — |
 | 3 | Ledger | READY (with caveats) | — |
 | 4 | Productivity & Payroll | READY (with caveats) | — |
@@ -47,9 +47,9 @@ Rubric anchors used:
 | 7 | Policies | **NOT READY** | B1, B2 |
 | 8 | Interpretation | READY (with caveats) | — |
 | 9 | Operations | READY (with caveats) | — |
-| 10 | Support | **NOT READY** | B4, B5, B6 |
+| 10 | Support | **NOT READY** | B4, B5, B6, B7 |
 
-**6 of 10 domains are production-ready.** Four are blocked by six defects, which collapse into
+**6 of 10 domains are production-ready.** Four are blocked by seven defects, which collapse into
 **three fix tracks** (§IV).
 
 ---
@@ -114,6 +114,34 @@ without fixing B5 turns a 500 into a live disclosure.
 `escalate_issue` (`app/routes/admin.py:10562-10620`) writes without `@requires_feat_context`, unlike
 its siblings `resolve_issue` and `close_issue`.
 
+### B7 — Seat resolution by `public_id` is unscoped; scope fallback selects an unrequested class
+**Domains:** Support, Identity · **Severity:** Critical · **Violates:** INV-CORE-000 §III.1, §III.4, INV-ARC-008, INV-ARC-019
+
+Four call sites resolve a seat from a public identifier with **no `class_id` predicate**, so a
+`public_id` colliding across classes resolves to an arbitrary seat outside the caller's boundary:
+
+- `app/routes/admin.py:10202` — `_resolve_issue_identity`
+- `app/routes/admin.py:10350` — `issues_queue` bulk actor lookup
+- `app/routes/admin.py:10468` — `resolve_issue` submitter/transaction-ownership check
+- `app/routes/system_admin.py:1405` — `resolve_escalated_issue` reward target
+
+Separately, `resolve_scope` (`app/access/scope_factory.py:170-192`) falls back to
+`claimed_seats[0]` when no claimed seat matches `selected_class_id`, then **writes that class into
+session context**. A student whose selected class cannot be honored is silently granted scope in a
+*different* class. The boundary must be established or refused, never guessed.
+
+`app/services/identity_service.py::_resolve_seat` has the same defect: given a `User` it returns the
+lowest-numbered seat across all classes.
+
+Remediation exists on `codex/compliance-check-legacy-structure` (commit `3cdb1294`): add the
+`class_id` predicate at each site, replace the `resolve_scope` fallback with `AccessScopeDenied`,
+and replace `_resolve_seat` with `resolve_seat_for_context(user_id, class_id, seat_id=None)`.
+`resolve_issue` additionally stops proving transaction ownership via the submitter seat and checks
+`transaction.class_id == class_id` directly, which is the correct authority.
+
+> B7 shares files and reviewers with B4/B5/B6. Fold it into track T2. **Port the code from
+> `3cdb1294`; do not port that commit's badge-system files** (see §V, Deferred).
+
 ---
 
 ## IV. Fix Tracks
@@ -121,14 +149,14 @@ its siblings `resolve_issue` and `close_issue`.
 | Track | Clears | Unblocks | Est. | Owner | Status |
 |---|---|---|---|---|---|
 | **T1 — Policy immutability rework** | B1, B2 | Obligations, Policies | Large | — | Not started |
-| **T2 — Sysadmin support surface** | B4, B5, B6 | Support | Medium | — | Not started |
+| **T2 — Sysadmin support surface + seat-scope** | B4, B5, B6, B7 | Support, Identity | Medium | — | Not started |
 | **T3 — Orphaned-user deletion** | B3 | Identity | Small | — | Not started |
 
 **Sequencing to 2026-09-17.** T1 is the critical path and the only substantial design work; start it
 first and in parallel with T2/T3, which are independent and touch disjoint files. T3 is the smallest
 and should land first as a confidence check on the regression harness.
 
-**Exit criteria for the ship gate.** All six blockers closed; each with a regression test that fails
+**Exit criteria for the ship gate.** All seven blockers closed; each with a regression test that fails
 against the pre-fix commit; full pytest suite green; `flask db heads` shows exactly one head.
 
 ---
@@ -164,12 +192,67 @@ IMPLEMENTED"; both are false. Dead comment in `analytics_engine.py`.
 **Support** — `update_user_report` handler is dead and incorrect; announcement creation does not
 re-verify ownership; zero test coverage on the sysadmin surface.
 
+**Obligations (dead code)** — `RentWaiverView` and `get_active_rent_waivers_for_class`
+(`app/services/obligations_service.py:746-789`) have **zero callers**. `rent_settings` was reworked
+to `get_rent_waiver_history_for_class` under DOM-OBL-001 §V.6 one-time-immutable-waiver semantics.
+`_count_rent_waiver_periods` (`app/routes/admin.py:839`) is likewise orphaned and reads
+`.coverage_start_time` / `.coverage_end_time`, attributes DOM-OBL-001 v2.5 removed from
+`assessment_events`. Delete all three.
+
 **Cross-cutting** — 9 Dependabot advisories on the default branch (8 high, 1 moderate); accessibility
 remediation tracked separately in `ACCESSIBILITY_REVIEW_2026-09-03.md`.
 
 ---
 
-## VI. Maintenance
+## VI. Deferred Work Recovered From Branch Triage
+
+A 2026-09-04 sweep of 53 local branches and 15 worktrees found three bodies of work that exist
+nowhere on this branch. They are recorded here so the source branches can be deleted. **Nothing else
+across those branches was unported** — every other unmerged branch was verified superseded by
+content already present on HEAD.
+
+| Item | Source | Disposition |
+|---|---|---|
+| Seat-scope isolation fix | `codex/compliance-check-legacy-structure` @ `3cdb1294` | **Launch** — promoted to blocker B7, track T2 |
+| Support-content registry | `support-text-extraction` @ `fe3e3e0d..` | **Backlog** — see below |
+| Bug-hunter badge system | `codex/compliance-check-legacy-structure` @ `3cdb1294` | **Backlog** — see below |
+| `github-pages/v2transition.html` | `CTH_v2.0`, `docs/v2-progress-page` | **Pre-promotion** — see below |
+
+### Support-content registry (backlog)
+
+A canonical registry that lifts user-facing help text out of templates into versioned content files:
+`app/content/registry.py` (388 lines), `app/content/__init__.py`, `content/help/admin.yaml`,
+`content/help/long/admin/rent.md`, `content/inventory.md` (517-line audit of every user-facing
+string), `scripts/validate_content_keys.py`, `tests/test_content_registry.py` (364 lines), plus
+template rewiring. ~1,600 insertions.
+
+This serves INV-CORE-000 §III.7 — help text that is discoverable, translatable, and
+screen-reader-addressable rather than inlined markup. It is a genuine improvement but touches every
+template, so it is **not** a two-week item. Schedule after ship, alongside the accessibility
+remediation it complements.
+
+Note: HEAD carries an empty `content/` directory and an untracked `app/content/__pycache__` — ghosts
+of a partial application. Clean both before starting the port.
+
+### Bug-hunter badge system (backlog)
+
+`DOM-OPS-003_BADGE_SYSTEM.md`, `SPEC-OPS-001_BUG_HUNTER_BADGE_SYSTEM.md`,
+`SPEC-OPS-002_BUG_HUNTER_BADGE_USER_EXPERIENCE.md`, and nine award SVGs under `app/static/badges/`.
+Design-only — no implementation accompanies it, and Operations already carries an unbuilt DOM-OPS
+event-table backlog item this would sit on top of. Post-ship.
+
+**Blocker on port:** `SPEC-OPS-001` collides. HEAD already defines
+`docs/SPEC/SPEC-OPS-001_REVERSAL_AND_VOID.md`. The badge specs must be renumbered before landing.
+
+### `github-pages/v2transition.html` (pre-promotion)
+
+HEAD has `v2progress.html` but not `v2transition.html`. If this branch is promoted to default, that
+page disappears from the published site. Confirm whether it is still linked; port or consciously
+retire it **before** promotion, not after.
+
+---
+
+## VII. Maintenance
 
 Update this file when a track changes status or a finding is closed. Record closure with the commit
 SHA. Do not create a new dated tracking document for this sprint — amend this one. Historical
