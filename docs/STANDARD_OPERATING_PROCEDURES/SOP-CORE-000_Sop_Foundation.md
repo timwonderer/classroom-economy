@@ -31,6 +31,8 @@ The `STANDARD_OPERATING_PROCEDURES` namespace is organized into the following su
 - `DOCUMENTATION/` (SOP-DOC-*): Rules for writing, structuring, and maintaining documentation.
 - `DEPLOYMENT/` (SOP-DEP-*): Procedures for releasing code, scaling environments, and managing hosting.
 - `DATABASE/` (SOP-DB-*): Procedures for running migrations, backfilling data, and managing state.
+- `OPERATIONS/` (SOP-OPS-*): Procedures for operating systems that carry out the Operations domain's purpose, including status publication and incident communication.
+- `DEVOPS/` (SOP-DEV-*): Development and domain-reconstruction procedures retained during the v2 SOP migration.
 - `WORKFLOW/` (SOP-WORK-*): CI/CD procedures, Git discipline, and PR guidelines.
 
 ## VI. Standard Document Template
