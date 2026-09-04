@@ -217,10 +217,10 @@ from app.attendance import (
 from app.services.balance_service import get_batch_balances_by_class_seat
 from app.services.attendance_service import calculate_unpaid_attendance_seconds as calculate_prod_attendance_seconds
 from app.services.hall_pass_request_queue import list_pending_hall_pass_requests_for_class
-from app.services import access_policy_service, ledger_service, obligations_service
+from app.services import access_policy_service, obligations_service
 from app.services.entitlement_service import get_hall_pass_balance, grant_hall_passes, remove_hall_passes
 from app.services import operational_event_service
-from app.services.ledger_service import get_available_balances
+from app.services.ledger_balance_query_service import get_available_balances
 from app.services.admin_identity_service import (
     admin_has_passkeys,
     create_admin_credential,
@@ -837,7 +837,12 @@ def _get_teacher_seat_for_class(class_id: str):
     """Return the teacher seat for a class, if present."""
     if not class_id:
         return None
-    return Seat.query.filter_by(class_id=class_id, role="teacher").order_by(Seat.id.asc()).first()
+    from app.services.identity_service import resolve_teacher_seat_for_class
+
+    try:
+        return resolve_teacher_seat_for_class(class_id)
+    except ValueError:
+        return None
 
 
 def _count_rent_waiver_periods(settings, waiver) -> int:
@@ -4010,7 +4015,7 @@ def student_detail_public(actor_public_id):
     scoped_total_earnings = 0
 
     if class_id and scoped_seat:
-        from app.services.ledger_service import get_available_balance
+        from app.services.ledger_balance_query_service import get_available_balance
         scoped_checking_balance = get_available_balance(scoped_seat.id, class_id, 'checking')
         scoped_savings_balance = get_available_balance(scoped_seat.id, class_id, 'savings')
     else:
@@ -10635,10 +10640,15 @@ def resolve_issue(issue_ref):
                 flash("The related transaction could not be reversed for this issue.", "error")
                 return redirect(url_for('admin.view_issue', issue_ref=issue_ref))
 
-            reversal_tx = ledger_service.compensate_posted_transaction(
+            from app.services.ledger_correction_service import compensate_posted_transaction
+            from app.utils.transaction_idempotency import build_transaction_idempotency_key
+            reversal_tx = compensate_posted_transaction(
                 transaction,
                 description=f"Issue #{issue.id} reversal for transaction #{transaction.id}",
                 compensation_type='issue_reversal',
+                idempotency_key=build_transaction_idempotency_key(
+                    "issue", "reversal", issue.id, transaction.id
+                ),
             )
 
             issue.teacher_resolution = 'Transaction Reversed'
@@ -10661,10 +10671,15 @@ def resolve_issue(issue_ref):
                 flash("The related transaction could not be found for this issue.", "error")
                 return redirect(url_for('admin.view_issue', issue_ref=make_opaque_ref('issue', issue.id)))
 
-            compensating_tx = ledger_service.compensate_posted_transaction(
+            from app.services.ledger_correction_service import compensate_posted_transaction
+            from app.utils.transaction_idempotency import build_transaction_idempotency_key
+            compensating_tx = compensate_posted_transaction(
                 transaction,
                 description=f"Issue #{issue.id} compensating entry for transaction #{transaction.id}",
                 compensation_type='issue_compensation',
+                idempotency_key=build_transaction_idempotency_key(
+                    "issue", "compensation", issue.id, transaction.id
+                ),
             )
 
             issue.teacher_resolution = 'Compensating Transaction Posted'

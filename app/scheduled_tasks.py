@@ -28,7 +28,7 @@ def enforce_daily_limits_job():
     from app.models import AttendanceReasonCode, AttendanceSession, ClassEconomy, Seat
     from app.payroll import get_daily_limit_seconds
     from app.services.context_resolver import CanonicalContext
-    from app.services.ledger_service import resolve_class_authority_seat_id
+    from app.services.identity_service import resolve_teacher_seat_for_class
     from app.utils.canonical_temporal_resolver import (
         CLASS_LEVEL_EVALUATION,
         canonical_temporal_resolver,
@@ -90,7 +90,7 @@ def enforce_daily_limits_job():
             if not daily_limit:
                 continue
 
-            actor_seat_id = resolve_class_authority_seat_id(class_id)
+            actor_seat_id = resolve_teacher_seat_for_class(class_id).id
             ctx = CanonicalContext(
                 user_id=class_row.teacher_user_id,
                 class_id=class_id,
@@ -351,7 +351,7 @@ def run_automatic_payroll_job():
     from app.models import ClassEconomy, PayrollSettings
     from app.services.class_configuration_query_service import is_feature_enabled
     from app.services.context_resolver import CanonicalContext
-    from app.services.ledger_service import resolve_class_authority_seat_id
+    from app.services.identity_service import resolve_teacher_seat_for_class
     from app.services.payroll.cycle_completion import get_completed_cycle_window
     from app.utils.canonical_temporal_resolver import (
         CLASS_LEVEL_EVALUATION,
@@ -398,7 +398,7 @@ def run_automatic_payroll_job():
             ctx = CanonicalContext(
                 user_id=class_row.teacher_user_id,
                 class_id=class_id,
-                seat_id=resolve_class_authority_seat_id(class_id),
+                seat_id=resolve_teacher_seat_for_class(class_id).id,
                 actor_role="teacher",
             )
             boundary_utc = canonical_temporal_resolver(
@@ -490,7 +490,7 @@ def run_insurance_expiry_job():
     from app.models import BillCycle, ObligationAssessment
     from app.services import entitlement_service
     from app.services.entitlement_read_service import get_active_insurance_grant
-    from app.services.ledger_service import resolve_class_authority_seat_id
+    from app.services.identity_service import resolve_teacher_seat_for_class
     from app.utils.canonical_temporal_resolver import ensure_utc, utc_now
 
     logger = logging.getLogger('scheduled_tasks')
@@ -549,7 +549,7 @@ def run_insurance_expiry_job():
                     entitlement_id=grant.entitlement_id,
                     class_id=assessment.class_id,
                     target_seat_id=assessment.seat_id,
-                    actor_seat_id=resolve_class_authority_seat_id(assessment.class_id),
+                    actor_seat_id=resolve_teacher_seat_for_class(assessment.class_id).id,
                     product_id=grant.product_id,
                     entitlement_type="INSURANCE",
                     acquisition_type=grant.acquisition_type,

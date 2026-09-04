@@ -13,7 +13,7 @@ values and are never collapsed into a single "activity" scalar:
   absolute amounts of those rows, reported in raw tokens (§7.3).
 
 Architectural rule (INV-ARC-009, INV-ITR-016): this module consumes a
-source-domain read surface (``ledger_service.get_student_originated_rows``),
+source-domain read surface (``ledger_provenance_query_service.get_student_originated_rows``),
 never arbitrary ORM, and never consults ``Transaction.type`` (INV-ITR-015).
 """
 
@@ -21,7 +21,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.services.ledger_service import get_student_originated_rows
+from app.services.ledger_provenance_query_service import get_student_originated_rows
 from app.services.interpretation.observation_builders import (
     amount_value,
     observation_entry,

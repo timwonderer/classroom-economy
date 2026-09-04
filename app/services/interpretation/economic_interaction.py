@@ -14,7 +14,7 @@ whether a seat acted *at all*, the union is idempotent under that precedence.
 
 Architectural rule (INV-ARC-009, INV-ITR-016): this module consumes source-domain
 read surfaces, never arbitrary ORM. The §6.3 classifier itself lives in the
-Ledger domain (``ledger_service.SYSTEM_ORIGINATED_FEAT_CODES``) because the
+Ledger domain (``ledger_provenance_query_service.SYSTEM_ORIGINATED_FEAT_CODES``) because the
 Ledger owns the provenance of its own rows; ``Transaction.type`` is never
 consulted here (INV-ITR-015).
 """
@@ -25,7 +25,7 @@ from typing import Any
 
 from app.services.entitlement_read_service import get_seat_ids_with_purchase_grants
 from app.services.identity_service import get_enrolled_student_seat_ids
-from app.services.ledger_service import get_seat_ids_with_student_originated_activity
+from app.services.ledger_provenance_query_service import get_seat_ids_with_student_originated_activity
 from app.services.obligations_service import get_seat_ids_with_self_payments
 from app.services.interpretation.observation_builders import (
     fraction_value,

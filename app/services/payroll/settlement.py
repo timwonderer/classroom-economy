@@ -35,6 +35,7 @@ from app.models import (
     Seat,
 )
 from app.services.context_resolver import CanonicalContext
+from app.services.identity_service import resolve_teacher_seat_for_class
 
 
 class ClassSettlementError(Exception):
@@ -68,11 +69,10 @@ def _build_teacher_context(class_id: str) -> CanonicalContext:
     class_row = db.session.get(ClassEconomy, class_id)
     if class_row is None or not class_row.teacher_user_id:
         raise ClassSettlementError(f"Class {class_id} has no resolvable teacher actor.")
-    teacher_seat = (
-        Seat.query.filter_by(class_id=class_id, role="teacher").order_by(Seat.id.asc()).first()
-    )
-    if teacher_seat is None:
-        raise ClassSettlementError(f"Class {class_id} has no teacher seat.")
+    try:
+        teacher_seat = resolve_teacher_seat_for_class(class_id)
+    except ValueError as exc:
+        raise ClassSettlementError(str(exc)) from exc
     return CanonicalContext(
         user_id=class_row.teacher_user_id,
         class_id=class_id,

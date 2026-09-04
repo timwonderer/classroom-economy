@@ -44,7 +44,8 @@ from app.services.interpretation.observation_contract import (
     validate_for_materialization,
     validate_payload_structure,
 )
-from app.services.ledger_service import InboundLedgerRow, create_pending_transaction
+from app.services.ledger_provenance_query_service import InboundLedgerRow
+from app.services.ledger_posting_service import create_pending_transaction
 from app.utils.canonical_temporal_resolver import utc_now
 from tests.helpers.classroom_initializer import initialize
 

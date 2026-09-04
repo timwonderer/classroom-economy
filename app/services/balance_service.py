@@ -57,8 +57,8 @@ def get_batch_balances_by_class_seat(class_seat_pairs):
     cache_records = db.session.query(
         LedgerBalanceSnapshot.class_id,
         LedgerBalanceSnapshot.seat_id,
-        LedgerBalanceSnapshot.posted_checking_balance_cents,
-        LedgerBalanceSnapshot.posted_savings_balance_cents
+        LedgerBalanceSnapshot.account_type,
+        LedgerBalanceSnapshot.posted_balance_cents,
     ).filter(
         LedgerBalanceSnapshot.class_id.in_(class_ids),
         LedgerBalanceSnapshot.seat_id.in_(seat_ids),
@@ -67,8 +67,10 @@ def get_batch_balances_by_class_seat(class_seat_pairs):
 
     for rec in cache_records:
         key = (str(rec.class_id), int(rec.seat_id))
-        raw_balances[key]['checking_cents'] = rec.posted_checking_balance_cents
-        raw_balances[key]['savings_cents'] = rec.posted_savings_balance_cents
+        if rec.account_type == 'checking':
+            raw_balances[key]['checking_cents'] = rec.posted_balance_cents
+        elif rec.account_type == 'savings':
+            raw_balances[key]['savings_cents'] = rec.posted_balance_cents
 
     pending_sums = db.session.query(
         Transaction.class_id,
@@ -106,7 +108,7 @@ def get_batch_balances_by_class_seat(class_seat_pairs):
         Transaction.seat_id.in_(seat_ids),
         tx_scope_tuple.in_(list(normalized_pairs)),
         Transaction.amount > 0,
-        Transaction.is_void == False,
+                Transaction.is_void.isnot(True),
         ~Transaction.description.ilike('Transfer%')
     ).group_by(
         Transaction.class_id,
@@ -118,5 +120,3 @@ def get_batch_balances_by_class_seat(class_seat_pairs):
         raw_balances[key]['earnings'] = _quantize_currency(rec[2])
 
     return raw_balances
-
-

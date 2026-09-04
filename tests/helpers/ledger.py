@@ -5,9 +5,13 @@ from decimal import Decimal
 from flask import Flask
 
 from app.models import Transaction
-from app.services import ledger_service
-from app.utils.banking import settle_balances
-from app.utils.transaction_idempotency import create_idempotent_transaction
+from app.services.ledger_settlement_service import settle_balances
+from app.services.ledger_command_service import create_idempotent_transaction
+from app.services.ledger_posting_service import create_pending_transaction
+from app.services.ledger_transfer_service import create_transfer_pair
+from app.services.ledger_correction_service import compensate_posted_transaction
+from app.services.ledger_interest_service import apply_monthly_savings_interest
+from app.services.ledger_fee_service import apply_overdraft_fee_if_needed
 from tests.helpers.classroom_initializer import (
     initialize as _initialize_classroom,
     initialize_as_student as _initialize_as_student,
@@ -75,7 +79,7 @@ def create_ledger_pending_transaction(
     original_transaction_id: int | None = None,
     policy_id: int | None = None,
 ):
-    return ledger_service.create_pending_transaction(
+    return create_pending_transaction(
         seat_id=seat_id,
         class_id=class_id,
         target_seat_id=target_seat_id or seat_id,
@@ -102,7 +106,7 @@ def create_ledger_transfer_pair(
     withdraw_description: str,
     deposit_description: str,
 ):
-    return ledger_service.create_transfer_pair(
+    return create_transfer_pair(
         seat_id=seat_id,
         class_id=class_id,
         user_id=user_id,
@@ -121,7 +125,7 @@ def compensate_ledger_posted_transaction(
     compensation_type: str = "refund",
     idempotency_key: str | None = None,
 ):
-    return ledger_service.compensate_posted_transaction(
+    return compensate_posted_transaction(
         transaction,
         description=description,
         compensation_type=compensation_type,
@@ -130,11 +134,11 @@ def compensate_ledger_posted_transaction(
 
 
 def apply_ledger_monthly_savings_interest(seat, *, annual_rate: Decimal = Decimal("0.045")):
-    return ledger_service.apply_monthly_savings_interest(seat, annual_rate=annual_rate)
+    return apply_monthly_savings_interest(seat, annual_rate=annual_rate)
 
 
 def apply_ledger_overdraft_fee_if_needed(seat, *, force: bool = False, idempotency_key: str | None = None):
-    return ledger_service.apply_overdraft_fee_if_needed(
+    return apply_overdraft_fee_if_needed(
         seat,
         force=force,
         idempotency_key=idempotency_key,

@@ -90,11 +90,11 @@ from app.services.entitlement_read_service import (
 )
 from app.feats.purchase_insurance_feat import execute_purchase_insurance
 from app.feats.cancel_insurance_feat import execute_cancel_insurance
-from app.services.ledger_service import (
-    apply_monthly_savings_interest as post_monthly_savings_interest,
+from app.services.ledger_balance_query_service import (
     get_available_balances,
     get_posted_balance,
 )
+from app.services.ledger_interest_service import apply_monthly_savings_interest as post_monthly_savings_interest
 from app.services.economic_engine import (
     savings_interest_for_payout_period,
     project_savings_balances,

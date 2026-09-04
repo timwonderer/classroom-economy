@@ -5,7 +5,8 @@ from decimal import Decimal
 
 from app.extensions import db
 from app.services.context_resolver import CanonicalContext
-from app.services import ledger_service
+from app.feats.base import get_active_feat_name, get_idempotency_key
+from app.services.ledger_command_service import create_reserved_effects
 
 
 @dataclass
@@ -34,7 +35,7 @@ def execute_admin_adjustments(
     compatibility and are always 0: penalties are never declined for insufficient
     funds and never incur a fee.
     """
-    applied_count = 0
+    effect_specs = []
 
     for adjustment in adjustments:
         seat = adjustment.get("seat")
@@ -49,19 +50,32 @@ def execute_admin_adjustments(
         class_id = seat.class_id
         mechanism = "system" if ctx.actor_role == "sysadmin" else "teacher"
 
-        ledger_service.create_pending_transaction(
-            seat_id=seat.id,
-            class_id=class_id,
-            target_seat_id=seat.id,
-            actor_seat_id=actor_seat_id,
-            mechanism=mechanism,
-            user_id=user_id,
-            amount=amount,
-            account_type=account_type,
-            type=adjustment["type"],
-            description=adjustment["description"],
-        )
-        applied_count += 1
+        effect_specs.append({
+            "seat_id": seat.id,
+            "class_id": class_id,
+            "target_seat_id": seat.id,
+            "actor_seat_id": actor_seat_id,
+            "mechanism": mechanism,
+            "user_id": user_id,
+            "amount": amount,
+            "account_type": account_type,
+            "type": adjustment["type"],
+            "description": adjustment["description"],
+        })
+
+    if not effect_specs:
+        return AdminAdjustmentResult(applied_count=0, declined_count=0, fee_count=0)
+    feat_code = get_active_feat_name()
+    idempotency_key = get_idempotency_key()
+    if not feat_code or not idempotency_key:
+        raise ValueError("Bulk Ledger adjustments require an active command reservation.")
+    created_effects, _created = create_reserved_effects(
+        class_id=ctx.class_id,
+        feat_code=feat_code,
+        idempotency_key=idempotency_key,
+        effects=effect_specs,
+    )
+    applied_count = len(created_effects)
 
     db.session.flush()
 

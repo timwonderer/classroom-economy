@@ -18,7 +18,7 @@ from decimal import Decimal
 
 from app.services.class_configuration_query_service import get_class_feature
 from app.services.identity_service import get_enrolled_student_seat_ids
-from app.services.ledger_service import get_posted_balances_as_of
+from app.services.ledger_provenance_query_service import get_posted_balances_as_of
 
 # Savings accounts are provisioned by the CLASS "banking" feature; savings is
 # available for a class iff banking is enabled (there is no finer savings-only

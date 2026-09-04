@@ -5,7 +5,10 @@ from decimal import Decimal
 
 from app.extensions import db
 from app.models import Seat, EconomicEngine
-from app.services import ledger_service
+from app.services.identity_service import resolve_teacher_seat_for_class
+from app.services.ledger_balance_query_service import get_available_balance, get_available_balances
+from app.services.ledger_posting_service import create_pending_transaction_idempotent
+from app.services.ledger_transfer_service import create_transfer_pair
 from app.models import _quantize_currency
 from decimal import InvalidOperation
 import logging
@@ -149,7 +152,7 @@ def resolve_intended_ledger_plan(
 
 
 def _get_available_balances(seat: Seat) -> tuple[Decimal, Decimal]:
-    return ledger_service.get_available_balances(seat.id, seat.class_id)
+    return get_available_balances(seat.id, seat.class_id)
 
 
 def _calculate_overdraft_fee_amount(*, seat, economic_engine, force: bool = False) -> Decimal:
@@ -157,7 +160,7 @@ def _calculate_overdraft_fee_amount(*, seat, economic_engine, force: bool = Fals
         return Decimal("0.00")
 
     current_balance = _quantize_currency(
-        ledger_service.get_available_balance(seat.id, seat.class_id, "checking")
+        get_available_balance(seat.id, seat.class_id, "checking")
     )
 
     if abs(current_balance) < Decimal("0.01"):
@@ -246,7 +249,7 @@ def apply_resolved_ledger_plan(
         # A savings->checking overdraft-protection transfer moves the SEAT'S OWN
         # money between its own accounts; it is not a user-scoped act, so it carries
         # no user_id (the ledger row is anchored by target/actor seat).
-        ledger_service.create_transfer_pair(
+        create_transfer_pair(
             seat_id=seat.id,
             class_id=seat.class_id,
             amount=resolved_plan.recovery_transfer_amount,
@@ -261,12 +264,12 @@ def apply_resolved_ledger_plan(
         fee_idempotency_key = idempotency_key or f"overdraft:{seat.id}:{resolved_plan.intended_plan.class_id}"
         # Anchor on class_id + seat_id (INV-ARC-019): the fine is charged to the
         # student's seat, with the class authority seat as actor. No user_id.
-        fee_transaction, _created = ledger_service.create_pending_transaction_idempotent(
+        fee_transaction, _created = create_pending_transaction_idempotent(
             idempotency_key=fee_idempotency_key,
             seat_id=seat.id,
             class_id=seat.class_id,
             target_seat_id=seat.id,
-            actor_seat_id=ledger_service.resolve_class_authority_seat_id(seat.class_id),
+            actor_seat_id=resolve_teacher_seat_for_class(seat.class_id).id,
             mechanism="system",
             amount=-resolved_plan.overdraft_fee_amount,
             account_type="checking",

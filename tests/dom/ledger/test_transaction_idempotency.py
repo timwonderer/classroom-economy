@@ -5,6 +5,7 @@ from sqlalchemy.exc import IntegrityError
 
 from app.extensions import db
 from app.models import Transaction
+from app.services.ledger_command_service import create_reserved_effects
 from app.utils.transaction_idempotency import (
     IDEMPOTENT_TRANSACTION_TYPES,
     MAX_IDEMPOTENCY_KEY_LENGTH,
@@ -25,10 +26,57 @@ def test_DOM_LED_001__idempotent_transaction_types_are_explicit():
         "purchase",
         "refund",
         "overdraft_fee",
-        "payroll",
-        "Interest",
-    })
+            "payroll",
+            "manual_payment",
+            "bug_reward",
+            "issue_reversal",
+            "issue_compensation",
+            "rent_payment",
+            "Interest",
+            "void_item_removed",
+        })
     assert IDEMPOTENT_TRANSACTION_TYPES == expected
+
+
+def test_DOM_LED_001__one_to_many_reservation_replays_effect_set(client, app):
+    classroom = provision_ledger_classroom("chemistry_p1", app)
+    first = classroom.students[0].seat
+    second = classroom.students[1].seat
+    effects = [
+        {"seat_id": first.id, "class_id": classroom.class_id, "target_seat_id": first.id,
+         "actor_seat_id": classroom.teacher_seat.id, "mechanism": "teacher",
+         "user_id": first.user_id, "amount": Decimal("2.00"), "account_type": "checking",
+         "type": "manual_payment", "description": "bonus"},
+        {"seat_id": second.id, "class_id": classroom.class_id, "target_seat_id": second.id,
+         "actor_seat_id": classroom.teacher_seat.id, "mechanism": "teacher",
+         "user_id": second.user_id, "amount": Decimal("2.00"), "account_type": "checking",
+         "type": "manual_payment", "description": "bonus"},
+    ]
+    with FEATContext("FEAT-LED-000", idempotency_key="command:bulk-replay"):
+        created, was_created = create_reserved_effects(
+            class_id=classroom.class_id, feat_code="FEAT-LED-000",
+            idempotency_key="command:bulk-replay", effects=effects,
+        )
+        replay, replay_created = create_reserved_effects(
+            class_id=classroom.class_id, feat_code="FEAT-LED-000",
+            idempotency_key="command:bulk-replay", effects=effects,
+        )
+    assert was_created is True
+    assert replay_created is False
+    assert [tx.id for tx in replay] == [tx.id for tx in created]
+
+    changed = [dict(effect) for effect in effects]
+    with FEATContext("FEAT-LED-000", idempotency_key="command:bulk-replay-mismatch"):
+        create_reserved_effects(
+            class_id=classroom.class_id, feat_code="FEAT-LED-000",
+            idempotency_key="command:bulk-replay-mismatch", effects=effects,
+        )
+        changed[0]["amount"] = Decimal("4.00")
+        with pytest.raises(ValueError, match="Replay fingerprint mismatch"):
+            create_reserved_effects(
+                class_id=classroom.class_id, feat_code="FEAT-LED-000",
+                idempotency_key="command:bulk-replay-mismatch", effects=changed,
+            )
 
 
 def test_DOM_LED_001__idempotent_transaction_reuses_existing_row_on_retry(client, app):
@@ -75,7 +123,8 @@ def test_DOM_LED_001__idempotent_transaction_recovers_from_integrity_race(client
 
     idempotency_key = insurance_reimbursement_key(456)
     with FEATContext("FEAT-LED-000", idempotency_key="test_transaction_idempotency_race_seed"):
-        winning_tx = create_ledger_pending_transaction(
+        winning_tx, winning_created = create_ledger_idempotent_transaction(
+            idempotency_key=idempotency_key,
             seat_id=student.id,
             class_id=class_row.class_id,
             user_id=student.user_id,
@@ -84,8 +133,7 @@ def test_DOM_LED_001__idempotent_transaction_recovers_from_integrity_race(client
             type="insurance_reimbursement",
             description="Winning insurance reimbursement",
         )
-        winning_tx.idempotency_key = idempotency_key
-        db.session.flush()
+        assert winning_created is True
 
     with FEATContext("FEAT-LED-000", idempotency_key="test_transaction_idempotency_race_call"):
         transaction, created = create_ledger_idempotent_transaction(

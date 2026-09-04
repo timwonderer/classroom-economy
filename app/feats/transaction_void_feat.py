@@ -7,12 +7,14 @@ from decimal import Decimal
 from app.extensions import db
 from app.feats.base import requires_feat_context
 from app.models import EntitlementEvent, StoreItem, Transaction, TransactionStatus
-from app.services import ledger_service, obligations_service
+from app.services import obligations_service
+from app.services.ledger_correction_service import compensate_posted_transaction, void_pending_transaction
+from app.services.ledger_posting_service import create_pending_transaction
 # TODO (Phase 4): store_entitlement_service deleted; must query EntitlementEvent directly
 # from app.services.store_entitlement_service import list_entitlement_history
 from app.utils.seat_scope import seat_scoped_filter
 from app.utils.canonical_temporal_resolver import ensure_utc, utc_now
-from app.utils.transaction_idempotency import void_refund_key
+from app.utils.transaction_idempotency import build_transaction_idempotency_key, void_refund_key
 
 
 @dataclass
@@ -80,17 +82,17 @@ def _execute_void_transaction_impl(tx: Transaction, *, reason: str) -> VoidTrans
 
     reversal_tx = None
     if tx.type == 'purchase':
-        reversal_tx = ledger_service.compensate_posted_transaction(
+        reversal_tx = compensate_posted_transaction(
             tx,
             idempotency_key=void_refund_key(tx.id),
             description=void_description,
         )
         if is_pending:
-            ledger_service.void_pending_transaction(tx)
+            void_pending_transaction(tx)
     elif is_pending:
-        ledger_service.void_pending_transaction(tx)
+        void_pending_transaction(tx)
     else:
-        reversal_tx = ledger_service.compensate_posted_transaction(
+        reversal_tx = compensate_posted_transaction(
             tx,
             idempotency_key=void_refund_key(tx.id),
             description=void_description,
@@ -163,7 +165,7 @@ def _void_purchase(tx: Transaction) -> None:
     ):
         raise ValueError("Transaction cannot be voided because selected entitlements are already consumed.")
 
-    ledger_service.create_pending_transaction(
+    create_pending_transaction(
         seat_id=tx.seat_id,
         class_id=tx.class_id,
         target_seat_id=tx.seat_id,
@@ -174,6 +176,9 @@ def _void_purchase(tx: Transaction) -> None:
         account_type=tx.account_type or 'checking',
         type='void_item_removed',
         description=f"item removed - {store_item.name}",
+        idempotency_key=build_transaction_idempotency_key(
+            "void", "purchase", tx.id, "item-removal"
+        ),
     )
     # Canonical entitlement state is authoritative; the void path only records
     # the compensating ledger effect here.

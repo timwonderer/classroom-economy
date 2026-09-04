@@ -32,7 +32,7 @@ from app.feats.base import FEATContext
 from app.models import ObligationAssessment, RentSettings
 from app.services.admin_settings_service import supersede_rent_settings
 from app.services.class_configuration_query_service import get_rent_settings
-from app.services.ledger_service import create_pending_transaction
+from app.services.ledger_posting_service import create_pending_transaction
 from app.services.interpretation.obligation_observation import compute_q3
 from app.services.interpretation.obligation_outcome import (
     OUTCOME_MIXED,

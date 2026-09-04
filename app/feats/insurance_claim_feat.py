@@ -38,7 +38,7 @@ from app.extensions import db
 from app.feats.base import requires_feat_context, get_correlation_id
 from app.models import Seat, EntitlementEvent, Transaction
 from app.services.context_resolver import CanonicalContext
-from app.services import ledger_service
+from app.services.ledger_posting_service import create_pending_transaction_idempotent
 from app.services import insurance_claim_service
 from app.services import insurance_eligibility_contract as eligibility
 from app.services import insurance_definition_service as insurance_defs
@@ -1677,7 +1677,7 @@ def _resolve_insurance_claim_impl(
                     min(gross_reimbursement, remaining_period_payout)
                 )
 
-            ledger_transaction, created = ledger_service.create_pending_transaction_idempotent(
+            ledger_transaction, created = create_pending_transaction_idempotent(
                 idempotency_key=idempotency_key or f"insurance-reimbursement:{claim_id}",
                 seat_id=student_seat.id,
                 class_id=canonical_context.class_id,

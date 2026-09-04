@@ -127,15 +127,8 @@ def resolve_canonical_context(require_class: bool = True) -> CanonicalContext | 
             print("DEBUG: last_active_seat_id does not belong to authenticated user.")
             raise ContextMismatch("last_active_seat_id does not belong to authenticated user.")
     else:
-        seat = (
-            db.session.query(Seat)
-            .filter(Seat.user_id == user_id, Seat.class_id == class_id)
-            .order_by(Seat.id.asc())
-            .first()
-        )
-        if not seat:
-            print(f"DEBUG: Seat not found for canonical class context. user_id={user_id}, class_id={class_id}")
-            raise ContextNotEstablished("Seat not found for canonical class context.")
+        print("DEBUG: Missing canonical last_active_seat_id.")
+        raise ContextInvariantViolation("Missing canonical last_active_seat_id.")
 
     if getattr(seat, "role", None) == "student" and getattr(seat, "claimed_at", None) is None:
         print("DEBUG: Student seat is not claimed.")

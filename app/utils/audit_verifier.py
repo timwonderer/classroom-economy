@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Protected fields per table — must match the fields passed to audit_protected()
 # at write time. Missing a field here → false INVALID; extra field here → false
-# INVALID too. Keep in sync with _TRANSACTION_AUDIT_FIELDS in ledger_service.py.
+# INVALID too. Keep in sync with the canonical Ledger write services.
 # ---------------------------------------------------------------------------
 
 PROTECTED_FIELDS_BY_TABLE: dict[str, list[str]] = {
