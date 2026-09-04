@@ -28,6 +28,9 @@ def upgrade():
         op.add_column("ledger_transaction", sa.Column("command_reservation_id", sa.Integer(), nullable=True))
     inspector = sa.inspect(op.get_bind())
     indexes = {index["name"] for index in inspector.get_indexes("ledger_transaction")}
+    if "uq_transaction_idempotency_scope" in indexes:
+        op.drop_index("uq_transaction_idempotency_scope", table_name="ledger_transaction")
+        indexes.remove("uq_transaction_idempotency_scope")
     if "ix_ledger_transaction_posting_sequence" not in indexes:
         op.create_index("ix_ledger_transaction_posting_sequence", "ledger_transaction", ["posting_sequence"])
     if "ix_ledger_transaction_command_reservation_id" not in indexes:
