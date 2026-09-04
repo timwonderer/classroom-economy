@@ -2,7 +2,7 @@
 
 | Reference Number | Version | Effective Date | Supersedes | Authority Level |
 |------------------|---------|----------------|------------|-----------------|
-| DOM-OPS-001      | 2.2     | 2026-05-21     | 2.1        | Normative       |
+| DOM-OPS-001      | 2.3     | 2026-08-31     | 2.2        | Normative       |
 
 ## 0. Authority Level and Dependencies
 
@@ -12,6 +12,7 @@ Normative. Subordinate to `INV-CORE-000` and `INV-ARC-009`.
 
 - `docs/INVARIANT/CORE/INV-CORE-000_CORE_INVARIANTS.md`
 - `docs/INVARIANT/ARCHITECTURE/INV-ARC-009_DOMAIN_AUTHORITY_FOR_STATE.md`
+- `docs/INVARIANT/ARCHITECTURE/INV-ARC-004_CROSS_TENANT_ISOLATION.md`
 
 ---
 
@@ -30,6 +31,20 @@ The Operations domain is the single authority over the **Operational Truth** of 
 *   **Alert State**: The lifecycle of notifications triggered by operational events.
 *   **Status Page Publication State**: The public-facing representation of system health and incidents.
 *   **Retention Policy State**: The rules governing the lifespan of operational data.
+
+### External Publication During Canonical-Service Unavailability
+
+Independent status infrastructure MAY maintain and publish bounded external communication records when canonical Operations incident publication is unavailable.
+
+An `ExternalStatusNotice` is a communication artifact, not Operational Truth and not a canonical incident. It:
+
+*   may report only independently observed service conditions and explicitly bounded operator guidance;
+*   MUST NOT infer internal domain state, internal cause, or the existence of a canonical incident;
+*   MUST remain distinguishable from `incident_events` and `incident_summary`;
+*   MUST preserve its original observation and publication history without rewriting;
+*   MAY be reconciled with or linked to canonical incident lineage when canonical service becomes available, where applicable.
+
+This channel exists only to preserve useful public communication during canonical-service unavailability. It does not create a second Operations authority.
 
 ### Operations Explicitly DOES NOT Own:
 *   **Business Domain Truth**: It does not define what a balance is, whether a student is present, or if an item is purchased.
@@ -61,6 +76,7 @@ The Operations domain is the single authority over the **Operational Truth** of 
 | **Trace / Correlation ID** | System Guard | The technical glue ensuring causality and traceability. |
 | **Incident Summary** | Cache | Projection derived from incident events for fast current-state lookup. |
 | **Status Page State** | Derived State | Calculated from active incidents and health events. |
+| **External Status Notice** | Non-authoritative Communication Artifact | Bounded public communication based on independent external observation; never a canonical incident. |
 | **Retention Policy State**| Authoritative Directive State | Defines the legal/technical lifespan of operational records. |
 
 ---
@@ -98,6 +114,16 @@ The Operations domain is the single authority over the **Operational Truth** of 
 ### INV-OPS-005: Invariant Runner Authority
 *   **Statement**: Runtime invariant runners may detect violations but must not silently "heal" business state.
 *   **Prohibited Action**: An automated script "fixing" an out-of-sync ledger without an auditable business-logic transaction.
+
+### INV-OPS-005A: Single-Scope Verification Execution
+*   **Statement**: Operations may coordinate verification across the system only by dispatching independently authorized verification executions, each bound to exactly one canonical `class_id`.
+*   **Constraints**:
+    *   A verification worker MUST read and evaluate one `class_id` boundary per execution.
+    *   A coordinator MUST NOT read tenant tables, issue a cross-class domain query, reconstruct a teacher-wide class set, or combine class identifiers in one domain execution.
+    *   The coordinator MAY receive a pre-authorized opaque work item and MAY aggregate redacted outcomes such as check name, state, freshness, and failure count without tenant identity.
+    *   A worker result MUST be reduced to the approved Operations result boundary before leaving its class-bound execution.
+    *   Failed dispatch, missing work, stale results, and worker infrastructure errors remain distinct from a proven invariant violation.
+*   **Prohibited Action**: Treating a loop over `class_id` values or a global aggregate query as compliant merely because each inner query is filtered.
 
 ### INV-OPS-006: Health Semantics
 *   **Statement**: System health must distinguish between Liveness, Readiness, and Correctness.
@@ -143,11 +169,16 @@ The Operations domain is the single authority over the **Operational Truth** of 
 *   **Start Invariant Run**: (Scheduler/Trigger) -> Effect: Appends `START` to `invariant_run_events`.
 *   **Complete Invariant Run**: (Runner) -> Effect: Appends `PASS` to `invariant_run_events`.
 *   **Fail Invariant Run**: (Runner) -> Effect: Appends `FAIL` to `invariant_run_events`.
+*   **Coordinate Scoped Runs**: (Operations Coordinator) -> Effect: Dispatches independently class-bound verification executions and receives only bounded redacted results.
 
 ### Incident Lifecycle
 *   **Create Incident**: (System/Admin) -> Effect: Creates `incident_summary` AND appends `CREATED` to `incident_events`.
 *   **Update Incident**: (Admin/System) -> Effect: Appends `UPDATED` to `incident_events`.
 *   **Resolve Incident**: (Admin/System) -> Effect: Updates `incident_summary` AND appends `RESOLVED` to `incident_events`.
+
+### External Publication Lifecycle
+*   **Publish External Status Notice**: (Independent Status Infrastructure) -> Effect: Appends a bounded communication artifact and its publication event outside the canonical incident lifecycle.
+*   **Reconcile External Status Notice**: (Status Infrastructure/System) -> Effect: Adds a linkage to canonical incident lineage when available; never rewrites the original notice or observation.
 
 ### Alert Lifecycle
 *   **Emit Alert**: (System) -> Effect: Appends `TRIGGERED` to `alert_events`.
@@ -253,6 +284,7 @@ The Operations domain is the single authority over the **Operational Truth** of 
 8.  **Retention Enforcement**: Must be explicit, logged, and isolated by retention class.
 9.  **Repeated Failures**: Recorded as distinct events in `job_events`, `invariant_run_events`, or `health_check_events`.
 10. **Avoiding Analytics**: Operations stores diagnostic/correctness data only.
+11. **Verification Scope**: Cross-class correctness aggregation is permitted only over redacted results from independently class-bound executions; it is not a cross-class domain read.
 
 ---
 
