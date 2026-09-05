@@ -53,6 +53,12 @@ jobs:
           pip install -r requirements.txt
           pip install pytest
 
+      - name: Self-check evidence manifest
+        run: |
+          set -o pipefail
+          python scripts/ci_evidence_runner.py --self-check \
+            | tee constitutional-ci-selfcheck.json
+
       - name: Collect changed paths
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha || inputs.base_sha || github.event.before }}
@@ -94,5 +100,6 @@ jobs:
           name: constitutional-ci-result
           path: |
             constitutional-ci-result.json
+            constitutional-ci-selfcheck.json
             changed_paths.txt
           if-no-files-found: error

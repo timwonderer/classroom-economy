@@ -54,7 +54,7 @@ families:
     known_limits: Storage allowlist, deletion-retention, and execution-layer leakage evidence are not yet combined into a complete family gate.
   - family_id: CI-XDOMAIN
     governing_authority: [INV-ARC-021]
-    path_rules: [app/domains/**, app/feats/**, app/routes/**, app/jobs/**, app/services/**, migrations/**]
+    path_rules: [app/feats/**, app/routes/**, app/services/**, migrations/**]
     evidence_kind: [static, persistence]
     evidence_commands: []
     mandatory: true

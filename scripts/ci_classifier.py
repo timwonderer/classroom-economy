@@ -87,8 +87,27 @@ def changed_paths(base: str | None, head: str, explicit: list[str] | None = None
     return paths
 
 
-def _matches(path: str, rule: str) -> bool:
+def matches_rule(path: str, rule: str) -> bool:
     return fnmatch.fnmatchcase(path, rule) or fnmatch.fnmatchcase(path, rule.rstrip("/") + "/**")
+
+
+def tracked_paths(root: Path = ROOT) -> list[str]:
+    """Every path tracked at the current revision.
+
+    Used to prove that each manifest path rule still selects a real surface. A
+    rule that matches nothing is indistinguishable from a satisfied gate, so it
+    must be discoverable as a configuration defect rather than silently
+    requiring no evidence.
+    """
+    result = subprocess.run(
+        ["git", "ls-files"], cwd=root, capture_output=True, text=True, check=False,
+    )
+    if result.returncode != 0:
+        raise ClassifierError(f"cannot list tracked paths: {result.stderr.strip()}")
+    paths = [line.strip() for line in result.stdout.splitlines() if line.strip()]
+    if not paths:
+        raise ClassifierError("tracked path discovery produced no paths")
+    return paths
 
 
 def select_families(paths: list[str], families: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -97,7 +116,7 @@ def select_families(paths: list[str], families: list[dict[str, Any]]) -> list[di
         raise ClassifierError("cannot classify an empty path list")
     selected: dict[str, dict[str, Any]] = {}
     for family in families:
-        matches = [path for path in normalized if any(_matches(path, rule) for rule in family["path_rules"])]
+        matches = [path for path in normalized if any(matches_rule(path, rule) for rule in family["path_rules"])]
         if matches:
             selected[family["family_id"]] = {
                 "family_id": family["family_id"],
