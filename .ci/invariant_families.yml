@@ -62,7 +62,7 @@ families:
     known_limits: No dedicated dependency or cross-domain schema gate exists.
   - family_id: CI-RENDER
     governing_authority: [INV-ARC-020]
-    path_rules: [templates/**, static/css/**, static/js/**, app/services/*view*., app/routes/**, tests/test_accessibility.py]
+    path_rules: [templates/**, static/css/**, static/js/**, app/services/*view*.py, app/routes/**, tests/test_accessibility.py]
     evidence_kind: [static, browser]
     evidence_commands:
       - tests/test_accessibility.py
