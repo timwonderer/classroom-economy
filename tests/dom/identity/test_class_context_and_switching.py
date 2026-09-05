@@ -197,16 +197,31 @@ def test_switch_class_rejects_missing_runtime_seat(client, app, multi_class_stud
     assert response.status_code == 302
 
     # This asserts the OUTCOME (fail closed to an unauthenticated state), not the
-    # first hop. A seatless `users` row is a state DOM-IDEN-001 §VI Participation
-    # Existence Law forbids outright — "a User SHALL exist only while participating
-    # in at least one Class", and law 3 requires the row be removed. So no doc names
-    # a correct redirect target for this state, and pinning one intermediate hop
-    # pins an implementation detail of a state that should be unreachable. What IS
-    # doc-governed is that resolution fails closed: a missing `last_active_seat_id`
-    # raises invariantViolation (archived DOM-IDEN-001 §"last_active_seat_id"), and
-    # the class-selection gate may only settle on failure "after confirming that no
-    # valid class/seat pair remains" — which is the confirmation this user fails.
-    # Follow the chain and assert where it comes to rest.
+    # first hop, and it deliberately does not assert WHICH door the request leaves by.
+    #
+    # Two current-canon rules settle that, and neither one names a redirect target:
+    #
+    #   1. Resolution must fail closed, full stop. INV-ARC-008 §V: requests "MUST
+    #      resolve to exactly one `seat_id` within exactly one active `class_id`, or
+    #      fail closed." INV-ARC-001 §V *permits* `user_id` -> `seat_id` lookup within
+    #      a supplied `class_id`, but permission is not obligation: it licenses a
+    #      mechanism, it does not mandate recovering scope when canonical seat context
+    #      is absent. Reading it as a recovery mandate would put it in direct conflict
+    #      with INV-ARC-008's no-fallback rule, which forbids resolving to another seat
+    #      owned by the same user.
+    #
+    #   2. This fixture's end state is itself constitutionally invalid, so it cannot
+    #      establish required production behavior. INV-CORE-000 §III.6 requires that a
+    #      user with no remaining seat associations "MUST be deleted from the system
+    #      entirely," and expressly prohibits "retaining seat or user records after
+    #      their last `class_id` association is removed." INV-ARC-013 says the same
+    #      from the access side: membership is the existence of a valid class
+    #      association, not residual account state. A seatless `users` row is a state
+    #      the constitution says cannot exist.
+    #
+    # So pinning one intermediate hop would pin an implementation detail of an
+    # unreachable state. Follow the chain and assert only what canon actually
+    # guarantees: that it comes to rest closed.
     trail = [response.location]
     for _ in range(4):
         if "/student/login" in trail[-1]:
