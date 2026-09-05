@@ -5,23 +5,17 @@ Scope: resolving who an actor is. No domain logic (balances, entitlements, etc.)
 
 from __future__ import annotations
 
-from app.extensions import db
-from app.models import Seat, User
+from app.models import Seat
 
-
-def _resolve_seat(identity, *, seat: Seat | None = None) -> Seat | None:
-    if seat is not None:
-        return seat
-    if isinstance(identity, Seat):
-        return identity
-    if isinstance(identity, User):
-        return (
-            Seat.query
-            .filter(Seat.user_id == identity.id)
-            .order_by(Seat.id.asc())
-            .first()
-        )
-    return None
+# Removed: ``_resolve_seat(identity, seat=None)``. Given a ``User`` it returned
+# ``Seat.query.filter(Seat.user_id == ...).order_by(Seat.id.asc()).first()`` —
+# the lowest-id seat across every class the user participates in, with no
+# ``class_id`` filter. Under DOM-IDEN-001 §VI a ``User`` holds one ``Seat`` per
+# ``Class``, so "the seat for a user" is not a well-formed question: without a
+# class it silently answers with whichever class the user joined first. It had
+# no callers, so rather than re-express the same unanswerable question with a
+# class argument, it is deleted. Callers that need a seat must resolve it from
+# a canonical context that already carries ``class_id``.
 
 
 def get_enrolled_student_seat_ids(class_id: str) -> list[int]:

@@ -89,7 +89,7 @@
                                     </h6>
                                     <span class="badge bg-secondary">{{ issue.category_name }}</span>
                                     <span class="badge bg-primary ms-2">
-                                        <span class="material-symbols-outlined me-1">badge</span>{{ issue.teacher_display_name }}
+                                        <span class="material-symbols-outlined me-1">badge</span>{% if issue.reviewer_public_id %}{{ issue.reviewer_public_id[:8] }}...{% else %}Unattributed{% endif %}
                                     </span>
                                     {% if issue.share_class_name_with_sysadmin and issue.class_label %}
                                     <span class="badge bg-info ms-2">
@@ -141,7 +141,7 @@
                                     </h6>
                                     <span class="badge bg-secondary">{{ issue.category_name }}</span>
                                     <span class="badge bg-primary ms-2">
-                                        <span class="material-symbols-outlined me-1">badge</span>{{ issue.teacher_display_name }}
+                                        <span class="material-symbols-outlined me-1">badge</span>{% if issue.reviewer_public_id %}{{ issue.reviewer_public_id[:8] }}...{% else %}Unattributed{% endif %}
                                     </span>
                                     {% if issue.share_class_name_with_sysadmin and issue.class_label %}
                                     <span class="badge bg-info ms-2">
@@ -193,7 +193,7 @@
                                     </h6>
                                     <span class="badge bg-secondary">{{ issue.category_name }}</span>
                                     <span class="badge bg-primary ms-2">
-                                        <span class="material-symbols-outlined me-1">badge</span>{{ issue.teacher_display_name }}
+                                        <span class="material-symbols-outlined me-1">badge</span>{% if issue.reviewer_public_id %}{{ issue.reviewer_public_id[:8] }}...{% else %}Unattributed{% endif %}
                                     </span>
                                     {% if issue.eligible_for_reward %}
                                     <span class="badge bg-warning text-dark ms-2">

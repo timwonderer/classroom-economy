@@ -289,7 +289,7 @@
                                             {{ issue.category_name }}
                                         </span>
                                         <span class="badge bg-primary" style="font-size:0.7rem;">
-                                            <span class="material-symbols-outlined me-1">badge</span>{{ issue.teacher_display_name }}
+                                            <span class="material-symbols-outlined me-1">badge</span>{% if issue.reviewer_public_id %}{{ issue.reviewer_public_id[:8] }}...{% else %}Unattributed{% endif %}
                                         </span>
                                         {% if issue.share_class_name_with_sysadmin and issue.class_label %}
                                         <span class="badge bg-info" style="font-size:0.7rem;">

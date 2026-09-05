@@ -1667,6 +1667,14 @@ class Issue(db.Model):
     # External-facing class context — resolves to classes.class_public_id
     class_public_id = db.Column(db.String(36), nullable=True, index=True)
 
+    # Class context cache (DOM-SUP-001 §VI). The class display name frozen at
+    # submission time. It is deliberately NOT re-fetched live from ClassEconomy:
+    # an escalation describes the context as it stood when the student submitted,
+    # and a class that is later renamed or destroyed must not rewrite or erase
+    # that context. Disclosure to sysadmin is gated on
+    # `share_class_name_with_sysadmin`, which defaults to false.
+    class_label = db.Column(db.String(255), nullable=True)
+
     # Issue categorization
     category_id = db.Column(db.Integer, db.ForeignKey('issue_categories.id'), nullable=False)
     issue_type = db.Column(db.String(50), nullable=False)  # 'transaction', 'general'

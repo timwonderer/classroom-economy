@@ -38,7 +38,7 @@ Rubric anchors used:
 
 | # | Domain | Verdict | Blocking |
 |---|---|---|---|
-| 1 | Identity | **NOT READY** | B7 |
+| 1 | Identity | READY (with caveats) | — |
 | 2 | Class Configuration | READY (with caveats) | — |
 | 3 | Ledger | READY (with caveats) | — |
 | 4 | Productivity & Payroll | READY (with caveats) | — |
@@ -47,11 +47,15 @@ Rubric anchors used:
 | 7 | Policies | READY (with caveats) | — |
 | 8 | Interpretation | READY (with caveats) | — |
 | 9 | Operations | READY (with caveats) | — |
-| 10 | Support | **NOT READY** | B4, B5, B6, B7 |
+| 10 | Support | READY (with caveats) | — |
 
-**8 of 10 domains are production-ready.** Two are blocked by four open defects on a **single remaining
-fix track** (§IV) — T2, the sysadmin support surface (B4, B5, B6, B7), which blocks Support and
-Identity.
+**10 of 10 domains are production-ready (2026-09-05).** T2 — the last open fix track — closed with
+B4, B5, B6, and B7, returning Support and Identity to ready. Every blocker opened by the 2026-09-03
+audit is now closed, twelve days ahead of the 2026-09-17 target.
+
+*Evidence: `tests/dom/support` + `tests/dom/identity` — **140 passed, 0 failed**, including the eight
+new pins in `test_escalation_disclosure_and_scope.py`. What remains before ship is the launch
+checklist in §V (CI branch references, deploy trigger, retirement pass), not domain readiness.*
 
 Six defects (B1, B2, B3, B8, B9, B10) have been found and closed on 2026-09-04/05. B1's closure
 returned Obligations to ready and B2's returned Policies, clearing fix track T1. **B10** — a
@@ -222,7 +226,7 @@ stash), so the teardown change introduces no regression.
 
 *Status: closed on `codex/landed-architecture-execution-fixes` @ `25b54fcb` (2026-09-04).*
 
-### B4 — Sysadmin escalated-issue and support-ticket views crash (hard 500)
+### B4 — Sysadmin escalated-issue and support-ticket views crash (hard 500) — **CLOSED 2026-09-05**
 **Domain:** Support · **Severity:** High · **Violates:** INV-CORE-000 §III.7 (function is unreachable)
 
 `_issue_to_view` (`app/routes/system_admin.py:781-797`) reads `issue.teacher`,
@@ -232,20 +236,61 @@ nowhere in the codebase. Affects `escalated_issues`, `view_escalated_issue`, and
 
 *Independently verified against source.*
 
-### B5 — Sysadmin view leaks class name, ignoring the consent flag
+**Resolution.** The root cause ran deeper than "a bad read." `Issue.reviewer_public_id` — the column
+that exists precisely to record the reviewing teacher — **had no writer anywhere in the codebase**,
+so the view had no lawful source for the reviewer at all and reached for a fabricated one. The fix
+therefore had to add the writer, not merely change a read: `admin.escalate_issue` now stamps
+`reviewer_public_id` with the escalating teacher's class-scoped seat `public_id`, and `_issue_to_view`
+surfaces that. Sysadmin-facing payloads carry `public_id` only — never a name, never a raw `seat_id`
+or `user_id` (DOM-SUP-001 §VII, INV-ARC-019 §IX). The three sysadmin templates render the truncated
+`public_id`, falling back to `Unattributed`. Pinned by
+`tests/dom/support/test_escalation_disclosure_and_scope.py::test_DOM_SUP_001__issue_view_builds_without_a_teacher_relationship`,
+which also asserts no internal identifier appears on the payload.
+
+*Status: closed on `codex/landed-architecture-execution-fixes` (2026-09-05).*
+
+### B5 — Sysadmin view leaks class name, ignoring the consent flag — **CLOSED 2026-09-05**
 **Domain:** Support · **Severity:** High · **Violates:** DOM-SUP-001 §VI, INV-CORE-000 §III.4
 
 The same view returns a class label unconditionally, ignoring
 `Issue.share_class_name_with_sysadmin` (default `false`). Currently masked by B4's crash — fixing B4
 without fixing B5 turns a 500 into a live disclosure.
 
-### B6 — `escalate_issue` mutates state outside a FEAT context
+**Resolution — and a correction to the finding.** The description above is not quite right: all three
+sysadmin templates *already* gated `class_label` on `share_class_name_with_sysadmin`, so nothing was
+in fact being rendered. The real defect was upstream and larger. `issues.class_label` had **never been
+created** — DOM-SUP-001 §VI lists it in the `issues` schema contract as a class context cache "frozen
+at submission time" which "must not be re-fetched live from ClassEconomy after submission," and no
+such column existed. Migration `a1c4e7d92f30` adds it; both submission sites
+(`app/utils/issue_helpers.create_issue`, `app/services/issue_service.create_support_ticket`) write it
+once, at submission, and never again.
+
+Resolving the label live from `class_public_id` would have avoided the migration but broken the
+freeze: an escalation describes the class as it stood when the student submitted, and a class renamed
+— or destroyed — afterwards would silently rewrite or erase the context of tickets already in flight.
+This matches the policy-immutability standard already set by B1/B2 on this branch. Backfill is an
+explicit one-time reconstruction from the live class row; rows that cannot be matched stay `NULL`.
+
+The consent gate was moved to the **view-dict boundary** anyway, rather than left in markup: that dict
+is the contract the sysadmin surface is built on, and a consent-gated value should not travel to the
+view layer relying on a template to hide it. Pinned by three tests covering the freeze, withholding,
+and disclosure.
+
+*Status: closed on `codex/landed-architecture-execution-fixes` (2026-09-05).*
+
+### B6 — `escalate_issue` mutates state outside a FEAT context — **CLOSED 2026-09-05**
 **Domain:** Support · **Severity:** Medium · **Violates:** INV-ARC-006
 
 `escalate_issue` (`app/routes/admin.py:10562-10620`) writes without `@requires_feat_context`, unlike
 its siblings `resolve_issue` and `close_issue`.
 
-### B7 — Seat resolution by `public_id` is unscoped; scope fallback selects an unrequested class
+**Resolution.** `@requires_feat_context("FEAT-SUP-001")` added, placed inside `@admin_required` to
+match the siblings — so an unauthenticated request is refused before any FEAT opens. Exercised by
+the escalation test, which would not reach a clean redirect if the envelope were missing or nested.
+
+*Status: closed on `codex/landed-architecture-execution-fixes` (2026-09-05).*
+
+### B7 — Seat resolution by `public_id` is unscoped; scope fallback selects an unrequested class — **CLOSED 2026-09-05**
 **Domains:** Support, Identity · **Severity:** Critical · **Violates:** INV-CORE-000 §III.1, §III.4, INV-ARC-008, INV-ARC-019
 
 Four call sites resolve a seat from a public identifier with **no `class_id` predicate**, so a
@@ -272,6 +317,31 @@ and replace `_resolve_seat` with `resolve_seat_for_context(user_id, class_id, se
 
 > B7 shares files and reviewers with B4/B5/B6. Fold it into track T2. **Port the code from
 > `3cdb1294`; do not port that commit's badge-system files** (see §V, Deferred).
+
+**Resolution.** All six sites corrected; the badge-system files in `3cdb1294` were **not** ported.
+Each admin/sysadmin lookup gained its `class_id` predicate and now degrades safely — to the truncated
+`public_id` for display, or to refusal for anything authority-bearing. `resolve_scope` raises
+`AccessScopeDenied(reason_code="no_class_scope")` instead of falling back to `claimed_seats[0]`; the
+canonical context is the only lawful source of class scope, and when it cannot answer, the answer is
+denial.
+
+Two departures from `3cdb1294`, both deliberate:
+
+1. **`_resolve_seat` is deleted, not replaced.** It had no callers anywhere in `app/`, `tests/`, or
+   `scripts/`, and `resolve_seat_for_context` would likewise have had none — replacing dead code with
+   different dead code. More to the point, its signature asks a question the canonical model cannot
+   answer: under DOM-IDEN-001 §VI a `User` holds one `Seat` per `Class`, so "the seat for a user" is
+   not well-formed without a class. Deleting it removes the defect outright rather than leaving a
+   shape for a future caller to pick up.
+2. **`resolve_issue` also guards on `class_id` being present at all.** Porting only
+   `transaction.class_id != class_id` would let a request with no class scope compare `None` to `None`
+   and pass. Both branches now require `class_id` before mutating a ledger row.
+
+Pinned by `test_DOM_IDEN_001__student_detail_seat_refuses_to_cross_a_class_boundary`,
+`test_DOM_IDEN_001__resolve_scope_denies_rather_than_guessing_a_class`, and
+`test_DOM_IDEN_001__sysadmin_reward_requires_matching_class_scope`.
+
+*Status: closed on `codex/landed-architecture-execution-fixes` (2026-09-05).*
 
 ### B10 — `LedgerBalanceSnapshot` model still declares the pre-split shape the migration dropped — **CLOSED 2026-09-05**
 **Domain:** Ledger · **Severity:** Critical · **Found:** 2026-09-05 (full-suite triage during B2)
@@ -467,7 +537,7 @@ clean after the domain-command split.
 | Track | Clears | Unblocks | Est. | Owner | Status |
 |---|---|---|---|---|---|
 | **T1 — Policy immutability rework** | ~~B1~~, ~~B2~~ | Obligations, Policies | Large | — | **Done 2026-09-05** |
-| **T2 — Sysadmin support surface + seat-scope** | B4, B5, B6, B7 | Support, Identity | Medium | — | Not started |
+| **T2 — Sysadmin support surface + seat-scope** | ~~B4~~, ~~B5~~, ~~B6~~, ~~B7~~ | Support, Identity | Medium | — | **Done 2026-09-05** |
 | **T3 — Orphaned-user deletion** | B3 | Identity | Small | — | **Done 2026-09-04** |
 | **T4 — FEAT self-nesting in scheduled jobs** | B9 | Productivity & Payroll | Small | — | **Done 2026-09-04** |
 | **T5 — Ledger snapshot model/schema realignment** | B10 | Ledger | Medium *(estimated Small–Medium; see below)* | — | **Done 2026-09-05** |
@@ -475,8 +545,21 @@ clean after the domain-command split.
 **Sequencing to 2026-09-17.** T1 was the critical path and the only substantial design work; it is
 now clear. B1 established the append-only pattern (immutable payload + `availability_state` projection
 + supersession command + guarded migration) and B2 applied that same pattern to `PayrollSettings` and
-`HallPassSettings`. T3, T4, and now T5 are also done, so **T2 is the only track remaining** — the
-sysadmin support surface (B4, B5, B6, B7).
+`HallPassSettings`. T3, T4, T5, and now T2 are all done as well, so **every fix track opened by the
+2026-09-03 audit is closed** with twelve days to spare against the 2026-09-17 target.
+
+> **T2 closed 2026-09-05.** B4 and B5 both turned out to be larger than their entries described, and in
+> the same direction: each was a symptom of a schema-contract gap rather than a bad read. B4's crashing
+> view had no lawful source for the reviewing teacher because `Issue.reviewer_public_id` had **no
+> writer anywhere in the codebase**; B5's `issues.class_label` had **never been created**, though
+> DOM-SUP-001 §VI lists it in the `issues` schema contract. Fixing either properly meant adding the
+> missing writer, not redirecting the read. B5's correction also went the other way on the finding
+> itself: the templates already honored the consent flag, so nothing was in fact leaking — the gate was
+> moved to the view-dict boundary on principle, not to stop an active disclosure.
+>
+> The estimate held at Medium, but for a different reason than assumed: the work was not four small
+> independent patches but one coherent repair of a single surface, and the four blockers shared enough
+> that fixing them in isolation would have been slower.
 
 > **Correction (2026-09-05).** This section previously sized T5 as "a one-file model correction plus
 > an `account_type` predicate" scoped to `app/models.py` + `ledger_service.py`. That was wrong, and

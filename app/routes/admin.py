@@ -1675,14 +1675,18 @@ def _read_student_detail_nav_token(token: str) -> dict | None:
 
 def _resolve_student_detail_seat(actor_public_id: str) -> Seat | None:
     selected_class_id = (getattr(getattr(g, "canonical_context", None), "class_id", None) or "").strip()
+    # No class scope, no answer. The class filter used to be conditional, so a
+    # request without canonical context fell back to the lowest-id seat holding
+    # this public_id anywhere in the system — resolving a student out of a class
+    # the teacher may not own. Class scope is mandatory, never best-effort.
+    if not selected_class_id:
+        return None
 
-    seat_query = Seat.query.filter(
+    return Seat.query.filter(
         Seat.role == "student",
         Seat.public_id == actor_public_id,
-    )
-    if selected_class_id:
-        return seat_query.filter(Seat.class_id == selected_class_id).first()
-    return seat_query.order_by(Seat.id.asc()).first()
+        Seat.class_id == selected_class_id,
+    ).first()
 
 
 def _build_student_detail_url(actor_public_id: str) -> str | None:
@@ -10355,8 +10359,18 @@ def _resolve_issue_identity(actor_public_id, class_public_id):
     student_display_name = actor_public_id[:8] if actor_public_id else 'Unknown'
     class_label = None
 
-    if actor_public_id:
-        seat = Seat.query.filter_by(public_id=actor_public_id).first()
+    # Scope the seat lookup to the teacher's active class. Unscoped, this
+    # resolved a display *name* for any seat carrying the public_id, in any
+    # class — a cross-tenant PII read reachable from a teacher's own issue
+    # queue. With no canonical class scope the name simply stays as the
+    # truncated public_id, which is the safe degradation this function already
+    # documents.
+    canonical_class_id = getattr(getattr(g, "canonical_context", None), "class_id", None)
+    if actor_public_id and canonical_class_id:
+        seat = Seat.query.filter(
+            Seat.public_id == actor_public_id,
+            Seat.class_id == canonical_class_id,
+        ).first()
         if seat and seat.identity_profile:
             student_display_name = seat.identity_profile.full_name
 
@@ -10503,8 +10517,16 @@ def issues_queue():
     from app.models import Seat
 
     actor_dict = {}
-    if actor_ids:
-        seats = Seat.query.filter(Seat.public_id.in_(actor_ids)).all()
+    # Bulk name resolution, scoped to the active class. `class_id` here has
+    # already passed `_admin_owns_class` above, so it is the strongest scope
+    # available on this path. Unscoped, this loaded every seat sharing a
+    # public_id across all tenants and published their display names into the
+    # queue view.
+    if actor_ids and class_id:
+        seats = Seat.query.filter(
+            Seat.public_id.in_(actor_ids),
+            Seat.class_id == class_id,
+        ).all()
         for seat in seats:
             if seat.identity_profile:
                 actor_dict[seat.public_id] = seat.identity_profile.full_name
@@ -10620,16 +10642,23 @@ def resolve_issue(issue_ref):
         return redirect(url_for('admin.view_issue', issue_ref=make_opaque_ref('issue', issue.id)))
 
     try:
-        # Apply resolution based on action type
-        # Resolve submitter seat from actor_public_id for transaction ownership checks
-        submitter_seat = Seat.query.filter_by(public_id=issue.actor_public_id).first()
-
+        # Apply resolution based on action type.
+        #
+        # The ownership guard below used to resolve a `submitter_seat` from
+        # `issue.actor_public_id` with no class filter, then require
+        # `transaction.seat_id == submitter_seat.id`. Two problems: the lookup
+        # could land on a seat in a different class, and the check it fed was
+        # the wrong question. What must be true before a teacher mutates a
+        # ledger row is that the row belongs to *the class this teacher is
+        # acting in* — `issue_query` above has already confined the issue to
+        # that class, so scoping the transaction to `class_id` closes the loop
+        # without needing to resolve a seat at all.
         if action_type == 'reverse_transaction' and issue.related_transaction_id:
             transaction = db.session.get(Transaction, issue.related_transaction_id)
             if (
                 not transaction
-                or not submitter_seat
-                or transaction.seat_id != submitter_seat.id
+                or not class_id
+                or transaction.class_id != class_id
                 or transaction.is_void
             ):
                 flash("The related transaction could not be reversed for this issue.", "error")
@@ -10657,7 +10686,7 @@ def resolve_issue(issue_ref):
         elif action_type == 'compensating_transaction' and issue.related_transaction_id:
             # Append-only correction: create a compensating ledger entry.
             transaction = db.session.get(Transaction, issue.related_transaction_id)
-            if not transaction or not submitter_seat or transaction.seat_id != submitter_seat.id or transaction.is_void:
+            if not transaction or not class_id or transaction.class_id != class_id or transaction.is_void:
                 flash("The related transaction could not be found for this issue.", "error")
                 return redirect(url_for('admin.view_issue', issue_ref=make_opaque_ref('issue', issue.id)))
 
@@ -10718,6 +10747,7 @@ def resolve_issue(issue_ref):
 
 @admin_bp.route('/issues/<issue_ref>/escalate', methods=['POST'])
 @admin_required
+@requires_feat_context("FEAT-SUP-001")
 def escalate_issue(issue_ref):
     """
     Escalate an issue to sysadmin (developer).
@@ -10766,6 +10796,12 @@ def escalate_issue(issue_ref):
         issue.teacher_diagnostic_note = diagnostic_note
         issue.share_class_name_with_sysadmin = share_class_name
         issue.escalated_at = utc_now()
+        # Record who escalated. `reviewer_public_id` had no writer anywhere in the
+        # codebase, so the sysadmin surface had no lawful source for the reviewing
+        # teacher at all — which is why the crashing view reached for a
+        # nonexistent `issue.teacher` relationship. The canonical sysadmin-facing
+        # reference is the seat public_id (DOM-SUP-001 §VII, INV-ARC-019 §IX).
+        issue.reviewer_public_id = teacher_public_id
 
         # Update status
         update_issue_status(

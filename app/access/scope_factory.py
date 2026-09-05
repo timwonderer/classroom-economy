@@ -167,38 +167,16 @@ def resolve_scope(*, actor, selected_class_id: str | None = None, actor_role: st
     scope = _scope_from_runtime_seat(actor=actor, selected_class_id=selected_class_id)
     if scope is not None:
         return scope
-    claimed_seats = (
-        Seat.query.filter_by(user_id=actor.id)
-        .filter(Seat.claimed_at.isnot(None))
-        .order_by(Seat.id.asc())
-        .all()
-    )
-    if not claimed_seats:
-        raise AccessScopeDenied(
-            reason_code="no_class_scope",
-            message="No class selected. Please select a class to continue.",
-        )
-
-    active_seat = next((seat for seat in claimed_seats if seat.class_id == selected_class_id), None)
-    if active_seat is None:
-        active_seat = claimed_seats[0]
-
-    _store_session_class_context(class_id=active_seat.class_id, join_code=None)
-    g._auth_current_seat_cache = active_seat
-
-    class_row = ClassEconomy.query.filter_by(class_id=active_seat.class_id).first()
-    if not class_row:
-        raise AccessScopeDenied(
-            reason_code="no_class_scope",
-            message="Class configuration not found.",
-        )
-
-    return Scope(
-        class_id=class_row.class_id,
-        join_code=get_display_join_code(class_row.class_id) or "",
-        actor_id=actor.id,
-        role="student",
-        user_id=class_row.teacher_user_id,
-        block=active_seat.class_economy.section if active_seat.class_economy else None,
-        seat_id=active_seat.id,
+    # Fail closed. The removed fallback here queried every claimed seat the user
+    # held and, when none matched ``selected_class_id`` — including when no class
+    # was selected at all — fell through to ``claimed_seats[0]``, the
+    # lowest-id seat across all of the user's classes. That silently *invented* a
+    # class scope out of join order and then wrote it into the request as if it
+    # had been chosen, which is precisely the shape of the P0 same-teacher
+    # multi-period leak. Class scope is authority, not a default: the canonical
+    # context is the only lawful source, and when it cannot answer, the correct
+    # answer is denial.
+    raise AccessScopeDenied(
+        reason_code="no_class_scope",
+        message="No class selected. Please select a class to continue.",
     )

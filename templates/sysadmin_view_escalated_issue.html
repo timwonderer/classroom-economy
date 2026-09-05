@@ -32,7 +32,7 @@
                         <h6 class="text-muted mb-2">Escalated By</h6>
                         <p class="mb-0">
                             <span class="material-symbols-outlined me-2">badge</span>
-                            <strong>{{ issue.teacher_display_name }}</strong>
+                            <strong>{% if issue.reviewer_public_id %}{{ issue.reviewer_public_id[:8] }}...{% else %}Unattributed{% endif %}</strong>
                             {% if issue.share_class_name_with_sysadmin and issue.class_label %}
                             <span class="text-muted">| {{ issue.class_label }}</span>
                             {% endif %}

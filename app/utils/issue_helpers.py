@@ -172,6 +172,8 @@ def create_issue(actor, user_id, class_id, category_id, explanation, expected_ou
     issue = Issue(
         actor_public_id=actor_public_id,
         class_public_id=class_public_id,
+        # Frozen at submission (DOM-SUP-001 §VI); never re-read from the class row.
+        class_label=class_row.display_name,
         category_id=category_id,
         issue_type=category.category_type,
         student_explanation=explanation,

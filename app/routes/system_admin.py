@@ -779,14 +779,32 @@ def _resolve_report_id_from_ref(report_ref: str) -> int | None:
 
 
 def _issue_to_view(issue):
-    """Convert a raw Issue model to a template-safe dict (no SQLAlchemy models in templates)."""
+    """Convert a raw Issue model to a template-safe dict (no SQLAlchemy models in templates).
+
+    Two disclosure rules are enforced here rather than in the template, because
+    this dict — not the markup — is the boundary the sysadmin surface is built on:
+
+    1. Participants are identified to sysadmin by UUID-encoded ``seats.public_id``
+       only, never by name and never by a raw ``seat_id``/``user_id``
+       (DOM-SUP-001 §VII, INV-ARC-019 §IX). The reviewing teacher is therefore
+       surfaced as ``reviewer_public_id``. This previously read
+       ``issue.teacher.get_sysadmin_display_name()`` — a relationship and a
+       method that exist nowhere — which made every view using this helper a
+       hard 500.
+    2. The class label is disclosed ONLY with explicit teacher consent
+       (``share_class_name_with_sysadmin``, default false — DOM-SUP-001 §VI).
+       Withheld means absent from the payload, not merely unrendered: a
+       consent-gated value must not travel to the view layer and rely on markup
+       to hide it.
+    """
+    class_name_consented = bool(issue.share_class_name_with_sysadmin)
     return {
         'id': issue.id,
         'status': issue.status,
         'actor_public_id': issue.actor_public_id,
-        'teacher_display_name': issue.teacher.get_sysadmin_display_name() if issue.teacher else "Unknown",
-        'share_class_name_with_sysadmin': issue.share_class_name_with_sysadmin,
-        'class_label': issue.class_label,
+        'reviewer_public_id': issue.reviewer_public_id,
+        'share_class_name_with_sysadmin': class_name_consented,
+        'class_label': issue.class_label if class_name_consented else None,
         'category_name': issue.category.name if issue.category else 'Unknown',
         'issue_type': issue.issue_type,
         'escalation_reason': issue.escalation_reason,
@@ -1401,15 +1419,27 @@ def resolve_escalated_issue(issue_ref):
         issue.eligible_for_reward = eligible_for_reward
 
         if reward_amount_value is not None:
-            # Resolve internal identity from external-facing public IDs.
-            reward_seat = Seat.query.filter_by(public_id=issue.actor_public_id).first()
-            if not reward_seat:
-                flash("Cannot issue reward: actor seat not found.", "error")
-                return redirect(url_for('system_admin.view_issue', issue_id=issue.id))
+            # Resolve internal identity from external-facing public IDs, class
+            # first. The seat lookup was previously unscoped and the class was
+            # resolved afterwards and allowed to be None — so a reward could be
+            # credited to a seat in one class while the ledger row was written
+            # with `class_id=None`, money landing in an unscoped void. The class
+            # is the scope for both, and if either is unresolvable the reward
+            # does not happen.
             reward_class = ClassEconomy.query.filter_by(class_public_id=issue.class_public_id).first()
+            reward_seat = (
+                Seat.query.filter_by(
+                    public_id=issue.actor_public_id,
+                    class_id=reward_class.class_id,
+                ).first()
+                if reward_class else None
+            )
+            if not reward_class or not reward_seat:
+                flash("Cannot issue reward: canonical class scope is unavailable.", "error")
+                return redirect(url_for('system_admin.view_issue', issue_id=issue.id))
             reward_transaction = ledger_service.create_pending_transaction(
                 seat_id=reward_seat.id,
-                class_id=reward_class.class_id if reward_class else None,
+                class_id=reward_class.class_id,
                 target_seat_id=reward_seat.id,
                 actor_seat_id=reward_seat.id,
                 mechanism="system",
