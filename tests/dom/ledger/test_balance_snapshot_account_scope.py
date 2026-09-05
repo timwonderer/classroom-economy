@@ -23,7 +23,7 @@ from sqlalchemy.exc import IntegrityError
 from app.extensions import db
 from app.feats.base import FEATContext
 from app.models import LedgerBalanceSnapshot, Transaction, TransactionStatus
-from app.services.ledger_service import get_posted_balance
+from app.services.ledger_balance_query_service import get_posted_balance
 from app.utils.banking import settle_balances
 from tests.helpers.classroom_initializer import initialize
 

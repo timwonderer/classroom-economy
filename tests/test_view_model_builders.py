@@ -58,7 +58,7 @@ def classroom(app):
         # Ledger instead of being denied INSUFFICIENT_FUNDS. A pending credit is
         # sufficient: available balance = posted + pending delta, so the store
         # purchase FEAT sees funds without a separate settlement pass. We use the
-        # lowest-level canonical producer (ledger_service.create_pending_transaction)
+        # lowest-level canonical producer (ledger_posting_service.create_pending_transaction)
         # rather than hand-constructing balance rows.
         student = classroom.students[0]
         with FEATContext("FEAT-TEST-SETUP", idempotency_key="phase5-view-models:fund-student"):

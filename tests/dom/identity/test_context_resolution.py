@@ -57,6 +57,21 @@ def test_DOM_IDEN_006__resolve_canonical_context_missing_scope_fails_closed(mock
 
 
 @patch("app.services.context_resolver.db.session.get")
+def test_DOM_IDEN_006__resolve_canonical_context_missing_seat_pointer_fails_closed(mock_get, app):
+    """A class pointer never authorizes guessing a seat from membership."""
+    with app.test_request_context():
+        _seed_request_session()
+        mock_get.return_value = User(
+            id=1,
+            user_role=UserRole.STUDENT,
+            last_active_class_id="some-uuid",
+            last_active_seat_id=None,
+        )
+        with pytest.raises(ContextInvariantViolation, match="Missing canonical last_active_seat_id"):
+            resolve_canonical_context()
+
+
+@patch("app.services.context_resolver.db.session.get")
 def test_DOM_IDEN_006__resolve_canonical_context_invalid_format(mock_get, app):
     with app.test_request_context():
         session["user_id"] = "not-an-int"
@@ -71,11 +86,11 @@ def test_DOM_IDEN_006__resolve_canonical_context_seat_not_found(mock_get, mock_q
         _seed_request_session()
         def fake_get(model, ident):
             if model is User:
-                return User(id=1, last_active_class_id="some-uuid")
+                return User(id=1, last_active_class_id="some-uuid", last_active_seat_id=2)
             return None
         mock_get.side_effect = fake_get
         mock_query.return_value = _SeatQueryStub(None)
-        with pytest.raises(ContextNotEstablished, match="Seat not found."):
+        with pytest.raises(ContextInvariantViolation, match="Missing or deleted last_active_seat_id"):
             resolve_canonical_context()
 
 
@@ -86,7 +101,7 @@ def test_DOM_IDEN_006__resolve_canonical_context_seat_unclaimed(mock_get, mock_q
         _seed_request_session()
         def fake_get(model, ident):
             if model is User:
-                return User(id=1, last_active_class_id="some-uuid")
+                return User(id=1, last_active_class_id="some-uuid", last_active_seat_id=1)
             if model is Seat:
                 return Seat(id=1, user_id=1, class_id="some-uuid", role="student", claimed_at=None)
             return None
@@ -137,7 +152,7 @@ def test_DOM_IDEN_006__resolve_canonical_context_success(mock_get, mock_query, a
         _seed_request_session()
         def fake_get(model, ident):
             if model is User:
-                return User(id=1, last_active_class_id="some-uuid")
+                return User(id=1, last_active_class_id="some-uuid", last_active_seat_id=1)
             if model is Seat:
                 return Seat(id=1, user_id=1, class_id="some-uuid", claimed_at="2023-01-01", role="student")
             return None

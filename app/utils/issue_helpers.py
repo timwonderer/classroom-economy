@@ -24,7 +24,7 @@ from app.models import (
 )
 from app.utils.ip_handler import get_real_ip
 from app.services.tlcp import create_ticket_correlation_pack
-from app.services.ledger_service import get_available_balances
+from app.services.ledger_balance_query_service import get_available_balances
 from app.feats.base import requires_feat_context
 
 

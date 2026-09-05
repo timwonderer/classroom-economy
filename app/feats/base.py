@@ -54,6 +54,11 @@ def get_correlation_id() -> str:
     """Return the current correlation ID or a placeholder."""
     return getattr(_feat_context, "correlation_id", "NO-CORRELATION")
 
+
+def get_idempotency_key() -> str | None:
+    """Return the active command reservation key, if one was supplied."""
+    return getattr(_feat_context, "idempotency_key", None)
+
 def is_nested_feat() -> bool:
     """Check if the current FEAT is nested inside another FEAT."""
     return hasattr(_feat_context, "stack") and len(_feat_context.stack) > 0

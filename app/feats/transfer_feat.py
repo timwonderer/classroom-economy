@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 
 from app.extensions import db
-from app.services import ledger_service
+from app.services.ledger_transfer_service import create_transfer_pair
 
 
 @dataclass
@@ -26,7 +26,7 @@ def execute_account_transfer(
     to_account: str,
 ) -> TransferResult:
     """Ledger-led FEAT for student checking/savings transfers."""
-    withdraw_tx, deposit_tx = ledger_service.create_transfer_pair(
+    withdraw_tx, deposit_tx = create_transfer_pair(
         seat_id=seat_id,
         class_id=class_id,
         user_id=user_id,

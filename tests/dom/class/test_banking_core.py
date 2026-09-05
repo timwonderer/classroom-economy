@@ -6,8 +6,8 @@ import pytest
 from app.feats.base import FEATContext
 from app.models import LedgerBalanceSnapshot as BalanceCache, Transaction, TransactionStatus
 from app.extensions import db
-from app.utils.banking import settle_balances, settle_pending_transaction_contexts
-from app.services.ledger_service import get_available_balances
+from app.services.ledger_settlement_service import settle_balances, settle_pending_transaction_contexts
+from app.services.ledger_balance_query_service import get_available_balances
 from tests.helpers.classroom_initializer import initialize
 
 
@@ -25,13 +25,12 @@ def _snapshot(seat_id, class_id, account_type="checking"):
 
 def test_DOM_CLASS_001__ledger_flow_posts_pending_transaction(client, app):
     """Test full flow: Create PENDING -> Settle -> Verify Cache."""
-    # `initialize` establishes its own FEAT boundary, so it must run OUTSIDE this
-    # test's context — exactly one FEAT executes per path (INV-ARC-000 §VIII.2).
-    classroom = initialize("chemistry_p1", app)
-    economy = classroom.economy
-    seat = classroom.students[0].seat
-    student_user = classroom.students[0].user
-    class_id, seat_id = classroom.class_id, seat.id
+    with FEATContext("FEAT-TEST-SETUP", idempotency_key="banking-core:test-ledger-flow"):
+        classroom = initialize("chemistry_p1", app)
+        economy = classroom.economy
+        seat = classroom.students[0].seat
+        student_user = classroom.students[0].user
+        class_id, seat_id = classroom.class_id, seat.id
 
     with FEATContext("FEAT-LED-001", idempotency_key="banking-core:test-ledger-flow"):
         tx = Transaction(
@@ -62,19 +61,56 @@ def test_DOM_CLASS_001__ledger_flow_posts_pending_transaction(client, app):
         tx = db.session.get(Transaction, tx.id)
         assert tx.status == TransactionStatus.POSTED
         assert tx.posted_at is not None
+        assert tx.posting_sequence is not None
 
         cache = _snapshot(seat_id, class_id)
         assert cache is not None
         assert cache.posted_balance_cents == 1050
+        assert cache.reconciled_through_posting_sequence == tx.posting_sequence
         assert cache.last_settlement_at is not None
+
+
+def test_DOM_LED_001__posting_sequence_is_class_scoped_across_seats(client, app):
+    with FEATContext("FEAT-TEST-SETUP", idempotency_key="banking-core:class-sequence"):
+        classroom = initialize("chemistry_p1", app)
+        first = classroom.students[0].seat
+        second = classroom.students[1].seat
+
+        for seat, amount in ((first, Decimal("3.00")), (second, Decimal("4.00"))):
+            tx = Transaction(
+                user_id=seat.user_id,
+                class_id=classroom.class_id,
+                seat_id=seat.id,
+                target_seat_id=seat.id,
+                actor_seat_id=seat.id,
+                mechanism="self",
+                amount=amount,
+                account_type="checking",
+                status=TransactionStatus.PENDING,
+                description="class sequence test",
+            )
+            db.session.add(tx)
+            db.session.flush()
+            settle_balances(seat.id, classroom.class_id)
+
+        posted = (
+            Transaction.query
+            .filter_by(class_id=classroom.class_id, status=TransactionStatus.POSTED)
+            .order_by(Transaction.posting_sequence.asc())
+            .all()
+        )
+        sequences = [tx.posting_sequence for tx in posted if tx.posting_sequence is not None]
+        assert len(sequences) >= 2
+        assert sequences == sorted(set(sequences))
 
 def test_DOM_CLASS_001__void_pending_transaction_does_not_create_reversal(client, app):
     """Test voiding a PENDING transaction (no reversal)."""
-    classroom = initialize("chemistry_p1", app)
-    economy = classroom.economy
-    seat = classroom.students[0].seat
-    student_user = classroom.students[0].user
-    class_id, seat_id = classroom.class_id, seat.id
+    with FEATContext("FEAT-TEST-SETUP", idempotency_key="banking-core:test-void-pending"):
+        classroom = initialize("chemistry_p1", app)
+        economy = classroom.economy
+        seat = classroom.students[0].seat
+        student_user = classroom.students[0].user
+        class_id, seat_id = classroom.class_id, seat.id
 
     with FEATContext("FEAT-LED-001", idempotency_key="banking-core:test-void-pending"):
         tx = Transaction(
@@ -113,11 +149,12 @@ def test_DOM_CLASS_001__void_pending_transaction_does_not_create_reversal(client
 
 def test_DOM_CLASS_001__void_posted_transaction_creates_reversal(client, app):
     """Test voiding a POSTED transaction (creates reversal)."""
-    classroom = initialize("chemistry_p1", app)
-    economy = classroom.economy
-    seat = classroom.students[0].seat
-    student_user = classroom.students[0].user
-    class_id, seat_id = classroom.class_id, seat.id
+    with FEATContext("FEAT-TEST-SETUP", idempotency_key="banking-core:test-void-posted"):
+        classroom = initialize("chemistry_p1", app)
+        economy = classroom.economy
+        seat = classroom.students[0].seat
+        student_user = classroom.students[0].user
+        class_id, seat_id = classroom.class_id, seat.id
 
     with FEATContext("FEAT-LED-001", idempotency_key="banking-core:test-void-posted"):
         tx = Transaction(
@@ -182,14 +219,15 @@ def test_DOM_CLASS_001__settlement_sweep_processes_each_pending_context_once(cli
     boundaries stay intact.
     """
     # --- Arrange: create pending activity through a FEAT (as production does) ---
-    student_one_class = initialize("chemistry_p1", app)
-    student_two_class = initialize("biology_block_a", app)
-    student_one_seat_id = student_one_class.students[0].seat.id
-    student_one_user_id = student_one_class.students[0].user.id
-    student_two_seat_id = student_two_class.students[0].seat.id
-    student_two_user_id = student_two_class.students[0].user.id
-    class_id_one = student_one_class.class_id
-    class_id_two = student_two_class.class_id
+    with FEATContext("FEAT-TEST-SETUP", idempotency_key="banking-core:test-settlement-sweep"):
+        student_one_class = initialize("chemistry_p1", app)
+        student_two_class = initialize("biology_block_a", app)
+        student_one_seat_id = student_one_class.students[0].seat.id
+        student_one_user_id = student_one_class.students[0].user.id
+        student_two_seat_id = student_two_class.students[0].seat.id
+        student_two_user_id = student_two_class.students[0].user.id
+        class_id_one = student_one_class.class_id
+        class_id_two = student_two_class.class_id
 
     with FEATContext("FEAT-LED-001", idempotency_key="banking-core:test-settlement-sweep"):
         db.session.add_all([

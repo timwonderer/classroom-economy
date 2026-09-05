@@ -42,7 +42,9 @@ from dateutil.relativedelta import relativedelta
 from app.extensions import db
 from app.models import Seat, EntitlementEvent
 from app.services import insurance_definition_service as insurance_defs
-from app.services import ledger_service
+from app.services.identity_service import resolve_teacher_seat_for_class
+from app.services.ledger_balance_query_service import get_available_balance
+from app.services.ledger_posting_service import create_pending_transaction_idempotent
 from app.services import entitlement_service
 from app.services import entitlement_read_service
 from app.services.context_resolver import CanonicalContext
@@ -198,7 +200,7 @@ def execute_purchase_insurance(
         )
 
     # Affordability: the first premium must be payable now (no overdraft here).
-    available = ledger_service.get_available_balance(seat_id, class_id, "checking")
+    available = get_available_balance(seat_id, class_id, "checking")
     if available < premium:
         return InsurancePurchaseResult(
             success=False, correlation_id=correlation_id,
@@ -257,8 +259,8 @@ def execute_purchase_insurance(
 
     # (c) Post the premium debit through the canonical idempotent ledger path,
     #     then record the immutable PAYMENT satisfaction linked to that ledger row.
-    authority_seat_id = ledger_service.resolve_class_authority_seat_id(class_id)
-    transaction, _created = ledger_service.create_pending_transaction_idempotent(
+    authority_seat_id = resolve_teacher_seat_for_class(class_id).id
+    transaction, _created = create_pending_transaction_idempotent(
         idempotency_key=f"insurance-premium:{idempotency_key}:cycle1",
         seat_id=seat_id,
         class_id=class_id,

@@ -27,7 +27,7 @@ from app.feats.base import FEATContext
 from app.models import LedgerMechanism, Transaction, TransactionStatus
 from app.services.interpretation.resource_distribution import compute_q6
 from app.services.interpretation.savings_behavior import compute_q4
-from app.services.ledger_service import get_posted_balances_as_of
+from app.services.ledger_provenance_query_service import get_posted_balances_as_of
 from app.utils.canonical_temporal_resolver import utc_now
 from tests.helpers.class_domain import disable_class_feature, enable_class_feature
 from tests.helpers.classroom_initializer import initialize

@@ -12,8 +12,17 @@ EXCLUDE_DIR="app/feats"
 EXPECTED_VIOLATIONS=150  # Hardcoded baseline for Wave 1 containment
 
 # Tier 1 Critical Files (Zero Tolerance once wrapped)
+# `app/services/ledger_service.py` was decomposed into per-concern services; the
+# four listed below are its write paths (the read/query/verification services do
+# not mutate). Named individually rather than by glob because this list is a
+# deliberate zero-tolerance roster, not a directory scan — a new ledger service
+# should have to be added here on purpose.
 TIER1_FILES=(
-    "app/services/ledger_service.py"
+    "app/services/ledger_command_service.py"
+    "app/services/ledger_correction_service.py"
+    "app/services/ledger_posting_service.py"
+    "app/services/ledger_settlement_service.py"
+    "app/services/ledger_transfer_service.py"
     "app/payroll.py"
     "app/utils/banking.py"
     "app/routes/recovery.py"

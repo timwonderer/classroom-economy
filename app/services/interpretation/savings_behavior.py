@@ -34,7 +34,7 @@ from app.services.interpretation.resource_reads import (
     enrolled_seat_ids,
     savings_enabled_as_of,
 )
-from app.services.ledger_service import get_student_savings_contribution_rows
+from app.services.ledger_provenance_query_service import get_student_savings_contribution_rows
 
 _SAVINGS_DISABLED_REASON = {"feature": "savings", "state": "disabled"}
 

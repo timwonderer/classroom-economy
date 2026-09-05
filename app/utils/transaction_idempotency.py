@@ -1,7 +1,10 @@
+import hashlib
+import json
+
 from sqlalchemy.exc import IntegrityError
 
 from app.extensions import db
-from app.models import Transaction
+from app.models import LedgerCommandReservation, Seat, Transaction, TransactionStatus
 
 
 IDEMPOTENT_TRANSACTION_TYPES = frozenset({
@@ -11,12 +14,18 @@ IDEMPOTENT_TRANSACTION_TYPES = frozenset({
     "refund",
     "overdraft_fee",
     "payroll",
+    "manual_payment",
+    "bug_reward",
+    "issue_reversal",
+    "issue_compensation",
     "rent_payment",
     "Interest",
+    "void_item_removed",
 })
 
 IDEMPOTENCY_KEY_PREFIX = "txn"
 MAX_IDEMPOTENCY_KEY_LENGTH = 128
+FINGERPRINT_VERSION = 1
 
 
 def _normalize_key_part(value):
@@ -75,6 +84,20 @@ def get_idempotent_transaction(idempotency_key, class_id=None, seat_id=None, typ
     return query.first()
 
 
+def _command_fingerprint(*, target_seat_id, actor_seat_id, amount, account_type, type, original_transaction_id, policy_id):
+    representation = {
+        "account_type": account_type,
+        "actor_seat_id": actor_seat_id,
+        "amount": str(amount),
+        "original_transaction_id": original_transaction_id,
+        "policy_id": policy_id,
+        "target_seat_id": target_seat_id,
+        "type": type,
+    }
+    encoded = json.dumps(representation, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
 _TRANSACTION_AUDIT_FIELDS = [
     "amount", "account_type", "type", "status",
     "class_id", "seat_id", "target_seat_id", "actor_seat_id",
@@ -109,19 +132,47 @@ def create_idempotent_transaction(
         raise ValueError(
             f"Idempotency key exceeds max length of {MAX_IDEMPOTENCY_KEY_LENGTH} characters."
         )
+    if not class_id or not seat_id or not target_seat_id or not actor_seat_id:
+        raise ValueError("FATAL: Idempotent Ledger mutation requires explicit class and seat scope.")
+    if account_type not in {"checking", "savings"}:
+        raise ValueError("FATAL: Idempotent Ledger mutation requires a checking or savings account_type.")
+    scoped_seats = (
+        db.session.query(Seat.id)
+        .filter(Seat.id.in_({seat_id, target_seat_id, actor_seat_id}), Seat.class_id == class_id)
+        .all()
+    )
+    if len(scoped_seats) != len({seat_id, target_seat_id, actor_seat_id}):
+        raise ValueError("FATAL: Idempotent Ledger mutation seats must all belong to the provided class_id.")
 
     feat_code = get_active_feat_name()
-
-    existing = get_idempotent_transaction(
-        idempotency_key,
-        class_id=class_id,
-        seat_id=target_seat_id,
+    fingerprint = _command_fingerprint(
+        target_seat_id=target_seat_id,
+        actor_seat_id=actor_seat_id,
+        amount=amount,
+        account_type=account_type,
         type=transaction_type,
-        feat_code=feat_code,
+        original_transaction_id=original_transaction_id,
+        policy_id=policy_id,
     )
-    if existing:
-        return existing, False
 
+    reservation = LedgerCommandReservation.query.filter_by(
+        class_id=class_id, feat_code=feat_code, idempotency_key=idempotency_key
+    ).first()
+    if reservation:
+        if reservation.fingerprint_version != FINGERPRINT_VERSION or reservation.replay_fingerprint != fingerprint:
+            raise ValueError("Replay fingerprint mismatch for existing Ledger command reservation.")
+        existing = Transaction.query.filter_by(command_reservation_id=reservation.id).order_by(Transaction.id.asc()).first()
+        if existing:
+            return existing, False
+        raise RuntimeError("Ledger command reservation exists without an associated effect.")
+
+    reservation = LedgerCommandReservation(
+        class_id=class_id,
+        feat_code=feat_code,
+        idempotency_key=idempotency_key,
+        replay_fingerprint=fingerprint,
+        fingerprint_version=FINGERPRINT_VERSION,
+    )
     new_txn = Transaction(
         idempotency_key=idempotency_key,
         feat_code=feat_code,
@@ -133,12 +184,15 @@ def create_idempotent_transaction(
         user_id=user_id,
         amount=amount,
         account_type=account_type,
+        status=TransactionStatus.PENDING,
         type=type,
         description=description,
         original_transaction_id=original_transaction_id,
         policy_id=policy_id,
+        command_reservation=reservation,
     )
     try:
+        db.session.add(reservation)
         db.session.add(new_txn)
         db.session.flush()
         # Emit audit event after successful creation (id is now populated)
@@ -147,13 +201,13 @@ def create_idempotent_transaction(
     except IntegrityError:
         db.session.rollback()
         with db.session.begin_nested():
-            existing = get_idempotent_transaction(
-                idempotency_key,
-                class_id=class_id,
-                seat_id=target_seat_id,
-                type=transaction_type,
-                feat_code=feat_code,
-            )
-        if existing:
-            return existing, False
+            existing_reservation = LedgerCommandReservation.query.filter_by(
+                class_id=class_id, feat_code=feat_code, idempotency_key=idempotency_key
+            ).first()
+        if existing_reservation:
+            if existing_reservation.replay_fingerprint != fingerprint:
+                raise ValueError("Replay fingerprint mismatch for existing Ledger command reservation.")
+            existing = Transaction.query.filter_by(command_reservation_id=existing_reservation.id).order_by(Transaction.id.asc()).first()
+            if existing:
+                return existing, False
         raise

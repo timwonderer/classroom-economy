@@ -4,7 +4,7 @@
 import argparse
 
 from app import create_app
-from app.utils.banking import settle_pending_transaction_contexts
+from app.services.ledger_settlement_service import settle_pending_transaction_contexts
 
 
 def parse_args():

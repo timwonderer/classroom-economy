@@ -21,7 +21,11 @@ from app.feats.transaction_void_feat import (
 )
 from app.feats.assess_obligation_feat import execute_assess_obligation
 from app.feats.satisfy_obligation_feat import execute_satisfy_obligation_payment
-from app.services import ledger_service
+import app.feats.transaction_void_feat as transaction_void_module
+from app.services.ledger_correction_service import (
+    compensate_posted_transaction,
+    void_pending_transaction,
+)
 from tests.helpers.ledger import provision_ledger_classroom
 
 
@@ -113,8 +117,8 @@ def test_DOM_OPS_001__obligation_tx_does_not_fall_through_to_compensation(client
     )
 
     calls = {"compensate": 0, "void_pending": 0}
-    real_compensate = ledger_service.compensate_posted_transaction
-    real_void_pending = ledger_service.void_pending_transaction
+    real_compensate = compensate_posted_transaction
+    real_void_pending = void_pending_transaction
 
     def _spy_compensate(*a, **k):
         calls["compensate"] += 1
@@ -124,8 +128,8 @@ def test_DOM_OPS_001__obligation_tx_does_not_fall_through_to_compensation(client
         calls["void_pending"] += 1
         return real_void_pending(*a, **k)
 
-    monkeypatch.setattr(ledger_service, "compensate_posted_transaction", _spy_compensate)
-    monkeypatch.setattr(ledger_service, "void_pending_transaction", _spy_void_pending)
+    monkeypatch.setattr(transaction_void_module, "compensate_posted_transaction", _spy_compensate)
+    monkeypatch.setattr(transaction_void_module, "void_pending_transaction", _spy_void_pending)
 
     with pytest.raises(ObligationTransactionNotVoidable):
         execute_void_transaction(

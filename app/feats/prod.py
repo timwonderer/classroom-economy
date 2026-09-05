@@ -22,7 +22,7 @@ from app.models import (
 )
 from app.services.context_resolver import CanonicalContext
 from app.services.entitlement_service import consume_hall_pass, get_hall_pass_balance
-from app.services.ledger_service import create_pending_transaction
+from app.services.ledger_posting_service import create_pending_transaction
 from app.utils.canonical_temporal_resolver import (
     CLASS_LEVEL_EVALUATION,
     canonical_temporal_resolver,
@@ -592,6 +592,7 @@ def _record_payroll_event_impl(
             account_type="checking",
             type="payroll" if payroll_event_type != "manual_credit" else "manual_payment",
             description=(summary_json or {}).get("description", "Payroll event"),
+            idempotency_key=idempotency_key,
         )
     else:
         tx = None

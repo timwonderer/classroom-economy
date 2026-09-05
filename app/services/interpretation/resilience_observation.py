@@ -60,7 +60,7 @@ from app.services.interpretation.resource_reads import (
     savings_enabled_as_of,
     total_resource_cents_for_seats,
 )
-from app.services.ledger_service import get_inbound_ledger_rows
+from app.services.ledger_provenance_query_service import get_inbound_ledger_rows
 
 _PERSISTENCE_UNAVAILABLE_REASON = {
     "input": "prior_completed_cycle_records",

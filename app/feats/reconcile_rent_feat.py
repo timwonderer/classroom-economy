@@ -34,7 +34,7 @@ from app.models import RentSettings, Seat
 from app.services import obligations_service
 from app.services import rent_schedule_service
 from app.services import entitlement_service
-from app.services import ledger_service
+from app.services.identity_service import resolve_teacher_seat_for_class
 from app.services.class_configuration_query_service import get_rent_settings, is_feature_enabled
 from app.feats.base import requires_feat_context, FEATContext
 # Obligations DOMAIN commands (plain functions), invoked within THIS FEAT's single
@@ -308,7 +308,7 @@ def reconcile_rent(
 
         # Expire the prior cycle's rent PERK hall passes at the boundary.
         if actor_seat_id is None:
-            actor_seat_id = ledger_service.resolve_class_authority_seat_id(class_id)
+            actor_seat_id = resolve_teacher_seat_for_class(class_id).id
         result.perks_expired += _expire_prior_cycle_perks(class_id, latest, actor_seat_id)
 
         result.cycles_created.append(new_cycle.cycle_number)

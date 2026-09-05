@@ -28,7 +28,7 @@ from __future__ import annotations
 
 from typing import NamedTuple
 
-from app.services.ledger_service import get_student_originated_transaction_ids
+from app.services.ledger_provenance_query_service import get_student_originated_transaction_ids
 from app.services.obligations_service import get_obligation_events_for_window
 
 # --- Final outcome categories (SPEC-ITR-001 §8.4 Q3-C1) --------------------

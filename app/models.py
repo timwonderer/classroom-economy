@@ -494,7 +494,7 @@ class Transaction(db.Model):
     description = db.Column(db.String(255))
     correlation_id = db.Column(db.String(100), nullable=False, index=True)
     feat_code = db.Column(db.String(100), nullable=True, index=True)
-    idempotency_key = db.Column(db.String(100), nullable=True, index=True)
+    idempotency_key = db.Column(db.String(128), nullable=True, index=True)
     is_void = db.Column(db.Boolean, default=False)
     # References for compensating/reversal ledger entries.
     # Stored as IDs for backend portability.
@@ -512,26 +512,30 @@ class Transaction(db.Model):
     lineage_event_id = db.Column(db.Integer, db.ForeignKey('audit_events.id'), nullable=True, index=True)
     lineage_token    = db.Column(db.String(64), nullable=True)
     lineage_version  = db.Column(db.Integer, nullable=True, default=1)
+    # Canonical posted-ledger order. Nullable only for historical/pre-rollout rows.
+    posting_sequence = db.Column(db.BigInteger, nullable=True, index=True)
+    command_reservation_id = db.Column(
+        db.Integer,
+        db.ForeignKey("ledger_command_reservation.id", ondelete="RESTRICT"),
+        nullable=True,
+        index=True,
+    )
 
     # Relationship to track which actor and target seat the transaction binds to
     teacher = db.relationship('User', backref=db.backref('transactions', lazy='dynamic'))
     seat = db.relationship('Seat', backref=db.backref('transactions', lazy='dynamic'), foreign_keys=[seat_id])
     target_seat = db.relationship('Seat', foreign_keys=[target_seat_id], post_update=True)
     actor_seat = db.relationship('Seat', foreign_keys=[actor_seat_id], post_update=True)
+    command_reservation = db.relationship("LedgerCommandReservation", back_populates="effects")
 
     __table_args__ = (
         db.Index('ix_transaction_seat_ledger', 'join_code', 'seat_id', 'status', 'account_type'),
         db.Index('ix_transaction_class_scope', 'class_id', 'target_seat_id', 'actor_seat_id', 'account_type'),
         db.Index(
-            'uq_transaction_idempotency_scope',
-            'class_id',
-            'target_seat_id',
-            'feat_code',
-            'idempotency_key',
-            'type',
-            unique=True,
-            postgresql_where=sa.text("idempotency_key IS NOT NULL AND status != 'VOID'")
+            'ix_ledger_transaction_reconstruction_scope',
+            'class_id', 'seat_id', 'account_type', 'posting_sequence', 'status',
         ),
+        db.UniqueConstraint('class_id', 'posting_sequence', name='uq_ledger_transaction_class_posting_sequence'),
     )
 
 
@@ -582,13 +586,11 @@ def _enforce_transaction_integrity(_mapper, _connection, target):
         from app.feats.base import FEATContextError
         raise FEATContextError("MANDATORY FEAT CONSTITUTIONAL VIOLATION: Ledger mutation outside of FEAT context.")
 
-    if not target.class_id and target.target_seat_id:
-        seat_class_id = _connection.execute(
-            sa.text("SELECT class_id FROM seats WHERE id = :seat_id LIMIT 1"),
-            {"seat_id": target.target_seat_id},
-        ).scalar()
-        if seat_class_id:
-            target.class_id = str(seat_class_id)
+    if not target.class_id:
+        raise ValueError(
+            "FATAL: Ledger transaction requires explicit class_id; "
+            "scope must be supplied by the caller."
+        )
 
     if target.actor_seat_id and target.class_id:
         actor_class_id = _connection.execute(
@@ -714,6 +716,24 @@ class LedgerBalanceSnapshot(db.Model):
 
     __table_args__ = (
         db.UniqueConstraint('class_id', 'seat_id', 'account_type', name='uq_balance_snapshot_scope'),
+    )
+
+
+class LedgerCommandReservation(db.Model):
+    """Permanent command identity for canonical Ledger effects."""
+    __tablename__ = "ledger_command_reservation"
+
+    id = db.Column(db.Integer, primary_key=True)
+    class_id = db.Column(db.String(36), db.ForeignKey("classes.class_id", ondelete="CASCADE"), nullable=False)
+    feat_code = db.Column(db.String(100), nullable=False)
+    idempotency_key = db.Column(db.String(128), nullable=False)
+    replay_fingerprint = db.Column(db.String(128), nullable=False)
+    fingerprint_version = db.Column(db.Integer, nullable=False)
+    accepted_at = db.Column(db.DateTime(timezone=True), default=utc_now, nullable=False)
+
+    effects = db.relationship("Transaction", back_populates="command_reservation")
+    __table_args__ = (
+        db.UniqueConstraint("class_id", "feat_code", "idempotency_key", name="uq_ledger_command_reservation_identity"),
     )
 
 

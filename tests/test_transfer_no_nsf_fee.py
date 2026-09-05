@@ -13,8 +13,8 @@ from decimal import Decimal
 
 from app.extensions import db
 from app.feats.base import FEATContext
-from app.models import Transaction, ObligationAssessment
-from app.services import ledger_service
+from app.models import LedgerCommandReservation, Transaction, ObligationAssessment
+from app.services.ledger_balance_query_service import get_available_balances
 from tests.helpers.classroom_initializer import initialize_as_student
 from tests.helpers.ledger import create_ledger_idempotent_transaction
 
@@ -89,7 +89,7 @@ def test_successful_transfer_moves_funds_under_feat_context(client, app):
                 type="payroll",
                 description="Test funding",
             )
-        checking_before, savings_before = ledger_service.get_available_balances(
+        checking_before, savings_before = get_available_balances(
             seat_id, class_id
         )
 
@@ -111,8 +111,18 @@ def test_successful_transfer_moves_funds_under_feat_context(client, app):
     assert resp.status_code == 302
 
     with app.app_context():
-        checking_after, savings_after = ledger_service.get_available_balances(
+        checking_after, savings_after = get_available_balances(
             seat_id, class_id
         )
         assert checking_after == checking_before - Decimal("20.00")
         assert savings_after == savings_before + Decimal("20.00")
+        legs = Transaction.query.filter_by(class_id=class_id, seat_id=seat_id).filter(
+            Transaction.type.in_(["Withdrawal", "Deposit"])
+        ).order_by(Transaction.id.desc()).limit(2).all()
+        assert len(legs) == 2
+        assert len({leg.command_reservation_id for leg in legs}) == 1
+        reservation = db.session.get(LedgerCommandReservation, legs[0].command_reservation_id)
+        assert reservation is not None
+        assert Transaction.query.filter_by(command_reservation_id=reservation.id).count() == 2
+        from app.services.ledger_transfer_service import verify_transfer
+        assert verify_transfer(class_id, legs[0].correlation_id).outcome == "UNAVAILABLE"

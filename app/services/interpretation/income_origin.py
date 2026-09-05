@@ -84,7 +84,7 @@ def classify_income_origin(
 
     ``row`` is any object exposing ``original_transaction_id``, ``correlation_id``,
     ``mechanism`` (lowercase string), ``account_type``, and ``feat_code`` — e.g. a
-    :class:`~app.services.ledger_service.InboundLedgerRow`. The precedence order
+    :class:`~app.services.ledger_provenance_query_service.InboundLedgerRow`. The precedence order
     below is exhaustive over the canonical provenance signals and is applied
     top-to-bottom; the first match wins.
     """

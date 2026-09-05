@@ -38,7 +38,9 @@ from decimal import Decimal
 
 from app.models import ObligationAssessment, Seat, RentSettings
 from app.services import obligations_service
-from app.services import ledger_service
+from app.services.identity_service import resolve_teacher_seat_for_class
+from app.services.ledger_balance_query_service import get_available_balance
+from app.services.ledger_posting_service import create_pending_transaction_idempotent
 from app.services import entitlement_service
 from app.services.class_configuration_query_service import get_rent_settings
 from app.feats.base import requires_feat_context, FEATContext
@@ -73,7 +75,7 @@ class RentPaymentRequest:
 def _award_satisfaction_perks(settings: RentSettings, seat: Seat, correlation_id: str) -> int:
     """Grant the configured PERK hall-pass entitlements for a satisfied rent obligation."""
     grants = settings.get_satisfaction_benefit_grants()
-    actor_seat_id = ledger_service.resolve_class_authority_seat_id(seat.class_id)
+    actor_seat_id = resolve_teacher_seat_for_class(seat.class_id).id
     awarded = 0
     for grant in grants:
         # Phase-1 closed schema guarantees entitlement_type == HALL_PASS.
@@ -212,7 +214,7 @@ def pay_rent(
             )
 
     # Affordability guard: no overdraft on the rent principal slice being paid now.
-    available = ledger_service.get_available_balance(seat_id, class_id, "checking")
+    available = get_available_balance(seat_id, class_id, "checking")
     if available < this_payment:
         return RentPaymentResult(
             success=False, correlation_id=correlation_id,
@@ -226,8 +228,8 @@ def pay_rent(
     #     The ledger key is COMMAND-owned (the payment request's idempotency_key),
     #     so a replay of the same command returns the same ledger row while a
     #     distinct command posts a distinct partial debit.
-    authority_seat_id = ledger_service.resolve_class_authority_seat_id(class_id)
-    transaction, _created = ledger_service.create_pending_transaction_idempotent(
+    authority_seat_id = resolve_teacher_seat_for_class(class_id).id
+    transaction, _created = create_pending_transaction_idempotent(
         idempotency_key=f"rent-payment:{idempotency_key}:principal",
         seat_id=seat_id,
         class_id=class_id,

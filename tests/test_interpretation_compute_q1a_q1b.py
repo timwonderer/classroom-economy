@@ -27,7 +27,7 @@ from decimal import Decimal
 from app.extensions import db
 from app.feats.base import FEATContext
 from app.models import AttendanceSession, EntitlementEvent
-from app.services.ledger_service import create_pending_transaction
+from app.services.ledger_posting_service import create_pending_transaction
 from app.services.interpretation.compute import (
     compute_partial_observations,
     compute_partial_payload,

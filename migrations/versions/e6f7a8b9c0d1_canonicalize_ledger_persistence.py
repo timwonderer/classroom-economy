@@ -22,16 +22,33 @@ def _columns(table_name):
 
 def upgrade():
     tx_columns = _columns("ledger_transaction")
+    tx_column_info = {
+        column["name"]: column for column in sa.inspect(op.get_bind()).get_columns("ledger_transaction")
+    }
+    idempotency_column = tx_column_info.get("idempotency_key")
+    if idempotency_column is not None and getattr(idempotency_column["type"], "length", None) != 128:
+        op.alter_column(
+            "ledger_transaction", "idempotency_key",
+            existing_type=idempotency_column["type"], type_=sa.String(length=128),
+        )
     if "posting_sequence" not in tx_columns:
         op.add_column("ledger_transaction", sa.Column("posting_sequence", sa.BigInteger(), nullable=True))
     if "command_reservation_id" not in tx_columns:
         op.add_column("ledger_transaction", sa.Column("command_reservation_id", sa.Integer(), nullable=True))
     inspector = sa.inspect(op.get_bind())
     indexes = {index["name"] for index in inspector.get_indexes("ledger_transaction")}
+    if "uq_transaction_idempotency_scope" in indexes:
+        op.drop_index("uq_transaction_idempotency_scope", table_name="ledger_transaction")
+        indexes.remove("uq_transaction_idempotency_scope")
     if "ix_ledger_transaction_posting_sequence" not in indexes:
         op.create_index("ix_ledger_transaction_posting_sequence", "ledger_transaction", ["posting_sequence"])
     if "ix_ledger_transaction_command_reservation_id" not in indexes:
         op.create_index("ix_ledger_transaction_command_reservation_id", "ledger_transaction", ["command_reservation_id"])
+    if "ix_ledger_transaction_reconstruction_scope" not in indexes:
+        op.create_index(
+            "ix_ledger_transaction_reconstruction_scope", "ledger_transaction",
+            ["class_id", "seat_id", "account_type", "posting_sequence", "status"],
+        )
     if "ledger_command_reservation" not in inspector.get_table_names():
         op.create_table(
             "ledger_command_reservation",

@@ -23,7 +23,7 @@ from werkzeug.exceptions import BadRequest, Unauthorized, Forbidden, NotFound, S
 import pyotp
 
 from app.extensions import db, limiter
-from app.feats.base import requires_feat_context
+from app.feats.base import get_idempotency_key, requires_feat_context
 from app.models import (
     Seat, PasskeyCredential,
     Transaction, TransactionStatus, HallPassLog,
@@ -46,7 +46,7 @@ from app.forms import SystemAdminLoginForm
 from app.utils.helpers import is_safe_url, format_utc_iso
 from app.utils.encryption import decrypt_totp
 from app.hash_utils import hash_username_lookup
-from app.services import ledger_service
+from app.services.ledger_posting_service import create_pending_transaction
 from app.services.operational_event_service import (
     get_error_events,
     get_recent_error_events,
@@ -1437,7 +1437,7 @@ def resolve_escalated_issue(issue_ref):
             if not reward_class or not reward_seat:
                 flash("Cannot issue reward: canonical class scope is unavailable.", "error")
                 return redirect(url_for('system_admin.view_issue', issue_id=issue.id))
-            reward_transaction = ledger_service.create_pending_transaction(
+            reward_transaction = create_pending_transaction(
                 seat_id=reward_seat.id,
                 class_id=reward_class.class_id,
                 target_seat_id=reward_seat.id,
@@ -1448,6 +1448,7 @@ def resolve_escalated_issue(issue_ref):
                 account_type='checking',
                 description=f"Bug Reward (Issue #{issue.id})",
                 type='bug_reward',
+                idempotency_key=get_idempotency_key(),
             )
 
             record_resolution_action(

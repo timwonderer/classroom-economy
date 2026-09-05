@@ -30,7 +30,7 @@ from app.services.interpretation.observation_builders import (
     observation_entry,
     ratio_value,
 )
-from app.services.ledger_service import get_inbound_ledger_rows
+from app.services.ledger_provenance_query_service import get_inbound_ledger_rows
 from app.services.payroll.read_service import get_payroll_correlation_sets
 
 
