@@ -430,19 +430,25 @@ body.landing-page {
 .landing-signin-note-title {
     color: #735816;
     font-size: 1rem;
-    font-style: italic;
     font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    line-height: 1.2;
     margin: 0 0 0 0;
 }
 
+.landing-signin-note-title .material-symbols-outlined {
+    font-size: 1.1rem;
+    line-height: 1;
+    transform: translateY(1px);
+}
+
 .landing-no-account-note {
-    border-style:solid;
-    border-color:var(--secondary);
-    border-width:2px;
+
     padding:0.5rem;
-    border-radius: var(--radius-sm);
-    font-size:0.8rem;
-    background-color: var(--secondary-subtle);
+    font-size:0.9rem;
+
 }
 
 .landing-about-panel p {
@@ -642,6 +648,15 @@ body.landing-page {
     display: grid;
     gap: 2rem;
     grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+}
+
+.v2-feature-card {
+    background-color: var(--surface);
+    padding: 2.25rem;
+    border-radius: 2px;
+    box-shadow: var(--shadow);
+    border-top: 10px solid var(--secondary-color);
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
 .v2-feature-card-left {
