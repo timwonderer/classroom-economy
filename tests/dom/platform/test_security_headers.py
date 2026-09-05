@@ -36,3 +36,16 @@ def test_landing_page_uses_csp_compatible_local_fonts(client):
     assert b'/static/css/fonts.css' in response.data
     assert b'fonts.googleapis.com' not in response.data
     assert b'fonts.gstatic.com' not in response.data
+
+
+def test_landing_page_signin_links_stay_on_local_origin(client):
+    """The published landing page points sign-in at the production app host so
+    it works from the marketing domain. Served locally under /gh/ for a
+    certification run, those links must be rewritten to this origin so a tester
+    is never sent to production."""
+    response = client.get('/gh/landing.html')
+
+    assert response.status_code == 200
+    assert b'app.classroomtokenhub.com' not in response.data
+    for route in (b'"/admin/login"', b'"/student/login"', b'"/sysadmin/login"'):
+        assert route in response.data

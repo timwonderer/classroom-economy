@@ -6,9 +6,14 @@ debug endpoints, and public hall pass verification.
 """
 
 import os
+import re
 import unicodedata
 from types import SimpleNamespace
-from flask import Blueprint, redirect, url_for, jsonify, current_app, session, request, send_from_directory
+from flask import (
+    Blueprint, Response, abort, redirect, url_for, jsonify, current_app,
+    session, request, send_from_directory,
+)
+from werkzeug.security import safe_join
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -23,6 +28,25 @@ main_bp = Blueprint('main', __name__)
 
 
 GITHUB_PAGES_DEFAULT_URL = 'https://timwonderer.github.io/classroom-economy'
+
+# The published marketing site (GitHub Pages) and the application live on two
+# different hosts, so its sign-in links must be absolute to reach the app. When
+# that same HTML is served locally under /gh/ for certification, those absolute
+# links would send a tester to production, so they are rewritten back to the
+# local origin on the way out. See ``github_pages_asset``.
+APP_PRODUCTION_ORIGIN = 'https://app.classroomtokenhub.com'
+
+# The published site loads fonts from Google's CDN because the GitHub Pages
+# artifact contains only ``github-pages/`` and cannot reach ``static/``. Served
+# locally under /gh/, that same markup is subject to the application CSP, which
+# blocks those hosts and would drop every Material Symbols glyph. Swap the CDN
+# block for the app's own font stylesheet on the way out.
+_CDN_FONT_BLOCK = re.compile(
+    r'[ \t]*<link rel="preconnect" href="https://fonts\.googleapis\.com">\n'
+    r'[ \t]*<link rel="preconnect" href="https://fonts\.gstatic\.com" crossorigin>\n'
+    r'(?:[ \t]*<link href="https://fonts\.googleapis\.com/[^"]*" rel="stylesheet">\n)+'
+)
+_LOCAL_FONT_BLOCK = '    <link href="/static/css/fonts.css" rel="stylesheet">\n'
 
 
 def _github_pages_redirect(page_filename: str):
@@ -78,7 +102,24 @@ def _github_pages_dir():
 @main_bp.route('/gh/<path:filename>')
 def github_pages_asset(filename):
     """Serve the bundled github-pages landing site (landing.html, style.css,
-    learnmore.html, etc.) from the local origin for the certification run."""
+    learnmore.html, etc.) from the local origin for the certification run.
+
+    HTML is rewritten so links pointing at the production application host
+    resolve against this origin instead. Without that, a sign-in click during a
+    local certification run would land on production.
+    """
+    if filename.endswith('.html'):
+        path = safe_join(_github_pages_dir(), filename)
+        if path is None:
+            abort(404)
+        try:
+            with open(path, encoding='utf-8') as handle:
+                markup = handle.read()
+        except (OSError, ValueError):
+            abort(404)
+        markup = markup.replace(f'href="{APP_PRODUCTION_ORIGIN}/', 'href="/')
+        markup = _CDN_FONT_BLOCK.sub(_LOCAL_FONT_BLOCK, markup)
+        return Response(markup, mimetype='text/html')
     return send_from_directory(_github_pages_dir(), filename)
 
 
