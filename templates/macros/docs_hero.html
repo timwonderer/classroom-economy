@@ -1,0 +1,47 @@
+{#
+  Docs hero — the brand banner used across the documentation entry pages.
+
+  Structurally identical to the public site's landing hero (brand stack on the
+  left, welcome column on the right) so the docs read as part of the same
+  product rather than as a bolted-on wiki. The article reader deliberately does
+  NOT use this: that page is a fixed-viewport app shell.
+
+  Usage:
+    {% call docs_hero("Help & Support Center", "Guides for everything...") %}
+      ...optional content under the lead (search, toggles)...
+    {% endcall %}
+#}
+
+{% macro docs_hero(title, lead=None, back_url=None, back_label=None) %}
+<section class="landing-hero docs-hero">
+  <div class="landing-shell landing-hero-grid">
+    <div class="landing-brand">
+      <div class="landing-brand-row">
+        <span class="material-symbols-outlined" aria-hidden="true">local_atm</span>
+        <span>CLASSROOM</span>
+      </div>
+      <div class="landing-brand-row">
+        <span class="material-symbols-outlined" aria-hidden="true">store</span>
+        <span>TOKEN</span>
+      </div>
+      <div class="landing-brand-row">
+        <span class="material-symbols-outlined" aria-hidden="true">finance_mode</span>
+        <span>HUB</span>
+      </div>
+    </div>
+    <div class="landing-welcome">
+      <h1>{{ title }}</h1>
+      {% if lead %}<p>{{ lead }}</p>{% endif %}
+      {% if caller %}
+      <div class="docs-hero-actions">{{ caller() }}</div>
+      {% endif %}
+      {% if back_url %}
+      <a href="{{ back_url }}" class="docs-hero-back">
+        <span class="material-symbols-outlined" aria-hidden="true">arrow_circle_left</span>
+        <span>{{ back_label or "Back" }}</span>
+      </a>
+      {% endif %}
+    </div>
+  </div>
+</section>
+{% endmacro %}

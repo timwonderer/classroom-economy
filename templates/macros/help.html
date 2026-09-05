@@ -5,18 +5,19 @@
   directing users to relevant documentation without losing their session.
 #}
 
-{% macro doc_url(doc_path) %}
-  {% set base_path = doc_path.split('#', 1)[0] %}
-  {% set anchor = doc_path.split('#', 1)[1] if '#' in doc_path else '' %}
-  {{ docs_url_for(base_path) }}{% if anchor %}#{{ anchor }}{% endif %}
-{% endmacro %}
+{# Whitespace is trimmed because the output is used directly as an href. #}
+{%- macro doc_url(doc_path) -%}
+  {%- set base_path = doc_path.split('#', 1)[0] -%}
+  {%- set anchor = doc_path.split('#', 1)[1] if '#' in doc_path else '' -%}
+  {{- docs_url_for(base_path) }}{% if anchor %}#{{ anchor }}{% endif -%}
+{%- endmacro -%}
 
 {% macro help_link(doc_path, text=None, tooltip=None, icon_only=False) %}
   {#
     Render a contextual help link to documentation.
 
     Args:
-      doc_path: Path to the documentation (e.g., "user-guides/diagnostics/student-money")
+      doc_path: Path to the documentation (e.g., "user-guides/features/student/banking/accounts-transfers")
       text: Optional link text (default: "Learn more")
       tooltip: Optional tooltip text
       icon_only: If true, only show icon (default: false)

@@ -37,6 +37,12 @@ All documents are classified into one of three tiers. See [SOP-DOC-000 Section V
 | **[REFERENCE/](REFERENCE/)** | Normative | Authoritative vocabulary and terminology (`REF-TERM-*`) |
 | **[PRINCIPLES/](PRINCIPLES/)** | Informative | Design principles (security, privacy, SSO rationale) |
 
+### User-Facing
+
+| Directory | Tier | Purpose |
+|-----------|------|---------|
+| **[user-guides/](user-guides/)** | Informative | Teacher, student, and sysadmin help served by the in-app `/docs` site |
+
 ### Planning & Status
 
 | Directory | Tier | Purpose |
@@ -49,7 +55,7 @@ All documents are classified into one of three tiers. See [SOP-DOC-000 Section V
 | Directory | Tier | Purpose |
 |-----------|------|---------|
 | **[LOGS/](LOGS/)** | Informative | Historical audit logs and release notes |
-| **[archive/](archive/)** | Informative | v1 docs (user-guides, GitHub Pages assets, old dev artifacts) |
+| **[archive/](archive/)** | Informative | v1 docs (GitHub Pages assets, old dev artifacts) |
 | **[archive/PHASE_PLANNING/](archive/PHASE_PLANNING/)** | Informative | Phase 3-5 roadmaps, phase extensions (authority clarifications, delayed-use redemption, hall-pass coordination), and store domain implementation logs (Phases 2-6, completed work) |
 
 ### Other
@@ -88,7 +94,6 @@ The `archive/` directory contains genuinely superseded v1 documentation:
 
 | Directory | Contents |
 |-----------|----------|
-| `archive/v1-user-guides/` | v1 teacher manual, student guide, diagnostics, feature guides (pending v2 port) |
 | `archive/v1-architecture/` | Early v1 identity and core architectural specs |
 | `archive/v1-development/` | v1→v2 migration planning and legacy schema analysis |
 | `archive/v1-docs/` | v1 security audits, deployment SOPs, ARC-* specs, FEATURES/*, DOMAINS/* (~55 files) |

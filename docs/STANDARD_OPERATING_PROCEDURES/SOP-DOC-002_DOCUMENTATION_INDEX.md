@@ -15,7 +15,7 @@ This document is the canonical master index of all formal documentation within t
 ## II. Scope
 
 This index tracks all formally registered, numbered documents. The following folders/files are intentionally out of scope:
-- `docs/archive/v1-user-guides/` (User-facing help/tutorials)
+- `docs/user-guides/` (User-facing help/tutorials)
 - `docs/README.md` (General repository navigation)
 
 ---
@@ -79,6 +79,7 @@ These documents conform to the V2 capability-based architecture and domain autho
 
 ### Implementation Specifications (SPEC)
 - [SPEC-OPS-002_EXTERNAL_STATUS_PERSISTENCE_MODEL.md](../SPEC/SPEC-OPS-002_EXTERNAL_STATUS_PERSISTENCE_MODEL.md) — Logical persistence model for independent external status infrastructure
+- [SPEC-OPS-003_SYSTEM_ADMINISTRATION_CONSOLE.md](../SPEC/SPEC-OPS-003_SYSTEM_ADMINISTRATION_CONSOLE.md) — Operator-facing sysadmin console surface and its mutation boundary
 - [SPEC-LED-001_LEDGER_VERIFICATION_PROOF_SURFACES.md](../SPEC/SPEC-LED-001_LEDGER_VERIFICATION_PROOF_SURFACES.md) — Ledger-owned read-only proof contracts for Operations verification
 - [SPEC-LED-002_COMMAND_IDEMPOTENCY_RESERVATION_AND_ENFORCEMENT.md](../SPEC/SPEC-LED-002_COMMAND_IDEMPOTENCY_RESERVATION_AND_ENFORCEMENT.md) — Command-level idempotency reservation and structural enforcement contract
 - [BATCH-B_OPERATIONS_VERIFIER_POLICY_DECISION_PACKAGE_20260901.md](../TRACKING/BATCH-B_OPERATIONS_VERIFIER_POLICY_DECISION_PACKAGE_20260901.md) — Operations freshness, aggregation, and evidence-registry owner decisions

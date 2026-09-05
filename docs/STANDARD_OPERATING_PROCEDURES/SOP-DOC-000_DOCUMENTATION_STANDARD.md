@@ -56,7 +56,7 @@ All documents are classified into four tiers representing their normative author
 - **Definition**: Preserves institutional memory, timelines, target plans, releases, and user guides. Must not define runtime rules.
 - **Location**:
   - `docs/MAP/` (Prefix: `MAP-*`)
-  - `docs/archive/v1-user-guides/` (User guides)
+  - `docs/user-guides/` (User guides)
   - `docs/LOGS/` (Prefix: `LOG-*`)
   - Root directory files (`README.md`, `CHANGELOG.md`, `DEVELOPMENT.md`, etc.)
 
@@ -115,7 +115,7 @@ Formal specifications (INV, DOM, FEAT, SOP) must include the following sections 
 ### Clean Separation Rules
 - **No Documentation in `/app/`**: Runtime directories must contain only execution code, tests, and configuration.
 - **No Runtime Code in `/docs/`**: The documentation tree must not contain executable modules or active scripts.
-- **User-Facing Separation**: Public guides belong in `docs/archive/v1-user-guides/` and must focus on high-level guarantees and walkthroughs. No internal implementation details, ORM schemas, or system keys may be published in user-facing guides.
+- **User-Facing Separation**: Public guides belong in `docs/user-guides/` and must focus on high-level guarantees and walkthroughs. No internal implementation details, ORM schemas, or system keys may be published in user-facing guides.
 
 ### File Operations Workflow
 1. **Use Git Move**: Always run `git mv` to relocate files to preserve commit history.

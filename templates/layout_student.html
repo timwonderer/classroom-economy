@@ -165,19 +165,39 @@
 
     <main id="main-content" class="student-main">
                 <div class="student-content">
+                    {#
+                       Help target for the page the student is on. These point at
+                       the feature guide for the surface, not at troubleshooting —
+                       each feature guide links on to the matching diagnostics page.
+                    #}
                     {% set help_doc_map = {
-                    'dashboard': 'user-guides/diagnostics/student',
-                    'profile': 'user-guides/diagnostics/student/classes',
-                    'help': 'user-guides/diagnostics/student/support',
-                    'student.dashboard': 'user-guides/diagnostics/student',
-                    'student.transfer': 'user-guides/diagnostics/student/money',
-                    'student.shop': 'user-guides/diagnostics/student/store',
-                    'student.payroll': 'user-guides/diagnostics/student/attendance',
-                    'student.rent': 'user-guides/diagnostics/student/rent-insurance',
-                    'student.student_insurance': 'user-guides/diagnostics/student/rent-insurance',
-                    'student.help_support': 'user-guides/diagnostics/student/support',
-                    'student.claim_account': 'user-guides/diagnostics/student/classes',
-                    'student.complete_profile': 'user-guides/diagnostics/student/classes'
+                    'dashboard': 'user-guides/features/student/account/dashboard-overview',
+                    'profile': 'user-guides/features/student/account/login-setup',
+                    'help': 'user-guides/features/student/support/help-center',
+                    'add_class': 'user-guides/features/student/account/join-class',
+                    'transfer': 'user-guides/features/student/banking/accounts-transfers',
+                    'store': 'user-guides/features/student/store/browse-buy',
+                    'payroll': 'user-guides/features/student/work/attendance-history',
+                    'rent': 'user-guides/features/student/bills/rent-payments',
+                    'insurance': 'user-guides/features/student/bills/insurance-coverage',
+                    'verify-recovery': 'user-guides/features/student/account/verify-teacher-recovery',
+                    'student.dashboard': 'user-guides/features/student/account/dashboard-overview',
+                    'student.transfer': 'user-guides/features/student/banking/accounts-transfers',
+                    'student.shop': 'user-guides/features/student/store/browse-buy',
+                    'student.payroll': 'user-guides/features/student/work/attendance-history',
+                    'student.rent': 'user-guides/features/student/bills/rent-payments',
+                    'student.student_insurance': 'user-guides/features/student/bills/insurance-coverage',
+                    'student.view_policy': 'user-guides/features/student/bills/insurance-coverage',
+                    'student.file_claim': 'user-guides/features/student/bills/insurance-claims',
+                    'student.help_support': 'user-guides/features/student/support/help-center',
+                    'student.submit_general_issue': 'user-guides/features/student/support/report-issues',
+                    'student.claim_account': 'user-guides/features/student/account/join-class',
+                    'student.add_class': 'user-guides/features/student/account/join-class',
+                    'student.select_class_context': 'user-guides/features/student/account/switch-class',
+                    'student.create_username': 'user-guides/features/student/account/login-setup',
+                    'student.setup_pin_passphrase': 'user-guides/features/student/account/pin-vs-passphrase',
+                    'student.setup_complete': 'user-guides/features/student/account/login-setup',
+                    'student.verify_recovery': 'user-guides/features/student/account/verify-teacher-recovery'
                     } %}
                     {% set help_doc_key = current_page or request.endpoint %}
                     {% set help_doc_path = help_doc_map.get(help_doc_key) %}

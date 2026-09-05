@@ -41,8 +41,8 @@
 │   ├── SECURITY/             # Security audits and controls
 │   ├── STANDARD_OPERATING_PROCEDURES/  # SOPs
 │   ├── self-hosting/         # Self-hosting guide
+│   ├── user-guides/          # User-facing help served by the in-app /docs site
 │   └── archive/              # Historical documents
-│       ├── v1-user-guides/   # Archived v1 user docs
 │       ├── v1-development/   # Archived v1 dev docs
 │       └── github-pages/     # Archived GitHub Pages assets
 ```
@@ -100,7 +100,7 @@ Update **ALL** of these:
 - **Hall Pass System** — Time-limited passes with automatic tracking
 ```
 
-**User Guide** (`docs/archive/v1-user-guides/teacher_manual.md` or `student_guide.md`)
+**User Guide** (`docs/user-guides/teacher_manual.md` or `student_guide.md`)
 ```markdown
 ## Hall Passes
 
@@ -118,7 +118,7 @@ Students can request hall passes from their dashboard...
 
 ### Hall Pass System ✅
 **Status:** Completed in v1.0
-**Documentation:** `docs/archive/v1-user-guides/student_guide.md`
+**Documentation:** `docs/user-guides/student_guide.md`
 ```
 
 #### 2. Internal/Technical Features
@@ -386,7 +386,7 @@ Use proper markdown:
 
 ### User Guides
 
-**Location:** `docs/archive/v1-user-guides/`
+**Location:** `docs/user-guides/`
 
 **Files:**
 - `teacher_manual.md` - Complete teacher guide

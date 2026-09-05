@@ -176,7 +176,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines.
 **Permitted:** Classrooms, clubs, nonprofits, research, personal learning.  
 **Prohibited:** Commercial products, SaaS, paid services, for-profit use.
 
-See [LICENSE](LICENSE) for complete terms. [Third-party notices](docs/archive/v1-user-guides/legal/third-party-notices.md).
+See [LICENSE](LICENSE) for complete terms. [Third-party notices](docs/user-guides/legal/third-party-notices.md).
 
 ---
 

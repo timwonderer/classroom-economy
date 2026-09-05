@@ -1,36 +1,24 @@
 {% extends "base.html" %}
+{% from "macros/docs_hero.html" import docs_hero %}
 {% set full_width = true %}
 
 {% block title %}Search Documentation{% if query %} - {{ query }}{% endif %}{% endblock %}
 
 {% block content %}
-<div class="container mt-4 mb-5">
-    <!-- Back Link -->
-    <div class="mb-3">
-        <a href="{{ url_for('docs.index') }}" class="text-decoration-none">
-            <span class="material-symbols-outlined" style="vertical-align: middle;">arrow_back</span>
-            Back to Documentation
-        </a>
-    </div>
+{% call docs_hero("Search", "Two or three words about what you are stuck on works best.",
+                  back_url=url_for('docs.index'), back_label="Back to Documentation") %}
+    <form action="{{ url_for('docs.search') }}" method="get" class="docs-hero-search">
+        <div class="input-group input-group-lg">
+            <input type="search" name="q" class="form-control" placeholder="Search documentation..." value="{{ query }}" aria-label="Search" autofocus>
+            <button class="btn btn-secondary" type="submit">
+                <span class="material-symbols-outlined" style="vertical-align: middle;">search</span>
+                Search
+            </button>
+        </div>
+    </form>
+{% endcall %}
 
-    <!-- Search Header -->
-    <div class="mb-4">
-        <h1 class="mb-3">
-            <span class="material-symbols-outlined" style="vertical-align: middle; font-size: 2.5rem;">search</span>
-            Search Documentation
-        </h1>
-
-        <!-- Search Form -->
-        <form action="{{ url_for('docs.search') }}" method="get">
-            <div class="input-group input-group-lg">
-                <input type="search" name="q" class="form-control" placeholder="Search documentation..." value="{{ query }}" aria-label="Search" autofocus>
-                <button class="btn btn-primary" type="submit">
-                    <span class="material-symbols-outlined" style="vertical-align: middle;">search</span>
-                    Search
-                </button>
-            </div>
-        </form>
-    </div>
+<div class="container mt-5 mb-5">
 
     {% if query %}
         <!-- Results -->
@@ -108,10 +96,11 @@
                             Popular Topics
                         </h3>
                         <ul class="mb-0">
-                            <li><a href="{{ url_for('docs.view_doc', doc_path='user-guides/diagnostics/student') }}" class="text-decoration-none">Student Diagnostics</a></li>
-                            <li><a href="{{ url_for('docs.view_doc', doc_path='user-guides/diagnostics/teacher') }}" class="text-decoration-none">Teacher Diagnostics</a></li>
-                            <li><a href="{{ url_for('docs.view_doc', doc_path='ARCHITECTURE/ARC-CORE-000_Architecture_Foundation') }}" class="text-decoration-none">Architecture</a></li>
-                            <li><a href="{{ url_for('docs.view_doc', doc_path='LOGS/RELEASES/LOG-REL-002_Changelog_Mirror') }}" class="text-decoration-none">Changelog</a></li>
+                            <li><a href="{{ url_for('docs.view_doc', doc_path='user-guides/features/student/index') }}" class="text-decoration-none">All Student Guides</a></li>
+                            <li><a href="{{ url_for('docs.view_doc', doc_path='user-guides/features/teacher/index') }}" class="text-decoration-none">All Teacher Guides</a></li>
+                            <li><a href="{{ url_for('docs.view_doc', doc_path='user-guides/features/teacher/classroom/class-setup') }}" class="text-decoration-none">Class Setup</a></li>
+                            <li><a href="{{ url_for('docs.view_doc', doc_path='user-guides/diagnostics/student') }}" class="text-decoration-none">Student Troubleshooting</a></li>
+                            <li><a href="{{ url_for('docs.view_doc', doc_path='user-guides/diagnostics/teacher') }}" class="text-decoration-none">Teacher Troubleshooting</a></li>
                         </ul>
                     </div>
                 </div>

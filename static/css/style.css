@@ -1569,6 +1569,14 @@ body.maintenance-active .sidebar {
 }
 
 /* ─── Landing Page Styling ─── */
+
+/* The published site (github-pages/style.css) names this token
+   --secondary-color. These rules were ported from there verbatim, so alias it
+   rather than rewriting every reference and letting the two files drift. */
+:root {
+    --secondary-color: var(--secondary);
+}
+
 .landing-shell {
     max-width: 1240px;
     margin: 0 auto;
@@ -1907,4 +1915,50 @@ body.maintenance-active .sidebar {
     outline: 3px solid var(--primary) !important;
     outline-offset: 2px !important;
     box-shadow: none !important;
+}
+
+/* ─── Documentation Hero ───
+   Reuses the landing hero structure so the help centre reads as part of the
+   product. Only the extras that the landing page has no equivalent for. */
+.docs-hero .landing-welcome p {
+    color: var(--text-inverse);
+    font-size: 1.15rem;
+}
+
+.docs-hero-actions {
+    display: grid;
+    gap: 1rem;
+    margin-top: 1.4rem;
+    max-width: 640px;
+}
+
+.docs-hero-search .form-control:focus {
+    box-shadow: none;
+}
+
+.docs-hero-toggle {
+    justify-self: start;
+}
+
+.docs-hero-back {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    margin-top: 1.1rem;
+    color: var(--text-inverse);
+    font-weight: 500;
+    text-decoration: none;
+}
+
+.docs-hero-back:hover,
+.docs-hero-back:focus-visible {
+    color: var(--secondary);
+    text-decoration: underline;
+}
+
+@media (max-width: 767.98px) {
+    .docs-hero .landing-brand {
+        border-right: none;
+        padding-right: 0;
+    }
 }

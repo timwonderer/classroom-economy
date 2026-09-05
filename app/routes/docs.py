@@ -363,27 +363,19 @@ def build_breadcrumbs(doc_path, docs_root):
 # -------------------- ROUTES --------------------
 
 def get_docs_audience():
-    """Determine the documentation audience ('user' or 'devops') for the current request."""
-    from app.auth import get_current_seat, get_current_user
+    """Determine the documentation audience ('user' or 'devops') for the current request.
+
+    Only operators may reach 'devops'. This site is the in-app help centre, and
+    the technical docs ship separately; letting a stale cookie select them would
+    hand teachers and students a set of specs written for maintainers.
+    """
+    from app.auth import get_current_user
 
     user = get_current_user()
     if user and getattr(getattr(user, 'user_role', None), 'value', getattr(user, 'user_role', None)) == 'sysadmin':
         audience = request.cookies.get('docs_audience')
         return audience if audience in ['user', 'devops'] else 'devops'
 
-    # Active teacher/student session enforces 'user' mode
-    if (
-        get_current_seat() is not None
-        or get_current_user() is not None
-    ):
-        return 'user'
-
-    # Otherwise respect the chosen cookie
-    audience = request.cookies.get('docs_audience')
-    if audience in ['user', 'devops']:
-        return audience
-        
-    # Default public audience
     return 'user'
 
 @docs_bp.route('/set-audience')
@@ -703,12 +695,12 @@ def search():
                     continue
                     
                 # Strict audience isolation
-                is_archived_user_guide = "v1-user-guides" in doc_file.parts
+                is_user_guide = top_dir == 'user-guides'
                 if audience == 'user':
-                    if not is_archived_user_guide:
+                    if not is_user_guide:
                         continue
                 else:
-                    if is_archived_user_guide:
+                    if is_user_guide:
                         continue
 
                 content = doc_file.read_text(encoding='utf-8')
