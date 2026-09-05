@@ -5151,6 +5151,7 @@ def edit_store_item(item_id):
         class_id=selected_scope['class_id'], availability_state='IN_USE'
     ).first()
     return render_template(
+        'admin_edit_item.html',
         form=form,
         item=item,
         current_page="store",
