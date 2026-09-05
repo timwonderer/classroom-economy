@@ -347,7 +347,7 @@ failures cleared. The 16 survivors are two classes, neither of them Ledger:
 
 | Count | Failures | Disposition |
 |---|---|---|
-| 14 | `test_admin_membership_gates.py`, `test_multi_teacher_hardening.py` | Track **T2**, the one remaining open track |
+| 14 | `test_admin_membership_gates.py`, `test_multi_teacher_hardening.py` | ~~Track **T2**~~ — **not T2. Test defects, closed 2026-09-05** (see below) |
 | 2 | `test_axe_compliance.py`, `test_layout_accessibility_contract.py` | Untracked until now — regressions from the 2026-09-04 two-host landing-page work, **closed 2026-09-05** (`244757497`, `42aa14738`) |
 
 The two accessibility failures were mine and were not in this tracker, which is worth recording as a
@@ -356,6 +356,23 @@ introduced *after* the review. The icon-font contract asserted the published pag
 which is a single-host assumption the deliberate two-host split invalidated; the axe audit hard-failed
 when its dev server was absent instead of skipping like its other two prerequisites. With a server up
 the axe audit passes on all seven public routes, so nothing was hidden by making it skip.
+
+**The 14 identity failures were not T2 (2026-09-05).** Attributing them to T2 on filename alone was
+wrong, and triage says so: 13 of the 14 were one harness defect —
+`FEATContextError: Nested FEAT context forbidden — Active=FEAT-IDEN-001, attempted=FEAT-IDEN-001`,
+raised from `initialize()`, which opens its own `FEAT-IDEN-001` and so cannot be called from inside a
+test-owned context (INV-ARC-000 §VIII.2). This is exactly the harness noise the §V Identity caveat
+predicted. The 14th was a test asserting the *opposite* of DOM-IDEN-001 §VI: that a seat's
+`IdentityProfile` survives its seat. It does not — the profile is per-seat-within-class and cascades —
+and that test also never constructed the shared student its name claims. Both files now pass in full
+(**22 passed**, from 14 failed / 8 passed).
+
+The consequence for T2 is the point: this noise was *masking* signal, and no genuine B4–B7 failure
+could be judged until it was cleared. With it cleared, **none appeared**. B4–B7 remain open on source
+review, not on a red test — which is consistent with their nature (B4 is a hard 500 on sysadmin views,
+B5 a disclosure behind that 500, B7 an unscoped lookup that needs a colliding `public_id` to observe).
+They are real, and they are unpinned. T2 must therefore land regression coverage alongside the fix,
+not merely turn existing tests green.
 
 ### B9 — Daily-limit auto tap-out is silently non-functional (FEAT-PROD-001 executes itself) — **CLOSED 2026-09-04**
 **Domain:** Productivity & Payroll · **Severity:** High · **Violates:** INV-ARC-000 §VIII.2, INV-ARC-021 §V.2

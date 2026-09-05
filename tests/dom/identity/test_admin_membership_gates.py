@@ -105,9 +105,12 @@ def test_DOM_IDEN_006__delete_class_requires_confirmation(client):
 
 
 def test_DOM_IDEN_006__issues_queue_respects_current_class_membership_scope(client):
+    # `initialize` opens its own FEAT-IDEN-001, so it runs OUTSIDE the context
+    # this test owns — exactly one FEAT executes per path (INV-ARC-000 §VIII.2).
+    class_a = initialize("chemistry_p1", client.application)
+    class_b = initialize("biology_block_a", client.application)
+
     with FEATContext("FEAT-IDEN-001", idempotency_key="admin-membership:issues-gate-admin"):
-        class_a = initialize("chemistry_p1", client.application)
-        class_b = initialize("biology_block_a", client.application)
         admin = class_a.teacher_user
         seat_a = class_a.students[0].seat
         student_user = class_a.students[0].user
@@ -164,8 +167,7 @@ def test_DOM_IDEN_006__issues_queue_respects_current_class_membership_scope(clie
 
 
 def test_DOM_IDEN_006__add_individual_student_requires_current_class_context(client):
-    with FEATContext("FEAT-IDEN-001", idempotency_key="admin-membership:student-guard"):
-        class_row = initialize("chemistry_p1", client.application)
+    class_row = initialize("chemistry_p1", client.application)
 
     admin = class_row.teacher_user
     teacher_seat = _teacher_seat(class_row)
@@ -187,8 +189,7 @@ def test_DOM_IDEN_006__add_individual_student_requires_current_class_context(cli
 
 
 def test_DOM_IDEN_007__add_individual_student_creates_single_student_seat_for_new_student(client):
-    with FEATContext("FEAT-IDEN-001", idempotency_key="admin-membership:student-single-individual"):
-        class_row = initialize("chemistry_p1", client.application)
+    class_row = initialize("chemistry_p1", client.application)
 
     admin = class_row.teacher_user
     teacher_seat = _teacher_seat(class_row)
@@ -223,9 +224,8 @@ def test_DOM_IDEN_007__add_individual_student_creates_single_student_seat_for_ne
 
 
 def test_DOM_IDEN_006__add_individual_student_uses_selected_class_when_block_has_other_scope(client):
-    with FEATContext("FEAT-IDEN-001", idempotency_key="admin-membership:student-scope"):
-        class_row_old = initialize("chemistry_p1", client.application)
-        class_row_new = initialize("ap_csp_p3", client.application)
+    class_row_old = initialize("chemistry_p1", client.application)
+    class_row_new = initialize("ap_csp_p3", client.application)
 
     admin = class_row_new.teacher_user
     teacher_seat_new = _teacher_seat(class_row_new)
@@ -263,8 +263,7 @@ def test_DOM_IDEN_001__students_page_does_not_render_hidden_block_input(client):
 
 
 def test_DOM_IDEN_006__store_create_requires_current_class_context(client):
-    with FEATContext("FEAT-IDEN-001", idempotency_key="admin-membership:store-guard"):
-        class_row = initialize("chemistry_p1", client.application)
+    class_row = initialize("chemistry_p1", client.application)
 
     admin = class_row.teacher_user
     teacher_seat = _teacher_seat(class_row)
@@ -281,8 +280,7 @@ def test_DOM_IDEN_006__store_create_requires_current_class_context(client):
 
 def test_DOM_IDEN_006__payroll_settings_requires_current_class_context(client):
     """Payroll settings POST without canonical class context should not create settings."""
-    with FEATContext("FEAT-IDEN-001", idempotency_key="admin-membership:payroll-guard"):
-        class_row = initialize("chemistry_p1", client.application)
+    class_row = initialize("chemistry_p1", client.application)
 
     initial_settings_count = db.session.query(PayrollSettings).count()
     response = admin_update_payroll_settings(client)
@@ -319,8 +317,7 @@ def test_DOM_IDEN_001__payroll_settings_uses_feature_scope_blocks_not_student_bl
 
 
 def test_DOM_IDEN_006__class_scoped_write_rejects_stale_session_alias(client):
-    with FEATContext("FEAT-IDEN-001", idempotency_key="admin-membership:stale-guard"):
-        class_row = initialize("chemistry_p1", client.application)
+    class_row = initialize("chemistry_p1", client.application)
 
     admin = class_row.teacher_user
     teacher_seat = _teacher_seat(class_row)
@@ -342,9 +339,8 @@ def test_DOM_IDEN_006__class_scoped_write_rejects_stale_session_alias(client):
 
 
 def test_DOM_IDEN_006__edit_student_requires_active_canonical_class_scope(client):
-    with FEATContext("FEAT-IDEN-001", idempotency_key="admin-membership:student-edit-scope"):
-        class_a = initialize("chemistry_p1", client.application)
-        class_b = initialize("biology_block_a", client.application)
+    class_a = initialize("chemistry_p1", client.application)
+    class_b = initialize("biology_block_a", client.application)
 
     admin = class_a.teacher_user
     teacher_seat = _teacher_seat(class_a)
@@ -364,9 +360,8 @@ def test_DOM_IDEN_006__edit_student_requires_active_canonical_class_scope(client
 
 
 def test_DOM_IDEN_006__store_query_scope_does_not_implicitly_switch_session_context(client):
-    with FEATContext("FEAT-IDEN-001", idempotency_key="admin-membership:query-scope"):
-        class_row = initialize("chemistry_p1", client.application)
-        initialize("biology_block_a", client.application)
+    class_row = initialize("chemistry_p1", client.application)
+    initialize("biology_block_a", client.application)
 
     admin = class_row.teacher_user
     teacher_seat = _teacher_seat(class_row)
@@ -378,9 +373,8 @@ def test_DOM_IDEN_006__store_query_scope_does_not_implicitly_switch_session_cont
 
 
 def test_DOM_IDEN_001__store_page_ignores_request_block_selector(client):
-    with FEATContext("FEAT-IDEN-001", idempotency_key="admin-membership:store-page-block"):
-        class_row_a = initialize("chemistry_p1", client.application)
-        initialize("biology_block_a", client.application)
+    class_row_a = initialize("chemistry_p1", client.application)
+    initialize("biology_block_a", client.application)
 
     admin = class_row_a.teacher_user
     teacher_seat = _teacher_seat(class_row_a)
@@ -392,8 +386,7 @@ def test_DOM_IDEN_001__store_page_ignores_request_block_selector(client):
 
 
 def test_DOM_IDEN_001__transactions_redirect_drops_block_selector(client):
-    with FEATContext("FEAT-IDEN-001", idempotency_key="admin-membership:transactions-redirect-block"):
-        class_row = initialize("chemistry_p1", client.application)
+    class_row = initialize("chemistry_p1", client.application)
 
     admin = class_row.teacher_user
     teacher_seat = _teacher_seat(class_row)
@@ -408,9 +401,8 @@ def test_DOM_IDEN_001__transactions_redirect_drops_block_selector(client):
 
 
 def test_DOM_IDEN_001__banking_page_ignores_request_block_selector(client):
-    with FEATContext("FEAT-IDEN-001", idempotency_key="admin-membership:banking-page-block"):
-        class_row_a = initialize("chemistry_p1", client.application)
-        class_row_b = initialize("biology_block_a", client.application)
+    class_row_a = initialize("chemistry_p1", client.application)
+    class_row_b = initialize("biology_block_a", client.application)
 
     admin = class_row_a.teacher_user
     teacher_seat = _teacher_seat(class_row_a)

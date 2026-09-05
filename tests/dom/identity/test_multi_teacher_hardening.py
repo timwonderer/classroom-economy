@@ -67,10 +67,12 @@ def test_DOM_IDEN_007__student_teacher_unique_constraint(client):
     """Verify unique constraint on seats per class per user."""
     from sqlalchemy.exc import IntegrityError
 
-    with FEATContext("FEAT-IDEN-001", idempotency_key="multi-teacher:unique-seat"):
-        class_row = initialize("chemistry_p1", db)
-        seat = class_row.students[0].seat
+    # `initialize` opens its own FEAT-IDEN-001, so it runs OUTSIDE the context
+    # this test owns — exactly one FEAT executes per path (INV-ARC-000 §VIII.2).
+    class_row = initialize("chemistry_p1", db)
+    seat = class_row.students[0].seat
 
+    with FEATContext("FEAT-IDEN-001", idempotency_key="multi-teacher:unique-seat"):
         with pytest.raises(IntegrityError):
             duplicate = Seat(user_id=seat.user_id, class_id=class_row.class_id, role="student")
             db.session.add(duplicate)
@@ -79,16 +81,57 @@ def test_DOM_IDEN_007__student_teacher_unique_constraint(client):
 
 
 def test_DOM_IDEN_007__remove_student_from_teacher_scope_preserves_shared_student(client):
-    """Student in two classes survives removal from one class."""
+    """A User participating in two Classes survives removal from one of them.
+
+    DOM-IDEN-001 §VI: participation is held by ``Seat``, one per ``User`` per
+    ``Class``, and an ``IdentityProfile`` is display data *for a Seat within a
+    Class* — 1:1, cascade-deleted with its seat. So dropping the class A seat
+    must take that seat's profile with it while leaving the ``User`` and the
+    entire class B participation untouched.
+
+    An earlier version of this test asserted the class A profile SURVIVED its
+    seat, which encoded a pre-canonical model where the profile was a
+    user-level object shared across classes. It also never actually shared a
+    student: it provisioned a second classroom and then never used it, so the
+    "shared" half of the scenario was never constructed.
+    """
+    # `initialize` opens its own FEAT-IDEN-001, so it runs OUTSIDE the context
+    # this test owns — exactly one FEAT executes per path (INV-ARC-000 §VIII.2).
+    class_a = initialize("chemistry_p1", db)
+    class_b = initialize("biology_block_a", db)
+
+    student = class_a.students[0]
+    seat_a = student.seat
+    seat_a_id = seat_a.id
+    profile_a_id = seat_a.identity_profile.id
+
     with FEATContext("FEAT-IDEN-001", idempotency_key="multi-teacher:shared-student"):
-        class_a = initialize("chemistry_p1", db)
-        class_b = initialize("biology_block_a", db)
-        seat_a = class_a.students[0].seat
-
-        profile_id = seat_a.identity_profile.id
-
-        db.session.execute(sa_delete(Seat).where(Seat.id == seat_a.id))
+        # Actually share the student: a second seat for the SAME user in class B,
+        # with its own class-local display profile.
+        seat_b = Seat(user_id=student.user.id, class_id=class_b.class_id, role="student")
+        db.session.add(seat_b)
         db.session.flush()
+        profile_b = IdentityProfile(
+            seat_id=seat_b.id,
+            class_id=class_b.class_id,
+            profile_type="student",
+            first_name=student.first_name,
+            last_name=student.last_name,
+        )
+        db.session.add(profile_b)
+        db.session.flush()
+        seat_b_id, profile_b_id = seat_b.id, profile_b.id
 
-        profile = db.session.get(IdentityProfile, profile_id)
-        assert profile is not None
+        # Remove the student from class A only.
+        db.session.execute(sa_delete(Seat).where(Seat.id == seat_a_id))
+        db.session.flush()
+        db.session.expire_all()
+
+    # Class A participation is gone, profile and all — the profile is seat-local.
+    assert db.session.get(Seat, seat_a_id) is None
+    assert db.session.get(IdentityProfile, profile_a_id) is None
+
+    # The User survives, because it still participates through class B.
+    assert db.session.get(User, student.user.id) is not None
+    assert db.session.get(Seat, seat_b_id) is not None
+    assert db.session.get(IdentityProfile, profile_b_id) is not None
