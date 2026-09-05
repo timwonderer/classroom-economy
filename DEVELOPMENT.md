@@ -3,7 +3,7 @@
 **Last Updated:** 2026-08-06
 **Current Released Version:** 1.9.0
 **Engineering State:** v2.0 with 3 domains Phase 10 certified (Identity, Obligations, Store)
-**Active Integration Branch:** `codex/v2.0`
+**Active Integration Branch:** `CTH_v2.0`
 
 ## Quick Links
 
@@ -21,7 +21,10 @@
 
 ## Branch and Database Truth
 
-- Only `codex/v2.0` is an active protected v2 branch.
+- Only `CTH_v2.0` is an active protected v2 branch. It is the same branch that older
+  documents and CHANGELOG entries call `codex/v2.0`; that name was retired, and no ref
+  by that name exists locally or on the remote. Read historical references accordingly
+  rather than looking for a second branch.
 - Dev and migration work must use the team-configured v2 dev database.
 - Test runs must use the team-configured PostgreSQL test database.
 - The validated v2 branch state passed:

@@ -195,4 +195,24 @@ def test_switch_class_rejects_missing_runtime_seat(client, app, multi_class_stud
     target_class_id = multi_class_student["classrooms"]["B"].class_id
     response = student_switch_class(client, target_class_id)
     assert response.status_code == 302
-    assert "/student/login" in response.location
+
+    # This asserts the OUTCOME (fail closed to an unauthenticated state), not the
+    # first hop. A seatless `users` row is a state DOM-IDEN-001 §VI Participation
+    # Existence Law forbids outright — "a User SHALL exist only while participating
+    # in at least one Class", and law 3 requires the row be removed. So no doc names
+    # a correct redirect target for this state, and pinning one intermediate hop
+    # pins an implementation detail of a state that should be unreachable. What IS
+    # doc-governed is that resolution fails closed: a missing `last_active_seat_id`
+    # raises invariantViolation (archived DOM-IDEN-001 §"last_active_seat_id"), and
+    # the class-selection gate may only settle on failure "after confirming that no
+    # valid class/seat pair remains" — which is the confirmation this user fails.
+    # Follow the chain and assert where it comes to rest.
+    trail = [response.location]
+    for _ in range(4):
+        if "/student/login" in trail[-1]:
+            break
+        hop = client.get(trail[-1])
+        if hop.status_code != 302:
+            break
+        trail.append(hop.location)
+    assert "/student/login" in trail[-1], f"did not fail closed; redirect trail: {trail}"
