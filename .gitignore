@@ -63,3 +63,7 @@ ocp.db-wal
 
 # Agent worktree artifacts
 .claude/worktrees/
+
+# Vendor SDKs downloaded into the repo root
+google-cloud-sdk/
+google-cloud-cli-*.tar.gz
