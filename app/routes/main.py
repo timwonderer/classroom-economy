@@ -18,7 +18,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.extensions import db, limiter
-from app.models import User
+from app.models import User, UserRole
 from app.hash_utils import hash_username_lookup
 from app.utils.helpers import render_template_with_fallback as render_template, is_safe_url
 from app.utils.canonical_temporal_resolver import CLASS_LEVEL_EVALUATION, canonical_temporal_resolver
@@ -490,14 +490,6 @@ def verify_hall_pass(teacher_public_token):
     )
 
 
-# -------------------- DEBUG ROUTES --------------------
-
-@main_bp.route('/debug/filters')
-def debug_filters():
-    """List all available Jinja2 filters for debugging."""
-    return jsonify(list(current_app.jinja_env.filters.keys()))
-
-
 @main_bp.route('/switch-view')
 def switch_view():
     """Switches the view between mobile and desktop."""
@@ -513,19 +505,3 @@ def switch_view():
         return redirect(url_for('main.home'))
 
     return redirect(next_url)  # nosec # Safe: validated by is_safe_url()
-
-
-@main_bp.route('/debug/admin-db-test')
-def debug_admin_db_test():
-    """
-    Temporary route to confirm admin and invite codes tables are accessible.
-    """
-    try:
-        admins = User.query.filter(User.user_role == UserRole.TEACHER).all()
-        return jsonify({
-            "admin_count": len(admins),
-            "status": "success"
-        }), 200
-    except Exception as e:
-        current_app.logger.exception("System admin DB test failed")
-        return jsonify({"status": "error", "message": "System admin DB test failed due to an internal error."}), 500

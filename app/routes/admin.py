@@ -7875,9 +7875,6 @@ def update_expected_weekly_hours():
 
 # -------------------- PAYROLL REWARDS & FINES --------------------
 
-@admin_bp.route('/payroll/rewards/add', methods=['POST'])
-
-
 @admin_bp.route('/payroll/transactions/<int:transaction_id>/void', methods=['POST'])
 @admin_required
 def void_payroll_transaction(transaction_id):
