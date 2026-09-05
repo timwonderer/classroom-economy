@@ -341,6 +341,22 @@ per-account rows, account-scoped reads, the INV-LED-006 recompute-on-missing-row
 uniqueness. All four fail against the pre-fix tree with
 `UndefinedColumn: column ledger_balance_snapshot.posted_checking_balance_cents does not exist`.
 
+**Full-suite effect (measured, not projected).** 92 failed / 1102 passed → **16 failed / 1183 passed**
+(commit `dbb97fa00`). The estimate above — 42 direct plus most of the 29 downstream 500s — held: 76
+failures cleared. The 16 survivors are two classes, neither of them Ledger:
+
+| Count | Failures | Disposition |
+|---|---|---|
+| 14 | `test_admin_membership_gates.py`, `test_multi_teacher_hardening.py` | Track **T2**, the one remaining open track |
+| 2 | `test_axe_compliance.py`, `test_layout_accessibility_contract.py` | Untracked until now — regressions from the 2026-09-04 two-host landing-page work, **closed 2026-09-05** (`244757497`, `42aa14738`) |
+
+The two accessibility failures were mine and were not in this tracker, which is worth recording as a
+gap in how it is maintained: a blocker list assembled from domain review will not catch a defect
+introduced *after* the review. The icon-font contract asserted the published pages must not use a CDN,
+which is a single-host assumption the deliberate two-host split invalidated; the axe audit hard-failed
+when its dev server was absent instead of skipping like its other two prerequisites. With a server up
+the axe audit passes on all seven public routes, so nothing was hidden by making it skip.
+
 ### B9 — Daily-limit auto tap-out is silently non-functional (FEAT-PROD-001 executes itself) — **CLOSED 2026-09-04**
 **Domain:** Productivity & Payroll · **Severity:** High · **Violates:** INV-ARC-000 §VIII.2, INV-ARC-021 §V.2
 
