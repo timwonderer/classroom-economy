@@ -74,6 +74,18 @@ jobs:
             exit 2
           fi
 
+          # CI-RENDER's evidence is parametrized over ACCESSIBILITY_TEMPLATE_PATHS.
+          # Unset, the parameter set is empty, pytest exits 0, and the family
+          # reports PASS having audited nothing. Deleted templates are excluded
+          # because the audit renders each file it is given.
+          git diff --name-only --diff-filter=AM "${BASE_SHA}...${HEAD_SHA}" -- 'templates/**' \
+            > changed_templates.txt
+          {
+            echo "ACCESSIBILITY_TEMPLATE_PATHS<<TEMPLATE_LIST_EOF"
+            cat changed_templates.txt
+            echo "TEMPLATE_LIST_EOF"
+          } >> "${GITHUB_ENV}"
+
       - name: Run constitutional evidence runner
         env:
           TEST_DATABASE_URL: postgresql://user:password@localhost:5432/classroom_test_db
@@ -99,4 +111,5 @@ jobs:
             constitutional-ci-result.json
             constitutional-ci-selfcheck.json
             changed_paths.txt
+            changed_templates.txt
           if-no-files-found: error

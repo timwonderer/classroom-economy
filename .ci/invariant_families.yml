@@ -68,7 +68,14 @@ families:
       - tests/test_accessibility.py
     mandatory: true
     pass_contract: Narrow static HTML checks execute successfully; browser completeness is not claimed.
-    known_limits: Rendered browser, computed styles, keyboard behavior, and real Axe evidence remain uncovered.
+    known_limits: >-
+      The audit is parametrized over ACCESSIBILITY_TEMPLATE_PATHS, so it covers only templates
+      changed by the pull request. A change that selects this family without touching a template
+      audits nothing and still reports PASS. Templates that extend a layout are skipped as
+      fragments, as are layouts, macros, components, and named partials, so a pull request whose
+      templates are all of those kinds also reports PASS having audited nothing. That is most of
+      the tree: 52 of 86 top-level templates currently extend a layout. Rendered browser, computed
+      styles, keyboard behavior, and real Axe evidence remain uncovered.
   - family_id: CI-VALIDATION
     governing_authority: [INV-ARC-017]
     path_rules: [.github/workflows/**, scripts/**, tests/conftest.py, docs/SPEC/SPEC-INV-001*]
