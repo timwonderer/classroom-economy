@@ -625,6 +625,43 @@ to `get_rent_waiver_history_for_class` under DOM-OBL-001 §V.6 one-time-immutabl
 **Cross-cutting** — 9 Dependabot advisories on the default branch (8 high, 1 moderate); accessibility
 remediation tracked separately in `ACCESSIBILITY_REVIEW_2026-09-03.md`.
 
+### Launch checklist (must clear before promotion) — verified 2026-09-05
+
+Unlike the findings above, these are *not* post-ship backlog. Each one is a release-mechanics defect
+that domain readiness does not cover, and every item was confirmed against the working tree rather
+than recalled.
+
+**CI gates on a branch that does not exist.** Three workflows filter on `codex/v2.0`. That ref is
+absent locally *and* on the remote — `git branch -a | grep -c codex/v2.0` returns **0**. The
+integration branch is `CTH_v2.0` (`origin/HEAD` points there). Consequences differ per workflow and
+the difference matters:
+
+| Workflow | PR leg | Push leg | Net effect |
+|---|---|---|---|
+| `actionlint.yml` | `pull_request` — no branch filter, **fires** | dead | degraded only |
+| `policy-guardrails.yml` | `pull_request: '**'`, **fires** | dead | the `guardrails-push` job is `if: github.ref == 'refs/heads/codex/v2.0'` — permanently false, so the **"no waivers allowed" strict check has never once run** |
+| `check-migrations.yml` | filters `codex/v2.0`, **dead** | dead | **fully inert — zero migration validation on any PR** |
+
+`check-migrations` being wholly dead is the sharpest of the three: migrations are this repo's
+single most documented source of deploy failure, and the gate built to catch that has never fired.
+It carries a second, independent bug — its `paths` filter watches `app/models/**`, but this repo has
+`app/models.py`, a module, not a package. Fixing only the branch name would leave model changes
+still unable to trigger it.
+
+**`deploy.yml` deploys production from `main`, which is 1053 commits behind.**
+`git rev-list --count origin/main..origin/CTH_v2.0` = **1053**. Production therefore currently runs
+v1-era code, and shipping v2 requires an explicit decision — merge `CTH_v2.0` into `main`, or
+repoint the deploy trigger. This is a decision for the owner, not a defect to silently fix: it
+determines what "ship" means on 2026-09-17.
+
+**Retirement pass.** `v2progress.html` and the "transition site" vocabulary (see §VI) go stale the
+moment this branch is promoted. `github-pages/v2transition.html` is absent from HEAD and would
+vanish from the published site on promotion.
+
+**Stale branch references in guidance.** `CLAUDE.md` names `codex/v2.0` as the base branch. It is
+the same nonexistent ref the CI workflows point at, and it will keep reproducing this class of
+error in future work until corrected.
+
 ---
 
 ## VI. Deferred Work Recovered From Branch Triage

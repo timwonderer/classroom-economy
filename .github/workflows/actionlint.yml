@@ -10,7 +10,7 @@ on:
       - ".github/workflows/**"
   push:
     branches:
-      - codex/v2.0
+      - CTH_v2.0
     paths:
       - ".github/workflows/**"
 

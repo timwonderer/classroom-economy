@@ -1,16 +1,26 @@
 name: Check Database Migrations
 
+# Both legs previously filtered on `codex/v2.0`, a branch that exists neither
+# locally nor on the remote, so this gate was entirely inert — no migration was
+# ever validated by CI. The PR leg now matches any target branch: migrations are
+# this repo's most documented source of deploy failure, and a validation gate
+# must not be able to go silently dead again the next time a branch is renamed.
+#
+# `app/models/**` never matched either: this repo has `app/models.py`, a module,
+# not a package. Both spellings are listed so the filter survives a future split.
 on:
   push:
-    branches: [ codex/v2.0 ]
+    branches: [ CTH_v2.0 ]
     paths:
       - 'migrations/versions/**'
+      - 'app/models.py'
       - 'app/models/**'
       - 'scripts/validate-migrations.py'
   pull_request:
-    branches: [ codex/v2.0 ]
+    branches: [ '**' ]
     paths:
       - 'migrations/versions/**'
+      - 'app/models.py'
       - 'app/models/**'
       - 'scripts/validate-migrations.py'
 
