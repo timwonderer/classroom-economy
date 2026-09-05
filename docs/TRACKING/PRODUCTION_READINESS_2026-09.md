@@ -666,22 +666,43 @@ Unlike the findings above, these are *not* post-ship backlog. Each one is a rele
 that domain readiness does not cover, and every item was confirmed against the working tree rather
 than recalled.
 
-**CI gates on a branch that does not exist.** Three workflows filter on `codex/v2.0`. That ref is
-absent locally *and* on the remote — `git branch -a | grep -c codex/v2.0` returns **0**. The
-integration branch is `CTH_v2.0` (`origin/HEAD` points there). Consequences differ per workflow and
-the difference matters:
+**CI gates on a branch that does not exist — CLOSED 2026-09-05 (`00fdcecf3`).** Three workflows
+filtered on `codex/v2.0`, a ref absent locally *and* on the remote. `actionlint.yml` was degraded
+only; `policy-guardrails.yml`'s `guardrails-push` job was `if: github.ref ==
+'refs/heads/codex/v2.0'`, permanently false, so the "no waivers allowed" strict check had never once
+run; `check-migrations.yml` was fully inert, giving zero migration validation on any PR. All three
+now target `CTH_v2.0`. `check-migrations.yml` also carried an independent second bug — its `paths`
+filter watched `app/models/**`, but this repo has `app/models.py`, a module, not a package, so
+fixing only the branch name would have left model changes unable to trigger it. Both spellings are
+now listed.
 
-| Workflow | PR leg | Push leg | Net effect |
-|---|---|---|---|
-| `actionlint.yml` | `pull_request` — no branch filter, **fires** | dead | degraded only |
-| `policy-guardrails.yml` | `pull_request: '**'`, **fires** | dead | the `guardrails-push` job is `if: github.ref == 'refs/heads/codex/v2.0'` — permanently false, so the **"no waivers allowed" strict check has never once run** |
-| `check-migrations.yml` | filters `codex/v2.0`, **dead** | dead | **fully inert — zero migration validation on any PR** |
+This is the fifth instance of one failure class: **a filter that matches nothing is
+indistinguishable from a gate that passed.** The others were the `github-pages` environment
+branch-policy rejection, the `app/services/*view*.` trailing-dot path rule, and two inside the
+evidence manifest itself. The class is now structurally guarded rather than found by inspection —
+see below.
 
-`check-migrations` being wholly dead is the sharpest of the three: migrations are this repo's
-single most documented source of deploy failure, and the gate built to catch that has never fired.
-It carries a second, independent bug — its `paths` filter watches `app/models/**`, but this repo has
-`app/models.py`, a module, not a package. Fixing only the branch name would leave model changes
-still unable to trigger it.
+**Constitutional CI is live but advisory — landed 2026-09-05.** `.ci/invariant_families.yml` +
+`scripts/ci_classifier.py` + `scripts/ci_evidence_runner.py` classify a PR's changed paths into
+eight invariant families and execute each family's declared evidence, aggregating fail-closed
+(FAIL > BLOCKED > NOT_EVALUATED > PASS). Two defects of the matches-nothing class were found and
+fixed while landing it:
+
+- `CI-XDOMAIN` selected on `app/domains/**` and `app/jobs/**`. Neither directory has ever existed,
+  so those rules contributed no selection at all.
+- The runner never invoked pytest. `_command_for` emitted `[python, -q, path]`, running evidence
+  modules as bare scripts, which collects no tests. It failed closed rather than passing falsely —
+  every module exits 1 on import — but the gate had never once executed evidence.
+
+`ci_evidence_runner.py --self-check` now runs first in the workflow and fails the build if any path
+rule matches zero tracked files, any evidence command names a missing file, or any auxiliary
+evidence id has no backing script. A dead rule is a build failure, not a silent pass.
+
+**Keep it out of required status checks until it runs green on a real PR.** The aggregate is
+currently `NOT_EVALUATED` for most PRs because `CI-XDOMAIN` declares no evidence and selects on
+`app/feats/**`, `app/routes/**`, `app/services/**`, and `migrations/**` — nearly everything. That is
+the honest answer, not a defect, but it exits 1. Every family that *does* declare evidence passes on
+this branch as of 2026-09-05: CI-ARC-EXEC, CI-SCOPE, CI-PERSIST, CI-RENDER, CI-VALIDATION.
 
 **`deploy.yml` deploys production from `main`, which is 1053 commits behind.**
 `git rev-list --count origin/main..origin/CTH_v2.0` = **1053**. Production therefore currently runs
