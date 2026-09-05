@@ -685,14 +685,25 @@ see below.
 **Constitutional CI is live but advisory — landed 2026-09-05.** `.ci/invariant_families.yml` +
 `scripts/ci_classifier.py` + `scripts/ci_evidence_runner.py` classify a PR's changed paths into
 eight invariant families and execute each family's declared evidence, aggregating fail-closed
-(FAIL > BLOCKED > NOT_EVALUATED > PASS). Two defects of the matches-nothing class were found and
-fixed while landing it:
+(FAIL > BLOCKED > NOT_EVALUATED > PASS). Four defects of the matches-nothing class were found and
+fixed while landing it, in ascending order of how well each was disguised:
 
 - `CI-XDOMAIN` selected on `app/domains/**` and `app/jobs/**`. Neither directory has ever existed,
   so those rules contributed no selection at all.
 - The runner never invoked pytest. `_command_for` emitted `[python, -q, path]`, running evidence
   modules as bare scripts, which collects no tests. It failed closed rather than passing falsely —
   every module exits 1 on import — but the gate had never once executed evidence.
+- `CI-RENDER` reported **PASS** having audited nothing. `tests/test_accessibility.py` parametrizes
+  over `ACCESSIBILITY_TEMPLATE_PATHS`, which the workflow never set; an empty parameter set exits 0.
+  Worse than the two above, which at least went red. The workflow now feeds the changed templates.
+- The classifier stripped the leading dot from every dotfile path. `lstrip("./")` removes a
+  character set, not a prefix, so `.github/workflows/**` matched nothing and `CI-VALIDATION` had
+  never been selected by its own rule. The fail-closed fallback then selected a family set that
+  happens to contain `CI-VALIDATION`, so the output looked right while the mechanism was dead —
+  and every CI-config change silently ran seven unrelated database test modules. This is the one
+  to remember: **the safety net is what made the hole invisible.** Fixed with `removeprefix`, and
+  `.ci/**` — the manifest defining every gate, previously governed by no family — is now a
+  `CI-VALIDATION` path rule.
 
 `ci_evidence_runner.py --self-check` now runs first in the workflow and fails the build if any path
 rule matches zero tracked files, any evidence command names a missing file, or any auxiliary
@@ -703,6 +714,13 @@ currently `NOT_EVALUATED` for most PRs because `CI-XDOMAIN` declares no evidence
 `app/feats/**`, `app/routes/**`, `app/services/**`, and `migrations/**` — nearly everything. That is
 the honest answer, not a defect, but it exits 1. Every family that *does* declare evidence passes on
 this branch as of 2026-09-05: CI-ARC-EXEC, CI-SCOPE, CI-PERSIST, CI-RENDER, CI-VALIDATION.
+
+**Latent trap in the `testing` environment.** It carries a `branch_policy` protection rule with
+`custom_branch_policies: true` and an **empty** policy list — the same shape that made the
+`github-pages` deployment reject every ref. It does not block PRs today: `schema-gate.yml` uses the
+same environment and has five recent successful `pull_request` runs. But `constitutional-ci.yml`
+also names `environment: testing`, so if that empty list ever begins to be enforced, both gates go
+dead at once and the failure will look like an infrastructure hiccup rather than a policy.
 
 **`deploy.yml` deploys production from `main`, which is 1053 commits behind.**
 `git rev-list --count origin/main..origin/CTH_v2.0` = **1053**. Production therefore currently runs
