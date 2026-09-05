@@ -26,6 +26,10 @@ def test_DOM_LED_001__idempotent_transaction_types_are_explicit():
         "refund",
         "overdraft_fee",
         "payroll",
+        # Added by the canonical rent obligation model (564fa49a) without
+        # updating this pin. A rent charge must not double-post on retry, so it
+        # belongs in the set; the enumeration here is what had gone stale.
+        "rent_payment",
         "Interest",
     })
     assert IDEMPOTENT_TRANSACTION_TYPES == expected

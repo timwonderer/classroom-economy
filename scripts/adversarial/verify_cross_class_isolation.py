@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from app import create_app
-from app.models import BalanceCache, Seat, Transaction
+from app.models import LedgerBalanceSnapshot, Seat, Transaction
 
 
 def now_iso() -> str:
@@ -54,14 +54,14 @@ def main() -> int:
                 )
 
         bc_rows = (
-            BalanceCache.query.join(Seat, Seat.id == BalanceCache.seat_id)
-            .with_entities(BalanceCache.id, BalanceCache.class_id, BalanceCache.seat_id, Seat.class_id)
+            LedgerBalanceSnapshot.query.join(Seat, Seat.id == LedgerBalanceSnapshot.seat_id)
+            .with_entities(LedgerBalanceSnapshot.id, LedgerBalanceSnapshot.class_id, LedgerBalanceSnapshot.seat_id, Seat.class_id)
             .all()
         )
         for bc_id, bc_class_id, seat_id, seat_class_id in bc_rows:
             if str(bc_class_id) != str(seat_class_id):
                 finding = {
-                    "table": BalanceCache.__tablename__,
+                    "table": LedgerBalanceSnapshot.__tablename__,
                     "row_id": bc_id,
                     "seat_id": seat_id,
                     "row_class_id": str(bc_class_id),

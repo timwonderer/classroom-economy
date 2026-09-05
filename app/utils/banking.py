@@ -10,6 +10,85 @@ from app.utils.seat_scope import transaction_scope_filter
 
 logger = logging.getLogger(__name__)
 
+# Deterministic account order. INV-LED-009 requires a seat settlement to lock all
+# applicable account snapshot rows in a fixed order, which is what keeps two
+# concurrent settlements for the same seat from deadlocking on each other.
+SETTLEMENT_ACCOUNT_TYPES = ("checking", "savings")
+
+
+def _normalize_account_type(raw_account_type, transaction_id) -> str:
+    """Coerce a transaction's account target to a canonical snapshot scope value."""
+    value = getattr(raw_account_type, "value", raw_account_type)
+    account_type = str(value).lower()
+    if account_type in (AccountType.CHECKING.value, "checking"):
+        return "checking"
+    if account_type in (AccountType.SAVINGS.value, "savings"):
+        return "savings"
+    raise ValueError(
+        f"Unknown account type '{raw_account_type}' for transaction {transaction_id}"
+    )
+
+
+def _lock_account_snapshot(class_id: str, seat_id: int, account_type: str):
+    """Lock — or create — the snapshot row for one ``(class, seat, account)`` scope.
+
+    Returns ``(snapshot, was_created)``. Snapshot identity is per account
+    (DOM-LED-001 §2), so settlement holds one lock per account rather than a
+    single row standing in for both.
+    """
+    def _locked():
+        return (
+            LedgerBalanceSnapshot.query
+            .filter(
+                LedgerBalanceSnapshot.class_id == class_id,
+                LedgerBalanceSnapshot.seat_id == seat_id,
+                LedgerBalanceSnapshot.account_type == account_type,
+            )
+            .with_for_update()
+            .first()
+        )
+
+    snapshot = _locked()
+    if snapshot:
+        return snapshot, False
+
+    try:
+        with db.session.begin_nested():
+            snapshot = LedgerBalanceSnapshot(
+                seat_id=seat_id,
+                class_id=class_id,
+                account_type=account_type,
+                posted_balance_cents=0,
+            )
+            db.session.add(snapshot)
+            db.session.flush()
+            return snapshot, True
+    except IntegrityError:
+        # uq_balance_snapshot_scope rejected a concurrent insert for this scope.
+        logger.warning("Race condition creating LedgerBalanceSnapshot, retrying fetch")
+        snapshot = _locked()
+        if not snapshot:
+            raise
+        return snapshot, False
+
+
+def _posted_history_cents(scope_filter, class_id: str, account_type: str) -> int:
+    """Recompute one account's posted balance from ledger history (INV-LED-006)."""
+    all_non_void = db.session.query(db.func.sum(Transaction.amount)).filter(
+        scope_filter,
+        Transaction.class_id == class_id,
+        Transaction.account_type == account_type,
+        Transaction.is_void == False,
+    ).scalar() or Decimal('0.00')
+    pending = db.session.query(db.func.sum(Transaction.amount)).filter(
+        scope_filter,
+        Transaction.class_id == class_id,
+        Transaction.status == TransactionStatus.PENDING,
+        Transaction.account_type == account_type,
+        Transaction.is_void == False,
+    ).scalar() or Decimal('0.00')
+    return int((all_non_void - pending) * 100)
+
 
 def settle_pending_transaction_contexts(limit: int | None = None) -> dict[str, int]:
     """
@@ -113,44 +192,22 @@ def settle_balances(seat_id: int, class_id: str) -> None:
             raise ValueError("settle_balances requires a seat bound to the provided class_id")
 
         scope_filter = transaction_scope_filter(Transaction, resolved_seat_id)
-        cache_was_created = False
-        # 1. Lock (or Create) LedgerBalanceSnapshot Row
+
+        # 1. Lock (or Create) one LedgerBalanceSnapshot row per account
         # ---------------------------------------------------------
-        # We must lock the cache row to prevent concurrent settlements
-        # or balance updates for the same seat/class.
-        cache = None
-        cache = (
-            LedgerBalanceSnapshot.query
-            .filter(
-                LedgerBalanceSnapshot.class_id == canonical_class_id,
-                LedgerBalanceSnapshot.seat_id == resolved_seat_id,
+        # We must lock the snapshot rows to prevent concurrent settlements or
+        # balance updates for the same seat/class. Locking happens in the fixed
+        # SETTLEMENT_ACCOUNT_TYPES order, and the whole seat is reconciled
+        # against one settlement boundary (INV-LED-009).
+        snapshots = {}
+        seeded_accounts = set()
+        for account_type in SETTLEMENT_ACCOUNT_TYPES:
+            snapshot, was_created = _lock_account_snapshot(
+                canonical_class_id, resolved_seat_id, account_type
             )
-            .with_for_update()
-            .first()
-        )
-        if not cache:
-            try:
-                with db.session.begin_nested():
-                    cache = LedgerBalanceSnapshot(
-                        seat_id=resolved_seat_id,
-                        class_id=canonical_class_id,
-                    )
-                    db.session.add(cache)
-                    db.session.flush()
-                    cache_was_created = True
-            except IntegrityError:
-                logger.warning("Race condition creating LedgerBalanceSnapshot, retrying fetch")
-                cache = (
-                    LedgerBalanceSnapshot.query
-                    .filter(
-                        LedgerBalanceSnapshot.class_id == canonical_class_id,
-                        LedgerBalanceSnapshot.seat_id == resolved_seat_id,
-                    )
-                    .with_for_update()
-                    .first()
-                )
-                if not cache:
-                    raise
+            snapshots[account_type] = snapshot
+            if was_created:
+                seeded_accounts.add(account_type)
 
         # 2. Fetch PENDING transactions
         # ---------------------------------------------------------
@@ -166,16 +223,23 @@ def settle_balances(seat_id: int, class_id: str) -> None:
             .all()
         )
 
-        # Legacy/direct-write compatibility:
-        # absorb posted rows that were written outside settlement and not yet folded into cache.
+        # Legacy/direct-write compatibility: absorb posted rows that were written
+        # outside settlement and not yet folded into the snapshot. Accounts seeded
+        # below already absorbed their posted history, so only the surviving
+        # accounts need this pass.
         unsettled_posted_txs = []
-        if not cache_was_created:
+        absorbing_accounts = [
+            account_type for account_type in SETTLEMENT_ACCOUNT_TYPES
+            if account_type not in seeded_accounts
+        ]
+        if absorbing_accounts:
             unsettled_posted_txs = (
                 Transaction.query
                 .filter(
                     scope_filter,
-                    Transaction.class_id == class_id,
+                    Transaction.class_id == canonical_class_id,
                     Transaction.status == TransactionStatus.POSTED,
+                    Transaction.account_type.in_(absorbing_accounts),
                 )
                 .filter(
                     Transaction.is_void == False,
@@ -186,48 +250,25 @@ def settle_balances(seat_id: int, class_id: str) -> None:
                 .all()
             )
 
-        # Seed a newly created cache from existing posted/non-pending ledger rows.
-        # This preserves legacy balances when cache rows are introduced lazily at read time.
-        if cache_was_created:
+        # Seed newly created snapshot rows from existing posted/non-pending ledger
+        # rows. This preserves balances when snapshot rows are introduced lazily.
+        if seeded_accounts:
             seed_time = utc_now()
-            all_checking = db.session.query(db.func.sum(Transaction.amount)).filter(
-                scope_filter,
-                Transaction.class_id == canonical_class_id,
-                Transaction.account_type == 'checking',
-                Transaction.is_void == False,
-            ).scalar() or Decimal('0.00')
-            pending_checking = db.session.query(db.func.sum(Transaction.amount)).filter(
-                scope_filter,
-                Transaction.class_id == class_id,
-                Transaction.status == TransactionStatus.PENDING,
-                Transaction.account_type == 'checking',
-                Transaction.is_void == False,
-            ).scalar() or Decimal('0.00')
-
-            all_savings = db.session.query(db.func.sum(Transaction.amount)).filter(
-                scope_filter,
-                Transaction.class_id == class_id,
-                Transaction.account_type == 'savings',
-                Transaction.is_void == False,
-            ).scalar() or Decimal('0.00')
-            pending_savings = db.session.query(db.func.sum(Transaction.amount)).filter(
-                scope_filter,
-                Transaction.class_id == class_id,
-                Transaction.status == TransactionStatus.PENDING,
-                Transaction.account_type == 'savings',
-                Transaction.is_void == False,
-            ).scalar() or Decimal('0.00')
-
-            cache.posted_checking_balance_cents = int((all_checking - pending_checking) * 100)
-            cache.posted_savings_balance_cents = int((all_savings - pending_savings) * 100)
-            cache.last_settlement_at = seed_time
+            for account_type in SETTLEMENT_ACCOUNT_TYPES:
+                if account_type not in seeded_accounts:
+                    continue
+                snapshots[account_type].posted_balance_cents = _posted_history_cents(
+                    scope_filter, canonical_class_id, account_type
+                )
+                snapshots[account_type].last_settlement_at = seed_time
 
             seeded_posted_txs = (
                 Transaction.query
                 .filter(
                     scope_filter,
-                    Transaction.class_id == class_id,
+                    Transaction.class_id == canonical_class_id,
                     Transaction.status == TransactionStatus.POSTED,
+                    Transaction.account_type.in_(sorted(seeded_accounts)),
                 )
                 .filter(
                     Transaction.is_void == False,
@@ -243,8 +284,7 @@ def settle_balances(seat_id: int, class_id: str) -> None:
             # Nothing to settle
             return
 
-        checking_delta_cents = 0
-        savings_delta_cents = 0
+        deltas = {account_type: 0 for account_type in SETTLEMENT_ACCOUNT_TYPES}
         now = utc_now()
         
         cnt_posted = 0
@@ -272,18 +312,9 @@ def settle_balances(seat_id: int, class_id: str) -> None:
             
             # Process Valid Transaction
             tx.status = TransactionStatus.POSTED
-            
-            # Account Type Check (handle string or Enum)
-            # Database stores string 'checking'/'savings'
-            acct_type = str(tx.account_type).lower()
-            if acct_type == 'checking' or acct_type == AccountType.CHECKING.value:
-                checking_delta_cents += tx.amount_cents
-            elif acct_type == 'savings' or acct_type == AccountType.SAVINGS.value:
-                savings_delta_cents += tx.amount_cents
-            else:
-                raise ValueError(
-                    f"Unknown account type '{tx.account_type}' for transaction {tx.id}"
-                )
+
+            # Account Type Check (handles string or Enum; DB stores the string)
+            deltas[_normalize_account_type(tx.account_type, tx.id)] += tx.amount_cents
 
             cnt_posted += 1
 
@@ -293,23 +324,15 @@ def settle_balances(seat_id: int, class_id: str) -> None:
             if tx.amount_cents is None:
                 tx.amount_cents = int(tx.amount * 100)
 
-            acct_type = str(tx.account_type).lower()
-            if acct_type == 'checking' or acct_type == AccountType.CHECKING.value:
-                checking_delta_cents += tx.amount_cents
-            elif acct_type == 'savings' or acct_type == AccountType.SAVINGS.value:
-                savings_delta_cents += tx.amount_cents
-            else:
-                raise ValueError(
-                    f"Unknown account type '{tx.account_type}' for transaction {tx.id}"
-                )
+            deltas[_normalize_account_type(tx.account_type, tx.id)] += tx.amount_cents
             cnt_posted += 1
-            
-        # 3. Update Cache
+
+        # 3. Update each account's snapshot against one settlement boundary
         # ---------------------------------------------------------
-        cache.posted_checking_balance_cents += checking_delta_cents
-        cache.posted_savings_balance_cents += savings_delta_cents
-        cache.last_settlement_at = now
-        
+        for account_type in SETTLEMENT_ACCOUNT_TYPES:
+            snapshots[account_type].posted_balance_cents += deltas[account_type]
+            snapshots[account_type].last_settlement_at = now
+
         logger.info(
             "Settled balances resolved=(seat_id=%s, class_id=%s, student_id=%s): "
             "Posted %s, Voided %s. Checking Net: %s, Savings Net: %s",
@@ -318,8 +341,8 @@ def settle_balances(seat_id: int, class_id: str) -> None:
             seat.user_id,
             cnt_posted,
             cnt_voided,
-            checking_delta_cents,
-            savings_delta_cents,
+            deltas["checking"],
+            deltas["savings"],
         )
         
     except Exception as e:

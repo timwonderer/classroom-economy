@@ -80,26 +80,39 @@ def _assert_expected_runtime_shape():
     bal_cols = table_columns("ledger_balance_snapshot") if table_exists("ledger_balance_snapshot") else set()
 
     required_tx = {"id", "seat_id", "class_id", "amount", "timestamp", "status"}
-    required_bal = {
-        "id",
-        "seat_id",
-        "class_id",
-        "posted_checking_balance_cents",
-        "posted_savings_balance_cents",
-    }
+    required_bal_scope = {"id", "seat_id", "class_id"}
+    # This guard asserts that reconciliation preserved a usable runtime shape. It
+    # must accept BOTH balance-snapshot shapes, because the shape it sees depends
+    # on how the database arrived here:
+    #   - replaying real history: the pre-split shape, one row per seat carrying
+    #     both accounts, which e6f7a8b9c0d1 later splits per DOM-LED-001 §2;
+    #   - a bootstrapped database: 0001 materializes the CURRENT ORM schema, so
+    #     the canonical per-account shape already exists by the time we get here.
+    # Demanding only the pre-split columns made a present-day model change
+    # retroactively break this historical step. e6f7a8b9c0d1 already tolerates
+    # both shapes; this guard now does too.
+    pre_split_bal = {"posted_checking_balance_cents", "posted_savings_balance_cents"}
+    canonical_bal = {"account_type", "posted_balance_cents"}
 
     missing_tx = sorted(required_tx - tx_cols)
-    missing_bal = sorted(required_bal - bal_cols)
+    missing_bal_scope = sorted(required_bal_scope - bal_cols)
+    has_accounts = pre_split_bal.issubset(bal_cols) or canonical_bal.issubset(bal_cols)
 
     if missing_tx:
         raise RuntimeError(
             "ledger_transaction is missing required runtime columns after reconciliation: "
             + ", ".join(missing_tx)
         )
-    if missing_bal:
+    if missing_bal_scope:
         raise RuntimeError(
             "ledger_balance_snapshot is missing required runtime columns after reconciliation: "
-            + ", ".join(missing_bal)
+            + ", ".join(missing_bal_scope)
+        )
+    if not has_accounts:
+        raise RuntimeError(
+            "ledger_balance_snapshot carries neither the pre-split balance columns "
+            f"({', '.join(sorted(pre_split_bal))}) nor the canonical per-account columns "
+            f"({', '.join(sorted(canonical_bal))}) after reconciliation."
         )
 
 

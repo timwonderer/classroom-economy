@@ -355,11 +355,21 @@ def get_last_payroll_time(seat_id: int | None = None, class_id: str | None = Non
     return ensure_utc(last_payroll_tx.timestamp) if last_payroll_tx else None
 
 
-def _get_balance_cache(seat_id: int, class_id: str):
-    """Retrieve authoritative balance snapshot."""
+def _get_balance_cache(seat_id: int, class_id: str, account_type: str):
+    """Retrieve the balance snapshot for one account.
+
+    Snapshot identity is ``(class_id, seat_id, account_type)`` (DOM-LED-001 §2),
+    so ``account_type`` is part of the lookup, not a post-hoc column choice.
+    Without it this returned whichever account's row sorted first and reported it
+    as both balances.
+    """
     if not class_id or not seat_id:
         raise ValueError("FATAL: Balance lookup requires class_id and seat_id.")
-    return LedgerBalanceSnapshot.query.filter_by(seat_id=seat_id, class_id=class_id).first()
+    if not account_type:
+        raise ValueError("FATAL: Balance lookup requires account_type.")
+    return LedgerBalanceSnapshot.query.filter_by(
+        seat_id=seat_id, class_id=class_id, account_type=str(account_type).lower()
+    ).first()
 
 
 def resolve_class_authority_seat_id(class_id: str) -> int:
@@ -397,15 +407,12 @@ def _get_posted_balance_fallback(seat_id: int, class_id: str, account_type: str)
 
 def get_posted_balance(seat_id: int, class_id: str, account_type: str) -> Decimal:
     """Read the posted balance snapshot for a single account without side effects."""
-    cache = _get_balance_cache(seat_id, class_id)
+    cache = _get_balance_cache(seat_id, class_id, account_type)
     if cache:
-        cents = (
-            cache.posted_checking_balance_cents
-            if account_type == "checking"
-            else cache.posted_savings_balance_cents
-        )
-        return _quantize_currency(Decimal(cents) / 100)
+        return _quantize_currency(Decimal(cache.posted_balance_cents) / 100)
 
+    # INV-LED-006: the snapshot is a projection, so a missing row is a normal
+    # state that recomputes from ledger history rather than an error.
     return _get_posted_balance_fallback(seat_id, class_id, account_type)
 
 

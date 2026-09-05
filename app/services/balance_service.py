@@ -54,11 +54,13 @@ def get_batch_balances_by_class_seat(class_seat_pairs):
     scope_tuple = tuple_(LedgerBalanceSnapshot.class_id, LedgerBalanceSnapshot.seat_id)
     tx_scope_tuple = tuple_(Transaction.class_id, Transaction.seat_id)
 
+    # One snapshot row per (class, seat, account) — DOM-LED-001 §2 — so a seat
+    # contributes up to two rows here and each lands in its own account bucket.
     cache_records = db.session.query(
         LedgerBalanceSnapshot.class_id,
         LedgerBalanceSnapshot.seat_id,
-        LedgerBalanceSnapshot.posted_checking_balance_cents,
-        LedgerBalanceSnapshot.posted_savings_balance_cents
+        LedgerBalanceSnapshot.account_type,
+        LedgerBalanceSnapshot.posted_balance_cents,
     ).filter(
         LedgerBalanceSnapshot.class_id.in_(class_ids),
         LedgerBalanceSnapshot.seat_id.in_(seat_ids),
@@ -67,8 +69,11 @@ def get_batch_balances_by_class_seat(class_seat_pairs):
 
     for rec in cache_records:
         key = (str(rec.class_id), int(rec.seat_id))
-        raw_balances[key]['checking_cents'] = rec.posted_checking_balance_cents
-        raw_balances[key]['savings_cents'] = rec.posted_savings_balance_cents
+        acct_type = str(rec.account_type).lower()
+        if acct_type == 'checking':
+            raw_balances[key]['checking_cents'] = rec.posted_balance_cents
+        elif acct_type == 'savings':
+            raw_balances[key]['savings_cents'] = rec.posted_balance_cents
 
     pending_sums = db.session.query(
         Transaction.class_id,

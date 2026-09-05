@@ -1,12 +1,12 @@
 from app import create_app, db
-from app.models import BalanceCache, Transaction, TransactionStatus
+from app.models import LedgerBalanceSnapshot, Transaction, TransactionStatus
 
 app = create_app()
 with app.app_context():
     print("--- Verifying Ledger Migration ---")
     
-    bc_count = BalanceCache.query.count()
-    print(f"BalanceCache rows: {bc_count}")
+    bc_count = LedgerBalanceSnapshot.query.count()
+    print(f"LedgerBalanceSnapshot rows: {bc_count}")
     
     tx_count = Transaction.query.count()
     print(f"Total Transactions: {tx_count}")

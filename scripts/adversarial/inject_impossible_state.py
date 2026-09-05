@@ -2,7 +2,7 @@
 """Inject one synthetic impossible state for Phase 1 validation.
 
 Injection implemented:
-- BalanceCache.class_id mismatched from its Seat.class_id (cross-class isolation violation)
+- LedgerBalanceSnapshot.class_id mismatched from its Seat.class_id (cross-class isolation violation)
 """
 
 from __future__ import annotations
@@ -17,7 +17,7 @@ import sqlalchemy as sa
 from app import create_app
 from app.extensions import db
 from app.feats.base import FEATContext
-from app.models import BalanceCache, ClassEconomy, Seat
+from app.models import LedgerBalanceSnapshot, ClassEconomy, Seat
 
 
 def now_iso() -> str:
@@ -39,9 +39,15 @@ def main() -> int:
             raise SystemExit("Need at least two classes to inject cross-class impossible state")
 
         row = (
-            BalanceCache.query.join(Seat, Seat.id == BalanceCache.seat_id)
-            .filter(BalanceCache.class_id == Seat.class_id)
-            .with_entities(BalanceCache.id, BalanceCache.class_id, BalanceCache.seat_id, Seat.class_id)
+            LedgerBalanceSnapshot.query.join(Seat, Seat.id == LedgerBalanceSnapshot.seat_id)
+            .filter(LedgerBalanceSnapshot.class_id == Seat.class_id)
+            .with_entities(
+                LedgerBalanceSnapshot.id,
+                LedgerBalanceSnapshot.class_id,
+                LedgerBalanceSnapshot.seat_id,
+                Seat.class_id,
+                LedgerBalanceSnapshot.account_type,
+            )
             .first()
         )
         bootstrap_created = False
@@ -50,28 +56,42 @@ def main() -> int:
             # Seed topology may not include a balance cache row yet; bootstrap one safely.
             candidate_seat = Seat.query.filter(Seat.claimed_at.isnot(None)).first()
             if not candidate_seat:
-                raise SystemExit("No eligible Seat row found for BalanceCache bootstrap")
-            cache = BalanceCache.query.filter_by(seat_id=candidate_seat.id, class_id=candidate_seat.class_id).first()
+                raise SystemExit("No eligible Seat row found for LedgerBalanceSnapshot bootstrap")
+            cache = LedgerBalanceSnapshot.query.filter_by(
+                seat_id=candidate_seat.id,
+                class_id=candidate_seat.class_id,
+                account_type="checking",
+            ).first()
             if not cache:
                 with FEATContext("FEAT-ADMN-001", idempotency_key="feat:adv:inject:bootstrap-balance-cache"):
-                    cache = BalanceCache(
+                    cache = LedgerBalanceSnapshot(
                         seat_id=candidate_seat.id,
                         class_id=candidate_seat.class_id,
                         student_id=candidate_seat.student_id,
                         join_code=candidate_seat.join_code,
-                        posted_checking_balance_cents=0,
-                        posted_savings_balance_cents=0,
+                        account_type="checking",
+                        posted_balance_cents=0,
                     )
                     db.session.add(cache)
                     db.session.flush()
-            row = (cache.id, cache.class_id, cache.seat_id, candidate_seat.class_id)
+            row = (
+                cache.id,
+                cache.class_id,
+                cache.seat_id,
+                candidate_seat.class_id,
+                cache.account_type,
+            )
             bootstrap_created = True
 
-        bc_id, bc_class_id, seat_id, seat_class_id = row
+        bc_id, bc_class_id, seat_id, seat_class_id, bc_account_type = row
         for cid in class_ids:
             if str(cid) == str(seat_class_id):
                 continue
-            collision = BalanceCache.query.filter_by(seat_id=seat_id, class_id=cid).first()
+            # uq_balance_snapshot_scope is (class_id, seat_id, account_type), so the
+            # collision check must carry the account too.
+            collision = LedgerBalanceSnapshot.query.filter_by(
+                seat_id=seat_id, class_id=cid, account_type=bc_account_type
+            ).first()
             if collision is None:
                 alt_class_id = cid
                 break
@@ -82,7 +102,7 @@ def main() -> int:
 
         # Deliberate corruption via raw SQL in controlled adversarial harness.
         db.session.execute(
-            sa.text(f"UPDATE {BalanceCache.__tablename__} SET class_id = :new_class WHERE id = :row_id"),
+            sa.text(f"UPDATE {LedgerBalanceSnapshot.__tablename__} SET class_id = :new_class WHERE id = :row_id"),
             {"new_class": str(alt_class_id), "row_id": int(bc_id)},
         )
         db.session.commit()

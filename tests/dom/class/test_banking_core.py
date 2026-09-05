@@ -11,15 +11,29 @@ from app.services.ledger_service import get_available_balances
 from tests.helpers.classroom_initializer import initialize
 
 
+def _snapshot(seat_id, class_id, account_type="checking"):
+    """Read one account's balance snapshot.
+
+    Snapshot identity is ``(class_id, seat_id, account_type)`` (DOM-LED-001 §2).
+    Looking one up without the account is what let the pre-split reader report an
+    arbitrary account's row as both balances, so tests name the account too.
+    """
+    return BalanceCache.query.filter_by(
+        seat_id=seat_id, class_id=class_id, account_type=account_type
+    ).first()
+
+
 def test_DOM_CLASS_001__ledger_flow_posts_pending_transaction(client, app):
     """Test full flow: Create PENDING -> Settle -> Verify Cache."""
-    with FEATContext("FEAT-IDEN-001", idempotency_key="banking-core:test-ledger-flow"):
-        classroom = initialize("chemistry_p1", app)
-        economy = classroom.economy
-        seat = classroom.students[0].seat
-        student_user = classroom.students[0].user
-        class_id, seat_id = classroom.class_id, seat.id
+    # `initialize` establishes its own FEAT boundary, so it must run OUTSIDE this
+    # test's context — exactly one FEAT executes per path (INV-ARC-000 §VIII.2).
+    classroom = initialize("chemistry_p1", app)
+    economy = classroom.economy
+    seat = classroom.students[0].seat
+    student_user = classroom.students[0].user
+    class_id, seat_id = classroom.class_id, seat.id
 
+    with FEATContext("FEAT-LED-001", idempotency_key="banking-core:test-ledger-flow"):
         tx = Transaction(
             user_id=student_user.id,
             class_id=class_id,
@@ -49,20 +63,20 @@ def test_DOM_CLASS_001__ledger_flow_posts_pending_transaction(client, app):
         assert tx.status == TransactionStatus.POSTED
         assert tx.posted_at is not None
 
-        cache = BalanceCache.query.filter_by(seat_id=seat_id, class_id=class_id).first()
+        cache = _snapshot(seat_id, class_id)
         assert cache is not None
-        assert cache.posted_checking_balance_cents == 1050
+        assert cache.posted_balance_cents == 1050
         assert cache.last_settlement_at is not None
 
 def test_DOM_CLASS_001__void_pending_transaction_does_not_create_reversal(client, app):
     """Test voiding a PENDING transaction (no reversal)."""
-    with FEATContext("FEAT-IDEN-001", idempotency_key="banking-core:test-void-pending"):
-        classroom = initialize("chemistry_p1", app)
-        economy = classroom.economy
-        seat = classroom.students[0].seat
-        student_user = classroom.students[0].user
-        class_id, seat_id = classroom.class_id, seat.id
+    classroom = initialize("chemistry_p1", app)
+    economy = classroom.economy
+    seat = classroom.students[0].seat
+    student_user = classroom.students[0].user
+    class_id, seat_id = classroom.class_id, seat.id
 
+    with FEATContext("FEAT-LED-001", idempotency_key="banking-core:test-void-pending"):
         tx = Transaction(
             user_id=student_user.id,
             class_id=class_id,
@@ -93,19 +107,19 @@ def test_DOM_CLASS_001__void_pending_transaction_does_not_create_reversal(client
         assert tx.status == TransactionStatus.VOID
         assert tx.voided_at is not None
 
-        cache = BalanceCache.query.filter_by(seat_id=seat_id, class_id=class_id).first()
+        cache = _snapshot(seat_id, class_id)
         if cache:
-            assert cache.posted_checking_balance_cents == 0
+            assert cache.posted_balance_cents == 0
 
 def test_DOM_CLASS_001__void_posted_transaction_creates_reversal(client, app):
     """Test voiding a POSTED transaction (creates reversal)."""
-    with FEATContext("FEAT-IDEN-001", idempotency_key="banking-core:test-void-posted"):
-        classroom = initialize("chemistry_p1", app)
-        economy = classroom.economy
-        seat = classroom.students[0].seat
-        student_user = classroom.students[0].user
-        class_id, seat_id = classroom.class_id, seat.id
+    classroom = initialize("chemistry_p1", app)
+    economy = classroom.economy
+    seat = classroom.students[0].seat
+    student_user = classroom.students[0].user
+    class_id, seat_id = classroom.class_id, seat.id
 
+    with FEATContext("FEAT-LED-001", idempotency_key="banking-core:test-void-posted"):
         tx = Transaction(
             user_id=student_user.id,
             class_id=class_id,
@@ -152,8 +166,8 @@ def test_DOM_CLASS_001__void_posted_transaction_creates_reversal(client, app):
         reversal = db.session.get(Transaction, reversal.id)
         assert reversal.status == TransactionStatus.POSTED
 
-        cache = BalanceCache.query.filter_by(seat_id=seat_id, class_id=class_id).first()
-        assert cache.posted_checking_balance_cents == 0
+        cache = _snapshot(seat_id, class_id)
+        assert cache.posted_balance_cents == 0
 
 
 def test_DOM_CLASS_001__settlement_sweep_processes_each_pending_context_once(client, app):
@@ -168,16 +182,16 @@ def test_DOM_CLASS_001__settlement_sweep_processes_each_pending_context_once(cli
     boundaries stay intact.
     """
     # --- Arrange: create pending activity through a FEAT (as production does) ---
-    with FEATContext("FEAT-IDEN-001", idempotency_key="banking-core:test-settlement-sweep"):
-        student_one_class = initialize("chemistry_p1", app)
-        student_two_class = initialize("biology_block_a", app)
-        student_one_seat_id = student_one_class.students[0].seat.id
-        student_one_user_id = student_one_class.students[0].user.id
-        student_two_seat_id = student_two_class.students[0].seat.id
-        student_two_user_id = student_two_class.students[0].user.id
-        class_id_one = student_one_class.class_id
-        class_id_two = student_two_class.class_id
+    student_one_class = initialize("chemistry_p1", app)
+    student_two_class = initialize("biology_block_a", app)
+    student_one_seat_id = student_one_class.students[0].seat.id
+    student_one_user_id = student_one_class.students[0].user.id
+    student_two_seat_id = student_two_class.students[0].seat.id
+    student_two_user_id = student_two_class.students[0].user.id
+    class_id_one = student_one_class.class_id
+    class_id_two = student_two_class.class_id
 
+    with FEATContext("FEAT-LED-001", idempotency_key="banking-core:test-settlement-sweep"):
         db.session.add_all([
             Transaction(
                 user_id=student_one_user_id,
@@ -238,38 +252,22 @@ def test_DOM_CLASS_001__settlement_sweep_processes_each_pending_context_once(cli
     assert posted_statuses[(student_two_user_id, class_id_two, "checking")] == TransactionStatus.POSTED
 
     # Each context's balance cache reflects its own transactions only (class isolation).
-    cache_one = BalanceCache.query.filter_by(
-        seat_id=student_one_seat_id, class_id=class_id_one
-    ).first()
-    assert cache_one is not None
-    assert cache_one.posted_checking_balance_cents == 1234
-    assert cache_one.posted_savings_balance_cents == 166
+    assert _snapshot(student_one_seat_id, class_id_one).posted_balance_cents == 1234
+    assert _snapshot(student_one_seat_id, class_id_one, "savings").posted_balance_cents == 166
 
-    cache_two = BalanceCache.query.filter_by(
-        seat_id=student_two_seat_id, class_id=class_id_two
-    ).first()
-    assert cache_two is not None
-    assert cache_two.posted_checking_balance_cents == 999
-    # Class two never accrued class one's savings deposit.
-    assert cache_two.posted_savings_balance_cents == 0
+    assert _snapshot(student_two_seat_id, class_id_two).posted_balance_cents == 999
+    # Class two never accrued class one's savings deposit. Its savings row is
+    # either absent or zero; both mean the same thing for a projection.
+    savings_two = _snapshot(student_two_seat_id, class_id_two, "savings")
+    assert savings_two is None or savings_two.posted_balance_cents == 0
 
     # --- Idempotency: a second sweep finds no eligible contexts and settles nothing ---
     summary_again = settle_pending_transaction_contexts()
     assert summary_again == {"settled_contexts": 0, "failed_contexts": 0}
 
     db.session.expire_all()
-    assert (
-        BalanceCache.query.filter_by(seat_id=student_one_seat_id, class_id=class_id_one)
-        .first()
-        .posted_checking_balance_cents
-        == 1234
-    )
-    assert (
-        BalanceCache.query.filter_by(seat_id=student_two_seat_id, class_id=class_id_two)
-        .first()
-        .posted_checking_balance_cents
-        == 999
-    )
+    assert _snapshot(student_one_seat_id, class_id_one).posted_balance_cents == 1234
+    assert _snapshot(student_two_seat_id, class_id_two).posted_balance_cents == 999
     for tx in Transaction.query.all():
         assert tx.status == TransactionStatus.POSTED
 

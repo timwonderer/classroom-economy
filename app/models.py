@@ -674,8 +674,20 @@ def _resolve_seat_id(connection, student_id, *, class_id=None):
 
 class LedgerBalanceSnapshot(db.Model):
     """
-    Authorized snapshot of posted balances (ledger_balance_snapshot — DOM-LED-001).
+    Authorized snapshot of posted balances (ledger_balance_snapshot — DOM-LED-001 §2).
+
     Available Balance = Posted Balance (Snapshot) + Sum(Pending Transactions from Ledger)
+
+    Identity is ``(class_id, seat_id, account_type)`` — **one row per account**, not
+    one row per seat holding both accounts. The pre-split shape
+    (``posted_checking_balance_cents`` / ``posted_savings_balance_cents`` under
+    ``uq_balance_cache_seat_universe``) was dropped by migration ``e6f7a8b9c0d1``;
+    this model declared it for long enough that every read through
+    ``get_posted_balance`` raised instead of returning a balance.
+
+    The snapshot is a *projection*, never monetary authority: per INV-LED-006 it
+    must always be rebuildable from ledger history, which is why a missing row is
+    a normal state that falls back to recomputation rather than an error.
     """
     __tablename__ = 'ledger_balance_snapshot'
 
@@ -684,15 +696,24 @@ class LedgerBalanceSnapshot(db.Model):
     class_id = db.Column(db.String(36), db.ForeignKey('classes.class_id', ondelete='CASCADE'), nullable=False, index=True)
     join_code = db.Column(db.String(20), nullable=True)
 
-    # Balances stored in CENTS to avoid floating point issues
-    posted_checking_balance_cents = db.Column(db.Integer, default=0, nullable=False)
-    posted_savings_balance_cents = db.Column(db.Integer, default=0, nullable=False)
+    # Canonical account target for this row ('checking' | 'savings').
+    account_type = db.Column(db.String(20), nullable=False)
+
+    # Balance stored in CENTS to avoid floating point issues.
+    posted_balance_cents = db.Column(db.Integer, default=0, nullable=False)
+
+    # INV-LED-008: this projection has considered every posted transaction in its
+    # scope whose posting_sequence is <= this cursor.
+    reconciled_through_posting_sequence = db.Column(db.BigInteger, nullable=True)
+    reconciled_through_transaction_id = db.Column(
+        db.Integer, db.ForeignKey('ledger_transaction.id'), nullable=True
+    )
 
     last_settlement_at = db.Column(db.DateTime(timezone=True), nullable=True)
     updated_at = db.Column(db.DateTime(timezone=True), default=utc_now, onupdate=utc_now)
 
     __table_args__ = (
-        db.UniqueConstraint('class_id', 'seat_id', name='uq_balance_cache_seat_universe'),
+        db.UniqueConstraint('class_id', 'seat_id', 'account_type', name='uq_balance_snapshot_scope'),
     )
 
 

@@ -40,7 +40,7 @@ Rubric anchors used:
 |---|---|---|---|
 | 1 | Identity | **NOT READY** | B7 |
 | 2 | Class Configuration | READY (with caveats) | — |
-| 3 | Ledger | **NOT READY** | B10 |
+| 3 | Ledger | READY (with caveats) | — |
 | 4 | Productivity & Payroll | READY (with caveats) | — |
 | 5 | Obligations | READY (with caveats) | — |
 | 6 | Store & Entitlements | READY (with caveats) | — |
@@ -49,13 +49,16 @@ Rubric anchors used:
 | 9 | Operations | READY (with caveats) | — |
 | 10 | Support | **NOT READY** | B4, B5, B6, B7 |
 
-**7 of 10 domains are production-ready.** Three are blocked by five open defects across **two fix
-tracks** (§IV) — T2, the sysadmin support surface (B4, B5, B6, B7), and the newly opened **B10**, a
-`LedgerBalanceSnapshot` model/schema drift that breaks the posted-balance read path. B10 was found on
-2026-09-05 by triaging the full suite during B2's closure, where it accounts for roughly
-three-quarters of all failures; it is pre-existing and had gone untracked, and it moves Ledger from
-READY to NOT READY. Five defects (B1, B2, B3, B8, B9) were found and closed on 2026-09-04/05; B1's
-closure returned Obligations to ready and B2's returned Policies, clearing fix track T1.
+**8 of 10 domains are production-ready.** Two are blocked by four open defects on a **single remaining
+fix track** (§IV) — T2, the sysadmin support surface (B4, B5, B6, B7), which blocks Support and
+Identity.
+
+Six defects (B1, B2, B3, B8, B9, B10) have been found and closed on 2026-09-04/05. B1's closure
+returned Obligations to ready and B2's returned Policies, clearing fix track T1. **B10** — a
+`LedgerBalanceSnapshot` model/schema drift that broke the posted-balance read path — was found on
+2026-09-05 by triaging the full suite during B2's closure, where it accounted for roughly
+three-quarters of all failures. It was pre-existing and had gone untracked; it moved Ledger to NOT
+READY, and track T5 closed it the same day, returning Ledger to ready.
 
 ---
 
@@ -270,7 +273,7 @@ and replace `_resolve_seat` with `resolve_seat_for_context(user_id, class_id, se
 > B7 shares files and reviewers with B4/B5/B6. Fold it into track T2. **Port the code from
 > `3cdb1294`; do not port that commit's badge-system files** (see §V, Deferred).
 
-### B10 — `LedgerBalanceSnapshot` model still declares the pre-split shape the migration dropped
+### B10 — `LedgerBalanceSnapshot` model still declares the pre-split shape the migration dropped — **CLOSED 2026-09-05**
 **Domain:** Ledger · **Severity:** Critical · **Found:** 2026-09-05 (full-suite triage during B2)
 
 `app/models.py:688` still declares `posted_checking_balance_cents`, `posted_savings_balance_cents`, and
@@ -307,6 +310,36 @@ pre-existing at HEAD and untouched by the B2 diff; it is *not* a B2 regression.
 This contradicts the §II scoreboard, which listed Ledger as READY (with caveats) and whose caveats
 (§V) do not mention it. Ledger is moved to **NOT READY**. Balance reads are the most load-bearing path
 in the product; this must be closed before ship.
+
+**Resolution (2026-09-05).** Closed by track T5. The fix is DOM-LED-001 §2 — snapshot identity is
+`(class_id, seat_id, account_type)`, one row per account — carried through every layer that assumed
+otherwise:
+
+- `app/models.py` — declares `account_type`, `posted_balance_cents`,
+  `reconciled_through_posting_sequence`, the previously undeclared
+  `reconciled_through_transaction_id`, and `uq_balance_snapshot_scope`.
+- `app/services/ledger_service.py` — `_get_balance_cache` now *requires* `account_type`, so an
+  account-blind lookup is no longer expressible; `get_posted_balance` reaches its INV-LED-006 fallback.
+- `app/utils/banking.py` — the settlement writer was reworked, not patched. It locks **all** applicable
+  account snapshots in the fixed `SETTLEMENT_ACCOUNT_TYPES` order and reconciles them against one
+  settlement boundary, which is what INV-LED-009 requires and what the old single-row writer never
+  did. Per-account seeding, deltas, and absorption of unsettled posted rows follow from that.
+- `app/services/balance_service.py` — the bulk reader buckets per-account rows.
+- `migrations/versions/f2c9d1a6b7e8_…` — its `_assert_expected_runtime_shape` guard demanded the
+  *pre-split* columns. Because migration `0001` materializes the **current** ORM schema, correcting
+  the model retroactively broke this historical step. The guard now accepts either shape, matching the
+  tolerance `e6f7a8b9c0d1` already had. This is the bootstrap temporal-causality hazard, and it will
+  recur for any future model change that touches a table an older migration asserts on.
+
+Two unrelated pre-existing defects surfaced and were fixed rather than left to ship: four
+`test_banking_core.py` tests wrapped `initialize()` — which opens its own FEAT — inside a FEAT context,
+violating the one-FEAT-per-path guard; and `test_transaction_idempotency.py`'s deliberate enumeration
+pin had gone stale when `564fa49a` added `rent_payment`.
+
+**Regression pin:** `tests/dom/ledger/test_balance_snapshot_account_scope.py` — four tests covering
+per-account rows, account-scoped reads, the INV-LED-006 recompute-on-missing-row path, and scope
+uniqueness. All four fail against the pre-fix tree with
+`UndefinedColumn: column ledger_balance_snapshot.posted_checking_balance_cents does not exist`.
 
 ### B9 — Daily-limit auto tap-out is silently non-functional (FEAT-PROD-001 executes itself) — **CLOSED 2026-09-04**
 **Domain:** Productivity & Payroll · **Severity:** High · **Violates:** INV-ARC-000 §VIII.2, INV-ARC-021 §V.2
@@ -404,17 +437,25 @@ clean after the domain-command split.
 | **T2 — Sysadmin support surface + seat-scope** | B4, B5, B6, B7 | Support, Identity | Medium | — | Not started |
 | **T3 — Orphaned-user deletion** | B3 | Identity | Small | — | **Done 2026-09-04** |
 | **T4 — FEAT self-nesting in scheduled jobs** | B9 | Productivity & Payroll | Small | — | **Done 2026-09-04** |
-| **T5 — Ledger snapshot model/schema realignment** | B10 | Ledger | Small–Medium | — | Not started |
+| **T5 — Ledger snapshot model/schema realignment** | B10 | Ledger | Medium *(estimated Small–Medium; see below)* | — | **Done 2026-09-05** |
 
 **Sequencing to 2026-09-17.** T1 was the critical path and the only substantial design work; it is
 now clear. B1 established the append-only pattern (immutable payload + `availability_state` projection
 + supersession command + guarded migration) and B2 applied that same pattern to `PayrollSettings` and
-`HallPassSettings`. With T3 and T4 also done, **T2 and T5 remain**. They do not compete: T2 is the
-sysadmin support surface, T5 is `app/models.py` + `ledger_service.py`. T5 should go first despite
-being smaller — it is a one-file model correction plus an `account_type` predicate, and until it lands
-the suite cannot be read as a ship signal, since ~three-quarters of current failures trace to it.
+`HallPassSettings`. T3, T4, and now T5 are also done, so **T2 is the only track remaining** — the
+sysadmin support surface (B4, B5, B6, B7).
 
-**Exit criteria for the ship gate.** All five open blockers closed; each with a regression test that
+> **Correction (2026-09-05).** This section previously sized T5 as "a one-file model correction plus
+> an `account_type` predicate" scoped to `app/models.py` + `ledger_service.py`. That was wrong, and
+> the error was one of reasoning rather than of information: I sized the *symptom* (a wrong column
+> list) instead of reading what depended on it. The whole settlement writer assumed one row per seat
+> holding both accounts, so correcting the model required reworking `settle_balances` to lock every
+> applicable account snapshot in deterministic order under INV-LED-009 — plus the bulk reader, the
+> adversarial harness, the fixtures, and a historical migration guard. Seven files and one new pin,
+> not one file. Sequencing it first was still right, for the stated reason: until it landed the suite
+> could not be read as a ship signal.
+
+**Exit criteria for the ship gate.** All open blockers closed; each with a regression test that
 fails against the pre-fix commit; full pytest suite green; `flask db heads` shows exactly one head.
 
 ---
@@ -433,11 +474,14 @@ into `app/feats/`. 7 `print()` calls in `context_resolver.py`; residual `Seat.bl
 `replace_enabled_class_features` import; cascade behavior untested; `customizations()` edits
 DOM-CLASS fields under a FEAT-IDEN context.
 
-**Ledger** — 3 ops scripts raise `ImportError` on the removed `BalanceCache`; misleading `student`
-variable actually bound to a Seat (`app/routes/student.py:761`); residual `join_code` / `user_id`
-columns on `Transaction`. *(These were the caveats behind Ledger's former READY verdict. They did not
-include the snapshot model drift, which was missed here and is now **B10**; the `BalanceCache`
-`ImportError` in those ops scripts is the same migration's fallout and should be swept in T5.)*
+**Ledger** — ~~3 ops scripts raise `ImportError` on the removed `BalanceCache`~~ **swept in T5
+(2026-09-05)**: `scripts/verify_balance_cache.py`, `scripts/adversarial/verify_cross_class_isolation.py`,
+and `scripts/adversarial/inject_impossible_state.py` now import `LedgerBalanceSnapshot` and read
+`account_type` / `posted_balance_cents`. Remaining: misleading `student` variable actually bound to a
+Seat (`app/routes/student.py:761`); residual `join_code` / `user_id` columns on `Transaction`.
+*(These were the caveats behind Ledger's former READY verdict. They did not include the snapshot model
+drift, which was missed here and became **B10** — the ops-script `ImportError` was the same migration's
+fallout, which is why both closed together.)*
 
 **Productivity & Payroll** — `daily_limit` missing from the `AttendanceReasonCode` enum; pay-rate
 selection filters on a block/section label (**INV-ARC-014 violation, promote to blocking if it can
