@@ -10644,21 +10644,38 @@ def resolve_issue(issue_ref):
     try:
         # Apply resolution based on action type.
         #
-        # The ownership guard below used to resolve a `submitter_seat` from
-        # `issue.actor_public_id` with no class filter, then require
-        # `transaction.seat_id == submitter_seat.id`. Two problems: the lookup
-        # could land on a seat in a different class, and the check it fed was
-        # the wrong question. What must be true before a teacher mutates a
-        # ledger row is that the row belongs to *the class this teacher is
-        # acting in* — `issue_query` above has already confined the issue to
-        # that class, so scoping the transaction to `class_id` closes the loop
-        # without needing to resolve a seat at all.
+        # Two independent conditions must hold before a teacher may mutate a
+        # ledger row from a support ticket, and neither substitutes for the
+        # other:
+        #
+        #   1. Tenancy — the row belongs to the class this teacher is acting
+        #      in. `issue_query` above already confined the issue to that
+        #      class; scoping the transaction to `class_id` closes the loop.
+        #   2. Binding — the row belongs to the seat that submitted *this*
+        #      issue. Without it, a ticket from one student is a lever for
+        #      reversing another student's transaction in the same class, and
+        #      the resolution-action log would attribute the reversal to the
+        #      wrong actor (DOM-SUP-001 §"Resolution actions are a declaration
+        #      log": the declaration must describe what actually happened).
+        #
+        # The seat lookup carries a `class_id` predicate because
+        # `Seat.public_id` is only unique per class (DOM-IDEN-001 §VI); an
+        # unscoped lookup can land on a seat in a different class and turn
+        # check 2 into a coin flip.
+        submitter_seat = (
+            Seat.query.filter_by(public_id=issue.actor_public_id, class_id=class_id).first()
+            if class_id
+            else None
+        )
+
         if action_type == 'reverse_transaction' and issue.related_transaction_id:
             transaction = db.session.get(Transaction, issue.related_transaction_id)
             if (
                 not transaction
                 or not class_id
                 or transaction.class_id != class_id
+                or not submitter_seat
+                or transaction.seat_id != submitter_seat.id
                 or transaction.is_void
             ):
                 flash("The related transaction could not be reversed for this issue.", "error")
@@ -10686,7 +10703,17 @@ def resolve_issue(issue_ref):
         elif action_type == 'compensating_transaction' and issue.related_transaction_id:
             # Append-only correction: create a compensating ledger entry.
             transaction = db.session.get(Transaction, issue.related_transaction_id)
-            if not transaction or not class_id or transaction.class_id != class_id or transaction.is_void:
+            # Same two conditions as the reversal branch above: a compensating
+            # entry moves money just as a reversal does, so it needs the same
+            # tenancy and issue-binding guarantees.
+            if (
+                not transaction
+                or not class_id
+                or transaction.class_id != class_id
+                or not submitter_seat
+                or transaction.seat_id != submitter_seat.id
+                or transaction.is_void
+            ):
                 flash("The related transaction could not be found for this issue.", "error")
                 return redirect(url_for('admin.view_issue', issue_ref=make_opaque_ref('issue', issue.id)))
 

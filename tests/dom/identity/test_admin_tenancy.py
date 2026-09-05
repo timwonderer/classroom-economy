@@ -33,6 +33,39 @@ def _teacher_context(classroom) -> CanonicalContext:
     )
 
 
+def _session_start_within_evaluation_day(classroom, *, hours_ago: float) -> datetime:
+    """A session start `hours_ago` in the past, but never before today's boundary.
+
+    `enforce_daily_limits_job` accrues against a *daily* limit, so it clamps each
+    interval with `max(active_start, day_start_utc)`: time spent yesterday does
+    not count toward today's cap. A naive `now() - 2h` seed silently violates
+    that premise whenever the suite runs within two hours of the class's
+    evaluation-day boundary — the job then taps out at `day_start + limit`, not
+    `started_at + limit`, and the test fails for a reason that has nothing to do
+    with what it certifies. Anchoring the seed to the same boundary the job uses
+    keeps the scenario ("a session opened earlier today") intact at every hour of
+    the day rather than only for 22 of them.
+    """
+    from app.utils.canonical_temporal_resolver import (
+        CLASS_LEVEL_EVALUATION,
+        canonical_temporal_resolver,
+    )
+
+    ctx = _teacher_context(classroom)
+    now_utc = canonical_temporal_resolver(
+        CLASS_LEVEL_EVALUATION,
+        canonical_execution_context=ctx,
+        primitive="current_time",
+    ).canonical_now_utc
+    day_bounds = canonical_temporal_resolver(
+        CLASS_LEVEL_EVALUATION,
+        canonical_execution_context=ctx,
+        primitive="evaluation_day_boundaries",
+        reference_time_utc=now_utc,
+    )
+    return max(now_utc - timedelta(hours=hours_ago), day_bounds.boundary_start_utc)
+
+
 def _seed_active_attendance(classroom, seat: Seat, *, started_at: datetime) -> AttendanceSession:
     result = record_attendance_session(
         ctx=_teacher_context(classroom),
@@ -207,7 +240,7 @@ def test_DOM_IDEN_001__enforce_daily_limits_ignores_other_class_activity(client)
     class_a = initialize("chemistry_p1", client.application)
     class_b = initialize("biology_block_a", client.application)
     shared_seat_b = class_b.students[0].seat
-    started_at = datetime.now(timezone.utc) - timedelta(hours=2)
+    started_at = _session_start_within_evaluation_day(class_b, hours_ago=2)
 
     _configure_daily_limit(
         class_a.class_id,
@@ -237,7 +270,7 @@ def test_DOM_IDEN_001__enforce_daily_limits_ignores_other_class_activity(client)
 def test_DOM_IDEN_001__enforce_daily_limits_taps_out_when_limit_reached_in_scope(client):
     class_scope = initialize("chemistry_p1", client.application)
     seat = class_scope.students[0].seat
-    started_at = datetime.now(timezone.utc) - timedelta(hours=2)
+    started_at = _session_start_within_evaluation_day(class_scope, hours_ago=2)
     daily_limit_hours = 0.001
     expected_limit_seconds = int(daily_limit_hours * 3600)
 
@@ -269,7 +302,7 @@ def test_DOM_IDEN_001__enforce_daily_limits_taps_out_when_limit_reached_in_scope
 def test_DOM_IDEN_001__enforce_daily_limits_does_not_duplicate_closed_session(client):
     class_scope = initialize("chemistry_p1", client.application)
     seat = class_scope.students[0].seat
-    started_at = datetime.now(timezone.utc) - timedelta(hours=2)
+    started_at = _session_start_within_evaluation_day(class_scope, hours_ago=2)
     daily_limit_hours = 0.001
 
     _configure_daily_limit(

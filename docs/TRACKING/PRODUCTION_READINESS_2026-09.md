@@ -336,6 +336,20 @@ Two departures from `3cdb1294`, both deliberate:
 2. **`resolve_issue` also guards on `class_id` being present at all.** Porting only
    `transaction.class_id != class_id` would let a request with no class scope compare `None` to `None`
    and pass. Both branches now require `class_id` before mutating a ledger row.
+3. **`resolve_issue` keeps the seat-ownership check; `3cdb1294` is wrong to drop it.** The upstream
+   remediation replaces `transaction.seat_id == submitter_seat.id` with
+   `transaction.class_id == class_id` and calls the latter "the correct authority." It is *an*
+   authority, and it was genuinely missing — but it is not a substitute. Tenancy (the row belongs to
+   the acting class) and binding (the row belongs to the seat that submitted *this* issue) are
+   independent conditions, and dropping the second admits same-class, different-seat reversals: one
+   student's ticket becomes a lever for reversing a classmate's transaction. Because DOM-SUP-001
+   defines `issue_resolution_actions` as an append-only declaration log, that misattribution outlives
+   any subsequent ledger correction. This branch ports the `class_id` predicate onto the seat lookup —
+   which is the real B7 defect at this site — and asserts *both* conditions, in the
+   `compensating_transaction` branch as well as `reverse_transaction`.
+   **Carry-forward:** whoever lands `3cdb1294` elsewhere inherits this hole. It was caught here only
+   because `tests/dom/interpretation/test_issue_resolution_reverse_transaction.py` certifies exactly
+   that case; it went red on the first full-suite run after the port and was the run's only failure.
 
 Pinned by `test_DOM_IDEN_001__student_detail_seat_refuses_to_cross_a_class_boundary`,
 `test_DOM_IDEN_001__resolve_scope_denies_rather_than_guessing_a_class`, and
