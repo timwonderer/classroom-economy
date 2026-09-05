@@ -73,7 +73,10 @@ families:
     governing_authority: [INV-ARC-017]
     path_rules: [.github/workflows/**, scripts/**, tests/conftest.py, docs/SPEC/SPEC-INV-001*]
     evidence_kind: [static, runtime]
-    evidence_commands: []
+    evidence_commands:
+      - tests/test_ci_classifier.py
+      - tests/test_ci_evidence_runner.py
+      - tests/test_migration_validator.py
     mandatory: true
-    pass_contract: Classifier and evidence metadata validate successfully.
+    pass_contract: Classifier selection, manifest self-check, and the migration idempotency gate execute successfully.
     known_limits: This family does not establish application invariant behavior.

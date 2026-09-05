@@ -100,26 +100,15 @@ def check_idempotency(filepath):
         return [f"Syntax error parsing {filepath.name}"]
 
     errors = []
-    
-    # Helper to find if a node is inside an If block
-    def is_guarded(node, parents):
-        # Check parents in reverse order
-        for parent in reversed(parents):
-            if isinstance(parent, ast.If):
-                return True
-        return False
-
-    # Walk the tree with parent tracking
-    for node in ast.walk(tree):
-        # We manually track parents by checking children, but ast.walk doesn't give context.
-        # So we'll use a NodeVisitor instead.
-        pass
 
     class IdempotencyVisitor(ast.NodeVisitor):
         def __init__(self):
             self.errors = []
             self.parents = []
             self.created_tables = set()
+            # One flag per statement body currently being visited. Set once a
+            # guard clause in that body has been passed.
+            self.guard_clauses = []
 
         def _extract_string_arg(self, node, position=0, keyword_name=None):
             if keyword_name:
@@ -148,7 +137,10 @@ def check_idempotency(filepath):
                 # Critical operations that need guards
                 if method in ['add_column', 'create_foreign_key', 'create_index']:
                     if not self.is_guarded() and not self.is_safe_creation_call(method, node):
-                        self.errors.append(f"❌ Unguarded {method}() in {filepath.name}. Must be inside an 'if' block checking existence.")
+                        self.errors.append(
+                            f"❌ Unguarded {method}() in {filepath.name}. Must be inside an 'if' block "
+                            "checking existence, or follow an 'if <check>: return' guard clause."
+                        )
                 
                 # Warnings for raw execution
                 if method == 'execute':
@@ -158,10 +150,15 @@ def check_idempotency(filepath):
             self.generic_visit(node)
 
         def is_guarded(self):
+            # Nested inside an existence check.
             for parent in reversed(self.parents):
                 if isinstance(parent, ast.If):
                     return True
-            return False
+            # Or preceded by a guard clause that already returned when the
+            # surface existed. `if column_exists(...): return` protects every
+            # statement after it exactly as an enclosing `if not ...:` block
+            # does, and is the pattern several migrations use.
+            return any(self.guard_clauses)
 
         def is_safe_creation_call(self, method, node):
             if method == 'create_index':
@@ -172,14 +169,33 @@ def check_idempotency(filepath):
                 return source_table in self.created_tables
             return False
 
+        @staticmethod
+        def _is_guard_clause(statement):
+            """`if <check>: ...; return` — everything after it is conditional."""
+            return (
+                isinstance(statement, ast.If)
+                and bool(statement.body)
+                and isinstance(statement.body[-1], (ast.Return, ast.Raise))
+            )
+
+        def _visit_body(self, body):
+            self.guard_clauses.append(False)
+            for statement in body:
+                self.visit(statement)
+                if self._is_guard_clause(statement):
+                    self.guard_clauses[-1] = True
+            self.guard_clauses.pop()
+
         def visit_If(self, node):
+            self.visit(node.test)
             self.parents.append(node)
-            self.generic_visit(node)
+            self._visit_body(node.body)
+            self._visit_body(node.orelse)
             self.parents.pop()
 
         def visit_FunctionDef(self, node):
             self.parents.append(node)
-            self.generic_visit(node)
+            self._visit_body(node.body)
             self.parents.pop()
 
     visitor = IdempotencyVisitor()
