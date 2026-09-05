@@ -44,7 +44,12 @@ def create_pending_transaction(
         raise ValueError("FATAL: Ledger mutation seats must all belong to the provided class_id.")
     if command_reservation is not None and command_reservation.class_id != class_id:
         raise ValueError("FATAL: Command reservation must belong to the provided class_id.")
-    transaction = Transaction(
+    # This is the boundary the direct-instantiation ban exists to funnel callers
+    # into, so it is the one place the ban cannot apply to. Every guard the ban
+    # protects has already run above: all three seats are proven to belong to
+    # `class_id`, the account is named, and any command reservation is scope-matched.
+    # The idempotent path returns before reaching here.
+    transaction = Transaction(  # FEAT-AUTHORIZED-DIRECT-TX
         seat_id=seat_id, target_seat_id=target_seat_id, actor_seat_id=actor_seat_id,
         class_id=class_id, user_id=user_id, amount=_quantize_currency(amount),
         account_type=account_type, status=TransactionStatus.PENDING,

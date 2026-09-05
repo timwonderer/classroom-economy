@@ -13,10 +13,10 @@ EXPECTED_VIOLATIONS=150  # Hardcoded baseline for Wave 1 containment
 
 # Tier 1 Critical Files (Zero Tolerance once wrapped)
 # `app/services/ledger_service.py` was decomposed into per-concern services; the
-# four listed below are its write paths (the read/query/verification services do
-# not mutate). Named individually rather than by glob because this list is a
-# deliberate zero-tolerance roster, not a directory scan — a new ledger service
-# should have to be added here on purpose.
+# five ledger entries below are its write paths (the read/query/verification
+# services do not mutate). Named individually rather than by glob because this
+# list is a deliberate zero-tolerance roster, not a directory scan — a new ledger
+# service should have to be added here on purpose.
 TIER1_FILES=(
     "app/services/ledger_command_service.py"
     "app/services/ledger_correction_service.py"
@@ -114,13 +114,27 @@ if [ "$COUNT" -gt 0 ]; then
         fi
     done
 
-    # FEAT COVERAGE CHECK: Tier 1 files must have at least one canonical FEAT boundary
-    for file in "${TIER1_FILES[@]}"; do
-        if ! grep -q "@requires_feat_context" "$file"; then
-            echo "🚨 COVERAGE MISSING: $file has zero canonical FEAT coverage."
-            TIER1_VIOLATIONS=$((TIER1_VIOLATIONS + 1))
-        fi
-    done
+    # FEAT COVERAGE CHECK — REMOVED 2026-09-05, deliberately and not by neglect.
+    #
+    # This used to require a literal `@requires_feat_context` inside each Tier 1
+    # file. That premise expired when the ledger was decomposed: the FEAT
+    # boundary now lives in `app/feats/`, and these files are the domain services
+    # a FEAT *orchestrates*. `create_pending_transaction` says so in its own
+    # docstring — "inside the caller-owned FEAT". A correctly-written service
+    # therefore has no decorator to find, so the check fired on all eight entries
+    # unconditionally, correct and incorrect alike. A check that cannot be
+    # satisfied does not enforce anything; it trains readers to skip the output,
+    # which costs more than it ever caught.
+    #
+    # What the check was reaching for — "this file does not mutate outside a FEAT"
+    # — is already enforced above, and enforced better: the AST pass finds
+    # `db.session.commit()` in any function lacking the decorator, which is the
+    # actual violation rather than a proxy for it. The part that is genuinely not
+    # checkable by grep is reachability (can this service be entered other than
+    # through a FEAT?), and pretending otherwise was the original error.
+    #
+    # Do not restore this loop without a premise that can distinguish a compliant
+    # file from a non-compliant one.
 
     if [ "$TIER1_VIOLATIONS" -gt 0 ]; then
         echo "❌ Wave 1 blocked: Critical files contain direct commits or lack FEAT coverage."

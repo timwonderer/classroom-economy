@@ -420,6 +420,27 @@ Two unrelated pre-existing defects surfaced and were fixed rather than left to s
 violating the one-FEAT-per-path guard; and `test_transaction_idempotency.py`'s deliberate enumeration
 pin had gone stale when `564fa49a` added `rent_payment`.
 
+**Amended 2026-09-05 (post-merge).** Two claims above have since been superseded and are corrected
+here rather than silently edited, because the tracker is the record of what was believed when:
+
+1. *File locations.* Merging `codex/ledger-canonicalization` decomposed `ledger_service.py` and
+   `balance_service.py` out of existence. The `_get_balance_cache` guard now lives in
+   `app/services/ledger_balance_query_service.py`, the bulk per-account reader alongside it, and the
+   settlement writer in `app/services/ledger_settlement_service.py` (`app/utils/banking.py` is now a
+   re-export). The fixes survived the move — that branch had independently reached the same
+   per-account conclusion — but the paths cited above no longer resolve.
+2. *The one-FEAT-per-path claim was over-broad.* INV-ARC-000 §VIII.2 says "exactly one command path
+   must execute **per request**." That governs request handling; it does not forbid a test fixture
+   from nesting `initialize()`'s own FEAT inside a setup context, and the incoming branch does
+   exactly that in tests that pass. The `test_banking_core.py` change was therefore a stylistic
+   preference dressed as a constitutional requirement. On merge the file was standardized on the
+   wrapped form — not because the wrapper is required, but because half a file wrapping and half not
+   is the worse outcome. The genuinely stale thing in that file was the assertion shape, not the
+   FEAT nesting.
+
+The idempotency pin was stale in a larger way than recorded: `rent_payment` was one of six types the
+enumeration had fallen behind on. It now mirrors the production frozenset exactly.
+
 **Regression pin:** `tests/dom/ledger/test_balance_snapshot_account_scope.py` — four tests covering
 per-account rows, account-scoped reads, the INV-LED-006 recompute-on-missing-row path, and scope
 uniqueness. All four fail against the pre-fix tree with
@@ -691,6 +712,27 @@ content already present on HEAD.
 | Support-content registry | `support-text-extraction` @ `fe3e3e0d..` | **Backlog** — see below |
 | Bug-hunter badge system | `codex/compliance-check-legacy-structure` @ `3cdb1294` | **Backlog** — see below |
 | `github-pages/v2transition.html` | `CTH_v2.0`, `docs/v2-progress-page` | **Pre-promotion** — see below |
+| Ledger decomposition | `codex/ledger-canonicalization` @ `eafc6510..1a8eeb99` | **Landed 2026-09-05** — merge `8201f2935` |
+| Release-process replacement | `codex/ledger-canonicalization` @ `389d78b7..60297398` | **Owner decision** — see below |
+
+### Release-process replacement (owner decision, blocks nothing)
+
+`codex/ledger-canonicalization` is two unrelated bodies of work sharing a branch. Commits 1–13 are the
+ledger decomposition and were merged. Commits 14–21 are observability, status reporting, and CI, and
+they were deliberately **not** taken. The reason is one file: they **delete `.github/workflows/deploy.yml`**
+and replace it with a manual, exact-SHA `release-v2.yml`, alongside `docs-links.yml` and
+`tailscale-ssh-smoke-test.yml`.
+
+That is a change to how this project ships, eight days before it ships. It is not obviously wrong —
+pinning a release to an explicit SHA instead of "whatever is on the branch" is the more defensible
+posture for a first production promotion, and it answers the §V question about release provenance
+directly. But it is a decision about process ownership, not a merge conflict with a correct
+resolution, so it is not mine to make silently. Cutting the merge at `1a8eeb991` also removed every
+workflow conflict, so the ledger work landed clean.
+
+Two smaller notes if this is taken: the branch bumps `actions/github-script` v8→v9 in one of three
+call sites, leaving the versions inconsistent; and it should be landed as its own reviewable change,
+not folded into a ledger merge.
 
 ### Support-content registry (backlog)
 
