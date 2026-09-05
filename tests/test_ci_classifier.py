@@ -36,6 +36,25 @@ def test_migration_change_event_wide_selects_persistence_pii_and_validation():
     assert {"CI-PERSIST", "CI-PII", "CI-VALIDATION"} <= selected
 
 
+def test_dotfile_paths_keep_their_leading_dot():
+    """`lstrip("./")` strips a character set, so it ate the dot on dotfiles."""
+    result = classify([".github/workflows/constitutional-ci.yml"], MANIFEST)
+    assert result["paths"] == [".github/workflows/constitutional-ci.yml"]
+    validation = next(
+        family for family in result["selected_families"]
+        if family["family_id"] == "CI-VALIDATION"
+    )
+    # Selected by its own path rule, not rescued by the unknown-path fallback.
+    assert validation["selection_status"] == "SELECTED"
+
+
+def test_the_invariant_manifest_is_itself_governed():
+    """A change to the file defining every gate must select a family by rule."""
+    result = classify([".ci/invariant_families.yml"], MANIFEST)
+    selected = {family["family_id"] for family in result["selected_families"]}
+    assert selected == {"CI-VALIDATION"}
+
+
 def test_unknown_path_conservatively_selects_core_families():
     result = classify(["unclassified/new_surface.txt"], MANIFEST)
     selected = {family["family_id"] for family in result["selected_families"]}

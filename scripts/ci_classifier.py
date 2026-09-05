@@ -69,7 +69,7 @@ def load_manifest(path: Path = DEFAULT_MANIFEST) -> list[dict[str, Any]]:
 
 def changed_paths(base: str | None, head: str, explicit: list[str] | None = None) -> list[str]:
     if explicit is not None:
-        paths = sorted({path.strip().lstrip("./") for path in explicit if path.strip()})
+        paths = sorted({normalize_path(path) for path in explicit if path.strip()})
         if not paths:
             raise ClassifierError("explicit changed path list is empty")
         return paths
@@ -85,6 +85,15 @@ def changed_paths(base: str | None, head: str, explicit: list[str] | None = None
     if not paths:
         raise ClassifierError("changed path discovery produced no paths")
     return paths
+
+
+def normalize_path(path: str) -> str:
+    """Strip a `./` prefix without eating the leading dot of a dotfile path.
+
+    `lstrip("./")` removes a character *set*, so it turned `.github/workflows/x`
+    into `github/workflows/x` and no rule matched it.
+    """
+    return path.strip().removeprefix("./")
 
 
 def matches_rule(path: str, rule: str) -> bool:
@@ -111,7 +120,7 @@ def tracked_paths(root: Path = ROOT) -> list[str]:
 
 
 def select_families(paths: list[str], families: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    normalized = sorted({path.strip().lstrip("./") for path in paths if path.strip()})
+    normalized = sorted({normalize_path(path) for path in paths if path.strip()})
     if not normalized:
         raise ClassifierError("cannot classify an empty path list")
     selected: dict[str, dict[str, Any]] = {}
@@ -158,7 +167,7 @@ def classify(paths: list[str], manifest: Path = DEFAULT_MANIFEST) -> dict[str, A
         # constitutional PASS. Family runners determine PASS/FAIL/
         # NOT_EVALUATED/BLOCKED after this output is consumed.
         "status": "SELECTED",
-        "paths": sorted({path.strip().lstrip("./") for path in paths if path.strip()}),
+        "paths": sorted({normalize_path(path) for path in paths if path.strip()}),
         "selected_families": selected,
         "unselected_families": [
             {"family_id": family["family_id"], "status": "NOT_APPLICABLE"}

@@ -78,7 +78,7 @@ families:
       styles, keyboard behavior, and real Axe evidence remain uncovered.
   - family_id: CI-VALIDATION
     governing_authority: [INV-ARC-017]
-    path_rules: [.github/workflows/**, scripts/**, tests/conftest.py, docs/SPEC/SPEC-INV-001*]
+    path_rules: [.ci/**, .github/workflows/**, scripts/**, tests/conftest.py, docs/SPEC/SPEC-INV-001*]
     evidence_kind: [static, runtime]
     evidence_commands:
       - tests/test_ci_classifier.py
