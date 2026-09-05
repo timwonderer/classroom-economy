@@ -1,0 +1,79 @@
+version: 1
+families:
+  - family_id: CI-ARC-EXEC
+    governing_authority: [INV-ARC-000, INV-ARC-003, INV-ARC-006, INV-ARC-007, INV-ARC-009, INV-ARC-021]
+    path_rules: [app/feats/**, app/routes/**, app/services/**, tests/dom/operation/**, docs/FEATURE-EXECUTION/**]
+    evidence_kind: [static, runtime]
+    evidence_commands:
+      - tests/dom/operation/test_feat_enforcement.py
+      - tests/dom/operation/test_feat_context_transactions.py
+    auxiliary_evidence: [policy_guardrails]
+    mandatory: true
+    pass_contract: FEAT and transaction-boundary evidence executes successfully.
+    known_limits: Static checks and selected runtime tests do not prove all cross-domain paths.
+  - family_id: CI-SCOPE
+    governing_authority: [INV-ARC-001, INV-ARC-002, INV-ARC-004, INV-ARC-008, INV-ARC-010, INV-ARC-011, INV-ARC-013, INV-ARC-014, INV-ARC-019]
+    path_rules: [app/routes/**, app/services/context*, app/models.py, tests/dom/class/**, tests/dom/identity/**, docs/DOMAIN/DOM-CLASS-001*]
+    evidence_kind: [runtime]
+    evidence_commands:
+      - tests/dom/class/test_feature_scope_single_active_class.py
+      - tests/dom/class/test_pending_student_class_isolation.py
+      - tests/dom/class/test_hard_delete_class_scope_isolation.py
+      - tests/dom/identity/test_class_context_and_switching.py
+      - tests/dom/identity/test_admin_tenancy.py
+    mandatory: true
+    pass_contract: Selected class and seat scope evidence executes successfully.
+    known_limits: Static analysis supplements but cannot replace behavioral isolation evidence.
+  - family_id: CI-TEMPORAL
+    governing_authority: [INV-ARC-015]
+    path_rules: [app/utils/canonical_temporal_resolver.py, app/utils/temporal_*, tests/dom/temporal/**, docs/INVARIANT/ARCHITECTURE/INV-ARC-015*]
+    evidence_kind: [static, runtime]
+    evidence_commands:
+      - tests/dom/temporal/test_SPEC_TIME_001__canonical_temporal_resolver.py
+    mandatory: true
+    pass_contract: Canonical resolver evidence executes successfully.
+    known_limits: Timezone immutability, prohibited API scans, and historical non-reinterpretation remain uncovered.
+  - family_id: CI-PERSIST
+    governing_authority: [INV-ARC-012, INV-ARC-016]
+    path_rules: [migrations/**, app/models.py, app/routes/admin.py, tests/test_class_phase2_persistence.py, tests/dom/class/test_hard_delete_class_scope_isolation.py]
+    evidence_kind: [static, runtime, persistence]
+    evidence_commands:
+      - tests/test_class_phase2_persistence.py
+      - tests/dom/class/test_hard_delete_class_scope_isolation.py
+    auxiliary_evidence: [migration_validator]
+    mandatory: true
+    pass_contract: Selected persistence and authorized lifecycle evidence executes successfully.
+    known_limits: AuditEvent lineage and PII-specific deletion evidence are not complete.
+  - family_id: CI-PII
+    governing_authority: [INV-ARC-005, INV-ARC-018, INV-ARC-019]
+    path_rules: [app/models.py, app/services/identity/**, migrations/**, tests/dom/identity/**, docs/INVARIANT/ARCHITECTURE/INV-ARC-018*]
+    evidence_kind: [static, runtime, persistence]
+    evidence_commands: []
+    mandatory: true
+    pass_contract: No current sufficient evidence; selected changes remain NOT_EVALUATED.
+    known_limits: Storage allowlist, deletion-retention, and execution-layer leakage evidence are not yet combined into a complete family gate.
+  - family_id: CI-XDOMAIN
+    governing_authority: [INV-ARC-021]
+    path_rules: [app/domains/**, app/feats/**, app/routes/**, app/jobs/**, app/services/**, migrations/**]
+    evidence_kind: [static, persistence]
+    evidence_commands: []
+    mandatory: true
+    pass_contract: No current sufficient evidence; selected changes remain NOT_EVALUATED.
+    known_limits: No dedicated dependency or cross-domain schema gate exists.
+  - family_id: CI-RENDER
+    governing_authority: [INV-ARC-020]
+    path_rules: [templates/**, static/css/**, static/js/**, app/services/*view*., app/routes/**, tests/test_accessibility.py]
+    evidence_kind: [static, browser]
+    evidence_commands:
+      - tests/test_accessibility.py
+    mandatory: true
+    pass_contract: Narrow static HTML checks execute successfully; browser completeness is not claimed.
+    known_limits: Rendered browser, computed styles, keyboard behavior, and real Axe evidence remain uncovered.
+  - family_id: CI-VALIDATION
+    governing_authority: [INV-ARC-017]
+    path_rules: [.github/workflows/**, scripts/**, tests/conftest.py, docs/SPEC/SPEC-INV-001*]
+    evidence_kind: [static, runtime]
+    evidence_commands: []
+    mandatory: true
+    pass_contract: Classifier and evidence metadata validate successfully.
+    known_limits: This family does not establish application invariant behavior.
