@@ -3,8 +3,8 @@ name: Deploy GitHub Pages Transition Site
 on:
   push:
     branches:
+      - codex/landed-architecture-execution-fixes
       - CTH_v2.0
-      - v2.0
     paths:
       - 'github-pages/**'
       - '.github/workflows/github-pages-transition.yml'
