@@ -804,13 +804,49 @@ class PayrollCycleCompletion(db.Model):
 
 
 class HallPassSettings(db.Model):
+    """Immutable hall-pass policy definition — POL-governed, consumed by Productivity.
+
+    Append-only (DOM-POL-001 §VI.0/§VI.1): ``policy_uuid`` *is* the version. The
+    writer (``save_hall_pass_setup_config``) already inserted a new row per save,
+    but nothing enforced it and nothing marked the predecessor superseded, so the
+    "current" policy was whichever row happened to sort first. The
+    ``availability_state`` projection and the ``before_update`` guard below close
+    both gaps.
+
+    Resolve the current policy through
+    ``class_configuration_query_service.get_hall_pass_settings()``.
+    """
     __tablename__ = 'hall_pass_settings'
     id = db.Column(db.Integer, primary_key=True)
     policy_uuid = db.Column(db.String(36), unique=True, nullable=False, index=True, default=lambda: str(uuid.uuid4()))
     class_id = db.Column(db.String(36), db.ForeignKey('classes.class_id', ondelete='CASCADE'), nullable=False, index=True)
+
+    # Availability projection over the immutable row (DOM-POL-001 §IX).
+    availability_state = db.Column(db.String(16), nullable=False, server_default='IN_USE', default='IN_USE')
+
     max_queue_limit = db.Column(db.Integer, nullable=False, default=10)
     pass_type_payload = db.Column(db.JSON, nullable=False, default=list)
     effective_date = db.Column(db.DateTime(timezone=True), default=utc_now, nullable=False, index=True)
+
+    # Immutable definition payload (DOM-POL-001 §VI.1); see the guard below.
+    _FROZEN_POLICY_FIELDS = ('max_queue_limit', 'pass_type_payload', 'effective_date')
+
+    __table_args__ = (
+        db.CheckConstraint(
+            "availability_state IN ('IN_USE','HIDDEN','RETIRED')",
+            name='ck_hall_pass_settings_availability',
+        ),
+        # Exactly one IN_USE hall-pass policy per class, so the reader's
+        # "newest IN_USE row" resolves to a single row and two concurrent saves
+        # cannot both believe they are current.
+        db.Index(
+            'uq_hall_pass_settings_active_scope',
+            'class_id',
+            unique=True,
+            postgresql_where=sa.text("availability_state = 'IN_USE'"),
+        ),
+        db.Index('ix_hall_pass_settings_class_availability', 'class_id', 'availability_state'),
+    )
 
     @staticmethod
     def get_default_pass_types():
@@ -832,6 +868,28 @@ class HallPassSettings(db.Model):
     @property
     def effective_queue_limit(self):
         return min(self.max_queue_limit, sum(item.get("max_queue", 0) for item in self.get_pass_types()))
+
+
+@event.listens_for(HallPassSettings, "before_update")
+def _reject_hall_pass_policy_payload_mutation(mapper, connection, target):
+    """Refuse any in-place edit of the immutable hall-pass definition payload.
+
+    DOM-POL-001 §VI.1. Only ``availability_state`` may change on an existing row;
+    a configuration change is a new row with a new ``policy_uuid``.
+    """
+    state = sa.inspect(target)
+    mutated = [
+        field
+        for field in HallPassSettings._FROZEN_POLICY_FIELDS
+        if state.attrs[field].history.has_changes()
+    ]
+    if mutated:
+        raise ValueError(
+            "hall_pass_settings definition payload is immutable "
+            f"(DOM-POL-001 §VI.1); attempted in-place change to {sorted(mutated)} on "
+            f"policy_uuid={getattr(target, 'policy_uuid', None)}. "
+            "Insert a new HallPassSettings row instead."
+        )
 
 
 # Persisted compute-result caches are explicitly prohibited by DOM-CORE-002
@@ -1821,14 +1879,47 @@ class StudentRecoveryCode(db.Model):
 
 # ---- Payroll Settings Model ----
 class PayrollSettings(db.Model):
+    """Immutable payroll policy definition — POL-governed, consumed by Productivity.
+
+    Append-only (DOM-POL-001 §VI.0/§VI.1): ``policy_uuid`` *is* the version. Every
+    teacher submission inserts a NEW row with a NEW ``policy_uuid``; the payload
+    columns are never rewritten in place. ``availability_state`` is a mutable
+    projection *over* the immutable row, not a version pointer.
+
+    This table was previously a mutable singleton that ``upsert_payroll_settings``
+    edited via ``setattr`` — the "singleton mutable settings blob" DOM-CLASS-003
+    §XI.4 names as prohibited. Because ``_resolve_pay_rate_per_second`` reads the
+    live row while a payroll run pays out *all* attendance accrued since the last
+    payroll event, raising the rate mid-cycle repriced time a student had already
+    worked. DOM-CLASS-003 ("Pending Next-Cycle Payroll-Governing Changes") is
+    explicit that a payroll-governing change MUST NOT mutate the policy governing
+    the open cycle (INV-ARC-015 §VI.7).
+
+    The "current" policy for a class is the newest ``IN_USE`` row — resolve it
+    through ``class_configuration_query_service.get_payroll_settings()``, never
+    with a bare ``filter_by(class_id=...).first()``, which is nondeterministic
+    once a class holds more than one version.
+
+    ``policy_versions`` rows with ``domain='payroll'`` are NOT this table's
+    version lineage; they are DOM-CLASS-003 economic-policy evolution, which is a
+    separate concern with its own boundary-activation rules. Per DOM-POL-001
+    §VI.0 they must not be treated as a "current version" pointer for this row.
+    """
     __tablename__ = 'payroll_settings'
     id = db.Column(db.Integer, primary_key=True)
+    policy_uuid = db.Column(db.String(36), unique=True, nullable=False, index=True, default=lambda: str(uuid.uuid4()))
     class_id = db.Column(db.String(36), db.ForeignKey('classes.class_id', ondelete='CASCADE'), nullable=False, index=True)
+
+    # Availability projection over the immutable row (DOM-POL-001 §IX).
+    # IN_USE  - selectable for new work (the current policy)
+    # HIDDEN  - not selectable, may return to IN_USE
+    # RETIRED - permanently unselectable; stays readable while dependencies drain
+    availability_state = db.Column(db.String(16), nullable=False, server_default='IN_USE', default='IN_USE')
+
     block = db.Column(db.String(10), nullable=True)  # NULL = global/default settings
     pay_rate = db.Column(db.Numeric(precision=18, scale=8), nullable=False, default=0.25)  # $ per minute
     payroll_frequency_days = db.Column(db.Integer, nullable=False, default=14)
     next_payroll_date = db.Column(db.DateTime(timezone=True), nullable=True)
-    is_active = db.Column(db.Boolean, default=True)
     created_at = db.Column(db.DateTime(timezone=True), default=utc_now)
     updated_at = db.Column(db.DateTime(timezone=True), default=utc_now, onupdate=utc_now)
 
@@ -1860,28 +1951,86 @@ class PayrollSettings(db.Model):
     # (canonical per DOM-CLASS-002). It is a CWI parameter, not a payroll parameter,
     # and is mutated via FEAT-CLASS-005 (immutable versioned engine snapshots).
 
+    # The immutable definition payload. These columns are frozen at insert: a
+    # change to any of them is a NEW row with a NEW policy_uuid, never an update
+    # (DOM-POL-001 §VI.1). Enforced by the before_update guard below.
+    #
+    # `next_payroll_date` is deliberately NOT frozen. It is the recurring
+    # schedule's cursor, advanced by `run_automatic_payroll_job` after each
+    # completed run — operational state carried on the policy row, not part of
+    # the definition a teacher submits.
+    _FROZEN_POLICY_FIELDS = (
+        'block', 'pay_rate', 'payroll_frequency_days', 'overtime_multiplier',
+        'bonus_rate', 'settings_mode', 'daily_limit_hours', 'time_unit',
+        'overtime_enabled', 'overtime_threshold', 'overtime_threshold_unit',
+        'overtime_threshold_period', 'max_time_per_day', 'max_time_per_day_unit',
+        'pay_schedule_type', 'pay_schedule_custom_value', 'pay_schedule_custom_unit',
+        'first_pay_date', 'rounding_mode',
+    )
+
     __table_args__ = (
-        # One canonical *active* payroll settings row per resolution scope.
-        # DOM-CLASS-001 / INV-ARC-019: `class_id` is the sole scoping key and the
-        # canonical writer (`upsert_payroll_settings`) updates a single row in
-        # place. The reader (`payroll._fetch_single_active_setting`) still scopes
-        # by (class_id, block) and treats >1 active row as fatal ("Ambiguous
-        # PayrollSettings scope"). Without this guard duplicates are possible —
-        # e.g. the TOCTOU race where two concurrent upserts both observe no row
-        # and both INSERT. NULL block is the class-global scope, so it is
-        # normalized via COALESCE to a single sentinel; a class may still hold one
-        # global row AND one block-specific row (distinct scopes) simultaneously.
+        db.CheckConstraint(
+            "availability_state IN ('IN_USE','HIDDEN','RETIRED')",
+            name='ck_payroll_settings_availability',
+        ),
+        # Exactly one IN_USE payroll policy per class. The table is append-only
+        # (many versions per class is now the normal case), so this constrains the
+        # *availability projection*, not the row count: supersession must retire
+        # the predecessor in the same transaction that inserts its replacement.
+        # It also closes the TOCTOU race where two concurrent submissions both
+        # observe no current policy and both insert.
+        #
+        # `class_id` alone is the scope. `block` is display metadata and is never
+        # a scoping key (INV-ARC-019 / DOM-CLASS-001); including it here would
+        # permit two concurrently-current policies for one class, which the
+        # class_id-scoped reader could not disambiguate.
         db.Index(
             'uq_payroll_settings_active_scope',
             'class_id',
-            sa.text("COALESCE(block, '')"),
             unique=True,
-            postgresql_where=sa.text('is_active IS TRUE'),
+            postgresql_where=sa.text("availability_state = 'IN_USE'"),
         ),
+        db.Index('ix_payroll_settings_class_availability', 'class_id', 'availability_state'),
     )
 
     def __repr__(self):
         return f'<PayrollSettings class_id={self.class_id} block={self.block or "Global"}>'
+
+
+@event.listens_for(PayrollSettings, "before_insert")
+@event.listens_for(PayrollSettings, "before_update")
+def _sync_payroll_settings_scope(mapper, connection, target):
+    """Canonical payroll settings scope must already be class_id anchored."""
+    if getattr(target, "class_id", None) is None:
+        raise ValueError("payroll_settings require canonical class_id")
+
+
+@event.listens_for(PayrollSettings, "before_update")
+def _reject_payroll_policy_payload_mutation(mapper, connection, target):
+    """Refuse any in-place edit of the immutable payroll definition payload.
+
+    DOM-POL-001 §VI.1: definition payload columns are immutable after insert.
+    A pay-rate change is a new row with a new ``policy_uuid``, not an update.
+
+    The failure this prevents is silent: a payroll run pays out all attendance
+    accrued since the seat's last payroll event at whatever rate the live row
+    carries, so editing the rate mid-cycle repriced time already worked. Only
+    ``availability_state``, ``next_payroll_date`` (the schedule cursor), and
+    bookkeeping columns may change on an existing row.
+    """
+    state = sa.inspect(target)
+    mutated = [
+        field
+        for field in PayrollSettings._FROZEN_POLICY_FIELDS
+        if state.attrs[field].history.has_changes()
+    ]
+    if mutated:
+        raise ValueError(
+            "payroll_settings definition payload is immutable "
+            f"(DOM-POL-001 §VI.1); attempted in-place change to {sorted(mutated)} on "
+            f"policy_uuid={getattr(target, 'policy_uuid', None)}. "
+            "Insert a new PayrollSettings row instead."
+        )
 
 
 # Adjustment state overlaps payroll rewards and fines

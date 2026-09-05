@@ -26,7 +26,7 @@ def _fetch_single_active_setting(*, class_id: str, block: str | None):
         raise ValueError("PayrollSettings lookup requires class_id.")
     query = PayrollSettings.query.filter(
         PayrollSettings.class_id == class_id,
-        PayrollSettings.is_active.is_(True),
+        PayrollSettings.availability_state == 'IN_USE',
     )
     if block:
         query = query.filter(sa.func.upper(PayrollSettings.block) == block.upper())
@@ -180,7 +180,7 @@ def _get_batch_pay_rates(class_ids):
         PayrollSettings.query
         .filter(
             PayrollSettings.class_id.in_(class_ids),
-            PayrollSettings.is_active.is_(True),
+            PayrollSettings.availability_state == 'IN_USE',
         )
         .all()
     )

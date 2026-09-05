@@ -1,6 +1,8 @@
 from app.extensions import db
-from app.models import PayrollSettings
-from app.services.class_configuration_query_service import get_effective_economic_engine
+from app.services.class_configuration_query_service import (
+    get_effective_economic_engine,
+    get_payroll_settings,
+)
 from app.services.payroll.builders import build_payroll_settings_display
 from tests.helpers.class_domain import update_expected_weekly_hours, update_payroll_settings
 from tests.helpers.classroom_initializer import initialize_as_teacher
@@ -26,10 +28,12 @@ def test_DOM_CLASS_001__payroll_settings_update_persists_class_scoped_row(client
     assert response.status_code == 302
     assert response.headers["Location"].endswith("/admin/payroll")
 
-    saved = PayrollSettings.query.filter_by(class_id=class_row.class_id).first()
+    # The submission supersedes its predecessor rather than editing it, so read
+    # the policy currently governing the class rather than any row for it.
+    saved = get_payroll_settings(class_row.class_id)
     assert saved is not None
-    # PayrollSettings no longer carries expected_weekly_hours (moved to EconomicEngine)
-    assert not hasattr(saved, "expected_weekly_hours") or saved.expected_weekly_hours is None or True
+    assert saved.class_id == class_row.class_id
+    assert build_payroll_settings_display(saved)["display_hourly_rate_value"] == "15.00"
 
 
 def test_DOM_CLASS_001__simple_hourly_rate_round_trips_without_precision_loss(client):
@@ -45,7 +49,7 @@ def test_DOM_CLASS_001__simple_hourly_rate_round_trips_without_precision_loss(cl
 
     assert response.status_code == 302
     db.session.expire_all()
-    saved = PayrollSettings.query.filter_by(class_id=classroom.class_id).one()
+    saved = get_payroll_settings(classroom.class_id)
     display = build_payroll_settings_display(saved)
 
     assert display["display_hourly_rate_value"] == "80.00"

@@ -14,6 +14,7 @@ from app.models import (
     StoreItem,
     User,
 )
+from app.services.class_configuration_query_service import get_payroll_settings
 from tests.helpers.canonical_session import set_canonical_context
 from tests.helpers.classroom_initializer import initialize
 from tests.dom.identity.helpers import (
@@ -462,6 +463,9 @@ def test_DOM_IDEN_006__class_scoped_post_rejects_request_class_mismatch(client):
     assert response.status_code == 302
 
     db.session.expire_all()
+    # Payroll policy is append-only, so "untouched" is now the stronger claim
+    # that class B still has exactly the one row it was provisioned with — a
+    # stray write would have minted a successor here.
     class_b_settings = db.session.query(PayrollSettings).filter(
         PayrollSettings.class_id == class_b.class_id,
     ).one()
@@ -470,9 +474,9 @@ def test_DOM_IDEN_006__class_scoped_post_rejects_request_class_mismatch(client):
         "the request join_code, governs the write target"
     )
 
-    class_a_settings = db.session.query(PayrollSettings).filter(
-        PayrollSettings.class_id == class_a.class_id,
-    ).one()
+    # Class A did receive the submission, so it has a retired predecessor plus
+    # the successor now governing it. Read the one that governs.
+    class_a_settings = get_payroll_settings(class_a.class_id)
     assert class_a_settings.pay_rate == posted_rate, (
         "Canonical class must receive the posted payroll update"
     )

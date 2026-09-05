@@ -30,6 +30,7 @@ from app.models import (
 from app.models import PolicyVersion
 from app.services.context_resolver import CanonicalContext
 from app.services import insurance_claim_service
+from app.services.payroll_settings_service import upsert_payroll_settings
 from app.services.class_configuration_query_service import (
     get_economic_engine_by_version,
     get_effective_economic_engine,
@@ -1191,17 +1192,21 @@ def _set_global_daily_limit_hours(class_id: str, hours: float) -> None:
 
     Caller must be inside a FEAT context. This is the SOLE per-day capacity
     authority PRODUCTIVITY consults via ``get_daily_limit_seconds``.
+
+    Payroll policy is append-only (DOM-POL-001 §VI.1), so this supersedes the
+    current row rather than editing it in place — an in-place edit now raises.
     """
-    row = (
+    existing = (
         PayrollSettings.query.filter(
             PayrollSettings.class_id == class_id,
-            PayrollSettings.block.is_(None),
-            PayrollSettings.is_active.is_(True),
+            PayrollSettings.availability_state == 'IN_USE',
         ).first()
     )
-    assert row is not None, "default classroom must have a global payroll settings row"
-    row.settings_mode = "simple"
-    row.daily_limit_hours = float(hours)
+    assert existing is not None, "default classroom must have a global payroll settings row"
+    upsert_payroll_settings(
+        class_id=class_id,
+        settings_data={"settings_mode": "simple", "daily_limit_hours": float(hours)},
+    )
     db.session.flush()
 
 

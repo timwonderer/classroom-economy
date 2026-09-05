@@ -23,7 +23,7 @@ def _payload_json_from_settings(setting: PayrollSettings) -> str:
         'pay_schedule_custom_value', 'pay_schedule_custom_unit',
         'overtime_enabled', 'overtime_threshold', 'overtime_threshold_unit',
         'overtime_threshold_period', 'overtime_multiplier',
-        'max_time_per_day', 'max_time_per_day_unit', 'rounding_mode', 'is_active',
+        'max_time_per_day', 'max_time_per_day_unit', 'rounding_mode',
     )
     payload = {k: _norm(getattr(setting, k, None)) for k in fields}
     return json.dumps(payload, sort_keys=True, default=str)
@@ -73,24 +73,77 @@ def _activate_payroll_policy_version(class_id: str, setting: PayrollSettings) ->
     return version
 
 
-def upsert_payroll_settings(*, class_id: str, settings_data: dict) -> PayrollSettings:
-    """Create or update the canonical class-scoped payroll settings row.
+def _current_payroll_settings(class_id: str) -> PayrollSettings | None:
+    """The payroll policy currently in force for a class, or None.
 
-    `class_id` is the sole scoping key (DOM-CLASS-001 / INV-ARC-019). There is no
-    concept of "multiple blocks" for a class — a teacher's canonical context is
-    exactly one class at a time.
+    Scoped by ``class_id`` alone, matching the partial unique index and the
+    reader in ``class_configuration_query_service``. ``block`` is display
+    metadata, never a scoping key (CLAUDE.md §7 / INV-ARC-019).
+
+    Deterministic by construction: ``created_at`` collides for rows written in
+    the same request, so ``id`` supplies the total order.
+    """
+    return (
+        PayrollSettings.query
+        .filter_by(class_id=class_id, availability_state='IN_USE')
+        .order_by(PayrollSettings.created_at.desc(), PayrollSettings.id.desc())
+        .first()
+    )
+
+
+# Columns a submission may set. Anything else in `settings_data` is a caller
+# error rather than something to silently drop onto the row.
+_SUBMITTABLE_FIELDS = PayrollSettings._FROZEN_POLICY_FIELDS + ('next_payroll_date',)
+
+
+def upsert_payroll_settings(*, class_id: str, settings_data: dict) -> PayrollSettings:
+    """Record a payroll policy submission as a NEW immutable row.
+
+    `class_id` is the sole scoping key (DOM-CLASS-001 / INV-ARC-019).
+
+    Despite the name — kept so the many call sites stay stable — this never
+    updates in place. DOM-POL-001 §VI.1: "Any submission — first-time or
+    resubmission — produces a new `policy_uuid`. The backend MUST NOT infer
+    whether a change is meaningful; a submission is a new contract." The
+    predecessor is retired in the same transaction, which is what keeps the
+    partial unique index on (class_id, block) WHERE IN_USE satisfiable.
+
+    Fields the submission does not mention are carried forward from the
+    predecessor, so a partial form post still yields a complete contract rather
+    than a row of column defaults.
 
     Also creates and activates a new `PolicyVersion` snapshot for the payroll
-    domain so downstream payroll runs can reference an active version.
+    domain. That lineage is DOM-CLASS-003 economic-policy evolution — a distinct
+    concern from this row's own versioning, and not a "current version" pointer
+    for it (DOM-POL-001 §VI.0).
     """
-    setting = PayrollSettings.query.filter_by(class_id=class_id).first()
-    if not setting:
-        setting = PayrollSettings(class_id=class_id)
+    unknown = set(settings_data) - set(_SUBMITTABLE_FIELDS)
+    if unknown:
+        raise ValueError(
+            f"Unknown payroll settings field(s): {sorted(unknown)}. "
+            "Payroll policy columns are enumerated by PayrollSettings._FROZEN_POLICY_FIELDS."
+        )
 
-    for key, value in settings_data.items():
-        setattr(setting, key, value)
+    predecessor = _current_payroll_settings(class_id)
 
-    setting.updated_at = utc_now()
+    carried = {}
+    if predecessor is not None:
+        carried = {
+            field: getattr(predecessor, field)
+            for field in _SUBMITTABLE_FIELDS
+        }
+    carried.update(settings_data)
+
+    setting = PayrollSettings(class_id=class_id, availability_state='IN_USE', **carried)
+    setting.created_at = utc_now()
+    setting.updated_at = setting.created_at
+
+    # Retire the predecessor BEFORE the insert is flushed so the partial unique
+    # index never sees two IN_USE rows for the scope.
+    if predecessor is not None:
+        predecessor.availability_state = 'RETIRED'
+        db.session.flush()
+
     db.session.add(setting)
     db.session.flush()
 

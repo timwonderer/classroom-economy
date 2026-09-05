@@ -57,7 +57,7 @@ def _seed_due_class(classroom, *, due=True):
         if settings is None:
             settings = PayrollSettings(class_id=cid, pay_rate=0.25)
             db.session.add(settings)
-        settings.is_active = True
+        settings.availability_state = 'IN_USE'
         settings.next_payroll_date = occurrence
         settings.payroll_frequency_days = 14
         db.session.flush()

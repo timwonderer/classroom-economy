@@ -47,6 +47,16 @@ def _student_ctx(classroom, index: int = 0) -> CanonicalContext:
 
 
 def _seed_hall_pass_settings(classroom) -> None:
+    """Supersede the class's hall-pass policy (append-only, one IN_USE per class)."""
+    predecessor = (
+        HallPassSettings.query
+        .filter_by(class_id=classroom.class_id, availability_state='IN_USE')
+        .first()
+    )
+    if predecessor is not None:
+        predecessor.availability_state = 'RETIRED'
+        db.session.flush()
+
     db.session.add(
         HallPassSettings(
             class_id=classroom.class_id,
@@ -172,8 +182,8 @@ def test_DOM_PROD_002__get_verify_page_invalid_token(client):
 
 def test_DOM_PROD_002__get_verify_page_rejects_null_token_teacher(client):
     """Teacher records with null token must not be publicly reachable."""
+    classroom = initialize("biology_block_a", client.application)
     with FEATContext("FEAT-IDEN-001", idempotency_key="hall-pass-verify:null-token"):
-        classroom = initialize("biology_block_a", client.application)
         classroom.teacher_user.hall_pass_verify_token = None
         db.session.flush()
 

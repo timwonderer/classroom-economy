@@ -40,18 +40,22 @@ Rubric anchors used:
 |---|---|---|---|
 | 1 | Identity | **NOT READY** | B7 |
 | 2 | Class Configuration | READY (with caveats) | — |
-| 3 | Ledger | READY (with caveats) | — |
+| 3 | Ledger | **NOT READY** | B10 |
 | 4 | Productivity & Payroll | READY (with caveats) | — |
 | 5 | Obligations | READY (with caveats) | — |
 | 6 | Store & Entitlements | READY (with caveats) | — |
-| 7 | Policies | **NOT READY** | B2 |
+| 7 | Policies | READY (with caveats) | — |
 | 8 | Interpretation | READY (with caveats) | — |
 | 9 | Operations | READY (with caveats) | — |
 | 10 | Support | **NOT READY** | B4, B5, B6, B7 |
 
-**7 of 10 domains are production-ready.** Three are blocked by five open defects, which collapse into
-**two fix tracks** (§IV). Four further defects (B1, B3, B8, B9) were found and closed on 2026-09-04;
-B1's closure is what returned Obligations to ready.
+**7 of 10 domains are production-ready.** Three are blocked by five open defects across **two fix
+tracks** (§IV) — T2, the sysadmin support surface (B4, B5, B6, B7), and the newly opened **B10**, a
+`LedgerBalanceSnapshot` model/schema drift that breaks the posted-balance read path. B10 was found on
+2026-09-05 by triaging the full suite during B2's closure, where it accounts for roughly
+three-quarters of all failures; it is pre-existing and had gone untracked, and it moves Ledger from
+READY to NOT READY. Five defects (B1, B2, B3, B8, B9) were found and closed on 2026-09-04/05; B1's
+closure returned Obligations to ready and B2's returned Policies, clearing fix track T1.
 
 ---
 
@@ -102,16 +106,85 @@ FEAT-IDEN-001 self-nest in that file's own setup, unrelated to this work).
 
 *Status: closed on `codex/landed-architecture-execution-fixes` @ `51cc9d9f` (2026-09-04).*
 
-### B2 — Policy `*_settings` tables are mutable singletons, not append-only versions
+### B2 — Policy `*_settings` tables are mutable singletons, not append-only versions — **CLOSED 2026-09-05**
 **Domain:** Policies · **Severity:** Critical · **Violates:** DOM-POL-001 §VI
 
-`upsert_payroll_settings` mutates the existing row via `setattr`; `PayrollSettings` has **no
-`policy_uuid` column at all**. `HallPassSettings` has the same shape. DOM-POL-001 §VI collapses
+`upsert_payroll_settings` mutated the existing row via `setattr`; `PayrollSettings` had **no
+`policy_uuid` column at all**. `HallPassSettings` had the same shape. DOM-POL-001 §VI collapses
 Insert/Update into a single Insert — every submission must create a new immutable row.
 
-`InsurancePolicy` (`app/models.py:2063-2152`) is the correct reference implementation to copy.
-
 > B1 and B2 are the same defect class. One immutability rework clears both and unblocks two domains.
+
+**The harm was live, not theoretical.** A payroll run pays out *all* attendance accrued since the
+seat's last payroll event, and `_resolve_pay_rate_per_second` (`app/feats/prod.py:63`) prices it from
+the class's current policy row. Because that row was rewritten in place, raising the rate mid-cycle
+repriced time already worked and left no surviving version that remembered the old terms — so
+`PayrollEvent`'s frozen `policy_uuid` had nothing stable to address. DOM-CLASS-003 ("Pending
+Next-Cycle Payroll-Governing Changes") is explicit that such a change MUST NOT mutate the policy
+governing the open cycle (INV-ARC-015 §VI.7).
+
+**Closure applies B1's pattern verbatim.** Both tables gained `policy_uuid` and a CHECK-constrained
+`availability_state` (`IN_USE`/`HIDDEN`/`RETIRED`) as the mutable projection over the immutable row,
+plus a partial unique index on `class_id WHERE availability_state = 'IN_USE'` — which both forces
+supersession to retire the predecessor in the same transaction and closes the TOCTOU race where two
+concurrent submissions each observe no current policy and both insert. `block` is deliberately **not**
+in that index: it is display metadata, never a scoping key (INV-ARC-019), and including it would
+permit two concurrently-current policies the class-scoped reader could not disambiguate. A
+`before_update` guard on each model rejects in-place writes to any definition-payload column, so the
+defect cannot return through a stray `setattr`.
+
+`upsert_payroll_settings` keeps its name (many call sites) but no longer updates anything: it retires
+the predecessor, carries forward every field the submission did not mention, and inserts a new row —
+then activates the payroll `PolicyVersion` snapshot as before. `is_active` is **replaced** by
+`availability_state` rather than kept alongside it; two projections would be exactly the alternative
+current-version pointer DOM-POL-001 §VI.0 prohibits. `next_payroll_date` is deliberately left mutable:
+it is the recurring schedule's cursor, advanced after each run, not part of the submitted definition.
+
+`HallPassSettings` already inserted a new row per save; what was missing was retiring the predecessor,
+without which a class accumulated several rows all claiming to be current and the reader picked one by
+sort order. Its read path also had a second defect — `_get_or_create_hall_pass_settings` inserted a
+default policy as a side effect of being *asked* which policy applied. That is **not** an INV-ARC-007
+GET-write — its only live caller was the queue-settings write command — but it did mint a governing
+contract nobody submitted and leave that conjured row unretired alongside the submission that followed
+it. It is now a pure reader; callers with no policy fall back to class defaults. The dead route shim
+in `app/routes/api.py` is deleted.
+
+A **third** defect surfaced while editing that function and was fixed here rather than left to ship:
+`update_hall_pass_queue_settings` carried `@requires_feat_context("FEAT-SETTINGS-001")` and then called
+`save_hall_pass_setup_config`, which carries it too. The decorator opens a context unconditionally, so
+a FEAT composed a FEAT and **every** call raised `FEATContextError` — making the queue-limit API
+endpoint an unconditional 500 for as long as the nesting had been in place. Same shape as B9 and the
+five routes B1 uncovered. The decorator is removed from the outer function, a thin argument-preparer
+over the inner command that owns the envelope (INV-ARC-000 §VIII.2, INV-ARC-021 §V.2).
+
+`policy_versions` rows with `domain='payroll'` were left alone: they are DOM-CLASS-003 economic-policy
+evolution, a separate lineage with its own boundary-activation rules, not this table's version
+pointer. `PayrollEvent.policy_version_id` stays.
+
+Migration `3bb29ef4e874` (guarded, idempotent, tested up → down → up; `flask db heads` shows one head).
+Backfill maps `is_active` onto `availability_state`, retires all but the newest current row per class
+before creating the unique index, then drops `is_active`.
+
+Regression: `tests/dom/prod/test_payroll_policy_immutability.py` (9 tests) and
+`tests/dom/attendance/test_hall_pass_policy.py` (6 tests). Verified by stash cycle: **9 of the 14 fail
+against the pre-fix tree, all 14 pass after** — the regression proper being a raise from 0.25 to 2.00
+that leaves exactly one `payroll_settings` row for the class, saying 2.00, with no version that
+remembers 0.25. Each of the 5 that passed pre-fix was checked individually rather than assumed. Four
+are genuine guards over behavior that was already correct. The fifth,
+`test_reading_hall_pass_settings_never_mints_a_policy`, was **written wrong**: it exercised the
+query-service reader, which was already pure, not the impure `_get_or_create` behind a different entry
+point. It is relabeled in-file as a guard, and a real pin for the third defect was added in its place.
+
+Two existing tests (`tests/dom/class/test_payroll_settings_class_scope.py`,
+`tests/dom/identity/test_admin_membership_gates.py`) called `.one()` on `payroll_settings`, which
+append-only legitimately breaks. Both now read through `get_payroll_settings` rather than loosening to
+`.first()`, which would have reinstated the sort-order guessing this blocker exists to remove. These
+were the only 2 of the 92 full-suite failures attributable to this change. The other 90 are
+pre-existing and were classified individually: 42 from the `LedgerBalanceSnapshot` model/schema drift
+now filed as **B10**, 19 from the known `FEAT-IDEN-001` harness-nesting noise, and 29 from 500s
+downstream of that same ledger drift plus one axe test needing a live server.
+
+*Status: closed on `codex/landed-architecture-execution-fixes` (2026-09-05).*
 
 ### B3 — Orphaned `users` rows are never deleted — **CLOSED 2026-09-04**
 **Domain:** Identity · **Severity:** High · **Violates:** INV-CORE-000 §III.5, DOM-IDEN-001 §VI, INV-ARC-012, INV-ARC-018
@@ -196,6 +269,44 @@ and replace `_resolve_seat` with `resolve_seat_for_context(user_id, class_id, se
 
 > B7 shares files and reviewers with B4/B5/B6. Fold it into track T2. **Port the code from
 > `3cdb1294`; do not port that commit's badge-system files** (see §V, Deferred).
+
+### B10 — `LedgerBalanceSnapshot` model still declares the pre-split shape the migration dropped
+**Domain:** Ledger · **Severity:** Critical · **Found:** 2026-09-05 (full-suite triage during B2)
+
+`app/models.py:688` still declares `posted_checking_balance_cents`, `posted_savings_balance_cents`, and
+`UniqueConstraint('class_id', 'seat_id', name='uq_balance_cache_seat_universe')`. Migration
+`e6f7a8b9c0d1_canonicalize_ledger_persistence` **dropped all three**: it added `account_type`,
+`posted_balance_cents`, and `reconciled_through_posting_sequence`, split savings into its own row, and
+created `uq_balance_snapshot_scope` on `(class_id, seat_id, account_type)`. Its `downgrade()` raises
+`RuntimeError`, so the schema is one-way and the model is simply wrong.
+
+The drift is not cosmetic, because `get_posted_balance` (`app/services/ledger_service.py:358-409`) has
+a fallback it never reaches:
+
+```python
+def _get_balance_cache(seat_id, class_id):
+    return LedgerBalanceSnapshot.query.filter_by(seat_id=seat_id, class_id=class_id).first()   # no account_type filter
+
+def get_posted_balance(seat_id, class_id, account_type):
+    cache = _get_balance_cache(seat_id, class_id)
+    if cache:
+        cents = (cache.posted_checking_balance_cents      # column no longer exists → raises
+                 if account_type == "checking"
+                 else cache.posted_savings_balance_cents)
+        return _quantize_currency(Decimal(cents) / 100)
+    return _get_posted_balance_fallback(seat_id, class_id, account_type)
+```
+
+Two faults compound: the unfiltered lookup would return an arbitrary account's row even if the columns
+existed, and the attribute access raises instead of degrading to the recompute path.
+
+**Evidence:** in the 2026-09-05 full suite (92 failed / 1102 passed) this accounts for **42 direct
+failures plus most of the 29 downstream 500s** — roughly three-quarters of all failures. Confirmed
+pre-existing at HEAD and untouched by the B2 diff; it is *not* a B2 regression.
+
+This contradicts the §II scoreboard, which listed Ledger as READY (with caveats) and whose caveats
+(§V) do not mention it. Ledger is moved to **NOT READY**. Balance reads are the most load-bearing path
+in the product; this must be closed before ship.
 
 ### B9 — Daily-limit auto tap-out is silently non-functional (FEAT-PROD-001 executes itself) — **CLOSED 2026-09-04**
 **Domain:** Productivity & Payroll · **Severity:** High · **Violates:** INV-ARC-000 §VIII.2, INV-ARC-021 §V.2
@@ -289,19 +400,21 @@ clean after the domain-command split.
 
 | Track | Clears | Unblocks | Est. | Owner | Status |
 |---|---|---|---|---|---|
-| **T1 — Policy immutability rework** | ~~B1~~, B2 | Obligations, Policies | Large | — | **B1 done 2026-09-04**; B2 remains |
+| **T1 — Policy immutability rework** | ~~B1~~, ~~B2~~ | Obligations, Policies | Large | — | **Done 2026-09-05** |
 | **T2 — Sysadmin support surface + seat-scope** | B4, B5, B6, B7 | Support, Identity | Medium | — | Not started |
 | **T3 — Orphaned-user deletion** | B3 | Identity | Small | — | **Done 2026-09-04** |
 | **T4 — FEAT self-nesting in scheduled jobs** | B9 | Productivity & Payroll | Small | — | **Done 2026-09-04** |
+| **T5 — Ledger snapshot model/schema realignment** | B10 | Ledger | Small–Medium | — | Not started |
 
-**Sequencing to 2026-09-17.** T1 is the critical path and the only substantial design work. Its
-harder half — B1, which established the append-only pattern (immutable payload + `availability_state`
-projection + supersession command + guarded migration) — is done; B2 applies that same pattern to
-`PayrollSettings` and `HallPassSettings`, neither of which has a `policy_uuid` column yet. T3 and T4
-are done; **the rest of T1 and all of T2 are what remain**, and they touch disjoint files, so they can
-run in parallel.
+**Sequencing to 2026-09-17.** T1 was the critical path and the only substantial design work; it is
+now clear. B1 established the append-only pattern (immutable payload + `availability_state` projection
++ supersession command + guarded migration) and B2 applied that same pattern to `PayrollSettings` and
+`HallPassSettings`. With T3 and T4 also done, **T2 and T5 remain**. They do not compete: T2 is the
+sysadmin support surface, T5 is `app/models.py` + `ledger_service.py`. T5 should go first despite
+being smaller — it is a one-file model correction plus an `account_type` predicate, and until it lands
+the suite cannot be read as a ship signal, since ~three-quarters of current failures trace to it.
 
-**Exit criteria for the ship gate.** All six open blockers closed; each with a regression test that
+**Exit criteria for the ship gate.** All five open blockers closed; each with a regression test that
 fails against the pre-fix commit; full pytest suite green; `flask db heads` shows exactly one head.
 
 ---
@@ -322,7 +435,9 @@ DOM-CLASS fields under a FEAT-IDEN context.
 
 **Ledger** — 3 ops scripts raise `ImportError` on the removed `BalanceCache`; misleading `student`
 variable actually bound to a Seat (`app/routes/student.py:761`); residual `join_code` / `user_id`
-columns on `Transaction`.
+columns on `Transaction`. *(These were the caveats behind Ledger's former READY verdict. They did not
+include the snapshot model drift, which was missed here and is now **B10**; the `BalanceCache`
+`ImportError` in those ops scripts is the same migration's fallout and should be swept in T5.)*
 
 **Productivity & Payroll** — `daily_limit` missing from the `AttendanceReasonCode` enum; pay-rate
 selection filters on a block/section label (**INV-ARC-014 violation, promote to blocking if it can

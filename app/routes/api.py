@@ -46,7 +46,6 @@ from app.feats.attendance import (
     rotate_teacher_hall_pass_verify_token as feat_rotate_teacher_hall_pass_verify_token,
     save_hall_pass_setup_config as feat_save_hall_pass_setup_config,
     update_hall_pass_queue_settings as feat_update_hall_pass_queue_settings,
-    _get_or_create_hall_pass_settings as feat_get_or_create_hall_pass_settings,
 )
 from app.feats.prod import record_attendance_session, record_hall_pass_log
 from app.routes.student import (
@@ -248,11 +247,6 @@ def _resolve_class_display_label(class_id, fallback_block=None):
 def _get_hall_pass_settings_scope(class_id):
     """Resolve canonical class scope for hall pass settings."""
     return resolve_class_scope(None, class_id=class_id)
-
-
-def _get_or_create_hall_pass_settings(class_id):
-    """Return the hall pass settings row for a specific class, creating it if needed."""
-    return feat_get_or_create_hall_pass_settings(class_id=class_id)
 
 
 def _admin_has_class_scope(canonical_context, class_id):

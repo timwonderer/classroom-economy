@@ -1086,7 +1086,7 @@ def _resolve_hourly_pay_rate(class_id: str) -> Decimal:
     setting = (
         PayrollSettings.query.filter(
             PayrollSettings.class_id == class_id,
-            PayrollSettings.is_active.is_(True),
+            PayrollSettings.availability_state == 'IN_USE',
             PayrollSettings.block.is_(None),
         )
         .order_by(PayrollSettings.updated_at.desc(), PayrollSettings.id.desc())

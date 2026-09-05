@@ -63,7 +63,7 @@ def _resolve_class_economy(class_id: str) -> ClassEconomy:
 def _resolve_pay_rate_per_second(class_id: str, *, block: str | None = None) -> Decimal:
     query = PayrollSettings.query.filter(
         PayrollSettings.class_id == class_id,
-        PayrollSettings.is_active.is_(True),
+        PayrollSettings.availability_state == 'IN_USE',
     )
     if block:
         query = query.filter(func.upper(PayrollSettings.block) == block.upper())

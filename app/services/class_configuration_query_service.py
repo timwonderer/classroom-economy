@@ -373,11 +373,22 @@ def get_payroll_settings(class_id: str) -> Optional[PayrollSettings]:
         if payroll:
             hourly = float(payroll.pay_rate) * 60
             print(f"Rate: ${hourly}/hr")
+
+    ``payroll_settings`` is append-only (DOM-POL-001 §VI.1): a class accumulates
+    one immutable row per teacher submission, so "the current policy" is the
+    newest ``IN_USE`` row, not merely the only row. Ordering is explicit and
+    total — ``created_at`` can collide within a request, so ``id`` breaks the tie.
+
+    This resolves the policy in force for NEW work. A payroll event that already
+    exists resolves its own terms and must not call this function
+    (DOM-POL-001 §VII).
     """
-    return PayrollSettings.query.filter_by(
-        class_id=class_id,
-        is_active=True,
-    ).order_by(PayrollSettings.id.desc()).first()
+    return (
+        PayrollSettings.query
+        .filter_by(class_id=class_id, availability_state='IN_USE')
+        .order_by(PayrollSettings.created_at.desc(), PayrollSettings.id.desc())
+        .first()
+    )
 
 
 def get_rent_settings(class_id: str) -> Optional[RentSettings]:
@@ -430,8 +441,19 @@ def get_hall_pass_settings(class_id: str) -> Optional[HallPassSettings]:
         hp = get_hall_pass_settings(classroom.class_id)
         if hp:
             print(f"Queue limit: {hp.max_queue_limit}")
+
+    ``hall_pass_settings`` is append-only (DOM-POL-001 §VI.1): every save inserts
+    a new immutable row, so "the current policy" is the newest ``IN_USE`` row.
+    ``effective_date`` alone is not a total order — two saves inside one request
+    share a timestamp — so ``id`` breaks the tie, matching the ordering used by
+    the FEAT-side reader in ``app/feats/prod.py``.
     """
-    return HallPassSettings.query.filter_by(class_id=class_id).order_by(HallPassSettings.effective_date.desc()).first()
+    return (
+        HallPassSettings.query
+        .filter_by(class_id=class_id, availability_state='IN_USE')
+        .order_by(HallPassSettings.effective_date.desc(), HallPassSettings.id.desc())
+        .first()
+    )
 
 
 # ============================================================================

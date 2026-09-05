@@ -22,14 +22,28 @@ def _teacher_ctx(classroom) -> CanonicalContext:
 
 
 def _seed_hall_pass_settings(classroom) -> None:
-    settings = HallPassSettings(
+    """Supersede the class's hall-pass policy with a single-pass-type variant.
+
+    Hall-pass policy is append-only with at most one IN_USE row per class
+    (DOM-POL-001 §VI.1), so the initializer's policy must be retired in the same
+    transaction rather than shadowed by a second live row.
+    """
+    from app.extensions import db
+
+    predecessor = (
+        HallPassSettings.query
+        .filter_by(class_id=classroom.class_id, availability_state='IN_USE')
+        .first()
+    )
+    if predecessor is not None:
+        predecessor.availability_state = 'RETIRED'
+        db.session.flush()
+
+    db.session.add(HallPassSettings(
         class_id=classroom.class_id,
         max_queue_limit=10,
         pass_type_payload=[{"pass_name": "Bathroom", "max_queue": 10, "consume_pass": True}],
-    )
-    from app.extensions import db
-
-    db.session.add(settings)
+    ))
     db.session.flush()
 
 

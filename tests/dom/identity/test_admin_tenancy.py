@@ -61,7 +61,6 @@ def _configure_daily_limit(class_id: str, *, daily_limit_hours: float, idempoten
             class_id=class_id,
             settings_data={
                 "block": None,
-                "is_active": True,
                 "settings_mode": "simple",
                 "daily_limit_hours": daily_limit_hours,
                 "pay_rate": 0.25,

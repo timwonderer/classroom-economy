@@ -368,7 +368,7 @@ def run_automatic_payroll_job():
         due_settings = (
             PayrollSettings.query
             .filter(
-                PayrollSettings.is_active.is_(True),
+                PayrollSettings.availability_state == 'IN_USE',
                 PayrollSettings.next_payroll_date.isnot(None),
                 PayrollSettings.next_payroll_date <= now,
             )

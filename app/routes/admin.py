@@ -903,7 +903,7 @@ def _build_payroll_preview_state(students):
             PayrollSettings.query
             .filter(
                 PayrollSettings.class_id == class_id,
-                PayrollSettings.is_active.is_(True),
+                PayrollSettings.availability_state == 'IN_USE',
             )
             .order_by(PayrollSettings.updated_at.desc(), PayrollSettings.id.desc())
             .first()
@@ -2040,7 +2040,7 @@ def _resolve_payroll_settings_for_class_id(canonical_context, class_id):
     return (
         PayrollSettings.query.filter(
             PayrollSettings.class_id == class_id,
-            PayrollSettings.is_active.is_(True),
+            PayrollSettings.availability_state == 'IN_USE',
         )
         .order_by(desc(PayrollSettings.block.isnot(None)))
         .first()
@@ -5147,7 +5147,9 @@ def edit_store_item(item_id):
                     item.collective_goal_instance_code = generate_collective_goal_instance_code()
         flash(f"'{item.name}' has been updated.", "success")
         return redirect(url_for('admin.store_management'))
-    payroll_settings = PayrollSettings.query.filter_by(class_id=selected_scope['class_id'], is_active=True).first()
+    payroll_settings = PayrollSettings.query.filter_by(
+        class_id=selected_scope['class_id'], availability_state='IN_USE'
+    ).first()
     return render_template(
         form=form,
         item=item,
@@ -5393,7 +5395,7 @@ def rent_settings():
 
     payroll_settings = PayrollSettings.query.filter_by(
         class_id=class_id,
-        is_active=True,
+        availability_state='IN_USE',
     ).first()
 
     # Get or create rent settings for this canonical class
@@ -7307,7 +7309,7 @@ def payroll():
     # Get payroll settings for the canonical class
     block_settings = PayrollSettings.query.filter_by(
         class_id=selected_class_id,
-        is_active=True,
+        availability_state='IN_USE',
     ).all()
 
     # Get first block's settings for form pre-population (no global settings)
@@ -7684,7 +7686,6 @@ def payroll_settings():
                 'daily_limit_hours': daily_limit_hours,
                 'time_unit': 'minutes',
                 'pay_schedule_type': frequency,
-                'is_active': True,
                 # Reset advanced fields
                 'overtime_enabled': False,
                 'overtime_threshold': None,
@@ -7761,7 +7762,6 @@ def payroll_settings():
                 'payroll_frequency_days': payroll_frequency_days,
                 'first_pay_date': first_pay_date,
                 'rounding_mode': rounding,
-                'is_active': True,
                 # Reset simple fields
                 'daily_limit_hours': None
             }
@@ -9870,7 +9870,7 @@ def _resolve_admin_payroll_settings_for_class_id(canonical_context, class_id: st
     return (
         PayrollSettings.query.filter(
             PayrollSettings.class_id == class_id,
-            PayrollSettings.is_active.is_(True),
+            PayrollSettings.availability_state == 'IN_USE',
         )
         .order_by(desc(PayrollSettings.block.isnot(None)))
         .first()
