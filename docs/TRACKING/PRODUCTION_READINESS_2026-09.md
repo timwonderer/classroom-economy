@@ -760,11 +760,25 @@ event-table backlog item this would sit on top of. Post-ship.
 **Blocker on port:** `SPEC-OPS-001` collides. HEAD already defines
 `docs/SPEC/SPEC-OPS-001_REVERSAL_AND_VOID.md`. The badge specs must be renumbered before landing.
 
-### `github-pages/v2transition.html` (pre-promotion)
+### `github-pages/v2transition.html` (pre-promotion) — **RESOLVED 2026-09-05**
 
 HEAD has `v2progress.html` but not `v2transition.html`. If this branch is promoted to default, that
 page disappears from the published site. Confirm whether it is still linked; port or consciously
 retire it **before** promotion, not after.
+
+**Closed: conscious retirement, already implemented.** `v2transition.html` is still linked, but from
+exactly one place — `github-pages/index.html`, via `<meta http-equiv="refresh">`. That redirect is
+the site root, so it is the front door of `classroomtokenhub.com`. Commit `669741934` deletes
+`v2transition.html` and retargets `index.html` to `./landing.html` **in the same commit**, and
+`landing.html` is present on HEAD. No dangling reference, no 404. Nothing to port.
+
+Consequence to schedule deliberately: that redirect flip **is** the public reveal. Publishing HEAD's
+`github-pages/` swaps the root from the v1 End-of-Service notice to the v2 landing page in one hop.
+It is correctly gated — the `github-pages` environment restricts deploys to an allowlist
+(`CTH_v2.0`, `github-pages`, `github_pages`, `main`) that excludes
+`codex/landed-architecture-execution-fixes`, so this branch triggers the workflow but is rejected at
+the environment gate and can never publish. The reveal therefore happens on merge to `CTH_v2.0`, not
+before.
 
 ---
 
